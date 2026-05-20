@@ -15,9 +15,9 @@
 //!   ↓
 //! GetLatestMobileSyncDocUseCase::execute          (本 use case)
 //!   ↓
-//! LatestClipboardSnapshotPort::latest_paste_representation
+//! LatestClipboardSnapshotPort::latest_plain_text_preferred_representation
 //!   ↓
-//! adapter (P5a.8): clipboard_entry → selection → representation → blob
+//! adapter (P5a.8): clipboard_entry → selection → 选 plaintext rep → blob
 //! ```
 //!
 //! ## 类型映射(rep mime/format → SyncClipboard `type`)
@@ -28,9 +28,15 @@
 //! | `image/*` 或 `format_id == image` | `Image` | filename | `Some(filename)` | `true` |
 //! | 其他 | `Text` | utf-8 内容 | `None` | `false` |
 //!
-//! 富文本(`text/html` / `text/rtf`)走 Text 分支:iPhone 客户端拿 HTML 当
-//! 文本看,语义上仍是"可粘贴的文本",不至于让 GET 失败影响整条同步链路。
-//! 真要保留富文本格式留给 v2(可加新 type 或扩 `dataName` 携带 alt 表示)。
+//! ## plaintext 偏好(port 端已收口)
+//!
+//! 移动端只能正确解释纯文本字节,所以这里调
+//! [`LatestClipboardSnapshotPort::latest_plain_text_preferred_representation`]
+//! 而不是 paste-priority 入口 —— 当 entry 同时承载 `text/plain` 与 `text/rtf`
+//! / `text/html` 时,port 已经把 plaintext rep 挑出来,iPhone 不再收到
+//! `{\rtf1\ansi…}` 或 HTML 片段。entry 里只有富文本时 port 会兜底回退到
+//! paste rep,此时这里仍会按 Text 分支 `from_utf8_lossy` 字节流不让整条
+//! GET 链路断,但这是"没有更好的选择"的副作用,而非默认行为。
 //!
 //! ## 方案 X(不区分来源)
 //!
@@ -77,7 +83,7 @@ impl GetLatestMobileSyncDocUseCase {
     pub(crate) async fn execute(&self) -> Result<SyncClipboardMeta, GetLatestMobileSyncDocError> {
         let rep = self
             .snapshot_port
-            .latest_paste_representation()
+            .latest_plain_text_preferred_representation()
             .await?
             .ok_or(GetLatestMobileSyncDocError::NotFound)?;
 
@@ -180,6 +186,9 @@ mod tests {
             async fn latest_paste_representation(
                 &self,
             ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
+            async fn latest_plain_text_preferred_representation(
+                &self,
+            ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
         }
     }
 
@@ -187,7 +196,9 @@ mod tests {
         rep: Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>,
     ) -> GetLatestMobileSyncDocUseCase {
         let mut port = MockSnapPort::new();
-        port.expect_latest_paste_representation()
+        // use case 走 plaintext-preferred 入口; 这里 mock 该方法即可,
+        // adapter 内部的"选哪条 rep"逻辑由 adapter 自己的单测覆盖。
+        port.expect_latest_plain_text_preferred_representation()
             .times(1)
             .return_once(move || rep);
         GetLatestMobileSyncDocUseCase::new(Arc::new(port))
@@ -350,7 +361,10 @@ mod tests {
 
     #[tokio::test]
     async fn rich_text_html_classified_as_text() {
-        // text/html should NOT become File or Image; goes through Text path.
+        // 现在的语义: port 在 entry 里找不到 text/plain rep 时, 兜底返回 paste
+        // rep (这里是 text/html), use case 仍按 Text 分支 from_utf8_lossy 兜底,
+        // 不让整条 GET 链路断。配合 adapter 的 plaintext-preferred 选择, html
+        // 字节落到 iPhone 的概率只剩"entry 里压根没有 plaintext"这一种情况。
         let body = b"<p>hi</p>".to_vec();
         let uc = build_uc_returning(Ok(Some(rep(
             "entry-html-1",
@@ -364,6 +378,23 @@ mod tests {
         assert_eq!(meta.data_name, None);
         assert!(!meta.has_data);
         assert_eq!(meta.size, body.len() as u64);
+    }
+
+    #[tokio::test]
+    async fn use_case_consumes_plain_text_preferred_entry_point() {
+        // 回归测: 锁定 use case 调的是 latest_plain_text_preferred_representation
+        // 而非 latest_paste_representation。build_uc_returning 仅 expect 新方法
+        // (调用次数 = 1), 若 use case 退回去调老方法这条测试会因为 mockall
+        // strict mode 在 drop 时 panic。
+        let uc = build_uc_returning(Ok(Some(rep(
+            "entry-plain-1",
+            "text",
+            Some("text/plain"),
+            b"hello".to_vec(),
+        ))));
+        let meta = uc.execute().await.unwrap();
+        assert_eq!(meta.item_type, SyncClipboardItemType::Text);
+        assert_eq!(meta.text, "hello");
     }
 
     #[tokio::test]

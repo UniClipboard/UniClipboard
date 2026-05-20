@@ -209,6 +209,24 @@ pub trait LatestClipboardSnapshotPort: Send + Sync {
     async fn latest_paste_representation(
         &self,
     ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
+
+    /// 拿到当前 entry 中**plain-text 偏好**的 representation。
+    ///
+    /// 选择规则:在该 entry 的 selection 涉及的全部 rep(primary +
+    /// secondary)中,优先返回 mime `text/plain` 或 format_id `text` 的 rep;
+    /// 若都没有,fallback 到 paste-priority rep,与
+    /// [`Self::latest_paste_representation`] 行为一致。
+    ///
+    /// 领域定位:与 [`Self::latest_paste_representation`] 的差异在于优先级
+    /// 不再是"系统默认粘贴目标",而是"纯文本字节"。当 paste-priority rep
+    /// 是富文本(`text/rtf` / `text/html`)而 entry 同时承载了 `text/plain`
+    /// 备选时,本方法返回 plaintext 备选;反之,当 entry 不存在 plaintext
+    /// 备选时,行为退化为 paste 入口。
+    ///
+    /// 无任何 entry 时返回 `Ok(None)`,与 paste 入口语义一致。
+    async fn latest_plain_text_preferred_representation(
+        &self,
+    ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
 }
 
 #[derive(Debug, Error)]

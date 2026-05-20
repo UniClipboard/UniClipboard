@@ -42,6 +42,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use uc_core::blob::ports::BlobReaderPort;
+use uc_core::clipboard::{
+    is_plain_text_mime_or_format, ClipboardEntry, ClipboardSelectionDecision,
+    PersistedClipboardRepresentation,
+};
+use uc_core::ids::{EntryId, EventId, RepresentationId};
 use uc_core::mobile_sync::LatestPasteRepresentation;
 use uc_core::ports::clipboard::{
     ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
@@ -75,14 +80,15 @@ impl LatestClipboardSnapshotAdapter {
     pub(crate) fn new(ports: MobileSyncSnapshotPorts) -> Self {
         Self { ports }
     }
-}
 
-#[async_trait]
-impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
-    async fn latest_paste_representation(
+    /// Step 1+2:取最新 entry 与对应的 selection decision。
+    ///
+    /// 任一不存在(没 entry / 没 selection)→ `Ok(None)`,与现有 `NotFound` 翻
+    /// 译保持一致。port 层错误统一翻成 `Resolution`。
+    async fn load_entry_and_selection(
         &self,
-    ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError> {
-        // 1) 最新 entry
+    ) -> Result<Option<(ClipboardEntry, ClipboardSelectionDecision)>, LatestClipboardSnapshotError>
+    {
         let entries = self
             .ports
             .entry_repo
@@ -93,7 +99,6 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
             return Ok(None);
         };
 
-        // 2) selection.paste_rep_id
         let selection = self
             .ports
             .selection_repo
@@ -103,21 +108,35 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
         let Some(decision) = selection else {
             return Ok(None);
         };
-        let paste_rep_id = decision.selection.paste_rep_id.clone();
+        Ok(Some((entry, decision)))
+    }
 
-        // 3) representation
-        let rep = self
-            .ports
+    /// Step 3:按 (event_id, rep_id) 取出 representation,把 port 错统一翻成
+    /// `Resolution`。
+    async fn fetch_representation(
+        &self,
+        event_id: &EventId,
+        rep_id: &RepresentationId,
+    ) -> Result<Option<PersistedClipboardRepresentation>, LatestClipboardSnapshotError> {
+        self.ports
             .representation_repo
-            .get_representation(&entry.event_id, &paste_rep_id)
+            .get_representation(event_id, rep_id)
             .await
-            .map_err(|e| LatestClipboardSnapshotError::Resolution(e.to_string()))?;
-        let Some(rep) = rep else {
-            return Ok(None);
-        };
+            .map_err(|e| LatestClipboardSnapshotError::Resolution(e.to_string()))
+    }
+
+    /// Step 4-6:把 representation 解析成 `LatestPasteRepresentation`(物化
+    /// bytes、推断 mime)。
+    ///
+    /// resolver 给空串 mime → `MimeType::None`,与 representation row
+    /// `mime_type=NULL` 语义一致。
+    async fn materialize(
+        &self,
+        entry_id: EntryId,
+        rep: PersistedClipboardRepresentation,
+    ) -> Result<LatestPasteRepresentation, LatestClipboardSnapshotError> {
         let format_id = rep.format_id.clone();
 
-        // 4) payload resolve → bytes/mime
         let resolved = self
             .ports
             .payload_resolver
@@ -137,21 +156,86 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
             }
         };
 
-        // resolver 返回的 mime 是 String;空串视作"resolver 选择不带 mime",
-        // 与 representation row 里 mime_type=NULL 的语义保持一致 —— 翻成
-        // Option<MimeType>::None,让上层 (sync_clipboard_mapping)走 Text 兜底。
         let mime = if mime_string.is_empty() {
             None
         } else {
             Some(MimeType(mime_string))
         };
 
-        Ok(Some(LatestPasteRepresentation {
-            entry_id: entry.entry_id,
+        Ok(LatestPasteRepresentation {
+            entry_id,
             format_id,
             mime,
             bytes,
-        }))
+        })
+    }
+}
+
+#[async_trait]
+impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
+    async fn latest_paste_representation(
+        &self,
+    ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError> {
+        let Some((entry, decision)) = self.load_entry_and_selection().await? else {
+            return Ok(None);
+        };
+        let paste_rep_id = decision.selection.paste_rep_id.clone();
+
+        let Some(rep) = self
+            .fetch_representation(&entry.event_id, &paste_rep_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(self.materialize(entry.entry_id, rep).await?))
+    }
+
+    async fn latest_plain_text_preferred_representation(
+        &self,
+    ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError> {
+        let Some((entry, decision)) = self.load_entry_and_selection().await? else {
+            return Ok(None);
+        };
+        let paste_rep_id = decision.selection.paste_rep_id.clone();
+
+        // 候选顺序: paste 优先(若它本身就是 plaintext, 一次 IO 直接命中);
+        // 再依次扫 primary 与 secondary 中其余的 rep。policy v1 下 primary 与
+        // paste 同一份, 这里靠去重短路; 但代码不再依赖该等式 —— 未来若 v2
+        // 让 primary ≠ paste, 本方法仍能正确扫描全部候选。
+        let mut candidates: Vec<RepresentationId> =
+            Vec::with_capacity(2 + decision.selection.secondary_rep_ids.len());
+        let push_unique = |id: RepresentationId, list: &mut Vec<RepresentationId>| {
+            if !list.contains(&id) {
+                list.push(id);
+            }
+        };
+        push_unique(paste_rep_id.clone(), &mut candidates);
+        push_unique(decision.selection.primary_rep_id.clone(), &mut candidates);
+        for sid in &decision.selection.secondary_rep_ids {
+            push_unique(sid.clone(), &mut candidates);
+        }
+
+        // 扫描时缓存 paste rep —— 找不到 plaintext 时直接复用, 避免二次 IO。
+        let mut paste_rep_cached: Option<PersistedClipboardRepresentation> = None;
+        for rep_id in &candidates {
+            let Some(rep) = self.fetch_representation(&entry.event_id, rep_id).await? else {
+                continue;
+            };
+            if is_plain_text_mime_or_format(rep.mime_type.as_ref(), &rep.format_id) {
+                return Ok(Some(self.materialize(entry.entry_id, rep).await?));
+            }
+            if rep_id == &paste_rep_id {
+                paste_rep_cached = Some(rep);
+            }
+        }
+
+        // 无 plaintext rep —— 回退到 paste rep(可能是 text/rtf / text/html /
+        // image 等), 由消费方按 mime 自己处理。
+        let Some(paste_rep) = paste_rep_cached else {
+            return Ok(None);
+        };
+        Ok(Some(self.materialize(entry.entry_id, paste_rep).await?))
     }
 }
 
@@ -172,6 +256,17 @@ mod tests {
     //! | entry_repo 错 | Err(Resolution) |
     //! | resolver 错 | Err(Resolution) |
     //! | blob_reader 错 | Err(Resolution) |
+    //!
+    //! plaintext 偏好(latest_plain_text_preferred_representation)增量覆盖:
+    //!
+    //! | 输入 | 期望 |
+    //! |---|---|
+    //! | paste 本身就是 text/plain | 直接用 paste, 不读 secondary |
+    //! | paste 是 text/rtf, secondary 有 text/plain | 切到 plaintext rep |
+    //! | paste 是 text/html, secondary 全是非 plaintext | 回退到 paste rep |
+    //! | paste 是 image, 无 secondary | 直接用 paste rep |
+    //! | format_id=text 但 mime=None | 视为 plaintext(走 format_id 兜底) |
+    //! | paste rep 行缺失但 secondary 有 plaintext | 返回 plaintext secondary |
 
     use super::*;
 
@@ -598,5 +693,330 @@ mod tests {
         );
         let err = adapter.latest_paste_representation().await.unwrap_err();
         assert!(matches!(err, LatestClipboardSnapshotError::Resolution(_)));
+    }
+
+    // ─── plaintext-preferred path ───────────────────────────────────────
+    //
+    // 这条路径会反复读 representation_repo / resolver, 单次返回的旧 fake 顶不
+    // 住,这里另起一套按 RepresentationId 路由的 fake。每个 rep_id 注册一份
+    // (metadata, resolved-payload) 配对, fake 各自挑各自要的部分。
+
+    use std::collections::HashMap;
+
+    /// 按 rep_id 路由的 RepresentationRepo —— 注册哪些 rep 存在 / 各自的
+    /// metadata, 调用次数不限。
+    struct FakeRepRepoById {
+        reps: HashMap<RepresentationId, PersistedClipboardRepresentation>,
+    }
+    impl FakeRepRepoById {
+        fn new(reps: Vec<PersistedClipboardRepresentation>) -> Self {
+            Self {
+                reps: reps.into_iter().map(|r| (r.id.clone(), r)).collect(),
+            }
+        }
+    }
+    #[async_trait]
+    impl ClipboardRepresentationRepositoryPort for FakeRepRepoById {
+        async fn get_representation(
+            &self,
+            _event_id: &EventId,
+            representation_id: &RepresentationId,
+        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+            Ok(self.reps.get(representation_id).cloned())
+        }
+        async fn get_representation_by_id(
+            &self,
+            _representation_id: &RepresentationId,
+        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+            unimplemented!()
+        }
+        async fn get_representation_by_blob_id(
+            &self,
+            _blob_id: &BlobId,
+        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+            unimplemented!()
+        }
+        async fn update_blob_id(
+            &self,
+            _representation_id: &RepresentationId,
+            _blob_id: &BlobId,
+        ) -> AnyResult<()> {
+            unimplemented!()
+        }
+        async fn update_blob_id_if_none(
+            &self,
+            _representation_id: &RepresentationId,
+            _blob_id: &BlobId,
+        ) -> AnyResult<bool> {
+            unimplemented!()
+        }
+        async fn update_processing_result(
+            &self,
+            _rep_id: &RepresentationId,
+            _expected_states: &[PayloadAvailability],
+            _blob_id: Option<&BlobId>,
+            _new_state: PayloadAvailability,
+            _last_error: Option<&str>,
+        ) -> AnyResult<ProcessingUpdateOutcome> {
+            unimplemented!()
+        }
+    }
+
+    /// 按 rep.id 路由的 Resolver —— 用 rep_id 找对应的 ResolvedClipboardPayload。
+    struct FakeResolverById {
+        payloads: HashMap<RepresentationId, ResolvedClipboardPayload>,
+    }
+    impl FakeResolverById {
+        fn new(payloads: Vec<(RepresentationId, ResolvedClipboardPayload)>) -> Self {
+            Self {
+                payloads: payloads.into_iter().collect(),
+            }
+        }
+    }
+    #[async_trait]
+    impl ClipboardPayloadResolverPort for FakeResolverById {
+        async fn resolve(
+            &self,
+            representation: &PersistedClipboardRepresentation,
+        ) -> Result<ResolvedClipboardPayload, PayloadResolveError> {
+            self.payloads
+                .get(&representation.id)
+                .cloned()
+                .ok_or_else(|| PayloadResolveError::Integrity {
+                    rep_id: representation.id.clone(),
+                    reason: "no payload registered for rep".into(),
+                })
+        }
+    }
+
+    fn selection_with_secondary(
+        entry_id: &str,
+        paste_rep: &str,
+        secondary: &[&str],
+    ) -> ClipboardSelectionDecision {
+        let paste = RepresentationId::from(paste_rep);
+        ClipboardSelectionDecision::new(
+            EntryId::from(entry_id),
+            ClipboardSelection {
+                primary_rep_id: paste.clone(),
+                secondary_rep_ids: secondary
+                    .iter()
+                    .map(|s| RepresentationId::from(*s))
+                    .collect(),
+                preview_rep_id: paste.clone(),
+                paste_rep_id: paste,
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn plain_text_pref_uses_paste_when_paste_is_plain_text() {
+        // paste rep 本身就是 text/plain → 一次命中, 不需要扫 secondary。
+        let plain = rep("r-plain", "text", Some("text/plain"));
+        let adapter = build_adapter(
+            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
+                "e1",
+                "r-plain",
+                &[],
+            )))),
+            Arc::new(FakeRepRepoById::new(vec![plain])),
+            Arc::new(FakeResolverById::new(vec![(
+                RepresentationId::from("r-plain"),
+                ResolvedClipboardPayload::Inline {
+                    mime: "text/plain".into(),
+                    bytes: b"hello".to_vec(),
+                },
+            )])),
+            dummy_blob_reader(),
+        );
+        let out = adapter
+            .latest_plain_text_preferred_representation()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.format_id, FormatId::from("text"));
+        assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("text/plain"));
+        assert_eq!(out.bytes, b"hello".to_vec());
+    }
+
+    #[tokio::test]
+    async fn plain_text_pref_swaps_rtf_paste_for_plain_text_secondary() {
+        // paste 是 text/rtf, secondary 有 text/plain → 切到 plaintext rep。
+        // 这是修复的关键路径: 移动端不再收到 `{\rtf1\ansi...}` 字节流。
+        let rtf = rep("r-rtf", "rtf", Some("text/rtf"));
+        let plain = rep("r-plain", "text", Some("text/plain"));
+        let adapter = build_adapter(
+            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
+                "e1",
+                "r-rtf",
+                &["r-plain"],
+            )))),
+            Arc::new(FakeRepRepoById::new(vec![rtf, plain])),
+            Arc::new(FakeResolverById::new(vec![
+                (
+                    RepresentationId::from("r-rtf"),
+                    ResolvedClipboardPayload::Inline {
+                        mime: "text/rtf".into(),
+                        bytes: b"{\\rtf1\\ansi hello}".to_vec(),
+                    },
+                ),
+                (
+                    RepresentationId::from("r-plain"),
+                    ResolvedClipboardPayload::Inline {
+                        mime: "text/plain".into(),
+                        bytes: b"hello".to_vec(),
+                    },
+                ),
+            ])),
+            dummy_blob_reader(),
+        );
+        let out = adapter
+            .latest_plain_text_preferred_representation()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.format_id, FormatId::from("text"));
+        assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("text/plain"));
+        assert_eq!(out.bytes, b"hello".to_vec());
+    }
+
+    #[tokio::test]
+    async fn plain_text_pref_falls_back_to_paste_when_no_plain_text_available() {
+        // paste 是 text/html, secondary 也是 text/html (无 plaintext) → 兜底
+        // 用 paste rep 本身, 与 latest_paste_representation 行为一致。
+        let html_paste = rep("r-html", "html", Some("text/html"));
+        let html_alt = rep("r-html-alt", "html", Some("text/html"));
+        let adapter = build_adapter(
+            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
+                "e1",
+                "r-html",
+                &["r-html-alt"],
+            )))),
+            Arc::new(FakeRepRepoById::new(vec![html_paste, html_alt])),
+            Arc::new(FakeResolverById::new(vec![(
+                RepresentationId::from("r-html"),
+                ResolvedClipboardPayload::Inline {
+                    mime: "text/html".into(),
+                    bytes: b"<p>hi</p>".to_vec(),
+                },
+            )])),
+            dummy_blob_reader(),
+        );
+        let out = adapter
+            .latest_plain_text_preferred_representation()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.format_id, FormatId::from("html"));
+        assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("text/html"));
+        assert_eq!(out.bytes, b"<p>hi</p>".to_vec());
+    }
+
+    #[tokio::test]
+    async fn plain_text_pref_keeps_image_paste_when_no_secondary() {
+        // paste 是 image, 没 secondary → 直接用 paste rep。Image rep 不会被
+        // 误判为 plaintext, 行为与 latest_paste_representation 一致。
+        let img = rep("r-img", "image", Some("image/png"));
+        let adapter = build_adapter(
+            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
+                "e1",
+                "r-img",
+                &[],
+            )))),
+            Arc::new(FakeRepRepoById::new(vec![img])),
+            Arc::new(FakeResolverById::new(vec![(
+                RepresentationId::from("r-img"),
+                ResolvedClipboardPayload::BlobRef {
+                    mime: "image/png".into(),
+                    blob_id: BlobId::from("blob-img"),
+                },
+            )])),
+            Arc::new(FakeBlobReader::ok(vec![0x89, 0x50, 0x4E, 0x47])),
+        );
+        let out = adapter
+            .latest_plain_text_preferred_representation()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.format_id, FormatId::from("image"));
+        assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("image/png"));
+        assert_eq!(out.bytes, vec![0x89, 0x50, 0x4E, 0x47]);
+    }
+
+    #[tokio::test]
+    async fn plain_text_pref_recognizes_format_id_text_without_mime() {
+        // 没有显式 mime, 但 format_id="text" → 走 is_plain_text_mime_or_format
+        // 的 format_id 兜底分支, 仍然识别为 plaintext。
+        let no_mime = rep("r-text-only", "text", None);
+        let adapter = build_adapter(
+            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
+                "e1",
+                "r-text-only",
+                &[],
+            )))),
+            Arc::new(FakeRepRepoById::new(vec![no_mime])),
+            Arc::new(FakeResolverById::new(vec![(
+                RepresentationId::from("r-text-only"),
+                ResolvedClipboardPayload::Inline {
+                    mime: "".into(),
+                    bytes: b"hi".to_vec(),
+                },
+            )])),
+            dummy_blob_reader(),
+        );
+        let out = adapter
+            .latest_plain_text_preferred_representation()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.format_id, FormatId::from("text"));
+        assert!(out.mime.is_none());
+        assert_eq!(out.bytes, b"hi".to_vec());
+    }
+
+    #[tokio::test]
+    async fn plain_text_pref_returns_secondary_plain_text_when_paste_rep_row_missing() {
+        // 边界: selection 指向的 paste_rep_id 在 representation_repo 里查不到
+        // (Ok(None)), 但 secondary 中存在 plaintext rep。
+        //
+        // 与 latest_paste_representation 的语义差异: 后者一旦 paste rep 查
+        // 不到就直接 Ok(None); 而 plaintext 偏好入口的目标是"尽量给出可读
+        // 纯文本", 因此即便 paste rep 行缺失, secondary 里有 plaintext 也
+        // 应当返回它。该测试锁定这条语义不被无意改回去。
+        //
+        // 注: FakeRepRepoById 只注册 plaintext rep, 不注册 paste rep ——
+        // 模拟 paste 行被外部清理 / 还未落库的场景。
+        let plain = rep("r-plain", "text", Some("text/plain"));
+        let adapter = build_adapter(
+            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
+                "e1",
+                "r-missing-paste",
+                &["r-plain"],
+            )))),
+            Arc::new(FakeRepRepoById::new(vec![plain])),
+            Arc::new(FakeResolverById::new(vec![(
+                RepresentationId::from("r-plain"),
+                ResolvedClipboardPayload::Inline {
+                    mime: "text/plain".into(),
+                    bytes: b"hello".to_vec(),
+                },
+            )])),
+            dummy_blob_reader(),
+        );
+        let out = adapter
+            .latest_plain_text_preferred_representation()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.format_id, FormatId::from("text"));
+        assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("text/plain"));
+        assert_eq!(out.bytes, b"hello".to_vec());
     }
 }

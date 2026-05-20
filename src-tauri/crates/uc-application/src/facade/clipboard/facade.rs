@@ -247,6 +247,9 @@ impl ClipboardSyncFacade {
                 categories: ClipboardContentCategorySet::empty(),
                 // raw-bytes 路径不与某条 entry 绑定,跳过 delivery 落盘。
                 entry_id: None,
+                // raw-bytes 路径(CLI `uniclip send <text>` 无 daemon 模式)
+                // 不参与 resend,target_filter 永远 None。
+                target_filter: None,
             })
             .await?;
         Ok(lift_outcome(internal))
@@ -272,6 +275,9 @@ impl ClipboardSyncFacade {
                 payload_version,
                 categories,
                 entry_id,
+                // snapshot-aware 路径目前只走"全 fan-out"。commit C 会把
+                // public `DispatchEntryInput.target_filter` 透到这里。
+                target_filter: None,
             })
             .await?;
         Ok(lift_outcome(internal))

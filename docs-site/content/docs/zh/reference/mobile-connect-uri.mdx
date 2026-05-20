@@ -14,9 +14,8 @@ description: uniclipboard://connect 深链协议规范，用于把移动端客�
 - 任何需要解析桌面 **添加设备 → 扫码接入** 流程生成的二维码的工具。
 
 <Callout type="info">
-  本 URI 只承载凭据与元数据。HTTP wire 协议仍是兼容 SyncClipboard 的
-  （`GET /SyncClipboard.json` + HTTP Basic Auth）。解析完 URI 后客户端要调的
-  HTTP 端点见 [移动端 LAN API](./mobile-api)。
+  本 URI 只承载凭据与元数据。HTTP wire 协议仍是兼容 SyncClipboard 的 （`GET /SyncClipboard.json` +
+  HTTP Basic Auth）。解析完 URI 后客户端要调的 HTTP 端点见 [移动端 LAN API](./mobile-api)。
 </Callout>
 
 ## URI 形态
@@ -25,12 +24,12 @@ description: uniclipboard://connect 深链协议规范，用于把移动端客�
 uniclipboard://connect?v=1&svc=mobile-sync&p=<PAYLOAD>
 ```
 
-| 字段        | 取值                                                              |
-| ----------- | ----------------------------------------------------------------- |
-| Scheme      | `uniclipboard` —— **唯一** 接受的 scheme                          |
-| Host        | `connect`                                                         |
-| Query `v`   | URI 信封版本，v1 = `1`                                            |
-| Query `svc` | 服务标识，v1 仅支持 `mobile-sync`                                 |
+| 字段        | 取值                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------ |
+| Scheme      | `uniclipboard` —— **唯一** 接受的 scheme                                                   |
+| Host        | `connect`                                                                                  |
+| Query `v`   | URI 信封版本，v1 = `1`                                                                     |
+| Query `svc` | 服务标识，v1 仅支持 `mobile-sync`                                                          |
 | Query `p`   | UTF-8 JSON payload 的 **base64url（无 padding）** 编码（见 [Payload 结构](#payload-结构)） |
 
 **为什么只允许一个 scheme？** 单一 canonical scheme 让 Intent filter / URL
@@ -68,12 +67,12 @@ handler / 解析逻辑保持简单，消除一种跨平台不一致来源，避�
 
 ### 必填字段
 
-| 字段   | 类型    | 语义                                                                                  |
-| ------ | ------- | ------------------------------------------------------------------------------------- |
-| `v`    | 整数    | Payload 版本，v1 = `1`。与 URI `v` 区分（见 [为什么有两个版本号](#为什么有两个版本号)）。 |
-| `url`  | 字符串  | 服务端 base URL，例如 `http://192.168.1.5:42720`。**不带尾斜杠**。scheme **必须** 为 `http` 或 `https`。 |
-| `user` | 字符串  | HTTP Basic Auth 用户名。首字符 ASCII 字母，余下 `[A-Za-z0-9_]`，长度 6–32。           |
-| `pwd`  | 字符串  | HTTP Basic Auth **明文** 密码。仅一次性展示；服务端只保留 Argon2id 哈希。             |
+| 字段   | 类型   | 语义                                                                                                     |
+| ------ | ------ | -------------------------------------------------------------------------------------------------------- |
+| `v`    | 整数   | Payload 版本，v1 = `1`。与 URI `v` 区分（见 [为什么有两个版本号](#为什么有两个版本号)）。                |
+| `url`  | 字符串 | 服务端 base URL，例如 `http://192.168.1.5:42720`。**不带尾斜杠**。scheme **必须** 为 `http` 或 `https`。 |
+| `user` | 字符串 | HTTP Basic Auth 用户名。首字符 ASCII 字母，余下 `[A-Za-z0-9_]`，长度 6–32。                              |
+| `pwd`  | 字符串 | HTTP Basic Auth **明文** 密码。仅一次性展示；服务端只保留 Argon2id 哈希。                                |
 
 客户端用 `{url}/SyncClipboard.json` 拼请求 URL，认证头为
 `Authorization: Basic base64(user:pwd)`。
@@ -84,12 +83,12 @@ handler / 解析逻辑保持简单，消除一种跨平台不一致来源，避�
 **不得** 依赖某个 `o` 键被客户端识别才能连通；所有连通性都来自
 `url` / `user` / `pwd`。
 
-| 键        | 示例值            | 用途                                                              |
-| --------- | ----------------- | ----------------------------------------------------------------- |
-| `label`   | `"My iPhone"`     | 客户端 UI 显示用的设备名。                                        |
-| `did`     | `"did_0123abcd"`  | 服务端分配的 `device_id`，用于诊断与日志关联。                    |
-| `proto`   | `"syncclipboard"` | 协议族提示。未来可能扩展为 `"uniclipboard-native"` 等。           |
-| `install` | `"shortcut-ex"`   | iOS 快捷指令模板提示，与 iCloud 安装链接常量配对。                |
+| 键        | 示例值            | 用途                                                    |
+| --------- | ----------------- | ------------------------------------------------------- |
+| `label`   | `"My iPhone"`     | 客户端 UI 显示用的设备名。                              |
+| `did`     | `"did_0123abcd"`  | 服务端分配的 `device_id`，用于诊断与日志关联。          |
+| `proto`   | `"syncclipboard"` | 协议族提示。未来可能扩展为 `"uniclipboard-native"` 等。 |
+| `install` | `"shortcut-ex"`   | iOS 快捷指令模板提示，与 iCloud 安装链接常量配对。      |
 
 解析器应宽松：识别上面的键，其它键不识别但 **不要报错**。
 
@@ -176,14 +175,14 @@ foreach (k, v) in (payload.o or {}):
 
 ### 错误码
 
-| 代码                    | 触发条件                                              | UX 提示                              |
-| ----------------------- | ----------------------------------------------------- | ------------------------------------ |
-| `INVALID_SCHEME`        | Scheme ≠ `uniclipboard` 或 host ≠ `connect`。         | 「不是 UniClipboard 的二维码。」     |
-| `UNSUPPORTED_VERSION`   | URI `v` ≠ 1 或 payload `v` ≠ 1。                      | 「请升级 App。」                     |
-| `UNSUPPORTED_SERVICE`   | URI `svc` ≠ `mobile-sync`。                           | 「当前版本不支持该服务。」           |
-| `PAYLOAD_DECODE_FAILED` | `p` 缺失、base64url 损坏或 JSON 损坏。                | 「二维码已损坏，请重新生成。」       |
-| `MISSING_FIELD`         | `url` / `user` / `pwd` 缺失或为空。                   | 「二维码内容不完整，请重新生成。」   |
-| `INVALID_URL`           | `url` 不以 `http://` 或 `https://` 开头。             | 「二维码里的服务地址无效。」         |
+| 代码                    | 触发条件                                      | UX 提示                            |
+| ----------------------- | --------------------------------------------- | ---------------------------------- |
+| `INVALID_SCHEME`        | Scheme ≠ `uniclipboard` 或 host ≠ `connect`。 | 「不是 UniClipboard 的二维码。」   |
+| `UNSUPPORTED_VERSION`   | URI `v` ≠ 1 或 payload `v` ≠ 1。              | 「请升级 App。」                   |
+| `UNSUPPORTED_SERVICE`   | URI `svc` ≠ `mobile-sync`。                   | 「当前版本不支持该服务。」         |
+| `PAYLOAD_DECODE_FAILED` | `p` 缺失、base64url 损坏或 JSON 损坏。        | 「二维码已损坏，请重新生成。」     |
+| `MISSING_FIELD`         | `url` / `user` / `pwd` 缺失或为空。           | 「二维码内容不完整，请重新生成。」 |
+| `INVALID_URL`           | `url` 不以 `http://` 或 `https://` 开头。     | 「二维码里的服务地址无效。」       |
 
 ## 安全约束
 
@@ -227,12 +226,12 @@ v1 中 `pwd` 与 `o` 都不允许携带：
 
 ## 与 SyncClipboard 配置项的映射
 
-| 协议字段 | SyncClipboard / iOS 快捷指令配置项                |
-| -------- | ------------------------------------------------- |
-| `url`    | Server URL（快捷指令里的 `url` 参数）             |
-| `user`   | Username                                          |
-| `pwd`    | Password                                          |
-| `o.*`    | 仅用于客户端 UI / 诊断，绝不参与 HTTP 请求        |
+| 协议字段 | SyncClipboard / iOS 快捷指令配置项         |
+| -------- | ------------------------------------------ |
+| `url`    | Server URL（快捷指令里的 `url` 参数）      |
+| `user`   | Username                                   |
+| `pwd`    | Password                                   |
+| `o.*`    | 仅用于客户端 UI / 诊断，绝不参与 HTTP 请求 |
 
 HTTP wire 协议不变 —— 见 [移动端 LAN API](./mobile-api)。
 
@@ -264,14 +263,14 @@ uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE
 
 下列每条输入解析时 **必须** 产生对应的错误码：
 
-| # | 输入                                                                                                          | 期望错误                |
-| - | ------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| 1 | `https://example.com/connect?v=1&svc=mobile-sync&p=eyJ2IjoxfQ`                                                | `INVALID_SCHEME`        |
-| 2 | `uniclipboard://connect?v=2&svc=mobile-sync&p=eyJ2IjoxfQ`                                                     | `UNSUPPORTED_VERSION`   |
-| 3 | `uniclipboard://connect?v=1&svc=other&p=eyJ2IjoxfQ`                                                           | `UNSUPPORTED_SERVICE`   |
-| 4 | `uniclipboard://connect?v=1&svc=mobile-sync&p=not-valid-base64!@#`                                            | `PAYLOAD_DECODE_FAILED` |
-| 5 | `uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vYS5iIiwidXNlciI6InUifQ` (缺 `pwd`) | `MISSING_FIELD`         |
-| 6 | `uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJmdHA6Ly9hLmIiLCJ1c2VyIjoidSIsInB3ZCI6InAifQ` (ftp scheme) | `INVALID_URL` |
+| #   | 输入                                                                                                                       | 期望错误                |
+| --- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| 1   | `https://example.com/connect?v=1&svc=mobile-sync&p=eyJ2IjoxfQ`                                                             | `INVALID_SCHEME`        |
+| 2   | `uniclipboard://connect?v=2&svc=mobile-sync&p=eyJ2IjoxfQ`                                                                  | `UNSUPPORTED_VERSION`   |
+| 3   | `uniclipboard://connect?v=1&svc=other&p=eyJ2IjoxfQ`                                                                        | `UNSUPPORTED_SERVICE`   |
+| 4   | `uniclipboard://connect?v=1&svc=mobile-sync&p=not-valid-base64!@#`                                                         | `PAYLOAD_DECODE_FAILED` |
+| 5   | `uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vYS5iIiwidXNlciI6InUifQ` (缺 `pwd`)               | `MISSING_FIELD`         |
+| 6   | `uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJmdHA6Ly9hLmIiLCJ1c2VyIjoidSIsInB3ZCI6InAifQ` (ftp scheme) | `INVALID_URL`           |
 
 ## 端到端接入流程
 

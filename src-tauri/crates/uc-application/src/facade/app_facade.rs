@@ -399,10 +399,18 @@ impl AppFacade {
     }
 
     /// 发送一个剪贴板快照到在线 peer。
+    ///
+    /// `target_filter`:
+    /// - `None` —— 全 fan-out（向所有 trusted online peer）;
+    /// - `Some(list)` —— 仅向指定 device 集合 fan-out;空列表合法,表示零目标。
+    ///
+    /// 不绕过 `is_send_allowed` / member gating / presence 这三层 use case
+    /// 内部检查,filter 在它们之后生效。
     pub async fn dispatch_clipboard_snapshot(
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
+        target_filter: Option<Vec<DeviceId>>,
     ) -> Result<crate::facade::DispatchEntryOutcome, ClipboardSyncError> {
         self.clipboard_sync
             .get()
@@ -410,10 +418,9 @@ impl AppFacade {
             .ok_or_else(|| {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
             })?
-            // CLI 路径不与某条 entry 绑定,跳过 delivery 落盘。
-            // target_filter=None ⇒ 全 fan-out;commit G 引入 `--peer` 时再扩
-            // 展 AppFacade 签名,本 thin forward 保持最简。
-            .dispatch_snapshot(snapshot, origin, None, None)
+            // CLI / 直接调用方不与某条 entry 绑定,跳过 delivery 落盘;
+            // target_filter 透传到下层 dispatch_entry。
+            .dispatch_snapshot(snapshot, origin, None, target_filter)
             .await
     }
 

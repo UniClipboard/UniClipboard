@@ -398,7 +398,9 @@ impl AppFacade {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
             })?
             // CLI 路径不与某条 entry 绑定,跳过 delivery 落盘。
-            .dispatch_snapshot(snapshot, origin, None)
+            // target_filter=None ⇒ 全 fan-out;commit G 引入 `--peer` 时再扩
+            // 展 AppFacade 签名,本 thin forward 保持最简。
+            .dispatch_snapshot(snapshot, origin, None, None)
             .await
     }
 

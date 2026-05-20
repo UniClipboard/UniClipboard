@@ -262,6 +262,9 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     clipboard_intent.snapshot,
                     input.origin,
                     Some(entry_id.clone()),
+                    // LocalCapture 路径走"全 fan-out"语义。resend 路径不经此
+                    // 入口,而是直接走 ResendEntryUseCase + DispatchEntryRunner。
+                    None,
                 )
                 .await
         } else {
@@ -271,6 +274,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     blob_refs,
                     input.origin,
                     Some(entry_id.clone()),
+                    None,
                 )
                 .await
         }

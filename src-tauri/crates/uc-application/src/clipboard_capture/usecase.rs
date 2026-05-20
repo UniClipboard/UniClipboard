@@ -511,6 +511,13 @@ fn telemetry_capture_origin(origin: ClipboardChangeOrigin) -> Option<CaptureOrig
         // 入站同步写本地剪贴板路径——必须过滤，否则 outbound capture
         // 与入站事件双计。
         ClipboardChangeOrigin::RemotePush { .. } => None,
+        // ADR-005 §2.5 用户主动 resend:复用既有 entry 重发 fan-out,不产生
+        // 新 entry,也不应该计入 capture 漏斗 —— 它代表"已有 entry 的二次
+        // 同步尝试",与 RemotePush 同样需要在 telemetry 上被剔除,避免污染
+        // "首次同步"与"复制 → 同步延迟"等指标。实际上 ResendEntryUseCase
+        // 不经 clipboard_capture 路径,正常情况下这里不会被命中;留 arm 让
+        // match 在 exhaustive 上闭合,并明确语义。
+        ClipboardChangeOrigin::Resend => None,
     }
 }
 

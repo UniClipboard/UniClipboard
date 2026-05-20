@@ -20,6 +20,21 @@ pub enum ClipboardChangeOrigin {
     /// 消费者据此区分"远端推送"与"本机产生",并在需要追溯归属时取用
     /// `from_device`。
     RemotePush { from_device: Option<DeviceId> },
+    /// 用户主动对一条已存在 entry 的重发(ADR-005 §2.5)。
+    ///
+    /// 与 `LocalCapture` 同属"本机用户操作",但语义独立:
+    ///
+    /// - **不产生新 entry / 新 event / 新 selection**:复用既有 entry 的
+    ///   plaintext + blob,只重做一次 fan-out。
+    /// - **不进 capture 漏斗 telemetry**:该 entry 上一次同步已经发生过
+    ///   (或尝试过),把 Resend 计入"首次同步"会污染漏斗。
+    /// - **不进 clipboard_watcher**:重发由用例直接调 dispatch,不经
+    ///   系统剪贴板侦测路径。
+    ///
+    /// 该变体不携带字段:重发的 entry id 在 `DispatchClipboardEntryInput.entry_id`
+    /// 字段,目标 peer 子集在 `target_filter` 字段;origin 在此处只承担
+    /// "区分本次 dispatch 的领域来源"的元数据角色。
+    Resend,
 }
 
 impl ClipboardChangeOrigin {

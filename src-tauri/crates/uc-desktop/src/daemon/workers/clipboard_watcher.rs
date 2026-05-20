@@ -149,6 +149,11 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         let origin_str = match origin {
             ClipboardChangeOrigin::LocalCapture | ClipboardChangeOrigin::LocalRestore => "local",
             ClipboardChangeOrigin::RemotePush { .. } => "remote",
+            // ADR-005 §2.5 用户主动 resend:本机用户操作 → "local"。watcher 实际
+            // 不会路过这条路径(ResendEntryUseCase 直接调 dispatch,不经
+            // clipboard_watcher 的 capture 链),但 exhaustive 要求补 arm 让
+            // 编译期检查捕获将来误用 Resend 走 watcher 的回归。
+            ClipboardChangeOrigin::Resend => "local",
         };
 
         // 4. Clone snapshot before capture consumes it.

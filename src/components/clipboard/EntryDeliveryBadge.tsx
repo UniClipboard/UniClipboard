@@ -26,26 +26,19 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  isResendEntryError,
-  resendEntry,
-  type DeliveryFailureReason,
-  type EntryDeliveryStatusView,
-  type EntryDeliveryTargetView,
-  type EntryDeliveryView,
-  type EntrySourceView,
-  type ResendEntryCommandError,
-  type ResendEntryReportDto,
+import type {
+  DeliveryFailureReason,
+  EntryDeliveryStatusView,
+  EntryDeliveryTargetView,
+  EntryDeliveryView,
+  EntrySourceView,
 } from '@/api/tauri-command/clipboard_delivery'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
-import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { createLogger } from '@/lib/logger'
+import { useResendAction, type UseResendActionResult } from '@/hooks/useResendAction'
 import { cn } from '@/lib/utils'
-
-const log = createLogger('entry-delivery-badge')
 
 interface EntryDeliveryBadgeProps {
   delivery: EntryDeliveryView | null
@@ -100,13 +93,13 @@ function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | n
 
 const EntryDeliveryBadge: React.FC<EntryDeliveryBadgeProps> = ({ delivery }) => {
   const { t } = useTranslation()
-  // 本机视角下的 resend 触发能力 —— remote/historical 永远不应触发,
-  // hooks 必须无条件调用,故先 hook 再据 source 隐藏按钮。
-  const resendController = useResendController(delivery?.entryId ?? null, delivery?.source.tag)
+  // Resend 触发器与 toast 副作用; remote/historical 视图层据 `resendable`
+  // 隐藏 UI,后端再做最终守护(返回 ENTRY_NOT_RESENDABLE.remoteOrigin)。
+  const resendAction = useResendAction()
 
   if (!delivery) return null
 
-  const { source, deliveries } = delivery
+  const { source, deliveries, entryId } = delivery
   // historical 来源 + 空列表 是 legacy entry 的典型形态,展示来源 icon 即可
   // (legacy 无追踪意义)。其它来源即便列表为空也保留来源信息,符合"一眼
   // 看出这条从哪里来"的设计目标。
@@ -122,8 +115,9 @@ const EntryDeliveryBadge: React.FC<EntryDeliveryBadgeProps> = ({ delivery }) => 
             summary={summary}
             deliveries={deliveries}
             t={t}
+            entryId={entryId}
             resendable={resendable}
-            resendController={resendController}
+            resendAction={resendAction}
           />
         )}
       </div>
@@ -188,20 +182,22 @@ interface SyncBadgeProps {
   summary: SyncSummary
   deliveries: readonly EntryDeliveryTargetView[]
   t: (key: string, opts?: Record<string, unknown>) => string
+  entryId: string
   /**
    * 仅本机来源的 entry 才能从此设备 resend (`source.tag === 'local'`);
    * remote / historical 不渲染任何 resend UI,避免误导用户。
    */
   resendable: boolean
-  resendController: ResendController
+  resendAction: UseResendActionResult
 }
 
 const SyncBadge: React.FC<SyncBadgeProps> = ({
   summary,
   deliveries,
   t,
+  entryId,
   resendable,
-  resendController,
+  resendAction,
 }) => {
   const { Icon, label, tone, spin } = useMemo(() => {
     switch (summary) {
@@ -279,7 +275,12 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
             {t('delivery.popover.title')}
           </span>
           {resendable && (
-            <ResendEntryButton deliveries={deliveries} controller={resendController} t={t} />
+            <ResendEntryButton
+              deliveries={deliveries}
+              entryId={entryId}
+              action={resendAction}
+              t={t}
+            />
           )}
         </div>
         <ul className="flex flex-col">
@@ -288,7 +289,8 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
               key={target.targetDeviceId}
               target={target}
               resendable={resendable}
-              controller={resendController}
+              entryId={entryId}
+              action={resendAction}
             />
           ))}
         </ul>
@@ -300,14 +302,15 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
 interface DeliveryRowProps {
   target: EntryDeliveryTargetView
   resendable: boolean
-  controller: ResendController
+  entryId: string
+  action: UseResendActionResult
 }
 
-const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, controller }) => {
+const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, entryId, action }) => {
   const { t } = useTranslation()
   const tone = renderStatusTone(target.status)
   // 行级 resend 只在该 peer 处于 failed / pending 时出现 ——
-  // delivered / duplicate 重试无意义,既不画按钮也不响应 controller。
+  // delivered / duplicate 重试无意义,既不画按钮也不响应 action。
   const canResendThis =
     resendable && (target.status.tag === 'failed' || target.status.tag === 'pending')
 
@@ -328,151 +331,39 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, controlle
         {deviceLabel(target.targetDeviceName, target.targetDeviceId)}
       </span>
       <span className={cn('shrink-0', tone.label)}>{renderStatusLabel(target.status, t)}</span>
-      {canResendThis && <ResendPeerButton target={target} controller={controller} t={t} />}
+      {canResendThis && (
+        <ResendPeerButton target={target} entryId={entryId} action={action} t={t} />
+      )}
     </li>
   )
 }
 
 // ============================================================================
-// Resend wiring —— controller hook + entry-level button + per-peer button
+// Resend 按钮 —— 触发副作用走 `useResendAction` 共享 hook;此处只负责
+// "什么时候 enable" 与 UI 渲染。
 // ============================================================================
-
-interface ResendController {
-  /** controller 整体可用 (`resendable === true` 时)；false 则按钮不渲染。 */
-  enabled: boolean
-  /** 整 entry 重发是否在飞。 */
-  entryInFlight: boolean
-  /** 某个 peer 单独重发是否在飞 (key = targetDeviceId)。 */
-  isPeerInFlight: (deviceId: string) => boolean
-  /** 触发整 entry resend (targetDeviceIds=null → 差集派生)。 */
-  resendEntry: () => Promise<void>
-  /** 触发 peer 级 resend (targetDeviceIds=[deviceId])。 */
-  resendPeer: (deviceId: string) => Promise<void>
-}
-
-const NOOP_CONTROLLER: ResendController = {
-  enabled: false,
-  entryInFlight: false,
-  isPeerInFlight: () => false,
-  resendEntry: async () => {},
-  resendPeer: async () => {},
-}
-
-/**
- * Resend 触发器 + toast / log 副作用。
- *
- * 状态语义:
- * - `entryInFlight` —— 整 entry 重发的并发锁;在飞期间禁用所有重发入口
- *   避免用户重复点出多份 fan-out (后端虽然幂等,前端体验会很乱)。
- * - `peersInFlight: Set<deviceId>` —— 行级 resend 各自独立的并发锁,
- *   允许同时点多个 row 的 retry (后端可并行 dispatch),只在每个 deviceId
- *   维度上去重。
- *
- * 错误翻译走 `translateResendError(err, t)`,与 `DevicesPage` 的
- * `translateMobileSyncError` 同模式 —— 按 `error.code` 做 i18n。
- */
-function useResendController(
-  entryId: string | null,
-  sourceTag: EntrySourceView['tag'] | undefined
-): ResendController {
-  const { t } = useTranslation()
-  const [entryInFlight, setEntryInFlight] = useState(false)
-  const [peersInFlight, setPeersInFlight] = useState<ReadonlySet<string>>(() => new Set())
-
-  const fireResend = useCallback(
-    async (params: {
-      entryId: string
-      targetDeviceIds: string[] | null
-      onStart: () => void
-      onSettle: () => void
-    }) => {
-      params.onStart()
-      try {
-        const report = await resendEntry({
-          entryId: params.entryId,
-          targetDeviceIds: params.targetDeviceIds,
-        })
-        emitResendSuccess(report, t)
-      } catch (err) {
-        log.warn({ err, entryId: params.entryId }, 'resend entry command failed')
-        toast.error(translateResendError(err, t))
-      } finally {
-        params.onSettle()
-      }
-    },
-    [t]
-  )
-
-  const resendEntryAction = useCallback(async () => {
-    if (!entryId || entryInFlight) return
-    await fireResend({
-      entryId,
-      targetDeviceIds: null,
-      onStart: () => setEntryInFlight(true),
-      onSettle: () => setEntryInFlight(false),
-    })
-  }, [entryId, entryInFlight, fireResend])
-
-  const resendPeerAction = useCallback(
-    async (deviceId: string) => {
-      if (!entryId) return
-      if (peersInFlight.has(deviceId)) return
-      await fireResend({
-        entryId,
-        targetDeviceIds: [deviceId],
-        onStart: () => {
-          setPeersInFlight(prev => {
-            const next = new Set(prev)
-            next.add(deviceId)
-            return next
-          })
-        },
-        onSettle: () => {
-          setPeersInFlight(prev => {
-            if (!prev.has(deviceId)) return prev
-            const next = new Set(prev)
-            next.delete(deviceId)
-            return next
-          })
-        },
-      })
-    },
-    [entryId, peersInFlight, fireResend]
-  )
-
-  const isPeerInFlight = useCallback(
-    (deviceId: string) => peersInFlight.has(deviceId),
-    [peersInFlight]
-  )
-
-  // remote / historical 永远不可重发;返回 noop controller,UI 据 `enabled`
-  // 收掉按钮渲染。`null` entryId 同理 (entry 还未选定)。
-  if (!entryId || sourceTag !== 'local') return NOOP_CONTROLLER
-
-  return {
-    enabled: true,
-    entryInFlight,
-    isPeerInFlight,
-    resendEntry: resendEntryAction,
-    resendPeer: resendPeerAction,
-  }
-}
 
 interface ResendEntryButtonProps {
   deliveries: readonly EntryDeliveryTargetView[]
-  controller: ResendController
+  entryId: string
+  action: UseResendActionResult
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
 /** entry-level "Resend" —— 仅当有至少一条非 Delivered / 非 Duplicate 时启用。 */
-const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({ deliveries, controller, t }) => {
+const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({
+  deliveries,
+  entryId,
+  action,
+  t,
+}) => {
   // 所有可信 peer 都已成功 (Delivered/Duplicate) 时 disable,避免误触
   // 触发 `NoEligibleTargets`。
   const eligible = deliveries.some(
     d => d.status.tag !== 'delivered' && d.status.tag !== 'duplicate'
   )
-  const disabled = !eligible || controller.entryInFlight || !controller.enabled
-  const label = controller.entryInFlight
+  const disabled = !eligible || action.entryInFlight
+  const label = action.entryInFlight
     ? t('delivery.resend.button.pending')
     : t('delivery.resend.button.entry')
 
@@ -484,7 +375,7 @@ const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({ deliveries, contr
       }
       title={eligible ? undefined : t('delivery.resend.button.entryDisabled')}
       disabled={disabled}
-      onClick={() => void controller.resendEntry()}
+      onClick={() => void action.resendAll(entryId)}
       data-resend-entry=""
       className={cn(
         'inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
@@ -493,7 +384,7 @@ const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({ deliveries, contr
           : 'text-sky-600 hover:bg-sky-500/10 dark:text-sky-400'
       )}
     >
-      {controller.entryInFlight ? (
+      {action.entryInFlight ? (
         <LoaderCircle className="h-3 w-3 animate-spin" />
       ) : (
         <RefreshCw className="h-3 w-3" />
@@ -505,13 +396,14 @@ const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({ deliveries, contr
 
 interface ResendPeerButtonProps {
   target: EntryDeliveryTargetView
-  controller: ResendController
+  entryId: string
+  action: UseResendActionResult
   t: (key: string, opts?: Record<string, unknown>) => string
 }
 
-const ResendPeerButton: React.FC<ResendPeerButtonProps> = ({ target, controller, t }) => {
-  const inFlight = controller.isPeerInFlight(target.targetDeviceId)
-  const disabled = inFlight || controller.entryInFlight || !controller.enabled
+const ResendPeerButton: React.FC<ResendPeerButtonProps> = ({ target, entryId, action, t }) => {
+  const inFlight = action.isPeerInFlight(target.targetDeviceId)
+  const disabled = inFlight || action.entryInFlight
   return (
     <button
       type="button"
@@ -519,7 +411,7 @@ const ResendPeerButton: React.FC<ResendPeerButtonProps> = ({ target, controller,
         device: deviceLabel(target.targetDeviceName, target.targetDeviceId),
       })}
       disabled={disabled}
-      onClick={() => void controller.resendPeer(target.targetDeviceId)}
+      onClick={() => void action.resendToPeer(entryId, target.targetDeviceId)}
       data-resend-peer={target.targetDeviceId}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded p-0.5 transition-colors',
@@ -535,46 +427,6 @@ const ResendPeerButton: React.FC<ResendPeerButtonProps> = ({ target, controller,
       )}
     </button>
   )
-}
-
-function emitResendSuccess(
-  report: ResendEntryReportDto,
-  t: (key: string, opts?: Record<string, unknown>) => string
-) {
-  const total =
-    report.accepted + report.duplicate + report.offline + report.errored + report.pending
-  toast.success(
-    t('delivery.resend.success.summary', {
-      accepted: report.accepted,
-      total,
-    })
-  )
-}
-
-function translateResendError(
-  err: unknown,
-  t: (key: string, opts?: Record<string, unknown>) => string
-): string {
-  if (isResendEntryError(err)) {
-    const e: ResendEntryCommandError = err
-    switch (e.code) {
-      case 'ENTRY_NOT_FOUND':
-        return t('delivery.resend.error.entryNotFound')
-      case 'ENTRY_NOT_RESENDABLE':
-        return t(`delivery.resend.error.notResendable.${e.reason}`)
-      case 'TARGET_NOT_TRUSTED':
-        return t('delivery.resend.error.targetNotTrusted', {
-          device: e.deviceId,
-        })
-      case 'NO_ELIGIBLE_TARGETS':
-        return t('delivery.resend.error.noEligibleTargets')
-      case 'STORAGE':
-      case 'DISPATCH':
-        return t('delivery.resend.error.internal', { message: e.message })
-    }
-  }
-  const message = err instanceof Error ? err.message : String(err)
-  return t('delivery.resend.error.internal', { message })
 }
 
 function renderStatusIcon(status: EntryDeliveryStatusView) {

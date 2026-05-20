@@ -1,4 +1,4 @@
-import { Copy, Download, FolderOpen, Loader2, Trash2 } from 'lucide-react'
+import { Copy, Download, FolderOpen, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -9,6 +9,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { useResendAction } from '@/hooks/useResendAction'
 import { useAppSelector } from '@/store/hooks'
 import {
   resolveEntryTransferStatus,
@@ -45,6 +46,11 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
   const { t } = useTranslation()
   const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, itemId))
   const transfer = useAppSelector(state => selectTransferByEntryId(state, itemId))
+  // Resend 走 in-process facade (`AppFacade::resend_entry`),按钮始终显示;
+  // 远端来源 / 已全 delivered / 本机无 payload 等情况由后端 typed error 兜底,
+  // hook 内 toast 翻译给用户。这是有意"信后端做 gate"的取舍 —— 列表层若
+  // 自己拉 delivery 做 enable check 会让初始渲染 fan-out N 个 IPC 请求。
+  const resendAction = useResendAction()
 
   const isFile = itemType === 'file'
   const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
@@ -114,6 +120,24 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
               <ContextMenuSeparator />
             </>
           )}
+
+        {/* Resend —— 用户主动重发到 pending/failed 的可信对端;远端来源 /
+            本机无 payload 等情况后端会返回 typed error 走 toast 兜底。 */}
+        <ContextMenuItem
+          disabled={resendAction.entryInFlight}
+          onClick={() => void resendAction.resendAll(itemId)}
+        >
+          {resendAction.entryInFlight ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
+          {resendAction.entryInFlight
+            ? t('clipboard.contextMenu.resending')
+            : t('clipboard.contextMenu.resend')}
+        </ContextMenuItem>
+
+        <ContextMenuSeparator />
 
         {/* Delete - always available for every transfer state */}
         <ContextMenuItem

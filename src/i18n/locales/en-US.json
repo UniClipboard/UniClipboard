@@ -703,6 +703,8 @@
       "syncToClipboard": "Sync to Clipboard",
       "syncing": "Syncing...",
       "openFileLocation": "Open File Location",
+      "resend": "Resend",
+      "resending": "Resending...",
       "delete": "Delete"
     },
     "actionBar": {

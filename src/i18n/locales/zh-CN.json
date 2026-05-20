@@ -694,6 +694,8 @@
       "syncToClipboard": "同步到剪贴板",
       "syncing": "同步中...",
       "openFileLocation": "打开文件位置",
+      "resend": "重发",
+      "resending": "正在重发...",
       "delete": "删除"
     },
     "actionBar": {

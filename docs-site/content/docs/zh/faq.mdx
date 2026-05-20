@@ -134,14 +134,21 @@ mDNS 局域网发现 + 直连（LAN / IPv6）路径：
 
 ### 有移动端吗？
 
-目前没有原生的 iOS / Android 应用，但**移动端同步已经以"局域网伴侣（LAN
-companion）"的形式可用**：桌面守护进程在 LAN 上暴露一个
-SyncClipboard 兼容的 HTTP 服务，任意兼容协议的客户端都能接入。当前主推的
-路径是 iOS 快捷指令（在 **设备** 页扫码即可一键安装）；Android
-侧目前推荐社区维护的
+iOS 侧 **UniClipboard iOS App 已开启 TestFlight beta 公测**，邀请链接：
+[testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe)
+—— 在 App Store 装好 **TestFlight**，再点这个链接接受邀请并安装即可
+（详细步骤与代理梯子相关的常见坑见
+[移动端同步 — 配对一台 iPhone](./guides/mobile-sync#配对一台-iphone)）。
+
+Android 侧仍 **没有官方 App**，目前推荐社区维护的
 [sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)
 （Flutter 实现、APK 直装、无须 Google Play），其他 SyncClipboard
 客户端也可以填入相同的 base URL + 凭据手动接入。
+
+不论用哪个客户端，**移动端同步都走「局域网伴侣（LAN companion）」
+模式**：桌面守护进程在 LAN 上暴露一个 SyncClipboard 兼容的 HTTP 服务，
+客户端用 base URL + Basic Auth 与之读写。原内置的 iOS 快捷指令仍然
+作为备选保留。
 
 "伴侣"的含义在使用上是：
 

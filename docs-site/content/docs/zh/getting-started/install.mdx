@@ -227,6 +227,55 @@ bun tauri build
 发行包位于 `src-tauri/target/release/bundle/`。分支策略、commit 规范与 PR 流程见
 [CONTRIBUTING_ZH.md](https://github.com/UniClipboard/UniClipboard/blob/main/CONTRIBUTING_ZH.md)。
 
+## iOS App（beta 公测）
+
+iPhone 端 **UniClipboard iOS App** 目前通过 **TestFlight** 进行 beta
+公测，邀请链接：
+
+[https://testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe)
+
+<Steps>
+
+<Step>
+
+### 在 App Store 安装 TestFlight
+
+打开 iPhone 上的 **App Store**，搜索 **TestFlight** 并安装。
+TestFlight 是 Apple 官方的 beta 测试分发工具，是安装 UniClipboard
+iOS App beta 的前置依赖。
+
+</Step>
+
+<Step>
+
+### 打开邀请链接
+
+在 iPhone 上点开上面的 TestFlight 邀请链接。链接会自动跳转到
+TestFlight App，点击 **「接受」→「安装」**，UniClipboard 就会装到
+主屏幕。
+
+</Step>
+
+<Step>
+
+### 在桌面端生成连接凭据
+
+App 走的是与桌面端的局域网同步（仅限同一 Wi-Fi）。连接流程详见
+[移动端同步指南](../guides/mobile-sync)。
+
+</Step>
+
+</Steps>
+
+<Callout type="warn">
+  **遇到证书错误或 TestFlight 连不上 App Store Connect？先关代理梯子。**
+  使用 Loon、Surge、Shadowrocket、Clash 等代理工具时，TestFlight 在打开
+  邀请链接或点 **安装** 时可能出现 HTTPS / 证书报错，或一直转圈拉不到 App
+  Store Connect。请 **临时关闭代理（含全局规则、TUN、HTTPS 解密 / MitM
+  等）**，让 TestFlight 走直连；装完应用后再打开梯子即可。App 只跟你局域网
+  内的桌面通信，不依赖代理。
+</Callout>
+
 ## 验证安装
 
 安装完成后，确认 CLI 已在 `PATH` 中：

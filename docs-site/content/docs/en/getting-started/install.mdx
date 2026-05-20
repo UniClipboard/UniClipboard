@@ -236,6 +236,56 @@ The release build lands under `src-tauri/target/release/bundle/`. See
 [CONTRIBUTING.md](https://github.com/UniClipboard/UniClipboard/blob/main/CONTRIBUTING.md)
 for branch / commit / PR conventions.
 
+## iOS App (public beta)
+
+The **UniClipboard iOS App** is currently distributed through
+**TestFlight** as a public beta. Invite link:
+
+[https://testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe)
+
+<Steps>
+
+<Step>
+
+### Install TestFlight from the App Store
+
+On your iPhone, open the **App Store**, search for **TestFlight**,
+and install it. TestFlight is Apple's official beta-distribution
+app and is required for the UniClipboard beta build.
+
+</Step>
+
+<Step>
+
+### Open the invite link
+
+Tap the TestFlight invite link above on the iPhone. iOS hands it
+off to TestFlight; tap **Accept**, then **Install**, and
+UniClipboard is added to the Home Screen.
+
+</Step>
+
+<Step>
+
+### Generate connection credentials on the desktop
+
+The App syncs with your desktop over the LAN (same Wi-Fi only). See
+the [Mobile sync guide](../guides/mobile-sync) for the full
+pairing flow.
+
+</Step>
+
+</Steps>
+
+<Callout type="warn">
+  **Hitting a certificate error, or TestFlight can't reach App Store Connect? Turn off your proxy /
+  VPN first.** On Loon, Surge, Shadowrocket, Clash and similar tools, TestFlight may show an HTTPS /
+  certificate error when opening the invite link, or the **Install** button spins because TestFlight
+  can't reach App Store Connect. **Temporarily disable the proxy (global rules, TUN mode, HTTPS
+  decryption / MitM included)** so TestFlight goes direct; re-enable it after the App is installed.
+  The App itself only talks to your desktop over the local network and doesn't depend on the proxy.
+</Callout>
+
 ## Verify the install
 
 After installing, confirm the CLI is on your `PATH`:

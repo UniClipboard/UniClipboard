@@ -85,7 +85,7 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 - **Cross-platform**: First-class support on Windows, macOS, and Linux — your clipboard works wherever you do. iPhone and Android can join as a **LAN companion** (see below).
 - **Cross-network sync**: Real-time sync on the same Wi-Fi, across different home/office networks, or across the internet, with automatic NAT traversal and encrypted relay fallback — not just LAN, and not bound to a single network. (Desktop ↔ desktop; mobile is same-Wi-Fi only.)
-- **Mobile companion (LAN)**: Pair an iPhone via the bundled **iOS Shortcut**, or any [**SyncClipboard**](https://github.com/Jeric-X/SyncClipboard)-compatible client on Android, for bidirectional clipboard exchange on the local network. QR-code pairing, per-device credentials, rotate passwords without re-pairing. No native iOS / Android app required.
+- **Mobile companion (LAN)**: Pair an iPhone with the **UniClipboard iOS App** (now in [TestFlight public beta](https://testflight.apple.com/join/nyNQ8dQe)) — or stay on the bundled **iOS Shortcut** — and use any [**SyncClipboard**](https://github.com/Jeric-X/SyncClipboard)-compatible client on Android, for bidirectional clipboard exchange on the local network. QR-code pairing, per-device credentials, rotate passwords without re-pairing.
 - **Encrypted spaces**: Devices join a shared "space" with one invitation code + passphrase — no cloud account, no email, just two devices agreeing to trust each other.
 - **Local full-text search**: Search your full history in milliseconds, even with tens of thousands of entries — and the index itself stays encrypted on disk.
 - **Text, images, and files**: Copy on one device, paste on another. Large files use streaming transfer so they don't have to fit in memory.
@@ -227,12 +227,14 @@ bun tauri build
 
 ### Pair a Mobile Device (LAN companion) <a id="mobile-companion-lan"></a>
 
-UniClipboard does **not** ship a native iOS / Android app. Instead, your phone joins as a **LAN companion** — the desktop daemon exposes a small SyncClipboard-compatible HTTP service on your local network, and your phone reads/writes the clipboard against it.
+The **UniClipboard iOS App is now in [TestFlight public beta](https://testflight.apple.com/join/nyNQ8dQe)**; there's no first-party Android app yet. Either way, the phone joins as a **LAN companion** — the desktop daemon exposes a small SyncClipboard-compatible HTTP service on your local network, and the phone reads/writes the clipboard against it.
 
 1. On the desktop, open **Devices → Mobile sync**, enable it, and pick the LAN IPv4 the phone will reach (don't print `0.0.0.0` / `Auto` onto a phone screen).
 2. Click **Add device** to generate a QR code with the listener URL, username, and one-time password.
-3. **iPhone** — scan the QR; the bundled iOS Shortcut installs and is ready to use. **Android** — point any SyncClipboard-compatible client at the same URL and credentials.
-4. Copy on either side; the other side picks it up over Wi-Fi.
+3. **iPhone** — install **TestFlight** from the App Store, then open `https://testflight.apple.com/join/nyNQ8dQe` to accept the invite and install the **UniClipboard iOS App**; enter the desktop's URL + credentials in the app. The bundled iOS Shortcut (installed by scanning the QR) still works as a fallback.
+   > ⚠️ If TestFlight shows a certificate error, or the **Install** button spins because TestFlight can't reach App Store Connect, **temporarily disable your proxy / VPN client** (Loon, Surge, Clash, etc. — including global rules, TUN, HTTPS decryption / MitM) so TestFlight goes direct. Re-enable it after the app is installed.
+4. **Android** — point any SyncClipboard-compatible client at the same URL and credentials.
+5. Copy on either side; the other side picks it up over Wi-Fi.
 
 Limitations (today):
 
@@ -334,7 +336,7 @@ Yes. Devices on the same Wi-Fi connect directly without going through the relay.
 Only on your devices. Local storage is encrypted at rest with a key that never leaves the device's system keyring. No UniClipboard server ever receives or stores your clipboard content.
 
 **Is there a mobile app?**
-No native iOS or Android app — and that's intentional. Mobile is supported as a **LAN companion** instead: the desktop daemon exposes a SyncClipboard-compatible HTTP endpoint, your **iPhone** uses the bundled **iOS Shortcut** (installed via QR), and **Android** uses any SyncClipboard-compatible client. It's bidirectional and same-Wi-Fi only — no NAT traversal, no relay, no native app to ship or update. See the [Pair a Mobile Device](#mobile-companion-lan) section above.
+On iOS, yes — the **UniClipboard iOS App is now in TestFlight public beta**. Install TestFlight from the App Store, then open [testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe) to accept the invite and install the build. There's still no first-party Android app; use any SyncClipboard-compatible client there. Either way, mobile runs as a **LAN companion**: the desktop daemon exposes a SyncClipboard-compatible HTTP endpoint and the phone talks to it with a base URL + Basic Auth. It's bidirectional and same-Wi-Fi only — no NAT traversal, no relay. The bundled iOS Shortcut still works as a fallback. See the [Pair a Mobile Device](#mobile-companion-lan) section above.
 
 ## Contributing
 

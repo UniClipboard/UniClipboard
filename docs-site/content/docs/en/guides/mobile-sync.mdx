@@ -7,8 +7,8 @@ import { Step, Steps } from 'fumadocs-ui/components/steps'
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 <Feature since="0.7.0" status="experimental">
-  LAN-only HTTP companion mode. iPhone via the bundled Shortcut, or any SyncClipboard-compatible
-  client.
+  LAN-only HTTP companion mode. iPhone via the **UniClipboard iOS App (TestFlight public beta)** —
+  recommended — or the bundled Shortcut, or any SyncClipboard-compatible client.
 </Feature>
 
 Mobile sync is the **0.7 LAN companion mode**: the desktop daemon
@@ -92,9 +92,11 @@ Pick a label (e.g. "My iPhone 15"). The desktop mints a one-time
 **username** and **password** and shows them inside a credentials
 modal with iOS / Android tabs:
 
-- **iOS** — scan the QR with the iPhone Camera. The bundled
-  UniClipboard Shortcut installs with the base URL and credentials
-  pre-filled.
+- **iOS** — install the **UniClipboard iOS App** (currently in
+  TestFlight public beta; see [Pair an iPhone — UniClipboard iOS
+  App](#pair-an-iphone) below). You can also scan the QR with the
+  iPhone Camera to install the bundled UniClipboard Shortcut with
+  the base URL and credentials pre-filled.
 - **Android / other clients** — copy the base URL, username, and
   password into any SyncClipboard-compatible client.
 
@@ -142,14 +144,88 @@ are optional and default to auto-mint.
   is no way to retrieve the original.
 </Callout>
 
-## Pair a device
+## Pair an iPhone
 
-The credentials modal has two paths.
+There are two iOS options. **The UniClipboard iOS App is the
+recommended path**; the Shortcut stays as a fallback.
 
-### iOS (Shortcut)
+### iOS (UniClipboard App — TestFlight public beta)
 
-1. Scan the QR with the iPhone Camera. iOS prompts to install the
-   bundled `UniClipboard.shortcut`.
+The UniClipboard iOS App is currently distributed through
+**TestFlight** as a public beta. Invite link:
+
+[https://testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe)
+
+<Steps>
+
+<Step>
+
+#### Install TestFlight from the App Store
+
+On your iPhone, open the **App Store**, search for **TestFlight**,
+and install it. TestFlight is Apple's official beta-distribution
+app and is required to install the UniClipboard beta build.
+
+</Step>
+
+<Step>
+
+#### Open the invite link
+
+On the iPhone, open the TestFlight invite link:
+
+```
+https://testflight.apple.com/join/nyNQ8dQe
+```
+
+iOS will hand the link off to the TestFlight app. Tap **Accept**,
+then **Install**, and UniClipboard will be added to the Home Screen.
+
+</Step>
+
+<Step>
+
+#### Generate credentials on the desktop **Add device**
+
+Back on the desktop, follow the flow above to click **Add device**
+under **Devices → Mobile sync**. You'll get a base URL, username,
+one-time password, and QR code.
+
+</Step>
+
+<Step>
+
+#### Enter the connection info in the App
+
+Open the UniClipboard iOS App and follow the prompts to enter the
+base URL, username, and password (or scan the QR code shown by the
+desktop). Once connected, the iPhone syncs clipboard with the
+desktop in both directions.
+
+</Step>
+
+</Steps>
+
+<Callout type="warn">
+  **If the install or first launch hangs, turn off your proxy / VPN client first.** Some users on
+  Loon, Surge, Shadowrocket, Clash, or similar tools see one of these symptoms:
+
+  - TestFlight shows a **certificate** or **HTTPS** error when opening the invite link, or
+  - TestFlight can't reach **App Store Connect** and the Install button spins forever.
+
+  **Temporarily disable the proxy (global rules, TUN mode, HTTPS decryption / MitM included)** so
+  TestFlight goes direct. Re-enable it once the App is installed — the App itself only talks to your
+  desktop over the local network and doesn't depend on the proxy.
+</Callout>
+
+### iOS (Shortcut — fallback)
+
+If TestFlight isn't an option right now, the Shortcut path still
+works:
+
+1. Scan the QR in the desktop credentials modal with the iPhone
+   Camera. iOS prompts to install the bundled
+   `UniClipboard.shortcut`.
 2. The Shortcut's `url`, `username`, and `password` fields come
    pre-filled from the QR.
 3. Run the Shortcut (or trigger it with the iOS share sheet) to
@@ -201,8 +277,8 @@ Either way, the connection settings are the same:
 
 **Rotating** mints a fresh one-time password and atomically
 invalidates the previous Argon2id hash. The old credentials stop
-working immediately. Update the phone's Shortcut (or other client)
-with the new password.
+working immediately. Update the phone (UniClipboard iOS App,
+Shortcut, or other client) with the new password.
 
 **Revoking** removes the device record. Any subsequent request with
 the old credentials gets `401 Unauthorized`.

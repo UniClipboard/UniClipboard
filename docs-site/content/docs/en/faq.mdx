@@ -209,15 +209,25 @@ entry to be readable; a cross-machine restore still requires re-running
 
 ### Is there a mobile app?
 
-There's no native iOS or Android app yet, but **mobile sync works
-today as a LAN companion**: the desktop daemon exposes a
-SyncClipboard-compatible HTTP service that any compatible client can
-talk to. The supported flow is iOS Shortcuts (a one-tap install via
-QR code on the **Devices** page); for Android, we currently
+On iOS, the **UniClipboard iOS App is now in TestFlight public
+beta**. Invite link:
+[testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe)
+— install **TestFlight** from the App Store, then open the link to
+accept and install the beta build (full walkthrough plus the
+proxy/VPN gotchas is in
+[Mobile sync — Pair an iPhone](./guides/mobile-sync#pair-an-iphone)).
+
+On Android there's still **no first-party app**; we currently
 recommend the community-maintained Flutter client
 [sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)
 (side-loadable APK, no Google Play required). Other SyncClipboard
 clients can also connect by entering the same base URL + credentials.
+
+Either way, **mobile sync runs as a LAN companion**: the desktop
+daemon exposes a SyncClipboard-compatible HTTP service on your
+local network, and the mobile client talks to it with base URL +
+Basic Auth. The bundled iOS Shortcut remains available as a
+fallback.
 
 What "companion" means in practice:
 

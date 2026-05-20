@@ -923,13 +923,12 @@
         "scan": {
           "qr": {
             "label": "用手机扫一下，自动填入凭据",
-            "alt": "自动填入同步凭据的二维码",
-            "help": "兼容 UniClipboard iOS App 与任意 SyncClipboard 协议客户端（含 Android 第三方应用）。"
+            "alt": "自动填入同步凭据的二维码"
           }
         },
         "shortcut": {
           "title": "iOS 快捷指令 — 一次性安装",
-          "body": "用 iPhone 相机扫下方二维码，或在 Safari 打开链接安装。装完后续添加设备只需扫上方「扫码接入」二维码。",
+          "body": "扫码添加快捷指令，然后手动填写下方服务地址、用户名和密码。",
           "qr": {
             "label": "扫码安装快捷指令",
             "alt": "iCloud 快捷指令安装链接的二维码"

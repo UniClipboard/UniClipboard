@@ -932,13 +932,12 @@
         "scan": {
           "qr": {
             "label": "Scan with your phone to auto-fill the credentials",
-            "alt": "QR code that auto-fills the sync credentials",
-            "help": "Works with the UniClipboard iOS app and any SyncClipboard-protocol client (including third-party Android apps)."
+            "alt": "QR code that auto-fills the sync credentials"
           }
         },
         "shortcut": {
           "title": "iOS Shortcut — install once on your iPhone",
-          "body": "Scan the QR below with your iPhone camera, or open the link in Safari. After the shortcut is installed, future devices only need the Scan-to-add QR above.",
+          "body": "Scan the QR code to install the shortcut, then manually enter the server URL, username, and password below.",
           "qr": {
             "label": "Scan to install the SyncClipboard shortcut",
             "alt": "QR code for the iCloud shortcut install link"

@@ -197,9 +197,6 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
                   alt={t('devices.mobileSync.credential.scan.qr.alt')}
                   className="h-48 w-48 rounded bg-white p-2"
                 />
-                <p className="text-center text-xs text-muted-foreground">
-                  {t('devices.mobileSync.credential.scan.qr.help')}
-                </p>
               </div>
             </TabsContent>
 

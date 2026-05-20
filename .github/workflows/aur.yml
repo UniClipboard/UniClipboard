@@ -1,0 +1,187 @@
+name: 'Publish to AUR (uniclipboard-git)'
+run-name: "aur-git-${{ github.run_number }}"
+
+# 触发场景：
+#   1. push to main 且影响 PKGBUILD 模板或本 workflow —— 这是主路径，确保
+#      AUR 上的 PKGBUILD 与仓库内 source of truth 同步。
+#   2. workflow_dispatch —— 手动重跑（比如想用某个分支的 PKGBUILD 验证 .SRCINFO
+#      生成、或在 AUR_SSH_PRIVATE_KEY rotated 后立即触发一次推送）。
+#
+# 不绑 release published：-git 包按定义追踪 main HEAD，pkgver 由 makepkg 在
+# 用户机器上从 git describe 重算，release 事件并不是它的"心跳"信号。强行绑
+# release 反而会在每个 alpha tag 引入无意义的空 commit（PKGBUILD 没变 + pkgver
+# 由 sed 替换后可能也没变）。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/aur/uniclipboard-git/**'
+      - '.github/workflows/aur.yml'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只生成 PKGBUILD/.SRCINFO 作为 artifact，不 push 到 AUR'
+        required: false
+        type: boolean
+        default: false
+
+# AUR 是单分支 git remote，并发 push 会互踩。串行执行；cancel-in-progress=false
+# 让前一次跑完再排队，避免半道丢失 commit。
+concurrency:
+  group: aur-uniclipboard-git
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Sync PKGBUILD to AUR
+    runs-on: ubuntu-latest
+    # base-devel 已含 makepkg、namcap 依赖的 pacman 工具链。git/openssh 需要单装。
+    container: archlinux:base-devel
+    permissions:
+      contents: read
+    steps:
+      - name: Install runtime tools
+        shell: bash
+        run: |
+          # --needed 避免 base-devel 镜像里已有的包重装；-Sy 刷一次 db 即可，
+          # 不要 -Syu —— Arch partial upgrade 官方不支持，容器跑一次 full upgrade
+          # 在 GH runner 上要 2-3 min 且大概率因为 keyring 不同步报错。
+          pacman -Sy --noconfirm --needed git openssh sudo namcap
+
+      - name: Configure non-root builder user
+        shell: bash
+        run: |
+          # makepkg 拒绝 root 运行（保护 user，不让构建脚本以 root 写满文件系统）。
+          # 必须建一个普通用户跑 makepkg --printsrcinfo。NOPASSWD sudo 仅在 CI
+          # 一次性容器内有效，不会泄漏到 host。
+          useradd -m -G wheel -s /bin/bash builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers.d/builder
+          chmod 440 /etc/sudoers.d/builder
+
+      - uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Validate PKGBUILD with namcap
+        shell: bash
+        run: |
+          # 静态 lint：未声明的 depends、SPDX license 不规范、字段拼写错误等。
+          # namcap 对 PKGBUILD 阶段只能给 warning（看不到实际产物），但 fail-fast
+          # 抓 typo 还是值得的。这里不 fail on warning —— 有些条目（比如
+          # AGPL-3.0-only SPDX）namcap 老版本会误报。
+          namcap src/packaging/aur/uniclipboard-git/PKGBUILD || true
+
+      - name: Setup SSH for AUR
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [ -z "${AUR_SSH_PRIVATE_KEY:-}" ]; then
+            echo "::error::AUR_SSH_PRIVATE_KEY secret missing."
+            echo "::error::Generate with: ssh-keygen -t ed25519 -C aur-uniclipboard -f aur"
+            echo "::error::Then upload aur.pub at https://aur.archlinux.org/account/<user>/edit/"
+            echo "::error::And put the private key (aur) into repo secret AUR_SSH_PRIVATE_KEY."
+            exit 1
+          fi
+          install -d -m700 -o builder -g builder /home/builder/.ssh
+          # printf '%s\n' 而不是 echo —— echo 在 ed25519 末尾换行处理诡异，曾
+          # 在 ssh load 阶段触发 "invalid format"。printf 行为可预测。
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /home/builder/.ssh/aur
+          chmod 600 /home/builder/.ssh/aur
+          # ssh-keyscan 提前 pin host key —— 跳过 "yes/no" 交互的同时防止 MITM。
+          # AUR 的 host key 长期稳定，pin 一次比 StrictHostKeyChecking=no 安全。
+          ssh-keyscan -H aur.archlinux.org > /home/builder/.ssh/known_hosts 2>/dev/null
+          cat > /home/builder/.ssh/config <<'EOF'
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur
+            User aur
+            IdentitiesOnly yes
+          EOF
+          chown -R builder:builder /home/builder/.ssh
+
+      - name: Clone AUR repository
+        shell: bash
+        run: |
+          # AUR 的设计：clone 一个未注册的包名会成功（拿到空 repo），首次 push
+          # 时后端校验 PKGBUILD 并注册新包名。所以 clone 失败 = SSH 配置或账号问题，
+          # 不是"包名未注册"。直接 fail-fast。
+          sudo -u builder git clone ssh://aur@aur.archlinux.org/uniclipboard-git.git /home/builder/aur
+
+      - name: Render PKGBUILD with current pkgver snapshot
+        shell: bash
+        run: |
+          cd src
+          # git describe 输出形如 v0.10.1-alpha.2-3-g1234567，经 sed 变成
+          # 0.10.1.alpha.2.r3.g1234567，与 PKGBUILD 内 pkgver() 函数算法一致。
+          # CI 这步只更新 web 视图，用户 makepkg 时仍以 pkgver() 重算为准。
+          PKGVER=$(git describe --long --tags --abbrev=7 2>/dev/null \
+            | sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g' \
+            || printf "0.0.0.r%s.g%s" \
+                 "$(git rev-list --count HEAD)" \
+                 "$(git rev-parse --short=7 HEAD)")
+          echo "Computed pkgver=$PKGVER"
+          echo "PKGVER=$PKGVER" >> "$GITHUB_ENV"
+
+          install -m644 -o builder -g builder \
+            packaging/aur/uniclipboard-git/PKGBUILD /home/builder/aur/PKGBUILD
+          # sed 替换 pkgver= 那一行；用 # 作分隔符避免 $PKGVER 内任何 / 干扰。
+          sudo -u builder sed -i "s#^pkgver=.*#pkgver=$PKGVER#" /home/builder/aur/PKGBUILD
+
+      - name: Generate .SRCINFO
+        shell: bash
+        run: |
+          cd /home/builder/aur
+          # .SRCINFO 是 AUR web 索引读取的元数据；必须每次 PKGBUILD 变化时同步重生成。
+          sudo -u builder bash -c 'makepkg --printsrcinfo > .SRCINFO'
+
+      - name: Diff against AUR remote
+        id: diff
+        shell: bash
+        run: |
+          cd /home/builder/aur
+          sudo -u builder git config user.email "aur@uniclipboard.app"
+          sudo -u builder git config user.name "UniClipboard Bot"
+          sudo -u builder git add PKGBUILD .SRCINFO
+          if sudo -u builder git diff --cached --quiet; then
+            echo "No changes to push."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "=== staged diff ==="
+            sudo -u builder git --no-pager diff --cached
+            COMMIT_MSG="chore: sync from upstream main @ ${GITHUB_SHA::7} (pkgver=$PKGVER)"
+            sudo -u builder git commit -m "$COMMIT_MSG"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push to AUR
+        if: ${{ steps.diff.outputs.changed == 'true' && inputs.dry_run != true }}
+        shell: bash
+        run: |
+          cd /home/builder/aur
+          # AUR 默认分支是 master（旧 git 默认），不要写 main。
+          sudo -u builder git push origin HEAD:master
+
+      - name: Upload rendered artifacts
+        # 不管推没推都上传，方便人工 review / dry_run 时下载。
+        uses: actions/upload-artifact@v4
+        with:
+          name: aur-uniclipboard-git
+          path: |
+            /home/builder/aur/PKGBUILD
+            /home/builder/aur/.SRCINFO
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo "## AUR sync — uniclipboard-git :package:"
+            echo ""
+            echo "- **pkgver**: \`${PKGVER}\`"
+            echo "- **Source commit**: \`${GITHUB_SHA::7}\`"
+            echo "- **Changed**: ${{ steps.diff.outputs.changed }}"
+            echo "- **Pushed**: ${{ steps.diff.outputs.changed == 'true' && inputs.dry_run != true }}"
+            echo ""
+            echo "AUR page: https://aur.archlinux.org/packages/uniclipboard-git"
+          } >> "$GITHUB_STEP_SUMMARY"

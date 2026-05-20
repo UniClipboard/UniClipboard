@@ -1,0 +1,25 @@
+pkgbase = uniclipboard-git
+	pkgdesc = Real-time clipboard sync across macOS, Windows and Linux — local-first, peer-to-peer, and end-to-end encrypted
+	pkgver = 0.10.1.alpha.2.r0.g0000000
+	pkgrel = 1
+	url = https://www.uniclipboard.app
+	arch = x86_64
+	arch = aarch64
+	license = AGPL-3.0-only
+	makedepends = git
+	makedepends = rust
+	makedepends = nodejs
+	makedepends = bun
+	makedepends = pkgconf
+	depends = webkit2gtk-4.1
+	depends = gtk3
+	depends = libayatana-appindicator
+	depends = libnotify
+	provides = uniclipboard
+	provides = uniclipboard=0.10.1.alpha.2.r0.g0000000
+	conflicts = uniclipboard
+	conflicts = uniclipboard-bin
+	source = uniclipboard::git+https://github.com/UniClipboard/UniClipboard.git
+	sha256sums = SKIP
+
+pkgname = uniclipboard-git

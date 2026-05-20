@@ -1,0 +1,76 @@
+# Maintainer: UniClipboard <aur@uniclipboard.app>
+#
+# 源代码版本的 -git 包：直接从 main 分支 clone 并 cargo build。
+# 与 czyt 维护的 `uniclipboard-bin`（重打 .deb）互斥安装。
+#
+# 同步规则：本仓库内的 PKGBUILD 是 source of truth；CI（.github/workflows/aur.yml）
+# 在 main 推送或手动 dispatch 时把这份文件 + 重算后的 pkgver 推到 AUR。
+# 修改这个文件后 commit 即可，不要手动改 AUR 上的副本，否则会被 CI 覆盖。
+
+pkgname=uniclipboard-git
+_pkgname=uniclipboard
+# pkgver 是 AUR web 上展示用的 snapshot；makepkg 实际编译时调用下方 pkgver() 重算。
+# CI 在 push 前会用 git describe 的当前值 sed 替换，保持 web 视图不过期。
+pkgver=0.10.1.alpha.2.r0.g0000000
+pkgrel=1
+pkgdesc="Real-time clipboard sync across macOS, Windows and Linux — local-first, peer-to-peer, and end-to-end encrypted"
+arch=('x86_64' 'aarch64')
+url="https://www.uniclipboard.app"
+license=('AGPL-3.0-only')
+# Tauri 2 + webkit2gtk-4.1 运行链 + 系统托盘需要的 appindicator + 桌面通知。
+# tauri.conf.json 的 .deb depends 只列了 appindicator，是因为 .deb 工具会自动
+# 从 ELF 反查共享库依赖；PKGBUILD 不会，所以必须显式列全。
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'libnotify')
+# bun 在 Arch [extra]；rust 也在 [extra]（不要写 rustup，那是 AUR 包且需要再装 toolchain）。
+makedepends=('git' 'rust' 'nodejs' 'bun' 'pkgconf')
+provides=("$_pkgname" "$_pkgname=$pkgver")
+# 三个 AUR 包共享同一个可执行文件路径，互斥安装。-bin 由 czyt 维护，-git/源码版由 upstream 维护。
+conflicts=("$_pkgname" "${_pkgname}-bin")
+source=("$_pkgname::git+https://github.com/UniClipboard/UniClipboard.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$_pkgname"
+  # 把 v0.10.1-alpha.2-3-g1234567 形如 → 0.10.1.alpha.2.r3.g1234567
+  # 1) sed 's/^v//'             去 v 前缀
+  # 2) 's/\([^-]*-g\)/r\1/'     把最后一段 "<count>-g<hash>" 前面补个 r
+  # 3) 's/-/./g'                所有 - 替换 . 满足 pacman 版本格式
+  ( git describe --long --tags --abbrev=7 2>/dev/null \
+      | sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g' ) \
+    || printf "0.0.0.r%s.g%s" \
+         "$(git rev-list --count HEAD)" \
+         "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+  cd "$_pkgname"
+  # frozen-lockfile：lockfile 与 package.json 必须一致，否则 fail。
+  # 这能在用户机器上立即发现 main 分支推送了不一致的依赖（避免静默升级）。
+  bun install --frozen-lockfile
+}
+
+build() {
+  cd "$_pkgname"
+  # --no-bundle 跳过 .deb/.rpm/.AppImage 生成，PKGBUILD 自己负责安装路径。
+  # 这样不需要 dpkg/rpm-build/appimagetool 这些额外 makedepends。
+  bun run tauri build --no-bundle
+}
+
+package() {
+  cd "$_pkgname"
+
+  install -Dm755 "src-tauri/target/release/$_pkgname" \
+                 "$pkgdir/usr/bin/$_pkgname"
+
+  install -Dm644 "packaging/linux/$_pkgname.desktop" \
+                 "$pkgdir/usr/share/applications/$_pkgname.desktop"
+
+  # Hicolor 图标，从 Tauri 的 size-named 源文件重命名到标准 apps/ 路径。
+  # 128@2x 当成 256x256（@2x 是 macOS Retina 概念，Linux 用尺寸而非 DPI 区分）。
+  install -Dm644 "src-tauri/icons/32x32.png"       "$pkgdir/usr/share/icons/hicolor/32x32/apps/$_pkgname.png"
+  install -Dm644 "src-tauri/icons/64x64.png"       "$pkgdir/usr/share/icons/hicolor/64x64/apps/$_pkgname.png"
+  install -Dm644 "src-tauri/icons/128x128.png"     "$pkgdir/usr/share/icons/hicolor/128x128/apps/$_pkgname.png"
+  install -Dm644 "src-tauri/icons/128x128@2x.png"  "$pkgdir/usr/share/icons/hicolor/256x256/apps/$_pkgname.png"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

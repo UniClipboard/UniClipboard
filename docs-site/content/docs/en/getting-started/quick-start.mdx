@@ -156,12 +156,16 @@ without any mobile app store presence.
 
 1. On the desktop, open **Devices → Add → Mobile sync** and pick a
    label.
-2. The credentials modal shows iOS / Android tabs:
-   - **iOS** — scan the QR code; the bundled UniClipboard Shortcut
-     installs with the base URL and credentials pre-filled.
-   - **Android / other clients** — copy the base URL, username, and
-     password into any SyncClipboard-compatible client. For Android
-     we currently recommend
+2. The credentials modal has two tabs, split by onboarding method:
+   - **Scan to add** — a connect-URI QR. Scan it from the
+     UniClipboard iOS app (or any SyncClipboard-protocol client,
+     including community Android apps) to auto-fill the base URL,
+     username, and password.
+   - **Install Shortcut** — when the user doesn't have the
+     UniClipboard iOS app, scan this QR to install the
+     `UniClipboard.shortcut`, then manually paste the base URL,
+     username, and password from the modal into its fields.
+   - For Android specifically, we currently recommend
      [sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)
      (community-maintained, side-loadable APK).
 3. The plaintext password is shown **once**. If lost, use **Rotate

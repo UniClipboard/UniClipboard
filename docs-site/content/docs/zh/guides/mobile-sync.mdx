@@ -79,14 +79,17 @@ modal 顶部会出现红色 Alert，列出具体原因；监听不起来时 tab 
 ### 点 **添加设备**
 
 填一个标签（例如「My iPhone 15」）。桌面会签发一次性的 **用户名** 与
-**密码**，并在凭据弹窗中按 iOS / Android 两个 tab 展示：
+**密码**，并在凭据弹窗中按 **接入方式**（而非平台）拆成两个 tab：
 
-- **iOS** —— 推荐安装 **UniClipboard iOS App**（目前 TestFlight beta
-  公测中，详见下文 [配对一台 iPhone — UniClipboard iOS App](#配对一台-iphone)）。
-  也可以用相机扫描二维码安装内置的 UniClipboard 快捷指令，base URL
-  与凭据会预填好。
-- **Android / 其他客户端** —— 复制 base URL、用户名、密码，填到任意
-  兼容 SyncClipboard 协议的客户端里。
+- **扫码接入（Scan to add）** —— 一个把 base URL 与凭据编码进
+  connect URI 的二维码。用 **UniClipboard iOS App**（TestFlight beta
+  公测中，推荐路径，详见下文 [配对一台 iPhone](#配对一台-iphone)）的
+  "添加服务端"页扫一下；或任何兼容 SyncClipboard 协议的客户端（含
+  社区维护的安卓 App）也走同一条路径，所有字段自动填好，无需手输。
+- **安装快捷指令（Install Shortcut）** —— 一个指向 iCloud 上
+  `UniClipboard.shortcut` 安装链接的二维码。扫码安装快捷指令后，
+  **再从弹窗里手动复制** base URL / 用户名 / 密码填入快捷指令的对
+  应字段。在用户没装 UniClipboard iOS App 时走这条路径。
 
 明文密码 **只显示一次**。弹窗关闭后桌面只保留 Argon2id 哈希。
 
@@ -170,8 +173,9 @@ https://testflight.apple.com/join/nyNQ8dQe
 
 #### 在桌面 **添加设备** 拿到凭据
 
-回到桌面端，按上文的流程在 **设备 → 移动端同步** 里点 **添加设备**，
-拿到 base URL、用户名、一次性密码 / 二维码。
+回到桌面端，按上文的流程在 **设备 → 移动端同步** 里点 **添加设备**。
+凭据弹窗会默认停在 **扫码接入** tab，展示一个把 base URL、用户名、
+一次性密码编码进 connect URI 的二维码。
 
 </Step>
 
@@ -179,8 +183,9 @@ https://testflight.apple.com/join/nyNQ8dQe
 
 #### 在 App 里填入连接信息
 
-打开 UniClipboard iOS App，按提示输入 base URL、用户名、密码（或扫描
-桌面端展示的二维码）。完成后即可与桌面双向同步剪贴板。
+打开 UniClipboard iOS App，点 **「添加服务端」**，扫描桌面端的 **扫码
+接入** 二维码。base URL、用户名、密码会自动填好，确认保存即可。完成
+后即可与桌面双向同步剪贴板。
 
 </Step>
 
@@ -199,14 +204,16 @@ TestFlight 走直连；安装完应用后再把代理打开即可。App 本身�
 
 </Callout>
 
-### iOS（快捷指令，备选）
+### iOS（快捷指令，备选，未安装 UniClipboard App）
 
-如果暂时不方便走 TestFlight，也可以继续用快捷指令：
+如果暂时不方便走 TestFlight，也可以继续用快捷指令。把凭据弹窗切到
+**安装快捷指令** tab：
 
-1. 用 iPhone 相机扫桌面端凭据弹窗里的 QR，iOS 会提示安装内置的
-   `UniClipboard.shortcut`。
-2. 快捷指令的 `url` / `username` / `password` 字段会从 QR 预填好。
-3. 直接运行快捷指令（或从分享菜单里触发），双向同步最新一条剪贴。
+1. 用 iPhone 相机扫弹窗里的 **安装快捷指令** 二维码（或在 Safari 打开
+   安装链接），iOS 会提示安装 `UniClipboard.shortcut`。
+2. 打开安装好的快捷指令，**手动** 把弹窗里的 base URL、用户名、密码
+   粘贴到对应字段。这个二维码只承载安装链接，**不** 预填凭据。
+3. 直接运行快捷指令（或从分享菜单触发），双向同步最新一条剪贴。
 
 ### Android / 其他客户端
 

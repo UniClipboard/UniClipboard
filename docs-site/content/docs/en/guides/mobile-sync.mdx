@@ -90,15 +90,19 @@ listener can't bind.
 
 Pick a label (e.g. "My iPhone 15"). The desktop mints a one-time
 **username** and **password** and shows them inside a credentials
-modal with iOS / Android tabs:
+modal split by onboarding method, not by platform:
 
-- **iOS** — install the **UniClipboard iOS App** (currently in
-  TestFlight public beta; see [Pair an iPhone — UniClipboard iOS
-  App](#pair-an-iphone) below). You can also scan the QR with the
-  iPhone Camera to install the bundled UniClipboard Shortcut with
-  the base URL and credentials pre-filled.
-- **Android / other clients** — copy the base URL, username, and
-  password into any SyncClipboard-compatible client.
+- **Scan to add** — a QR that encodes the base URL and credentials
+  as a single connect URI. Scan it from the **UniClipboard iOS
+  App** (TestFlight public beta — recommended; see
+  [Pair an iPhone](#pair-an-iphone) below) or any SyncClipboard-
+  protocol client, including community Android apps. All fields
+  auto-fill. No typing.
+- **Install Shortcut** — a QR that points at the iCloud-hosted
+  `UniClipboard.shortcut` install link. Scan it to install the
+  Shortcut once, then copy the base URL / username / password
+  from the modal into the Shortcut's fields by hand. Use this when
+  the user doesn't have the UniClipboard iOS App.
 
 The plaintext password is shown **once**. The desktop only retains
 an Argon2id hash after the modal closes.
@@ -188,8 +192,9 @@ then **Install**, and UniClipboard will be added to the Home Screen.
 #### Generate credentials on the desktop **Add device**
 
 Back on the desktop, follow the flow above to click **Add device**
-under **Devices → Mobile sync**. You'll get a base URL, username,
-one-time password, and QR code.
+under **Devices → Mobile sync**. The credentials modal opens on the
+**Scan to add** tab and shows a connect-URI QR that carries the
+base URL, username, and one-time password.
 
 </Step>
 
@@ -197,10 +202,11 @@ one-time password, and QR code.
 
 #### Enter the connection info in the App
 
-Open the UniClipboard iOS App and follow the prompts to enter the
-base URL, username, and password (or scan the QR code shown by the
-desktop). Once connected, the iPhone syncs clipboard with the
-desktop in both directions.
+Open the UniClipboard iOS App, tap **Add server**, and scan the
+**Scan to add** QR from the desktop. The base URL, username, and
+password are filled in automatically; just confirm and save. Once
+connected, the iPhone syncs clipboard with the desktop in both
+directions.
 
 </Step>
 
@@ -219,18 +225,20 @@ desktop over the local network and doesn't depend on the proxy.
 
 </Callout>
 
-### iOS (Shortcut — fallback)
+### iOS (Shortcut — fallback, no UniClipboard App)
 
 If TestFlight isn't an option right now, the Shortcut path still
-works:
+works. Switch the credentials modal to the **Install Shortcut**
+tab:
 
-1. Scan the QR in the desktop credentials modal with the iPhone
-   Camera. iOS prompts to install the bundled
+1. Scan the **Install Shortcut** QR with the iPhone Camera (or open
+   the install link in Safari). iOS prompts to install
    `UniClipboard.shortcut`.
-2. The Shortcut's `url`, `username`, and `password` fields come
-   pre-filled from the QR.
-3. Run the Shortcut (or trigger it with the iOS share sheet) to
-   sync the latest clip in either direction.
+2. Open the installed Shortcut and **manually** paste the base URL,
+   username, and password from the credentials modal into its
+   matching fields. The Shortcut QR only carries the install link —
+   it does **not** prefill credentials.
+3. Run the Shortcut (or trigger it from the iOS share sheet) to
 
 ### Android / other clients
 

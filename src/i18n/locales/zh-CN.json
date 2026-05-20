@@ -1306,6 +1306,29 @@
       "peerRejected": "对端拒收",
       "io": "网络错误",
       "internal": "内部错误"
+    },
+    "resend": {
+      "button": {
+        "entry": "重发",
+        "entryAria": "重发给所有可投递的设备",
+        "entryDisabled": "所有已配对设备均已收到",
+        "peer": "重发",
+        "peerAria": "重发给 {{device}}",
+        "pending": "正在重发…"
+      },
+      "success": {
+        "summary": "已触发重发 · {{accepted}}/{{total}} 接收"
+      },
+      "error": {
+        "notResendable": {
+          "remoteOrigin": "此条目来自其他设备,无法从本机重发。",
+          "payloadLost": "此条目在本机已不可用。"
+        },
+        "targetNotTrusted": "设备 {{device}} 已不在配对列表中。",
+        "noEligibleTargets": "没有可重发的设备。",
+        "entryNotFound": "条目不存在。",
+        "internal": "重发失败:{{message}}"
+      }
     }
   },
   "quickPanel": {

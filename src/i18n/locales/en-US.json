@@ -1315,6 +1315,29 @@
       "peerRejected": "peer rejected",
       "io": "network error",
       "internal": "internal error"
+    },
+    "resend": {
+      "button": {
+        "entry": "Resend",
+        "entryAria": "Resend to all eligible peers",
+        "entryDisabled": "Already delivered to every paired device",
+        "peer": "Resend",
+        "peerAria": "Resend to {{device}}",
+        "pending": "Resending…"
+      },
+      "success": {
+        "summary": "Resend dispatched · {{accepted}}/{{total}} accepted"
+      },
+      "error": {
+        "notResendable": {
+          "remoteOrigin": "This entry originated on another device and cannot be resent from here.",
+          "payloadLost": "This entry is no longer available on this device."
+        },
+        "targetNotTrusted": "Device {{device}} is no longer paired.",
+        "noEligibleTargets": "No eligible peers to resend to.",
+        "entryNotFound": "Entry not found.",
+        "internal": "Resend failed: {{message}}"
+      }
     }
   },
   "quickPanel": {

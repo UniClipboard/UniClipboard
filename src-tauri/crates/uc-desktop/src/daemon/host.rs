@@ -190,6 +190,12 @@ pub(crate) async fn start_in_process(
         file_transfer_lifecycle,
         clipboard_write_coordinator: clipboard_write_coordinator.clone(),
         host_event_bus: host_event_bus.clone(),
+        // 旁路 WiredDependencies 的 3 个 port:resend 派生差集 / 校验
+        // filter / 反查 entry 来源设备时使用。entry_delivery_repo 与
+        // dispatch fan-out 共用同一份 Arc 实例,避免读写撕裂。
+        entry_delivery_repo: wired.entry_delivery_repo.clone(),
+        clipboard_event_reader_repo: wired.clipboard_event_reader_repo.clone(),
+        trusted_peer_repo: wired.trusted_peer_repo.clone(),
     })?;
 
     // blob/spool worker **不在这里 spawn** —— 它们是进程级 long-lived task,

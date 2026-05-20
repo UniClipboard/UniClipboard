@@ -73,7 +73,7 @@ use crate::usecases::clipboard_sync::snapshot_from_entry::{
 
 /// 用户主动 resend 的命令。
 #[derive(Debug, Clone)]
-pub(crate) struct ResendEntryCommand {
+pub struct ResendEntryCommand {
     pub entry_id: EntryId,
     /// `None` —— 派生 `trusted_peer \ (Delivered ∪ Duplicate)` 差集;
     /// 差集为空时返回 [`ResendEntryError::NoEligibleTargets`]。
@@ -89,7 +89,7 @@ pub(crate) struct ResendEntryCommand {
 /// 独立(独立类型方便未来增加 partial-success / lost-peer 等 resend 特有
 /// 字段时不破 dispatch 路径)。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResendReport {
+pub struct ResendReport {
     pub accepted: usize,
     pub duplicate: usize,
     pub offline: usize,
@@ -103,7 +103,7 @@ pub(crate) struct ResendReport {
 /// resend 用例的失败语义。表达"用户主动 resend 这个动作没能完成"的应用层
 /// 错误集合,不向上漏出底层仓储 / dispatch 错误。
 #[derive(Debug, Error)]
-pub(crate) enum ResendEntryError {
+pub enum ResendEntryError {
     /// `entry_repo.get_entry` 返回 `None`。可能是 entry 已被用户删除,
     /// 也可能是 UI 拿到一份过期视图后才点击重发。
     #[error("entry not found: {0}")]
@@ -138,7 +138,7 @@ pub(crate) enum ResendEntryError {
 
 /// resend 失败时的细分原因。UI 据此选不同的英文文案 / i18n key。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NotResendableReason {
+pub enum NotResendableReason {
     /// entry 来自远端 peer。v1 不支持远端 entry 的 resend ——
     /// 视图层(`GetEntryDeliveryViewUseCase`)对远端 entry 直接返回
     /// `deliveries = []`,UI 上根本不会出现重发按钮;若仍走到此处,
@@ -151,6 +151,23 @@ pub(crate) enum NotResendableReason {
     /// - selection / paste rep / event 行错位(理论上应被 cascade 清掉但
     ///   防御性归到本类别)。
     PayloadLost,
+}
+
+/// Crate-internal trait — mirrors [`ResendEntryUseCase::execute`] so callers
+/// (currently [`ClipboardOutboundFacade::resend_entry`]) can hold an
+/// `Arc<dyn ResendEntryRunner>` and tests can swap a stub without
+/// constructing the full 12-port use case. Production wiring satisfies this
+/// trait through the blanket impl below. Not exposed beyond the crate.
+#[async_trait::async_trait]
+pub(crate) trait ResendEntryRunner: Send + Sync {
+    async fn execute(&self, cmd: ResendEntryCommand) -> Result<ResendReport, ResendEntryError>;
+}
+
+#[async_trait::async_trait]
+impl ResendEntryRunner for ResendEntryUseCase {
+    async fn execute(&self, cmd: ResendEntryCommand) -> Result<ResendReport, ResendEntryError> {
+        ResendEntryUseCase::execute(self, cmd).await
+    }
 }
 
 pub(crate) struct ResendEntryUseCase {

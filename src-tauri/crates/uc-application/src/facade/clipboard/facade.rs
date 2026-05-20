@@ -29,6 +29,7 @@ use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 use uc_observability::analytics::AnalyticsPort;
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
+use crate::usecases::clipboard_sync::dispatch_entry::DispatchEntryRunner;
 use crate::usecases::clipboard_sync::get_entry_delivery_view::{
     EntryDeliveryView, GetEntryDeliveryViewError, GetEntryDeliveryViewUseCase,
 };
@@ -387,6 +388,17 @@ impl ClipboardSyncFacade {
     pub fn spawn_ingest_loop(&self) -> IngestHandle {
         let inner = Arc::clone(&self.ingest_uc).spawn_run();
         IngestHandle { inner }
+    }
+
+    /// Crate-internal accessor — hand the inner dispatch use case to
+    /// callers that need to feed `DispatchClipboardEntryInput` directly
+    /// (currently only [`ResendEntryUseCase`] via
+    /// [`ClipboardOutboundFacade`]). The blanket impl
+    /// `DispatchEntryRunner for DispatchClipboardEntryUseCase` provides
+    /// the trait-object handle without exposing the concrete use case
+    /// across the crate boundary.
+    pub(crate) fn dispatch_runner(&self) -> Arc<dyn DispatchEntryRunner> {
+        Arc::clone(&self.dispatch_uc) as Arc<dyn DispatchEntryRunner>
     }
 }
 

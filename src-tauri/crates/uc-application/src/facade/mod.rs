@@ -69,7 +69,7 @@ pub use clipboard_live_index::{
 pub use clipboard_outbound::{
     ClipboardOutboundDeps, ClipboardOutboundDispatcher, ClipboardOutboundError,
     ClipboardOutboundFacade, ClipboardOutboundInput, ClipboardOutboundOutcome,
-    ClipboardOutboundPort,
+    ClipboardOutboundPort, NotResendableReason, ResendEntryCommand, ResendEntryError, ResendReport,
 };
 pub use clipboard_restore::{
     ClipboardRestoreError, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,

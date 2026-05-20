@@ -10,8 +10,8 @@ use uc_application::clipboard_write::ClipboardWriteCoordinator;
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
     BlobTransferFacade, ClipboardCaptureFacade, ClipboardLiveIndexDeps, ClipboardLiveIndexFacade,
-    ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundDispatcher,
-    ClipboardOutboundFacade, ClipboardSyncFacade, HostEventBus, InboundClipboardFacade,
+    ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundFacade, ClipboardSyncFacade,
+    HostEventBus, InboundClipboardFacade,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, FileCacheBlobMaterializer, InboundCapture as ApplyInboundCapture,
@@ -19,6 +19,8 @@ use uc_application::{
 };
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
 use uc_core::ports::SystemClipboardPort;
+use uc_core::ports::{ClipboardEventRepositoryPort, EntryDeliveryRepositoryPort};
+use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_platform::clipboard::LocalClipboard;
 use uc_webserver::api::types::DaemonWsEvent;
 
@@ -41,6 +43,15 @@ pub struct DaemonRuntimeAssemblyInput<'a> {
     /// 共享的 host event bus —— 与 `BlobTransferFacade` 同源。ApplyInbound
     /// 用它在 fetch 之前发 `IncomingPending`,让前端立即出现占位卡片。
     pub host_event_bus: Arc<HostEventBus>,
+    /// `EntryDeliveryRecord` 读写仓储:dispatch fan-out 写、resend 派生差集
+    /// 时读、视图层读。来自 `WiredDependencies`(uc-application 是消费者,
+    /// AppDeps 之外的旁路)。
+    pub entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
+    /// `ClipboardEventRepositoryPort` 的读端口实例(与 AppDeps 里写端口
+    /// 共享底层 Diesel impl);resend 用它反查"entry 来源设备是否本机"。
+    pub clipboard_event_reader_repo: Arc<dyn ClipboardEventRepositoryPort>,
+    /// 信任 peer 集合:resend 派生目标 + 校验 filter 时使用。
+    pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
 }
 
 /// daemon 启动前已构造好的后台 worker + 共享 use case。
@@ -113,13 +124,22 @@ pub fn build_daemon_runtime_workers(
             search_index: input.deps.search.search_index.clone(),
         }),
     )));
-    let clipboard_outbound_facade = Arc::new(ClipboardOutboundFacade::new(Arc::new(
-        ClipboardOutboundDispatcher::new(ClipboardOutboundDeps {
-            settings: input.deps.settings.clone(),
-            clipboard_sync: input.clipboard_sync_facade.clone(),
-            blob_transfer: input.blob_transfer_facade,
-        }),
-    )));
+    let clipboard_outbound_facade = Arc::new(ClipboardOutboundFacade::new(ClipboardOutboundDeps {
+        // dispatch path
+        settings: input.deps.settings.clone(),
+        clipboard_sync: input.clipboard_sync_facade.clone(),
+        blob_transfer: input.blob_transfer_facade,
+        // resend path
+        entry_repo: input.deps.clipboard.clipboard_entry_repo.clone(),
+        event_repo: input.clipboard_event_reader_repo,
+        selection_repo: input.deps.clipboard.selection_repo.clone(),
+        representation_repo: input.deps.clipboard.representation_repo.clone(),
+        payload_resolver: input.deps.clipboard.payload_resolver.clone(),
+        blob_store: input.deps.storage.blob_store.clone(),
+        entry_delivery_repo: input.entry_delivery_repo,
+        trusted_peer_repo: input.trusted_peer_repo,
+        device_identity: input.deps.device.device_identity.clone(),
+    }));
 
     let clipboard_change_handler = Arc::new(DaemonClipboardChangeHandler::new(
         input.event_tx.clone(),

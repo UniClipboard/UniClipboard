@@ -43,11 +43,12 @@ use crate::facade::space_setup::{
 };
 use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
-    BlobTransferError, BlobTransferFacade, ClipboardHistoryFacade, ClipboardRestoreFacade,
-    ClipboardSyncError, ClipboardSyncFacade, DeviceFacade, EncryptionFacade, EncryptionFacadeError,
-    EncryptionStateView, FetchBlobCommand, FetchBlobResult, InboundNotice, LifecycleFacade,
-    MemberRosterFacade, PublishBlobCommand, PublishBlobResult, ResourceFacade, SearchFacade,
-    SearchFacadeError, SearchPageView, SearchQueryInput, SearchRebuildAcceptedView,
+    BlobTransferError, BlobTransferFacade, ClipboardHistoryFacade, ClipboardOutboundFacade,
+    ClipboardRestoreFacade, ClipboardSyncError, ClipboardSyncFacade, DeviceFacade,
+    EncryptionFacade, EncryptionFacadeError, EncryptionStateView, FetchBlobCommand,
+    FetchBlobResult, InboundNotice, LifecycleFacade, MemberRosterFacade, PublishBlobCommand,
+    PublishBlobResult, ResendEntryCommand, ResendEntryError, ResendReport, ResourceFacade,
+    SearchFacade, SearchFacadeError, SearchPageView, SearchQueryInput, SearchRebuildAcceptedView,
     SearchStatusView, SettingsFacade, SettingsFacadeError, SpaceSetupFacade, StorageFacade,
 };
 use uc_core::ids::DeviceId;
@@ -85,6 +86,12 @@ pub struct AppFacade {
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
     pub clipboard_sync: OnceLock<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: OnceLock<Arc<BlobTransferFacade>>,
+    /// 用户主动 resend 的入口(对应 commit B3 的 [`ResendEntryUseCase`])。
+    /// daemon-lifecycle 字段:GUI shell 启动期为空, daemon 启动时由
+    /// [`Self::install_daemon_lifecycle`] 装入。GUI / Tauri command /
+    /// CLI `uniclip send --resend` 都从这一份读;未装入(daemon 未启)
+    /// 场景下调用方拿到 None 应给"功能未启用"反馈。
+    pub clipboard_outbound: OnceLock<Arc<ClipboardOutboundFacade>>,
     /// 文件传输 lifecycle 入口 —— 5 个动作 + seed_receiver_context +
     /// link_transfer_to_entry。`None` 表示当前装配场景未接入 lifecycle
     /// (典型:仅查询的 CLI / 单元测试)。进程级单例(在
@@ -127,6 +134,7 @@ pub struct DaemonLifecycleFacades {
     pub member_roster: Arc<MemberRosterFacade>,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
+    pub clipboard_outbound: Arc<ClipboardOutboundFacade>,
     pub mobile_sync: Arc<MobileSyncFacade>,
 }
 
@@ -145,6 +153,7 @@ impl AppFacade {
             clipboard_history: parts.clipboard_history,
             clipboard_sync: once_lock_from(parts.clipboard_sync),
             blob_transfer: once_lock_from(parts.blob_transfer),
+            clipboard_outbound: once_lock_from(parts.clipboard_outbound),
             file_transfer: parts.file_transfer,
             clipboard_restore: parts.clipboard_restore,
             search: parts.search,
@@ -184,6 +193,10 @@ impl AppFacade {
             .set(facades.blob_transfer)
             .map_err(|_| ())
             .expect("blob_transfer facade already installed; daemon is process-singleton");
+        self.clipboard_outbound
+            .set(facades.clipboard_outbound)
+            .map_err(|_| ())
+            .expect("clipboard_outbound facade already installed; daemon is process-singleton");
         self.mobile_sync
             .set(facades.mobile_sync)
             .map_err(|_| ())
@@ -431,6 +444,23 @@ impl AppFacade {
         facade.get_entry_delivery_view(entry_id).await
     }
 
+    /// 用户主动 resend 一条本机来源的 entry。GUI / Tauri command / CLI
+    /// `uniclip send --resend` 都从这里进。详细语义见
+    /// [`ClipboardOutboundFacade::resend_entry`]。
+    ///
+    /// daemon 未启动场景下 `clipboard_outbound` OnceLock 为空, 返回
+    /// `ResendEntryError::Dispatch("clipboard outbound facade unavailable")`,
+    /// 调用方应给"daemon 未就绪"反馈。
+    pub async fn resend_entry(
+        &self,
+        cmd: ResendEntryCommand,
+    ) -> Result<ResendReport, ResendEntryError> {
+        let facade = self.clipboard_outbound.get().cloned().ok_or_else(|| {
+            ResendEntryError::Dispatch("clipboard outbound facade unavailable".to_string())
+        })?;
+        facade.resend_entry(cmd).await
+    }
+
     /// 发布 blob。
     pub async fn publish_blob(
         &self,
@@ -612,6 +642,7 @@ pub struct AppFacadeParts {
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    pub clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
     pub file_transfer: Option<Arc<FileTransferFacade>>,
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
     pub search: Arc<SearchFacade>,

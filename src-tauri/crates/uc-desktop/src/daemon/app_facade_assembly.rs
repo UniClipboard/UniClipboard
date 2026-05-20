@@ -91,6 +91,9 @@ pub fn build_daemon_lifecycle_facades(
         member_roster: Arc::clone(&space_setup_assembly.roster),
         clipboard_sync,
         blob_transfer,
+        // commit D · 让 GUI / Tauri command / CLI 通过 AppFacade.resend_entry
+        // 触达 outbound facade(daemon-lifecycle 单例,跟 mobile_sync 同源)。
+        clipboard_outbound: Arc::clone(&clipboard_outbound),
         mobile_sync,
     };
 

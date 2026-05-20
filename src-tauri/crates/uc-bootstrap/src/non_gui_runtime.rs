@@ -300,6 +300,10 @@ pub struct AppFacadeAssemblyOptions {
     pub member_roster: Option<Arc<MemberRosterFacade>>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    /// daemon 启动期构造好的 outbound facade(commit D)。`AppFacade.resend_entry`
+    /// 通过它落地 resend。GUI shell / CLI fallback 留 `None`,
+    /// daemon 启动后 `install_daemon_lifecycle` 装入。
+    pub clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
     /// 文件传输 lifecycle 入口(5 个动作 + seed + link)。daemon 入口
     /// 必传;CLI / 单元测试可留 `None`。详见
     /// [`AppFacade::file_transfer`](uc_application::facade::AppFacade)。
@@ -432,6 +436,9 @@ pub fn build_app_facade_from_deps(
         })),
         clipboard_sync: options.clipboard_sync,
         blob_transfer: options.blob_transfer,
+        // GUI shell 启动期为空; daemon 起来后由
+        // `AppFacade::install_daemon_lifecycle` 装入。
+        clipboard_outbound: options.clipboard_outbound,
         file_transfer: options.file_transfer,
         clipboard_restore,
         search: Arc::new(SearchFacade::new(SearchFacadeDeps {

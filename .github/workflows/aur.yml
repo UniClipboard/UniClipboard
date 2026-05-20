@@ -88,9 +88,47 @@ jobs:
           # 在 ssh load 阶段触发 "invalid format"。printf 行为可预测。
           printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /home/builder/.ssh/aur
           chmod 600 /home/builder/.ssh/aur
-          # ssh-keyscan 提前 pin host key —— 跳过 "yes/no" 交互的同时防止 MITM。
-          # AUR 的 host key 长期稳定，pin 一次比 StrictHostKeyChecking=no 安全。
-          ssh-keyscan -H aur.archlinux.org > /home/builder/.ssh/known_hosts 2>/dev/null
+
+          # Host key pinning：
+          # ssh-keyscan 本身是 TOFU——它接受 scan 那一刻路径上拿到的任何 key，
+          # 包括 MITM 注入的 key。仅 keyscan 不算"防 MITM"。
+          # 真正的信任锚需要带外验证：把 AUR 官方公布的 host key fingerprint
+          # 存进 GH repository variable `AUR_HOST_FINGERPRINTS`（多算法用逗号
+          # 分隔，至少含 ed25519，格式 "SHA256:..."），来源：
+          #   https://wiki.archlinux.org/title/AUR_submission_guidelines
+          # 已配置 → scan 后比对，对不上 fail-fast（MITM 或 AUR 轮换了 key）。
+          # 未配置 → 退化为 keyscan + warning，保留首次部署可跑通。
+          ssh-keyscan -H aur.archlinux.org > /tmp/aur_known_hosts 2>/dev/null
+          EXPECTED_FPS='${{ vars.AUR_HOST_FINGERPRINTS }}'
+          if [ -n "$EXPECTED_FPS" ]; then
+            SCANNED_FPS=$(ssh-keygen -lf /tmp/aur_known_hosts | awk '{print $2}' | sort -u)
+            echo "Scanned fingerprints:"
+            printf '  %s\n' $SCANNED_FPS
+            MATCH=false
+            IFS=',' read -ra EXP_LIST <<< "$EXPECTED_FPS"
+            for fp in "${EXP_LIST[@]}"; do
+              fp="${fp// /}"
+              [ -z "$fp" ] && continue
+              if printf '%s\n' "$SCANNED_FPS" | grep -qxF "$fp"; then
+                echo "Matched pinned fingerprint: $fp"
+                MATCH=true
+              fi
+            done
+            if [ "$MATCH" != "true" ]; then
+              echo "::error::AUR host key fingerprint mismatch — possible MITM or AUR rotated its host key."
+              echo "::error::Expected one of: $EXPECTED_FPS"
+              echo "::error::Got: $(printf '%s,' $SCANNED_FPS)"
+              echo "::error::Verify via https://wiki.archlinux.org/title/AUR_submission_guidelines"
+              echo "::error::and update the AUR_HOST_FINGERPRINTS repo variable if AUR legitimately rotated."
+              exit 1
+            fi
+          else
+            echo "::warning::AUR_HOST_FINGERPRINTS repo variable not set — using TOFU keyscan."
+            echo "::warning::To pin, run: gh variable set AUR_HOST_FINGERPRINTS --body 'SHA256:...,SHA256:...'"
+            echo "::warning::Source the fingerprints from https://wiki.archlinux.org/title/AUR_submission_guidelines"
+          fi
+          cp /tmp/aur_known_hosts /home/builder/.ssh/known_hosts
+
           cat > /home/builder/.ssh/config <<'EOF'
           Host aur.archlinux.org
             IdentityFile ~/.ssh/aur

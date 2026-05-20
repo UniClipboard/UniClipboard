@@ -90,6 +90,9 @@ How the sync works:
 Required secret:
 - `AUR_SSH_PRIVATE_KEY` — ed25519 private key. Generate via `ssh-keygen -t ed25519 -C aur-uniclipboard -f aur`, upload `aur.pub` at `https://aur.archlinux.org/account/<user>/edit/`, paste the private key (`aur`) into repo secrets.
 
+Recommended repo variable (defense-in-depth against MITM on `ssh-keyscan`):
+- `AUR_HOST_FINGERPRINTS` — comma-separated list of pinned `SHA256:...` fingerprints for `aur.archlinux.org` host keys. Configure via `gh variable set AUR_HOST_FINGERPRINTS --body 'SHA256:...,SHA256:...'`. Source from `https://wiki.archlinux.org/title/AUR_submission_guidelines` (out-of-band verification — that's the whole point). When set, the workflow `ssh-keyscan`s and then verifies at least one scanned key matches a pinned fingerprint; mismatch → fail-fast. When unset, falls back to TOFU keyscan with a warning so first-time setup still works.
+
 Reference skeleton (kept here for documentation; the live file may have drifted):
 
 ```bash

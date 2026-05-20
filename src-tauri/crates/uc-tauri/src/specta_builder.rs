@@ -20,7 +20,7 @@
 //!
 //! 所有命令在所有 OS 上都 collect，保证任何 runner 跑 `cargo test
 //! --test specta_export` 得到同一份 binding（CI 可以用单一 Linux runner
-//! 做 schema drift check）。当前 32 条命令都不依赖平台特定 mod 编译。
+//! 做 schema drift check）。当前 33 条命令都不依赖平台特定 mod 编译。
 
 use tauri_specta::{collect_commands, collect_events, Builder};
 
@@ -72,6 +72,8 @@ pub fn build() -> Builder<tauri::Wry> {
             crate::commands::storage::open_logs_directory,
             // ── clipboard delivery view (entry detail "源 + 同步状态") ──────────
             crate::commands::clipboard_delivery::clipboard_entry_delivery_view,
+            // ── clipboard resend (ADR-005 Stage 1a) ─────────────────────────────
+            crate::commands::clipboard_delivery::clipboard_resend_entry,
             // ── quick panel ─────────────────────────────────────────────────────
             crate::commands::quick_panel::paste_to_previous_app,
             crate::commands::quick_panel::dismiss_quick_panel,

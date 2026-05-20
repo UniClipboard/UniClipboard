@@ -38,6 +38,18 @@
 //! 文件分支额外做了 on-disk 存在性校验(reconstruct 内 `path.exists()` →
 //! `PayloadResolveError::Lost`),所以"本机文件被 GC 但 payload_state 还没翻
 //! 成 Lost"的边界情况也走得通。
+//!
+//! ## `max_file_size` 与 Resend 的契约
+//!
+//! Resend 路径**不**受 `settings.file_sync.max_file_size` 限制 —— 该 setting
+//! 是 LocalCapture 自动出站的带宽护栏(用户没主动表态时不想偷偷送大文件),
+//! 而 resend 是用户显式动作,理应越过此护栏自行承担后果。bypass 在
+//! [`OutboundSyncPlanner::plan`] 内实现(origin-aware),`file_sync_enabled`
+//! 不在 bypass 范围内 —— "关闭文件同步"是更强的用户意图,resend 仍尊重。
+//!
+//! 这条契约让 [`NotResendableReason::PayloadLost`] 的语义严格收窄到"本机
+//! 不持有 plaintext / blob",不再混入"持有但超用户上限"的歧义,前端
+//! i18n 文案可以放心表达"this entry no longer exists locally"。
 
 use std::collections::HashSet;
 use std::sync::Arc;

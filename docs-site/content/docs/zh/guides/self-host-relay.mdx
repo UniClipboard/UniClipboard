@@ -57,6 +57,20 @@ UniClipboard 的 rendezvous 服务交换 NodeId。自定义 rendezvous discovery
 n0 团队在 Docker Hub 维护 `n0computer/iroh-relay` 镜像，这是最快上线
 的方式。
 
+<Callout type="warn">
+  **不要直接用 `:latest`**。iroh 协议在 0.x → 1.0 之间有破坏性变更
+  （QUIC handshake `authentication failed`），server 必须和客户端使用的
+  `iroh-relay` crate 版本对得上。
+
+  UniClipboard 当前打包的是 **iroh 0.98.x**，对应 Docker tag 是
+  **`0.98.2-docker2`**。注意同名前缀的 `0.98.2` / `0.98.2-docker` 在
+  amd64 上会直接 segfault，**只有 `-docker2` 是可用的 0.98 镜像**
+  （上游打包问题）。
+
+  想看当前客户端打包的版本：在 UniClipboard 源码里 `grep iroh = ` 看
+  `src-tauri/crates/uc-infra/Cargo.toml`。
+</Callout>
+
 ### 1. 写 `config.toml`
 
 把下面这份放到主机的 `/etc/iroh-relay/config.toml`：
@@ -96,11 +110,12 @@ docker run -d \
   -p 7842:7842/udp \
   -v /etc/iroh-relay/config.toml:/etc/iroh-relay/config.toml:ro \
   -v /var/lib/iroh-relay:/var/lib/iroh-relay \
-  n0computer/iroh-relay:latest \
+  n0computer/iroh-relay:0.98.2-docker2 \
   --config-path /etc/iroh-relay/config.toml
 ```
 
-第一次启动会向 Let's Encrypt 申请证书，看日志确认 ACME 流程通过：
+第一次启动会向 Let's Encrypt 申请证书，看日志确认 ACME 流程通过（默认
+日志级别静默，加 `-e RUST_LOG=info,iroh_relay=debug` 能看到完整握手）：
 
 ```bash
 docker logs -f iroh-relay
@@ -217,8 +232,10 @@ allowlist = [
 denylist = ["bad1234...64hex"]
 ```
 
-对端的 NodeId 可以在 UniClipboard 里通过 `uniclip status --json` 拿到，
-或者在 GUI 设备页查看。
+对端的 NodeId 在 GUI **设备** 页里能看到（每台已配对设备一行）。
+
+也可以从守护进程日志拿到本机 NodeId —— `RUST_LOG=info` 启动后会有
+`endpoint id=…` 一行。
 
 更高级的场景（中心化鉴权服务）可以用 `access.http`，让 iroh-relay 对
 每个新连接发 HTTP POST 到你的鉴权端点。详见
@@ -245,19 +262,26 @@ denylist = ["bad1234...64hex"]
 
 ## 验证它真的在用你的中继
 
-最直观的办法是观察日志：
+UniClipboard 目前 **没有运行时接口** 暴露"当前 home relay URL"
+（`uniclip status` 只输出 setup / encryption / search 几项），所以验证
+要从服务器侧 + 端到端行为两头看：
 
-- **服务器侧**：`docker logs iroh-relay`（或 `journalctl -u iroh-relay`）
-  能看到 `accepted connection from <NodeId>`。两台设备一旦走中继转发
-  就会出现一对连接。
-- **客户端侧**：`uniclip status --json` 的 `network.relay_url` 字段会
-  显示当前正在使用的 relay URL。如果你的两台设备处在打不通直连的网络
-  组合（典型情况：两边都是 CGNAT），观察一段时间这个字段应该恒定指向
-  你自建的 URL。
+- **服务器侧日志**：`docker logs -f iroh-relay`（或
+  `journalctl -u iroh-relay -f`）。客户端首次握手 / 中继转发流量时
+  会出现新连接日志条目，里面带客户端的 NodeId。两台设备如果走中继
+  转发，会成对出现。把 `RUST_LOG=info,iroh_relay=debug` 加到容器环境
+  能拿到更详细的握手过程。
+- **配置回查**：在 GUI **设置 → 网络 → 自定义中继节点** 里能看到当前
+  生效的 URL 列表；保存后看到 "Restart required" 横幅消失就说明 daemon
+  重启完成、新值已生效。
+- **端到端**：把两台已配对设备放到不可能直连的网络组合（典型场景：
+  两边都在 CGNAT 后面、或者一台跨国），同步还能成功 —— 这等价于"中继
+  转发链路通了"。如果同时服务器侧日志里出现这两台 NodeId 的连接条目，
+  就能确认走的是 **你的** 中继。
 
 如果客户端日志报 `relay handshake failed: tls: unknown ca`，多半是你
-启用 Let's Encrypt staging（`prod_tls = false`），但客户端用的是系统
-信任根。改回 `prod_tls = true` 或把 staging 根证书装到客户端。
+启用了 Let's Encrypt staging（`prod_tls = false`）但客户端只信任系统
+根。改回 `prod_tls = true` 或把 staging 根证书装到客户端。
 
 ## 常见坑
 

@@ -73,6 +73,22 @@ Custom rendezvous discovery is **not** exposed today.
 The n0 team publishes `n0computer/iroh-relay` on Docker Hub. This is
 the fastest path.
 
+<Callout type="warn">
+  **Don't pull `:latest`.** The iroh wire protocol has a breaking
+  change between 0.x and 1.0 (QUIC handshake `authentication failed`).
+  The server tag must match the `iroh-relay` crate version the client
+  ships with.
+
+  UniClipboard currently ships **iroh 0.98.x**; the matching Docker
+  tag is **`0.98.2-docker2`**. Beware: the similarly named `0.98.2`
+  and `0.98.2-docker` images segfault on amd64 — only the `-docker2`
+  variant is a working 0.98 image (upstream packaging issue).
+
+  To see the version the client is built against, `grep iroh = ` in
+  `src-tauri/crates/uc-infra/Cargo.toml` of the UniClipboard source
+  tree.
+</Callout>
+
 ### 1. Write `config.toml`
 
 Drop the following at `/etc/iroh-relay/config.toml`:
@@ -116,12 +132,13 @@ docker run -d \
   -p 7842:7842/udp \
   -v /etc/iroh-relay/config.toml:/etc/iroh-relay/config.toml:ro \
   -v /var/lib/iroh-relay:/var/lib/iroh-relay \
-  n0computer/iroh-relay:latest \
+  n0computer/iroh-relay:0.98.2-docker2 \
   --config-path /etc/iroh-relay/config.toml
 ```
 
 The first start performs the ACME flow. Tail the logs to confirm it
-completed:
+completed (the default log level is silent — pass
+`-e RUST_LOG=info,iroh_relay=debug` to see the full handshake):
 
 ```bash
 docker logs -f iroh-relay
@@ -243,8 +260,11 @@ Denylist:
 denylist = ["bad1234...64hex"]
 ```
 
-Grab a device's node ID from `uniclip status --json` or the GUI
-Devices page.
+A device's node ID is visible on the GUI **Devices** page (one row
+per paired device).
+
+The local node ID also shows up in the daemon log on startup when
+running with `RUST_LOG=info` — look for the `endpoint id=…` line.
 
 For centralized auth, `access.http` POSTs each new connection's node
 ID to an endpoint you control; see the
@@ -274,16 +294,26 @@ for the request schema.
 
 ## Confirm traffic actually goes through your relay
 
-The most direct check is logs:
+UniClipboard has **no runtime API** today that exposes the current
+home relay URL (`uniclip status` only prints setup / encryption /
+search fields). Verification has to come from the server side plus
+end-to-end behaviour:
 
-- **Server side**: `docker logs iroh-relay` (or
-  `journalctl -u iroh-relay`) shows
-  `accepted connection from <NodeId>` lines as soon as a device with
-  no direct path falls back to your relay.
-- **Client side**: `uniclip status --json` exposes a
-  `network.relay_url` field with the relay currently in use. On a
-  pair of devices that can't hole-punch (typical: both behind CGNAT),
-  that URL should stay pinned to your domain.
+- **Server-side logs**: `docker logs -f iroh-relay` (or
+  `journalctl -u iroh-relay -f`). New client handshakes and relayed
+  traffic show up as connection log entries that include the
+  client's node ID. Two devices using the relay for transit appear
+  as a matched pair. Set `RUST_LOG=info,iroh_relay=debug` on the
+  container for richer handshake details.
+- **Settings round-trip**: the GUI **Settings → Network → Custom
+  relay nodes** field shows the URL list currently saved. After you
+  click `Apply & restart`, the "Restart required" banner clearing
+  means the daemon picked up the new value.
+- **End-to-end test**: place two paired devices on networks that
+  cannot hole-punch (classic: both behind CGNAT, or far-apart
+  geographies) and confirm sync still works. If the server-side
+  logs simultaneously show those two node IDs connected, traffic is
+  going through **your** relay.
 
 If clients log `relay handshake failed: tls: unknown ca`, you're
 probably on Let's Encrypt staging (`prod_tls = false`) but the

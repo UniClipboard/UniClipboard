@@ -20,6 +20,7 @@ use uc_bootstrap::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly, TaskRegistry,
 };
 use uc_core::ports::SettingsPort;
+use uc_observability::analytics::AnalyticsPort;
 
 /// 桌面端 app runtime(GUI-framework agnostic)。
 ///
@@ -31,6 +32,9 @@ pub struct DesktopRuntime {
     app_facade: Arc<AppFacade>,
     task_registry: Arc<TaskRegistry>,
     settings_port: Arc<dyn SettingsPort>,
+    /// 产品 telemetry sink。透传 `AppDeps::analytics`（已包 `GatedAnalyticsSink`
+    /// 一层），shell 与后台任务直接 `capture(Event::X)`，不必自己查 gate。
+    analytics: Arc<dyn AnalyticsPort>,
     storage_paths: AppPaths,
     device_id: String,
 }
@@ -52,6 +56,7 @@ impl DesktopRuntime {
     ) -> Self {
         let device_id = deps.device.device_identity.current_device_id().to_string();
         let settings_port = deps.settings.clone();
+        let analytics = deps.analytics.clone();
 
         let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
             Arc::new(InMemoryLifecycleStatus::new());
@@ -85,6 +90,7 @@ impl DesktopRuntime {
             app_facade,
             task_registry,
             settings_port,
+            analytics,
             storage_paths,
             device_id,
         }
@@ -103,6 +109,13 @@ impl DesktopRuntime {
     /// Returns a clone of the settings port for resolve_pairing_device_name and startup tasks.
     pub fn settings_port(&self) -> Arc<dyn SettingsPort> {
         self.settings_port.clone()
+    }
+
+    /// 产品 telemetry sink。shell crate / 后台任务直接 `capture(Event::X)`，
+    /// gate 由 `GatedAnalyticsSink` 在内部守护，不必上层判断
+    /// `usage_analytics_enabled`。
+    pub fn analytics(&self) -> Arc<dyn AnalyticsPort> {
+        self.analytics.clone()
     }
 
     /// Returns the storage paths bundle (db / vault / cache / logs / app data root).

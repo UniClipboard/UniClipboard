@@ -13,6 +13,7 @@
 //! (legacy `download_and_install` fallback so the dialog still works without
 //! a prior `download_update`).
 
+use crate::bootstrap::TauriAppRuntime;
 use crate::commands::record_trace_fields;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -24,6 +25,10 @@ use tokio::sync::Notify;
 use tracing::{error, info, info_span, Instrument};
 use uc_core::settings::channel::detect_channel;
 use uc_core::settings::model::UpdateChannel;
+use uc_observability::analytics::{
+    Event, InstallKind as AnalyticsInstallKind, UpdateCheckOutcome, UpdateCheckSource,
+    UpdateFailureKind,
+};
 use uc_platform::ports::observability::TraceMetadata;
 
 /// Tauri event channel name for broadcast download progress.
@@ -174,6 +179,12 @@ fn parse_channel(s: &str) -> UpdateChannel {
 
 /// Check for an available update on the specified (or auto-detected) channel.
 ///
+/// Crate-internal entry shared by the `check_for_update` Tauri command and
+/// the background update scheduler. **Does not** emit any telemetry —
+/// callers decide the `update_check_performed.source` field (`manual` /
+/// `startup` / `scheduled` / `window_show`) and emit the event themselves
+/// (schema doc §7.8 红线：两类 source 绝不混用同一调用路径)。
+///
 /// Side-effects on `PendingUpdate`:
 /// - `Some(metadata)` returned & version matches an existing `Ready`: keep
 ///   cached bytes (refresh `Update` handle, preserve `downloaded_at`).
@@ -182,12 +193,146 @@ fn parse_channel(s: &str) -> UpdateChannel {
 /// - `None` returned: transition to `None` (clear any prior cached bytes).
 /// - State is `Downloading`: refuse to re-check (v1 simplification — wait
 ///   for the in-flight download to finish or be cancelled first).
+pub(crate) async fn do_check_for_update(
+    app: &AppHandle,
+    channel: Option<UpdateChannel>,
+    pending: &PendingUpdate,
+) -> Result<Option<UpdateMetadata>, String> {
+    {
+        let guard = lock_state(&pending.0)?;
+        if matches!(*guard, PendingUpdateState::Downloading { .. }) {
+            return Err("updater: download in progress, cannot re-check".to_string());
+        }
+    }
+
+    let resolved_channel = channel.unwrap_or_else(|| {
+        let version = app.package_info().version.to_string();
+        detect_channel(&version)
+    });
+    let channel_str = channel_as_str(&resolved_channel);
+
+    info!(channel = %channel_str, "checking for update");
+
+    let primary_url: url::Url = format!("https://release.uniclipboard.app/{}.json", channel_str)
+        .parse()
+        .map_err(|e| format!("Invalid primary updater URL: {}", e))?;
+    let fallback_url: url::Url = format!(
+        "https://uniclipboard.github.io/UniClipboard/{}.json",
+        channel_str
+    )
+    .parse()
+    .map_err(|e| format!("Invalid fallback updater URL: {}", e))?;
+
+    let updater = app
+        .updater_builder()
+        .endpoints(vec![primary_url, fallback_url])
+        .map_err(|e| e.to_string())?
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+
+    let mut guard = lock_state(&pending.0)?;
+    match update {
+        Some(update) => {
+            let metadata = metadata_of(&update);
+            info!(
+                channel = %channel_str,
+                new_version = %metadata.version,
+                "update available"
+            );
+
+            let prev = std::mem::take(&mut *guard);
+            *guard = match prev {
+                PendingUpdateState::Ready {
+                    update: _prev_update,
+                    bytes,
+                    downloaded_at,
+                } if metadata.version == update.version => {
+                    info!(
+                        version = %metadata.version,
+                        "preserving cached download bytes for same version"
+                    );
+                    PendingUpdateState::Ready {
+                        update,
+                        bytes,
+                        downloaded_at,
+                    }
+                }
+                _ => PendingUpdateState::Available(update),
+            };
+            Ok(Some(metadata))
+        }
+        None => {
+            info!(channel = %channel_str, "no update available");
+            *guard = PendingUpdateState::None;
+            Ok(None)
+        }
+    }
+}
+
+/// Convert the running binary's [`InstallKind`] (Tauri command wire form) to
+/// the telemetry [`AnalyticsInstallKind`]. Both enums must stay wire-equivalent
+/// (schema doc §7.9)；这里只是把同形态值在两个 crate 的类型之间搬运一次。
+fn install_kind_for_telemetry(kind: InstallKind) -> AnalyticsInstallKind {
+    match kind {
+        InstallKind::Macos => AnalyticsInstallKind::Macos,
+        InstallKind::Windows => AnalyticsInstallKind::Windows,
+        InstallKind::AppImage => AnalyticsInstallKind::AppImage,
+        InstallKind::Deb => AnalyticsInstallKind::Deb,
+        InstallKind::Rpm => AnalyticsInstallKind::Rpm,
+        InstallKind::Unknown => AnalyticsInstallKind::Unknown,
+    }
+}
+
+/// Heuristic classifier for `updater.check()` failure strings. The Tauri
+/// updater plugin folds transport / HTTP / signature failures into a single
+/// `Display` string，所以这里按子串匹配把它归类。优先级：parse > http >
+/// network > other —— 签名 / JSON 错误信号最强，先扣下；HTTP 状态码次之；
+/// 兜底归 `Network`（含 DNS / TLS / connect 类失败）或 `Other`。
+///
+/// 重命名禁止（schema doc §8），值仅四个：`network` / `http_error` /
+/// `parse_error` / `other`。
+fn classify_check_failure(err: &str) -> UpdateFailureKind {
+    let lower = err.to_ascii_lowercase();
+    if lower.contains("signature")
+        || lower.contains("minisign")
+        || lower.contains("parse")
+        || lower.contains("json")
+        || lower.contains("decode")
+    {
+        UpdateFailureKind::ParseError
+    } else if lower.contains("http")
+        || lower.contains("status code")
+        || lower.contains(" 4")
+        || lower.contains(" 5")
+    {
+        UpdateFailureKind::HttpError
+    } else if lower.contains("connect")
+        || lower.contains("dns")
+        || lower.contains("tls")
+        || lower.contains("timeout")
+        || lower.contains("timed out")
+        || lower.contains("network")
+        || lower.contains("transport")
+    {
+        UpdateFailureKind::Network
+    } else {
+        UpdateFailureKind::Other
+    }
+}
+
+/// Tauri command — thin shell over [`do_check_for_update`] that emits
+/// `update_check_performed { source: "manual", ... }` after the inner
+/// resolves. scheduler-driven checks emit the same event with a different
+/// `source`（schema doc §7.8）；inner 函数本身不 emit。
 #[tauri::command]
 #[specta::specta]
 pub async fn check_for_update(
     app: AppHandle,
     channel: Option<String>,
     pending: State<'_, PendingUpdate>,
+    runtime: State<'_, Arc<TauriAppRuntime>>,
     _trace: Option<TraceMetadata>,
 ) -> Result<Option<UpdateMetadata>, String> {
     let span = info_span!(
@@ -197,82 +342,29 @@ pub async fn check_for_update(
     );
     record_trace_fields(&span, &_trace);
 
+    let analytics = runtime.analytics();
+    let resolved_channel = channel.as_deref().map(parse_channel);
+
     async move {
-        {
-            let guard = lock_state(&pending.0)?;
-            if matches!(*guard, PendingUpdateState::Downloading { .. }) {
-                return Err("updater: download in progress, cannot re-check".to_string());
-            }
-        }
+        let result = do_check_for_update(&app, resolved_channel, pending.inner()).await;
 
-        let resolved_channel = match channel {
-            Some(ref s) => parse_channel(s),
-            None => {
-                let version = app.package_info().version.to_string();
-                detect_channel(&version)
-            }
+        let install_kind = install_kind_for_telemetry(detect_install_kind());
+        let (outcome, failure_kind) = match &result {
+            Ok(Some(_)) => (UpdateCheckOutcome::Available, None),
+            Ok(None) => (UpdateCheckOutcome::UpToDate, None),
+            Err(err) => (
+                UpdateCheckOutcome::Failed,
+                Some(classify_check_failure(err)),
+            ),
         };
-        let channel_str = channel_as_str(&resolved_channel);
+        analytics.capture(Event::UpdateCheckPerformed {
+            source: UpdateCheckSource::Manual,
+            outcome,
+            failure_kind,
+            install_kind,
+        });
 
-        info!(channel = %channel_str, "checking for update");
-
-        let primary_url: url::Url =
-            format!("https://release.uniclipboard.app/{}.json", channel_str)
-                .parse()
-                .map_err(|e| format!("Invalid primary updater URL: {}", e))?;
-        let fallback_url: url::Url = format!(
-            "https://uniclipboard.github.io/UniClipboard/{}.json",
-            channel_str
-        )
-        .parse()
-        .map_err(|e| format!("Invalid fallback updater URL: {}", e))?;
-
-        let updater = app
-            .updater_builder()
-            .endpoints(vec![primary_url, fallback_url])
-            .map_err(|e| e.to_string())?
-            .build()
-            .map_err(|e| e.to_string())?;
-
-        let update = updater.check().await.map_err(|e| e.to_string())?;
-
-        let mut guard = lock_state(&pending.0)?;
-        match update {
-            Some(update) => {
-                let metadata = metadata_of(&update);
-                info!(
-                    channel = %channel_str,
-                    new_version = %metadata.version,
-                    "update available"
-                );
-
-                let prev = std::mem::take(&mut *guard);
-                *guard = match prev {
-                    PendingUpdateState::Ready {
-                        update: _prev_update,
-                        bytes,
-                        downloaded_at,
-                    } if metadata.version == update.version => {
-                        info!(
-                            version = %metadata.version,
-                            "preserving cached download bytes for same version"
-                        );
-                        PendingUpdateState::Ready {
-                            update,
-                            bytes,
-                            downloaded_at,
-                        }
-                    }
-                    _ => PendingUpdateState::Available(update),
-                };
-                Ok(Some(metadata))
-            }
-            None => {
-                info!(channel = %channel_str, "no update available");
-                *guard = PendingUpdateState::None;
-                Ok(None)
-            }
-        }
+        result
     }
     .instrument(span)
     .await
@@ -832,5 +924,61 @@ mod tests {
             serde_json::to_string(&snap).unwrap(),
             r#"{"phase":"downloading","downloaded":4096,"total":1048576,"version":"0.10.0"}"#
         );
+    }
+
+    #[test]
+    fn install_kind_for_telemetry_round_trips_wire_form() {
+        // 两个 InstallKind（commands/updater.rs 与 uc-observability::analytics）必须
+        // wire-equivalent（schema doc §7.9）。锁住映射后任何一侧加变体都会编译报错。
+        for (src, expected_wire) in [
+            (InstallKind::Macos, r#""macos""#),
+            (InstallKind::Windows, r#""windows""#),
+            (InstallKind::AppImage, r#""appimage""#),
+            (InstallKind::Deb, r#""deb""#),
+            (InstallKind::Rpm, r#""rpm""#),
+            (InstallKind::Unknown, r#""unknown""#),
+        ] {
+            let mapped = install_kind_for_telemetry(src);
+            assert_eq!(
+                serde_json::to_string(&mapped).unwrap(),
+                expected_wire,
+                "install_kind_for_telemetry({:?}) wire form mismatch",
+                src
+            );
+        }
+    }
+
+    #[test]
+    fn classify_check_failure_buckets_common_strings() {
+        // 优先级顺序：parse > http > network > other。覆盖 §7.9 四个枚举槽位。
+        for (input, expected) in [
+            (
+                "signature verification failed",
+                UpdateFailureKind::ParseError,
+            ),
+            ("minisign error", UpdateFailureKind::ParseError),
+            ("failed to parse manifest", UpdateFailureKind::ParseError),
+            ("invalid JSON in response", UpdateFailureKind::ParseError),
+            ("base64 decode failed", UpdateFailureKind::ParseError),
+            ("HTTP 404 Not Found", UpdateFailureKind::HttpError),
+            (
+                "server returned status code 500",
+                UpdateFailureKind::HttpError,
+            ),
+            ("connection refused", UpdateFailureKind::Network),
+            ("dns resolution failed", UpdateFailureKind::Network),
+            ("tls handshake error", UpdateFailureKind::Network),
+            ("operation timed out", UpdateFailureKind::Network),
+            ("transport error", UpdateFailureKind::Network),
+            ("something completely unexpected", UpdateFailureKind::Other),
+            ("", UpdateFailureKind::Other),
+        ] {
+            assert_eq!(
+                classify_check_failure(input),
+                expected,
+                "classify_check_failure({:?}) mismatch",
+                input
+            );
+        }
     }
 }

@@ -44,6 +44,7 @@ use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
 use uc_bootstrap::TaskRegistry;
 use uc_core::ports::SettingsPort;
 use uc_desktop::DesktopRuntime;
+use uc_observability::analytics::AnalyticsPort;
 
 /// Tauri 端的应用运行时句柄。
 ///
@@ -134,6 +135,12 @@ impl TauriAppRuntime {
 
     pub fn settings_port(&self) -> Arc<dyn SettingsPort> {
         self.desktop.settings_port()
+    }
+
+    /// 产品 telemetry sink。Tauri command body / 后台任务直接
+    /// `capture(Event::X)`，gate 由 `GatedAnalyticsSink` 守护。
+    pub fn analytics(&self) -> Arc<dyn AnalyticsPort> {
+        self.desktop.analytics()
     }
 
     pub fn storage_paths(&self) -> &AppPaths {

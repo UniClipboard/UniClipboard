@@ -170,6 +170,12 @@ describe('MobileSyncCredentialModal close behavior', () => {
   // 「安装快捷指令」(次) 主 QR = install URL。这两个 QR 必须图源不串位,
   // 文案也必须与新 i18n keys 对齐。后续误改文案 / 误删 tab / 把两个 QR
   // 接反 (`installQrCodePngBase64` ↔ `qrCodePngBase64`) 都会立刻爆炸。
+  //
+  // 维护提醒: 这里断言的文案必须与 src/i18n/locales/en-US.json 里
+  // devices.mobileSync.credential.* 的 key 一一对应。删/改 i18n key 时,
+  // 同步删/改这里对应的 getByText/getByRole({ name }) 断言, 否则 CI 会以
+  // "Unable to find an element with the text" 爆炸 (例: phase 5 polish
+  // 删掉 scan.qr.help 时漏改测试导致 PR #813 CI 红)。
   it('defaults to the Scan tab with the connect-URI QR', () => {
     const { onDiscard, onComplete } = defaultHandlers()
     renderWithI18n(
@@ -188,12 +194,6 @@ describe('MobileSyncCredentialModal close behavior', () => {
     expect(qr.getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=')
     expect(
       screen.getByText('Scan with your phone to auto-fill the credentials')
-    ).toBeInTheDocument()
-    // Cross-platform note that replaces the old "Android" tab dead end.
-    expect(
-      screen.getByText(
-        'Works with the UniClipboard iOS app and any SyncClipboard-protocol client (including third-party Android apps).'
-      )
     ).toBeInTheDocument()
   })
 

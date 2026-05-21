@@ -197,6 +197,12 @@ If both devices are on the same network and you still see relay use:
 - **Corporate networks.** Locked-down outbound UDP forces relay use,
   and some of these networks block the relay too — in which case
   UniClipboard simply isn't usable on that network.
+- **A local proxy is intercepting relay traffic.** Overseas relay +
+  a local proxy (Clash / Surge / etc.) on the same machine usually
+  means the proxy is also forwarding relay traffic, bottlenecking
+  bandwidth at the proxy egress and degrading UDP/QUIC. Route the
+  relay domain to DIRECT — see
+  [Self-host an iroh relay — Direct-connect the relay if you also run a local proxy](./self-host-relay#direct-connect-the-relay-if-you-also-run-a-local-proxy).
 
 > The relay only ever sees ciphertext. Its availability affects
 > **performance and reachability**, not confidentiality. See

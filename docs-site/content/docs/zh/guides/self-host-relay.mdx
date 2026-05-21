@@ -261,6 +261,56 @@ denylist = ["bad1234...64hex"]
   自定义 relay 列表 **不是** 跨设备同步设置 —— 每台设备各自填。换 relay 域名时要逐台改。
 </Callout>
 
+## 本机有梯子时让 relay 走直连
+
+如果你的 relay 部署在国外（自建到 Hetzner / AWS / DO，或者你压根用的就
+是 n0 公共中继），而本机又开着梯子（Clash / Mihomo / Surge / sing-box
+这类），**默认规则很可能把 relay 流量也丢给代理转发了**。这一刀下去同
+步速度通常会掉一个数量级。
+
+为什么慢：
+
+- **多绕一层**。客户端 → 代理出口 → relay。路径被人为拉长。
+- **带宽被代理出口压住**。家宽到 relay 直连本来 200 Mbps，代理节点只
+  跑 30 Mbps，整条链路就是 30 Mbps。
+- **UDP / QUIC 兼容性差**。iroh 中继走 QUIC，部分代理对 UDP 转发实现
+  孱弱，会回落到 TCP-over-TLS 甚至直接丢包，延迟与抖动一起恶化。
+
+**判断标准**：本机能不能 _绕过代理直连_ relay？跑一下：
+
+```bash
+curl -sS --noproxy '*' -o /dev/null \
+  -w 'http=%{http_code} time=%{time_total}s\n' \
+  https://relay.example.com/ping
+```
+
+`http=200` 就说明能直连。这种情况下应当在梯子规则里把 relay 域名加进
+直连列表，**不要** 让代理碰它。
+
+Clash / Mihomo（YAML 节选，放在 `rules:` 最前面）：
+
+```yaml
+rules:
+  - DOMAIN-SUFFIX,relay.example.com,DIRECT
+  # ... 你原来的规则
+```
+
+Surge / Loon / sing-box 同理，在规则首位插一条：
+
+```
+DOMAIN-SUFFIX,relay.example.com,DIRECT
+```
+
+如果你没填自定义中继、用的是 n0 公共中继，UniClipboard 0.11（iroh 0.98）
+对应的默认域名是 `*.relay.n0.iroh-canary.iroh.link`，把这一段加成
+`DOMAIN-SUFFIX,iroh-canary.iroh.link,DIRECT` 即可。这套域名会随 iroh
+升级变化，需要确认时去 iroh crate 的 `src/defaults.rs` 看 `prod` 模块。
+
+只对 **能直连** 的 relay 这么做。如果你的网络对该 relay 根本不通（被
+防火墙阻断 / ISP 抽风），走代理就是唯一选择，性能折扣只能认了 —— 但
+这种场景下更合理的做法是换一个本地能直连的 relay 位置（参考前面的自建
+章节）。
+
 ## 验证它真的在用你的中继
 
 UniClipboard 目前 **没有运行时接口** 暴露"当前 home relay URL"

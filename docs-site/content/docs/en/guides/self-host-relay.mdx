@@ -293,6 +293,64 @@ for the request schema.
   domains means updating every device.
 </Callout>
 
+## Direct-connect the relay if you also run a local proxy
+
+If the relay lives overseas (self-hosted on Hetzner / AWS / DO, or
+you're just using the n0 default relays) **and** you run a local
+proxy on the same machine (Clash / Mihomo / Surge / sing-box, etc.),
+the default rules almost certainly forward relay traffic through your
+proxy too. That typically drops sync throughput by an order of
+magnitude.
+
+Why it hurts:
+
+- **One extra hop.** Client → proxy egress → relay. The path is
+  artificially longer.
+- **Capped by the proxy egress bandwidth.** Even if your line to the
+  relay can do 200 Mbps, a 30 Mbps proxy node bottlenecks the whole
+  chain to 30 Mbps.
+- **UDP / QUIC compatibility.** iroh relays use QUIC; many proxies
+  forward UDP poorly, falling back to TCP-over-TLS or dropping
+  packets — latency and jitter get worse together.
+
+**The test** — can the host reach the relay _bypassing_ the proxy?
+
+```bash
+curl -sS --noproxy '*' -o /dev/null \
+  -w 'http=%{http_code} time=%{time_total}s\n' \
+  https://relay.example.com/ping
+```
+
+`http=200` means the relay is directly reachable. In that case, add a
+DIRECT rule for the relay domain so the proxy stops touching it.
+
+Clash / Mihomo (prepend to `rules:`):
+
+```yaml
+rules:
+  - DOMAIN-SUFFIX,relay.example.com,DIRECT
+  # ... your existing rules
+```
+
+Surge / Loon / sing-box — same idea, single rule at the top:
+
+```
+DOMAIN-SUFFIX,relay.example.com,DIRECT
+```
+
+If you're on the n0 default relays (no custom URL set), UniClipboard
+0.11 ships iroh 0.98 whose defaults live at
+`*.relay.n0.iroh-canary.iroh.link` — make the rule
+`DOMAIN-SUFFIX,iroh-canary.iroh.link,DIRECT`. These hostnames move
+with iroh releases; check the `prod` module in the iroh crate's
+`src/defaults.rs` if you want to confirm against the version you ship.
+
+Only do this for relays that are **directly reachable**. If your
+network genuinely can't reach the relay (firewalled / ISP-blocked),
+the proxy is the only path and the performance hit is unavoidable —
+though the better long-term fix is to pick a relay region your network
+_can_ reach directly (see the deployment sections above).
+
 ## Confirm traffic actually goes through your relay
 
 UniClipboard has **no runtime API** today that exposes the current

@@ -234,7 +234,7 @@ pub fn show_main_window(app: &tauri::AppHandle) {
 ///
 /// If the language starts with "zh" (case-insensitive), returns `"zh-CN"`.
 /// Otherwise returns `"en-US"`.
-fn normalize_language(language: &str) -> &'static str {
+pub(crate) fn normalize_language(language: &str) -> &'static str {
     if language.to_lowercase().starts_with("zh") {
         "zh-CN"
     } else {

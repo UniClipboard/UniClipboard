@@ -362,8 +362,9 @@ const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({
   const eligible = deliveries.some(
     d => d.status.tag !== 'delivered' && d.status.tag !== 'duplicate'
   )
-  const disabled = !eligible || action.entryInFlight
-  const label = action.entryInFlight
+  const entryInFlight = action.isEntryInFlight(entryId)
+  const disabled = !eligible || entryInFlight
+  const label = entryInFlight
     ? t('delivery.resend.button.pending')
     : t('delivery.resend.button.entry')
 
@@ -384,7 +385,7 @@ const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({
           : 'text-sky-600 hover:bg-sky-500/10 dark:text-sky-400'
       )}
     >
-      {action.entryInFlight ? (
+      {entryInFlight ? (
         <LoaderCircle className="h-3 w-3 animate-spin" />
       ) : (
         <RefreshCw className="h-3 w-3" />
@@ -402,8 +403,8 @@ interface ResendPeerButtonProps {
 }
 
 const ResendPeerButton: React.FC<ResendPeerButtonProps> = ({ target, entryId, action, t }) => {
-  const inFlight = action.isPeerInFlight(target.targetDeviceId)
-  const disabled = inFlight || action.entryInFlight
+  const inFlight = action.isPeerInFlight(entryId, target.targetDeviceId)
+  const disabled = inFlight || action.isEntryInFlight(entryId)
   return (
     <button
       type="button"

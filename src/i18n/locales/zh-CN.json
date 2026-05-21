@@ -1323,12 +1323,12 @@
       },
       "error": {
         "notResendable": {
-          "remoteOrigin": "此条目来自其他设备,无法从本机重发。",
-          "payloadLost": "此条目在本机已不可用。"
+          "remoteOrigin": "条目 {{entryIdShort}} 来自其他设备,无法从本机重发。",
+          "payloadLost": "条目 {{entryIdShort}} 在本机已不可用。"
         },
         "targetNotTrusted": "设备 {{device}} 已不在配对列表中。",
         "noEligibleTargets": "没有可重发的设备。",
-        "entryNotFound": "条目不存在。",
+        "entryNotFound": "条目 {{entryIdShort}} 不存在。",
         "internal": "重发失败:{{message}}"
       }
     }

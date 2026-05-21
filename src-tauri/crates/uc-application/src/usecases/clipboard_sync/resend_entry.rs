@@ -124,8 +124,15 @@ pub enum ResendEntryError {
     /// entry 自身存在,但当前无法重发。`reason` 区分:
     /// - [`NotResendableReason::RemoteOrigin`] —— entry 来自远端 peer;
     /// - [`NotResendableReason::PayloadLost`] —— 本机已不持有 plaintext / blob。
-    #[error("entry is not resendable: {reason:?}")]
-    EntryNotResendable { reason: NotResendableReason },
+    ///
+    /// `entry_id` 与 [`EntryNotFound`](Self::EntryNotFound) 对齐 —— 让 UI / CLI
+    /// 在 toast 与日志里能锚定具体哪条 entry,用户在堆叠多条历史时不至于
+    /// 一头雾水。
+    #[error("entry {entry_id} is not resendable: {reason:?}")]
+    EntryNotResendable {
+        entry_id: EntryId,
+        reason: NotResendableReason,
+    },
 
     /// 显式 filter 中包含不在 `trusted_peer_repo.list()` 内的 device。
     /// 不静默 skip,以便 UI 能直接告诉用户"该设备已被移除信任关系"。
@@ -197,35 +204,43 @@ pub(crate) struct ResendEntryUseCase {
     dispatch_runner: Arc<dyn DispatchEntryRunner>,
 }
 
+/// Bundled dependencies for [`ResendEntryUseCase`].
+///
+/// 12 个 ports 用 named-field struct 而不是位置参数 —— 调用点 (facade 装
+/// 配 + 测试 fixtures) 全部按字段名构造,后续再加 port 不会按位置撞错,
+/// 也不再需要 `#[allow(clippy::too_many_arguments)]`。crate-internal:
+/// 外部 crate 通过 [`ClipboardOutboundFacade::new`](crate::facade::ClipboardOutboundFacade::new)
+/// 间接装配。
+pub(crate) struct ResendEntryDeps {
+    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
+    pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
+    pub blob_store: Arc<dyn BlobReaderPort>,
+    pub entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
+    pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
+    pub device_identity: Arc<dyn DeviceIdentityPort>,
+    pub settings: Arc<dyn SettingsPort>,
+    pub blob_publisher: Arc<dyn OutboundBlobPublishGateway>,
+    pub dispatch_runner: Arc<dyn DispatchEntryRunner>,
+}
+
 impl ResendEntryUseCase {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
-        event_repo: Arc<dyn ClipboardEventRepositoryPort>,
-        selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
-        payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
-        blob_store: Arc<dyn BlobReaderPort>,
-        entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
-        trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
-        device_identity: Arc<dyn DeviceIdentityPort>,
-        settings: Arc<dyn SettingsPort>,
-        blob_publisher: Arc<dyn OutboundBlobPublishGateway>,
-        dispatch_runner: Arc<dyn DispatchEntryRunner>,
-    ) -> Self {
+    pub(crate) fn new(deps: ResendEntryDeps) -> Self {
         Self {
-            entry_repo,
-            event_repo,
-            selection_repo,
-            representation_repo,
-            payload_resolver,
-            blob_store,
-            entry_delivery_repo,
-            trusted_peer_repo,
-            device_identity,
-            settings,
-            blob_publisher,
-            dispatch_runner,
+            entry_repo: deps.entry_repo,
+            event_repo: deps.event_repo,
+            selection_repo: deps.selection_repo,
+            representation_repo: deps.representation_repo,
+            payload_resolver: deps.payload_resolver,
+            blob_store: deps.blob_store,
+            entry_delivery_repo: deps.entry_delivery_repo,
+            trusted_peer_repo: deps.trusted_peer_repo,
+            device_identity: deps.device_identity,
+            settings: deps.settings,
+            blob_publisher: deps.blob_publisher,
+            dispatch_runner: deps.dispatch_runner,
         }
     }
 
@@ -272,6 +287,7 @@ impl ResendEntryUseCase {
             Some(dev) => dev,
             None => {
                 return Err(ResendEntryError::EntryNotResendable {
+                    entry_id: cmd.entry_id.clone(),
                     reason: NotResendableReason::RemoteOrigin,
                 });
             }
@@ -279,6 +295,7 @@ impl ResendEntryUseCase {
         let local_device = self.device_identity.current_device_id();
         if source_device != local_device {
             return Err(ResendEntryError::EntryNotResendable {
+                entry_id: cmd.entry_id.clone(),
                 reason: NotResendableReason::RemoteOrigin,
             });
         }
@@ -294,7 +311,7 @@ impl ResendEntryUseCase {
             &cmd.entry_id,
         )
         .await
-        .map_err(map_build_snapshot_error)?;
+        .map_err(|err| map_build_snapshot_error(err, &cmd.entry_id))?;
 
         // 4. Derive target set.
         let trusted: Vec<DeviceId> = self
@@ -386,6 +403,7 @@ impl ResendEntryUseCase {
             // `all_files_excluded` —— 即 extracted_paths_count > 0 但所有
             // candidate 都被 metadata 失败 / size 上限排除。视为 PayloadLost。
             return Err(ResendEntryError::EntryNotResendable {
+                entry_id: cmd.entry_id.clone(),
                 reason: NotResendableReason::PayloadLost,
             });
         };
@@ -447,7 +465,7 @@ impl ResendEntryUseCase {
     }
 }
 
-fn map_build_snapshot_error(err: BuildSnapshotError) -> ResendEntryError {
+fn map_build_snapshot_error(err: BuildSnapshotError, entry_id: &EntryId) -> ResendEntryError {
     match err {
         BuildSnapshotError::EntryNotFound { entry_id } => ResendEntryError::EntryNotFound(entry_id),
         BuildSnapshotError::SelectionNotFound { .. }
@@ -457,7 +475,11 @@ fn map_build_snapshot_error(err: BuildSnapshotError) -> ResendEntryError {
         | BuildSnapshotError::InvalidFileUri { .. }
         | BuildSnapshotError::NoFilePaths { .. }
         | BuildSnapshotError::NoRestorableRepresentations { .. } => {
+            // `BuildSnapshotError::EntryNotFound` 自带 entry_id;其余 PayloadLost
+            // 类变体没有 —— reconstruct helper 拿到的是同一 entry_id,这里直接
+            // 用上游传入的副本回填,避免上游每个 variant 都改成带 id。
             ResendEntryError::EntryNotResendable {
+                entry_id: entry_id.clone(),
                 reason: NotResendableReason::PayloadLost,
             }
         }
@@ -907,30 +929,30 @@ mod tests {
         let selection = selection_for(&entry_id, "rep-1");
         let rep = text_rep("rep-1", b"hello resend");
 
-        let uc = ResendEntryUseCase::new(
-            Arc::new(FakeEntryRepo { entry: Some(entry) }),
-            Arc::new(FakeEventRepo {
+        let uc = ResendEntryUseCase::new(ResendEntryDeps {
+            entry_repo: Arc::new(FakeEntryRepo { entry: Some(entry) }),
+            event_repo: Arc::new(FakeEventRepo {
                 source: Some(local.clone()),
             }),
-            Arc::new(FakeSelectionRepo {
+            selection_repo: Arc::new(FakeSelectionRepo {
                 selection: Some(selection),
             }),
-            Arc::new(StaticRepRepo { reps: vec![rep] }),
-            Arc::new(StubResolver(ResolveBehavior::Inline(
+            representation_repo: Arc::new(StaticRepRepo { reps: vec![rep] }),
+            payload_resolver: Arc::new(StubResolver(ResolveBehavior::Inline(
                 b"hello resend".to_vec(),
             ))),
-            Arc::new(UnusedBlobStore),
-            Arc::new(StubDeliveryRepo {
+            blob_store: Arc::new(UnusedBlobStore),
+            entry_delivery_repo: Arc::new(StubDeliveryRepo {
                 records: delivery_records,
             }),
-            Arc::new(StubTrustedPeerRepo {
+            trusted_peer_repo: Arc::new(StubTrustedPeerRepo {
                 peers: trusted_peers,
             }),
-            Arc::new(StubDeviceIdentity(local)),
-            Arc::new(StubSettings),
-            Arc::new(UnusedPublishGateway),
+            device_identity: Arc::new(StubDeviceIdentity(local)),
+            settings: Arc::new(StubSettings),
+            blob_publisher: Arc::new(UnusedPublishGateway),
             dispatch_runner,
-        );
+        });
         (uc, entry_id)
     }
 
@@ -967,27 +989,27 @@ mod tests {
         let event_id = EventId::from("evt-remote");
         let local = DeviceId::new("self");
         // get_source_device 返回 peer-a → 与 local 不等。
-        let uc = ResendEntryUseCase::new(
-            Arc::new(FakeEntryRepo {
+        let uc = ResendEntryUseCase::new(ResendEntryDeps {
+            entry_repo: Arc::new(FakeEntryRepo {
                 entry: Some(entry_with_event(&entry_id, &event_id)),
             }),
-            Arc::new(FakeEventRepo {
+            event_repo: Arc::new(FakeEventRepo {
                 source: Some(DeviceId::new("peer-a")),
             }),
             // 下游 ports 都不应被触达,塞 panic-on-call 的 fake。
-            Arc::new(FakeSelectionRepo { selection: None }),
-            Arc::new(StaticRepRepo { reps: Vec::new() }),
-            Arc::new(StubResolver(ResolveBehavior::Lost)),
-            Arc::new(UnusedBlobStore),
-            Arc::new(StubDeliveryRepo {
+            selection_repo: Arc::new(FakeSelectionRepo { selection: None }),
+            representation_repo: Arc::new(StaticRepRepo { reps: Vec::new() }),
+            payload_resolver: Arc::new(StubResolver(ResolveBehavior::Lost)),
+            blob_store: Arc::new(UnusedBlobStore),
+            entry_delivery_repo: Arc::new(StubDeliveryRepo {
                 records: Vec::new(),
             }),
-            Arc::new(StubTrustedPeerRepo { peers: Vec::new() }),
-            Arc::new(StubDeviceIdentity(local)),
-            Arc::new(StubSettings),
-            Arc::new(UnusedPublishGateway),
-            Arc::new(UnusedDispatchRunner),
-        );
+            trusted_peer_repo: Arc::new(StubTrustedPeerRepo { peers: Vec::new() }),
+            device_identity: Arc::new(StubDeviceIdentity(local)),
+            settings: Arc::new(StubSettings),
+            blob_publisher: Arc::new(UnusedPublishGateway),
+            dispatch_runner: Arc::new(UnusedDispatchRunner),
+        });
 
         let err = uc
             .execute(ResendEntryCommand {
@@ -997,12 +1019,16 @@ mod tests {
             .await
             .expect_err("expected RemoteOrigin");
 
-        assert!(matches!(
-            err,
+        match err {
             ResendEntryError::EntryNotResendable {
-                reason: NotResendableReason::RemoteOrigin
+                entry_id: id,
+                reason,
+            } => {
+                assert_eq!(id.inner(), "entry-remote", "entry_id must accompany reason");
+                assert_eq!(reason, NotResendableReason::RemoteOrigin);
             }
-        ));
+            other => panic!("expected EntryNotResendable, got {other:?}"),
+        }
     }
 
     /// V2 — reconstruct 报 `PayloadResolveError::Lost` ⇒ `PayloadLost`。
@@ -1013,29 +1039,29 @@ mod tests {
         let local = DeviceId::new("self");
         let rep = text_rep("rep-lost", b"placeholder");
 
-        let uc = ResendEntryUseCase::new(
-            Arc::new(FakeEntryRepo {
+        let uc = ResendEntryUseCase::new(ResendEntryDeps {
+            entry_repo: Arc::new(FakeEntryRepo {
                 entry: Some(entry_with_event(&entry_id, &event_id)),
             }),
-            Arc::new(FakeEventRepo {
+            event_repo: Arc::new(FakeEventRepo {
                 source: Some(local.clone()),
             }),
-            Arc::new(FakeSelectionRepo {
+            selection_repo: Arc::new(FakeSelectionRepo {
                 selection: Some(selection_for(&entry_id, "rep-lost")),
             }),
-            Arc::new(StaticRepRepo { reps: vec![rep] }),
+            representation_repo: Arc::new(StaticRepRepo { reps: vec![rep] }),
             // resolver 返回 Lost
-            Arc::new(StubResolver(ResolveBehavior::Lost)),
-            Arc::new(UnusedBlobStore),
-            Arc::new(StubDeliveryRepo {
+            payload_resolver: Arc::new(StubResolver(ResolveBehavior::Lost)),
+            blob_store: Arc::new(UnusedBlobStore),
+            entry_delivery_repo: Arc::new(StubDeliveryRepo {
                 records: Vec::new(),
             }),
-            Arc::new(StubTrustedPeerRepo { peers: Vec::new() }),
-            Arc::new(StubDeviceIdentity(local)),
-            Arc::new(StubSettings),
-            Arc::new(UnusedPublishGateway),
-            Arc::new(UnusedDispatchRunner),
-        );
+            trusted_peer_repo: Arc::new(StubTrustedPeerRepo { peers: Vec::new() }),
+            device_identity: Arc::new(StubDeviceIdentity(local)),
+            settings: Arc::new(StubSettings),
+            blob_publisher: Arc::new(UnusedPublishGateway),
+            dispatch_runner: Arc::new(UnusedDispatchRunner),
+        });
 
         let err = uc
             .execute(ResendEntryCommand {
@@ -1045,12 +1071,16 @@ mod tests {
             .await
             .expect_err("expected PayloadLost");
 
-        assert!(matches!(
-            err,
+        match err {
             ResendEntryError::EntryNotResendable {
-                reason: NotResendableReason::PayloadLost
+                entry_id: id,
+                reason,
+            } => {
+                assert_eq!(id.inner(), "entry-lost", "entry_id must accompany reason");
+                assert_eq!(reason, NotResendableReason::PayloadLost);
             }
-        ));
+            other => panic!("expected EntryNotResendable, got {other:?}"),
+        }
     }
 
     /// V3 — `target_filter = Some([ghost])`,ghost 不在 trusted_peer_repo

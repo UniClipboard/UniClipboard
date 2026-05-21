@@ -1,5 +1,5 @@
 import { Copy, Download, FolderOpen, Loader2, RefreshCw, Trash2 } from 'lucide-react'
-import React from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ContextMenu,
@@ -9,6 +9,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import { useResendAction } from '@/hooks/useResendAction'
 import { useAppSelector } from '@/store/hooks'
 import {
@@ -46,11 +47,18 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
   const { t } = useTranslation()
   const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, itemId))
   const transfer = useAppSelector(state => selectTransferByEntryId(state, itemId))
-  // Resend 走 in-process facade (`AppFacade::resend_entry`),按钮始终显示;
-  // 远端来源 / 已全 delivered / 本机无 payload 等情况由后端 typed error 兜底,
-  // hook 内 toast 翻译给用户。这是有意"信后端做 gate"的取舍 —— 列表层若
-  // 自己拉 delivery 做 enable check 会让初始渲染 fan-out N 个 IPC 请求。
+  // Resend 触发器 + sonner toast 副作用共用 hook。
   const resendAction = useResendAction()
+  // Lazy gate:仅在用户实际打开右键菜单后才拉 delivery 视图,知道来源
+  // 是 remote/historical 就把 Resend 菜单项隐藏掉,让 contextmenu 与
+  // HoverCard popover 的 UX 一致(后者也只对 `source.tag === 'local'` 显示
+  // resend)。延迟到 open 之后才查避免列表初始渲染 fan-out N 个 IPC,只
+  // 对真正打开菜单的那一行付出代价。loading 或拉失败时退化到"按钮可
+  // 见、信后端 typed error 兜底",仍能 toast 出 `notResendable.remoteOrigin`。
+  const [menuOpen, setMenuOpen] = useState(false)
+  const { delivery: menuDelivery } = useEntryDelivery(menuOpen ? itemId : null)
+  const hideResend =
+    menuDelivery?.source.tag === 'remote' || menuDelivery?.source.tag === 'historical'
 
   const isFile = itemType === 'file'
   const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
@@ -70,7 +78,7 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
   const showCopyAction = !isFile || isDownloaded || isCopyDisabledByTransfer
 
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={setMenuOpen}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-52">
         {/* Sync to Clipboard (file not yet downloaded, no blocking transfer state) */}
@@ -121,23 +129,29 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
             </>
           )}
 
-        {/* Resend —— 用户主动重发到 pending/failed 的可信对端;远端来源 /
-            本机无 payload 等情况后端会返回 typed error 走 toast 兜底。 */}
-        <ContextMenuItem
-          disabled={resendAction.entryInFlight}
-          onClick={() => void resendAction.resendAll(itemId)}
-        >
-          {resendAction.entryInFlight ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
-          )}
-          {resendAction.entryInFlight
-            ? t('clipboard.contextMenu.resending')
-            : t('clipboard.contextMenu.resend')}
-        </ContextMenuItem>
+        {/* Resend —— 用户主动重发到 pending/failed 的可信对端。已知
+            remote/historical 来源时直接不渲染(与 HoverCard popover 的
+            resendable 判断对齐);未知/loading 时退化到信后端 typed error
+            兜底,本机无 payload / 已全 delivered 等都走 toast。 */}
+        {!hideResend && (
+          <>
+            <ContextMenuItem
+              disabled={resendAction.isEntryInFlight(itemId)}
+              onClick={() => void resendAction.resendAll(itemId)}
+            >
+              {resendAction.isEntryInFlight(itemId) ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {resendAction.isEntryInFlight(itemId)
+                ? t('clipboard.contextMenu.resending')
+                : t('clipboard.contextMenu.resend')}
+            </ContextMenuItem>
 
-        <ContextMenuSeparator />
+            <ContextMenuSeparator />
+          </>
+        )}
 
         {/* Delete - always available for every transfer state */}
         <ContextMenuItem

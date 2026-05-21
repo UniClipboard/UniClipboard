@@ -118,14 +118,29 @@ export type {
  * 与 `isMobileSyncError` 同模式;commit E 给 `clipboard_resend_entry`
  * 单独建了 `ResendEntryCommandError` 而非复用 `CommandError`,正是为了
  * 让前端拿到结构化字段做精确的 i18n 文案选择。
+ *
+ * 收紧到已知 `code` 白名单 —— 其他 typed command 的 error envelope 也是
+ * `{ code: string }` 形态,只检查 `typeof code === 'string'` 会把它们误识
+ * 别成 resend 错误,触发错误的 i18n key (fallback 到 `internal`)。白名单
+ * 必须和 Rust 端 `ResendEntryCommandError` 的 `#[serde(tag = "code")]`
+ * 变体名 SCREAMING_SNAKE_CASE 一一对应;扩枚举时同步更新这里 —— 测试
+ * `isResendEntryError narrows known codes only` 会守住这条契约。
  */
+const RESEND_ERROR_CODES: ReadonlySet<ResendEntryCommandError['code']> = new Set([
+  'ENTRY_NOT_FOUND',
+  'ENTRY_NOT_RESENDABLE',
+  'TARGET_NOT_TRUSTED',
+  'NO_ELIGIBLE_TARGETS',
+  'STORAGE',
+  'DISPATCH',
+])
+
 export function isResendEntryError(error: unknown): error is ResendEntryCommandError {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof (error as { code: unknown }).code === 'string'
-  )
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return false
+  }
+  const { code } = error as { code: unknown }
+  return typeof code === 'string' && RESEND_ERROR_CODES.has(code as ResendEntryCommandError['code'])
 }
 
 /**

@@ -25,7 +25,9 @@ use crate::facade::{
     PublishBlobPathCommand, PublishBlobResult,
 };
 use crate::sync_planner::{FileCandidate, FileSyncIntent, OutboundSyncPlanner};
-use crate::usecases::clipboard_sync::resend_entry::{ResendEntryRunner, ResendEntryUseCase};
+use crate::usecases::clipboard_sync::resend_entry::{
+    ResendEntryDeps, ResendEntryRunner, ResendEntryUseCase,
+};
 use crate::V3BlobRef;
 
 pub use crate::usecases::clipboard_sync::resend_entry::{
@@ -357,20 +359,20 @@ impl ClipboardOutboundFacade {
             Arc::new(ClipboardOutboundDispatcher::from_deps(&deps));
         let dispatch_runner = deps.clipboard_sync.dispatch_runner();
         let blob_publisher: Arc<dyn OutboundBlobPublishGateway> = deps.blob_transfer.clone();
-        let resend_uc = ResendEntryUseCase::new(
-            deps.entry_repo,
-            deps.event_repo,
-            deps.selection_repo,
-            deps.representation_repo,
-            deps.payload_resolver,
-            deps.blob_store,
-            deps.entry_delivery_repo,
-            deps.trusted_peer_repo,
-            deps.device_identity,
-            deps.settings,
+        let resend_uc = ResendEntryUseCase::new(ResendEntryDeps {
+            entry_repo: deps.entry_repo,
+            event_repo: deps.event_repo,
+            selection_repo: deps.selection_repo,
+            representation_repo: deps.representation_repo,
+            payload_resolver: deps.payload_resolver,
+            blob_store: deps.blob_store,
+            entry_delivery_repo: deps.entry_delivery_repo,
+            trusted_peer_repo: deps.trusted_peer_repo,
+            device_identity: deps.device_identity,
+            settings: deps.settings,
             blob_publisher,
             dispatch_runner,
-        );
+        });
         Self {
             dispatcher,
             resend_runner: Arc::new(resend_uc) as Arc<dyn ResendEntryRunner>,

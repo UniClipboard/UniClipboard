@@ -8,6 +8,7 @@ import type {
   ResendEntryReportDto,
 } from '@/api/tauri-command/clipboard_delivery'
 import EntryDeliveryBadge from '@/components/clipboard/EntryDeliveryBadge'
+import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
 
 // commit F: 后端 resendEntry / sonner toast 都是副作用,测试中以可观察 spy
@@ -225,10 +226,13 @@ describe('EntryDeliveryBadge', () => {
       resendEntryMock.mockReset()
       toastSuccessMock.mockReset()
       toastErrorMock.mockReset()
+      // 模块级 in-flight store 跨 case 共享,case 间显式清空避免渗漏。
+      __resetResendActionStoreForTests()
     })
 
     afterEach(() => {
       resendEntryMock.mockReset()
+      __resetResendActionStoreForTests()
     })
 
     const successReport: ResendEntryReportDto = {
@@ -389,9 +393,15 @@ describe('EntryDeliveryBadge', () => {
       })
     })
 
-    it('translates typed ResendEntryCommandError variants into i18n strings', async () => {
+    it('translates typed ResendEntryCommandError variants into i18n strings (with entryId placeholder)', async () => {
       const user = userEvent.setup()
-      resendEntryMock.mockRejectedValueOnce({ code: 'ENTRY_NOT_RESENDABLE', reason: 'payloadLost' })
+      resendEntryMock.mockRejectedValueOnce({
+        code: 'ENTRY_NOT_RESENDABLE',
+        // entryId 走 typed envelope (commit G:加入 entry_id 字段),用户在
+        // toast 上能看到截断 id —— 多条历史同时报错时不会一头雾水。
+        entryId: 'entry-payload-lost-uuid',
+        reason: 'payloadLost',
+      })
 
       render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)
       await user.hover(screen.getByRole('button', { name: i18n.t('delivery.popover.ariaTrigger') }))
@@ -402,7 +412,9 @@ describe('EntryDeliveryBadge', () => {
 
       await waitFor(() => {
         expect(toastErrorMock).toHaveBeenCalledWith(
-          i18n.t('delivery.resend.error.notResendable.payloadLost')
+          i18n.t('delivery.resend.error.notResendable.payloadLost', {
+            entryIdShort: 'entry-pa…',
+          })
         )
       })
       expect(toastSuccessMock).not.toHaveBeenCalled()

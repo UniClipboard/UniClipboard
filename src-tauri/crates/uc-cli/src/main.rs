@@ -166,6 +166,16 @@ enum Commands {
     /// fan-out to specific devices. Without `--peer`, the new-entry
     /// mode dispatches to all online peers, and resend mode targets the
     /// derived `trusted_peer \ (Delivered ∪ Duplicate)` diff.
+    ///
+    /// EXIT CODES (resend mode):
+    /// * `0` — at least one peer accepted, was a content-duplicate, or
+    ///   moved into background continuation (`pending`). All-pending is
+    ///   treated as success because the work has been accepted and will
+    ///   resolve asynchronously via host events; the daemon writes the
+    ///   delivery record on real completion.
+    /// * Non-zero — every target ended up `offline` or `errored` (no
+    ///   accepted, no duplicate, no pending). Use `--json` to inspect
+    ///   per-bucket counts when a CI harness needs finer-grained checks.
     Send {
         /// Plaintext to send. Omit to read from stdin until EOF.
         /// Mutually exclusive with `--resend`.

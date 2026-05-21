@@ -149,11 +149,23 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         let origin_str = match origin {
             ClipboardChangeOrigin::LocalCapture | ClipboardChangeOrigin::LocalRestore => "local",
             ClipboardChangeOrigin::RemotePush { .. } => "remote",
-            // ADR-005 §2.5 用户主动 resend:本机用户操作 → "local"。watcher 实际
-            // 不会路过这条路径(ResendEntryUseCase 直接调 dispatch,不经
-            // clipboard_watcher 的 capture 链),但 exhaustive 要求补 arm 让
-            // 编译期检查捕获将来误用 Resend 走 watcher 的回归。
-            ClipboardChangeOrigin::Resend => "local",
+            // ADR-005 §2.5 用户主动 resend:`ResendEntryUseCase` 直接调
+            // dispatch,不经 capture 链;若有快照被消费 origin 标成 Resend
+            // 后落到 watcher,说明上游决策被改坏。debug build / 测试里立
+            // 即 panic 让回归暴露;release 软返回 + error 日志避免拖垮
+            // watcher worker。
+            ClipboardChangeOrigin::Resend => {
+                debug_assert!(
+                    false,
+                    "watcher must not see ClipboardChangeOrigin::Resend (origin_guard_key={origin_guard_key})"
+                );
+                tracing::error!(
+                    origin_guard_key = %origin_guard_key,
+                    flow_id = %flow_id,
+                    "watcher: unexpected Resend origin; dropping snapshot to avoid double capture"
+                );
+                return Ok(());
+            }
         };
 
         // 4. Clone snapshot before capture consumes it.

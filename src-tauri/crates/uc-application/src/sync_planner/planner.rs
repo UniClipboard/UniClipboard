@@ -201,6 +201,16 @@ mod tests {
         OutboundSyncPlanner::new(Arc::new(InMemorySettings(Mutex::new(settings))))
     }
 
+    fn planner_with_file_sync_disabled() -> OutboundSyncPlanner {
+        let mut settings = Settings::default();
+        settings.file_sync.file_sync_enabled = false;
+        // max_file_size value is irrelevant when file_sync is off; pick a
+        // hostile zero so a future regression that flips the gate accidentally
+        // can't sneak past on a "default cap is huge" technicality.
+        settings.file_sync.max_file_size = 0;
+        OutboundSyncPlanner::new(Arc::new(InMemorySettings(Mutex::new(settings))))
+    }
+
     fn text_snapshot() -> SystemClipboardSnapshot {
         SystemClipboardSnapshot {
             ts_ms: 1_700_000_000_000,
@@ -277,5 +287,47 @@ mod tests {
             "cap=0 must not block Resend — bypass is unconditional for this origin"
         );
         assert_eq!(plan.files.len(), 1);
+    }
+
+    /// Resend bypasses `max_file_size` but MUST still honour
+    /// `file_sync_enabled = false`. The doc-comment on the planner claims
+    /// the gate "remains in force on both origins" — without an assertion
+    /// for the Resend + disabled combo, a future refactor that flips the
+    /// `user_initiated_outbound && file_sync_enabled` predicate would slip
+    /// through the existing bypass test (which only exercises the enabled
+    /// path). Also confirms the text-only clipboard intent still emits
+    /// (no `all_files_excluded` short-circuit when file sync isn't even
+    /// attempted).
+    #[tokio::test]
+    async fn resend_origin_respects_file_sync_disabled_gate() {
+        let planner = planner_with_file_sync_disabled();
+        let plan = planner
+            .plan(
+                text_snapshot(),
+                ClipboardChangeOrigin::Resend,
+                // Caller would normally pass empty when sync is off, but
+                // exercise the defensive contract: planner must drop these
+                // unilaterally regardless of what the caller hands it.
+                vec![candidate("ignored.bin", 1)],
+                1,
+            )
+            .await;
+
+        let intent = plan.clipboard.expect(
+            "file_sync_enabled = false must NOT suppress the clipboard intent — \
+             the all_files_excluded guard only fires when file sync was \
+             actually attempted (user_initiated_outbound && file_sync_enabled)",
+        );
+        assert!(
+            intent.file_transfers.is_empty(),
+            "no file transfers when file sync is disabled; got {:?}",
+            intent.file_transfers
+        );
+        assert!(
+            plan.files.is_empty(),
+            "Resend must honour file_sync_enabled = false (stronger user intent \
+             than max_file_size); got {} files",
+            plan.files.len()
+        );
     }
 }

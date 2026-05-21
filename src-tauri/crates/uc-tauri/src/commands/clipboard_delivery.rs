@@ -268,8 +268,11 @@ pub enum ResendEntryCommandError {
     #[error("entry not found: {entry_id}")]
     EntryNotFound { entry_id: String },
 
-    #[error("entry is not resendable: {reason:?}")]
-    EntryNotResendable { reason: NotResendableReasonDto },
+    #[error("entry {entry_id} is not resendable: {reason:?}")]
+    EntryNotResendable {
+        entry_id: String,
+        reason: NotResendableReasonDto,
+    },
 
     #[error("target device {device_id} is not a trusted peer")]
     TargetNotTrusted { device_id: String },
@@ -311,7 +314,8 @@ impl From<ResendEntryError> for ResendEntryCommandError {
             ResendEntryError::EntryNotFound(id) => Self::EntryNotFound {
                 entry_id: id.inner().clone(),
             },
-            ResendEntryError::EntryNotResendable { reason } => Self::EntryNotResendable {
+            ResendEntryError::EntryNotResendable { entry_id, reason } => Self::EntryNotResendable {
+                entry_id: entry_id.inner().clone(),
                 reason: reason.into(),
             },
             ResendEntryError::TargetNotTrusted(device_id) => Self::TargetNotTrusted {
@@ -422,11 +426,13 @@ mod resend_tests {
     }
 
     #[test]
-    fn entry_not_resendable_propagates_reason_discriminator() {
+    fn entry_not_resendable_propagates_reason_discriminator_and_entry_id() {
         let remote = ResendEntryError::EntryNotResendable {
+            entry_id: EntryId::from_str("ent-remote"),
             reason: NotResendableReason::RemoteOrigin,
         };
         let lost = ResendEntryError::EntryNotResendable {
+            entry_id: EntryId::from_str("ent-lost"),
             reason: NotResendableReason::PayloadLost,
         };
 
@@ -436,8 +442,10 @@ mod resend_tests {
 
         assert_eq!(remote_json["code"], "ENTRY_NOT_RESENDABLE");
         assert_eq!(remote_json["reason"], "remoteOrigin");
+        assert_eq!(remote_json["entryId"], "ent-remote");
         assert_eq!(lost_json["code"], "ENTRY_NOT_RESENDABLE");
         assert_eq!(lost_json["reason"], "payloadLost");
+        assert_eq!(lost_json["entryId"], "ent-lost");
     }
 
     #[test]

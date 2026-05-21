@@ -789,7 +789,7 @@ export type ResendEntryArgs = {
  *  集合需要 `deviceId` / `reason` / `entryId` 等结构化字段供 i18n key
  *  选择与文案占位。参考 `mobile_sync::MobileSyncError` 同模式。
  */
-export type ResendEntryCommandError = { code: "ENTRY_NOT_FOUND"; entryId: string } | { code: "ENTRY_NOT_RESENDABLE"; reason: NotResendableReasonDto } | { code: "TARGET_NOT_TRUSTED"; deviceId: string } | { code: "NO_ELIGIBLE_TARGETS" } | { code: "STORAGE"; message: string } | { code: "DISPATCH"; message: string };
+export type ResendEntryCommandError = { code: "ENTRY_NOT_FOUND"; entryId: string } | { code: "ENTRY_NOT_RESENDABLE"; entryId: string; reason: NotResendableReasonDto } | { code: "TARGET_NOT_TRUSTED"; deviceId: string } | { code: "NO_ELIGIBLE_TARGETS" } | { code: "STORAGE"; message: string } | { code: "DISPATCH"; message: string };
 
 /**
  *  `clipboard_resend_entry` 成功返回 —— fan-out 后的聚合计数。语义同

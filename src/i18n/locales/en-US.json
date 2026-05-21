@@ -1332,12 +1332,12 @@
       },
       "error": {
         "notResendable": {
-          "remoteOrigin": "This entry originated on another device and cannot be resent from here.",
-          "payloadLost": "This entry is no longer available on this device."
+          "remoteOrigin": "Entry {{entryIdShort}} originated on another device and cannot be resent from here.",
+          "payloadLost": "Entry {{entryIdShort}} is no longer available on this device."
         },
         "targetNotTrusted": "Device {{device}} is no longer paired.",
         "noEligibleTargets": "No eligible peers to resend to.",
-        "entryNotFound": "Entry not found.",
+        "entryNotFound": "Entry {{entryIdShort}} not found.",
         "internal": "Resend failed: {{message}}"
       }
     }

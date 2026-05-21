@@ -341,14 +341,13 @@ fn render_resend_error(err: &ResendEntryError) -> String {
         ResendEntryError::EntryNotFound(id) => {
             format!("Entry {id} not found in local storage.")
         }
-        ResendEntryError::EntryNotResendable { reason } => match reason {
-            NotResendableReason::RemoteOrigin => {
-                "Entry originated on a remote peer — resend is only supported for locally captured entries."
-                    .to_string()
-            }
-            NotResendableReason::PayloadLost => {
-                "Entry payload is no longer cached locally — cannot reconstruct snapshot.".to_string()
-            }
+        ResendEntryError::EntryNotResendable { entry_id, reason } => match reason {
+            NotResendableReason::RemoteOrigin => format!(
+                "Entry {entry_id} originated on a remote peer — resend is only supported for locally captured entries."
+            ),
+            NotResendableReason::PayloadLost => format!(
+                "Entry {entry_id} payload is no longer cached locally — cannot reconstruct snapshot."
+            ),
         },
         ResendEntryError::TargetNotTrusted(d) => format!(
             "Device {d} is not a trusted peer for this space.",

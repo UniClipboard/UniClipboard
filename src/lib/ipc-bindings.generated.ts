@@ -130,16 +130,10 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<boolean, string>(__TAURI_INVOKE("is_autostart_enabled", { trace })),
 	/**
-	 *  Check for an available update on the specified (or auto-detected) channel.
-	 * 
-	 *  Side-effects on `PendingUpdate`:
-	 *  - `Some(metadata)` returned & version matches an existing `Ready`: keep
-	 *    cached bytes (refresh `Update` handle, preserve `downloaded_at`).
-	 *  - `Some(metadata)` returned but version differs from `Ready`: discard
-	 *    bytes, transition to `Available(new_update)`.
-	 *  - `None` returned: transition to `None` (clear any prior cached bytes).
-	 *  - State is `Downloading`: refuse to re-check (v1 simplification — wait
-	 *    for the in-flight download to finish or be cancelled first).
+	 *  Tauri command — thin shell over [`do_check_for_update`] that emits
+	 *  `update_check_performed { source: "manual", ... }` after the inner
+	 *  resolves. scheduler-driven checks emit the same event with a different
+	 *  `source`（schema doc §7.8）；inner 函数本身不 emit。
 	 */
 	checkForUpdate: (channel: string | null, trace: {
 	trace_id: string,
@@ -154,6 +148,14 @@ export const commands = {
 	 *  Download the pending update in the background, broadcasting progress
 	 *  via `UPDATE_PROGRESS_EVENT`. Awaitable: the future resolves when the
 	 *  download completes, fails, or is cancelled.
+	 * 
+	 *  Thin shell over [`do_download_update`] that emits
+	 *  `update_action_invoked { action = "download_bg", outcome = started }`
+	 *  at entry (once the action actually transitions to `Downloading`) and
+	 *  a terminal `Succeeded` / `Failed` / `Cancelled` after the inner
+	 *  returns. Precondition rejections are returned to the frontend without
+	 *  emitting any telemetry —— the user did not actually start a download,
+	 *  so we keep the funnel分母干净.
 	 * 
 	 *  Pre-condition: state must be `Available`. `Downloading` returns
 	 *  "already downloading"; `Ready` returns "already downloaded"; `None`
@@ -207,6 +209,18 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<InstallKind, string>(__TAURI_INVOKE("get_install_kind", { trace })),
+	/**
+	 *  把前端 UI 触发的 update lifecycle 事件回送到后端 PostHog facade。
+	 * 
+	 *  仅 `DialogOpened` 会触发 `install_kind` probe；其他 variant 走直通映射。
+	 *  `analytics::capture` 自身是 fire-and-forget，所以本 command 不返回 wire 错误
+	 *  （即使 sink 在异步路径上失败，前端也无可处置；同 `commands/updater.rs`
+	 *  内部 emission 一致）。
+	 */
+	captureUpdateUiEvent: (event: UpdateUiEvent_Deserialize, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, CommandError>(__TAURI_INVOKE("capture_update_ui_event", { event, trace })),
 	/**
 	 *  Open the application data directory in the system file manager.
 	 *  在系统文件管理器中打开应用数据目录。
@@ -737,6 +751,27 @@ export type TrySilentUnlockResult = {
 	resumed: boolean,
 };
 
+/**  见 [`analytics::DialogOpenSource`]。wire form: `notification` | `sidebar_icon`。 */
+export type UiDialogOpenSource = "notification" | "sidebar_icon";
+
+/**
+ *  见 [`analytics::DismissSource`]。wire form: `dialog_later` | `dialog_closed` |
+ *  `package_manager_dialog_closed`。
+ */
+export type UiDismissSource = "dialog_later" | "dialog_closed" | "package_manager_dialog_closed";
+
+/**  见 [`analytics::UpdateAction`]。wire form: `download_bg` | `install`。 */
+export type UiUpdateAction = "download_bg" | "install";
+
+/**
+ *  见 [`analytics::UpdateActionOutcome`]。wire form: `started` | `succeeded` |
+ *  `failed` | `cancelled`。
+ */
+export type UiUpdateActionOutcome = "started" | "succeeded" | "failed" | "cancelled";
+
+/**  见 [`analytics::UpdatePhase`]。wire form: `available` | `downloading` | `ready`。 */
+export type UiUpdatePhase = "available" | "downloading" | "ready";
+
 /**
  *  前端 modal 提交的解锁请求。
  * 
@@ -859,6 +894,52 @@ export type UpdateMobileSyncSettingsResult = {
 	 */
 	lanListenerBindError: string | null,
 };
+
+/**
+ *  前端送来的 UI 触发事件（discriminated union by `kind`）。
+ * 
+ *  `install_kind` 不出现在任何 variant 里 —— 由后端在 dispatch 时反查注入
+ *  （schema doc §7.8 落地备注）。
+ */
+export type UpdateUiEvent = UpdateUiEvent_Serialize | UpdateUiEvent_Deserialize;
+
+/**
+ *  前端送来的 UI 触发事件（discriminated union by `kind`）。
+ * 
+ *  `install_kind` 不出现在任何 variant 里 —— 由后端在 dispatch 时反查注入
+ *  （schema doc §7.8 落地备注）。
+ */
+export type UpdateUiEvent_Deserialize = 
+/**  用户打开了 `UpdateDialog` / `PackageManagerUpdateDialog`。 */
+({ kind: "dialog_opened"; source: UiDialogOpenSource; phase: UiUpdatePhase }) & { action?: never; error_kind?: never; outcome?: never } | 
+/**  用户放弃了对话框（稍后 / 关闭 / 取消）。 */
+({ kind: "dismissed"; phase: UiUpdatePhase; source: UiDismissSource }) & { action?: never; error_kind?: never; outcome?: never } | 
+/**
+ *  前端纯 UI 路径触发的 action（如 `Cancelled`）。
+ * 
+ *  `error_kind` 必须是短标识符（< 32 字符，形如 `user_cancelled`）；
+ *  **绝不** 含路径 / URL / IP 等可还原用户标识的内容（schema doc §6.1）。
+ */
+({ kind: "action_invoked"; action: UiUpdateAction; outcome: UiUpdateActionOutcome; error_kind?: string | null }) & { phase?: never; source?: never };
+
+/**
+ *  前端送来的 UI 触发事件（discriminated union by `kind`）。
+ * 
+ *  `install_kind` 不出现在任何 variant 里 —— 由后端在 dispatch 时反查注入
+ *  （schema doc §7.8 落地备注）。
+ */
+export type UpdateUiEvent_Serialize = 
+/**  用户打开了 `UpdateDialog` / `PackageManagerUpdateDialog`。 */
+({ kind: "dialog_opened"; source: UiDialogOpenSource; phase: UiUpdatePhase }) & { action?: never; error_kind?: never; outcome?: never } | 
+/**  用户放弃了对话框（稍后 / 关闭 / 取消）。 */
+({ kind: "dismissed"; phase: UiUpdatePhase; source: UiDismissSource }) & { action?: never; error_kind?: never; outcome?: never } | 
+/**
+ *  前端纯 UI 路径触发的 action（如 `Cancelled`）。
+ * 
+ *  `error_kind` 必须是短标识符（< 32 字符，形如 `user_cancelled`）；
+ *  **绝不** 含路径 / URL / IP 等可还原用户标识的内容（schema doc §6.1）。
+ */
+({ kind: "action_invoked"; action: UiUpdateAction; outcome: UiUpdateActionOutcome; error_kind?: string | null }) & { phase?: never; source?: never };
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

@@ -12,6 +12,16 @@ reviews:
         Do not nitpick or suggest any changes related to Markdown formatting, line length, list styles, table alignment, spacing, link syntax, heading styles, or any other pure formatting issues.
         Focus exclusively on whether the content is accurate, clear, logically structured, and uses professional technical wording.
         Ignore all formatting-only problems.
+    - path: '**/*.{rs,ts,tsx,js,jsx,vue,py,svelte,mjs,cjs}'
+      instructions: |
+        Code comments in this repository MUST be written in Chinese (applies to `//`, `///`, `/* */`, and doc comments).
+        This rule is defined in AGENTS.md and CONTRIBUTING.md.
+        Do NOT suggest translating Chinese comments to English, and do NOT flag Chinese comments as issues.
+        The following are intentionally kept in English and must not be flagged:
+          - identifiers (function, type, variable, module names)
+          - commit messages and PR titles/descriptions
+          - proper nouns from external specs (RFCs, stdlib APIs, third-party library names)
+        Focus reviews on logic, correctness, safety, and design — not on comment language.
   tools:
     markdownlint:
       enabled: false

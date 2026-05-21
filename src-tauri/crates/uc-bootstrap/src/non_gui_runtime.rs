@@ -14,6 +14,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uc_application::clipboard_capture::CaptureClipboardUseCase;
 use uc_application::deps::AppDeps;
+use uc_application::facade::settings::{RelayDiagnosticPort, RelayProbeError, RelayProbeReport};
 use uc_application::facade::space_setup::SpaceSetupFacade;
 use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
@@ -36,6 +37,7 @@ use uc_infra::mobile_sync::{
     Argon2idPasswordHasher, FilesystemMobileFileStaging, NetworkInterfaceLanProbe,
     OsRngCredentialsMinter,
 };
+use uc_infra::network::iroh::{IrohRelayProbeAdapter, IrohRelayProbeError, IrohRelayProbeReport};
 
 use crate::assembly::get_storage_paths;
 use crate::space_setup::{build_space_setup_assembly, SpaceSetupAssembly};
@@ -69,6 +71,56 @@ impl HostEventEmitterPort for LoggingHostEventEmitter {
             }
         }
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IrohRelayDiagnosticAdapter
+// ---------------------------------------------------------------------------
+
+/// 在 bootstrap 层完成 application [`RelayDiagnosticPort`] 与 infra
+/// [`IrohRelayProbeAdapter`] 的拼接。
+///
+/// 选择把 trait 实现放在 bootstrap 而不是 infra,是为了保留分层架构:
+///
+/// * `uc-core` 不应知道"relay 探测"这类传输层诊断概念(参见 `uc-core/AGENTS.md`
+///   §6.2),所以 trait 不在 core;
+/// * `uc-application` 定义 trait + 错误集合,但只描述应用层语义,不依赖任何
+///   具体协议库;
+/// * `uc-infra` 持有 iroh-relay 实现,但不应反向依赖 application —— infra
+///   只暴露 inherent method,不实现任何上层 trait;
+/// * bootstrap 同时看见 application 与 infra,在这里写薄 newtype + trait
+///   实现,把两侧粘起来。1:1 错误映射也只发生在这一处。
+struct IrohRelayDiagnosticAdapter {
+    inner: Arc<IrohRelayProbeAdapter>,
+}
+
+#[async_trait]
+impl RelayDiagnosticPort for IrohRelayDiagnosticAdapter {
+    async fn probe(&self, url: &str) -> Result<RelayProbeReport, RelayProbeError> {
+        self.inner
+            .probe(url)
+            .await
+            .map(map_relay_probe_report)
+            .map_err(map_relay_probe_error)
+    }
+}
+
+fn map_relay_probe_report(report: IrohRelayProbeReport) -> RelayProbeReport {
+    RelayProbeReport {
+        latency_ms: report.latency_ms,
+        protocol_version: report.protocol_version,
+    }
+}
+
+fn map_relay_probe_error(err: IrohRelayProbeError) -> RelayProbeError {
+    match err {
+        IrohRelayProbeError::InvalidUrl(msg) => RelayProbeError::InvalidUrl(msg),
+        IrohRelayProbeError::Dns(msg) => RelayProbeError::Dns(msg),
+        IrohRelayProbeError::Tls(msg) => RelayProbeError::Tls(msg),
+        IrohRelayProbeError::Handshake(msg) => RelayProbeError::Handshake(msg),
+        IrohRelayProbeError::Timeout => RelayProbeError::Timeout,
+        IrohRelayProbeError::Other(msg) => RelayProbeError::Other(msg),
     }
 }
 
@@ -387,7 +439,28 @@ pub fn build_app_facade_from_deps(
             search_index: deps.search.search_index.clone(),
             coordinator: options.search_coordinator,
         })),
-        settings: Arc::new(SettingsFacade::new(deps.settings.clone())),
+        settings: Arc::new({
+            // Relay 诊断 adapter 在 daemon 启动期一次性装配。infra 探测器
+            // 初始化失败(TLS provider 缺失等)不应阻断整个 daemon 启动 ——
+            // 走"探测能力缺失"路径,前端会得到 RelayProbeUnavailable。
+            let mut facade = SettingsFacade::new(deps.settings.clone());
+            match IrohRelayProbeAdapter::new() {
+                Ok(probe) => {
+                    let adapter = IrohRelayDiagnosticAdapter {
+                        inner: Arc::new(probe),
+                    };
+                    facade = facade.with_relay_diagnostic(Arc::new(adapter));
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        target: "bootstrap.network",
+                        error = %err,
+                        "relay probe adapter unavailable; settings.probe_relay_url will reject"
+                    );
+                }
+            }
+            facade
+        }),
         device: Arc::new(DeviceFacade::new(
             deps.device.device_identity.clone(),
             deps.settings.clone(),

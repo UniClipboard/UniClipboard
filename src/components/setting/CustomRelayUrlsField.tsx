@@ -1,11 +1,28 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { Check, Loader2, Plus, SignalHigh, Trash2, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input } from '@/components/ui'
+import { probeRelayUrl, type RelayProbeOutcome } from '@/api/tauri-command/settings'
+import {
+  Button,
+  Input,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui'
 
 interface CustomRelayUrlsFieldProps {
   value: string[]
   onChange: (value: string[]) => void
 }
+
+type ProbeStatus =
+  | { kind: 'idle' }
+  | { kind: 'testing' }
+  | { kind: 'success'; latencyMs: number }
+  | { kind: 'failure'; message: string }
+
+const IDLE: ProbeStatus = { kind: 'idle' }
 
 function visibleRows(value: string[]): string[] {
   return value.length > 0 ? value : ['']
@@ -20,16 +37,31 @@ export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldPr
   const rows = visibleRows(value)
   const canRemoveOnlyRow = value.length > 0
   const canAddRow = rows[rows.length - 1]?.trim() !== ''
+  const [statuses, setStatuses] = useState<Record<number, ProbeStatus>>({})
+
+  const clearStatusAt = (index: number) => {
+    setStatuses(previous => {
+      if (!(index in previous)) return previous
+      const next = { ...previous }
+      delete next[index]
+      return next
+    })
+  }
 
   const handleRowChange = (index: number, nextValue: string) => {
     const next = [...rows]
     next[index] = nextValue
     onChange(collapseSingleEmptyRow(next))
+    // Result is no longer trustworthy once the URL changes.
+    clearStatusAt(index)
   }
 
   const handleRemoveRow = (index: number) => {
     if (!canRemoveOnlyRow && rows.length === 1) return
     onChange(collapseSingleEmptyRow(rows.filter((_, rowIndex) => rowIndex !== index)))
+    // Indices shift after removal; safest is to drop every cached status so
+    // we never display a result against a different URL than the user tested.
+    setStatuses({})
   }
 
   const handleAddRow = () => {
@@ -37,59 +69,210 @@ export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldPr
     onChange([...value, ''])
   }
 
+  const handleTestRow = async (index: number, url: string) => {
+    const trimmed = url.trim()
+    if (trimmed.length === 0) return
+    setStatuses(previous => ({ ...previous, [index]: { kind: 'testing' } }))
+    try {
+      const outcome = await probeRelayUrl(trimmed)
+      setStatuses(previous => ({ ...previous, [index]: outcomeToStatus(outcome, t) }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setStatuses(previous => ({
+        ...previous,
+        [index]: {
+          kind: 'failure',
+          message: t('settings.sections.network.customRelays.testErrors.unavailable', {
+            defaultValue: message,
+          }),
+        },
+      }))
+    }
+  }
+
   return (
-    <div className="space-y-3 px-4 py-3">
-      <div className="space-y-0.5">
-        <label htmlFor="custom-relay-url-0" className="text-sm font-medium">
-          {t('settings.sections.network.customRelays.label')}
-        </label>
-        <p className="text-xs leading-snug text-muted-foreground">
-          {t('settings.sections.network.customRelays.description')}
-        </p>
-      </div>
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-3 px-4 py-3">
+        <div className="space-y-0.5">
+          <label htmlFor="custom-relay-url-0" className="text-sm font-medium">
+            {t('settings.sections.network.customRelays.label')}
+          </label>
+          <p className="text-xs leading-snug text-muted-foreground">
+            {t('settings.sections.network.customRelays.description')}
+          </p>
+        </div>
 
-      <div className="space-y-2">
-        {rows.map((url, index) => (
-          <div key={index} className="flex min-w-0 items-center gap-2">
-            <Input
-              id={index === 0 ? 'custom-relay-url-0' : undefined}
-              type="url"
-              inputMode="url"
-              autoComplete="off"
-              value={url}
-              placeholder={t('settings.sections.network.customRelays.placeholder')}
-              aria-label={t('settings.sections.network.customRelays.itemAriaLabel', {
-                index: index + 1,
-              })}
-              className="font-mono text-xs"
-              onChange={event => handleRowChange(index, event.target.value)}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t('settings.sections.network.customRelays.removeAriaLabel', {
-                index: index + 1,
-              })}
-              disabled={!canRemoveOnlyRow && rows.length === 1}
-              onClick={() => handleRemoveRow(index)}
-            >
-              <Trash2 aria-hidden="true" />
-            </Button>
-          </div>
-        ))}
-      </div>
+        <div className="space-y-2">
+          {rows.map((url, index) => {
+            const status = statuses[index] ?? IDLE
+            const canTest = url.trim().length > 0 && status.kind !== 'testing'
+            return (
+              <div key={index} className="flex min-w-0 items-center gap-2">
+                <Input
+                  id={index === 0 ? 'custom-relay-url-0' : undefined}
+                  type="url"
+                  inputMode="url"
+                  autoComplete="off"
+                  value={url}
+                  placeholder={t('settings.sections.network.customRelays.placeholder')}
+                  aria-label={t('settings.sections.network.customRelays.itemAriaLabel', {
+                    index: index + 1,
+                  })}
+                  className="font-mono text-xs"
+                  onChange={event => handleRowChange(index, event.target.value)}
+                />
+                <ProbeButton
+                  status={status}
+                  disabled={!canTest}
+                  ariaLabel={t('settings.sections.network.customRelays.testAriaLabel', {
+                    index: index + 1,
+                  })}
+                  onClick={() => handleTestRow(index, url)}
+                  tooltip={statusTooltip(status, t)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t('settings.sections.network.customRelays.removeAriaLabel', {
+                    index: index + 1,
+                  })}
+                  disabled={!canRemoveOnlyRow && rows.length === 1}
+                  onClick={() => handleRemoveRow(index)}
+                >
+                  <Trash2 aria-hidden="true" />
+                </Button>
+              </div>
+            )
+          })}
+        </div>
 
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={!canAddRow}
-        onClick={handleAddRow}
-      >
-        <Plus aria-hidden="true" />
-        {t('settings.sections.network.customRelays.addButton')}
-      </Button>
-    </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!canAddRow}
+          onClick={handleAddRow}
+        >
+          <Plus aria-hidden="true" />
+          {t('settings.sections.network.customRelays.addButton')}
+        </Button>
+      </div>
+    </TooltipProvider>
   )
+}
+
+interface ProbeButtonProps {
+  status: ProbeStatus
+  disabled: boolean
+  ariaLabel: string
+  tooltip: string | null
+  onClick: () => void
+}
+
+function ProbeButton({ status, disabled, ariaLabel, tooltip, onClick }: ProbeButtonProps) {
+  const button = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={onClick}
+      data-probe-status={status.kind}
+      className={
+        status.kind === 'success'
+          ? 'text-emerald-600 hover:text-emerald-700 dark:text-emerald-400'
+          : status.kind === 'failure'
+            ? 'text-destructive hover:text-destructive'
+            : undefined
+      }
+    >
+      {status.kind === 'testing' ? (
+        <Loader2 aria-hidden="true" className="animate-spin" />
+      ) : status.kind === 'success' ? (
+        <Check aria-hidden="true" />
+      ) : status.kind === 'failure' ? (
+        <TriangleAlert aria-hidden="true" />
+      ) : (
+        <SignalHigh aria-hidden="true" />
+      )}
+    </Button>
+  )
+
+  if (!tooltip) return button
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="top">{tooltip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function statusTooltip(
+  status: ProbeStatus,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string | null {
+  switch (status.kind) {
+    case 'testing':
+      return t('settings.sections.network.customRelays.testing')
+    case 'success':
+      return t('settings.sections.network.customRelays.testSuccess', {
+        latencyMs: status.latencyMs,
+      })
+    case 'failure':
+      return status.message
+    case 'idle':
+      return null
+  }
+}
+
+function outcomeToStatus(
+  outcome: RelayProbeOutcome,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): ProbeStatus {
+  switch (outcome.kind) {
+    case 'success':
+      return { kind: 'success', latencyMs: outcome.latencyMs }
+    case 'invalidUrl':
+      return {
+        kind: 'failure',
+        message: t('settings.sections.network.customRelays.testErrors.invalidUrl', {
+          message: outcome.message,
+        }),
+      }
+    case 'dns':
+      return {
+        kind: 'failure',
+        message: t('settings.sections.network.customRelays.testErrors.dns', {
+          message: outcome.message,
+        }),
+      }
+    case 'tls':
+      return {
+        kind: 'failure',
+        message: t('settings.sections.network.customRelays.testErrors.tls', {
+          message: outcome.message,
+        }),
+      }
+    case 'handshake':
+      return {
+        kind: 'failure',
+        message: t('settings.sections.network.customRelays.testErrors.handshake', {
+          message: outcome.message,
+        }),
+      }
+    case 'timeout':
+      return {
+        kind: 'failure',
+        message: t('settings.sections.network.customRelays.testErrors.timeout'),
+      }
+    case 'other':
+      return {
+        kind: 'failure',
+        message: t('settings.sections.network.customRelays.testErrors.other', {
+          message: outcome.message,
+        }),
+      }
+  }
 }

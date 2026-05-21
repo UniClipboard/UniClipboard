@@ -78,6 +78,7 @@ pub fn build() -> Builder<tauri::Wry> {
             crate::commands::quick_panel::set_quick_panel_enabled,
             // ── settings ────────────────────────────────────────────────────────
             crate::commands::settings::update_keyboard_shortcuts,
+            crate::commands::settings::probe_relay_url,
             // ── mobile sync ─────────────────────────────────────────────────────
             crate::commands::mobile_sync::register_mobile_device,
             crate::commands::mobile_sync::revoke_mobile_device,

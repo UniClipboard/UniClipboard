@@ -88,6 +88,13 @@ zstd = { version = "0.13", features = ["zstdmt"] }
 # pushing it onto Clash TUN paths.
 iroh = { version = "0.98", features = ["address-lookup-mdns"] }
 iroh-blobs = "0.100"
+# 直接依赖 iroh-relay 0.98 以使用其 ClientBuilder 做"中继可达性探测"。
+# iroh 本身只 re-export 了 `dns`/`RelayMap`,没有暴露 `client` 模块。
+# default features 已经带上 `tls-ring`,与 iroh 自身保持一致。
+iroh-relay = "0.98"
+# 用于持有 ClientBuilder 需要的 `ClientConfig`。版本对齐 iroh / iroh-relay
+# 通过 cargo tree 已锁定到 0.23 主线,这里不重复写 default-features = false。
+rustls = "0.23"
 iroh-tickets = "0.5"
 # iroh 0.97 forked quinn-proto into noq-proto (Custom Transports & noq).
 # Used solely to reach `congestion::BbrConfig` when wiring the QUIC

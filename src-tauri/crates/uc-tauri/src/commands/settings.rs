@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{error, info_span, Instrument};
-use uc_application::facade::settings::{SettingsPatch, ShortcutKeyView};
+use uc_application::facade::settings::{
+    RelayProbeReportView, SettingsFacadeError, SettingsPatch, ShortcutKeyView,
+};
 use uc_desktop::shortcuts::{self, CurrentShortcuts, QUICK_PANEL_SHORTCUT_SETTINGS_KEY};
 use uc_platform::ports::observability::TraceMetadata;
 
@@ -190,6 +192,99 @@ fn keyboard_shortcuts_to_dto(
         .iter()
         .map(|(id, shortcut)| (id.clone(), ShortcutKeyDto::from(shortcut.clone())))
         .collect()
+}
+
+/// 一次 `probe_relay_url` 调用的细分结果。
+///
+/// 探测失败属于"用户可以理解的预期场景"(URL 写错、对端 DNS 不可达、TLS
+/// 不可信等),所以这些状态以 `Ok(outcome)` 的形式返回,让前端可以在不抛
+/// 异常的前提下区分文案。系统级故障(facade 缺失装配、trace 解析失败等)
+/// 仍然走 [`CommandError`]。
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum RelayProbeOutcome {
+    Success {
+        latency_ms: u32,
+        protocol_version: Option<String>,
+    },
+    InvalidUrl {
+        message: String,
+    },
+    Dns {
+        message: String,
+    },
+    Tls {
+        message: String,
+    },
+    Handshake {
+        message: String,
+    },
+    Timeout,
+    Other {
+        message: String,
+    },
+}
+
+impl From<RelayProbeReportView> for RelayProbeOutcome {
+    fn from(value: RelayProbeReportView) -> Self {
+        RelayProbeOutcome::Success {
+            latency_ms: value.latency_ms,
+            protocol_version: value.protocol_version,
+        }
+    }
+}
+
+/// 对单个候选中继 URL 发起一次握手探测。
+///
+/// 不读取也不修改任何持久化设置;UI 可以重复调用以做"在保存前先试一下"。
+/// 探测失败映射到 [`RelayProbeOutcome`] 的细分变体,系统级故障(adapter
+/// 未装配等)走 [`CommandError`]。
+#[tauri::command]
+#[specta::specta]
+pub async fn probe_relay_url(
+    runtime: State<'_, std::sync::Arc<crate::bootstrap::TauriAppRuntime>>,
+    url: String,
+    _trace: Option<TraceMetadata>,
+) -> Result<RelayProbeOutcome, CommandError> {
+    let span = info_span!(
+        "command.settings.probe_relay_url",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let facade = runtime.app_facade();
+        match facade.settings.probe_relay_url(&url).await {
+            Ok(report) => Ok(report.into()),
+            Err(SettingsFacadeError::RelayProbeInvalidUrl(msg)) => {
+                Ok(RelayProbeOutcome::InvalidUrl { message: msg })
+            }
+            Err(SettingsFacadeError::RelayProbeDns(msg)) => {
+                Ok(RelayProbeOutcome::Dns { message: msg })
+            }
+            Err(SettingsFacadeError::RelayProbeTls(msg)) => {
+                Ok(RelayProbeOutcome::Tls { message: msg })
+            }
+            Err(SettingsFacadeError::RelayProbeHandshake(msg)) => {
+                Ok(RelayProbeOutcome::Handshake { message: msg })
+            }
+            Err(SettingsFacadeError::RelayProbeTimeout) => Ok(RelayProbeOutcome::Timeout),
+            Err(SettingsFacadeError::RelayProbeOther(msg)) => {
+                Ok(RelayProbeOutcome::Other { message: msg })
+            }
+            Err(SettingsFacadeError::RelayProbeUnavailable) => Err(CommandError::internal(
+                "relay probe adapter is not wired up in this runtime",
+            )),
+            Err(other) => Err(CommandError::internal(other)),
+        }
+    }
+    .instrument(span)
+    .await
 }
 
 impl From<ShortcutKeyDto> for ShortcutKeyView {

@@ -323,7 +323,19 @@
           "itemAriaLabel": "自定义中继节点 {{index}}",
           "removeAriaLabel": "移除中继节点 {{index}}",
           "saveError": "保存自定义中继失败：{{message}}。已恢复到上一次的设置。",
-          "invalidUrl": "无效的中继 URL：{{url}}。请输入 http 或 https URL。"
+          "invalidUrl": "无效的中继 URL：{{url}}。请输入 http 或 https URL。",
+          "testAriaLabel": "测试中继节点 {{index}}",
+          "testing": "正在测试中继节点…",
+          "testSuccess": "握手成功（{{latencyMs}} ms）",
+          "testErrors": {
+            "invalidUrl": "无效的中继 URL：{{message}}",
+            "dns": "无法解析中继域名：{{message}}",
+            "tls": "TLS 握手失败：{{message}}",
+            "handshake": "iroh-relay 握手失败：{{message}}",
+            "timeout": "测试超时，未能在 5 秒内完成握手",
+            "other": "测试失败：{{message}}",
+            "unavailable": "当前运行环境未启用中继测试能力。"
+          }
         },
         "restartBanner": {
           "message": "需要重启应用以使网络设置更改生效。",

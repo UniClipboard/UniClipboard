@@ -301,6 +301,17 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<UpdateKeyboardShortcutsResult, CommandError>(__TAURI_INVOKE("update_keyboard_shortcuts", { shortcuts, trace })),
 	/**
+	 *  对单个候选中继 URL 发起一次握手探测。
+	 * 
+	 *  不读取也不修改任何持久化设置;UI 可以重复调用以做"在保存前先试一下"。
+	 *  探测失败映射到 [`RelayProbeOutcome`] 的细分变体,系统级故障(adapter
+	 *  未装配等)走 [`CommandError`]。
+	 */
+	probeRelayUrl: (url: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<RelayProbeOutcome, CommandError>(__TAURI_INVOKE("probe_relay_url", { url, trace })),
+	/**
 	 *  登记一台 iPhone Shortcut 设备：颁发 (username, password) Basic Auth 凭据 +
 	 *  渲染 SyncClipboard install URL 的二维码。`password` 在返回值里是**唯一一次**
 	 *  面向用户的明文回显——前端必须立即展示 + 强制用户勾选"已保存"才允许关闭。
@@ -681,6 +692,16 @@ export type RegisterMobileDeviceResult = {
 	 */
 	qrCodePngBase64: string,
 };
+
+/**
+ *  一次 `probe_relay_url` 调用的细分结果。
+ * 
+ *  探测失败属于"用户可以理解的预期场景"(URL 写错、对端 DNS 不可达、TLS
+ *  不可信等),所以这些状态以 `Ok(outcome)` 的形式返回,让前端可以在不抛
+ *  异常的前提下区分文案。系统级故障(facade 缺失装配、trace 解析失败等)
+ *  仍然走 [`CommandError`]。
+ */
+export type RelayProbeOutcome = { kind: "success"; latencyMs: number; protocolVersion: string | null } | { kind: "invalidUrl"; message: string } | { kind: "dns"; message: string } | { kind: "tls"; message: string } | { kind: "handshake"; message: string } | { kind: "timeout" } | { kind: "other"; message: string };
 
 /**
  *  `rotate_mobile_password` 入参。`password = None` (字段缺失或 null) 走

@@ -15,6 +15,7 @@ pub mod identity_store;
 pub mod node;
 pub mod persistable_addr;
 pub mod presence_adapter;
+pub mod relay_probe;
 mod runtime_consts;
 pub mod transfer_progress_adapter;
 pub mod transfer_progress_wire;
@@ -31,3 +32,7 @@ pub use node::{
     PairingHandlers, TransferProgressHandlers,
 };
 pub use presence_adapter::{IrohPresenceAdapter, IrohPresenceHandler, PRESENCE_ALPN};
+pub use relay_probe::{
+    IrohRelayProbeAdapter, RelayProbeError as IrohRelayProbeError,
+    RelayProbeReport as IrohRelayProbeReport,
+};

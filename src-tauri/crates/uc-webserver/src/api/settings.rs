@@ -155,6 +155,18 @@ fn settings_error_to_api(op: &'static str, err: app_settings::SettingsFacadeErro
             ApiError::internal(format!("failed to save settings: {msg}")),
         ),
         E::Invalid(msg) => ("invalid", ApiError::bad_request(msg)),
+        // Webserver 不暴露 /settings/probe-relay 端点;若上层调用走错路,
+        // 这里以 internal 失败兜底而不是静默吞掉。
+        E::RelayProbeUnavailable
+        | E::RelayProbeInvalidUrl(_)
+        | E::RelayProbeDns(_)
+        | E::RelayProbeTls(_)
+        | E::RelayProbeHandshake(_)
+        | E::RelayProbeTimeout
+        | E::RelayProbeOther(_) => (
+            "relay_probe",
+            ApiError::internal("relay probe is not exposed via webserver".to_string()),
+        ),
     };
     log_facade_failure("settings", op, variant, api.status, &api.message);
     api

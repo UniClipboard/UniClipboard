@@ -11,6 +11,9 @@
 
 import type { ShortcutKey } from '@/api/daemon/settings'
 import { commands } from '@/lib/ipc'
+import type { RelayProbeOutcome } from '@/lib/ipc-bindings.generated'
+
+export type { RelayProbeOutcome }
 
 export type KeyboardShortcutsPatch = Record<string, ShortcutKey | null>
 
@@ -60,4 +63,19 @@ function shortcutKeyEquals(left: ShortcutKey | undefined, right: ShortcutKey | u
  */
 export async function setQuickPanelEnabled(enabled: boolean): Promise<void> {
   await commands.setQuickPanelEnabled(enabled)
+}
+
+/**
+ * Run a one-shot reachability probe against an iroh relay URL.
+ *
+ * Returns a discriminated `RelayProbeOutcome` — successful handshakes and
+ * predictable failures (invalid URL, DNS error, TLS error, timeout, …) all
+ * resolve, so UI code can present targeted messaging without try/catch.
+ * The promise itself only rejects when the backend can't run the probe at
+ * all (e.g. the adapter isn't wired up in this runtime).
+ *
+ * Backend: `commands::settings::probe_relay_url`.
+ */
+export async function probeRelayUrl(url: string): Promise<RelayProbeOutcome> {
+  return commands.probeRelayUrl(url)
 }

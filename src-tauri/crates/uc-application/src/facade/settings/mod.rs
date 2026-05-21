@@ -1,7 +1,8 @@
 mod facade;
 mod models;
+mod relay_diagnostic;
 
-pub use facade::{SettingsFacade, SettingsFacadeError};
+pub use facade::{RelayProbeReportView, SettingsFacade, SettingsFacadeError};
 pub use models::{
     ContentTypesPatch, ContentTypesView, FileSyncSettingsPatch, FileSyncSettingsView,
     GeneralSettingsPatch, GeneralSettingsView, NetworkSettingsPatch, NetworkSettingsView,
@@ -11,3 +12,4 @@ pub use models::{
     ShortcutKeyView, SyncFrequencyView, SyncSettingsPatch, SyncSettingsView, ThemeView,
     UpdateChannelView,
 };
+pub use relay_diagnostic::{RelayDiagnosticPort, RelayProbeError, RelayProbeReport};

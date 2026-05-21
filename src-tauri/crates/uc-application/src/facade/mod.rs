@@ -122,7 +122,8 @@ pub use search::{
 pub use settings::{
     ContentTypesPatch as SettingsContentTypesPatch, ContentTypesView as SettingsContentTypesView,
     FileSyncSettingsPatch, FileSyncSettingsView, GeneralSettingsPatch, GeneralSettingsView,
-    PairingSettingsPatch, PairingSettingsView, RetentionPolicyPatch, RetentionPolicyView,
+    PairingSettingsPatch, PairingSettingsView, RelayDiagnosticPort, RelayProbeError,
+    RelayProbeReport, RelayProbeReportView, RetentionPolicyPatch, RetentionPolicyView,
     RetentionRulePatchValue, RetentionRuleView, RuleEvaluationView, SecuritySettingsPatch,
     SecuritySettingsView, SettingsFacade, SettingsFacadeError, SettingsPatch, SettingsView,
     ShortcutKeyView, SyncFrequencyView, SyncSettingsPatch, SyncSettingsView, ThemeView,

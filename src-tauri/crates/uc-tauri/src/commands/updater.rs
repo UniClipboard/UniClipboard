@@ -274,7 +274,7 @@ pub(crate) async fn do_check_for_update(
 /// Convert the running binary's [`InstallKind`] (Tauri command wire form) to
 /// the telemetry [`AnalyticsInstallKind`]. Both enums must stay wire-equivalent
 /// (schema doc §7.9)；这里只是把同形态值在两个 crate 的类型之间搬运一次。
-fn install_kind_for_telemetry(kind: InstallKind) -> AnalyticsInstallKind {
+pub(crate) fn install_kind_for_telemetry(kind: InstallKind) -> AnalyticsInstallKind {
     match kind {
         InstallKind::Macos => AnalyticsInstallKind::Macos,
         InstallKind::Windows => AnalyticsInstallKind::Windows,
@@ -293,7 +293,7 @@ fn install_kind_for_telemetry(kind: InstallKind) -> AnalyticsInstallKind {
 ///
 /// 重命名禁止（schema doc §8），值仅四个：`network` / `http_error` /
 /// `parse_error` / `other`。
-fn classify_check_failure(err: &str) -> UpdateFailureKind {
+pub(crate) fn classify_check_failure(err: &str) -> UpdateFailureKind {
     let lower = err.to_ascii_lowercase();
     if lower.contains("signature")
         || lower.contains("minisign")
@@ -872,17 +872,17 @@ pub async fn get_install_kind(_trace: Option<TraceMetadata>) -> Result<InstallKi
 }
 
 #[cfg(target_os = "macos")]
-fn detect_install_kind() -> InstallKind {
+pub(crate) fn detect_install_kind() -> InstallKind {
     InstallKind::Macos
 }
 
 #[cfg(target_os = "windows")]
-fn detect_install_kind() -> InstallKind {
+pub(crate) fn detect_install_kind() -> InstallKind {
     InstallKind::Windows
 }
 
 #[cfg(target_os = "linux")]
-fn detect_install_kind() -> InstallKind {
+pub(crate) fn detect_install_kind() -> InstallKind {
     use std::sync::OnceLock;
     static CACHE: OnceLock<InstallKind> = OnceLock::new();
     *CACHE.get_or_init(detect_install_kind_linux)

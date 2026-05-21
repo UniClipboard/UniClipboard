@@ -9911,6 +9911,7 @@ name = "uc-tauri"
 version = "0.11.0-alpha.1"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "chrono",
  "core-foundation 0.10.1",
@@ -9920,6 +9921,7 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+ "rand 0.9.4",
  "sentry",
  "serde",
  "serde_json",
@@ -9937,6 +9939,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
  "tracing",
  "uc-application",
  "uc-bootstrap",

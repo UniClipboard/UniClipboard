@@ -19,7 +19,7 @@ use uc_application::facade::{
 use uc_bootstrap::{
     build_app_facade_from_deps, AppFacadeAssemblyOptions, ClipboardRestoreAssembly, TaskRegistry,
 };
-use uc_core::ports::SettingsPort;
+use uc_core::ports::{SettingsPort, SetupStatusPort};
 use uc_observability::analytics::AnalyticsPort;
 
 /// 桌面端 app runtime(GUI-framework agnostic)。
@@ -35,6 +35,9 @@ pub struct DesktopRuntime {
     /// 产品 telemetry sink。透传 `AppDeps::analytics`（已包 `GatedAnalyticsSink`
     /// 一层），shell 与后台任务直接 `capture(Event::X)`，不必自己查 gate。
     analytics: Arc<dyn AnalyticsPort>,
+    /// `SetupStatus` 读写端口（透传 `AppDeps::setup_status`）。后台任务
+    /// （如 update scheduler）需要在启动循环前等 `has_completed == true`。
+    setup_status: Arc<dyn SetupStatusPort>,
     storage_paths: AppPaths,
     device_id: String,
 }
@@ -57,6 +60,7 @@ impl DesktopRuntime {
         let device_id = deps.device.device_identity.current_device_id().to_string();
         let settings_port = deps.settings.clone();
         let analytics = deps.analytics.clone();
+        let setup_status = deps.setup_status.clone();
 
         let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
             Arc::new(InMemoryLifecycleStatus::new());
@@ -91,6 +95,7 @@ impl DesktopRuntime {
             task_registry,
             settings_port,
             analytics,
+            setup_status,
             storage_paths,
             device_id,
         }
@@ -116,6 +121,12 @@ impl DesktopRuntime {
     /// `usage_analytics_enabled`。
     pub fn analytics(&self) -> Arc<dyn AnalyticsPort> {
         self.analytics.clone()
+    }
+
+    /// `SetupStatus` 读写端口。后台 scheduler 在启动循环前 poll
+    /// `get_status().has_completed`，setup 期间不打扰用户。
+    pub fn setup_status_port(&self) -> Arc<dyn SetupStatusPort> {
+        self.setup_status.clone()
     }
 
     /// Returns the storage paths bundle (db / vault / cache / logs / app data root).

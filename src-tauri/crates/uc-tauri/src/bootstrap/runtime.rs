@@ -42,7 +42,7 @@ use std::sync::{Arc, RwLock};
 use uc_application::deps::AppDeps;
 use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
 use uc_bootstrap::TaskRegistry;
-use uc_core::ports::SettingsPort;
+use uc_core::ports::{SettingsPort, SetupStatusPort};
 use uc_desktop::DesktopRuntime;
 use uc_observability::analytics::AnalyticsPort;
 
@@ -141,6 +141,12 @@ impl TauriAppRuntime {
     /// `capture(Event::X)`，gate 由 `GatedAnalyticsSink` 守护。
     pub fn analytics(&self) -> Arc<dyn AnalyticsPort> {
         self.desktop.analytics()
+    }
+
+    /// `SetupStatus` 读写端口。`update_scheduler` 启动循环前 poll
+    /// `has_completed`。
+    pub fn setup_status_port(&self) -> Arc<dyn SetupStatusPort> {
+        self.desktop.setup_status_port()
     }
 
     pub fn storage_paths(&self) -> &AppPaths {

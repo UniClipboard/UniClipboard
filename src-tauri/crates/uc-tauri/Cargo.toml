@@ -37,6 +37,8 @@ url = "2"
 
 # Async
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+rand = "0.9"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -91,4 +93,5 @@ sentry = { version = "0.48.1", default-features = false, features = ["test"] }
 tauri = { workspace = true, features = ["test"] }
 tempfile = "3"
 mockall = "0.13"
+async-trait = "0.1"
 tokio = { version = "1", features = ["full", "test-util"] }

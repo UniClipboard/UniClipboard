@@ -156,6 +156,77 @@ pub enum Event {
     /// [`MobileAuthFailureKind`] 切分，让 dashboard 区分"用户名错"和
     /// "密码错"——这是产品视角的 iPhone 端密码错误率指标。
     MobileAuthFailed { failure_kind: MobileAuthFailureKind },
+
+    // —— Update Lifecycle ————————————————————————————————————————
+    /// 一次更新检查完成（成功或失败均 emit）。schema doc §7.8。
+    ///
+    /// `source = manual` 由 `commands/updater.rs::check_for_update` Tauri command
+    /// 自身 emit；`startup` / `scheduled` / `window_show` 全部由 `update_scheduler`
+    /// emit——两类 source **绝不** 混用同一调用路径（schema doc §7.8 红线）。
+    /// `do_check_for_update` 内部函数不 emit，由 caller 决定 source。
+    ///
+    /// `failure_kind` 只在 `outcome == Failed` 时填充，其他 outcome 必须为
+    /// `None`——`None` 字段在 wire 上完全消失（不发 `null`）。
+    UpdateCheckPerformed {
+        source: UpdateCheckSource,
+        outcome: UpdateCheckOutcome,
+        failure_kind: Option<UpdateFailureKind>,
+        install_kind: InstallKind,
+    },
+
+    /// 一次系统通知投递（已通过同版本去重）。schema doc §7.8。
+    ///
+    /// 由 `update_scheduler::notification::send_update_notification` 在调用
+    /// `tauri-plugin-notification` 之后 emit。`delivery_status` 覆盖三态：
+    /// 投递成功 / 权限拒绝 / 投递失败——后两者也 emit（事件本身发生但未
+    /// 必到达用户），dashboard 端按 `delivery_status = sent` 计算到达率分子。
+    ///
+    /// `version` 是 updater manifest 返回的版本字符串原文（如 `0.12.0`、
+    /// `0.13.0-alpha.1`）。低基数（每 channel 同时只有一个新版本），不需要
+    /// bucketize。
+    UpdateNotificationShown {
+        version: String,
+        delivery_status: NotificationDeliveryStatus,
+        install_kind: InstallKind,
+    },
+
+    /// 用户打开了更新对话框（`UpdateDialog` 或 `PackageManagerUpdateDialog`）。
+    /// schema doc §7.8。
+    ///
+    /// 由前端 `setUpdateDialogOpen(true)` / `setPackageManagerDialogOpen(true)`
+    /// 之后通过 `capture_update_ui_event` Tauri command 转送到本事件。
+    /// `install_kind` 在 backend 接收时反查 scheduler 缓存注入，前端不需要知道。
+    UpdateDialogOpened {
+        source: DialogOpenSource,
+        phase: UpdatePhase,
+        install_kind: InstallKind,
+    },
+
+    /// 用户主动放弃了更新对话框（"稍后" / 关闭 / 取消）。schema doc §7.8。
+    ///
+    /// `phase` 仅 `Available` / `Ready` 两值在产品语义上有效——`Downloading`
+    /// 阶段没有用户可触发的 dismiss 入口（下载是自动后台行为）；类型上保留
+    /// `UpdatePhase` 三值但运行时不会 emit `Downloading`。
+    UpdateDismissed {
+        phase: UpdatePhase,
+        source: DismissSource,
+    },
+
+    /// 用户（或 scheduler 自动）触发了下载或安装动作。schema doc §7.8。
+    ///
+    /// 由 `commands/updater.rs::download_update` / `install_update` Tauri
+    /// command body 在入口处 emit（`source` 字段**未** 引入——`action` 已把
+    /// lifecycle stage 表达清楚，详见 schema doc §7.8 落地备注）。`outcome`
+    /// 在动作开始时为 `Started`，完成 / 失败 / 取消时再次 emit 一条事件。
+    ///
+    /// `error_kind` 仅 `outcome == Failed` 时填充，是短标识符（< 32 字符，
+    /// 形如 `io_error` / `signature_mismatch`）；**绝不** 含路径、URL、IP 或
+    /// 其他可还原用户标识的内容（schema doc §6.1）。
+    UpdateActionInvoked {
+        action: UpdateAction,
+        outcome: UpdateActionOutcome,
+        error_kind: Option<String>,
+    },
 }
 
 impl Event {
@@ -183,6 +254,11 @@ impl Event {
             Event::MobileDeviceRegistered => "mobile_device_registered",
             Event::MobileClipboardSynced { .. } => "mobile_clipboard_synced",
             Event::MobileAuthFailed { .. } => "mobile_auth_failed",
+            Event::UpdateCheckPerformed { .. } => "update_check_performed",
+            Event::UpdateNotificationShown { .. } => "update_notification_shown",
+            Event::UpdateDialogOpened { .. } => "update_dialog_opened",
+            Event::UpdateDismissed { .. } => "update_dismissed",
+            Event::UpdateActionInvoked { .. } => "update_action_invoked",
         }
     }
 
@@ -290,6 +366,57 @@ impl Event {
             })),
             Event::MobileAuthFailed { failure_kind } => {
                 to_map(json!({ "failure_kind": failure_kind }))
+            }
+            Event::UpdateCheckPerformed {
+                source,
+                outcome,
+                failure_kind,
+                install_kind,
+            } => {
+                let mut m = Map::new();
+                m.insert("source".into(), json!(source));
+                m.insert("outcome".into(), json!(outcome));
+                m.insert("install_kind".into(), json!(install_kind));
+                // None 不出现在 wire（schema doc §10.1：PostHog 把 null 当显式清空）。
+                if let Some(kind) = failure_kind {
+                    m.insert("failure_kind".into(), json!(kind));
+                }
+                m
+            }
+            Event::UpdateNotificationShown {
+                version,
+                delivery_status,
+                install_kind,
+            } => to_map(json!({
+                "version": version,
+                "delivery_status": delivery_status,
+                "install_kind": install_kind,
+            })),
+            Event::UpdateDialogOpened {
+                source,
+                phase,
+                install_kind,
+            } => to_map(json!({
+                "source": source,
+                "phase": phase,
+                "install_kind": install_kind,
+            })),
+            Event::UpdateDismissed { phase, source } => to_map(json!({
+                "phase": phase,
+                "source": source,
+            })),
+            Event::UpdateActionInvoked {
+                action,
+                outcome,
+                error_kind,
+            } => {
+                let mut m = Map::new();
+                m.insert("action".into(), json!(action));
+                m.insert("outcome".into(), json!(outcome));
+                if let Some(kind) = error_kind {
+                    m.insert("error_kind".into(), json!(kind));
+                }
+                m
             }
         }
     }
@@ -519,6 +646,173 @@ pub enum MobileAuthFailureKind {
     Internal,
 }
 
+// —— Update Lifecycle enums (schema doc §7.8 / §7.9) ————————————————
+
+/// 更新检查的触发来源（`update_check_performed` 专用）。
+///
+/// **不**与 [`DialogOpenSource`] / [`DismissSource`] 共享——不同 lifecycle
+/// 阶段的 source 语义不重叠，跨事件共享 enum 会让 funnel 误聚合
+/// （schema doc §7.3 末尾 domain-specific 原则）。
+///
+/// `Manual` 由 `commands/updater.rs::check_for_update` Tauri command 自身
+/// emit；其他三值仅由 `update_scheduler` emit（schema doc §7.8 红线：
+/// scheduler-only 的 source 绝不混用同一调用路径）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateCheckSource {
+    /// 进程启动后由 scheduler 第一次检查（曾经的前端启动检查搬到后端）。
+    Startup,
+    /// 周期性 6h ± 15min jitter 触发。
+    Scheduled,
+    /// 用户点击设置页"检查更新"按钮 / 命令行调用。
+    Manual,
+    /// 用户点开主窗口、且距上次任意 source 的 check > 30min 时顺手补查。
+    WindowShow,
+}
+
+/// 更新检查的结果（`update_check_performed` 专用）。schema doc §7.9。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateCheckOutcome {
+    /// 检查成功，发现新版本。
+    Available,
+    /// 检查成功，已是最新。
+    UpToDate,
+    /// 检查失败，详见 `failure_kind`。
+    Failed,
+}
+
+/// 更新检查失败原因（`update_check_performed.failure_kind` 专用）。
+///
+/// 与 `sync` / `pairing` / `unlock` / `mobile_auth` 失败枚举不共享——延续
+/// schema doc §7.3 末尾的 domain-specific failure enum 原则。`Other` 占比
+/// > 10% 视为 manifest / 网络栈不稳定信号。schema doc §7.9。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateFailureKind {
+    /// 连接失败 / DNS / TLS 握手。
+    Network,
+    /// 4xx / 5xx 响应。
+    HttpError,
+    /// manifest JSON 解析或 minisign 校验失败。
+    ParseError,
+    /// 其他（含 panic 兜底）。
+    Other,
+}
+
+/// 系统通知的投递状态（`update_notification_shown` 专用）。schema doc §7.9。
+///
+/// `PermissionDenied` 与 `SendFailed` 也 emit 该事件——schema 上保留事件本身，
+/// dashboard 端按 `delivery_status = sent` 计算到达率分子；其他两态作为
+/// 漏斗失效的诊断信号。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationDeliveryStatus {
+    /// `tauri-plugin-notification` 成功投递给 OS。
+    Sent,
+    /// macOS / Windows 用户拒绝通知权限。
+    PermissionDenied,
+    /// 投递失败（Linux 无 notification daemon / 其他平台错误）。
+    SendFailed,
+}
+
+/// 用户打开更新对话框的入口（`update_dialog_opened` 专用）。schema doc §7.9。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum DialogOpenSource {
+    /// 用户点击系统通知打开。
+    Notification,
+    /// 用户点击 sidebar 的更新指示器。
+    SidebarIcon,
+}
+
+/// 更新流程的阶段（`update_dialog_opened.phase` / `update_dismissed.phase`）。
+///
+/// `update_dismissed` 在产品语义上只会 emit `Available` / `Ready`——
+/// `Downloading` 阶段没有用户可触发的 dismiss 入口；类型保留三值让两个事件
+/// 共享 enum 简化代码 / dashboard slicing。schema doc §7.8 / §7.9。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdatePhase {
+    /// 检查到新版本但尚未触发下载。
+    Available,
+    /// 下载中（仅 `update_dialog_opened` 会出现）。
+    Downloading,
+    /// 下载完成，等待"安装并重启"确认。
+    Ready,
+}
+
+/// 用户放弃更新的入口（`update_dismissed.source` 专用）。schema doc §7.9。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum DismissSource {
+    /// 用户点 "稍后" 按钮。
+    DialogLater,
+    /// X / ESC / 点击对话框外部关闭。
+    DialogClosed,
+    /// Linux deb/rpm 路径专属（关闭 `PackageManagerUpdateDialog`）。
+    PackageManagerDialogClosed,
+}
+
+/// 用户触发的更新动作类型（`update_action_invoked.action` 专用）。
+///
+/// 未引入 `source` 字段——`action` 已表达 lifecycle stage（schema doc §7.8
+/// 落地备注）；scheduler 自动下载与用户手动下载共用 `DownloadBg`，caller
+/// 类型从 `EventContext.session_id` 与时间序列推断。schema doc §7.9。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateAction {
+    /// 用户点 "后台下载" 或 scheduler 自动下载触发。
+    DownloadBg,
+    /// 用户点 "安装并重启"。
+    Install,
+}
+
+/// 更新动作的完成态（`update_action_invoked.outcome` 专用）。schema doc §7.9。
+///
+/// 一次动作生命周期会 emit 至少两条事件：`Started` 入口一次，之后
+/// `Succeeded` / `Failed` / `Cancelled` 任一终态一次。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateActionOutcome {
+    /// 动作刚开始（download 或 install 入口被调用）。
+    Started,
+    /// 终态：成功（仅 download；install 走 Tauri restart 流程，事件 sink
+    /// 在 install 触发前已 fire-and-forget，restart 后无 telemetry）。
+    Succeeded,
+    /// 终态：失败（详见 `error_kind`）。
+    Failed,
+    /// 终态：用户主动取消。
+    Cancelled,
+}
+
+/// 桌面端安装来源（多个 update_* 事件共享）。schema doc §7.9。
+///
+/// **与 `commands/updater.rs::InstallKind` Tauri command 共享 wire 形态**——
+/// 后者通过 specta 暴露给前端，wire 形态被前端 API 锁住。本枚举必须维持
+/// `macos` / `windows` / `appimage` / `deb` / `rpm` / `unknown` 等价；任何
+/// 一侧新增变体必须同步另一侧（schema doc §8 演化策略：新增允许，重命名禁止）。
+///
+/// `Snap` / `Copr` 等 Linux 包源在 v1 一律归类 `Unknown`——dpkg-query / rpm
+/// 不会认领 Snap 路径下的二进制；若 dashboard 显示 `Unknown` 占比 > 10%
+/// 再独立拆分。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum InstallKind {
+    /// macOS `.app`（走 Tauri updater）。
+    Macos,
+    /// Windows `.exe` / `.msi`（走 Tauri updater）。
+    Windows,
+    /// Linux AppImage（走 Tauri updater）。
+    AppImage,
+    /// Debian / Ubuntu 包（走 `PackageManagerUpdateDialog` 引导）。
+    Deb,
+    /// RHEL / Fedora 包。
+    Rpm,
+    /// probe 失败兜底（含 Snap / COPR / 源码构建等）。
+    Unknown,
+}
+
 /// 剪贴板捕获来源（`clipboard_entry_captured` 专用）。
 ///
 /// **不**包含 `Inbound`——入站同步路径必须在调用点过滤掉，避免与
@@ -726,6 +1020,46 @@ mod tests {
                     failure_kind: MobileAuthFailureKind::PasswordMismatch,
                 },
                 "mobile_auth_failed",
+            ),
+            (
+                Event::UpdateCheckPerformed {
+                    source: UpdateCheckSource::Scheduled,
+                    outcome: UpdateCheckOutcome::UpToDate,
+                    failure_kind: None,
+                    install_kind: InstallKind::Macos,
+                },
+                "update_check_performed",
+            ),
+            (
+                Event::UpdateNotificationShown {
+                    version: "0.12.0".into(),
+                    delivery_status: NotificationDeliveryStatus::Sent,
+                    install_kind: InstallKind::Macos,
+                },
+                "update_notification_shown",
+            ),
+            (
+                Event::UpdateDialogOpened {
+                    source: DialogOpenSource::Notification,
+                    phase: UpdatePhase::Available,
+                    install_kind: InstallKind::Macos,
+                },
+                "update_dialog_opened",
+            ),
+            (
+                Event::UpdateDismissed {
+                    phase: UpdatePhase::Available,
+                    source: DismissSource::DialogLater,
+                },
+                "update_dismissed",
+            ),
+            (
+                Event::UpdateActionInvoked {
+                    action: UpdateAction::DownloadBg,
+                    outcome: UpdateActionOutcome::Started,
+                    error_kind: None,
+                },
+                "update_action_invoked",
             ),
         ];
         for (event, expected) in cases {
@@ -1196,5 +1530,262 @@ mod tests {
         assert!(!props.contains_key("session_id"));
         assert!(!props.contains_key("app_version"));
         assert!(!props.contains_key("os"));
+    }
+
+    // —— Update Lifecycle wire 形态 ————————————————————————————————
+
+    #[test]
+    fn update_lifecycle_enums_wire_format() {
+        // schema doc §7.9 钉死的全部取值。任何变更 = 破坏向后兼容。
+        for (val, expected) in [
+            (UpdateCheckSource::Startup, "startup"),
+            (UpdateCheckSource::Scheduled, "scheduled"),
+            (UpdateCheckSource::Manual, "manual"),
+            (UpdateCheckSource::WindowShow, "window_show"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "UpdateCheckSource::{val:?}"
+            );
+        }
+
+        for (val, expected) in [
+            (UpdateCheckOutcome::Available, "available"),
+            (UpdateCheckOutcome::UpToDate, "up_to_date"),
+            (UpdateCheckOutcome::Failed, "failed"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "UpdateCheckOutcome::{val:?}"
+            );
+        }
+
+        for (val, expected) in [
+            (UpdateFailureKind::Network, "network"),
+            (UpdateFailureKind::HttpError, "http_error"),
+            (UpdateFailureKind::ParseError, "parse_error"),
+            (UpdateFailureKind::Other, "other"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "UpdateFailureKind::{val:?}"
+            );
+        }
+
+        for (val, expected) in [
+            (NotificationDeliveryStatus::Sent, "sent"),
+            (
+                NotificationDeliveryStatus::PermissionDenied,
+                "permission_denied",
+            ),
+            (NotificationDeliveryStatus::SendFailed, "send_failed"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "NotificationDeliveryStatus::{val:?}"
+            );
+        }
+
+        for (val, expected) in [
+            (DialogOpenSource::Notification, "notification"),
+            (DialogOpenSource::SidebarIcon, "sidebar_icon"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "DialogOpenSource::{val:?}"
+            );
+        }
+
+        for (val, expected) in [
+            (UpdatePhase::Available, "available"),
+            (UpdatePhase::Downloading, "downloading"),
+            (UpdatePhase::Ready, "ready"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "UpdatePhase::{val:?}"
+            );
+        }
+
+        for (val, expected) in [
+            (DismissSource::DialogLater, "dialog_later"),
+            (DismissSource::DialogClosed, "dialog_closed"),
+            (
+                DismissSource::PackageManagerDialogClosed,
+                "package_manager_dialog_closed",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "DismissSource::{val:?}"
+            );
+        }
+
+        for (val, expected) in [
+            (UpdateAction::DownloadBg, "download_bg"),
+            (UpdateAction::Install, "install"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "UpdateAction::{val:?}"
+            );
+        }
+
+        for (val, expected) in [
+            (UpdateActionOutcome::Started, "started"),
+            (UpdateActionOutcome::Succeeded, "succeeded"),
+            (UpdateActionOutcome::Failed, "failed"),
+            (UpdateActionOutcome::Cancelled, "cancelled"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "UpdateActionOutcome::{val:?}"
+            );
+        }
+
+        // InstallKind 与 commands/updater.rs 的 wire 形态等价（schema doc §7.9）。
+        for (val, expected) in [
+            (InstallKind::Macos, "macos"),
+            (InstallKind::Windows, "windows"),
+            (InstallKind::AppImage, "appimage"),
+            (InstallKind::Deb, "deb"),
+            (InstallKind::Rpm, "rpm"),
+            (InstallKind::Unknown, "unknown"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(val).unwrap(),
+                expected,
+                "InstallKind::{val:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn update_check_performed_omits_failure_kind_on_success() {
+        // outcome != Failed 时 failure_kind 必须从 wire 完全消失，避免 PostHog
+        // 把 null 当显式清空指令（schema doc §10.1）。
+        let event = Event::UpdateCheckPerformed {
+            source: UpdateCheckSource::Scheduled,
+            outcome: UpdateCheckOutcome::UpToDate,
+            failure_kind: None,
+            install_kind: InstallKind::Windows,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("source"), Some(&json!("scheduled")));
+        assert_eq!(props.get("outcome"), Some(&json!("up_to_date")));
+        assert_eq!(props.get("install_kind"), Some(&json!("windows")));
+        assert!(!props.contains_key("failure_kind"));
+    }
+
+    #[test]
+    fn update_check_performed_carries_failure_kind_on_failure() {
+        let event = Event::UpdateCheckPerformed {
+            source: UpdateCheckSource::Startup,
+            outcome: UpdateCheckOutcome::Failed,
+            failure_kind: Some(UpdateFailureKind::Network),
+            install_kind: InstallKind::AppImage,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("source"), Some(&json!("startup")));
+        assert_eq!(props.get("outcome"), Some(&json!("failed")));
+        assert_eq!(props.get("failure_kind"), Some(&json!("network")));
+        assert_eq!(props.get("install_kind"), Some(&json!("appimage")));
+    }
+
+    #[test]
+    fn update_notification_shown_properties() {
+        let event = Event::UpdateNotificationShown {
+            version: "0.13.0-alpha.1".into(),
+            delivery_status: NotificationDeliveryStatus::PermissionDenied,
+            install_kind: InstallKind::Macos,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("version"), Some(&json!("0.13.0-alpha.1")));
+        assert_eq!(
+            props.get("delivery_status"),
+            Some(&json!("permission_denied"))
+        );
+        assert_eq!(props.get("install_kind"), Some(&json!("macos")));
+    }
+
+    #[test]
+    fn update_dialog_opened_properties() {
+        let event = Event::UpdateDialogOpened {
+            source: DialogOpenSource::SidebarIcon,
+            phase: UpdatePhase::Ready,
+            install_kind: InstallKind::Deb,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("source"), Some(&json!("sidebar_icon")));
+        assert_eq!(props.get("phase"), Some(&json!("ready")));
+        assert_eq!(props.get("install_kind"), Some(&json!("deb")));
+    }
+
+    #[test]
+    fn update_dismissed_properties() {
+        let event = Event::UpdateDismissed {
+            phase: UpdatePhase::Available,
+            source: DismissSource::PackageManagerDialogClosed,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("phase"), Some(&json!("available")));
+        assert_eq!(
+            props.get("source"),
+            Some(&json!("package_manager_dialog_closed"))
+        );
+        // install_kind 不在 dismiss 事件里——schema doc §7.8 没列。
+        assert!(!props.contains_key("install_kind"));
+    }
+
+    #[test]
+    fn update_action_invoked_omits_error_kind_on_success() {
+        let event = Event::UpdateActionInvoked {
+            action: UpdateAction::Install,
+            outcome: UpdateActionOutcome::Started,
+            error_kind: None,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("action"), Some(&json!("install")));
+        assert_eq!(props.get("outcome"), Some(&json!("started")));
+        assert!(!props.contains_key("error_kind"));
+    }
+
+    #[test]
+    fn update_action_invoked_carries_error_kind_on_failure() {
+        let event = Event::UpdateActionInvoked {
+            action: UpdateAction::DownloadBg,
+            outcome: UpdateActionOutcome::Failed,
+            error_kind: Some("io_error".into()),
+        };
+        let props = event.properties();
+        assert_eq!(props.get("action"), Some(&json!("download_bg")));
+        assert_eq!(props.get("outcome"), Some(&json!("failed")));
+        assert_eq!(props.get("error_kind"), Some(&json!("io_error")));
+    }
+
+    #[test]
+    fn update_events_have_no_context_fields() {
+        // 与 properties_are_pure_event_fields_only 同一红线，针对 update 域
+        // 单独 cover——避免 EventContext 字段被误塞进 update 事件 properties。
+        let event = Event::UpdateCheckPerformed {
+            source: UpdateCheckSource::WindowShow,
+            outcome: UpdateCheckOutcome::Available,
+            failure_kind: None,
+            install_kind: InstallKind::Rpm,
+        };
+        let props = event.properties();
+        assert!(!props.contains_key("anonymous_user_id"));
+        assert!(!props.contains_key("app_version"));
+        assert!(!props.contains_key("os"));
+        assert!(!props.contains_key("session_id"));
     }
 }

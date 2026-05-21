@@ -31,6 +31,10 @@ impl AppPaths {
         self.app_data_root_dir.join(".daemon-pid")
     }
 
+    pub fn last_notified_update_path(&self) -> PathBuf {
+        self.app_data_root_dir.join("last_notified_update.json")
+    }
+
     pub fn from_app_dirs(dirs: &AppDirs) -> Self {
         // Windows 上 `dirs::cache_dir()` 直接返回 `dirs::data_local_dir()`,
         // 因此 `app_cache_root` 与 `app_data_root` 是同一个目录。若直接把

@@ -13,5 +13,6 @@ pub mod quick_panel;
 pub mod run;
 pub mod specta_builder;
 pub mod tray;
+pub mod update_scheduler;
 
 pub use run::run;

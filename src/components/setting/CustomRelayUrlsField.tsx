@@ -18,7 +18,7 @@ interface CustomRelayUrlsFieldProps {
 
 type ProbeStatus =
   | { kind: 'idle' }
-  | { kind: 'testing' }
+  | { kind: 'testing'; pendingUrl: string }
   | { kind: 'success'; latencyMs: number }
   | { kind: 'failure'; message: string }
 
@@ -72,21 +72,37 @@ export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldPr
   const handleTestRow = async (index: number, url: string) => {
     const trimmed = url.trim()
     if (trimmed.length === 0) return
-    setStatuses(previous => ({ ...previous, [index]: { kind: 'testing' } }))
+    // Tag the probe with the URL it's testing. Either the user edited the row
+    // (clearStatusAt wiped statuses[index]) or kicked off a second probe with
+    // a different value while this one was in flight; in both cases the stale
+    // response must NOT overwrite the visible state. We check that the slot
+    // is still in `testing` for *this* exact URL before applying the outcome.
+    setStatuses(previous => ({
+      ...previous,
+      [index]: { kind: 'testing', pendingUrl: trimmed },
+    }))
+    const isStillPending = (current: ProbeStatus | undefined): boolean =>
+      current?.kind === 'testing' && current.pendingUrl === trimmed
     try {
       const outcome = await probeRelayUrl(trimmed)
-      setStatuses(previous => ({ ...previous, [index]: outcomeToStatus(outcome, t) }))
+      setStatuses(previous => {
+        if (!isStillPending(previous[index])) return previous
+        return { ...previous, [index]: outcomeToStatus(outcome, t) }
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      setStatuses(previous => ({
-        ...previous,
-        [index]: {
-          kind: 'failure',
-          message: t('settings.sections.network.customRelays.testErrors.unavailable', {
-            defaultValue: message,
-          }),
-        },
-      }))
+      setStatuses(previous => {
+        if (!isStillPending(previous[index])) return previous
+        return {
+          ...previous,
+          [index]: {
+            kind: 'failure',
+            message: t('settings.sections.network.customRelays.testErrors.unavailable', {
+              defaultValue: message,
+            }),
+          },
+        }
+      })
     }
   }
 

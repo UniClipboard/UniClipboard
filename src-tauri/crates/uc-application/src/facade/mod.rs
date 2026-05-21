@@ -119,15 +119,18 @@ pub use search::{
     SearchProjectionBuilder, SearchQueryInput, SearchRebuildAcceptedView,
     SearchRebuildProgressView, SearchResultView, SearchStatusSnapshot, SearchStatusView,
 };
+// Note: `RelayDiagnosticPort` is intentionally NOT re-exported here. The port
+// trait stays under `crate::facade::settings::relay_diagnostic` and is reached
+// via `uc_application::facade::settings::RelayDiagnosticPort` by bootstrap,
+// keeping the assembly seam scoped to the settings sub-facade (per §11.4).
 pub use settings::{
     ContentTypesPatch as SettingsContentTypesPatch, ContentTypesView as SettingsContentTypesView,
     FileSyncSettingsPatch, FileSyncSettingsView, GeneralSettingsPatch, GeneralSettingsView,
-    PairingSettingsPatch, PairingSettingsView, RelayDiagnosticPort, RelayProbeError,
-    RelayProbeReport, RelayProbeReportView, RetentionPolicyPatch, RetentionPolicyView,
-    RetentionRulePatchValue, RetentionRuleView, RuleEvaluationView, SecuritySettingsPatch,
-    SecuritySettingsView, SettingsFacade, SettingsFacadeError, SettingsPatch, SettingsView,
-    ShortcutKeyView, SyncFrequencyView, SyncSettingsPatch, SyncSettingsView, ThemeView,
-    UpdateChannelView,
+    PairingSettingsPatch, PairingSettingsView, RelayProbeError, RelayProbeReport,
+    RelayProbeReportView, RetentionPolicyPatch, RetentionPolicyView, RetentionRulePatchValue,
+    RetentionRuleView, RuleEvaluationView, SecuritySettingsPatch, SecuritySettingsView,
+    SettingsFacade, SettingsFacadeError, SettingsPatch, SettingsView, ShortcutKeyView,
+    SyncFrequencyView, SyncSettingsPatch, SyncSettingsView, ThemeView, UpdateChannelView,
 };
 pub use setup_status::SetupStatusFacade;
 pub use space_setup::{

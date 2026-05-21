@@ -76,7 +76,10 @@ impl IrohRelayProbeAdapter {
     ///
     /// 不读取也不修改任何持久化状态,可重复调用。在 [`PROBE_BUDGET`] 内必
     /// 须返回 [`RelayProbeError::Timeout`]。
-    #[instrument(skip(self), fields(relay_url = %url))]
+    ///
+    /// 注意:tracing span 仅记录 scheme + host(+port),丢弃 userinfo / path /
+    /// query —— 防止用户误粘贴的 `https://user:token@...` 把凭据写进日志。
+    #[instrument(skip(self, url), fields(relay = %sanitize_url_for_log(url)))]
     pub async fn probe(&self, url: &str) -> Result<RelayProbeReport, RelayProbeError> {
         let trimmed = url.trim();
         if trimmed.is_empty() {
@@ -119,6 +122,29 @@ impl IrohRelayProbeAdapter {
             Err(Elapsed { .. }) => Err(RelayProbeError::Timeout),
         }
     }
+}
+
+/// 把任意输入压成 `scheme://host[:port]`,无法解析时返回 `<unparseable>`。
+///
+/// 仅用于 tracing 字段 —— 避免把 userinfo / path / query / fragment(可能含
+/// token、session id 等敏感片段)落进日志。完整的原始 URL 仅在内存里参与
+/// 协议握手,不会跨进程边界。
+fn sanitize_url_for_log(url: &str) -> String {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return "<empty>".to_string();
+    }
+    url::Url::parse(trimmed)
+        .ok()
+        .and_then(|parsed| {
+            let host = parsed.host_str()?;
+            let scheme = parsed.scheme();
+            Some(match parsed.port() {
+                Some(port) => format!("{scheme}://{host}:{port}"),
+                None => format!("{scheme}://{host}"),
+            })
+        })
+        .unwrap_or_else(|| "<unparseable>".to_string())
 }
 
 fn map_connect_error(err: ConnectError) -> RelayProbeError {

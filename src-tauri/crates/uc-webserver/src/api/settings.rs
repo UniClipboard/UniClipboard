@@ -156,24 +156,49 @@ fn settings_error_to_api(op: &'static str, err: app_settings::SettingsFacadeErro
         ),
         E::Invalid(msg) => ("invalid", ApiError::bad_request(msg)),
         // Webserver 不调用 `SettingsFacade::probe_relay_url`,也不暴露探测端
-        // 点。`update_settings_handler` 链路无法产出这 7 个变体 —— 真触达
-        // 等于 facade wiring 出 bug。穷举 match 显式 `unreachable!` 既让
-        // rustc 在未来新增变体时强制处理,也让事故第一时间 panic 暴露。
-        E::RelayProbeUnavailable
-        | E::RelayProbeInvalidUrl(_)
-        | E::RelayProbeDns(_)
-        | E::RelayProbeTls(_)
-        | E::RelayProbeHandshake(_)
-        | E::RelayProbeTimeout
-        | E::RelayProbeOther(_) => {
-            unreachable!(
-                "webserver settings_error_to_api reached a RelayProbe* variant; \
-                 this path is not wired through update_settings_handler"
-            )
+        // 点 —— 这 7 个变体在当前 wiring 下无法被 `update_settings_handler` /
+        // `get_settings_handler` 产出。穷举 match 让 rustc 在 facade 未来新增
+        // 变体时强制 review;同时显式映射成内部错误而不是 panic,避免某天
+        // 有人把 probe 接进新 handler 时让 daemon 在请求路径上直接挂掉。
+        // 实际触达 = facade wiring 出 bug,变体名通过 log_facade_failure 写
+        // 入 tracing 便于事后定位。
+        E::RelayProbeUnavailable => {
+            relay_probe_unexpected("relay_probe_unavailable", "Unavailable")
+        }
+        E::RelayProbeInvalidUrl(msg) => {
+            relay_probe_unexpected("relay_probe_invalid_url", &format!("InvalidUrl: {msg}"))
+        }
+        E::RelayProbeDns(msg) => relay_probe_unexpected("relay_probe_dns", &format!("Dns: {msg}")),
+        E::RelayProbeTls(msg) => relay_probe_unexpected("relay_probe_tls", &format!("Tls: {msg}")),
+        E::RelayProbeHandshake(msg) => {
+            relay_probe_unexpected("relay_probe_handshake", &format!("Handshake: {msg}"))
+        }
+        E::RelayProbeTimeout => relay_probe_unexpected("relay_probe_timeout", "Timeout"),
+        E::RelayProbeOther(msg) => {
+            relay_probe_unexpected("relay_probe_other", &format!("Other: {msg}"))
         }
     };
     log_facade_failure("settings", op, variant, api.status, &api.message);
     api
+}
+
+/// Map an unexpected `RelayProbe*` variant to a logged 500. Reaching this means
+/// a probe-emitting use case is now plugged into a handler that doesn't model
+/// probe errors — bug worth tracing, not crashing the request thread.
+fn relay_probe_unexpected(variant: &'static str, detail: &str) -> (&'static str, ApiError) {
+    tracing::error!(
+        variant,
+        detail,
+        "settings_error_to_api received an unexpected RelayProbe* variant; \
+         facade wiring exposed a probe path through this handler"
+    );
+    (
+        variant,
+        ApiError::internal(
+            "settings facade returned an unexpected relay probe error \
+             through a non-probe endpoint",
+        ),
+    )
 }
 
 #[doc(hidden)]

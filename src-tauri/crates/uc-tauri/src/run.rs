@@ -598,6 +598,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     setup_status_port: runtime.setup_status_port(),
                     analytics: runtime.analytics(),
                     last_notified: Arc::new(tokio::sync::Mutex::new(store)),
+                    last_notified_path,
                 };
                 runtime
                     .task_registry()

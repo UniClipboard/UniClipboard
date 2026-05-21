@@ -11,10 +11,6 @@
 //!   始终 `Granted`，desktop 上的权限拒绝由 OS 静默吞掉，我们只能看到 `SendFailed`）
 //! - `SendFailed`：plugin `show()` 返回 Err（或 permission_state 探测失败后 show 也失败）
 
-// Phase 4A 单独提交：函数本身在 Phase 4B 才被 scheduler 调用，期间允许 dead-code。
-// Phase 4B 集成后请移除本 attribute。
-#![allow(dead_code)]
-
 use tauri::plugin::PermissionState;
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;

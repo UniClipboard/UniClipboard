@@ -549,7 +549,10 @@ impl DownloadError {
     /// Short telemetry identifier (< 32 chars，无 URL / 路径 / IP，schema
     /// doc §6.1). 仅 `Cancelled` 路径返回 `None`——cancel 有专属 outcome 槽位，
     /// 不需要 `error_kind` 再重述。
-    fn error_kind(&self) -> Option<&'static str> {
+    ///
+    /// `pub(crate)` 因为 `update_scheduler::scheduler` 的 auto-download 分支
+    /// 也要把 `DownloadError` 映射到 `update_action_invoked.error_kind`。
+    pub(crate) fn error_kind(&self) -> Option<&'static str> {
         match self {
             Self::Precondition(s) => Some(if s.contains("no pending update") {
                 "no_pending_update"

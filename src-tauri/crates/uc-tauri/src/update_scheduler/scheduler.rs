@@ -1,7 +1,7 @@
 //! 后台周期更新检查 scheduler 主循环。
 //!
-//! 本模块只负责"什么时候 check / 怎么 backoff / 何时让位关停"，
-//! 不直接发送系统通知（Phase 4A 再加），也不自动下载（Phase 4B 再加）。
+//! 本模块负责"什么时候 check / 怎么 backoff / 何时让位关停"，并在检测到
+//! 新版本时联动通知发送 + 去重持久化 + 条件 auto-download（Phase 4B）。
 //!
 //! 时序：
 //! - 启动后先 poll `SetupStatus.has_completed`，setup 未完成时每 30s 重试
@@ -10,9 +10,15 @@
 //!      telemetry，按成功 cadence 继续轮询（让用户开关切换无 30min 惩罚）
 //!   2. true 时调 `do_check_for_update` 内部入口 + emit
 //!      `update_check_performed { source: scheduled, ... }`
-//!   3. 成功 6h ± 15min jitter；失败 30min（Q9：固定，不是指数 backoff）
+//!   3. `Available` 分支：去重检测 → `send_update_notification` →
+//!      emit `update_notification_shown` → 投递成功才 `record` 持久化；
+//!      若 `auto_download_update == true` 且 install_kind 在 in-place
+//!      可更新列表（macOS/Windows/AppImage）→ 调 `do_download_update` +
+//!      emit `update_action_invoked` Started + terminal 配对
+//!   4. 成功 6h ± 15min jitter；失败 30min（Q9：固定，不是指数 backoff）
 //! - 任一 sleep 内被 cancellation token 打断 → 立即退出
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -22,12 +28,18 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 use uc_core::ports::{SettingsPort, SetupStatusPort};
-use uc_observability::analytics::{AnalyticsPort, Event, UpdateCheckOutcome, UpdateCheckSource};
+use uc_core::settings::channel::detect_channel;
+use uc_core::settings::model::UpdateChannel;
+use uc_observability::analytics::{
+    AnalyticsPort, Event, InstallKind as AnalyticsInstallKind, NotificationDeliveryStatus,
+    UpdateAction, UpdateActionOutcome, UpdateCheckOutcome, UpdateCheckSource,
+};
 
 use super::last_notified::LastNotifiedUpdateStore;
+use super::notification::send_update_notification;
 use crate::commands::updater::{
-    classify_check_failure, detect_install_kind, do_check_for_update, install_kind_for_telemetry,
-    PendingUpdate,
+    classify_check_failure, detect_install_kind, do_check_for_update, do_download_update,
+    install_kind_for_telemetry, DownloadError, InstallKind, PendingUpdate,
 };
 
 /// Setup 未完成时的轮询间隔（Q16.1：30s，不订阅事件）。
@@ -49,9 +61,12 @@ pub struct SchedulerDeps {
     pub settings_port: Arc<dyn SettingsPort>,
     pub setup_status_port: Arc<dyn SetupStatusPort>,
     pub analytics: Arc<dyn AnalyticsPort>,
-    /// 已通知版本去重存储（Phase 4B 用，Phase 3B 仅持有 ref；预留
-    /// 是为了避免下个 commit 改 `SchedulerDeps` 形态影响 `run.rs` 装配）。
+    /// 已通知版本去重存储——`Available` 分支查 / 写。
     pub last_notified: Arc<Mutex<LastNotifiedUpdateStore>>,
+    /// `last_notified.record(...)` 落盘所需的文件路径，由 `run.rs` 从
+    /// `AppPaths::last_notified_update_path()` 解析一次后传入，避免每次
+    /// 落盘都重新拼路径。
+    pub last_notified_path: PathBuf,
 }
 
 /// 启动 scheduler 主循环。调用方 `run.rs:480` 内 `tauri::async_runtime::spawn`
@@ -131,12 +146,33 @@ async fn run_one_iteration(deps: &SchedulerDeps) -> IterationOutcome {
         return IterationOutcome::Success;
     }
 
-    let channel = settings.general.update_channel.clone();
+    let app_version = deps.app_handle.package_info().version.to_string();
+    let resolved_channel = resolve_channel(settings.general.update_channel.clone(), &app_version);
     let app = deps.app_handle.clone();
     let pending = app.state::<PendingUpdate>();
-    let result = do_check_for_update(&app, channel, pending.inner()).await;
+    let result = do_check_for_update(&app, Some(resolved_channel.clone()), pending.inner()).await;
 
-    let install_kind = install_kind_for_telemetry(detect_install_kind());
+    let install_kind_raw = detect_install_kind();
+    let install_kind = install_kind_for_telemetry(install_kind_raw);
+
+    // Available 分支：通知去重 + 条件 auto-download。在 emit
+    // `update_check_performed` 之前先处理副作用，这样 PostHog 上时序
+    // 是 (notification_shown?, action_invoked Started?, check_performed,
+    // action_invoked Terminal?)——与 manual 路径相符。
+    if let Ok(Some(metadata)) = &result {
+        notify_if_new_version(
+            deps,
+            &resolved_channel,
+            &metadata.version,
+            settings.general.language.as_deref(),
+            install_kind,
+        )
+        .await;
+        if settings.general.auto_download_update && should_auto_download(install_kind_raw) {
+            auto_download(deps, &app, pending.inner()).await;
+        }
+    }
+
     let (outcome, failure_kind, iter_outcome) = match &result {
         Ok(Some(_)) => (
             UpdateCheckOutcome::Available,
@@ -163,6 +199,121 @@ async fn run_one_iteration(deps: &SchedulerDeps) -> IterationOutcome {
     });
 
     iter_outcome
+}
+
+/// Resolve the effective channel for this iteration.
+///
+/// 用户在 settings 显式设了 channel → 直接用；否则按 `app_version` 走
+/// `uc-core::settings::channel::detect_channel` 兜底（与 `do_check_for_update`
+/// 的内部默认逻辑保持一致——一个语义只能有一份实现）。
+pub(crate) fn resolve_channel(
+    settings_channel: Option<UpdateChannel>,
+    app_version: &str,
+) -> UpdateChannel {
+    settings_channel.unwrap_or_else(|| detect_channel(app_version))
+}
+
+/// 给定 install kind，决定 scheduler 是否应该自动 in-place 下载新版本。
+///
+/// 仅 macOS / Windows / AppImage 走 tauri-plugin-updater 的 in-place 流程；
+/// Deb / Rpm 由系统包管理器接管（PackageManagerUpdateDialog 引导用户），
+/// scheduler 不应触发 in-place 下载——下载下来的包也装不进去。
+/// `Unknown` 走防御性 false（找不到打包形态时宁可不动）。
+pub(crate) fn should_auto_download(install_kind: InstallKind) -> bool {
+    matches!(
+        install_kind,
+        InstallKind::Macos | InstallKind::Windows | InstallKind::AppImage
+    )
+}
+
+/// Available 分支：若 (channel, version) 未通知过，发系统通知，emit
+/// `update_notification_shown`，仅在投递确认成功后 `record` 持久化。
+///
+/// 投递失败 (PermissionDenied / SendFailed) 不写 record——保留下次 scheduler
+/// tick 再试的机会；schema doc 仍可见到失败事件用于"通知到达率"分析。
+async fn notify_if_new_version(
+    deps: &SchedulerDeps,
+    channel: &UpdateChannel,
+    version: &str,
+    language: Option<&str>,
+    install_kind: AnalyticsInstallKind,
+) {
+    let already_notified = {
+        let store = deps.last_notified.lock().await;
+        store.contains(channel, version)
+    };
+    if already_notified {
+        debug!(
+            target: "update_scheduler",
+            channel = ?channel,
+            version,
+            "version already notified; skipping notification"
+        );
+        return;
+    }
+
+    let lang = language.unwrap_or("en-US");
+    let delivery = send_update_notification(&deps.app_handle, lang, version).await;
+    deps.analytics.capture(Event::UpdateNotificationShown {
+        version: version.to_string(),
+        delivery_status: delivery,
+        install_kind,
+    });
+
+    if matches!(delivery, NotificationDeliveryStatus::Sent) {
+        let mut store = deps.last_notified.lock().await;
+        if let Err(err) = store
+            .record(
+                channel.clone(),
+                version.to_string(),
+                &deps.last_notified_path,
+            )
+            .await
+        {
+            warn!(
+                target: "update_scheduler",
+                error = %err,
+                "failed to persist last_notified_update.json"
+            );
+        }
+    }
+}
+
+/// 触发 in-place 自动下载，emit `update_action_invoked` Started + terminal 配对。
+///
+/// 与 `commands/updater.rs::download_update` Tauri command body 完全同
+/// 模式：precondition 拒绝时不 emit Started + 不 emit terminal（funnel
+/// 分母干净，OQ1 决议）。下载失败不重试——Q9 backoff 让下一轮 30min
+/// 后再走一次完整 check。
+async fn auto_download(deps: &SchedulerDeps, app: &AppHandle, pending: &PendingUpdate) {
+    let result = do_download_update(app, pending).await;
+
+    let did_start = !matches!(result, Err(DownloadError::Precondition(_)));
+    if did_start {
+        deps.analytics.capture(Event::UpdateActionInvoked {
+            action: UpdateAction::DownloadBg,
+            outcome: UpdateActionOutcome::Started,
+            error_kind: None,
+        });
+    }
+
+    let terminal = match &result {
+        Ok(()) => Some(UpdateActionOutcome::Succeeded),
+        Err(DownloadError::Cancelled(_)) => Some(UpdateActionOutcome::Cancelled),
+        Err(DownloadError::Failed(_)) => Some(UpdateActionOutcome::Failed),
+        Err(DownloadError::Precondition(_)) => None,
+    };
+    if let Some(outcome) = terminal {
+        deps.analytics.capture(Event::UpdateActionInvoked {
+            action: UpdateAction::DownloadBg,
+            outcome,
+            error_kind: result
+                .as_ref()
+                .err()
+                .and_then(|e| e.error_kind())
+                .map(|s| s.to_string()),
+        });
+    }
 }
 
 /// 计算给定 outcome 后的下一次 sleep 时长（纯函数，方便单测）。
@@ -313,6 +464,65 @@ mod tests {
         assert!(!waiter.await.unwrap());
         // silence unused-variable lint on `port`
         let _ = port;
+    }
+
+    // ---- resolve_channel ----------------------------------------------------
+
+    #[test]
+    fn resolve_channel_uses_settings_when_present() {
+        // 用户显式选了 channel → 直接用，不看 app_version
+        assert_eq!(
+            resolve_channel(Some(UpdateChannel::Alpha), "0.12.0"),
+            UpdateChannel::Alpha
+        );
+        assert_eq!(
+            resolve_channel(Some(UpdateChannel::Beta), "0.12.0-alpha.1"),
+            UpdateChannel::Beta
+        );
+    }
+
+    #[test]
+    fn resolve_channel_falls_back_to_detect_channel_when_none() {
+        // settings 未设 → 走 uc-core detect_channel（按 app_version 推断）
+        // 0.12.0 应该是 Stable
+        assert_eq!(resolve_channel(None, "0.12.0"), UpdateChannel::Stable);
+    }
+
+    #[test]
+    fn resolve_channel_prerelease_detection_via_app_version() {
+        // app_version 含 `-alpha.` 走 uc-core::detect_channel 推断为 alpha
+        let resolved = resolve_channel(None, "0.13.0-alpha.1");
+        assert_eq!(
+            resolved,
+            UpdateChannel::Alpha,
+            "expected detect_channel to map prerelease to Alpha"
+        );
+    }
+
+    // ---- should_auto_download ----------------------------------------------
+
+    #[test]
+    fn should_auto_download_allows_inplace_targets() {
+        for kind in [
+            InstallKind::Macos,
+            InstallKind::Windows,
+            InstallKind::AppImage,
+        ] {
+            assert!(
+                should_auto_download(kind),
+                "expected auto-download for {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn should_auto_download_blocks_system_packages_and_unknown() {
+        for kind in [InstallKind::Deb, InstallKind::Rpm, InstallKind::Unknown] {
+            assert!(
+                !should_auto_download(kind),
+                "expected NO auto-download for {kind:?} (handled by package manager / defensive)"
+            );
+        }
     }
 
     #[tokio::test(start_paused = true)]

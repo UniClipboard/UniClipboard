@@ -58,7 +58,7 @@ dirs = "6.0"
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 # Random number generation
-rand = "0.9"
+rand = "0.10"
 
 # Byte handling
 bytes = "1.7"
@@ -79,7 +79,7 @@ keyring = { version = "3.6.3", features = [
   "windows-native",
   "linux-native-sync-persistent",
 ] }
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 
 # Cross-language schema codegen — 仅供 `uc-tauri` 启用 `specta` feature 时使用，
 # 让 `TraceMetadata` 这类跨 IPC 边界的 DTO 能进 tauri-specta 的 binding 生成。
@@ -94,7 +94,7 @@ specta-typescript = { version = "=0.0.12", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
-mockall = "0.13"
+mockall = "0.14"
 tracing-subscriber = { version = "0.3", features = ["registry", "fmt", "env-filter"] }
 
 # Linux 上 keyring → dbus-secret-service → dbus → libdbus-sys。默认 libdbus-sys
@@ -148,7 +148,7 @@ libdbus-sys = { version = "0.2", features = ["vendored"] }
 #     * x11rb 0.13.x is the current stable line; the `xfixes` feature is
 #       what the watcher needs for selection-change notifications.
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { version = "0.38", features = ["event", "fs", "pipe"] }
+rustix = { version = "1.1", features = ["event", "fs", "pipe"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }

@@ -81,7 +81,8 @@ mDNS 局域网发现 + 直连（LAN / IPv6）路径：
 
 UniClipboard 现在在 **设置 → 网络 → 自定义中继节点** 暴露自定义
 iroh **relay** URL。留空时继续使用 iroh 默认中继；每行填一个 relay
-URL 后，重启 daemon 即可只使用这些自定义中继节点。
+URL 后，重启 daemon 即可只使用这些自定义中继节点。从零搭一台中继
+的完整流程见 [自建 iroh relay](./guides/self-host-relay)。
 
 自定义 rendezvous discovery 仍未暴露。首次配对仍会使用 UniClipboard
 的 rendezvous 服务；跨网络 NodeId 发现仍走当前 iroh discovery 路径，除非

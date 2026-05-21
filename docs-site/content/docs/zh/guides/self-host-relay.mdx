@@ -1,0 +1,277 @@
+---
+title: 自建 iroh relay
+description: 从零搭一台自己的 iroh relay，并让 UniClipboard 只走这台中继。
+---
+
+UniClipboard 自 0.7 起在 **设置 → 网络 → 自定义中继节点** 暴露自定义
+iroh **relay** URL。留空时继续用 iroh 默认中继；填了 URL 就只走你自己
+的中继节点。
+
+这篇文档解答：
+
+- iroh relay 到底是什么、不是什么
+- 在一台 Linux 服务器上怎么把它跑起来（裸机二进制 / Docker 两条路径）
+- TLS 证书怎么搞（Let's Encrypt 自动 / 自备证书）
+- UniClipboard 这边怎么填 URL、怎么验证它确实在用你的中继
+
+## 它是什么、不是什么
+
+iroh relay **不是** 你的剪贴板内容能看到的地方。它只是 P2P 打洞失败时
+的转发层：
+
+- **能看到**：源 / 目的 node ID、QUIC 数据报的密文长度、连接时间。
+- **看不到**：你的剪贴板内容（应用层 XChaCha20-Poly1305 端到端密封）、
+  口令、MasterKey、空间成员明细。
+
+把 relay 看成"加密水管"。自建的意义在于 **可达性与运维归属** —— 你的
+两台跨网设备总能找到一台你能控制的中转节点，而不是 n0 的公共节点。
+机密性方面，自建 vs 公共并没有差别。
+
+详见 [配对与同步 — 中继看到的 vs. 对端看到的](./pairing#中继看到的-vs-对端看到的)。
+
+iroh relay 也 **不** 提供节点发现（rendezvous）。首次配对仍然走
+UniClipboard 的 rendezvous 服务交换 NodeId。自定义 rendezvous discovery
+目前 **没有** 暴露给用户。
+
+## 前置条件
+
+- 一台公网可达的 Linux 主机（虚机也行）。带 IPv4 公网 IP 是稳妥选择；
+  纯 IPv6 也能跑，但客户端到 relay 的连通性就要看运营商。
+- 一个解析到这台主机的 **域名**（强烈推荐）。无域名也能跑（只 HTTP，无
+  TLS），但跨网络的客户端基本连不上 —— iroh 客户端默认要求 HTTPS。
+- 主机上需要开放的入站端口：
+  - **TCP/80** — HTTP（如果用 Let's Encrypt 自动签发，验证流程必须走 80）
+  - **TCP/443** — HTTPS（主流量、`/relay`、`/ping`、`/generate_204`）
+  - **UDP/7842** — QUIC 地址发现（可选，但强烈推荐打开 NAT 探测会用到）
+- Rust 工具链（如果走源码构建）或 Docker（如果走容器）。
+
+<Callout type="warn">
+  iroh-relay 二进制默认监听 80 / 443 这两个 well-known 端口。如果机器
+  上已经在跑 nginx / caddy，要么换端口（`http_bind_addr` /
+  `https_bind_addr`），要么用反向代理把 `/relay`、`/ping`、`/generate_204`、
+  `/` 透传给 iroh-relay。直接 80/443 由 iroh-relay 独占要简单得多。
+</Callout>
+
+## 方案 A：Docker
+
+n0 团队在 Docker Hub 维护 `n0computer/iroh-relay` 镜像，这是最快上线
+的方式。
+
+### 1. 写 `config.toml`
+
+把下面这份放到主机的 `/etc/iroh-relay/config.toml`：
+
+```toml
+# /etc/iroh-relay/config.toml
+http_bind_addr = "[::]:80"
+enable_quic_addr_discovery = true
+
+[tls]
+hostname = "relay.example.com"
+cert_mode = "LetsEncrypt"
+contact = "ops@example.com"
+prod_tls = true
+cert_dir = "/var/lib/iroh-relay/certs"
+```
+
+字段含义：
+
+- `hostname` —— 你的 relay 域名，**必须能从公网解析到本机**。
+- `cert_mode = "LetsEncrypt"` —— iroh-relay 内置 ACME 客户端，自动签
+  发并续期。需要 80 端口对外可达（ACME HTTP-01 校验）。
+- `contact` —— Let's Encrypt 必填，吊销 / 过期会发到这里。
+- `prod_tls = true` —— 用正式签发服务器。开发测试时改成 `false` 走
+  staging（staging 颁的证书浏览器不认，但能避免触发频次上限）。
+- `cert_dir` —— ACME 状态与证书的缓存目录，挂出来才能在容器重启后
+  保留。
+
+### 2. 启动容器
+
+```bash
+docker run -d \
+  --name iroh-relay \
+  --restart=unless-stopped \
+  -p 80:80 \
+  -p 443:443 \
+  -p 7842:7842/udp \
+  -v /etc/iroh-relay/config.toml:/etc/iroh-relay/config.toml:ro \
+  -v /var/lib/iroh-relay:/var/lib/iroh-relay \
+  n0computer/iroh-relay:latest \
+  --config-path /etc/iroh-relay/config.toml
+```
+
+第一次启动会向 Let's Encrypt 申请证书，看日志确认 ACME 流程通过：
+
+```bash
+docker logs -f iroh-relay
+```
+
+### 3. 验证
+
+任意机器上跑：
+
+```bash
+curl -sS -o /dev/null -w 'http_code=%{http_code}\n' \
+  https://relay.example.com/ping
+```
+
+应该返回 `http_code=200`。访问 `https://relay.example.com/` 会看到一个
+"Iroh Relay" 的简单首页。证书可以这样核：
+
+```bash
+echo | openssl s_client -servername relay.example.com \
+  -connect relay.example.com:443 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates
+```
+
+`issuer` 里能看到 `Let's Encrypt` 就说明 ACME 签发成功。
+
+## 方案 B：从源码构建 + systemd
+
+适合不想跑 Docker、或要锁版本 / 改特性的场景。
+
+### 1. 构建
+
+```bash
+git clone https://github.com/n0-computer/iroh.git
+cd iroh
+cargo build --release --features=server --bin iroh-relay
+sudo install -m 755 target/release/iroh-relay /usr/local/bin/
+```
+
+### 2. 配置文件
+
+同方案 A 的 `config.toml`，放到 `/etc/iroh-relay/config.toml`。
+
+### 3. systemd unit
+
+`/etc/systemd/system/iroh-relay.service`：
+
+```ini
+[Unit]
+Description=iroh relay server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/iroh-relay --config-path /etc/iroh-relay/config.toml
+Restart=on-failure
+RestartSec=5s
+# 让 iroh-relay 自己绑 80/443 —— 不建议用 root，给二进制 cap_net_bind 即可
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+DynamicUser=true
+StateDirectory=iroh-relay
+# StateDirectory=iroh-relay 会创建 /var/lib/iroh-relay 并归属到动态用户
+# 把 cert_dir 指到这里即可
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用并查看：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now iroh-relay
+sudo journalctl -u iroh-relay -f
+```
+
+## 自备证书（无 ACME）
+
+如果你已经有 wildcard 或自管 PKI 的证书，把 `tls.cert_mode` 改成 `Manual`：
+
+```toml
+[tls]
+cert_mode = "Manual"
+manual_cert_path = "/etc/iroh-relay/fullchain.pem"
+manual_key_path = "/etc/iroh-relay/privkey.pem"
+```
+
+把 80 端口空出来给别的服务也无所谓，因为 ACME 校验不再需要。但 443 与
+UDP/7842 仍然要对外开放。
+
+证书轮换时把 `cert_mode` 换成 `Reloading`，iroh-relay 会按
+`DEFAULT_CERT_RELOAD_INTERVAL` 定期重新加载 PEM 文件，无需重启进程。
+
+## 接入控制（可选）
+
+默认 `access = "everyone"`，意味着任何拿着合法 NodeId 的 iroh 客户端
+都可以用你的中继做转发。这通常是你 **不想要** 的 —— 中继的带宽是你自己
+出的。
+
+允许列表（白名单）：
+
+```toml
+[access]
+allowlist = [
+  "abcd1234...64hex",   # NodeId of laptop
+  "ef567890...64hex",   # NodeId of desktop
+]
+```
+
+或者反过来用黑名单：
+
+```toml
+[access]
+denylist = ["bad1234...64hex"]
+```
+
+对端的 NodeId 可以在 UniClipboard 里通过 `uniclip status --json` 拿到，
+或者在 GUI 设备页查看。
+
+更高级的场景（中心化鉴权服务）可以用 `access.http`，让 iroh-relay 对
+每个新连接发 HTTP POST 到你的鉴权端点。详见
+[iroh-relay 源码](https://github.com/n0-computer/iroh/tree/main/iroh-relay)。
+
+## 接到 UniClipboard
+
+1. 在每台设备打开 **设置 → 网络 → 自定义中继节点**。
+2. 每行填一个 URL，例如：
+
+   ```
+   https://relay.example.com
+   ```
+
+   不要写端口（443 / 7842 都按默认走）；不要写路径。多台中继换行排开
+   即可，iroh 客户端会在它们之间选最优。
+3. 点 `应用并重启`，daemon 会重启并切到自定义中继列表。
+4. 留空字段 = 回退到 iroh 默认中继；这是从自建切回默认的方法。
+
+<Callout type="info">
+  自定义 relay 列表 **不是** 跨设备同步设置 —— 每台设备各自填。换 relay
+  域名时要逐台改。
+</Callout>
+
+## 验证它真的在用你的中继
+
+最直观的办法是观察日志：
+
+- **服务器侧**：`docker logs iroh-relay`（或 `journalctl -u iroh-relay`）
+  能看到 `accepted connection from <NodeId>`。两台设备一旦走中继转发
+  就会出现一对连接。
+- **客户端侧**：`uniclip status --json` 的 `network.relay_url` 字段会
+  显示当前正在使用的 relay URL。如果你的两台设备处在打不通直连的网络
+  组合（典型情况：两边都是 CGNAT），观察一段时间这个字段应该恒定指向
+  你自建的 URL。
+
+如果客户端日志报 `relay handshake failed: tls: unknown ca`，多半是你
+启用 Let's Encrypt staging（`prod_tls = false`），但客户端用的是系统
+信任根。改回 `prod_tls = true` 或把 staging 根证书装到客户端。
+
+## 常见坑
+
+| 症状 | 排查方向 |
+| ---- | -------- |
+| ACME 拿不到证书 | 80 端口是否真的从公网可达？防火墙、安全组、云厂 NAT 都要放。 |
+| `tls: handshake failure` | `hostname` 是否和域名一致？DNS 是否真的指向这台机器？ |
+| 客户端始终用默认中继 | 客户端有没有 **重启 daemon**？光改设置不重启不会生效。 |
+| 跨网络打通 200ms+ | 看看 relay 的物理位置是否离两端都太远；iroh 会择优选 relay，但只有一台时没得选。 |
+| 内存涨得快 | 默认 `key_cache_capacity = 1048576`（约 56 MB）。小机器把它调小一点。 |
+
+## 还想知道更多
+
+- 上游源码 / Issues：https://github.com/n0-computer/iroh/tree/main/iroh-relay
+- iroh 关于 relay 的概念性介绍：https://docs.iroh.computer/concepts/relays
+- UniClipboard 这边把 URL 串成 `RelayMode::Custom` 的代码：
+  `src-tauri/crates/uc-infra/src/network/iroh/node.rs`

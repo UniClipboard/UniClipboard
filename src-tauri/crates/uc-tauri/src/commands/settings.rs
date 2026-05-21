@@ -207,33 +207,19 @@ fn keyboard_shortcuts_to_dto(
     rename_all_fields = "camelCase"
 )]
 pub enum RelayProbeOutcome {
-    Success {
-        latency_ms: u32,
-        protocol_version: Option<String>,
-    },
-    InvalidUrl {
-        message: String,
-    },
-    Dns {
-        message: String,
-    },
-    Tls {
-        message: String,
-    },
-    Handshake {
-        message: String,
-    },
+    Success { latency_ms: u32 },
+    InvalidUrl { message: String },
+    Dns { message: String },
+    Tls { message: String },
+    Handshake { message: String },
     Timeout,
-    Other {
-        message: String,
-    },
+    Other { message: String },
 }
 
 impl From<RelayProbeReportView> for RelayProbeOutcome {
     fn from(value: RelayProbeReportView) -> Self {
         RelayProbeOutcome::Success {
             latency_ms: value.latency_ms,
-            protocol_version: value.protocol_version,
         }
     }
 }

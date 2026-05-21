@@ -109,7 +109,6 @@ impl RelayDiagnosticPort for IrohRelayDiagnosticAdapter {
 fn map_relay_probe_report(report: IrohRelayProbeReport) -> RelayProbeReport {
     RelayProbeReport {
         latency_ms: report.latency_ms,
-        protocol_version: report.protocol_version,
     }
 }
 

@@ -155,18 +155,22 @@ fn settings_error_to_api(op: &'static str, err: app_settings::SettingsFacadeErro
             ApiError::internal(format!("failed to save settings: {msg}")),
         ),
         E::Invalid(msg) => ("invalid", ApiError::bad_request(msg)),
-        // Webserver 不暴露 /settings/probe-relay 端点;若上层调用走错路,
-        // 这里以 internal 失败兜底而不是静默吞掉。
+        // Webserver 不调用 `SettingsFacade::probe_relay_url`,也不暴露探测端
+        // 点。`update_settings_handler` 链路无法产出这 7 个变体 —— 真触达
+        // 等于 facade wiring 出 bug。穷举 match 显式 `unreachable!` 既让
+        // rustc 在未来新增变体时强制处理,也让事故第一时间 panic 暴露。
         E::RelayProbeUnavailable
         | E::RelayProbeInvalidUrl(_)
         | E::RelayProbeDns(_)
         | E::RelayProbeTls(_)
         | E::RelayProbeHandshake(_)
         | E::RelayProbeTimeout
-        | E::RelayProbeOther(_) => (
-            "relay_probe",
-            ApiError::internal("relay probe is not exposed via webserver".to_string()),
-        ),
+        | E::RelayProbeOther(_) => {
+            unreachable!(
+                "webserver settings_error_to_api reached a RelayProbe* variant; \
+                 this path is not wired through update_settings_handler"
+            )
+        }
     };
     log_facade_failure("settings", op, variant, api.status, &api.message);
     api

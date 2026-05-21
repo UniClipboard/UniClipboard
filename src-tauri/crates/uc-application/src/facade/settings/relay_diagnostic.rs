@@ -16,11 +16,11 @@
 use async_trait::async_trait;
 
 /// 探测成功时的报告。字段语义与具体协议无关:`latency_ms` 是端到端往返
-/// 耗时,`protocol_version` 由具体实现按可获取性填充(获取不到则 `None`)。
+/// 耗时。未来如果需要暴露协议版本/服务端 ID,在此 struct 增字段并同步
+/// infra/bootstrap 的 1:1 映射。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayProbeReport {
     pub latency_ms: u32,
-    pub protocol_version: Option<String>,
 }
 
 /// 应用层归类后的中继诊断错误。每个变体承诺一个稳定语义,上层据此挑选

@@ -18,7 +18,7 @@ use iroh_relay::client::{ClientBuilder, ConnectError, DialError};
 use iroh_relay::dns::DnsResolver;
 use iroh_relay::tls::{self, CaRootsConfig};
 use tokio::time::error::Elapsed;
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 
 /// 探测整体预算。覆盖 DNS + TCP + TLS + WebSocket upgrade + 协议握手;
 /// 超过此预算返回 [`RelayProbeError::Timeout`]。
@@ -29,7 +29,6 @@ const PROBE_BUDGET: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayProbeReport {
     pub latency_ms: u32,
-    pub protocol_version: Option<String>,
 }
 
 /// infra 内部归类后的探测错误。每个变体语义稳定,bootstrap 直接 match 转
@@ -114,10 +113,7 @@ impl IrohRelayProbeAdapter {
                 let latency_ms =
                     u32::try_from(started_at.elapsed().as_millis()).unwrap_or(u32::MAX);
                 debug!(latency_ms, "relay probe succeeded");
-                Ok(RelayProbeReport {
-                    latency_ms,
-                    protocol_version: None,
-                })
+                Ok(RelayProbeReport { latency_ms })
             }
             Ok(Err(err)) => Err(map_connect_error(err)),
             Err(Elapsed { .. }) => Err(RelayProbeError::Timeout),
@@ -162,7 +158,12 @@ fn map_connect_error(err: ConnectError) -> RelayProbeError {
         ConnectError::MissingCryptoProvider { .. } => {
             RelayProbeError::Other("rustls crypto provider missing".to_string())
         }
-        other => RelayProbeError::Other(other.to_string()),
+        // 兜底分支:把陌生 ConnectError 变体压成 Other,同时 warn 保留源头便
+        // 于排查(iroh-relay 升级新增变体时是这里第一时间发现)。
+        other => {
+            warn!(error = ?other, "relay probe: unmapped ConnectError variant");
+            RelayProbeError::Other(other.to_string())
+        }
     }
 }
 
@@ -192,7 +193,12 @@ fn map_dial_error(err: DialError) -> RelayProbeError {
         DialError::ProxyInvalidTargetPort { .. } => {
             RelayProbeError::InvalidUrl("invalid proxy target port".to_string())
         }
-        other => RelayProbeError::Other(other.to_string()),
+        // 与 map_connect_error 同理:陌生 DialError 变体走 Other,源信息进
+        // tracing 便于跨版本对账。
+        other => {
+            warn!(error = ?other, "relay probe: unmapped DialError variant");
+            RelayProbeError::Other(other.to_string())
+        }
     }
 }
 
@@ -219,5 +225,31 @@ mod tests {
         let adapter = IrohRelayProbeAdapter::new().expect("init");
         let err = adapter.probe("not a url").await.unwrap_err();
         assert!(matches!(err, RelayProbeError::InvalidUrl(_)));
+    }
+
+    /// 真握手回归用例。默认走 `--ignored` 跳过(CI / 离线开发不应依赖外部
+    /// relay);本地排查 iroh-relay 升级 / 网络栈变更时:
+    ///
+    ///   RELAY_PROBE_TARGET=https://your-relay.example.com \
+    ///     cargo test -p uc-infra relay_probe::tests \
+    ///     probe_succeeds_against_real_relay -- --ignored --nocapture
+    ///
+    /// 不设环境变量则默认尝试 n0 公共 relay。若选定 relay 因 ISP / 区域
+    /// 原因不可达,把 URL 换成离测试机更近的节点即可。
+    #[tokio::test]
+    #[ignore = "requires network access to a reachable iroh relay"]
+    async fn probe_succeeds_against_real_relay() {
+        let target = std::env::var("RELAY_PROBE_TARGET")
+            .unwrap_or_else(|_| "https://use1-1.relay.iroh.network".to_string());
+        let adapter = IrohRelayProbeAdapter::new().expect("init");
+        let report = adapter
+            .probe(&target)
+            .await
+            .unwrap_or_else(|err| panic!("probe failed against {target}: {err}"));
+        assert!(
+            report.latency_ms < 5_000,
+            "probe latency {} ms exceeds budget",
+            report.latency_ms
+        );
     }
 }

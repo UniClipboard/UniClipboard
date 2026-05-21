@@ -701,7 +701,7 @@ export type RegisterMobileDeviceResult = {
  *  异常的前提下区分文案。系统级故障(facade 缺失装配、trace 解析失败等)
  *  仍然走 [`CommandError`]。
  */
-export type RelayProbeOutcome = { kind: "success"; latencyMs: number; protocolVersion: string | null } | { kind: "invalidUrl"; message: string } | { kind: "dns"; message: string } | { kind: "tls"; message: string } | { kind: "handshake"; message: string } | { kind: "timeout" } | { kind: "other"; message: string };
+export type RelayProbeOutcome = { kind: "success"; latencyMs: number } | { kind: "invalidUrl"; message: string } | { kind: "dns"; message: string } | { kind: "tls"; message: string } | { kind: "handshake"; message: string } | { kind: "timeout" } | { kind: "other"; message: string };
 
 /**
  *  `rotate_mobile_password` 入参。`password = None` (字段缺失或 null) 走

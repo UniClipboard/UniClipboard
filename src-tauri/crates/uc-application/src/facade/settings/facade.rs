@@ -41,14 +41,12 @@ pub enum SettingsFacadeError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayProbeReportView {
     pub latency_ms: u32,
-    pub protocol_version: Option<String>,
 }
 
 impl From<RelayProbeReport> for RelayProbeReportView {
     fn from(value: RelayProbeReport) -> Self {
         Self {
             latency_ms: value.latency_ms,
-            protocol_version: value.protocol_version,
         }
     }
 }

@@ -569,6 +569,93 @@ mapping：
 
 **槽位未使用**：`RateLimited` 不在本枚举内——v1 LAN listener 尚未实装速率限制；若未来加 rate limit，独立新增变体（非破坏式扩展）。
 
+### 7.8 Update Lifecycle 事件清单
+
+P2 落地（2026-05-21，与 update scheduler / 系统通知同 PR）。覆盖"后端检查 → 系统通知 → 用户进入对话框 → 决策（下载 / 安装 / 放弃）"全漏斗，服务"为什么用户不更新"的诊断需求。
+
+| 事件名 | 触发位置 | 关键 properties |
+|---|---|---|
+| `update_check_performed` | `update_scheduler::tick`（`startup` / `scheduled` / `window_show` 三 source）+ `commands/updater.rs::check_for_update`（`manual` source） | `source`: `startup` \| `scheduled` \| `manual` \| `window_show`, `outcome`: `UpdateCheckOutcome`, `failure_kind`: `Option<UpdateFailureKind>`, `install_kind`: `InstallKind` |
+| `update_notification_shown` | `update_scheduler::notification::send_update_notification` 返回后（去重通过、`tauri-plugin-notification` 调用完成） | `version`: `String`, `delivery_status`: `NotificationDeliveryStatus`, `install_kind`: `InstallKind` |
+| `update_dialog_opened` | 前端 `setUpdateDialogOpen(true)` 或 `setPackageManagerDialogOpen(true)` 之后，经 `capture_update_ui_event` Tauri command 转送 | `source`: `DialogOpenSource`, `phase`: `available` \| `downloading` \| `ready`, `install_kind`: `InstallKind` |
+| `update_dismissed` | 前端 AlertDialog Cancel / Content close / PackageManagerDialog close 之后，经 `capture_update_ui_event` 转送 | `phase`: `available` \| `ready`, `source`: `DismissSource` |
+| `update_action_invoked` | `commands/updater.rs::download_update` / `install_update` Tauri command body（manual）+ `update_scheduler` 自动下载分支（auto） | `action`: `UpdateAction`, `outcome`: `started` \| `succeeded` \| `failed` \| `cancelled`, `error_kind`: `Option<String>` |
+
+**红线**：
+
+- **同版本通知只发一次**：`update_notification_shown` 由 `last_notified_update.json`（`AppPaths::app_data_root_dir` 下，按 `UpdateChannel` 维度的 `HashMap<Channel, String>`）去重；重复版本的后续轮询循环 **不**emit 该事件——保证"通知到达率"分母准确。
+- **`autoCheckUpdate=false` 全链路静默**：该 setting 同时关闭启动检查 / 周期检查 / 通知发送，这批用户在 PostHog 上完全没有 `update_check_performed` 事件——分母自然不含他们，与"漏斗失效定位"诉求一致。
+- **setup 期间静默**：`update_scheduler` 等 `SetupStatus.has_completed == true` 后才启动（polling 间隔 30s），避免首次安装 / welcome 流程被任何 update 事件污染分母。
+- **scheduler-only 的 source 值**：`startup` / `scheduled` / `window_show` 仅由 `update_scheduler` emit；命令行 / UI 触发的"检查更新"按钮 emit `manual`。两类 source **绝不** 混用同一调用路径——避免"用户主动检查"与"后台检查"分子错位。
+- **版本字符串相等比较**：去重与 dashboard slicing 都按字符串相等处理，不引入 semver。channel 切换（如 stable → alpha）导致的版本号变化按"新版本"语义处理，会重新通知一次。
+
+落地备注（保留以便回溯）：
+
+- `update_check_performed`：scheduler 触发由 scheduler 自身 emit；`check_for_update` Tauri command body 只为 `source = manual` 路径 emit；内部抽出的 inner 函数 `do_check_for_update` **不** emit 任何事件，由 caller 决定 source。
+- `update_action_invoked`：未引入 `source` 字段——`action: download_bg` 与 `action: install` 已把 lifecycle stage 表达清楚，再扩 source 会与 `update_dialog_opened.source` 语义冲突。scheduler 触发的 auto-download 视为合法 caller，与 manual 走同一事件、同一 properties 形态（caller 类型由 `EventContext.session_id` 与时间序列推断）。
+- `update_notification_shown.delivery_status`：`PermissionDenied` 与 `SendFailed` 都视为"事件本身发生但未必到达用户" — schema 上保留 emit，dashboard 端按 `delivery_status = sent` 计算到达率分子。
+- `install_kind` 出现在多个事件里：scheduler 任务启动时一次性 probe + 缓存；前端事件由 backend 在 `capture_update_ui_event` 接收时反查 cache 后注入，前端不传也不需要知道。
+- `update_dismissed.source.package_manager_dialog_closed`：Linux deb/rpm 路径专属（弹出 `PackageManagerUpdateDialog` 而不是 `AlertDialog`）；其他平台不会出现此值。
+- 通知点击 callback 在 Linux 部分桌面环境（Sway / dwm）可能不可用——此时通知仍 emit `update_notification_shown`，但用户没有 `update_dialog_opened.source = notification` 后续事件；这是预期降级路径，由 dashboard 端按平台切片判断。
+
+### 7.9 Update Lifecycle 配套枚举
+
+```rust
+pub enum UpdateCheckOutcome {
+    Available,     // 检查成功，发现新版本
+    UpToDate,      // 检查成功，已是最新
+    Failed,        // 检查失败（详见 failure_kind）
+}
+
+pub enum UpdateFailureKind {
+    Network,       // 连接失败 / DNS / TLS 握手
+    HttpError,     // 4xx / 5xx 响应
+    ParseError,    // manifest JSON 解析或 minisign 校验失败
+    Other,         // 其他（含 panic 兜底）
+}
+
+pub enum NotificationDeliveryStatus {
+    Sent,              // tauri-plugin-notification 成功投递给 OS
+    PermissionDenied,  // macOS / Windows 用户拒绝通知权限
+    SendFailed,        // 投递失败（Linux 无 notification daemon / 其他平台错误）
+}
+
+pub enum DialogOpenSource {
+    Notification,      // 用户点击系统通知打开
+    SidebarIcon,       // 用户点击 sidebar 的更新指示器
+}
+
+pub enum DismissSource {
+    DialogLater,                 // "稍后" 按钮
+    DialogClosed,                // X / ESC / 点击外部关闭
+    PackageManagerDialogClosed,  // Linux deb/rpm 路径专属
+}
+
+pub enum UpdateAction {
+    DownloadBg,        // 用户点 "后台下载" 或 scheduler 自动下载触发
+    Install,           // 用户点 "安装并重启"
+}
+
+pub enum InstallKind {
+    Macos,             // .app（走 Tauri updater）
+    Windows,           // .exe / .msi（走 Tauri updater）
+    AppImage,          // Linux AppImage（走 Tauri updater）
+    Deb,               // Debian/Ubuntu 包（走 PackageManagerDialog 引导）
+    Rpm,               // RHEL/Fedora 包
+    Unknown,           // probe 失败兜底（含 Snap / COPR / 源码构建等）
+}
+```
+
+**域内独立**：以上枚举不与 `mobile_sync` / `pairing` / `unlock` / `sync` 失败枚举共享——延续 §7.3 末尾的 domain-specific failure enum 原则。`UpdateFailureKind::Other` 占比 > 10% 视为 manifest / 网络栈不稳定信号。
+
+**`InstallKind` 与 Tauri command 共享 wire 形态**：`InstallKind` 已存在于 `commands/updater.rs` 作为 `get_install_kind` Tauri command 返回值（serde `rename_all = "lowercase"`）。本节定义的 telemetry 侧 enum **必须** 与之保持 wire 等价——`macos` / `windows` / `appimage` / `deb` / `rpm` / `unknown`。任何一侧扩枚举必须同步另一侧；变更走 §8 演化策略（重命名禁止，新增允许）。
+
+**未使用槽位**：
+
+- `UpdateFailureKind::SignatureMismatch` 不在 v1——minisign 校验失败由 `ParseError` 兼容；若 dashboard 显示 `ParseError` 占比异常再独立拆分。
+- `NotificationDeliveryStatus::PartiallySent` 不在枚举内——`tauri-plugin-notification` 没有"部分成功"语义，三态足够。
+- `InstallKind::Snap` / `Copr` 不在 v1——0.11.0-alpha.1 的 Linux 安装脚本支持这两个包源，但运行时 binary 仍归类 `Unknown`（dpkg-query / rpm 都不会认领它们）；若 dashboard 显示 `Unknown` 占比 > 10% 且 Linux 用户占比有相关性，再独立拆分。
+
 ## 8. Schema 演化策略
 
 | 变更类型 | 处理方式 |

@@ -73,13 +73,44 @@ pub struct SchedulerDeps {
 /// 它，把 `task_registry.child_token()` 传进来。
 pub async fn run(deps: SchedulerDeps, token: CancellationToken) {
     info!(target: "update_scheduler", "starting");
+
+    // Phase 4C: install_kind 在进程生命期内不变（用户不会从 dpkg 包切到 rpm
+    // 包还跑同一个 binary）。检测一次缓存在 task stack：Linux 路径会跑
+    // `dpkg-query` / `rpm -qf` 子进程，从 async 上下文同步调用会短暂阻塞
+    // tokio worker，所以走 `spawn_blocking` 把它隔离到 blocking pool。
+    // macOS / Windows 路径是常量返回，spawn_blocking 的开销远低于一次跨线程
+    // 调度——但为了走同一条代码路径，仍统一通过 spawn_blocking。
+    let install_kind = detect_install_kind_async().await;
+    info!(
+        target: "update_scheduler",
+        install_kind = ?install_kind,
+        "install kind detected"
+    );
+
     if !wait_for_setup(&deps.setup_status_port, &token).await {
         info!(target: "update_scheduler", "cancelled before setup completed");
         return;
     }
     info!(target: "update_scheduler", "setup completed; entering main loop");
-    main_loop(&deps, token).await;
+    main_loop(&deps, install_kind, token).await;
     info!(target: "update_scheduler", "exited main loop");
+}
+
+/// 在 blocking pool 上跑 `detect_install_kind` 一次。Panic 视为"未知打包形态"
+/// 兜底——scheduler 不能因为一次 install kind 探测异常就整体崩溃；后续
+/// `should_auto_download(Unknown) == false` 自然 short-circuit 自动下载。
+async fn detect_install_kind_async() -> InstallKind {
+    match tokio::task::spawn_blocking(detect_install_kind).await {
+        Ok(kind) => kind,
+        Err(err) => {
+            warn!(
+                target: "update_scheduler",
+                error = %err,
+                "detect_install_kind task panicked; defaulting to Unknown"
+            );
+            InstallKind::Unknown
+        }
+    }
 }
 
 /// 主循环的迭代结果。决定下一次 sleep 的时长。
@@ -110,9 +141,9 @@ async fn wait_for_setup(port: &Arc<dyn SetupStatusPort>, token: &CancellationTok
     }
 }
 
-async fn main_loop(deps: &SchedulerDeps, token: CancellationToken) {
+async fn main_loop(deps: &SchedulerDeps, install_kind: InstallKind, token: CancellationToken) {
     loop {
-        let outcome = run_one_iteration(deps).await;
+        let outcome = run_one_iteration(deps, install_kind).await;
         let sleep_dur = next_sleep_after(outcome);
         debug!(
             target: "update_scheduler",
@@ -127,7 +158,10 @@ async fn main_loop(deps: &SchedulerDeps, token: CancellationToken) {
     }
 }
 
-async fn run_one_iteration(deps: &SchedulerDeps) -> IterationOutcome {
+async fn run_one_iteration(
+    deps: &SchedulerDeps,
+    install_kind_raw: InstallKind,
+) -> IterationOutcome {
     let settings = match deps.settings_port.load().await {
         Ok(s) => s,
         Err(err) => {
@@ -152,7 +186,9 @@ async fn run_one_iteration(deps: &SchedulerDeps) -> IterationOutcome {
     let pending = app.state::<PendingUpdate>();
     let result = do_check_for_update(&app, Some(resolved_channel.clone()), pending.inner()).await;
 
-    let install_kind_raw = detect_install_kind();
+    // install_kind 在 `run()` 入口一次性探测后沿调用链传入，避免每轮迭代再
+    // 调一次同步函数（Linux 路径有 OnceLock 命中但仍是一次原子读 + cfg!()
+    // 分支，能省则省）。
     let install_kind = install_kind_for_telemetry(install_kind_raw);
 
     // Available 分支：通知去重 + 条件 auto-download。在 emit
@@ -523,6 +559,18 @@ mod tests {
                 "expected NO auto-download for {kind:?} (handled by package manager / defensive)"
             );
         }
+    }
+
+    // ---- detect_install_kind_async -----------------------------------------
+
+    #[tokio::test]
+    async fn detect_install_kind_async_matches_sync_detection() {
+        // Phase 4C: 异步版本仅是 `spawn_blocking(detect_install_kind)` 包装。
+        // 结果应与同步路径完全一致——这道防线锁住未来若有人改 fallback 行为
+        // （比如默认值偏到 macOS）必须先改本测试。
+        let async_result = detect_install_kind_async().await;
+        let sync_result = detect_install_kind();
+        assert_eq!(async_result, sync_result);
     }
 
     #[tokio::test(start_paused = true)]

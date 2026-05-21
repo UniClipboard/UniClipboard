@@ -457,6 +457,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             app.manage(PendingUpdate::new());
+            // Phase 5B: `LastCheckAt` 跟踪上次任意 source 的 check 完成时间，
+            // 给 `show_main_window` 顺手检查阈值用。初始化为当前 epoch 而非 0
+            // ——避免 silent_start=false 下首次 show_main_window 与 scheduler
+            // 首次 check 双发 update_check_performed（详见 last_check_at.rs）。
+            app.manage(crate::update_scheduler::LastCheckAt::initialized_now());
 
             // Start file cache cleanup task (runs once at startup).
             // The starter is `async fn`; drive it on Tauri's managed tokio

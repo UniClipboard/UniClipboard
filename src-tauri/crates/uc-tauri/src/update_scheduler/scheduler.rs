@@ -35,6 +35,7 @@ use uc_observability::analytics::{
     UpdateAction, UpdateActionOutcome, UpdateCheckOutcome, UpdateCheckSource,
 };
 
+use super::last_check_at::LastCheckAt;
 use super::last_notified::LastNotifiedUpdateStore;
 use super::notification::send_update_notification;
 use crate::commands::updater::{
@@ -185,6 +186,11 @@ async fn run_one_iteration(
     let app = deps.app_handle.clone();
     let pending = app.state::<PendingUpdate>();
     let result = do_check_for_update(&app, Some(resolved_channel.clone()), pending.inner()).await;
+    // Phase 5B: 任何 source 的 check 完成（成功或失败）都标记时间戳，让
+    // `show_main_window` 顺手检查阈值能正确感知最近一次活动。"Downloading
+    // 状态拒绝"会经 `Err` 路径触达这里 —— 不算真 HTTP 尝试，但也意味着
+    // updater 子系统活跃，30min 内不再额外触发 window_show check 是合理的。
+    app.state::<LastCheckAt>().record_now();
 
     // install_kind 在 `run()` 入口一次性探测后沿调用链传入，避免每轮迭代再
     // 调一次同步函数（Linux 路径有 OnceLock 命中但仍是一次原子读 + cfg!()

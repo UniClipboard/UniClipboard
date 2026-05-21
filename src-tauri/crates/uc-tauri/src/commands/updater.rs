@@ -19,7 +19,7 @@ use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::UpdaterExt as _;
 use tokio::sync::Notify;
 use tracing::{error, info, info_span, Instrument};
@@ -347,6 +347,11 @@ pub async fn check_for_update(
 
     async move {
         let result = do_check_for_update(&app, resolved_channel, pending.inner()).await;
+
+        // Phase 5B: 任何 source 的 check 完成（成功或失败）都更新 LastCheckAt，
+        // 让 `show_main_window` 顺手检查阈值不会在用户刚手动检查完后又触发。
+        app.state::<crate::update_scheduler::LastCheckAt>()
+            .record_now();
 
         let install_kind = install_kind_for_telemetry(detect_install_kind());
         let (outcome, failure_kind) = match &result {

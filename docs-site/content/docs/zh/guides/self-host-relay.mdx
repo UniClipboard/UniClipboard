@@ -46,10 +46,10 @@ UniClipboard 的 rendezvous 服务交换 NodeId。自定义 rendezvous discovery
 - Rust 工具链（如果走源码构建）或 Docker（如果走容器）。
 
 <Callout type="warn">
-  iroh-relay 二进制默认监听 80 / 443 这两个 well-known 端口。如果机器
-  上已经在跑 nginx / caddy，要么换端口（`http_bind_addr` /
-  `https_bind_addr`），要么用反向代理把 `/relay`、`/ping`、`/generate_204`、
-  `/` 透传给 iroh-relay。直接 80/443 由 iroh-relay 独占要简单得多。
+  iroh-relay 二进制默认监听 80 / 443 这两个 well-known 端口。如果机器 上已经在跑 nginx /
+  caddy，要么换端口（`http_bind_addr` / `https_bind_addr`），要么用反向代理把
+  `/relay`、`/ping`、`/generate_204`、 `/` 透传给 iroh-relay。直接 80/443 由 iroh-relay
+  独占要简单得多。
 </Callout>
 
 ## 方案 A：Docker
@@ -62,13 +62,14 @@ n0 团队在 Docker Hub 维护 `n0computer/iroh-relay` 镜像，这是最快上�
   （QUIC handshake `authentication failed`），server 必须和客户端使用的
   `iroh-relay` crate 版本对得上。
 
-  UniClipboard 当前打包的是 **iroh 0.98.x**，对应 Docker tag 是
-  **`0.98.2-docker2`**。注意同名前缀的 `0.98.2` / `0.98.2-docker` 在
-  amd64 上会直接 segfault，**只有 `-docker2` 是可用的 0.98 镜像**
-  （上游打包问题）。
+UniClipboard 当前打包的是 **iroh 0.98.x**，对应 Docker tag 是
+**`0.98.2-docker2`**。注意同名前缀的 `0.98.2` / `0.98.2-docker` 在
+amd64 上会直接 segfault，**只有 `-docker2` 是可用的 0.98 镜像**
+（上游打包问题）。
 
-  想看当前客户端打包的版本：在 UniClipboard 源码里 `grep iroh = ` 看
-  `src-tauri/crates/uc-infra/Cargo.toml`。
+想看当前客户端打包的版本：在 UniClipboard 源码里 `grep iroh = ` 看
+`src-tauri/crates/uc-infra/Cargo.toml`。
+
 </Callout>
 
 ### 1. 写 `config.toml`
@@ -252,12 +253,12 @@ denylist = ["bad1234...64hex"]
 
    不要写端口（443 / 7842 都按默认走）；不要写路径。多台中继换行排开
    即可，iroh 客户端会在它们之间选最优。
+
 3. 点 `应用并重启`，daemon 会重启并切到自定义中继列表。
 4. 留空字段 = 回退到 iroh 默认中继；这是从自建切回默认的方法。
 
 <Callout type="info">
-  自定义 relay 列表 **不是** 跨设备同步设置 —— 每台设备各自填。换 relay
-  域名时要逐台改。
+  自定义 relay 列表 **不是** 跨设备同步设置 —— 每台设备各自填。换 relay 域名时要逐台改。
 </Callout>
 
 ## 验证它真的在用你的中继
@@ -285,13 +286,13 @@ UniClipboard 目前 **没有运行时接口** 暴露"当前 home relay URL"
 
 ## 常见坑
 
-| 症状 | 排查方向 |
-| ---- | -------- |
-| ACME 拿不到证书 | 80 端口是否真的从公网可达？防火墙、安全组、云厂 NAT 都要放。 |
-| `tls: handshake failure` | `hostname` 是否和域名一致？DNS 是否真的指向这台机器？ |
-| 客户端始终用默认中继 | 客户端有没有 **重启 daemon**？光改设置不重启不会生效。 |
-| 跨网络打通 200ms+ | 看看 relay 的物理位置是否离两端都太远；iroh 会择优选 relay，但只有一台时没得选。 |
-| 内存涨得快 | 默认 `key_cache_capacity = 1048576`（约 56 MB）。小机器把它调小一点。 |
+| 症状                     | 排查方向                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| ACME 拿不到证书          | 80 端口是否真的从公网可达？防火墙、安全组、云厂 NAT 都要放。                     |
+| `tls: handshake failure` | `hostname` 是否和域名一致？DNS 是否真的指向这台机器？                            |
+| 客户端始终用默认中继     | 客户端有没有 **重启 daemon**？光改设置不重启不会生效。                           |
+| 跨网络打通 200ms+        | 看看 relay 的物理位置是否离两端都太远；iroh 会择优选 relay，但只有一台时没得选。 |
+| 内存涨得快               | 默认 `key_cache_capacity = 1048576`（约 56 MB）。小机器把它调小一点。            |
 
 ## 还想知道更多
 

@@ -61,11 +61,10 @@ Custom rendezvous discovery is **not** exposed today.
   path).
 
 <Callout type="warn">
-  iroh-relay binds 80/443 by default. If nginx / caddy is already on
-  the host, either move iroh-relay to other ports (override
-  `http_bind_addr` / `https_bind_addr`) or proxy `/relay`, `/ping`,
-  `/generate_204`, and `/` through to iroh-relay. Letting iroh-relay
-  own 80/443 directly is the simplest setup.
+  iroh-relay binds 80/443 by default. If nginx / caddy is already on the host, either move
+  iroh-relay to other ports (override `http_bind_addr` / `https_bind_addr`) or proxy `/relay`,
+  `/ping`, `/generate_204`, and `/` through to iroh-relay. Letting iroh-relay own 80/443 directly is
+  the simplest setup.
 </Callout>
 
 ## Option A: Docker
@@ -79,14 +78,15 @@ the fastest path.
   The server tag must match the `iroh-relay` crate version the client
   ships with.
 
-  UniClipboard currently ships **iroh 0.98.x**; the matching Docker
-  tag is **`0.98.2-docker2`**. Beware: the similarly named `0.98.2`
-  and `0.98.2-docker` images segfault on amd64 — only the `-docker2`
-  variant is a working 0.98 image (upstream packaging issue).
+UniClipboard currently ships **iroh 0.98.x**; the matching Docker
+tag is **`0.98.2-docker2`**. Beware: the similarly named `0.98.2`
+and `0.98.2-docker` images segfault on amd64 — only the `-docker2`
+variant is a working 0.98 image (upstream packaging issue).
 
-  To see the version the client is built against, `grep iroh = ` in
-  `src-tauri/crates/uc-infra/Cargo.toml` of the UniClipboard source
-  tree.
+To see the version the client is built against, `grep iroh = ` in
+`src-tauri/crates/uc-infra/Cargo.toml` of the UniClipboard source
+tree.
+
 </Callout>
 
 ### 1. Write `config.toml`
@@ -282,14 +282,15 @@ for the request schema.
 
    No port (443 / 7842 are the defaults), no path. You can list
    multiple relays — iroh picks the best one.
+
 3. Click `Apply & restart`. The daemon restarts onto the new relay
    list.
 4. Clear the field to fall back to default iroh relays. That's how
    you revert.
 
 <Callout type="info">
-  The custom relay list is **not** synced across devices — set it on
-  each one. Switching relay domains means updating every device.
+  The custom relay list is **not** synced across devices — set it on each one. Switching relay
+  domains means updating every device.
 </Callout>
 
 ## Confirm traffic actually goes through your relay
@@ -322,13 +323,13 @@ install the staging chain on the client.
 
 ## Common gotchas
 
-| Symptom | Where to look |
-| ------- | -------------- |
-| ACME never gets a cert | Is port 80 actually reachable from the public internet? Check firewall, cloud security groups, NAT rules. |
-| `tls: handshake failure` | Does `hostname` match the cert's CN/SAN? Does DNS really resolve to this host? |
-| Client keeps using default relays | Did you **restart the daemon**? Settings changes alone don't pick up. |
-| Cross-network latency 200 ms+ | The relay's physical location matters; with a single relay, iroh has no alternative to choose. |
-| Memory creep | Default `key_cache_capacity = 1048576` (~56 MB). Lower it on small hosts. |
+| Symptom                           | Where to look                                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| ACME never gets a cert            | Is port 80 actually reachable from the public internet? Check firewall, cloud security groups, NAT rules. |
+| `tls: handshake failure`          | Does `hostname` match the cert's CN/SAN? Does DNS really resolve to this host?                            |
+| Client keeps using default relays | Did you **restart the daemon**? Settings changes alone don't pick up.                                     |
+| Cross-network latency 200 ms+     | The relay's physical location matters; with a single relay, iroh has no alternative to choose.            |
+| Memory creep                      | Default `key_cache_capacity = 1048576` (~56 MB). Lower it on small hosts.                                 |
 
 ## More references
 

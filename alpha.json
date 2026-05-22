@@ -1,23 +1,23 @@
 {
-  "version": "0.11.0-alpha.4",
-  "notes": "## 0.11.0-alpha.4 - 2026-05-22\n\n### Features\n\n- UniClipboard can now check for updates in the background and when the app is opened, and can show a system notification when a new version is available (#823)\n\n### Fixes\n\n- Keep the update indicator and update dialog accurate after background checks, including the installed version, release notes, release date, and download status (#823)\n- Fix Finder file copies that could sometimes be missing from clipboard history, especially for files with thumbnails or custom icons (#821)\n\n<!-- zh -->\n\n## 0.11.0-alpha.4 - 2026-05-22\n\n### Features\n\n- UniClipboard 现在可以在后台和打开应用时检查更新，并在发现新版本时显示系统通知 (#823)\n\n### Fixes\n\n- 修复后台检查更新后，更新入口和更新窗口中的已安装版本、发行说明、发布日期与下载状态可能不准确的问题 (#823)\n- 修复从 Finder 复制文件后，剪贴板历史偶尔缺少该记录的问题，尤其是带缩略图或自定义图标的文件 (#821)",
-  "pub_date": "2026-05-22T06:15:34Z",
+  "version": "0.11.0-alpha.5",
+  "notes": "## 0.11.0-alpha.5 - 2026-05-22\n\n### Features\n\n- Add manual resend for local clipboard entries from the app and `uniclip send --resend`, with optional targeting of specific paired devices (#806)\n\n<!-- zh -->\n\n## 0.11.0-alpha.5 - 2026-05-22\n\n### Features\n\n- 支持在应用内和通过 `uniclip send --resend` 手动重发本机剪贴板条目，并可选择只发送给指定的已配对设备 (#806)",
+  "pub_date": "2026-05-22T15:17:06Z",
   "platforms": {
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3N6aXZ6QUpqdDJqVWEvN2UyWkJydnp3MHpYNnZQcytDUGdJRFRrM05IYmxuTFRBK0ZlUXBrdng0UlNiY2RyRjBBaDdqQnhlcWU5R0g0dGRoMnM3aEFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDI5OTg4CWZpbGU6VW5pQ2xpcGJvYXJkXzAuMTEuMC1hbHBoYS40X2FtZDY0LkFwcEltYWdlCmcwbWk3TWg4ZWNBZnBIZ253V0srRDlOZER2UXBvcEpHN25BbEVWdHMwU3E0OGVaNGNUVUl0U0ROVEJzdWxhNC9ySTBHTEp4NXlYUmE3MmgybVV2dkRnPT0K",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.11.0-alpha.4/UniClipboard_0.11.0-alpha.4_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3YxS3BxK1lFK2NkQUk3Qzg3YjFpMG9tdVFNSUNYbHc0LzlsdDIyODQyRTVRVTV2ZVpZR21OOTBjamNZWDY4UnhsZnFZYk0xMmJPMi9LWkwwNS9xRHd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYyNDAyCWZpbGU6VW5pQ2xpcGJvYXJkXzAuMTEuMC1hbHBoYS41X2FtZDY0LkFwcEltYWdlCm9nQVdsS3BVcWViQnk0SXVHRy96QkNNTGZORnVpK241cTV5Q3NtTzJXNlRBSWVtcVNRL09HcWViUnZ1a0gxdGxERFZXUzhUajl1TDd5WElhVyt3OEJ3PT0K",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.11.0-alpha.5/UniClipboard_0.11.0-alpha.5_amd64.AppImage"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc25WVkZod0lKdjRPaGVVUmRRemRPazJWZWkyd2hpd3VST28rVzd6SGlKMkpGWFY0YTBEY1dSMFVKdXgwTzJ5MHZkRHdVQlVRc2RNZTZxNTJMclBRdEFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDMwMzc1CWZpbGU6VW5pQ2xpcGJvYXJkXzAuMTEuMC1hbHBoYS40X3g2NC1zZXR1cC5leGUKMVQ5REpvK1lvS0ZpQ2lZSkRleWVTdUE1bGRONnZodXdrMEFFcTZJYkNKVThXRXNJcGhFOTNXVzZaMjhQVUtzSXVMTzM3OEdWUTZrQ1JCTGVJMCt0QVE9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.11.0-alpha.4/UniClipboard_0.11.0-alpha.4_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2oxckl3WDh6OGkyK0QxQXVQYUJWL3VRRE1YZEdRbFFCOXBhajRvbW8xV2gxTnpWbUJwMzRwQzJQSSszbmcrN3grM3FNWVU1TmtmaWtCeTA1U1E5WlFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYyODU0CWZpbGU6VW5pQ2xpcGJvYXJkXzAuMTEuMC1hbHBoYS41X3g2NC1zZXR1cC5leGUKTlJEazN5Vlo0dk5lcWt4MUh0U245U25KTmxCbzNCQVcrbDdMNHNaUUN2S2tPSkFHZWpKTmZCL1QveDBpQk5EZzZ2UGpuZU0vSW9HMTE0cmlva25pQmc9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.11.0-alpha.5/UniClipboard_0.11.0-alpha.5_x64-setup.exe"
     },
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3M5RSttaTJzRU5LblYzL2lTT2psZDdKMVJ6NkRGdWl1WmZTVitTNkVLdnVkNlg4ZHlkcFFNazZmOEViZFVHdkNxcHE5UmZjYUl3M1lUWjN0TXB2M1FnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDMwMTAyCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKSGFieWh4amlsYllWVkJIQStCOGIyckplRFlxcW80anlIRjVweE9lMGluU1NmQTNUeFJsdXVhNTlOZkhZL0pBRkFxWU5xRjdzUEwySjIyU0FNOWVMRGc9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.11.0-alpha.4/UniClipboard_aarch64-apple-darwin.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3VIcmEzU0lhNjlldm5ZcHZTM1hKSDdZYUVIQVZqSU5Kd1FxU3g1aXZZbk1HN0tjTjJqNnF2czdic0FQczNXWW5rS2pjNW1YeVdQVDJCNUx2UWdnMUFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYyNzAyCWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKbG9XT2d1MVJxOFB0RWlGcnQ4b28xV2R3QWQ1V2JuRkdaTlJpRnJlWkZTVjRSQlpTTXU2L0xWRk91R1hjQXZJaGRmSWJ0NjdHdEx4WGkvUzhoWXBaQlE9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.11.0-alpha.5/UniClipboard_aarch64-apple-darwin.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc2cveUZ0K0ZydnZIL3I5SEd5SUxmeDdDR2hMRkNHc1pxVkRUbS93VkV1cUd4N0xGa3JZVXozRkQrUXRxU3VKUFFRZ0JOT0VnbmY4NEdrSk42VWlaOFFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDMwMDE5CWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKck1lQStnd28xVTdmOCtMSDlnZ1J4YmxMQXRDKzFGVUJXV1VvS2JxdjgxREliSndHbHVlZ1hDSzZYRllhZVE0OVpMcDdMTklTbUNSRlZhb1prVFZ6QUE9PQo=",
-      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.11.0-alpha.4/UniClipboard_x86_64-apple-darwin.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRNEoxeUdOZ2hvc3NoSGNpUHlsK29Sb0Fjc2xraG1VNXNkYWwxa080WW96MndiaHRjZDJ4NDdPbGdnOUhLVVByTHY0Ull6dHpZNGRMeSs2ZjB1L1d1dGVsRW9ncGZGS3djPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NDYyMzE2CWZpbGU6VW5pQ2xpcGJvYXJkLmFwcC50YXIuZ3oKTjUwOTZ3b2NqdXBTWTc1TFI4cjF6U3lhRzFlUUh5YlNsOFNrbExONThZTk5UblZvYitNUjd1YnB1bVdtT0pNMmJhdVh3S3lXVldZazJOZFljSnlxQ3c9PQo=",
+      "url": "https://github.com/UniClipboard/UniClipboard/releases/download/v0.11.0-alpha.5/UniClipboard_x86_64-apple-darwin.app.tar.gz"
     }
   }
 }

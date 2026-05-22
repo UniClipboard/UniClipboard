@@ -273,10 +273,10 @@ pub(crate) async fn do_check_for_update(
                 let prev = std::mem::take(&mut *guard);
                 *guard = match prev {
                     PendingUpdateState::Ready {
-                        update: _prev_update,
+                        update: prev_update,
                         bytes,
                         downloaded_at,
-                    } if metadata.version == update.version => {
+                    } if prev_update.version == update.version => {
                         info!(
                             version = %metadata.version,
                             "preserving cached download bytes for same version"

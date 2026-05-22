@@ -261,42 +261,53 @@ pub(crate) async fn do_check_for_update(
     let broadcast: Option<UpdateMetadata>;
     {
         let mut guard = lock_state(&pending.0)?;
-        broadcast = match update {
-            Some(update) => {
-                let metadata = metadata_of(&update);
-                info!(
-                    channel = %channel_str,
-                    new_version = %metadata.version,
-                    "update available"
-                );
+        if matches!(*guard, PendingUpdateState::Downloading { .. }) {
+            // A concurrent download started after our initial pre-check but
+            // before we reacquired the lock. Leave the in-flight state alone
+            // and surface the snapshot we observed without mutating it.
+            info!(
+                channel = %channel_str,
+                "download started concurrently; preserving Downloading state"
+            );
+            broadcast = update.as_ref().map(metadata_of);
+        } else {
+            broadcast = match update {
+                Some(update) => {
+                    let metadata = metadata_of(&update);
+                    info!(
+                        channel = %channel_str,
+                        new_version = %metadata.version,
+                        "update available"
+                    );
 
-                let prev = std::mem::take(&mut *guard);
-                *guard = match prev {
-                    PendingUpdateState::Ready {
-                        update: prev_update,
-                        bytes,
-                        downloaded_at,
-                    } if prev_update.version == update.version => {
-                        info!(
-                            version = %metadata.version,
-                            "preserving cached download bytes for same version"
-                        );
+                    let prev = std::mem::take(&mut *guard);
+                    *guard = match prev {
                         PendingUpdateState::Ready {
-                            update,
+                            update: prev_update,
                             bytes,
                             downloaded_at,
+                        } if prev_update.version == update.version => {
+                            info!(
+                                version = %metadata.version,
+                                "preserving cached download bytes for same version"
+                            );
+                            PendingUpdateState::Ready {
+                                update,
+                                bytes,
+                                downloaded_at,
+                            }
                         }
-                    }
-                    _ => PendingUpdateState::Available(update),
-                };
-                Some(metadata)
-            }
-            None => {
-                info!(channel = %channel_str, "no update available");
-                *guard = PendingUpdateState::None;
-                None
-            }
-        };
+                        _ => PendingUpdateState::Available(update),
+                    };
+                    Some(metadata)
+                }
+                None => {
+                    info!(channel = %channel_str, "no update available");
+                    *guard = PendingUpdateState::None;
+                    None
+                }
+            };
+        }
     }
 
     // Broadcast the transition so frontend listeners (e.g. `UpdateContext`)

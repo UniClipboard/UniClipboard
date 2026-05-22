@@ -24,17 +24,19 @@ use crate::tray::normalize_language;
 /// 仅支持 zh-CN / en-US 两种；其他 locale 走 en-US 兜底（与 `tray.rs` 同模式）。
 /// Body 包含 version，title 不含——遵守 macOS Notification Center 习惯把版本号放在副文本。
 ///
-/// **OQ4**：具体措辞在 PR review 期再校；当前是 grill 期草稿。
+/// 文案刻意不含"点击查看详情"等暗示——`tauri-plugin-notification` 2.x desktop
+/// 没有 click callback（OQ2 resolved），点击通知是无响应的；用 "在 UniClipboard
+/// 中查看 / Open UniClipboard to view" 把动作显式甩给用户，避免 UX 说谎。
 pub(crate) fn update_notification_labels(language: &str, version: &str) -> (String, String) {
     let normalized = normalize_language(language);
     match normalized {
         "zh-CN" => (
             "UniClipboard 有新版本".to_string(),
-            format!("新版本 {version} 已可用，点击查看详情"),
+            format!("新版本 {version} 已可用，在 UniClipboard 中查看详情"),
         ),
         _ => (
             "UniClipboard update available".to_string(),
-            format!("Version {version} is ready. Click to view details."),
+            format!("Version {version} is ready. Open UniClipboard to view details."),
         ),
     }
 }
@@ -108,14 +110,31 @@ mod tests {
     fn labels_zh_cn_emits_chinese() {
         let (title, body) = update_notification_labels("zh-CN", "0.12.0");
         assert_eq!(title, "UniClipboard 有新版本");
-        assert_eq!(body, "新版本 0.12.0 已可用，点击查看详情");
+        assert_eq!(body, "新版本 0.12.0 已可用，在 UniClipboard 中查看详情");
     }
 
     #[test]
     fn labels_en_us_emits_english() {
         let (title, body) = update_notification_labels("en-US", "0.12.0");
         assert_eq!(title, "UniClipboard update available");
-        assert_eq!(body, "Version 0.12.0 is ready. Click to view details.");
+        assert_eq!(
+            body,
+            "Version 0.12.0 is ready. Open UniClipboard to view details."
+        );
+    }
+
+    #[test]
+    fn labels_do_not_promise_click_to_open() {
+        // tauri-plugin-notification 2.x desktop has no click callback;
+        // copy must not promise an action that won't happen (OQ2 resolved).
+        for locale in ["zh-CN", "en-US"] {
+            let (_title, body) = update_notification_labels(locale, "1.0.0");
+            let lower = body.to_lowercase();
+            assert!(
+                !lower.contains("点击") && !lower.contains("click"),
+                "notification body must not promise a click action: {body}"
+            );
+        }
     }
 
     #[test]

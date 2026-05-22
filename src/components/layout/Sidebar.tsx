@@ -1,8 +1,15 @@
 import { motion } from 'framer-motion'
 import { ArrowUpCircle, Check, Home, MessageSquare, Monitor, Settings } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import {
+  captureUpdateActionInvoked,
+  captureUpdateDialogOpened,
+  captureUpdateDismissed,
+  type DismissSource,
+  toUiPhase,
+} from '@/api/update-telemetry'
 import { FeedbackDialog } from '@/components/feedback/FeedbackDialog'
 import {
   AlertDialog,
@@ -158,6 +165,13 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  /**
+   * When the in-app update dialog closes, distinguish "user clicked 稍后"
+   * (Cancel button) from other dismissal paths (ESC / outside click / X).
+   * Cancel-button onClick sets this to `dialog_later`; onOpenChange(false)
+   * reads + clears it, falling back to `dialog_closed` for the other paths.
+   */
+  const dialogDismissReasonRef = useRef<DismissSource | null>(null)
   const {
     state,
     isCheckingUpdate,
@@ -204,30 +218,26 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
   const handlePrimaryAction = async () => {
     if (isInstalling) return
+    if (phase === 'idle') return
+    captureUpdateActionInvoked('install', 'started')
     try {
-      if (isAvailable) {
-        // No cached bytes yet — go straight to install which transparently
-        // falls back to `download_and_install` (legacy combined path),
-        // matching the original click-to-install UX.
-        await installUpdate()
-        setUpdateDialogOpen(false)
-        return
-      }
-      if (isReady) {
-        await installUpdate()
-        setUpdateDialogOpen(false)
-        return
-      }
-      if (phase === 'idle') return
+      // Both `available` and `ready` go through installUpdate — the backend
+      // transparently falls back to `download_and_install` when no cached
+      // bytes exist.
+      await installUpdate()
+      setUpdateDialogOpen(false)
     } catch (error) {
+      captureUpdateActionInvoked('install', 'failed')
       log.error({ err: error }, '更新失败')
       toast.error(t('update.installFailed'))
     }
   }
 
   const handleStartBackgroundDownload = () => {
+    captureUpdateActionInvoked('download_bg', 'started')
     setUpdateDialogOpen(false)
     downloadUpdate().catch(error => {
+      captureUpdateActionInvoked('download_bg', 'failed')
       log.error({ err: error }, '后台下载失败')
       toast.error(t('update.downloadFailed'))
     })
@@ -238,11 +248,46 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     setCancelling(true)
     try {
       await cancelDownload()
+      captureUpdateActionInvoked('download_bg', 'cancelled')
     } catch (error) {
       log.error({ err: error }, '取消下载失败')
     } finally {
       setCancelling(false)
     }
+  }
+
+  const handleIndicatorClick = () => {
+    const uiPhase = toUiPhase(phase)
+    if (!uiPhase) return
+    if (isSystemManaged) {
+      captureUpdateDialogOpened('sidebar_icon', uiPhase)
+      setPackageManagerDialogOpen(true)
+    } else {
+      captureUpdateDialogOpened('sidebar_icon', uiPhase)
+      setUpdateDialogOpen(true)
+    }
+  }
+
+  const handleUpdateDialogOpenChange = (open: boolean) => {
+    if (!open && updateDialogOpen) {
+      const uiPhase = toUiPhase(phase)
+      if (uiPhase) {
+        const source: DismissSource = dialogDismissReasonRef.current ?? 'dialog_closed'
+        captureUpdateDismissed(uiPhase, source)
+      }
+      dialogDismissReasonRef.current = null
+    }
+    setUpdateDialogOpen(open)
+  }
+
+  const handlePackageManagerDialogOpenChange = (open: boolean) => {
+    if (!open && packageManagerDialogOpen) {
+      const uiPhase = toUiPhase(phase)
+      if (uiPhase) {
+        captureUpdateDismissed(uiPhase, 'package_manager_dialog_closed')
+      }
+    }
+    setPackageManagerDialogOpen(open)
   }
 
   return (
@@ -283,15 +328,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     data-update-state={phase}
                     data-tauri-drag-region="false"
                     className="relative group"
-                    onClick={() => {
-                      // deb/rpm: in-app update is not possible, jump straight
-                      // to the package-manager command dialog.
-                      if (isSystemManaged) {
-                        setPackageManagerDialogOpen(true)
-                      } else {
-                        setUpdateDialogOpen(true)
-                      }
-                    }}
+                    onClick={handleIndicatorClick}
                     disabled={isCheckingUpdate}
                   >
                     <div
@@ -384,7 +421,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           />
         </div>
       </aside>
-      <AlertDialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
+      <AlertDialog open={updateDialogOpen} onOpenChange={handleUpdateDialogOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('update.title')}</AlertDialogTitle>
@@ -444,7 +481,14 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               </>
             ) : (
               <>
-                <AlertDialogCancel disabled={isInstalling}>{t('update.later')}</AlertDialogCancel>
+                <AlertDialogCancel
+                  disabled={isInstalling}
+                  onClick={() => {
+                    dialogDismissReasonRef.current = 'dialog_later'
+                  }}
+                >
+                  {t('update.later')}
+                </AlertDialogCancel>
                 {isAvailable && (
                   <AlertDialogAction
                     onClick={event => {
@@ -473,7 +517,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       {installKind && (
         <PackageManagerUpdateDialog
           open={packageManagerDialogOpen}
-          onOpenChange={setPackageManagerDialogOpen}
+          onOpenChange={handlePackageManagerDialogOpenChange}
           installKind={installKind}
           updateInfo={state.info}
         />

@@ -1,7 +1,14 @@
 import { getVersion } from '@tauri-apps/api/app'
 import { Loader2, TriangleAlert } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  captureUpdateActionInvoked,
+  captureUpdateDialogOpened,
+  captureUpdateDismissed,
+  type DismissSource,
+  toUiPhase,
+} from '@/api/update-telemetry'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,6 +90,8 @@ const AboutSection: React.FC = () => {
   const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
   const [alphaWarningOpen, setAlphaWarningOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  /** See `Sidebar.tsx` for the dismissal-reason ref pattern. */
+  const dialogDismissReasonRef = useRef<DismissSource | null>(null)
   const isInstallingUpdate =
     downloadProgress.phase === 'downloading' || downloadProgress.phase === 'installing'
   const isBusy = settingLoading || saving
@@ -196,6 +205,11 @@ const AboutSection: React.FC = () => {
         toast.success(t('update.noUpdate'))
         return
       }
+      // After a successful check the backend state is at least `available`,
+      // so `toUiPhase` returns a non-null value. Fall back to `available`
+      // defensively if state hasn't propagated yet.
+      const uiPhase = toUiPhase(downloadProgress.phase) ?? 'available'
+      captureUpdateDialogOpened('sidebar_icon', uiPhase)
       // deb/rpm: Tauri's in-app updater can't install system packages; route
       // the user to apt/dnf with a copy-able command instead.
       if (isSystemManaged) {
@@ -211,13 +225,35 @@ const AboutSection: React.FC = () => {
 
   const handleInstallUpdate = async () => {
     if (!updateInfo || isInstallingUpdate) return
+    captureUpdateActionInvoked('install', 'started')
     try {
       await installUpdate()
       setUpdateDialogOpen(false)
     } catch (error) {
+      captureUpdateActionInvoked('install', 'failed')
       log.error({ err: error }, '更新失败')
       toast.error(t('update.installFailed'))
     }
+  }
+
+  const handleUpdateDialogOpenChange = (open: boolean) => {
+    if (!open && updateDialogOpen) {
+      const uiPhase = toUiPhase(downloadProgress.phase)
+      if (uiPhase) {
+        const source: DismissSource = dialogDismissReasonRef.current ?? 'dialog_closed'
+        captureUpdateDismissed(uiPhase, source)
+      }
+      dialogDismissReasonRef.current = null
+    }
+    setUpdateDialogOpen(open)
+  }
+
+  const handlePackageManagerDialogOpenChange = (open: boolean) => {
+    if (!open && packageManagerDialogOpen) {
+      const uiPhase = toUiPhase(downloadProgress.phase) ?? 'available'
+      captureUpdateDismissed(uiPhase, 'package_manager_dialog_closed')
+    }
+    setPackageManagerDialogOpen(open)
   }
 
   return (
@@ -355,7 +391,7 @@ const AboutSection: React.FC = () => {
         </div>
       </SettingGroup>
 
-      <AlertDialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
+      <AlertDialog open={updateDialogOpen} onOpenChange={handleUpdateDialogOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('update.title')}</AlertDialogTitle>
@@ -409,7 +445,14 @@ const AboutSection: React.FC = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isInstallingUpdate}>{t('update.later')}</AlertDialogCancel>
+            <AlertDialogCancel
+              disabled={isInstallingUpdate}
+              onClick={() => {
+                dialogDismissReasonRef.current = 'dialog_later'
+              }}
+            >
+              {t('update.later')}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={event => {
                 event.preventDefault()
@@ -426,7 +469,7 @@ const AboutSection: React.FC = () => {
       {installKind && (
         <PackageManagerUpdateDialog
           open={packageManagerDialogOpen}
-          onOpenChange={setPackageManagerDialogOpen}
+          onOpenChange={handlePackageManagerDialogOpenChange}
           installKind={installKind}
           updateInfo={updateInfo}
         />

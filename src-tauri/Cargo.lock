@@ -9812,6 +9812,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "image",
+ "indexmap 2.14.0",
  "iroh",
  "iroh-blobs",
  "iroh-tickets",

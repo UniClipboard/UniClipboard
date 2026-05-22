@@ -209,16 +209,26 @@ described under
 
 ## How fast does online status update
 
-Two sources feed the page:
+The page is **push-driven**. The daemon owns a small keepalive worker
+that detects peers coming and going and broadcasts a `peers.changed`
+WebSocket event; the page just listens and re-renders.
 
-- **Polling**: members are refetched every 15 s.
-- **Event-driven**: the daemon's `peers.changed` WebSocket event
-  triggers an immediate refresh.
+- **A peer coming back online** propagates within ~1 s: the peer's own
+  keepalive dials this device, which fires the event immediately.
+- **A peer going offline** is detected in ~25–60 s by the daemon's
+  keepalive tick plus the underlying QUIC idle timeout.
 
-In practice you see changes the moment the event fires; polling is the
-fallback. If a status looks clearly wrong (e.g. you see `Offline` for
-a peer that's clearly running), give it 15 s. If it's still off, head
-to [Troubleshooting — Peer not appearing](./troubleshooting#peer-not-appearing).
+The page also runs a one-shot refresh in two situations, as a belt-and-
+suspenders fallback in case a push was missed:
+
+1. The first time you open the Devices page in a session.
+2. Each time the page returns to the foreground (you switch tabs back).
+
+There is **no periodic polling** — closing the Devices page reduces its
+network traffic to zero. If a status still looks clearly wrong (e.g.
+you see `Offline` for a peer that's clearly running), switch away and
+back to force a refresh; if it's still off, head to
+[Troubleshooting — Peer not appearing](./troubleshooting#peer-not-appearing).
 
 ## CLI equivalents
 

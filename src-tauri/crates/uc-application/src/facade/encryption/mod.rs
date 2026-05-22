@@ -39,7 +39,12 @@ impl EncryptionFacade {
         Self { deps }
     }
 
-    #[instrument(skip_all)]
+    // 故意不挂 `#[instrument]`:`state()` 是高频只读查询(前端轮询 +
+    // CLI / daemon 每个请求都会读一次),自身不做 I/O,也不推进流程。
+    // 给它开 span 会被 sentry-tracing 上报成 transaction —— 14 天观测到
+    // 96 万次,占 span 配额 ~27%。如要排障,出错路径用 `tracing::warn!`
+    // / `error!` 即可,无需 root span。其他写动作(initialize / unlock /
+    // lock / verify_keychain_access)仍保留 instrument。
     pub async fn state(&self) -> Result<EncryptionStateView, EncryptionFacadeError> {
         let initialized = self
             .deps

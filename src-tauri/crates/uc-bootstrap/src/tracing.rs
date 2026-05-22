@@ -213,6 +213,25 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 // target 过滤后,2% 仍能保留可观测性。
                 sample_rate: 1.0,
                 traces_sample_rate: 0.02,
+                // 兜底过滤:对一组已知"高频且无业务价值"的 transaction
+                // 名直接返回 0.0,确保即使有人后续加 instrument 也不会再
+                // 烧配额。对其他 transaction 退回 traces_sample_rate
+                // 的 0.02。`traces_sampler` 一旦设置就完全取代
+                // `traces_sample_rate`,所以必须显式在这里复述基线值
+                // (sentry-rust 行为详见 performance::sample_rate)。
+                //
+                // 命中表来自 2026-05 月度配额诊断 —— 这几个名字对应
+                // iroh / noq_proto 的 root transaction(虽然上方 layer
+                // filter 已经按 target 屏蔽,但 sentry-tracing 也可能
+                // 在某些路径下用更短的 transaction name,这里加一道。
+                traces_sampler: Some(Arc::new(|ctx| {
+                    matches!(
+                        ctx.name(),
+                        "poll_send" | "connect" | "QADv4" | "tx" | "state"
+                    )
+                    .then_some(0.0)
+                    .unwrap_or(0.02)
+                })),
                 // Enable Sentry Logs (replaces the legacy OTLP→Seq pipeline).
                 // Tracing ERROR + WARN events are routed to Logs by the
                 // `event_filter` below; INFO stays as a breadcrumb only.

@@ -22,7 +22,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::UpdaterExt as _;
 use tokio::sync::Notify;
-use tracing::{error, info, info_span, Instrument};
+use tracing::{error, info, info_span, warn, Instrument};
 use uc_core::settings::channel::detect_channel;
 use uc_core::settings::model::UpdateChannel;
 use uc_observability::analytics::{
@@ -36,6 +36,20 @@ use uc_platform::ports::observability::TraceMetadata;
 /// reflect background download state, unlike the per-invocation
 /// `tauri::ipc::Channel` which only delivers to its single creator.
 pub const UPDATE_PROGRESS_EVENT: &str = "update-download-progress";
+
+/// Broadcast Tauri event name carrying the result of a check_for_update call.
+///
+/// Payload: `Option<UpdateMetadata>` —— `Some(meta)` when the backend just
+/// transitioned `PendingUpdate` to `Available` (or preserved a same-version
+/// `Ready` snapshot), `None` when the check returned UpToDate and the backend
+/// transitioned to `None`.
+///
+/// Subscribed by the frontend `UpdateContext` so the Sidebar/AboutSection
+/// indicator can light up the moment a scheduler-driven (or manual) check
+/// resolves —— Phase 6A removed the frontend's own startup check, so without
+/// this broadcast the UI would never learn about scheduler-detected updates
+/// until the next mount.
+pub const UPDATE_AVAILABLE_EVENT: &str = "update-available";
 
 /// Events emitted during update download.
 ///
@@ -244,43 +258,61 @@ pub(crate) async fn do_check_for_update(
 
     let update = updater.check().await.map_err(|e| e.to_string())?;
 
-    let mut guard = lock_state(&pending.0)?;
-    match update {
-        Some(update) => {
-            let metadata = metadata_of(&update);
-            info!(
-                channel = %channel_str,
-                new_version = %metadata.version,
-                "update available"
-            );
+    let broadcast: Option<UpdateMetadata>;
+    {
+        let mut guard = lock_state(&pending.0)?;
+        broadcast = match update {
+            Some(update) => {
+                let metadata = metadata_of(&update);
+                info!(
+                    channel = %channel_str,
+                    new_version = %metadata.version,
+                    "update available"
+                );
 
-            let prev = std::mem::take(&mut *guard);
-            *guard = match prev {
-                PendingUpdateState::Ready {
-                    update: _prev_update,
-                    bytes,
-                    downloaded_at,
-                } if metadata.version == update.version => {
-                    info!(
-                        version = %metadata.version,
-                        "preserving cached download bytes for same version"
-                    );
+                let prev = std::mem::take(&mut *guard);
+                *guard = match prev {
                     PendingUpdateState::Ready {
-                        update,
+                        update: _prev_update,
                         bytes,
                         downloaded_at,
+                    } if metadata.version == update.version => {
+                        info!(
+                            version = %metadata.version,
+                            "preserving cached download bytes for same version"
+                        );
+                        PendingUpdateState::Ready {
+                            update,
+                            bytes,
+                            downloaded_at,
+                        }
                     }
-                }
-                _ => PendingUpdateState::Available(update),
-            };
-            Ok(Some(metadata))
-        }
-        None => {
-            info!(channel = %channel_str, "no update available");
-            *guard = PendingUpdateState::None;
-            Ok(None)
-        }
+                    _ => PendingUpdateState::Available(update),
+                };
+                Some(metadata)
+            }
+            None => {
+                info!(channel = %channel_str, "no update available");
+                *guard = PendingUpdateState::None;
+                None
+            }
+        };
     }
+
+    // Broadcast the transition so frontend listeners (e.g. `UpdateContext`)
+    // can refresh the indicator without a re-mount. Mirrors the public
+    // return value: `Some(meta)` for Available / preserved-Ready, `None`
+    // for UpToDate. Emit failures are non-fatal —— the next mount snapshot
+    // will reconcile.
+    if let Err(err) = app.emit(UPDATE_AVAILABLE_EVENT, &broadcast) {
+        warn!(
+            target: "updater",
+            error = %err,
+            "failed to broadcast update-available event"
+        );
+    }
+
+    Ok(broadcast)
 }
 
 /// Convert the running binary's [`InstallKind`] (Tauri command wire form) to

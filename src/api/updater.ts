@@ -18,6 +18,14 @@ const log = createLogger('updater')
  */
 export const UPDATE_PROGRESS_EVENT = 'update-download-progress'
 
+/**
+ * Broadcast Tauri event name carrying the result of `do_check_for_update`.
+ * Mirrors `UPDATE_AVAILABLE_EVENT` in `src-tauri/.../commands/updater.rs`.
+ *
+ * Payload: `UpdateMetadata | null`.
+ */
+export const UPDATE_AVAILABLE_EVENT = 'update-available'
+
 // Re-export generated DTO shapes under historical names so existing call
 // sites don't have to follow a rename. Generated types are the source of
 // truth (see `src/lib/ipc.ts`).
@@ -99,6 +107,24 @@ export async function subscribeUpdateProgress(
   onEvent: (event: DownloadEvent) => void
 ): Promise<UnlistenFn> {
   return listen<DownloadEvent>(UPDATE_PROGRESS_EVENT, message => {
+    onEvent(message.payload)
+  })
+}
+
+/**
+ * Subscribe to "update detected" broadcasts emitted by `do_check_for_update`
+ * on every transition (scheduler or manual). Payload is `UpdateMetadata`
+ * when an update was found (Available / preserved Ready), `null` when the
+ * check reported UpToDate.
+ *
+ * Without this listener the UI indicator would never reflect a
+ * scheduler-detected update — Phase 6A removed the frontend's startup
+ * check, leaving mount-time `getDownloadProgress` as the only sync point.
+ */
+export async function subscribeUpdateAvailable(
+  onEvent: (meta: UpdateMetadata | null) => void
+): Promise<UnlistenFn> {
+  return listen<UpdateMetadata | null>(UPDATE_AVAILABLE_EVENT, message => {
     onEvent(message.payload)
   })
 }

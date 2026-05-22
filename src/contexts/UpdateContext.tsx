@@ -6,6 +6,7 @@ import {
   getDownloadProgress,
   getInstallKind,
   installUpdate as apiInstallUpdate,
+  subscribeUpdateAvailable,
   subscribeUpdateProgress,
   type DownloadEvent,
   type DownloadProgress,
@@ -275,6 +276,55 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       if (unlisten) unlisten()
     }
   }, [handleDownloadEvent])
+
+  // Listen for scheduler-driven (or manual) `do_check_for_update` results.
+  // Without this, a check that resolved AFTER mount would never reach the UI
+  // —— Phase 6A removed the frontend's startup check, so `getDownloadProgress`
+  // alone only catches state present at mount time. Mirrors the setState
+  // shape used by `runCheckForChannel` so manual and broadcast paths converge.
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+
+    void subscribeUpdateAvailable(update => {
+      setState(prev => {
+        if (!update) {
+          return prev.phase === 'downloading' || prev.phase === 'installing'
+            ? prev
+            : { phase: 'idle', info: null, downloaded: 0, total: null }
+        }
+        if (prev.phase === 'ready' && prev.info?.version === update.version) {
+          return { ...prev, info: update }
+        }
+        if (prev.phase === 'downloading' && prev.info?.version === update.version) {
+          return { ...prev, info: update }
+        }
+        return {
+          phase: 'available',
+          info: update,
+          downloaded: 0,
+          total: null,
+        }
+      })
+    })
+      .then(fn => {
+        if (cancelled) {
+          fn()
+          return
+        }
+        unlisten = fn
+      })
+      .catch(err => {
+        if (!cancelled) {
+          log.error({ err }, '订阅更新可用广播失败')
+        }
+      })
+
+    return () => {
+      cancelled = true
+      if (unlisten) unlisten()
+    }
+  }, [])
 
   const downloadProgress = useMemo<DownloadProgress>(
     () => ({

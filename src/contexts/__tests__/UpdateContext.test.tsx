@@ -30,6 +30,7 @@ vi.mock('@/api/updater', () => ({
   }),
   getInstallKind: vi.fn().mockResolvedValue('macos'),
   subscribeUpdateProgress: vi.fn(),
+  subscribeUpdateAvailable: vi.fn().mockResolvedValue(() => {}),
 }))
 
 vi.mock('react-i18next', () => ({

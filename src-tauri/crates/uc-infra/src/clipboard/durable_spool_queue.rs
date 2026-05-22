@@ -1,9 +1,8 @@
 //! Durable spool queue that writes bytes to disk before returning.
 //!
-//! Replaces the in-memory `MpscSpoolQueue` to ensure spool bytes survive
-//! process exits. The original `MpscSpoolQueue` only enqueued bytes into
-//! an in-memory channel; if the app exited before `SpoolerTask` processed
-//! the message, the bytes were permanently lost.
+//! `enqueue()` writes synchronously to the spool directory before notifying
+//! the background blob worker, so bytes survive a process exit between
+//! capture and blob materialisation.
 //!
 //! ## Durability guarantee
 //!

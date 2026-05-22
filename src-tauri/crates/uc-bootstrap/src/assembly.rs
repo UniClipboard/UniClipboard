@@ -31,7 +31,7 @@ use uc_core::ids::RepresentationId;
 use uc_core::ports::blob::BlobReferenceRepositoryPort;
 use uc_core::ports::clipboard::{
     ClipboardChangeOriginPort, ClipboardRepresentationNormalizerPort, RepresentationCachePort,
-    SpoolQueuePort, SpoolRequest,
+    SpoolQueuePort,
 };
 use uc_core::ports::*;
 use uc_infra::blob::{BlobRepositoryPort, BlobStorePort, BlobWriter, FilesystemBlobStore};
@@ -115,12 +115,6 @@ pub enum WiringError {
 pub struct BackgroundRuntimeDeps {
     pub representation_cache: Arc<RepresentationCache>,
     pub spool_manager: Arc<SpoolManager>,
-    /// Sender side of the legacy spool channel. Kept alive so that `SpoolerTask`
-    /// (which drains `spool_rx`) does not immediately exit when no senders remain.
-    /// `DurableSpoolQueue` bypasses this channel and writes to disk directly, so
-    /// `spool_tx` is never actually used to send messages in normal operation.
-    pub spool_tx: mpsc::Sender<SpoolRequest>,
-    pub spool_rx: mpsc::Receiver<SpoolRequest>,
     pub worker_rx: mpsc::Receiver<RepresentationId>,
     pub spool_dir: PathBuf,
     pub file_cache_dir: PathBuf,
@@ -143,8 +137,8 @@ pub struct BackgroundRuntimeDeps {
 /// 进程级一次性装配产出的"持久"部分:进程内常驻的 deps 与旁路资源
 /// (repos、storage paths、shared adapters)。
 ///
-/// 一次性消费的 [`BackgroundRuntimeDeps`] (含 spool / blob worker
-/// receivers) 通过 [`wire_dependencies`] 的 tuple 返回值单独移交,不再
+/// 一次性消费的 [`BackgroundRuntimeDeps`] (含 blob worker receiver)
+/// 通过 [`wire_dependencies`] 的 tuple 返回值单独移交,不再
 /// 嵌在 `WiredDependencies` 里 —— 因为 mpsc `Receiver` 不可 Clone, 而
 /// `WiredDependencies` 需要被 standalone daemon binary 与 GUI shell
 /// 两种入口共用 (`build_process_runtime` clone fan-out 给两条 path)。
@@ -779,8 +773,8 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
 /// standalone daemon binary 同样走这条路径 (两条入口共用)。
 ///
 /// 返回 tuple 把"持久" 与"一次性消费"两类资源分开:`WiredDependencies`
-/// 进程内常驻;`BackgroundRuntimeDeps` 含两个 mpsc::Receiver, 在进程
-/// 启动期被 `spawn_blob_processing_tasks` 消费一次后不复存在。
+/// 进程内常驻;`BackgroundRuntimeDeps` 含 blob worker mpsc::Receiver,
+/// 在进程启动期被 `spawn_blob_processing_tasks` 消费一次后不复存在。
 ///
 /// Slice 4 P5b 起 libp2p adapter 已删除,旧的 `wire_dependencies_with_identity_store`
 /// 变体随之退场——iroh 栈走 `IrohIdentityStore`(由 `build_space_setup_assembly`
@@ -885,13 +879,10 @@ pub fn wire_dependencies(
             .map_err(|e| WiringError::BlobStorageInit(format!("Failed to create spool: {}", e)))?,
     );
 
-    let (spool_tx, spool_rx) = mpsc::channel::<SpoolRequest>(100);
     let (worker_tx, worker_rx) = mpsc::channel::<RepresentationId>(100);
 
     // DurableSpoolQueue writes bytes to disk synchronously before returning,
-    // ensuring spool files survive process exits. The in-memory MpscSpoolQueue
-    // used previously only enqueued bytes into a channel; if the app exited
-    // before SpoolerTask drained the channel, the bytes were permanently lost.
+    // ensuring spool files survive process exits.
     let spool_queue: Arc<dyn SpoolQueuePort> = Arc::new(DurableSpoolQueue::new(
         spool_manager.clone(),
         worker_tx.clone(),
@@ -1078,8 +1069,6 @@ pub fn wire_dependencies(
     let background = BackgroundRuntimeDeps {
         representation_cache,
         spool_manager,
-        spool_tx,
-        spool_rx,
         worker_rx,
         spool_dir,
         file_cache_dir: paths.file_cache_dir.clone(),

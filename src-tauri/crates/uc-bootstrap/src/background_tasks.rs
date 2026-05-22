@@ -1,7 +1,7 @@
 //! Shared background blob-processing tasks.
 //!
-//! The four core tasks (SpoolScanner, SpoolerTask, BackgroundBlobWorker, SpoolJanitor)
-//! are needed by both the GUI and daemon entry points.  This module provides a single
+//! The core tasks (SpoolScanner, BackgroundBlobWorker, SpoolJanitor) are needed by both
+//! the GUI and daemon entry points.  This module provides a single
 //! `spawn_blob_processing_tasks()` that callers `await` inside whatever spawn mechanism
 //! they use (tauri::async_runtime::spawn for GUI, rt.spawn for daemon).
 
@@ -20,9 +20,7 @@ use uc_core::ports::clipboard::{
 };
 use uc_core::ports::{ClockPort, ContentHashPort};
 use uc_infra::blob::BlobWriterPort;
-use uc_infra::clipboard::{
-    BackgroundBlobWorker, SpoolJanitor, SpoolScanner, SpoolerTask, StagedReconciler,
-};
+use uc_infra::clipboard::{BackgroundBlobWorker, SpoolJanitor, SpoolScanner, StagedReconciler};
 
 use crate::BackgroundRuntimeDeps;
 
@@ -58,12 +56,7 @@ impl BlobProcessingPorts {
     }
 }
 
-/// Spawn the four core blob-processing tasks through the provided `TaskRegistry`.
-///
-/// **Important**: The caller must keep the `BackgroundRuntimeDeps::spool_tx` sender
-/// alive for the lifetime of the application — dropping it causes `SpoolerTask` to
-/// exit immediately.  This function destructures the deps but does **not** consume
-/// `spool_tx`; the caller should hold onto it.
+/// Spawn the core blob-processing tasks through the provided `TaskRegistry`.
 ///
 /// This is an `async fn`; the caller decides how to enter the async context
 /// (e.g. `tauri::async_runtime::spawn` vs `tokio::runtime::Handle::spawn`).
@@ -75,8 +68,6 @@ pub async fn spawn_blob_processing_tasks(
     let BackgroundRuntimeDeps {
         representation_cache,
         spool_manager,
-        spool_tx: _spool_tx, // Kept alive by the caller — we just need to not drop it here
-        spool_rx,
         worker_rx,
         spool_dir,
         file_cache_dir: _,
@@ -130,20 +121,6 @@ pub async fn spawn_blob_processing_tasks(
         ),
         Err(err) => warn!(error = %err, "Staged reconciler failed; continuing startup"),
     }
-
-    // --- Spooler task (long-lived, channel-driven) ---
-    let spooler = SpoolerTask::new(
-        spool_rx,
-        spool_manager.clone(),
-        worker_tx,
-        representation_cache.clone(),
-    );
-    task_registry
-        .spawn("spooler", |_token| async move {
-            spooler.run().await;
-            warn!("SpoolerTask stopped");
-        })
-        .await;
 
     // --- Background blob worker (long-lived, channel-driven) ---
     let worker = BackgroundBlobWorker::new(

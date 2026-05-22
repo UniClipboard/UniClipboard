@@ -167,7 +167,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let task_registry = runtime.task_registry().clone();
 
     // 进程级 blob/spool worker spawn 的两块预备料:`background`(含
-    // spool_rx / worker_rx 两个一次性 mpsc::Receiver,不可 Clone)与
+    // worker_rx 这一只一次性 mpsc::Receiver,不可 Clone)与
     // 从进程级 deps 算出的 blob_ports。它们要等到 Tauri runtime 起来后
     // 才能 spawn(`tokio::spawn` 在 Tauri Builder 之前调会撞 "there is no
     // reactor running"——Tauri 在 `Builder::run()` 内才装 tokio runtime),
@@ -289,7 +289,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // 进程级 blob/spool worker —— Tauri runtime 已在 Builder::run()
             // 内就绪,这里 tauri::async_runtime::spawn 才能拿到 reactor。
             // 一次性 spawn,挂在进程级 task_registry 上,跨 daemon reload
-            // 不重建。`background` 含两个一次性 mpsc::Receiver,被
+            // 不重建。`background` 含一只一次性 mpsc::Receiver,被
             // spawn_blob_processing_tasks 解构消费,之后不复存在。
             let task_registry_for_blob = runtime.task_registry().clone();
             tauri::async_runtime::spawn(async move {

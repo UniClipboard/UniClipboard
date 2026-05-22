@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import {
   cancelDownload as apiCancelDownload,
   checkForUpdate,
@@ -13,7 +12,6 @@ import {
   type InstallKind,
   type UpdateMetadata,
 } from '@/api/updater'
-import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
 import type { UpdateChannel } from '@/types/setting'
@@ -33,7 +31,6 @@ const initialState: UpdateState = {
 }
 
 export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
-  const { t } = useTranslation()
   const { setting } = useSetting()
   const [state, setState] = useState<UpdateState>(initialState)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
@@ -42,13 +39,6 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
 
   const activeCheckRef = useRef<Promise<UpdateMetadata | null> | null>(null)
   const activeCheckChannelRef = useRef<UpdateChannel | null>(null)
-  const hasCheckedOnStartup = useRef(false)
-  /**
-   * Versions for which a background download has already been kicked off
-   * this session. Prevents the `auto-download` effect from looping when
-   * a download fails and the backend returns to `Available`.
-   */
-  const autoDownloadAttempted = useRef<Set<string>>(new Set())
   /** Latest `state` value visible to event-driven callbacks. */
   const stateRef = useRef<UpdateState>(initialState)
   useEffect(() => {
@@ -285,52 +275,6 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       if (unlisten) unlisten()
     }
   }, [handleDownloadEvent])
-
-  // Startup auto-check (gated by `autoCheckUpdate`).
-  useEffect(() => {
-    if (!setting?.general || hasCheckedOnStartup.current) {
-      return
-    }
-
-    hasCheckedOnStartup.current = true
-
-    if (!setting.general.autoCheckUpdate) {
-      return
-    }
-
-    checkForUpdates().catch(error => {
-      log.error({ err: error }, '检查更新失败')
-      toast.error(t('update.checkFailed'))
-    })
-  }, [setting?.general, checkForUpdates, t])
-
-  // Background auto-download: whenever state is `available` and the
-  // setting is on, kick off a silent download. Tracks attempted versions
-  // to avoid retry loops if download fails.
-  //
-  // Skipped on deb/rpm — Tauri's updater payload can't be installed by the
-  // in-app flow there, so downloading it would just waste bandwidth before
-  // the package-manager dialog kicks in.
-  useEffect(() => {
-    if (!setting?.general?.autoDownloadUpdate) return
-    if (!setting?.general?.autoCheckUpdate) return
-    if (isSystemManaged) return
-    if (state.phase !== 'available') return
-    if (!state.info) return
-    if (autoDownloadAttempted.current.has(state.info.version)) return
-
-    autoDownloadAttempted.current.add(state.info.version)
-    void doDownloadUpdate().catch(err => {
-      log.error({ err }, '自动后台下载失败')
-    })
-  }, [
-    setting?.general?.autoDownloadUpdate,
-    setting?.general?.autoCheckUpdate,
-    isSystemManaged,
-    state.phase,
-    state.info,
-    doDownloadUpdate,
-  ])
 
   const downloadProgress = useMemo<DownloadProgress>(
     () => ({

@@ -200,7 +200,14 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
             paste_rep_id = %paste_rep.id,
             "snapshot_from_entry.reconstruct: detected file entry, using file branch"
         );
-        return build_file_branch(payload_resolver, blob_store, entry_id, paste_rep).await;
+        return build_file_branch(
+            payload_resolver,
+            blob_store,
+            representation_repo,
+            entry_id,
+            paste_rep,
+        )
+        .await;
     }
 
     // 非文件分支：把所有非文件候选 rep 都打包成多 rep snapshot，paste_rep 居首。
@@ -318,6 +325,7 @@ fn is_file_rep(rep: &PersistedClipboardRepresentation) -> bool {
 async fn build_file_branch(
     payload_resolver: &dyn ClipboardPayloadResolverPort,
     blob_store: &dyn BlobReaderPort,
+    representation_repo: &dyn ClipboardRepresentationRepositoryPort,
     entry_id: &EntryId,
     rep: &PersistedClipboardRepresentation,
 ) -> Result<SystemClipboardSnapshot, BuildSnapshotError> {
@@ -345,6 +353,13 @@ async fn build_file_branch(
                     }
                 })?
             } else {
+                // Mirror the non-file branch's stable-`Lost` invariant: an
+                // orphaned paste-rep (cache + spool double miss) with no
+                // blob fallback gets demoted before propagating, so the
+                // next attempt sees a stable `Lost` outcome.
+                if let PayloadResolveError::Orphaned { rep_id, state } = &resolver_err {
+                    demote_orphaned_to_lost(representation_repo, rep_id, state).await;
+                }
                 return Err(BuildSnapshotError::PasteRepUnavailable(resolver_err));
             }
         }

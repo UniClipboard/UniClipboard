@@ -63,14 +63,15 @@ use uc_core::SystemClipboardSnapshot;
 ///
 /// # daemon-lifecycle 字段(启动期一次性装入)
 ///
-/// 下面 5 个字段绑定 daemon-lifecycle 资源(iroh node、clipboard_sync 链、
+/// 下面 6 个字段绑定 daemon-lifecycle 资源(iroh node、clipboard_sync 链、
 /// LAN PUT 入站等)。方案 C (2026-05-11) 取消 in-process daemon reload 后,
-/// daemon 在进程内只起一次, 这 5 个字段也只装入一次 —— GUI shell 启动期
+/// daemon 在进程内只起一次, 这 6 个字段也只装入一次 —— GUI shell 启动期
 /// 为空, daemon 启动时由 [`Self::install_daemon_lifecycle`] set 进
 /// [`OnceLock`], daemon (= 进程) 退出时由 Arc drop 自然回收。
 ///
 /// - `space_setup`、`member_roster` —— iroh 网络栈相关
 /// - `clipboard_sync`、`blob_transfer` —— iroh 上的同步业务
+/// - `clipboard_outbound` —— 用户主动 resend 入口 (ADR-005 §2.5)
 /// - `mobile_sync` —— 因绑 enhanced apply_inbound (带 blob_materializer +
 ///   host_event_emitter) 也是 daemon-lifecycle
 ///
@@ -122,7 +123,7 @@ pub struct AppFacade {
     pub mobile_sync: OnceLock<Arc<MobileSyncFacade>>,
 }
 
-/// 一次性把 daemon-lifecycle 资源装进 [`AppFacade`] 的 5 个 OnceLock 字段。
+/// 一次性把 daemon-lifecycle 资源装进 [`AppFacade`] 的 6 个 OnceLock 字段。
 ///
 /// 由 daemon-lifecycle 装配 (`uc-desktop::daemon::start_in_process`)
 /// 在 daemon 启动时调用 [`AppFacade::install_daemon_lifecycle`] 触发。
@@ -165,7 +166,7 @@ impl AppFacade {
         }
     }
 
-    /// 把 daemon 启动时构造好的 5 份 lifecycle facade 一次性装入 AppFacade。
+    /// 把 daemon 启动时构造好的 6 份 lifecycle facade 一次性装入 AppFacade。
     ///
     /// 方案 C 后 daemon 进程内只起一次, 这条 path 每进程调一次。同一份
     /// `AppFacade` 整个进程生命周期共享; GUI command 与 daemon worker 都
@@ -174,7 +175,7 @@ impl AppFacade {
     ///
     /// # Panics
     ///
-    /// 重复调用 (5 个 OnceLock 中任一已被装入) panic, 视为编程错误 ——
+    /// 重复调用 (6 个 OnceLock 中任一已被装入) panic, 视为编程错误 ——
     /// daemon 没有 reload 路径, 不该有第二次装入。
     pub fn install_daemon_lifecycle(&self, facades: DaemonLifecycleFacades) {
         self.space_setup

@@ -383,7 +383,6 @@ impl ResendEntryUseCase {
                 }),
                 Err(err) => warn!(
                     error = %err,
-                    file = %path.display(),
                     "resend: 排除无法读取元数据的剪贴板文件(本机可能已不持有)"
                 ),
             }

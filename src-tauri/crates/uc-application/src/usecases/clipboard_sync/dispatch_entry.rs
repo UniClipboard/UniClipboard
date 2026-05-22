@@ -396,10 +396,12 @@ impl DispatchClipboardEntryUseCase {
                 continue;
             }
             // ADR-005 §2.5 resend:`target_filter` 收紧 fan-out 目标白名单。
-            // `None` 维持现状(全 fan-out);`Some(list)` 只保留交集。空 list
-            // 是合法的"无目标"语义 —— 上层(ResendEntryUseCase)在差集派生
-            // 为空时会用 `Some(vec![])` 透传,这里自然落到下面的"no paired
-            // peers"分支并返回零 fan-out 结果,不视为错误。
+            // `None` 维持现状(全 fan-out);`Some(list)` 只保留交集。
+            // 注意:此处不把"空 list"视作特殊 passthrough —— `ResendEntryUseCase`
+            // 在差集为空(或显式空列表)时直接返回 `NoEligibleTargets`,根本
+            // 不会调进 dispatch。若 dispatch 仍收到空 list,只能是其它调用
+            // 方,按"交集为空"自然落到下面的"no paired peers"分支返回零
+            // fan-out。
             if let Some(filter) = &input.target_filter {
                 if !filter.iter().any(|d| d == &record.device_id) {
                     continue;

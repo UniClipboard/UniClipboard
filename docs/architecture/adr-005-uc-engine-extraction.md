@@ -174,7 +174,7 @@ pub struct ResendEntryCommand {
 |---|---|
 | desktop | 用户在详情视图点"重发"（按 entry 整体 / 按某个 peer 行）|
 | mobile (iOS / Android) | 同 desktop，UI 上点"重发" |
-| CLI | `uniclip resend <entry-id> [--peer <device-id>]` 子命令 |
+| CLI | `uniclip send --resend <entry-id> [--peer <device-id>]` 子命令 |
 | web server | 不暴露（只读视图） |
 
 **不存在自动触发器**，因此也不存在"BGTask 周期"、"presence 上线钩子"、"`WorkManager` 调度"这些跨平台差异。mobile 与 desktop 在重发能力上 **行为完全对称**——跟 §1.3 的核心约束"前台时 mobile = 一个完整 node"自洽。
@@ -292,7 +292,7 @@ pub struct ResendEntryCommand {
 - 在 `ClipboardOutboundFacade` 上加 thin method `resend_entry(cmd)`（遵 §11.4 facade 唯一对外纪律）
 - 通过 `AppFacade` 暴露给 `uc-tauri` / `uc-cli` 等 host
 - desktop UI 在 entry 详情视图加"重发"入口（按 entry 整体 / 按某个 peer 行）
-- CLI 加 `uniclip resend <entry-id> [--peer <device-id>]` 子命令
+- CLI 加 `uniclip send --resend <entry-id> [--peer <device-id>]` 子命令
 - **验收**：
   - desktop 上对一条已存在的、对某 peer 状态为 `Failed { Offline }` 的 entry，点"重发"→ 若 peer 已在线则该 peer 收到内容，`EntryDeliveryRecord` 翻为 `Delivered`
   - peer 仍离线时，点"重发"→ 落新 `Failed { Offline }` 记录，UI 状态保持但 `updated_at_ms` 更新

@@ -522,6 +522,16 @@ export type DownloadProgressSnapshot = {
 	 *  without waiting for a fresh `check_for_update` round-trip.
 	 */
 	currentVersion: string,
+	/**
+	 *  Release notes for the available version, if any. `None` when phase
+	 *  is `Idle` or the release ships no notes.
+	 */
+	body: string | null,
+	/**
+	 *  Release date for the available version, if any. `None` when phase
+	 *  is `Idle`.
+	 */
+	date: string | null,
 };
 
 /**  状态枚举:`tag` + `reason` 形式,便于前端区分四档与失败子分类。 */

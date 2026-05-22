@@ -94,6 +94,12 @@ pub struct DownloadProgressSnapshot {
     /// `Idle`, so a mid-mount frontend can render "current vs. latest"
     /// without waiting for a fresh `check_for_update` round-trip.
     pub current_version: String,
+    /// Release notes for the available version, if any. `None` when phase
+    /// is `Idle` or the release ships no notes.
+    pub body: Option<String>,
+    /// Release date for the available version, if any. `None` when phase
+    /// is `Idle`.
+    pub date: Option<String>,
 }
 
 /// Metadata returned to the frontend when an update is available.
@@ -424,6 +430,8 @@ pub(crate) async fn do_download_update(
                     total: None,
                     version: Some(info.version.clone()),
                     current_version: info.current_version.clone(),
+                    body: info.body.clone(),
+                    date: info.date.clone(),
                 };
                 *guard = PendingUpdateState::Downloading {
                     info: info.clone(),
@@ -713,6 +721,8 @@ pub async fn get_download_progress(
             total: None,
             version: Some(update.version.clone()),
             current_version: update.current_version.clone(),
+            body: update.body.clone(),
+            date: update.date.map(|d| d.to_string()),
         },
         PendingUpdateState::Downloading { progress, .. } => progress.clone(),
         PendingUpdateState::Ready { update, bytes, .. } => DownloadProgressSnapshot {
@@ -721,6 +731,8 @@ pub async fn get_download_progress(
             total: Some(bytes.len() as u64),
             version: Some(update.version.clone()),
             current_version: update.current_version.clone(),
+            body: update.body.clone(),
+            date: update.date.map(|d| d.to_string()),
         },
     };
     Ok(snapshot)
@@ -1068,10 +1080,12 @@ mod tests {
             total: Some(1024 * 1024),
             version: Some("0.10.0".to_string()),
             current_version: "0.9.0".to_string(),
+            body: Some("Bug fixes".to_string()),
+            date: Some("2026-05-22T00:00:00Z".to_string()),
         };
         assert_eq!(
             serde_json::to_string(&snap).unwrap(),
-            r#"{"phase":"downloading","downloaded":4096,"total":1048576,"version":"0.10.0","currentVersion":"0.9.0"}"#
+            r#"{"phase":"downloading","downloaded":4096,"total":1048576,"version":"0.10.0","currentVersion":"0.9.0","body":"Bug fixes","date":"2026-05-22T00:00:00Z"}"#
         );
     }
 

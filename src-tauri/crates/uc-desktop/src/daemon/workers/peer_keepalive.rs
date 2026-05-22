@@ -27,9 +27,13 @@
 //! 2. **Inbound `Online` event** routed through `subscribe_peer_presence_events`.
 //!    `IrohPresenceHandler` flips a peer to Online when the *peer* dials
 //!    *us*, so a recovered offline peer's own keepalive announces them
-//!    well before our backoff would have us redial. Without this reset
-//!    the worst case for "peer comes back" is the cap (15min); with it,
-//!    the peer's own 25s keepalive bounds the window.
+//!    well before our backoff would have us redial. On such an event the
+//!    backoff is reset to base cadence **and** a fire-and-forget outbound
+//!    `ensure_reachable_one` is spawned immediately, so the outbound
+//!    PRESENCE path is warmed within ~1s of the peer coming back instead
+//!    of waiting for the next 25s tick. The spawned dial's result is
+//!    intentionally not joined back into the backoff map — if it fails
+//!    the next ticker pass will record `Active(1)` like any other failure.
 //!
 //! ## Design (worker mechanics)
 //!
@@ -217,11 +221,19 @@ impl PeerKeepAliveWorker {
     }
 
     /// Apply an inbound presence event to the backoff map. Online events
-    /// reset the relevant peer to base cadence; other states are ignored
-    /// (Offline is owned by the watchdog, Unknown is uninformative).
-    fn apply_presence_event(backoff: &mut HashMap<String, BackoffState>, event: AppPresenceEvent) {
+    /// reset the relevant peer to base cadence and return the `DeviceId`
+    /// so the caller can spawn an immediate outbound dial; other states
+    /// are ignored (Offline is owned by the watchdog, Unknown is
+    /// uninformative) and return `None`.
+    ///
+    /// Split out from spawning so the pure backoff logic stays testable
+    /// without standing up an `AppFacade`.
+    fn apply_presence_event(
+        backoff: &mut HashMap<String, BackoffState>,
+        event: AppPresenceEvent,
+    ) -> Option<DeviceId> {
         if event.state != "online" {
-            return;
+            return None;
         }
         let now = Instant::now();
         let entry = backoff
@@ -232,6 +244,7 @@ impl PeerKeepAliveWorker {
             device = %event.device_id,
             "inbound presence Online; backoff reset to base cadence",
         );
+        Some(DeviceId::new(&event.device_id))
     }
 }
 
@@ -304,7 +317,24 @@ impl DaemonService for PeerKeepAliveWorker {
                 _ = cancel.cancelled() => break,
                 event = next_presence_event(&mut presence_rx) => {
                     if let Some(event) = event {
-                        Self::apply_presence_event(&mut backoff, event);
+                        if let Some(device) = Self::apply_presence_event(&mut backoff, event) {
+                            // Fire-and-forget: warm the outbound PRESENCE
+                            // path right now instead of waiting up to 25s
+                            // for the next ticker. Fast-path returns
+                            // instantly if a live connection already
+                            // exists, so duplicate spawns from a burst of
+                            // online events are effectively free. The
+                            // result is intentionally dropped — failures
+                            // are observed on the next tick's dial.
+                            let app_facade = Arc::clone(&self.app_facade);
+                            tokio::spawn(async move {
+                                debug!(
+                                    device = %device.as_str(),
+                                    "inbound presence Online; spawning outbound dial",
+                                );
+                                let _ = app_facade.ensure_reachable_one(&device).await;
+                            });
+                        }
                     }
                 }
                 _ = ticker.tick() => {
@@ -429,10 +459,15 @@ mod tests {
             state: "online".into(),
             at_ms: 0,
         };
-        PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+        let wake = PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
 
         let entry = backoff.get("device-a").expect("entry retained");
         assert_eq!(entry.consecutive_failures, 0);
+        assert_eq!(
+            wake.as_ref().map(|d| d.as_str()),
+            Some("device-a"),
+            "online event must signal a wake-up dial",
+        );
     }
 
     #[test]
@@ -447,8 +482,13 @@ mod tests {
             at_ms: 0,
         };
 
-        PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+        let wake = PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
         assert!(backoff.contains_key("ghost"));
+        assert_eq!(
+            wake.as_ref().map(|d| d.as_str()),
+            Some("ghost"),
+            "online event must signal a wake-up dial even for unknown peers",
+        );
     }
 
     #[test]
@@ -460,7 +500,11 @@ mod tests {
                 state: state.into(),
                 at_ms: 0,
             };
-            PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+            let wake = PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+            assert!(
+                wake.is_none(),
+                "non-online events must not trigger a wake-up dial",
+            );
         }
         assert!(
             backoff.is_empty(),

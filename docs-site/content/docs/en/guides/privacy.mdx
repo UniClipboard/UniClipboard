@@ -73,6 +73,7 @@ The current allowed product event scope is:
 | First sync       | `first_clipboard_sync_attempted`, `first_clipboard_sync_succeeded`, `first_file_sync_succeeded` | Sync direction, peer OS, transport type, duration, and payload-size bucket.                                                                        |
 | Sync reliability | `sync_attempted`, `sync_succeeded`, `sync_failed`, `sync_deferred`                              | Direction, payload type, payload-size bucket, transport type, peer OS, sync latency, failure reason / stage, and deferral reason.                  |
 | Mobile sync      | `mobile_device_registered`, `mobile_clipboard_synced`, `mobile_auth_failed`                     | Sync direction, payload-size bucket, and mobile auth failure kind enum. The raw `Authorization` header, username, and password are never uploaded. |
+| Update lifecycle | `update_check_performed`, `update_notification_shown`, `update_dialog_opened`, `update_dismissed`, `update_action_invoked` | Check source (startup / scheduled / manual / window-show top-up), outcome (available / up-to-date / failed), failure-kind enum, notification delivery-status enum, dialog open source, dismiss source, action kind and outcome, install kind (`app` / `deb` / `rpm` / `appimage` / `unknown`), and the new version string. Release-notes text, download URLs, byte counts, hostnames, and usernames are **not** uploaded. |
 
 Any new product event or field must continue to follow this privacy boundary and must be reflected in the public docs.
 

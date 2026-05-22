@@ -24,6 +24,7 @@ vi.mock('@/api/updater', () => ({
     downloaded: 0,
     total: null,
     version: null,
+    currentVersion: '0.0.0-test',
   }),
   getInstallKind: vi.fn().mockResolvedValue('macos'),
   subscribeUpdateProgress: vi.fn(),
@@ -173,6 +174,7 @@ describe('UpdateProvider', () => {
       downloaded: 0,
       total: null,
       version: null,
+      currentVersion: '0.0.0-test',
     })
     subscribeUpdateProgressMock.mockReset()
     subscribeUpdateProgressMock.mockImplementation(async () => () => {})
@@ -215,6 +217,7 @@ describe('UpdateProvider', () => {
       downloaded: 512,
       total: 2048,
       version: '0.2.0',
+      currentVersion: '0.1.0',
     })
 
     renderWithSetting(baseSetting, <StateConsumer />)

@@ -87,7 +87,13 @@ pub struct DownloadProgressSnapshot {
     pub downloaded: u64,
     #[specta(type = Option<specta_typescript::Number<u64>>)]
     pub total: Option<u64>,
+    /// Newly-available (latest) version. `None` when phase is `Idle`.
     pub version: Option<String>,
+    /// Currently-installed app version, lifted directly from
+    /// `app.package_info().version`. Always populated even when phase is
+    /// `Idle`, so a mid-mount frontend can render "current vs. latest"
+    /// without waiting for a fresh `check_for_update` round-trip.
+    pub current_version: String,
 }
 
 /// Metadata returned to the frontend when an update is available.
@@ -417,6 +423,7 @@ pub(crate) async fn do_download_update(
                     downloaded: 0,
                     total: None,
                     version: Some(info.version.clone()),
+                    current_version: info.current_version.clone(),
                 };
                 *guard = PendingUpdateState::Downloading {
                     info: info.clone(),
@@ -688,18 +695,24 @@ pub async fn cancel_download(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_download_progress(
+    app: AppHandle,
     pending: State<'_, PendingUpdate>,
     _trace: Option<TraceMetadata>,
 ) -> Result<DownloadProgressSnapshot, String> {
     let _ = _trace;
+    let current_version = app.package_info().version.to_string();
     let guard = lock_state(&pending.0)?;
     let snapshot = match &*guard {
-        PendingUpdateState::None => DownloadProgressSnapshot::default(),
+        PendingUpdateState::None => DownloadProgressSnapshot {
+            current_version: current_version.clone(),
+            ..Default::default()
+        },
         PendingUpdateState::Available(update) => DownloadProgressSnapshot {
             phase: DownloadPhase::Available,
             downloaded: 0,
             total: None,
             version: Some(update.version.clone()),
+            current_version: update.current_version.clone(),
         },
         PendingUpdateState::Downloading { progress, .. } => progress.clone(),
         PendingUpdateState::Ready { update, bytes, .. } => DownloadProgressSnapshot {
@@ -707,6 +720,7 @@ pub async fn get_download_progress(
             downloaded: bytes.len() as u64,
             total: Some(bytes.len() as u64),
             version: Some(update.version.clone()),
+            current_version: update.current_version.clone(),
         },
     };
     Ok(snapshot)
@@ -1053,10 +1067,11 @@ mod tests {
             downloaded: 4096,
             total: Some(1024 * 1024),
             version: Some("0.10.0".to_string()),
+            current_version: "0.9.0".to_string(),
         };
         assert_eq!(
             serde_json::to_string(&snap).unwrap(),
-            r#"{"phase":"downloading","downloaded":4096,"total":1048576,"version":"0.10.0"}"#
+            r#"{"phase":"downloading","downloaded":4096,"total":1048576,"version":"0.10.0","currentVersion":"0.9.0"}"#
         );
     }
 

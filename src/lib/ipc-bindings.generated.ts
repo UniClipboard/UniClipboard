@@ -513,7 +513,15 @@ export type DownloadProgressSnapshot = {
 	phase: DownloadPhase,
 	downloaded: number,
 	total: number | null,
+	/**  Newly-available (latest) version. `None` when phase is `Idle`. */
 	version: string | null,
+	/**
+	 *  Currently-installed app version, lifted directly from
+	 *  `app.package_info().version`. Always populated even when phase is
+	 *  `Idle`, so a mid-mount frontend can render "current vs. latest"
+	 *  without waiting for a fresh `check_for_update` round-trip.
+	 */
+	currentVersion: string,
 };
 
 /**  状态枚举:`tag` + `reason` 形式,便于前端区分四档与失败子分类。 */

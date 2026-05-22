@@ -235,13 +235,14 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
         if (snapshot.phase === 'idle') return
         setState({
           phase: snapshot.phase,
-          // 启动期 sync 路径只拿得到 version 字符串，无法回填 release notes
-          // (`body`) 与发布日期 (`date`) —— 用 null 占位，等下一次主动
-          // checkForUpdate 再覆盖完整 metadata。
+          // 启动期 sync 路径拿不到 release notes (`body`) 与发布日期 (`date`) ——
+          // 用 null 占位，等下一次主动 checkForUpdate 再覆盖完整 metadata。
+          // `currentVersion` 由后端从 `app.package_info().version` 注入，避免
+          // 把 latest 误当成 current（修复 modal 显示 current=latest=同字符串）。
           info: snapshot.version
             ? {
                 version: snapshot.version,
-                currentVersion: snapshot.version,
+                currentVersion: snapshot.currentVersion,
                 body: null,
                 date: null,
               }

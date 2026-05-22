@@ -170,7 +170,11 @@ export function useResendAction(): UseResendActionResult {
     async (entryId: string | null) => {
       if (!entryId) return
       // 共享 store 已记一次 → 任何 hook 实例都视为在飞,直接 noop。
+      // 同时检查 peer-level: 若该 entry 的任何 peer 重发在飞,entry-wide
+      // 也跳过,避免与单 peer 请求形成重叠派发。
       if (entryInFlightSet.has(entryId)) return
+      const peers = peerInFlightMap.get(entryId)
+      if (peers && peers.size > 0) return
       await fireResend({
         entryId,
         targetDeviceIds: null,
@@ -184,6 +188,8 @@ export function useResendAction(): UseResendActionResult {
   const resendToPeer = useCallback(
     async (entryId: string | null, deviceId: string) => {
       if (!entryId) return
+      // entry-wide 在飞时,peer 级请求也跳过 —— entry-wide 已覆盖该 peer。
+      if (entryInFlightSet.has(entryId)) return
       if (peerInFlightMap.get(entryId)?.has(deviceId)) return
       await fireResend({
         entryId,

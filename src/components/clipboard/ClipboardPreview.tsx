@@ -47,11 +47,10 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
     setCancelling(true)
     try {
       await cancelFileTransfer(transferId)
-      // Final cancelled / failed status arrives via host event → reducer;
-      // no optimistic Redux update here.
     } catch (err) {
       reportError(err, { command: 'cancelFileTransfer', transferId })
-      // Reset so the user can retry; cancel is idempotent server-side.
+    } finally {
+      // 无论成功或失败都释放本地锁，避免后续 transfer 被误禁用。
       setCancelling(false)
     }
   }, [transferId, cancelling])

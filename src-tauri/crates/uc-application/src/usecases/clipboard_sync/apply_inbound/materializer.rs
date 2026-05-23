@@ -50,15 +50,25 @@ pub struct MissingFileRef {
 
 /// `InboundBlobMaterializer::materialize` 的返回值。
 ///
-/// - `missing.is_empty()` ⇒ 全量 materialize 成功,等同于"complete";
-/// - `!missing.is_empty()` ⇒ partial:`snapshot` 里已成功的 representation
-///   保留,file-list rep 里未完成的文件以 `uniclip-missing://` URI 占位,
-///   `missing` 列出未完成文件的元数据。调用方应据此跳过 OS clipboard
-///   write(避免把占位 URI 推到系统剪贴板)。
+/// `is_partial()` 是"该 snapshot 不完整"的权威信号 —— 调用方据此跳过
+/// OS clipboard write 与 dedup 登记。`missing` 单独列出 file-rep 阶段
+/// 未完成文件的元数据,供前端渲染占位卡片用。
+///
+/// **关键不变量**:`is_partial()` 不等于 `!missing.is_empty()`。rep-bound
+/// blob(图片 / 大二进制)被 cancel 时,materializer 会从 `snapshot.
+/// representations` 中删除未完成的 rep —— 这本身已经让 snapshot 半残,
+/// 但 `missing` 只用于 *file* 列表,如果 envelope 没有 file_refs,
+/// `missing` 仍是空。仅靠 `!missing.is_empty()` 判定会把这种情况误判
+/// 为 complete,把半残 snapshot 当真相落入 dedup 表 + OS 剪贴板。
 #[derive(Debug)]
 pub struct MaterializeResult {
     pub snapshot: SystemClipboardSnapshot,
     pub missing: Vec<MissingFileRef>,
+    /// 真正的"是否 partial"标志。`complete()` 置 false,`finalize_partial`
+    /// 置 true。`pub(crate)` 让 crate 内的 mock 测试能构造,外部调用方
+    /// 统一通过 `is_partial()` 读,避免新调用方又掉进"missing 空 ⇒
+    /// complete"陷阱。
+    pub(crate) partial: bool,
 }
 
 impl MaterializeResult {
@@ -66,11 +76,12 @@ impl MaterializeResult {
         Self {
             snapshot,
             missing: Vec::new(),
+            partial: false,
         }
     }
 
     pub fn is_partial(&self) -> bool {
-        !self.missing.is_empty()
+        self.partial
     }
 }
 
@@ -624,6 +635,7 @@ fn finalize_partial(
     MaterializeResult {
         snapshot,
         missing: missing_files,
+        partial: true,
     }
 }
 

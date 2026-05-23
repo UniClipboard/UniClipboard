@@ -824,6 +824,7 @@ async fn partial_materialize_persists_entry_but_skips_os_write() {
                     filename: "big.iso".to_string(),
                     size_bytes: 950_000_000,
                 }],
+                partial: true,
             })
         },
     );
@@ -914,6 +915,7 @@ async fn partial_materialize_does_not_register_dedup_entry() {
                         filename: "retry.iso".to_string(),
                         size_bytes: 100,
                     }],
+                    partial: true,
                 })
             } else {
                 snapshot.representations[0]
@@ -1297,6 +1299,62 @@ async fn file_cache_blob_materializer_partial_on_cancel_first_file() {
     // snapshot 必须仍有 supported rep,否则 capture pipeline 会短路 Ok(None)
     // 不落 entry,与用户契约"取消后保留 entry"相悖。
     assert!(!result.snapshot.representations.is_empty());
+}
+
+/// 回归 pin —— rep-bound blob 阶段被 cancel,envelope 不带任何 file_refs。
+/// 这条路径下 `missing` 必然为空(missing 只列 file_refs),但 snapshot 里
+/// 那条未完成的 image rep 已经被删除 —— 半残 snapshot 不能写 OS 剪贴板,
+/// 也不能进 dedup 表。修复前 `is_partial` 只看 `!missing.is_empty()`
+/// 会把这种情况误判为 complete,把占位状态当真相落库。
+#[tokio::test]
+async fn file_cache_blob_materializer_partial_on_rep_cancel_no_files() {
+    use crate::facade::blob_transfer::BlobTransferError;
+
+    let cache_dir = tempfile::tempdir().expect("tempdir");
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![7]),
+        entry_id: EntryId::from("entry-img-cancel"),
+        filename: None,
+        mime: Some("image/png".to_string()),
+        size_bytes: 1024,
+        representation_index: Some(0),
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("image"),
+            Some(MimeType("image/png".to_string())),
+            Vec::new(),
+        )],
+    };
+
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob()
+        .times(1)
+        .returning(|_| Err(anyhow::Error::from(BlobTransferError::Cancelled)));
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let result = materializer
+        .materialize(
+            DeviceId::new("peer-sender"),
+            EntryId::from("entry-receiver"),
+            snapshot,
+            vec![blob_ref],
+        )
+        .await
+        .expect("rep-only cancel yields Ok(partial)");
+
+    assert!(
+        result.is_partial(),
+        "rep-only cancel must mark partial even though `missing` is empty (file_refs absent)"
+    );
+    assert!(
+        result.missing.is_empty(),
+        "rep cancel does not produce MissingFileRef entries (those describe file_refs only)"
+    );
 }
 
 /// 回归 pin —— 2026-05-08 移动端图片回归暴露:apply_inbound 流程入口 emit

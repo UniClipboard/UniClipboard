@@ -107,13 +107,52 @@ uniclip send "hello from the CLI"
 # Or pipe stdin
 echo "from a heredoc" | uniclip send
 
+# Restrict fan-out to specific devices (repeatable)
+uniclip send "scoped message" --peer DEVICE_ID_A --peer DEVICE_ID_B
+
+# Re-fan-out a previously captured local entry. No stdin / positional
+# text is read. Without `--peer`, targets default to the diff of
+# trusted peers minus those that already received this entry.
+uniclip send --resend <ENTRY_ID>
+
 # Watch inbound clipboard payloads as they arrive (Ctrl-C to stop)
 uniclip watch
 ```
 
+`--resend` only re-fans-out entries that were **captured locally** and
+whose payload is still cached. Entries originating on a remote peer
+cannot be re-sent from this device; combine `--resend` with `--peer ...`
+to force a specific fan-out target.
+
 `uniclip watch` is a **diagnostic observer**: it prints the first text
 representation (or a per-rep summary for image-only payloads) but
 does **not** write the system clipboard — that's the daemon's job.
+
+### Sending and receiving files
+
+```bash
+# Sender: publish a file to the local blob store, dispatch a clipboard
+# envelope referencing it, then stay alive as a passive provider until
+# Ctrl-C so peers have time to fetch the bytes.
+uniclip send -f ./big-file.bin
+
+# Receiver: subscribe to inbound envelopes, pick the first one that
+# carries a file blob, and stream it to disk (defaults to cwd; pass
+# --out for a different directory). Ctrl-C during transfer cancels
+# the fetch and removes the partial file.
+uniclip recv --out ./inbox
+```
+
+`send -f` is mutually exclusive with positional text and `--resend`.
+The CLI process **must stay running** after dispatch — receivers fetch
+the bytes from this process via iroh-blobs; stopping early leaves the
+peer with a partial file.
+
+`send -f` / `recv` are the high-level counterparts of the lower-level
+[`uniclip blob`](#blob-large-payload-diagnostics) commands below —
+they handle the V3 envelope, dispatch, and transfer lifecycle for you.
+Reach for `blob` when you need to inspect a single publish or fetch in
+isolation.
 
 ## Search
 

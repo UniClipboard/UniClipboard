@@ -96,12 +96,45 @@ uniclip send "hello from the CLI"
 # 或者从 stdin 读取
 echo "from a heredoc" | uniclip send
 
+# 限定 fan-out 到指定设备（可重复）
+uniclip send "scoped message" --peer DEVICE_ID_A --peer DEVICE_ID_B
+
+# 重新分发一条本地已捕获的条目（不读 stdin / positional text）。
+# 不带 `--peer` 时默认目标为 trusted peer 中尚未收到该条目的差集。
+uniclip send --resend <ENTRY_ID>
+
 # 实时打印收到的剪贴 payload（Ctrl-C 停止）
 uniclip watch
 ```
 
+`--resend` 只能重发 **本地捕获** 且 payload 仍在缓存里的条目。
+从远端 peer 同步进来的条目不能从本机 resend；可叠加 `--peer ...` 显式指定 fan-out 目标。
+
 `uniclip watch` 是 **诊断观察器**：它会打印首个文本表示（图片型 payload 则按 representation 摘要展示），
 但 **不会** 写入系统剪贴板 —— 写系统剪贴板是守护进程的职责。
+
+### 发送和接收文件
+
+```bash
+# 发送端：把文件 publish 到本地 blob 存储，dispatch 一个引用该 blob
+# 的剪贴板 envelope，然后保持进程驻留作为 passive provider，直到
+# Ctrl-C —— 接收端的 fetch 任务从本进程拉取字节，提前退出会让对端
+# 拿到 partial file。
+uniclip send -f ./big-file.bin
+
+# 接收端：订阅入站 envelope，挑第一个带文件 blob ref 的，把字节
+# 流式写到磁盘（默认 cwd，--out 指定其他目录）。传输中按 Ctrl-C
+# 会取消并清掉 partial file。
+uniclip recv --out ./inbox
+```
+
+`send -f` 与 positional text 和 `--resend` 互斥。
+CLI 进程 **必须保持运行**：dispatch 返回不代表传输完成，
+接收端通过 iroh-blobs 从本进程反向拉取字节。
+
+`send -f` / `recv` 是 [`uniclip blob`](#blob大负载诊断) 系列的高层封装 ——
+自动处理 V3 envelope、dispatch、传输 lifecycle。需要单独验证一次 publish 或
+fetch 时再用 `blob` 子命令。
 
 ## 搜索
 

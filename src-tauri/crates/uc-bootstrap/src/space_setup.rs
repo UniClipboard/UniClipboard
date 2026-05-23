@@ -18,13 +18,30 @@
 //! connections see a clean `CONNECTION_CLOSE` rather than waiting for peer
 //! timeouts.
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tracing::{info, instrument};
 
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::warn;
+
+/// 反向 progress 翻译器对前端 emit 的硬上限(<=5/sec per transfer)。
+///
+/// 防御性节流——即便 peer 端(可能是旧版本、可能跑没修过的代码)以
+/// 100+/sec 速率从反向 ALPN 通道发 progress 帧过来,本机译者也只把
+/// 它转为最多 5/sec 的 host event 推给前端,避免 WebKit native 堆被
+/// 高频 WS 帧冲爆(详见 findings.md 2026-05-23 Phase 4 vmmap 取证)。
+///
+/// 与 `uc-infra::network::iroh::blobs::PROGRESS_REPORT_INTERVAL` 是两条
+/// 独立的防线:一个保护"我作为接收方时不要给对端发太快",一个保护
+/// "我作为发送方时不要把对端发来的高频中转给前端"。两条都设 200ms。
+///
+/// **终态帧(Completed/Failed/Cancelled)永远绕过节流**,确保前端立刻看到
+/// 最终状态,不会因为正好落在 cooldown 窗口里被丢掉。
+const TRANSLATOR_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(200);
 
 use uc_application::facade::{
     BlobTransferDeps, BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent,
@@ -155,19 +172,13 @@ fn spawn_outbound_progress_translator(
     bus: Arc<HostEventBus>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
+        // 每个 transfer_id 记录上次 emit progress 的时刻,用于 5/sec 节流。
+        // 终态帧到达时移除对应 entry,防止长时间运行后无限增长。
+        let mut last_progress_emit: HashMap<String, Instant> = HashMap::new();
         loop {
             match rx.recv().await {
                 Ok(event) => {
-                    bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::Progress {
-                        transfer_id: event.transfer_id.clone(),
-                        entry_id: Some(event.transfer_id.clone()),
-                        peer_id: event.from_device.as_str().to_string(),
-                        direction: FileTransferDirection::Sending,
-                        bytes_transferred: event.bytes_transferred,
-                        total_bytes: event.total_bytes,
-                    }));
-
-                    let terminal = match event.status {
+                    let terminal = match &event.status {
                         OutboundProgressStatus::InProgress => None,
                         OutboundProgressStatus::Completed => Some(("completed", None)),
                         OutboundProgressStatus::Failed => {
@@ -175,10 +186,42 @@ fn spawn_outbound_progress_translator(
                         }
                         OutboundProgressStatus::Cancelled { reason } => Some((
                             "cancelled",
-                            Some(cancellation_reason_label(reason).to_string()),
+                            Some(cancellation_reason_label(*reason).to_string()),
                         )),
                     };
+
+                    // Progress 帧节流:终态帧总是放行(让前端立刻看到最终 bytes
+                    // 和状态),InProgress 帧按 transfer_id 走 5/sec 上限。
+                    let should_emit_progress = if terminal.is_some() {
+                        true
+                    } else {
+                        let now = Instant::now();
+                        match last_progress_emit.get(&event.transfer_id) {
+                            Some(prev)
+                                if now.duration_since(*prev) < TRANSLATOR_PROGRESS_MIN_INTERVAL =>
+                            {
+                                false
+                            }
+                            _ => {
+                                last_progress_emit.insert(event.transfer_id.clone(), now);
+                                true
+                            }
+                        }
+                    };
+
+                    if should_emit_progress {
+                        bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::Progress {
+                            transfer_id: event.transfer_id.clone(),
+                            entry_id: Some(event.transfer_id.clone()),
+                            peer_id: event.from_device.as_str().to_string(),
+                            direction: FileTransferDirection::Sending,
+                            bytes_transferred: event.bytes_transferred,
+                            total_bytes: event.total_bytes,
+                        }));
+                    }
+
                     if let Some((status, reason)) = terminal {
+                        last_progress_emit.remove(&event.transfer_id);
                         bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::StatusChanged {
                             transfer_id: event.transfer_id.clone(),
                             entry_id: event.transfer_id,

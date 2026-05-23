@@ -25,15 +25,19 @@ use uc_core::ports::blob::{
     BlobDigest, BlobError, BlobProgressSink, BlobTicket, BlobTransferPort, TagReason,
 };
 
-/// Minimum byte advance between two `BlobProgressSink::report` calls.
-///
-/// 节流阈值——每跨过 256 KB 才再上报一次,避免 iroh-blobs 在大 blob 上每个
-/// chunk 触发一次 sink(WS 转发链路上百次/秒会拖累 daemon)。
-const PROGRESS_REPORT_BYTES: u64 = 256 * 1024;
 /// Minimum wall-clock interval between two `BlobProgressSink::report` calls.
 ///
-/// 即便字节阈值还没达到,长时间没有进度也会让前端的"剩余时间"估算错乱;
-/// 200ms 是肉眼能感知到的最小卡顿,所以也强制按时间窗刷新一次。
+/// **硬上限 5 emits/sec** —— 单纯按时间节流,与字节速率无关。
+///
+/// 历史 bug:节流条件曾是 `due_by_bytes || due_by_time` (256KB 或 200ms,
+/// 任一满足即 emit)。高带宽 wifi 下每 ~5ms 就跨过 256KB → 实测达 18
+/// emits/sec。下游 WS 帧把 WebKit native 堆撑到 GB 级(每帧在 webview
+/// 端产生 MessageEvent / PerformanceResourceTiming 等若干 C++ 对象,
+/// 高频累积 GC 跟不上)。详见 findings.md 2026-05-23 Phase 4 vmmap 取证。
+///
+/// 现在改成时间窗硬上限:既限制了高带宽下的洪水,也保证慢速传输每
+/// 200ms 至少更新一次,前端 ETA / 进度条不会停滞。200ms 对人眼是肉眼
+/// 可感知更新极限的下界,UI 表现仍然流畅。
 const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(200);
 
 /// 跨公网 holepunch 收敛时,iroh-blobs 内部 `ConnectionPool` 的 1s `connect_timeout`
@@ -627,11 +631,12 @@ impl IrohBlobTransferAdapter {
                             last_logged_bytes = total;
                         }
                         if let Some(sink) = progress {
-                            let due_by_bytes = total >= last_reported_bytes + PROGRESS_REPORT_BYTES;
+                            // 仅按时间窗节流(<=5 emits/sec)。字节窗会被高带宽绕过,
+                            // 详见 PROGRESS_REPORT_INTERVAL 常量上的 Phase 4 注释。
                             let due_by_time = last_reported_at
                                 .map(|t| t.elapsed() >= PROGRESS_REPORT_INTERVAL)
                                 .unwrap_or(true);
-                            if (due_by_bytes || due_by_time) && total > last_reported_bytes {
+                            if due_by_time && total > last_reported_bytes {
                                 sink.report(total, None).await;
                                 last_reported_bytes = total;
                                 last_reported_at = Some(Instant::now());

@@ -3,10 +3,12 @@ import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import {
+  markTransferCancelled,
   markTransferCompleted,
   markTransferFailed,
   cancelClipboardWrite,
   linkTransferToEntry,
+  normalizeCancelReason,
   setEntryTransferStatus,
   updateTransferProgress,
 } from '@/store/slices/fileTransferSlice'
@@ -75,7 +77,13 @@ export function useTransferProgress(): void {
           )
         }
         dispatch(linkTransferToEntry({ transferId: payload.transferId, entryId }))
-        const validStatuses = ['pending', 'transferring', 'completed', 'failed'] as const
+        const validStatuses = [
+          'pending',
+          'transferring',
+          'completed',
+          'failed',
+          'cancelled',
+        ] as const
         if (validStatuses.includes(status as (typeof validStatuses)[number])) {
           dispatch(
             setEntryTransferStatus({
@@ -91,6 +99,13 @@ export function useTransferProgress(): void {
             markTransferFailed({
               transferId: payload.transferId,
               error: reason ?? undefined,
+            })
+          )
+        } else if (status === 'cancelled') {
+          dispatch(
+            markTransferCancelled({
+              transferId: payload.transferId,
+              reason: normalizeCancelReason(reason),
             })
           )
         } else if (status === 'completed') {

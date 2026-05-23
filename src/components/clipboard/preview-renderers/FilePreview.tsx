@@ -9,13 +9,29 @@ import {
   Image as ImageIcon,
   Layers,
   Loader2,
+  XCircle,
 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import type { EntryTransferStatus, TransferProgressInfo } from '@/store/slices/fileTransferSlice'
+import {
+  type EntryTransferStatus,
+  normalizeCancelReason,
+  type TransferProgressInfo,
+} from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
 import type { DisplayClipboardItem } from '../ClipboardContent'
+
+/** 已知 cancel reason 子原因白名单。后端 wire 上送来的字符串与这里枚举
+ * 一致时,UI 用 `clipboard.transfer.cancelReason.<reason>` 渲染中文文案;
+ * 否则 fallback 到通用 `cancelReason.unknown`。 */
+const KNOWN_CANCEL_REASONS = new Set([
+  'local_user',
+  'remote_peer',
+  'replaced',
+  'timeout',
+  'unknown',
+])
 
 interface FilePreviewProps {
   effectiveStatus: EntryTransferStatus['status'] | undefined
@@ -26,6 +42,17 @@ interface FilePreviewProps {
 
 function getFileExt(name: string) {
   return name.split('.').pop()?.toLowerCase() ?? ''
+}
+
+function renderCancelReasonText(
+  t: ReturnType<typeof useTranslation>['t'],
+  reason: string | null | undefined
+): string {
+  const normalized = normalizeCancelReason(reason)
+  if (normalized && KNOWN_CANCEL_REASONS.has(normalized)) {
+    return t(`clipboard.transfer.cancelReason.${normalized}`)
+  }
+  return t('clipboard.transfer.cancelReason.unknown')
 }
 
 function getFileIcon(name: string) {
@@ -80,6 +107,12 @@ const FilePreview: React.FC<FilePreviewProps> = ({
         <div className="flex items-center gap-1.5 rounded-full bg-destructive/15 px-2.5 py-1 text-[10px] font-bold tracking-wider text-destructive backdrop-blur-md ring-1 ring-destructive/30">
           <AlertTriangle size={10} />
           <span>{t('clipboard.transfer.failed')}</span>
+        </div>
+      )}
+      {effectiveStatus === 'cancelled' && (
+        <div className="flex items-center gap-1.5 rounded-full bg-muted/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground backdrop-blur-md ring-1 ring-border/30">
+          <XCircle size={10} />
+          <span>{t('clipboard.transfer.cancelled')}</span>
         </div>
       )}
       {effectiveStatus === 'completed' && (
@@ -153,6 +186,13 @@ const FilePreview: React.FC<FilePreviewProps> = ({
           <div className="flex max-w-sm items-start gap-2 rounded-xl border border-destructive/10 bg-destructive/5 px-4 py-3 text-xs text-destructive/80">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <span>{entryStatus.reason}</span>
+          </div>
+        )}
+
+        {effectiveStatus === 'cancelled' && (
+          <div className="flex max-w-sm items-start gap-2 rounded-xl border border-border/20 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+            <XCircle size={14} className="mt-0.5 shrink-0" />
+            <span>{renderCancelReasonText(t, entryStatus?.reason)}</span>
           </div>
         )}
       </div>

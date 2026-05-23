@@ -256,6 +256,11 @@ struct InflightFetch {
     /// 时把 peer_id 一起塞进 registry。`None` 表示这次 fetch 没带
     /// `transfer_context`(纯静默拉取,无需发 cancel event)。
     peer_id: Option<String>,
+    /// 反向上报通道。`cancel_inbound_transfer` 在撕 QUIC connection
+    /// 之前先用它给 sender 发一帧 `Cancelled` 状态,让 sender UI 也能
+    /// 看到中性"已取消"展示(而不是 fetch error 路径反向推的 Failed)。
+    /// 反向通道用独立 ALPN,撕 fetch connection 不会影响这条帧。
+    outbound: Option<OutboundReportContext>,
 }
 
 pub struct BlobTransferFacade {
@@ -424,29 +429,36 @@ impl BlobTransferFacade {
 
     /// 取消一次进行中的 inbound fetch。
     ///
-    /// 三件事必须按顺序发生:
-    /// 1. trigger registry 里这个 `transfer_id` 对应的 cancellation token —
+    /// 四件事按顺序发生:
+    /// 1. **先**通过反向 progress 通道给 sender 发一帧
+    ///    `OutboundProgressStatus::Cancelled { reason }` —— 让 sender UI
+    ///    收到 cancel 终态(而不是后续 fetch error 路径反向推的 Failed)。
+    ///    反向通道用独立 ALPN,与待撕的 fetch QUIC connection 物理隔离,
+    ///    所以这一步必须在 step 3 之前完成,**且 await 直到写帧返回**,
+    ///    避免 reporter 内部还没真把帧写入 socket 就被后续 fetch error
+    ///    覆盖。
+    /// 2. trigger registry 里这个 `transfer_id` 对应的 cancellation token —
     ///    fetch 路径里的 `tokio::select!` 会立刻唤醒,fetch_uc 那条分支被
     ///    drop,本端 receiver 不再接收 bytes;
-    /// 2. 通过 `BlobTransferPort::shutdown_inflight_fetch(&ticket)` 撕掉
+    /// 3. 通过 `BlobTransferPort::shutdown_inflight_fetch(&ticket)` 撕掉
     ///    iroh-blobs Downloader actor 内部用的 QUIC connection,让 actor
     ///    task 也真的退出(否则它会继续把整个 blob 下完);
-    /// 3. 通过 `FileTransferFacade::cancel` 落 `Cancelled` domain event,
+    /// 4. 通过 `FileTransferFacade::cancel` 落 `Cancelled` domain event,
     ///    projection 翻成 `cancelled`,前端 status 切换。
     ///
     /// 幂等:同一个 `transfer_id` 不在 registry(没有进行中的 fetch,或者
     /// 已经被取消过)时返回 `Ok(())`,不重复发事件。
     ///
-    /// `reason` 透传给 `Cancelled` 事件 ——
+    /// `reason` 透传给 `Cancelled` 事件与反向 cancel 帧 ——
     /// - 用户点取消按钮:`LocalUser`
-    /// - timeout sweep 触发:`Unknown`(后续 P1-8 可加新变体 `Timeout`)
+    /// - timeout sweep 触发:`Timeout`
     /// - 删除流程联动:`Replaced` 或 `LocalUser`
     pub async fn cancel_inbound_transfer(
         &self,
         transfer_id: &str,
         reason: FileTransferCancellationReason,
     ) -> Result<InboundCancelOutcome, BlobTransferError> {
-        // Step 1 + 2 的输入数据要在锁内一次性取出,避免锁跨 await。
+        // 一次性取出 entry,避免锁跨 await。
         let entry = self.inflight_fetches.lock().unwrap().remove(transfer_id);
         let Some(entry) = entry else {
             info!(
@@ -456,12 +468,39 @@ impl BlobTransferFacade {
             return Ok(InboundCancelOutcome::NotInflight);
         };
 
-        // Step 1: trigger select! 让 fetch 路径退出。
+        // Step 1: 先告诉 sender 我们要取消了。一定要在撕 connection 之前
+        // 完成 ——cancel 帧走的是独立 ALPN 通道,与 fetch QUIC connection
+        // 不共用,撕 fetch 不会影响这一帧;但 reporter 内部要 dial / open_uni
+        // / write,需要 await 完成。
+        //
+        // **视角翻转**:`reason` 是 receiver 视角(`LocalUser` 是 receiver
+        // 设备上的用户、`RemotePeer` 是 sender 那边触发的)。沿反向通道发
+        // 给 sender 时,把 device-relative 的两个变体对调一下,这样 sender
+        // 端 UI 拿到的就是 sender 视角的 reason —— 可以直接用同一张 i18n
+        // 表渲染("你/对方"的归属正确)。`Timeout` / `Replaced` / `Unknown`
+        // 是设备无关的共同语义,原样透传。
+        if let Some(outbound) = entry.outbound.as_ref() {
+            let sender_view_reason = flip_cancel_reason_perspective(reason);
+            outbound
+                .reporter
+                .report(
+                    &outbound.target,
+                    &outbound.transfer_id,
+                    0,
+                    None,
+                    OutboundProgressStatus::Cancelled {
+                        reason: sender_view_reason,
+                    },
+                )
+                .await;
+        }
+
+        // Step 2: trigger select! 让 fetch 路径退出。
         entry.token.cancel();
 
-        // Step 2: 撕 QUIC connection 让 iroh-blobs actor task 也退出。
+        // Step 3: 撕 QUIC connection 让 iroh-blobs actor task 也退出。
         // best-effort: shutdown 失败说明 connection 已经关了,语义上等价
-        // 于"已经撤回",继续走 step 3。
+        // 于"已经撤回",继续走 step 4。
         if let Err(err) = self
             .blob_transfer
             .shutdown_inflight_fetch(&entry.ticket)
@@ -474,16 +513,8 @@ impl BlobTransferFacade {
             );
         }
 
-        // Step 3: 落 Cancelled 事件。peer_id 在 fetch 入口注册时就该一起
-        // 存,否则这里只能编一个,会污染事件流。下面 register 时会把
-        // peer_id 也写进 registry。
-        // 实际写出来是后面 wrap fetch 路径时跟着改 InflightFetch 结构。
-        // 这里先不发 lifecycle,让调用方(Tauri command)显式调
-        // file_transfer.cancel —— 不打破 facade 间职责;OR 在这里把
-        // peer_id 也从 registry 里取出来发。
-        //
-        // 选择:把 peer_id 写进 registry,这里发 lifecycle —— 让所有
-        // cancel 入口(用户、timeout、删除)只调一个 API,事件流自动落。
+        // Step 4: 落 Cancelled 事件。peer_id 在 fetch 入口注册时一起存进
+        // registry,这里取出来直接发,避免编一个污染事件流。
         if let Some(peer_id) = entry.peer_id {
             self.cancel_lifecycle_inner(transfer_id, &peer_id, reason)
                 .await;
@@ -567,29 +598,18 @@ impl BlobTransferFacade {
         command: FetchBlobCommand,
     ) -> Result<FetchBlobResult, BlobTransferError> {
         let iroh_tag_entry_id = command.entry_id.clone();
+        let outbound_ctx = self.build_outbound_context(command.transfer_context.as_ref());
         let progress_sink: Option<Arc<dyn BlobProgressSink>> = command
             .transfer_context
             .as_ref()
             .filter(|_| self.host_event_emitter.is_some())
             .map(|ctx| {
-                let outbound = match (
-                    self.outbound_progress_reporter.clone(),
-                    ctx.outbound_transfer_id.clone(),
-                    ctx.outbound_target.clone(),
-                ) {
-                    (Some(reporter), Some(tid), Some(target)) => Some(OutboundReportContext {
-                        reporter,
-                        transfer_id: tid,
-                        target,
-                    }),
-                    _ => None,
-                };
                 let sink: Arc<dyn BlobProgressSink> = Arc::new(HostEventProgressSink {
                     bus: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
-                    outbound,
+                    outbound: outbound_ctx.clone(),
                 });
                 sink
             });
@@ -669,29 +689,18 @@ impl BlobTransferFacade {
         command: FetchBlobToPathCommand,
     ) -> Result<FetchBlobToPathResult, BlobTransferError> {
         let iroh_tag_entry_id = command.entry_id.clone();
+        let outbound_ctx = self.build_outbound_context(command.transfer_context.as_ref());
         let progress_sink: Option<Arc<dyn BlobProgressSink>> = command
             .transfer_context
             .as_ref()
             .filter(|_| self.host_event_emitter.is_some())
             .map(|ctx| {
-                let outbound = match (
-                    self.outbound_progress_reporter.clone(),
-                    ctx.outbound_transfer_id.clone(),
-                    ctx.outbound_target.clone(),
-                ) {
-                    (Some(reporter), Some(tid), Some(target)) => Some(OutboundReportContext {
-                        reporter,
-                        transfer_id: tid,
-                        target,
-                    }),
-                    _ => None,
-                };
                 let sink: Arc<dyn BlobProgressSink> = Arc::new(HostEventProgressSink {
                     bus: self.host_event_emitter.clone().unwrap(),
                     transfer_id: ctx.transfer_id.clone(),
                     peer_id: ctx.peer_id.clone(),
                     fallback_total: ctx.total_bytes,
-                    outbound,
+                    outbound: outbound_ctx.clone(),
                 });
                 sink
             });
@@ -709,10 +718,11 @@ impl BlobTransferFacade {
         }
 
         // 注册取消句柄:带 transfer_context 时,在 inflight registry 留下
-        // (token, ticket, peer_id),让 `cancel_inbound_transfer` 能查到并
-        // trigger token + 撕 QUIC connection。无 transfer_context 时(纯静默
-        // 拉取,例如 CLI 工具),token 仍然创建但不进 registry —— select! 这
-        // 一条分支就永远不会被唤醒,等价于原行为。
+        // (token, ticket, peer_id, outbound),让 `cancel_inbound_transfer`
+        // 能查到并 trigger token + 反向推 cancel 帧 + 撕 QUIC connection。
+        // 无 transfer_context 时(纯静默拉取,例如 CLI 工具),token 仍然
+        // 创建但不进 registry —— select! 这一条分支就永远不会被唤醒,
+        // 等价于原行为。
         let cancel_token = CancellationToken::new();
         if let Some(ctx) = command.transfer_context.as_ref() {
             self.inflight_fetches.lock().unwrap().insert(
@@ -721,6 +731,7 @@ impl BlobTransferFacade {
                     token: cancel_token.clone(),
                     ticket: command.ticket.clone(),
                     peer_id: Some(ctx.peer_id.clone()),
+                    outbound: outbound_ctx.clone(),
                 },
             );
         }
@@ -777,19 +788,11 @@ impl BlobTransferFacade {
                 })
             }
             Err(BlobTransferError::Cancelled) => {
-                // 取消路径不发 fail/Completed —— `cancel_inbound_transfer`
-                // 已经把 `Cancelled` domain event + lifecycle 状态都落了。
-                // 这里只需要把"反向上报"通知 sender 一次,让对端 UI 也能
-                // 立刻看到 cancel 终止(否则 sender 卡在最后一次 progress)。
-                if let Some(ctx) = command.transfer_context.as_ref() {
-                    self.report_outbound_terminal(
-                        ctx,
-                        0,
-                        ctx.total_bytes,
-                        OutboundProgressStatus::Failed,
-                    )
-                    .await;
-                }
+                // 取消路径不发任何 lifecycle / outbound 终态 ——
+                // `cancel_inbound_transfer` 已经在撕 connection 之前把
+                // `OutboundProgressStatus::Cancelled` 帧推给 sender,并
+                // 落了 `Cancelled` domain event。这里再发 outbound Failed
+                // 会让 sender 端 UI 从已经显示的"已取消"切回"失败"(race)。
                 Err(BlobTransferError::Cancelled)
             }
             Err(e) => {
@@ -807,6 +810,27 @@ impl BlobTransferFacade {
                 Err(BlobTransferError::Fetch(msg))
             }
         }
+    }
+
+    /// 从 `FetchTransferContext` 构造 outbound report context。
+    ///
+    /// 同时配齐 reporter / outbound_transfer_id / outbound_target 才会返回
+    /// `Some` —— 否则反向上报功能未启用,sink 与 cancel 路径都跳过 outbound
+    /// 分支。让 sink 与 `InflightFetch` 共用同一份配置,避免两处构造逻辑
+    /// 分叉。
+    fn build_outbound_context(
+        &self,
+        ctx: Option<&FetchTransferContext>,
+    ) -> Option<OutboundReportContext> {
+        let ctx = ctx?;
+        let reporter = self.outbound_progress_reporter.clone()?;
+        let transfer_id = ctx.outbound_transfer_id.clone()?;
+        let target = ctx.outbound_target.clone()?;
+        Some(OutboundReportContext {
+            reporter,
+            transfer_id,
+            target,
+        })
     }
 
     /// fetch 收尾时把最终状态(Completed/Failed)推回 sender。中间进度
@@ -832,10 +856,26 @@ impl BlobTransferFacade {
 }
 
 /// 反向上报上下文。同时配齐三个字段才会触发 outbound report。
+#[derive(Clone)]
 struct OutboundReportContext {
     reporter: Arc<dyn OutboundProgressReporterPort>,
     transfer_id: String,
     target: DeviceId,
+}
+
+/// 把 receiver 视角的 cancel reason 翻转成 sender 视角的 reason。
+///
+/// `LocalUser` 与 `RemotePeer` 是 device-relative 的,沿反向通道发给对端
+/// 设备时必须对调,否则 sender 端 UI 会把"对方取消"误显示为"你取消"。
+/// `Timeout` / `Replaced` / `Unknown` 与设备无关,原样透传。
+fn flip_cancel_reason_perspective(
+    reason: FileTransferCancellationReason,
+) -> FileTransferCancellationReason {
+    match reason {
+        FileTransferCancellationReason::LocalUser => FileTransferCancellationReason::RemotePeer,
+        FileTransferCancellationReason::RemotePeer => FileTransferCancellationReason::LocalUser,
+        other => other,
+    }
 }
 
 /// 把 adapter 字节级进度上报转发为 host event 的 sink 实现。

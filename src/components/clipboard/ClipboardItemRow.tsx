@@ -12,6 +12,7 @@ import {
   FileType,
   Image as ImageIcon,
   Loader2,
+  XCircle,
 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
@@ -26,12 +27,21 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/store/hooks'
 import {
+  normalizeCancelReason,
   resolveEntryTransferStatus,
   selectEntryTransferStatus,
   selectTransferByTransferIds,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
 import type { DisplayClipboardItem } from './ClipboardContent'
+
+const KNOWN_CANCEL_REASONS = new Set([
+  'local_user',
+  'remote_peer',
+  'replaced',
+  'timeout',
+  'unknown',
+])
 
 interface ClipboardItemRowProps extends React.HTMLAttributes<HTMLDivElement> {
   item: DisplayClipboardItem
@@ -134,6 +144,7 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
     const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
     const isTransferring = effectiveStatus === 'transferring'
     const isTransferFailed = effectiveStatus === 'failed'
+    const isTransferCancelled = effectiveStatus === 'cancelled'
     const isPending = effectiveStatus === 'pending'
     // paste_rep 已 Lost — 点击粘贴会回 daemon 410。视觉与 isStale 一致
     // (灰色 + 删除线), 让用户能在点击之前识别。但语义不同 (stale 是逻辑
@@ -226,6 +237,30 @@ const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>
                     {entryStatus?.reason ||
                       transfer?.errorMessage ||
                       t('clipboard.transfer.failed')}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : isTransferCancelled ? (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <XCircle
+                    className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                    aria-label={t('clipboard.transfer.statusBadge.cancelled')}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  <p className="text-xs">
+                    {(() => {
+                      const reason = normalizeCancelReason(
+                        entryStatus?.reason ?? transfer?.cancelReason
+                      )
+                      if (reason && KNOWN_CANCEL_REASONS.has(reason)) {
+                        return t(`clipboard.transfer.cancelReason.${reason}`)
+                      }
+                      return t('clipboard.transfer.cancelReason.unknown')
+                    })()}
                   </p>
                 </TooltipContent>
               </Tooltip>

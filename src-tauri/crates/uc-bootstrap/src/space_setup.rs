@@ -32,7 +32,9 @@ use uc_application::facade::{
     SpaceSetupFacade, TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
-use uc_core::file_transfer::{FileTransferDirection, OutboundProgressStatus};
+use uc_core::file_transfer::{
+    FileTransferCancellationReason, FileTransferDirection, OutboundProgressStatus,
+};
 use uc_core::ports::blob::{BlobReferenceRepositoryPort, BlobTransferPort};
 use uc_core::ports::space::ProofPort;
 use uc_core::ports::{
@@ -133,6 +135,21 @@ impl SpaceSetupAssembly {
 ///
 /// transfer_id 字段直接复用帧里的 sender 端 entry_id —— sender 本地
 /// entry_id == transfer_id 是发送侧的协议约定(同接收侧约定对称)。
+/// `Cancelled` 反向帧的子原因 → wire reason 标签。
+///
+/// 必须与 `uc-application/src/facade/host_event/publisher.rs` 里 receiver
+/// 侧的 `cancellation_reason_label` 保持一致 —— 前端 i18n key
+/// (`clipboard.transfer.cancelReason.<label>`) 在两端共用同一张表。
+fn cancellation_reason_label(reason: FileTransferCancellationReason) -> &'static str {
+    match reason {
+        FileTransferCancellationReason::LocalUser => "local_user",
+        FileTransferCancellationReason::RemotePeer => "remote_peer",
+        FileTransferCancellationReason::Replaced => "replaced",
+        FileTransferCancellationReason::Timeout => "timeout",
+        FileTransferCancellationReason::Unknown => "unknown",
+    }
+}
+
 fn spawn_outbound_progress_translator(
     mut rx: broadcast::Receiver<InboundProgressEvent>,
     bus: Arc<HostEventBus>,
@@ -156,6 +173,10 @@ fn spawn_outbound_progress_translator(
                         OutboundProgressStatus::Failed => {
                             Some(("failed", Some("receiver fetch failed".to_string())))
                         }
+                        OutboundProgressStatus::Cancelled { reason } => Some((
+                            "cancelled",
+                            Some(cancellation_reason_label(reason).to_string()),
+                        )),
                     };
                     if let Some((status, reason)) = terminal {
                         bus.emit_or_warn(HostEvent::Transfer(TransferHostEvent::StatusChanged {

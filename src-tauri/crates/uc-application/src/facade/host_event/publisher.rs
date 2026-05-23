@@ -188,7 +188,7 @@ impl FileTransferEventPublisherPort for FileTransferHostEventPublisher {
                 ..
             } => {
                 let reason_label = Some(cancellation_reason_label(reason).to_string());
-                self.publish_status_change(&transfer_id, "failed", reason_label, "Cancelled")
+                self.publish_status_change(&transfer_id, "cancelled", reason_label, "Cancelled")
                     .await;
             }
         }
@@ -264,10 +264,10 @@ fn format_failure_reason(reason: FileTransferFailureReason, detail: Option<&str>
 
 fn cancellation_reason_label(reason: FileTransferCancellationReason) -> &'static str {
     match reason {
-        FileTransferCancellationReason::LocalUser => "cancelled:local_user",
-        FileTransferCancellationReason::RemotePeer => "cancelled:remote_peer",
-        FileTransferCancellationReason::Replaced => "cancelled:replaced",
-        FileTransferCancellationReason::Timeout => "cancelled:timeout",
-        FileTransferCancellationReason::Unknown => "cancelled:unknown",
+        FileTransferCancellationReason::LocalUser => "local_user",
+        FileTransferCancellationReason::RemotePeer => "remote_peer",
+        FileTransferCancellationReason::Replaced => "replaced",
+        FileTransferCancellationReason::Timeout => "timeout",
+        FileTransferCancellationReason::Unknown => "unknown",
     }
 }

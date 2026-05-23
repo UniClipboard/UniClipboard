@@ -49,7 +49,7 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
   const isFile = itemType === 'file'
   const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
 
-  // Copy is disabled for non-completed file entries (pending, transferring, failed)
+  // Copy is disabled for non-completed file entries (pending, transferring, failed, cancelled)
   const isCopyDisabledByTransfer =
     isFile && effectiveStatus != null && effectiveStatus !== 'completed'
   const copyDisabledReason = isCopyDisabledByTransfer
@@ -57,7 +57,9 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
       ? t('clipboard.transfer.copyDisabled.pending')
       : effectiveStatus === 'transferring'
         ? t('clipboard.transfer.copyDisabled.transferring')
-        : t('clipboard.transfer.copyDisabled.failed')
+        : effectiveStatus === 'cancelled'
+          ? t('clipboard.transfer.copyDisabled.cancelled')
+          : t('clipboard.transfer.copyDisabled.failed')
     : null
 
   const showSyncAction = isFile && !isDownloaded && !isCopyDisabledByTransfer
@@ -105,7 +107,8 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
           isDownloaded &&
           effectiveStatus !== 'pending' &&
           effectiveStatus !== 'transferring' &&
-          effectiveStatus !== 'failed' && (
+          effectiveStatus !== 'failed' &&
+          effectiveStatus !== 'cancelled' && (
             <>
               <ContextMenuItem onClick={() => onOpenFileLocation(itemId)}>
                 <FolderOpen className="mr-2 h-4 w-4" />

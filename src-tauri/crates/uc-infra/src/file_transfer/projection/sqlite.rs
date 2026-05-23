@@ -68,7 +68,7 @@ pub(crate) fn apply_event(
         } => {
             diesel::update(file_transfer::table.filter(file_transfer::transfer_id.eq(transfer_id)))
                 .set((
-                    file_transfer::status.eq(TrackedFileTransferStatus::Failed.as_str()),
+                    file_transfer::status.eq(TrackedFileTransferStatus::Cancelled.as_str()),
                     file_transfer::failure_reason.eq(Some(cancellation_reason_of(*reason))),
                     file_transfer::updated_at_ms.eq(now_ms),
                 ))
@@ -115,13 +115,18 @@ fn failure_reason_of(reason: FileTransferFailureReason) -> &'static str {
     }
 }
 
+/// 取消的子原因。reason 列与 status 列共同表达取消语义,status 已经
+/// 是 `cancelled` 不再需要 `cancelled:` 前缀。
+///
+/// 历史数据兼容:0.7.x 之前同一字段塞 `failed + cancelled:local_user`,
+/// 前端 resolver 仍 fallback 识别该前缀,不在此层做迁移。
 fn cancellation_reason_of(reason: FileTransferCancellationReason) -> &'static str {
     match reason {
-        FileTransferCancellationReason::LocalUser => "cancelled:local_user",
-        FileTransferCancellationReason::RemotePeer => "cancelled:remote_peer",
-        FileTransferCancellationReason::Replaced => "cancelled:replaced",
-        FileTransferCancellationReason::Timeout => "cancelled:timeout",
-        FileTransferCancellationReason::Unknown => "cancelled:unknown",
+        FileTransferCancellationReason::LocalUser => "local_user",
+        FileTransferCancellationReason::RemotePeer => "remote_peer",
+        FileTransferCancellationReason::Replaced => "replaced",
+        FileTransferCancellationReason::Timeout => "timeout",
+        FileTransferCancellationReason::Unknown => "unknown",
     }
 }
 
@@ -238,11 +243,8 @@ mod tests {
 
         let transfers = repo.list_transfers_for_entry("entry-1").await.unwrap();
         let transfer = &transfers[0];
-        assert_eq!(transfer.status, TrackedFileTransferStatus::Failed);
-        assert_eq!(
-            transfer.failure_reason.as_deref(),
-            Some("cancelled:remote_peer")
-        );
+        assert_eq!(transfer.status, TrackedFileTransferStatus::Cancelled);
+        assert_eq!(transfer.failure_reason.as_deref(), Some("remote_peer"));
     }
 
     #[tokio::test]

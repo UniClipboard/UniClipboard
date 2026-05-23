@@ -721,21 +721,31 @@
       "remainingPending": "剩余时间计算中",
       "completed": "传输完成",
       "failed": "传输失败",
+      "cancelled": "已取消",
       "pending": "等待传输",
       "transferring": "传输中...",
       "incoming": "正在接收...",
       "incomingWithSize": "正在接收 ({{size}})...",
       "cancel": "取消传输",
+      "cancelReason": {
+        "local_user": "你取消了此次传输",
+        "remote_peer": "对方取消了此次传输",
+        "replaced": "已被新内容替换",
+        "timeout": "传输超时已自动取消",
+        "unknown": "传输已取消"
+      },
       "statusBadge": {
         "pending": "文件等待传输",
         "transferring": "文件传输中",
         "completed": "文件传输完成",
-        "failed": "文件传输失败"
+        "failed": "文件传输失败",
+        "cancelled": "文件传输已取消"
       },
       "copyDisabled": {
         "pending": "文件等待传输中",
         "transferring": "文件正在传输中",
-        "failed": "文件传输失败"
+        "failed": "文件传输失败",
+        "cancelled": "文件传输已取消"
       }
     },
     "confirmDeleteTitle": "确认删除",

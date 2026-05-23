@@ -8,8 +8,10 @@ export interface TransferProgressInfo {
   direction: 'Sending' | 'Receiving'
   bytesTransferred: number
   totalBytes: number | null
-  status: 'active' | 'completed' | 'failed'
+  status: 'active' | 'completed' | 'failed' | 'cancelled'
   errorMessage?: string
+  /** Cancel reason sub-category — `local_user` / `remote_peer` / `replaced` / `timeout` / `unknown`. Only meaningful when `status === 'cancelled'`. */
+  cancelReason?: string
   clipboardWriteCancelled?: boolean
   startedAt: number
   updatedAt: number
@@ -17,9 +19,15 @@ export interface TransferProgressInfo {
   estimatedRemainingSeconds: number | null
 }
 
-/** Durable entry-level transfer status seeded from command responses and status-changed events. */
+/** Durable entry-level transfer status seeded from command responses and status-changed events.
+ *
+ * `cancelled` 与 `failed` 在领域上是不同语义 —— 取消是预期内的用户/系统主动放弃,
+ * UI 用中性灰色展示;失败是非预期错误,UI 用告警红色展示。reason 字段在 cancelled
+ * 状态下是子原因 (`local_user` / `remote_peer` / `replaced` / `timeout` / `unknown`),
+ * 用于映射 i18n 文案。
+ */
 export interface EntryTransferStatus {
-  status: 'pending' | 'transferring' | 'completed' | 'failed'
+  status: 'pending' | 'transferring' | 'completed' | 'failed' | 'cancelled'
   reason?: string | null
 }
 
@@ -69,8 +77,10 @@ const fileTransferSlice = createSlice({
           : null
 
       // Preserve terminal status set by status_changed events — progress events must not regress it.
-      const status =
-        existing?.status === 'completed' || existing?.status === 'failed'
+      const status: TransferProgressInfo['status'] =
+        existing?.status === 'completed' ||
+        existing?.status === 'failed' ||
+        existing?.status === 'cancelled'
           ? existing.status
           : 'active'
 
@@ -117,6 +127,18 @@ const fileTransferSlice = createSlice({
       if (transfer) {
         transfer.status = 'failed'
         transfer.errorMessage = action.payload.error
+        transfer.updatedAt = Date.now()
+        transfer.estimatedRemainingSeconds = null
+      }
+    },
+
+    /** Mark transfer as cancelled. Distinct from `markTransferFailed` so UI can
+     * render a neutral cancelled state instead of an error indication. */
+    markTransferCancelled(state, action: PayloadAction<{ transferId: string; reason?: string }>) {
+      const transfer = state.activeTransfers[action.payload.transferId]
+      if (transfer) {
+        transfer.status = 'cancelled'
+        transfer.cancelReason = action.payload.reason
         transfer.updatedAt = Date.now()
         transfer.estimatedRemainingSeconds = null
       }
@@ -193,6 +215,7 @@ export const {
   markTransferCompleted,
   linkTransferToEntry,
   markTransferFailed,
+  markTransferCancelled,
   cancelClipboardWrite,
   clearCompletedTransfers,
   removeTransfer,
@@ -250,6 +273,10 @@ export function resolveEntryTransferStatus(
     return 'failed'
   }
 
+  if (transfer?.status === 'cancelled') {
+    return 'cancelled'
+  }
+
   if (transfer?.status === 'active') {
     return 'transferring'
   }
@@ -261,7 +288,27 @@ export function resolveEntryTransferStatus(
     return 'completed'
   }
 
+  // 历史数据兼容:0.7.x 之前 DB 把 cancelled 落成 `status=failed` +
+  // `reason='cancelled:<sub>'`,旧设备升级上来或者后端 fallback 表示这一档
+  // 时,前端按 cancelled 渲染,与新数据视觉一致。
+  if (
+    entryStatus?.status === 'failed' &&
+    typeof entryStatus.reason === 'string' &&
+    entryStatus.reason.startsWith('cancelled:')
+  ) {
+    return 'cancelled'
+  }
+
   return entryStatus?.status
+}
+
+/** Strip the legacy `cancelled:` prefix from a reason string, leaving only
+ * the sub-category label (e.g. `cancelled:local_user` → `local_user`). New
+ * server responses already send the bare label; this is the read-side
+ * fallback for old DB rows. */
+export function normalizeCancelReason(reason: string | null | undefined): string | undefined {
+  if (!reason) return undefined
+  return reason.startsWith('cancelled:') ? reason.slice('cancelled:'.length) : reason
 }
 
 export default fileTransferSlice.reducer

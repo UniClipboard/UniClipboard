@@ -24,7 +24,19 @@
 //! * `bytes_transferred` / `total_bytes` 都是 `u64` 大端。`total_bytes
 //!   == 0` 约定为"未知"(对应 [`OutboundProgressStatus::InProgress`] 时
 //!   adapter 未拿到总大小的情况),sender 端 UI 渲染成 indeterminate。
-//! * `status`:0x01=InProgress / 0x02=Completed / 0x03=Failed。
+//! * `status`:
+//!   - `0x01` InProgress
+//!   - `0x02` Completed
+//!   - `0x03` Failed
+//!   - `0x04` Cancelled(LocalUser)
+//!   - `0x05` Cancelled(RemotePeer)
+//!   - `0x06` Cancelled(Replaced)
+//!   - `0x07` Cancelled(Timeout)
+//!   - `0x08` Cancelled(Unknown)
+//!
+//! 取消子原因占用独立 status 字节,而不是单独引入 reason 字段,以保持
+//! 帧定长。老 sender 收到 `0x04..0x08` 会返回 `UnknownStatus` 拒绝单帧,
+//! 但 accept loop 会接受下一帧,不影响连续 progress。
 //!
 //! ## 为什么用裸字节而不是 postcard
 //!
@@ -36,7 +48,7 @@
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use uc_core::file_transfer::OutboundProgressStatus;
+use uc_core::file_transfer::{FileTransferCancellationReason, OutboundProgressStatus};
 
 /// Sentinel byte distinguishing transfer-progress frames from any other
 /// stream the receiver might mis-route here. Must NOT collide with
@@ -65,6 +77,13 @@ impl ProgressFrame {
             OutboundProgressStatus::InProgress => 0x01,
             OutboundProgressStatus::Completed => 0x02,
             OutboundProgressStatus::Failed => 0x03,
+            OutboundProgressStatus::Cancelled { reason } => match reason {
+                FileTransferCancellationReason::LocalUser => 0x04,
+                FileTransferCancellationReason::RemotePeer => 0x05,
+                FileTransferCancellationReason::Replaced => 0x06,
+                FileTransferCancellationReason::Timeout => 0x07,
+                FileTransferCancellationReason::Unknown => 0x08,
+            },
         }
     }
 }
@@ -129,6 +148,21 @@ fn decode(buf: &[u8; FRAME_LEN]) -> Result<ProgressFrame, ProgressWireError> {
         0x01 => OutboundProgressStatus::InProgress,
         0x02 => OutboundProgressStatus::Completed,
         0x03 => OutboundProgressStatus::Failed,
+        0x04 => OutboundProgressStatus::Cancelled {
+            reason: FileTransferCancellationReason::LocalUser,
+        },
+        0x05 => OutboundProgressStatus::Cancelled {
+            reason: FileTransferCancellationReason::RemotePeer,
+        },
+        0x06 => OutboundProgressStatus::Cancelled {
+            reason: FileTransferCancellationReason::Replaced,
+        },
+        0x07 => OutboundProgressStatus::Cancelled {
+            reason: FileTransferCancellationReason::Timeout,
+        },
+        0x08 => OutboundProgressStatus::Cancelled {
+            reason: FileTransferCancellationReason::Unknown,
+        },
         other => return Err(ProgressWireError::UnknownStatus(other)),
     };
     Ok(ProgressFrame {
@@ -220,6 +254,63 @@ mod tests {
         let recovered = read_frame(&mut server).await.expect("read");
         assert_eq!(recovered, frame);
         task.await.unwrap();
+    }
+
+    /// 五个 cancel 子原因都走独立 status byte。这里一次性覆盖
+    /// 0x04..0x08,避免 wire 字节与 [`FileTransferCancellationReason`]
+    /// 的对齐发生漂移。
+    #[tokio::test]
+    async fn frame_round_trip_cancelled_all_reasons() {
+        let reasons = [
+            FileTransferCancellationReason::LocalUser,
+            FileTransferCancellationReason::RemotePeer,
+            FileTransferCancellationReason::Replaced,
+            FileTransferCancellationReason::Timeout,
+            FileTransferCancellationReason::Unknown,
+        ];
+        for reason in reasons {
+            let frame = ProgressFrame {
+                transfer_id_bytes: sample_uuid_bytes(),
+                bytes_transferred: 123,
+                total_bytes: Some(456),
+                status: OutboundProgressStatus::Cancelled { reason },
+            };
+            let (mut client, mut server) = duplex(64);
+            let f = frame.clone();
+            let task = tokio::spawn(async move {
+                write_frame(&mut client, &f).await.expect("write");
+                client.shutdown().await.expect("shutdown");
+            });
+            let recovered = read_frame(&mut server).await.expect("read");
+            assert_eq!(recovered, frame, "reason {reason:?} did not round-trip");
+            task.await.unwrap();
+        }
+    }
+
+    /// Wire 字节 0x04..0x08 必须与领域枚举 1:1 对齐。这个测试是显式
+    /// 锁桩,防止有人改了 status_byte 映射但忘了改 decode(或反之)。
+    #[test]
+    fn cancel_status_bytes_pin() {
+        let cases: &[(FileTransferCancellationReason, u8)] = &[
+            (FileTransferCancellationReason::LocalUser, 0x04),
+            (FileTransferCancellationReason::RemotePeer, 0x05),
+            (FileTransferCancellationReason::Replaced, 0x06),
+            (FileTransferCancellationReason::Timeout, 0x07),
+            (FileTransferCancellationReason::Unknown, 0x08),
+        ];
+        for &(reason, expected) in cases {
+            let frame = ProgressFrame {
+                transfer_id_bytes: sample_uuid_bytes(),
+                bytes_transferred: 0,
+                total_bytes: None,
+                status: OutboundProgressStatus::Cancelled { reason },
+            };
+            assert_eq!(
+                frame.status_byte(),
+                expected,
+                "status byte for {reason:?} drifted"
+            );
+        }
     }
 
     #[tokio::test]

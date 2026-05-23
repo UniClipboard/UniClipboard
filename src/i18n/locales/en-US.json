@@ -730,21 +730,31 @@
       "remainingPending": "Calculating remaining time",
       "completed": "Transfer complete",
       "failed": "Transfer failed",
+      "cancelled": "Cancelled",
       "pending": "Pending transfer",
       "transferring": "Transferring...",
       "incoming": "Receiving...",
       "incomingWithSize": "Receiving ({{size}})...",
       "cancel": "Cancel transfer",
+      "cancelReason": {
+        "local_user": "You cancelled this transfer",
+        "remote_peer": "The other side cancelled this transfer",
+        "replaced": "Replaced by newer content",
+        "timeout": "Transfer timed out and was cancelled",
+        "unknown": "Transfer cancelled"
+      },
       "statusBadge": {
         "pending": "File transfer pending",
         "transferring": "File transfer in progress",
         "completed": "File transfer complete",
-        "failed": "File transfer failed"
+        "failed": "File transfer failed",
+        "cancelled": "File transfer cancelled"
       },
       "copyDisabled": {
         "pending": "File transfer pending",
         "transferring": "File transfer in progress",
-        "failed": "File transfer failed"
+        "failed": "File transfer failed",
+        "cancelled": "File transfer cancelled"
       }
     },
     "confirmDeleteTitle": "Confirm Delete",

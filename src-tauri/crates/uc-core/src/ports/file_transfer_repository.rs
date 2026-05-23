@@ -15,8 +15,13 @@ pub enum TrackedFileTransferStatus {
     Transferring,
     /// All chunks received, hash verified, file ready.
     Completed,
-    /// Transfer failed (timeout, hash mismatch, network error, or orphaned on restart).
+    /// Transfer failed (hash mismatch, network error, or orphaned on restart).
     Failed,
+    /// Transfer was cancelled (local user action, remote peer cancel,
+    /// inactivity timeout, replaced by newer content). Distinguished from
+    /// `Failed` so UI can render a neutral "cancelled" state instead of an
+    /// error indication. Sub-reason lives in the accompanying `reason` field.
+    Cancelled,
 }
 
 impl TrackedFileTransferStatus {
@@ -26,6 +31,7 @@ impl TrackedFileTransferStatus {
             Self::Transferring => "transferring",
             Self::Completed => "completed",
             Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
         }
     }
 
@@ -36,6 +42,7 @@ impl TrackedFileTransferStatus {
             "transferring" => Some(Self::Transferring),
             "completed" => Some(Self::Completed),
             "failed" => Some(Self::Failed),
+            "cancelled" => Some(Self::Cancelled),
             _ => None,
         }
     }
@@ -280,7 +287,11 @@ impl FileTransferRepositoryPort for NoopFileTransferRepositoryPort {
 
 /// Compute aggregate status from a list of individual transfer statuses.
 ///
-/// Rule: failed > transferring > pending > completed.
+/// Rule: failed > transferring > pending > cancelled > completed.
+///
+/// `Cancelled` 排在 `Completed` 之前是因为:聚合视图里只要有任何一个
+/// transfer 被取消,整条 entry 就不是"全部成功"的语义。但 `Cancelled`
+/// 又低于 `Failed` —— 真失败比"用户放弃"更需要被看到。
 pub fn compute_aggregate_status(
     statuses: &[TrackedFileTransferStatus],
 ) -> Option<TrackedFileTransferStatus> {
@@ -305,6 +316,12 @@ pub fn compute_aggregate_status(
         .any(|s| *s == TrackedFileTransferStatus::Pending)
     {
         return Some(TrackedFileTransferStatus::Pending);
+    }
+    if statuses
+        .iter()
+        .any(|s| *s == TrackedFileTransferStatus::Cancelled)
+    {
+        return Some(TrackedFileTransferStatus::Cancelled);
     }
     Some(TrackedFileTransferStatus::Completed)
 }

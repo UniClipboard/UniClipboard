@@ -24,6 +24,14 @@ interface FileContextMenuProps {
   isDownloaded: boolean
   isTransferring: boolean
   isStale?: boolean
+  /**
+   * 该 entry 是否含 partial(uniclip-missing://)文件。当 daemon 的
+   * file_transfer projection 还没落到 status='cancelled'(NewContent 比
+   * Cancelled event 早到的窗口),effectiveStatus 仍然是 undefined,
+   * 此时单靠 effectiveStatus 判断会让 Copy 误开放——这条标志走
+   * representation bytes 的 source of truth,作为兜底。
+   */
+  hasMissingFiles?: boolean
   onCopy: (itemId: string) => void
   onDelete: (itemId: string) => void
   onSyncToClipboard: (itemId: string) => void
@@ -37,6 +45,7 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
   isDownloaded,
   isTransferring,
   isStale,
+  hasMissingFiles,
   onCopy,
   onDelete,
   onSyncToClipboard,
@@ -49,9 +58,13 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
   const isFile = itemType === 'file'
   const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
 
-  // Copy is disabled for non-completed file entries (pending, transferring, failed, cancelled)
+  // Copy 在以下场景全部 disable:
+  // - 非 completed 的 file_transfer 状态(pending/transferring/failed/cancelled)
+  // - hasMissingFiles=true 兜底(避免在 file_transfer projection 落库前的
+  //   时间窗内把 uniclip-missing:// URI 写到系统剪贴板)
   const isCopyDisabledByTransfer =
-    isFile && effectiveStatus != null && effectiveStatus !== 'completed'
+    isFile &&
+    ((effectiveStatus != null && effectiveStatus !== 'completed') || hasMissingFiles === true)
   const copyDisabledReason = isCopyDisabledByTransfer
     ? effectiveStatus === 'pending'
       ? t('clipboard.transfer.copyDisabled.pending')
@@ -105,6 +118,7 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
         {/* Open File Location (file type, downloaded, completed transfer) */}
         {isFile &&
           isDownloaded &&
+          !hasMissingFiles &&
           effectiveStatus !== 'pending' &&
           effectiveStatus !== 'transferring' &&
           effectiveStatus !== 'failed' &&

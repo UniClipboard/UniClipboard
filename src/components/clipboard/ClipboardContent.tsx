@@ -727,6 +727,13 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
                         isDownloaded={item.isDownloaded ?? true}
                         isTransferring={transferringEntries.has(item.id)}
                         isStale={staleEntryIds.includes(item.id)}
+                        hasMissingFiles={
+                          item.type === 'file'
+                            ? ((item.content as ClipboardFileItem | null)?.file_missing?.some(
+                                Boolean
+                              ) ?? false)
+                            : false
+                        }
                         onCopy={id => void handleCopyItem(id)}
                         onDelete={id => {
                           selectItem(id)

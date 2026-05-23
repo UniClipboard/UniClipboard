@@ -196,11 +196,11 @@ impl ApplyInboundClipboardUseCase {
             filenames: advertised_filenames,
         }));
 
-        let snapshot = match (blob_refs.is_empty(), &self.blob_materializer) {
-            (true, _) => snapshot,
+        let (snapshot, is_partial) = match (blob_refs.is_empty(), &self.blob_materializer) {
+            (true, _) => (snapshot, false),
             (false, Some(materializer)) => {
                 let count = blob_refs.len();
-                let snapshot = materializer
+                let result = materializer
                     .materialize(
                         input.from_device.clone(),
                         receiver_entry_id.clone(),
@@ -222,13 +222,16 @@ impl ApplyInboundClipboardUseCase {
                         ));
                         ApplyInboundError::Internal(format!("blob materialize: {e}"))
                     })?;
+                let partial = result.is_partial();
                 info!(
                     blob_ref_count = count,
-                    rep_count = snapshot.representations.len(),
-                    rep_formats = %format_rep_summary(&snapshot),
+                    rep_count = result.snapshot.representations.len(),
+                    rep_formats = %format_rep_summary(&result.snapshot),
+                    missing_count = result.missing.len(),
+                    partial,
                     "inbound: blob refs materialized into local cache"
                 );
-                snapshot
+                (result.snapshot, partial)
             }
             (false, None) => {
                 let reason =
@@ -290,37 +293,56 @@ impl ApplyInboundClipboardUseCase {
         // - Windows:`write_snapshot_multi_windows` 原子写入 CF_UNICODETEXT + CF_HTML 等
         // - macOS / Linux:`write_snapshot_multi` 的降级分支用 `SelectRepresentationPolicyV1`
         //   选 paste-priority rep 后走单 rep 快路径(行为与上游 `narrow_to_primary` 等价)
-        debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
-        self.remember_recent_inbound(input.content_hash.clone(), visible_key, entry_id.clone());
-
-        let write_port = Arc::clone(&self.write);
-        let entry_id_for_write = entry_id.clone();
-        let from_device_for_write = input.from_device.clone();
-        let content_hash_for_write = input.content_hash.clone();
-        let origin_guard_key_for_write = snapshot_for_write.origin_guard_key();
-        // `.in_current_span()` keeps the spawned task under `apply_inbound.execute`
-        // so trace_id / from_device / content_hash propagate into the failure event.
-        // Without this the background failure was a context-less orphan in Sentry —
-        // the missing peer_id field is exactly what made the recent UNICLIPBOARD-RUST-F
-        // triage take an extra hour (couldn't tell whether 50 failures were one peer
-        // hammering or many peers each pushing once).
-        tokio::spawn(
-            async move {
-                if let Err(e) = write_port.write(snapshot_for_write).await {
-                    error!(
-                        event = "inbound_os_write_failed",
-                        error_kind = "inbound_os_write_failed",
-                        error = %e,
-                        entry_id = %entry_id_for_write,
-                        from_device = %from_device_for_write,
-                        content_hash = %content_hash_for_write,
-                        origin_guard_key = %origin_guard_key_for_write,
-                        "inbound: OS clipboard background write failed after capture"
-                    );
+        //
+        // Partial entry(materialize 被用户 cancel)**不能**写 OS clipboard:
+        // 半残 snapshot 会把 `uniclip-missing://` 占位 URI 推到系统剪贴板,
+        // 用户 cmd-V 出来的是"垃圾"。entry 已落库可以从应用内复用,但 OS
+        // pasteboard 必须保留用户之前的内容不被污染。
+        //
+        // dedup 窗口(`remember_recent_inbound`)同样不能登记 partial entry:
+        // 否则用户在取消后立即重新触发同一文件传输,`find_recent_duplicate`
+        // 会把第二次也判为 dup 直接 skip,用户陷入"取消后无法恢复"困境。
+        // partial 不进 dedup,完整成功才记。
+        if !is_partial {
+            self.remember_recent_inbound(input.content_hash.clone(), visible_key, entry_id.clone());
+            debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
+            let write_port = Arc::clone(&self.write);
+            let entry_id_for_write = entry_id.clone();
+            let from_device_for_write = input.from_device.clone();
+            let content_hash_for_write = input.content_hash.clone();
+            let origin_guard_key_for_write = snapshot_for_write.origin_guard_key();
+            // `.in_current_span()` keeps the spawned task under `apply_inbound.execute`
+            // so trace_id / from_device / content_hash propagate into the failure event.
+            // Without this the background failure was a context-less orphan in Sentry —
+            // the missing peer_id field is exactly what made the recent UNICLIPBOARD-RUST-F
+            // triage take an extra hour (couldn't tell whether 50 failures were one peer
+            // hammering or many peers each pushing once).
+            tokio::spawn(
+                async move {
+                    if let Err(e) = write_port.write(snapshot_for_write).await {
+                        error!(
+                            event = "inbound_os_write_failed",
+                            error_kind = "inbound_os_write_failed",
+                            error = %e,
+                            entry_id = %entry_id_for_write,
+                            from_device = %from_device_for_write,
+                            content_hash = %content_hash_for_write,
+                            origin_guard_key = %origin_guard_key_for_write,
+                            "inbound: OS clipboard background write failed after capture"
+                        );
+                    }
                 }
-            }
-            .in_current_span(),
-        );
+                .in_current_span(),
+            );
+        } else {
+            info!(
+                entry_id = %entry_id,
+                "inbound: partial entry persisted, skipping OS clipboard write to avoid \
+                 leaking uniclip-missing:// placeholders into the system pasteboard"
+            );
+            // 抑制 unused warning(partial 分支不消费 snapshot_for_write)。
+            drop(snapshot_for_write);
+        }
 
         info!(entry_id = %entry_id, "inbound clipboard applied");
 

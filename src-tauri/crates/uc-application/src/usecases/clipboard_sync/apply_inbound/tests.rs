@@ -25,7 +25,9 @@ use crate::usecases::clipboard_sync::payload_codec::{
     encode_snapshot_to_v3_bytes, encode_snapshot_with_blob_refs_to_v3_bytes, V3BlobRef,
 };
 
-use super::materializer::{FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer};
+use super::materializer::{
+    FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, MaterializeResult,
+};
 use super::ports::{InboundCapture, InboundWrite};
 use super::usecase::ApplyInboundClipboardUseCase;
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
@@ -117,7 +119,7 @@ mockall::mock! {
             receiver_entry_id: EntryId,
             snapshot: SystemClipboardSnapshot,
             blob_refs: Vec<V3BlobRef>,
-        ) -> Result<SystemClipboardSnapshot>;
+        ) -> Result<MaterializeResult>;
     }
 }
 
@@ -736,7 +738,7 @@ async fn materializes_blob_refs_before_capture_and_write() {
             snapshot.representations[0]
                 .set_inline_bytes(b"file:///local/cache/original.txt\n".to_vec())
                 .unwrap();
-            Ok(snapshot)
+            Ok(MaterializeResult::complete(snapshot))
         });
 
     let assert_local_file = |snapshot: &SystemClipboardSnapshot| {
@@ -763,6 +765,188 @@ async fn materializes_blob_refs_before_capture_and_write() {
         ApplyOutcome::Applied {
             entry_id: EntryId::from("entry-new")
         }
+    );
+}
+
+/// P5 invariant — partial MaterializeResult **必须**让 apply_inbound:
+/// (1) 仍走 capture 把 entry 落库(用户能在列表里看到取消的 entry);
+/// (2) **绝不** spawn OS clipboard write —— 否则半残 snapshot 里的
+///     `uniclip-missing://` URI 会污染用户的系统剪贴板。
+///
+/// 这条 invariant 是 OS pasteboard 安全的最后一道闸门。如果未来重构
+/// 误把 spawn 块挪出 `if !is_partial`,此测会 fail。
+#[tokio::test]
+async fn partial_materialize_persists_entry_but_skips_os_write() {
+    let original = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/big.iso\n".to_vec(),
+        )],
+    };
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![5, 5, 5]),
+        entry_id: EntryId::from("entry-remote"),
+        filename: Some("big.iso".to_string()),
+        mime: Some("application/octet-stream".to_string()),
+        size_bytes: 950_000_000,
+        representation_index: None,
+    };
+    let (plaintext, content_hash) =
+        encode_snapshot_with_blob_refs_to_v3_bytes(&original, &[blob_ref.clone()]).unwrap();
+    let input = ApplyInboundInput {
+        from_device: DeviceId::new("peer-sender"),
+        content_hash,
+        plaintext,
+        flow_id: None,
+    };
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning(|_| Ok(None));
+
+    // materializer 模拟用户中途 cancel:返回 partial,snapshot 里 file-list rep
+    // 已被重写为带 uniclip-missing:// 占位,missing 列表非空。
+    let mut materializer = MockBlobMaterializer::new();
+    materializer.expect_materialize().times(1).returning(
+        |_from_device, _receiver_entry_id, mut snapshot, _| {
+            snapshot.representations[0]
+                .set_inline_bytes(
+                    b"uniclip-missing:///big.iso?size=950000000&reason=cancelled".to_vec(),
+                )
+                .unwrap();
+            Ok(MaterializeResult {
+                snapshot,
+                missing: vec![super::materializer::MissingFileRef {
+                    filename: "big.iso".to_string(),
+                    size_bytes: 950_000_000,
+                }],
+            })
+        },
+    );
+
+    // capture 必须被调:partial entry 也要落库。
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(1)
+        .returning(|_, _, _| Ok(Some(EntryId::from("entry-partial"))));
+
+    // 核心断言:OS clipboard write 在 partial 分支**绝不**被触发。
+    let mut write = MockWrite::new();
+    write.expect_write().times(0);
+
+    let uc = build_with_blob_materializer(repo, capture, write, materializer);
+    let outcome = uc
+        .execute(input)
+        .await
+        .expect("partial path should produce ApplyOutcome::Applied");
+    assert_eq!(
+        outcome,
+        ApplyOutcome::Applied {
+            entry_id: EntryId::from("entry-partial")
+        }
+    );
+    // 注:测试结束时 MockWrite 的 Drop 会校验 times(0) 不被违反;
+    // 即便 OS write 被 spawn 到后台 task,mock 在 verify 时也会捕获。
+}
+
+/// P5 invariant — partial entry **不能**进 dedup 窗口。否则用户取消后
+/// 立即重发同一文件会被 `find_recent_duplicate` 当 dup 直接 skip,陷入
+/// "无法恢复"困境。
+#[tokio::test]
+async fn partial_materialize_does_not_register_dedup_entry() {
+    let original = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/retry.iso\n".to_vec(),
+        )],
+    };
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![7, 7, 7]),
+        entry_id: EntryId::from("entry-remote"),
+        filename: Some("retry.iso".to_string()),
+        mime: Some("application/octet-stream".to_string()),
+        size_bytes: 100,
+        representation_index: None,
+    };
+    let (plaintext, content_hash) =
+        encode_snapshot_with_blob_refs_to_v3_bytes(&original, &[blob_ref.clone()]).unwrap();
+    let input1 = ApplyInboundInput {
+        from_device: DeviceId::new("peer-sender"),
+        content_hash: content_hash.clone(),
+        plaintext: plaintext.clone(),
+        flow_id: None,
+    };
+    let input2 = ApplyInboundInput {
+        from_device: DeviceId::new("peer-sender"),
+        content_hash,
+        plaintext,
+        flow_id: None,
+    };
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(2)
+        .returning(|_| Ok(None));
+
+    // 第一次 partial,第二次成功(模拟用户取消后重传成功)。
+    let mut materializer = MockBlobMaterializer::new();
+    let call_count = std::sync::atomic::AtomicUsize::new(0);
+    materializer.expect_materialize().times(2).returning(
+        move |_from_device, _receiver_entry_id, mut snapshot, _| {
+            let n = call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if n == 0 {
+                snapshot.representations[0]
+                    .set_inline_bytes(
+                        b"uniclip-missing:///retry.iso?size=100&reason=cancelled".to_vec(),
+                    )
+                    .unwrap();
+                Ok(MaterializeResult {
+                    snapshot,
+                    missing: vec![super::materializer::MissingFileRef {
+                        filename: "retry.iso".to_string(),
+                        size_bytes: 100,
+                    }],
+                })
+            } else {
+                snapshot.representations[0]
+                    .set_inline_bytes(b"file:///local/cache/retry.iso\n".to_vec())
+                    .unwrap();
+                Ok(MaterializeResult::complete(snapshot))
+            }
+        },
+    );
+
+    // capture 必须被调两次:第一次 partial entry + 第二次 complete entry。
+    // 如果 dedup 把第二次 silently skip,capture 只会被调一次,这个 times(2)
+    // 会 fail。
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .times(2)
+        .returning(|_, _, _| Ok(Some(EntryId::new())));
+
+    // OS write 只发生在第二次(complete)。
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_| Ok(()));
+
+    let uc = build_with_blob_materializer(repo, capture, write, materializer);
+
+    let outcome1 = uc.execute(input1).await.expect("first attempt ok");
+    assert!(matches!(outcome1, ApplyOutcome::Applied { .. }));
+
+    // 用户重传同一 envelope。
+    let outcome2 = uc.execute(input2).await.expect("retry after cancel ok");
+    assert!(
+        matches!(outcome2, ApplyOutcome::Applied { .. }),
+        "retry must NOT be deduped after a prior partial: {outcome2:?}"
     );
 }
 
@@ -825,8 +1009,13 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
         .await
         .expect("materialize should succeed");
 
-    let uri_list = String::from_utf8(rewritten.representations[0].expect_inline_bytes().to_vec())
-        .expect("uri-list should be UTF-8");
+    assert!(!rewritten.is_partial(), "expected complete materialize");
+    let uri_list = String::from_utf8(
+        rewritten.snapshot.representations[0]
+            .expect_inline_bytes()
+            .to_vec(),
+    )
+    .expect("uri-list should be UTF-8");
     assert!(uri_list.starts_with("file://"));
     assert!(uri_list.ends_with("/report.txt\n"));
     assert!(!uri_list.contains("/sender/"));
@@ -893,12 +1082,16 @@ async fn file_cache_blob_materializer_inlines_representation_bound_blob_into_rep
         .await
         .expect("representation-bound materialize should succeed");
 
-    assert_eq!(materialized.representations.len(), 1);
+    assert!(!materialized.is_partial(), "expected complete materialize");
+    assert_eq!(materialized.snapshot.representations.len(), 1);
     assert_eq!(
-        materialized.representations[0].expect_inline_bytes(),
+        materialized.snapshot.representations[0].expect_inline_bytes(),
         b"\x89PNG\x0d"
     );
-    assert_eq!(materialized.representations[0].format_id.as_ref(), "image");
+    assert_eq!(
+        materialized.snapshot.representations[0].format_id.as_ref(),
+        "image"
+    );
 
     let mut entries = tokio::fs::read_dir(cache_dir.path())
         .await
@@ -958,6 +1151,152 @@ async fn file_cache_blob_materializer_rejects_out_of_bounds_representation_index
         err.to_string().contains("out of bounds"),
         "error must mention out-of-bounds context: {err}"
     );
+}
+
+/// P5 回归 —— 多文件 batch 在中途被 user cancel:已落地的 file:// + 未完成的
+/// uniclip-missing:// 共存在重写后的 file-list rep 中,`MaterializeResult` 标
+/// is_partial=true,missing 字段列出未完成 file 的元数据,稍后调用方可据此跳过
+/// OS clipboard write 防止把占位 URI 推到系统剪贴板。
+#[tokio::test]
+async fn file_cache_blob_materializer_partial_on_cancel_mid_batch() {
+    use crate::facade::blob_transfer::BlobTransferError;
+
+    let cache_dir = tempfile::tempdir().expect("tempdir");
+    let ok_ticket = BlobTicket::from_bytes(vec![1, 1, 1]);
+    let cancel_ticket = BlobTicket::from_bytes(vec![2, 2, 2]);
+
+    let blob_ref_ok = V3BlobRef {
+        ticket: ok_ticket.clone(),
+        entry_id: EntryId::from("entry-ok"),
+        filename: Some("first.txt".to_string()),
+        mime: Some("text/plain".to_string()),
+        size_bytes: 5,
+        representation_index: None,
+    };
+    let blob_ref_cancel = V3BlobRef {
+        ticket: cancel_ticket.clone(),
+        entry_id: EntryId::from("entry-cancel"),
+        filename: Some("second.iso".to_string()),
+        mime: Some("application/octet-stream".to_string()),
+        size_bytes: 950_000,
+        representation_index: None,
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/first.txt\r\nfile:///sender/second.iso\r\n".to_vec(),
+        )],
+    };
+
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(2)
+        .returning(move |command| {
+            if command.ticket == ok_ticket {
+                let payload: &[u8] = b"hello";
+                std::fs::write(&command.target_path, payload).expect("fake write target");
+                Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                    entry_id: command.entry_id,
+                    plaintext_hash: PlaintextHash::from_bytes([0; 32]),
+                    digest: BlobDigest::from_bytes([1; 32]),
+                    bytes_written: payload.len() as u64,
+                })
+            } else {
+                Err(anyhow::Error::from(BlobTransferError::Cancelled))
+            }
+        });
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let result = materializer
+        .materialize(
+            DeviceId::new("peer-sender"),
+            EntryId::from("entry-receiver"),
+            snapshot,
+            vec![blob_ref_ok, blob_ref_cancel],
+        )
+        .await
+        .expect("partial materialize should succeed (no real error)");
+
+    assert!(result.is_partial(), "missing file should mark partial");
+    assert_eq!(result.missing.len(), 1, "exactly one missing file");
+    assert_eq!(result.missing[0].filename, "second.iso");
+    assert_eq!(result.missing[0].size_bytes, 950_000);
+
+    let uri_list = String::from_utf8(
+        result.snapshot.representations[0]
+            .expect_inline_bytes()
+            .to_vec(),
+    )
+    .expect("uri-list should be UTF-8");
+    assert!(
+        uri_list.contains("file://") && uri_list.contains("/first.txt"),
+        "completed file:// should be present in uri-list: {uri_list:?}"
+    );
+    assert!(
+        uri_list.contains("uniclip-missing:///second.iso"),
+        "cancelled file placeholder should use uniclip-missing scheme: {uri_list:?}"
+    );
+    assert!(
+        uri_list.contains("reason=cancelled"),
+        "missing URI should carry reason metadata: {uri_list:?}"
+    );
+}
+
+/// P5 回归 —— 整批 file_refs 在第一个 fetch 上就被 cancel,无任何已落地文件。
+/// MaterializeResult.missing 应当列出全部 file_refs 的元数据,file-list rep
+/// 全部用 uniclip-missing:// URI 占位。
+#[tokio::test]
+async fn file_cache_blob_materializer_partial_on_cancel_first_file() {
+    use crate::facade::blob_transfer::BlobTransferError;
+
+    let cache_dir = tempfile::tempdir().expect("tempdir");
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![9]),
+        entry_id: EntryId::from("entry-cancel"),
+        filename: Some("nothing.iso".to_string()),
+        mime: Some("application/octet-stream".to_string()),
+        size_bytes: 100,
+        representation_index: None,
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/nothing.iso\r\n".to_vec(),
+        )],
+    };
+
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        .returning(|_| Err(anyhow::Error::from(BlobTransferError::Cancelled)));
+
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf());
+    let result = materializer
+        .materialize(
+            DeviceId::new("peer-sender"),
+            EntryId::from("entry-receiver"),
+            snapshot,
+            vec![blob_ref],
+        )
+        .await
+        .expect("first-file cancel still yields Ok(partial)");
+
+    assert!(result.is_partial());
+    assert_eq!(result.missing.len(), 1);
+    assert_eq!(result.missing[0].filename, "nothing.iso");
+    // snapshot 必须仍有 supported rep,否则 capture pipeline 会短路 Ok(None)
+    // 不落 entry,与用户契约"取消后保留 entry"相悖。
+    assert!(!result.snapshot.representations.is_empty());
 }
 
 /// 回归 pin —— 2026-05-08 移动端图片回归暴露:apply_inbound 流程入口 emit

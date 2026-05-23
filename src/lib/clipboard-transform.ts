@@ -10,7 +10,7 @@ import {
   extractDomainFromUrl,
   isFileContentType,
   isImageContentType,
-  parseFileNamesFromUriList,
+  parseFileItemsFromUriList,
 } from '@/lib/clipboard-utils'
 
 export function transformDaemonDtoToItemResponse(entry: ClipboardEntryDto): ClipboardItemResponse {
@@ -47,10 +47,14 @@ export function transformDaemonDtoToItemResponse(entry: ClipboardEntryDto): Clip
           }
         : null,
       file: isFile
-        ? {
-            file_names: parseFileNamesFromUriList(entry.preview),
-            file_sizes: entry.fileSizes ?? [],
-          }
+        ? (() => {
+            const parsed = parseFileItemsFromUriList(entry.preview)
+            return {
+              file_names: parsed.map(p => p.name),
+              file_sizes: entry.fileSizes ?? [],
+              file_missing: parsed.map(p => p.missing),
+            }
+          })()
         : null,
       link: linkItem as unknown as ClipboardItemResponse['item']['link'],
       code: null,

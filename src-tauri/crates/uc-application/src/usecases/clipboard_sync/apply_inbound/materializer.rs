@@ -22,23 +22,75 @@ use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 use crate::facade::blob_transfer::{
-    BatchPosition, BlobTransferFacade, FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand,
-    FetchBlobToPathResult, FetchTransferContext,
+    BatchPosition, BlobTransferError, BlobTransferFacade, FetchBlobCommand, FetchBlobResult,
+    FetchBlobToPathCommand, FetchBlobToPathResult, FetchTransferContext,
 };
 use crate::usecases::clipboard_sync::payload_codec::V3BlobRef;
+
+/// 判断 fetcher 返回的 anyhow 错误是否来自 `BlobTransferError::Cancelled`。
+/// 仅 `BlobTransferFacade` 这一条生产路径保留 thiserror chain;mock 路径
+/// 若想模拟 cancel,可以 `Err(anyhow::Error::from(BlobTransferError::Cancelled))`。
+pub fn is_cancel_error(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<BlobTransferError>()
+            .map(|bte| matches!(bte, BlobTransferError::Cancelled))
+            .unwrap_or(false)
+    })
+}
+
+/// 描述一份未完成 materialize 的 file blob。`reason` 由 file_transfer
+/// projection 单独承载(P1-10 落地),此处只表达"这个文件在 partial entry
+/// 里是缺失的"+ 元数据,前端按 filename + size 渲染。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingFileRef {
+    pub filename: String,
+    pub size_bytes: u64,
+}
+
+/// `InboundBlobMaterializer::materialize` 的返回值。
+///
+/// - `missing.is_empty()` ⇒ 全量 materialize 成功,等同于"complete";
+/// - `!missing.is_empty()` ⇒ partial:`snapshot` 里已成功的 representation
+///   保留,file-list rep 里未完成的文件以 `uniclip-missing://` URI 占位,
+///   `missing` 列出未完成文件的元数据。调用方应据此跳过 OS clipboard
+///   write(避免把占位 URI 推到系统剪贴板)。
+#[derive(Debug)]
+pub struct MaterializeResult {
+    pub snapshot: SystemClipboardSnapshot,
+    pub missing: Vec<MissingFileRef>,
+}
+
+impl MaterializeResult {
+    pub fn complete(snapshot: SystemClipboardSnapshot) -> Self {
+        Self {
+            snapshot,
+            missing: Vec::new(),
+        }
+    }
+
+    pub fn is_partial(&self) -> bool {
+        !self.missing.is_empty()
+    }
+}
 
 #[async_trait]
 pub trait InboundBlobMaterializer: Send + Sync {
     /// `receiver_entry_id` 是 ApplyInbound 在流程入口生成的接收端 entry_id,
     /// 用作所有 blob 拉取的 transfer_id —— 让占位卡片、进度事件和最终
     /// `NewContent` 共享同一个标识,前端无需做合并映射。
+    ///
+    /// 返回 [`MaterializeResult`]:`missing.is_empty()` 表示全量成功;否则
+    /// 是 partial(用户在中途 cancel 了 inbound transfer),`snapshot` 仅包
+    /// 含已成功落地的 representation,缺失的 file blob 用 `uniclip-missing://`
+    /// URI 表达,`missing` 列出元数据供前端展示与调用方判定。
     async fn materialize(
         &self,
         from_device: DeviceId,
         receiver_entry_id: EntryId,
         snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
-    ) -> Result<SystemClipboardSnapshot>;
+    ) -> Result<MaterializeResult>;
 }
 
 #[async_trait]
@@ -60,9 +112,11 @@ pub trait InboundBlobFetcher: Send + Sync {
 #[async_trait]
 impl InboundBlobFetcher for BlobTransferFacade {
     async fn fetch_blob(&self, command: FetchBlobCommand) -> Result<FetchBlobResult> {
+        // 保留 thiserror 类型链:materializer 用 `is_cancel_error` downcast
+        // 判断是否 user-cancel,与真正的 fetch 失败区分对待。
         BlobTransferFacade::fetch_blob(self, command)
             .await
-            .map_err(|e| anyhow!(e.to_string()))
+            .map_err(anyhow::Error::from)
     }
 
     async fn fetch_blob_to_path(
@@ -71,7 +125,7 @@ impl InboundBlobFetcher for BlobTransferFacade {
     ) -> Result<FetchBlobToPathResult> {
         BlobTransferFacade::fetch_blob_to_path(self, command)
             .await
-            .map_err(|e| anyhow!(e.to_string()))
+            .map_err(anyhow::Error::from)
     }
 }
 
@@ -94,9 +148,9 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         receiver_entry_id: EntryId,
         mut snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
-    ) -> Result<SystemClipboardSnapshot> {
+    ) -> Result<MaterializeResult> {
         if blob_refs.is_empty() {
-            return Ok(snapshot);
+            return Ok(MaterializeResult::complete(snapshot));
         }
 
         // Split blob refs by destination:
@@ -123,8 +177,28 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         let batch_total = rep_refs.len() + file_refs.len();
         let mut batch_idx = 0usize;
 
+        // 收集 partial cancel 时的"未完成"轨迹:
+        // - `incomplete_rep_idxs`:rep_refs 阶段被取消的 representation index,
+        //   退出循环后从 snapshot.representations 中倒序移除,避免把声明了但
+        //   没有真实 bytes 的 rep 落库后导致 renderer 渲染失败。
+        // - `missing_files`:file_refs 阶段被取消的文件元数据,用于:
+        //   (a) 在 file-list rep 中以 `uniclip-missing://` URI 占位;
+        //   (b) 返回给上层做"是否 partial"判定。
+        // - `partial_cancel`:任一阶段触发了 cancel,后续不再发起新的 fetch。
+        let mut incomplete_rep_idxs: Vec<usize> = Vec::new();
+        let mut missing_files: Vec<MissingFileRef> = Vec::new();
+        let mut partial_cancel = false;
+
         // 1. Hydrate representation-bound blobs back into the snapshot.
-        for blob_ref in rep_refs {
+        //
+        // Pre-collect rep idx 列表,break 后能把"还没跑到"的 rep 也算进
+        // incomplete —— 否则它们留在 snapshot 里就是带空 bytes 的占位 rep,
+        // capture 后渲染会失败。
+        let pending_rep_idxs: Vec<usize> = rep_refs
+            .iter()
+            .map(|r| r.representation_index.expect("partition guarantees Some") as usize)
+            .collect();
+        for (loop_idx, blob_ref) in rep_refs.into_iter().enumerate() {
             let entry_id = blob_ref.entry_id.clone();
             let advertised_size = blob_ref.size_bytes;
             let idx = blob_ref
@@ -158,7 +232,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 batch_position: position_in_batch(batch_idx, batch_total),
             };
             batch_idx += 1;
-            let fetched = self
+            let fetched = match self
                 .fetcher
                 .fetch_blob(FetchBlobCommand {
                     ticket: blob_ref.ticket,
@@ -166,7 +240,21 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                     transfer_context: Some(transfer_context),
                 })
                 .await
-                .map_err(|e| {
+            {
+                Ok(v) => v,
+                Err(e) if is_cancel_error(&e) => {
+                    // Cancel:当前 + 后续 rep_refs 都没 fetch,把这部分 idx 全数
+                    // 标记为 incomplete,稍后倒序从 snapshot.representations 删除。
+                    warn!(
+                        entry_id = %entry_id,
+                        representation_index = idx,
+                        "materialize: representation-bound blob fetch cancelled, marking partial"
+                    );
+                    incomplete_rep_idxs.extend(pending_rep_idxs[loop_idx..].iter().copied());
+                    partial_cancel = true;
+                    break;
+                }
+                Err(e) => {
                     warn!(
                         entry_id = %entry_id,
                         size_bytes = advertised_size,
@@ -174,8 +262,9 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                         error = %e,
                         "materialize: representation-bound blob fetch failed"
                     );
-                    e
-                })?;
+                    return Err(e);
+                }
+            };
 
             let usize_idx = idx as usize;
             let rep_count = snapshot.representations.len();
@@ -195,8 +284,30 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             );
         }
 
+        // rep_refs 阶段 cancel 时不再发起任何 file_refs fetch:把所有 file_refs
+        // 标 missing,直接走 rewrite + finalize 路径(snapshot 里那些"未完成"的
+        // rep 由后面 incomplete_rep_idxs 的倒序 retain 移除)。
+        if partial_cancel {
+            for blob_ref in file_refs.iter() {
+                missing_files.push(MissingFileRef {
+                    filename: blob_ref
+                        .filename
+                        .clone()
+                        .unwrap_or_else(|| format!("blob-{}", blob_ref.entry_id.as_ref())),
+                    size_bytes: blob_ref.size_bytes,
+                });
+            }
+            return Ok(finalize_partial(
+                snapshot,
+                &incomplete_rep_idxs,
+                Vec::new(),
+                missing_files,
+                &from_device,
+            ));
+        }
+
         if file_refs.is_empty() {
-            return Ok(snapshot);
+            return Ok(MaterializeResult::complete(snapshot));
         }
 
         // 2. Free-standing files: existing cache_dir + file-list rewrite path.
@@ -204,7 +315,13 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         let mut used_names = HashSet::new();
         let blob_ref_total = file_refs.len();
 
-        for (idx, blob_ref) in file_refs.into_iter().enumerate() {
+        // 用 indexed access 而非 into_iter().enumerate(),让 cancel break 时
+        // 还能回头把 file_refs[idx+1..] 也加进 missing_files —— 否则前端只能
+        // 看到当前正在 fetch 的那一个 file 名,丢失批中其他未传文件元数据。
+        let mut file_idx = 0usize;
+        while file_idx < file_refs.len() {
+            let idx = file_idx;
+            let blob_ref = file_refs[idx].clone();
             let entry_id = blob_ref.entry_id.clone();
             let advertised_size = blob_ref.size_bytes;
             let declared_name = blob_ref.filename.clone();
@@ -255,7 +372,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             let filename = unique_filename(blob_ref.filename.as_deref(), idx, &mut used_names);
             let path = entry_dir.join(filename);
 
-            let fetched = self
+            let fetched = match self
                 .fetcher
                 .fetch_blob_to_path(FetchBlobToPathCommand {
                     ticket: blob_ref.ticket,
@@ -264,7 +381,31 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                     transfer_context: Some(transfer_context),
                 })
                 .await
-                .map_err(|e| {
+            {
+                Ok(v) => v,
+                Err(e) if is_cancel_error(&e) => {
+                    // Cancel:当前 file 的 partial cleanup 由 BlobTransferFacade
+                    // 自己在 cancel arm 里做(facade.rs:789-796)。把当前 +
+                    // file_refs[idx+1..] 全收进 missing,break 走 finalize。
+                    warn!(
+                        idx,
+                        total = blob_ref_total,
+                        entry_id = %entry_id,
+                        "materialize: blob fetch cancelled, marking partial"
+                    );
+                    for remaining in &file_refs[idx..] {
+                        missing_files.push(MissingFileRef {
+                            filename: remaining
+                                .filename
+                                .clone()
+                                .unwrap_or_else(|| format!("blob-{}", remaining.entry_id.as_ref())),
+                            size_bytes: remaining.size_bytes,
+                        });
+                    }
+                    partial_cancel = true;
+                    break;
+                }
+                Err(e) => {
                     warn!(
                         idx,
                         total = blob_ref_total,
@@ -273,8 +414,9 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                         error = %e,
                         "materialize: blob fetch failed"
                     );
-                    e
-                })?;
+                    return Err(e);
+                }
+            };
 
             info!(
                 idx,
@@ -285,6 +427,20 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 "materialize: blob cached to local path (streaming)"
             );
             local_paths.push(path);
+            file_idx += 1;
+        }
+
+        if partial_cancel {
+            // cancel 触发的 break 已把"当前 + file_refs[idx..]"全收进
+            // missing_files(用 indexed 访问而非 into_iter,保留 idx 后置访问能力)。
+            // 这里直接落 finalize_partial 出口。
+            return Ok(finalize_partial(
+                snapshot,
+                &incomplete_rep_idxs,
+                local_paths,
+                missing_files,
+                &from_device,
+            ));
         }
 
         let uri_list = local_file_uri_list(&local_paths)?;
@@ -365,8 +521,164 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         }
         let _ = already_has_image_rep;
 
-        Ok(snapshot)
+        Ok(MaterializeResult::complete(snapshot))
     }
+}
+
+/// 把 partial cancel 的中间状态收口为 [`MaterializeResult`]:
+/// - 删除 `incomplete_rep_idxs` 指向的 representation(它们没有真实 bytes,
+///   留在 snapshot 里 capture 后会让 renderer 渲染失败);
+/// - 用 `completed_paths`(已落地的 file://) + `missing_files`(占位 URI)
+///   拼出 file-list rep 的新内容;若 envelope 原本没有 file-list rep,
+///   追加一条合成 rep,保证有 `text/uri-list` 表达;
+/// - 若上述全部完成后 snapshot 没有任何 supported representation(极端
+///   场景:rep_refs 被全删 + envelope 没有自带任何不需要 fetch 的 rep),
+///   mint 一条 `text/plain` 兜底 rep,描述这是一次 cancelled transfer,
+///   保证 `CaptureClipboardUseCase::has_supported_representation` 返回 true。
+fn finalize_partial(
+    mut snapshot: SystemClipboardSnapshot,
+    incomplete_rep_idxs: &[usize],
+    completed_paths: Vec<PathBuf>,
+    missing_files: Vec<MissingFileRef>,
+    from_device: &DeviceId,
+) -> MaterializeResult {
+    // 倒序删除 incomplete rep(顺序 -> 倒序保 idx 仍有效)。
+    let mut sorted_idxs: Vec<usize> = incomplete_rep_idxs.to_vec();
+    sorted_idxs.sort_unstable();
+    sorted_idxs.dedup();
+    for &i in sorted_idxs.iter().rev() {
+        if i < snapshot.representations.len() {
+            snapshot.representations.remove(i);
+        }
+    }
+
+    // 拼 file-list rep 内容:已完成 file:// + 未完成 uniclip-missing://。
+    // 这条 rep 始终存在于 partial 路径,既给前端解析依据,也让 OS
+    // clipboard write(若意外没被上层短路)拿到的是占位 URI 而非空。
+    let mut uri_lines: Vec<String> = Vec::new();
+    for path in &completed_paths {
+        if let Ok(u) = Url::from_file_path(path) {
+            uri_lines.push(u.into());
+        }
+    }
+    for missing in &missing_files {
+        uri_lines.push(format_missing_uri(missing));
+    }
+    let uri_list_body = uri_lines.join("\r\n");
+
+    let mut rewritten = 0usize;
+    for rep in &mut snapshot.representations {
+        if is_file_list_representation(rep) {
+            // set_inline_bytes 失败说明 rep 类型不允许 inline,partial 路径
+            // 容忍:跳过该 rep,后面追加一条新合成 rep 兜底。
+            if rep
+                .set_inline_bytes(uri_list_body.as_bytes().to_vec())
+                .is_ok()
+            {
+                rewritten += 1;
+            }
+        }
+    }
+    if rewritten == 0 {
+        snapshot
+            .representations
+            .push(ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("files"),
+                Some(MimeType("text/uri-list".to_string())),
+                uri_list_body.clone().into_bytes(),
+            ));
+    }
+
+    // 兜底:若 snapshot 没有任何 supported rep(极端:rep_refs 全删 +
+    // envelope 自带的 rep 也都是 unsupported MIME),mint 一条 text/plain
+    // 描述这次 cancelled transfer 的元数据。让"取消后 entry 总是保留"
+    // 这条用户契约不被 `has_supported_representation=false` 短路掉。
+    if !snapshot.representations.iter().any(supported_for_capture) {
+        let mut body = String::new();
+        body.push_str(&format!(
+            "[Cancelled transfer from {}]\n",
+            from_device.as_str()
+        ));
+        for missing in &missing_files {
+            body.push_str(&missing.filename);
+            body.push('\n');
+        }
+        snapshot
+            .representations
+            .push(ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                body.into_bytes(),
+            ));
+        info!("materialize: minted fallback text/plain rep for empty partial snapshot");
+    }
+
+    info!(
+        missing = missing_files.len(),
+        completed = completed_paths.len(),
+        dropped_reps = sorted_idxs.len(),
+        "materialize: finalized partial result"
+    );
+    MaterializeResult {
+        snapshot,
+        missing: missing_files,
+    }
+}
+
+/// `uniclip-missing:` URI 编码缺失文件元数据,供前端解析渲染。
+/// 设计为 opaque path("///{filename}") 形态以避免与 `file://` 解析器冲突;
+/// query string 携带可选元数据,渲染层按需读取。
+fn format_missing_uri(missing: &MissingFileRef) -> String {
+    // URL-encode filename + size into a path-segment-safe form. We deliberately
+    // hand-roll the encoder for one segment instead of pulling a full
+    // percent-encoding crate.
+    let encoded = encode_path_segment(&missing.filename);
+    format!(
+        "uniclip-missing:///{}?size={}&reason=cancelled",
+        encoded, missing.size_bytes
+    )
+}
+
+fn encode_path_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        let safe = b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~');
+        if safe {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+/// 与 `CaptureClipboardUseCase::is_supported_representation` 同义。
+/// 此处复制一份的原因:partial 路径在 capture 之前就要知道 snapshot 是否
+/// 能通过 `has_supported_representation` 的门,以决定是否 mint 兜底 rep。
+/// capture 那个函数是 `pub(crate)` 不能跨模块调,且把它公开会污染 facade
+/// 边界;复制一份在 partial finalize 路径里 self-contained。
+fn supported_for_capture(rep: &ObservedClipboardRepresentation) -> bool {
+    if let Some(mime) = &rep.mime {
+        let mime_str = mime.as_str();
+        if mime_str.starts_with("text/")
+            || mime_str.starts_with("image/")
+            || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
+            || mime_str.eq_ignore_ascii_case("file/uri-list")
+            || mime_str.eq_ignore_ascii_case("text/uri-list")
+        {
+            return true;
+        }
+    }
+    rep.format_id.eq_ignore_ascii_case("text")
+        || rep.format_id.eq_ignore_ascii_case("rtf")
+        || rep.format_id.eq_ignore_ascii_case("html")
+        || rep.format_id.eq_ignore_ascii_case("files")
+        || rep.format_id.eq_ignore_ascii_case("image")
+        || rep.format_id.eq_ignore_ascii_case("public.utf8-plain-text")
+        || rep.format_id.eq_ignore_ascii_case("public.text")
+        || rep.format_id.eq_ignore_ascii_case("NSStringPboardType")
 }
 
 /// 基于文件后缀推断常见图片 MIME。与 `uc-platform/clipboard/common.rs` 的同名 helper

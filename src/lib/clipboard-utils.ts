@@ -47,6 +47,43 @@ export function parseFileNamesFromUriList(uriList: string): string[] {
 }
 
 /**
+ * URI scheme used to mark a file blob that didn't complete materializing
+ * (typically because the user cancelled the inbound transfer). Receiver still
+ * persists the entry so user-facing artifacts (filename / size) survive
+ * restart, but the file itself is unavailable for open/copy/drag operations.
+ *
+ * Format: `uniclip-missing:///<encoded-filename>?size=<bytes>&reason=cancelled`
+ */
+export const UNICLIP_MISSING_SCHEME = 'uniclip-missing:'
+
+export function isUniclipMissingUri(uri: string): boolean {
+  const trimmed = uri.trim().toLowerCase()
+  return trimmed.startsWith(`${UNICLIP_MISSING_SCHEME}//`)
+}
+
+/**
+ * Parse a newline-separated URI list into per-file metadata, distinguishing
+ * `file://` URIs (real local files) from `uniclip-missing://` placeholders
+ * (transfer cancelled before this blob completed).
+ *
+ * Order of entries matches the URI list line order so callers can zip with
+ * `file_sizes` from the daemon projection.
+ */
+export function parseFileItemsFromUriList(uriList: string): Array<{
+  name: string
+  missing: boolean
+}> {
+  return uriList
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(uri => ({
+      name: extractFileNameFromUri(uri),
+      missing: isUniclipMissingUri(uri),
+    }))
+}
+
+/**
  * Extract hostname from a URL string. Returns the raw string on failure.
  */
 export function extractDomainFromUrl(url: string): string {
@@ -69,6 +106,31 @@ export function isImageContentType(contentType: string): boolean {
  */
 export function isFileContentType(contentType: string): boolean {
   return contentType.includes('uri-list')
+}
+
+/**
+ * 计算 file entry 的 missing 概况。仅在 `item.item.file` 存在时有意义。
+ * - `any` = 是否有任意文件被标 missing(决定整条 entry 是否走"取消传输"视觉)
+ * - `all` = 是否所有文件都 missing(决定是否禁掉"打开 / 复制 / 拖出")
+ *
+ * 缺省 `file_missing` 视为全 false(向后兼容历史 entry)。
+ */
+export function summarizeFileMissing(item: ClipboardItemResponse): {
+  any: boolean
+  all: boolean
+  count: number
+} {
+  const file = item.item.file
+  if (!file) return { any: false, all: false, count: 0 }
+  const flags = file.file_missing ?? []
+  const total = file.file_names.length
+  if (total === 0) return { any: false, all: false, count: 0 }
+  const missingCount = flags.filter(Boolean).length
+  return {
+    any: missingCount > 0,
+    all: missingCount === total,
+    count: missingCount,
+  }
 }
 
 export function resolveItemType(item: ClipboardItemResponse): ItemType {

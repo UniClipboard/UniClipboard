@@ -82,6 +82,13 @@ export interface ClipboardImageItem {
 export interface ClipboardFileItem {
   file_names: string[]
   file_sizes: number[]
+  /**
+   * Per-file missing flag, aligned with `file_names` / `file_sizes` by index.
+   * `true` 表示这个文件在 entry 落库时未完成 materialize(用户取消了入站传输),
+   * 文件不可 open/copy/drag,但 entry 自身仍保留(允许删除、保留 filename/size)。
+   * 缺省视为全 false(向后兼容历史 entry / 非 file 类型 entry)。
+   */
+  file_missing?: boolean[]
 }
 
 export interface ClipboardLinkItem {

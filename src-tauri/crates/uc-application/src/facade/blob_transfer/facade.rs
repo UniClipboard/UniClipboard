@@ -121,6 +121,47 @@ pub struct FetchTransferContext {
     pub filename: String,
     pub outbound_transfer_id: Option<String>,
     pub outbound_target: Option<DeviceId>,
+    /// 当多个 blob fetch 共享同一个 `transfer_id`(例如 inbound materializer
+    /// 处理含 N 个 blob_ref 的 envelope)时,只有 batch 的第一个 fetch 应
+    /// 该 seed + start lifecycle,只有最后一个 fetch 应该 complete +
+    /// 反向通知 sender Completed。否则 receiver 端 lifecycle 会反复触发
+    /// `WARN start lifecycle failed` / `WARN complete lifecycle failed`,
+    /// sender 端 UI 也会在 batch 的第一个 fetch 完成时就提前显示"传输完成"。
+    ///
+    /// 单 blob 调用者(CLI `uniclip recv`、子 facade 内部转发)保留默认
+    /// `Only`,行为与改造前完全一致。
+    pub batch_position: BatchPosition,
+}
+
+/// 位置标志:在一个共享 `transfer_id` 的 fetch batch 里,本次 fetch 处在哪个位置。
+///
+/// 用 `is_first()` 决定是否 seed + start lifecycle,用 `is_last()` 决定是否
+/// complete lifecycle + 推送 outbound terminal。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BatchPosition {
+    /// 这次 fetch 是 batch 里唯一一次(单 blob 调用者默认),seed+start 和
+    /// complete+outbound terminal 都执行。
+    #[default]
+    Only,
+    /// Batch 的第一次 fetch,后面还有更多 —— 只 seed + start,不 complete。
+    First,
+    /// Batch 中间一次,既不是第一次也不是最后一次 —— 既不 seed/start,也不 complete。
+    Middle,
+    /// Batch 最后一次 —— 不再 seed/start,只 complete + 推 outbound terminal。
+    Last,
+}
+
+impl BatchPosition {
+    /// 是否需要 seed + start lifecycle?第一次或唯一一次 fetch 才需要。
+    pub fn is_first(self) -> bool {
+        matches!(self, Self::Only | Self::First)
+    }
+
+    /// 是否需要 complete lifecycle + 反向通知 sender Completed?
+    /// 最后一次或唯一一次 fetch 才需要。
+    pub fn is_last(self) -> bool {
+        matches!(self, Self::Only | Self::Last)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -553,18 +594,16 @@ impl BlobTransferFacade {
                 sink
             });
 
-        // seed 让 receiver projection 先有一行 pending,publisher 后续
-        // 发 `StatusChanged` 时才能 resolve 出 entry_id。fetch_blob 写回
-        // representation bytes,blob 不落本地文件,所以 cached_path 留空。
-        // start 让 lifecycle 落 `Started` 事件 + projection 行翻成
-        // `transferring`,publisher 据此发 `StatusChanged transferring`;
-        // 紧跟一帧 0 字节 Progress 是 sink 节流的兜底——即便 adapter 命中
-        // 本地缓存瞬间完成,前端也能先看到进度条 placeholder,后续 completed
-        // 事件再覆盖。
+        // seed/start/0-byte placeholder 只在 batch 的第一次 fetch 触发。
+        // 中间或最后一次共享 `transfer_id` 的 fetch 不再重复 seed,否则
+        // receiver projection 行已经 `transferring`/`completed`,upsert
+        // 会 fail-soft 但 warn 流满天飞。
         if let Some(ctx) = command.transfer_context.as_ref() {
-            self.seed_lifecycle(ctx, String::new()).await;
-            self.start_lifecycle(ctx).await;
-            self.emit_progress(ctx, 0, ctx.total_bytes);
+            if ctx.batch_position.is_first() {
+                self.seed_lifecycle(ctx, String::new()).await;
+                self.start_lifecycle(ctx).await;
+                self.emit_progress(ctx, 0, ctx.total_bytes);
+            }
         }
 
         let result = self
@@ -581,22 +620,20 @@ impl BlobTransferFacade {
                 if let Some(ctx) = command.transfer_context.as_ref() {
                     let final_size = outcome.plaintext.len() as u64;
                     let total = ctx.total_bytes.or(Some(final_size));
-                    // 进度回调 throttle 通常不会刚好落在最后一个字节,
-                    // 所以 final-size 帧由 facade 显式推一次,确保前端
-                    // 进度条停在 100%;然后 lifecycle complete 让 publisher
-                    // 发 `StatusChanged completed`。
+                    // 最终一帧 100% Progress 每次都推(进度条 UI 体验),
+                    // 但 complete lifecycle + outbound terminal Completed
+                    // 只在 batch 收尾时发,避免提前告诉 sender"完成了"。
                     self.emit_progress(ctx, final_size, total);
-                    self.complete_lifecycle(ctx).await;
-                    // 把"传输完成"也通知 sender —— 进度回调 throttle 通常
-                    // 不会刚好落在最后一个字节,所以最终一帧由 facade 显式
-                    // 推送,确保 sender UI 看到 100%。
-                    self.report_outbound_terminal(
-                        ctx,
-                        final_size,
-                        total,
-                        OutboundProgressStatus::Completed,
-                    )
-                    .await;
+                    if ctx.batch_position.is_last() {
+                        self.complete_lifecycle(ctx).await;
+                        self.report_outbound_terminal(
+                            ctx,
+                            final_size,
+                            total,
+                            OutboundProgressStatus::Completed,
+                        )
+                        .await;
+                    }
                 }
                 Ok(FetchBlobResult {
                     plaintext: outcome.plaintext,
@@ -661,11 +698,14 @@ impl BlobTransferFacade {
 
         // seed 用 target_path 当 cached_path —— blob 落盘的实际位置,
         // dashboard `cached_path` 字段直接显示为本地副本路径。
+        // 仅 batch 首帧时 seed/start,见 `BatchPosition` doc。
         if let Some(ctx) = command.transfer_context.as_ref() {
-            let cached_path = command.target_path.to_string_lossy().into_owned();
-            self.seed_lifecycle(ctx, cached_path).await;
-            self.start_lifecycle(ctx).await;
-            self.emit_progress(ctx, 0, ctx.total_bytes);
+            if ctx.batch_position.is_first() {
+                let cached_path = command.target_path.to_string_lossy().into_owned();
+                self.seed_lifecycle(ctx, cached_path).await;
+                self.start_lifecycle(ctx).await;
+                self.emit_progress(ctx, 0, ctx.total_bytes);
+            }
         }
 
         // 注册取消句柄:带 transfer_context 时,在 inflight registry 留下
@@ -718,14 +758,16 @@ impl BlobTransferFacade {
                     let final_size = outcome.bytes_written;
                     let total = ctx.total_bytes.or(Some(final_size));
                     self.emit_progress(ctx, final_size, total);
-                    self.complete_lifecycle(ctx).await;
-                    self.report_outbound_terminal(
-                        ctx,
-                        final_size,
-                        total,
-                        OutboundProgressStatus::Completed,
-                    )
-                    .await;
+                    if ctx.batch_position.is_last() {
+                        self.complete_lifecycle(ctx).await;
+                        self.report_outbound_terminal(
+                            ctx,
+                            final_size,
+                            total,
+                            OutboundProgressStatus::Completed,
+                        )
+                        .await;
+                    }
                 }
                 Ok(FetchBlobToPathResult {
                     entry_id: outcome.entry_id,

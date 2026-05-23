@@ -22,7 +22,7 @@ use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 use crate::facade::blob_transfer::{
-    BlobTransferFacade, FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand,
+    BatchPosition, BlobTransferFacade, FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand,
     FetchBlobToPathResult, FetchTransferContext,
 };
 use crate::usecases::clipboard_sync::payload_codec::V3BlobRef;
@@ -111,6 +111,18 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             .into_iter()
             .partition(|r| r.representation_index.is_some());
 
+        // 全部 blob_ref 共享同一个 receiver_entry_id == transfer_id。facade 内
+        // 的 lifecycle (seed / start / complete) 是 per-transfer-id 单次状态机,
+        // 第二次调用会被 fail-soft 但仍 warn(`upsert_pending_transfer: skipping`
+        // / `start lifecycle failed` / `complete lifecycle failed`),且 sender
+        // 端会在 batch 第一个 fetch 完成时就提前收到 `OutboundProgressStatus::
+        // Completed` —— UI 显示"传输完成"但实际后续 blob 还在拉。
+        //
+        // 给每次 fetch 一个 `BatchPosition`,让 facade 只在 First/Only 时 seed,
+        // 只在 Last/Only 时 complete + 反向通知 sender。
+        let batch_total = rep_refs.len() + file_refs.len();
+        let mut batch_idx = 0usize;
+
         // 1. Hydrate representation-bound blobs back into the snapshot.
         for blob_ref in rep_refs {
             let entry_id = blob_ref.entry_id.clone();
@@ -143,7 +155,9 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 filename: String::new(),
                 outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
                 outbound_target: Some(from_device.clone()),
+                batch_position: position_in_batch(batch_idx, batch_total),
             };
+            batch_idx += 1;
             let fetched = self
                 .fetcher
                 .fetch_blob(FetchBlobCommand {
@@ -220,7 +234,9 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 filename: declared_name.clone().unwrap_or_default(),
                 outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
                 outbound_target: Some(from_device.clone()),
+                batch_position: position_in_batch(batch_idx, batch_total),
             };
+            batch_idx += 1;
 
             // GH#487 Phase 2: pre-create cache dir and stream the blob
             // directly to the target file. The previous code did
@@ -410,6 +426,21 @@ fn unique_filename(
             return candidate;
         }
         counter += 1;
+    }
+}
+
+/// 在大小为 `total` 的 fetch batch 里, 把 0-based `idx` 映射到 `BatchPosition`。
+/// 用于让 facade 只在第一帧 seed 一次, 只在最后一帧 complete 一次。
+fn position_in_batch(idx: usize, total: usize) -> BatchPosition {
+    debug_assert!(idx < total, "batch index out of range: {idx} >= {total}");
+    if total <= 1 {
+        BatchPosition::Only
+    } else if idx == 0 {
+        BatchPosition::First
+    } else if idx + 1 == total {
+        BatchPosition::Last
+    } else {
+        BatchPosition::Middle
     }
 }
 

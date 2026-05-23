@@ -162,6 +162,9 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
         filename: filename.clone(),
         outbound_transfer_id: None,
         outbound_target: None,
+        // CLI `uniclip recv` 一次只 fetch 一个 blob, batch 唯一一帧 ——
+        // facade 既 seed 也 complete lifecycle, 行为与改造前等价。
+        batch_position: Default::default(),
     };
 
     // Ctrl-C → cancel. We arm a background task that watches both

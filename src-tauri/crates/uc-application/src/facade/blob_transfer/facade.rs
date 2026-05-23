@@ -1,13 +1,15 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use tracing::warn;
+use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
 
 use uc_core::file_transfer::{
-    FileTransferDirection, FileTransferFailureReason, OutboundProgressReporterPort,
-    OutboundProgressStatus,
+    FileTransferCancellationReason, FileTransferDirection, FileTransferFailureReason,
+    OutboundProgressReporterPort, OutboundProgressStatus,
 };
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::blob::{
@@ -17,7 +19,8 @@ use uc_core::ports::blob::{
 use uc_core::ports::ContentHashPort;
 
 use crate::facade::file_transfer::{
-    CompleteTransfer, FailTransfer, FileTransferFacade, SeedReceiverContext, StartTransfer,
+    CancelTransfer, CompleteTransfer, FailTransfer, FileTransferFacade, SeedReceiverContext,
+    StartTransfer,
 };
 use crate::facade::host_event::{HostEvent, HostEventBus, TransferHostEvent};
 use crate::usecases::blob_transfer::{
@@ -171,14 +174,45 @@ pub enum BlobTransferError {
     Publish(String),
     #[error("fetch blob failed: {0}")]
     Fetch(String),
+    /// fetch_blob / fetch_blob_to_path 在进行中被外部 cancel(用户点取消、
+    /// timeout sweep、删除流程)。目标文件可能是 partial,调用方应当把
+    /// `target_path` 视为不可用并交由 cleanup 删除。与 `Fetch` 不同:
+    /// Fetch 表达"传输本身失败",Cancelled 表达"传输被主动撤回"。
+    #[error("fetch blob cancelled")]
+    Cancelled,
+}
+
+/// 一次进行中 fetch 的取消句柄。
+struct InflightFetch {
+    /// trigger 后:facade 内的 select! 唤醒 fetch 路径,提前 break。
+    token: CancellationToken,
+    /// 让 cancel 路径能调 `BlobTransferPort::shutdown_inflight_fetch`
+    /// 把 iroh-blobs Downloader 内部 actor task 用的那条 QUIC connection
+    /// 也撕掉(只 break caller 没用 —— actor 还会继续下载完整 blob)。
+    ticket: BlobTicket,
+    /// 发 `Cancelled` lifecycle event 时需要 peer_id 才能落事件 ——
+    /// `cancel_inbound_transfer` 入参只有 `transfer_id`,所以 fetch 注册
+    /// 时把 peer_id 一起塞进 registry。`None` 表示这次 fetch 没带
+    /// `transfer_context`(纯静默拉取,无需发 cancel event)。
+    peer_id: Option<String>,
 }
 
 pub struct BlobTransferFacade {
     publish_uc: Arc<PublishBlobUseCase>,
     fetch_uc: Arc<FetchBlobUseCase>,
+    /// `BlobTransferPort` 句柄留一份给取消路径调 `shutdown_inflight_fetch`;
+    /// use case 内部也持有同一个 `Arc<dyn BlobTransferPort>`。
+    blob_transfer: Arc<dyn BlobTransferPort>,
     host_event_emitter: Option<SharedHostEventEmitter>,
     outbound_progress_reporter: Option<Arc<dyn OutboundProgressReporterPort>>,
     file_transfer: Option<Arc<FileTransferFacade>>,
+    /// 进行中 fetch 的取消句柄登记表。key=`transfer_id`。
+    ///
+    /// fetch_blob / fetch_blob_to_path 在带 `transfer_context` 时
+    /// 入口注册、出口移除。`cancel_inbound_transfer` 通过 transfer_id
+    /// 查表,trigger token + 通过 ticket 撕 QUIC connection + 落
+    /// `Cancelled` domain event。
+    inflight_fetches: Arc<Mutex<HashMap<String, InflightFetch>>>,
 }
 
 impl BlobTransferFacade {
@@ -190,15 +224,17 @@ impl BlobTransferFacade {
         ));
         let fetch_uc = Arc::new(FetchBlobUseCase::new(
             deps.hash,
-            deps.blob_transfer,
+            Arc::clone(&deps.blob_transfer),
             deps.blob_reference,
         ));
         Self {
             publish_uc,
             fetch_uc,
+            blob_transfer: deps.blob_transfer,
             host_event_emitter: deps.host_event_emitter,
             outbound_progress_reporter: deps.outbound_progress_reporter,
             file_transfer: deps.file_transfer,
+            inflight_fetches: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -321,6 +357,103 @@ impl BlobTransferFacade {
                 transfer_id = %ctx.transfer_id,
                 error = %err,
                 "blob fetch: fail lifecycle failed"
+            );
+        }
+    }
+
+    /// 取消一次进行中的 inbound fetch。
+    ///
+    /// 三件事必须按顺序发生:
+    /// 1. trigger registry 里这个 `transfer_id` 对应的 cancellation token —
+    ///    fetch 路径里的 `tokio::select!` 会立刻唤醒,fetch_uc 那条分支被
+    ///    drop,本端 receiver 不再接收 bytes;
+    /// 2. 通过 `BlobTransferPort::shutdown_inflight_fetch(&ticket)` 撕掉
+    ///    iroh-blobs Downloader actor 内部用的 QUIC connection,让 actor
+    ///    task 也真的退出(否则它会继续把整个 blob 下完);
+    /// 3. 通过 `FileTransferFacade::cancel` 落 `Cancelled` domain event,
+    ///    projection 翻成 `cancelled`,前端 status 切换。
+    ///
+    /// 幂等:同一个 `transfer_id` 不在 registry(没有进行中的 fetch,或者
+    /// 已经被取消过)时返回 `Ok(())`,不重复发事件。
+    ///
+    /// `reason` 透传给 `Cancelled` 事件 ——
+    /// - 用户点取消按钮:`LocalUser`
+    /// - timeout sweep 触发:`Unknown`(后续 P1-8 可加新变体 `Timeout`)
+    /// - 删除流程联动:`Replaced` 或 `LocalUser`
+    pub async fn cancel_inbound_transfer(
+        &self,
+        transfer_id: &str,
+        reason: FileTransferCancellationReason,
+    ) -> Result<(), BlobTransferError> {
+        // Step 1 + 2 的输入数据要在锁内一次性取出,避免锁跨 await。
+        let entry = self.inflight_fetches.lock().unwrap().remove(transfer_id);
+        let Some(entry) = entry else {
+            info!(
+                transfer_id,
+                "cancel_inbound_transfer: no in-flight fetch, no-op"
+            );
+            return Ok(());
+        };
+
+        // Step 1: trigger select! 让 fetch 路径退出。
+        entry.token.cancel();
+
+        // Step 2: 撕 QUIC connection 让 iroh-blobs actor task 也退出。
+        // best-effort: shutdown 失败说明 connection 已经关了,语义上等价
+        // 于"已经撤回",继续走 step 3。
+        if let Err(err) = self
+            .blob_transfer
+            .shutdown_inflight_fetch(&entry.ticket)
+            .await
+        {
+            warn!(
+                transfer_id,
+                error = %err,
+                "cancel_inbound_transfer: shutdown_inflight_fetch failed (treated as already gone)"
+            );
+        }
+
+        // Step 3: 落 Cancelled 事件。peer_id 在 fetch 入口注册时就该一起
+        // 存,否则这里只能编一个,会污染事件流。下面 register 时会把
+        // peer_id 也写进 registry。
+        // 实际写出来是后面 wrap fetch 路径时跟着改 InflightFetch 结构。
+        // 这里先不发 lifecycle,让调用方(Tauri command)显式调
+        // file_transfer.cancel —— 不打破 facade 间职责;OR 在这里把
+        // peer_id 也从 registry 里取出来发。
+        //
+        // 选择:把 peer_id 写进 registry,这里发 lifecycle —— 让所有
+        // cancel 入口(用户、timeout、删除)只调一个 API,事件流自动落。
+        if let Some(peer_id) = entry.peer_id {
+            self.cancel_lifecycle_inner(transfer_id, &peer_id, reason)
+                .await;
+        }
+
+        Ok(())
+    }
+
+    /// 内部辅助:`cancel_inbound_transfer` 路径下,registry 已经被移除,
+    /// 没有 `FetchTransferContext` 对象可用,只能从 entry 字段直接拼。
+    async fn cancel_lifecycle_inner(
+        &self,
+        transfer_id: &str,
+        peer_id: &str,
+        reason: FileTransferCancellationReason,
+    ) {
+        let Some(facade) = self.file_transfer.as_ref() else {
+            return;
+        };
+        if let Err(err) = facade
+            .cancel(CancelTransfer {
+                transfer_id: transfer_id.to_string(),
+                peer_id: peer_id.to_string(),
+                reason,
+            })
+            .await
+        {
+            warn!(
+                transfer_id,
+                error = %err,
+                "cancel_inbound_transfer: cancel lifecycle failed"
             );
         }
     }
@@ -515,15 +648,49 @@ impl BlobTransferFacade {
             self.emit_progress(ctx, 0, ctx.total_bytes);
         }
 
-        let result = self
-            .fetch_uc
-            .execute_to_path(FetchBlobPathInput {
+        // 注册取消句柄:带 transfer_context 时,在 inflight registry 留下
+        // (token, ticket, peer_id),让 `cancel_inbound_transfer` 能查到并
+        // trigger token + 撕 QUIC connection。无 transfer_context 时(纯静默
+        // 拉取,例如 CLI 工具),token 仍然创建但不进 registry —— select! 这
+        // 一条分支就永远不会被唤醒,等价于原行为。
+        let cancel_token = CancellationToken::new();
+        if let Some(ctx) = command.transfer_context.as_ref() {
+            self.inflight_fetches.lock().unwrap().insert(
+                ctx.transfer_id.clone(),
+                InflightFetch {
+                    token: cancel_token.clone(),
+                    ticket: command.ticket.clone(),
+                    peer_id: Some(ctx.peer_id.clone()),
+                },
+            );
+        }
+
+        // select! 把 fetch_uc 包到一个取消感知的 future 里。cancel arm 中
+        // 不重发 Cancelled lifecycle event —— `cancel_inbound_transfer` 已
+        // 经在调用端把 event 落了,这里只负责让 fetch 路径退出。
+        let result = tokio::select! {
+            biased;
+            _ = cancel_token.cancelled() => {
+                Err(BlobTransferError::Cancelled)
+            }
+            res = self.fetch_uc.execute_to_path(FetchBlobPathInput {
                 ticket: command.ticket,
                 entry_id: iroh_tag_entry_id,
                 target_path: command.target_path,
                 progress: progress_sink,
-            })
-            .await;
+            }) => {
+                res.map_err(|e| BlobTransferError::Fetch(e.to_string()))
+            }
+        };
+
+        // fetch 出口必移除 registry,否则 cancel_inbound_transfer 会找到
+        // 一个已经结束的 entry,无害但会污染 metric。
+        if let Some(ctx) = command.transfer_context.as_ref() {
+            self.inflight_fetches
+                .lock()
+                .unwrap()
+                .remove(&ctx.transfer_id);
+        }
 
         match result {
             Ok(outcome) => {
@@ -546,6 +713,22 @@ impl BlobTransferFacade {
                     digest: outcome.digest,
                     bytes_written: outcome.bytes_written,
                 })
+            }
+            Err(BlobTransferError::Cancelled) => {
+                // 取消路径不发 fail/Completed —— `cancel_inbound_transfer`
+                // 已经把 `Cancelled` domain event + lifecycle 状态都落了。
+                // 这里只需要把"反向上报"通知 sender 一次,让对端 UI 也能
+                // 立刻看到 cancel 终止(否则 sender 卡在最后一次 progress)。
+                if let Some(ctx) = command.transfer_context.as_ref() {
+                    self.report_outbound_terminal(
+                        ctx,
+                        0,
+                        ctx.total_bytes,
+                        OutboundProgressStatus::Failed,
+                    )
+                    .await;
+                }
+                Err(BlobTransferError::Cancelled)
             }
             Err(e) => {
                 let msg = e.to_string();

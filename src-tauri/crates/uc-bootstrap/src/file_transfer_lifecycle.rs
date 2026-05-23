@@ -15,10 +15,12 @@ use tokio::task::JoinHandle;
 use tracing::{info, info_span, warn, Instrument};
 
 use uc_application::facade::{
-    FileTransferFacade, FileTransferFacadeDeps, FileTransferHostEventPublisher, HostEvent,
-    HostEventBus, OutboundEntryIdCache, TransferHostEvent,
+    BlobTransferFacade, FileTransferFacade, FileTransferFacadeDeps, FileTransferHostEventPublisher,
+    HostEvent, HostEventBus, InboundCancelOutcome, OutboundEntryIdCache, TransferHostEvent,
 };
-use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
+use uc_core::file_transfer::{
+    FileTransferCancellationReason, FileTransferEventPublisherPort, FileTransferEventStorePort,
+};
 use uc_core::ports::file_transfer_repository::TrackedFileTransferStatus;
 use uc_core::ports::{ClockPort, FileTransferRepositoryPort};
 use uc_infra::db::executor::DieselSqliteExecutor;
@@ -43,14 +45,22 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(15);
 ///
 /// ## Sweep / reconcile path
 ///
-/// `spawn_timeout_sweep` and `reconcile_on_startup` currently operate
-/// directly on `FileTransferRepositoryPort` (projection table), not through
-/// the domain event store. Reason: failing a pending-timeout transfer
-/// through the event timeline requires a `peer_id`, which the pending row
-/// does not yet have (no `Started` event occurred). Re-threading this
-/// through the event store would require domain-model changes to support a
-/// peer-less failure scenario, which is deferred to the Phase 5 cleanup. In
-/// the meantime this preserves the legacy behavior one-to-one.
+/// The sweep branches on the row's tracked status:
+///
+/// - **Transferring** rows route through
+///   [`BlobTransferFacade::cancel_inbound_transfer`]: that tears down the
+///   receiver-side iroh-blobs fetch task + QUIC connection AND appends a
+///   `Cancelled { reason: Timeout }` domain event whose projection flips
+///   the row to `cancelled`. This is the path that actually closes the
+///   sender → receiver tap (the original bug — receiver "timed out"
+///   locally while the sender provider kept streaming).
+/// - **Pending** rows (no `Started` event yet, no `peer_id` available)
+///   stay on the legacy `mark_failed` + manual host-event path: appending
+///   a peer-less `Cancelled`/`Failed` to the timeline is a domain-model
+///   change that belongs to the Phase 5 cleanup, not P1.
+///
+/// `reconcile_on_startup` always uses the legacy path: by definition the
+/// runtime is not yet up, so there is no in-flight fetch to cancel.
 pub struct FileTransferLifecycle {
     pub outbound_entry_cache: Arc<OutboundEntryIdCache>,
     /// Shared host-event bus.
@@ -86,6 +96,7 @@ impl FileTransferLifecycle {
     pub fn spawn_timeout_sweep(
         &self,
         cancel: tokio::sync::watch::Receiver<bool>,
+        blob_transfer: Arc<BlobTransferFacade>,
     ) -> JoinHandle<()> {
         let repo = Arc::clone(&self.file_transfer_repo);
         let clock = Arc::clone(&self.clock);
@@ -132,6 +143,40 @@ impl FileTransferLifecycle {
                     );
 
                     for t in &expired {
+                        // Transferring rows have a peer_id + an in-flight
+                        // fetch — route them through the facade so the
+                        // receiver-side iroh-blobs task and QUIC
+                        // connection are actually torn down, and the
+                        // Cancelled domain event flows via projection.
+                        // If the registry race-lost the entry (fetch
+                        // already exited but row is still expired in the
+                        // projection), fall through to the legacy
+                        // mark_failed path.
+                        if matches!(t.status, TrackedFileTransferStatus::Transferring) {
+                            match blob_transfer
+                                .cancel_inbound_transfer(
+                                    &t.transfer_id,
+                                    FileTransferCancellationReason::Timeout,
+                                )
+                                .await
+                            {
+                                Ok(InboundCancelOutcome::Cancelled) => {
+                                    cleanup_cached_path(&t.cached_path).await;
+                                    continue;
+                                }
+                                Ok(InboundCancelOutcome::NotInflight) => {
+                                    // fall through to mark_failed
+                                }
+                                Err(err) => {
+                                    warn!(
+                                        error = %err,
+                                        transfer_id = %t.transfer_id,
+                                        "Timeout sweep: cancel_inbound_transfer failed, falling back to mark_failed"
+                                    );
+                                }
+                            }
+                        }
+
                         let reason = timeout_reason_for(t.status);
 
                         if let Err(err) = repo.mark_failed(&t.transfer_id, reason, now_ms).await {

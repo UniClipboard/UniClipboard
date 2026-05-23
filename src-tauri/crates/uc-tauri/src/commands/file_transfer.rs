@@ -81,7 +81,11 @@ pub async fn cancel_file_transfer(
 
     let runtime = runtime.inner().clone();
     async move {
-        runtime
+        // 取消结果(Cancelled / NotInflight)在 IPC 边界上不暴露 —— 前端
+        // 只关心"我点了取消,后续等 status_changed 通知";`NotInflight`
+        // 表示后端已经没活 fetch (已完成/已取消/还没启动),对前端等价
+        // 于"操作幂等成功"。
+        let _ = runtime
             .app_facade()
             .cancel_inbound_transfer(&transfer_id, reason.into())
             .await?;

@@ -120,6 +120,7 @@ fn cancellation_reason_of(reason: FileTransferCancellationReason) -> &'static st
         FileTransferCancellationReason::LocalUser => "cancelled:local_user",
         FileTransferCancellationReason::RemotePeer => "cancelled:remote_peer",
         FileTransferCancellationReason::Replaced => "cancelled:replaced",
+        FileTransferCancellationReason::Timeout => "cancelled:timeout",
         FileTransferCancellationReason::Unknown => "cancelled:unknown",
     }
 }

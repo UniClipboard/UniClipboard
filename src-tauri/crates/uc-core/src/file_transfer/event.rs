@@ -50,6 +50,12 @@ pub enum FileTransferCancellationReason {
     LocalUser,
     RemotePeer,
     Replaced,
+    /// Inactivity sweep tore down the inbound fetch because no new bytes
+    /// arrived within the configured pending / transferring timeout window.
+    ///
+    /// Carries no peer attribution — both ends are notified by the same
+    /// event flow regardless of which side stalled.
+    Timeout,
     Unknown,
 }
 

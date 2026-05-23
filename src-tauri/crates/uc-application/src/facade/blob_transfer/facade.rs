@@ -182,6 +182,26 @@ pub enum BlobTransferError {
     Cancelled,
 }
 
+/// Result of attempting to cancel an inbound transfer.
+///
+/// `cancel_inbound_transfer` is idempotent: re-invocations on the same
+/// `transfer_id` are safe. This outcome lets callers distinguish between
+/// "we actually tore down a live fetch (Cancelled event flowed via the
+/// lifecycle)" and "no live fetch existed". The latter happens when the
+/// transfer never reached `Started` (still pending), already terminated,
+/// or was already cancelled by an earlier call. Callers that need to
+/// move such rows to a terminal status must arrange a fallback themselves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InboundCancelOutcome {
+    /// The fetch was live; it has been torn down and a `Cancelled` domain
+    /// event has been appended (provided the registry entry carried a
+    /// `peer_id`).
+    Cancelled,
+    /// No live fetch was registered for this `transfer_id` — nothing was
+    /// torn down and no event was emitted.
+    NotInflight,
+}
+
 /// 一次进行中 fetch 的取消句柄。
 struct InflightFetch {
     /// trigger 后:facade 内的 select! 唤醒 fetch 路径,提前 break。
@@ -384,7 +404,7 @@ impl BlobTransferFacade {
         &self,
         transfer_id: &str,
         reason: FileTransferCancellationReason,
-    ) -> Result<(), BlobTransferError> {
+    ) -> Result<InboundCancelOutcome, BlobTransferError> {
         // Step 1 + 2 的输入数据要在锁内一次性取出,避免锁跨 await。
         let entry = self.inflight_fetches.lock().unwrap().remove(transfer_id);
         let Some(entry) = entry else {
@@ -392,7 +412,7 @@ impl BlobTransferFacade {
                 transfer_id,
                 "cancel_inbound_transfer: no in-flight fetch, no-op"
             );
-            return Ok(());
+            return Ok(InboundCancelOutcome::NotInflight);
         };
 
         // Step 1: trigger select! 让 fetch 路径退出。
@@ -428,7 +448,7 @@ impl BlobTransferFacade {
                 .await;
         }
 
-        Ok(())
+        Ok(InboundCancelOutcome::Cancelled)
     }
 
     /// 内部辅助:`cancel_inbound_transfer` 路径下,registry 已经被移除,

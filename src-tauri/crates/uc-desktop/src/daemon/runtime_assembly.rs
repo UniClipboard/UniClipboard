@@ -117,7 +117,7 @@ pub fn build_daemon_runtime_workers(
         ClipboardOutboundDispatcher::new(ClipboardOutboundDeps {
             settings: input.deps.settings.clone(),
             clipboard_sync: input.clipboard_sync_facade.clone(),
-            blob_transfer: input.blob_transfer_facade,
+            blob_transfer: input.blob_transfer_facade.clone(),
         }),
     )));
 
@@ -142,6 +142,7 @@ pub fn build_daemon_runtime_workers(
 
     let file_sync_orchestrator = Arc::new(FileSyncOrchestratorWorker::new(
         input.file_transfer_lifecycle,
+        input.blob_transfer_facade.clone(),
     ));
 
     Ok(DaemonRuntimeWorkers {

@@ -460,12 +460,14 @@ impl AppFacade {
     /// 接收方主动撤回 fetch:trigger 内部 cancellation token + 撕掉
     /// iroh-blobs Downloader 用的 QUIC connection + 落 `Cancelled`
     /// domain event。幂等:同一 `transfer_id` 不在 inflight registry
-    /// 时(没有进行中的 fetch / 已经被取消过)返回 `Ok(())`。
+    /// 时(没有进行中的 fetch / 已经被取消过)返回 `Ok(NotInflight)`,
+    /// 实际撤回则返回 `Ok(Cancelled)` —— timeout sweep / 删除流程靠这个
+    /// 区分来决定是否要走 fallback 终结(例如 `mark_failed` pending 行)。
     pub async fn cancel_inbound_transfer(
         &self,
         transfer_id: &str,
         reason: uc_core::FileTransferCancellationReason,
-    ) -> Result<(), BlobTransferError> {
+    ) -> Result<crate::facade::InboundCancelOutcome, BlobTransferError> {
         self.blob_transfer
             .get()
             .cloned()

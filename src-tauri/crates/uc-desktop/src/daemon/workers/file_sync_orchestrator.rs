@@ -18,17 +18,25 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
+use uc_application::facade::BlobTransferFacade;
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
 
 use crate::daemon::service::{DaemonService, ServiceHealth};
 
 pub struct FileSyncOrchestratorWorker {
     lifecycle: Arc<FileTransferLifecycle>,
+    blob_transfer: Arc<BlobTransferFacade>,
 }
 
 impl FileSyncOrchestratorWorker {
-    pub fn new(lifecycle: Arc<FileTransferLifecycle>) -> Self {
-        Self { lifecycle }
+    pub fn new(
+        lifecycle: Arc<FileTransferLifecycle>,
+        blob_transfer: Arc<BlobTransferFacade>,
+    ) -> Self {
+        Self {
+            lifecycle,
+            blob_transfer,
+        }
     }
 }
 
@@ -46,7 +54,9 @@ impl DaemonService for FileSyncOrchestratorWorker {
 
         // 2. Start timeout sweep (15s interval, cancellable via watch channel)
         let (sweep_cancel_tx, sweep_cancel_rx) = tokio::sync::watch::channel(false);
-        let _sweep_handle = self.lifecycle.spawn_timeout_sweep(sweep_cancel_rx);
+        let _sweep_handle = self
+            .lifecycle
+            .spawn_timeout_sweep(sweep_cancel_rx, self.blob_transfer.clone());
 
         // 3. 等取消 —— 旧的 inbound 事件循环已下线,iroh 侧改走
         //    `FileTransferEventPublisherPort` 直接写 store/lifecycle。

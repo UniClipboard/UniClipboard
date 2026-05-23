@@ -8,16 +8,69 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use thiserror::Error;
 use tracing::{info, warn};
+use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::ClipboardPayloadSource;
 use uc_core::ids::EntryId;
-use uc_core::ports::SettingsPort;
+use uc_core::ports::clipboard::ClipboardPayloadResolverPort;
+use uc_core::ports::{
+    ClipboardEntryRepositoryPort, ClipboardEventRepositoryPort,
+    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, DeviceIdentityPort,
+    EntryDeliveryRepositoryPort, SettingsPort,
+};
+use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
 use crate::facade::{
-    BlobTransferFacade, ClipboardSyncFacade, PublishBlobCommand, PublishBlobPathCommand,
+    BlobTransferError, BlobTransferFacade, ClipboardSyncFacade, PublishBlobCommand,
+    PublishBlobPathCommand, PublishBlobResult,
 };
 use crate::sync_planner::{FileCandidate, FileSyncIntent, OutboundSyncPlanner};
+use crate::usecases::clipboard_sync::resend_entry::{
+    ResendEntryDeps, ResendEntryRunner, ResendEntryUseCase,
+};
 use crate::V3BlobRef;
+
+pub use crate::usecases::clipboard_sync::resend_entry::{
+    NotResendableReason, ResendEntryCommand, ResendEntryError, ResendReport,
+};
+
+/// Crate-internal adapter trait over [`BlobTransferFacade`]'s publish surface.
+///
+/// 抽出这层只为单测 ergonomics:[`publish_file_blob_refs`] /
+/// [`publish_oversized_inline_blob_refs`] 同时被 `dispatch_capture` 与
+/// `ResendEntryUseCase` 复用,后者需要在不构造完整 `BlobTransferFacade`(深依赖
+/// `PublishBlobUseCase` + `ContentHashPort` + `BlobTransferPort` + `BlobReferenceRepositoryPort`)
+/// 的前提下断言 publish 调用入参/计数。trait 不出现在任何对外 API,production wiring
+/// 通过 [`OutboundBlobPublishGateway`]-for-[`BlobTransferFacade`] blanket impl 自动满足。
+#[async_trait]
+pub(crate) trait OutboundBlobPublishGateway: Send + Sync {
+    async fn publish_blob(
+        &self,
+        command: PublishBlobCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError>;
+
+    async fn publish_blob_path(
+        &self,
+        command: PublishBlobPathCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError>;
+}
+
+#[async_trait]
+impl OutboundBlobPublishGateway for BlobTransferFacade {
+    async fn publish_blob(
+        &self,
+        command: PublishBlobCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError> {
+        BlobTransferFacade::publish_blob(self, command).await
+    }
+
+    async fn publish_blob_path(
+        &self,
+        command: PublishBlobPathCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError> {
+        BlobTransferFacade::publish_blob_path(self, command).await
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ClipboardOutboundInput {
@@ -58,10 +111,31 @@ pub trait ClipboardOutboundPort: Send + Sync {
     ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError>;
 }
 
+/// Dependencies for [`ClipboardOutboundFacade`]. Bundles the deps for
+/// both the `dispatch_capture` path (settings + clipboard_sync +
+/// blob_transfer, originally [`ClipboardOutboundDispatcher`]'s deps) and
+/// the `resend_entry` path (entry / event / selection / representation /
+/// delivery / trusted_peer / payload_resolver / blob_store / device_identity
+/// ports — all the things [`ResendEntryUseCase`] needs).
+///
+/// Bootstrap assembles this once from its wiring deps; the facade
+/// constructs the dispatcher + resend use case internally.
 pub struct ClipboardOutboundDeps {
+    // ── dispatcher path ────────────────────────────────────────────────
     pub settings: Arc<dyn SettingsPort>,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
+
+    // ── resend path ────────────────────────────────────────────────────
+    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
+    pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
+    pub blob_store: Arc<dyn BlobReaderPort>,
+    pub entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
+    pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
+    pub device_identity: Arc<dyn DeviceIdentityPort>,
 }
 
 pub struct ClipboardOutboundDispatcher {
@@ -71,11 +145,11 @@ pub struct ClipboardOutboundDispatcher {
 }
 
 impl ClipboardOutboundDispatcher {
-    pub fn new(deps: ClipboardOutboundDeps) -> Self {
+    fn from_deps(deps: &ClipboardOutboundDeps) -> Self {
         Self {
-            settings: deps.settings,
-            clipboard_sync: deps.clipboard_sync,
-            blob_transfer: deps.blob_transfer,
+            settings: deps.settings.clone(),
+            clipboard_sync: deps.clipboard_sync.clone(),
+            blob_transfer: deps.blob_transfer.clone(),
         }
     }
 }
@@ -199,12 +273,12 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
 
         let publish_files_start = Instant::now();
         let mut blob_refs =
-            publish_file_blob_refs(&self.blob_transfer, &plan.files, &entry_id).await?;
+            publish_file_blob_refs(self.blob_transfer.as_ref(), &plan.files, &entry_id).await?;
         let publish_files_ms = publish_files_start.elapsed().as_millis() as u64;
 
         let publish_inline_start = Instant::now();
         let mut image_blob_refs = publish_oversized_inline_blob_refs(
-            &self.blob_transfer,
+            self.blob_transfer.as_ref(),
             &mut clipboard_intent.snapshot,
             &entry_id,
         )
@@ -223,6 +297,9 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     clipboard_intent.snapshot,
                     input.origin,
                     Some(entry_id.clone()),
+                    // LocalCapture 路径走"全 fan-out"语义。resend 路径不经此
+                    // 入口,而是直接走 ResendEntryUseCase + DispatchEntryRunner。
+                    None,
                 )
                 .await
         } else {
@@ -232,6 +309,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     blob_refs,
                     input.origin,
                     Some(entry_id.clone()),
+                    None,
                 )
                 .await
         }
@@ -265,11 +343,55 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
 
 pub struct ClipboardOutboundFacade {
     dispatcher: Arc<dyn ClipboardOutboundPort>,
+    resend_runner: Arc<dyn ResendEntryRunner>,
 }
 
 impl ClipboardOutboundFacade {
-    pub fn new(dispatcher: Arc<dyn ClipboardOutboundPort>) -> Self {
-        Self { dispatcher }
+    /// Production constructor — bootstrap assembles
+    /// [`ClipboardOutboundDeps`] once and the facade builds both the
+    /// dispatcher (for `dispatch_capture`) and the resend use case (for
+    /// `resend_entry`) internally. Keeps the use-case types
+    /// `pub(crate)` per `uc-application/AGENTS.md` §11.4 — bootstrap
+    /// never sees the concrete [`ResendEntryUseCase`] / dispatcher
+    /// types.
+    pub fn new(deps: ClipboardOutboundDeps) -> Self {
+        let dispatcher: Arc<dyn ClipboardOutboundPort> =
+            Arc::new(ClipboardOutboundDispatcher::from_deps(&deps));
+        let dispatch_runner = deps.clipboard_sync.dispatch_runner();
+        let blob_publisher: Arc<dyn OutboundBlobPublishGateway> = deps.blob_transfer.clone();
+        let resend_uc = ResendEntryUseCase::new(ResendEntryDeps {
+            entry_repo: deps.entry_repo,
+            event_repo: deps.event_repo,
+            selection_repo: deps.selection_repo,
+            representation_repo: deps.representation_repo,
+            payload_resolver: deps.payload_resolver,
+            blob_store: deps.blob_store,
+            entry_delivery_repo: deps.entry_delivery_repo,
+            trusted_peer_repo: deps.trusted_peer_repo,
+            device_identity: deps.device_identity,
+            settings: deps.settings,
+            blob_publisher,
+            dispatch_runner,
+        });
+        Self {
+            dispatcher,
+            resend_runner: Arc::new(resend_uc) as Arc<dyn ResendEntryRunner>,
+        }
+    }
+
+    /// Crate-internal constructor — lets tests inject custom dispatcher
+    /// + resend stubs without standing up the full 12-port use case.
+    /// Production must go through [`Self::new`] so bootstrap remains the
+    /// single source of dep wiring.
+    #[cfg(test)]
+    pub(crate) fn from_parts(
+        dispatcher: Arc<dyn ClipboardOutboundPort>,
+        resend_runner: Arc<dyn ResendEntryRunner>,
+    ) -> Self {
+        Self {
+            dispatcher,
+            resend_runner,
+        }
     }
 
     pub async fn dispatch_capture(
@@ -278,6 +400,18 @@ impl ClipboardOutboundFacade {
     ) -> Result<ClipboardOutboundOutcome, ClipboardOutboundError> {
         self.dispatcher.dispatch_capture(input).await
     }
+
+    /// 用户主动 resend 一条本机来源的 entry。详细语义见
+    /// [`ResendEntryUseCase::execute`] — entry 不存在 → `EntryNotFound`;
+    /// 远端来源 / 本机已不持有 plaintext → `EntryNotResendable { reason }`;
+    /// 显式 filter 包含未信任设备 → `TargetNotTrusted`;空目标集 →
+    /// `NoEligibleTargets`。
+    pub async fn resend_entry(
+        &self,
+        cmd: ResendEntryCommand,
+    ) -> Result<ResendReport, ResendEntryError> {
+        self.resend_runner.execute(cmd).await
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -285,7 +419,7 @@ fn resolve_apfs_file_reference(_path: &Path) -> Option<PathBuf> {
     None
 }
 
-fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapshot) -> Vec<PathBuf> {
+pub(crate) fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapshot) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for rep in &snapshot.representations {
         let is_file_rep = rep
@@ -368,8 +502,8 @@ const OVERSIZED_REP_THRESHOLD_BYTES: usize = 64 * 1024;
 ///
 /// 仅对 `mime` 以 `image/` 开头的 rep 生效。其它类型的大 rep 暂保持 inline；
 /// 后续若有非 image 大 rep 撞上限，会在此处扩展并补对应的 receiver 处理。
-async fn publish_oversized_inline_blob_refs(
-    blob_transfer: &BlobTransferFacade,
+pub(crate) async fn publish_oversized_inline_blob_refs(
+    blob_transfer: &dyn OutboundBlobPublishGateway,
     snapshot: &mut SystemClipboardSnapshot,
     entry_id: &EntryId,
 ) -> Result<Vec<V3BlobRef>, ClipboardOutboundError> {
@@ -441,8 +575,8 @@ async fn publish_oversized_inline_blob_refs(
     Ok(blob_refs)
 }
 
-async fn publish_file_blob_refs(
-    blob_transfer: &BlobTransferFacade,
+pub(crate) async fn publish_file_blob_refs(
+    blob_transfer: &dyn OutboundBlobPublishGateway,
     files: &[FileSyncIntent],
     entry_id: &EntryId,
 ) -> Result<Vec<V3BlobRef>, ClipboardOutboundError> {
@@ -491,6 +625,8 @@ async fn publish_file_blob_refs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+    use uc_core::ids::EntryId;
 
     struct FakeOutbound;
 
@@ -512,9 +648,47 @@ mod tests {
         }
     }
 
+    /// Stub runner — every `dispatch_capture` test gets one of these so
+    /// the facade can be constructed without standing up the full 12-port
+    /// `ResendEntryUseCase`. If a test that exercises only the dispatch
+    /// path accidentally calls `resend_entry`, the panic message points
+    /// at the wiring mistake.
+    struct UnusedResendRunner;
+
+    #[async_trait]
+    impl ResendEntryRunner for UnusedResendRunner {
+        async fn execute(
+            &self,
+            _cmd: ResendEntryCommand,
+        ) -> Result<ResendReport, ResendEntryError> {
+            panic!(
+                "UnusedResendRunner.execute should never be called from a dispatch_capture test"
+            );
+        }
+    }
+
+    /// Records the last `ResendEntryCommand` and returns a canned report.
+    /// Used by [`resend_entry_forwards_command_to_runner`] to prove the
+    /// facade thin-method threads command + result without mutation.
+    struct RecordingResendRunner {
+        last_cmd: Mutex<Option<ResendEntryCommand>>,
+        canned: ResendReport,
+    }
+
+    #[async_trait]
+    impl ResendEntryRunner for RecordingResendRunner {
+        async fn execute(&self, cmd: ResendEntryCommand) -> Result<ResendReport, ResendEntryError> {
+            *self.last_cmd.lock().unwrap() = Some(cmd);
+            Ok(self.canned.clone())
+        }
+    }
+
     #[tokio::test]
     async fn dispatch_capture_accepts_application_entry_id() {
-        let facade = ClipboardOutboundFacade::new(Arc::new(FakeOutbound));
+        let facade = ClipboardOutboundFacade::from_parts(
+            Arc::new(FakeOutbound),
+            Arc::new(UnusedResendRunner),
+        );
         let outcome = facade
             .dispatch_capture(ClipboardOutboundInput {
                 entry_id: "entry-a".to_string(),
@@ -537,6 +711,54 @@ mod tests {
                 pending: 0,
                 blob_ref_count: 0,
             }
+        );
+    }
+
+    /// Facade thin-method contract: `resend_entry` forwards the exact
+    /// command (entry_id + target_filter) to the runner and returns its
+    /// report verbatim. mockall-free; the recording runner asserts both
+    /// directions.
+    #[tokio::test]
+    async fn resend_entry_forwards_command_to_runner() {
+        let canned = ResendReport {
+            accepted: 2,
+            duplicate: 0,
+            offline: 1,
+            errored: 0,
+            pending: 0,
+        };
+        let runner = Arc::new(RecordingResendRunner {
+            last_cmd: Mutex::new(None),
+            canned: canned.clone(),
+        });
+        let facade = ClipboardOutboundFacade::from_parts(
+            Arc::new(FakeOutbound),
+            Arc::clone(&runner) as Arc<dyn ResendEntryRunner>,
+        );
+
+        let cmd = ResendEntryCommand {
+            entry_id: EntryId::from("entry-xyz"),
+            target_filter: Some(vec![
+                uc_core::ids::DeviceId::new("peer-a"),
+                uc_core::ids::DeviceId::new("peer-b"),
+            ]),
+        };
+        let report = facade.resend_entry(cmd.clone()).await.expect("resend ok");
+        assert_eq!(report, canned);
+
+        let captured = runner
+            .last_cmd
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("runner saw a cmd");
+        assert_eq!(captured.entry_id.as_str(), "entry-xyz");
+        assert_eq!(
+            captured
+                .target_filter
+                .as_ref()
+                .map(|v| v.iter().map(|d| d.as_str().to_string()).collect::<Vec<_>>()),
+            Some(vec!["peer-a".to_string(), "peer-b".to_string()])
         );
     }
 }

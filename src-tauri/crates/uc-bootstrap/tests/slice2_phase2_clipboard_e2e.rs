@@ -676,7 +676,7 @@ async fn sponsor_dispatch_lands_on_joiner_within_2s() {
     let expected_hash = snapshot.snapshot_hash().to_string();
     let outcome = sponsor
         .clipboard_sync
-        .dispatch_snapshot(snapshot, ClipboardChangeOrigin::LocalCapture, None)
+        .dispatch_snapshot(snapshot, ClipboardChangeOrigin::LocalCapture, None, None)
         .await
         .expect("sponsor dispatch ok");
     assert_eq!(
@@ -777,7 +777,12 @@ async fn repeat_dispatch_lands_twice_phase2_no_dedup() {
     for attempt in 0..2 {
         let outcome = sponsor
             .clipboard_sync
-            .dispatch_snapshot(build_snapshot(), ClipboardChangeOrigin::LocalCapture, None)
+            .dispatch_snapshot(
+                build_snapshot(),
+                ClipboardChangeOrigin::LocalCapture,
+                None,
+                None,
+            )
             .await
             .unwrap_or_else(|e| panic!("attempt {attempt} dispatch must succeed: {e:?}"));
         assert_eq!(

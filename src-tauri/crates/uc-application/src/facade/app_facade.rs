@@ -43,14 +43,14 @@ use crate::facade::space_setup::{
 };
 use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
-    BlobTransferError, BlobTransferFacade, ClipboardHistoryFacade, ClipboardRestoreFacade,
-    ClipboardSyncError, ClipboardSyncFacade, DeviceFacade, DispatchEntryOutcome, EncryptionFacade,
-    EncryptionFacadeError, EncryptionStateView, FetchBlobCommand, FetchBlobResult,
-    FetchBlobToPathCommand, FetchBlobToPathResult, InboundNotice, LifecycleFacade,
-    MemberRosterFacade, PublishBlobCommand, PublishBlobPathCommand, PublishBlobResult,
-    ResourceFacade, SearchFacade, SearchFacadeError, SearchPageView, SearchQueryInput,
-    SearchRebuildAcceptedView, SearchStatusView, SettingsFacade, SettingsFacadeError,
-    SpaceSetupFacade, StorageFacade,
+    BlobTransferError, BlobTransferFacade, ClipboardHistoryFacade, ClipboardOutboundFacade,
+    ClipboardRestoreFacade, ClipboardSyncError, ClipboardSyncFacade, DeviceFacade,
+    DispatchEntryOutcome, EncryptionFacade, EncryptionFacadeError, EncryptionStateView,
+    FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand, FetchBlobToPathResult,
+    InboundNotice, LifecycleFacade, MemberRosterFacade, PublishBlobCommand, PublishBlobPathCommand,
+    PublishBlobResult, ResendEntryCommand, ResendEntryError, ResendReport, ResourceFacade,
+    SearchFacade, SearchFacadeError, SearchPageView, SearchQueryInput, SearchRebuildAcceptedView,
+    SearchStatusView, SettingsFacade, SettingsFacadeError, SpaceSetupFacade, StorageFacade,
 };
 use crate::V3BlobRef;
 use uc_core::ids::DeviceId;
@@ -65,14 +65,15 @@ use uc_core::SystemClipboardSnapshot;
 ///
 /// # daemon-lifecycle 字段(启动期一次性装入)
 ///
-/// 下面 5 个字段绑定 daemon-lifecycle 资源(iroh node、clipboard_sync 链、
+/// 下面 6 个字段绑定 daemon-lifecycle 资源(iroh node、clipboard_sync 链、
 /// LAN PUT 入站等)。方案 C (2026-05-11) 取消 in-process daemon reload 后,
-/// daemon 在进程内只起一次, 这 5 个字段也只装入一次 —— GUI shell 启动期
+/// daemon 在进程内只起一次, 这 6 个字段也只装入一次 —— GUI shell 启动期
 /// 为空, daemon 启动时由 [`Self::install_daemon_lifecycle`] set 进
 /// [`OnceLock`], daemon (= 进程) 退出时由 Arc drop 自然回收。
 ///
 /// - `space_setup`、`member_roster` —— iroh 网络栈相关
 /// - `clipboard_sync`、`blob_transfer` —— iroh 上的同步业务
+/// - `clipboard_outbound` —— 用户主动 resend 入口 (ADR-005 §2.5)
 /// - `mobile_sync` —— 因绑 enhanced apply_inbound (带 blob_materializer +
 ///   host_event_emitter) 也是 daemon-lifecycle
 ///
@@ -88,6 +89,12 @@ pub struct AppFacade {
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
     pub clipboard_sync: OnceLock<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: OnceLock<Arc<BlobTransferFacade>>,
+    /// 用户主动 resend 的入口(对应 commit B3 的 [`ResendEntryUseCase`])。
+    /// daemon-lifecycle 字段:GUI shell 启动期为空, daemon 启动时由
+    /// [`Self::install_daemon_lifecycle`] 装入。GUI / Tauri command /
+    /// CLI `uniclip send --resend` 都从这一份读;未装入(daemon 未启)
+    /// 场景下调用方拿到 None 应给"功能未启用"反馈。
+    pub clipboard_outbound: OnceLock<Arc<ClipboardOutboundFacade>>,
     /// 文件传输 lifecycle 入口 —— 5 个动作 + seed_receiver_context +
     /// link_transfer_to_entry。`None` 表示当前装配场景未接入 lifecycle
     /// (典型:仅查询的 CLI / 单元测试)。进程级单例(在
@@ -118,7 +125,7 @@ pub struct AppFacade {
     pub mobile_sync: OnceLock<Arc<MobileSyncFacade>>,
 }
 
-/// 一次性把 daemon-lifecycle 资源装进 [`AppFacade`] 的 5 个 OnceLock 字段。
+/// 一次性把 daemon-lifecycle 资源装进 [`AppFacade`] 的 6 个 OnceLock 字段。
 ///
 /// 由 daemon-lifecycle 装配 (`uc-desktop::daemon::start_in_process`)
 /// 在 daemon 启动时调用 [`AppFacade::install_daemon_lifecycle`] 触发。
@@ -130,6 +137,7 @@ pub struct DaemonLifecycleFacades {
     pub member_roster: Arc<MemberRosterFacade>,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
+    pub clipboard_outbound: Arc<ClipboardOutboundFacade>,
     pub mobile_sync: Arc<MobileSyncFacade>,
 }
 
@@ -148,6 +156,7 @@ impl AppFacade {
             clipboard_history: parts.clipboard_history,
             clipboard_sync: once_lock_from(parts.clipboard_sync),
             blob_transfer: once_lock_from(parts.blob_transfer),
+            clipboard_outbound: once_lock_from(parts.clipboard_outbound),
             file_transfer: parts.file_transfer,
             clipboard_restore: parts.clipboard_restore,
             search: parts.search,
@@ -159,7 +168,7 @@ impl AppFacade {
         }
     }
 
-    /// 把 daemon 启动时构造好的 5 份 lifecycle facade 一次性装入 AppFacade。
+    /// 把 daemon 启动时构造好的 6 份 lifecycle facade 一次性装入 AppFacade。
     ///
     /// 方案 C 后 daemon 进程内只起一次, 这条 path 每进程调一次。同一份
     /// `AppFacade` 整个进程生命周期共享; GUI command 与 daemon worker 都
@@ -168,7 +177,7 @@ impl AppFacade {
     ///
     /// # Panics
     ///
-    /// 重复调用 (5 个 OnceLock 中任一已被装入) panic, 视为编程错误 ——
+    /// 重复调用 (6 个 OnceLock 中任一已被装入) panic, 视为编程错误 ——
     /// daemon 没有 reload 路径, 不该有第二次装入。
     pub fn install_daemon_lifecycle(&self, facades: DaemonLifecycleFacades) {
         self.space_setup
@@ -187,6 +196,10 @@ impl AppFacade {
             .set(facades.blob_transfer)
             .map_err(|_| ())
             .expect("blob_transfer facade already installed; daemon is process-singleton");
+        self.clipboard_outbound
+            .set(facades.clipboard_outbound)
+            .map_err(|_| ())
+            .expect("clipboard_outbound facade already installed; daemon is process-singleton");
         self.mobile_sync
             .set(facades.mobile_sync)
             .map_err(|_| ())
@@ -389,10 +402,18 @@ impl AppFacade {
     }
 
     /// 发送一个剪贴板快照到在线 peer。
+    ///
+    /// `target_filter`:
+    /// - `None` —— 全 fan-out（向所有 trusted online peer）;
+    /// - `Some(list)` —— 仅向指定 device 集合 fan-out;空列表合法,表示零目标。
+    ///
+    /// 不绕过 `is_send_allowed` / member gating / presence 这三层 use case
+    /// 内部检查,filter 在它们之后生效。
     pub async fn dispatch_clipboard_snapshot(
         &self,
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
+        target_filter: Option<Vec<DeviceId>>,
     ) -> Result<crate::facade::DispatchEntryOutcome, ClipboardSyncError> {
         self.clipboard_sync
             .get()
@@ -400,8 +421,9 @@ impl AppFacade {
             .ok_or_else(|| {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
             })?
-            // CLI 路径不与某条 entry 绑定,跳过 delivery 落盘。
-            .dispatch_snapshot(snapshot, origin, None)
+            // CLI / 直接调用方不与某条 entry 绑定,跳过 delivery 落盘;
+            // target_filter 透传到下层 dispatch_entry。
+            .dispatch_snapshot(snapshot, origin, None, target_filter)
             .await
     }
 
@@ -430,6 +452,23 @@ impl AppFacade {
             )
         })?;
         facade.get_entry_delivery_view(entry_id).await
+    }
+
+    /// 用户主动 resend 一条本机来源的 entry。GUI / Tauri command / CLI
+    /// `uniclip send --resend` 都从这里进。详细语义见
+    /// [`ClipboardOutboundFacade::resend_entry`]。
+    ///
+    /// daemon 未启动场景下 `clipboard_outbound` OnceLock 为空, 返回
+    /// `ResendEntryError::Dispatch("clipboard outbound facade unavailable")`,
+    /// 调用方应给"daemon 未就绪"反馈。
+    pub async fn resend_entry(
+        &self,
+        cmd: ResendEntryCommand,
+    ) -> Result<ResendReport, ResendEntryError> {
+        let facade = self.clipboard_outbound.get().cloned().ok_or_else(|| {
+            ResendEntryError::Dispatch("clipboard outbound facade unavailable".to_string())
+        })?;
+        facade.resend_entry(cmd).await
     }
 
     /// 发布 blob。
@@ -508,7 +547,7 @@ impl AppFacade {
             .ok_or_else(|| {
                 ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
             })?
-            .dispatch_snapshot_with_blob_refs(snapshot, blob_refs, origin, None)
+            .dispatch_snapshot_with_blob_refs(snapshot, blob_refs, origin, None, None)
             .await
     }
 
@@ -688,6 +727,7 @@ pub struct AppFacadeParts {
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    pub clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
     pub file_transfer: Option<Arc<FileTransferFacade>>,
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
     pub search: Arc<SearchFacade>,

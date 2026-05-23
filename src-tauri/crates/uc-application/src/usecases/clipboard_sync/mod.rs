@@ -19,6 +19,8 @@ pub(crate) mod ingest_inbound;
 /// Individual private helpers inside stay scoped via their own
 /// `pub(crate)` / no-modifier visibility.
 pub mod payload_codec;
+pub(crate) mod resend_entry;
+pub(crate) mod snapshot_from_entry;
 
 pub(crate) use dispatch_entry::{
     DispatchClipboardEntryInput, DispatchClipboardEntryUseCase, DispatchOutcome, DispatchPerTarget,

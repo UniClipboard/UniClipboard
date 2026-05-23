@@ -23,6 +23,7 @@ import {
   History,
   Laptop,
   LoaderCircle,
+  RefreshCw,
   X,
 } from 'lucide-react'
 import React, { useMemo } from 'react'
@@ -36,6 +37,7 @@ import type {
 } from '@/api/tauri-command/clipboard_delivery'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useResendAction, type UseResendActionResult } from '@/hooks/useResendAction'
 import { cn } from '@/lib/utils'
 
 interface EntryDeliveryBadgeProps {
@@ -91,20 +93,33 @@ function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | n
 
 const EntryDeliveryBadge: React.FC<EntryDeliveryBadgeProps> = ({ delivery }) => {
   const { t } = useTranslation()
+  // Resend 触发器与 toast 副作用; remote/historical 视图层据 `resendable`
+  // 隐藏 UI,后端再做最终守护(返回 ENTRY_NOT_RESENDABLE.remoteOrigin)。
+  const resendAction = useResendAction()
 
   if (!delivery) return null
 
-  const { source, deliveries } = delivery
+  const { source, deliveries, entryId } = delivery
   // historical 来源 + 空列表 是 legacy entry 的典型形态,展示来源 icon 即可
   // (legacy 无追踪意义)。其它来源即便列表为空也保留来源信息,符合"一眼
   // 看出这条从哪里来"的设计目标。
   const summary = source.tag === 'historical' ? null : summarize(deliveries)
+  const resendable = source.tag === 'local'
 
   return (
     <TooltipProvider delayDuration={150}>
       <div className="flex shrink-0 items-center gap-3">
         <SourceBadge source={source} />
-        {summary && <SyncBadge summary={summary} deliveries={deliveries} t={t} />}
+        {summary && (
+          <SyncBadge
+            summary={summary}
+            deliveries={deliveries}
+            t={t}
+            entryId={entryId}
+            resendable={resendable}
+            resendAction={resendAction}
+          />
+        )}
       </div>
     </TooltipProvider>
   )
@@ -167,9 +182,23 @@ interface SyncBadgeProps {
   summary: SyncSummary
   deliveries: readonly EntryDeliveryTargetView[]
   t: (key: string, opts?: Record<string, unknown>) => string
+  entryId: string
+  /**
+   * 仅本机来源的 entry 才能从此设备 resend (`source.tag === 'local'`);
+   * remote / historical 不渲染任何 resend UI,避免误导用户。
+   */
+  resendable: boolean
+  resendAction: UseResendActionResult
 }
 
-const SyncBadge: React.FC<SyncBadgeProps> = ({ summary, deliveries, t }) => {
+const SyncBadge: React.FC<SyncBadgeProps> = ({
+  summary,
+  deliveries,
+  t,
+  entryId,
+  resendable,
+  resendAction,
+}) => {
   const { Icon, label, tone, spin } = useMemo(() => {
     switch (summary) {
       case 'synced':
@@ -238,15 +267,31 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({ summary, deliveries, t }) => {
         align="end"
         side="bottom"
         sideOffset={6}
-        className="w-64 p-2"
+        className="w-72 p-2"
         data-delivery-popover=""
       >
-        <div className="mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
-          {t('delivery.popover.title')}
+        <div className="mb-1 flex items-center justify-between gap-2 px-1">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
+            {t('delivery.popover.title')}
+          </span>
+          {resendable && (
+            <ResendEntryButton
+              deliveries={deliveries}
+              entryId={entryId}
+              action={resendAction}
+              t={t}
+            />
+          )}
         </div>
         <ul className="flex flex-col">
           {deliveries.map(target => (
-            <DeliveryRow key={target.targetDeviceId} target={target} />
+            <DeliveryRow
+              key={target.targetDeviceId}
+              target={target}
+              resendable={resendable}
+              entryId={entryId}
+              action={resendAction}
+            />
           ))}
         </ul>
       </HoverCardContent>
@@ -256,11 +301,18 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({ summary, deliveries, t }) => {
 
 interface DeliveryRowProps {
   target: EntryDeliveryTargetView
+  resendable: boolean
+  entryId: string
+  action: UseResendActionResult
 }
 
-const DeliveryRow: React.FC<DeliveryRowProps> = ({ target }) => {
+const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, entryId, action }) => {
   const { t } = useTranslation()
   const tone = renderStatusTone(target.status)
+  // 行级 resend 只在该 peer 处于 failed / pending 时出现 ——
+  // delivered / duplicate 重试无意义,既不画按钮也不响应 action。
+  const canResendThis =
+    resendable && (target.status.tag === 'failed' || target.status.tag === 'pending')
 
   return (
     <li
@@ -279,7 +331,102 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target }) => {
         {deviceLabel(target.targetDeviceName, target.targetDeviceId)}
       </span>
       <span className={cn('shrink-0', tone.label)}>{renderStatusLabel(target.status, t)}</span>
+      {canResendThis && (
+        <ResendPeerButton target={target} entryId={entryId} action={action} t={t} />
+      )}
     </li>
+  )
+}
+
+// ============================================================================
+// Resend 按钮 —— 触发副作用走 `useResendAction` 共享 hook;此处只负责
+// "什么时候 enable" 与 UI 渲染。
+// ============================================================================
+
+interface ResendEntryButtonProps {
+  deliveries: readonly EntryDeliveryTargetView[]
+  entryId: string
+  action: UseResendActionResult
+  t: (key: string, opts?: Record<string, unknown>) => string
+}
+
+/** entry-level "Resend" —— 仅当有至少一条非 Delivered / 非 Duplicate 时启用。 */
+const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({
+  deliveries,
+  entryId,
+  action,
+  t,
+}) => {
+  // 所有可信 peer 都已成功 (Delivered/Duplicate) 时 disable,避免误触
+  // 触发 `NoEligibleTargets`。
+  const eligible = deliveries.some(
+    d => d.status.tag !== 'delivered' && d.status.tag !== 'duplicate'
+  )
+  const entryInFlight = action.isEntryInFlight(entryId)
+  const disabled = !eligible || entryInFlight
+  const label = entryInFlight
+    ? t('delivery.resend.button.pending')
+    : t('delivery.resend.button.entry')
+
+  return (
+    <button
+      type="button"
+      aria-label={
+        eligible ? t('delivery.resend.button.entryAria') : t('delivery.resend.button.entryDisabled')
+      }
+      title={eligible ? undefined : t('delivery.resend.button.entryDisabled')}
+      disabled={disabled}
+      onClick={() => void action.resendAll(entryId)}
+      data-resend-entry=""
+      className={cn(
+        'inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+        disabled
+          ? 'cursor-default text-muted-foreground/40'
+          : 'text-sky-600 hover:bg-sky-500/10 dark:text-sky-400'
+      )}
+    >
+      {entryInFlight ? (
+        <LoaderCircle className="h-3 w-3 animate-spin" />
+      ) : (
+        <RefreshCw className="h-3 w-3" />
+      )}
+      <span>{label}</span>
+    </button>
+  )
+}
+
+interface ResendPeerButtonProps {
+  target: EntryDeliveryTargetView
+  entryId: string
+  action: UseResendActionResult
+  t: (key: string, opts?: Record<string, unknown>) => string
+}
+
+const ResendPeerButton: React.FC<ResendPeerButtonProps> = ({ target, entryId, action, t }) => {
+  const inFlight = action.isPeerInFlight(entryId, target.targetDeviceId)
+  const disabled = inFlight || action.isEntryInFlight(entryId)
+  return (
+    <button
+      type="button"
+      aria-label={t('delivery.resend.button.peerAria', {
+        device: deviceLabel(target.targetDeviceName, target.targetDeviceId),
+      })}
+      disabled={disabled}
+      onClick={() => void action.resendToPeer(entryId, target.targetDeviceId)}
+      data-resend-peer={target.targetDeviceId}
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded p-0.5 transition-colors',
+        disabled
+          ? 'cursor-default text-muted-foreground/30'
+          : 'text-sky-600 hover:bg-sky-500/10 dark:text-sky-400'
+      )}
+    >
+      {inFlight ? (
+        <LoaderCircle className="h-3 w-3 animate-spin" />
+      ) : (
+        <RefreshCw className="h-3 w-3" />
+      )}
+    </button>
   )
 }
 

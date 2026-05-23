@@ -18,14 +18,14 @@ use uc_application::facade::settings::{RelayDiagnosticPort, RelayProbeError, Rel
 use uc_application::facade::space_setup::SpaceSetupFacade;
 use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
-    ClipboardHistoryFacadeDeps, ClipboardOutboundFacade, ClipboardRestoreFacade,
-    ClipboardRestoreFacadeDeps, ClipboardSyncFacade, DeviceFacade, EmitError, EncryptionFacade,
-    EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventBus, HostEventEmitterPort,
-    InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps,
-    LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
-    MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps, SearchCoordinator,
-    SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade, StorageFacade,
-    StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    ClipboardHistoryFacadeDeps, ClipboardOutboundDeps, ClipboardOutboundFacade,
+    ClipboardRestoreFacade, ClipboardRestoreFacadeDeps, ClipboardSyncFacade, DeviceFacade,
+    EmitError, EncryptionFacade, EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventBus,
+    HostEventEmitterPort, InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade,
+    LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade,
+    MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps,
+    SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade,
+    StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -300,6 +300,10 @@ pub struct AppFacadeAssemblyOptions {
     pub member_roster: Option<Arc<MemberRosterFacade>>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
+    /// daemon 启动期构造好的 outbound facade(commit D)。`AppFacade.resend_entry`
+    /// 通过它落地 resend。GUI shell / CLI fallback 留 `None`,
+    /// daemon 启动后 `install_daemon_lifecycle` 装入。
+    pub clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
     /// 文件传输 lifecycle 入口(5 个动作 + seed + link)。daemon 入口
     /// 必传;CLI / 单元测试可留 `None`。详见
     /// [`AppFacade::file_transfer`](uc_application::facade::AppFacade)。
@@ -432,6 +436,9 @@ pub fn build_app_facade_from_deps(
         })),
         clipboard_sync: options.clipboard_sync,
         blob_transfer: options.blob_transfer,
+        // GUI shell 启动期为空; daemon 起来后由
+        // `AppFacade::install_daemon_lifecycle` 装入。
+        clipboard_outbound: options.clipboard_outbound,
         file_transfer: options.file_transfer,
         clipboard_restore,
         search: Arc::new(SearchFacade::new(SearchFacadeDeps {
@@ -605,6 +612,27 @@ pub async fn build_cli_app_runtime(
     // PUT 路径真被调到才报 "not configured" Err —— CLI 场景下不会发生。
     let mobile_sync_apply_inbound = build_fallback_apply_inbound(deps);
 
+    // CLI direct mode 也需要 `clipboard_outbound` —— `uniclip send` 的 normal
+    // 路径走 `AppFacade::dispatch_clipboard_snapshot`(只用 dispatcher), 而
+    // `--resend` 路径走 `AppFacade::resend_entry`(需要完整 12-port 装配)。
+    // daemon 路径里同一 facade 通过 `install_daemon_lifecycle` 装入, 但 CLI
+    // 不经 daemon, 所以这里 inline 一份相同形态的装配, 让 CLI 自身就能完成
+    // resend 链路 —— 与 `commit G` (ADR-005 Stage 1a) 配套。
+    let clipboard_outbound = Arc::new(ClipboardOutboundFacade::new(ClipboardOutboundDeps {
+        settings: deps.settings.clone(),
+        clipboard_sync: assembly.clipboard_sync.clone(),
+        blob_transfer: assembly.blob.clone(),
+        entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
+        event_repo: wired.clipboard_event_reader_repo.clone(),
+        selection_repo: deps.clipboard.selection_repo.clone(),
+        representation_repo: deps.clipboard.representation_repo.clone(),
+        payload_resolver: deps.clipboard.payload_resolver.clone(),
+        blob_store: deps.storage.blob_store.clone(),
+        entry_delivery_repo: wired.entry_delivery_repo.clone(),
+        trusted_peer_repo: wired.trusted_peer_repo.clone(),
+        device_identity: deps.device.device_identity.clone(),
+    }));
+
     let app_facade = build_app_facade_from_deps(
         deps,
         &storage_paths,
@@ -615,6 +643,7 @@ pub async fn build_cli_app_runtime(
             clipboard_sync: Some(assembly.clipboard_sync.clone()),
             blob_transfer: Some(assembly.blob.clone()),
             blob_transfer_port: Some(Arc::clone(&assembly.blob_transfer)),
+            clipboard_outbound: Some(clipboard_outbound),
             file_transfer: Some(wired.file_transfer_facade.clone()),
             search_coordinator: Some(search_coordinator),
             mobile_sync_apply_inbound: Some(mobile_sync_apply_inbound),

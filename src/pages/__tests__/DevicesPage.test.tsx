@@ -10,8 +10,9 @@
  * 组件的单元测试覆盖，这里不重复。
  */
 
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { refreshPresence } from '@/api/daemon'
 import DevicesPage from '@/pages/DevicesPage'
 
 const dispatchMock = vi.fn()
@@ -84,6 +85,11 @@ vi.mock('@/hooks/useSetting', () => ({
 }))
 
 describe('DevicesPage', () => {
+  afterEach(() => {
+    vi.mocked(refreshPresence).mockClear()
+    vi.useRealTimers()
+  })
+
   it('dispatches fetchLocalDeviceInfo and fetchSpaceMembers on mount', () => {
     dispatchMock.mockClear()
     render(<DevicesPage />)
@@ -97,5 +103,43 @@ describe('DevicesPage', () => {
 
     // Two tabs: 已配对设备 / Paired devices  +  手机同步 / Mobile Sync
     expect(screen.getAllByRole('tab')).toHaveLength(2)
+  })
+
+  it('calls refreshPresence exactly once on mount and does not poll on a timer', () => {
+    vi.useFakeTimers()
+    render(<DevicesPage />)
+
+    expect(refreshPresence).toHaveBeenCalledTimes(1)
+
+    // Advance well past the old 15s polling cadence — no further calls.
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(refreshPresence).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls refreshPresence again when the document becomes visible', () => {
+    render(<DevicesPage />)
+    expect(refreshPresence).toHaveBeenCalledTimes(1)
+
+    // Switch to hidden — no probe expected.
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'hidden',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(refreshPresence).toHaveBeenCalledTimes(1)
+
+    // Switch back to visible — one extra probe.
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(refreshPresence).toHaveBeenCalledTimes(2)
   })
 })

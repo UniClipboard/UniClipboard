@@ -20,28 +20,42 @@
 //! 25s — for a daemon paired with five idle peers that's nontrivial
 //! cellular / battery cost. The scheduler maintains a per-peer
 //! [`BackoffState`] and only dials peers whose `next_dial_at` has elapsed.
-//! Ladder: 25s → 60s → 5min → 15min cap. Reset to 25s happens in two
-//! cases:
 //!
-//! 1. Successful dial (Online) — the peer is healthy.
-//! 2. **Inbound `Online` event** routed through `subscribe_peer_presence_events`.
-//!    `IrohPresenceHandler` flips a peer to Online when the *peer* dials
-//!    *us*, so a recovered offline peer's own keepalive announces them
-//!    well before our backoff would have us redial. Without this reset
-//!    the worst case for "peer comes back" is the cap (15min); with it,
-//!    the peer's own 25s keepalive bounds the window.
+//! Ladder (Active): 25s → 60s → 5min. After **3 consecutive failures** the
+//! peer transitions to `Sleeping`, which means the 25s base ticker stops
+//! redialing it entirely. A long-offline peer no longer eats periodic UDP
+//! probes — recovery is signalled via one of three paths:
+//!
+//! 1. **Inbound `Online` event** (the common case). When the peer comes
+//!    back its own keepalive dials our `PRESENCE_ALPN`, which the
+//!    `IrohPresenceHandler` translates into an Online presence event. The
+//!    worker resets the backoff to `Active(0)` and spawns a fire-and-forget
+//!    outbound `ensure_reachable_one` so the outbound path is warmed
+//!    within ~1s of the peer reappearing instead of waiting for the next
+//!    ticker. The spawned dial's result is intentionally not joined back
+//!    into the backoff map — if it fails the next ticker pass will record
+//!    `Active(1)` like any other failure.
+//! 2. **Successful regular dial** — peer is healthy, clear failure count.
+//! 3. **30min fallback fan-out ticker** — catch-all for the "both peers
+//!    were dead at the same time" case where neither side's keepalive ever
+//!    fires. Every 30 minutes the worker dials every `Sleeping` peer once;
+//!    success wakes them to `Active(0)`, failure keeps them in `Sleeping`
+//!    until the next 30min cycle.
 //!
 //! ## Design (worker mechanics)
 //!
-//! * Drives off a 25s base ticker (`MissedTickBehavior::Delay`) and an
-//!   inbound `AppPresenceSubscription`. Both arms use `tokio::select!`
-//!   with `biased` so cancellation and presence resets land before a
-//!   ticker fires.
-//! * Each tick: `list_paired_peer_device_ids` from the facade, prune
+//! * Drives off a 25s base ticker (`MissedTickBehavior::Delay`), a 30min
+//!   fallback ticker for `Sleeping` peers, and an inbound
+//!   `AppPresenceSubscription`. All arms use `tokio::select!` with
+//!   `biased` so cancellation and presence resets land before a ticker
+//!   fires.
+//! * Regular tick: `list_paired_peer_device_ids` from the facade, prune
 //!   removed peers from the backoff map, default-init new peers as ready,
 //!   then dispatch `JoinSet` of `ensure_reachable_one` calls only for
-//!   peers whose backoff has elapsed. Result of each dial updates that
-//!   peer's `BackoffState`.
+//!   `Active` peers whose `next_dial_at` has elapsed.
+//! * Fallback tick: same list + prune, then dispatch dials only for
+//!   `Sleeping` peers (typically none — the ticker no-ops in steady state).
+//! * Result of each dial updates that peer's `BackoffState`.
 //! * `ensure_reachable_one` (vs `verify_reachable`): when our outbound
 //!   connection map already holds a live entry for a peer, the fast-path
 //!   returns `Online` without a fresh dial — exactly what the scheduler
@@ -70,55 +84,112 @@ use crate::daemon::service::{DaemonService, ServiceHealth};
 /// below iroh's ~60s QUIC idle timeout so the path cache stays warm.
 const BASE_INTERVAL: Duration = Duration::from_secs(25);
 
-/// Backoff ladder indexed by `consecutive_failures`. Index 0 is the "no
-/// failures" base cadence. Failures escalate: 1×60s → 2×5min → 3+×15min.
-/// 15min cap balances "don't burn batteries on a long-offline peer" vs
-/// "still re-probe occasionally in case both inbound presence and our
-/// connection cache miss the recovery".
-const BACKOFF_LADDER: [Duration; 4] = [
+/// Backoff ladder for the `Active` variant, indexed by
+/// `consecutive_failures`. Index 0 is the "no failures" base cadence;
+/// indexes 1 and 2 are escalating failure windows. A third failure
+/// (failures reaches `SLEEP_AFTER_FAILURES`) transitions the peer to
+/// `Sleeping` rather than landing back in `Active` — the old 15min cap
+/// is gone because in practice it just burned UDP forever on a dead
+/// peer; explicit sleep is cheaper and more honest.
+const BACKOFF_LADDER: [Duration; 3] = [
     BASE_INTERVAL,
     Duration::from_secs(60),
     Duration::from_secs(5 * 60),
-    Duration::from_secs(15 * 60),
 ];
 
+/// Number of consecutive failures that flips an `Active` peer to
+/// `Sleeping`. With the ladder above this is hit after ~6min of
+/// continuous failure (25s + 60s + 5min).
+const SLEEP_AFTER_FAILURES: u32 = 3;
+
+/// How often the worker fans out a one-shot dial to every `Sleeping`
+/// peer. This is the only path that re-probes long-dead peers without
+/// an inbound signal, so the cadence is a tradeoff: too short and
+/// `Sleeping` loses its battery-saving point; too long and a "both
+/// sides were offline simultaneously" recovery stays invisible for
+/// hours. 30min is the lowest value where the per-tick UDP cost is
+/// effectively free.
+const SLEEP_FALLBACK_INTERVAL: Duration = Duration::from_secs(30 * 60);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct BackoffState {
-    consecutive_failures: u32,
-    next_dial_at: Instant,
+enum BackoffState {
+    /// Peer is in the regular keepalive rotation. `consecutive_failures`
+    /// indexes the ladder for `next_dial_at`. A failure increment that
+    /// reaches `SLEEP_AFTER_FAILURES` transitions to `Sleeping`.
+    Active {
+        consecutive_failures: u32,
+        next_dial_at: Instant,
+    },
+    /// Peer is parked. The 25s base ticker skips it entirely; only the
+    /// 30min fallback ticker and inbound presence events can wake it.
+    Sleeping,
 }
 
 impl BackoffState {
     /// New peer — eligible immediately so the very next tick dials it.
     fn ready_now(now: Instant) -> Self {
-        Self {
+        BackoffState::Active {
             consecutive_failures: 0,
             next_dial_at: now,
         }
     }
 
+    /// True iff the 25s base ticker should dial this peer this pass.
+    /// `Sleeping` peers always return false — they go through the
+    /// 30min fallback path instead.
     fn ready(&self, now: Instant) -> bool {
-        now >= self.next_dial_at
+        match self {
+            BackoffState::Active { next_dial_at, .. } => now >= *next_dial_at,
+            BackoffState::Sleeping => false,
+        }
+    }
+
+    fn is_sleeping(&self) -> bool {
+        matches!(self, BackoffState::Sleeping)
     }
 
     fn on_success(&mut self, now: Instant) {
-        self.consecutive_failures = 0;
-        self.next_dial_at = now + BACKOFF_LADDER[0];
+        *self = BackoffState::Active {
+            consecutive_failures: 0,
+            next_dial_at: now + BACKOFF_LADDER[0],
+        };
     }
 
+    /// Failure handling. `Active` walks the ladder until
+    /// `consecutive_failures` reaches `SLEEP_AFTER_FAILURES`, then
+    /// transitions to `Sleeping`. `Sleeping` stays `Sleeping` — a
+    /// fallback fan-out failure just means "still offline, check again
+    /// in another 30min".
     fn on_failure(&mut self, now: Instant) {
-        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
-        let idx = (self.consecutive_failures as usize).min(BACKOFF_LADDER.len() - 1);
-        self.next_dial_at = now + BACKOFF_LADDER[idx];
+        match self {
+            BackoffState::Active {
+                consecutive_failures,
+                ..
+            } => {
+                let new_fails = consecutive_failures.saturating_add(1);
+                if new_fails >= SLEEP_AFTER_FAILURES {
+                    *self = BackoffState::Sleeping;
+                } else {
+                    *self = BackoffState::Active {
+                        consecutive_failures: new_fails,
+                        next_dial_at: now + BACKOFF_LADDER[new_fails as usize],
+                    };
+                }
+            }
+            BackoffState::Sleeping => {}
+        }
     }
 
     /// Reset triggered by an inbound `Online` event — equivalent to
-    /// `on_success` semantically (peer is reachable, clear failure count,
-    /// schedule next dial at base cadence) but called from a different
-    /// site so the log lines stay distinguishable.
+    /// `on_success` semantically (peer is reachable, clear failure
+    /// count, schedule next dial at base cadence) but valid from any
+    /// state including `Sleeping`, which is the whole point: an
+    /// inbound presence event from a parked peer must wake it.
     fn reset(&mut self, now: Instant) {
-        self.consecutive_failures = 0;
-        self.next_dial_at = now + BACKOFF_LADDER[0];
+        *self = BackoffState::Active {
+            consecutive_failures: 0,
+            next_dial_at: now + BACKOFF_LADDER[0],
+        };
     }
 }
 
@@ -131,22 +202,16 @@ impl PeerKeepAliveWorker {
         Self { app_facade }
     }
 
-    /// Run one scheduling pass: discover peers, prune missing, dial only
-    /// peers whose backoff has elapsed, update each peer's state from its
-    /// dial result.
+    /// Regular 25s tick: discover peers, prune missing, dial only `Active`
+    /// peers whose `next_dial_at` has elapsed. `Sleeping` peers are
+    /// always skipped here — they recover via inbound presence events or
+    /// the 30min fallback ticker.
     async fn dial_due_peers(&self, backoff: &mut HashMap<String, BackoffState>) {
-        let peers = match self.app_facade.list_paired_peer_device_ids().await {
-            Ok(ps) => ps,
-            Err(err) => {
-                warn!(error = %err, "list_paired_peer_device_ids failed; skipping keepalive tick");
-                return;
-            }
+        let Some(peers) = self.refresh_peer_list(backoff).await else {
+            return;
         };
 
         let now = Instant::now();
-        let active: HashSet<String> = peers.iter().map(|d| d.as_str().to_string()).collect();
-        backoff.retain(|k, _| active.contains(k));
-
         let mut due: Vec<DeviceId> = Vec::new();
         for device in peers {
             let key = device.as_str().to_string();
@@ -162,13 +227,75 @@ impl PeerKeepAliveWorker {
         if due.is_empty() {
             debug!(
                 tracked = backoff.len(),
-                "keepalive tick: no peers due (all within backoff window)"
+                "keepalive tick: no peers due (all within backoff window or Sleeping)"
             );
             return;
         }
 
+        self.dispatch_dials_and_update(due, backoff).await;
+    }
+
+    /// 30min fallback fan-out: one-shot dial for every `Sleeping` peer.
+    /// Steady-state no-op when no peers are sleeping. The only path that
+    /// re-probes long-dead peers when neither side's presence keepalive
+    /// can fire (e.g. both daemons crashed simultaneously).
+    async fn fan_out_sleeping_peers(&self, backoff: &mut HashMap<String, BackoffState>) {
+        let Some(peers) = self.refresh_peer_list(backoff).await else {
+            return;
+        };
+
+        let sleeping: Vec<DeviceId> = peers
+            .into_iter()
+            .filter(|d| {
+                backoff
+                    .get(d.as_str())
+                    .map(BackoffState::is_sleeping)
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if sleeping.is_empty() {
+            debug!("fallback fan-out: no Sleeping peers");
+            return;
+        }
+
+        info!(
+            count = sleeping.len(),
+            "fallback fan-out: dialing Sleeping peers"
+        );
+        self.dispatch_dials_and_update(sleeping, backoff).await;
+    }
+
+    /// List paired peers from the facade and prune the backoff map of
+    /// entries whose peer is no longer paired. Returns `None` when the
+    /// facade lookup fails (caller should skip the tick).
+    async fn refresh_peer_list(
+        &self,
+        backoff: &mut HashMap<String, BackoffState>,
+    ) -> Option<Vec<DeviceId>> {
+        let peers = match self.app_facade.list_paired_peer_device_ids().await {
+            Ok(ps) => ps,
+            Err(err) => {
+                warn!(error = %err, "list_paired_peer_device_ids failed; skipping keepalive tick");
+                return None;
+            }
+        };
+        let active: HashSet<String> = peers.iter().map(|d| d.as_str().to_string()).collect();
+        backoff.retain(|k, _| active.contains(k));
+        Some(peers)
+    }
+
+    /// Shared dial dispatch + result handler used by both the regular
+    /// ticker and the fallback fan-out. Updates each peer's
+    /// `BackoffState` from the dial outcome and emits state-transition
+    /// log lines.
+    async fn dispatch_dials_and_update(
+        &self,
+        devices: Vec<DeviceId>,
+        backoff: &mut HashMap<String, BackoffState>,
+    ) {
         let mut set: JoinSet<(DeviceId, Result<ReachabilityState, PresenceError>)> = JoinSet::new();
-        for device in due {
+        for device in devices {
             let app_facade = Arc::clone(&self.app_facade);
             set.spawn(async move {
                 let result = app_facade.ensure_reachable_one(&device).await;
@@ -182,31 +309,28 @@ impl PeerKeepAliveWorker {
                 Ok((device, Ok(ReachabilityState::Online))) => {
                     let key = device.as_str().to_string();
                     if let Some(entry) = backoff.get_mut(&key) {
+                        let was_sleeping = entry.is_sleeping();
                         entry.on_success(observed_at);
-                        debug!(device = %key, "keepalive dial → Online; backoff at base");
+                        if was_sleeping {
+                            info!(
+                                device = %key,
+                                "fallback dial → Online; peer waking from Sleeping",
+                            );
+                        } else {
+                            debug!(device = %key, "keepalive dial → Online; backoff at base");
+                        }
                     }
                 }
                 Ok((device, Ok(_))) => {
                     let key = device.as_str().to_string();
                     if let Some(entry) = backoff.get_mut(&key) {
-                        entry.on_failure(observed_at);
-                        debug!(
-                            device = %key,
-                            fails = entry.consecutive_failures,
-                            "keepalive dial → Offline/Unknown; backoff escalated"
-                        );
+                        Self::log_dial_failure(entry, &key, observed_at, None);
                     }
                 }
                 Ok((device, Err(err))) => {
                     let key = device.as_str().to_string();
                     if let Some(entry) = backoff.get_mut(&key) {
-                        entry.on_failure(observed_at);
-                        debug!(
-                            device = %key,
-                            error = %err,
-                            fails = entry.consecutive_failures,
-                            "keepalive dial errored; backoff escalated"
-                        );
+                        Self::log_dial_failure(entry, &key, observed_at, Some(&err));
                     }
                 }
                 Err(err) => {
@@ -216,12 +340,75 @@ impl PeerKeepAliveWorker {
         }
     }
 
+    /// Apply `on_failure` to the entry and emit a log line that
+    /// distinguishes the four observable transitions: ladder step,
+    /// Active→Sleeping, fallback failure (stays Sleeping), and the
+    /// impossible Sleeping→Active-on-failure path (defensive).
+    fn log_dial_failure(
+        entry: &mut BackoffState,
+        key: &str,
+        observed_at: Instant,
+        err: Option<&PresenceError>,
+    ) {
+        let was_sleeping = entry.is_sleeping();
+        entry.on_failure(observed_at);
+        match (was_sleeping, &*entry) {
+            (
+                false,
+                BackoffState::Active {
+                    consecutive_failures,
+                    ..
+                },
+            ) => match err {
+                Some(e) => debug!(
+                    device = %key,
+                    error = %e,
+                    fails = *consecutive_failures,
+                    "keepalive dial errored; backoff escalated",
+                ),
+                None => debug!(
+                    device = %key,
+                    fails = *consecutive_failures,
+                    "keepalive dial → Offline/Unknown; backoff escalated",
+                ),
+            },
+            (false, BackoffState::Sleeping) => info!(
+                device = %key,
+                fails = SLEEP_AFTER_FAILURES,
+                "keepalive dial failed; peer transitioning to Sleeping",
+            ),
+            (true, BackoffState::Sleeping) => match err {
+                Some(e) => debug!(
+                    device = %key,
+                    error = %e,
+                    "fallback dial errored; peer stays in Sleeping",
+                ),
+                None => debug!(
+                    device = %key,
+                    "fallback dial → Offline/Unknown; peer stays in Sleeping",
+                ),
+            },
+            (true, BackoffState::Active { .. }) => warn!(
+                device = %key,
+                "unexpected: Sleeping peer transitioned to Active on failure",
+            ),
+        }
+    }
+
     /// Apply an inbound presence event to the backoff map. Online events
-    /// reset the relevant peer to base cadence; other states are ignored
-    /// (Offline is owned by the watchdog, Unknown is uninformative).
-    fn apply_presence_event(backoff: &mut HashMap<String, BackoffState>, event: AppPresenceEvent) {
+    /// reset the relevant peer to base cadence and return the `DeviceId`
+    /// so the caller can spawn an immediate outbound dial; other states
+    /// are ignored (Offline is owned by the watchdog, Unknown is
+    /// uninformative) and return `None`.
+    ///
+    /// Split out from spawning so the pure backoff logic stays testable
+    /// without standing up an `AppFacade`.
+    fn apply_presence_event(
+        backoff: &mut HashMap<String, BackoffState>,
+        event: AppPresenceEvent,
+    ) -> Option<DeviceId> {
         if event.state != "online" {
-            return;
+            return None;
         }
         let now = Instant::now();
         let entry = backoff
@@ -232,6 +419,7 @@ impl PeerKeepAliveWorker {
             device = %event.device_id,
             "inbound presence Online; backoff reset to base cadence",
         );
+        Some(DeviceId::new(&event.device_id))
     }
 }
 
@@ -278,6 +466,13 @@ impl DaemonService for PeerKeepAliveWorker {
         // 25s sleep is the right cadence boundary.
         ticker.tick().await;
 
+        // Fallback fan-out for Sleeping peers. Same first-tick burn
+        // pattern: no point firing instantly at startup when there are
+        // no Sleeping peers yet.
+        let mut fallback_ticker = tokio::time::interval(SLEEP_FALLBACK_INTERVAL);
+        fallback_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        fallback_ticker.tick().await;
+
         let mut presence_rx: Option<AppPresenceSubscription> =
             match self.app_facade.subscribe_peer_presence_events() {
                 Ok(rx) => Some(rx),
@@ -294,7 +489,8 @@ impl DaemonService for PeerKeepAliveWorker {
 
         info!(
             base_interval_secs = BASE_INTERVAL.as_secs(),
-            backoff_cap_secs = BACKOFF_LADDER[BACKOFF_LADDER.len() - 1].as_secs(),
+            sleep_after_failures = SLEEP_AFTER_FAILURES,
+            fallback_interval_secs = SLEEP_FALLBACK_INTERVAL.as_secs(),
             "peer keepalive started",
         );
 
@@ -304,7 +500,24 @@ impl DaemonService for PeerKeepAliveWorker {
                 _ = cancel.cancelled() => break,
                 event = next_presence_event(&mut presence_rx) => {
                     if let Some(event) = event {
-                        Self::apply_presence_event(&mut backoff, event);
+                        if let Some(device) = Self::apply_presence_event(&mut backoff, event) {
+                            // Fire-and-forget: warm the outbound PRESENCE
+                            // path right now instead of waiting up to 25s
+                            // for the next ticker. Fast-path returns
+                            // instantly if a live connection already
+                            // exists, so duplicate spawns from a burst of
+                            // online events are effectively free. The
+                            // result is intentionally dropped — failures
+                            // are observed on the next tick's dial.
+                            let app_facade = Arc::clone(&self.app_facade);
+                            tokio::spawn(async move {
+                                debug!(
+                                    device = %device.as_str(),
+                                    "inbound presence Online; spawning outbound dial",
+                                );
+                                let _ = app_facade.ensure_reachable_one(&device).await;
+                            });
+                        }
                     }
                 }
                 _ = ticker.tick() => {
@@ -313,6 +526,13 @@ impl DaemonService for PeerKeepAliveWorker {
                     // facade unavailable")` from the AppFacade thin
                     // wrappers — `dial_due_peers` logs and skips.
                     self.dial_due_peers(&mut backoff).await;
+                }
+                _ = fallback_ticker.tick() => {
+                    // 30min fan-out for Sleeping peers. Catches the
+                    // "both sides offline simultaneously, neither
+                    // side's PRESENCE keepalive ever fires" case.
+                    // No-op (debug log only) when no peers are sleeping.
+                    self.fan_out_sleeping_peers(&mut backoff).await;
                 }
             }
         }
@@ -343,75 +563,96 @@ mod tests {
         now + plus
     }
 
+    /// Convenience accessor for tests — pattern-matching `Active.consecutive_failures`
+    /// every assertion adds noise without value.
+    fn fails_of(s: &BackoffState) -> Option<u32> {
+        match s {
+            BackoffState::Active {
+                consecutive_failures,
+                ..
+            } => Some(*consecutive_failures),
+            BackoffState::Sleeping => None,
+        }
+    }
+
     #[test]
     fn ready_now_dials_immediately() {
         let now = Instant::now();
         let s = BackoffState::ready_now(now);
         assert!(s.ready(now));
         assert!(s.ready(at(now, Duration::from_millis(1))));
-        assert_eq!(s.consecutive_failures, 0);
+        assert_eq!(fails_of(&s), Some(0));
     }
 
     #[test]
     fn on_success_resets_to_base_cadence() {
         let now = Instant::now();
-        let mut s = BackoffState::ready_now(now);
-        s.consecutive_failures = 5;
+        let mut s = BackoffState::Active {
+            consecutive_failures: 2,
+            next_dial_at: now + Duration::from_secs(5 * 60),
+        };
 
         s.on_success(now);
 
-        assert_eq!(s.consecutive_failures, 0);
+        assert_eq!(fails_of(&s), Some(0));
         assert!(!s.ready(now));
         assert!(s.ready(at(now, BASE_INTERVAL)));
     }
 
     #[test]
-    fn on_failure_walks_the_ladder_and_caps() {
+    fn on_failure_walks_ladder_then_transitions_to_sleeping() {
         let now = Instant::now();
         let mut s = BackoffState::ready_now(now);
 
-        // 1st failure → 60s window.
+        // 1st failure → Active(1), 60s window.
         s.on_failure(now);
-        assert_eq!(s.consecutive_failures, 1);
+        assert_eq!(fails_of(&s), Some(1));
         assert!(s.ready(at(now, Duration::from_secs(60))));
         assert!(!s.ready(at(now, Duration::from_secs(59))));
 
-        // 2nd failure → 5min window from `now`.
+        // 2nd failure → Active(2), 5min window.
         s.on_failure(now);
-        assert_eq!(s.consecutive_failures, 2);
+        assert_eq!(fails_of(&s), Some(2));
         assert!(s.ready(at(now, Duration::from_secs(5 * 60))));
         assert!(!s.ready(at(now, Duration::from_secs(5 * 60 - 1))));
 
-        // 3rd failure → 15min cap.
+        // 3rd failure → Sleeping. The 25s ticker now permanently skips it.
         s.on_failure(now);
-        assert_eq!(s.consecutive_failures, 3);
-        assert!(s.ready(at(now, Duration::from_secs(15 * 60))));
-
-        // 4th, 5th, … keep capping at 15min — counter still climbs (for
-        // observability) but the window does not.
-        s.on_failure(now);
-        s.on_failure(now);
-        assert_eq!(s.consecutive_failures, 5);
-        assert!(s.ready(at(now, Duration::from_secs(15 * 60))));
-        assert!(!s.ready(at(now, Duration::from_secs(15 * 60 - 1))));
+        assert!(s.is_sleeping(), "third failure must transition to Sleeping");
+        assert!(!s.ready(now));
+        assert!(!s.ready(at(now, Duration::from_secs(60 * 60))));
     }
 
     #[test]
-    fn reset_clears_failure_count_and_returns_to_base() {
+    fn sleeping_stays_sleeping_on_failure() {
+        // Fallback fan-out dial against a Sleeping peer that's still
+        // offline must not flip the state — next chance is the next
+        // fallback cycle (30min later), not a fresh ladder walk.
         let now = Instant::now();
+        let mut s = BackoffState::Sleeping;
+        s.on_failure(now);
+        assert!(s.is_sleeping());
+    }
+
+    #[test]
+    fn reset_clears_failure_count_from_any_state() {
+        let now = Instant::now();
+
+        // From Active(n>0).
         let mut s = BackoffState::ready_now(now);
         s.on_failure(now);
         s.on_failure(now);
-        s.on_failure(now);
-        assert_eq!(s.consecutive_failures, 3);
-
+        assert_eq!(fails_of(&s), Some(2));
         s.reset(now);
-
-        assert_eq!(s.consecutive_failures, 0);
-        // Even right after reset, we wait one base interval before the
-        // next dial — otherwise an inbound Online event would prompt an
-        // immediate redundant dial.
+        assert_eq!(fails_of(&s), Some(0));
         assert!(!s.ready(now));
+        assert!(s.ready(at(now, BASE_INTERVAL)));
+
+        // From Sleeping — the whole point of the variant is that an
+        // inbound Online event can rescue it.
+        let mut s = BackoffState::Sleeping;
+        s.reset(now);
+        assert_eq!(fails_of(&s), Some(0));
         assert!(s.ready(at(now, BASE_INTERVAL)));
     }
 
@@ -429,10 +670,42 @@ mod tests {
             state: "online".into(),
             at_ms: 0,
         };
-        PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+        let wake = PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
 
         let entry = backoff.get("device-a").expect("entry retained");
-        assert_eq!(entry.consecutive_failures, 0);
+        assert_eq!(fails_of(entry), Some(0));
+        assert_eq!(
+            wake.as_ref().map(|d| d.as_str()),
+            Some("device-a"),
+            "online event must signal a wake-up dial",
+        );
+    }
+
+    #[test]
+    fn apply_presence_event_wakes_sleeping_peer() {
+        // The cornerstone of Phase 3: a Sleeping peer hears its
+        // counterpart dial in and immediately rejoins the rotation.
+        let mut backoff: HashMap<String, BackoffState> = HashMap::new();
+        backoff.insert("dorm".into(), BackoffState::Sleeping);
+
+        let event = AppPresenceEvent {
+            device_id: "dorm".into(),
+            state: "online".into(),
+            at_ms: 0,
+        };
+        let wake = PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+
+        let entry = backoff.get("dorm").expect("entry retained");
+        assert!(
+            !entry.is_sleeping(),
+            "Sleeping peer must wake on inbound Online event",
+        );
+        assert_eq!(fails_of(entry), Some(0));
+        assert_eq!(
+            wake.as_ref().map(|d| d.as_str()),
+            Some("dorm"),
+            "waking event must also trigger a fire-and-forget outbound dial",
+        );
     }
 
     #[test]
@@ -447,8 +720,13 @@ mod tests {
             at_ms: 0,
         };
 
-        PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+        let wake = PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
         assert!(backoff.contains_key("ghost"));
+        assert_eq!(
+            wake.as_ref().map(|d| d.as_str()),
+            Some("ghost"),
+            "online event must signal a wake-up dial even for unknown peers",
+        );
     }
 
     #[test]
@@ -460,7 +738,11 @@ mod tests {
                 state: state.into(),
                 at_ms: 0,
             };
-            PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+            let wake = PeerKeepAliveWorker::apply_presence_event(&mut backoff, event);
+            assert!(
+                wake.is_none(),
+                "non-online events must not trigger a wake-up dial",
+            );
         }
         assert!(
             backoff.is_empty(),

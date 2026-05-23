@@ -1,13 +1,39 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   DeliveryFailureReason,
   EntryDeliveryTargetView,
   EntryDeliveryView,
+  ResendEntryReportDto,
 } from '@/api/tauri-command/clipboard_delivery'
 import EntryDeliveryBadge from '@/components/clipboard/EntryDeliveryBadge'
+import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
+
+// commit F: 后端 resendEntry / sonner toast 都是副作用,测试中以可观察 spy
+// 替换。`isResendEntryError` 是纯函数 type guard,保留真实实现,Rust typed
+// error envelope 的 shape 测试由这里的 thrown-error 案例覆盖。
+const resendEntryMock = vi.fn()
+const toastSuccessMock = vi.fn()
+const toastErrorMock = vi.fn()
+
+vi.mock('@/api/tauri-command/clipboard_delivery', async () => {
+  const actual = await vi.importActual<typeof import('@/api/tauri-command/clipboard_delivery')>(
+    '@/api/tauri-command/clipboard_delivery'
+  )
+  return {
+    ...actual,
+    resendEntry: (...args: unknown[]) => resendEntryMock(...args),
+  }
+})
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+    error: (...args: unknown[]) => toastErrorMock(...args),
+  },
+}))
 
 // Phase 4: quick-panel 切到 EntryDeliveryBadge 后,渲染契约保护从原来的
 // EntryDeliverySection 迁移到这里。覆盖三块:source 三档、summary 五档、
@@ -193,6 +219,224 @@ describe('EntryDeliveryBadge', () => {
     expect(screen.getByText('did_f6g7…')).toBeInTheDocument()
     expect(screen.getByText('did_k1l2…')).toBeInTheDocument()
     expect(screen.getByText('did_p6q7…')).toBeInTheDocument()
+  })
+
+  describe('resend integration', () => {
+    beforeEach(() => {
+      resendEntryMock.mockReset()
+      toastSuccessMock.mockReset()
+      toastErrorMock.mockReset()
+      // 模块级 in-flight store 跨 case 共享,case 间显式清空避免渗漏。
+      __resetResendActionStoreForTests()
+    })
+
+    afterEach(() => {
+      resendEntryMock.mockReset()
+      __resetResendActionStoreForTests()
+    })
+
+    const successReport: ResendEntryReportDto = {
+      accepted: 1,
+      duplicate: 0,
+      offline: 0,
+      errored: 0,
+      pending: 0,
+    }
+
+    function deliveryWithFailingPeer(): EntryDeliveryView {
+      return {
+        entryId: 'entry-resend-1',
+        source: { tag: 'local' },
+        deliveries: [
+          target('did_ok_aaaaaa', 'Mac', { tag: 'delivered' }),
+          target('did_failed_bbbb', 'iPad', { tag: 'failed', reason: 'offline' }, 'unreachable'),
+        ],
+      }
+    }
+
+    it('shows entry-level Resend button only for local entries with eligible peers', async () => {
+      const user = userEvent.setup()
+      render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)
+
+      const trigger = screen.getByRole('button', {
+        name: i18n.t('delivery.popover.ariaTrigger'),
+      })
+      await user.hover(trigger)
+
+      const resendButton = await screen.findByRole('button', {
+        name: i18n.t('delivery.resend.button.entryAria'),
+      })
+      expect(resendButton).not.toBeDisabled()
+    })
+
+    it('hides Resend UI entirely for remote-origin entries', async () => {
+      const user = userEvent.setup()
+      const delivery: EntryDeliveryView = {
+        entryId: 'entry-from-other',
+        source: { tag: 'remote', deviceId: 'did_other_xyz', deviceName: 'Other' },
+        deliveries: [target('did_local_self', 'Self', { tag: 'failed', reason: 'offline' })],
+      }
+      render(<EntryDeliveryBadge delivery={delivery} />)
+
+      const trigger = screen.getByRole('button', {
+        name: i18n.t('delivery.popover.ariaTrigger'),
+      })
+      await user.hover(trigger)
+      // popover 应该挂载,但 entry-level / peer-level 重发按钮都不应渲染。
+      await screen.findByText(i18n.t('delivery.popover.title'))
+      expect(
+        screen.queryByRole('button', { name: i18n.t('delivery.resend.button.entryAria') })
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', {
+          name: i18n.t('delivery.resend.button.peerAria', { device: 'Self' }),
+        })
+      ).not.toBeInTheDocument()
+    })
+
+    it('disables entry-level Resend when every peer is already delivered/duplicate', async () => {
+      const user = userEvent.setup()
+      const delivery: EntryDeliveryView = {
+        entryId: 'entry-all-good',
+        source: { tag: 'local' },
+        deliveries: [
+          target('did_a_aaaa', 'A', { tag: 'delivered' }),
+          target('did_b_bbbb', 'B', { tag: 'duplicate' }),
+        ],
+      }
+      render(<EntryDeliveryBadge delivery={delivery} />)
+
+      const trigger = screen.getByRole('button', {
+        name: i18n.t('delivery.popover.ariaTrigger'),
+      })
+      await user.hover(trigger)
+      const button = await screen.findByRole('button', {
+        name: i18n.t('delivery.resend.button.entryDisabled'),
+      })
+      expect(button).toBeDisabled()
+    })
+
+    it('renders per-peer Resend only for failed/pending peers', async () => {
+      const user = userEvent.setup()
+      render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)
+
+      const trigger = screen.getByRole('button', {
+        name: i18n.t('delivery.popover.ariaTrigger'),
+      })
+      await user.hover(trigger)
+
+      // Failed peer 有按钮
+      expect(
+        await screen.findByRole('button', {
+          name: i18n.t('delivery.resend.button.peerAria', { device: 'iPad' }),
+        })
+      ).toBeInTheDocument()
+      // Delivered peer 没有按钮
+      expect(
+        screen.queryByRole('button', {
+          name: i18n.t('delivery.resend.button.peerAria', { device: 'Mac' }),
+        })
+      ).not.toBeInTheDocument()
+    })
+
+    it('triggers entry-wide resend and shows success toast with accepted/total ratio', async () => {
+      const user = userEvent.setup()
+      resendEntryMock.mockResolvedValueOnce({
+        accepted: 1,
+        duplicate: 0,
+        offline: 1,
+        errored: 0,
+        pending: 0,
+      } satisfies ResendEntryReportDto)
+
+      render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)
+
+      await user.hover(screen.getByRole('button', { name: i18n.t('delivery.popover.ariaTrigger') }))
+      const button = await screen.findByRole('button', {
+        name: i18n.t('delivery.resend.button.entryAria'),
+      })
+      await user.click(button)
+
+      await waitFor(() => {
+        expect(resendEntryMock).toHaveBeenCalledWith({
+          entryId: 'entry-resend-1',
+          targetDeviceIds: null,
+        })
+      })
+      await waitFor(() => {
+        expect(toastSuccessMock).toHaveBeenCalledWith(
+          i18n.t('delivery.resend.success.summary', { accepted: 1, total: 2 })
+        )
+      })
+      expect(toastErrorMock).not.toHaveBeenCalled()
+    })
+
+    it('peer-level button passes a single-device filter and surfaces success', async () => {
+      const user = userEvent.setup()
+      resendEntryMock.mockResolvedValueOnce(successReport)
+      render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)
+
+      await user.hover(screen.getByRole('button', { name: i18n.t('delivery.popover.ariaTrigger') }))
+      const button = await screen.findByRole('button', {
+        name: i18n.t('delivery.resend.button.peerAria', { device: 'iPad' }),
+      })
+      await user.click(button)
+
+      await waitFor(() => {
+        expect(resendEntryMock).toHaveBeenCalledWith({
+          entryId: 'entry-resend-1',
+          targetDeviceIds: ['did_failed_bbbb'],
+        })
+      })
+      await waitFor(() => {
+        expect(toastSuccessMock).toHaveBeenCalled()
+      })
+    })
+
+    it('translates typed ResendEntryCommandError variants into i18n strings (with entryId placeholder)', async () => {
+      const user = userEvent.setup()
+      resendEntryMock.mockRejectedValueOnce({
+        code: 'ENTRY_NOT_RESENDABLE',
+        // entryId 走 typed envelope (commit G:加入 entry_id 字段),用户在
+        // toast 上能看到截断 id —— 多条历史同时报错时不会一头雾水。
+        entryId: 'entry-payload-lost-uuid',
+        reason: 'payloadLost',
+      })
+
+      render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)
+      await user.hover(screen.getByRole('button', { name: i18n.t('delivery.popover.ariaTrigger') }))
+      const button = await screen.findByRole('button', {
+        name: i18n.t('delivery.resend.button.entryAria'),
+      })
+      await user.click(button)
+
+      await waitFor(() => {
+        expect(toastErrorMock).toHaveBeenCalledWith(
+          i18n.t('delivery.resend.error.notResendable.payloadLost', {
+            entryIdShort: 'entry-pa…',
+          })
+        )
+      })
+      expect(toastSuccessMock).not.toHaveBeenCalled()
+    })
+
+    it('falls back to internal error message for unknown rejections', async () => {
+      const user = userEvent.setup()
+      resendEntryMock.mockRejectedValueOnce(new Error('boom'))
+
+      render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)
+      await user.hover(screen.getByRole('button', { name: i18n.t('delivery.popover.ariaTrigger') }))
+      const button = await screen.findByRole('button', {
+        name: i18n.t('delivery.resend.button.entryAria'),
+      })
+      await user.click(button)
+
+      await waitFor(() => {
+        expect(toastErrorMock).toHaveBeenCalledWith(
+          i18n.t('delivery.resend.error.internal', { message: 'boom' })
+        )
+      })
+    })
   })
 
   it('maps all five failure reasons to their i18n labels in popover', async () => {

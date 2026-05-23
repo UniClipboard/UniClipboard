@@ -33,6 +33,7 @@ use sentry::integrations::tracing::{
     breadcrumb_from_event, event_from_event, log_from_event, CombinedEventMapping, EventFilter,
     EventMapping,
 };
+use tracing_subscriber::filter::{filter_fn, FilterExt};
 use tracing_subscriber::prelude::*;
 
 use crate::correlation::{self, CorrelationLayer};
@@ -206,9 +207,31 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 environment: option_env!("APP_ENV")
                     .filter(|s| !s.is_empty())
                     .map(Into::into),
-                // ERROR / Exception 全采样;performance trace 降到 10% 控制 quota。
+                // ERROR / Exception 全采样;performance trace 紧急下调至 2%
+                // 控制 quota —— 2026-05 月底配额已用 80%,经诊断 iroh
+                // poll_send 与 presence 链路占 81%,在加上下方 iroh
+                // target 过滤后,2% 仍能保留可观测性。
                 sample_rate: 1.0,
-                traces_sample_rate: 0.1,
+                traces_sample_rate: 0.02,
+                // 兜底过滤:对一组已知"高频且无业务价值"的 transaction
+                // 名直接返回 0.0,确保即使有人后续加 instrument 也不会再
+                // 烧配额。对其他 transaction 退回 traces_sample_rate
+                // 的 0.02。`traces_sampler` 一旦设置就完全取代
+                // `traces_sample_rate`,所以必须显式在这里复述基线值
+                // (sentry-rust 行为详见 performance::sample_rate)。
+                //
+                // 命中表来自 2026-05 月度配额诊断 —— 这几个名字对应
+                // iroh / noq_proto 的 root transaction(虽然上方 layer
+                // filter 已经按 target 屏蔽,但 sentry-tracing 也可能
+                // 在某些路径下用更短的 transaction name,这里加一道。
+                traces_sampler: Some(Arc::new(|ctx| {
+                    matches!(
+                        ctx.name(),
+                        "poll_send" | "connect" | "QADv4" | "tx" | "state"
+                    )
+                    .then_some(0.0)
+                    .unwrap_or(0.02)
+                })),
                 // Enable Sentry Logs (replaces the legacy OTLP→Seq pipeline).
                 // Tracing ERROR + WARN events are routed to Logs by the
                 // `event_filter` below; INFO stays as a breadcrumb only.
@@ -385,7 +408,23 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                         _ => EventMapping::Combined(CombinedEventMapping::from(out)),
                     }
                 })
-                .with_filter(profile.json_filter()),
+                // 紧急止血:屏蔽 iroh / iroh_* / noq_* 系列 target 进 Sentry。
+                //
+                // 诊断显示 `iroh::socket::transports::poll_send`(QUIC UDP
+                // 发包) 单一 op 占 14 天 span 配额 54%,加上 `iroh::endpoint
+                // ::connect` 与 noq_proto 链路合计 ~70%。这些来自第三方
+                // crate 的 instrument,我们无法直接精简注解,只能在喂给
+                // Sentry 的入口处整体过滤。本地 jsonl / console 不受影响
+                // (它们各自挂的是独立的 layer + filter),离线排障仍可见。
+                //
+                // 与上游 sample_rate 下调到 0.02 协同:两者乘积保证剩余配额
+                // 能撑到月底,同时保留 uc_* / clipboard 主流程 span 的可观
+                // 测性。回收条件:upstream iroh 减少自身 trace span 后,或
+                // 我们在 sentry 上开了 op-级别配额管理后,可放开本过滤。
+                .with_filter(profile.json_filter().and(filter_fn(|meta| {
+                    let t = meta.target();
+                    !(t.starts_with("iroh") || t.starts_with("noq_"))
+                }))),
         )
     } else {
         // No eprintln here -- it pollutes CLI output. Absence of a DSN is a

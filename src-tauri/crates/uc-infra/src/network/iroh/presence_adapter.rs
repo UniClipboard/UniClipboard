@@ -551,7 +551,12 @@ impl PresencePort for IrohPresenceAdapter {
         Ok(result)
     }
 
-    #[instrument(skip_all, fields(device = %device.as_str()))]
+    // 故意不挂 `#[instrument]`:`current_state()` 仅做 in-memory map
+    // lookup(`last_state` / `peers`),没有外部 I/O,但被 roster /
+    // list_with_presence / ensure_reachable_all 在热路径上反复调用,
+    // 14 天观测到 ~20 万次 span 落到 Sentry。`ensure_reachable` /
+    // `verify_reachable` 真做拨号,继续保留 instrument(uc-infra §10.1
+    // 强制要求关键 adapter 有 tracing)。
     async fn current_state(&self, device: &DeviceId) -> ReachabilityState {
         let key = device.as_str();
         // Prefer the last-observed snapshot — it's authoritative for

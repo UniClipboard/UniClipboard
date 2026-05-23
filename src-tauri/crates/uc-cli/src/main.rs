@@ -150,23 +150,57 @@ enum Commands {
     /// all paired peers so states are fresh on every call. No daemon
     /// required. Prints `{name} ({state}) [local]` per device.
     Members,
-    /// Dispatch one clipboard payload to every online paired peer.
+    /// Dispatch one clipboard payload to paired peers.
     ///
-    /// Self-contained direct mode. Reads text from the positional
-    /// argument, or — when omitted — from stdin until EOF. Wraps the
-    /// text into a single-representation `SystemClipboardSnapshot`,
-    /// encodes it as a V3 envelope, and fans it out via the iroh
-    /// clipboard ALPN — same wire format the daemon uses.
+    /// Self-contained direct mode. Two input modes, mutually exclusive:
+    ///
+    /// * **New entry** (default) — reads text from the positional
+    ///   argument or stdin and fans it out as a fresh
+    ///   `SystemClipboardSnapshot` over the V3 envelope.
+    /// * **Resend** (`--resend <ENTRY-ID>`) — re-fans-out a previously
+    ///   captured local entry. The CLI reconstructs the snapshot from
+    ///   storage (no stdin / positional text). Fails when the entry is
+    ///   remote-origin or its payload is no longer cached.
+    ///
+    /// Either mode accepts `--peer <DEVICE-ID>` (repeatable) to limit
+    /// fan-out to specific devices. Without `--peer`, the new-entry
+    /// mode dispatches to all online peers, and resend mode targets the
+    /// derived `trusted_peer \ (Delivered ∪ Duplicate)` diff.
+    ///
+    /// EXIT CODES (resend mode):
+    /// * `0` — at least one peer accepted, was a content-duplicate, or
+    ///   moved into background continuation (`pending`). All-pending is
+    ///   treated as success because the work has been accepted and will
+    ///   resolve asynchronously via host events; the daemon writes the
+    ///   delivery record on real completion.
+    /// * Non-zero — every target ended up `offline` or `errored` (no
+    ///   accepted, no duplicate, no pending). Use `--json` to inspect
+    ///   per-bucket counts when a CI harness needs finer-grained checks.
     Send {
         /// Plaintext to send. Omit to read from stdin until EOF.
-        /// Cannot be combined with `--file`.
+        /// Mutually exclusive with `--resend` and `--file`.
+        #[arg(conflicts_with_all = ["resend", "file"])]
         text: Option<String>,
         /// Send a file instead of text. Publishes the file as a blob to
         /// the iroh-blobs store, dispatches a clipboard envelope to
         /// online peers, then keeps the process alive so peers can fetch
-        /// the bytes. Press Ctrl-C to stop serving.
-        #[arg(short = 'f', long = "file", value_name = "PATH")]
+        /// the bytes. Press Ctrl-C to stop serving. Mutually exclusive
+        /// with `--resend`.
+        #[arg(
+            short = 'f',
+            long = "file",
+            value_name = "PATH",
+            conflicts_with = "resend"
+        )]
         file: Option<std::path::PathBuf>,
+        /// Re-fan-out an existing entry by its ID instead of sending
+        /// new text. When set, stdin is not consumed.
+        #[arg(long, value_name = "ENTRY-ID")]
+        resend: Option<String>,
+        /// Restrict fan-out to the listed device IDs. Repeat the flag
+        /// for multiple peers (e.g. `--peer dev-a --peer dev-b`).
+        #[arg(long = "peer", value_name = "DEVICE-ID")]
+        peers: Vec<String>,
     },
     /// Watch inbound clipboard payloads from paired peers and print each
     /// delivery as it lands. Press Ctrl-C to stop.
@@ -347,9 +381,19 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::Devices => commands::devices::run(cli.json, cli.verbose).await,
             Commands::Members => commands::members::run(cli.json, cli.verbose).await,
-            Commands::Send { text, file } => {
+            Commands::Send {
+                text,
+                file,
+                resend,
+                peers,
+            } => {
                 commands::send::run(
-                    commands::send::SendArgs { text, file },
+                    commands::send::SendArgs {
+                        text,
+                        file,
+                        resend,
+                        peers,
+                    },
                     cli.json,
                     cli.verbose,
                 )
@@ -575,5 +619,52 @@ mod tests {
             let result = Cli::try_parse_from(args.clone());
             assert!(result.is_ok(), "expected `{args:?}` to parse");
         }
+    }
+
+    #[test]
+    fn send_accepts_positional_text() {
+        // 历史契约:`uniclip send hello` 必须继续工作。
+        let r = Cli::try_parse_from(["uniclip", "send", "hello"]);
+        assert!(r.is_ok(), "expected `send hello` to parse");
+    }
+
+    #[test]
+    fn send_accepts_no_args_for_stdin_mode() {
+        // `echo … | uniclip send` 链路 —— 不带 text 也不带 --resend 必须能解析。
+        let r = Cli::try_parse_from(["uniclip", "send"]);
+        assert!(
+            r.is_ok(),
+            "expected `send` with no args to parse (stdin mode)"
+        );
+    }
+
+    #[test]
+    fn send_resend_alone_parses() {
+        let r = Cli::try_parse_from(["uniclip", "send", "--resend", "ent-123"]);
+        assert!(r.is_ok(), "expected `send --resend <id>` to parse");
+    }
+
+    #[test]
+    fn send_resend_with_text_is_mutually_exclusive() {
+        // 互斥规则:`--resend` 不能与 positional text 同时出现。
+        let r = Cli::try_parse_from(["uniclip", "send", "hello", "--resend", "ent-123"]);
+        assert!(
+            r.is_err(),
+            "expected `send <text> --resend <id>` to fail at clap layer"
+        );
+    }
+
+    #[test]
+    fn send_accepts_multiple_peers() {
+        // `--peer` 可重复出现;两种 mode 都允许。
+        let r1 = Cli::try_parse_from([
+            "uniclip", "send", "hello", "--peer", "dev-a", "--peer", "dev-b",
+        ]);
+        assert!(
+            r1.is_ok(),
+            "expected new-entry mode with multiple --peer to parse"
+        );
+        let r2 = Cli::try_parse_from(["uniclip", "send", "--resend", "ent-1", "--peer", "dev-a"]);
+        assert!(r2.is_ok(), "expected resend mode with --peer to parse");
     }
 }

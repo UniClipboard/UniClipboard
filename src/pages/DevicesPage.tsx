@@ -13,7 +13,8 @@
  *
  * 所有 dialog / modal 复用现成实现（AddDeviceDialog / DeviceSettingsDialog /
  * MobileSync* 系列），本页只重写视觉骨架与卡片排版。`refreshPresence`
- * 仍由本页顶层 15s 节拍驱动。
+ * 现在只在挂载和页面从隐藏切回可见时触发一次，常态依赖 daemon 主动推送
+ * 的 `peers.changed` ws 事件驱动 UI（详见下方 useEffect 的注释）。
  */
 
 import {
@@ -91,11 +92,6 @@ import {
 
 const log = createLogger('devices-page')
 
-// QUIC `max_idle_timeout = 60s` 决定 watchdog 被动检测离线的上限；这里每
-// 15s 主动跑一轮 ensure_reachable_all，离线 peer 拨号失败立即 broadcast
-// (Offline) → peers.changed → UI 切灰，把"对端断网"的反馈时延压到 ~15s。
-const PRESENCE_REFRESH_INTERVAL_MS = 15_000
-
 // ────────────────────────────────────────────────────────────────
 // 顶层页面
 // ────────────────────────────────────────────────────────────────
@@ -107,16 +103,31 @@ const DevicesPage: React.FC = () => {
     dispatch(fetchLocalDeviceInfo())
     dispatch(fetchSpaceMembers())
 
+    // 上线感知由 daemon 的 PeerKeepAliveWorker 推送驱动：inbound presence
+    // Online → outbound dial → peers.changed ws → 前端切亮（~1s）。
+    // 离线感知交给 daemon 自身的 25s keepalive tick + QUIC idle watchdog。
+    // 前端只在两个时刻主动拉一次 presence:
+    //   1. 页面首次挂载 —— warm 一下 UI，避免 ws 推送之前显示陈旧状态。
+    //   2. 标签页从隐藏切回可见 —— 用户回到前台时给一个兜底快照。
+    // 不再 setInterval polling，关闭 Devices 页时 daemon 完全静默。
     const probe = () => {
       refreshPresence().catch(err => {
         // setup 未完成 / daemon 未就绪时 refresh_presence 会 5xx；
-        // 不影响后续 tick，warn 即可。
+        // 不影响后续推送链路，warn 即可。
         log.warn({ err }, 'presence refresh failed')
       })
     }
     probe()
-    const intervalId = setInterval(probe, PRESENCE_REFRESH_INTERVAL_MS)
-    return () => clearInterval(intervalId)
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        probe()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [dispatch])
 
   return (

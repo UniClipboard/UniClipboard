@@ -190,6 +190,18 @@ pub(crate) struct DispatchClipboardEntryInput {
     /// 追溯"这条 entry 已同步到哪些设备"。`None` 表示无对应 entry 记录
     /// (例如 CLI raw-bytes 路径),此时 dispatch 不落盘 delivery。
     pub entry_id: Option<EntryId>,
+    /// 候选 fan-out 目标的显式白名单。`None` 维持现状:对 `peer_addr_repo`
+    /// 中所有非本机的成员 fan-out。`Some(list)` 只保留与 list 的交集 ——
+    /// 服务于 ADR-005 §2.5 用户主动 resend:UI / CLI 选定的特定 peer 子集
+    /// (`uniclip send --resend <id> --peer <device>`) 透传到此处,fan-out
+    /// 仅向白名单内的 device 发起。
+    ///
+    /// 关键不变量:本字段**不绕过** `is_send_allowed` 的逐设备 send_enabled
+    /// / content_types 校验 —— 用户在 settings 关掉的对端,即便挂在 filter
+    /// 里也不会被发送。这是一道"用户偏好硬约束 ∩ 本次目标白名单"的与门。
+    ///
+    /// `Some(vec![])` 是合法的"无目标"语义,与差集派生空集等价,不报错。
+    pub target_filter: Option<Vec<DeviceId>>,
 }
 
 /// One target's dispatch result. `Ok` + `DispatchAck` when the peer
@@ -235,6 +247,31 @@ pub(crate) enum DispatchSyncError {
     /// Listing the peer address repository failed.
     #[error("peer_addr_repo.list: {0}")]
     Repository(String),
+}
+
+/// Crate-internal abstraction over [`DispatchClipboardEntryUseCase::execute`].
+///
+/// Sole consumer is `ResendEntryUseCase`, whose unit tests assert dispatch
+/// input shape (`target_filter` / `entry_id` / `content_hash`) without
+/// constructing the full 14-port dispatch use case. Production wiring
+/// satisfies the trait through the blanket impl below. Not exposed beyond
+/// the crate.
+#[async_trait::async_trait]
+pub(crate) trait DispatchEntryRunner: Send + Sync {
+    async fn execute(
+        &self,
+        input: DispatchClipboardEntryInput,
+    ) -> Result<DispatchOutcome, DispatchSyncError>;
+}
+
+#[async_trait::async_trait]
+impl DispatchEntryRunner for DispatchClipboardEntryUseCase {
+    async fn execute(
+        &self,
+        input: DispatchClipboardEntryInput,
+    ) -> Result<DispatchOutcome, DispatchSyncError> {
+        DispatchClipboardEntryUseCase::execute(self, input).await
+    }
 }
 
 pub(crate) struct DispatchClipboardEntryUseCase {
@@ -357,6 +394,18 @@ impl DispatchClipboardEntryUseCase {
         for record in records {
             if record.device_id == local_device {
                 continue;
+            }
+            // ADR-005 §2.5 resend:`target_filter` 收紧 fan-out 目标白名单。
+            // `None` 维持现状(全 fan-out);`Some(list)` 只保留交集。
+            // 注意:此处不把"空 list"视作特殊 passthrough —— `ResendEntryUseCase`
+            // 在差集为空(或显式空列表)时直接返回 `NoEligibleTargets`,根本
+            // 不会调进 dispatch。若 dispatch 仍收到空 list,只能是其它调用
+            // 方,按"交集为空"自然落到下面的"no paired peers"分支返回零
+            // fan-out。
+            if let Some(filter) = &input.target_filter {
+                if !filter.iter().any(|d| d == &record.device_id) {
+                    continue;
+                }
             }
             if !self
                 .is_send_allowed(&record.device_id, &input.categories)
@@ -1395,6 +1444,9 @@ mod tests {
             // 默认无 entry_id:大部分历史测试只关心 outcome 与 telemetry,
             // 不需要触发 delivery 落盘。专门验证落盘行为的测试自行构造 Some。
             entry_id: None,
+            // 默认无 filter:历史 verdict 都是"对 peer_addr_repo 全 fan-out"
+            // 语义。专门验证 ADR-005 §2.5 resend 路径的 verdict 自行构造 Some。
+            target_filter: None,
         }
     }
 
@@ -1532,6 +1584,94 @@ mod tests {
         let outcome = uc.execute(input()).await.expect("dispatch ok");
         assert_eq!(outcome.per_target.len(), 1);
         assert_eq!(outcome.per_target[0].device_id.as_str(), "peer-a");
+    }
+
+    /// 3a. target_filter (ADR-005 §2.5 resend) — `peer_addr_repo` 中有 3 个
+    /// 对端,但 `target_filter` 只保留 `peer-b`。mockall 强约束:只给 peer-b
+    /// 注册 dispatch 期望,其他对端若被 dispatch 调到会因"无匹配 expectation"
+    /// 直接 panic。该 verdict 守护 ResendEntryUseCase 透传 filter 时的行为
+    /// 契约 —— filter 不是"事后丢弃结果",是"事前不进入 JoinSet"。
+    #[tokio::test]
+    async fn target_filter_limits_fanout_to_listed_peers_only() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-a"), record("peer-b"), record("peer-c")]));
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        // 仅对 peer-b 注册期望;peer-a / peer-c 若被调到 → mockall panic。
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-b")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+
+        let uc = build_uc(
+            repo,
+            make_member_repo_all_enabled(),
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+        );
+
+        let mut filtered = input();
+        filtered.target_filter = Some(vec![DeviceId::new("peer-b")]);
+
+        let outcome = uc.execute(filtered).await.expect("dispatch ok");
+        assert_eq!(outcome.per_target.len(), 1);
+        assert_eq!(outcome.per_target[0].device_id.as_str(), "peer-b");
+        assert_eq!(outcome.total_accepted, 1);
+    }
+
+    /// 3b. target_filter 中的 device 完全不在 peer_addr_repo 中 → 候选集合
+    /// 为空 → 走"no paired peers"分支,zero fan-out 但**不报错**。这个分支
+    /// 服务于 ResendEntryUseCase:用例上层负责校验"目标是否在 trusted_peer
+    /// 集合内"(避免静默 skip),此处 dispatch 用例本身对未知 device 容忍空
+    /// 跑,不抢上层 TargetNotTrusted 的错误归属。
+    #[tokio::test]
+    async fn target_filter_with_unknown_device_yields_empty_fanout() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-a"), record("peer-b")]));
+
+        let mut cipher = MockCipher::new();
+        // encrypt 仍跑一次:filter 应用在 candidate 枚举,encrypt 在其之前。
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        // 零 dispatch 期望:任何 dispatch 调用都会 panic。
+        let dispatch = MockDispatch::new();
+
+        let uc = build_uc(
+            repo,
+            make_member_repo_all_enabled(),
+            cipher,
+            dispatch,
+            make_device_identity("self-device"),
+            make_local_identity_stub(),
+            make_settings_stub(),
+        );
+
+        let mut filtered = input();
+        filtered.target_filter = Some(vec![DeviceId::new("ghost-device")]);
+
+        let outcome = uc.execute(filtered).await.expect("dispatch ok");
+        assert_eq!(outcome.per_target.len(), 0);
+        assert_eq!(outcome.total_accepted, 0);
+        assert_eq!(outcome.total_offline, 0);
+        assert_eq!(outcome.total_errored, 0);
+        assert_eq!(outcome.total_pending, 0);
     }
 
     /// 4. Locked space — `transfer_cipher.encrypt` returns `NotUnlocked`.
@@ -1832,6 +1972,7 @@ mod tests {
             payload_version: 3,
             categories,
             entry_id: None,
+            target_filter: None,
         };
 
         let outcome = uc.execute(text_input).await.expect("dispatch ok");
@@ -2268,6 +2409,7 @@ mod tests {
             payload_version: 3,
             categories,
             entry_id: None,
+            target_filter: None,
         };
 
         uc.execute(file_input).await.expect("dispatch ok");

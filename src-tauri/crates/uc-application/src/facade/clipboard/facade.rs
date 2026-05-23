@@ -29,6 +29,7 @@ use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 use uc_observability::analytics::AnalyticsPort;
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
+use crate::usecases::clipboard_sync::dispatch_entry::DispatchEntryRunner;
 use crate::usecases::clipboard_sync::get_entry_delivery_view::{
     EntryDeliveryView, GetEntryDeliveryViewError, GetEntryDeliveryViewUseCase,
 };
@@ -90,6 +91,16 @@ pub struct DispatchEntryInput {
     pub plaintext: Bytes,
     pub content_hash: String,
     pub payload_version: u8,
+    /// Optional explicit recipient list. `Some(list)` restricts fan-out to
+    /// the intersection of `trusted_peer` ∧ `list`; `None` falls back to
+    /// "all trusted peers" (the existing default). `Some(vec![])` is
+    /// legal — it means "no targets" and produces an empty outcome
+    /// (still runs encrypt so callers see a well-formed report).
+    ///
+    /// **Iron rule**: this filter narrows candidates only. It does NOT
+    /// bypass `is_send_allowed` / member gating / presence — those checks
+    /// still apply per peer (see `dispatch_entry.rs` module doc).
+    pub target_filter: Option<Vec<DeviceId>>,
 }
 
 /// Public-facing per-target report.
@@ -247,6 +258,7 @@ impl ClipboardSyncFacade {
                 categories: ClipboardContentCategorySet::empty(),
                 // raw-bytes 路径不与某条 entry 绑定,跳过 delivery 落盘。
                 entry_id: None,
+                target_filter: input.target_filter,
             })
             .await?;
         Ok(lift_outcome(internal))
@@ -263,6 +275,7 @@ impl ClipboardSyncFacade {
         payload_version: u8,
         categories: ClipboardContentCategorySet,
         entry_id: Option<EntryId>,
+        target_filter: Option<Vec<DeviceId>>,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let internal = self
             .dispatch_uc
@@ -272,6 +285,7 @@ impl ClipboardSyncFacade {
                 payload_version,
                 categories,
                 entry_id,
+                target_filter,
             })
             .await?;
         Ok(lift_outcome(internal))
@@ -294,13 +308,21 @@ impl ClipboardSyncFacade {
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
         entry_id: Option<EntryId>,
+        target_filter: Option<Vec<DeviceId>>,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let _ = origin; // span metadata only (see doc above)
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot)
             .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
-        self.dispatch_internal(plaintext, content_hash, 3, categories, entry_id)
-            .await
+        self.dispatch_internal(
+            plaintext,
+            content_hash,
+            3,
+            categories,
+            entry_id,
+            target_filter,
+        )
+        .await
     }
 
     /// 编码并发送带 Slice 3 blob 引用的剪贴板快照。
@@ -314,14 +336,22 @@ impl ClipboardSyncFacade {
         blob_refs: Vec<V3BlobRef>,
         origin: ClipboardChangeOrigin,
         entry_id: Option<EntryId>,
+        target_filter: Option<Vec<DeviceId>>,
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let _ = origin;
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         let (plaintext, content_hash) =
             encode_snapshot_with_blob_refs_to_v3_bytes(&snapshot, &blob_refs)
                 .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
-        self.dispatch_internal(plaintext, content_hash, 3, categories, entry_id)
-            .await
+        self.dispatch_internal(
+            plaintext,
+            content_hash,
+            3,
+            categories,
+            entry_id,
+            target_filter,
+        )
+        .await
     }
 
     /// Subscribe to the inbound-notice broadcast. CLI `watch` / future
@@ -358,6 +388,17 @@ impl ClipboardSyncFacade {
     pub fn spawn_ingest_loop(&self) -> IngestHandle {
         let inner = Arc::clone(&self.ingest_uc).spawn_run();
         IngestHandle { inner }
+    }
+
+    /// Crate-internal accessor — hand the inner dispatch use case to
+    /// callers that need to feed `DispatchClipboardEntryInput` directly
+    /// (currently only [`ResendEntryUseCase`] via
+    /// [`ClipboardOutboundFacade`]). The blanket impl
+    /// `DispatchEntryRunner for DispatchClipboardEntryUseCase` provides
+    /// the trait-object handle without exposing the concrete use case
+    /// across the crate boundary.
+    pub(crate) fn dispatch_runner(&self) -> Arc<dyn DispatchEntryRunner> {
+        Arc::clone(&self.dispatch_uc) as Arc<dyn DispatchEntryRunner>
     }
 }
 
@@ -838,6 +879,7 @@ mod tests {
                 plaintext: Bytes::from_static(b"hello"),
                 content_hash: "abc".to_string(),
                 payload_version: 3,
+                target_filter: None,
             })
             .await
             .expect("dispatch ok");
@@ -963,7 +1005,12 @@ mod tests {
             )],
         };
         let outcome = facade
-            .dispatch_snapshot(snapshot, uc_core::ClipboardChangeOrigin::LocalCapture, None)
+            .dispatch_snapshot(
+                snapshot,
+                uc_core::ClipboardChangeOrigin::LocalCapture,
+                None,
+                None,
+            )
             .await
             .expect("dispatch_snapshot ok");
         assert_eq!(outcome.total_accepted, 1);
@@ -1006,5 +1053,57 @@ mod tests {
         // here as the (already-aborted) loop would no longer consume it.
         tokio::time::sleep(Duration::from_millis(20)).await;
         let _ = receiver; // keep the receiver alive so tx isn't dropped early
+    }
+
+    /// Verdict 5 — `DispatchEntryInput.target_filter = Some([peer-b])` threads
+    /// through to the use case. peer-a is listed in `peer_addr_repo` but the
+    /// filter excludes it, so `MockDispatch` registers an expectation only for
+    /// peer-b. mockall enforces "no other call ever happened" on Drop — if
+    /// the filter were dropped on the floor, peer-a would unexpectedly hit
+    /// dispatch and the test would panic.
+    #[tokio::test]
+    async fn dispatch_entry_with_target_filter_threads_to_use_case() {
+        let mut repo = MockPeerAddrRepo::new();
+        repo.expect_list()
+            .times(1)
+            .returning(|| Ok(vec![record("peer-a"), record("peer-b")]));
+
+        let presence = make_presence_unknown();
+
+        let mut cipher = MockCipher::new();
+        cipher
+            .expect_encrypt()
+            .times(1)
+            .returning(|p| Ok(p.to_vec()));
+
+        let mut dispatch = MockDispatch::new();
+        dispatch
+            .expect_dispatch()
+            .with(eq(DeviceId::new("peer-b")), always(), always())
+            .times(1)
+            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+
+        let (facade, _receiver) = build_facade(
+            repo,
+            presence,
+            cipher,
+            dispatch,
+            make_device_identity("self"),
+            make_local_identity(),
+            make_settings(),
+        );
+
+        let outcome = facade
+            .dispatch_entry(DispatchEntryInput {
+                plaintext: Bytes::from_static(b"hello"),
+                content_hash: "abc".to_string(),
+                payload_version: 3,
+                target_filter: Some(vec![DeviceId::new("peer-b")]),
+            })
+            .await
+            .expect("dispatch ok");
+        assert_eq!(outcome.total_accepted, 1);
+        assert_eq!(outcome.per_target.len(), 1);
+        assert_eq!(outcome.per_target[0].device_id.as_str(), "peer-b");
     }
 }

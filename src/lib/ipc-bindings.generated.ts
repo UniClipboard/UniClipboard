@@ -248,6 +248,24 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<EntryDeliveryViewDto, CommandError>(__TAURI_INVOKE("clipboard_entry_delivery_view", { entryId, trace })),
 	/**
+	 *  用户主动 resend 一条本机 entry。命令走 in-process facade
+	 *  (`AppFacade::resend_entry` → `ClipboardOutboundFacade::resend_entry`),
+	 *  与 `clipboard_entry_delivery_view` 一致;不经 HTTP/webserver。
+	 * 
+	 *  入参:
+	 *  - `entryId` —— 要重发的 entry id (字符串形态);
+	 *  - `targetDeviceIds` —— `None` 派生差集,`Some(list)` 显式 fan-out;
+	 *    `Some(vec![])` 与差集为空等价,返回 `NO_ELIGIBLE_TARGETS`。
+	 * 
+	 *  返回 `ResendEntryReportDto` (各 bucket 计数);失败返回 typed
+	 *  `ResendEntryCommandError`,前端按 `code` 字段做 i18n。详细错误语义见
+	 *  [`ResendEntryError`](uc_application::facade::ResendEntryError)。
+	 */
+	clipboardResendEntry: (args: ResendEntryArgs, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<ResendEntryReportDto, ResendEntryCommandError>(__TAURI_INVOKE("clipboard_resend_entry", { args, trace })),
+	/**
 	 *  取消一次进行中的入站文件传输。
 	 * 
 	 *  幂等:`transfer_id` 不在 inflight registry 时(没有进行中的 fetch /
@@ -696,6 +714,19 @@ export type MobileSyncSettingsViewDto = {
 	shortcutInstallMethods: ShortcutInstallMethodView[],
 };
 
+/**  不可重发的细分原因。i18n key 命名约定:`delivery.resend.error.notResendable.<variant>`。 */
+export type NotResendableReasonDto = 
+/**
+ *  entry 来自远端 peer。视图层已对远端 entry 隐藏重发按钮;走到此处
+ *  说明前端绕过视图直接调命令,或视图状态过期。
+ */
+"remoteOrigin" | 
+/**
+ *  本机已不持有 plaintext / 必要 blob (paste rep `Lost` / 文件被 GC /
+ *  blob store 已清理)。前端提示用户该 entry 已无法重新发送。
+ */
+"payloadLost";
+
 /**  `register_mobile_device` 入参。 */
 export type RegisterMobileDeviceArgs = {
 	label: string,
@@ -755,6 +786,53 @@ export type RegisterMobileDeviceResult = {
  *  仍然走 [`CommandError`]。
  */
 export type RelayProbeOutcome = { kind: "success"; latencyMs: number } | { kind: "invalidUrl"; message: string } | { kind: "dns"; message: string } | { kind: "tls"; message: string } | { kind: "handshake"; message: string } | { kind: "timeout" } | { kind: "other"; message: string };
+
+/**
+ *  `clipboard_resend_entry` 入参。
+ * 
+ *  `targetDeviceIds`:
+ *  - 字段缺失 / `null` → `None` → use case 派生 `trusted_peer \
+ *    (Delivered ∪ Duplicate)` 差集；
+ *  - `[]` → `Some(vec![])`，等价于零目标，use case 返回 `NoEligibleTargets`；
+ *  - `["dev-a", "dev-b"]` → 仅向列出的设备重发，列表里的 device 必须在
+ *    trusted_peer 列表内，否则返回 `TargetNotTrusted`。
+ */
+export type ResendEntryArgs = {
+	entryId: string,
+	targetDeviceIds?: string[] | null,
+};
+
+/**
+ *  `clipboard_resend_entry` 失败时的 typed 错误。前端 `error.code` 即
+ *  discriminator,各变体的额外字段对应 ADR §2.5.4 的失败语义。
+ * 
+ *  不复用 `CommandError`:`Conflict(String)` 只能塞一段文本,而本错误
+ *  集合需要 `deviceId` / `reason` / `entryId` 等结构化字段供 i18n key
+ *  选择与文案占位。参考 `mobile_sync::MobileSyncError` 同模式。
+ */
+export type ResendEntryCommandError = { code: "ENTRY_NOT_FOUND"; entryId: string } | { code: "ENTRY_NOT_RESENDABLE"; entryId: string; reason: NotResendableReasonDto } | { code: "TARGET_NOT_TRUSTED"; deviceId: string } | { code: "NO_ELIGIBLE_TARGETS" } | { code: "STORAGE"; message: string } | { code: "DISPATCH"; message: string };
+
+/**
+ *  `clipboard_resend_entry` 成功返回 —— fan-out 后的聚合计数。语义同
+ *  [`ResendReport`](uc_application::facade::ResendReport)，camelCase 后给前端
+ *  渲染 toast / detail badge。
+ */
+export type ResendEntryReportDto = {
+	/**  已落 `Delivered` 投递记录的目标数。 */
+	accepted: number,
+	/**  对端确认为重复内容 (content_hash 已存在) 的目标数。 */
+	duplicate: number,
+	/**  对端不可达 (presence offline / dial 失败) 的目标数。 */
+	offline: number,
+	/**  其他错误 (peer rejected / IO / internal) 的目标数。 */
+	errored: number,
+	/**
+	 *  fan-out deadline 内未 settle、被搬到后台继续 join 的目标数。
+	 *  后台完成时会写 delivery record 并发 `ClipboardDeliveryStatusChanged`
+	 *  事件,前端 detail badge 据此自动刷新。
+	 */
+	pending: number,
+};
 
 /**
  *  `rotate_mobile_password` 入参。`password = None` (字段缺失或 null) 走

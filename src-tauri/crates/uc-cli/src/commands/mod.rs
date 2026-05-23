@@ -9,6 +9,7 @@ pub mod join;
 pub mod members;
 pub mod mobile_sync;
 pub mod probe;
+pub mod recv;
 pub mod search;
 pub mod seed_clipboard;
 pub mod send;

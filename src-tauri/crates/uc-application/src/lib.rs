@@ -27,7 +27,9 @@ pub use usecases::clipboard_sync::{
 // Slice 2 Phase 3 · T10 — CLI `watch` decodes V3 envelope bytes from
 // `InboundNotice.plaintext` to show human-readable text. Daemon uses the
 // same helper internally via `ApplyInboundClipboardUseCase`.
-pub use usecases::clipboard_sync::{decode_v3_bytes_to_snapshot, V3BlobRef};
+pub use usecases::clipboard_sync::{
+    decode_v3_bytes_to_snapshot, decode_v3_bytes_to_snapshot_and_blob_refs, V3BlobRef,
+};
 pub mod file_transfer;
 pub mod membership;
 pub(crate) mod pairing_inbound;

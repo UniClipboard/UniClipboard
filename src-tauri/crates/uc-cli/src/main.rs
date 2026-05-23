@@ -159,7 +159,14 @@ enum Commands {
     /// clipboard ALPN — same wire format the daemon uses.
     Send {
         /// Plaintext to send. Omit to read from stdin until EOF.
+        /// Cannot be combined with `--file`.
         text: Option<String>,
+        /// Send a file instead of text. Publishes the file as a blob to
+        /// the iroh-blobs store, dispatches a clipboard envelope to
+        /// online peers, then keeps the process alive so peers can fetch
+        /// the bytes. Press Ctrl-C to stop serving.
+        #[arg(short = 'f', long = "file", value_name = "PATH")]
+        file: Option<std::path::PathBuf>,
     },
     /// Watch inbound clipboard payloads from paired peers and print each
     /// delivery as it lands. Press Ctrl-C to stop.
@@ -169,6 +176,20 @@ enum Commands {
     /// envelopes). Does NOT write the system clipboard — that's the
     /// daemon's job; the CLI watch is purely a diagnostic observer.
     Watch,
+    /// Receive a single inbound file from a paired peer and save it to
+    /// disk. Exits after the first transfer completes (or is cancelled).
+    ///
+    /// Self-contained direct mode. Subscribes to inbound clipboard
+    /// envelopes, picks the first one that carries a file blob ref, and
+    /// streams the bytes via `fetch_blob_to_path`. Press Ctrl-C during
+    /// transfer to cancel; the partial file is removed. Does NOT write
+    /// the system clipboard — recv is strictly an in-bound file sink.
+    Recv {
+        /// Output directory. Created if missing. Defaults to current
+        /// working directory.
+        #[arg(short = 'o', long = "out", value_name = "DIR")]
+        out: Option<std::path::PathBuf>,
+    },
     /// Publish or fetch encrypted large payload blobs
     Blob {
         #[command(subcommand)]
@@ -326,10 +347,16 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::Devices => commands::devices::run(cli.json, cli.verbose).await,
             Commands::Members => commands::members::run(cli.json, cli.verbose).await,
-            Commands::Send { text } => {
-                commands::send::run(commands::send::SendArgs { text }, cli.json, cli.verbose).await
+            Commands::Send { text, file } => {
+                commands::send::run(
+                    commands::send::SendArgs { text, file },
+                    cli.json,
+                    cli.verbose,
+                )
+                .await
             }
             Commands::Watch => commands::watch::run(cli.json, cli.verbose).await,
+            Commands::Recv { out } => commands::recv::run(out, cli.json, cli.verbose).await,
             Commands::Blob { subcommand } => {
                 commands::blob::run(subcommand, cli.json, cli.verbose).await
             }

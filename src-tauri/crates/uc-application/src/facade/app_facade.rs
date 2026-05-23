@@ -44,12 +44,15 @@ use crate::facade::space_setup::{
 use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
     BlobTransferError, BlobTransferFacade, ClipboardHistoryFacade, ClipboardRestoreFacade,
-    ClipboardSyncError, ClipboardSyncFacade, DeviceFacade, EncryptionFacade, EncryptionFacadeError,
-    EncryptionStateView, FetchBlobCommand, FetchBlobResult, InboundNotice, LifecycleFacade,
-    MemberRosterFacade, PublishBlobCommand, PublishBlobResult, ResourceFacade, SearchFacade,
-    SearchFacadeError, SearchPageView, SearchQueryInput, SearchRebuildAcceptedView,
-    SearchStatusView, SettingsFacade, SettingsFacadeError, SpaceSetupFacade, StorageFacade,
+    ClipboardSyncError, ClipboardSyncFacade, DeviceFacade, DispatchEntryOutcome, EncryptionFacade,
+    EncryptionFacadeError, EncryptionStateView, FetchBlobCommand, FetchBlobResult,
+    FetchBlobToPathCommand, FetchBlobToPathResult, InboundNotice, LifecycleFacade,
+    MemberRosterFacade, PublishBlobCommand, PublishBlobPathCommand, PublishBlobResult,
+    ResourceFacade, SearchFacade, SearchFacadeError, SearchPageView, SearchQueryInput,
+    SearchRebuildAcceptedView, SearchStatusView, SettingsFacade, SettingsFacadeError,
+    SpaceSetupFacade, StorageFacade,
 };
+use crate::V3BlobRef;
 use uc_core::ids::DeviceId;
 use uc_core::ports::{PresenceError, PresenceEvent, ReachabilityState};
 use uc_core::ClipboardChangeOrigin;
@@ -452,6 +455,60 @@ impl AppFacade {
             .cloned()
             .ok_or_else(|| BlobTransferError::Fetch("blob facade unavailable".to_string()))?
             .fetch_blob(command)
+            .await
+    }
+
+    /// 流式 publish 一个磁盘文件作为 blob。
+    ///
+    /// 内存峰值与文件大小解耦(走 iroh-blobs `add_path` + reflink_or_copy);
+    /// 适合 CLI / GUI 的 user-facing 大文件发送入口。
+    pub async fn publish_blob_path(
+        &self,
+        command: PublishBlobPathCommand,
+    ) -> Result<PublishBlobResult, BlobTransferError> {
+        self.blob_transfer
+            .get()
+            .cloned()
+            .ok_or_else(|| BlobTransferError::Publish("blob facade unavailable".to_string()))?
+            .publish_blob_path(command)
+            .await
+    }
+
+    /// 流式 fetch 一个 blob 到指定本地文件。
+    ///
+    /// 与 [`Self::fetch_blob`] 的差别:bytes 落在 `target_path`,不返回内存。
+    /// 当 `command.transfer_context` 提供时,fetch 会被注册到 inflight
+    /// registry 上;之后调 [`Self::cancel_inbound_transfer`] 可以中断它。
+    pub async fn fetch_blob_to_path(
+        &self,
+        command: FetchBlobToPathCommand,
+    ) -> Result<FetchBlobToPathResult, BlobTransferError> {
+        self.blob_transfer
+            .get()
+            .cloned()
+            .ok_or_else(|| BlobTransferError::Fetch("blob facade unavailable".to_string()))?
+            .fetch_blob_to_path(command)
+            .await
+    }
+
+    /// 把一个剪贴板快照连同已 publish 的 blob 引用一起 dispatch。
+    ///
+    /// 与 [`Self::dispatch_clipboard_snapshot`] 区别:本方法适用于 sender
+    /// 已经把文件 publish 成 blob 的场景,blob_refs 会被编码进 V3 envelope
+    /// 尾部扩展,接收端 inbound materializer 通过 ticket 拉取。
+    pub async fn dispatch_clipboard_snapshot_with_blob_refs(
+        &self,
+        snapshot: SystemClipboardSnapshot,
+        blob_refs: Vec<V3BlobRef>,
+        origin: ClipboardChangeOrigin,
+    ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
+        self.clipboard_sync
+            .get()
+            .cloned()
+            .ok_or_else(|| {
+                ClipboardSyncError::Repository("clipboard sync facade unavailable".to_string())
+            })?
+            .dispatch_snapshot_with_blob_refs(snapshot, blob_refs, origin, None)
             .await
     }
 

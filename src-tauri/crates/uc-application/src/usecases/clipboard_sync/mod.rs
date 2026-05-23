@@ -42,4 +42,6 @@ pub use apply_inbound::{
 // so it can display human-readable text (daemon-sent payloads are now
 // always enveloped). Exposed publicly because `InboundNotice.plaintext`
 // is the facade-returned wire bytes, not representations.
-pub use payload_codec::{decode_v3_bytes_to_snapshot, V3BlobRef};
+pub use payload_codec::{
+    decode_v3_bytes_to_snapshot, decode_v3_bytes_to_snapshot_and_blob_refs, V3BlobRef,
+};

@@ -71,6 +71,10 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
             ui::error("`--file` cannot be combined with positional text or `--resend`.");
             return exit_codes::EXIT_ERROR;
         }
+        if !args.peers.is_empty() {
+            ui::error("`--peer` is not supported with `--file` yet.");
+            return exit_codes::EXIT_ERROR;
+        }
         return run_send_file(file, json, verbose).await;
     }
 

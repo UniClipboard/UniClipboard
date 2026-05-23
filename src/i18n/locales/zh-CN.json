@@ -725,6 +725,7 @@
       "transferring": "传输中...",
       "incoming": "正在接收...",
       "incomingWithSize": "正在接收 ({{size}})...",
+      "cancel": "取消传输",
       "statusBadge": {
         "pending": "文件等待传输",
         "transferring": "文件传输中",

@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpFromLine, Info } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Info, X } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -10,11 +10,22 @@ import { formatDuration, formatFileSize } from '@/utils'
 interface TransferProgressBarProps {
   progress: TransferProgressInfo
   variant?: 'compact' | 'inline' | 'minimal'
+  /**
+   * Optional cancel handler. When provided AND the transfer is an active
+   * inbound (Receiving) fetch, the bar renders an inline cancel control.
+   * Outbound transfers (Sending) have no actionable cancel — the sender
+   * only owns a passive provider, the canceller is the receiver.
+   */
+  onCancel?: () => void
+  /** True while the cancel request is in flight; disables the button. */
+  cancelling?: boolean
 }
 
 const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
   progress,
   variant = 'inline',
+  onCancel,
+  cancelling = false,
 }) => {
   const { t } = useTranslation()
 
@@ -33,6 +44,11 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     progress.direction === 'Sending'
       ? t('clipboard.transfer.sending')
       : t('clipboard.transfer.receiving')
+
+  // Cancel control is only meaningful on inbound (Receiving) transfers
+  // while still active — the sender side has no torn-down state to clean.
+  const showCancel =
+    !!onCancel && progress.direction === 'Receiving' && progress.status === 'active'
 
   if (variant === 'minimal') {
     return (
@@ -63,6 +79,23 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
         {speedLabel && (
           <span className="text-[11px] text-muted-foreground shrink-0">{speedLabel}</span>
         )}
+        {showCancel && (
+          <button
+            type="button"
+            disabled={cancelling}
+            onClick={onCancel}
+            className={cn(
+              'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-destructive/20 bg-background/80 text-muted-foreground transition-colors',
+              'hover:border-destructive/50 hover:text-destructive',
+              cancelling &&
+                'cursor-not-allowed opacity-50 hover:border-destructive/20 hover:text-muted-foreground'
+            )}
+            aria-label={t('clipboard.transfer.cancel')}
+            title={t('clipboard.transfer.cancel')}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
     )
   }
@@ -79,6 +112,23 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
         </div>
         <Progress value={percent} className="h-1.5 bg-primary/10" />
       </div>
+      {showCancel && (
+        <button
+          type="button"
+          disabled={cancelling}
+          onClick={onCancel}
+          className={cn(
+            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-destructive/20 bg-background/80 text-muted-foreground transition-colors',
+            'hover:border-destructive/50 hover:text-destructive',
+            cancelling &&
+              'cursor-not-allowed opacity-50 hover:border-destructive/20 hover:text-muted-foreground'
+          )}
+          aria-label={t('clipboard.transfer.cancel')}
+          title={t('clipboard.transfer.cancel')}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
       <Popover>
         <PopoverTrigger asChild>
           <button

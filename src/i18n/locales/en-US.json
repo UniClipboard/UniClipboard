@@ -734,6 +734,7 @@
       "transferring": "Transferring...",
       "incoming": "Receiving...",
       "incomingWithSize": "Receiving ({{size}})...",
+      "cancel": "Cancel transfer",
       "statusBadge": {
         "pending": "File transfer pending",
         "transferring": "File transfer in progress",

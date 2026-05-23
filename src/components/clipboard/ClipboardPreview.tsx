@@ -1,5 +1,5 @@
 import { Clipboard } from 'lucide-react'
-import React from 'react'
+import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ClipboardCodeItem,
@@ -7,9 +7,11 @@ import {
   ClipboardLinkItem,
   ClipboardTextItem,
 } from '@/api/clipboardItems'
+import { cancelFileTransfer } from '@/api/tauri-command/file_transfer'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
+import { reportError } from '@/observability/errors'
 import type { DisplayClipboardItem } from './ClipboardContent'
 import ClipboardPreviewInfo from './ClipboardPreviewInfo'
 import CodePreview from './preview-renderers/CodePreview'
@@ -37,6 +39,22 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
     transfer,
   } = useClipboardPreviewState(item)
   const { delivery } = useEntryDelivery(item?.id ?? null)
+  const [cancelling, setCancelling] = useState(false)
+
+  const transferId = transfer?.transferId
+  const handleCancelTransfer = useCallback(async () => {
+    if (!transferId || cancelling) return
+    setCancelling(true)
+    try {
+      await cancelFileTransfer(transferId)
+      // Final cancelled / failed status arrives via host event → reducer;
+      // no optimistic Redux update here.
+    } catch (err) {
+      reportError(err, { command: 'cancelFileTransfer', transferId })
+      // Reset so the user can retry; cancel is idempotent server-side.
+      setCancelling(false)
+    }
+  }, [transferId, cancelling])
 
   if (!item) {
     return (
@@ -123,7 +141,12 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
           <div className="mr-8 min-w-0 flex-1">
             {effectiveStatus === 'transferring' && transfer && transfer.status === 'active' && (
               <div className="max-w-[280px]">
-                <TransferProgressBar progress={transfer} variant="compact" />
+                <TransferProgressBar
+                  progress={transfer}
+                  variant="compact"
+                  onCancel={handleCancelTransfer}
+                  cancelling={cancelling}
+                />
               </div>
             )}
           </div>

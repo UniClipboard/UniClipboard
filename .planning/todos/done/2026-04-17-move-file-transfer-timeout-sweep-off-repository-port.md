@@ -10,7 +10,7 @@ files:
 
 ## Problem
 
-Phase 3 已经把 lifecycle 写路径收敛到了 `FileTransferEventStorePort`，但 `FileTransferLifecycle` 里的两条后台任务**仍然绕过事件存储，直接操作 projection 表**：
+Phase 3 已经把 lifecycle 写路径收敛到了 `FileTransferEventStorePort`，但 `FileTransferLifecycle` 里的两条后台任务 **仍然绕过事件存储，直接操作 projection 表**：
 
 - `spawn_timeout_sweep`：循环调用 `file_transfer_repo.list_expired_inflight(...)` + `mark_failed(...)`，然后手动发 `TransferHostEvent::StatusChanged`
 - `reconcile_on_startup`：调用 `file_transfer_repo.bulk_fail_inflight(...)`，同样手动发 host event
@@ -50,3 +50,19 @@ TBD。两条潜在方向：
 倾向方向 A，与 Phase 4 + Phase 5 的收尾一起做，同时把 `FileTransferOrchestrator` 的 timeout 调度从 `FileTransferLifecycle` 里单独抽出来，`FileTransferLifecycle` 只暴露 use case 聚合。
 
 参考 checklist Phase 4（"把 `FileTransferOrchestrator` 降级为运行时协调器"）、Phase 5（"删除旧 receiver-side tracking path"）。
+
+## Resolution (2026-05-23)
+
+走了一条更小的"方向 C"：sweep 不再直连 projection write path，而是把 `Transferring` 行的 timeout 重路由到统一的 `BlobTransferFacade::cancel_inbound_transfer(_, Timeout)` 通道——撕 fetch task + 撕 QUIC connection + 落 `FileTransferEvent::Cancelled`，与用户主动取消走同一套领域事件。仅 `Pending` 行（无 peer_id，尚未收到 Started）保留旧 `mark_failed` 路径，因为它没有可撕的 in-flight fetch。
+
+落地代码（commit `26689c4f` `feat(file-transfer): route Transferring timeouts through cancel_inbound_transfer`）：
+
+- `uc-core/file_transfer/cancellation.rs` — `FileTransferCancellationReason` 加 `Timeout` 变体
+- `uc-application/facade/blob_transfer/facade.rs` — `cancel_inbound_transfer` 返回值改为 `Result<InboundCancelOutcome>`，区分 `Cancelled` / `NotInflight`
+- `uc-bootstrap/file_transfer_lifecycle.rs:spawn_timeout_sweep` —
+  - `Transferring` 行调 `cancel_inbound_transfer(transfer_id, Timeout)`，`Cancelled` 即收口；`NotInflight`/`Err` 回退 `mark_failed` 兜底
+  - `Pending` 行（仍无 peer_id）走原 `mark_failed` 路径
+- `uc-bootstrap/build_file_transfer_assembly` + `uc-desktop/FileSyncOrchestratorWorker::new` — 把 `Arc<BlobTransferFacade>` 串进 lifecycle 装配
+- projection / host event publisher 加 `cancelled:timeout` reason label（与其他 4 个 reason 对齐，前缀 `cancelled:` 后续被 P1-10 全链路改造剥离）
+
+副产物：领域时间线现在能区分"timeout cancel"和"真错误 failed"，projection 不再是 timeout 的 write target。`Pending` 行的 peerless failure 仍未走事件存储，作为已知遗留留待未来如需 projection 切换时再处理（届时应走方向 A）。

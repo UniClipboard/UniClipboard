@@ -249,6 +249,13 @@ mod tests {
             self.digest_of(ticket)
         }
 
+        async fn shutdown_inflight_fetch(&self, _ticket: &BlobTicket) -> Result<(), BlobError> {
+            // Fake: 测试场景下 fetch 是同步内存读,没有"正在进行中"的 fetch
+            // 可中止。返回 Ok 满足幂等契约;真实 adapter
+            // (`IrohBlobTransferAdapter`) 走 QUIC connection 拆除路径。
+            Ok(())
+        }
+
         async fn has(&self, digest: &BlobDigest) -> Result<bool, BlobError> {
             Ok(self.store.lock().expect("lock store").contains_key(digest))
         }

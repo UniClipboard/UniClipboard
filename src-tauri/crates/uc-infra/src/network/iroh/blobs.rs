@@ -383,6 +383,44 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
     }
 
     #[instrument(skip_all)]
+    async fn shutdown_inflight_fetch(&self, ticket: &BlobTicket) -> Result<(), BlobError> {
+        // 取消的真实路径：撕掉 fetch task 用的那条 QUIC connection。
+        // iroh-blobs Downloader 把 download 任务挂在内部 JoinSet 上,caller
+        // drop progress receiver 不会传播取消(handle_download 用
+        // tx.send().await.ok() 吞错),所以唯一可靠的中止手段是让 actor 里
+        // execute_get 的 read 立刻报 Read(Reset) / ConnectionLost。
+        // ConnectionPool::close 通过 Downloader::shutdown_endpoint 暴露
+        // (vendor patch P3,见 UNICLIPBOARD_PATCH.md)。
+        //
+        // 幂等:对端不在 pool 里时 close 是 no-op。
+        let native = Self::parse_ticket(ticket)?;
+        let endpoint_id = native.addr().id;
+        let hash_prefix = hex_prefix(native.hash().as_bytes());
+        match self.downloader().shutdown_endpoint(endpoint_id).await {
+            Ok(()) => {
+                info!(
+                    hash = %hash_prefix,
+                    endpoint = %endpoint_id.fmt_short(),
+                    "blob fetch: shutdown_endpoint dispatched"
+                );
+                Ok(())
+            }
+            Err(err) => {
+                // Pool shutdown 是 process-wide 失败,不是单次 cancel 失败 ——
+                // 仍然映射成 Internal 让上层知道,但取消请求本身不视为"对端
+                // 还在传"的语义错误。
+                warn!(
+                    hash = %hash_prefix,
+                    endpoint = %endpoint_id.fmt_short(),
+                    error = %err,
+                    "blob fetch: shutdown_endpoint failed (pool already gone)"
+                );
+                Err(BlobError::Internal(err.to_string()))
+            }
+        }
+    }
+
+    #[instrument(skip_all)]
     async fn has(&self, digest: &BlobDigest) -> Result<bool, BlobError> {
         let hash = Self::native_hash(digest);
         let observed = self

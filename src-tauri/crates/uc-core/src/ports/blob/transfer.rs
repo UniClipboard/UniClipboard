@@ -263,6 +263,24 @@ pub trait BlobTransferPort: Send + Sync {
         progress: Option<&dyn BlobProgressSink>,
     ) -> Result<BlobDigest, BlobError>;
 
+    /// Best-effort: abort any in-flight `fetch` / `fetch_to_path`
+    /// currently delivering the ciphertext for `ticket`.
+    ///
+    /// Concurrent fetches for the same ticket may fail with
+    /// [`BlobError::Unavailable`] after this returns. Idempotent —
+    /// calling on a ticket that is not currently being fetched (no
+    /// active transport to tear down) returns `Ok(())`.
+    ///
+    /// This is a release-only operation: it does not remove any
+    /// already-stored ciphertext, does not touch tags, and does not
+    /// affect future fetch attempts for the same ticket.
+    ///
+    /// Adapter contract: if the transport is incidentally shared by
+    /// fetches against unrelated tickets, those fetches may also
+    /// observe a transient failure. Callers should treat such failures
+    /// as recoverable (a retry establishes a fresh transport).
+    async fn shutdown_inflight_fetch(&self, ticket: &BlobTicket) -> Result<(), BlobError>;
+
     // ── Lifecycle ──
 
     /// Whether the local store currently holds the ciphertext.

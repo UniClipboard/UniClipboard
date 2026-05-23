@@ -72,6 +72,8 @@ pub fn build() -> Builder<tauri::Wry> {
             crate::commands::storage::open_logs_directory,
             // ── clipboard delivery view (entry detail "源 + 同步状态") ──────────
             crate::commands::clipboard_delivery::clipboard_entry_delivery_view,
+            // ── file transfer (P1: 接收方主动取消进行中的大文件传输) ───────────
+            crate::commands::file_transfer::cancel_file_transfer,
             // ── quick panel ─────────────────────────────────────────────────────
             crate::commands::quick_panel::paste_to_previous_app,
             crate::commands::quick_panel::dismiss_quick_panel,

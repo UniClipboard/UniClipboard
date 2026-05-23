@@ -455,6 +455,25 @@ impl AppFacade {
             .await
     }
 
+    /// 取消一次进行中的 inbound 文件传输。
+    ///
+    /// 接收方主动撤回 fetch:trigger 内部 cancellation token + 撕掉
+    /// iroh-blobs Downloader 用的 QUIC connection + 落 `Cancelled`
+    /// domain event。幂等:同一 `transfer_id` 不在 inflight registry
+    /// 时(没有进行中的 fetch / 已经被取消过)返回 `Ok(())`。
+    pub async fn cancel_inbound_transfer(
+        &self,
+        transfer_id: &str,
+        reason: uc_core::FileTransferCancellationReason,
+    ) -> Result<(), BlobTransferError> {
+        self.blob_transfer
+            .get()
+            .cloned()
+            .ok_or_else(|| BlobTransferError::Fetch("blob facade unavailable".to_string()))?
+            .cancel_inbound_transfer(transfer_id, reason)
+            .await
+    }
+
     /// 查询本地搜索索引。
     pub async fn search_query(
         &self,

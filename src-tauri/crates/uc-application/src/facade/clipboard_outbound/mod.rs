@@ -28,7 +28,7 @@ use crate::sync_planner::{FileCandidate, FileSyncIntent, OutboundSyncPlanner};
 use crate::usecases::clipboard_sync::resend_entry::{
     ResendEntryDeps, ResendEntryRunner, ResendEntryUseCase,
 };
-use crate::V3BlobRef;
+use crate::usecases::clipboard_sync::V3BlobRef;
 
 pub use crate::usecases::clipboard_sync::resend_entry::{
     NotResendableReason, ResendEntryCommand, ResendEntryError, ResendReport,

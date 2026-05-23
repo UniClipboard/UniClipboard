@@ -45,10 +45,10 @@ use tokio::sync::{broadcast, oneshot};
 use tracing::warn;
 use uuid::Uuid;
 
-use uc_application::decode_v3_bytes_to_snapshot_and_blob_refs;
 use uc_application::facade::space_setup::TryResumeSessionError;
 use uc_application::facade::{
-    BlobTransferError, FetchBlobToPathCommand, FetchTransferContext, InboundNotice,
+    decode_v3_bytes_to_snapshot_and_blob_refs, BlobTransferError, FetchBlobToPathCommand,
+    FetchTransferContext, InboundNotice, V3BlobRef,
 };
 use uc_core::FileTransferCancellationReason;
 
@@ -294,7 +294,7 @@ async fn resolve_out_dir(out: Option<PathBuf>) -> Result<PathBuf, String> {
 /// Pick the first **free-file** blob from a notice — i.e. one with a
 /// real filename and no `representation_index` (the latter means the
 /// blob's bytes belong inside a snapshot rep, not as a standalone file).
-fn pick_first_file_blob_ref(notice: &InboundNotice) -> Option<uc_application::V3BlobRef> {
+fn pick_first_file_blob_ref(notice: &InboundNotice) -> Option<V3BlobRef> {
     let (_snapshot, blob_refs) =
         decode_v3_bytes_to_snapshot_and_blob_refs(&notice.plaintext).ok()?;
     blob_refs.into_iter().find(|r| {

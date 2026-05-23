@@ -24,12 +24,12 @@ pub use usecases::clipboard_sync::{
     InboundWrite,
 };
 
-// Slice 2 Phase 3 · T10 — CLI `watch` decodes V3 envelope bytes from
-// `InboundNotice.plaintext` to show human-readable text. Daemon uses the
-// same helper internally via `ApplyInboundClipboardUseCase`.
-pub use usecases::clipboard_sync::{
-    decode_v3_bytes_to_snapshot, decode_v3_bytes_to_snapshot_and_blob_refs, V3BlobRef,
-};
+// Note: V3 envelope codec helpers (decode_v3_bytes_to_snapshot,
+// decode_v3_bytes_to_snapshot_and_blob_refs, V3BlobRef) used to live
+// here. Per AGENTS.md §11.4.3 they now route through `facade/` —
+// import them as `uc_application::facade::decode_v3_bytes_to_snapshot`
+// etc. The implementations stay in `usecases::clipboard_sync` but the
+// crate boundary only exposes them via the facade.
 pub mod file_transfer;
 pub mod membership;
 pub(crate) mod pairing_inbound;

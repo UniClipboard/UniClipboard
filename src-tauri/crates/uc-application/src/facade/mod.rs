@@ -46,6 +46,12 @@ pub use clipboard::{
     EntryDeliveryView, EntrySource, GetEntryDeliveryViewError, InboundAction, InboundNotice,
     IngestHandle,
 };
+// V3 envelope codec helpers — surfaced through the facade per §11.4.3 so
+// external CLI / test consumers don't reach into `crate::usecases::*`
+// directly. Implementations live in `usecases::clipboard_sync::payload_codec`.
+pub use crate::usecases::clipboard_sync::{
+    decode_v3_bytes_to_snapshot, decode_v3_bytes_to_snapshot_and_blob_refs, V3BlobRef,
+};
 pub use clipboard_capture::{
     CapturedClipboardEntryView, ClipboardCaptureFacade, ClipboardCaptureFacadeError,
     ClipboardCapturePort,

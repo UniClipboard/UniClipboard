@@ -15,9 +15,8 @@
 use serde::Serialize;
 use tokio::sync::broadcast;
 
-use uc_application::decode_v3_bytes_to_snapshot;
 use uc_application::facade::space_setup::TryResumeSessionError;
-use uc_application::facade::{InboundAction, InboundNotice};
+use uc_application::facade::{decode_v3_bytes_to_snapshot, InboundAction, InboundNotice};
 use uc_core::SystemClipboardSnapshot;
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};

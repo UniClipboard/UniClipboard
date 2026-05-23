@@ -31,9 +31,8 @@ use uc_application::facade::space_setup::TryResumeSessionError;
 use uc_application::facade::{
     BlobTransferError, ClipboardSyncError, DispatchEntryOutcome, DispatchEntryPerTarget,
     NotResendableReason, PublishBlobPathCommand, ResendEntryCommand, ResendEntryError,
-    ResendReport,
+    ResendReport, V3BlobRef,
 };
-use uc_application::V3BlobRef;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::DispatchAck;
 use uc_core::{

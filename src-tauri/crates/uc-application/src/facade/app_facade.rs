@@ -52,7 +52,7 @@ use crate::facade::{
     SearchFacade, SearchFacadeError, SearchPageView, SearchQueryInput, SearchRebuildAcceptedView,
     SearchStatusView, SettingsFacade, SettingsFacadeError, SpaceSetupFacade, StorageFacade,
 };
-use crate::V3BlobRef;
+use crate::usecases::clipboard_sync::V3BlobRef;
 use uc_core::ids::DeviceId;
 use uc_core::ports::{PresenceError, PresenceEvent, ReachabilityState};
 use uc_core::ClipboardChangeOrigin;

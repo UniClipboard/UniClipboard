@@ -37,12 +37,12 @@ use tempfile::TempDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
-use uc_application::decode_v3_bytes_to_snapshot;
 use uc_application::facade::space_setup::{
     InitializeSpaceInput, RedeemPairingInvitationInput, SpaceSetupDeps, SpaceSetupFacade,
 };
 use uc_application::facade::{
-    ClipboardSyncDeps, ClipboardSyncFacade, IngestHandle, MemberRosterDeps, MemberRosterFacade,
+    decode_v3_bytes_to_snapshot, ClipboardSyncDeps, ClipboardSyncFacade, IngestHandle,
+    MemberRosterDeps, MemberRosterFacade,
 };
 use uc_application::proof::HmacProofAdapter;
 use uc_bootstrap::IrohNodeConfig;

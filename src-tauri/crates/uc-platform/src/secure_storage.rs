@@ -34,11 +34,69 @@ pub enum SecureStorageFactoryError {
 /// locked and unable to prompt in this context, KWallet disabled, etc. Those
 /// failures used to crash daemon bootstrap; callers can now degrade
 /// gracefully to file-based KEK instead.
-fn probe_system_storage_reachable(storage: &SystemSecureStorage) -> Result<(), String> {
+fn probe_system_storage_reachable(storage: &dyn SecureStoragePort) -> Result<(), String> {
     storage
         .get(SYSTEM_STORAGE_PROBE_KEY)
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+/// Linux-only: round-trip 32 random bytes through the platform secret service
+/// and verify the read-back is byte-identical. Catches backends that silently
+/// mangle binary payloads — most notably KWallet's freedesktop Secret-Service
+/// bridge (`kwalletd5` / `kwalletd6`), which routes values through
+/// `QString::fromUtf8()` internally and replaces every non-UTF-8 byte with
+/// `U+FFFD` (3 bytes when re-encoded). A 32-byte random KEK round-tripped
+/// through KWallet's bridge typically comes back at ~60–65 bytes and fails
+/// every subsequent `Kek::from_bytes` parse — see issue #838.
+///
+/// Returns `Ok(())` only when write + read + byte-equality all succeed.
+/// On any failure (including reachability failures previously caught by
+/// `probe_system_storage_reachable`) the caller falls back to
+/// `FileSecureStorage`. The sentinel entry is best-effort cleaned up
+/// regardless of outcome so we don't leave probe state in the user's wallet.
+///
+/// Not wired into macOS / Windows production paths: every `set` on macOS
+/// Keychain risks a fresh authorization prompt, and Windows Credential
+/// Manager has no comparable text-mangling pathology — the lighter
+/// reachability probe is enough on those platforms. The function is still
+/// compiled there so its unit tests (which exercise pure trait-object
+/// behavior) run on every host.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn probe_system_storage_integrity(storage: &dyn SecureStoragePort) -> Result<(), String> {
+    use rand::{rngs::OsRng, TryRngCore};
+
+    let mut probe = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut probe)
+        .map_err(|e| format!("rng failure while preparing integrity probe: {e}"))?;
+
+    storage
+        .set(SYSTEM_STORAGE_PROBE_KEY, &probe)
+        .map_err(|e| format!("integrity probe write failed: {e}"))?;
+
+    let read_result = storage.get(SYSTEM_STORAGE_PROBE_KEY);
+
+    // Best-effort cleanup of the sentinel regardless of the read outcome —
+    // leaving a probe entry behind would be sloppy and (on backends that
+    // mangle bytes) confuse future inspection.
+    let _ = storage.delete(SYSTEM_STORAGE_PROBE_KEY);
+
+    match read_result.map_err(|e| format!("integrity probe read failed: {e}"))? {
+        Some(bytes) if bytes == probe => Ok(()),
+        Some(bytes) => Err(format!(
+            "secret service did not preserve binary payload \
+             (wrote 32 bytes, read {} bytes back); \
+             matches KWallet's Secret-Service bridge mangling values via \
+             QString::fromUtf8() — see issue #838",
+            bytes.len()
+        )),
+        None => Err(
+            "integrity probe write reported success but read returned no entry; \
+             secret service is not persisting writes for this process"
+                .into(),
+        ),
+    }
 }
 
 fn secure_storage_from_capability(
@@ -190,13 +248,26 @@ pub fn create_default_secure_storage_in_app_data_root(
         SecureStorageCapability::SystemKeyring => {
             // capability detection is env-only (DISPLAY + DBUS_SESSION_BUS_ADDRESS),
             // it cannot tell whether the secret service actually accepts our calls.
-            // snap AppArmor refusing OpenSession is the canonical failure we hit
-            // (see `password-manager-service` plug in snapcraft.yaml). Round-trip
-            // a probe before committing to system keyring; on failure degrade to
-            // FileSecureStorage so daemon bootstrap can still complete instead of
-            // crashing the GUI with an opaque "in-process daemon start failed".
+            // snap AppArmor refusing OpenSession is the canonical reachability
+            // failure (see `password-manager-service` plug in snapcraft.yaml);
+            // KWallet's Secret-Service bridge corrupting binary payloads is the
+            // canonical integrity failure (issue #838). Probe before committing
+            // to system keyring; on failure degrade to FileSecureStorage so
+            // daemon bootstrap can still complete instead of crashing with an
+            // opaque "invalid KEK length" later in the unlock path.
             let system_storage = SystemSecureStorage::new();
-            match probe_system_storage_reachable(&system_storage) {
+
+            // Linux runs the binary round-trip integrity probe; macOS/Windows
+            // stick to the cheap reachability probe — a `set` on macOS would
+            // risk a fresh Keychain authorization prompt every launch, and
+            // Windows Credential Manager has no equivalent text-mangling
+            // pathology that would be worth the extra write for.
+            #[cfg(target_os = "linux")]
+            let probe_result = probe_system_storage_integrity(&system_storage);
+            #[cfg(not(target_os = "linux"))]
+            let probe_result = probe_system_storage_reachable(&system_storage);
+
+            match probe_result {
                 Ok(()) => {
                     info!("Using system secure storage");
                     Ok(Arc::new(system_storage) as Arc<dyn SecureStoragePort>)
@@ -205,8 +276,10 @@ pub fn create_default_secure_storage_in_app_data_root(
                     warn!(
                         probe_error = %probe_err,
                         "System secure storage probe failed; falling back to file-based KEK. \
-                         Check snap interface connections (e.g. password-manager-service) or \
-                         keyring daemon availability."
+                         Common causes: snap AppArmor blocking Secret-Service access \
+                         (check `password-manager-service` plug), keyring daemon not \
+                         running, or KWallet's Secret-Service bridge mangling binary \
+                         values (issue #838)."
                     );
                     Ok(
                         Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
@@ -226,5 +299,132 @@ pub fn create_default_secure_storage_in_app_data_root(
             error!(capability = ?capability, "Secure storage unsupported");
             Err(SecureStorageFactoryError::Unsupported { capability })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use uc_core::ports::SecureStorageError;
+
+    /// `SecureStoragePort` that preserves bytes verbatim — models a
+    /// well-behaved backend like gnome-keyring.
+    #[derive(Default)]
+    struct HonestStorage {
+        map: Mutex<HashMap<String, Vec<u8>>>,
+    }
+
+    impl SecureStoragePort for HonestStorage {
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
+            Ok(self.map.lock().unwrap().get(key).cloned())
+        }
+        fn set(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
+            self.map
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_vec());
+            Ok(())
+        }
+        fn delete(&self, key: &str) -> Result<(), SecureStorageError> {
+            self.map.lock().unwrap().remove(key);
+            Ok(())
+        }
+    }
+
+    /// `SecureStoragePort` that models KWallet's Secret-Service bridge: every
+    /// stored value is funneled through `String::from_utf8_lossy`, replacing
+    /// invalid UTF-8 sequences with `U+FFFD` (3 bytes when re-encoded as
+    /// UTF-8). Mirrors `kwalletd`'s internal `QString::fromUtf8` round-trip
+    /// closely enough to drive integrity-probe assertions in pure CPU tests.
+    #[derive(Default)]
+    struct KWalletLikeStorage {
+        map: Mutex<HashMap<String, Vec<u8>>>,
+    }
+
+    impl SecureStoragePort for KWalletLikeStorage {
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
+            Ok(self.map.lock().unwrap().get(key).cloned())
+        }
+        fn set(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
+            let mangled = String::from_utf8_lossy(value).into_owned().into_bytes();
+            self.map.lock().unwrap().insert(key.to_string(), mangled);
+            Ok(())
+        }
+        fn delete(&self, key: &str) -> Result<(), SecureStorageError> {
+            self.map.lock().unwrap().remove(key);
+            Ok(())
+        }
+    }
+
+    /// `SecureStoragePort` whose `set` always fails — models snap AppArmor
+    /// refusing `OpenSession` or a locked keyring rejecting writes.
+    struct WriteRejectingStorage;
+
+    impl SecureStoragePort for WriteRejectingStorage {
+        fn get(&self, _key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
+            Ok(None)
+        }
+        fn set(&self, _key: &str, _value: &[u8]) -> Result<(), SecureStorageError> {
+            Err(SecureStorageError::PermissionDenied(
+                "denied by test".into(),
+            ))
+        }
+        fn delete(&self, _key: &str) -> Result<(), SecureStorageError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn integrity_probe_passes_on_honest_backend() {
+        let storage = HonestStorage::default();
+        let result = probe_system_storage_integrity(&storage);
+        assert!(result.is_ok(), "honest backend must pass: {result:?}");
+        // Sentinel must be cleaned up after a successful probe.
+        assert!(
+            storage
+                .map
+                .lock()
+                .unwrap()
+                .get(SYSTEM_STORAGE_PROBE_KEY)
+                .is_none(),
+            "sentinel entry must be cleaned up after success"
+        );
+    }
+
+    #[test]
+    fn integrity_probe_catches_kwallet_byte_mangling() {
+        let storage = KWalletLikeStorage::default();
+        let result = probe_system_storage_integrity(&storage);
+        let err = result.expect_err("KWallet-like backend must be rejected");
+        assert!(
+            err.contains("did not preserve binary payload"),
+            "error must point at byte mismatch, got: {err}"
+        );
+        assert!(
+            err.contains("KWallet") || err.contains("#838"),
+            "error must mention KWallet or #838 for triage clarity, got: {err}"
+        );
+        // Sentinel still cleaned up even on integrity failure.
+        assert!(
+            storage
+                .map
+                .lock()
+                .unwrap()
+                .get(SYSTEM_STORAGE_PROBE_KEY)
+                .is_none(),
+            "sentinel entry must be cleaned up after mismatch"
+        );
+    }
+
+    #[test]
+    fn integrity_probe_reports_write_failure() {
+        let result = probe_system_storage_integrity(&WriteRejectingStorage);
+        let err = result.expect_err("write rejection must surface as Err");
+        assert!(
+            err.contains("integrity probe write failed"),
+            "error must explain the write failed, got: {err}"
+        );
     }
 }

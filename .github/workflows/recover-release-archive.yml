@@ -40,10 +40,18 @@ jobs:
       contents: write
       pages: write
     steps:
-      - name: Checkout repository at tag
+      - name: Checkout repository (default branch)
+        # Intentionally NOT pinned to the v<version> tag: the recover
+        # workflow is meant to apply *post-release* script fixes against
+        # an older release. The tagged commit contains the scripts as
+        # they existed at release time, which may carry the very bug we
+        # are recovering from (e.g. v0.11.1 shipped without the
+        # "does not exist" R2 404 recognition added in #845).
+        # docs/changelog/<version>.{md,zh.md} are added by prepare-release
+        # before the tag is cut and remain on main afterwards, so the
+        # default branch always has both the latest scripts and the
+        # changelog files this workflow needs.
         uses: actions/checkout@v6
-        with:
-          ref: v${{ inputs.version }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

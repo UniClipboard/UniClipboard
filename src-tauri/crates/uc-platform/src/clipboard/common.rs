@@ -170,6 +170,47 @@ fn should_skip_raw_format(
     false
 }
 
+/// 过滤剪贴板 `files` rep 中应当跨设备同步的路径。
+///
+/// 当前过滤策略:
+/// 1. **零字节文件直接丢弃** —— 第三方剪贴板同步工具(例如网易 UU 远控的
+///    `~/Library/Application Support/com.netease.uuremote/Clipboard/.uuremote_*`,
+///    其他远控如 TeamViewer / 向日葵也观察到类似模式)会反复往本地目录写零字节占位
+///    文件作为心跳/握手,这些文件没有真实负载,跨设备传输纯属噪音,且对端会被弹通知。
+/// 2. **stat 失败的文件也丢弃** —— 拿不到元数据就无法保证文件依然存在或可读,跨网
+///    传输有可能拿到部分写入的内容或触发对端的 ENOENT。
+///
+/// `size_lookup` 注入便于单元测试;生产环境传 `std::fs::metadata(p).map(|m| m.len())`。
+fn filter_syncable_clipboard_files<F>(
+    paths: Vec<std::path::PathBuf>,
+    mut size_lookup: F,
+) -> Vec<std::path::PathBuf>
+where
+    F: FnMut(&std::path::Path) -> std::io::Result<u64>,
+{
+    paths
+        .into_iter()
+        .filter_map(|path| match size_lookup(&path) {
+            Ok(0) => {
+                debug!(
+                    path = %path.display(),
+                    "Skipping zero-byte file in clipboard files rep (likely third-party clipboard-sync tool)"
+                );
+                None
+            }
+            Ok(_) => Some(path),
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    path = %path.display(),
+                    "Failed to stat clipboard file, skipping"
+                );
+                None
+            }
+        })
+        .collect()
+}
+
 fn map_clipboard_err<T>(
     result: std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>,
 ) -> Result<T> {
@@ -314,27 +355,41 @@ impl CommonClipboardImpl {
                     // clipboard-rs returns raw OS paths (e.g. "C:\Users\mark\file.jpg" on Windows).
                     // Normalize to file:// URIs so downstream `extract_file_paths_from_snapshot`
                     // can parse them on all platforms via url::Url::parse().
-                    let paths: Vec<std::path::PathBuf> =
+                    let raw_paths: Vec<std::path::PathBuf> =
                         files.iter().map(std::path::PathBuf::from).collect();
-                    let uris: Vec<String> = paths
-                        .iter()
-                        .filter_map(|path| {
-                            url::Url::from_file_path(path).ok().map(|u| u.to_string())
-                        })
-                        .collect();
-                    let bytes = uris.join("\n").into_bytes();
-                    debug!(
-                        format_id = "files",
-                        size_bytes = bytes.len(),
-                        "Read files representation"
-                    );
-                    reps.push(ObservedClipboardRepresentation::new(
-                        RepresentationId::new(),
-                        "files".into(),
-                        Some(MimeType("text/uri-list".to_string())),
-                        bytes,
-                    ));
-                    captured_file_paths = paths;
+                    let raw_count = raw_paths.len();
+                    let paths = filter_syncable_clipboard_files(raw_paths, |p| {
+                        std::fs::metadata(p).map(|m| m.len())
+                    });
+
+                    if paths.is_empty() {
+                        debug!(
+                            raw_count,
+                            "All clipboard files filtered out (zero-byte or unreadable); skipping files rep"
+                        );
+                    } else {
+                        let uris: Vec<String> = paths
+                            .iter()
+                            .filter_map(|path| {
+                                url::Url::from_file_path(path).ok().map(|u| u.to_string())
+                            })
+                            .collect();
+                        let bytes = uris.join("\n").into_bytes();
+                        debug!(
+                            format_id = "files",
+                            size_bytes = bytes.len(),
+                            kept = paths.len(),
+                            dropped = raw_count - paths.len(),
+                            "Read files representation"
+                        );
+                        reps.push(ObservedClipboardRepresentation::new(
+                            RepresentationId::new(),
+                            "files".into(),
+                            Some(MimeType("text/uri-list".to_string())),
+                            bytes,
+                        ));
+                        captured_file_paths = paths;
+                    }
                 }
                 Err(err) => {
                     warn!(error = %err, "Failed to read files representation");
@@ -1027,6 +1082,64 @@ mod tests {
             false,
             false
         ));
+    }
+
+    // ─── filter_syncable_clipboard_files ─────────────────────────────────
+    //
+    // 守住"零字节剪贴板文件不进入同步管线"的契约。回归场景:macOS 上启动 uuremote 后,
+    // 远控的剪贴板同步功能会以 ~500ms/个 的节奏往 com.netease.uuremote/Clipboard/
+    // 写入 .uuremote_* 占位文件,这些文件长度恒为 0 字节。
+
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn filter_syncable_clipboard_files_drops_zero_byte_files() {
+        let paths = vec![
+            PathBuf::from("/tmp/.uuremote_aaa"),
+            PathBuf::from("/tmp/real.txt"),
+            PathBuf::from("/tmp/.uuremote_bbb"),
+        ];
+        let kept = filter_syncable_clipboard_files(paths, |p: &Path| {
+            if p == Path::new("/tmp/real.txt") {
+                Ok(1024)
+            } else {
+                Ok(0)
+            }
+        });
+        assert_eq!(kept, vec![PathBuf::from("/tmp/real.txt")]);
+    }
+
+    #[test]
+    fn filter_syncable_clipboard_files_returns_empty_when_all_zero() {
+        let paths = vec![
+            PathBuf::from("/tmp/.uuremote_aaa"),
+            PathBuf::from("/tmp/.uuremote_bbb"),
+        ];
+        let kept = filter_syncable_clipboard_files(paths, |_p: &Path| Ok(0));
+        assert!(kept.is_empty());
+    }
+
+    #[test]
+    fn filter_syncable_clipboard_files_drops_unreadable_files() {
+        let paths = vec![
+            PathBuf::from("/tmp/missing"),
+            PathBuf::from("/tmp/real.bin"),
+        ];
+        let kept = filter_syncable_clipboard_files(paths, |p: &Path| {
+            if p == Path::new("/tmp/missing") {
+                Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+            } else {
+                Ok(42)
+            }
+        });
+        assert_eq!(kept, vec![PathBuf::from("/tmp/real.bin")]);
+    }
+
+    #[test]
+    fn filter_syncable_clipboard_files_keeps_all_when_all_nonzero() {
+        let paths = vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")];
+        let kept = filter_syncable_clipboard_files(paths.clone(), |_p: &Path| Ok(1));
+        assert_eq!(kept, paths);
     }
 
     // ─── sniff_image_magic ──────────────────────────────────────────────

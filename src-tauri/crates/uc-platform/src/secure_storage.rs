@@ -34,6 +34,11 @@ pub enum SecureStorageFactoryError {
 /// locked and unable to prompt in this context, KWallet disabled, etc. Those
 /// failures used to crash daemon bootstrap; callers can now degrade
 /// gracefully to file-based KEK instead.
+///
+/// On Linux the production wiring uses the stricter
+/// `probe_system_storage_integrity` instead; this function is still compiled
+/// for parity / future use, hence the `dead_code` allowance there.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 fn probe_system_storage_reachable(storage: &dyn SecureStoragePort) -> Result<(), String> {
     storage
         .get(SYSTEM_STORAGE_PROBE_KEY)

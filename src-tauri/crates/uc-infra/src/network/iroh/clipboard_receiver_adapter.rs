@@ -292,35 +292,32 @@ mod tests {
     use crate::security::Sha256IdentityFingerprintFactory;
     use uc_core::ports::{PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort};
 
-    /// Minimal `PresencePort` stand-in. Receiver-side tests construct a
-    /// dispatch adapter only as a wire-driver to the receiver under test;
-    /// `mark_offline` on dial failure uses the trait's noop default, which
-    /// is fine because these tests never exercise the dial-failure path.
-    struct NoopPresence {
-        _tx: broadcast::Sender<PresenceEvent>,
+    // PresencePort mock. Receiver-side tests use the dispatch adapter only
+    // as a wire-driver against the receiver under test; the dispatch path
+    // never hits dial failure in these scenarios, so `mark_offline` is
+    // never invoked. The mock therefore needs no expectations — any
+    // unexpected call surfaces as a mockall panic.
+    //
+    // `mark_offline` is intentionally omitted from the mock so the trait's
+    // default noop impl is in play; if a future test does exercise the
+    // dial-failure path, mockall will catch any accidental presence-side
+    // assumption it makes.
+    mockall::mock! {
+        Presence {}
+
+        #[async_trait]
+        impl PresencePort for Presence {
+            async fn ensure_reachable(
+                &self,
+                device: &DeviceId,
+            ) -> Result<ReachabilityState, PresenceError>;
+            async fn current_state(&self, device: &DeviceId) -> ReachabilityState;
+            fn subscribe(&self) -> broadcast::Receiver<PresenceEvent>;
+        }
     }
 
-    impl NoopPresence {
-        fn new() -> Arc<Self> {
-            let (tx, _) = broadcast::channel(1);
-            Arc::new(Self { _tx: tx })
-        }
-    }
-
-    #[async_trait]
-    impl PresencePort for NoopPresence {
-        async fn ensure_reachable(
-            &self,
-            _device: &DeviceId,
-        ) -> Result<ReachabilityState, PresenceError> {
-            Ok(ReachabilityState::Unknown)
-        }
-        async fn current_state(&self, _device: &DeviceId) -> ReachabilityState {
-            ReachabilityState::Unknown
-        }
-        fn subscribe(&self) -> broadcast::Receiver<PresenceEvent> {
-            self._tx.subscribe()
-        }
+    fn presence_mock() -> Arc<dyn PresencePort> {
+        Arc::new(MockPresence::new())
     }
 
     // ----- test doubles ------------------------------------------------------
@@ -492,7 +489,7 @@ mod tests {
             .await
             .unwrap();
         let dispatch =
-            IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo, NoopPresence::new());
+            IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo, presence_mock());
 
         let payload = Bytes::from(vec![0xAB; 128]);
         let ack = dispatch
@@ -544,7 +541,7 @@ mod tests {
             .await
             .unwrap();
         let dispatch =
-            IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo, NoopPresence::new());
+            IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo, presence_mock());
 
         let result = dispatch
             .dispatch(
@@ -660,7 +657,7 @@ mod tests {
                 let dispatch = IrohClipboardDispatchAdapter::new(
                     sender_endpoint,
                     peer_addr_repo,
-                    NoopPresence::new(),
+                    presence_mock(),
                 );
 
                 let mut header = sample_header();

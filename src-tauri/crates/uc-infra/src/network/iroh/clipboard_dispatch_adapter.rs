@@ -248,37 +248,33 @@ mod tests {
         PeerAddressError, PeerAddressRecord, PresenceError, PresenceEvent, ReachabilityState,
     };
 
-    /// Minimal `PresencePort` stand-in. The dispatch adapter only calls
-    /// `mark_offline` on it (dial-failure writeback); the trait's default
-    /// implementation is a noop, which is exactly what these tests want —
-    /// we assert dispatch behaviour, not presence-side propagation.
-    struct NoopPresence {
-        // Keep a sender alive so `subscribe()` doesn't immediately return a
-        // closed receiver. Subscribers in these tests don't actually read.
-        _tx: broadcast::Sender<PresenceEvent>,
+    // PresencePort mock for the dispatch tests. None of the four tests in
+    // this module reach the dial-failure path (happy ack, duplicate ack,
+    // missing peer_addr short-circuit, oversized local reject), so the
+    // adapter never invokes `mark_offline`. The mock therefore needs no
+    // expectations — any accidental call surfaces as a mockall panic, which
+    // is exactly the regression guard we want for "dispatch tests shouldn't
+    // be touching presence state."
+    //
+    // `mark_offline` is omitted intentionally: it has a default impl on the
+    // trait (noop), so leaving it off the mock keeps that default in play
+    // without forcing every test to wire an empty expectation.
+    mockall::mock! {
+        Presence {}
+
+        #[async_trait]
+        impl PresencePort for Presence {
+            async fn ensure_reachable(
+                &self,
+                device: &DeviceId,
+            ) -> Result<ReachabilityState, PresenceError>;
+            async fn current_state(&self, device: &DeviceId) -> ReachabilityState;
+            fn subscribe(&self) -> broadcast::Receiver<PresenceEvent>;
+        }
     }
 
-    impl NoopPresence {
-        fn new() -> Arc<Self> {
-            let (tx, _) = broadcast::channel(1);
-            Arc::new(Self { _tx: tx })
-        }
-    }
-
-    #[async_trait]
-    impl PresencePort for NoopPresence {
-        async fn ensure_reachable(
-            &self,
-            _device: &DeviceId,
-        ) -> Result<ReachabilityState, PresenceError> {
-            Ok(ReachabilityState::Unknown)
-        }
-        async fn current_state(&self, _device: &DeviceId) -> ReachabilityState {
-            ReachabilityState::Unknown
-        }
-        fn subscribe(&self) -> broadcast::Receiver<PresenceEvent> {
-            self._tx.subscribe()
-        }
+    fn presence_mock() -> Arc<dyn PresencePort> {
+        Arc::new(MockPresence::new())
     }
 
     /// In-memory peer_addr_repo the tests use to inject an address blob
@@ -417,7 +413,7 @@ mod tests {
         let target = DeviceId::new("target-alpha");
         seed_addr(&repo, &target, &peer_addr).await;
 
-        let adapter = IrohClipboardDispatchAdapter::new(sender_endpoint, repo, NoopPresence::new());
+        let adapter = IrohClipboardDispatchAdapter::new(sender_endpoint, repo, presence_mock());
         let payload = SyncPayload {
             ciphertext: Bytes::from(vec![0x11, 0x22, 0x33, 0x44]),
         };
@@ -446,7 +442,7 @@ mod tests {
         let target = DeviceId::new("target-beta");
         seed_addr(&repo, &target, &peer_addr).await;
 
-        let adapter = IrohClipboardDispatchAdapter::new(sender_endpoint, repo, NoopPresence::new());
+        let adapter = IrohClipboardDispatchAdapter::new(sender_endpoint, repo, presence_mock());
         let payload = SyncPayload {
             ciphertext: Bytes::from(vec![0xAA; 16]),
         };
@@ -466,7 +462,7 @@ mod tests {
     async fn dispatch_returns_offline_when_peer_addr_missing() {
         let sender_endpoint = bind_endpoint().await;
         let repo = Arc::new(MemRepo::default());
-        let adapter = IrohClipboardDispatchAdapter::new(sender_endpoint, repo, NoopPresence::new());
+        let adapter = IrohClipboardDispatchAdapter::new(sender_endpoint, repo, presence_mock());
 
         let result = adapter
             .dispatch(
@@ -495,7 +491,7 @@ mod tests {
         // we would hit Offline first.
         let sender_endpoint = bind_endpoint().await;
         let repo = Arc::new(MemRepo::default());
-        let adapter = IrohClipboardDispatchAdapter::new(sender_endpoint, repo, NoopPresence::new());
+        let adapter = IrohClipboardDispatchAdapter::new(sender_endpoint, repo, presence_mock());
 
         let oversized = vec![0u8; clipboard_wire::MAX_PAYLOAD_SIZE as usize + 1];
         let result = adapter

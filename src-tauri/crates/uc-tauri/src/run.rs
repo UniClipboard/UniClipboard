@@ -286,6 +286,74 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             );
             info!("TauriHostEventEmitter registered on shared host_event_bus");
 
+            // macOS 文件接收 HUD:在 host_event_bus 上额外挂一根订阅,把
+            // `HostEvent::Transfer` + `ClipboardHostEvent::IncomingPending`
+            // 喂给状态机。macOS 上用 `MacosTransferHudListener` 渲染独立
+            // AppKit NSPanel(AirDrop 风格);其它平台暂用 tracing 占位 ——
+            // 产品语义就是 HUD 仅 macOS。
+            // 先构造 emitter,再构造 listener —— mac 上 listener 要反向
+            // 持有 emitter(cancel 按钮回调路径要调 mark_cancel_pending),
+            // 所以 listener 后置,用 `Arc::new_cyclic` 之类的"严格无环"机
+            // 制成本太高,采用"两阶段装配 + 进程级单例"的简化方案。这意
+            // 味着 emitter <-> listener 之间形成一个 Arc 环,生命周期到进
+            // 程退出为止 —— 与 host_event_bus 自身的生命周期一致。
+            //
+            // 因此先用一个占位 listener 构造 emitter,然后立即用真 listener
+            // 替换。emitter 内部的 listener 字段是 Arc<dyn>,通过 unsafe
+            // 替换不优雅 —— 改成:在 emitter 上加 set_listener 公开方法。
+            // 但为了不再扩 emitter API,这里直接先建好真 listener 需要的
+            // 信息,然后 mac 路径 emitter / listener 一起构造。
+            #[cfg(target_os = "macos")]
+            let transfer_hud_emitter = {
+                let placeholder: std::sync::Arc<dyn crate::transfer_hud::TransferHudListener> =
+                    std::sync::Arc::new(crate::transfer_hud::TracingTransferHudListener);
+                let emitter = std::sync::Arc::new(
+                    crate::transfer_hud::TransferHudEmitter::new(
+                        std::sync::Arc::new(crate::transfer_hud::SystemClock::new())
+                            as std::sync::Arc<dyn crate::transfer_hud::Clock>,
+                        placeholder,
+                    ),
+                );
+                let real_listener: std::sync::Arc<dyn crate::transfer_hud::TransferHudListener> =
+                    std::sync::Arc::new(crate::transfer_hud::MacosTransferHudListener::new(
+                        app.handle().clone(),
+                        std::sync::Arc::clone(&emitter),
+                    ));
+                emitter.set_listener(real_listener);
+                emitter
+            };
+            #[cfg(not(target_os = "macos"))]
+            let transfer_hud_emitter = std::sync::Arc::new(
+                crate::transfer_hud::TransferHudEmitter::new(
+                    std::sync::Arc::new(crate::transfer_hud::SystemClock::new())
+                        as std::sync::Arc<dyn crate::transfer_hud::Clock>,
+                    std::sync::Arc::new(crate::transfer_hud::TracingTransferHudListener)
+                        as std::sync::Arc<dyn crate::transfer_hud::TransferHudListener>,
+                ),
+            );
+            host_event_bus_for_tauri.register(
+                "transfer_hud",
+                transfer_hud_emitter.clone()
+                    as std::sync::Arc<dyn uc_application::facade::HostEventEmitterPort>,
+            );
+            info!("TransferHudEmitter registered on shared host_event_bus");
+
+            // 定时 sweep:HUD 状态机的终态行(Completed / Failed / Cancelled)
+            // 需要在保留期结束后被扫掉,否则 panel 上的"已完成"会一直挂着不
+            // 消失。500ms 的检查周期对 ~2s/4s 的保留期来说是 4-8 倍精度,足够;
+            // 比直接走 listener 的 status_changed 触发更省心 —— 后者会把
+            // sweep 时机与事件耦合,而 sweep 与事件无关只跟时间有关。
+            let emitter_for_sweep = transfer_hud_emitter.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval =
+                    tokio::time::interval(std::time::Duration::from_millis(500));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    interval.tick().await;
+                    emitter_for_sweep.tick();
+                }
+            });
+
             // 进程级 blob/spool worker —— Tauri runtime 已在 Builder::run()
             // 内就绪,这里 tauri::async_runtime::spawn 才能拿到 reactor。
             // 一次性 spawn,挂在进程级 task_registry 上,跨 daemon reload

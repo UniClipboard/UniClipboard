@@ -12,6 +12,7 @@ pub mod host_event_emitter;
 pub mod quick_panel;
 pub mod run;
 pub mod specta_builder;
+pub mod transfer_hud;
 pub mod tray;
 pub mod update_scheduler;
 

@@ -1,0 +1,120 @@
+name: Recover Release Archive
+
+# One-shot recovery for the "Archive release notes" / "Assemble update manifest" /
+# "Deploy update manifests to GitHub Pages" tail of release.yml.
+#
+# Use this when those steps failed for a release whose primary outputs
+# (GitHub Release + R2 manifest) already succeeded. It re-runs only the
+# archive / GH Pages portion against an existing tag, fetching .sig files
+# from the GitHub Release so it does not depend on the build artifacts of
+# the original workflow run.
+#
+# Typical invocation:
+#   gh workflow run recover-release-archive.yml \
+#     -f version=0.11.1 \
+#     -f channel=stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to recover (no v prefix), e.g. 0.11.1'
+        required: true
+        type: string
+      channel:
+        description: 'Release channel'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - rc
+          - beta
+          - alpha
+
+jobs:
+  recover:
+    name: Recover archive for v${{ inputs.version }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - name: Checkout repository at tag
+        uses: actions/checkout@v6
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Download .sig files from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-assets
+          gh release download "v${{ inputs.version }}" \
+            --repo "${{ github.repository }}" \
+            --pattern '*.sig' \
+            --dir release-assets
+          echo "Downloaded .sig files:"
+          ls -la release-assets
+
+      - name: Archive release notes and update channel index
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          CHANNEL="${{ inputs.channel }}"
+
+          node scripts/archive-release-notes.js \
+            --version "$VERSION" \
+            --channel "$CHANNEL" \
+            --notes-file "docs/changelog/${VERSION}.md" \
+            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
+
+      - name: Assemble update manifest
+        run: |
+          VERSION="${{ inputs.version }}"
+          CHANNEL="${{ inputs.channel }}"
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}"
+
+          node scripts/assemble-update-manifest.js \
+            --version "$VERSION" \
+            --artifacts-dir release-assets \
+            --output "updates/${CHANNEL}.json" \
+            --base-url "$BASE_URL" \
+            --notes-file "docs/changelog/${VERSION}.md" \
+            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
+
+          echo "Manifest assembled for channel: ${CHANNEL}"
+          cat "updates/${CHANNEL}.json"
+
+      - name: Deploy update manifests to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./updates
+          destination_dir: .
+          keep_files: true
+          commit_message: 'deploy(recover): update ${{ inputs.channel }} manifest for v${{ inputs.version }}'
+
+      - name: Summary
+        run: |
+          {
+            echo "## Recovered archive for v${{ inputs.version }} (${{ inputs.channel }})"
+            echo ""
+            echo "- R2 archive: \`release-notes/v${{ inputs.version }}.json\`"
+            echo "- R2 channel index: \`release-notes/index/${{ inputs.channel }}.json\`"
+            echo "- GitHub Pages: \`${{ inputs.channel }}.json\` updated"
+          } >> "$GITHUB_STEP_SUMMARY"

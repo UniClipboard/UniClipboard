@@ -7,8 +7,12 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "semver": "^7.6.3"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260515.1",
+    "@types/semver": "^7.7.0",
     "typescript": "^6.0.3",
     "wrangler": "^4.91.0"
   }

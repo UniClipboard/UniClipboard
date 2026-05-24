@@ -8,14 +8,14 @@ user-invocable: true
 
 Inspect logs from the macOS host and the Windows peer in a single, time-aligned view.
 
-This project is a Tauri desktop app where two peers (macOS + Windows) sync clipboard / files over an iroh-based network. The Windows machine's app data root is exposed to the Mac via SMB and mounted at `/tmp/win-uniclipboard/`, so both sides' JSONL logs are reachable from this host.
+This project is a Tauri desktop app where two peers (macOS + Windows) sync clipboard / files over an iroh-based network. The Windows machine's `AppData/Local` is exposed to the Mac via SMB and mounted at `/tmp/win-local/`, so both sides' JSONL logs are reachable from this host.
 
 The helper script lives at `.claude/skills/dual-side-debug/dual-logs.sh`. It is the **only** thing you should need to invoke for log work — do not hand-roll `ls`/`tail`/`jq` pipelines unless the script can't express what you need.
 
 ## Log layout you must remember
 
 * **macOS logs**: `~/Library/Application Support/app.uniclipboard.desktop[-<UC_PROFILE>]/logs/uniclipboard.json.YYYY-MM-DD`
-* **Windows logs (mounted)**: `/tmp/win-uniclipboard/logs/uniclipboard.json.YYYY-MM-DD`
+* **Windows logs (mounted)**: `/tmp/win-local/app.uniclipboard.desktop[-<WIN_PROFILE>]/logs/uniclipboard.json.YYYY-MM-DD`
 * Format: **JSON Lines**. Each line has at least `timestamp` (UTC, ISO-8601 with `Z`), `level`, `target`, `message`, `span`, `device_id`, plus structured fields.
 * The date in the filename is **UTC**, not local time. A file named `...2026-04-25` can be the live file while it is still 2026-04-24 in PDT.
 
@@ -26,54 +26,59 @@ The Windows logs only exist on this Mac because an SMB share is mounted from `DE
 Before debugging, verify a mount exists:
 
 ```bash
-mount | grep -E 'win-uniclipboard|win-local' || echo "no SMB mount yet"
+mount | grep -E 'win-local|win-uniclipboard' || echo "no SMB mount yet"
 ```
 
 If nothing is mounted, **stop and ask the user before running `mount_smbfs`** — it prompts for the Windows password interactively and the agent shouldn't silently do credential prompts. Hand the user the exact commands and let them run via `! <cmd>`.
 
-There are two mount layouts in use; pick based on the use case:
+### Default: broad mount of `AppData/Local` at `/tmp/win-local`
 
-### A. Narrow mount — matches the script's default `WIN_LOGS`
-
-Mount **just the uniclipboard profile dir** at `/tmp/win-uniclipboard`. This is what `dual-logs.sh` expects out of the box, no env var needed:
-
-```bash
-mkdir -p /tmp/win-uniclipboard
-mount_smbfs '//DESKTOP-HIC7MLI/Users/mark/AppData/Local/app.uniclipboard.desktop-<WIN_PROFILE>' /tmp/win-uniclipboard
-```
-
-Caveat: this pins you to **one** Windows profile. Switching the Windows side to a different `UC_PROFILE` requires unmounting and re-mounting.
-
-### B. Broad mount — entire `AppData/Local`
-
-Mount the whole `Local` folder at `/tmp/win-local`. This lets you reach any profile without re-mounting, but you must point the script at the right subdir via `WIN_LOGS`:
+This is what `dual-logs.sh` expects out of the box. It exposes **every** Windows uniclipboard profile dir at once, so you can switch profiles without re-mounting:
 
 ```bash
 mkdir -p /tmp/win-local
 mount_smbfs '//DESKTOP-HIC7MLI/Users/mark/AppData/Local' /tmp/win-local
-
-# Then for every dual-logs.sh invocation:
-WIN_LOGS=/tmp/win-local/app.uniclipboard.desktop-<WIN_PROFILE>/logs \
-  .claude/skills/dual-side-debug/dual-logs.sh status
 ```
 
-(Or `export WIN_LOGS=...` once for the shell session.)
+After mount you'll see dirs like `/tmp/win-local/app.uniclipboard.desktop`, `/tmp/win-local/app.uniclipboard.desktop-dev`, plus old version-suffixed ones. The script auto-detects the freshest one (see "Profile resolution" below).
+
+### Legacy: narrow mount at `/tmp/win-uniclipboard`
+
+Older sessions sometimes still use this — mounting **only one** profile dir directly. The script supports it via the `WIN_LOGS` env override (full-path bypass of `$WIN_BASE`):
+
+```bash
+mkdir -p /tmp/win-uniclipboard
+mount_smbfs '//DESKTOP-HIC7MLI/Users/mark/AppData/Local/app.uniclipboard.desktop-<WIN_PROFILE>' /tmp/win-uniclipboard
+
+# Then for every invocation:
+WIN_LOGS=/tmp/win-uniclipboard/logs .claude/skills/dual-side-debug/dual-logs.sh status
+```
+
+Prefer the broad mount unless there's a specific reason — it pins you to one profile and requires re-mounting to switch.
 
 ### Tearing down
 
 If the mount is wedged (Finder hangs, `ls` blocks for 30s), unmount cleanly before re-mounting:
 
 ```bash
-umount /tmp/win-uniclipboard   # or /tmp/win-local
+umount /tmp/win-local   # or /tmp/win-uniclipboard
 ```
 
-If `umount` fails because the path is busy, fall back to `diskutil unmount force /tmp/win-uniclipboard`.
+If `umount` fails because the path is busy, fall back to `diskutil unmount force /tmp/win-local`.
 
 ## Profile resolution (DO NOT skip this step)
 
-The default macOS profile is **`dev`** (`package.json`'s `tauri:dev` script sets `UC_PROFILE=dev`). Always treat `dev` as the assumed profile **unless** the user has said otherwise in this conversation.
+Mac and Windows each have their own active profile, and they are **not always the same name**. The script resolves each side independently.
 
-But the user often runs other profiles (`a`, `b` for `tauri:dev:peerA`/`peerB`, or ad-hoc names like `abc`). The active profile is a **runtime fact**, not a config you can read — you must verify it from disk.
+### Mac profile
+
+Default is **`dev`** (`package.json`'s `tauri:dev` script sets `UC_PROFILE=dev`). Treat `dev` as the assumed Mac profile unless the user said otherwise. The user sometimes runs other profiles (`a`, `b` for `tauri:dev:peerA`/`peerB`, or ad-hoc names like `abc`). Override with `--profile <name>`.
+
+### Windows profile
+
+The script **auto-detects** the Windows profile by scanning `$WIN_BASE` for the profile dir whose latest log file has the newest mtime. This handles the common case where the Win side is on a different profile than the Mac side, without you having to know which one. Override with `--win-profile <name>` (or `--win-profile default` for the no-suffix `app.uniclipboard.desktop` dir).
+
+### Always run `status` first
 
 Before answering any question that depends on log content, run:
 
@@ -83,12 +88,13 @@ Before answering any question that depends on log content, run:
 
 Then judge:
 
-1. Does the assumed profile's log directory exist?
-2. Is the latest log file's `mtime` close to "now" (look at the `freshness` column — `live (<2m)` or `recent (<10m)` is good; anything older means the process probably isn't running on this profile)?
+1. Does the assumed Mac profile's log directory exist?
+2. For each side, is the latest log file's `mtime` close to "now" (`live (<2m)` or `recent (<10m)` is good; anything older means the process probably isn't running on that profile)?
+3. On the Win side, the `status` output shows which profile was auto-detected and prints the alternatives sorted by mtime — sanity-check that it picked the one the user actually meant.
 
-**If the assumed profile dir is missing, OR the freshness is `stale` / `old` / `cold` while the user is actively reproducing**, stop and ask the user to confirm `UC_PROFILE`. The status output already lists the available profiles with their latest mtimes — use that to suggest a likely candidate. Example:
+**If the assumed profile dir is missing, OR the freshness is `stale` / `old` / `cold` while the user is actively reproducing**, stop and ask the user to confirm. Suggest a likely candidate from the available-profiles list. Example:
 
-> dev profile dir doesn't exist on this machine. The most recently active profile is `abc` (last write 30s ago). Should I use `abc`, or are you running with a different `UC_PROFILE`?
+> dev profile dir doesn't exist on Mac. The most recently active Mac profile is `abc` (last write 30s ago). Should I use `abc`, or are you running with a different `UC_PROFILE`?
 
 Do not silently fall back. Wrong profile = looking at frozen logs from a previous session.
 
@@ -102,8 +108,8 @@ Always invoke via the script. From the project root:
 
 | Command         | When to use                                                                 |
 | --------------- | --------------------------------------------------------------------------- |
-| `status`        | First call of any debug session. Confirms profile + freshness on both sides.|
-| `list-profiles` | When you suspect the user is on a profile other than `dev`.                 |
+| `status`        | First call of any debug session. Confirms profile + freshness on both sides. Shows which Win profile was auto-detected. |
+| `list-profiles` | When you suspect the user is on a profile other than `dev`. Defaults to both sides; use `--side win` for just the Windows list. |
 | `paths`         | Just need the resolved file paths (e.g. to feed another tool).              |
 | `tail`          | Quick "what just happened" — defaults to last 50 lines, both sides.         |
 | `grep <pat>`    | Plain string match. Cheap; good first probe (e.g. an error message, a device id). |
@@ -111,7 +117,8 @@ Always invoke via the script. From the project root:
 | `merge`         | Time-interleave both sides into a single chronological stream. Use this whenever the question is *"what happened between Mac and Windows around time X"*. |
 
 ### Useful flags
-* `--profile <name>` — override profile (default: `dev`).
+* `--profile <name>` — Mac profile override (default: `dev`).
+* `--win-profile <name>` — Win profile override (default: auto-detected by mtime). Use `default` for the no-suffix dir.
 * `--side mac|win|both` — restrict to one side.
 * `--lines N` — output line cap.
 * `--since <ISO8601>` (merge only) — drop lines older than this UTC timestamp.

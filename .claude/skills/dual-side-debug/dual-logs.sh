@@ -5,12 +5,19 @@
 # (uniclipboard.json.YYYY-MM-DD), so "today" here means UTC today.
 #
 # macOS path:    $MAC_BASE/app.uniclipboard.desktop[-<UC_PROFILE>]/logs/
-# Windows path:  /tmp/win-uniclipboard/logs/   (SMB share mounted on this Mac)
+# Windows path:  $WIN_BASE/app.uniclipboard.desktop[-<WIN_PROFILE>]/logs/
+#                (SMB share of //<host>/Users/<user>/AppData/Local mounted at $WIN_BASE)
+#
+# Win profile resolution priority:
+#   1. --win-profile <name> on the command line
+#   2. $WIN_LOGS env var (legacy full-path override, skips $WIN_BASE)
+#   3. auto-detect: profile under $WIN_BASE whose latest log file has the newest mtime
 
 set -euo pipefail
 
 MAC_BASE="${MAC_BASE:-$HOME/Library/Application Support}"
-WIN_LOGS="${WIN_LOGS:-/tmp/win-uniclipboard/logs}"
+WIN_BASE="${WIN_BASE:-/tmp/win-local}"
+WIN_LOGS_OVERRIDE="${WIN_LOGS:-}"
 DEFAULT_PROFILE="${UC_PROFILE_DEFAULT:-dev}"
 
 usage() {
@@ -19,20 +26,32 @@ Usage: dual-logs.sh <command> [options]
 
 Commands:
   status                       Show both sides: profile dirs, latest log files, freshness.
-  list-profiles                List all macOS profile dirs that have a logs/ folder.
-  paths [--profile <name>]     Print resolved log file paths for both sides.
-  tail   [--profile <name>] [--lines N] [--side mac|win|both]
+                               Windows profile is auto-detected (newest mtime) unless overridden.
+  list-profiles [--side mac|win|both]
+                               List all profile dirs (default: both sides).
+  paths  [--profile <name>] [--win-profile <name>]
+                               Print resolved log file paths for both sides.
+  tail   [--profile <name>] [--win-profile <name>] [--lines N] [--side mac|win|both]
                                Tail latest log file. Default: --side both --lines 50.
-  query  [--profile <name>] [--side mac|win|both]
+  query  [--profile <name>] [--win-profile <name>] [--side mac|win|both]
                                Pipe latest logs through jq. Read --filter from arg or stdin.
                                Examples:
                                  dual-logs.sh query --filter '. | select(.level=="ERROR")'
                                  dual-logs.sh query --side mac --filter '. | select(.target|test("pairing"))'
-  merge  [--profile <name>] [--since <ISO8601>] [--lines N]
+  merge  [--profile <name>] [--win-profile <name>] [--since <ISO8601>] [--lines N]
                                Merge both sides chronologically by .timestamp.
                                Each line gets a .side field ("mac" or "win") prepended.
-  grep   <pattern> [--profile <name>] [--side mac|win|both]
+  grep   <pattern> [--profile <name>] [--win-profile <name>] [--side mac|win|both]
                                Plain-text grep on the latest log files.
+
+Profile resolution:
+  --profile <name>             Selects mac profile dir: app.uniclipboard.desktop[-<name>]
+                               Default: $UC_PROFILE_DEFAULT (currently: dev)
+  --win-profile <name>         Selects win profile under $WIN_BASE the same way.
+                               Default: auto-detect newest mtime under $WIN_BASE.
+                               Use "default" for the no-suffix dir (app.uniclipboard.desktop).
+  WIN_LOGS=...                 Env override that bypasses $WIN_BASE entirely and treats the
+                               value as the literal logs/ dir. Useful for ad-hoc mounts.
 
 Notes:
   * Log file names use UTC dates. "Latest" = newest by mtime, not by clock date.
@@ -40,23 +59,29 @@ Notes:
 EOF
 }
 
-# --- profile resolution ----------------------------------------------------
+# --- generic profile resolution -------------------------------------------
 
-mac_profile_dir() {
-  local profile="${1:-}"
+# profile_dir <base> <profile> -> "<base>/app.uniclipboard.desktop[-<profile>]"
+profile_dir() {
+  local base="$1" profile="${2:-}"
   if [[ -z "$profile" || "$profile" == "default" ]]; then
-    echo "$MAC_BASE/app.uniclipboard.desktop"
+    echo "$base/app.uniclipboard.desktop"
   else
-    echo "$MAC_BASE/app.uniclipboard.desktop-$profile"
+    echo "$base/app.uniclipboard.desktop-$profile"
   fi
 }
 
-list_profile_dirs() {
-  # Print one line per existing profile dir that has a logs/ subdir.
-  # Format: <profile>\t<dir>\t<latest_log>\t<latest_mtime_iso>
+mac_profile_dir() { profile_dir "$MAC_BASE" "${1:-}"; }
+win_profile_dir() { profile_dir "$WIN_BASE" "${1:-}"; }
+
+# list_profile_dirs_in <base>
+#   Print one line per existing profile dir that has a logs/ subdir.
+#   Format: <profile>\t<dir>\t<latest_log>\t<latest_mtime_iso>\t<latest_mtime_epoch>
+list_profile_dirs_in() {
+  local base="$1"
   shopt -s nullglob
-  local d name profile latest mtime
-  for d in "$MAC_BASE"/app.uniclipboard.desktop "$MAC_BASE"/app.uniclipboard.desktop-*; do
+  local d name profile latest mtime epoch
+  for d in "$base"/app.uniclipboard.desktop "$base"/app.uniclipboard.desktop-*; do
     [[ -d "$d/logs" ]] || continue
     name="$(basename "$d")"
     if [[ "$name" == "app.uniclipboard.desktop" ]]; then
@@ -66,12 +91,21 @@ list_profile_dirs() {
     fi
     latest="$(latest_log_in "$d/logs" || true)"
     if [[ -n "$latest" ]]; then
-      mtime="$(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%S' "$latest")"
+      mtime="$(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%S' "$latest" 2>/dev/null || echo '')"
+      epoch="$(stat -f '%m' "$latest" 2>/dev/null || echo '0')"
     else
       mtime=""
+      epoch="0"
     fi
-    printf '%s\t%s\t%s\t%s\n' "$profile" "$d/logs" "${latest:-<empty>}" "${mtime:-<no-logs>}"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$profile" "$d/logs" "${latest:-<empty>}" "${mtime:-<no-logs>}" "$epoch"
   done
+}
+
+# auto_detect_profile <base> -> echoes the profile name with newest log mtime (or empty)
+auto_detect_profile() {
+  local base="$1"
+  [[ -d "$base" ]] || { echo ""; return; }
+  list_profile_dirs_in "$base" | sort -t$'\t' -k5 -nr | head -1 | cut -f1
 }
 
 latest_log_in() {
@@ -112,13 +146,52 @@ freshness_label() {
   fi
 }
 
+# Resolve the windows logs dir given an optional --win-profile.
+# Sets globals WIN_LOGS_RESOLVED and WIN_PROFILE_RESOLVED.
+# WIN_PROFILE_RESOLVED uses "default" for the no-suffix dir, "<override>" for WIN_LOGS env,
+# or the auto-detected profile name.
+resolve_win_logs() {
+  local win_profile="${1:-}"
+
+  # Priority 1: explicit --win-profile flag
+  if [[ -n "$win_profile" ]]; then
+    WIN_PROFILE_RESOLVED="$win_profile"
+    WIN_LOGS_RESOLVED="$(win_profile_dir "$win_profile")/logs"
+    return
+  fi
+
+  # Priority 2: legacy WIN_LOGS env override
+  if [[ -n "$WIN_LOGS_OVERRIDE" ]]; then
+    WIN_PROFILE_RESOLVED="<WIN_LOGS env>"
+    WIN_LOGS_RESOLVED="$WIN_LOGS_OVERRIDE"
+    return
+  fi
+
+  # Priority 3: auto-detect under $WIN_BASE
+  local detected
+  detected="$(auto_detect_profile "$WIN_BASE")"
+  if [[ -n "$detected" ]]; then
+    WIN_PROFILE_RESOLVED="$detected (auto)"
+    WIN_LOGS_RESOLVED="$(win_profile_dir "$detected")/logs"
+  else
+    WIN_PROFILE_RESOLVED="<none>"
+    WIN_LOGS_RESOLVED=""
+  fi
+}
+
 # --- commands --------------------------------------------------------------
 
 cmd_status() {
-  local profile="${1:-$DEFAULT_PROFILE}"
-  local mac_dir win_dir mac_log win_log
+  local profile="$DEFAULT_PROFILE" win_profile=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile)     profile="$2";     shift 2;;
+      --win-profile) win_profile="$2"; shift 2;;
+      *) echo "unknown arg: $1" >&2; exit 2;;
+    esac
+  done
+  local mac_dir mac_log win_log
   mac_dir="$(mac_profile_dir "$profile")/logs"
-  win_dir="$WIN_LOGS"
 
   echo "=== uniclipboard dual-log status ==="
   echo "now (local):   $(date '+%Y-%m-%d %H:%M:%S %Z')"
@@ -139,13 +212,16 @@ cmd_status() {
   else
     echo "  (profile dir does not exist — likely wrong UC_PROFILE)"
     echo "  available profiles:"
-    list_profile_dirs | awk -F'\t' '{printf "    - %s  (latest=%s, mtime=%s)\n", $1, $3, $4}'
+    list_profile_dirs_in "$MAC_BASE" \
+      | awk -F'\t' '{printf "    - %s  (latest=%s, mtime=%s)\n", $1, $3, $4}'
   fi
   echo
 
-  echo "[win] $win_dir"
-  if [[ -d "$win_dir" ]]; then
-    win_log="$(latest_log_in "$win_dir" || true)"
+  resolve_win_logs "$win_profile"
+  echo "[win] $WIN_LOGS_RESOLVED"
+  echo "      profile: $WIN_PROFILE_RESOLVED   base: $WIN_BASE"
+  if [[ -n "$WIN_LOGS_RESOLVED" && -d "$WIN_LOGS_RESOLVED" ]]; then
+    win_log="$(latest_log_in "$WIN_LOGS_RESOLVED" || true)"
     if [[ -n "$win_log" ]]; then
       local age; age="$(age_seconds "$win_log")"
       printf '  latest: %s\n  mtime:  %s   freshness: %s\n' \
@@ -153,63 +229,104 @@ cmd_status() {
     else
       echo "  (no log files — Windows side may not be running)"
     fi
+  elif [[ ! -d "$WIN_BASE" ]]; then
+    echo "  (mount missing: $WIN_BASE — re-mount the SMB share)"
   else
-    echo "  (mount missing: $win_dir — re-mount the SMB share)"
+    echo "  (no uniclipboard profile dirs under $WIN_BASE)"
+  fi
+
+  # If we auto-detected, also show the alternatives so the user can sanity-check.
+  if [[ "$WIN_PROFILE_RESOLVED" == *"(auto)"* ]]; then
+    echo "  available win profiles (by mtime, newest first):"
+    list_profile_dirs_in "$WIN_BASE" \
+      | sort -t$'\t' -k5 -nr \
+      | awk -F'\t' '{printf "    - %s  (latest=%s, mtime=%s)\n", $1, $3, $4}'
   fi
 }
 
 cmd_list_profiles() {
-  printf '%s\t%s\t%s\t%s\n' "PROFILE" "DIR" "LATEST" "MTIME"
-  list_profile_dirs
+  local side="both"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --side) side="$2"; shift 2;;
+      *) echo "unknown arg: $1" >&2; exit 2;;
+    esac
+  done
+  if [[ "$side" == "mac" || "$side" == "both" ]]; then
+    echo "===== mac profiles (base: $MAC_BASE) ====="
+    printf '%s\t%s\t%s\t%s\n' "PROFILE" "DIR" "LATEST" "MTIME"
+    list_profile_dirs_in "$MAC_BASE" | cut -f1-4
+  fi
+  if [[ "$side" == "win" || "$side" == "both" ]]; then
+    [[ "$side" == "both" ]] && echo
+    echo "===== win profiles (base: $WIN_BASE) ====="
+    if [[ -d "$WIN_BASE" ]]; then
+      printf '%s\t%s\t%s\t%s\n' "PROFILE" "DIR" "LATEST" "MTIME"
+      list_profile_dirs_in "$WIN_BASE" | sort -t$'\t' -k5 -nr | cut -f1-4
+    else
+      echo "(mount missing: $WIN_BASE)"
+    fi
+  fi
 }
 
 cmd_paths() {
-  local profile="${1:-$DEFAULT_PROFILE}"
+  local profile="$DEFAULT_PROFILE" win_profile=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile)     profile="$2";     shift 2;;
+      --win-profile) win_profile="$2"; shift 2;;
+      *) echo "unknown arg: $1" >&2; exit 2;;
+    esac
+  done
   local mac_dir mac_log win_log
   mac_dir="$(mac_profile_dir "$profile")/logs"
   mac_log="$(latest_log_in "$mac_dir" 2>/dev/null || true)"
-  win_log="$(latest_log_in "$WIN_LOGS" 2>/dev/null || true)"
+  resolve_win_logs "$win_profile"
+  win_log="$(latest_log_in "$WIN_LOGS_RESOLVED" 2>/dev/null || true)"
   echo "MAC=${mac_log:-<missing>}"
-  echo "WIN=${win_log:-<missing>}"
+  echo "WIN=${win_log:-<missing>}   (profile: $WIN_PROFILE_RESOLVED)"
 }
 
 resolve_pair() {
   # Sets globals MAC_LOG and WIN_LOG. Empties them if missing.
-  local profile="$1"
+  local profile="$1" win_profile="${2:-}"
   local mac_dir
   mac_dir="$(mac_profile_dir "$profile")/logs"
   MAC_LOG="$(latest_log_in "$mac_dir" 2>/dev/null || true)"
-  WIN_LOG="$(latest_log_in "$WIN_LOGS" 2>/dev/null || true)"
+  resolve_win_logs "$win_profile"
+  WIN_LOG="$(latest_log_in "$WIN_LOGS_RESOLVED" 2>/dev/null || true)"
 }
 
 cmd_tail() {
-  local profile="$DEFAULT_PROFILE" lines=50 side="both"
+  local profile="$DEFAULT_PROFILE" win_profile="" lines=50 side="both"
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --profile) profile="$2"; shift 2;;
-      --lines)   lines="$2";   shift 2;;
-      --side)    side="$2";    shift 2;;
+      --profile)     profile="$2";     shift 2;;
+      --win-profile) win_profile="$2"; shift 2;;
+      --lines)       lines="$2";       shift 2;;
+      --side)        side="$2";        shift 2;;
       *) echo "unknown arg: $1" >&2; exit 2;;
     esac
   done
-  resolve_pair "$profile"
+  resolve_pair "$profile" "$win_profile"
   if [[ "$side" == "mac" || "$side" == "both" ]]; then
     echo "===== [mac] ${MAC_LOG:-<missing>} ====="
     [[ -n "$MAC_LOG" ]] && tail -n "$lines" "$MAC_LOG"
   fi
   if [[ "$side" == "win" || "$side" == "both" ]]; then
-    echo "===== [win] ${WIN_LOG:-<missing>} ====="
+    echo "===== [win] ${WIN_LOG:-<missing>}   (profile: $WIN_PROFILE_RESOLVED) ====="
     [[ -n "$WIN_LOG" ]] && tail -n "$lines" "$WIN_LOG"
   fi
 }
 
 cmd_query() {
-  local profile="$DEFAULT_PROFILE" side="both" filter=""
+  local profile="$DEFAULT_PROFILE" win_profile="" side="both" filter=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --profile) profile="$2"; shift 2;;
-      --side)    side="$2";    shift 2;;
-      --filter)  filter="$2";  shift 2;;
+      --profile)     profile="$2";     shift 2;;
+      --win-profile) win_profile="$2"; shift 2;;
+      --side)        side="$2";        shift 2;;
+      --filter)      filter="$2";      shift 2;;
       *) echo "unknown arg: $1" >&2; exit 2;;
     esac
   done
@@ -220,7 +337,7 @@ cmd_query() {
     fi
     filter="$(cat)"
   fi
-  resolve_pair "$profile"
+  resolve_pair "$profile" "$win_profile"
   if [[ "$side" == "mac" || "$side" == "both" ]]; then
     if [[ -n "$MAC_LOG" ]]; then
       echo "===== [mac] $MAC_LOG ====="
@@ -229,23 +346,24 @@ cmd_query() {
   fi
   if [[ "$side" == "win" || "$side" == "both" ]]; then
     if [[ -n "$WIN_LOG" ]]; then
-      echo "===== [win] $WIN_LOG ====="
+      echo "===== [win] $WIN_LOG   (profile: $WIN_PROFILE_RESOLVED) ====="
       jq -c "$filter" "$WIN_LOG" || true
     fi
   fi
 }
 
 cmd_merge() {
-  local profile="$DEFAULT_PROFILE" since="" lines=200
+  local profile="$DEFAULT_PROFILE" win_profile="" since="" lines=200
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --profile) profile="$2"; shift 2;;
-      --since)   since="$2";   shift 2;;
-      --lines)   lines="$2";   shift 2;;
+      --profile)     profile="$2";     shift 2;;
+      --win-profile) win_profile="$2"; shift 2;;
+      --since)       since="$2";       shift 2;;
+      --lines)       lines="$2";       shift 2;;
       *) echo "unknown arg: $1" >&2; exit 2;;
     esac
   done
-  resolve_pair "$profile"
+  resolve_pair "$profile" "$win_profile"
   [[ -n "$MAC_LOG" || -n "$WIN_LOG" ]] || { echo "no logs found"; exit 1; }
 
   local since_filter="."
@@ -262,21 +380,22 @@ cmd_merge() {
 
 cmd_grep() {
   local pattern="$1"; shift || { echo "pattern required" >&2; exit 2; }
-  local profile="$DEFAULT_PROFILE" side="both"
+  local profile="$DEFAULT_PROFILE" win_profile="" side="both"
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --profile) profile="$2"; shift 2;;
-      --side)    side="$2";    shift 2;;
+      --profile)     profile="$2";     shift 2;;
+      --win-profile) win_profile="$2"; shift 2;;
+      --side)        side="$2";        shift 2;;
       *) echo "unknown arg: $1" >&2; exit 2;;
     esac
   done
-  resolve_pair "$profile"
+  resolve_pair "$profile" "$win_profile"
   if [[ "$side" == "mac" || "$side" == "both" ]] && [[ -n "$MAC_LOG" ]]; then
     echo "===== [mac] $MAC_LOG ====="
     grep -F -- "$pattern" "$MAC_LOG" || true
   fi
   if [[ "$side" == "win" || "$side" == "both" ]] && [[ -n "$WIN_LOG" ]]; then
-    echo "===== [win] $WIN_LOG ====="
+    echo "===== [win] $WIN_LOG   (profile: $WIN_PROFILE_RESOLVED) ====="
     grep -F -- "$pattern" "$WIN_LOG" || true
   fi
 }
@@ -285,12 +404,9 @@ cmd_grep() {
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  status)        cmd_status "${1:-$DEFAULT_PROFILE}";;
-  list-profiles) cmd_list_profiles;;
-  paths)
-    profile="$DEFAULT_PROFILE"
-    [[ "${1:-}" == "--profile" ]] && profile="$2"
-    cmd_paths "$profile";;
+  status)        cmd_status "$@";;
+  list-profiles) cmd_list_profiles "$@";;
+  paths)         cmd_paths "$@";;
   tail)          cmd_tail "$@";;
   query)         cmd_query "$@";;
   merge)         cmd_merge "$@";;

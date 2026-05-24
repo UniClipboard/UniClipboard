@@ -36,6 +36,12 @@ async-trait = "0.1"
 # Stream consumption for iroh-blobs Downloader progress events
 futures-util = "0.3"
 
+# Enumerate local network interfaces (IP + netmask) at startup so the iroh
+# AddrFilter callback can decide whether a peer candidate is reachable via
+# direct LAN (suppressing hairpin-NAT-via-public-IP path oscillation).
+# Cross-platform: getifaddrs on Unix, GetAdaptersAddresses on Windows.
+if-addrs = "0.13"
+
 # ===== 数据库 =====
 diesel = { version = "2.3.5", features = [
     "sqlite",

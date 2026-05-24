@@ -45,7 +45,7 @@ use uc_core::ports::{
 use crate::pairing::{IrohPairingSessionAdapter, PAIRING_ALPN};
 use crate::rendezvous::{RendezvousClient, RendezvousPairingInvitationAdapter};
 
-use super::addr_filter::apply_addr_filter;
+use super::addr_filter::{apply_addr_filter, enumerate_local_lan_v4, LocalLanV4};
 use super::blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 use super::clipboard_receiver_adapter::IrohClipboardReceiverAdapter;
@@ -353,7 +353,14 @@ fn build_transport_config() -> QuicTransportConfig {
 /// `Settings.network.allow_overlay_network_addrs` requires a daemon restart
 /// (the same constraint as `disable_relays`).
 fn build_addr_filter(allow_overlay: bool) -> AddrFilter {
-    AddrFilter::new(move |addrs: &Vec<TransportAddr>| apply_addr_filter(addrs, allow_overlay))
+    // Snapshot local LAN subnets ONCE at endpoint-bind time. The closure
+    // captures the result for the lifetime of the endpoint; switching
+    // wifi/LAN at runtime won't be picked up (same constraint as
+    // `allow_overlay`). See `enumerate_local_lan_v4` doc for rationale.
+    let local_lan_v4 = enumerate_local_lan_v4();
+    AddrFilter::new(move |addrs: &Vec<TransportAddr>| {
+        apply_addr_filter(addrs, allow_overlay, &local_lan_v4)
+    })
 }
 
 fn relay_mode_from_config(config: &IrohNodeConfig) -> Result<RelayMode, IrohNodeError> {
@@ -1290,7 +1297,7 @@ mod tests {
                 4242,
             ))),
         ];
-        let kept = apply_addr_filter(&addrs, false);
+        let kept = apply_addr_filter(&addrs, false, &[]);
         assert_eq!(
             kept.len(),
             addrs.len(),
@@ -1321,7 +1328,7 @@ mod tests {
                 4242,
             ))), // Clash — always dropped
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false).into_owned();
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &[]).into_owned();
         assert_eq!(kept.len(), 1, "only the real LAN IP should survive");
         match &kept[0] {
             TransportAddr::Ip(s) => assert_eq!(s.ip().to_string(), "192.168.1.1"),
@@ -1357,7 +1364,7 @@ mod tests {
                 4242,
             ))), // link-local — always dropped
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, true).into_owned();
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, true, &[]).into_owned();
         assert_eq!(kept.len(), 3, "real LAN + 2 overlay candidates kept");
         let ips: Vec<String> = kept
             .iter()
@@ -1371,6 +1378,143 @@ mod tests {
         assert!(ips.iter().any(|s| s == "fd7a:115c:a1e0::1"));
         assert!(!ips.iter().any(|s| s == "198.18.0.1"));
         assert!(!ips.iter().any(|s| s == "169.254.0.5"));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Hairpin filter — drops peer's public IPv4 candidates when peer is
+    // reachable via our local LAN. See `apply_addr_filter` and
+    // `peer_reachable_in_local_lan` in `addr_filter.rs`.
+    // ──────────────────────────────────────────────────────────────────
+
+    /// Helper: build a fake "we live on 192.168.31.0/24" snapshot.
+    fn lan_31() -> Vec<LocalLanV4> {
+        vec![LocalLanV4 {
+            ip: "192.168.31.72".parse().unwrap(),
+            netmask: "255.255.255.0".parse().unwrap(),
+        }]
+    }
+
+    fn v4_socket(ip: &str, port: u16) -> TransportAddr {
+        TransportAddr::Ip(SocketAddr::V4(SocketAddrV4::new(ip.parse().unwrap(), port)))
+    }
+
+    /// Same-LAN scenario: peer advertises both its LAN IP (192.168.31.224,
+    /// in our /24) and its public NAT-egress IP. The public one is a hairpin
+    /// candidate — drop it. The mac↔win case from the production decay logs.
+    #[test]
+    fn hairpin_filter_drops_public_when_peer_lan_in_our_subnet() {
+        let addrs = vec![
+            v4_socket("192.168.31.224", 60053), // peer LAN — keep
+            v4_socket("180.164.125.95", 58279), // peer public NAT — drop (hairpin)
+        ];
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        assert_eq!(kept.len(), 1, "only peer LAN should survive");
+        match &kept[0] {
+            TransportAddr::Ip(s) => assert_eq!(s.ip().to_string(), "192.168.31.224"),
+            _ => panic!("expected Ip variant"),
+        }
+    }
+
+    /// Cross-LAN scenario: peer's RFC1918 IP (192.168.1.5) is NOT in our
+    /// /24. We can't reach it directly — keep the public IP as the only
+    /// usable fallback.
+    #[test]
+    fn hairpin_filter_keeps_public_when_peer_lan_in_other_subnet() {
+        let addrs = vec![
+            v4_socket("192.168.1.5", 60053),  // peer LAN — NOT our subnet
+            v4_socket("203.0.113.42", 58279), // peer public — must keep
+        ];
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        assert_eq!(
+            kept.len(),
+            2,
+            "cross-LAN: both peer LAN candidate AND public IP retained"
+        );
+    }
+
+    /// No-LAN-candidate scenario: peer only advertises public IPs (plus
+    /// maybe a relay). Even though we have a LAN of our own, we have no
+    /// signal that this peer is reachable via our LAN — keep public.
+    #[test]
+    fn hairpin_filter_keeps_public_when_peer_has_no_rfc1918() {
+        let addrs = vec![v4_socket("203.0.113.42", 58279)];
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        assert_eq!(
+            kept.len(),
+            1,
+            "no LAN candidate → no hairpin signal → keep public"
+        );
+    }
+
+    /// Degraded scenario: if_addrs enumeration failed (empty local_lan_v4).
+    /// Filter must degrade to off (= pre-patch behaviour) and keep public IPs.
+    #[test]
+    fn hairpin_filter_disabled_when_local_lan_empty() {
+        let addrs = vec![
+            v4_socket("192.168.31.224", 60053),
+            v4_socket("180.164.125.95", 58279), // would be dropped if hairpin filter active
+        ];
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &[]).into_owned();
+        assert_eq!(
+            kept.len(),
+            2,
+            "no local LAN snapshot → no hairpin filter → keep public"
+        );
+    }
+
+    /// Peer advertises multiple LAN IPs, one in our subnet + one not.
+    /// At least one matches → hairpin filter activates → drop public.
+    #[test]
+    fn hairpin_filter_activates_if_any_peer_lan_matches_our_subnet() {
+        let addrs = vec![
+            v4_socket("192.168.31.224", 60053), // matches our /24 → triggers filter
+            v4_socket("10.0.0.5", 60053),       // peer's other LAN (different subnet)
+            v4_socket("180.164.125.95", 58279), // public — drop
+        ];
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        let kept_ips: Vec<String> = kept
+            .iter()
+            .filter_map(|a| match a {
+                TransportAddr::Ip(s) => Some(s.ip().to_string()),
+                _ => None,
+            })
+            .collect();
+        assert!(kept_ips.contains(&"192.168.31.224".to_string()));
+        assert!(kept_ips.contains(&"10.0.0.5".to_string()));
+        assert!(
+            !kept_ips.contains(&"180.164.125.95".to_string()),
+            "public must be dropped"
+        );
+    }
+
+    /// Hairpin filter must NOT drop Relay candidates — those are the
+    /// fallback when direct paths fail/churn.
+    #[test]
+    fn hairpin_filter_does_not_touch_relays() {
+        use iroh::RelayUrl;
+        let relay_url: RelayUrl = "https://relay.example.com/".parse().unwrap();
+        let addrs = vec![
+            v4_socket("192.168.31.224", 60053),
+            v4_socket("180.164.125.95", 58279), // dropped
+            TransportAddr::Relay(relay_url),    // must survive
+        ];
+        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        let relay_count = kept
+            .iter()
+            .filter(|a| matches!(a, TransportAddr::Relay(_)))
+            .count();
+        assert_eq!(
+            relay_count, 1,
+            "relay candidate must survive hairpin filter"
+        );
+    }
+
+    /// Real-world enumeration: if_addrs at least returns *something* on
+    /// every CI/dev machine we run on (loopback if nothing else, which is
+    /// filtered out). Make sure the call doesn't panic.
+    #[test]
+    fn enumerate_local_lan_v4_does_not_panic() {
+        let _ = enumerate_local_lan_v4();
     }
 
     #[test]

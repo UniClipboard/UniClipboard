@@ -185,6 +185,12 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: lts/*
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        # archive-release-notes.js imports `semver`; without node_modules
+        # the Archive step fails with ERR_MODULE_NOT_FOUND.
+        run: npm ci
 
       - name: Download all artifacts
         uses: actions/download-artifact@v6

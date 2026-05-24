@@ -140,8 +140,15 @@ function r2GetText(bucket, key) {
     return fs.readFileSync(outPath, 'utf8')
   } catch (err) {
     // 对象不存在时 wrangler 退出码非零；这里识别 404 并返回 null。
+    // 实测 wrangler 对缺失对象输出 "The specified key does not exist."，
+    // 加上 "not found" / "NoSuchKey" / "404" 一起兜底。
     const stderr = String(err?.stderr ?? '')
-    if (stderr.includes('not found') || stderr.includes('NoSuchKey') || stderr.includes('404')) {
+    if (
+      stderr.includes('not found') ||
+      stderr.includes('NoSuchKey') ||
+      stderr.includes('404') ||
+      stderr.includes('does not exist')
+    ) {
       return null
     }
     throw err

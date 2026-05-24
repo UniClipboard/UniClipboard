@@ -70,7 +70,7 @@ describe('buildCombinedNotes', () => {
     expect(merged).toContain('EN-NOTES')
     expect(merged).toContain('<!-- zh -->')
     expect(merged).toContain('ZH-NOTES')
-    // English block precedes the Chinese block
+    // 英文段必须在中文段之前
     expect(merged.indexOf('EN-NOTES')).toBeLessThan(merged.indexOf('<!-- zh -->'))
     expect(merged.indexOf('<!-- zh -->')).toBeLessThan(merged.indexOf('ZH-NOTES'))
   })
@@ -92,7 +92,7 @@ describe('buildCombinedNotes', () => {
     })
     expect(merged).toMatch(/omitted/i)
     expect(merged).toContain('3')
-    // Both en and zh preludes mention truncation
+    // 英文与中文两段 prelude 都要提及截断
     const zhPart = merged.split('<!-- zh -->')[1]
     expect(zhPart).toMatch(/省略/)
   })
@@ -134,19 +134,19 @@ describe('mergeNotes', () => {
 
     const result = await mergeNotes(latest, idx, '0.11.0-alpha.3', fetcher)
 
-    expect(result.mergedCount).toBe(3) // a6, a5, a4 — excludes a3 (the from version)
+    expect(result.mergedCount).toBe(3) // a6、a5、a4 —— 不含 a3（from 本身）
     expect(result.truncated).toBe(false)
     expect(result.omittedCount).toBe(0)
     expect(fetcher).toHaveBeenCalledTimes(3)
     expect(result.manifest.notes).toContain('EN-0.11.0-alpha.6')
     expect(result.manifest.notes).toContain('EN-0.11.0-alpha.5')
     expect(result.manifest.notes).toContain('EN-0.11.0-alpha.4')
-    expect(result.manifest.notes).not.toContain('EN-0.11.0-alpha.3') // from itself
+    expect(result.manifest.notes).not.toContain('EN-0.11.0-alpha.3') // from 本身不在合并范围内
   })
 
   it('truncates to MAX_MERGE versions and reports omittedCount', async () => {
     const latest = manifest('0.20.0')
-    // 8 intermediate versions + 1 from = 9 total in index
+    // 8 个中间版本 + 1 个 from = 索引共 9 条
     const idx = indexDesc(
       '0.20.0',
       '0.19.0',
@@ -156,7 +156,7 @@ describe('mergeNotes', () => {
       '0.15.0',
       '0.14.0',
       '0.13.0',
-      '0.10.0' // <- from
+      '0.10.0' // <- 这是 from
     )
     const fetcher = vi.fn(async (v: string) => archive(v))
 
@@ -164,37 +164,77 @@ describe('mergeNotes', () => {
 
     expect(result.mergedCount).toBe(MAX_MERGE) // 5
     expect(result.truncated).toBe(true)
-    expect(result.omittedCount).toBe(3) // 8 - 5
+    expect(result.omittedCount).toBe(3) // 8 - 5 = 3 个被省略
     expect(fetcher).toHaveBeenCalledTimes(MAX_MERGE)
     expect(result.manifest.notes).toMatch(/3.*omitted/i)
-    // Should have selected the 5 newest of the 8 intermediates: 0.20, 0.19, 0.18, 0.17, 0.16
+    // 应当选中 8 个中间版本里最新的 5 个：0.20、0.19、0.18、0.17、0.16
     expect(result.manifest.notes).toContain('## v0.16.0')
     expect(result.manifest.notes).not.toContain('## v0.15.0')
   })
 
-  it('degrades to latest-only when all archive fetches return null', async () => {
-    const latest = manifest('0.11.0-alpha.6', 'LATEST-ONLY')
+  it('still surfaces latest notes when every archive fetch returns null', async () => {
+    // 即便所有归档拉取都失败，最新版的 notes 也绝不能被静默丢弃 ——
+    // 从 latestManifest 合成兜底。
+    const latest = manifest('0.11.0-alpha.6', 'EN-LATEST\n\n<!-- zh -->\n\nZH-LATEST')
     const idx = indexDesc('0.11.0-alpha.6', '0.11.0-alpha.5', '0.11.0-alpha.4')
     const fetcher = vi.fn(async () => null)
 
     const result = await mergeNotes(latest, idx, '0.11.0-alpha.4', fetcher)
 
-    expect(result.manifest.notes).toBe('LATEST-ONLY')
-    expect(result.mergedCount).toBe(1)
-    expect(result.truncated).toBe(false)
+    expect(result.mergedCount).toBe(1) // 只有合成出来的 latest 一条
+    expect(result.manifest.notes).toContain('## v0.11.0-alpha.6')
+    expect(result.manifest.notes).toContain('EN-LATEST')
+    expect(result.manifest.notes).toContain('ZH-LATEST')
   })
 
   it('skips null archives but keeps the rest', async () => {
-    const latest = manifest('0.11.0-alpha.6')
+    const latest = manifest('0.11.0-alpha.6', 'EN-LATEST\n\n<!-- zh -->\n\nZH-LATEST')
     const idx = indexDesc('0.11.0-alpha.6', '0.11.0-alpha.5', '0.11.0-alpha.4')
-    // a5 missing, a6 present
+    // a5 缺失、a6 正常
     const fetcher = vi.fn(async (v: string) => (v === '0.11.0-alpha.5' ? null : archive(v)))
 
     const result = await mergeNotes(latest, idx, '0.11.0-alpha.4', fetcher)
 
+    // a6 归档拉取成功 —— 不需要触发 latest 合成兜底。
     expect(result.mergedCount).toBe(1)
     expect(result.manifest.notes).toContain('## v0.11.0-alpha.6')
     expect(result.manifest.notes).not.toContain('## v0.11.0-alpha.5')
+    // 使用的是真正归档的 body，不是 latestManifest.notes
+    expect(result.manifest.notes).toContain('EN') // archive 默认值
+    expect(result.manifest.notes).not.toContain('EN-LATEST') // 只有触发合成兜底时才会出现
+  })
+
+  it('injects synthetic latest when latest archive missing but older ones exist', async () => {
+    const latest = manifest('0.11.0-alpha.6', 'EN-LATEST\n\n<!-- zh -->\n\nZH-LATEST')
+    const idx = indexDesc('0.11.0-alpha.6', '0.11.0-alpha.5', '0.11.0-alpha.4')
+    // 只有最新版（a6）返回 null
+    const fetcher = vi.fn(async (v: string) => (v === '0.11.0-alpha.6' ? null : archive(v)))
+
+    const result = await mergeNotes(latest, idx, '0.11.0-alpha.4', fetcher)
+
+    expect(result.mergedCount).toBe(2) // 合成的 a6 + 真实的 a5
+    expect(result.manifest.notes).toContain('## v0.11.0-alpha.6')
+    expect(result.manifest.notes).toContain('EN-LATEST') // 来自合成兜底
+    expect(result.manifest.notes).toContain('ZH-LATEST')
+    expect(result.manifest.notes).toContain('## v0.11.0-alpha.5')
+    // latest 段必须出现在更早版本之前（最新在前）
+    expect(result.manifest.notes.indexOf('v0.11.0-alpha.6')).toBeLessThan(
+      result.manifest.notes.indexOf('v0.11.0-alpha.5')
+    )
+  })
+
+  it('synthetic fallback handles latest.notes with no <!-- zh --> separator', async () => {
+    const latest = manifest('0.11.0-alpha.6', 'EN-ONLY-NO-SEPARATOR')
+    const idx = indexDesc('0.11.0-alpha.6', '0.11.0-alpha.5')
+    const fetcher = vi.fn(async () => null)
+
+    const result = await mergeNotes(latest, idx, '0.11.0-alpha.5', fetcher)
+
+    expect(result.mergedCount).toBe(1)
+    expect(result.manifest.notes).toContain('EN-ONLY-NO-SEPARATOR')
+    // notes_zh 解析后为空 → zh 段依然存在，但除了 prelude + 标题外不含任何正文
+    const zhPart = result.manifest.notes.split('<!-- zh -->')[1] ?? ''
+    expect(zhPart).not.toContain('EN-ONLY-NO-SEPARATOR')
   })
 
   it('handles v-prefixed fromVersion the same as bare', async () => {
@@ -204,6 +244,6 @@ describe('mergeNotes', () => {
 
     const result = await mergeNotes(latest, idx, 'v0.11.0-alpha.5', fetcher)
 
-    expect(result.mergedCount).toBe(1) // only a6 between (a5, latest]
+    expect(result.mergedCount).toBe(1) // 区间 (a5, latest] 之间只有 a6
   })
 })

@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Archive Release Notes Script
+ * 归档发布日志脚本
  *
- * For each release this script:
- *   1. Writes the single-version archive `release-notes/v<version>.json` to R2
- *      with structure { version, channel, pub_date, notes_en, notes_zh }.
- *   2. Reads the channel index `release-notes/index/<channel>.json` from R2
- *      (empty if missing), inserts the new version, semver-sorts descending,
- *      deduplicates, and writes it back.
+ * 每次发布时该脚本做两件事：
+ *   1. 把单版本归档 `release-notes/v<version>.json` 写入 R2，结构为
+ *      { version, channel, pub_date, notes_en, notes_zh }。
+ *   2. 从 R2 读取 channel 索引 `release-notes/index/<channel>.json`
+ *      （不存在则视为空），插入新版本、按 semver 降序排序、去重，再写回。
  *
- * Usage:
+ * 用法：
  *   node scripts/archive-release-notes.js \
  *     --version 0.11.0-alpha.6 \
  *     --channel alpha \
@@ -19,7 +18,7 @@
  *     [--pub-date 2026-05-22T10:30:00Z] \
  *     [--bucket uniclipboard-releases]
  *
- * Required env (for wrangler r2 calls):
+ * 所需环境变量（供 wrangler r2 调用使用）：
  *   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
  */
 
@@ -84,10 +83,10 @@ function normalizeVersion(version) {
 }
 
 /**
- * Insert a new entry into the channel index, sort descending by semver,
- * and deduplicate (newer pub_date wins for the same version).
+ * 把新条目插入 channel 索引，按 semver 降序排序，并去重
+ *（相同版本以新的 pub_date 为准）。
  *
- * Exported for unit testing.
+ * 导出供单元测试使用。
  */
 export function upsertVersionIntoIndex(index, newEntry) {
   const all = [...index.versions.filter(v => v.version !== newEntry.version), newEntry]
@@ -104,7 +103,7 @@ export function upsertVersionIntoIndex(index, newEntry) {
 }
 
 /**
- * Build the per-version archive JSON. Exported for testing.
+ * 构造单版本归档 JSON。导出供测试使用。
  */
 export function buildArchive({ version, channel, pubDate, notesEn, notesZh }) {
   return {
@@ -118,8 +117,12 @@ export function buildArchive({ version, channel, pubDate, notesEn, notesZh }) {
 
 function readNotes(filePath, label) {
   if (!fs.existsSync(filePath)) {
-    process.stderr.write(`Warning: ${label} file not found at ${filePath}, using empty string\n`)
-    return ''
+    // 跨版本合并无法接受某个版本的 notes 为空——这里 fail-fast，
+    // 强制要求在归档前先生成 changelog 文件。
+    throw new Error(
+      `${label} 文件不存在：${filePath}。` +
+        `跨版本合并不能容忍空的单版本 notes —— 请先创建该 changelog 文件再归档。`
+    )
   }
   return fs.readFileSync(filePath, 'utf8').trim()
 }
@@ -129,14 +132,14 @@ function wrangler(args) {
 }
 
 function r2GetText(bucket, key) {
-  // wrangler r2 object get writes the body to --file or stdout when --pipe is set.
+  // wrangler r2 object get 把 body 写到 --file 指定的路径（或加 --pipe 时输出到 stdout）。
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archive-notes-'))
   const outPath = path.join(tmp, 'object')
   try {
     wrangler(['r2', 'object', 'get', `${bucket}/${key}`, '--file', outPath, '--remote'])
     return fs.readFileSync(outPath, 'utf8')
   } catch (err) {
-    // wrangler returns non-zero on 404; treat as "missing"
+    // 对象不存在时 wrangler 退出码非零；这里识别 404 并返回 null。
     const stderr = String(err?.stderr ?? '')
     if (stderr.includes('not found') || stderr.includes('NoSuchKey') || stderr.includes('404')) {
       return null
@@ -193,7 +196,7 @@ function main() {
   process.stderr.write(`Uploading ${archiveKey} → ${options.bucket}\n`)
   r2PutJson(options.bucket, archiveKey, JSON.stringify(archive, null, 2))
 
-  // Read existing index (empty if missing)
+  // 读取现有索引（不存在则视为空）
   const indexKey = `release-notes/index/${options.channel}.json`
   process.stderr.write(`Fetching ${indexKey}…\n`)
   const indexText = r2GetText(options.bucket, indexKey)

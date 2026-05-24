@@ -8,8 +8,8 @@ const ZH_SEPARATOR = '\n\n<!-- zh -->\n\n'
 export type ArchiveFetcher = (version: string) => Promise<ReleaseNotesArchive | null>
 
 /**
- * Coerce loose version strings ("v0.11.0-alpha.6", "0.11.0-alpha.6") to canonical
- * semver form so comparisons work.
+ * 把宽松的版本字符串（如 "v0.11.0-alpha.6"、"0.11.0-alpha.6"）
+ * 规范化为标准 semver 形式，使后续比较一致。
  */
 function normalizeVersion(version: string): string | null {
   const stripped = version.replace(/^v/, '')
@@ -25,8 +25,8 @@ function semverEq(a: string, b: string): boolean {
 }
 
 /**
- * Sort versions in descending semver order (newest first).
- * Stable — entries that compare equal keep relative order.
+ * 按 semver 降序排序（最新版本在前）。
+ * 稳定排序——比较相等的条目保留原相对顺序。
  */
 export function sortVersionsDesc<T extends { version: string }>(versions: T[]): T[] {
   return [...versions].sort((a, b) => {
@@ -37,7 +37,7 @@ export function sortVersionsDesc<T extends { version: string }>(versions: T[]): 
 }
 
 /**
- * Build the combined-notes markdown body. Layout:
+ * 构造合并后的 notes markdown 内容。布局：
  *
  *   > <prelude>
  *   ## v<latest>
@@ -116,14 +116,16 @@ function buildPrelude(
 }
 
 /**
- * Pure orchestration: given a latest manifest + channel index + a way to fetch
- * per-version archives, produce a manifest with merged notes.
+ * 纯编排逻辑：给定最新 manifest + channel 索引 + 单版本归档的获取函数，
+ * 生成一份 notes 已合并的 manifest。
  *
- * Edge cases (mirrors ADR §2.6):
- *   - fromVersion not in index → return latestManifest unchanged (mergedCount=1)
- *   - fromVersion === latest (fromIdx === 0) → return latestManifest unchanged
- *   - more than MAX_MERGE candidates → truncate, mark truncated=true
- *   - any archive fetch returns null → skip it (do not fail the request)
+ * 边界情况（对应 ADR §2.6）：
+ *   - fromVersion 不在索引中 → 原样返回 latestManifest（mergedCount=1）
+ *   - fromVersion === latest（fromIdx === 0）→ 原样返回 latestManifest
+ *   - 候选超过 MAX_MERGE → 截断并标记 truncated=true
+ *   - 某个版本归档拉取返回 null → 跳过它（不让整个请求失败）
+ *   - 最新版本的归档缺失 → 用 latestManifest.notes 合成兜底，
+ *     保证合并 notes 始终覆盖用户正在升级到的版本
  */
 export async function mergeNotes(
   latestManifest: Manifest,
@@ -133,17 +135,18 @@ export async function mergeNotes(
 ): Promise<MergeResult> {
   const fromIdx = index.versions.findIndex(v => semverEq(v.version, fromVersion))
 
-  // Edge case A: from unknown — fall back to latest-only notes (do not break update flow).
+  // 边界 A：from 未知（老版本、dev build、未来版本）—— 回落到「只返回 latest」，
+  // 不能因为 from 未识别而打断升级流程。
   if (fromIdx === -1) {
     return passthrough(latestManifest)
   }
 
-  // Edge case B: from is already latest — nothing to merge.
+  // 边界 B：from 已是最新版 —— 没有任何需要合并的内容。
   if (fromIdx === 0) {
     return passthrough(latestManifest)
   }
 
-  // index is sorted descending, so (from, latest] = index[0..fromIdx)
+  // 索引为降序，所以区间 (from, latest] = index[0..fromIdx)
   const candidates = index.versions.slice(0, fromIdx)
   const selected = candidates.slice(0, MAX_MERGE)
   const truncated = candidates.length > MAX_MERGE
@@ -153,8 +156,26 @@ export async function mergeNotes(
     (a): a is ReleaseNotesArchive => a !== null
   )
 
+  // 兜底：若最新版本的归档加载失败（R2 状态不一致、发布部分上传、人工删除等），
+  // 用 latestManifest 合成一份，保证用户「升级到」的目标版本的描述永远不会被
+  // 静默丢失。selected[0] 一定是最新版（索引为降序），所以这条分支只在
+  // fetchArchive(latest) 返回 null 时触发。
+  const latestSelected = selected[0]
+  const hasLatestArchive =
+    latestSelected !== undefined && archives.some(a => semverEq(a.version, latestSelected.version))
+  if (latestSelected && !hasLatestArchive) {
+    const { notes_en, notes_zh } = splitLegacyMergedNotes(latestManifest.notes)
+    archives.unshift({
+      version: latestManifest.version,
+      channel: index.channel,
+      pub_date: latestManifest.pub_date,
+      notes_en,
+      notes_zh,
+    })
+  }
+
   if (archives.length === 0) {
-    // None of the archives could be loaded — degrade rather than break.
+    // 全部归档都拉不到 —— 降级而非报错。
     return passthrough(latestManifest)
   }
 
@@ -169,6 +190,22 @@ export async function mergeNotes(
     truncated,
     mergedCount: archives.length,
     omittedCount,
+  }
+}
+
+/**
+ * 把旧格式 `<en>\n\n<!-- zh -->\n\n<zh>`（由
+ * scripts/assemble-update-manifest.js 写出）拆回两种语言。
+ * 若没有 `<!-- zh -->` 分隔符，则整段当作 `notes_en` 返回。
+ */
+function splitLegacyMergedNotes(notes: string): { notes_en: string; notes_zh: string } {
+  const idx = notes.indexOf(ZH_SEPARATOR)
+  if (idx === -1) {
+    return { notes_en: notes, notes_zh: '' }
+  }
+  return {
+    notes_en: notes.slice(0, idx),
+    notes_zh: notes.slice(idx + ZH_SEPARATOR.length),
   }
 }
 

@@ -102,7 +102,7 @@ describe('upsertVersionIntoIndex', () => {
   })
 
   it('strips v-prefix via normalization but preserves original format in entry', () => {
-    // Caller is expected to pass canonical version; the normalizer is for sorting only.
+    // 调用方应传入规范化的版本字符串；这里的 normalizer 仅用于排序，不会改写条目本身。
     const result: VersionIndex = upsertVersionIntoIndex(emptyIndex(), {
       version: 'v0.11.0',
       pub_date: '2026-05-22T10:30:00Z',

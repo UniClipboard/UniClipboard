@@ -1,15 +1,15 @@
 /**
- * UniClipboard Update Server
+ * UniClipboard 更新服务
  *
- * Cloudflare Worker that serves update manifests and binary artifacts from R2.
+ * 基于 Cloudflare Worker，从 R2 派发更新 manifest 与二进制产物。
  *
- * Routes:
- *   GET /{channel}.json                          → Update manifest (60s cache)
- *   GET /{channel}.json?from={version}           → Manifest with merged notes for (from, latest], capped at 5 versions
- *   GET /release-notes/v{version}.json           → Single-version archived release notes
- *   GET /release-notes/{channel}.json            → Channel version index
- *   GET /artifacts/v{ver}/{file}                 → Binary download (24h cache, immutable)
- *   GET /health                                  → Health check
+ * 路由：
+ *   GET /{channel}.json                          → 更新 manifest（缓存 60s）
+ *   GET /{channel}.json?from={version}           → manifest（notes 字段已合并 (from, latest] 之间的版本，最多 5 个）
+ *   GET /release-notes/v{version}.json           → 单版本归档发布日志
+ *   GET /release-notes/{channel}.json            → channel 版本索引
+ *   GET /artifacts/v{ver}/{file}                 → 二进制下载（缓存 24h，immutable）
+ *   GET /health                                  → 健康检查
  */
 
 import { mergeNotes } from './merge'
@@ -73,8 +73,13 @@ async function getJsonFromR2<T>(env: Env, key: string): Promise<T | null> {
   try {
     return JSON.parse(text) as T
   } catch (err) {
-    console.warn(`Failed to parse JSON at ${key}:`, err)
-    return null
+    // 把 JSON 损坏作为 server error 抛出，不要伪装成「对象不存在」。
+    // 调用方约定 `null` 仅表示「R2 对象缺失」；在这里抛错保持两种失败语义清晰，
+    // 排查时方向不会被误导。
+    throw new Error(
+      `Corrupted JSON at R2 key ${key}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err }
+    )
   }
 }
 
@@ -89,8 +94,8 @@ async function handleChannelManifest(
     return jsonResponse({ error: `Invalid channel: ${channel}` }, 400)
   }
 
-  // No `?from=`: passthrough R2 object. Cloudflare's edge cache handles
-  // Cache-Control automatically for ambiguity-free URLs — no manual cache.put needed.
+  // 没有 `?from=`：直接透传 R2 对象。URL 无歧义时 Cloudflare 边缘缓存会按
+  // Cache-Control 自动处理，无需手动 cache.put。
   if (!fromVersion) {
     const key = `manifests/${channel}.json`
     const object = await env.RELEASES_BUCKET.get(key)
@@ -104,10 +109,9 @@ async function handleChannelManifest(
     return new Response(object.body, { status: 200, headers })
   }
 
-  // With `?from=`: synthesize a manifest with merged notes.
-  // Cloudflare's default cache key excludes query strings, so different `from`
-  // values would collide on the same cache entry. Manage cache explicitly with
-  // the full URL as key.
+  // 带 `?from=`：动态拼接 notes 后返回 manifest。
+  // Cloudflare 默认 cache key 不包含 query string，不同 `from` 值会撞到同一个缓存项；
+  // 这里显式用完整 URL 作为 cache key 管理缓存。
   const cache = caches.default
   const cacheKey = new Request(request.url, { method: 'GET' })
   const cached = await cache.match(cacheKey)
@@ -121,7 +125,7 @@ async function handleChannelManifest(
   }
 
   const index = await getJsonFromR2<VersionIndex>(env, `release-notes/index/${channel}.json`)
-  // If index is missing (e.g. first deploy before backfill), degrade to single-version notes.
+  // 索引缺失（如首次部署、尚未回填）时降级为单版本 notes，不阻断升级流程。
   if (!index) {
     console.warn(`No release-notes index for channel=${channel}; serving single-version notes`)
     const response = jsonResponse(latestManifest, 200, {
@@ -211,58 +215,74 @@ function handleHealth(): Response {
   return jsonResponse({ status: 'ok', service: 'uniclipboard-update-server' }, 200)
 }
 
-// Allow either canonical semver (1.2.3, 1.2.3-alpha.4) or any safe path-segment
-// shape; R2 keys can't path-traverse so the regex is for intent, not security.
+// 允许标准 semver（如 1.2.3、1.2.3-alpha.4）以及任意安全的路径段字符；
+// R2 key 本身无法 path-traverse，所以这个正则只是「表达意图」而非安全屏障。
 const VERSION_PATH_REGEX = /^\/release-notes\/v([0-9A-Za-z.\-+]+)\.json$/
+
+async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS })
+  }
+
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return jsonResponse({ error: 'Method not allowed' }, 405)
+  }
+
+  const url = new URL(request.url)
+  const path = url.pathname
+
+  // GET /health
+  if (path === '/health') {
+    return handleHealth()
+  }
+
+  // GET /release-notes/{channel}.json（channel 索引）—— 严格匹配纯小写字母，
+  // 必须放在 v 前缀的版本路由之前，避免两者匹配重叠。
+  const releaseNotesIndexMatch = path.match(/^\/release-notes\/([a-z]+)\.json$/)
+  if (releaseNotesIndexMatch) {
+    return handleReleaseNotesIndex(releaseNotesIndexMatch[1], env)
+  }
+
+  // GET /release-notes/v{version}.json
+  const releaseNotesVersionMatch = path.match(VERSION_PATH_REGEX)
+  if (releaseNotesVersionMatch) {
+    return handleReleaseNotesByVersion(releaseNotesVersionMatch[1], env)
+  }
+
+  // GET /{channel}.json（可选 ?from=）
+  // 只有带 `?from=` 的变体需要显式调用 Cache API：默认边缘 cache key 不含
+  // query string，否则不同 `from` 值会被错认为同一个缓存项。其他路由 URL
+  // 都是静态形态，依赖 Cloudflare 自动 Cache-Control 处理即可。
+  const channelMatch = path.match(/^\/([a-z]+)\.json$/)
+  if (channelMatch) {
+    const fromVersion = url.searchParams.get('from')
+    return handleChannelManifest(request, channelMatch[1], fromVersion, env, ctx)
+  }
+
+  // GET /artifacts/v{version}/{filename}
+  const artifactMatch = path.match(/^\/artifacts\/v([^/]+)\/(.+)$/)
+  if (artifactMatch) {
+    return handleArtifact(artifactMatch[1], artifactMatch[2], env)
+  }
+
+  return jsonResponse({ error: 'Not found' }, 404)
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS })
+    try {
+      return await route(request, env, ctx)
+    } catch (err) {
+      // 兜底捕获意外错误（例如 getJsonFromR2 抛出的 R2 JSON 损坏），
+      // 确保响应仍然带 CORS headers 与结构化 500 body，而不是 runtime 的裸错误页。
+      console.error('Unhandled error:', err)
+      return jsonResponse(
+        {
+          error: 'Internal server error',
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        500
+      )
     }
-
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-      return jsonResponse({ error: 'Method not allowed' }, 405)
-    }
-
-    const url = new URL(request.url)
-    const path = url.pathname
-
-    // GET /health
-    if (path === '/health') {
-      return handleHealth()
-    }
-
-    // GET /release-notes/{channel}.json (channel index) — match strictly lowercase
-    // before the v-prefixed version pattern so they don't overlap.
-    const releaseNotesIndexMatch = path.match(/^\/release-notes\/([a-z]+)\.json$/)
-    if (releaseNotesIndexMatch) {
-      return handleReleaseNotesIndex(releaseNotesIndexMatch[1], env)
-    }
-
-    // GET /release-notes/v{version}.json
-    const releaseNotesVersionMatch = path.match(VERSION_PATH_REGEX)
-    if (releaseNotesVersionMatch) {
-      return handleReleaseNotesByVersion(releaseNotesVersionMatch[1], env)
-    }
-
-    // GET /{channel}.json (with optional ?from=)
-    // Only the `?from=` variant needs explicit Cache API handling, because the
-    // default edge cache key excludes query strings and would otherwise alias
-    // distinct `from` values to the same entry. Other routes use static URLs
-    // and rely on Cloudflare's automatic Cache-Control handling.
-    const channelMatch = path.match(/^\/([a-z]+)\.json$/)
-    if (channelMatch) {
-      const fromVersion = url.searchParams.get('from')
-      return handleChannelManifest(request, channelMatch[1], fromVersion, env, ctx)
-    }
-
-    // GET /artifacts/v{version}/{filename}
-    const artifactMatch = path.match(/^\/artifacts\/v([^/]+)\/(.+)$/)
-    if (artifactMatch) {
-      return handleArtifact(artifactMatch[1], artifactMatch[2], env)
-    }
-
-    return jsonResponse({ error: 'Not found' }, 404)
   },
 }

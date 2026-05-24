@@ -1125,7 +1125,8 @@
         "switching": "Switching…",
         "cancel": "Cancel",
         "close": "Close",
-        "retry": "Retry"
+        "retry": "Retry",
+        "useNewCode": "Enter a new code"
       },
       "migrating": {
         "title": "Migrating clipboard history",
@@ -1150,9 +1151,9 @@
           "not_setup": "This device hasn't completed first-time setup. Use \"Initialize\" or \"Join\" first.",
           "pending_migration": "A previous migration is still in flight. Restart the app to auto-resume.",
           "not_unlocked": "Space session is locked. Restart the app so the keychain re-unlocks it.",
-          "sponsor_rejected": "Sponsor did not recognise the invitation code.",
+          "sponsor_rejected": "Sponsor did not recognise the invitation code. Ask them to issue a fresh one.",
           "sponsor_declined": "Sponsor declined the pairing.",
-          "invitation_not_found": "Invitation code is invalid. Ask the sponsor to issue a fresh one.",
+          "invitation_not_found": "Invitation code has already been used or is no longer valid. Ask the sponsor to issue a fresh one.",
           "invitation_expired": "Invitation expired. Ask the sponsor to issue a fresh one.",
           "passphrase_mismatch": "Wrong passphrase — please retry.",
           "device_name_required": "Device name is required.",
@@ -1487,11 +1488,11 @@
         "passphrase": "Enter the passphrase from the host device"
       },
       "errors": {
-        "invitationNotFound": "This invitation code is not recognised. Double-check what was shown on the other device.",
+        "invitationNotFound": "This invitation code has already been used or is no longer valid. Ask the host to issue a new one.",
         "invitationExpired": "This invitation has expired. Ask the host to issue a new one.",
         "passphraseMismatch": "The passphrase doesn't match. Try again.",
         "sponsorUnreachable": "The host device is not reachable right now. Make sure both devices are online.",
-        "sponsorRejected": "The host did not recognise this code.",
+        "sponsorRejected": "The host did not recognise this code. Ask them to issue a new one.",
         "sponsorDeclined": "The host declined the pairing request.",
         "timeout": "The pairing handshake timed out. Please try again.",
         "connectionLost": "The connection dropped mid-handshake. Please try again.",

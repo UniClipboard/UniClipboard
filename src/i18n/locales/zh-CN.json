@@ -1116,7 +1116,8 @@
         "switching": "切换中…",
         "cancel": "取消",
         "close": "关闭",
-        "retry": "重试"
+        "retry": "重试",
+        "useNewCode": "重新输入邀请码"
       },
       "migrating": {
         "title": "迁移剪贴板历史",
@@ -1141,10 +1142,10 @@
           "not_setup": "本设备尚未完成首次 setup，请先“初始化”或“加入”。",
           "pending_migration": "上次迁移未完成，请重启应用让其自动续跑。",
           "not_unlocked": "空间会话未解锁，请重启应用让 keychain 重新解锁。",
-          "sponsor_rejected": "对方没有识别这个邀请码。",
+          "sponsor_rejected": "对方未识别这个邀请码，请让对方重新生成。",
           "sponsor_declined": "对方拒绝了配对请求。",
-          "invitation_not_found": "邀请码无效，请让对方重新签发。",
-          "invitation_expired": "邀请码已过期，请让对方重新签发。",
+          "invitation_not_found": "邀请码已被使用或失效，请让对方重新生成一个。",
+          "invitation_expired": "邀请码已过期，请让对方重新生成一个。",
           "passphrase_mismatch": "口令错误，请重试。",
           "device_name_required": "缺少设备名。",
           "sponsor_unreachable": "无法连接到对方，请检查 NAT / relay。",
@@ -1571,11 +1572,11 @@
         "passphrase": "输入对方在创建空间时使用的口令"
       },
       "errors": {
-        "invitationNotFound": "邀请码无效，请仔细核对对方设备上显示的字符。",
-        "invitationExpired": "邀请码已过期，请请求对方重新生成一个。",
+        "invitationNotFound": "邀请码已被使用或失效，请让对方重新生成一个。",
+        "invitationExpired": "邀请码已过期，请让对方重新生成一个。",
         "passphraseMismatch": "口令错误，请重试。",
         "sponsorUnreachable": "暂时无法连接对方设备，请确认两台设备都在线。",
-        "sponsorRejected": "对方未识别该邀请码。",
+        "sponsorRejected": "对方未识别该邀请码，请让对方重新生成。",
         "sponsorDeclined": "对方拒绝了本次配对请求。",
         "timeout": "配对握手超时，请重试。",
         "connectionLost": "配对过程中连接中断，请重试。",

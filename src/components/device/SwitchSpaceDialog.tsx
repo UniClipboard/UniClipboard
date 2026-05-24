@@ -139,11 +139,26 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
     }
   }
 
+  // 邀请码已废类（被 sponsor consume、过期、或 sponsor 不认）—— 原 code 不可能再
+  // resolve 成功，"重试"按钮文案与回到 input 时的清空策略都按这个走。
+  const isCodeDead =
+    errorKind === 'invitation_not_found' ||
+    errorKind === 'invitation_expired' ||
+    errorKind === 'sponsor_rejected'
+
   const handleRetry = () => {
+    if (isCodeDead) {
+      setCode('')
+      setPass('')
+    } else if (errorKind === 'passphrase_mismatch') {
+      setPass('')
+    }
     setErrorKind(null)
     setErrorRaw(null)
     setStep('input')
   }
+
+  const retryLabel = isCodeDead ? t('actions.useNewCode') : t('actions.retry')
 
   const failureMessage = useMemo(() => {
     if (!errorKind) return null
@@ -297,7 +312,7 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
         <Button variant="outline" onClick={() => onOpenChange(false)}>
           {t('actions.close')}
         </Button>
-        <Button onClick={handleRetry}>{t('actions.retry')}</Button>
+        <Button onClick={handleRetry}>{retryLabel}</Button>
       </>
     )
   }

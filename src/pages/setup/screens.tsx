@@ -485,7 +485,22 @@ export function RedeemInvitationScreen({
     setErrorKind(null)
     if (!canSubmit) return
     const res = await onSubmit({ code, passphrase: pass })
-    if (!res.ok) setErrorKind(res.kind)
+    if (!res.ok) {
+      setErrorKind(res.kind)
+      // 邀请码已废类——原 code 必然 404,清掉让用户必须输入新邀请码。
+      // 口令错——保留 code,清 pass,焦点跳回口令框。
+      if (
+        res.kind === 'invitation_not_found' ||
+        res.kind === 'invitation_expired' ||
+        res.kind === 'sponsor_rejected'
+      ) {
+        setCode('')
+        setPass('')
+      } else if (res.kind === 'passphrase_mismatch') {
+        setPass('')
+        passInputRef.current?.focus()
+      }
+    }
   }
 
   return (

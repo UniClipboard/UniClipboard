@@ -677,11 +677,14 @@ fn map_resolve_err(err: RendezvousHttpError) -> DialError {
         RendezvousHttpError::Transport(_) | RendezvousHttpError::ServiceUnavailable(_) => {
             DialError::ServiceUnavailable
         }
-        // 409 is not a documented outcome on /resolve; treat as internal
-        // so the server anomaly shows up in logs.
-        RendezvousHttpError::Conflict => {
-            DialError::Internal("rendezvous resolve: unexpected 409".to_string())
-        }
+        // 409 on /resolve means the rendezvous entry has reached a terminal
+        // state (sponsor side already called /consume; see `pairing_inbound`
+        // orchestrator: it consumes as soon as the joiner's `Request` is
+        // matched, which happens *before* the KeyslotOffer is sent). From
+        // the joiner's POV the code is no longer usable — collapse to
+        // `InvitationNotFound`, mirroring how `map_consume_err` already
+        // treats 404/410/409 as a single "lifecycle terminal" bucket.
+        RendezvousHttpError::Conflict => DialError::InvitationNotFound,
         RendezvousHttpError::Unexpected { status, slug } => {
             DialError::Internal(format!("rendezvous resolve: status {status} slug={slug}"))
         }
@@ -905,6 +908,34 @@ mod tests {
         {
             Err(DialError::InvitationExpired) => {}
             other => panic!("expected InvitationExpired, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn dial_maps_409_to_invitation_not_found() {
+        // Sponsor consumes the rendezvous entry as soon as it matches the
+        // joiner's first Request (see `pairing_inbound::orchestrator`).
+        // A subsequent /resolve on the same code therefore returns 409
+        // `pairing_already_consumed`. From the joiner's POV the code is
+        // dead — surface it as `InvitationNotFound` so the daemon returns
+        // HTTP 404 with a meaningful message ("invitation not found")
+        // instead of a 500 internal error.
+        let rendezvous = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/pairings/resolve"))
+            .respond_with(ResponseTemplate::new(409))
+            .mount(&rendezvous)
+            .await;
+
+        let endpoint = bound_endpoint().await;
+        let adapter = adapter_with_rendezvous(endpoint, rendezvous.uri());
+
+        match adapter
+            .dial_by_invitation(&InvitationCode::new("CONSUMED"))
+            .await
+        {
+            Err(DialError::InvitationNotFound) => {}
+            other => panic!("expected InvitationNotFound, got {other:?}"),
         }
     }
 

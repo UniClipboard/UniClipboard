@@ -31,7 +31,7 @@ use super::clock::Clock;
 /// 行的生命周期状态。
 ///
 /// `Receiving` 是进行态;`Completed` / `Failed` / `Cancelled` 是终态,
-/// 保留若干秒后由 [`TransferHudState::sweep`] 移除。`CancelPending` 是
+/// 保留若干秒后由 [`ActivityHudState::sweep`] 移除。`CancelPending` 是
 /// 乐观 UI 状态:用户点击取消按钮后立即进入,等后端发回
 /// `StatusChanged: cancelled` 才落到真正的 `Cancelled`。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +66,7 @@ pub const FAILED_RETAIN_MS: u64 = 4_000;
 
 /// 单条传输行的对外快照。`speed_window` 是内部状态,不进 snapshot。
 #[derive(Debug, Clone, PartialEq)]
-pub struct TransferHudRow {
+pub struct ActivityHudRow {
     pub transfer_id: String,
     pub peer_id: String,
     /// 从 `IncomingPending.filenames` 缓存来。事件比 first Progress 晚到
@@ -85,7 +85,7 @@ pub struct TransferHudRow {
     pub state_entered_at_ms: u64,
 }
 
-/// 内部行(带滑窗)。`snapshot()` 返回时剥成 [`TransferHudRow`]。
+/// 内部行(带滑窗)。`snapshot()` 返回时剥成 [`ActivityHudRow`]。
 #[derive(Debug, Clone)]
 struct InternalRow {
     transfer_id: String,
@@ -131,10 +131,10 @@ impl InternalRow {
         Some((remaining / speed * 1_000.0) as u64)
     }
 
-    fn snapshot(&self) -> TransferHudRow {
+    fn snapshot(&self) -> ActivityHudRow {
         let speed_bps = self.compute_speed_bps();
         let eta_ms = self.compute_eta_ms(speed_bps);
-        TransferHudRow {
+        ActivityHudRow {
             transfer_id: self.transfer_id.clone(),
             peer_id: self.peer_id.clone(),
             filenames: self.filenames.clone(),
@@ -149,7 +149,7 @@ impl InternalRow {
 }
 
 /// HUD 状态机。线程不安全:由 emitter 用 `Mutex` 包起来访问。
-pub struct TransferHudState {
+pub struct ActivityHudState {
     clock: Arc<dyn Clock>,
     rows: HashMap<String, InternalRow>,
     /// `IncomingPending` 比 first Progress 早到时,文件名先缓存这里;
@@ -162,7 +162,7 @@ pub struct TransferHudState {
     next_insert_order: u64,
 }
 
-impl TransferHudState {
+impl ActivityHudState {
     pub fn new(clock: Arc<dyn Clock>) -> Self {
         Self {
             clock,
@@ -331,7 +331,7 @@ impl TransferHudState {
     }
 
     /// 返回当前所有行的快照,按插入顺序稳定排序。UI 应拿这份去重绘。
-    pub fn snapshot(&self) -> Vec<TransferHudRow> {
+    pub fn snapshot(&self) -> Vec<ActivityHudRow> {
         let mut rows: Vec<_> = self.rows.values().collect();
         rows.sort_by_key(|r| r.insert_order);
         rows.iter().map(|r| r.snapshot()).collect()
@@ -373,9 +373,9 @@ mod tests {
     use super::super::clock::ManualClock;
     use super::*;
 
-    fn make_state() -> (TransferHudState, Arc<ManualClock>) {
+    fn make_state() -> (ActivityHudState, Arc<ManualClock>) {
         let clock = Arc::new(ManualClock::new());
-        let state = TransferHudState::new(clock.clone() as Arc<dyn Clock>);
+        let state = ActivityHudState::new(clock.clone() as Arc<dyn Clock>);
         (state, clock)
     }
 

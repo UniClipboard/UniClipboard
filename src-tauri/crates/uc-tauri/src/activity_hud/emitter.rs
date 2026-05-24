@@ -3,8 +3,8 @@
 //!
 //! ## 接入位置
 //!
-//! 在 Tauri setup callback 中 `host_event_bus.register("transfer_hud",
-//! Arc::new(TransferHudEmitter::new(...)))`,与现有
+//! 在 Tauri setup callback 中 `host_event_bus.register("activity_hud",
+//! Arc::new(ActivityHudEmitter::new(...)))`,与现有
 //! `TauriHostEventEmitter` 并行挂载;两者各自只处理自己关心的事件子集
 //! (Tauri 处理 Delivery,本 emitter 处理 Transfer + IncomingPending),
 //! 不会互相重复推送。
@@ -25,7 +25,7 @@ use uc_application::facade::{
 };
 
 use super::clock::Clock;
-use super::state::{TransferHudRow, TransferHudState};
+use super::state::{ActivityHudRow, ActivityHudState};
 
 /// HUD 渲染端订阅 trait。emitter 在状态机有变化时调用,参数是当前
 /// 完整快照(已稳定排序)。实现必须 `Send + Sync` —— emit 是同步路径
@@ -33,46 +33,46 @@ use super::state::{TransferHudRow, TransferHudState};
 ///
 /// 实现位置:平台特定的 listener 在 `super::ui::*` 子模块下,装配时由
 /// [`super::ui::create_listener`] 按 cfg 选出对应实现。
-pub trait TransferHudListener: Send + Sync {
-    fn on_changed(&self, snapshot: Vec<TransferHudRow>);
+pub trait ActivityHudListener: Send + Sync {
+    fn on_changed(&self, snapshot: Vec<ActivityHudRow>);
 }
 
-pub struct TransferHudEmitter {
-    state: Arc<Mutex<TransferHudState>>,
+pub struct ActivityHudEmitter {
+    state: Arc<Mutex<ActivityHudState>>,
     /// listener 用 `Mutex<Arc<dyn>>` 持有,因为 macOS 装配路径需要先构造
     /// emitter 才能构造 listener(listener 反向持有 emitter 用于 cancel
     /// 按钮路径)。简单的"构造时一次定下"做不到,所以暴露
     /// [`set_listener`](Self::set_listener) 让装配代码后置替换。读多写
     /// 极少(只在 setup 时写一次),`Mutex` 性能开销可忽略。
-    listener: Mutex<Arc<dyn TransferHudListener>>,
+    listener: Mutex<Arc<dyn ActivityHudListener>>,
 }
 
-impl TransferHudEmitter {
-    pub fn new(clock: Arc<dyn Clock>, listener: Arc<dyn TransferHudListener>) -> Self {
+impl ActivityHudEmitter {
+    pub fn new(clock: Arc<dyn Clock>, listener: Arc<dyn ActivityHudListener>) -> Self {
         Self {
-            state: Arc::new(Mutex::new(TransferHudState::new(clock))),
+            state: Arc::new(Mutex::new(ActivityHudState::new(clock))),
             listener: Mutex::new(listener),
         }
     }
 
     /// 替换内部 listener。装配阶段用 —— 见 emitter 文档里两阶段装配的
     /// 说明。运行期间不要在 publisher 路径上调用。
-    pub fn set_listener(&self, listener: Arc<dyn TransferHudListener>) {
+    pub fn set_listener(&self, listener: Arc<dyn ActivityHudListener>) {
         let mut guard = match self.listener.lock() {
             Ok(g) => g,
             Err(poisoned) => {
-                warn!("transfer_hud listener mutex poisoned; recovering inner");
+                warn!("activity_hud listener mutex poisoned; recovering inner");
                 poisoned.into_inner()
             }
         };
         *guard = listener;
     }
 
-    fn current_listener(&self) -> Arc<dyn TransferHudListener> {
+    fn current_listener(&self) -> Arc<dyn ActivityHudListener> {
         let guard = match self.listener.lock() {
             Ok(g) => g,
             Err(poisoned) => {
-                warn!("transfer_hud listener mutex poisoned; recovering inner");
+                warn!("activity_hud listener mutex poisoned; recovering inner");
                 poisoned.into_inner()
             }
         };
@@ -82,7 +82,7 @@ impl TransferHudEmitter {
     /// 暴露内部状态句柄,给 `cancel` 按钮路径用 (UI 点击取消 ->
     /// `mark_cancel_pending` -> invoke `cancel_file_transfer` 命令)。
     /// 出 emitter 之外尽量别拿这个,大多数场景应该走事件管道。
-    pub fn state_handle(&self) -> Arc<Mutex<TransferHudState>> {
+    pub fn state_handle(&self) -> Arc<Mutex<ActivityHudState>> {
         Arc::clone(&self.state)
     }
 
@@ -100,7 +100,7 @@ impl TransferHudEmitter {
             let mut state = match self.state.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    warn!("transfer_hud state mutex poisoned; recovering inner");
+                    warn!("activity_hud state mutex poisoned; recovering inner");
                     poisoned.into_inner()
                 }
             };
@@ -118,13 +118,13 @@ impl TransferHudEmitter {
     /// 内部:拿锁、apply 闭包、判断是否需要通知;期间 listener 不持锁。
     fn apply<F>(&self, f: F)
     where
-        F: FnOnce(&mut TransferHudState) -> bool,
+        F: FnOnce(&mut ActivityHudState) -> bool,
     {
         let snapshot_opt = {
             let mut state = match self.state.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
-                    warn!("transfer_hud state mutex poisoned; recovering inner");
+                    warn!("activity_hud state mutex poisoned; recovering inner");
                     poisoned.into_inner()
                 }
             };
@@ -141,7 +141,7 @@ impl TransferHudEmitter {
     }
 }
 
-impl HostEventEmitterPort for TransferHudEmitter {
+impl HostEventEmitterPort for ActivityHudEmitter {
     fn emit(&self, event: HostEvent) -> Result<(), EmitError> {
         match event {
             HostEvent::Transfer(TransferHostEvent::Progress {
@@ -200,27 +200,27 @@ mod tests {
 
     #[derive(Default)]
     struct Recorder {
-        calls: StdMutex<Vec<Vec<TransferHudRow>>>,
+        calls: StdMutex<Vec<Vec<ActivityHudRow>>>,
     }
 
     impl Recorder {
-        fn snapshots(&self) -> Vec<Vec<TransferHudRow>> {
+        fn snapshots(&self) -> Vec<Vec<ActivityHudRow>> {
             self.calls.lock().unwrap().clone()
         }
     }
 
-    impl TransferHudListener for Recorder {
-        fn on_changed(&self, snapshot: Vec<TransferHudRow>) {
+    impl ActivityHudListener for Recorder {
+        fn on_changed(&self, snapshot: Vec<ActivityHudRow>) {
             self.calls.lock().unwrap().push(snapshot);
         }
     }
 
-    fn make_emitter() -> (TransferHudEmitter, Arc<Recorder>, Arc<ManualClock>) {
+    fn make_emitter() -> (ActivityHudEmitter, Arc<Recorder>, Arc<ManualClock>) {
         let clock = Arc::new(ManualClock::new());
         let listener = Arc::new(Recorder::default());
-        let emitter = TransferHudEmitter::new(
+        let emitter = ActivityHudEmitter::new(
             clock.clone() as Arc<dyn Clock>,
-            listener.clone() as Arc<dyn TransferHudListener>,
+            listener.clone() as Arc<dyn ActivityHudListener>,
         );
         (emitter, listener, clock)
     }

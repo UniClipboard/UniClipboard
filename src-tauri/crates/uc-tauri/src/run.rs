@@ -290,7 +290,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // AppKit panel (AirDrop 风格)。装配细节(状态机 / emitter /
             // actions / 平台 listener / 后台 sweep)全部收到 install()
             // 内部;Windows 端将来加 `ui::windows` 实现时,这一行不需要改。
-            crate::transfer_hud::install(crate::transfer_hud::InstallDeps {
+            crate::activity_hud::install(crate::activity_hud::InstallDeps {
                 app_handle: app.handle().clone(),
                 host_event_bus: std::sync::Arc::clone(&host_event_bus_for_tauri),
             });

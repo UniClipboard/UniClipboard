@@ -5,13 +5,13 @@
 #![allow(unused_unsafe)]
 
 //! macOS AppKit panel,渲染
-//! [`TransferHudState`](super::super::state::TransferHudState) 的 snapshot。
+//! [`ActivityHudState`](super::super::state::ActivityHudState) 的 snapshot。
 //!
 //! ## 设计要点
 //!
 //! ### 线程模型
 //!
-//! [`MacosTransferHudListener::on_changed`] 可能从任意 publisher 线程
+//! [`MacosActivityHudListener::on_changed`] 可能从任意 publisher 线程
 //! (tokio worker 等) 进来,但所有 AppKit 调用必须在主线程。这里通过
 //! Tauri 的 `AppHandle::run_on_main_thread` 把闭包派发到主线程 —— 与
 //! `commands/quick_panel.rs` 等位置用的是同一套机制。
@@ -26,7 +26,7 @@
 //! ### 取消按钮
 //!
 //! 每行右侧一个 NSButton("✕")。点击 path:
-//! 1. 调 [`TransferHudActions::cancel`] —— actions 内部做乐观状态更新
+//! 1. 调 [`ActivityHudActions::cancel`] —— actions 内部做乐观状态更新
 //!    + 异步发出真正的取消请求
 //! 2. UI 立即看到行变 "取消中…",几百 ms 内后端 status_changed 回流
 //!    把行落到最终 `Cancelled`
@@ -62,9 +62,9 @@ use objc2_foundation::{MainThreadMarker, NSEdgeInsets, NSPoint, NSRect, NSSize, 
 use tauri::AppHandle;
 use tracing::{debug, warn};
 
-use super::super::actions::TransferHudActions;
-use super::super::emitter::TransferHudListener;
-use super::super::state::{RowState, TransferHudRow};
+use super::super::actions::ActivityHudActions;
+use super::super::emitter::ActivityHudListener;
+use super::super::state::{ActivityHudRow, RowState};
 
 // 主线程独占的 HUD 内部状态。所有 ObjC 对象都只在主线程访问,
 // `thread_local!` 防止其它线程偶然拿到。`RefCell` 在主线程内做可变
@@ -101,7 +101,7 @@ struct RowView {
 // 轻量 NSObject 子类,在它的 method 里调 Rust 逻辑。
 struct UCHudCancelButtonIvars {
     transfer_id: String,
-    actions: Arc<dyn TransferHudActions>,
+    actions: Arc<dyn ActivityHudActions>,
 }
 
 define_class!(
@@ -121,7 +121,7 @@ define_class!(
             let ivars = self.ivars();
             debug!(
                 transfer_id = %ivars.transfer_id,
-                "transfer_hud: cancel button clicked"
+                "activity_hud: cancel button clicked"
             );
             ivars.actions.cancel(&ivars.transfer_id);
         }
@@ -129,7 +129,7 @@ define_class!(
 );
 
 impl UCHudCancelButton {
-    fn new(transfer_id: String, actions: Arc<dyn TransferHudActions>) -> Retained<Self> {
+    fn new(transfer_id: String, actions: Arc<dyn ActivityHudActions>) -> Retained<Self> {
         // alloc 不需要主线程标记(本类继承 NSObject,不是 MainThreadOnly),
         // 但实际调用方都在主线程上 —— 没有限制就用 AllocAnyThread trait。
         let allocated: Allocated<Self> = Self::alloc();
@@ -141,17 +141,17 @@ impl UCHudCancelButton {
     }
 }
 
-/// 实现 [`TransferHudListener`],把 snapshot 派发到主线程渲染。
-pub struct MacosTransferHudListener {
+/// 实现 [`ActivityHudListener`],把 snapshot 派发到主线程渲染。
+pub struct MacosActivityHudListener {
     app_handle: AppHandle,
     /// HUD 上的用户动作走这个 trait —— 平台 listener 不直接 import facade,
     /// 跟领域层解耦。装配代码在 `super::create_listener` 里把 actions
     /// 注入进来。
-    actions: Arc<dyn TransferHudActions>,
+    actions: Arc<dyn ActivityHudActions>,
 }
 
-impl MacosTransferHudListener {
-    pub fn new(app_handle: AppHandle, actions: Arc<dyn TransferHudActions>) -> Self {
+impl MacosActivityHudListener {
+    pub fn new(app_handle: AppHandle, actions: Arc<dyn ActivityHudActions>) -> Self {
         Self {
             app_handle,
             actions,
@@ -159,8 +159,8 @@ impl MacosTransferHudListener {
     }
 }
 
-impl TransferHudListener for MacosTransferHudListener {
-    fn on_changed(&self, snapshot: Vec<TransferHudRow>) {
+impl ActivityHudListener for MacosActivityHudListener {
+    fn on_changed(&self, snapshot: Vec<ActivityHudRow>) {
         let actions = Arc::clone(&self.actions);
         if let Err(err) = self.app_handle.run_on_main_thread(move || {
             // SAFETY: run_on_main_thread 的契约就是回调在主线程上执行。
@@ -176,7 +176,7 @@ impl TransferHudListener for MacosTransferHudListener {
                 }
             });
         }) {
-            warn!(error = %err, "transfer_hud: run_on_main_thread 派发失败");
+            warn!(error = %err, "activity_hud: run_on_main_thread 派发失败");
         }
     }
 }
@@ -280,12 +280,12 @@ impl HudInner {
     fn apply_snapshot(
         &mut self,
         mtm: MainThreadMarker,
-        snapshot: &[TransferHudRow],
-        actions: &Arc<dyn TransferHudActions>,
+        snapshot: &[ActivityHudRow],
+        actions: &Arc<dyn ActivityHudActions>,
     ) {
         debug!(
             row_count = snapshot.len(),
-            "transfer_hud: applying snapshot"
+            "activity_hud: applying snapshot"
         );
 
         // 1) 收集新 snapshot 里出现的 transfer_id —— 没在里头的现有行要移除。
@@ -360,8 +360,8 @@ impl HudInner {
 impl RowView {
     fn create(
         mtm: MainThreadMarker,
-        row: &TransferHudRow,
-        actions: &Arc<dyn TransferHudActions>,
+        row: &ActivityHudRow,
+        actions: &Arc<dyn ActivityHudActions>,
     ) -> Self {
         // 文件名标签(主标题)。labelWithString 等价于 NSTextField 的
         // 标准 label 风格:无边框、无背景、不可编辑。
@@ -471,7 +471,7 @@ impl RowView {
     }
 
     /// 用新 snapshot 行原地更新本视图的文本/进度/按钮状态,不重建控件。
-    fn update_from(&self, row: &TransferHudRow) {
+    fn update_from(&self, row: &ActivityHudRow) {
         unsafe {
             self.filename_label
                 .setStringValue(&NSString::from_str(&format_title(row)));
@@ -483,7 +483,7 @@ impl RowView {
     }
 }
 
-fn apply_progress_value(bar: &NSProgressIndicator, row: &TransferHudRow) {
+fn apply_progress_value(bar: &NSProgressIndicator, row: &ActivityHudRow) {
     let value = match row.total_bytes {
         Some(total) if total > 0 => (row.bytes_transferred as f64 / total as f64).clamp(0.0, 1.0),
         _ => 0.0,
@@ -500,14 +500,14 @@ fn apply_progress_value(bar: &NSProgressIndicator, row: &TransferHudRow) {
 }
 
 /// 终态行 / CancelPending 行的取消按钮 disabled —— 点击毫无意义。
-fn apply_cancel_button_enabled(button: &NSButton, row: &TransferHudRow) {
+fn apply_cancel_button_enabled(button: &NSButton, row: &ActivityHudRow) {
     let enabled = matches!(row.state, RowState::Receiving);
     unsafe {
         button.setEnabled(enabled);
     }
 }
 
-fn format_title(row: &TransferHudRow) -> String {
+fn format_title(row: &ActivityHudRow) -> String {
     match &row.filenames {
         Some(names) if !names.is_empty() => {
             if names.len() == 1 {
@@ -520,7 +520,7 @@ fn format_title(row: &TransferHudRow) -> String {
     }
 }
 
-fn format_subtitle(row: &TransferHudRow) -> String {
+fn format_subtitle(row: &ActivityHudRow) -> String {
     match &row.state {
         RowState::Receiving => format_progress_subtitle(row),
         RowState::CancelPending => "取消中…".to_string(),
@@ -536,7 +536,7 @@ fn format_subtitle(row: &TransferHudRow) -> String {
     }
 }
 
-fn format_progress_subtitle(row: &TransferHudRow) -> String {
+fn format_progress_subtitle(row: &ActivityHudRow) -> String {
     let transferred = format_bytes(row.bytes_transferred);
     match (row.total_bytes, row.speed_bps) {
         (Some(total), Some(speed)) if speed > 0.0 => {

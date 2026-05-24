@@ -19,11 +19,11 @@
 //!   state (跨平台)
 //!         │
 //!         ▼ snapshot
-//!   ui::TransferHudListener (平台特定)
+//!   ui::ActivityHudListener (平台特定)
 //!         │
 //!         │ 用户点取消
 //!         ▼
-//!   actions::TransferHudActions (跨平台)
+//!   actions::ActivityHudActions (跨平台)
 //!         │
 //!         ▼
 //!   facade.cancel_inbound_transfer
@@ -34,8 +34,8 @@
 //! - [`state`]:纯逻辑状态机,接收 host event,输出行快照。无 AppKit、
 //!   无 host event 类型依赖以外的副作用,可完整单元测试。
 //! - [`emitter`]:`HostEventEmitterPort` 适配器,把 host event bus 上
-//!   的事件喂给状态机,并通过 [`emitter::TransferHudListener`] 通知 UI。
-//! - [`actions`]:用户动作抽象 ([`actions::TransferHudActions`]),把
+//!   的事件喂给状态机,并通过 [`emitter::ActivityHudListener`] 通知 UI。
+//! - [`actions`]:用户动作抽象 ([`actions::ActivityHudActions`]),把
 //!   "取消"等动词从 UI 平台代码里抽出来,平台模块不直接依赖 facade。
 //! - [`ui`]:平台特定 listener 集合。`ui::macos` 是 AppKit panel,
 //!   `ui::tracing` 是非 macOS 平台的日志 fallback。加 Windows 端时
@@ -46,7 +46,7 @@
 //! 上层 (run.rs) 只需调一次 [`install`]:
 //!
 //! ```ignore
-//! transfer_hud::install(transfer_hud::InstallDeps {
+//! activity_hud::install(activity_hud::InstallDeps {
 //!     app_handle: app.handle().clone(),
 //!     host_event_bus: host_event_bus.clone(),
 //! });
@@ -74,9 +74,9 @@ use tracing::info;
 
 use uc_application::facade::{HostEventBus, HostEventEmitterPort};
 
-use self::actions::{DefaultTransferHudActions, TransferHudActions};
+use self::actions::{ActivityHudActions, DefaultActivityHudActions};
 use self::clock::{Clock, SystemClock};
-use self::emitter::{TransferHudEmitter, TransferHudListener};
+use self::emitter::{ActivityHudEmitter, ActivityHudListener};
 
 /// 装配 HUD 需要的外部依赖。所有字段都从 Tauri setup callback 拿得到。
 pub struct InstallDeps {
@@ -86,7 +86,7 @@ pub struct InstallDeps {
 
 /// 注册到 host event bus 上的 emitter 名字。`HostEventBus::unregister`
 /// 用同名字反注册;暴露成常量便于排障搜索。
-pub const REGISTRATION_NAME: &str = "transfer_hud";
+pub const REGISTRATION_NAME: &str = "activity_hud";
 
 /// 后台 sweep tick 周期 —— 清理过保留期的终态行。500ms 对 2-4s 的保留
 /// 期是 4-8 倍精度,行的"完成→消失"过渡看不出抖动。
@@ -101,7 +101,7 @@ const SWEEP_INTERVAL: Duration = Duration::from_millis(500);
 /// 实 listener,最后 `set_listener` 替换。**TODO**:可以用
 /// `Arc::new_cyclic` + `Weak` 把环改成无循环;当前 emitter 进程级单例
 /// 活到进程退出,内存不漏。
-pub fn install(deps: InstallDeps) -> Arc<TransferHudEmitter> {
+pub fn install(deps: InstallDeps) -> Arc<ActivityHudEmitter> {
     let InstallDeps {
         app_handle,
         host_event_bus,
@@ -109,12 +109,12 @@ pub fn install(deps: InstallDeps) -> Arc<TransferHudEmitter> {
 
     // 1) 状态机 + emitter,先用 tracing listener 占位。
     let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
-    let placeholder: Arc<dyn TransferHudListener> =
-        Arc::new(self::ui::tracing::TracingTransferHudListener);
-    let emitter = Arc::new(TransferHudEmitter::new(clock, placeholder));
+    let placeholder: Arc<dyn ActivityHudListener> =
+        Arc::new(self::ui::tracing::TracingActivityHudListener);
+    let emitter = Arc::new(ActivityHudEmitter::new(clock, placeholder));
 
     // 2) 默认 actions(乐观更新 + 调 facade),依赖 emitter。
-    let actions: Arc<dyn TransferHudActions> = Arc::new(DefaultTransferHudActions::new(
+    let actions: Arc<dyn ActivityHudActions> = Arc::new(DefaultActivityHudActions::new(
         Arc::clone(&emitter),
         app_handle.clone(),
     ));
@@ -130,7 +130,7 @@ pub fn install(deps: InstallDeps) -> Arc<TransferHudEmitter> {
     );
     info!(
         registration = REGISTRATION_NAME,
-        "transfer_hud emitter registered on host_event_bus"
+        "activity_hud emitter registered on host_event_bus"
     );
 
     // 5) 后台 sweep tick:周期清理过保留期的终态行。MissedTickBehavior::Skip

@@ -19,7 +19,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use tracing::{debug, warn};
+use tracing::warn;
 use uc_application::facade::{
     ClipboardHostEvent, EmitError, HostEvent, HostEventEmitterPort, TransferHostEvent,
 };
@@ -30,22 +30,11 @@ use super::state::{TransferHudRow, TransferHudState};
 /// HUD 渲染端订阅 trait。emitter 在状态机有变化时调用,参数是当前
 /// 完整快照(已稳定排序)。实现必须 `Send + Sync` —— emit 是同步路径
 /// 但来自任意 publisher 线程,listener 不得阻塞。
+///
+/// 实现位置:平台特定的 listener 在 `super::ui::*` 子模块下,装配时由
+/// [`super::ui::create_listener`] 按 cfg 选出对应实现。
 pub trait TransferHudListener: Send + Sync {
     fn on_changed(&self, snapshot: Vec<TransferHudRow>);
-}
-
-/// 把快照打到 tracing 日志的 listener。Slice 1 期间作为占位 UI 使用,
-/// AppKit listener 上线后可以并行保留作排障辅助。
-pub struct TracingTransferHudListener;
-
-impl TransferHudListener for TracingTransferHudListener {
-    fn on_changed(&self, snapshot: Vec<TransferHudRow>) {
-        debug!(
-            row_count = snapshot.len(),
-            rows = ?snapshot,
-            "transfer_hud snapshot"
-        );
-    }
 }
 
 pub struct TransferHudEmitter {

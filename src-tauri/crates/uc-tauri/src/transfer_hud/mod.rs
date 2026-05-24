@@ -1,39 +1,149 @@
-//! macOS 原生文件接收 HUD。
+//! macOS / 未来跨平台原生文件接收 HUD。
 //!
 //! ## 目的
 //!
 //! 当从其他设备 (Windows / Linux 对端) 接收文件到本机时,弹出一个独立
-//! 的 macOS 原生窗口显示进度,类似 AirDrop 的接收浮窗。这一层独立于
-//! 主 webview 中已有的 `TransferProgressBar`,两者并存:主窗口里仍有
-//! 详细列表与历史,HUD 提供随手可见的进度 + 取消入口。
+//! 的原生窗口显示进度,类似 AirDrop 的接收浮窗。这一层独立于主 webview
+//! 中已有的 `TransferProgressBar`,两者并存:主窗口里仍有详细列表与历
+//! 史,HUD 提供随手可见的进度 + 取消入口。
 //!
 //! ## 模块分层
+//!
+//! ```text
+//!   host_event_bus
+//!         │
+//!         ▼
+//!   emitter (跨平台)
+//!         │
+//!         ▼
+//!   state (跨平台)
+//!         │
+//!         ▼ snapshot
+//!   ui::TransferHudListener (平台特定)
+//!         │
+//!         │ 用户点取消
+//!         ▼
+//!   actions::TransferHudActions (跨平台)
+//!         │
+//!         ▼
+//!   facade.cancel_inbound_transfer
+//! ```
 //!
 //! - [`clock`]:单调时钟抽象,生产代码用 `Instant::now()`,单测用手动
 //!   推进时钟。
 //! - [`state`]:纯逻辑状态机,接收 host event,输出行快照。无 AppKit、
 //!   无 host event 类型依赖以外的副作用,可完整单元测试。
-//! - [`emitter`]:`HostEventEmitterPort` 适配器,把 host event bus 上的
-//!   事件喂给状态机,并通过 [`emitter::TransferHudListener`] 通知 UI。
-//! - `macos`:AppKit panel 渲染 (Slice 2/3 加入)。
+//! - [`emitter`]:`HostEventEmitterPort` 适配器,把 host event bus 上
+//!   的事件喂给状态机,并通过 [`emitter::TransferHudListener`] 通知 UI。
+//! - [`actions`]:用户动作抽象 ([`actions::TransferHudActions`]),把
+//!   "取消"等动词从 UI 平台代码里抽出来,平台模块不直接依赖 facade。
+//! - [`ui`]:平台特定 listener 集合。`ui::macos` 是 AppKit panel,
+//!   `ui::tracing` 是非 macOS 平台的日志 fallback。加 Windows 端时
+//!   在这里新增 `ui::windows`。
 //!
-//! ## 非 macOS 平台
+//! ## 装配
 //!
-//! `clock` / `state` / `emitter` 子模块平台无关,仍编译并可单测。
-//! AppKit listener 仅在 `target_os = "macos"` 下编译;其他平台用占位
-//! [`emitter::TracingTransferHudListener`] 不会有功能性 HUD,但 emitter
-//! 本身仍可挂在 bus 上不报错。
+//! 上层 (run.rs) 只需调一次 [`install`]:
+//!
+//! ```ignore
+//! transfer_hud::install(transfer_hud::InstallDeps {
+//!     app_handle: app.handle().clone(),
+//!     host_event_bus: host_event_bus.clone(),
+//! });
+//! ```
+//!
+//! 内部完成:
+//! 1. 构造 state + emitter (placeholder listener,两阶段装配)
+//! 2. 构造 actions (持 emitter)
+//! 3. 创建平台 listener (持 actions)
+//! 4. `emitter.set_listener(real)` 完成接线
+//! 5. 把 emitter 注册到 host_event_bus
+//! 6. spawn 后台 sweep tick 周期清理终态行
 
+pub mod actions;
 pub mod clock;
 pub mod emitter;
 pub mod state;
+pub mod ui;
 
-#[cfg(target_os = "macos")]
-pub mod macos;
+use std::sync::Arc;
+use std::time::Duration;
 
-pub use clock::{Clock, SystemClock};
-pub use emitter::{TracingTransferHudListener, TransferHudEmitter, TransferHudListener};
-pub use state::{RowState, TransferHudRow, TransferHudState};
+use tauri::AppHandle;
+use tracing::info;
 
-#[cfg(target_os = "macos")]
-pub use macos::MacosTransferHudListener;
+use uc_application::facade::{HostEventBus, HostEventEmitterPort};
+
+use self::actions::{DefaultTransferHudActions, TransferHudActions};
+use self::clock::{Clock, SystemClock};
+use self::emitter::{TransferHudEmitter, TransferHudListener};
+
+/// 装配 HUD 需要的外部依赖。所有字段都从 Tauri setup callback 拿得到。
+pub struct InstallDeps {
+    pub app_handle: AppHandle,
+    pub host_event_bus: Arc<HostEventBus>,
+}
+
+/// 注册到 host event bus 上的 emitter 名字。`HostEventBus::unregister`
+/// 用同名字反注册;暴露成常量便于排障搜索。
+pub const REGISTRATION_NAME: &str = "transfer_hud";
+
+/// 后台 sweep tick 周期 —— 清理过保留期的终态行。500ms 对 2-4s 的保留
+/// 期是 4-8 倍精度,行的"完成→消失"过渡看不出抖动。
+const SWEEP_INTERVAL: Duration = Duration::from_millis(500);
+
+/// 一站式装配:构造状态机 / emitter / actions / 平台 listener,接线到
+/// host event bus,启动后台 sweep tick。返回 emitter handle,主要供测
+/// 试与排障使用;运行期通常不需要。
+///
+/// 装配顺序处理了一个隐含的 Arc 环 (emitter → listener → actions →
+/// emitter):用 placeholder listener 先把 emitter 立起来,然后构造真
+/// 实 listener,最后 `set_listener` 替换。**TODO**:可以用
+/// `Arc::new_cyclic` + `Weak` 把环改成无循环;当前 emitter 进程级单例
+/// 活到进程退出,内存不漏。
+pub fn install(deps: InstallDeps) -> Arc<TransferHudEmitter> {
+    let InstallDeps {
+        app_handle,
+        host_event_bus,
+    } = deps;
+
+    // 1) 状态机 + emitter,先用 tracing listener 占位。
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
+    let placeholder: Arc<dyn TransferHudListener> =
+        Arc::new(self::ui::tracing::TracingTransferHudListener);
+    let emitter = Arc::new(TransferHudEmitter::new(clock, placeholder));
+
+    // 2) 默认 actions(乐观更新 + 调 facade),依赖 emitter。
+    let actions: Arc<dyn TransferHudActions> = Arc::new(DefaultTransferHudActions::new(
+        Arc::clone(&emitter),
+        app_handle.clone(),
+    ));
+
+    // 3) 平台 listener(macOS 真实 HUD / 其它平台 tracing 兜底)。
+    let real_listener = self::ui::create_listener(app_handle, actions);
+    emitter.set_listener(real_listener);
+
+    // 4) 挂到 host event bus,与 TauriHostEventEmitter 并行接收事件。
+    host_event_bus.register(
+        REGISTRATION_NAME,
+        Arc::clone(&emitter) as Arc<dyn HostEventEmitterPort>,
+    );
+    info!(
+        registration = REGISTRATION_NAME,
+        "transfer_hud emitter registered on host_event_bus"
+    );
+
+    // 5) 后台 sweep tick:周期清理过保留期的终态行。MissedTickBehavior::Skip
+    //    避免 runtime 偶发卡顿后追补一堆 tick。
+    let sweep_emitter = Arc::clone(&emitter);
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(SWEEP_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            sweep_emitter.tick();
+        }
+    });
+
+    emitter
+}

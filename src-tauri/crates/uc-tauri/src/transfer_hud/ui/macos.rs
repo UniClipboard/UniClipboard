@@ -4,8 +4,8 @@
 // 新版本下变成 unsafe,unsafe 块本来就准备好,不需要再加。
 #![allow(unused_unsafe)]
 
-//! macOS AppKit panel,渲染 [`TransferHudState`](super::state::TransferHudState)
-//! 的 snapshot。
+//! macOS AppKit panel,渲染
+//! [`TransferHudState`](super::super::state::TransferHudState) 的 snapshot。
 //!
 //! ## 设计要点
 //!
@@ -26,12 +26,14 @@
 //! ### 取消按钮
 //!
 //! 每行右侧一个 NSButton("✕")。点击 path:
-//! 1. emitter.mark_cancel_pending(transfer_id) 乐观切到 CancelPending(UI 立刻反馈)
-//! 2. tauri::async_runtime::spawn 调 facade.cancel_inbound_transfer(...)
-//!    真正发取消请求;后端 status_changed: cancelled 回流再落终态
+//! 1. 调 [`TransferHudActions::cancel`] —— actions 内部做乐观状态更新
+//!    + 异步发出真正的取消请求
+//! 2. UI 立即看到行变 "取消中…",几百 ms 内后端 status_changed 回流
+//!    把行落到最终 `Cancelled`
 //!
 //! 按钮的 target 是一个自定义 ObjC 子类 `UCHudCancelButton`,继承自
-//! NSObject,持有 transfer_id + emitter + AppHandle 三个 ivars。
+//! NSObject,持有 transfer_id + actions 两个 ivars —— **不再直接持
+//! emitter 或 facade**,平台模块跟领域代码完全解耦。
 //!
 //! ### 视觉
 //!
@@ -57,14 +59,12 @@ use objc2_app_kit::{
     NSVisualEffectState, NSVisualEffectView, NSWindowStyleMask,
 };
 use objc2_foundation::{MainThreadMarker, NSEdgeInsets, NSPoint, NSRect, NSSize, NSString};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tracing::{debug, warn};
 
-use uc_core::FileTransferCancellationReason;
-
-use super::emitter::{TransferHudEmitter, TransferHudListener};
-use super::state::{RowState, TransferHudRow};
-use crate::bootstrap::TauriAppRuntime;
+use super::super::actions::TransferHudActions;
+use super::super::emitter::TransferHudListener;
+use super::super::state::{RowState, TransferHudRow};
 
 // 主线程独占的 HUD 内部状态。所有 ObjC 对象都只在主线程访问,
 // `thread_local!` 防止其它线程偶然拿到。`RefCell` 在主线程内做可变
@@ -94,15 +94,14 @@ struct RowView {
 }
 
 // ObjC 子类:NSButton 的 target/action 接收器。每行一个实例,持
-// transfer_id + emitter + AppHandle。
+// transfer_id + actions。
 //
-// 为什么用 ObjC 子类:NSControl.setTarget 接收的是 ObjC 对象指针,
-// 走 selector dispatch。Rust 闭包没法直接挂上去。最干净的方法是
-// 定义一个轻量 NSObject 子类,在它的 method 里调 Rust 逻辑。
+// 为什么用 ObjC 子类:NSControl.setTarget 接收的是 ObjC 对象指针,走
+// selector dispatch。Rust 闭包没法直接挂上去。最干净的方法是定义一个
+// 轻量 NSObject 子类,在它的 method 里调 Rust 逻辑。
 struct UCHudCancelButtonIvars {
     transfer_id: String,
-    emitter: Arc<TransferHudEmitter>,
-    app_handle: AppHandle,
+    actions: Arc<dyn TransferHudActions>,
 }
 
 define_class!(
@@ -120,52 +119,23 @@ define_class!(
         #[unsafe(method(cancelClicked:))]
         fn cancel_clicked(&self, _sender: *mut AnyObject) {
             let ivars = self.ivars();
-            let transfer_id = ivars.transfer_id.clone();
-            let emitter = Arc::clone(&ivars.emitter);
-            let app_handle = ivars.app_handle.clone();
-
-            debug!(transfer_id = %transfer_id, "transfer_hud: cancel button clicked");
-
-            // 1) 乐观切到 CancelPending —— UI 立即反馈,不等 facade 回应。
-            emitter.mark_cancel_pending(&transfer_id);
-
-            // 2) 真正发出取消请求。spawn 到 Tauri 自维护的 runtime;
-            //    facade 是 async,主线程不能 block 等待。
-            tauri::async_runtime::spawn(async move {
-                let runtime: Arc<TauriAppRuntime> =
-                    app_handle.state::<Arc<TauriAppRuntime>>().inner().clone();
-                if let Err(err) = runtime
-                    .app_facade()
-                    .cancel_inbound_transfer(
-                        &transfer_id,
-                        FileTransferCancellationReason::LocalUser,
-                    )
-                    .await
-                {
-                    warn!(
-                        error = %err,
-                        transfer_id = %transfer_id,
-                        "transfer_hud: cancel_inbound_transfer failed"
-                    );
-                }
-            });
+            debug!(
+                transfer_id = %ivars.transfer_id,
+                "transfer_hud: cancel button clicked"
+            );
+            ivars.actions.cancel(&ivars.transfer_id);
         }
     }
 );
 
 impl UCHudCancelButton {
-    fn new(
-        transfer_id: String,
-        emitter: Arc<TransferHudEmitter>,
-        app_handle: AppHandle,
-    ) -> Retained<Self> {
+    fn new(transfer_id: String, actions: Arc<dyn TransferHudActions>) -> Retained<Self> {
         // alloc 不需要主线程标记(本类继承 NSObject,不是 MainThreadOnly),
         // 但实际调用方都在主线程上 —— 没有限制就用 AllocAnyThread trait。
         let allocated: Allocated<Self> = Self::alloc();
         let this = allocated.set_ivars(UCHudCancelButtonIvars {
             transfer_id,
-            emitter,
-            app_handle,
+            actions,
         });
         unsafe { msg_send![super(this), init] }
     }
@@ -174,27 +144,24 @@ impl UCHudCancelButton {
 /// 实现 [`TransferHudListener`],把 snapshot 派发到主线程渲染。
 pub struct MacosTransferHudListener {
     app_handle: AppHandle,
-    /// listener 在 cancel 按钮回调里要调 `emitter.mark_cancel_pending`,
-    /// 所以反向持有 emitter。emitter 也持有 listener(via Arc<dyn>),
-    /// 这是个明显的 Arc cycle —— 但全局 emitter 进程内单例、活到进
-    /// 程退出,不释放就不漏(系统 reclaim 一切)。如果未来要支持 hot
-    /// reload daemon 的话再改成 Weak。
-    emitter: Arc<TransferHudEmitter>,
+    /// HUD 上的用户动作走这个 trait —— 平台 listener 不直接 import facade,
+    /// 跟领域层解耦。装配代码在 `super::create_listener` 里把 actions
+    /// 注入进来。
+    actions: Arc<dyn TransferHudActions>,
 }
 
 impl MacosTransferHudListener {
-    pub fn new(app_handle: AppHandle, emitter: Arc<TransferHudEmitter>) -> Self {
+    pub fn new(app_handle: AppHandle, actions: Arc<dyn TransferHudActions>) -> Self {
         Self {
             app_handle,
-            emitter,
+            actions,
         }
     }
 }
 
 impl TransferHudListener for MacosTransferHudListener {
     fn on_changed(&self, snapshot: Vec<TransferHudRow>) {
-        let app_handle = self.app_handle.clone();
-        let emitter = Arc::clone(&self.emitter);
+        let actions = Arc::clone(&self.actions);
         if let Err(err) = self.app_handle.run_on_main_thread(move || {
             // SAFETY: run_on_main_thread 的契约就是回调在主线程上执行。
             let mtm =
@@ -205,7 +172,7 @@ impl TransferHudListener for MacosTransferHudListener {
                     *slot = Some(HudInner::create(mtm));
                 }
                 if let Some(inner) = slot.as_mut() {
-                    inner.apply_snapshot(mtm, &snapshot, &emitter, &app_handle);
+                    inner.apply_snapshot(mtm, &snapshot, &actions);
                 }
             });
         }) {
@@ -314,8 +281,7 @@ impl HudInner {
         &mut self,
         mtm: MainThreadMarker,
         snapshot: &[TransferHudRow],
-        emitter: &Arc<TransferHudEmitter>,
-        app_handle: &AppHandle,
+        actions: &Arc<dyn TransferHudActions>,
     ) {
         debug!(
             row_count = snapshot.len(),
@@ -346,7 +312,7 @@ impl HudInner {
             if let Some(existing) = self.rows.get(&row.transfer_id) {
                 existing.update_from(row);
             } else {
-                let view = RowView::create(mtm, row, emitter, app_handle);
+                let view = RowView::create(mtm, row, actions);
                 unsafe {
                     self.stack.addArrangedSubview(&view.container);
                 }
@@ -395,8 +361,7 @@ impl RowView {
     fn create(
         mtm: MainThreadMarker,
         row: &TransferHudRow,
-        emitter: &Arc<TransferHudEmitter>,
-        app_handle: &AppHandle,
+        actions: &Arc<dyn TransferHudActions>,
     ) -> Self {
         // 文件名标签(主标题)。labelWithString 等价于 NSTextField 的
         // 标准 label 风格:无边框、无背景、不可编辑。
@@ -457,11 +422,7 @@ impl RowView {
 
         // 取消按钮:文本 "✕",bezelStyle 圆形小按钮。终态行的按钮设
         // disabled,update_from 里也会跟着切。
-        let cancel_target = UCHudCancelButton::new(
-            row.transfer_id.clone(),
-            Arc::clone(emitter),
-            app_handle.clone(),
-        );
+        let cancel_target = UCHudCancelButton::new(row.transfer_id.clone(), Arc::clone(actions));
         let cancel_button: Retained<NSButton> = unsafe { NSButton::new(mtm) };
         unsafe {
             cancel_button.setTitle(&NSString::from_str("✕"));

@@ -362,6 +362,20 @@ jobs:
             --content-type "application/json" \
             --remote
 
+      - name: Archive release notes and update channel index
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          CHANNEL="${{ needs.validate.outputs.channel }}"
+
+          node scripts/archive-release-notes.js \
+            --version "$VERSION" \
+            --channel "$CHANNEL" \
+            --notes-file "docs/changelog/${VERSION}.md" \
+            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
+
       - name: Assemble update manifest
         run: |
           VERSION="${{ needs.validate.outputs.version }}"

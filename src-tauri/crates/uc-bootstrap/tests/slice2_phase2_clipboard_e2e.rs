@@ -487,6 +487,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         Arc::clone(&peer_addr_repo) as Arc<dyn uc_core::ports::PeerAddressRepositoryPort>,
         Arc::clone(&member_repo) as Arc<dyn MemberRepositoryPort>,
         Arc::new(Sha256IdentityFingerprintFactory),
+        Arc::clone(&presence),
     );
     let clipboard_dispatch: Arc<dyn ClipboardDispatchPort> = clipboard_dispatch;
     let clipboard_receiver: Arc<dyn ClipboardReceiverPort> = clipboard_receiver;

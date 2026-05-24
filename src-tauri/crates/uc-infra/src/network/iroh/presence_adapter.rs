@@ -618,6 +618,48 @@ impl PresencePort for IrohPresenceAdapter {
         Ok(result)
     }
 
+    #[instrument(skip_all, fields(device = %device.as_str()))]
+    async fn mark_offline(&self, device: &DeviceId) {
+        let key = device.as_str().to_string();
+
+        // 1) Evict the live-connection slot. The peer is held to be dead by
+        //    an external observer — anything we cached as alive is now a lie
+        //    that the fast-path in `ensure_reachable` would happily serve.
+        //    Close the connection explicitly so the watchdog's
+        //    `connection.closed().await` resolves and its cleanup runs
+        //    (remove already noop, last_state already Offline below, the
+        //    redundant Offline event is idempotent).
+        //
+        //    Order matches `verify_reachable`'s failure path: remove from
+        //    map first, then close — avoids the watchdog cleanup half-killed
+        //    race (TrackedPeer::drop will abort the watchdog if it hasn't
+        //    fired yet, and that's fine; we don't depend on it running).
+        let stale = {
+            let mut peers = self.peers.lock().await;
+            peers.remove(&key)
+        };
+        if let Some(stale) = stale {
+            stale.connection.close(0u32.into(), b"mark_offline");
+            debug!("mark_offline: closed stale tracked connection");
+        }
+
+        // 2) Persist Offline in last_state. Skip the broadcast if the device
+        //    was already Offline (idempotency contract). Hold the lock across
+        //    the prev-vs-new compare-and-set so a racing inbound Online flip
+        //    doesn't slip a duplicate Offline through.
+        let should_broadcast = {
+            let mut last = self.last_state.lock().await;
+            let prev = last.insert(key, ReachabilityState::Offline);
+            prev != Some(ReachabilityState::Offline)
+        };
+
+        if should_broadcast {
+            let now = self.now();
+            debug!("mark_offline: peer marked Offline");
+            self.broadcast(device.clone(), ReachabilityState::Offline, now);
+        }
+    }
+
     // 故意不挂 `#[instrument]`:`current_state()` 仅做 in-memory map
     // lookup(`last_state` / `peers`),没有外部 I/O,但被 roster /
     // list_with_presence / ensure_reachable_all 在热路径上反复调用,

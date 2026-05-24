@@ -351,6 +351,7 @@ pub async fn build_space_setup_assembly(
         Arc::clone(&wired.peer_addr_repo),
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&deps.security.fingerprint),
+        Arc::clone(&presence),
     );
     let clipboard_dispatch: Arc<dyn ClipboardDispatchPort> = clipboard_dispatch;
     let clipboard_receiver: Arc<dyn ClipboardReceiverPort> = clipboard_receiver;

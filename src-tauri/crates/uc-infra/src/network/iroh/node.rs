@@ -45,7 +45,7 @@ use uc_core::ports::{
 use crate::pairing::{IrohPairingSessionAdapter, PAIRING_ALPN};
 use crate::rendezvous::{RendezvousClient, RendezvousPairingInvitationAdapter};
 
-use super::addr_filter::{apply_addr_filter, enumerate_local_lan_v4, LocalLanV4};
+use super::addr_filter::{apply_addr_filter, enumerate_local_lan_v4};
 use super::blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 use super::clipboard_receiver_adapter::IrohClipboardReceiverAdapter;
@@ -695,6 +695,7 @@ impl IrohNodeBuilder {
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         member_repo: Arc<dyn MemberRepositoryPort>,
         fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
+        presence: Arc<dyn PresencePort>,
     ) -> ClipboardHandlers {
         let receiver = IrohClipboardReceiverAdapter::new(member_repo, fingerprint_factory);
         let handler = receiver.handler();
@@ -709,6 +710,7 @@ impl IrohNodeBuilder {
         let dispatch = Arc::new(IrohClipboardDispatchAdapter::new(
             Arc::clone(&self.endpoint),
             peer_addr_repo,
+            presence,
         ));
 
         ClipboardHandlers {
@@ -890,7 +892,7 @@ pub enum IrohNodeError {
 
 #[cfg(test)]
 mod tests {
-    use super::super::addr_filter::is_virtual_nic_ip;
+    use super::super::addr_filter::{is_virtual_nic_ip, LocalLanV4};
     use super::*;
 
     use std::collections::HashMap;
@@ -1102,7 +1104,7 @@ mod tests {
         );
 
         let peer_addr_repo: Arc<dyn PeerAddressRepositoryPort> = Arc::new(EmptyPeerAddressRepo);
-        let _presence = builder.install_presence(
+        let presence = builder.install_presence(
             Arc::clone(&peer_addr_repo),
             Arc::new(EmptyMemberRepo),
             Arc::new(crate::security::Sha256IdentityFingerprintFactory),
@@ -1113,6 +1115,7 @@ mod tests {
             peer_addr_repo,
             Arc::new(EmptyMemberRepo),
             Arc::new(crate::security::Sha256IdentityFingerprintFactory),
+            presence,
         );
 
         // Dispatch against an unknown device — the repo is empty so we
@@ -1161,7 +1164,7 @@ mod tests {
         );
 
         let peer_addr_repo: Arc<dyn PeerAddressRepositoryPort> = Arc::new(EmptyPeerAddressRepo);
-        let _presence = builder.install_presence(
+        let presence = builder.install_presence(
             Arc::clone(&peer_addr_repo),
             Arc::new(EmptyMemberRepo),
             Arc::new(crate::security::Sha256IdentityFingerprintFactory),
@@ -1172,6 +1175,7 @@ mod tests {
             peer_addr_repo,
             Arc::new(EmptyMemberRepo),
             Arc::new(crate::security::Sha256IdentityFingerprintFactory),
+            presence,
         );
 
         let tempdir = tempfile::tempdir().expect("tempdir");

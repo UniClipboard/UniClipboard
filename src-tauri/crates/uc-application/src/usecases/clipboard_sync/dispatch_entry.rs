@@ -498,6 +498,38 @@ impl DispatchClipboardEntryUseCase {
                     )
                     .await;
 
+                    // Skip the dial entirely when presence already reports
+                    // Offline. A dial against a silently-dead peer can run
+                    // up to STAGGERED_DELAYS[2] (5s) + ATTEMPT_TIMEOUT (10s)
+                    // = 15s before failing, which is well past the main
+                    // loop's FAN_OUT_DEADLINE (5s) and would otherwise stall
+                    // every clipboard copy on the deadline timeout. Since
+                    // the dispatch adapter writes presence Offline on its
+                    // own dial failures (PresencePort::mark_offline) and
+                    // the presence fast-path enforces a TTL re-dial, by the
+                    // time `known_offline` is true we have first-hand
+                    // evidence the peer is unreachable — re-dialing here
+                    // would burn the deadline to learn nothing new.
+                    //
+                    // Telemetry preserves attempted+deferred parity: we
+                    // already fired `sync_attempted` above, and now fire
+                    // `sync_deferred` with `peer_known_offline` as the
+                    // reason, matching the post-dial deferred path's
+                    // semantics. Background recovery is unchanged — the
+                    // next clipboard event will retry, and an inbound
+                    // presence connection from the peer flips state back
+                    // to Online and reopens the dial path.
+                    if known_offline {
+                        analytics.capture(Event::SyncDeferred(SyncDeferredProps {
+                            direction: Direction::Outbound,
+                            payload_type,
+                            payload_size_bucket,
+                            peer_os: None,
+                            defer_reason: SyncDeferReason::PeerKnownOffline,
+                        }));
+                        return (device_id, Err(ClipboardDispatchError::Offline));
+                    }
+
                     let started_at = Instant::now();
                     let result = dispatch.dispatch(&device_id, &header, payload).await;
                     let duration_ms =
@@ -513,15 +545,6 @@ impl DispatchClipboardEntryUseCase {
                             failure_reason: None,
                             failure_stage: None,
                         }),
-                        Err(ClipboardDispatchError::Offline) if known_offline => {
-                            Event::SyncDeferred(SyncDeferredProps {
-                                direction: Direction::Outbound,
-                                payload_type,
-                                payload_size_bucket,
-                                peer_os: None,
-                                defer_reason: SyncDeferReason::PeerKnownOffline,
-                            })
-                        }
                         Err(err) => Event::SyncFailed(SyncEventProps {
                             direction: Direction::Outbound,
                             payload_type,
@@ -2187,8 +2210,19 @@ mod tests {
         }
     }
 
+    /// Presence reports Offline ⇒ fan-out task skips the dial entirely
+    /// and fires `SyncDeferred` directly. The dispatch port must NOT be
+    /// invoked — re-dialing a peer the presence layer has already
+    /// concluded unreachable would burn FAN_OUT_DEADLINE for no gain
+    /// (the presence verdict itself comes from a real dial via
+    /// `dial_and_track`, plus the dispatch adapter's `mark_offline`
+    /// writeback on its own failures).
+    ///
+    /// `attempted - deferred` remains the dashboard's "user-perceived
+    /// attempts" denominator, so the SyncAttempted event still fires
+    /// before the skip decision.
     #[tokio::test]
-    async fn analytics_defers_instead_of_failing_when_peer_was_already_offline() {
+    async fn known_offline_skips_dispatch_and_fires_deferred() {
         let mut repo = MockPeerAddrRepo::new();
         repo.expect_list()
             .times(1)
@@ -2200,12 +2234,10 @@ mod tests {
             .times(1)
             .returning(|p| Ok(p.to_vec()));
 
+        // Strict zero-call expectation: the whole point of B-skip is that
+        // dispatch never touches the wire on a known-offline peer.
         let mut dispatch = MockDispatch::new();
-        dispatch
-            .expect_dispatch()
-            .with(eq(DeviceId::new("peer-off")), always(), always())
-            .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+        dispatch.expect_dispatch().times(0);
 
         let analytics = Arc::new(CapturingAnalyticsSink::default());
         let uc = build_uc_with_presence_and_first_sync_state(
@@ -2223,9 +2255,6 @@ mod tests {
 
         uc.execute(input()).await.expect("dispatch ok");
 
-        // attempted 始终前置，deferred 与 attempted 形成配对。
-        // dashboard 端用 `attempted - deferred` 推导用户感知尝试，
-        // 用户感知失败率不再把 known-offline 的不可达计入。
         let events = analytics.events();
         assert_eq!(events.len(), 2, "got {events:?}");
         assert!(
@@ -2239,118 +2268,6 @@ mod tests {
                 assert_eq!(p.direction, Direction::Outbound);
             }
             other => panic!("expected SyncDeferred, got {other:?}"),
-        }
-    }
-
-    /// Presence 可能 stale：声明 Offline 但 dispatch 实际成功。此时不走 deferred
-    /// 分支（deferred guard 只覆盖 dispatch 返回 Offline 的情况），仍应得到
-    /// `SyncAttempted` + `SyncSucceeded`，时序与 not-known-offline 路径一致。
-    #[tokio::test]
-    async fn attempted_then_succeeded_even_when_peer_was_known_offline() {
-        let mut repo = MockPeerAddrRepo::new();
-        repo.expect_list()
-            .times(1)
-            .returning(|| Ok(vec![record("peer-stale")]));
-
-        let mut cipher = MockCipher::new();
-        cipher
-            .expect_encrypt()
-            .times(1)
-            .returning(|p| Ok(p.to_vec()));
-
-        let mut dispatch = MockDispatch::new();
-        dispatch
-            .expect_dispatch()
-            .with(eq(DeviceId::new("peer-stale")), always(), always())
-            .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
-
-        let analytics = Arc::new(CapturingAnalyticsSink::default());
-        let uc = build_uc_with_presence_and_first_sync_state(
-            repo,
-            make_member_repo_all_enabled(),
-            Arc::new(StaticPresence(ReachabilityState::Offline)),
-            cipher,
-            dispatch,
-            make_device_identity("self-device"),
-            make_local_identity_stub(),
-            make_settings_stub(),
-            analytics.clone(),
-            Arc::new(AllMarkedFirstSyncState),
-        );
-
-        uc.execute(input()).await.expect("dispatch ok");
-
-        let events = analytics.events();
-        assert_eq!(events.len(), 2, "got {events:?}");
-        assert!(
-            matches!(&events[0], Event::SyncAttempted(_)),
-            "first event should be SyncAttempted, got {:?}",
-            events[0],
-        );
-        match &events[1] {
-            Event::SyncSucceeded(p) => {
-                assert!(p.sync_latency_ms.is_some());
-                assert!(p.failure_reason.is_none());
-                assert!(p.failure_stage.is_none());
-            }
-            other => panic!("expected SyncSucceeded, got {other:?}"),
-        }
-    }
-
-    /// known_offline guard 只保护 `dispatch == Offline` 的不可达。如果对端
-    /// 已知离线但 dispatch 报告其他错误（peer 拒收 / IO / 内部错误），仍属
-    /// 真失败：发 `sync_attempted` + `sync_failed`，`stage = ImmediateSend`。
-    #[tokio::test]
-    async fn attempted_then_failed_when_known_offline_peer_returns_non_offline_error() {
-        let mut repo = MockPeerAddrRepo::new();
-        repo.expect_list()
-            .times(1)
-            .returning(|| Ok(vec![record("peer-broken")]));
-
-        let mut cipher = MockCipher::new();
-        cipher
-            .expect_encrypt()
-            .times(1)
-            .returning(|p| Ok(p.to_vec()));
-
-        let mut dispatch = MockDispatch::new();
-        dispatch
-            .expect_dispatch()
-            .with(eq(DeviceId::new("peer-broken")), always(), always())
-            .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::Io("broken pipe".into())));
-
-        let analytics = Arc::new(CapturingAnalyticsSink::default());
-        let uc = build_uc_with_presence_and_first_sync_state(
-            repo,
-            make_member_repo_all_enabled(),
-            Arc::new(StaticPresence(ReachabilityState::Offline)),
-            cipher,
-            dispatch,
-            make_device_identity("self-device"),
-            make_local_identity_stub(),
-            make_settings_stub(),
-            analytics.clone(),
-            Arc::new(AllMarkedFirstSyncState),
-        );
-
-        uc.execute(input()).await.expect("dispatch ok");
-
-        let events = analytics.events();
-        assert_eq!(events.len(), 2, "got {events:?}");
-        assert!(
-            matches!(&events[0], Event::SyncAttempted(_)),
-            "first event should be SyncAttempted, got {:?}",
-            events[0],
-        );
-        match &events[1] {
-            Event::SyncFailed(p) => {
-                assert_eq!(p.failure_reason, Some(FailureReason::NetworkError));
-                assert_eq!(p.failure_stage, Some(SyncFailureStage::ImmediateSend));
-                assert!(p.sync_latency_ms.is_none());
-            }
-            other => panic!("expected SyncFailed, got {other:?}"),
         }
     }
 

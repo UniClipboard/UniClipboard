@@ -280,7 +280,10 @@ mod tests {
     use tokio::sync::Mutex;
 
     use uc_core::membership::{MembershipError, SpaceMember};
-    use uc_core::ports::{ClipboardDispatchPort, ClipboardHeader, SyncPayload};
+    use uc_core::ports::{
+        ClipboardDispatchPort, ClipboardHeader, PresenceError, PresenceEvent, PresencePort,
+        ReachabilityState, SyncPayload,
+    };
     use uc_core::MemberSyncPreferences;
 
     use crate::network::iroh::clipboard_dispatch_adapter::{
@@ -288,6 +291,37 @@ mod tests {
     };
     use crate::security::Sha256IdentityFingerprintFactory;
     use uc_core::ports::{PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort};
+
+    /// Minimal `PresencePort` stand-in. Receiver-side tests construct a
+    /// dispatch adapter only as a wire-driver to the receiver under test;
+    /// `mark_offline` on dial failure uses the trait's noop default, which
+    /// is fine because these tests never exercise the dial-failure path.
+    struct NoopPresence {
+        _tx: broadcast::Sender<PresenceEvent>,
+    }
+
+    impl NoopPresence {
+        fn new() -> Arc<Self> {
+            let (tx, _) = broadcast::channel(1);
+            Arc::new(Self { _tx: tx })
+        }
+    }
+
+    #[async_trait]
+    impl PresencePort for NoopPresence {
+        async fn ensure_reachable(
+            &self,
+            _device: &DeviceId,
+        ) -> Result<ReachabilityState, PresenceError> {
+            Ok(ReachabilityState::Unknown)
+        }
+        async fn current_state(&self, _device: &DeviceId) -> ReachabilityState {
+            ReachabilityState::Unknown
+        }
+        fn subscribe(&self) -> broadcast::Receiver<PresenceEvent> {
+            self._tx.subscribe()
+        }
+    }
 
     // ----- test doubles ------------------------------------------------------
 
@@ -457,7 +491,8 @@ mod tests {
             })
             .await
             .unwrap();
-        let dispatch = IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo);
+        let dispatch =
+            IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo, NoopPresence::new());
 
         let payload = Bytes::from(vec![0xAB; 128]);
         let ack = dispatch
@@ -508,7 +543,8 @@ mod tests {
             })
             .await
             .unwrap();
-        let dispatch = IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo);
+        let dispatch =
+            IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo, NoopPresence::new());
 
         let result = dispatch
             .dispatch(
@@ -621,7 +657,11 @@ mod tests {
                     })
                     .await
                     .unwrap();
-                let dispatch = IrohClipboardDispatchAdapter::new(sender_endpoint, peer_addr_repo);
+                let dispatch = IrohClipboardDispatchAdapter::new(
+                    sender_endpoint,
+                    peer_addr_repo,
+                    NoopPresence::new(),
+                );
 
                 let mut header = sample_header();
                 header.origin_device_id = format!("sender-{i}");

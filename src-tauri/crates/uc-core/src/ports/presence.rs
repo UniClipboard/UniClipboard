@@ -76,6 +76,34 @@ pub trait PresencePort: Send + Sync {
         self.ensure_reachable(device).await
     }
 
+    /// Record an externally-observed unreachable signal for `device`.
+    ///
+    /// Callers invoke this after they have *independently* concluded — by
+    /// their own probe, dial, or transport failure — that `device` is not
+    /// reachable. The port must:
+    ///
+    /// * Discard any cached "alive connection" bookkeeping it holds for
+    ///   `device`, so the next [`current_state`] / [`ensure_reachable`] call
+    ///   observes the failure rather than a stale Online assumption.
+    /// * Persist `Offline` as the device's last observed state.
+    /// * Emit a single [`PresenceEvent`] with `state = Offline` on the
+    ///   subscription channel.
+    ///
+    /// Idempotent: calling on a device already known Offline is a no-op
+    /// (no duplicate event, no error). Calling on an `Unknown` device
+    /// records `Offline` and emits the event — `Unknown → Offline` is a
+    /// meaningful transition for subscribers who track first-known-bad.
+    ///
+    /// Default impl is a no-op so mock / fake implementations that don't
+    /// distinguish "alive" from "stale" don't have to implement this; the
+    /// real adapter must override.
+    ///
+    /// [`current_state`]: PresencePort::current_state
+    /// [`ensure_reachable`]: PresencePort::ensure_reachable
+    async fn mark_offline(&self, device: &DeviceId) {
+        let _ = device;
+    }
+
     /// Read the current cached state without dialing.
     ///
     /// Returns `Unknown` if the device has never been probed in the current

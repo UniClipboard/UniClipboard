@@ -194,6 +194,12 @@ The sidebar update icon (bottom-right) reflects the current state:
 - **Amber with a progress ring** — the installer is downloading in the background; the dialog lets you cancel.
 - **Green with a check** — the installer is ready; click to install and restart.
 
+When you upgrade across several releases (e.g. skipping a few alphas), the
+update dialog shows the cumulative release notes for every intermediate
+version between your current install and the latest one — capped at the most
+recent 5 versions. Older skipped versions are summarized as "N earlier versions
+omitted" with a pointer to the full changelog.
+
 ## Toggles that **don't** exist (yet)
 
 These come up often but aren't exposed today — worth knowing so you

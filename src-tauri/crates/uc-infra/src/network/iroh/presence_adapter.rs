@@ -51,6 +51,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
@@ -83,6 +84,31 @@ pub const PRESENCE_ALPN: &[u8] = b"uniclipboard/presence/0";
 /// members flipping state on an unlock); lagging subscribers recover via
 /// [`PresencePort::current_state`] per the broadcast contract.
 const EVENT_CHANNEL_CAPACITY: usize = 64;
+
+/// Maximum age of a tracked-connection entry before [`IrohPresenceAdapter::
+/// ensure_reachable`] refuses the fast-path and forces a fresh dial.
+///
+/// Without this guard the fast-path only checks `connection.close_reason().
+/// is_none()`. A peer that dies *silently* — process crash without a close
+/// frame, NAT mapping expiry, network black-hole — keeps `close_reason`
+/// as `None` until quinn's own keep-alive PING run hits `max_idle_timeout`
+/// (60s) and tears the connection down. During that window the fast-path
+/// lies "Online", `current_state` returns Online, `peer_keepalive` records
+/// Online, and `clipboard_sync::dispatch_entry` enrolls the dead peer into
+/// fan-out — burning the full `FAN_OUT_DEADLINE = 5s` on every clipboard
+/// dispatch until the watchdog finally fires.
+///
+/// 30s is picked to:
+/// * stay above `quinn keep_alive_interval = 15s` so two healthy keepalive
+///   PINGs always land inside one TTL window — fast-path hit rate on a
+///   live connection is unchanged;
+/// * stay above `peer_keepalive::BASE_INTERVAL = 25s` so the worker's
+///   normal cadence still mostly observes cached Online and doesn't pay
+///   a dial on every tick;
+/// * stay below `max_idle_timeout = 60s` so we surface a silently-dead
+///   peer *before* quinn's idle timer would, halving the worst-case
+///   stale window observable to `dispatch_entry`.
+const FAST_PATH_TTL: Duration = Duration::from_secs(30);
 
 // ============================================================================
 // ProtocolHandler (accept side)
@@ -270,6 +296,16 @@ pub struct IrohPresenceAdapter {
 struct TrackedPeer {
     connection: Connection,
     watchdog: JoinHandle<()>,
+    /// Monotonic timestamp of the most recent confirmed-live observation
+    /// for this entry. Set on insert in [`IrohPresenceAdapter::
+    /// dial_and_track`] (dial just succeeded) and refreshed when a fresh
+    /// dial races against an already-tracked entry and finds it still
+    /// alive (the redial itself is fresh evidence). Consumed by
+    /// [`IrohPresenceAdapter::ensure_reachable`]'s fast-path to refuse
+    /// returning Online from an entry that has aged past
+    /// [`FAST_PATH_TTL`], forcing a re-dial. See [`FAST_PATH_TTL`] for the
+    /// silent-death problem this guards against.
+    last_verified_at: Instant,
 }
 
 impl Drop for TrackedPeer {
@@ -434,9 +470,14 @@ impl IrohPresenceAdapter {
                     // raced, or `verify_reachable` redialed against a
                     // tracked-but-stale-looking peer), abort our own
                     // watchdog and keep theirs — single connection slot
-                    // per device.
-                    if let Some(existing) = peers.get(&key) {
+                    // per device. Refresh `last_verified_at` on the kept
+                    // entry: our just-completed dial is fresh evidence
+                    // that the peer is reachable *right now*, so the
+                    // fast-path TTL clock should reset even though we're
+                    // discarding the new connection in favour of the old.
+                    if let Some(existing) = peers.get_mut(&key) {
                         if existing.connection.close_reason().is_none() {
+                            existing.last_verified_at = Instant::now();
                             debug!(
                                 "dial_and_track: alive tracked entry exists; \
                                  discarding freshly dialed connection",
@@ -458,6 +499,7 @@ impl IrohPresenceAdapter {
                         TrackedPeer {
                             connection,
                             watchdog,
+                            last_verified_at: Instant::now(),
                         },
                     );
                 }
@@ -498,19 +540,44 @@ impl PresencePort for IrohPresenceAdapter {
         let key = device.as_str().to_string();
 
         // Step 1: fast-path on an already-tracked live connection.
+        //
+        // Both predicates must hold to return Online without a fresh dial:
+        //
+        // * `close_reason().is_none()` — quinn has not (yet) observed the
+        //   connection close. This is the original liveness signal from
+        //   T3a but it lags silent-death scenarios by up to
+        //   `max_idle_timeout = 60s`.
+        //
+        // * `last_verified_at.elapsed() < FAST_PATH_TTL` — we have *recent*
+        //   first-hand evidence the peer is reachable (a successful dial
+        //   landed inside the TTL window). Without this, an entry whose
+        //   peer silently died can sit in the map looking alive for the
+        //   full quinn idle window, lying "Online" to every caller.
+        //
+        // Either predicate failing routes through eviction + re-dial. The
+        // miss is logged with both flags so a stale-TTL eviction is
+        // distinguishable from a closed-conn eviction in production.
         {
             let mut peers = self.peers.lock().await;
             if let Some(entry) = peers.get(&key) {
-                if entry.connection.close_reason().is_none() {
+                let still_alive = entry.connection.close_reason().is_none();
+                let recently_verified = entry.last_verified_at.elapsed() < FAST_PATH_TTL;
+                if still_alive && recently_verified {
                     debug!("ensure_reachable: already tracked and alive");
                     return Ok(ReachabilityState::Online);
                 }
-                // Stale entry — the watchdog should already be in the
-                // process of cleaning up, but don't block on it. Remove
-                // here so the re-dial path below gets a clean slate.
+                // Stale entry — either quinn has closed it, or the entry
+                // has aged past FAST_PATH_TTL without re-verification.
+                // Evict so the re-dial path below starts from a clean
+                // slate (and so `dial_and_track`'s "alive entry already
+                // exists" branch doesn't accidentally preserve a corpse).
                 if let Some(stale) = peers.remove(&key) {
                     stale.watchdog.abort();
-                    debug!("ensure_reachable: evicted stale tracked entry before re-dial");
+                    debug!(
+                        still_alive,
+                        recently_verified,
+                        "ensure_reachable: evicted stale tracked entry before re-dial",
+                    );
                 }
             }
         }

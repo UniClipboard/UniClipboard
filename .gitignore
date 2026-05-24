@@ -102,3 +102,7 @@ prime/
 snap/.snapcraft/
 .vercel
 .env*.local
+
+# p2p-bench spike runtime store (throwaway diagnostic)
+p2p-bench-store/
+src-tauri/p2p-bench-store/

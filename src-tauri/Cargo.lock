@@ -5947,6 +5947,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "p2p-bench"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "futures-lite",
+ "iroh",
+ "iroh-blobs",
+ "noq-proto",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "p384"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

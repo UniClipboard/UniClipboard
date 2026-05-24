@@ -1,0 +1,23 @@
+[package]
+name = "p2p-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Throwaway spike: minimal iroh + iroh-blobs CLI to measure raw P2P blob throughput, isolated from the uniclipboard app stack."
+
+[[bin]]
+name = "p2p-bench"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-lite = "2"
+
+iroh = { version = "0.98", features = ["address-lookup-mdns"] }
+iroh-blobs = "0.100"
+noq-proto = "0.17"
+time = { version = "0.3", features = ["formatting", "macros"] }

@@ -202,7 +202,7 @@ async fn run_one_iteration(
     // 是 (notification_shown?, action_invoked Started?, check_performed,
     // action_invoked Terminal?)——与 manual 路径相符。
     if let Ok(Some(metadata)) = &result {
-        notify_if_new_version(
+        let window_opened = notify_if_new_version(
             deps,
             &resolved_channel,
             &metadata.version,
@@ -211,7 +211,19 @@ async fn run_one_iteration(
         )
         .await;
         if settings.general.auto_download_update && should_auto_download(install_kind_raw) {
-            auto_download(deps, &app, pending.inner()).await;
+            let downloaded_to_ready = auto_download(deps, &app, pending.inner()).await;
+            // 兜底：去重让窗口没弹（之前的进程通知过这版本），但本进程
+            // 又新下到了 Ready。用户从未在本次会话里见过更新提示——
+            // 此时再开一次窗口，UI 会显示 "已下载，立即安装"。
+            if downloaded_to_ready && !window_opened {
+                if let Err(err) = open_or_focus_updater_window(&deps.app_handle, false) {
+                    warn!(
+                        target: "update_scheduler",
+                        error = %err,
+                        "failed to open updater window after auto-download (ready fallback)"
+                    );
+                }
+            }
         }
     }
 
@@ -271,6 +283,10 @@ pub(crate) fn should_auto_download(install_kind: InstallKind) -> bool {
 /// Available 分支：若 (channel, version) 未通知过，弹出 Sparkle 风格更新
 /// 窗口，emit `update_notification_shown`，仅在窗口成功创建后 `record` 持久化。
 ///
+/// 返回 `true` 表示这次确实打开（或聚焦了）窗口，`false` 表示被去重 store
+/// short-circuit 或 builder 失败。调用方用这个布尔值判断是否需要 Ready
+/// 阶段兜底再开一次（见 scheduler iteration）。
+///
 /// `delivery_status` 字段语义被复用：`Sent` 表示窗口已打开，`SendFailed`
 /// 表示 `WebviewWindowBuilder::build` 失败（OS 资源耗尽 / 平台异常）。
 /// `language` 参数当前未使用——窗口内文案由前端 i18n 决定，保留参数避免
@@ -281,7 +297,7 @@ async fn notify_if_new_version(
     version: &str,
     _language: Option<&str>,
     install_kind: AnalyticsInstallKind,
-) {
+) -> bool {
     let already_notified = {
         let store = deps.last_notified.lock().await;
         store.contains(channel, version)
@@ -293,7 +309,7 @@ async fn notify_if_new_version(
             version,
             "version already notified; skipping updater window open"
         );
-        return;
+        return false;
     }
 
     let delivery = match open_or_focus_updater_window(&deps.app_handle, false) {
@@ -313,7 +329,8 @@ async fn notify_if_new_version(
         install_kind,
     });
 
-    if matches!(delivery, NotificationDeliveryStatus::Sent) {
+    let opened = matches!(delivery, NotificationDeliveryStatus::Sent);
+    if opened {
         let mut store = deps.last_notified.lock().await;
         if let Err(err) = store
             .record(
@@ -330,6 +347,7 @@ async fn notify_if_new_version(
             );
         }
     }
+    opened
 }
 
 /// 触发 in-place 自动下载，emit `update_action_invoked` Started + terminal 配对。
@@ -338,7 +356,10 @@ async fn notify_if_new_version(
 /// 模式：precondition 拒绝时不 emit Started + 不 emit terminal（funnel
 /// 分母干净，OQ1 决议）。下载失败不重试——Q9 backoff 让下一轮 30min
 /// 后再走一次完整 check。
-async fn auto_download(deps: &SchedulerDeps, app: &AppHandle, pending: &PendingUpdate) {
+///
+/// 返回 `true` 表示这次确实下载到了 Ready 状态，给上层（scheduler iteration）
+/// 用来判断是否需要兜底再开一次更新窗口。
+async fn auto_download(deps: &SchedulerDeps, app: &AppHandle, pending: &PendingUpdate) -> bool {
     let result = do_download_update(app, pending).await;
 
     let did_start = !matches!(result, Err(DownloadError::Precondition(_)));
@@ -367,6 +388,8 @@ async fn auto_download(deps: &SchedulerDeps, app: &AppHandle, pending: &PendingU
                 .map(|s| s.to_string()),
         });
     }
+
+    matches!(result, Ok(()))
 }
 
 /// 计算给定 outcome 后的下一次 sleep 时长（纯函数，方便单测）。

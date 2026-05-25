@@ -9,7 +9,8 @@
 //! 命名规则平行；`v1:` 前缀做版本化预留，未来切算法时新版本走 `v2:`，
 //! 旧 entry 可以共存。
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use rand::RngCore;
@@ -26,29 +27,47 @@ const KEYRING_PREFIX: &str = "migration_key:v1:";
 
 pub struct DefaultKeyMigrationAdapter {
     secure_storage: Arc<dyn SecureStoragePort>,
+    // 进程内缓存：phase 3 swap 循环会按条目反复调 decrypt_with_migration_key，
+    // 在 Linux 上每次穿透到 secret-service 都是一次 D-Bus 往返。Linux gnome-keyring
+    // 在数百次连续 get_secret 后会主动断开客户端连接，导致 phase 3 中途
+    // permission denied、配对回滚。缓存让一次 switch_space 内多条 record 只
+    // 触发一次 SecureStoragePort::get；discard_migration_key 时连带清掉缓存
+    // 项，确保 phase 4 后的"已 discard 但仍能命中缓存"不会发生。
+    key_cache: RwLock<HashMap<MigrationRunId, Arc<MasterKey>>>,
 }
 
 impl DefaultKeyMigrationAdapter {
     pub fn new(secure_storage: Arc<dyn SecureStoragePort>) -> Self {
-        Self { secure_storage }
+        Self {
+            secure_storage,
+            key_cache: RwLock::new(HashMap::new()),
+        }
     }
 
     fn keyring_name(run_id: &MigrationRunId) -> String {
         format!("{KEYRING_PREFIX}{}", run_id.as_str())
     }
 
-    fn load_key(&self, run_id: &MigrationRunId) -> Result<MasterKey, KeyMigrationError> {
+    fn load_key(&self, run_id: &MigrationRunId) -> Result<Arc<MasterKey>, KeyMigrationError> {
+        if let Some(cached) = self.key_cache.read().unwrap().get(run_id) {
+            return Ok(Arc::clone(cached));
+        }
+
         let name = Self::keyring_name(run_id);
         let raw = self
             .secure_storage
             .get(&name)
             .map_err(|e| KeyMigrationError::Internal(format!("secure_storage.get: {e}")))?;
-        match raw {
-            None => Err(KeyMigrationError::NotFound(run_id.clone())),
-            Some(bytes) => MasterKey::from_bytes(&bytes).map_err(|e| {
-                KeyMigrationError::Internal(format!("invalid migration key bytes: {e}"))
-            }),
-        }
+        let bytes = match raw {
+            None => return Err(KeyMigrationError::NotFound(run_id.clone())),
+            Some(b) => b,
+        };
+        let key = MasterKey::from_bytes(&bytes).map_err(|e| {
+            KeyMigrationError::Internal(format!("invalid migration key bytes: {e}"))
+        })?;
+        let mut cache = self.key_cache.write().unwrap();
+        let entry = cache.entry(run_id.clone()).or_insert_with(|| Arc::new(key));
+        Ok(Arc::clone(entry))
     }
 }
 
@@ -137,31 +156,42 @@ impl KeyMigrationPort for DefaultKeyMigrationAdapter {
         // 文档约定本方法幂等，所以 happy path 上重复调用应当无副作用。
         self.secure_storage
             .delete(&name)
-            .map_err(|e| KeyMigrationError::Internal(format!("secure_storage.delete: {e}")))
+            .map_err(|e| KeyMigrationError::Internal(format!("secure_storage.delete: {e}")))?;
+        // 缓存与 keyring 保持一致：discard 之后再 encrypt/decrypt 必须按
+        // NotFound 处理，否则会出现"keyring 已清但内存仍能解密"的幽灵态。
+        self.key_cache.write().unwrap().remove(run_id);
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
 
     use uc_core::ports::SecureStorageError;
 
     /// 内存版 `SecureStoragePort` fake：足够覆盖本 adapter 的契约测试。
+    /// `get_calls` 记录穿透到底层的 get 次数，缓存命中测试用它断言旁路效果。
     struct InMemorySecureStorage {
         entries: Mutex<HashMap<String, Vec<u8>>>,
+        get_calls: AtomicUsize,
     }
     impl InMemorySecureStorage {
         fn new() -> Self {
             Self {
                 entries: Mutex::new(HashMap::new()),
+                get_calls: AtomicUsize::new(0),
             }
+        }
+        fn get_call_count(&self) -> usize {
+            self.get_calls.load(Ordering::SeqCst)
         }
     }
     impl SecureStoragePort for InMemorySecureStorage {
         fn get(&self, key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
+            self.get_calls.fetch_add(1, Ordering::SeqCst);
             Ok(self.entries.lock().unwrap().get(key).cloned())
         }
         fn set(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
@@ -281,5 +311,57 @@ mod tests {
     async fn fresh_run_id_starts_with_mig_prefix() {
         let id = fresh_run_id();
         assert!(id.as_str().starts_with("mig-"), "got {id}");
+    }
+
+    #[tokio::test]
+    async fn repeated_decrypt_hits_secure_storage_at_most_once() {
+        // 回归 Linux gnome-keyring 在 phase 3 swap 中被密集打挂的问题：一次
+        // switch_space 里上百条 record 都用同一把 migration_key 解密，必须命
+        // 中 adapter 内的缓存、只穿透 secure_storage.get 一次。
+        let (adapter, storage) = build_adapter();
+        let run_id = adapter.prepare_migration_key().await.unwrap();
+        let baseline = storage.get_call_count();
+
+        let aad = Aad::new(b"aad".to_vec());
+        let ct = adapter
+            .encrypt_with_migration_key(&run_id, &Plaintext::new(b"x".to_vec()), &aad)
+            .await
+            .unwrap();
+        for _ in 0..200 {
+            adapter
+                .decrypt_with_migration_key(&run_id, &ct, &aad)
+                .await
+                .unwrap();
+        }
+
+        // encrypt 触发首次 load_key（cache miss → 1 次 get），之后 200 次
+        // decrypt 全部命中缓存。所以净增量恰好是 1。
+        assert_eq!(storage.get_call_count() - baseline, 1);
+    }
+
+    #[tokio::test]
+    async fn discard_clears_key_cache() {
+        // 防止"已 discard 但缓存仍能解密"的幽灵态：discard 之后必须重新走
+        // secure_storage，且因为 keyring 已经清空，结果是 NotFound。
+        let (adapter, _) = build_adapter();
+        let run_id = adapter.prepare_migration_key().await.unwrap();
+        let aad = Aad::new(b"aad".to_vec());
+        let ct = adapter
+            .encrypt_with_migration_key(&run_id, &Plaintext::new(b"x".to_vec()), &aad)
+            .await
+            .unwrap();
+        // 先让缓存填上。
+        adapter
+            .decrypt_with_migration_key(&run_id, &ct, &aad)
+            .await
+            .unwrap();
+
+        adapter.discard_migration_key(&run_id).await.unwrap();
+
+        let err = adapter
+            .decrypt_with_migration_key(&run_id, &ct, &aad)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, KeyMigrationError::NotFound(_)));
     }
 }

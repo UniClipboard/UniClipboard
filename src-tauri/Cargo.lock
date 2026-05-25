@@ -9623,7 +9623,7 @@ checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
 name = "uc-application"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9659,7 +9659,7 @@ dependencies = [
 
 [[package]]
 name = "uc-bootstrap"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9687,7 +9687,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -9721,7 +9721,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli-macros"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9730,7 +9730,7 @@ dependencies = [
 
 [[package]]
 name = "uc-core"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -9757,7 +9757,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-client"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9776,7 +9776,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-contract"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -9787,7 +9787,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-local"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "rand 0.8.6",
@@ -9804,7 +9804,7 @@ dependencies = [
 
 [[package]]
 name = "uc-desktop"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9835,7 +9835,7 @@ dependencies = [
 
 [[package]]
 name = "uc-infra"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "argon2",
@@ -9888,7 +9888,7 @@ dependencies = [
 
 [[package]]
 name = "uc-observability"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9907,7 +9907,7 @@ dependencies = [
 
 [[package]]
 name = "uc-platform"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9954,7 +9954,7 @@ dependencies = [
 
 [[package]]
 name = "uc-tauri"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10005,7 +10005,7 @@ dependencies = [
 
 [[package]]
 name = "uc-webserver"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10107,7 +10107,7 @@ checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "uniclipboard"
-version = "0.12.0-alpha.1"
+version = "0.12.0-alpha.2"
 dependencies = [
  "serde_json",
  "tauri",

@@ -210,6 +210,19 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<InstallKind, string>(__TAURI_INVOKE("get_install_kind", { trace })),
 	/**
+	 *  Dev-only: manually open the Sparkle-style updater window with mock data.
+	 * 
+	 *  Wired to a debug-build button in `AboutSection.tsx` so we can iterate on
+	 *  the window's UI without waiting for a real update to be detected. Release
+	 *  builds short-circuit with an error so the command can't be misused —
+	 *  `#[cfg]` is intentionally on the body, not the signature, to keep the
+	 *  specta-generated TS surface stable across build profiles.
+	 */
+	devOpenUpdaterWindow: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("dev_open_updater_window", { trace })),
+	/**
 	 *  把前端 UI 触发的 update lifecycle 事件回送到后端 PostHog facade。
 	 * 
 	 *  仅 `DialogOpened` 会触发 `install_kind` probe；其他 variant 走直通映射。

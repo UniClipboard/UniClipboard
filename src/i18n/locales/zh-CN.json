@@ -52,6 +52,18 @@
       "ok": "知道了"
     }
   },
+  "updater": {
+    "window": {
+      "title": "UniClipboard 有新版本可用",
+      "subtitle": "{{app}} {{version}} 已可下载",
+      "currentVersion": "当前版本",
+      "latestVersion": "最新版本",
+      "releaseNotes": "更新内容",
+      "upToDateTitle": "已是最新版本",
+      "upToDateBody": "你已经在使用最新的 UniClipboard。",
+      "close": "关闭"
+    }
+  },
   "upgradeNotice": {
     "title": "请重新配对设备",
     "body": "本版本更新了设备配对机制，原有配对已不可用。请前往「设备」页向另一台设备发送邀请或重新加入。",

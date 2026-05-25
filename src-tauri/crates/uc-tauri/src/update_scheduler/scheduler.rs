@@ -37,7 +37,7 @@ use uc_observability::analytics::{
 
 use super::last_check_at::LastCheckAt;
 use super::last_notified::LastNotifiedUpdateStore;
-use super::notification::send_update_notification;
+use super::window::open_or_focus_updater_window;
 use crate::commands::updater::{
     classify_check_failure, detect_install_kind, do_check_for_update, do_download_update,
     install_kind_for_telemetry, DownloadError, InstallKind, PendingUpdate,
@@ -268,16 +268,18 @@ pub(crate) fn should_auto_download(install_kind: InstallKind) -> bool {
     )
 }
 
-/// Available 分支：若 (channel, version) 未通知过，发系统通知，emit
-/// `update_notification_shown`，仅在投递确认成功后 `record` 持久化。
+/// Available 分支：若 (channel, version) 未通知过，弹出 Sparkle 风格更新
+/// 窗口，emit `update_notification_shown`，仅在窗口成功创建后 `record` 持久化。
 ///
-/// 投递失败 (PermissionDenied / SendFailed) 不写 record——保留下次 scheduler
-/// tick 再试的机会；schema doc 仍可见到失败事件用于"通知到达率"分析。
+/// `delivery_status` 字段语义被复用：`Sent` 表示窗口已打开，`SendFailed`
+/// 表示 `WebviewWindowBuilder::build` 失败（OS 资源耗尽 / 平台异常）。
+/// `language` 参数当前未使用——窗口内文案由前端 i18n 决定，保留参数避免
+/// 修改调用点签名，等通知 schema 整体迁移时再清理。
 async fn notify_if_new_version(
     deps: &SchedulerDeps,
     channel: &UpdateChannel,
     version: &str,
-    language: Option<&str>,
+    _language: Option<&str>,
     install_kind: AnalyticsInstallKind,
 ) {
     let already_notified = {
@@ -289,13 +291,22 @@ async fn notify_if_new_version(
             target: "update_scheduler",
             channel = ?channel,
             version,
-            "version already notified; skipping notification"
+            "version already notified; skipping updater window open"
         );
         return;
     }
 
-    let lang = language.unwrap_or("en-US");
-    let delivery = send_update_notification(&deps.app_handle, lang, version).await;
+    let delivery = match open_or_focus_updater_window(&deps.app_handle, false) {
+        Ok(()) => NotificationDeliveryStatus::Sent,
+        Err(err) => {
+            warn!(
+                target: "update_scheduler",
+                error = %err,
+                "failed to open updater window"
+            );
+            NotificationDeliveryStatus::SendFailed
+        }
+    };
     deps.analytics.capture(Event::UpdateNotificationShown {
         version: version.to_string(),
         delivery_status: delivery,

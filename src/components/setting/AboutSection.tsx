@@ -1,4 +1,5 @@
 import { getVersion } from '@tauri-apps/api/app'
+import { invoke } from '@tauri-apps/api/core'
 import { Loader2, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -198,6 +199,15 @@ const AboutSection: React.FC = () => {
     void applyUpdateChannelChange(channel)
   }
 
+  const handleOpenUpdaterWindowDev = async () => {
+    try {
+      await invoke('dev_open_updater_window', { trace: null })
+    } catch (error) {
+      log.error({ err: error }, 'Dev open updater window failed')
+      toast.error(String(error))
+    }
+  }
+
   const handleCheckUpdate = async () => {
     try {
       const update = await checkForUpdates()
@@ -294,18 +304,30 @@ const AboutSection: React.FC = () => {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            className="inline-flex min-w-36 items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm transition duration-200 hover:bg-secondary/80"
-            onClick={handleCheckUpdate}
-            disabled={isBusy || isCheckingUpdate}
-            aria-busy={isCheckingUpdate}
-          >
-            {isCheckingUpdate && <Loader2 className="h-4 w-4 animate-spin" />}
-            {isCheckingUpdate
-              ? t('settings.sections.about.checkingUpdate')
-              : t('settings.sections.about.checkUpdate')}
-          </button>
+          <div className="flex items-center gap-2">
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-lg border border-dashed border-amber-500/60 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+                onClick={handleOpenUpdaterWindowDev}
+                title="Dev only: open the Sparkle-style updater window with mock data"
+              >
+                Open updater window (dev)
+              </button>
+            )}
+            <button
+              type="button"
+              className="inline-flex min-w-36 items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm transition duration-200 hover:bg-secondary/80"
+              onClick={handleCheckUpdate}
+              disabled={isBusy || isCheckingUpdate}
+              aria-busy={isCheckingUpdate}
+            >
+              {isCheckingUpdate && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isCheckingUpdate
+                ? t('settings.sections.about.checkingUpdate')
+                : t('settings.sections.about.checkUpdate')}
+            </button>
+          </div>
         </div>
 
         <SettingRow

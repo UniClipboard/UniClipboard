@@ -174,12 +174,14 @@ pub enum Event {
         install_kind: InstallKind,
     },
 
-    /// 一次系统通知投递（已通过同版本去重）。schema doc §7.8。
+    /// 一次更新提示投递（已通过同版本去重）。schema doc §7.8。
     ///
-    /// 由 `update_scheduler::notification::send_update_notification` 在调用
-    /// `tauri-plugin-notification` 之后 emit。`delivery_status` 覆盖三态：
-    /// 投递成功 / 权限拒绝 / 投递失败——后两者也 emit（事件本身发生但未
-    /// 必到达用户），dashboard 端按 `delivery_status = sent` 计算到达率分子。
+    /// 由 `update_scheduler::scheduler::notify_if_new_version` 在调用
+    /// `open_or_focus_updater_window`（Sparkle 风格独立窗口）之后 emit。
+    /// 历史名 `UpdateNotificationShown` 来自 Phase 4A 的系统通知路径，
+    /// 当前实现已切换到弹窗；`delivery_status` 字段被复用：`Sent` 表示
+    /// 窗口成功创建，`SendFailed` 表示 `WebviewWindowBuilder::build` 失败，
+    /// `PermissionDenied` 在新路径下不会再出现（保留以维持 schema 兼容）。
     ///
     /// `version` 是 updater manifest 返回的版本字符串原文（如 `0.12.0`、
     /// `0.13.0-alpha.1`）。低基数（每 channel 同时只有一个新版本），不需要
@@ -700,19 +702,19 @@ pub enum UpdateFailureKind {
     Other,
 }
 
-/// 系统通知的投递状态（`update_notification_shown` 专用）。schema doc §7.9。
+/// 更新提示的投递状态（`update_notification_shown` 专用）。schema doc §7.9。
 ///
-/// `PermissionDenied` 与 `SendFailed` 也 emit 该事件——schema 上保留事件本身，
-/// dashboard 端按 `delivery_status = sent` 计算到达率分子；其他两态作为
-/// 漏斗失效的诊断信号。
+/// 历史 schema 来自系统通知路径，当前实现切换到 Sparkle 风格窗口后字段
+/// 语义被复用：`Sent` 表示窗口成功打开，`SendFailed` 表示 builder 失败。
+/// `PermissionDenied` 在新路径下不会再出现，保留枚举以维持 schema 兼容。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationDeliveryStatus {
-    /// `tauri-plugin-notification` 成功投递给 OS。
+    /// 更新提示已对用户可见（窗口已弹出 / 历史上是系统通知已投递）。
     Sent,
-    /// macOS / Windows 用户拒绝通知权限。
+    /// 历史路径下 macOS / Windows 用户拒绝通知权限；新窗口路径下不会 emit。
     PermissionDenied,
-    /// 投递失败（Linux 无 notification daemon / 其他平台错误）。
+    /// 投递失败（窗口 builder 失败 / 历史路径下无 notification daemon 等）。
     SendFailed,
 }
 

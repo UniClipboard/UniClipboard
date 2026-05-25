@@ -933,6 +933,32 @@ pub enum InstallKind {
     Unknown,
 }
 
+/// Dev-only: manually open the Sparkle-style updater window with mock data.
+///
+/// Wired to a debug-build button in `AboutSection.tsx` so we can iterate on
+/// the window's UI without waiting for a real update to be detected. Release
+/// builds short-circuit with an error so the command can't be misused —
+/// `#[cfg]` is intentionally on the body, not the signature, to keep the
+/// specta-generated TS surface stable across build profiles.
+#[tauri::command]
+#[specta::specta]
+pub async fn dev_open_updater_window(
+    app: AppHandle,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let _ = _trace;
+    #[cfg(debug_assertions)]
+    {
+        crate::update_scheduler::open_or_focus_updater_window(&app, true)
+            .map_err(|err| format!("failed to open updater window: {err}"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = app;
+        Err("dev_open_updater_window is only available in debug builds".to_string())
+    }
+}
+
 /// Detect how the current binary was installed.
 ///
 /// Cached after the first call. On Linux the detection asks dpkg/rpm whether

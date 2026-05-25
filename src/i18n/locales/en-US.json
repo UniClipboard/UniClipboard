@@ -52,6 +52,18 @@
       "ok": "Got it"
     }
   },
+  "updater": {
+    "window": {
+      "title": "A new version of UniClipboard is available",
+      "subtitle": "{{app}} {{version}} is ready to download",
+      "currentVersion": "Current version",
+      "latestVersion": "Latest version",
+      "releaseNotes": "What's new",
+      "upToDateTitle": "You're up to date",
+      "upToDateBody": "You're already running the latest version of UniClipboard.",
+      "close": "Close"
+    }
+  },
   "upgradeNotice": {
     "title": "Re-pair your devices",
     "body": "This version updates the device pairing scheme. Your previous pairings can no longer sync. Please open Devices to invite or re-join the other device.",

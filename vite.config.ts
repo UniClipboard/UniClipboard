@@ -42,6 +42,7 @@ export default defineConfig(async () => ({
       input: {
         main: resolve('./index.html'),
         'quick-panel': resolve('./quick-panel.html'),
+        updater: resolve('./updater.html'),
       },
     },
   },

@@ -502,6 +502,20 @@ impl SpaceSetupFacade {
     ) -> Result<UnlockSpaceResult, UnlockSpaceError> {
         let cmd: UnlockSpaceCommand = input.into();
         let out = self.unlock_space.execute(cmd).await?;
+
+        // Switch-space migration recovery hook — 镜像 try_resume_session:412-419。
+        // 手动 unlock 也必须推进 migration replay：startup_recovery 在 auto-unlock
+        // 关闭时会跳过 try_resume_session（避免无 KEK 弹钥匙串），那 hook 就不会
+        // 接管 pending HandshakeDone migration。没有这一行, 用户在 auto-unlock=off
+        // 的设备上一旦 phase 3 中断, 主表 inline 永远停在旧 master_key 加密、
+        // session 持新 master_key 的 wedged 态 —— UI 看不到任何历史。
+        if let Err(err) = self.switch_space.resume_pending().await {
+            warn!(error = %err, "switch-space resume_pending failed during unlock_space");
+            return Err(UnlockSpaceError::Internal(format!(
+                "migration resume failed: {err}"
+            )));
+        }
+
         self.auto_prime_presence().await;
         Ok(out)
     }
@@ -1227,7 +1241,28 @@ mod tests {
     // 验证留给 `usecases::setup::switch_space::tests` 与下面的
     // `switch_space::*` smoke。
 
-    struct FakeMigrationState;
+    /// 内存版 `MigrationStatePort`，默认行为与之前一致（`None` + 任意写都成功）。
+    /// 新增能力：通过 `with_phase` / `with_get_failure` 让单测注入 pending 阶段
+    /// 或读失败，覆盖 unlock_space → resume_pending hook 的两条关键分支。
+    #[derive(Default)]
+    struct FakeMigrationState {
+        current: StdMutex<Option<uc_core::setup::MigrationPhase>>,
+        fail_get: std::sync::atomic::AtomicBool,
+    }
+    impl FakeMigrationState {
+        fn with_phase(phase: uc_core::setup::MigrationPhase) -> Self {
+            Self {
+                current: StdMutex::new(Some(phase)),
+                fail_get: std::sync::atomic::AtomicBool::new(false),
+            }
+        }
+        fn with_get_failure() -> Self {
+            Self {
+                current: StdMutex::new(None),
+                fail_get: std::sync::atomic::AtomicBool::new(true),
+            }
+        }
+    }
     #[async_trait]
     impl uc_core::ports::setup::MigrationStatePort for FakeMigrationState {
         async fn get_current(
@@ -1236,12 +1271,18 @@ mod tests {
             Option<uc_core::setup::MigrationPhase>,
             uc_core::ports::setup::MigrationStateError,
         > {
-            Ok(None)
+            if self.fail_get.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(uc_core::ports::setup::MigrationStateError::Storage(
+                    "injected migration_state get failure".into(),
+                ));
+            }
+            Ok(self.current.lock().unwrap().clone())
         }
         async fn set_current(
             &self,
-            _phase: Option<uc_core::setup::MigrationPhase>,
+            phase: Option<uc_core::setup::MigrationPhase>,
         ) -> Result<(), uc_core::ports::setup::MigrationStateError> {
+            *self.current.lock().unwrap() = phase;
             Ok(())
         }
     }
@@ -1377,6 +1418,24 @@ mod tests {
         Arc<FakeInvitationPort>,
         Arc<FakePeerAddrRepo>,
     ) {
+        make_facade_with_migration_state(
+            space_access,
+            setup_status,
+            settings,
+            Arc::new(FakeMigrationState::default()),
+        )
+    }
+
+    fn make_facade_with_migration_state(
+        space_access: Arc<dyn SpaceAccessPort>,
+        setup_status: Arc<dyn SetupStatusPort>,
+        settings: Arc<dyn SettingsPort>,
+        migration_state: Arc<FakeMigrationState>,
+    ) -> (
+        SpaceSetupFacade,
+        Arc<FakeInvitationPort>,
+        Arc<FakePeerAddrRepo>,
+    ) {
         let pairing_invitation = Arc::new(FakeInvitationPort::default());
         let peer_addr_repo = Arc::new(FakePeerAddrRepo::default());
         let facade = SpaceSetupFacade::new(SpaceSetupDeps {
@@ -1401,7 +1460,7 @@ mod tests {
             peer_addr_repo: Arc::clone(&peer_addr_repo)
                 as Arc<dyn uc_core::ports::PeerAddressRepositoryPort>,
             presence: Arc::new(FakePresence),
-            migration_state: Arc::new(FakeMigrationState),
+            migration_state,
             key_migration: Arc::new(FakeKeyMigration),
             blob_migration_repo: Arc::new(FakeBlobMigrationRepo),
             blob_cipher: Arc::new(FakeBlobCipher),
@@ -1504,6 +1563,77 @@ mod tests {
         };
         let err = facade.unlock_space(cmd).await.unwrap_err();
         assert!(matches!(err, UnlockSpaceError::WrongPassphrase));
+    }
+
+    #[tokio::test]
+    async fn unlock_space_drives_resume_pending_when_migration_pending() {
+        // 回归 phase 3 中断后没人推进的 wedged 态：startup_recovery 在
+        // auto-unlock 关闭时会跳过 try_resume_session，那时 unlock_space
+        // 是唯一能在解锁后接管 migration replay 的入口。
+        //
+        // Prepared 分支走 cleanup_after_phase2_failure：跑完后
+        // migration_state 应被推回 None（验证 hook 真的被触发了，而不是
+        // 拿了个空 phase 跑回 noop）。
+        let setup_status = InMemorySetupStatus::default();
+        *setup_status.status.lock().unwrap() = SetupStatus {
+            has_completed: true,
+            space_id: None,
+        };
+        let migration_state = Arc::new(FakeMigrationState::with_phase(
+            uc_core::setup::MigrationPhase::Prepared {
+                run_id: uc_core::setup::MigrationRunId::new("test-pending-run"),
+            },
+        ));
+        let (facade, _inv, _peer) = make_facade_with_migration_state(
+            Arc::new(FakeSpaceAccess::default()),
+            Arc::new(setup_status),
+            Arc::new(InMemorySettings::default()),
+            Arc::clone(&migration_state),
+        );
+        let cmd = UnlockSpaceInput {
+            passphrase: "hunter22hunter22".to_string(),
+        };
+        facade
+            .unlock_space(cmd)
+            .await
+            .expect("unlock_space succeeds with Prepared phase recovery");
+        let after = uc_core::ports::setup::MigrationStatePort::get_current(&*migration_state)
+            .await
+            .expect("get_current ok");
+        assert!(
+            after.is_none(),
+            "resume_pending Prepared 分支应清掉 migration_state，实际仍为 {after:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unlock_space_returns_internal_when_resume_pending_fails() {
+        // resume_pending 任何失败都要冒到 unlock_space 调用方，不能 silent
+        // 吞掉——否则又会复刻 fedora 事故：session 拿到新 master_key，但
+        // 主表仍用旧 key，UI 看不到任何数据，daemon 还报 "解锁成功"。
+        let setup_status = InMemorySetupStatus::default();
+        *setup_status.status.lock().unwrap() = SetupStatus {
+            has_completed: true,
+            space_id: None,
+        };
+        let migration_state = Arc::new(FakeMigrationState::with_get_failure());
+        let (facade, _inv, _peer) = make_facade_with_migration_state(
+            Arc::new(FakeSpaceAccess::default()),
+            Arc::new(setup_status),
+            Arc::new(InMemorySettings::default()),
+            migration_state,
+        );
+        let cmd = UnlockSpaceInput {
+            passphrase: "hunter22hunter22".to_string(),
+        };
+        let err = facade.unlock_space(cmd).await.unwrap_err();
+        match err {
+            UnlockSpaceError::Internal(msg) => assert!(
+                msg.contains("migration resume failed"),
+                "expected prefix in internal message, got {msg}"
+            ),
+            other => panic!("expected Internal, got {other:?}"),
+        }
     }
 
     // ── F2 shutdown ──────────────────────────────────────────────────────

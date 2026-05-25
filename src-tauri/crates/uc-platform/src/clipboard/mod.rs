@@ -1,8 +1,12 @@
 // `common.rs` wraps `clipboard_rs::ClipboardContext`. Phase 4 narrowed
 // `clipboard-rs` to macOS/Windows targets, so `common` follows; Linux's
 // native Wayland + x11rb backends don't need it.
-// CF_HTML wrapper normalization. Lives outside any cfg gate because it is
-// pure string logic and we want its unit tests to run on every host.
+// CF_HTML wrapper normalization. Pure string logic, but only called from the
+// Windows write path — gate the module with `any(test, target_os = "windows")`
+// so non-Windows release builds don't trip `-D dead-code` (CI runs that on
+// Linux), while `cargo test` on every host still compiles and runs the unit
+// tests (cfg(test) is enabled during the test build).
+#[cfg(any(test, target_os = "windows"))]
 pub(crate) mod cf_html;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod common;

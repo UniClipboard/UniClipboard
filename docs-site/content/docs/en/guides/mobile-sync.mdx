@@ -92,9 +92,13 @@ Pick a label (e.g. "My iPhone 15"). The desktop mints a one-time
 **username** and **password** and shows them inside a credentials
 modal split by onboarding method, not by platform:
 
-- **Scan to add** — a QR that encodes the base URL and credentials
-  as a single connect URI. Scan it from the **UniClipboard iOS
-  App** (TestFlight public beta — recommended; see
+- **Scan to add** — a two-step flow. Step ① **Download** shows a QR
+  pointing at the [download page](https://www.uniclipboard.app/download),
+  so first-time users can install the UniClipboard mobile app from
+  their phone; tap **"Installed — next"** to advance to step ②
+  **Pair**, which shows a QR that encodes the base URL and credentials
+  as a single connect URI. Scan it from the **UniClipboard iOS App**
+  (TestFlight public beta — recommended; see
   [Pair an iPhone](#pair-an-iphone) below) or any SyncClipboard-
   protocol client, including community Android apps. All fields
   auto-fill. No typing.
@@ -193,8 +197,13 @@ then **Install**, and UniClipboard will be added to the Home Screen.
 
 Back on the desktop, follow the flow above to click **Add device**
 under **Devices → Mobile sync**. The credentials modal opens on the
-**Scan to add** tab and shows a connect-URI QR that carries the
-base URL, username, and one-time password.
+**Scan to add** tab, sub-step **① Download** — it shows a QR
+pointing at the [download page](https://www.uniclipboard.app/download)
+so first-time users can install the mobile app from their phone. If
+you already installed it via the TestFlight steps above, click
+**"Installed — next"** to advance to **② Pair**, which shows the
+connect-URI QR that carries the base URL, username, and one-time
+password.
 
 </Step>
 
@@ -202,11 +211,11 @@ base URL, username, and one-time password.
 
 #### Enter the connection info in the App
 
-Open the UniClipboard iOS App, tap **Add server**, and scan the
-**Scan to add** QR from the desktop. The base URL, username, and
-password are filled in automatically; just confirm and save. Once
-connected, the iPhone syncs clipboard with the desktop in both
-directions.
+Open the UniClipboard iOS App, tap **Add server**, and scan the QR
+from the desktop's **Scan to add → ② Pair** sub-step. The base URL,
+username, and password are filled in automatically; just confirm
+and save. Once connected, the iPhone syncs clipboard with the
+desktop in both directions.
 
 </Step>
 

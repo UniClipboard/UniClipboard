@@ -81,11 +81,14 @@ modal 顶部会出现红色 Alert，列出具体原因；监听不起来时 tab 
 填一个标签（例如「My iPhone 15」）。桌面会签发一次性的 **用户名** 与
 **密码**，并在凭据弹窗中按 **接入方式**（而非平台）拆成两个 tab：
 
-- **扫码接入（Scan to add）** —— 一个把 base URL 与凭据编码进
-  connect URI 的二维码。用 **UniClipboard iOS App**（TestFlight beta
-  公测中，推荐路径，详见下文 [配对一台 iPhone](#配对一台-iphone)）的
-  "添加服务端"页扫一下；或任何兼容 SyncClipboard 协议的客户端（含
-  社区维护的安卓 App）也走同一条路径，所有字段自动填好，无需手输。
+- **扫码接入（Scan to add）** —— 分两步：① **下载** 展示一个指向
+  [下载页](https://www.uniclipboard.app/download) 的二维码，帮首次
+  接入的用户在手机上装 UniClipboard App；装好后点 **「已装好，下一
+  步」** 进入 ② **配对**，看到把 base URL 与凭据编码进 connect URI
+  的二维码。用 **UniClipboard iOS App**（TestFlight beta 公测中，
+  推荐路径，详见下文 [配对一台 iPhone](#配对一台-iphone)）的"添加
+  服务端"页扫一下；或任何兼容 SyncClipboard 协议的客户端（含社区
+  维护的安卓 App）也走同一条路径，所有字段自动填好，无需手输。
 - **安装快捷指令（Install Shortcut）** —— 一个指向 iCloud 上
   `UniClipboard.shortcut` 安装链接的二维码。扫码安装快捷指令后，
   **再从弹窗里手动复制** base URL / 用户名 / 密码填入快捷指令的对
@@ -174,8 +177,11 @@ https://testflight.apple.com/join/nyNQ8dQe
 #### 在桌面 **添加设备** 拿到凭据
 
 回到桌面端，按上文的流程在 **设备 → 移动端同步** 里点 **添加设备**。
-凭据弹窗会默认停在 **扫码接入** tab，展示一个把 base URL、用户名、
-一次性密码编码进 connect URI 的二维码。
+凭据弹窗会默认停在 **扫码接入** tab 的 **① 下载** 子步骤，展示一个
+指向 [下载页](https://www.uniclipboard.app/download) 的二维码，方便
+首次接入的用户在手机上装 App。已经按上文装好 TestFlight + UniClipboard
+App 的，直接点 **「已装好，下一步」** 进入 **② 配对** 子步骤，这一步
+才展示把 base URL、用户名、一次性密码编码进 connect URI 的二维码。
 
 </Step>
 
@@ -183,9 +189,9 @@ https://testflight.apple.com/join/nyNQ8dQe
 
 #### 在 App 里填入连接信息
 
-打开 UniClipboard iOS App，点 **「添加服务端」**，扫描桌面端的 **扫码
-接入** 二维码。base URL、用户名、密码会自动填好，确认保存即可。完成
-后即可与桌面双向同步剪贴板。
+打开 UniClipboard iOS App，点 **「添加服务端」**，扫描桌面端 **扫码
+接入 → ② 配对** 子步骤里的二维码。base URL、用户名、密码会自动填好，
+确认保存即可。完成后即可与桌面双向同步剪贴板。
 
 </Step>
 

@@ -206,10 +206,19 @@ pub async fn try_silent_unlock(
     record_trace_fields(&span, &_trace);
 
     async move {
+        // Route to `AppFacade.try_resume_session` rather than the bare
+        // `encryption.unlock`. The thin variant only resumes the
+        // session; the wrapped variant also fires the switch-space
+        // migration recovery hook (`resume_pending`). Without that hook,
+        // a device that crashed mid-`switch_space` silently lands here
+        // on next launch, gets a new master_key, leaves the main table
+        // inline_data encrypted under the prior key, and surfaces as
+        // "no history" in the UI — exactly the wedged state we just
+        // dug out of on fedora dev. Mirrors the webserver handler fix
+        // since GUI in-process traffic doesn't go through HTTP.
         let resumed = runtime
             .app_facade()
-            .encryption
-            .unlock()
+            .try_resume_session()
             .await
             .map_err(|err| TrySilentUnlockError::Internal {
                 message: err.to_string(),

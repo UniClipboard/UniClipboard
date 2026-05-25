@@ -110,11 +110,19 @@ const UpdaterWindow: React.FC = () => {
 
     void subscribeUpdateAvailable(meta => {
       if (!meta) return
-      setState(prev => ({
-        ...prev,
-        phase: prev.phase === 'idle' ? 'available' : prev.phase,
-        info: meta,
-      }))
+      setState(prev => {
+        // A new version supersedes any in-flight or already-downloaded artifact
+        // tied to the previous version — otherwise the UI would offer "Install"
+        // for meta.version while the bytes on disk are still the old build.
+        if (prev.info && prev.info.version !== meta.version) {
+          return { ...prev, phase: 'available', info: meta, downloaded: 0, total: null }
+        }
+        return {
+          ...prev,
+          phase: prev.phase === 'idle' ? 'available' : prev.phase,
+          info: meta,
+        }
+      })
     })
       .then(fn => {
         if (cancelled) fn()

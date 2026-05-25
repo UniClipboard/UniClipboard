@@ -1,3 +1,4 @@
+use super::super::cf_html::strip_cf_html_wrapper;
 use super::super::common::CommonClipboardImpl;
 use super::super::payload::rep_bytes;
 use anyhow::Result;
@@ -557,11 +558,24 @@ fn attempt_multi_write_inner(
                 };
                 let html = String::from_utf8(bytes.into_owned())
                     .map_err(|e| anyhow::anyhow!("text/html rep is not valid UTF-8: {}", e))?;
+                // Strip any CF_HTML outer wrapper before handing the payload
+                // to `set_html`. `clipboard-win::raw::set_html` always re-wraps
+                // its input with `<html><body><!--StartFragment-->...<!--EndFragment-->`
+                // headers, while `clipboard-rs::get_html` returns the full
+                // document (StartHTML..EndHTML, wrappers included). Without
+                // this normalization each Win → peer → Win round-trip nests
+                // another wrapper layer; `content_hash`-based dedup cannot
+                // collapse them because each layer changes the hash.
+                let html_payload = strip_cf_html_wrapper(&html);
                 // set_html 默认走 NoClear 分支，内部构造 "Version:0.9 / StartHTML / EndHTML /
                 // StartFragment / EndFragment" 头并包裹 BODY_HEADER/BODY_FOOTER，适合累加。
-                cb_raw::set_html(html_fmt, &html)
+                cb_raw::set_html(html_fmt, html_payload)
                     .map_err(|e| anyhow::anyhow!("set CF_HTML failed: {}", e))?;
-                debug!(bytes = html.len(), "写入 CF_HTML 成功");
+                debug!(
+                    bytes = html_payload.len(),
+                    stripped_bytes = html.len() - html_payload.len(),
+                    "写入 CF_HTML 成功"
+                );
                 wrote_any = true;
             }
             Some("text/rtf") => {

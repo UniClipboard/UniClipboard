@@ -1,5 +1,11 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 reviews:
+  path_filters:
+    # 开发自留地：调研笔记、agent skill、一次性诊断 crate 不进入 CodeRabbit 审查。
+    # 这些路径的语言/格式不要求与对外文档一致，bot 在这里发的几乎全是噪音。
+    - '!.planning/**'
+    - '!.claude/**'
+    - '!src-tauri/crates/p2p-bench/**'
   auto_review:
     enabled: true
     auto_incremental_review: true
@@ -14,9 +20,7 @@ reviews:
         Ignore all formatting-only problems.
     - path: '**/*.{rs,ts,tsx,js,jsx,vue,py,svelte,mjs,cjs}'
       instructions: |
-        Code comments in this repository MUST be written in Chinese (applies to `//`, `///`, `/* */`, and doc comments).
-        This rule is defined in AGENTS.md and CONTRIBUTING.md.
-        Do NOT suggest translating Chinese comments to English, and do NOT flag Chinese comments as issues.
+        Code comments (`//`, `///`, `/* */`, doc comments) for new or modified lines are written in English. Existing Chinese comments are preserved during gradual migration — do NOT flag, translate, or nitpick the language of any comment (added, modified, or context), in either direction. Project markdown documentation remains intentionally in Chinese per AGENTS.md; do not suggest translation there either.
         The following are intentionally kept in English and must not be flagged:
           - identifiers (function, type, variable, module names)
           - commit messages and PR titles/descriptions

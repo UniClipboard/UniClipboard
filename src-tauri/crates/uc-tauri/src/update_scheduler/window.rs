@@ -43,6 +43,8 @@ pub fn open_or_focus_updater_window(app: &AppHandle, dev: bool) -> Result<(), ta
         .title(WINDOW_TITLE)
         .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
         .resizable(false)
+        .decorations(false)
+        .transparent(true)
         .center()
         .focused(true)
         .visible(true);

@@ -215,8 +215,8 @@ const UpdaterWindow: React.FC = () => {
       : ''
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-background text-foreground">
-      <div className="flex items-start gap-4 px-6 pt-6">
+    <div className="flex h-screen w-screen flex-col overflow-hidden rounded-xl border border-border/50 bg-background text-foreground shadow-2xl">
+      <div data-tauri-drag-region className="flex items-start gap-4 px-6 pt-6">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-lg shadow-primary/20">
           <Download className="h-7 w-7" />
         </div>

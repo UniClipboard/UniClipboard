@@ -26,9 +26,9 @@ const WINDOW_HEIGHT: f64 = 460.0;
 pub fn open_or_focus_updater_window(app: &AppHandle, dev: bool) -> Result<(), tauri::Error> {
     if let Some(existing) = app.get_webview_window(UPDATER_WINDOW_LABEL) {
         debug!(target: "update_scheduler::window", "updater window already exists; focusing");
-        let _ = existing.unminimize();
-        let _ = existing.show();
-        let _ = existing.set_focus();
+        existing.unminimize()?;
+        existing.show()?;
+        existing.set_focus()?;
         return Ok(());
     }
 

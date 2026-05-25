@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "updater",
+  "description": "Narrow capability for the Sparkle-style updater window. Grants only the updater plugin commands plus the IPC/event/window primitives the window actually uses (custom command invoke, event listen for update broadcasts, drag-region, and close).",
+  "windows": ["updater"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:event:allow-listen",
+    "updater:default"
+  ]
+}

@@ -166,17 +166,18 @@ describe('MobileSyncCredentialModal close behavior', () => {
   // 父组件 DevicesPage 的 discardCredential 进入函数后立刻把 payload 清空
   // (乐观清空),避免连点 ✕ 触发第二次 revoke 拿到 DEVICE_NOT_FOUND。这里
   // 用一个 wrapper 复现该 contract,验证 modal 在 payload 清空后不再响应。
-  // 阶段 5: tab 按"接入方式"分,「扫码接入」(默认) 主 QR = connect URI,
-  // 「安装快捷指令」(次) 主 QR = install URL。这两个 QR 必须图源不串位,
-  // 文案也必须与新 i18n keys 对齐。后续误改文案 / 误删 tab / 把两个 QR
-  // 接反 (`installQrCodePngBase64` ↔ `qrCodePngBase64`) 都会立刻爆炸。
+  // 阶段 5: tab 按"接入方式"分,「扫码接入」(默认) / 「安装快捷指令」(次)。
+  // 阶段 6: scan tab 内部再分两步 — step 1 下载 App (前端用 qrcode.react 现渲
+  // download URL QR), step 2 才扫 connect URI 配对。两个步骤的 QR 必须图源
+  // 不串位 — pair step 必须用 payload.qrCodePngBase64, 不能误用 download URL
+  // 或 installQrCodePngBase64。
   //
   // 维护提醒: 这里断言的文案必须与 src/i18n/locales/en-US.json 里
   // devices.mobileSync.credential.* 的 key 一一对应。删/改 i18n key 时,
   // 同步删/改这里对应的 getByText/getByRole({ name }) 断言, 否则 CI 会以
   // "Unable to find an element with the text" 爆炸 (例: phase 5 polish
   // 删掉 scan.qr.help 时漏改测试导致 PR #813 CI 红)。
-  it('defaults to the Scan tab with the connect-URI QR', () => {
+  it('defaults to the Scan tab on the Download step with the download-page QR', () => {
     const { onDiscard, onComplete } = defaultHandlers()
     renderWithI18n(
       <MobileSyncCredentialModal
@@ -189,12 +190,48 @@ describe('MobileSyncCredentialModal close behavior', () => {
     // Tab triggers visible with new labels.
     expect(screen.getByRole('tab', { name: 'Scan to add' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Install Shortcut' })).toBeInTheDocument()
-    // Active tab is "Scan to add" — its panel renders the connect-URI QR.
-    const qr = screen.getByAltText('QR code that auto-fills the sync credentials')
-    expect(qr.getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=')
+    // Default sub-step is "Download" — its panel renders the download-page
+    // QR (rendered client-side via qrcode.react, not the backend's connect-URI
+    // PNG) and an "Installed — next" button to advance.
+    expect(screen.getByText('Scan with your phone to install the app')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Installed — next' })).toBeInTheDocument()
+    // qrcode.react renders an SVG with the URL embedded — assert by aria-label
+    // we set, not by attempting to decode the QR.
     expect(
-      screen.getByText('Scan with your phone to auto-fill the credentials')
+      screen.getByLabelText('QR code for the UniClipboard mobile download page')
     ).toBeInTheDocument()
+    // Pair-step QR must NOT be in the DOM yet — it's behind the stepper.
+    expect(
+      screen.queryByAltText('QR code that auto-fills the sync credentials')
+    ).not.toBeInTheDocument()
+  })
+
+  it('advances to the Pair step with the connect-URI QR after clicking next', async () => {
+    const user = userEvent.setup()
+    const { onDiscard, onComplete } = defaultHandlers()
+    renderWithI18n(
+      <MobileSyncCredentialModal
+        payload={mockPayload}
+        onDiscard={onDiscard}
+        onComplete={onComplete}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Installed — next' }))
+
+    expect(screen.getByText('Scan inside the app to pair')).toBeInTheDocument()
+    const qr = screen.getByAltText('QR code that auto-fills the sync credentials')
+    // Pair QR must come from the backend-rendered connect URI PNG (not the
+    // download page QR). qrCodePngBase64 = 'iVBORw0KGgo=' per mockPayload.
+    expect(qr.getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=')
+    // No "Back" button in pair step — the stepper's "1. Download" entry is
+    // clickable and serves as the back path, avoiding a duplicate control.
+    // Verify the stepper Download entry is interactive (not disabled).
+    const downloadStepperBtn = screen.getByRole('button', { name: /1\. Download/i })
+    expect(downloadStepperBtn).not.toBeDisabled()
+    // Pair step is current, so the Download stepper entry must NOT be the
+    // current step (its aria-current="step" is only set on the active step).
+    expect(downloadStepperBtn).not.toHaveAttribute('aria-current', 'step')
   })
 
   it('switches to the Install Shortcut tab and shows the install-URL QR + link', async () => {

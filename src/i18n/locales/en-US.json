@@ -970,9 +970,19 @@
           "body": "After this dialog closes, the password cannot be recovered. If you lose it, you must revoke this device and add it again."
         },
         "scan": {
-          "qr": {
-            "label": "Scan with your phone to auto-fill the credentials",
-            "alt": "QR code that auto-fills the sync credentials"
+          "stepper": {
+            "download": "Download",
+            "pair": "Pair"
+          },
+          "download": {
+            "hint": "Scan with your phone to install the app",
+            "openInBrowserAria": "Open download page in browser",
+            "qrAlt": "QR code for the UniClipboard mobile download page",
+            "next": "Installed — next"
+          },
+          "pair": {
+            "hint": "Scan inside the app to pair",
+            "qrAlt": "QR code that auto-fills the sync credentials"
           }
         },
         "shortcut": {

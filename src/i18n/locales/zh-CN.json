@@ -961,9 +961,19 @@
           "body": "关闭此窗口后将无法再次查看密码。如不慎遗失，需要撤销此设备并重新添加。"
         },
         "scan": {
-          "qr": {
-            "label": "用手机扫一下，自动填入凭据",
-            "alt": "自动填入同步凭据的二维码"
+          "stepper": {
+            "download": "下载",
+            "pair": "配对"
+          },
+          "download": {
+            "hint": "在手机上扫码下载 App",
+            "openInBrowserAria": "在浏览器中打开下载页",
+            "qrAlt": "UniClipboard 移动端下载页的二维码",
+            "next": "已装好，下一步"
+          },
+          "pair": {
+            "hint": "在 App 内扫码完成配对",
+            "qrAlt": "自动填入同步凭据的二维码"
           }
         },
         "shortcut": {

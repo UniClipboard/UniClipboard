@@ -35,7 +35,9 @@
  *    上层不应把这份对象长期持有)。
  */
 
-import { Check, Copy, Eye, EyeOff, XIcon } from 'lucide-react'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, XIcon } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import React, { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
@@ -52,7 +54,14 @@ import {
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toast'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
+
+const log = createLogger('mobile-sync-credential')
+
+// 官网下载页 — 该页根据 UA 提供 iOS / Android 两个平台的安装入口,
+// 桌面端用户直接扫即可在手机上打开。URL 是产品级常量,不本地化。
+const DOWNLOAD_PAGE_URL = 'https://www.uniclipboard.app/download'
 
 interface Props {
   /**
@@ -68,11 +77,17 @@ interface Props {
 
 type OnboardingTab = 'scan' | 'shortcut'
 
+// 扫码接入是两步流程: step 1 引导用户在手机上扫"下载页 QR"装 App,
+// step 2 才扫 connect URI 配对。第一次接入的用户根本没装 App,直接给
+// connect QR 是哑的 —— 必须先把"去哪下载"这件事讲清楚。
+type ScanStep = 'download' | 'pair'
+
 const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComplete }) => {
   const { t } = useTranslation()
   const [acknowledged, setAcknowledged] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [activeTab, setActiveTab] = useState<OnboardingTab>('scan')
+  const [scanStep, setScanStep] = useState<ScanStep>('download')
   // 用户尝试关闭但未勾选时的 inline 提示。toast 在 modal 遮罩下很容易被忽视,
   // 改成把红色高亮 + 错误文本直接挂在勾选框上,视线一定会被引到下一步操作。
   const [hintActive, setHintActive] = useState(false)
@@ -82,6 +97,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
     setAcknowledged(false)
     setPasswordVisible(false)
     setActiveTab('scan')
+    setScanStep('download')
     setHintActive(false)
   }, [])
 
@@ -158,18 +174,21 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
         </Button>
         <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle>{t('devices.mobileSync.credential.title')}</DialogTitle>
-          <DialogDescription>{t('devices.mobileSync.credential.subtitle')}</DialogDescription>
+          {/* 视觉上不需要副标题 — 警告横幅 + tab + stepper 已经讲明白了。
+              但 Radix DialogContent 要求至少有 description (否则 a11y warn),
+              这里用 sr-only 给屏幕阅读器。 */}
+          <DialogDescription className="sr-only">
+            {t('devices.mobileSync.credential.subtitle')}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-2">
-          {/* 警告横幅 */}
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-            <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-              {t('devices.mobileSync.credential.warning.title')}
-            </p>
-            <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-400/90">
-              {t('devices.mobileSync.credential.warning.body')}
-            </p>
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-2">
+          {/* 警告横幅 — 只留 title 一句。body ("关闭后无法再查看,如不慎遗失需
+              撤销并重新添加") 删了: title 已经传达核心,recovery 路径在 device
+              列表的撤销按钮上,信息不会失传。 */}
+          <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{t('devices.mobileSync.credential.warning.title')}</span>
           </div>
 
           {/* 接入方式 tab —— 凭据 (URL/user/pwd) 共用,只切换"扫什么 QR" */}
@@ -183,21 +202,62 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
               </TabsTrigger>
             </TabsList>
 
-            {/* Tab A: 扫码接入 (默认主路径)
-                qrCodePngBase64 自后端阶段 2 起编码的是 connect URI
-                (uniclipboard://connect?v=1&svc=mobile-sync&p=...), 平台无关
-                —— iOS App、SyncClipboard 快捷指令、Android 第三方应用均可解。 */}
-            <TabsContent value="scan" className="mt-3 space-y-4">
-              <div className="flex flex-col items-center gap-2 rounded-md border border-border/60 bg-muted/30 p-4">
-                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  {t('devices.mobileSync.credential.scan.qr.label')}
-                </Label>
-                <img
-                  src={`data:image/png;base64,${payload.qrCodePngBase64}`}
-                  alt={t('devices.mobileSync.credential.scan.qr.alt')}
-                  className="h-48 w-48 rounded bg-white p-2"
-                />
-              </div>
+            {/* Tab A: 扫码接入 (默认主路径) — 两步 stepper
+                  step 1 = 下载 App (QR 指向官网下载页, 页面根据 UA 区分 iOS/Android)
+                  step 2 = 扫码配对 (QR = connect URI, qrCodePngBase64 由后端渲染)
+                connect URI 平台无关 —— iOS App、SyncClipboard 快捷指令、Android
+                客户端均可解; 但前置必须有 App, 所以 step 1 把"去哪下载"先讲清楚。
+                布局精简: 取消独立的提示卡, hint 内嵌到 QR 框顶端, "浏览器打开"
+                变成右上角小图标; pair step 不放"返回"按钮 — stepper 第 1 步可
+                点回退, 不需要重复入口。 */}
+            <TabsContent value="scan" className="mt-3 space-y-3">
+              <ScanStepper currentStep={scanStep} onSelect={setScanStep} />
+
+              {scanStep === 'download' ? (
+                <>
+                  <QrPanel
+                    hint={t('devices.mobileSync.credential.scan.download.hint')}
+                    topRight={
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={t(
+                          'devices.mobileSync.credential.scan.download.openInBrowserAria'
+                        )}
+                        title={t('devices.mobileSync.credential.scan.download.openInBrowserAria')}
+                        onClick={() =>
+                          openUrl(DOWNLOAD_PAGE_URL).catch(err =>
+                            log.error({ err }, 'Failed to open download page URL')
+                          )
+                        }
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Button>
+                    }
+                  >
+                    {/* 前端用 qrcode.react 现渲: download URL 是静态产品常量,
+                        每次都让后端编码一份 base64 PNG 是浪费。size 176 对应
+                        connect QR 显示 (h-48 w-48 减去 p-2)。 */}
+                    <QRCodeSVG
+                      value={DOWNLOAD_PAGE_URL}
+                      size={176}
+                      aria-label={t('devices.mobileSync.credential.scan.download.qrAlt')}
+                    />
+                  </QrPanel>
+                  <Button type="button" className="w-full" onClick={() => setScanStep('pair')}>
+                    {t('devices.mobileSync.credential.scan.download.next')}
+                  </Button>
+                </>
+              ) : (
+                <QrPanel hint={t('devices.mobileSync.credential.scan.pair.hint')}>
+                  <img
+                    src={`data:image/png;base64,${payload.qrCodePngBase64}`}
+                    alt={t('devices.mobileSync.credential.scan.pair.qrAlt')}
+                    className="h-44 w-44 rounded bg-white p-2"
+                  />
+                </QrPanel>
+              )}
             </TabsContent>
 
             {/* Tab B: 安装快捷指令 (一次性兜底)
@@ -352,12 +412,13 @@ const CredentialField: React.FC<CredentialFieldProps> = ({
   const display = secret ? value.replace(/./g, '•') : value
 
   return (
-    <div className="space-y-1">
-      <Label className="text-xs uppercase tracking-wider text-muted-foreground">{label}</Label>
-      <div className="flex items-center gap-1 rounded-md border border-border/60 bg-card px-3 py-2">
-        {/* min-w-0 is required: flex items default to min-width:auto which prevents
-            truncate from shrinking below the intrinsic content width. Without it
-            long URLs / passwords push the row past the modal edge. */}
+    // Inline layout: label 在左, value 框在右, 一行一个字段。比 stacked
+    // (label 在上, 框在下) 节省一半垂直空间, 跟整体精简方向一致。
+    // Label 用固定宽度 w-16 让三个字段对齐, value 框 min-w-0 + truncate 处理
+    // 长 URL 不溢出。
+    <div className="flex items-center gap-2">
+      <Label className="w-16 shrink-0 text-xs text-muted-foreground">{label}</Label>
+      <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-border/60 bg-card px-2 py-1">
         <span
           className={`min-w-0 flex-1 truncate text-sm ${mono ? 'font-mono' : ''} ${
             secret ? 'tracking-widest' : ''
@@ -392,5 +453,83 @@ const CredentialField: React.FC<CredentialFieldProps> = ({
     </div>
   )
 }
+
+interface ScanStepperProps {
+  currentStep: ScanStep
+  onSelect: (step: ScanStep) => void
+}
+
+/**
+ * 极简两步导航 —— "① 下载 · ② 配对",一行文字。
+ *
+ * 设计上故意没有圆 badge + 连接线: 只有两步, 视觉装饰反而抢 QR 的焦点;
+ * 编号 + 标签 + 中点分隔已经足够传达"我在第几步"。
+ * 完成步(currentStep 之前)是 muted + clickable(可点回退); 当前步是
+ * foreground 加粗。点击规则: 只能往回点, 不能往前点 — 强制走"下一步"
+ * 按钮, 让用户对"我装好了"做明确确认。
+ */
+const ScanStepper: React.FC<ScanStepperProps> = ({ currentStep, onSelect }) => {
+  const { t } = useTranslation()
+  const steps: { id: ScanStep; labelKey: string }[] = [
+    { id: 'download', labelKey: 'devices.mobileSync.credential.scan.stepper.download' },
+    { id: 'pair', labelKey: 'devices.mobileSync.credential.scan.stepper.pair' },
+  ]
+  const currentIndex = steps.findIndex(s => s.id === currentStep)
+
+  return (
+    <div className="flex items-center justify-center gap-1.5 text-xs">
+      {steps.map((step, index) => {
+        const isCurrent = index === currentIndex
+        const isPast = index < currentIndex
+        const clickable = isPast
+        return (
+          <React.Fragment key={step.id}>
+            <button
+              type="button"
+              disabled={!clickable}
+              onClick={clickable ? () => onSelect(step.id) : undefined}
+              className={cn(
+                'rounded-sm px-1 py-0.5 transition-colors',
+                isCurrent && 'font-medium text-foreground',
+                isPast &&
+                  'cursor-pointer text-muted-foreground underline-offset-2 hover:text-foreground hover:underline',
+                !isCurrent && !isPast && 'cursor-default text-muted-foreground/50'
+              )}
+              aria-current={isCurrent ? 'step' : undefined}
+            >
+              {index + 1}. {t(step.labelKey)}
+            </button>
+            {index < steps.length - 1 && <span className="text-muted-foreground/40">·</span>}
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+interface QrPanelProps {
+  /** QR 框顶端的一行内嵌说明。 */
+  hint: string
+  /** 右上角的额外操作(如"浏览器打开下载页"图标按钮)。 */
+  topRight?: React.ReactNode
+  children: React.ReactNode
+}
+
+/**
+ * QR 展示面板 —— hint + (可选) topRight icon + QR 主体。
+ *
+ * 把原来的"独立提示卡 + 独立 QR 卡 + 独立兜底链接"压成一个卡, hint 内嵌到
+ * 顶端, 兜底操作内嵌到右上角图标位。视觉重心全部落到 QR 上, 减少 7 段
+ * 独立文字到 1 段。
+ */
+const QrPanel: React.FC<QrPanelProps> = ({ hint, topRight, children }) => (
+  <div className="flex flex-col items-center gap-3 rounded-md border border-border/60 bg-muted/30 p-4">
+    <div className="flex w-full items-center justify-between gap-2">
+      <span className="text-xs text-muted-foreground">{hint}</span>
+      {topRight}
+    </div>
+    {children}
+  </div>
+)
 
 export default MobileSyncCredentialModal

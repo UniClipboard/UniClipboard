@@ -88,7 +88,16 @@ async fn unlock_handler(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let app = state.app_facade_or_error()?;
 
-    match app.encryption.unlock().await {
+    // Route to `space_setup.try_resume_session()` rather than the bare
+    // `encryption.unlock()`. The thin variant only resumes the session;
+    // the SpaceSetupFacade variant also runs the switch-space migration
+    // recovery hook (`resume_pending`) so a pending HandshakeDone replay
+    // gets advanced the moment the session unlocks. Without that, a
+    // device that crashed mid-`switch_space` would silently land here,
+    // get a new master_key, leave the main table inline_data encrypted
+    // with the previous key, and surface as "no history" in the UI —
+    // exactly the wedged state we just dug out of on fedora dev.
+    match app.try_resume_session().await {
         Ok(true) => {
             info!("encryption session auto-unlocked via keyring");
 

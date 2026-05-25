@@ -267,7 +267,7 @@ Pre-commit hooks (via Husky and lint-staged) automatically run `eslint`, `pretti
 
 ### Style Guidelines
 
-- **Comments and project documentation are written in Chinese**, per `AGENTS.md`. Identifiers, commit messages, and PR titles/descriptions remain English so tooling and external collaborators stay aligned.
+- **Code comments and user-facing project documentation are written in Chinese**, per `AGENTS.md` — covers `docs/`, `README`, crate-level `AGENTS.md`, `CONTRIBUTING*.md`, and code comments. Identifiers, commit messages, and PR titles/descriptions remain English so tooling and external collaborators stay aligned. Developer scratch paths — `.planning/`, `.claude/`, and `publish = false` diagnostic crates — are exempt and are also excluded from CodeRabbit review via `.coderabbit.yaml`.
 - **No machine-specific absolute paths** in tracked files. Use repo-relative paths in docs and configuration.
 - **Markdown fenced code blocks must include a language identifier** (`bash`, `rust`, `ts`, `text`, etc.).
 - **Frontend code** follows the rules in [`docs/agent/frontend-ui-rules.md`](./docs/agent/frontend-ui-rules.md).

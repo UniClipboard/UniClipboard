@@ -230,7 +230,7 @@ fix(devices): show real online state and cut offline detection latency
 chore(observability): silence swarm_discovery::socket EHOSTUNREACH spam
 ```
 
-> commit 信息、PR 标题与描述使用英文，确保工具链与外部协作者通用。代码注释和项目内文档使用中文。
+> commit 信息、PR 标题与描述使用英文，确保工具链与外部协作者通用。代码注释和对外项目文档使用中文（详细范围与豁免目录见下方"代码风格与质量"小节）。
 
 ### 应避免的写法
 
@@ -264,7 +264,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ### 风格约定
 
-- **代码注释和项目文档使用中文**（依据 `AGENTS.md`）。代码标识符、commit message、PR 标题与描述保持英文，便于工具链与外部协作。
+- **代码注释与对外项目文档使用中文**（依据 `AGENTS.md`，覆盖 `docs/`、README、crate 级 `AGENTS.md`、`CONTRIBUTING*.md`、代码注释）。代码标识符、commit message、PR 标题与描述保持英文，便于工具链与外部协作。开发自留路径 —— `.planning/`、`.claude/`、`publish = false` 的诊断 crate —— 不强制中文，且已在 `.coderabbit.yaml` 中排除 CodeRabbit 审查。
 - 仓库内文件 **不得包含机器特定的绝对路径**，统一使用相对仓库根的路径。
 - Markdown 代码围栏 **必须带语言标识**（`bash`、`rust`、`ts`、`text` 等）。
 - **前端代码** 遵循 [`docs/agent/frontend-ui-rules.md`](./docs/agent/frontend-ui-rules.md)。

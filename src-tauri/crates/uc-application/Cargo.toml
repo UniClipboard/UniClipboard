@@ -10,6 +10,15 @@ uc-core = { path = "../uc-core" }
 # Infrastructure (pragmatic exception: SearchPipeline is a concrete infra helper
 # grouped in AppDeps.search for single-ownership, per Phase 92 plan decision)
 uc-infra = { path = "../uc-infra" }
+# Platform layer — needed at runtime by `ClipboardWriteCoordinator` to recover
+# `ClipboardHolderInfo` diagnostics from the anyhow error chain returned by
+# `SystemClipboardPort::write_snapshot` failures. The trait itself stays in
+# uc-core; the diagnostic record is platform-produced metadata and belongs in
+# uc-platform (see `uc-platform::clipboard::holder` doc). uc-app/AGENTS §3
+# permits depending on uc-platform (uc-platform is the platform-difference
+# layer, not infra); the inverse is also explicitly allowed by
+# uc-platform/AGENTS §3 ("uc-platform 可以被 uc-app 使用").
+uc-platform = { path = "../uc-platform" }
 
 # Observability (flow correlation, stage constants)
 uc-observability = { path = "../uc-observability" }
@@ -66,7 +75,6 @@ features = ["v4"]
 
 [dev-dependencies]
 uc-infra = { path = "../uc-infra" }
-uc-platform = { path = "../uc-platform" }
 mockall = "0.13"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

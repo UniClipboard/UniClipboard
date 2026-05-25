@@ -20,5 +20,12 @@ pub trait SystemClipboardPort: Send + Sync {
     /// text, images, files, or other supported content types.
     fn read_snapshot(&self) -> Result<SystemClipboardSnapshot>;
 
+    /// Write a snapshot to the system clipboard.
+    ///
+    /// On failure, the returned `anyhow::Error`'s causal chain may carry
+    /// backend-specific diagnostic records; consumers that care about such
+    /// diagnostics walk the chain via `anyhow::Error::chain()` and
+    /// downcast, but the trait contract does not require any specific
+    /// diagnostic type to be present — its absence is a valid outcome.
     fn write_snapshot(&self, snapshot: SystemClipboardSnapshot) -> Result<()>;
 }

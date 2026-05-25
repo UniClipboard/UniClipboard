@@ -24,6 +24,7 @@ use tracing::{error, info, info_span, warn};
 use uc_core::clipboard::ClipboardChangeOrigin;
 use uc_core::clipboard::SystemClipboardSnapshot;
 use uc_core::ports::clipboard::{ClipboardChangeOriginPort, SystemClipboardPort};
+use uc_platform::clipboard::ClipboardHolderInfo;
 
 /// Number of consecutive OS-write failures that trip the circuit.
 ///
@@ -157,18 +158,38 @@ impl ClipboardWriteCoordinator {
     /// re-reading the atomic. Note: on a trip the atomic is reset to 0,
     /// but the returned value still reflects the pre-reset count — i.e.
     /// "this was failure number N which tripped the circuit".
-    fn record_failure(&self) -> u32 {
+    fn record_failure(&self, holder: Option<&ClipboardHolderInfo>) -> u32 {
         let new_count = self.consecutive_failures.fetch_add(1, Ordering::AcqRel) + 1;
         if new_count >= CIRCUIT_FAILURE_THRESHOLD {
             let until = Instant::now() + self.cooldown;
             *self.circuit_open_until.lock().expect("poisoned") = Some(until);
             self.consecutive_failures.store(0, Ordering::Release);
-            warn!(
+            // `error!` (not `warn!`) — circuit_tripped is the single actionable
+            // signal for "OS clipboard genuinely unavailable for this user".
+            // Per sentry-tracing EventFilter config in `uc-bootstrap::tracing`,
+            // ERROR maps to `Event | Log` (creates a Sentry issue); WARN maps
+            // to `Log` only. Per-failure events (os_write_failed, R/Q upstream)
+            // are warn; this trip event is the one that should page.
+            //
+            // `holder_*` reflect the foreign process recorded by the most
+            // recent failure on the streak (i.e. the failure that tripped
+            // the breaker). For sustained contention this is typically the
+            // same process across all five failures; if it isn't, this
+            // value at least points at *one* concrete contender rather
+            // than nothing. Recovered via `anyhow::Error::chain()` downcast
+            // from the platform-layer error per `ClipboardHolderInfo` contract.
+            let (holder_pid, holder_exe) = match holder {
+                Some(h) => (Some(h.holder_pid), Some(h.holder_exe.as_str())),
+                None => (None, None),
+            };
+            error!(
                 event = "circuit_tripped",
                 error_kind = "circuit_tripped",
                 consecutive_failures = new_count,
                 threshold = CIRCUIT_FAILURE_THRESHOLD,
                 cooldown_ms = self.cooldown.as_millis() as u64,
+                holder_pid = ?holder_pid,
+                holder_exe = ?holder_exe,
                 "clipboard_write_coordinator: circuit breaker tripped — pausing OS writes"
             );
         }
@@ -286,20 +307,40 @@ impl ClipboardWriteCoordinator {
             // writes start from a clean slate (and so outages surface in Seq/stdout
             // instead of being hidden in the `Err` bubbling back up the call chain).
             if let Err(err) = self.system_clipboard.write_snapshot(snapshot) {
+                // Recover platform-layer holder diagnostic from the anyhow
+                // chain (see `ClipboardHolderInfo` doc for the contract).
+                // Cloned so we can drop the borrow on `err` before logging
+                // `error = %err` later in this block.
+                let holder: Option<ClipboardHolderInfo> = err
+                    .chain()
+                    .find_map(|e| e.downcast_ref::<ClipboardHolderInfo>())
+                    .cloned();
                 self.clipboard_change_origin
                     .consume_origin_for_snapshot_or_default(
                         &origin_guard_key,
                         ClipboardChangeOrigin::LocalCapture,
                     )
                     .await;
-                // Record failure first so the error event below can include
+                // Record failure first so the warn event below can include
                 // the post-increment count and `circuit_tripped` derived state.
                 // Whoever reads Sentry can pair `error_kind=os_write_failed`
                 // with `consecutive_failures` and `circuit_tripped` to see
                 // immediately whether this is the Nth failure in a row.
-                let consecutive_failures = self.record_failure();
+                let consecutive_failures = self.record_failure(holder.as_ref());
                 let circuit_tripped = consecutive_failures >= CIRCUIT_FAILURE_THRESHOLD;
-                error!(
+                let (holder_pid, holder_exe) = match holder.as_ref() {
+                    Some(h) => (Some(h.holder_pid), Some(h.holder_exe.as_str())),
+                    None => (None, None),
+                };
+                // A single OS-write failure is `warn!` — transient OS clipboard
+                // contention (AV scan, IME hook, RDP clip proxy) is expected and
+                // not actionable on its own. The `circuit_tripped` event emitted
+                // by `record_failure` above promotes the signal to `error!` when
+                // the failure is sustained (≥ THRESHOLD in a row), which is the
+                // condition that should create a Sentry issue. See sentry-tracing
+                // EventFilter config in `uc-bootstrap::tracing` for the
+                // WARN→Log / ERROR→Event mapping that makes this work.
+                warn!(
                     event = "os_write_failed",
                     error_kind = "os_write_failed",
                     error = %err,
@@ -308,6 +349,8 @@ impl ClipboardWriteCoordinator {
                     consecutive_failures,
                     threshold = CIRCUIT_FAILURE_THRESHOLD,
                     circuit_tripped,
+                    holder_pid = ?holder_pid,
+                    holder_exe = ?holder_exe,
                     "clipboard_write_coordinator: OS clipboard write failed"
                 );
                 return Err(err);
@@ -433,6 +476,63 @@ mod tests {
             .returning(|_, default| default);
         origin.expect_set_next_origin().returning(|_, _| ());
         origin
+    }
+
+    /// `ClipboardHolderInfo` attached by a platform backend rides the
+    /// anyhow chain through the coordinator without disrupting circuit
+    /// behaviour, and the outer message (the human OS-error text) is
+    /// preserved as `err.to_string()` — i.e. the same downcast path the
+    /// non-test `record_failure` uses to populate `holder_*` on the
+    /// `circuit_tripped` event keeps working end-to-end. The uc-core
+    /// `local_clipboard::tests` already pin the raw transport contract;
+    /// this verifies that contract survives the mock → trait → coordinator
+    /// hop.
+    #[tokio::test]
+    async fn holder_bearing_error_propagates_and_trips_breaker() {
+        let mut clipboard = MockSystemClipboard::new();
+        clipboard.expect_write_snapshot().times(5).returning(|_| {
+            Err(anyhow::Error::new(ClipboardHolderInfo {
+                holder_pid: 9999,
+                holder_exe: "Ditto.exe".to_string(),
+            })
+            .context("OS clipboard write failed: ERROR_ACCESS_DENIED"))
+        });
+
+        let coord =
+            ClipboardWriteCoordinator::new(Arc::new(clipboard), Arc::new(permissive_origin_mock()));
+
+        for i in 0..5 {
+            let r = coord
+                .write(make_snapshot(), ClipboardWriteIntent::RemotePush)
+                .await;
+            let err = r.expect_err("expected OS error to propagate");
+            // Outer Display must remain the human OS-error message — the
+            // `error = %err` log field would otherwise be shadowed by the
+            // holder record.
+            assert_eq!(
+                err.to_string(),
+                "OS clipboard write failed: ERROR_ACCESS_DENIED",
+                "iteration {i}: outer Display must be the OS message, not the holder",
+            );
+            // Holder must remain reachable for the coordinator's downcast
+            // path (the same path `record_failure` uses).
+            let holder = err
+                .chain()
+                .find_map(|e| e.downcast_ref::<ClipboardHolderInfo>())
+                .expect("holder must survive the trait-object round-trip");
+            assert_eq!(holder.holder_pid, 9999);
+            assert_eq!(holder.holder_exe, "Ditto.exe");
+        }
+
+        // Sixth call must NOT reach the mock — breaker tripped.
+        let err = coord
+            .write(make_snapshot(), ClipboardWriteIntent::RemotePush)
+            .await
+            .expect_err("breaker should reject 6th call");
+        assert!(
+            err.to_string().contains("circuit breaker open"),
+            "expected circuit-open error, got: {err}"
+        );
     }
 
     /// 5 consecutive OS failures must trip the breaker, after which the

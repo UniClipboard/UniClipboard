@@ -1,5 +1,6 @@
 use super::super::common::CommonClipboardImpl;
 use super::super::payload::rep_bytes;
+use crate::clipboard::ClipboardHolderInfo;
 use anyhow::Result;
 use async_trait::async_trait;
 use clipboard_rs::{Clipboard, ClipboardContext};
@@ -250,6 +251,108 @@ fn classify_windows_write_error(err: &anyhow::Error) -> &'static str {
     }
 }
 
+/// Probe the process currently holding the Windows clipboard.
+///
+/// Returns `Some((pid, exe_name))` when the clipboard is open by another
+/// process and we can identify it. Any failure along the chain — clipboard
+/// not open, target process gone, OpenProcess access denied, image-name
+/// query failed — collapses to `None` (or a sentinel exe name when we got
+/// the pid but couldn't resolve the path). The probe must never fail loud:
+/// it is best-effort diagnostic data attached to a *different* failure, and
+/// any panic / unwrap here would mask the real write error.
+///
+/// ## When to call
+///
+/// Call immediately after the *first* failed write attempt, before any
+/// backoff sleep. `GetOpenClipboardWindow` only returns a valid HWND while
+/// some process has the clipboard open — by the time the outer retry loop
+/// has slept 100ms+500ms+2000ms and given up, the original contender has
+/// almost certainly closed it (and a different, innocent process may have
+/// opened it in the meantime, which would give us a misleading holder tag).
+/// The first failure is the closest we can get to the actual conflict.
+///
+/// ## Why pid alone isn't enough
+///
+/// pid → exe name resolution requires `OpenProcess` + `QueryFullProcessImageNameW`.
+/// We deliberately use `PROCESS_QUERY_LIMITED_INFORMATION` (not
+/// `QUERY_INFORMATION`) so antivirus / protected processes don't trip on
+/// the probe — they're exactly the processes most likely to be holding the
+/// clipboard. Even so, some protected processes will deny even the limited
+/// query; the sentinel exe name lets the operator see "pid known, exe
+/// blocked" rather than silently dropping the pid.
+#[cfg(windows)]
+fn clipboard_holder_diagnostics() -> Option<(u32, String)> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::DataExchange::GetOpenClipboardWindow;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+
+    // SAFETY: `GetOpenClipboardWindow` is a pure read with no preconditions
+    // and is safe to call from any thread. Returns NULL HWND when no
+    // process has the clipboard open.
+    let hwnd = unsafe { GetOpenClipboardWindow() };
+    if hwnd.is_null() {
+        return None;
+    }
+
+    let mut pid: u32 = 0;
+    // SAFETY: `hwnd` is a valid non-null HWND just returned by the OS;
+    // `&mut pid` is a valid mutable u32 pointer. The function writes pid
+    // through the out param and returns the tid (we don't need it).
+    unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    if pid == 0 {
+        // hwnd became invalid between the two calls (holder process
+        // exited). Nothing actionable; drop the probe silently.
+        return None;
+    }
+
+    // SAFETY: `PROCESS_QUERY_LIMITED_INFORMATION` is sufficient for
+    // `QueryFullProcessImageNameW` and is the least-privileged access
+    // mask that works against AV / protected processes. Returns NULL on
+    // access-denied or process-gone.
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        // We have the pid but can't open the process — surface the pid
+        // alone with a sentinel name so operators can see the partial
+        // result instead of losing the whole probe.
+        return Some((pid, String::from("<access denied>")));
+    }
+
+    let mut buf: [u16; 1024] = [0; 1024];
+    let mut len: u32 = buf.len() as u32;
+    // SAFETY: `handle` is a valid process handle from OpenProcess above;
+    // `buf.as_mut_ptr()` is a valid u16 buffer of declared `len`; `&mut len`
+    // is a valid in/out u32 pointer. Returns 0 on failure.
+    let ok = unsafe { QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut len) };
+    // SAFETY: `handle` was obtained via OpenProcess above and is non-null
+    // here; CloseHandle takes ownership. Closing once unconditionally
+    // before we leave the function avoids the leak that an early-return
+    // ladder would have introduced.
+    unsafe { CloseHandle(handle) };
+
+    if ok == 0 {
+        return Some((pid, String::from("<query failed>")));
+    }
+
+    let exe_path = OsString::from_wide(&buf[..len as usize])
+        .to_string_lossy()
+        .into_owned();
+    // Strip the directory — full Win32 paths often contain user-specific
+    // tokens (`C:\Users\<name>\…`) that add noise without aiding triage.
+    // The exe name is what tells us "Ditto.exe" vs "MsMpEng.exe" vs
+    // "TextInputHost.exe".
+    let exe_name = std::path::Path::new(&exe_path)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or(exe_path);
+
+    Some((pid, exe_name))
+}
+
 /// Windows 原子多 representation 写入。
 ///
 /// 在**单次** `OpenClipboard` 会话内写入多个剪贴板格式（CF_UNICODETEXT + CF_HTML +
@@ -401,6 +504,12 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
     // 要么含极少量已写入格式（尚未让用户感知），重新 empty 不会进一步损失用户
     // 可见的内容。
     let mut last_err: Option<anyhow::Error> = None;
+    // Holder probe captured at the *first* failed attempt — see
+    // `clipboard_holder_diagnostics` doc for why probing later (after
+    // backoff sleeps) tends to point at innocent bystanders rather than
+    // the actual contender. `None` if every attempt succeeded or the
+    // probe itself couldn't identify a holder.
+    let mut first_failure_holder: Option<(u32, String)> = None;
     for attempt in 0..MAX_WRITE_ATTEMPTS {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(
@@ -427,6 +536,11 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
             }
             Err(e) => {
                 let error_kind = classify_windows_write_error(&e);
+                if attempt == 0 {
+                    // Probe BEFORE the backoff sleep below — the holder is
+                    // most likely still there in this microsecond window.
+                    first_failure_holder = clipboard_holder_diagnostics();
+                }
                 warn!(
                     event = "windows_multi_write_attempt_failed",
                     error_kind,
@@ -449,23 +563,65 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
         .as_ref()
         .map(classify_windows_write_error)
         .unwrap_or("unknown");
-    error!(
+    // `holder_at_first_failure_*` names emphasise the probe timing — these
+    // are NOT necessarily the holder at the moment the exhausted event was
+    // logged ~2.6s later. `?` debug repr keeps `None` visible literally so
+    // operators can distinguish "probe couldn't identify" from a missing
+    // field.
+    let (holder_pid, holder_exe) = match &first_failure_holder {
+        Some((pid, exe)) => (Some(*pid), Some(exe.as_str())),
+        None => (None, None),
+    };
+    // `warn!` (not `error!`): a single exhausted retry burst is transient
+    // OS contention; `ClipboardWriteCoordinator` upstream tracks the
+    // consecutive-failure count and promotes to `error!` (which sentry-tracing
+    // maps to a Sentry Event) once the breaker trips. See
+    // `uc-bootstrap::tracing` for the WARN→Log / ERROR→Event mapping that
+    // avoids creating duplicate Sentry issues for the same underlying
+    // failure (previously R + Q + F were three separate issues for one
+    // failure). The holder fields stay on this `warn!` so platform-layer
+    // logs remain self-contained for grep / dashboard queries; the holder
+    // also rides up the error chain (below) so the eventual
+    // `circuit_tripped` event can include it as structured fields without
+    // depending on log-side correlation.
+    warn!(
         event = "windows_multi_write_exhausted",
         error_kind = "windows_multi_write_exhausted",
         final_attempt_error_kind = final_error_kind,
         max_attempts = MAX_WRITE_ATTEMPTS,
         cumulative_backoff_ms,
+        holder_at_first_failure_pid = ?holder_pid,
+        holder_at_first_failure_exe = ?holder_exe,
         error = ?last_err.as_ref().map(|e| e.to_string()),
         "Windows 多 rep 写入：所有重试已耗尽"
     );
 
-    anyhow::bail!(
+    // Build the surface error. When we identified a holder, put
+    // `ClipboardHolderInfo` at the BOTTOM of the chain and the human
+    // message on top via `.context(...)` — `anyhow`'s Display shows the
+    // outermost layer, so this preserves the original message as the
+    // `error = %err` log field while still letting consumers recover the
+    // holder via `err.chain().find_map(|e| e.downcast_ref::<ClipboardHolderInfo>())`
+    // (the canonical transport per `uc-core::ports::clipboard`). Reversing
+    // the layering (holder on top) would shadow the message with
+    // "clipboard held by pid=… exe=…" — Display defaults to the outermost
+    // node, not the chain.
+    let context_msg = format!(
         "Windows 多 rep 写入：{} 次尝试均失败；最后一次错误：{}",
         MAX_WRITE_ATTEMPTS,
         last_err
             .map(|e| e.to_string())
             .unwrap_or_else(|| "<unknown>".to_string())
-    )
+    );
+    let surface_err = match first_failure_holder {
+        Some((pid, exe)) => anyhow::Error::new(ClipboardHolderInfo {
+            holder_pid: pid,
+            holder_exe: exe,
+        })
+        .context(context_msg),
+        None => anyhow::Error::msg(context_msg),
+    };
+    Err(surface_err)
 }
 
 /// 单次写入尝试：打开 → empty → 逐 rep 写入 → guard drop 时关闭。

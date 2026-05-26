@@ -78,6 +78,10 @@ keyring = { version = "3.6.3", features = [
   "apple-native",
   "windows-native",
   "linux-native-sync-persistent",
+  # crypto-rust: secret-service OpenSession 走 DH (algorithm=dh-ietf1024-sha256-aes128-cbc-pkcs7)
+  # 而非 plain。Fedora 44 gnome-keyring 50.0-1 在 plain_negotiate 路径有崩溃 bug
+  # (service_method_open_session 构造 GVariant 时遇 NULL → glib abort),DH 路径绕开。
+  "crypto-rust",
 ] }
 thiserror = "2.0.17"
 

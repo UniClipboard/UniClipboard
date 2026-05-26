@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use moka::sync::Cache;
-use tracing::{debug, error, info, instrument, warn, Instrument};
+use tracing::{debug, info, instrument, warn, Instrument};
 use uc_observability::FlowId;
 
 use uc_core::ids::EntryId;
@@ -320,7 +320,18 @@ impl ApplyInboundClipboardUseCase {
             tokio::spawn(
                 async move {
                     if let Err(e) = write_port.write(snapshot_for_write).await {
-                        error!(
+                        // `warn!` (not `error!`): the underlying OS write
+                        // failure already goes through `ClipboardWriteCoordinator`,
+                        // which emits a single `error!(event=circuit_tripped)`
+                        // when the breaker trips (≥ N consecutive failures).
+                        // Logging this as `error!` here would create a duplicate
+                        // Sentry issue for every individual failed inbound
+                        // write — previously the root cause of Q's volume
+                        // (UNICLIPBOARD-RUST-Q). Per sentry-tracing
+                        // EventFilter (see `uc-bootstrap::tracing`),
+                        // WARN→Log keeps this searchable without raising an
+                        // issue.
+                        warn!(
                             event = "inbound_os_write_failed",
                             error_kind = "inbound_os_write_failed",
                             error = %e,

@@ -11,6 +11,7 @@ pub(crate) mod cf_html;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod common;
 pub mod event_loop;
+pub mod holder;
 #[cfg(target_os = "windows")]
 pub mod image_convert;
 pub mod noop;
@@ -24,6 +25,7 @@ pub mod watcher;
 pub use event_loop::{
     build_event_loop, shutdown_channel, PlatformClipboardEventLoop, ShutdownRx, ShutdownTx,
 };
+pub use holder::ClipboardHolderInfo;
 pub use noop::NoopSystemClipboard;
 pub use platform::LocalClipboard;
 pub use watcher::{PlatformEvent, PlatformEventSender};

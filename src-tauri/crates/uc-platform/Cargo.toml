@@ -163,6 +163,17 @@ clipboard-rs = { version = "0.3.3", features = ["default"] }
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4" }
+# Used only by `clipboard::platform::windows::clipboard_holder_diagnostics`
+# to identify which process currently holds the Windows clipboard when a
+# write retry burst exhausts (Sentry UNICLIPBOARD-RUST-R triage). Version
+# tracks the one clipboard-win 5.x already pulls in transitively, so this
+# does not add a second windows-sys to the dep graph.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_DataExchange",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 # macOS 平台原子多 rep 写入（见 `clipboard/platform/macos.rs::write_snapshot_multi_macos`）。
 # 显式启用 NSPasteboard + NSPasteboardItem feature，以拿到 NSPasteboardTypeString /

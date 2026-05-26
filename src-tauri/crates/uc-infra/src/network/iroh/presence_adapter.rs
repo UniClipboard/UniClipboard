@@ -123,7 +123,7 @@ const FAST_PATH_TTL: Duration = Duration::from_secs(30);
 struct HandlerState {
     member_repo: Arc<dyn MemberRepositoryPort>,
     fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
-    last_state: Arc<Mutex<HashMap<String, ReachabilityState>>>,
+    last_state: Arc<Mutex<HashMap<DeviceId, ReachabilityState>>>,
     event_tx: broadcast::Sender<PresenceEvent>,
     clock: Arc<dyn ClockPort>,
 }
@@ -209,7 +209,6 @@ impl ProtocolHandler for IrohPresenceHandler {
 
         let remote_bytes: [u8; 32] = *remote.as_bytes();
         if let Some(device_id) = self.state.resolve_device(&remote_bytes).await {
-            let key = device_id.as_str().to_string();
             let now_at = self.state.now();
 
             // Acquire `last_state` only long enough to insert and observe
@@ -217,12 +216,12 @@ impl ProtocolHandler for IrohPresenceHandler {
             // lock drops to avoid holding it across `.send`.
             let prev = {
                 let mut last = self.state.last_state.lock().await;
-                last.insert(key, ReachabilityState::Online)
+                last.insert(device_id, ReachabilityState::Online)
             };
 
             if prev != Some(ReachabilityState::Online) {
                 let _ = self.state.event_tx.send(PresenceEvent {
-                    device_id: device_id.clone(),
+                    device_id,
                     state: ReachabilityState::Online,
                     at: now_at,
                 });
@@ -271,19 +270,17 @@ pub struct IrohPresenceAdapter {
     endpoint: Arc<Endpoint>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     clock: Arc<dyn ClockPort>,
-    /// Live iroh connections keyed by `DeviceId` serialised as `String` —
-    /// `uc_core::ids::DeviceId` deliberately does not derive `Hash`, so
-    /// the adapter projects it down to its stringified form for map keys.
-    /// `DeviceId` is reconstructed via `DeviceId::new` at the event
-    /// broadcast boundary so the port contract stays strongly typed.
-    peers: Arc<Mutex<HashMap<String, TrackedPeer>>>,
+    /// Live iroh connections keyed by `DeviceId`. `DeviceId` is `Copy +
+    /// Hash` (a 64-byte inline `ArrayString`), so it can be used directly
+    /// as a map key without a stringified projection.
+    peers: Arc<Mutex<HashMap<DeviceId, TrackedPeer>>>,
     /// Remember the last observed outcome for every device the adapter has
     /// ever probed. Distinct from `peers` because a failed dial should
     /// surface as `Offline` on `current_state` without leaving a live
     /// connection entry behind. Shared with [`HandlerState`] so inbound
     /// connections can flip a peer to Online under the same lock the
     /// outbound watchdog uses to flip to Offline.
-    last_state: Arc<Mutex<HashMap<String, ReachabilityState>>>,
+    last_state: Arc<Mutex<HashMap<DeviceId, ReachabilityState>>>,
     event_tx: broadcast::Sender<PresenceEvent>,
     /// Cheap-clone state for [`IrohPresenceHandler`]. Constructed once in
     /// [`IrohPresenceAdapter::new`] and handed out via
@@ -408,8 +405,6 @@ impl IrohPresenceAdapter {
     ///    抖动失败，旧连接其实还可用；`verify_reachable` 在外层补偿
     ///    "把假装活着的旧连接 close 掉"的清理动作）
     async fn dial_and_track(&self, device: &DeviceId) -> Result<ReachabilityState, PresenceError> {
-        let key = device.as_str().to_string();
-
         // Look up the stored transport address.
         let record = self
             .peer_addr_repo
@@ -475,7 +470,7 @@ impl IrohPresenceAdapter {
                     // that the peer is reachable *right now*, so the
                     // fast-path TTL clock should reset even though we're
                     // discarding the new connection in favour of the old.
-                    if let Some(existing) = peers.get_mut(&key) {
+                    if let Some(existing) = peers.get_mut(device) {
                         if existing.connection.close_reason().is_none() {
                             existing.last_verified_at = Instant::now();
                             debug!(
@@ -488,14 +483,14 @@ impl IrohPresenceAdapter {
                             // 仍旧 broadcast Online — verify_reachable 调用方
                             // 期望"拨号成功 ⇒ Online 信号回传"。
                             let mut last = self.last_state.lock().await;
-                            last.insert(key.clone(), ReachabilityState::Online);
+                            last.insert(*device, ReachabilityState::Online);
                             drop(last);
-                            self.broadcast(device.clone(), ReachabilityState::Online, now);
+                            self.broadcast(*device, ReachabilityState::Online, now);
                             return Ok(ReachabilityState::Online);
                         }
                     }
                     peers.insert(
-                        key.clone(),
+                        *device,
                         TrackedPeer {
                             connection,
                             watchdog,
@@ -506,10 +501,10 @@ impl IrohPresenceAdapter {
 
                 {
                     let mut last = self.last_state.lock().await;
-                    last.insert(key.clone(), ReachabilityState::Online);
+                    last.insert(*device, ReachabilityState::Online);
                 }
                 info!("dial_and_track: dial succeeded, peer marked Online");
-                self.broadcast(device.clone(), ReachabilityState::Online, now);
+                self.broadcast(*device, ReachabilityState::Online, now);
                 Ok(ReachabilityState::Online)
             }
             Err(err) => {
@@ -521,9 +516,9 @@ impl IrohPresenceAdapter {
                 let now = self.now();
                 {
                     let mut last = self.last_state.lock().await;
-                    last.insert(key, ReachabilityState::Offline);
+                    last.insert(*device, ReachabilityState::Offline);
                 }
-                self.broadcast(device.clone(), ReachabilityState::Offline, now);
+                self.broadcast(*device, ReachabilityState::Offline, now);
                 Ok(ReachabilityState::Offline)
             }
         }
@@ -537,8 +532,6 @@ impl PresencePort for IrohPresenceAdapter {
         &self,
         device: &DeviceId,
     ) -> Result<ReachabilityState, PresenceError> {
-        let key = device.as_str().to_string();
-
         // Step 1: fast-path on an already-tracked live connection.
         //
         // Both predicates must hold to return Online without a fresh dial:
@@ -559,7 +552,7 @@ impl PresencePort for IrohPresenceAdapter {
         // distinguishable from a closed-conn eviction in production.
         {
             let mut peers = self.peers.lock().await;
-            if let Some(entry) = peers.get(&key) {
+            if let Some(entry) = peers.get(device) {
                 let still_alive = entry.connection.close_reason().is_none();
                 let recently_verified = entry.last_verified_at.elapsed() < FAST_PATH_TTL;
                 if still_alive && recently_verified {
@@ -571,7 +564,7 @@ impl PresencePort for IrohPresenceAdapter {
                 // Evict so the re-dial path below starts from a clean
                 // slate (and so `dial_and_track`'s "alive entry already
                 // exists" branch doesn't accidentally preserve a corpse).
-                if let Some(stale) = peers.remove(&key) {
+                if let Some(stale) = peers.remove(device) {
                     stale.watchdog.abort();
                     debug!(
                         still_alive,
@@ -607,7 +600,7 @@ impl PresencePort for IrohPresenceAdapter {
         if matches!(result, ReachabilityState::Offline) {
             let stale = {
                 let mut peers = self.peers.lock().await;
-                peers.remove(device.as_str())
+                peers.remove(device)
             };
             if let Some(stale) = stale {
                 stale.connection.close(0u32.into(), b"verify_failed");
@@ -620,8 +613,6 @@ impl PresencePort for IrohPresenceAdapter {
 
     #[instrument(skip_all, fields(device = %device.as_str()))]
     async fn mark_offline(&self, device: &DeviceId) {
-        let key = device.as_str().to_string();
-
         // 1) Evict the live-connection slot. The peer is held to be dead by
         //    an external observer — anything we cached as alive is now a lie
         //    that the fast-path in `ensure_reachable` would happily serve.
@@ -636,7 +627,7 @@ impl PresencePort for IrohPresenceAdapter {
         //    fired yet, and that's fine; we don't depend on it running).
         let stale = {
             let mut peers = self.peers.lock().await;
-            peers.remove(&key)
+            peers.remove(device)
         };
         if let Some(stale) = stale {
             stale.connection.close(0u32.into(), b"mark_offline");
@@ -649,14 +640,14 @@ impl PresencePort for IrohPresenceAdapter {
         //    doesn't slip a duplicate Offline through.
         let should_broadcast = {
             let mut last = self.last_state.lock().await;
-            let prev = last.insert(key, ReachabilityState::Offline);
+            let prev = last.insert(*device, ReachabilityState::Offline);
             prev != Some(ReachabilityState::Offline)
         };
 
         if should_broadcast {
             let now = self.now();
             debug!("mark_offline: peer marked Offline");
-            self.broadcast(device.clone(), ReachabilityState::Offline, now);
+            self.broadcast(*device, ReachabilityState::Offline, now);
         }
     }
 
@@ -667,19 +658,18 @@ impl PresencePort for IrohPresenceAdapter {
     // `verify_reachable` 真做拨号,继续保留 instrument(uc-infra §10.1
     // 强制要求关键 adapter 有 tracing)。
     async fn current_state(&self, device: &DeviceId) -> ReachabilityState {
-        let key = device.as_str();
         // Prefer the last-observed snapshot — it's authoritative for
         // `Offline` (which is not represented in `peers`) and strictly
         // consistent with the live-connection map for `Online` because
         // `ensure_reachable` and the watchdog update both under lock.
-        if let Some(state) = self.last_state.lock().await.get(key).copied() {
+        if let Some(state) = self.last_state.lock().await.get(device).copied() {
             return state;
         }
         // Fall back to the tracked-connection map in case something
         // bypassed `last_state` bookkeeping. Under the current API surface
         // this branch is unreachable, but the check is cheap.
         let peers = self.peers.lock().await;
-        match peers.get(key) {
+        match peers.get(device) {
             Some(entry) if entry.connection.close_reason().is_none() => ReachabilityState::Online,
             Some(_) => ReachabilityState::Offline,
             None => ReachabilityState::Unknown,
@@ -709,8 +699,8 @@ impl PresencePort for IrohPresenceAdapter {
 /// Errors on the broadcast send are ignored (no subscriber is a valid
 /// state; consumers recover via `current_state`).
 fn spawn_watchdog(
-    peers: Arc<Mutex<HashMap<String, TrackedPeer>>>,
-    last_state: Arc<Mutex<HashMap<String, ReachabilityState>>>,
+    peers: Arc<Mutex<HashMap<DeviceId, TrackedPeer>>>,
+    last_state: Arc<Mutex<HashMap<DeviceId, ReachabilityState>>>,
     event_tx: broadcast::Sender<PresenceEvent>,
     clock: Arc<dyn ClockPort>,
     device_id: DeviceId,
@@ -724,15 +714,13 @@ fn spawn_watchdog(
             "presence watchdog fired; peer marked Offline",
         );
 
-        let key = device_id.as_str().to_string();
-
         // Remove the map entry first so concurrent `ensure_reachable`
         // readers observe "not tracked" + "last_state == Offline". The
         // `TrackedPeer::drop` impl will attempt to abort this very task,
         // which is harmless — we're already past the `.await` point.
         {
             let mut map = peers.lock().await;
-            map.remove(&key);
+            map.remove(&device_id);
         }
 
         let ms = clock.now_ms();
@@ -743,7 +731,7 @@ fn spawn_watchdog(
 
         {
             let mut last = last_state.lock().await;
-            last.insert(key, ReachabilityState::Offline);
+            last.insert(device_id, ReachabilityState::Offline);
         }
 
         let _ = event_tx.send(PresenceEvent {

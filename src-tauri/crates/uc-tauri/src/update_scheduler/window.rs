@@ -45,6 +45,11 @@ pub fn open_or_focus_updater_window(app: &AppHandle, dev: bool) -> Result<(), ta
         .resizable(false)
         .decorations(false)
         .transparent(true)
+        // OS shadow draws a rectangle outside the webview; combined with
+        // transparent + CSS border-radius it bleeds past the rounded corners
+        // (tauri-apps/tauri#9287 macOS, #11321 Win10). CSS shadow-2xl on the
+        // root div already paints a corner-aware shadow.
+        .shadow(false)
         .center()
         .focused(true)
         .visible(true);

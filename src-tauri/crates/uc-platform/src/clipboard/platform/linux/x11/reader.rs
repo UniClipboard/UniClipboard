@@ -31,7 +31,7 @@ use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt as _, Property, Prop
 use x11rb::protocol::Event;
 use x11rb::CURRENT_TIME;
 
-use super::atoms::{format_id_for, is_interesting_mime, is_text_mime};
+use super::atoms::{format_id_for, is_interesting_mime, is_text_mime, text_mime_priority};
 use super::connection::X11Server;
 use super::writer::WriterState;
 
@@ -85,6 +85,16 @@ pub(super) fn read_snapshot(
             candidates.push((a, name));
         }
     }
+    // Reorder so we read UTF-8-friendly text mimes (e.g. `UTF8_STRING`,
+    // `text/plain;charset=utf-8`) before the Latin-1-bounded fallbacks
+    // (`STRING`, `TEXT`). Sources like Chromium often advertise `STRING`
+    // first with a percent-encoded copy of a non-ASCII URL, then
+    // `UTF8_STRING` with the original UTF-8 — reading in advertise order
+    // captures the percent-encoded variant, which the user then sees
+    // wherever the entry is pasted or synced. `sort_by_key` is stable, so
+    // non-text mimes (priority `u32::MAX`) keep their advertise-order
+    // relative position — only the text mimes shuffle among themselves.
+    candidates.sort_by_key(|(_, mime)| text_mime_priority(mime));
 
     let mut reps = Vec::new();
     let mut text_captured = false;

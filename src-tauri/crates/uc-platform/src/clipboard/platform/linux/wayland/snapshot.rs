@@ -59,6 +59,26 @@ fn format_id_for(mime: &str) -> &'static str {
     }
 }
 
+/// Lower number = read first when the source advertises multiple aliased
+/// text targets. Mirrors `x11::atoms::text_mime_priority`; the two are kept
+/// in sync deliberately rather than shared because the X11 and Wayland
+/// modules don't otherwise have a common helper module and the function
+/// is short. Rationale: real-world sources (Chromium, file managers)
+/// often advertise `STRING` (a 7-bit-safe, often percent-encoded copy of
+/// non-ASCII URLs) before `UTF8_STRING` (the original UTF-8). Reading in
+/// advertise order captures the percent-encoded variant and propagates
+/// `%XX` sequences to every paste / sync target.
+fn text_mime_priority(mime: &str) -> u32 {
+    match mime {
+        "text/plain;charset=utf-8" | "text/plain;charset=UTF-8" => 0,
+        "UTF8_STRING" => 1,
+        "text/plain" => 2,
+        "STRING" => 3,
+        "TEXT" => 4,
+        _ => u32::MAX,
+    }
+}
+
 pub(super) fn build_from_offer<O: OfferLike>(
     conn: &Connection,
     offer: &O,
@@ -72,10 +92,15 @@ pub(super) fn build_from_offer<O: OfferLike>(
     let mut text_captured = false;
     let mut image_captured = false;
 
-    for mime in mimes {
-        if !is_interesting_mime(mime) {
-            continue;
-        }
+    // Stable-sort the interesting mimes so UTF-8 text variants come before
+    // Latin-1 fallbacks. See `text_mime_priority` for the why. Non-text
+    // mimes share `u32::MAX` and keep their relative advertise-order
+    // position via stable sort.
+    let mut interesting_mimes: Vec<&String> =
+        mimes.iter().filter(|m| is_interesting_mime(m)).collect();
+    interesting_mimes.sort_by_key(|m| text_mime_priority(m.as_str()));
+
+    for mime in interesting_mimes {
         // Skip secondary text mimes once we've captured a primary one — the
         // compositor often advertises STRING + UTF8_STRING + text/plain;charset=utf-8
         // as aliases of the same data, and reading all three would inflate
@@ -146,6 +171,37 @@ mod tests {
         assert!(!is_interesting_mime("application/octet-stream"));
         assert!(!is_interesting_mime("x-special/gnome-copied-files"));
         assert!(!is_interesting_mime("application/x-kde4-urilist"));
+    }
+
+    #[test]
+    fn text_mime_priority_prefers_utf8_variants() {
+        assert!(text_mime_priority("text/plain;charset=utf-8") < text_mime_priority("UTF8_STRING"));
+        assert!(text_mime_priority("UTF8_STRING") < text_mime_priority("text/plain"));
+        assert!(text_mime_priority("text/plain") < text_mime_priority("STRING"));
+        assert!(text_mime_priority("STRING") < text_mime_priority("TEXT"));
+    }
+
+    #[test]
+    fn text_mime_priority_demotes_non_text_to_back() {
+        let last_text = text_mime_priority("TEXT");
+        for non_text in ["text/html", "text/uri-list", "image/png"] {
+            assert!(text_mime_priority(non_text) > last_text);
+        }
+    }
+
+    #[test]
+    fn sort_pulls_utf8_text_mime_in_front_of_string() {
+        // Simulates a source that advertises STRING (percent-encoded URL)
+        // before UTF8_STRING (UTF-8 original) — a documented Chromium
+        // pattern. After sorting, UTF8_STRING must come first so we read
+        // the UTF-8 variant and never touch the percent-encoded copy.
+        let mut mimes: Vec<&str> = vec!["STRING", "UTF8_STRING", "text/html", "image/png"];
+        mimes.sort_by_key(|m| text_mime_priority(m));
+        assert_eq!(mimes[0], "UTF8_STRING");
+        assert_eq!(mimes[1], "STRING");
+        // Non-text mimes retained but pushed behind every text variant.
+        assert!(mimes.contains(&"text/html"));
+        assert!(mimes.contains(&"image/png"));
     }
 
     #[test]

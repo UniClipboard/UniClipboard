@@ -103,6 +103,37 @@ pub(super) fn is_text_mime(mime: &str) -> bool {
     )
 }
 
+/// Lower number = read first when the source advertises multiple aliased
+/// text targets. ICCCM recommends `UTF8_STRING` / `text/plain;charset=utf-8`
+/// over the Latin-1-bounded `STRING` and `TEXT`, but real-world sources
+/// (Chromium, file managers, some IDE widgets) often list `STRING` *before*
+/// `UTF8_STRING` in their `TARGETS` reply. If we honored that order we'd
+/// read the `STRING` copy first — which for URLs containing non-ASCII
+/// characters (e.g. `http://host/job/玉兔Pro/`) is the percent-encoded
+/// `http://host/job/%E7%8E%89%E5%85%94Pro/` fallback the source emits as
+/// the 7-bit-safe variant, leaving the user's paste / sync target with the
+/// `%XX` form. By sorting text candidates with this key before reading, we
+/// always reach for the UTF-8 native variant first regardless of source
+/// ordering.
+pub(super) fn text_mime_priority(mime: &str) -> u32 {
+    match mime {
+        // Explicit UTF-8 plain-text MIMEs — always preferred when present.
+        "text/plain;charset=utf-8" | "text/plain;charset=UTF-8" => 0,
+        // ICCCM's UTF-8 atom — second-best (some legacy sources reorder it).
+        "UTF8_STRING" => 1,
+        // Charset-less `text/plain`; modern sources treat it as UTF-8, but
+        // it's allowed to be Latin-1, so prefer the explicit variants above.
+        "text/plain" => 2,
+        // ICCCM defines `STRING` as Latin-1 only — sources commonly use it
+        // for a 7-bit-safe (often percent-encoded) fallback. Read last.
+        "STRING" => 3,
+        // ICCCM `TEXT` is locale-encoded. Same story as `STRING`.
+        "TEXT" => 4,
+        // Non-text mimes — keep them after all text mimes.
+        _ => u32::MAX,
+    }
+}
+
 /// Map a snapshot `format_id` → the canonical X11 mime atom name we advertise.
 /// Mirrors `wayland::protocol::default_mime_for_format`.
 pub(super) fn default_mime_for_format(format_id: &str) -> Option<&'static str> {
@@ -145,6 +176,29 @@ mod tests {
         assert_eq!(format_id_for("text/uri-list"), "files");
         assert_eq!(format_id_for("image/png"), "image");
         assert_eq!(format_id_for("image/jpeg"), "image");
+    }
+
+    #[test]
+    fn text_mime_priority_prefers_utf8_variants() {
+        // Strict ordering: explicit UTF-8 < UTF8_STRING < text/plain < STRING < TEXT.
+        assert!(text_mime_priority("text/plain;charset=utf-8") < text_mime_priority("UTF8_STRING"));
+        assert!(text_mime_priority("text/plain;charset=UTF-8") < text_mime_priority("UTF8_STRING"));
+        assert!(text_mime_priority("UTF8_STRING") < text_mime_priority("text/plain"));
+        assert!(text_mime_priority("text/plain") < text_mime_priority("STRING"));
+        assert!(text_mime_priority("STRING") < text_mime_priority("TEXT"));
+    }
+
+    #[test]
+    fn text_mime_priority_demotes_non_text_to_back() {
+        // Non-text MIMEs must sort after every text MIME so that the
+        // reorder pass never moves them in front of a text variant.
+        let last_text = text_mime_priority("TEXT");
+        for non_text in ["text/html", "text/uri-list", "image/png", "x-special/foo"] {
+            assert!(
+                text_mime_priority(non_text) > last_text,
+                "non-text mime {non_text} ranked above text"
+            );
+        }
     }
 
     #[test]

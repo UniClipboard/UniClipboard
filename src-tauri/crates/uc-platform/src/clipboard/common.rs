@@ -2,7 +2,12 @@ use super::payload::rep_bytes;
 use anyhow::{anyhow, Result};
 use clipboard_rs::{common::RustImage, Clipboard, ContentFormat};
 use tracing::{debug, info, warn};
-use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+#[cfg(target_os = "macos")]
+use uc_core::clipboard::ImageKind;
+use uc_core::clipboard::{
+    format_id_default_mime, MimeClass, MimeType, ObservedClipboardRepresentation,
+    SystemClipboardSnapshot,
+};
 use uc_core::ids::RepresentationId;
 
 /// 文件头魔数嗅探,返回桌面剪贴板能消费的 `image/*` mime 字符串。
@@ -27,6 +32,51 @@ pub(crate) fn sniff_image_magic(body: &[u8]) -> Option<&'static str> {
         return Some("image/tiff");
     }
     None
+}
+
+/// Decide the "effective MIME" used by the single-rep write fast path.
+///
+/// This is the only function that needs to know how `format_id` and the
+/// rep's declared `mime` field combine into a single canonical MIME for
+/// the OS clipboard. Keeping it as a free function (no `&mut ClipboardContext`
+/// dependency) means we can exhaustively unit-test every variant — the
+/// regression that motivated this work (`text/plain;charset=utf-8` silently
+/// missing the `text/plain` arm) belongs to this function's contract.
+///
+/// Three cases:
+/// * `mime` present, `format_id` implies `image/*`, but `mime` is *not*
+///   `image/*`: byte-sniff the payload (recovers iOS / SyncClipboard
+///   uploads that omit Content-Type and get tagged `application/octet-stream`),
+///   otherwise fall back to the format_id's default mime. **Never** let an
+///   image rep flow through with a non-image mime — the 2026-05-08
+///   IMG_20260508_200644.jpg incident took that path.
+/// * `mime` present, anything else: use it as-is.
+/// * `mime` absent: fall back to `format_id_default_mime`.
+///
+/// Returns `None` only when the rep has neither a mime nor a recognized
+/// `format_id` — in that case the caller must refuse to write (§11.2,
+/// no silent fallback to a non-UTI pasteboard type).
+pub(crate) fn compute_effective_mime(rep: &ObservedClipboardRepresentation) -> Option<MimeType> {
+    let format_default: Option<MimeType> = format_id_default_mime(rep.format_id.as_str());
+
+    match (rep.mime.as_ref(), format_default.as_ref()) {
+        (Some(m), Some(default)) if default.is_image() && !m.is_image() => {
+            let recovered = rep_bytes(rep)
+                .ok()
+                .and_then(|b| sniff_image_magic(&b))
+                .map(|s| MimeType(s.to_string()))
+                .unwrap_or_else(|| default.clone());
+            warn!(
+                format_id = %rep.format_id,
+                wire_mime = m.as_str(),
+                recovered_mime = recovered.as_str(),
+                "compute_effective_mime: image rep declared non-image mime; recovered via byte sniff/format_id default"
+            );
+            Some(recovered)
+        }
+        (Some(m), _) => Some(m.clone()),
+        (None, _) => format_default,
+    }
 }
 
 /// 基于文件后缀推断常见图片 MIME。仅用于 `image-from-file` LocalFile rep 的 mime 标注;
@@ -708,53 +758,10 @@ impl CommonClipboardImpl {
             return Self::write_snapshot_multi(ctx, snapshot);
         }
 
-        // 单 rep 快路径：走既有 clipboard-rs 高层 API（行为与改动前完全一致）。
+        // 单 rep 快路径：走既有 clipboard-rs 高层 API。
         let rep = &snapshot.representations[0];
 
-        // 先按 format_id 推断默认 mime。
-        let format_default = match rep.format_id.as_str() {
-            "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
-                Some("text/plain")
-            }
-            "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
-            "public.rtf" | "rtf" => Some("text/rtf"),
-            "public.png" | "image" => Some("image/png"),
-            "public.tiff" => Some("image/tiff"),
-            "public.jpeg" => Some("image/jpeg"),
-            "public.file-url" | "NSFilenamesPboardType" => Some("text/uri-list"),
-            _ => None,
-        };
-
-        // 决定 effective_mime:
-        //   情况 A —— image-like format_id 但显式 mime 不是 image/*:几乎一定是客户端
-        //     误标(典型:iOS / SyncClipboard 兼容客户端 PUT /file 时不设 Content-Type
-        //     → 服务端默认 application/octet-stream → 这里 mime=Some("application/octet-stream"))。
-        //     先字节嗅探拿真实图片 mime,失败再回退到 format_id 默认。**绝不**让 image rep
-        //     携带 application/octet-stream 流到下游 set_image / set_buffer:
-        //     2026-05-08 真机回归(IMG_20260508_200644.jpg)就是这条路径把 JPEG 字节
-        //     用非法 NSPasteboard type 写进了系统剪贴板。
-        //   情况 B —— 显式 mime 存在 → 沿用。
-        //   情况 C —— 没有显式 mime → 回退 format_id 默认。
-        let effective_mime: Option<&str> = match (rep.mime.as_deref(), format_default) {
-            (Some(m), Some(default))
-                if default.starts_with("image/") && !m.starts_with("image/") =>
-            {
-                // sniff 路径罕见；rep 是 LocalFile source 读盘失败时退回 format_id 默认 mime。
-                let recovered = rep_bytes(rep)
-                    .ok()
-                    .and_then(|b| sniff_image_magic(&b))
-                    .unwrap_or(default);
-                warn!(
-                    format_id = %rep.format_id,
-                    wire_mime = m,
-                    recovered_mime = recovered,
-                    "write_snapshot: image rep declared non-image mime; recovered via byte sniff/format_id default"
-                );
-                Some(recovered)
-            }
-            (Some(m), _) => Some(m),
-            (None, default) => default,
-        };
+        let effective_mime = compute_effective_mime(rep);
 
         // 把单 rep 的字节预读到 owned `Vec<u8>`（Inline 转 owned, LocalFile 同步读盘）。
         // 后续各分支再从这份 owned 字节构造 String / RustImageData / set_buffer 输入,
@@ -762,17 +769,39 @@ impl CommonClipboardImpl {
         // 见 `common::rep_bytes` 注释）。
         let single_rep_bytes = rep_bytes(rep)?.into_owned();
 
-        match effective_mime {
-            Some("text/plain") => {
+        // Refuse to write when we couldn't derive an effective mime — neither
+        // the rep's declared mime nor its format_id maps to a known clipboard
+        // category. Per `uc-platform/AGENTS.md` §11.2, raw set_buffer with a
+        // non-UTI pasteboard type is a silent failure on macOS (the system
+        // accepts the write but no application can Cmd+V it) and must be
+        // surfaced rather than papered over.
+        let Some(effective_mime) = effective_mime else {
+            anyhow::bail!(
+                "write_snapshot: no effective mime — rep has no declared mime and \
+                 format_id {:?} is not in the platform mapping",
+                rep.format_id
+            );
+        };
+
+        match effective_mime.classify() {
+            // All `text/*` reps that we can carry on the system clipboard
+            // ultimately land on the OS string buffer. Markdown / csv /
+            // x-url / etc are written as plain text — system pasteboards
+            // don't have a richer slot for them, and pasting as plain text
+            // is what every consumer expects.
+            MimeClass::TextPlain
+            | MimeClass::TextMarkdown
+            | MimeClass::TextLink
+            | MimeClass::TextOther => {
                 map_clipboard_err(ctx.set_text(String::from_utf8(single_rep_bytes)?))?;
             }
-            Some("text/rtf") => {
+            MimeClass::TextRtf => {
                 map_clipboard_err(ctx.set_rich_text(String::from_utf8(single_rep_bytes)?))?;
             }
-            Some("text/html") => {
+            MimeClass::TextHtml => {
                 map_clipboard_err(ctx.set_html(String::from_utf8(single_rep_bytes)?))?;
             }
-            Some("text/uri-list") | Some("file/uri-list") => {
+            MimeClass::UriList => {
                 // Convert file:// URIs back to raw OS paths for set_files(),
                 // which expects native paths. Also handle raw paths for compatibility
                 // with inbound cache paths that aren't URI-encoded.
@@ -783,7 +812,6 @@ impl CommonClipboardImpl {
                         if line.is_empty() {
                             return None;
                         }
-                        // Try as file:// URI first
                         if let Ok(url) = url::Url::parse(line) {
                             if url.scheme() == "file" {
                                 if let Ok(path) = url.to_file_path() {
@@ -791,15 +819,14 @@ impl CommonClipboardImpl {
                                 }
                             }
                         }
-                        // Fallback: treat as raw path
                         Some(line.to_string())
                     })
                     .collect();
                 map_clipboard_err(ctx.set_files(files))?;
             }
-            Some(mime) if mime.starts_with("image/") => {
+            MimeClass::Image(kind) => {
                 debug!(
-                    mime = mime,
+                    mime = effective_mime.as_str(),
                     data_size = rep.size_bytes(),
                     format_id = %rep.format_id,
                     "write_snapshot: writing image to clipboard"
@@ -811,14 +838,13 @@ impl CommonClipboardImpl {
                 // with the "public.png" UTI (equivalent to NSPasteboardTypePNG).
                 #[cfg(target_os = "macos")]
                 {
-                    if mime == "image/png" {
+                    if matches!(kind, ImageKind::Png) {
                         map_clipboard_err(ctx.set_buffer("public.png", single_rep_bytes))?;
                     } else {
-                        // Non-PNG images still need format conversion via set_image
                         let img = clipboard_rs::RustImageData::from_bytes(&single_rep_bytes)
                             .map_err(|e| {
                                 warn!(
-                                    mime = mime,
+                                    mime = effective_mime.as_str(),
                                     data_size = rep.size_bytes(),
                                     error = %e,
                                     "write_snapshot: failed to decode image bytes"
@@ -830,10 +856,11 @@ impl CommonClipboardImpl {
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
+                    let _ = kind;
                     let img = clipboard_rs::RustImageData::from_bytes(&single_rep_bytes).map_err(
                         |e| {
                             warn!(
-                                mime = mime,
+                                mime = effective_mime.as_str(),
                                 data_size = rep.size_bytes(),
                                 error = %e,
                                 "write_snapshot: failed to decode image bytes"
@@ -844,44 +871,31 @@ impl CommonClipboardImpl {
                     map_clipboard_err(ctx.set_image(img))?;
                 }
                 debug!(
-                    mime = mime,
+                    mime = effective_mime.as_str(),
                     "write_snapshot: image set on system clipboard successfully"
                 );
             }
-            _ => {
-                // 兜底分支:effective_mime 没命中任何已支持类型。这条路径之前会
-                // 静默 set_buffer(format_id, bytes) —— 历史教训(2026-05-08
-                // IMG_20260508_200644.jpg 真机回归):image rep + mime
-                // application/octet-stream 落到这里,把 JPEG 字节用非法
-                // pasteboard type "image" 写进了系统剪贴板,既无法以图像形式
-                // 粘贴,又把原始 EXIF 字节当文本暴露给用户。违反
-                // `uc-platform/AGENTS.md` §11.2「不允许静默降级」。
+            MimeClass::OctetStream | MimeClass::Unrecognized => {
+                // §11.2: any rep that survives this far without a recognized
+                // mime would previously be written via `set_buffer(format_id, …)`,
+                // which on macOS attaches the bytes to a non-UTI pasteboard
+                // type that no consumer (including the OS clipboard manager)
+                // recognizes — Cmd+V silently produces nothing. Refusing the
+                // write surfaces the upstream mis-classification instead.
                 //
-                // 现在:
-                //   * image-like format_id 在 effective_mime 决策阶段已被字节
-                //     嗅探纠正,不会再到达这里;若到达说明前置守卫失效 —— bail。
-                //   * 其它未识别 mime 的 rep 仍走 set_buffer,但必须先 WARN,让
-                //     "OS 剪贴板里写了非标准 type"这件事可观测。
-                let format_default_image_like = matches!(
-                    rep.format_id.as_str(),
-                    "image" | "public.png" | "public.tiff" | "public.jpeg" | "public.gif"
+                // The 2026-05-08 IMG_20260508_200644.jpg regression took
+                // this exact path: image rep + application/octet-stream
+                // landed here and corrupted the clipboard. Image bytes are
+                // now caught earlier by the byte-sniff guard above; this
+                // branch remains as a hard floor against future regressions.
+                anyhow::bail!(
+                    "write_snapshot: refusing to write rep with unrecognized mime \
+                     (mime={:?}, format_id={:?}, bytes={}); rep would land on a \
+                     non-standard pasteboard type that no consumer can read",
+                    effective_mime.as_str(),
+                    rep.format_id,
+                    rep.size_bytes()
                 );
-                if format_default_image_like {
-                    anyhow::bail!(
-                        "write_snapshot: image-like format_id {:?} reached fallback branch \
-                         with mime {:?} — image-mime recovery should have run upstream; \
-                         refusing to set_buffer with a non-UTI pasteboard type",
-                        rep.format_id,
-                        rep.mime
-                    );
-                }
-                warn!(
-                    format_id = %rep.format_id,
-                    mime = ?rep.mime,
-                    bytes = rep.size_bytes(),
-                    "write_snapshot: writing rep via raw set_buffer fallback (no recognized mime mapping)"
-                );
-                map_clipboard_err(ctx.set_buffer(&rep.format_id, single_rep_bytes))?;
             }
         }
 
@@ -1212,5 +1226,107 @@ mod tests {
         riff_wav.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);
         riff_wav.extend_from_slice(b"WAVE");
         assert_eq!(sniff_image_magic(&riff_wav), None);
+    }
+
+    mod effective_mime {
+        use super::*;
+        use uc_core::clipboard::MimeClass;
+        use uc_core::ids::{FormatId, RepresentationId};
+
+        fn rep(
+            format: &str,
+            mime: Option<&str>,
+            bytes: Vec<u8>,
+        ) -> ObservedClipboardRepresentation {
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from_str(format),
+                mime.map(|m| MimeType(m.to_string())),
+                bytes,
+            )
+        }
+
+        /// 直接复现今天用户报的 fedora → mac 同步问题：
+        /// `text/plain;charset=utf-8` 必须命中 `MimeClass::TextPlain`,
+        /// 而不是掉进 OctetStream/Unrecognized 让 write_snapshot bail.
+        #[test]
+        fn parameterized_text_plain_classifies_as_text_plain() {
+            let cases = [
+                "text/plain",
+                "text/plain;charset=utf-8",
+                "text/plain; charset=utf-8",
+                "Text/Plain; Charset=UTF-8",
+                "  text/plain ; charset = \"utf-8\" ",
+                "TEXT/PLAIN",
+                "public.utf8-plain-text",
+            ];
+            for raw in cases {
+                let r = rep("text", Some(raw), b"hello".to_vec());
+                let effective = compute_effective_mime(&r).expect("effective mime");
+                assert_eq!(
+                    effective.classify(),
+                    MimeClass::TextPlain,
+                    "expected TextPlain for mime={raw:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn parameterized_text_html_classifies_as_text_html() {
+            let r = rep("html", Some("text/html;charset=utf-8"), b"<p>hi".to_vec());
+            assert_eq!(
+                compute_effective_mime(&r).unwrap().classify(),
+                MimeClass::TextHtml
+            );
+        }
+
+        #[test]
+        fn format_id_falls_back_when_mime_missing() {
+            // 现代 capture 路径会给 rep 打 mime,但旧 envelope / legacy 客户端
+            // 可能省略 mime —— 单源映射表必须能从 format_id 兜底。
+            let r = rep("text", None, b"hello".to_vec());
+            assert_eq!(
+                compute_effective_mime(&r).unwrap().classify(),
+                MimeClass::TextPlain
+            );
+
+            let r = rep("public.png", None, vec![0x89, b'P', b'N', b'G']);
+            assert!(matches!(
+                compute_effective_mime(&r).unwrap().classify(),
+                MimeClass::Image(_)
+            ));
+        }
+
+        #[test]
+        fn image_format_id_with_octet_stream_mime_is_sniffed_back_to_image() {
+            // 历史回归 (2026-05-08 IMG_20260508_200644.jpg)：iOS 客户端 PUT /file
+            // 不带 Content-Type → 服务端默认 application/octet-stream,但
+            // format_id 仍是 image-like。必须字节嗅探 recover,不能让 octet-stream
+            // 落到下游写入分支。
+            let png_magic = vec![
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+                0x00, 0x00, 0x00, 0x0D, // IHDR length
+            ];
+            let r = rep("public.png", Some("application/octet-stream"), png_magic);
+            let effective = compute_effective_mime(&r).expect("effective mime");
+            assert_eq!(effective.essence(), "image/png");
+        }
+
+        #[test]
+        fn no_mime_and_unknown_format_id_returns_none() {
+            // 此时 write_snapshot 会 bail —— §11.2 不允许静默用 format_id 当
+            // pasteboard type 写非 UTI 内容。
+            let r = rep("vendor-private-format", None, b"opaque".to_vec());
+            assert!(compute_effective_mime(&r).is_none());
+        }
+
+        #[test]
+        fn application_json_classifies_as_unrecognized() {
+            // unrecognized application/* mime 必须分类为 Unrecognized,
+            // 让 write_snapshot bail 而不是走 fallback set_buffer。
+            let r = rep("unknown", Some("application/json"), b"{}".to_vec());
+            let effective = compute_effective_mime(&r).expect("effective mime");
+            assert_eq!(effective.classify(), MimeClass::Unrecognized);
+        }
     }
 }

@@ -37,7 +37,7 @@ pub use system::{
 pub use decision::{ClipboardContentActionDecision, DuplicationHint, RejectReason};
 pub use hash::{ContentHash, HashAlgorithm};
 pub use integration_mode::ClipboardIntegrationMode;
-pub use mime::MimeType;
+pub use mime::{format_id_default_mime, ImageKind, MimeClass, MimeType};
 pub use origin::ClipboardOrigin;
 pub use payload_availability::PayloadAvailability;
 pub use thumbnail::ThumbnailMetadata;

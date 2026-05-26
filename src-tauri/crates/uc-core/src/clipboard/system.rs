@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use crate::{
     ids::{FormatId, RepresentationId},
-    ContentHash, MimeType,
+    ContentHash, MimeClass, MimeType,
 };
 use serde::{Deserialize, Serialize};
 
@@ -259,11 +259,7 @@ impl<'de> serde::Deserialize<'de> for ObservedClipboardRepresentation {
 /// 不包含 `text/html` / `text/rtf` / `text/markdown` 等富文本子类型。
 pub fn is_plain_text_mime_or_format(mime: Option<&MimeType>, format_id: &FormatId) -> bool {
     if let Some(mime) = mime {
-        let mime_str = mime.as_str();
-        if mime_str.eq_ignore_ascii_case("text/plain")
-            || mime_str.to_ascii_lowercase().starts_with("text/plain;")
-            || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
-        {
+        if mime.is_text_plain() {
             return true;
         }
     }
@@ -274,11 +270,12 @@ pub(crate) fn is_plain_text_representation(rep: &ObservedClipboardRepresentation
     is_plain_text_mime_or_format(rep.mime.as_ref(), &rep.format_id)
 }
 
+/// Any text-bearing rep (plain or rich). Used by snapshot identity
+/// derivation when a plain-text rep is absent but a text-shaped rep
+/// (HTML, RTF, markdown, …) is present.
 fn is_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
-    if let Some(mime) = rep.mime.as_ref() {
-        let mime_str = mime.as_str();
-        if mime_str.starts_with("text/") || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
-        {
+    if let Some(m) = rep.mime.as_ref() {
+        if m.is_text_like() {
             return true;
         }
     }
@@ -288,10 +285,7 @@ fn is_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
 }
 
 pub(crate) fn is_image_representation(rep: &ObservedClipboardRepresentation) -> bool {
-    rep.mime
-        .as_ref()
-        .is_some_and(|mime| mime.as_str().starts_with("image/"))
-        || rep.format_id.eq_ignore_ascii_case("image")
+    rep.mime.as_ref().is_some_and(|m| m.is_image()) || rep.format_id.eq_ignore_ascii_case("image")
 }
 
 /// Check if a mime type and format ID combination represents a file clipboard entry.
@@ -301,8 +295,7 @@ pub(crate) fn is_image_representation(rep: &ObservedClipboardRepresentation) -> 
 /// should delegate to this function.
 pub fn is_file_mime_or_format(mime: Option<&MimeType>, format_id: &FormatId) -> bool {
     if let Some(mime) = mime {
-        let s = mime.as_str();
-        if s.eq_ignore_ascii_case("text/uri-list") || s.eq_ignore_ascii_case("file/uri-list") {
+        if mime.is_uri_list() {
             return true;
         }
     }
@@ -320,8 +313,7 @@ pub(crate) fn is_file_representation(rep: &ObservedClipboardRepresentation) -> b
 /// fall through here.
 pub(crate) fn is_rich_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
     if let Some(m) = rep.mime.as_ref() {
-        let s = m.as_str();
-        if s.eq_ignore_ascii_case("text/html") || s.eq_ignore_ascii_case("text/rtf") {
+        if m.is_text_html() || m.is_text_rtf() {
             return true;
         }
     }
@@ -337,8 +329,15 @@ pub(crate) fn is_rich_text_representation(rep: &ObservedClipboardRepresentation)
 /// (file's territory) doesn't get reclassified here.
 pub(crate) fn is_link_representation(rep: &ObservedClipboardRepresentation) -> bool {
     if let Some(m) = rep.mime.as_ref() {
-        let s = m.as_str().to_ascii_lowercase();
-        if s == "text/x-uri" || s == "text/x-url" || s == "text/uri" || s.contains("url") {
+        if matches!(m.classify(), MimeClass::TextLink) {
+            return true;
+        }
+        // Wider net for vendor-specific link mimes that don't fit the
+        // canonical `text/x-uri` shape (e.g. `application/x-moz-url`).
+        // Kept as a substring check to preserve historical behavior; new
+        // canonical link mimes should be added to `MimeClass::TextLink`
+        // in `mime.rs` instead of relying on this fallback.
+        if m.essence().contains("url") {
             return true;
         }
     }
@@ -353,7 +352,7 @@ pub(crate) fn is_link_representation(rep: &ObservedClipboardRepresentation) -> b
 pub(crate) fn is_any_text_representation(rep: &ObservedClipboardRepresentation) -> bool {
     rep.mime
         .as_ref()
-        .is_some_and(|m| m.as_str().to_ascii_lowercase().starts_with("text/"))
+        .is_some_and(|m| m.essence().starts_with("text/"))
 }
 
 /// Heuristic: a text-bearing rep whose entire payload (after `trim`) is

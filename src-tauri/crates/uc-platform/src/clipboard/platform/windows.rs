@@ -7,57 +7,63 @@ use clipboard_rs::{Clipboard, ClipboardContext};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, error, info, warn};
-use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+use uc_core::clipboard::{
+    format_id_default_mime, ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation,
+    SystemClipboardSnapshot,
+};
 use uc_core::ids::RepresentationId;
 use uc_core::ports::SystemClipboardPort;
 
-/// 推断 rep 在 Windows 多 rep 写入路径下的"有效 MIME"。
+/// Classify a rep for the Windows multi-rep write path.
 ///
-/// 与 `write_snapshot_multi_windows` 主循环使用的推断逻辑保持一致 ——
-/// 既用于前置 "有无可写 rep" 扫描，也用于主循环分派，避免两处逻辑漂移。
-/// 与 `common.rs` 单 rep 快路径的 format_id → mime 推断表对齐。
-fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<&str> {
-    let format_default = match rep.format_id.as_str() {
-        "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
-            Some("text/plain")
-        }
-        "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
-        // RTF：从 Word / Pages / 写字板等富文本源复制时常与 plain + html 一起出现；
-        // common.rs::read_snapshot 写库时使用 format_id="rtf", mime="text/rtf"。
-        // Windows 上对应 RegisterClipboardFormat("Rich Text Format") 注册的自定义
-        // format（CF_RTF 不是 Win32 预定义常量）。
-        "public.rtf" | "rtf" => Some("text/rtf"),
-        // PixPin 截图等场景 format_id 为 "image"，mime 通常为 "image/png"。
-        // `common.rs::read_snapshot` 把 macOS `public.png` / `public.tiff` 都转成 PNG。
-        "public.png" | "image" => Some("image/png"),
-        // file-list 表示：接收端 materializer 会把 rep.bytes 改写为本机 file:// URI
-        // 列表（每行一条），写入时解析为原生路径后通过 CF_HDROP 提交，Explorer /
-        // 资源管理器识别的规范形式。
-        "public.file-url" | "NSFilenamesPboardType" | "files" => Some("text/uri-list"),
-        _ => None,
-    };
+/// Single source of mapping (shared with `common.rs` single-rep path and
+/// `macos.rs::resolve_multi_rep_mime`):
+/// 1. Use the rep's declared mime when present.
+/// 2. Otherwise fall back to `format_id_default_mime` (the project-wide
+///    `format_id → MIME` table).
+/// 3. Recover image bytes mis-labeled as non-image (typically
+///    `application/octet-stream` from clients that omit Content-Type) by
+///    sniffing the magic-number. See `common.rs::write_snapshot` for the
+///    incident history.
+fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<MimeClass> {
+    let format_default = format_id_default_mime(rep.format_id.as_str());
 
-    // image-like format_id 但显式 mime 非 image/*:见 `common.rs::write_snapshot` 同位置注释。
-    match (rep.mime.as_deref(), format_default) {
-        (Some(m), Some(default)) if default.starts_with("image/") && !m.starts_with("image/") => {
-            // sniff 路径罕见（要求 image-like format_id + 显式 mime 不是 image/*）；
-            // 即便 rep 是 LocalFile source 读盘失败，也只是退回 format_id 默认 mime,
-            // 不影响后续 setData 分支的实际写入决策。
+    let effective: Option<MimeType> = match (rep.mime.as_ref(), format_default.as_ref()) {
+        (Some(m), Some(default)) if default.is_image() && !m.is_image() => {
             let recovered = rep_bytes(rep)
                 .ok()
                 .and_then(|b| crate::clipboard::common::sniff_image_magic(&b))
-                .unwrap_or(default);
+                .map(|s| MimeType(s.to_string()))
+                .unwrap_or_else(|| default.clone());
             tracing::warn!(
                 format_id = %rep.format_id,
-                wire_mime = m,
-                recovered_mime = recovered,
+                wire_mime = m.as_str(),
+                recovered_mime = recovered.as_str(),
                 "Windows multi-rep: image rep declared non-image mime; recovered via byte sniff/format_id default"
             );
             Some(recovered)
         }
-        (Some(m), _) => Some(m),
-        (None, default) => default,
-    }
+        (Some(m), _) => Some(m.clone()),
+        (None, _) => format_default.clone(),
+    };
+
+    effective.map(|m| m.classify())
+}
+
+/// Whether a [`MimeClass`] is writable through the Windows multi-rep path.
+/// Multi-rep only supports MIMEs that map to a known clipboard format
+/// (CF_UNICODETEXT / CF_HTML / "Rich Text Format" / CF_DIBV5 + "PNG" /
+/// CF_HDROP); anything else is skipped rather than dropped on a custom
+/// format that no consumer can read.
+fn is_multi_rep_writable(class: &MimeClass) -> bool {
+    matches!(
+        class,
+        MimeClass::TextPlain
+            | MimeClass::TextHtml
+            | MimeClass::TextRtf
+            | MimeClass::UriList
+            | MimeClass::Image(ImageKind::Png)
+    )
 }
 
 /// 把 text/uri-list rep 的字节解析为本机路径列表（`Vec<PathBuf>`）。
@@ -322,16 +328,10 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
     // 前置扫描：如果没有任何 rep 是我们能写的（text/plain、text/html 或 image/png），
     // 直接 bail；**不**打开 Windows 剪贴板、**不**调 empty()。
     // 避免把用户原本的 OS 剪贴板清掉却什么都写不进去（见上方 doc comment "empty() 副作用的防御"）。
-    let has_writable = snapshot.representations.iter().any(|rep| {
-        matches!(
-            resolve_multi_rep_mime(rep),
-            Some("text/plain")
-                | Some("text/html")
-                | Some("text/rtf")
-                | Some("image/png")
-                | Some("text/uri-list")
-        )
-    });
+    let has_writable = snapshot
+        .representations
+        .iter()
+        .any(|rep| resolve_multi_rep_mime(rep).is_some_and(|c| is_multi_rep_writable(&c)));
 
     if !has_writable {
         let skipped: Vec<String> = snapshot
@@ -363,7 +363,10 @@ pub(crate) fn write_snapshot_multi_windows(snapshot: SystemClipboardSnapshot) ->
         .representations
         .iter()
         .map(|rep| {
-            if resolve_multi_rep_mime(rep) != Some("image/png") {
+            if !matches!(
+                resolve_multi_rep_mime(rep),
+                Some(MimeClass::Image(ImageKind::Png))
+            ) {
                 return None;
             }
             let bytes = match rep_bytes(rep) {
@@ -514,7 +517,7 @@ fn attempt_multi_write_inner(
         let effective_mime = resolve_multi_rep_mime(rep);
 
         match effective_mime {
-            Some("text/plain") => {
+            Some(MimeClass::TextPlain) => {
                 // 必须使用 set_string_with::<NoClear>：
                 // set_string 内部调用 DoClear（EmptyClipboard），会把已写的其他 format 抹掉。
                 let bytes = match rep_bytes(rep) {
@@ -537,7 +540,7 @@ fn attempt_multi_write_inner(
                 debug!(bytes = text.len(), "写入 CF_UNICODETEXT 成功");
                 wrote_any = true;
             }
-            Some("text/html") => {
+            Some(MimeClass::TextHtml) => {
                 let Some(html_fmt) = html_fmt_opt else {
                     warn!("注册 HTML Format 失败，跳过 text/html rep");
                     skipped.push(rep.format_id.as_str().to_string());
@@ -578,7 +581,7 @@ fn attempt_multi_write_inner(
                 );
                 wrote_any = true;
             }
-            Some("text/rtf") => {
+            Some(MimeClass::TextRtf) => {
                 // RTF 走 RegisterClipboardFormat("Rich Text Format")。RTF 1.x 规范要求
                 // 字节流是 ASCII 安全（非 ASCII 字符均通过 \uN 转义），因此可以直接以
                 // 原始字节写入 raw set_without_clear，不需要 UTF-8 / UTF-16 转换。
@@ -606,7 +609,7 @@ fn attempt_multi_write_inner(
                 debug!(bytes = bytes.len(), "写入 Rich Text Format 成功");
                 wrote_any = true;
             }
-            Some("image/png") => {
+            Some(MimeClass::Image(ImageKind::Png)) => {
                 // 双写策略：CF_DIBV5（标准格式，Windows 自动合成 CF_BITMAP/CF_DIB 给老应用）
                 // + 自定义 "PNG" format（现代应用直读 PNG 字节，保留 PNG 压缩率与 alpha 元数据）。
                 //
@@ -661,7 +664,7 @@ fn attempt_multi_write_inner(
                     skipped.push(rep.format_id.as_str().to_string());
                 }
             }
-            Some("text/uri-list") => {
+            Some(MimeClass::UriList) => {
                 // CF_HDROP 写入路径：把 rep 里的 file:// URI 列表（接收端 materializer
                 // 已把 blob 落地到本机 iroh-blobs 缓存目录并改写为本机 URI）解析回本机
                 // 路径，打包成 DROPFILES + UTF-16 名字串，`SetClipboardData(CF_HDROP)`。
@@ -721,7 +724,8 @@ fn attempt_multi_write_inner(
                 // 返回构造时记录的 meta.len()），避免触发 expect_inline_bytes panic。
                 info!(
                     format_id = %rep.format_id,
-                    mime = ?other,
+                    rep_mime = ?rep.mime.as_ref().map(|m| m.as_str()),
+                    classified = ?other,
                     bytes = rep.size_bytes(),
                     "Windows 多 rep 写入：跳过不支持的 rep（当前支持 text/plain, text/html, text/rtf, image/png, text/uri-list）"
                 );
@@ -775,11 +779,10 @@ impl SystemClipboardPort for WindowsClipboard {
             let mut snapshot = CommonClipboardImpl::read_snapshot(&mut ctx)?;
 
             // Check if clipboard-rs already captured an image
-            let has_image = snapshot.representations.iter().any(|rep| {
-                rep.mime
-                    .as_ref()
-                    .is_some_and(|m| m.as_str().starts_with("image/"))
-            });
+            let has_image = snapshot
+                .representations
+                .iter()
+                .any(|rep| rep.mime.as_ref().is_some_and(|m| m.is_image()));
 
             if has_image {
                 debug!(
@@ -956,11 +959,10 @@ impl SystemClipboardPort for WindowsClipboard {
 }
 
 fn extract_text_plain_utf8(snapshot: &SystemClipboardSnapshot) -> Result<Option<String>> {
-    let maybe_text_rep = snapshot.representations.iter().find(|rep| {
-        rep.mime
-            .as_ref()
-            .is_some_and(|mime| mime.as_str().eq_ignore_ascii_case("text/plain"))
-    });
+    let maybe_text_rep = snapshot
+        .representations
+        .iter()
+        .find(|rep| rep.mime.as_ref().is_some_and(|m| m.is_text_plain()));
 
     let Some(text_rep) = maybe_text_rep else {
         return Ok(None);
@@ -984,7 +986,7 @@ fn is_single_text_plain_snapshot(snapshot: &SystemClipboardSnapshot) -> bool {
     snapshot.representations[0]
         .mime
         .as_ref()
-        .is_some_and(|mime| mime.as_str().eq_ignore_ascii_case("text/plain"))
+        .is_some_and(|m| m.is_text_plain())
 }
 
 fn is_single_image_snapshot(snapshot: &SystemClipboardSnapshot) -> bool {
@@ -995,7 +997,7 @@ fn is_single_image_snapshot(snapshot: &SystemClipboardSnapshot) -> bool {
     snapshot.representations[0]
         .mime
         .as_ref()
-        .is_some_and(|mime| mime.as_str().starts_with("image/"))
+        .is_some_and(|m| m.is_image())
 }
 
 fn write_text_windows_native(text: &str) -> Result<()> {
@@ -1160,10 +1162,13 @@ mod tests {
     fn resolves_text_rtf_from_format_id() {
         // 与 common.rs::read_snapshot 写库时使用的 format_id="rtf" 对齐；
         // 与 macos.rs 同名测试镜像，保证两个平台的 multi-rep 派发结果一致。
-        assert_eq!(resolve_multi_rep_mime(&rep("rtf", None)), Some("text/rtf"));
+        assert_eq!(
+            resolve_multi_rep_mime(&rep("rtf", None)),
+            Some(MimeClass::TextRtf)
+        );
         assert_eq!(
             resolve_multi_rep_mime(&rep("public.rtf", None)),
-            Some("text/rtf")
+            Some(MimeClass::TextRtf)
         );
     }
 
@@ -1172,6 +1177,21 @@ mod tests {
         // 显式 mime 必须优先于 format_id 推断（与 macos.rs 对称），
         // 避免被未来的 format_id 重命名意外打回 None。
         let r = rep("unknown-format-id", Some("text/rtf"));
-        assert_eq!(resolve_multi_rep_mime(&r), Some("text/rtf"));
+        assert_eq!(resolve_multi_rep_mime(&r), Some(MimeClass::TextRtf));
+    }
+
+    #[test]
+    fn classify_handles_parameterized_text_mime() {
+        // Regression: Linux upstream advertises `text/plain;charset=utf-8`
+        // (commit 388e65bf). The Windows multi-rep path previously matched
+        // on the bare literal `"text/plain"` and missed the parameterized
+        // form, dropping the rep into the skip-and-log branch — paste
+        // would silently produce nothing on Windows when the synced rep
+        // carried an explicit charset.
+        let r = rep("text", Some("text/plain;charset=utf-8"));
+        assert_eq!(resolve_multi_rep_mime(&r), Some(MimeClass::TextPlain));
+
+        let r = rep("text", Some("Text/Plain; Charset=UTF-8"));
+        assert_eq!(resolve_multi_rep_mime(&r), Some(MimeClass::TextPlain));
     }
 }

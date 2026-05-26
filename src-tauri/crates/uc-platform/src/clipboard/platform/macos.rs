@@ -13,7 +13,10 @@ use objc2_app_kit::{
 use objc2_foundation::{NSArray, NSData};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, info, warn};
-use uc_core::clipboard::{ObservedClipboardRepresentation, SystemClipboardSnapshot};
+use uc_core::clipboard::{
+    format_id_default_mime, ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation,
+    SystemClipboardSnapshot,
+};
 use uc_core::ports::SystemClipboardPort;
 
 /// macOS clipboard implementation using clipboard-rs
@@ -64,54 +67,57 @@ impl SystemClipboardPort for MacOSClipboard {
     }
 }
 
-/// 推断 rep 在 macOS 多 rep 写入路径下的"有效 MIME"。
+/// Classify a rep for the macOS multi-rep write path.
 ///
-/// 与 `common.rs` 单 rep 快路径、`windows.rs::resolve_multi_rep_mime` 保持一致的
-/// 推断表：显式 mime → 使用；否则 format_id 映射。
-///
-/// 例外:image-like format_id 但显式 mime 不是 `image/*` 时,先做字节魔数嗅探,
-/// 失败回退到 format_id 默认。原因见 `common.rs::write_snapshot` 同位置注释。
-fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<&str> {
-    let format_default = match rep.format_id.as_str() {
-        "public.utf8-plain-text" | "public.text" | "NSStringPboardType" | "text" => {
-            Some("text/plain")
-        }
-        "public.html" | "Apple HTML pasteboard type" | "html" => Some("text/html"),
-        // RTF：从 Word / Pages 等富文本源复制时常与 plain text + html 同时出现；
-        // common.rs::read_snapshot 把它存为 format_id="rtf"，mime="text/rtf"。
-        "public.rtf" | "rtf" => Some("text/rtf"),
-        // PixPin 截图 / Windows 端复制图片等场景 format_id 为 "image"，mime 通常为
-        // "image/png"。`common.rs::read_snapshot` 已把图像统一标准化为 PNG，因此 jpeg /
-        // webp / gif 不会出现在 envelope 中（与 windows.rs 保持同样取舍）。
-        "public.png" | "image" => Some("image/png"),
-        "public.tiff" => Some("image/tiff"),
-        // file-list 表示：接收端 materializer 会把 rep.bytes 改写为本机 file:// URI
-        // 列表（每行一条），写入时为每个 URI 生成一个独立 NSPasteboardItem 承载
-        // NSPasteboardTypeFileURL —— Finder / NSDocumentController 识别的规范形式。
-        "public.file-url" | "NSFilenamesPboardType" | "files" => Some("text/uri-list"),
-        _ => None,
-    };
+/// Single source of mapping (shared with `common.rs` single-rep path and
+/// `windows.rs::resolve_multi_rep_mime`):
+/// 1. If the rep has an explicit mime, use it.
+/// 2. Otherwise fall back to `format_id_default_mime` (the project-wide
+///    single source for `format_id → MIME`).
+/// 3. Special case: when the format_id implies `image/*` but the explicit
+///    mime contradicts it (e.g. `application/octet-stream` from an iOS /
+///    SyncClipboard upload that omits Content-Type), recover via byte
+///    magic-number sniff. See `common.rs::write_snapshot` for the historic
+///    incident (IMG_20260508_200644.jpg).
+fn resolve_multi_rep_mime(rep: &ObservedClipboardRepresentation) -> Option<MimeClass> {
+    let format_default = format_id_default_mime(rep.format_id.as_str());
 
-    match (rep.mime.as_deref(), format_default) {
-        (Some(m), Some(default)) if default.starts_with("image/") && !m.starts_with("image/") => {
-            // sniff 路径罕见（要求 image-like format_id + 显式 mime 不是 image/*）；
-            // 即便 rep 是 LocalFile source 读盘失败，也只是退回 format_id 默认 mime,
-            // 不影响后续 setData 分支的实际写入决策。
+    let effective: Option<MimeType> = match (rep.mime.as_ref(), format_default.as_ref()) {
+        (Some(m), Some(default)) if default.is_image() && !m.is_image() => {
             let recovered = rep_bytes(rep)
                 .ok()
                 .and_then(|b| crate::clipboard::common::sniff_image_magic(&b))
-                .unwrap_or(default);
+                .map(|s| MimeType(s.to_string()))
+                .unwrap_or_else(|| default.clone());
             tracing::warn!(
                 format_id = %rep.format_id,
-                wire_mime = m,
-                recovered_mime = recovered,
+                wire_mime = m.as_str(),
+                recovered_mime = recovered.as_str(),
                 "macOS multi-rep: image rep declared non-image mime; recovered via byte sniff/format_id default"
             );
             Some(recovered)
         }
-        (Some(m), _) => Some(m),
-        (None, default) => default,
-    }
+        (Some(m), _) => Some(m.clone()),
+        (None, _) => format_default.clone(),
+    };
+
+    effective.map(|m| m.classify())
+}
+
+/// Whether a [`MimeClass`] can be written through the macOS multi-rep path.
+/// Multi-rep only supports the small set of MIME types that map to a
+/// dedicated `NSPasteboardType*` — anything else is skipped (and logged)
+/// rather than dropped on a non-UTI pasteboard type.
+fn is_multi_rep_writable(class: &MimeClass) -> bool {
+    matches!(
+        class,
+        MimeClass::TextPlain
+            | MimeClass::TextHtml
+            | MimeClass::TextRtf
+            | MimeClass::UriList
+            | MimeClass::Image(ImageKind::Png)
+            | MimeClass::Image(ImageKind::Tiff)
+    )
 }
 
 /// 把 text/uri-list rep 的字节解析为每行一条 URI 字符串。
@@ -203,17 +209,10 @@ fn make_nsdata(bytes: &[u8]) -> Retained<NSData> {
 pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> Result<()> {
     // 预扫描：snapshot 中至少要有一条可写 rep（text/plain、text/html、text/uri-list、
     // image/png 或 image/tiff）。否则直接 bail，不打开 / 不 clear pasteboard。
-    let has_writable = snapshot.representations.iter().any(|rep| {
-        matches!(
-            resolve_multi_rep_mime(rep),
-            Some("text/plain")
-                | Some("text/html")
-                | Some("text/rtf")
-                | Some("text/uri-list")
-                | Some("image/png")
-                | Some("image/tiff")
-        )
-    });
+    let has_writable = snapshot
+        .representations
+        .iter()
+        .any(|rep| resolve_multi_rep_mime(rep).is_some_and(|c| is_multi_rep_writable(&c)));
 
     if !has_writable {
         let skipped: Vec<String> = snapshot
@@ -261,7 +260,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
 
     for rep in &snapshot.representations {
         match resolve_multi_rep_mime(rep) {
-            Some("text/plain") => {
+            Some(MimeClass::TextPlain) => {
                 // text/plain 的字节是 UTF-8，NSPasteboardTypeString 期望 UTF-8 字节，
                 // 直接写原始字节，不经 NSString 转换（避免对非法 UTF-8 误报）。
                 let bytes = match rep_bytes(rep) {
@@ -292,7 +291,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                     skipped.push(rep.format_id.as_str().to_string());
                 }
             }
-            Some("text/html") => {
+            Some(MimeClass::TextHtml) => {
                 let bytes = match rep_bytes(rep) {
                     Ok(b) => b,
                     Err(err) => {
@@ -320,7 +319,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                     skipped.push(rep.format_id.as_str().to_string());
                 }
             }
-            Some("text/rtf") => {
+            Some(MimeClass::TextRtf) => {
                 // RTF 与 plain/html 同属"同一份内容的多种文本表示"，合并到 text_item。
                 // Word / Pages / 写字板等富文本目的地优先读 RTF；纯文本目的地（终端 /
                 // TextEdit 纯文本模式）继续用 NSPasteboardTypeString。原始 RTF 字节是
@@ -352,7 +351,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                     skipped.push(rep.format_id.as_str().to_string());
                 }
             }
-            Some("image/png") => {
+            Some(MimeClass::Image(ImageKind::Png)) => {
                 // image rep 独立成一个 NSPasteboardItem，不合并进 text_item。
                 // 同一 item 的多个 type 在 NSPasteboard 语义里表达"同一份内容的多种表示"，
                 // 把 PNG bytes 与 plain text 混在一个 item 会让 reader 误判一致性。
@@ -388,7 +387,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                     skipped.push(rep.format_id.as_str().to_string());
                 }
             }
-            Some("image/tiff") => {
+            Some(MimeClass::Image(ImageKind::Tiff)) => {
                 let item: Retained<NSPasteboardItem> = NSPasteboardItem::new();
                 let bytes = match rep_bytes(rep) {
                     Ok(b) => b,
@@ -419,7 +418,7 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
                     skipped.push(rep.format_id.as_str().to_string());
                 }
             }
-            Some("text/uri-list") => {
+            Some(MimeClass::UriList) => {
                 let bytes = match rep_bytes(rep) {
                     Ok(b) => b,
                     Err(err) => {
@@ -475,7 +474,8 @@ pub(crate) fn write_snapshot_multi_macos(snapshot: SystemClipboardSnapshot) -> R
             other => {
                 info!(
                     format_id = %rep.format_id,
-                    mime = ?other,
+                    rep_mime = ?rep.mime.as_ref().map(|m| m.as_str()),
+                    classified = ?other,
                     bytes = rep.size_bytes(),
                     "macOS 多 rep 写入：跳过不支持的 rep（当前支持 text/plain, text/html, text/rtf, text/uri-list, image/png, image/tiff）"
                 );
@@ -572,11 +572,11 @@ mod tests {
         // PixPin 截图 / common.rs 标准化后的 format_id 路径。
         assert_eq!(
             resolve_multi_rep_mime(&rep("public.png", None)),
-            Some("image/png")
+            Some(MimeClass::Image(ImageKind::Png))
         );
         assert_eq!(
             resolve_multi_rep_mime(&rep("image", None)),
-            Some("image/png")
+            Some(MimeClass::Image(ImageKind::Png))
         );
     }
 
@@ -584,7 +584,7 @@ mod tests {
     fn resolves_image_tiff_from_format_id() {
         assert_eq!(
             resolve_multi_rep_mime(&rep("public.tiff", None)),
-            Some("image/tiff")
+            Some(MimeClass::Image(ImageKind::Tiff))
         );
     }
 
@@ -592,16 +592,22 @@ mod tests {
     fn explicit_image_mime_takes_priority_over_format_id() {
         // 显式 mime 优先于 format_id 推断（与 windows.rs 对称）。
         let r = rep("unknown-format-id", Some("image/png"));
-        assert_eq!(resolve_multi_rep_mime(&r), Some("image/png"));
+        assert_eq!(
+            resolve_multi_rep_mime(&r),
+            Some(MimeClass::Image(ImageKind::Png))
+        );
     }
 
     #[test]
     fn resolves_text_rtf_from_format_id() {
         // 与 common.rs::read_snapshot 写库时使用的 format_id="rtf" 对齐。
-        assert_eq!(resolve_multi_rep_mime(&rep("rtf", None)), Some("text/rtf"));
+        assert_eq!(
+            resolve_multi_rep_mime(&rep("rtf", None)),
+            Some(MimeClass::TextRtf)
+        );
         assert_eq!(
             resolve_multi_rep_mime(&rep("public.rtf", None)),
-            Some("text/rtf")
+            Some(MimeClass::TextRtf)
         );
     }
 
@@ -610,7 +616,7 @@ mod tests {
         // 上游（common.rs）总会给 RTF rep 显式打 mime="text/rtf"；显式 mime 必须优先
         // 于 format_id 推断，避免被未来的 format_id 重命名意外打回 None。
         let r = rep("unknown-format-id", Some("text/rtf"));
-        assert_eq!(resolve_multi_rep_mime(&r), Some("text/rtf"));
+        assert_eq!(resolve_multi_rep_mime(&r), Some(MimeClass::TextRtf));
     }
 
     #[test]
@@ -620,6 +626,21 @@ mod tests {
         assert_eq!(resolve_multi_rep_mime(&rep("DataObject", None)), None);
         assert_eq!(resolve_multi_rep_mime(&rep("PixPinData", None)), None);
         assert_eq!(resolve_multi_rep_mime(&rep("Ole Private Data", None)), None);
+    }
+
+    #[test]
+    fn classify_handles_parameterized_text_mime() {
+        // Regression: Linux upstream advertises `text/plain;charset=utf-8`
+        // (commit 388e65bf). Before this refactor the macOS multi-rep
+        // path matched on the bare literal `"text/plain"` and missed the
+        // parameterized form, dropping the rep into the skip-and-log
+        // branch. The classifier must normalize this so Cmd+V keeps
+        // working for cross-platform synced text.
+        let r = rep("text", Some("text/plain;charset=utf-8"));
+        assert_eq!(resolve_multi_rep_mime(&r), Some(MimeClass::TextPlain));
+
+        let r = rep("text", Some("Text/Plain; Charset=UTF-8"));
+        assert_eq!(resolve_multi_rep_mime(&r), Some(MimeClass::TextPlain));
     }
 
     // `rep_bytes` 自身的回归测试在 `crate::clipboard::payload::tests` 里（与 helper

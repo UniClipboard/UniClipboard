@@ -18,25 +18,22 @@
 //!   4. 成功 6h ± 15min jitter；失败 30min（Q9：固定，不是指数 backoff）
 //! - 任一 sleep 内被 cancellation token 打断 → 立即退出
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use rand::Rng;
 use tauri::{AppHandle, Manager};
-use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 use uc_core::ports::{SettingsPort, SetupStatusPort};
 use uc_core::settings::channel::detect_channel;
 use uc_core::settings::model::UpdateChannel;
 use uc_observability::analytics::{
-    AnalyticsPort, Event, InstallKind as AnalyticsInstallKind, NotificationDeliveryStatus,
-    UpdateAction, UpdateActionOutcome, UpdateCheckOutcome, UpdateCheckSource,
+    Event, UpdateAction, UpdateActionOutcome, UpdateCheckOutcome, UpdateCheckSource,
 };
 
 use super::last_check_at::LastCheckAt;
-use super::last_notified::LastNotifiedUpdateStore;
+use super::notify_context::NotifyContext;
 use super::window::open_or_focus_updater_window;
 use crate::commands::updater::{
     classify_check_failure, detect_install_kind, do_check_for_update, do_download_update,
@@ -57,17 +54,13 @@ pub(crate) const FAILURE_RETRY_INTERVAL: Duration = Duration::from_secs(30 * 60)
 /// 持有 strong refs；scheduler task 生命周期由 `CancellationToken` 与
 /// `task_registry.shutdown()` 联合管理（见 `run.rs:589` ExitRequested
 /// 路径，Phase 3C 接入）。
+///
+/// 与"通知/弹窗/去重"相关的依赖打包在 [`NotifyContext`] 里，scheduler
+/// 主循环和 `window_show_check` 通过 `Arc<NotifyContext>` 共享同一份。
 pub struct SchedulerDeps {
-    pub app_handle: AppHandle,
     pub settings_port: Arc<dyn SettingsPort>,
     pub setup_status_port: Arc<dyn SetupStatusPort>,
-    pub analytics: Arc<dyn AnalyticsPort>,
-    /// 已通知版本去重存储——`Available` 分支查 / 写。
-    pub last_notified: Arc<Mutex<LastNotifiedUpdateStore>>,
-    /// `last_notified.record(...)` 落盘所需的文件路径，由 `run.rs` 从
-    /// `AppPaths::last_notified_update_path()` 解析一次后传入，避免每次
-    /// 落盘都重新拼路径。
-    pub last_notified_path: PathBuf,
+    pub notify: Arc<NotifyContext>,
 }
 
 /// 启动 scheduler 主循环。调用方 `run.rs:480` 内 `tauri::async_runtime::spawn`
@@ -181,9 +174,9 @@ async fn run_one_iteration(
         return IterationOutcome::Success;
     }
 
-    let app_version = deps.app_handle.package_info().version.to_string();
+    let app_version = deps.notify.app_handle.package_info().version.to_string();
     let resolved_channel = resolve_channel(settings.general.update_channel.clone(), &app_version);
-    let app = deps.app_handle.clone();
+    let app = deps.notify.app_handle.clone();
     let pending = app.state::<PendingUpdate>();
     let result = do_check_for_update(&app, Some(resolved_channel.clone()), pending.inner()).await;
     // Phase 5B: 任何 source 的 check 完成（成功或失败）都标记时间戳，让
@@ -202,21 +195,17 @@ async fn run_one_iteration(
     // 是 (notification_shown?, action_invoked Started?, check_performed,
     // action_invoked Terminal?)——与 manual 路径相符。
     if let Ok(Some(metadata)) = &result {
-        let window_opened = notify_if_new_version(
-            deps,
-            &resolved_channel,
-            &metadata.version,
-            settings.general.language.as_deref(),
-            install_kind,
-        )
-        .await;
+        let window_opened = deps
+            .notify
+            .notify_if_new_version(&resolved_channel, &metadata.version, install_kind)
+            .await;
         if settings.general.auto_download_update && should_auto_download(install_kind_raw) {
             let downloaded_to_ready = auto_download(deps, &app, pending.inner()).await;
             // 兜底：去重让窗口没弹（之前的进程通知过这版本），但本进程
             // 又新下到了 Ready。用户从未在本次会话里见过更新提示——
             // 此时再开一次窗口，UI 会显示 "已下载，立即安装"。
             if downloaded_to_ready && !window_opened {
-                if let Err(err) = open_or_focus_updater_window(&deps.app_handle, false) {
+                if let Err(err) = open_or_focus_updater_window(&deps.notify.app_handle, false) {
                     warn!(
                         target: "update_scheduler",
                         error = %err,
@@ -245,7 +234,7 @@ async fn run_one_iteration(
         ),
     };
 
-    deps.analytics.capture(Event::UpdateCheckPerformed {
+    deps.notify.analytics.capture(Event::UpdateCheckPerformed {
         source: UpdateCheckSource::Scheduled,
         outcome,
         failure_kind,
@@ -280,76 +269,6 @@ pub(crate) fn should_auto_download(install_kind: InstallKind) -> bool {
     )
 }
 
-/// Available 分支：若 (channel, version) 未通知过，弹出 Sparkle 风格更新
-/// 窗口，emit `update_notification_shown`，仅在窗口成功创建后 `record` 持久化。
-///
-/// 返回 `true` 表示这次确实打开（或聚焦了）窗口，`false` 表示被去重 store
-/// short-circuit 或 builder 失败。调用方用这个布尔值判断是否需要 Ready
-/// 阶段兜底再开一次（见 scheduler iteration）。
-///
-/// `delivery_status` 字段语义被复用：`Sent` 表示窗口已打开，`SendFailed`
-/// 表示 `WebviewWindowBuilder::build` 失败（OS 资源耗尽 / 平台异常）。
-/// `language` 参数当前未使用——窗口内文案由前端 i18n 决定，保留参数避免
-/// 修改调用点签名，等通知 schema 整体迁移时再清理。
-async fn notify_if_new_version(
-    deps: &SchedulerDeps,
-    channel: &UpdateChannel,
-    version: &str,
-    _language: Option<&str>,
-    install_kind: AnalyticsInstallKind,
-) -> bool {
-    let already_notified = {
-        let store = deps.last_notified.lock().await;
-        store.contains(channel, version)
-    };
-    if already_notified {
-        debug!(
-            target: "update_scheduler",
-            channel = ?channel,
-            version,
-            "version already notified; skipping updater window open"
-        );
-        return false;
-    }
-
-    let delivery = match open_or_focus_updater_window(&deps.app_handle, false) {
-        Ok(()) => NotificationDeliveryStatus::Sent,
-        Err(err) => {
-            warn!(
-                target: "update_scheduler",
-                error = %err,
-                "failed to open updater window"
-            );
-            NotificationDeliveryStatus::SendFailed
-        }
-    };
-    deps.analytics.capture(Event::UpdateNotificationShown {
-        version: version.to_string(),
-        delivery_status: delivery,
-        install_kind,
-    });
-
-    let opened = matches!(delivery, NotificationDeliveryStatus::Sent);
-    if opened {
-        let mut store = deps.last_notified.lock().await;
-        if let Err(err) = store
-            .record(
-                channel.clone(),
-                version.to_string(),
-                &deps.last_notified_path,
-            )
-            .await
-        {
-            warn!(
-                target: "update_scheduler",
-                error = %err,
-                "failed to persist last_notified_update.json"
-            );
-        }
-    }
-    opened
-}
-
 /// 触发 in-place 自动下载，emit `update_action_invoked` Started + terminal 配对。
 ///
 /// 与 `commands/updater.rs::download_update` Tauri command body 完全同
@@ -364,7 +283,7 @@ async fn auto_download(deps: &SchedulerDeps, app: &AppHandle, pending: &PendingU
 
     let did_start = !matches!(result, Err(DownloadError::Precondition(_)));
     if did_start {
-        deps.analytics.capture(Event::UpdateActionInvoked {
+        deps.notify.analytics.capture(Event::UpdateActionInvoked {
             action: UpdateAction::DownloadBg,
             outcome: UpdateActionOutcome::Started,
             error_kind: None,
@@ -378,7 +297,7 @@ async fn auto_download(deps: &SchedulerDeps, app: &AppHandle, pending: &PendingU
         Err(DownloadError::Precondition(_)) => None,
     };
     if let Some(outcome) = terminal {
-        deps.analytics.capture(Event::UpdateActionInvoked {
+        deps.notify.analytics.capture(Event::UpdateActionInvoked {
             action: UpdateAction::DownloadBg,
             outcome,
             error_kind: result

@@ -8,12 +8,14 @@
 
 pub mod last_check_at;
 pub mod last_notified;
+pub mod notify_context;
 pub mod scheduler;
 pub mod window;
 pub mod window_show_check;
 
 pub use last_check_at::LastCheckAt;
 pub use last_notified::LastNotifiedUpdateStore;
+pub use notify_context::NotifyContext;
 pub use scheduler::{run, SchedulerDeps};
 pub use window::{open_or_focus_updater_window, UPDATER_WINDOW_LABEL};
 pub use window_show_check::maybe_trigger_window_show_check;

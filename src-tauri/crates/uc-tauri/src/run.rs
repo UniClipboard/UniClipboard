@@ -606,13 +606,20 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     &last_notified_path,
                 )
                 .await;
-                let scheduler_deps = crate::update_scheduler::SchedulerDeps {
+                // 同一个 Arc<NotifyContext> 同时给 scheduler 和
+                // window_show_check 用：app.manage 一份，SchedulerDeps 收一份。
+                // 共享意味着去重 mutex / 落盘路径 / analytics 出口完全一致。
+                let notify_ctx = Arc::new(crate::update_scheduler::NotifyContext {
                     app_handle: app_handle_for_startup.clone(),
-                    settings_port: runtime.settings_port(),
-                    setup_status_port: runtime.setup_status_port(),
                     analytics: runtime.analytics(),
                     last_notified: Arc::new(tokio::sync::Mutex::new(store)),
                     last_notified_path,
+                });
+                app_handle_for_startup.manage(notify_ctx.clone());
+                let scheduler_deps = crate::update_scheduler::SchedulerDeps {
+                    settings_port: runtime.settings_port(),
+                    setup_status_port: runtime.setup_status_port(),
+                    notify: notify_ctx,
                 };
                 runtime
                     .task_registry()

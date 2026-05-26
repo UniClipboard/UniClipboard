@@ -10,10 +10,11 @@
 //!
 //! ## 范围
 //!
-//! 本 helper 只做 **检查 + telemetry**——不发系统通知、不自动下载：
-//! - 用户已经打开主窗口，sidebar 更新指示器会因为 `PendingUpdate` state 变化
-//!   而自动刷新；OS 通知反而成了 UX 噪音
-//! - 自动下载是 scheduler 的职责，下一次 scheduler tick（≤ 6h）会接管
+//! 本 helper 做 **检查 + 弹窗 + telemetry**，但不自动下载：
+//! - 检测到新版本会调 [`notify_if_new_version`] 走 Sparkle 风格更新窗口
+//!   （与 scheduler 主循环共用同一段去重逻辑，`last_notified_update.json`
+//!   保证同一 (channel, version) 只弹一次）
+//! - 自动下载仍是 scheduler 的职责，下一次 scheduler tick（≤ 6h）会接管
 //!
 //! ## 调用约束
 //!
@@ -28,11 +29,15 @@
 //! （tray menu open/settings、tray icon click、startup silent_start=false、
 //! startup barrier、macOS dock reopen）。
 
+use std::sync::Arc;
+
 use tauri::{AppHandle, Manager};
 use tracing::{debug, info, warn};
 use uc_observability::analytics::{Event, UpdateCheckOutcome, UpdateCheckSource};
 
 use super::last_check_at::LastCheckAt;
+use super::notify_context::NotifyContext;
+use super::scheduler::resolve_channel;
 use crate::bootstrap::TauriAppRuntime;
 use crate::commands::updater::{
     classify_check_failure, detect_install_kind, do_check_for_update, install_kind_for_telemetry,
@@ -127,12 +132,35 @@ async fn run_window_show_check(app: AppHandle) {
 
     let analytics = runtime.analytics();
     let pending = app.state::<PendingUpdate>();
+    // 与 scheduler 主循环一致：用户在 settings 里指定的 channel 优先，
+    // 否则按 app_version 走 detect_channel 兜底。两条路径共用同一份
+    // resolve_channel 实现，避免去重 key 不一致导致弹窗去重失效。
+    let app_version = app.package_info().version.to_string();
+    let resolved_channel = resolve_channel(settings.general.update_channel.clone(), &app_version);
     info!(target: "update_scheduler", "running window_show check");
-    let result = do_check_for_update(&app, None, pending.inner()).await;
+    let result = do_check_for_update(&app, Some(resolved_channel.clone()), pending.inner()).await;
 
     app.state::<LastCheckAt>().record_now();
 
     let install_kind = install_kind_for_telemetry(detect_install_kind());
+
+    // 找到新版本时也弹更新窗口；走与 scheduler 共享的 NotifyContext，
+    // 同一个 (channel, version) 只弹一次，用户每 30min 重开主窗口
+    // 不会被骚扰。NotifyContext 由 run.rs setup 阶段 mount 到 app state；
+    // 未挂载视为前置 wiring 缺失，warn 后回退到"只发 telemetry"老行为。
+    if let Ok(Some(metadata)) = &result {
+        match app.try_state::<Arc<NotifyContext>>() {
+            Some(ctx) => {
+                ctx.notify_if_new_version(&resolved_channel, &metadata.version, install_kind)
+                    .await;
+            }
+            None => warn!(
+                target: "update_scheduler",
+                "NotifyContext not mounted; window_show check found update but cannot dedup/notify"
+            ),
+        }
+    }
+
     let (outcome, failure_kind) = match &result {
         Ok(Some(_)) => (UpdateCheckOutcome::Available, None),
         Ok(None) => (UpdateCheckOutcome::UpToDate, None),

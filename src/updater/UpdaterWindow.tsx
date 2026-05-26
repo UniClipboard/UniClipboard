@@ -14,6 +14,7 @@ import {
 } from '@/api/updater'
 import { Progress } from '@/components/ui/progress'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
+import { useThemeSync } from '@/hooks/useThemeSync'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
@@ -63,6 +64,12 @@ const isDevPreview = (): boolean => {
 }
 
 const UpdaterWindow: React.FC = () => {
+  // Independent webview — no SettingContext here, so pull theme straight from
+  // the daemon (same approach as the quick panel). Falls back to system
+  // prefers-color-scheme if settings load fails (e.g. dev preview without
+  // daemon).
+  useThemeSync()
+
   const { t } = useTranslation()
   const [state, setState] = useState<UpdateState>(initialState)
   const [cancelling, setCancelling] = useState(false)

@@ -105,7 +105,7 @@ Visit the [GitHub Releases](https://github.com/UniClipboard/UniClipboard/release
 Don't want to pick a package by hand? One command does it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash
+curl -fsSL https://uniclipboard.app/install.sh | bash
 ```
 
 The script detects OS and CPU automatically:
@@ -117,10 +117,10 @@ Common flags:
 
 ```bash
 # Pin a specific version
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --version v0.9.0
+curl -fsSL https://uniclipboard.app/install.sh | bash -s -- --version v0.9.0
 
 # Force AppImage (rootless even when sudo is available)
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --format appimage
+curl -fsSL https://uniclipboard.app/install.sh | bash -s -- --format appimage
 ```
 
 Uninstall with the matching script:

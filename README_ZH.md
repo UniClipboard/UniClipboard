@@ -105,7 +105,7 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 不想手动挑包？一行命令搞定：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash
+curl -fsSL https://uniclipboard.app/install.sh | bash
 ```
 
 脚本会自动识别系统与架构：
@@ -117,10 +117,10 @@ curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scri
 
 ```bash
 # 锁定版本
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --version v0.9.0
+curl -fsSL https://uniclipboard.app/install.sh | bash -s -- --version v0.9.0
 
 # 强制 AppImage（即使有 sudo，也免 root 装到用户目录）
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --format appimage
+curl -fsSL https://uniclipboard.app/install.sh | bash -s -- --format appimage
 ```
 
 卸载使用对应的卸载脚本：

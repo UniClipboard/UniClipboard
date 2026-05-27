@@ -18,7 +18,7 @@ Tagged pre-releases carry an `-alpha.N` suffix and are flagged
 In a hurry? One command picks the right artefact for your OS and CPU:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash
+curl -fsSL https://uniclipboard.app/install.sh | bash
 ```
 
 What it does:
@@ -30,10 +30,10 @@ Common flags:
 
 ```bash
 # Pin a specific version
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --version v0.9.0
+curl -fsSL https://uniclipboard.app/install.sh | bash -s -- --version v0.9.0
 
 # Force AppImage (rootless even when sudo is available)
-curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash -s -- --format appimage
+curl -fsSL https://uniclipboard.app/install.sh | bash -s -- --format appimage
 ```
 
 To uninstall, use the matching script — add `--purge` to also remove data, config, and cache, or `--dry-run` to preview without deleting:

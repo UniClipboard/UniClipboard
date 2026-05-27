@@ -3,7 +3,7 @@
 # UniClipboard one-shot installer (Linux / macOS)
 #
 # Usage (pick one):
-#   curl -fsSL https://raw.githubusercontent.com/UniClipboard/UniClipboard/main/scripts/install.sh | bash
+#   curl -fsSL https://uniclipboard.app/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --version v0.9.0
 #   curl -fsSL .../install.sh | bash -s -- --format appimage
 #   curl -fsSL .../install.sh | bash -s -- --prefix "$HOME/Applications"   # macOS, user-level

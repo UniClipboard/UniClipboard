@@ -64,14 +64,42 @@ impl std::ops::Deref for SnapshotHash {
     }
 }
 
+/// Sanity-check that a `mime` field carries an RFC-style media type
+/// (`type/subtype`) rather than a platform-native format identifier
+/// (NSPasteboard UTI like `public.utf8-plain-text`, X11 atoms,
+/// Windows CF_* short tags). The engine must only see RFC MIME;
+/// platform identifiers belong in `format_id`.
+///
+/// Cheap heuristic, not a full RFC 6838 validator: requires a `/`
+/// separator and rejects the `public.` UTI namespace. Anything that
+/// passes this check is treated as engine-compatible.
+fn is_rfc_mime(mime: &MimeType) -> bool {
+    let s = mime.as_str();
+    s.contains('/') && !s.trim_start().to_ascii_lowercase().starts_with("public.")
+}
+
 impl ObservedClipboardRepresentation {
     /// 构造一个内存字节 rep。
+    ///
+    /// Contract: `mime`, when present, must be an RFC media type
+    /// (e.g. `text/plain`, `image/png`) — never a platform-native
+    /// format identifier such as `public.utf8-plain-text`. Capture
+    /// adapters must translate platform identifiers to RFC MIME at
+    /// the boundary; the engine layer relies on this invariant when
+    /// classifying reps via `MimeClass`.
     pub fn new(
         id: RepresentationId,
         format_id: FormatId,
         mime: Option<MimeType>,
         bytes: Vec<u8>,
     ) -> Self {
+        debug_assert!(
+            mime.as_ref().map_or(true, is_rfc_mime),
+            "ObservedClipboardRepresentation::new: `mime` must be an RFC media type \
+             (got {:?}); platform format identifiers belong in `format_id` and must \
+             be translated at the capture boundary.",
+            mime
+        );
         Self {
             id,
             format_id,
@@ -85,6 +113,14 @@ impl ObservedClipboardRepresentation {
     ///
     /// `size_bytes` 应来自调用方 `fs::metadata` 的 `len()`,作为 declared 字段;真正的 hash
     /// 计算会在 `content_hash()` 调用时流式读取文件。
+    ///
+    /// `mime` follows the same RFC-MIME contract as [`Self::new`].
+    ///
+    /// Mobile note: `LocalFile` is a desktop-only optimization for
+    /// capturing user files referenced by the OS clipboard (e.g.
+    /// Finder copy of a large image). Mobile hosts do not get user
+    /// file-system handles from their clipboard APIs and must always
+    /// produce `Inline` reps via [`Self::new`].
     pub fn new_local_file(
         id: RepresentationId,
         format_id: FormatId,
@@ -92,6 +128,13 @@ impl ObservedClipboardRepresentation {
         path: PathBuf,
         size_bytes: u64,
     ) -> Self {
+        debug_assert!(
+            mime.as_ref().map_or(true, is_rfc_mime),
+            "ObservedClipboardRepresentation::new_local_file: `mime` must be an \
+             RFC media type (got {:?}); platform format identifiers belong in \
+             `format_id` and must be translated at the capture boundary.",
+            mime
+        );
         Self {
             id,
             format_id,

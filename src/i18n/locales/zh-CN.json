@@ -934,7 +934,12 @@
         "empty": {
           "title": "暂无已配对设备"
         },
-        "addButton": "添加设备"
+        "addButton": "添加设备",
+        "lastSeen": {
+          "never": "从未活动",
+          "justNow": "刚刚",
+          "label": "最近活动 · {{rel}}"
+        }
       },
       "add": {
         "title": "添加设备",
@@ -1039,6 +1044,20 @@
           "confirmSaved": "我已保存新密码",
           "close": "关闭",
           "closeBlocked": "请先勾选「我已保存新密码」"
+        }
+      },
+      "deviceDialog": {
+        "sections": {
+          "serverAddress": "连接信息",
+          "info": "设备信息"
+        },
+        "qrPlaceholder": "服务端只保存密码哈希，无法重新生成扫码二维码。点「修改密码」生成新密码后即可在此扫码。",
+        "fields": {
+          "createdAt": "添加时间",
+          "lastSeen": "最近活动",
+          "lastSeenIp": "最近来源 IP",
+          "reportedName": "客户端名称",
+          "reportedOs": "客户端系统"
         }
       },
       "errors": {

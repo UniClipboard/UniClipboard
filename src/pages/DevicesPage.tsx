@@ -22,18 +22,16 @@ import {
   Cable,
   CheckCircle2,
   ChevronRight,
-  KeyRound,
   Pause,
   Plus,
   RefreshCw,
   Settings2,
   ShieldCheck,
   Smartphone,
-  Trash2,
   Wifi,
   WifiOff,
 } from 'lucide-react'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { refreshPresence } from '@/api/daemon'
 import type { SpaceMember } from '@/api/daemon/members'
@@ -47,7 +45,6 @@ import {
   type MobileSyncError,
   type MobileSyncSettingsView,
   type RegisterMobileDeviceResult,
-  type RotateMobilePasswordResult,
 } from '@/api/tauri-command/mobile_sync'
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDialog'
@@ -56,9 +53,8 @@ import { getDeviceIcon } from '@/components/device/device-utils'
 import DeviceSettingsDialog from '@/components/device/DeviceSettingsDialog'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
 import MobileSyncCredentialModal from '@/components/device/MobileSyncCredentialModal'
+import MobileSyncDeviceDialog from '@/components/device/MobileSyncDeviceDialog'
 import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
-import RotatedPasswordModal from '@/components/device/RotatedPasswordModal'
-import RotateMobilePasswordDialog from '@/components/device/RotateMobilePasswordDialog'
 import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
 import UnpairAlertDialog from '@/components/device/UnpairAlertDialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -417,10 +413,9 @@ const DeviceTabs: React.FC = () => {
     settingsSheetOpen,
     enableConfirmOpen,
     credentialPayload,
-    rotateTarget,
-    rotatedPayload,
     revokeTarget,
     revokeBusy,
+    detailDevice: mobileDetailDevice,
     actions: mobileActions,
   } = useMobileDevices()
 
@@ -529,8 +524,7 @@ const DeviceTabs: React.FC = () => {
           ) : (
             <MobileGrid
               mobiles={mobileDevices}
-              onRotate={mobileActions.requestRotate}
-              onRevoke={mobileActions.requestRevoke}
+              onSelect={mobileActions.openDetail}
               onAdd={mobileActions.handleAddClick}
             />
           )}
@@ -572,21 +566,20 @@ const DeviceTabs: React.FC = () => {
         onOpenChange={mobileActions.setAddDialogOpen}
         onSuccess={mobileActions.handleAddSuccess}
       />
+      <MobileSyncDeviceDialog
+        open={mobileDetailDevice !== null}
+        onOpenChange={open => {
+          if (!open) mobileActions.closeDetail()
+        }}
+        device={mobileDetailDevice}
+        settings={mobileSettings}
+        onRevoke={mobileActions.requestRevoke}
+        onRotated={mobileActions.reload}
+      />
       <MobileSyncCredentialModal
         payload={credentialPayload}
         onComplete={mobileActions.completeCredential}
       />
-      <RotateMobilePasswordDialog
-        open={rotateTarget !== null}
-        onOpenChange={open => {
-          if (!open) mobileActions.clearRotateTarget()
-        }}
-        device={
-          rotateTarget ? { deviceId: rotateTarget.deviceId, label: rotateTarget.label } : null
-        }
-        onSuccess={mobileActions.handleRotateSuccess}
-      />
-      <RotatedPasswordModal payload={rotatedPayload} onClose={mobileActions.clearRotatedPayload} />
 
       <AlertDialog
         open={!!revokeTarget}
@@ -775,22 +768,16 @@ const ChannelChip: React.FC<ChannelChipProps> = ({ icon: Icon, label, tone }) =>
 
 interface MobileGridProps {
   mobiles: MobileDeviceView[]
-  onRotate: (device: MobileDeviceView) => void
-  onRevoke: (device: MobileDeviceView) => void
+  onSelect: (device: MobileDeviceView) => void
   onAdd: () => void
 }
 
-const MobileGrid: React.FC<MobileGridProps> = ({ mobiles, onRotate, onRevoke, onAdd }) => {
+const MobileGrid: React.FC<MobileGridProps> = ({ mobiles, onSelect, onAdd }) => {
   const { t } = useTranslation()
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {mobiles.map(mobile => (
-        <MobileCard
-          key={mobile.deviceId}
-          mobile={mobile}
-          onRotate={() => onRotate(mobile)}
-          onRevoke={() => onRevoke(mobile)}
-        />
+        <MobileCard key={mobile.deviceId} mobile={mobile} onSelect={() => onSelect(mobile)} />
       ))}
       <AddCard
         label={t('devices.mobileSync.add.title')}
@@ -805,38 +792,22 @@ const MobileGrid: React.FC<MobileGridProps> = ({ mobiles, onRotate, onRevoke, on
 
 const MobileCard: React.FC<{
   mobile: MobileDeviceView
-  onRotate: () => void
-  onRevoke: () => void
-}> = ({ mobile, onRotate, onRevoke }) => {
+  onSelect: () => void
+}> = ({ mobile, onSelect }) => {
   const { t } = useTranslation()
   const lastSeen = formatLastSeen(mobile.lastSeenAtMs, t)
 
   return (
-    <div className="group relative flex w-full flex-col gap-4 overflow-hidden rounded-2xl border border-border/60 bg-card p-5 text-left transition-all hover:border-border hover:shadow-sm">
+    <button
+      type="button"
+      onClick={onSelect}
+      className="group relative flex w-full flex-col gap-4 overflow-hidden rounded-2xl border border-border/60 bg-card p-5 text-left transition-all hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
       <div className="flex items-start justify-between">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-info/10 text-info">
           <Smartphone className="h-6 w-6" />
         </div>
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onRotate}
-            aria-label={t('devices.mobileSync.rotate.button')}
-            title={t('devices.mobileSync.rotate.button')}
-          >
-            <KeyRound className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onRevoke}
-            aria-label={t('devices.mobileSync.revoke.confirm')}
-            title={t('devices.mobileSync.revoke.confirm')}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
       </div>
 
       <div className="min-w-0">
@@ -849,7 +820,7 @@ const MobileCard: React.FC<{
       <div className="pt-1">
         <span className="text-[11px] text-muted-foreground">{lastSeen}</span>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -889,28 +860,26 @@ interface UseMobileDevicesReturn {
   settingsSheetOpen: boolean
   enableConfirmOpen: boolean
   credentialPayload: RegisterMobileDeviceResult | null
-  rotateTarget: MobileDeviceView | null
-  rotatedPayload: RotateMobilePasswordResult | null
   revokeTarget: MobileDeviceView | null
   revokeBusy: boolean
+  /** 当前在 MobileSyncDeviceDialog 里查看的设备;null = dialog 关闭。 */
+  detailDevice: MobileDeviceView | null
   actions: {
     reload: () => void
     handleAddClick: () => void
     handleEnableSuccess: () => void
     handleAddSuccess: (result: RegisterMobileDeviceResult) => void
-    handleRotateSuccess: (result: RotateMobilePasswordResult) => void
     handleRevokeConfirm: () => Promise<void>
     requestRevoke: (device: MobileDeviceView) => void
-    requestRotate: (device: MobileDeviceView) => void
     completeCredential: () => void
-    clearRotateTarget: () => void
-    clearRotatedPayload: () => void
     clearRevokeTarget: () => void
     setAddDialogOpen: (open: boolean) => void
     setSettingsSheetOpen: (open: boolean) => void
     setEnableConfirmOpen: (open: boolean) => void
     setSettings: (settings: MobileSyncSettingsView | null) => void
     openSettings: () => void
+    openDetail: (device: MobileDeviceView) => void
+    closeDetail: () => void
   }
 }
 
@@ -931,8 +900,11 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
   const [revokeTarget, setRevokeTarget] = useState<MobileDeviceView | null>(null)
   const [revokeBusy, setRevokeBusy] = useState(false)
 
-  const [rotateTarget, setRotateTarget] = useState<MobileDeviceView | null>(null)
-  const [rotatedPayload, setRotatedPayload] = useState<RotateMobilePasswordResult | null>(null)
+  // detail dialog 不存 deviceId 而存整个 view; 列表 reload 后通过 deviceId
+  // 重新 reconcile, 保证 dialog 内的字段始终是最新的服务端快照(关键是
+  // lastSeen / reportedOs 在用户开 dialog 期间可能被 ws 事件更新)。
+  // 改密 / 改密结果都在 dialog 内部组件状态里, 不再上提到 hook。
+  const [detailDeviceId, setDetailDeviceId] = useState<string | null>(null)
 
   const translate = useCallback((err: unknown): string => translateMobileSyncError(t, err), [t])
 
@@ -995,14 +967,6 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
     setCredentialPayload(null)
   }, [])
 
-  const handleRotateSuccess = useCallback(
-    (result: RotateMobilePasswordResult) => {
-      setRotatedPayload(result)
-      void reload()
-    },
-    [reload]
-  )
-
   const handleRevokeConfirm = useCallback(async () => {
     if (!revokeTarget) return
     setRevokeBusy(true)
@@ -1019,6 +983,11 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
     }
   }, [reload, revokeTarget, t, translate])
 
+  const detailDevice = useMemo(
+    () => (detailDeviceId ? (devices.find(d => d.deviceId === detailDeviceId) ?? null) : null),
+    [detailDeviceId, devices]
+  )
+
   return {
     devices,
     devicesError,
@@ -1027,28 +996,25 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
     settingsSheetOpen,
     enableConfirmOpen,
     credentialPayload,
-    rotateTarget,
-    rotatedPayload,
     revokeTarget,
     revokeBusy,
+    detailDevice,
     actions: {
       reload: () => void reload(),
       handleAddClick,
       handleEnableSuccess,
       handleAddSuccess,
-      handleRotateSuccess,
       handleRevokeConfirm,
       requestRevoke: setRevokeTarget,
-      requestRotate: setRotateTarget,
       completeCredential,
-      clearRotateTarget: () => setRotateTarget(null),
-      clearRotatedPayload: () => setRotatedPayload(null),
       clearRevokeTarget: () => setRevokeTarget(null),
       setAddDialogOpen,
       setSettingsSheetOpen,
       setEnableConfirmOpen,
       setSettings,
       openSettings: () => setSettingsSheetOpen(true),
+      openDetail: (device: MobileDeviceView) => setDetailDeviceId(device.deviceId),
+      closeDetail: () => setDetailDeviceId(null),
     },
   }
 }

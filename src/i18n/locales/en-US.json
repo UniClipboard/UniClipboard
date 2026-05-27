@@ -943,7 +943,12 @@
         "empty": {
           "title": "No devices paired yet"
         },
-        "addButton": "Add device"
+        "addButton": "Add device",
+        "lastSeen": {
+          "never": "Never active",
+          "justNow": "just now",
+          "label": "Last active · {{rel}}"
+        }
       },
       "add": {
         "title": "Add device",
@@ -1048,6 +1053,20 @@
           "confirmSaved": "I have saved the new password",
           "close": "Close",
           "closeBlocked": "Confirm \"I have saved the new password\" first"
+        }
+      },
+      "deviceDialog": {
+        "sections": {
+          "serverAddress": "Connection",
+          "info": "Device info"
+        },
+        "qrPlaceholder": "The server only stores a password hash, so the QR code can't be re-generated. Click \"Change password\" to mint a new one and scan it here.",
+        "fields": {
+          "createdAt": "Added at",
+          "lastSeen": "Last active",
+          "lastSeenIp": "Last source IP",
+          "reportedName": "Client name",
+          "reportedOs": "Client OS"
         }
       },
       "errors": {

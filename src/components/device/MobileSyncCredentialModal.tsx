@@ -51,6 +51,7 @@ import {
   type LanInterfaceView,
   type RegisterMobileDeviceResult,
 } from '@/api/tauri-command/mobile_sync'
+import { BaseUrlChip, CopyIconButton } from '@/components/device/MobileSyncBaseUrlChip'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
@@ -63,13 +64,6 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
@@ -319,73 +313,6 @@ const ScanArea: React.FC<ScanAreaProps> = ({
       </div>
 
       <p className="text-center text-xs text-muted-foreground">{connectHint}</p>
-    </div>
-  )
-}
-
-interface BaseUrlChipProps {
-  baseUrl: string
-  interfaces: LanInterfaceView[]
-  port: string
-  selectedHost: string | null
-  onSelect: (host: string) => void
-}
-
-/**
- * BaseUrl chip —— 单 IP 退化为只读 chip, 多 IP 走 dropdown。
- *
- * 单 IP 时不带 ▾, 表明"没什么可选", 避免假装可交互骗用户去点。
- * 多 IP 时 dropdown 列出每条候选并附网卡名, 方便判断"哪一个是 WiFi 段"。
- * 始终带复制按钮 —— 手动输入用户从主区域就能直接复制 URL。
- */
-const BaseUrlChip: React.FC<BaseUrlChipProps> = ({
-  baseUrl,
-  interfaces,
-  port,
-  selectedHost,
-  onSelect,
-}) => {
-  const { t } = useTranslation()
-  // 阈值 > 0:只要有候选就走 dropdown。即使只有 1 项, UI 一致性优先,
-  // 让用户能"打开看清这是仅有的候选"——而不是看不到下拉箭头怀疑是不
-  // 是控件还没初始化好。
-  const hasOptions = interfaces.length > 0 && port !== ''
-
-  return (
-    <div className="flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-card px-2 py-1">
-      {hasOptions ? (
-        <Select
-          value={selectedHost ?? ''}
-          onValueChange={onSelect}
-          aria-label={t('devices.mobileSync.credential.baseUrl.selectAria')}
-        >
-          <SelectTrigger
-            size="sm"
-            className="h-7 min-w-0 gap-1 rounded-none border-0 bg-transparent px-0 py-0 font-mono shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-            aria-label={t('devices.mobileSync.credential.baseUrl.selectAria')}
-          >
-            <SelectValue>
-              <span className="truncate font-mono text-sm">{baseUrl}</span>
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {interfaces.map(iface => {
-              const url = `http://${iface.ipv4}:${port}`
-              return (
-                <SelectItem key={`${iface.name}-${iface.ipv4}`} value={iface.ipv4}>
-                  <div className="flex flex-col items-start gap-0.5">
-                    <span className="font-mono text-sm">{url}</span>
-                    <span className="text-xs text-muted-foreground">{iface.name}</span>
-                  </div>
-                </SelectItem>
-              )
-            })}
-          </SelectContent>
-        </Select>
-      ) : (
-        <span className="truncate font-mono text-sm">{baseUrl}</span>
-      )}
-      <CopyIconButton value={baseUrl} />
     </div>
   )
 }
@@ -683,7 +610,7 @@ const CredentialsCollapsible: React.FC<CredentialsCollapsibleProps> = ({
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// 共用: CredentialField + CopyIconButton
+// CredentialField —— amber 凭据区里的"键 + 值 + 复制"行
 // ────────────────────────────────────────────────────────────────────────
 
 interface CredentialFieldProps {
@@ -720,41 +647,6 @@ const CredentialField: React.FC<CredentialFieldProps> = ({
         <CopyIconButton value={value} />
       </div>
     </div>
-  )
-}
-
-const CopyIconButton: React.FC<{ value: string }> = ({ value }) => {
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      toast.error('Copy failed')
-    }
-  }, [value])
-
-  const label = copied
-    ? t('devices.mobileSync.credential.copied')
-    : t('devices.mobileSync.credential.copy')
-
-  return (
-    <Button
-      type="button"
-      size="icon-sm"
-      variant="ghost"
-      aria-label={label}
-      title={label}
-      onClick={handleCopy}
-    >
-      {copied ? (
-        <Check className="h-3.5 w-3.5 text-emerald-500" />
-      ) : (
-        <Copy className="h-3.5 w-3.5" />
-      )}
-    </Button>
   )
 }
 

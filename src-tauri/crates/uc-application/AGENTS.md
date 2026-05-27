@@ -333,10 +333,18 @@ Windows `CF_UNICODETEXT`、X11 selection target atom 等）只允许出现在
 
 正确做法：
 
-* 需要把 platform-native 标识翻译成 RFC mime，统一调 `uc-platform::clipboard::format_id_mime::format_id_default_mime`
-* 需要把可疑 wire mime 收口成 RFC 形态，调 `uc_core::clipboard::normalize_wire_mime`
-* 文件后缀 → 图片 mime 走 `uc_core::clipboard::image_mime_from_extension`
-* 任何在 application 内部生成 / 改写 rep 的代码，必须保证最终写入 `mime: Option<MimeType>` 的值满足 RFC 形态——`ObservedClipboardRepresentation::new` 的 `debug_assert` 会兜底验证
+* application 层可用的入口（uc-core，三 host 共享）：
+  * 收口可疑 wire mime → `uc_core::clipboard::normalize_wire_mime`
+  * 文件后缀 → 图片 mime → `uc_core::clipboard::image_mime_from_extension`
+* platform-native 标识（UTI / CF_* / X11 atom）→ RFC mime 的翻译表
+  住在 `uc-platform::clipboard::format_id_mime::format_id_default_mime`，**只在
+  桌面适配器内部使用**（属于 `desktop` feature）。application 不直接调用——
+  capture 路径在 platform 层就该把 mime 标好交给 application，wire/DB 边界又
+  各自有 `normalize_wire_mime` 兜底。若 application 真的需要这层翻译，说明
+  rep 的责任划分错位，应该回头把翻译挪回 platform / wire decoder。
+* 任何在 application 内部生成 / 改写 rep 的代码，必须保证最终写入
+  `mime: Option<MimeType>` 的值满足 RFC 形态——`ObservedClipboardRepresentation::new`
+  的 `debug_assert` 会兜底验证
 
 ---
 

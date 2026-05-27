@@ -5,10 +5,11 @@ use tracing::{debug, info, warn};
 #[cfg(target_os = "macos")]
 use uc_core::clipboard::ImageKind;
 use uc_core::clipboard::{
-    format_id_default_mime, MimeClass, MimeType, ObservedClipboardRepresentation,
-    SystemClipboardSnapshot,
+    MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
 use uc_core::ids::RepresentationId;
+
+use crate::clipboard::format_id_mime::format_id_default_mime;
 
 /// 文件头魔数嗅探,返回桌面剪贴板能消费的 `image/*` mime 字符串。
 /// 无法识别返回 None。只读前 12 字节,无内存分配。

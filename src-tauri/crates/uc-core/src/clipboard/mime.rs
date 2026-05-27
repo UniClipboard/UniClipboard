@@ -195,12 +195,14 @@ pub enum ImageKind {
 
 impl MimeClass {
     /// Classify an already-lowercased essence string (no parameters).
+    ///
+    /// Input must be RFC media-type shaped (`type/subtype`). Platform-native
+    /// format identifiers (macOS UTIs, Windows CF_* short tags, X11 atoms)
+    /// must be translated to RFC MIME at the platform/engine boundary —
+    /// the engine intentionally does not recognize UTI strings here.
     fn from_essence(essence: &str) -> Self {
-        // Plain text covers both the standard MIME and the macOS UTI that
-        // sometimes shows up in `mime` fields (notably when an upstream
-        // adapter passes the UTI through verbatim).
         match essence {
-            "text/plain" | "public.utf8-plain-text" | "public.text" => return Self::TextPlain,
+            "text/plain" => return Self::TextPlain,
             "text/html" => return Self::TextHtml,
             "text/rtf" | "application/rtf" => return Self::TextRtf,
             "text/markdown" => return Self::TextMarkdown,
@@ -230,38 +232,6 @@ impl MimeClass {
         }
         Self::Unrecognized
     }
-}
-
-/// Single source of truth: platform format identifiers (NSPasteboard UTIs,
-/// X11/Wayland MIME atoms, internal short tags like `"text"` / `"image"`)
-/// to their default MIME type.
-///
-/// Used by all platform write paths to decide a `rep`'s effective MIME
-/// when its `mime` field is absent. Returning [`None`] means the
-/// format identifier is not recognized as carrying a clipboard-relevant
-/// payload — callers must treat this as "refuse to write" rather than
-/// guessing.
-pub fn format_id_default_mime(format_id: &str) -> Option<MimeType> {
-    let normalized = format_id.trim().to_ascii_lowercase();
-    let s: &str = match normalized.as_str() {
-        // Text plain (UTIs, Windows clipboard short tag, generic "text")
-        "public.utf8-plain-text" | "public.text" | "nsstringpboardtype" | "text" => "text/plain",
-        // HTML
-        "public.html" | "apple html pasteboard type" | "html" => "text/html",
-        // RTF
-        "public.rtf" | "rtf" => "text/rtf",
-        // Image: format_id "image" is the project-internal canonical
-        // identifier for image reps; both `image` and `public.png`
-        // default to PNG because image normalization upstream re-encodes
-        // everything to PNG (see uc-infra/src/clipboard/background_blob_worker.rs).
-        "public.png" | "image" => "image/png",
-        "public.tiff" => "image/tiff",
-        "public.jpeg" | "public.jpg" => "image/jpeg",
-        // File URI list
-        "public.file-url" | "nsfilenamespboardtype" | "files" => "text/uri-list",
-        _ => return None,
-    };
-    Some(MimeType(s.to_string()))
 }
 
 #[cfg(test)]
@@ -312,7 +282,6 @@ mod tests {
             "Text/Plain; Charset=UTF-8",
             "  text/plain ; charset = \"utf-8\" ",
             "TEXT/PLAIN",
-            "public.utf8-plain-text",
         ] {
             assert_eq!(
                 MimeType(s.into()).classify(),
@@ -392,58 +361,6 @@ mod tests {
             MimeClass::Unrecognized
         );
         assert_eq!(MimeType("".into()).classify(), MimeClass::Unrecognized);
-    }
-
-    #[test]
-    fn format_id_default_mime_handles_known_ids() {
-        assert_eq!(
-            format_id_default_mime("text"),
-            Some(MimeType("text/plain".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("public.utf8-plain-text"),
-            Some(MimeType("text/plain".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("NSStringPboardType"),
-            Some(MimeType("text/plain".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("html"),
-            Some(MimeType("text/html".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("Apple HTML pasteboard type"),
-            Some(MimeType("text/html".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("image"),
-            Some(MimeType("image/png".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("public.png"),
-            Some(MimeType("image/png".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("public.tiff"),
-            Some(MimeType("image/tiff".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("files"),
-            Some(MimeType("text/uri-list".into()))
-        );
-        assert_eq!(
-            format_id_default_mime("public.file-url"),
-            Some(MimeType("text/uri-list".into()))
-        );
-        // Trim + case fold so callers don't need to pre-normalize.
-        assert_eq!(
-            format_id_default_mime("  HTML  "),
-            Some(MimeType("text/html".into()))
-        );
-        // Unknown identifier returns None — callers must refuse to write.
-        assert_eq!(format_id_default_mime("application/foo"), None);
-        assert_eq!(format_id_default_mime("unknown-format"), None);
     }
 
     #[test]

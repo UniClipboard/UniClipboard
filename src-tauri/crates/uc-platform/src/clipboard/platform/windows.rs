@@ -8,11 +8,12 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, debug_span, error, info, warn};
 use uc_core::clipboard::{
-    format_id_default_mime, ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation,
-    SystemClipboardSnapshot,
+    ImageKind, MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
 use uc_core::ids::RepresentationId;
 use uc_core::ports::SystemClipboardPort;
+
+use crate::clipboard::format_id_mime::format_id_default_mime;
 
 /// Classify a rep for the Windows multi-rep write path.
 ///

@@ -11,6 +11,7 @@ pub(crate) mod cf_html;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod common;
 pub mod event_loop;
+pub mod format_id_mime;
 #[cfg(target_os = "windows")]
 pub mod image_convert;
 pub mod noop;

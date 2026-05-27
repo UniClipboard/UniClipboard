@@ -109,12 +109,23 @@ impl MimeType {
     /// rather than a platform-native format identifier (macOS UTI like
     /// `public.utf8-plain-text`, Windows CF_* short tag, X11 atom).
     ///
-    /// Cheap structural heuristic: must contain `/` and must not sit in
-    /// the `public.` UTI namespace. Used by `normalize_wire_mime` and by
-    /// the `ObservedClipboardRepresentation` constructor invariant.
+    /// Structural check: after trimming, the value must contain exactly
+    /// one `/` separator with a non-empty type and subtype on each side,
+    /// and the subtype must not sit in the `public.` UTI namespace.
+    /// Used by `normalize_wire_mime` and by the
+    /// `ObservedClipboardRepresentation` constructor invariant.
     pub fn is_rfc_shape(&self) -> bool {
-        let s = self.as_str();
-        s.contains('/') && !s.trim_start().to_ascii_lowercase().starts_with("public.")
+        let s = self.as_str().trim();
+        let Some(idx) = s.find('/') else {
+            return false;
+        };
+        // Exactly one slash, both sides non-empty.
+        if s.rfind('/') != Some(idx) || idx == 0 || idx == s.len() - 1 {
+            return false;
+        }
+        // Defensive: catch UTI-shaped strings that happen to contain a
+        // slash (real RFC subtypes never start with `public.`).
+        !s[idx + 1..].to_ascii_lowercase().starts_with("public.")
     }
 }
 
@@ -427,6 +438,14 @@ mod tests {
         assert!(!MimeType("text".into()).is_rfc_shape());
         assert!(!MimeType("image".into()).is_rfc_shape());
         assert!(!MimeType("NSStringPboardType".into()).is_rfc_shape());
+        // Malformed `type/subtype`: empty side, multiple slashes,
+        // UTI-shaped subtype.
+        assert!(!MimeType("/plain".into()).is_rfc_shape());
+        assert!(!MimeType("text/".into()).is_rfc_shape());
+        assert!(!MimeType("text//plain".into()).is_rfc_shape());
+        assert!(!MimeType("a/b/c".into()).is_rfc_shape());
+        assert!(!MimeType("text/public.csv".into()).is_rfc_shape());
+        assert!(!MimeType("/".into()).is_rfc_shape());
     }
 
     #[test]

@@ -574,7 +574,6 @@ const DeviceTabs: React.FC = () => {
       />
       <MobileSyncCredentialModal
         payload={credentialPayload}
-        onDiscard={mobileActions.discardCredential}
         onComplete={mobileActions.completeCredential}
       />
       <RotateMobilePasswordDialog
@@ -903,7 +902,6 @@ interface UseMobileDevicesReturn {
     handleRevokeConfirm: () => Promise<void>
     requestRevoke: (device: MobileDeviceView) => void
     requestRotate: (device: MobileDeviceView) => void
-    discardCredential: (deviceId: string) => Promise<void>
     completeCredential: () => void
     clearRotateTarget: () => void
     clearRotatedPayload: () => void
@@ -990,22 +988,9 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
     [reload]
   )
 
-  const discardCredential = useCallback(
-    async (deviceId: string) => {
-      // 乐观清空:modal 立即收起,避免用户连点 ✕ 触发第二次 revoke
-      // (第二次会以 DEVICE_NOT_FOUND 失败并弹出无意义错误 toast)。
-      setCredentialPayload(null)
-      try {
-        await revokeMobileDevice(deviceId)
-        await reload()
-      } catch (err) {
-        log.error({ err, deviceId }, 'failed to discard newly registered mobile device')
-        toast.error(translate(err))
-      }
-    },
-    [reload, translate]
-  )
-
+  // "撤销刚注册的设备"已下沉到设备卡片的 revoke 按钮(handleRevokeConfirm)。
+  // 凭据 modal 现在只承担凭据展示 + 配对引导, 关闭路径统一收敛到
+  // completeCredential — 用户后悔时去设备卡片删, 与"在 modal 里点 X"分流。
   const completeCredential = useCallback(() => {
     setCredentialPayload(null)
   }, [])
@@ -1055,7 +1040,6 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
       handleRevokeConfirm,
       requestRevoke: setRevokeTarget,
       requestRotate: setRotateTarget,
-      discardCredential,
       completeCredential,
       clearRotateTarget: () => setRotateTarget(null),
       clearRotatedPayload: () => setRotatedPayload(null),

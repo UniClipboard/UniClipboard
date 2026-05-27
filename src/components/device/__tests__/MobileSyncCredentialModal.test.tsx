@@ -1,30 +1,52 @@
 /**
- * MobileSyncCredentialModal —— 关闭路径与 i18n 行为测试。
+ * MobileSyncCredentialModal —— 关闭路径、骨架结构、备份操作的行为测试。
+ *
+ * 设计后的 modal 取消了:
+ * - "扫码接入 / 安装快捷指令" Tab 切换
+ * - "下载 → 配对" stepper
+ * - 顶部黄色警告横幅 (融入凭据折叠区)
+ * - 「我已保存」勾选门槛
+ * - X = "撤销" (X 改为 onComplete, 撤销下沉到 DevicesPage)
+ *
+ * 维护提醒: 这里断言的文案必须与 src/i18n/locales/en-US.json 里
+ * devices.mobileSync.credential.* 的 key 一一对应。删/改 i18n key 时
+ * 同步删/改对应断言, 否则 CI 会以 "Unable to find an element with..."
+ * 失败。
  */
 
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState, type ReactElement } from 'react'
+import { type ReactElement } from 'react'
 import { I18nextProvider } from 'react-i18next'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
 import MobileSyncCredentialModal from '@/components/device/MobileSyncCredentialModal'
 import i18n from '@/i18n'
 
+// Modal mounts a LAN interface lookup so the user can switch which IP the
+// connect-URI QR points to. The lookup hits Tauri commands at runtime — stub
+// with an empty list to keep these tests focused on close/skeleton behavior
+// (empty list → modal falls back to the read-only baseUrl chip, no dropdown).
+vi.mock('@/api/tauri-command/mobile_sync', async () => {
+  const actual = await vi.importActual<typeof import('@/api/tauri-command/mobile_sync')>(
+    '@/api/tauri-command/mobile_sync'
+  )
+  return {
+    ...actual,
+    listMobileLanInterfaces: vi.fn(() => Promise.resolve([])),
+  }
+})
+
 const mockPayload: RegisterMobileDeviceResult = {
   deviceId: 'device-1',
-  label: 'My iPhone',
+  label: 'My phone',
   clientType: 'ios_shortcut',
   createdAtMs: 1_700_000_000_000,
   baseUrl: 'http://192.168.1.10:42720',
   username: 'user_a',
   password: 'secret-pass',
   installUrl: 'https://www.icloud.com/shortcuts/example',
-  // 阶段 5 起后端多渲染一份 install URL QR, 让"安装快捷指令" tab 能直接扫装。
-  // base64 占位字符串与 qrCodePngBase64 故意不同, 测试要断它俩不能串位。
   installQrCodePngBase64: 'aW5zdGFsbFFy',
-  // 阶段 2 起 QR 编的是 connectUri (uniclipboard://connect?...) 而非 installUrl。
-  // 这里 base64 是占位 — 单测断言 alt 文案而不去解析 PNG 字节。
   connectUri:
     'uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjEwOjQyNzIwIn0',
   qrCodePngBase64: 'iVBORw0KGgo=',
@@ -33,14 +55,8 @@ const mockPayload: RegisterMobileDeviceResult = {
 const renderWithI18n = (ui: ReactElement) =>
   render(<I18nextProvider i18n={i18n}>{ui}</I18nextProvider>)
 
-const defaultHandlers = () => ({
-  onDiscard: vi.fn(),
-  onComplete: vi.fn(),
-})
-
-describe('MobileSyncCredentialModal close behavior', () => {
+describe('MobileSyncCredentialModal', () => {
   let initialLanguage = 'en-US'
-  const originalScrollIntoView = Element.prototype.scrollIntoView
 
   beforeAll(async () => {
     if (!i18n.isInitialized) {
@@ -54,236 +70,205 @@ describe('MobileSyncCredentialModal close behavior', () => {
     }
     initialLanguage = i18n.language
     await i18n.changeLanguage('en-US')
-    Element.prototype.scrollIntoView = vi.fn()
   })
 
   afterAll(async () => {
-    Element.prototype.scrollIntoView = originalScrollIntoView
     await i18n.changeLanguage(initialLanguage)
   })
 
-  it('renders Done as the footer primary action label', () => {
-    const { onDiscard, onComplete } = defaultHandlers()
-    renderWithI18n(
-      <MobileSyncCredentialModal
-        payload={mockPayload}
-        onDiscard={onDiscard}
-        onComplete={onComplete}
-      />
-    )
-
-    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument()
-  })
-
-  it('blocks Done without acknowledgement and shows closeBlocked hint', async () => {
-    const user = userEvent.setup()
-    const { onDiscard, onComplete } = defaultHandlers()
-
-    renderWithI18n(
-      <MobileSyncCredentialModal
-        payload={mockPayload}
-        onDiscard={onDiscard}
-        onComplete={onComplete}
-      />
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Done' }))
-
-    expect(onDiscard).not.toHaveBeenCalled()
-    expect(onComplete).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Confirm "I have saved these credentials" first'
-    )
-    expect(screen.getByText('Device added')).toBeInTheDocument()
-  })
-
-  it('discards via header X without acknowledgement', async () => {
-    const user = userEvent.setup()
-    const { onDiscard, onComplete } = defaultHandlers()
-
-    renderWithI18n(
-      <MobileSyncCredentialModal
-        payload={mockPayload}
-        onDiscard={onDiscard}
-        onComplete={onComplete}
-      />
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Discard registration' }))
-
-    expect(onDiscard).toHaveBeenCalledTimes(1)
-    expect(onDiscard).toHaveBeenCalledWith('device-1')
-    expect(onComplete).not.toHaveBeenCalled()
-  })
-
-  it('completes via Done after acknowledgement checkbox is checked', async () => {
-    const user = userEvent.setup()
-    const { onDiscard, onComplete } = defaultHandlers()
-
-    renderWithI18n(
-      <MobileSyncCredentialModal
-        payload={mockPayload}
-        onDiscard={onDiscard}
-        onComplete={onComplete}
-      />
-    )
-
-    await user.click(screen.getByRole('checkbox', { name: /I have saved these credentials/i }))
-    await user.click(screen.getByRole('button', { name: 'Done' }))
-
-    expect(onComplete).toHaveBeenCalledTimes(1)
-    expect(onDiscard).not.toHaveBeenCalled()
-  })
-
-  it('does not discard on Escape without clicking the header dismiss button', async () => {
-    const user = userEvent.setup()
-    const { onDiscard, onComplete } = defaultHandlers()
-
-    renderWithI18n(
-      <MobileSyncCredentialModal
-        payload={mockPayload}
-        onDiscard={onDiscard}
-        onComplete={onComplete}
-      />
-    )
-
-    await user.keyboard('{Escape}')
-
-    expect(onDiscard).not.toHaveBeenCalled()
-    expect(onComplete).not.toHaveBeenCalled()
-    expect(screen.getByText('Device added')).toBeInTheDocument()
+  // userEvent v14 ships its own in-memory clipboard; the modal calls
+  // `navigator.clipboard.writeText` directly (not through userEvent.copy()).
+  // Ensure navigator.clipboard exists in jsdom, then spy on its writeText for
+  // each test — vi.restoreAllMocks() in afterEach is implicit via vitest's
+  // default mockReset setting in this project.
+  let writeTextSpy: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    if (!('clipboard' in navigator)) {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: () => Promise.resolve() },
+      })
+    }
+    writeTextSpy = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockImplementation(() => Promise.resolve())
   })
 
   it('does not render when payload is null', () => {
-    const { onDiscard, onComplete } = defaultHandlers()
-    renderWithI18n(
-      <MobileSyncCredentialModal payload={null} onDiscard={onDiscard} onComplete={onComplete} />
-    )
-
-    expect(screen.queryByText('Device added')).not.toBeInTheDocument()
-  })
-
-  // 父组件 DevicesPage 的 discardCredential 进入函数后立刻把 payload 清空
-  // (乐观清空),避免连点 ✕ 触发第二次 revoke 拿到 DEVICE_NOT_FOUND。这里
-  // 用一个 wrapper 复现该 contract,验证 modal 在 payload 清空后不再响应。
-  // 阶段 5: tab 按"接入方式"分,「扫码接入」(默认) / 「安装快捷指令」(次)。
-  // 阶段 6: scan tab 内部再分两步 — step 1 下载 App (前端用 qrcode.react 现渲
-  // download URL QR), step 2 才扫 connect URI 配对。两个步骤的 QR 必须图源
-  // 不串位 — pair step 必须用 payload.qrCodePngBase64, 不能误用 download URL
-  // 或 installQrCodePngBase64。
-  //
-  // 维护提醒: 这里断言的文案必须与 src/i18n/locales/en-US.json 里
-  // devices.mobileSync.credential.* 的 key 一一对应。删/改 i18n key 时,
-  // 同步删/改这里对应的 getByText/getByRole({ name }) 断言, 否则 CI 会以
-  // "Unable to find an element with the text" 爆炸 (例: phase 5 polish
-  // 删掉 scan.qr.help 时漏改测试导致 PR #813 CI 红)。
-  it('defaults to the Scan tab on the Download step with the download-page QR', () => {
-    const { onDiscard, onComplete } = defaultHandlers()
-    renderWithI18n(
-      <MobileSyncCredentialModal
-        payload={mockPayload}
-        onDiscard={onDiscard}
-        onComplete={onComplete}
-      />
-    )
-
-    // Tab triggers visible with new labels.
-    expect(screen.getByRole('tab', { name: 'Scan to add' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Install Shortcut' })).toBeInTheDocument()
-    // Default sub-step is "Download" — its panel renders the download-page
-    // QR (rendered client-side via qrcode.react, not the backend's connect-URI
-    // PNG) and an "Installed — next" button to advance.
-    expect(screen.getByText('Scan with your phone to install the app')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Installed — next' })).toBeInTheDocument()
-    // qrcode.react renders an SVG with the URL embedded — assert by aria-label
-    // we set, not by attempting to decode the QR.
-    expect(
-      screen.getByLabelText('QR code for the UniClipboard mobile download page')
-    ).toBeInTheDocument()
-    // Pair-step QR must NOT be in the DOM yet — it's behind the stepper.
-    expect(
-      screen.queryByAltText('QR code that auto-fills the sync credentials')
-    ).not.toBeInTheDocument()
-  })
-
-  it('advances to the Pair step with the connect-URI QR after clicking next', async () => {
-    const user = userEvent.setup()
-    const { onDiscard, onComplete } = defaultHandlers()
-    renderWithI18n(
-      <MobileSyncCredentialModal
-        payload={mockPayload}
-        onDiscard={onDiscard}
-        onComplete={onComplete}
-      />
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Installed — next' }))
-
-    expect(screen.getByText('Scan inside the app to pair')).toBeInTheDocument()
-    const qr = screen.getByAltText('QR code that auto-fills the sync credentials')
-    // Pair QR must come from the backend-rendered connect URI PNG (not the
-    // download page QR). qrCodePngBase64 = 'iVBORw0KGgo=' per mockPayload.
-    expect(qr.getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=')
-    // No "Back" button in pair step — the stepper's "1. Download" entry is
-    // clickable and serves as the back path, avoiding a duplicate control.
-    // Verify the stepper Download entry is interactive (not disabled).
-    const downloadStepperBtn = screen.getByRole('button', { name: /1\. Download/i })
-    expect(downloadStepperBtn).not.toBeDisabled()
-    // Pair step is current, so the Download stepper entry must NOT be the
-    // current step (its aria-current="step" is only set on the active step).
-    expect(downloadStepperBtn).not.toHaveAttribute('aria-current', 'step')
-  })
-
-  it('switches to the Install Shortcut tab and shows the install-URL QR + link', async () => {
-    const user = userEvent.setup()
-    const { onDiscard, onComplete } = defaultHandlers()
-    renderWithI18n(
-      <MobileSyncCredentialModal
-        payload={mockPayload}
-        onDiscard={onDiscard}
-        onComplete={onComplete}
-      />
-    )
-
-    await user.click(screen.getByRole('tab', { name: 'Install Shortcut' }))
-
-    // Heading + install-link CredentialField visible.
-    expect(screen.getByText('iOS Shortcut — install once on your iPhone')).toBeInTheDocument()
-    expect(screen.getByText('Install link')).toBeInTheDocument()
-    expect(screen.getByText('https://www.icloud.com/shortcuts/example')).toBeInTheDocument()
-    // Install-URL QR comes from the new installQrCodePngBase64 field — must
-    // not accidentally fall back to the main connect-URI QR.
-    const installQr = screen.getByAltText('QR code for the iCloud shortcut install link')
-    expect(installQr.getAttribute('src')).toBe('data:image/png;base64,aW5zdGFsbFFy')
-  })
-
-  it('drops the second rapid X click once parent clears payload optimistically', async () => {
-    const user = userEvent.setup()
-    const onDiscard = vi.fn<(deviceId: string) => void>()
     const onComplete = vi.fn()
+    renderWithI18n(<MobileSyncCredentialModal payload={null} onComplete={onComplete} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
 
-    const Wrapper = () => {
-      const [payload, setPayload] = useState<RegisterMobileDeviceResult | null>(mockPayload)
-      return (
-        <MobileSyncCredentialModal
-          payload={payload}
-          onDiscard={deviceId => {
-            setPayload(null)
-            onDiscard(deviceId)
-          }}
-          onComplete={onComplete}
-        />
-      )
-    }
+  it('renders title with the device label and the pair QR', () => {
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
 
-    renderWithI18n(<Wrapper />)
+    // Title interpolates {{label}} from the payload.
+    expect(screen.getByText('Scan to connect My phone')).toBeInTheDocument()
+    // Default sub-step is gone — modal now lands directly on pair QR.
+    expect(
+      screen.getByLabelText('QR code that auto-fills the sync credentials')
+    ).toBeInTheDocument()
+  })
 
-    const xButton = screen.getByRole('button', { name: 'Discard registration' })
-    await user.click(xButton)
-    await user.click(xButton)
+  it('closes via the footer Done button', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn()
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={onComplete} />)
 
-    expect(onDiscard).toHaveBeenCalledTimes(1)
-    expect(onDiscard).toHaveBeenCalledWith('device-1')
-    expect(screen.queryByRole('button', { name: 'Discard registration' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  // X is now wired to onComplete — the discard-and-revoke path was removed
+  // (it now lives on the device card's revoke button on DevicesPage). This
+  // test guards against accidental regressions where someone re-routes X
+  // back to a "discard" callback.
+  it('closes via the header X button (no longer discards)', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn()
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={onComplete} />)
+
+    // X uses a distinct aria-label ("Close") from the footer ("Done") so
+    // assistive tech can tell them apart — both close the dialog but the
+    // visual roles differ (header icon vs footer primary).
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes via Escape (no acknowledgement gate)', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn()
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={onComplete} />)
+
+    await user.keyboard('{Escape}')
+
+    expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  // ── Skeleton: two collapsibles default closed ────────────────────────
+  it('keeps both collapsibles closed by default', () => {
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
+
+    // Collapsible triggers are visible (headers).
+    expect(screen.getByText("Haven't installed a client?")).toBeInTheDocument()
+    expect(screen.getByText('Credentials')).toBeInTheDocument()
+
+    // Content inside is not visible until expanded.
+    expect(screen.queryByText('Install UniClipboard App (TestFlight)')).not.toBeInTheDocument()
+    // The Username label only appears inside the (default-closed) credentials
+    // collapsible content — guard against accidental "always show" regressions.
+    expect(screen.queryByText('Username')).not.toBeInTheDocument()
+  })
+
+  // The "no client" section uses Tabs (iOS / Android) with a scan-to-download
+  // QR as the primary action of each tab. The iOS tab additionally exposes
+  // a secondary "shortcut fallback" link (Android doesn't need one — uc-android
+  // speaks SyncClipboard directly).
+  it('expands the "no client" section and shows iOS as the default tab', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: /Haven't installed a client/i }))
+
+    // Both tab triggers visible.
+    expect(screen.getByRole('tab', { name: 'iOS' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Android' })).toBeInTheDocument()
+
+    // Default iOS tab — scan caption + browser button + shortcut fallback link.
+    expect(screen.getByText('Scan to install UniClipboard App (TestFlight)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open TestFlight in browser/i })).toBeInTheDocument()
+    expect(screen.getByText(/Don't want the App/)).toBeInTheDocument()
+
+    // Android caption is NOT in the DOM yet (tabs are mutually exclusive).
+    expect(screen.queryByText('Scan to download APK (GitHub Releases)')).not.toBeInTheDocument()
+  })
+
+  it('switches the no-client section to Android tab on click', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: /Haven't installed a client/i }))
+    await user.click(screen.getByRole('tab', { name: 'Android' }))
+
+    expect(screen.getByText('Scan to download APK (GitHub Releases)')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Open GitHub Releases in browser/i })
+    ).toBeInTheDocument()
+    // iOS-only "shortcut fallback" must NOT leak into the Android tab.
+    expect(screen.queryByText(/Don't want the App/)).not.toBeInTheDocument()
+  })
+
+  it('expands the credentials section to reveal username + password fields', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
+
+    // The collapsible trigger lives inside the amber warning panel; click the
+    // text "Credentials" rather than the panel itself.
+    await user.click(screen.getByRole('button', { name: /Credentials/i }))
+
+    expect(screen.getByText('Username')).toBeInTheDocument()
+    expect(screen.getByText('user_a')).toBeInTheDocument()
+    expect(screen.getByText('Password')).toBeInTheDocument()
+    // Password is masked by default — assert the masked rendering, not plain.
+    expect(screen.queryByText('secret-pass')).not.toBeInTheDocument()
+  })
+
+  // ── Backup button: copies the three-line human-readable format ──────
+  // This is the load-bearing escape hatch for "I closed the modal without
+  // saving the password" — the only one-click way to grab all three fields.
+  it('copies the three-line backup to clipboard when Backup is clicked', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
+
+    // The Backup button is in the collapsible header, visible without expanding.
+    await user.click(screen.getByRole('button', { name: 'Backup' }))
+
+    expect(writeTextSpy).toHaveBeenCalledTimes(1)
+    expect(writeTextSpy).toHaveBeenCalledWith(
+      'Server: http://192.168.1.10:42720\nUsername: user_a\nPassword: secret-pass'
+    )
+  })
+
+  // The backup button's onClick uses e.stopPropagation() so clicking it does
+  // not also toggle the collapsible (would flash the user/pwd fields and lose
+  // the masked-password protection for a moment).
+  it('clicking Backup does not toggle the credentials collapsible', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Backup' }))
+
+    // Still closed — Username field not in DOM.
+    expect(screen.queryByText('Username')).not.toBeInTheDocument()
+  })
+
+  // ── BaseUrl dropdown: always show, even when backend list is empty ────
+  // Original bug: when listMobileLanInterfaces() returned [] (single-NIC
+  // machine where daemon filtered everything, or a permissions/timing fail),
+  // the chip silently fell back to a read-only span — user lost the visual
+  // affordance to switch. Now dropdownInterfaces always falls back to
+  // payloadHost so the dropdown stays visible.
+  it('renders the dropdown even when backend returns no LAN interfaces (uses payloadHost fallback)', () => {
+    // listMobileLanInterfaces mock returns [] by default in this file.
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
+
+    // Radix Select trigger announces itself as a combobox; presence of this
+    // role under the modal's i18n aria-label confirms the dropdown rendered.
+    expect(screen.getByRole('combobox', { name: 'Select server URL' })).toBeInTheDocument()
+  })
+
+  it('shows the dropdown when there is exactly one LAN interface from the backend', async () => {
+    const mod = await import('@/api/tauri-command/mobile_sync')
+    vi.mocked(mod.listMobileLanInterfaces).mockResolvedValueOnce([
+      { name: 'en0', ipv4: '192.168.1.10' },
+    ])
+    renderWithI18n(<MobileSyncCredentialModal payload={mockPayload} onComplete={vi.fn()} />)
+
+    // Single-IP case: dropdown still rendered (UI consistency over strict
+    // "nothing to switch" silence). Threshold was relaxed from > 1 to > 0.
+    expect(await screen.findByRole('combobox', { name: 'Select server URL' })).toBeInTheDocument()
   })
 })

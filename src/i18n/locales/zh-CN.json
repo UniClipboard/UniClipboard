@@ -941,7 +941,7 @@
         "subtitle": "为该设备生成一对长期有效的凭据。同一组凭据可用于 iOS 快捷指令以及任何兼容 SyncClipboard 协议的 Android 客户端。",
         "labelField": {
           "label": "设备名称",
-          "placeholder": "我的 iPhone"
+          "placeholder": "我的手机"
         },
         "advanced": {
           "title": "高级选项",
@@ -962,43 +962,41 @@
         "cancel": "取消"
       },
       "credential": {
-        "title": "设备已添加",
-        "subtitle": "在下方选择平台，并按指引在客户端中填入凭据。",
-        "platforms": {
-          "scan": "扫码接入",
-          "shortcut": "安装快捷指令"
-        },
-        "warning": {
-          "title": "重要：此密码仅显示一次",
-          "body": "关闭此窗口后将无法再次查看密码。如不慎遗失，需要撤销此设备并重新添加。"
-        },
-        "scan": {
-          "stepper": {
-            "download": "下载",
-            "pair": "配对"
-          },
-          "download": {
-            "hint": "在手机上扫码下载 App",
-            "openInBrowserAria": "在浏览器中打开下载页",
-            "qrAlt": "UniClipboard 移动端下载页的二维码",
-            "next": "已装好，下一步"
-          },
-          "pair": {
-            "hint": "在 App 内扫码完成配对",
-            "qrAlt": "自动填入同步凭据的二维码"
-          }
-        },
-        "shortcut": {
-          "title": "iOS 快捷指令 — 一次性安装",
-          "body": "扫码添加快捷指令，然后手动填写下方服务地址、用户名和密码。",
-          "qr": {
-            "label": "扫码安装快捷指令",
-            "alt": "iCloud 快捷指令安装链接的二维码"
-          },
-          "linkLabel": "安装链接"
+        "title": "扫码连接 {{label}}",
+        "subtitle": "用手机扫码完成移动同步设置",
+        "pair": {
+          "qrAlt": "扫描后自动填入同步凭据的二维码",
+          "connectHint": "用手机扫一扫即可配对",
+          "wifiHint": "选择和手机同 Wi-Fi/网段的地址"
         },
         "baseUrl": {
-          "label": "服务地址"
+          "selectAria": "选择服务地址"
+        },
+        "noClient": {
+          "title": "还没装客户端？",
+          "tabs": {
+            "ios": "iOS",
+            "android": "Android"
+          },
+          "ios": {
+            "scanLabel": "扫码安装 UniClipboard App（TestFlight）",
+            "scanQrAlt": "TestFlight 邀请链接二维码",
+            "openInBrowser": "在浏览器打开 TestFlight",
+            "shortcutFallback": "不想装 App？扫码安装快捷指令兜底",
+            "shortcutQrAria": "显示快捷指令安装二维码",
+            "shortcutQrAlt": "iOS 快捷指令安装二维码"
+          },
+          "android": {
+            "scanLabel": "扫码下载 APK（GitHub Releases）",
+            "scanQrAlt": "GitHub Releases APK 下载页二维码",
+            "openInBrowser": "在浏览器打开 GitHub Releases"
+          }
+        },
+        "credentials": {
+          "title": "凭据",
+          "warning": "关闭后无法再查看",
+          "backup": "备份",
+          "backupCopied": "已备份"
         },
         "username": {
           "label": "用户名"
@@ -1008,10 +1006,8 @@
         },
         "copy": "复制",
         "copied": "已复制",
-        "confirmSaved": "我已保存上述凭据",
-        "dismiss": "放弃注册",
         "close": "完成",
-        "closeBlocked": "请先勾选「我已保存上述凭据」"
+        "closeAria": "关闭"
       },
       "revoke": {
         "confirmTitle": "撤销 {{label}}",

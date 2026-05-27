@@ -25,10 +25,10 @@
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "desktop"))]
 use tracing::warn;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "desktop"))]
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 
 use super::watcher::ClipboardWatcher;
@@ -37,7 +37,7 @@ struct ShutdownInner {
     signaled: AtomicBool,
     cv_lock: Mutex<()>,
     cv: Condvar,
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "desktop"))]
     eventfd: Option<OwnedFd>,
 }
 
@@ -60,7 +60,7 @@ pub struct ShutdownRx {
 /// Condvar path; only [`ShutdownRx::raw_fd`] returns `None`. macOS / Windows /
 /// other Unix have no eventfd and use the Condvar path exclusively.
 pub fn shutdown_channel() -> (ShutdownTx, ShutdownRx) {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "desktop"))]
     let eventfd = match rustix::event::eventfd(
         0,
         rustix::event::EventfdFlags::CLOEXEC | rustix::event::EventfdFlags::NONBLOCK,
@@ -79,7 +79,7 @@ pub fn shutdown_channel() -> (ShutdownTx, ShutdownRx) {
         signaled: AtomicBool::new(false),
         cv_lock: Mutex::new(()),
         cv: Condvar::new(),
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "desktop"))]
         eventfd,
     });
 
@@ -105,7 +105,7 @@ impl ShutdownTx {
             self.inner.cv.notify_all();
         }
         // Wake fd pollers.
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "desktop"))]
         {
             if let Some(fd) = self.inner.eventfd.as_ref() {
                 let buf = 1u64.to_ne_bytes();
@@ -141,7 +141,7 @@ impl ShutdownRx {
     /// their poll loop in case the fd is unavailable. Only exposed on Linux:
     /// macOS / Windows / other Unix have no eventfd, so pollable adapters must
     /// be Linux-gated as well.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "desktop"))]
     pub fn raw_fd(&self) -> Option<RawFd> {
         self.inner.eventfd.as_ref().map(|fd| fd.as_raw_fd())
     }
@@ -172,7 +172,10 @@ pub trait PlatformClipboardEventLoop: Send + 'static {
 ///
 /// Linux selects between Wayland and X11 at runtime (`WAYLAND_DISPLAY`
 /// presence + protocol probe); other platforms wrap their existing
-/// `clipboard_rs` listener.
+/// `clipboard_rs` listener. Only available with the `desktop` feature —
+/// mobile / portable hosts implement [`PlatformClipboardEventLoop`] themselves
+/// (e.g. driven by host lifecycle callbacks).
+#[cfg(feature = "desktop")]
 pub fn build_event_loop() -> Result<Box<dyn PlatformClipboardEventLoop>> {
     crate::clipboard::platform::build_event_loop()
 }

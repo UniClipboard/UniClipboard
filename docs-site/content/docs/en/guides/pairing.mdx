@@ -153,10 +153,12 @@ that hosts the per-device list). The pairing flow:
      iOS Shortcut, which is pre-filled with the base URL and
      credentials.
    - **Android / other clients** — copy the base URL, username, and
-     password into any SyncClipboard-compatible client. For Android
-     we currently recommend the community-maintained Flutter client
-     [sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)
-     (side-loadable APK, no Google Play required).
+     password into any SyncClipboard-compatible client. For Android,
+     install the **UniClipboard Android client** at
+     [github.com/UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)
+     — a fork of SyncClipboard with APKs in
+     [releases](https://github.com/UniClipboard/uc-android/releases/latest)
+     (side-load only, no Google Play).
 3. The plaintext password is shown **once**; close the modal and the
    desktop only retains an Argon2id hash. If the user loses it, use
    **Rotate password** on the device row to mint a new one.

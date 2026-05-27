@@ -236,6 +236,31 @@ The release build lands under `src-tauri/target/release/bundle/`. See
 [CONTRIBUTING.md](https://github.com/UniClipboard/UniClipboard/blob/main/CONTRIBUTING.md)
 for branch / commit / PR conventions.
 
+## Android App
+
+The **UniClipboard Android client** lives at
+[github.com/UniClipboard/uc-android](https://github.com/UniClipboard/uc-android).
+It's a fork of [Jeric-X/SyncClipboard](https://github.com/Jeric-X/SyncClipboard)
+and remains protocol-compatible, so any other SyncClipboard-compatible
+client also works against the same desktop listener.
+
+Grab the latest APK from
+[releases](https://github.com/UniClipboard/uc-android/releases/latest)
+— pick the ABI for your phone (most modern devices want
+`arm64-v8a`) or use the `universal` build if you're not sure — then
+side-load it. There is no Google Play distribution today.
+
+Pairing flow (URL + Basic Auth credentials) is identical to the iOS
+path; see the [Mobile sync guide → Android](../guides/mobile-sync#android--other-clients).
+
+<Callout type="info">
+  **Android limitations today.** The Android client runs as a **LAN companion** over plain HTTP +
+  Basic Auth — no iroh P2P, no relay, no TLS, same-Wi-Fi only — and it is not a peer of your
+  space's trust mesh (it only exchanges the current clipboard, not the encrypted history). Android's
+  background-clipboard restrictions on Android 10+ may also delay or gate writes when the app is not
+  in the foreground.
+</Callout>
+
 ## iOS App (public beta)
 
 The **UniClipboard iOS App** is currently distributed through

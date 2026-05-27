@@ -117,8 +117,11 @@ flowchart LR
    - **iOS** —— 扫描二维码可一键安装内置的 UniClipboard iOS 快捷指令，
      其中预填了 base URL 与凭据。
    - **Android / 其他客户端** —— 复制 base URL、用户名、密码到任意兼容
-     SyncClipboard 协议的客户端即可。安卓侧目前推荐社区维护的 Flutter
-     客户端 [sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)（APK 直装、无须 Google Play）。
+     SyncClipboard 协议的客户端即可。安卓侧装 **UniClipboard Android 客户端**：
+     [github.com/UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)
+     —— fork 自 SyncClipboard，APK 在
+     [releases 页](https://github.com/UniClipboard/uc-android/releases/latest)
+     下载（侧载，不发布到 Google Play）。
 3. 明文密码 **只显示一次**；弹窗关闭后桌面只保留 Argon2id 哈希。若用户遗失，
    可在设备行使用 **轮换密码** 重新签发。
 

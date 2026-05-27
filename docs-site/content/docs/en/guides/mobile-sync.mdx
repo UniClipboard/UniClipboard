@@ -251,21 +251,24 @@ tab:
 
 ### Android / other clients
 
-There is **no first-party UniClipboard Android app**. Any
-SyncClipboard-compatible client can connect; today we recommend one
-of:
+The **UniClipboard Android client** lives at
+[github.com/UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)
+— a fork of [Jeric-X/SyncClipboard](https://github.com/Jeric-X/SyncClipboard)
+that we publish APKs for in
+[releases](https://github.com/UniClipboard/uc-android/releases/latest)
+(side-load only, no Google Play). Because it speaks the SyncClipboard
+protocol unmodified, any other SyncClipboard-compatible client also
+works. Recommended picks today:
 
-- **[sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)**
-  — a community-maintained Flutter Android client, distributed as a
-  side-loadable APK (no Google Play dependency). It speaks the
-  SyncClipboard protocol out of the box, so the experience is the
-  closest analogue to the iOS Shortcut: enter the base URL, username,
-  and password in the app, and clipboard sync goes both ways.
-  **Currently the recommended option for Android users.**
+- **[UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)**
+  — our own fork. Closest analogue to the iOS app: install the APK,
+  enter the base URL, username, and password, and clipboard sync goes
+  both ways. **Recommended for most Android users.**
 - **[Upstream SyncClipboard](https://github.com/Jeric-X/SyncClipboard)**
   — the protocol's reference implementation. Primarily a desktop
-  client, but Android builds are published in releases. A reasonable
-  pick if you already live in the SyncClipboard ecosystem.
+  client, but Android builds are published in its releases. A
+  reasonable pick if you already live in the SyncClipboard ecosystem
+  or want to track upstream directly.
 
 Either way, the connection settings are the same:
 
@@ -276,10 +279,16 @@ Either way, the connection settings are the same:
 - **Password** — printed by the credentials modal / `setup` (one-time).
 
 <Callout type="info">
-  `sync-clipboard-flutter` is a community project and is **not** maintained by UniClipboard. Vet the
-  install source, signature, and version compatibility yourself, and file app-side bugs upstream
-  rather than against UniClipboard. UniClipboard only owns the SyncClipboard-protocol surface on the
-  listener side.
+  `uc-android` is a fork of upstream `Jeric-X/SyncClipboard`. We carry our own patches and tag our
+  own APKs, but the protocol surface is shared with upstream — bugs in the app itself are usually
+  best filed at [UniClipboard/uc-android](https://github.com/UniClipboard/uc-android/issues),
+  protocol-side bugs on the desktop listener belong here in the main repo.
+</Callout>
+
+<Callout type="info">
+  **Android limitations today.** No TLS (plain HTTP + Basic Auth on the LAN), same-Wi-Fi only, not
+  a peer of your space's trust mesh, and Android 10+ background-clipboard restrictions can delay
+  or gate writes when the app is not in the foreground.
 </Callout>
 
 ## Manage paired devices

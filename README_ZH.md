@@ -85,7 +85,7 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的跨设备剪贴板�
 
 - **跨平台支持**: Windows、macOS 和 Linux 三端均为一等公民 —— 你的剪贴板跟着你在哪都能用。iPhone 与 Android 可以作为 **局域网伴侣** 接入（见下文）。
 - **跨网络同步**: 同一 Wi-Fi、不同家庭/办公室网络、甚至跨广域网均可实时同步，自动 NAT 穿透与加密中继回落 —— 不再局限于局域网，也不绑定单一网络。（桌面 ↔ 桌面适用；手机当前仅限同一 Wi-Fi。）
-- **移动端伴侣（LAN）**: iPhone 推荐安装 **UniClipboard iOS App**（目前 [TestFlight beta 公测中](https://testflight.apple.com/join/nyNQ8dQe)），也可继续用内置的 **iOS Shortcut**；Android 走任意兼容 [**SyncClipboard**](https://github.com/Jeric-X/SyncClipboard) 协议的客户端，在本地网络上与桌面双向交换剪贴。支持二维码配对、每台手机独立凭证，密码可在不解绑设备的情况下轮换。
+- **移动端伴侣（LAN）**: iPhone 推荐安装 **UniClipboard iOS App**（目前 [TestFlight beta 公测中](https://testflight.apple.com/join/nyNQ8dQe)），也可继续用内置的 **iOS Shortcut**；Android 装 **[UniClipboard Android 客户端](https://github.com/UniClipboard/uc-android)**（[下载 APK](https://github.com/UniClipboard/uc-android/releases/latest)），它 fork 自 [**SyncClipboard**](https://github.com/Jeric-X/SyncClipboard)，协议兼容，因此其他任意 SyncClipboard 客户端也能接入。在本地网络上与桌面双向交换剪贴。支持二维码配对、每台手机独立凭证，密码可在不解绑设备的情况下轮换。
 - **加密空间**: 设备通过邀请码 + 口令加入同一个"空间" —— 不需要云账号、不需要邮箱，只需要两台设备相互信任。
 - **本地加密全文搜索**: 在数万条历史中也能毫秒级检索，索引本身在磁盘上同样加密 —— "本地存储"不等于"安全存储"，"本地加密存储"才是。
 - **文本、图片、文件**: 在一台设备复制，在另一台设备粘贴。大文件采用流式传输，不需要先装进内存。
@@ -227,13 +227,13 @@ bun tauri build
 
 ### 配对手机（LAN 伴侣） <a id="mobile-companion-lan"></a>
 
-UniClipboard iOS App 目前在 [TestFlight beta 公测](https://testflight.apple.com/join/nyNQ8dQe)，Android 暂无官方 App。无论用哪个客户端，手机都以 **局域网伴侣** 的形式接入：桌面 daemon 在本地网络上暴露一个兼容 SyncClipboard 的小型 HTTP 服务，手机直接读写它。
+UniClipboard iOS App 目前在 [TestFlight beta 公测](https://testflight.apple.com/join/nyNQ8dQe)；Android 装 **[UniClipboard Android 客户端](https://github.com/UniClipboard/uc-android)**，它 fork 自 [SyncClipboard](https://github.com/Jeric-X/SyncClipboard)，APK 直接在 [releases 页](https://github.com/UniClipboard/uc-android/releases/latest)下载，其他任意兼容 SyncClipboard 协议的客户端也能接。无论用哪个客户端，手机都以 **局域网伴侣** 的形式接入：桌面 daemon 在本地网络上暴露一个兼容 SyncClipboard 的小型 HTTP 服务，手机直接读写它。
 
 1. 桌面打开 **设备 → 移动端同步**，启用开关，并挑一块手机能拨通的 LAN IPv4 网卡（**别** 把 `0.0.0.0` / `Auto` 印到手机屏幕上）。
 2. 点 **Add device**，生成包含监听 URL、用户名与一次性密码的二维码。
 3. **iPhone** —— 推荐先在 **App Store** 装 **TestFlight**，再点开邀请链接 `https://testflight.apple.com/join/nyNQ8dQe` 接受邀请并安装 **UniClipboard iOS App**；App 里填入桌面给出的 URL 与凭据即可。也可以用相机扫码安装内置的 iOS Shortcut 作为备选。
    > ⚠️ 如果 TestFlight 报证书错误，或卡在「无法连接 App Store Connect」上，**先临时关掉 Loon / Surge / Clash 等代理梯子**（含全局规则、TUN、HTTPS 解密），让 TestFlight 走直连；装好 App 后再开梯子即可。
-4. **Android** —— 用任意兼容 SyncClipboard 协议的客户端，填同样的 URL 和凭证。
+4. **Android** —— 装 [**UniClipboard Android 客户端**](https://github.com/UniClipboard/uc-android)（[APK 下载](https://github.com/UniClipboard/uc-android/releases/latest)），或任意其他兼容 SyncClipboard 协议的客户端，填同样的 URL 和凭证。
 5. 任意一端复制，另一端通过 Wi-Fi 收到。
 
 当前限制：
@@ -337,7 +337,7 @@ uniclip status / start / stop   # 守护进程生命周期
 只在你自己的设备上。本地存储采用加密存盘，密钥从未离开过设备的系统密钥环。任何 UniClipboard 服务器都不会接收或保存你的剪贴板内容。
 
 **有移动端 App 吗？**
-iOS 侧 **UniClipboard iOS App 已开启 TestFlight beta 公测**：在 App Store 装好 TestFlight 后，打开 [testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe) 接受邀请并安装即可。Android 仍无官方 App，使用任意兼容 SyncClipboard 协议的客户端接入。无论用哪个客户端，移动端都以 **局域网伴侣** 的方式跑：桌面 daemon 暴露一个兼容 SyncClipboard 的 HTTP 端点，手机用 base URL + 凭据与之读写。双向同步，仅限同一 Wi-Fi —— 不打洞、不走 relay。具体步骤见上文 [配对手机](#mobile-companion-lan) 一节。
+iOS 侧 **UniClipboard iOS App 已开启 TestFlight beta 公测**：在 App Store 装好 TestFlight 后，打开 [testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe) 接受邀请并安装即可。Android 侧装 [**UniClipboard Android 客户端**](https://github.com/UniClipboard/uc-android)，它 fork 自 [SyncClipboard](https://github.com/Jeric-X/SyncClipboard)，APK 直接在 [releases 页](https://github.com/UniClipboard/uc-android/releases/latest)下载；其他任意兼容 SyncClipboard 协议的客户端也能接。无论用哪个客户端，移动端都以 **局域网伴侣** 的方式跑：桌面 daemon 暴露一个兼容 SyncClipboard 的 HTTP 端点，手机用 base URL + 凭据与之读写。双向同步，仅限同一 Wi-Fi —— 不打洞、不走 relay。具体步骤见上文 [配对手机](#mobile-companion-lan) 一节。
 
 ## 参与贡献
 

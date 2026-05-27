@@ -147,10 +147,12 @@ iOS 侧 **UniClipboard iOS App 已开启 TestFlight beta 公测**，邀请链接
 （详细步骤与代理梯子相关的常见坑见
 [移动端同步 — 配对一台 iPhone](./guides/mobile-sync#配对一台-iphone)）。
 
-Android 侧仍 **没有官方 App**，目前推荐社区维护的
-[sync-clipboard-flutter](https://github.com/bling-yshs/sync-clipboard-flutter)
-（Flutter 实现、APK 直装、无须 Google Play），其他 SyncClipboard
-客户端也可以填入相同的 base URL + 凭据手动接入。
+Android 侧装 **UniClipboard Android 客户端**：
+[github.com/UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)
+—— fork 自 [Jeric-X/SyncClipboard](https://github.com/Jeric-X/SyncClipboard)、
+协议兼容，APK 在 [releases 页](https://github.com/UniClipboard/uc-android/releases/latest)
+下载侧载（暂不发布到 Google Play）。其他任意 SyncClipboard 协议兼容客户端
+也可以填入相同的 base URL + 凭据接入。
 
 不论用哪个客户端，**移动端同步都走「局域网伴侣（LAN companion）」
 模式**：桌面守护进程在 LAN 上暴露一个 SyncClipboard 兼容的 HTTP 服务，

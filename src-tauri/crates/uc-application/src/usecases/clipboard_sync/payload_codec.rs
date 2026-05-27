@@ -28,10 +28,13 @@ use std::io::{Read, Write};
 use anyhow::{anyhow, Result};
 use bytes::Bytes;
 
+use uc_core::clipboard::normalize_wire_mime;
 use uc_core::ids::{EntryId, FormatId, RepresentationId};
 use uc_core::network::protocol::{BinaryRepresentation, ClipboardBinaryPayload};
 use uc_core::ports::blob::BlobTicket;
-use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
+#[cfg(test)]
+use uc_core::MimeType;
+use uc_core::{ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 /// V3 blob refs trailer magic. Each ref carries 6 fields:
 /// `ticket / entry_id / filename / mime / size_bytes / representation_index`.
@@ -148,7 +151,10 @@ pub fn decode_v3_bytes_to_snapshot_and_blob_refs(
             ObservedClipboardRepresentation::new(
                 RepresentationId::new(),
                 FormatId::from(rep.format_id),
-                rep.mime.map(MimeType),
+                // Normalize wire mime: drop UTI / platform-native identifiers
+                // shipped by older peers. Downstream classification falls
+                // back to `format_id` when mime is `None`.
+                normalize_wire_mime(rep.mime),
                 rep.data,
             )
         })

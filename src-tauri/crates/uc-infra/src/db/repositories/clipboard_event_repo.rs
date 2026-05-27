@@ -10,7 +10,7 @@ use anyhow::Result;
 use diesel::prelude::*;
 use tracing::debug_span;
 use uc_core::{
-    clipboard::{ClipboardEvent, PersistedClipboardRepresentation},
+    clipboard::{normalize_wire_mime, ClipboardEvent, PersistedClipboardRepresentation},
     ids::EventId,
     ports::{ClipboardEventRepositoryPort, ClipboardEventWriterPort},
 };
@@ -183,12 +183,16 @@ where
                 .map_err(|e| anyhow::anyhow!("Database error: {}", e))
         })?;
 
-        // Convert from PersistedClipboardRepresentation to ObservedClipboardRepresentation
+        // Convert from PersistedClipboardRepresentation to ObservedClipboardRepresentation.
+        // Normalize `mime_type` to drop UTI / platform-native identifiers
+        // that older database rows may still hold; downstream falls back
+        // to `format_id` for classification when mime ends up `None`.
         let persisted = self.snapshot_mapper.to_domain(&rep_row)?;
+        let normalized_mime = normalize_wire_mime(persisted.mime_type.map(|m| m.0));
         Ok(uc_core::ObservedClipboardRepresentation::new(
             persisted.id,
             persisted.format_id,
-            persisted.mime_type,
+            normalized_mime,
             persisted.inline_data.unwrap_or_default(),
         ))
     }

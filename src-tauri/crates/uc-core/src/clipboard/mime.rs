@@ -104,6 +104,42 @@ impl MimeType {
                 | MimeClass::TextOther
         )
     }
+
+    /// Whether this value looks like an RFC media type (`type/subtype`)
+    /// rather than a platform-native format identifier (macOS UTI like
+    /// `public.utf8-plain-text`, Windows CF_* short tag, X11 atom).
+    ///
+    /// Cheap structural heuristic: must contain `/` and must not sit in
+    /// the `public.` UTI namespace. Used by `normalize_wire_mime` and by
+    /// the `ObservedClipboardRepresentation` constructor invariant.
+    pub fn is_rfc_shape(&self) -> bool {
+        let s = self.as_str();
+        s.contains('/') && !s.trim_start().to_ascii_lowercase().starts_with("public.")
+    }
+}
+
+/// Normalize a `mime` string coming from an untrusted boundary
+/// (wire payload, on-disk persisted record) into the RFC-MIME-only form
+/// the engine expects.
+///
+/// - `None` passes through.
+/// - `Some(s)` with RFC shape is wrapped as-is.
+/// - `Some(s)` carrying a platform-native identifier (UTI / NSPasteboard
+///   legacy name / Windows short tag) is dropped to `None`. Downstream
+///   consumers fall back to `format_id` for classification.
+///
+/// This decouples the engine from the historical wire choice of letting
+/// `mime` be a free-form string: any peer or historical record that
+/// shipped UTI in `mime` is normalized at the boundary, so the engine
+/// layer can rely on `mime: Option<MimeType>` always being RFC-shaped.
+pub fn normalize_wire_mime(raw: Option<String>) -> Option<MimeType> {
+    let raw = raw?;
+    let candidate = MimeType(raw);
+    if candidate.is_rfc_shape() {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 impl fmt::Display for MimeType {
@@ -373,5 +409,47 @@ mod tests {
         let m = MimeType("image/png".into());
         assert!(m.is_image());
         assert!(!m.is_text_plain());
+    }
+
+    #[test]
+    fn is_rfc_shape_accepts_rfc_and_rejects_uti() {
+        assert!(MimeType("text/plain".into()).is_rfc_shape());
+        assert!(MimeType("text/plain;charset=utf-8".into()).is_rfc_shape());
+        assert!(MimeType("image/png".into()).is_rfc_shape());
+        // Trim should not change the verdict.
+        assert!(MimeType("  text/plain  ".into()).is_rfc_shape());
+
+        // UTI namespace and NSPasteboard legacy names are rejected.
+        assert!(!MimeType("public.utf8-plain-text".into()).is_rfc_shape());
+        assert!(!MimeType("public.png".into()).is_rfc_shape());
+        assert!(!MimeType("PUBLIC.TEXT".into()).is_rfc_shape());
+        // Short tags without `/` are rejected.
+        assert!(!MimeType("text".into()).is_rfc_shape());
+        assert!(!MimeType("image".into()).is_rfc_shape());
+        assert!(!MimeType("NSStringPboardType".into()).is_rfc_shape());
+    }
+
+    #[test]
+    fn normalize_wire_mime_keeps_rfc_drops_uti() {
+        // RFC media types pass through.
+        assert_eq!(
+            normalize_wire_mime(Some("text/plain".into())),
+            Some(MimeType("text/plain".into()))
+        );
+        assert_eq!(
+            normalize_wire_mime(Some("image/png".into())),
+            Some(MimeType("image/png".into()))
+        );
+        // None passes through.
+        assert_eq!(normalize_wire_mime(None), None);
+        // UTIs and platform short tags are dropped — downstream falls
+        // back to format_id for classification.
+        assert_eq!(
+            normalize_wire_mime(Some("public.utf8-plain-text".into())),
+            None
+        );
+        assert_eq!(normalize_wire_mime(Some("public.png".into())), None);
+        assert_eq!(normalize_wire_mime(Some("NSStringPboardType".into())), None);
+        assert_eq!(normalize_wire_mime(Some("text".into())), None);
     }
 }

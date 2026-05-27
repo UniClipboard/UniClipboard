@@ -416,11 +416,7 @@ impl CaptureClipboardUseCase {
         for rep in &snapshot.representations {
             if let Some(mime) = &rep.mime {
                 let mime_str = mime.as_str();
-                if mime_str.eq_ignore_ascii_case("text/plain")
-                    || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
-                    || mime_str.eq_ignore_ascii_case("text/plain;charset=utf-8")
-                    || mime_str.starts_with("text/")
-                {
+                if mime_str.starts_with("text/") {
                     let Some(rep_bytes) = rep.inline_bytes() else {
                         continue;
                     };
@@ -479,7 +475,6 @@ impl CaptureClipboardUseCase {
             let mime_str = mime.as_str();
             if mime_str.starts_with("text/")
                 || mime_str.starts_with("image/")
-                || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
                 || mime_str.eq_ignore_ascii_case("file/uri-list")
                 || mime_str.eq_ignore_ascii_case("text/uri-list")
             {
@@ -487,6 +482,10 @@ impl CaptureClipboardUseCase {
             }
         }
 
+        // format_id may still carry platform-native identifiers (UTIs,
+        // NSPasteboard legacy names) — that is the field's documented
+        // role. Only the `mime` field is normalized to RFC at the
+        // engine boundary.
         rep.format_id.eq_ignore_ascii_case("text")
             || rep.format_id.eq_ignore_ascii_case("rtf")
             || rep.format_id.eq_ignore_ascii_case("html")

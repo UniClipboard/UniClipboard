@@ -676,13 +676,16 @@ fn supported_for_capture(rep: &ObservedClipboardRepresentation) -> bool {
         let mime_str = mime.as_str();
         if mime_str.starts_with("text/")
             || mime_str.starts_with("image/")
-            || mime_str.eq_ignore_ascii_case("public.utf8-plain-text")
             || mime_str.eq_ignore_ascii_case("file/uri-list")
             || mime_str.eq_ignore_ascii_case("text/uri-list")
         {
             return true;
         }
     }
+    // format_id may still carry platform-native identifiers (UTIs,
+    // NSPasteboard legacy names) — that is the field's documented
+    // role. Only the `mime` field is normalized to RFC at the
+    // engine boundary (wire + DB read).
     rep.format_id.eq_ignore_ascii_case("text")
         || rep.format_id.eq_ignore_ascii_case("rtf")
         || rep.format_id.eq_ignore_ascii_case("html")

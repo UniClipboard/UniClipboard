@@ -64,20 +64,6 @@ impl std::ops::Deref for SnapshotHash {
     }
 }
 
-/// Sanity-check that a `mime` field carries an RFC-style media type
-/// (`type/subtype`) rather than a platform-native format identifier
-/// (NSPasteboard UTI like `public.utf8-plain-text`, X11 atoms,
-/// Windows CF_* short tags). The engine must only see RFC MIME;
-/// platform identifiers belong in `format_id`.
-///
-/// Cheap heuristic, not a full RFC 6838 validator: requires a `/`
-/// separator and rejects the `public.` UTI namespace. Anything that
-/// passes this check is treated as engine-compatible.
-fn is_rfc_mime(mime: &MimeType) -> bool {
-    let s = mime.as_str();
-    s.contains('/') && !s.trim_start().to_ascii_lowercase().starts_with("public.")
-}
-
 impl ObservedClipboardRepresentation {
     /// 构造一个内存字节 rep。
     ///
@@ -94,7 +80,7 @@ impl ObservedClipboardRepresentation {
         bytes: Vec<u8>,
     ) -> Self {
         debug_assert!(
-            mime.as_ref().map_or(true, is_rfc_mime),
+            mime.as_ref().map_or(true, MimeType::is_rfc_shape),
             "ObservedClipboardRepresentation::new: `mime` must be an RFC media type \
              (got {:?}); platform format identifiers belong in `format_id` and must \
              be translated at the capture boundary.",
@@ -129,7 +115,7 @@ impl ObservedClipboardRepresentation {
         size_bytes: u64,
     ) -> Self {
         debug_assert!(
-            mime.as_ref().map_or(true, is_rfc_mime),
+            mime.as_ref().map_or(true, MimeType::is_rfc_shape),
             "ObservedClipboardRepresentation::new_local_file: `mime` must be an \
              RFC media type (got {:?}); platform format identifiers belong in \
              `format_id` and must be translated at the capture boundary.",

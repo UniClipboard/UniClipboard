@@ -143,6 +143,33 @@ impl MimeType {
 /// `mime` be a free-form string: any peer or historical record that
 /// shipped UTI in `mime` is normalized at the boundary, so the engine
 /// layer can rely on `mime: Option<MimeType>` always being RFC-shaped.
+/// Resolve a portable image RFC MIME from a file path's extension.
+///
+/// Returns the canonical `image/*` MIME for common raster formats, or `None`
+/// when the extension is missing / unknown. Pure extension lookup — does not
+/// open the file, allocate, or depend on any platform clipboard knowledge.
+///
+/// Used by capture paths that synthesize a `LocalFile`-source representation
+/// for an image rep (no byte sniffing available at attach time) and by the
+/// receive-side materializer when re-attaching downloaded blobs as rep files.
+/// Centralizing the table here keeps both ends agreeing on the extension set
+/// without duplication.
+pub fn image_mime_from_extension(path: &std::path::Path) -> Option<&'static str> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "tif" | "tiff" => "image/tiff",
+        _ => return None,
+    })
+}
+
 pub fn normalize_wire_mime(raw: Option<String>) -> Option<MimeType> {
     let raw = raw?;
     let candidate = MimeType(raw);

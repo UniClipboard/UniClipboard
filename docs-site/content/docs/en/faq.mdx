@@ -264,7 +264,7 @@ background hook for reading the clipboard. `UIPasteboard` reads are
 only reliable while an app is in the foreground; suspended apps don't
 get a wake-up when the system clipboard changes, and silent background
 polling would be killed by the scheduler (and would also trip the
-system "pasted from <app>" banner every time).
+system `pasted from <app>` banner every time).
 
 What this means in practice for the UniClipboard iOS app:
 

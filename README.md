@@ -241,6 +241,7 @@ Limitations (today):
 - **Same Wi-Fi only** — mobile doesn't NAT-hole-punch or go through the relay. Off-LAN, mobile clients can't reach the desktop.
 - **Plain HTTP + Basic Auth on the LAN** — TLS is planned for v2. Only enable the listener on networks you trust.
 - **Mobile is not a space peer** — it doesn't get a node ID and can't read the encrypted history database; it only exchanges the current clipboard.
+- **iOS has no silent background sync** — iOS doesn't grant apps a general-purpose background clipboard hook, so the iOS app receives/sends only while it's in the foreground (or via notification tap). This is a platform restriction, not a missing feature; even WeChat's keyboard can only sync clipboard at the moment it's invoked. See [FAQ — iOS background sync](https://www.uniclipboard.app/docs/faq#why-cant-the-ios-app-sync-clipboard-silently-in-the-background-like-the-desktop).
 
 See the [Mobile sync guide](https://www.uniclipboard.app/docs/guides/mobile-sync) for the full setup flow.
 

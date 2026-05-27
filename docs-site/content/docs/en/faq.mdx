@@ -254,6 +254,41 @@ surface, and
 [Pairing & sync — Mobile companion](./guides/pairing#mobile-companion-lan-only)
 for the pairing UI.
 
+### Why can't the iOS app sync clipboard silently in the background like the desktop?
+
+**It's an iOS platform restriction, not something we can engineer
+around.** iOS does not grant third-party apps a general-purpose
+background hook for reading the clipboard. `UIPasteboard` reads are
+only reliable while an app is in the foreground; suspended apps don't
+get a wake-up when the system clipboard changes, and silent background
+polling would be killed by the scheduler (and would also trip the
+system "pasted from <app>" banner every time).
+
+What this means in practice for the UniClipboard iOS app:
+
+- **Foreground only on the receive path.** New clips from desktop
+  arrive in the app once you bring it to the foreground (or via a
+  notification tap when one is delivered). There is no truly silent
+  always-on sync the way desktops do it.
+- **Sending requires user intent.** Copies made in other iOS apps do
+  not stream out automatically — you open UniClipboard (or the iOS
+  Shortcut) to push the current pasteboard.
+- **Even big vendors hit the same wall.** WeChat's keyboard, for
+  example, can only sync clipboard at the moment the keyboard is
+  invoked. iOS's sandboxing is strict here regardless of who ships
+  the app.
+
+A possible future direction is a **keyboard / input-panel style
+companion** — switching to UniClipboard's panel would give iOS a
+legitimate window to read and push clipboard content. This is being
+explored but not committed; it would not turn into "silent always-on
+background sync" either, because the underlying OS constraint
+doesn't change.
+
+If you need true always-on clipboard sync, use a desktop (macOS,
+Windows, Linux) as the peer. The iOS app is best treated as an
+on-demand companion to that.
+
 ### How do I build from source?
 
 Source build steps live in

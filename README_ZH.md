@@ -241,6 +241,7 @@ UniClipboard iOS App 目前在 [TestFlight beta 公测](https://testflight.apple
 - **仅限同一 Wi-Fi** —— 移动端不做 NAT 穿透、不走 relay。离开 LAN，手机就拨不通桌面。
 - **LAN 上明文 HTTP + Basic Auth** —— TLS 计划在 v2 引入。只在你信任的网络上开启监听器。
 - **手机不是空间对端** —— 不分配 node ID，看不到加密历史数据库，只交换当下的剪贴。
+- **iOS 没有静默后台同步** —— iOS 不给第三方 App 通用的后台剪贴板钩子，所以 iOS 端只在前台（或点开通知时）才能收发剪贴，做不到桌面那种常驻后台静默同步。这是系统层限制，不是功能缺失；连微信输入法也只能在键盘被调起的那一刻同步剪贴。详见 [FAQ — iOS 后台同步](https://www.uniclipboard.app/docs/zh/faq#ios-app-为什么不能像桌面那样在后台静默同步剪贴板)。
 
 完整流程见 [移动端同步指南](https://www.uniclipboard.app/docs/zh/guides/mobile-sync)。
 

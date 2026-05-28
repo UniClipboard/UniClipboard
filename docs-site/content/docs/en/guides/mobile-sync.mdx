@@ -309,6 +309,132 @@ Either way, the connection settings are the same:
   gate writes when the app is not in the foreground.
 </Callout>
 
+## Cross-network sync via Tailscale
+
+By default, **mobile sync is same-Wi-Fi only** — once the phone moves
+to cellular (4G/5G) or to a different Wi-Fi, it can't reach the
+desktop's listener. Since **0.12**, the **Bind IP** dropdown also
+lists addresses in `100.64.0.0/10` (the CGNAT block Tailscale assigns
+to its virtual interfaces). If both the desktop and the phone are
+signed in to the same Tailscale network (tailnet), you can pair them
+exactly like on a LAN, with the **whole path carried over the
+Tailscale / WireGuard tunnel**.
+
+Typical setup:
+
+- Desktop sits at home on Ethernet / Wi-Fi;
+- Phone is out on 4G/5G cellular, or on someone else's Wi-Fi;
+- Both signed in to the same Tailscale account → reachable over the
+  tailnet directly.
+
+<Callout type="info">
+  **This only changes _reachability_, not the v1 HTTP wire format.** The
+  listener still speaks plain HTTP + Basic Auth; confidentiality is
+  provided by the Tailscale / WireGuard tunnel you trust. If you don't
+  trust Tailscale as a network layer, keep using the LAN-only setup.
+</Callout>
+
+<Steps>
+
+<Step>
+
+### Install Tailscale on the desktop and phone, sign in to the same account
+
+- **Desktop** — install the official client
+  ([tailscale.com/download](https://tailscale.com/download)) and stay
+  **Connected**. On Linux run `tailscale up` after the daemon is up;
+  on macOS / Windows, hit **Connect** from the menu bar / system tray.
+- **Phone** — install **Tailscale** from the App Store / Google Play,
+  sign in to the **same account**, and flip the VPN toggle on. iOS
+  will ask permission to add a VPN configuration — accept it.
+
+Once both ends are **Connected**, you'll see each other in the
+Tailscale client's **Machines** list, each with a `100.x.x.x` tailnet
+IPv4.
+
+</Step>
+
+<Step>
+
+### Pick the Tailscale interface in the desktop **Configure** dialog
+
+Go back to **Devices → Mobile sync → Configure**. In the **Bind IP**
+dropdown, pick the `100.x.x.x` entry (the Tailscale CGNAT one). The
+**current listening address** row immediately switches to
+`http://100.x.x.x:42720`, and any credentials minted from now on will
+embed that address.
+
+No daemon restart is needed — the listener hot-swaps. The actual
+socket still binds on `0.0.0.0`; **the "Bind IP" picker only controls
+which address is advertised to the phone.**
+
+<Callout type="info">
+  This is **independent** of the **Settings → Network → Allow overlay
+  network addrs** toggle. That toggle gates desktop-↔-desktop P2P path
+  candidates; mobile sync is a manual pick of an address that gets
+  handed to the phone, so the Tailscale CGNAT range is always listed
+  here.
+</Callout>
+
+</Step>
+
+<Step>
+
+### Click **Add device** and scan from the phone
+
+Run the normal **Add device** flow from
+[Enable mobile sync](#enable-mobile-sync-one-shot). The connect-URI
+QR at the top of the credentials modal now encodes the tailnet
+`http://100.x.x.x:42720` address.
+
+If you've already paired a device on a LAN interface, you don't have
+to re-add it: open the device card's dialog (or the credentials
+modal) and switch the **baseUrl dropdown** to the Tailscale entry —
+the QR refreshes in place with a new connect URI. No trip back to
+Configure required.
+
+</Step>
+
+<Step>
+
+### Scan from the phone and keep Tailscale connected
+
+Scan the top QR from the UniClipboard iOS / Android app; all fields
+auto-fill. **As long as the phone's Tailscale VPN stays Connected**,
+sync works the same way it would on the home LAN, whether the phone
+is on cellular or some unrelated Wi-Fi.
+
+</Step>
+
+</Steps>
+
+### Caveats and limits
+
+- **Both ends must stay Connected on Tailscale.** If the phone's
+  Tailscale drops (manual disconnect, OS background-killed, or
+  carrier idle-timeout), you're back to "unreachable from off-LAN"
+  and requests will hang / fail.
+- **MagicDNS hostnames aren't used.** The credentials URL embeds the
+  raw `100.x.x.x` IP; even if you've given the desktop a Tailscale
+  alias (e.g. `desktop.tail-XXXX.ts.net`), we **don't** write that
+  name into the connect URI. Stick with the numeric IP.
+- **Mobile background restrictions still apply.** iOS clipboard reads
+  are gated on lock / background, and Android 10+ has similar limits.
+  Tailscale doesn't change OS behaviour here. For predictable
+  "background sync," keep the app foregrounded or whitelisted.
+- **This is not v2 TLS.** Tailscale gives you _network-layer_
+  confidentiality. If your threat model needs end-to-end semantics
+  (e.g. you can't trust the desktop machine itself), this path
+  doesn't fix that — wait for v2 TLS.
+
+Troubleshooting: if the phone can ping `100.x.x.x` but the app times
+out, the desktop's Tailscale is usually the problem — either it
+isn't Connected, or you're going through a DERP relay with throttled
+throughput (Tailscale free plan caps relays around ~50 KB/s, which
+makes large images / files crawl). Check both ends are **Online** in
+the Tailscale "Machines" list and confirm a **direct** connection
+(rather than a DERP relay) between them.
+
 ## Manage paired devices
 
 | Action               | GUI                                              | CLI                                                    |
@@ -340,7 +466,7 @@ records, use `devices revoke` (or the GUI revoke button) explicitly.
 | On-disk password storage      | **Yes** — only an Argon2id hash is persisted server-side.                 |
 | Credential rotation           | **Yes** — `Rotate password` mints a new one and invalidates the old hash. |
 | LAN-side wire confidentiality | **No (v1)** — plain HTTP. TLS comes in v2.                                |
-| Cross-network reachability    | **No** — LAN only. Phone off the LAN can't reach the desktop.             |
+| Cross-network reachability    | **No by default** — LAN only. Tailscale / VPN gives a workaround (below). |
 | Mobile-as-peer trust          | **No** — phone never participates in the iroh / space trust mesh.         |
 
 Practical implications:
@@ -349,10 +475,14 @@ Practical implications:
   selective about where you turn it on.
 - Public Wi-Fi: keep the listener disabled. Re-enable on a trusted
   network when you actually want the integration.
-- VPN: a VPN that gives both desktop and phone the same RFC1918
-  subnet works as a workaround for "I want LAN-style sync from
-  outside the home" — but it's still plain HTTP, so the VPN itself
-  must be trusted.
+- VPN / Tailscale: a VPN or Tailscale tailnet that puts both the
+  desktop and the phone on the same virtual subnet (RFC1918 or
+  Tailscale's `100.64.0.0/10`) is a reasonable "LAN-style sync from
+  outside the home" workaround — full steps in
+  [Cross-network sync via Tailscale](#cross-network-sync-via-tailscale).
+  It's still plain HTTP on the wire; the VPN / WireGuard tunnel
+  provides the confidentiality, so the overlay network itself must
+  be trusted.
 
 ## Troubleshooting
 

@@ -277,6 +277,116 @@ SyncClipboard 协议兼容客户端也能接入。推荐顺序：
   空间的信任网格，并且 Android 10+ 的后台剪贴板限制会让 App 不在前台时收发被延迟或拦截。
 </Callout>
 
+## 跨网络同步：搭配 Tailscale
+
+默认场景里，**移动端同步** 只覆盖同一个 Wi-Fi —— 手机走 4G/5G、或人在
+外面接别人的 Wi-Fi 时，是 **拨不通** 桌面那个监听器的。从
+**0.12** 起，「监听 IP」下拉额外把 `100.64.0.0/10` 这一段 CGNAT
+地址（Tailscale 默认给虚拟网卡用的 IPv4 区段）也列了出来，所以只要
+桌面与手机都接入同一个 Tailscale 网络（tailnet），就能像在同一个
+LAN 里一样直接配对，**整条通道由 Tailscale / WireGuard 加密承载**。
+
+典型使用场景：
+
+- 电脑在家走有线 / 公司 Wi-Fi；
+- 手机在外走 4G / 5G 蜂窝网络，或者接的是另一个咖啡馆 Wi-Fi；
+- 两端都登录同一个 Tailscale 账号 → 走 tailnet 直接互通。
+
+<Callout type="info">
+  **这条路径只换了「可达性」，没换 v1 的 HTTP 协议本身。** 监听器对外
+  依然是明文 HTTP + Basic Auth；机密性由你信任的 Tailscale / WireGuard
+  隧道托底。如果你只把 Tailscale 当工具，不把它视作可信网络，请
+  暂时保持原本的「仅限同 LAN」做法。
+</Callout>
+
+<Steps>
+
+<Step>
+
+### 在桌面与手机上分别安装 Tailscale 并登录同一账号
+
+- **桌面端** —— 装官方客户端（[tailscale.com/download](https://tailscale.com/download)），
+  登录后保持「连接」状态。Linux 上启动 `tailscaled` 后执行
+  `tailscale up`；macOS / Windows 直接在状态栏 / 系统托盘里点
+  **Connect**。
+- **手机端** —— 在 App Store / Google Play 安装 **Tailscale** App，
+  登录 **同一个账号**，把 VPN 开关打开。iOS 上系统会要求授权
+  添加 VPN 配置，确认即可。
+
+两端都 **Connect** 之后，可以在桌面 / 手机的 Tailscale 客户端里看到
+对方设备出现在「Machines」列表中，每台机器都拿到一个 `100.x.x.x`
+的 tailnet IPv4。
+
+</Step>
+
+<Step>
+
+### 在桌面 **配置** modal 选 Tailscale 网卡
+
+回到 **设备 → 移动端同步 → 配置**。在 **监听 IP** 下拉里，找到形如
+`100.x.x.x`（Tailscale 段）的那一项选中。**当前监听地址** 行立即切到
+对应的 `http://100.x.x.x:42720`，所有后续签发的设备凭据 URL 都会
+带上这个地址。
+
+不需要重启 daemon —— 监听器是热切换的，实际 socket 还是 bind 在
+`0.0.0.0`，**「监听 IP」这个选项只决定对外宣告哪一个地址**。
+
+<Callout type="info">
+  这与 **设置 → 网络 → 允许覆盖网络地址** 开关 **无关**。后者控制的是
+  桌面 ↔ 桌面 P2P 的路径候选，移动端同步是手动挑一个地址给手机扫码，
+  所以 Tailscale CGNAT 在这里始终可见。
+</Callout>
+
+</Step>
+
+<Step>
+
+### 点 **添加设备**，让手机扫码
+
+照常走 [一键启用](#一键启用) 里的 **添加设备** 流程。凭据弹窗顶部
+那张 connect URI 二维码现在编码的就是 `http://100.x.x.x:42720` 的
+tailnet 地址。
+
+如果已经把设备加好，但当时选的是 LAN 网卡，可以直接在凭据弹窗 / 设备卡片 dialog 的
+**baseUrl 下拉** 里切到 Tailscale 网卡，二维码会原地刷新成新的 connect URI，
+不需要回到「配置」modal、也不用重新添加设备。
+
+</Step>
+
+<Step>
+
+### 手机端扫码并保持 Tailscale 在线
+
+用 UniClipboard iOS / Android App 扫顶部那张大码，所有字段自动填好。
+**之后只要手机端的 Tailscale VPN 处于「Connected」状态**，无论手机
+走 4G/5G 还是任意一个外部 Wi-Fi，都能像在家里同 LAN 一样跟桌面双向
+同步。
+
+</Step>
+
+</Steps>
+
+### 注意事项与限制
+
+- **两端都要保持 Tailscale 在线。** 手机端 Tailscale 一旦断开（手动
+  Disconnect、被系统杀后台、或长时间没流量被运营商挂起），就回到「LAN
+  外不可达」的状态，请求会超时或拨号失败。
+- **不支持 MagicDNS 主机名。** 凭据 URL 用的是 `100.x.x.x` 形式的
+  数字 IP；如果你给桌面在 Tailscale 上配了别名（如 `desktop.tail-XXXX.ts.net`），
+  我们 **不会** 把这个名字写进 connect URI。固定走 `100.x.x.x` 即可。
+- **跨网络场景手机后台限制更明显。** iOS 在锁屏 / 切后台后会限制
+  剪贴板读写，Android 10+ 也有类似限制；这与 Tailscale 无关，是
+  系统行为。需要稳定的"后台同步"请把 App 留在前台或加进系统的
+  "始终允许"白名单。
+- **它不是 v2 TLS。** Tailscale 给的是 **网络层** 的机密性。如果
+  你的威胁模型要求"端到端"语义（例如担心桌面机器本身被攻破），这条
+  路径不解决该问题，等 v2 的 TLS 即可。
+
+故障排查：手机端能 ping 通 `100.x.x.x` 但 App 报连接超时，多半是
+桌面端那台 Tailscale 没接入 / 退到了 DERP 中继的限速档（个人版限速
+约 50KB/s，跑大图大文件会很慢）；先确认两端在 Tailscale 客户端的
+「Machines」列表里都显示在线，再确认两台机器的连接类型（直连 vs DERP）。
+
 ## 管理已配对设备
 
 | 操作           | GUI                                       | CLI                                              |
@@ -305,16 +415,18 @@ App、快捷指令或其他客户端）。
 | 桌面侧密码存储             | **是** —— 只持久化 Argon2id 哈希。                 |
 | 凭据轮换                   | **是** —— `Rotate password` 签发新值并失效旧哈希。 |
 | LAN 上的传输机密性         | **否（v1）** —— 明文 HTTP。TLS 在 v2 才会有。      |
-| 跨网络可达性               | **否** —— 仅限 LAN。手机离开局域网就连不上桌面。   |
+| 跨网络可达性               | **默认否** —— 仅限 LAN。可通过 Tailscale / VPN 折中（见下方）。 |
 | 把手机当作 peer 加入信任网 | **否** —— 手机不会进入 iroh / 空间的信任网络。     |
 
 实操含义：
 
 - 把 LAN 监听器当作私网里的 SSH 服务来对待 —— 选择性地开启。
 - 公共 Wi-Fi：保持监听器关闭。回到可信网络再启用。
-- VPN：让桌面与手机进入同一个 RFC1918 子网的 VPN 可以当成
-  「我想在家里之外用 LAN 风格同步」的折中，但仍然是明文 HTTP，
-  必须信任这条 VPN。
+- VPN / Tailscale：让桌面与手机进入同一个虚拟子网（RFC1918 VPN 或
+  Tailscale 的 `100.64.0.0/10` tailnet）可以当成「我想在家里之外用
+  LAN 风格同步」的折中。具体步骤见
+  [跨网络同步：搭配 Tailscale](#跨网络同步搭配-tailscale)。仍然是明文
+  HTTP，机密性由 VPN / WireGuard 隧道托底，必须信任这条覆盖网络。
 
 ## 故障排查
 

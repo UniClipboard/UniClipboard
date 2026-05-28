@@ -1006,6 +1006,58 @@ fn write_text_windows_native(text: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to set Windows Unicode clipboard text: {}", e))
 }
 
+/// Windows-specific: read CF_HTML payload via `clipboard-win`, bypassing
+/// `clipboard_rs::ClipboardContext::get_html`.
+///
+/// **Why this exists.** Upstream `clipboard_rs::platform::win::extract_html_from_clipboard_data`
+/// parses the `StartHTML`/`EndHTML` byte offsets from the CF_HTML header and
+/// then does `data[start_idx..end_idx].to_string()` on a UTF-8 `&str`. Some
+/// source apps (observed: Chinese-language Office, certain chat clients)
+/// emit offsets that are off by 1-2 bytes when the payload contains
+/// multi-byte UTF-8 characters; when the bad offset lands inside such a
+/// character `std`'s string slicer aborts the process. See Sentry issue
+/// UNICLIPBOARD-RUST-1V and the regression tests in
+/// `crate::clipboard::cf_html::tests::cf_html_endhtml_panic_repro`.
+///
+/// We grab the raw CF_HTML bytes with `clipboard-win` (the lower-level crate
+/// already in our dependency tree for image writes) and hand them to
+/// [`super::super::cf_html::read_cf_html_payload_from_bytes`], which slices on
+/// bytes and uses `String::from_utf8_lossy` so a bad offset becomes a
+/// `U+FFFD` instead of a panic.
+///
+/// Returns `Ok(None)` when the clipboard does not carry CF_HTML (the caller
+/// only reaches this function after `ctx.has(ContentFormat::Html)` reported
+/// true, so this should be very rare — but is still a normal "no data"
+/// outcome rather than an error).
+pub(crate) fn read_html_windows_native() -> Result<Option<String>> {
+    use clipboard_win::{formats, get_clipboard};
+
+    // `Html::new()` registers (or fetches the existing) "HTML Format" code
+    // via `RegisterClipboardFormatW`. `ClipboardContext::new` already did
+    // this at startup, so the second registration is idempotent.
+    let html_fmt = clipboard_win::formats::Html::new()
+        .ok_or_else(|| anyhow::anyhow!("Failed to register CF_HTML clipboard format"))?;
+
+    let bytes: Vec<u8> = match get_clipboard(formats::RawData(html_fmt.code())) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Err(anyhow::anyhow!(
+                "Failed to read CF_HTML raw bytes via clipboard-win: {}",
+                err
+            ));
+        }
+    };
+
+    debug!(
+        cf_html_size_bytes = bytes.len(),
+        "Read CF_HTML raw bytes from Windows clipboard (byte-safe path)"
+    );
+
+    Ok(super::super::cf_html::read_cf_html_payload_from_bytes(
+        &bytes,
+    ))
+}
+
 /// Windows-specific: Read image from clipboard as CF_DIB and convert to PNG bytes.
 ///
 /// Uses `clipboard-win` to read raw CF_DIB data (BITMAPINFOHEADER + pixel data,

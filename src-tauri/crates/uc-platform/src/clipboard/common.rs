@@ -372,7 +372,29 @@ impl CommonClipboardImpl {
         }
 
         if ctx.has(ContentFormat::Html) {
-            match ctx.get_html() {
+            // On Windows we deliberately bypass `ctx.get_html()`. The upstream
+            // implementation does `data[start_idx..end_idx].to_string()` on the
+            // CF_HTML payload using header byte offsets — and `std`'s string
+            // slicer aborts the process when those offsets land inside a
+            // multi-byte UTF-8 character. Some source apps (Chinese-language
+            // Office, certain chat clients) ship payloads where that happens
+            // for the trailing CJK character. See Sentry UNICLIPBOARD-RUST-1V
+            // and the regression tests in `super::cf_html`.
+            //
+            // The Windows path reads raw CF_HTML bytes via `clipboard-win` and
+            // slices on bytes, so a bad offset becomes a `U+FFFD` (or one
+            // truncated char at the tail) instead of a panic.
+            #[cfg(target_os = "windows")]
+            let html_result: Result<String> =
+                match super::platform::windows::read_html_windows_native() {
+                    Ok(Some(html)) => Ok(html),
+                    Ok(None) => Err(anyhow!("CF_HTML declared available but payload was empty")),
+                    Err(err) => Err(err),
+                };
+            #[cfg(not(target_os = "windows"))]
+            let html_result: Result<String> = ctx.get_html().map_err(|e| anyhow!(e));
+
+            match html_result {
                 Ok(html) => {
                     let bytes = html.into_bytes();
                     debug!(

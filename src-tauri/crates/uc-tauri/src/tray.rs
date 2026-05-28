@@ -29,6 +29,8 @@ struct TrayHandles {
     status: MenuItem<tauri::Wry>,
     open: MenuItem<tauri::Wry>,
     settings: MenuItem<tauri::Wry>,
+    check_update: MenuItem<tauri::Wry>,
+    restart: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
     language: String,
     lan_only_active: bool,
@@ -61,7 +63,7 @@ impl TrayState {
         }
 
         let language = normalize_language(initial_language);
-        let (open_label, settings_label, quit_label) = labels_for_language(language);
+        let labels = MenuLabels::for_language(language);
         let status_label = lan_only_status_label(language, lan_only_active);
         let tooltip = lan_only_tooltip(language, lan_only_active);
 
@@ -69,17 +71,32 @@ impl TrayState {
         // `tray.status` 是不可交互的状态展示行(`enabled = false`),
         // 用户右键 tray 时一眼可见 LAN-only Mode 是否已生效。
         let status = MenuItem::with_id(app, "tray.status", status_label, false, None::<&str>)?;
-        let open = MenuItem::with_id(app, "tray.open", open_label, true, None::<&str>)?;
-        let settings = MenuItem::with_id(app, "tray.settings", settings_label, true, None::<&str>)?;
-        let quit = MenuItem::with_id(app, "tray.quit", quit_label, true, None::<&str>)?;
+        let open = MenuItem::with_id(app, "tray.open", labels.open, true, None::<&str>)?;
+        let settings =
+            MenuItem::with_id(app, "tray.settings", labels.settings, true, None::<&str>)?;
+        let check_update = MenuItem::with_id(
+            app,
+            "tray.check_update",
+            labels.check_update,
+            true,
+            None::<&str>,
+        )?;
+        let restart = MenuItem::with_id(app, "tray.restart", labels.restart, true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, "tray.quit", labels.quit, true, None::<&str>)?;
 
-        // Build the context menu
+        // Build the context menu.
+        // 布局意图:
+        //   - "检查更新" 紧贴 "设置",语义上属于"应用维护"组
+        //   - "重启" 与 "退出" 同组(都是进程级动作),但用分隔符与上方拉开
+        //     一些距离,降低"想点退出却点到重启"的误触
         let menu = MenuBuilder::new(app)
             .item(&status)
             .separator()
             .item(&open)
             .item(&settings)
+            .item(&check_update)
             .separator()
+            .item(&restart)
             .item(&quit)
             .build()?;
 
@@ -97,6 +114,26 @@ impl TrayState {
                     if let Err(e) = app.emit("ui://navigate", "/settings") {
                         warn!("Failed to emit ui://navigate event: {}", e);
                     }
+                }
+                "tray.check_update" => {
+                    // Fire-and-forget:菜单 handler 是 sync,真正的检查必须
+                    // 放到 tokio runtime 上。helper 自带 telemetry + 找到
+                    // 新版本时弹更新窗口,所以这里不需要再打开主窗口
+                    // —— 没有新版本时用户得到"什么也没发生"的体感,等同于
+                    // AboutSection 里点击检查更新但结果为 UpToDate 的情况。
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        crate::commands::updater::perform_manual_check_from_tray(&app).await;
+                    });
+                }
+                "tray.restart" => {
+                    // Fire-and-forget。`perform_restart` 内部走 graceful
+                    // shutdown → `app.restart()`,后者调用 `process::exit`,
+                    // 该 future 在 happy path 永不返回。
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        crate::commands::restart::perform_restart(&app).await;
+                    });
                 }
                 "tray.quit" => {
                     app.exit(0);
@@ -181,6 +218,8 @@ impl TrayState {
             status,
             open,
             settings,
+            check_update,
+            restart,
             quit,
             language: language.to_string(),
             lan_only_active,
@@ -219,13 +258,15 @@ impl TrayState {
         };
 
         let language = normalize_language(language);
-        let (open_label, settings_label, quit_label) = labels_for_language(language);
+        let labels = MenuLabels::for_language(language);
         let status_label = lan_only_status_label(language, handles.lan_only_active);
         let tooltip = lan_only_tooltip(language, handles.lan_only_active);
 
-        handles.open.set_text(open_label)?;
-        handles.settings.set_text(settings_label)?;
-        handles.quit.set_text(quit_label)?;
+        handles.open.set_text(labels.open)?;
+        handles.settings.set_text(labels.settings)?;
+        handles.check_update.set_text(labels.check_update)?;
+        handles.restart.set_text(labels.restart)?;
+        handles.quit.set_text(labels.quit)?;
         handles.status.set_text(status_label)?;
         // Tray icon tooltip 也要随语言切换刷新。
         let _ = handles.tray.set_tooltip(Some(&tooltip));
@@ -294,11 +335,38 @@ pub(crate) fn normalize_language(language: &str) -> &'static str {
     }
 }
 
-/// Return `(open, settings, quit)` labels for the given normalized language.
-fn labels_for_language(language: &str) -> (&'static str, &'static str, &'static str) {
-    match language {
-        "zh-CN" => ("打开 UniClipboard", "设置", "退出"),
-        _ => ("Open UniClipboard", "Settings", "Quit"),
+/// Localized labels for the tray menu's interactive items.
+///
+/// Held as `&'static str` because every supported locale's strings are
+/// compile-time literals — `MenuItem::set_text` only requires
+/// `impl Into<String>`, but keeping these as static slices avoids per-call
+/// allocations and makes the table grep-friendly.
+struct MenuLabels {
+    open: &'static str,
+    settings: &'static str,
+    check_update: &'static str,
+    restart: &'static str,
+    quit: &'static str,
+}
+
+impl MenuLabels {
+    fn for_language(language: &str) -> Self {
+        match language {
+            "zh-CN" => Self {
+                open: "打开",
+                settings: "设置",
+                check_update: "检查更新…",
+                restart: "重启",
+                quit: "退出",
+            },
+            _ => Self {
+                open: "Open",
+                settings: "Settings",
+                check_update: "Check for Updates…",
+                restart: "Restart",
+                quit: "Quit",
+            },
+        }
     }
 }
 

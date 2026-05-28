@@ -55,42 +55,52 @@ pub async fn restart_app(
     record_trace_fields(&span, &_trace);
 
     async move {
-        info!("restarting app for settings change");
-
-        // graceful shutdown daemon 前先通知前端断 WS,让 axum
-        // `with_graceful_shutdown` 立即返回不等 30s heartbeat。
-        if let Err(error) = app.emit(FRONTEND_SHUTDOWN_EVENT, ()) {
-            warn!(
-                error = %error,
-                event = FRONTEND_SHUTDOWN_EVENT,
-                "failed to emit shutdown hint to frontend before restart; daemon \
-                 graceful shutdown will fall back to heartbeat-driven WS disconnect"
-            );
-        }
-
-        // 给前端 close frame 飞过 loopback 的时间。
-        tokio::time::sleep(Duration::from_millis(SHUTDOWN_FRONTEND_GRACE_MS)).await;
-
-        // 主动 graceful shutdown owned daemon,等到 HTTP / LAN 端口完全
-        // 释放再 spawn 新进程 —— 否则新进程 daemon bind 撞 WSAEADDRINUSE,
-        // 即便 Phase 1 已修了连带 panic,daemon 仍然起不来。
-        let ownership = app.state::<DaemonOwnership>().inner().clone();
-        if let Some(handle) = ownership.take_owned() {
-            match handle.shutdown(DAEMON_SHUTDOWN_TIMEOUT).await {
-                Ok(()) => info!("daemon stopped before restart"),
-                Err(err) => error!(
-                    error = %err,
-                    "daemon shutdown failed before restart; new process may fail to bind"
-                ),
-            }
-        }
-
-        // 新进程 spawn + 当前进程 exit。app.restart() 内部调用
-        // std::process::exit,以下代码不可达。
-        app.restart();
+        perform_restart(&app).await;
         #[allow(unreachable_code)]
         Ok(())
     }
     .instrument(span)
     .await
+}
+
+/// Graceful shutdown + `app.restart()`.
+///
+/// Shared entry for the `restart_app` Tauri command and the tray "Restart"
+/// menu item. Does not return — `app.restart()` internally calls
+/// `std::process::exit`. Callers must therefore expect this future to never
+/// complete on the happy path.
+pub(crate) async fn perform_restart(app: &tauri::AppHandle) {
+    info!("restarting app for settings change");
+
+    // graceful shutdown daemon 前先通知前端断 WS,让 axum
+    // `with_graceful_shutdown` 立即返回不等 30s heartbeat。
+    if let Err(error) = app.emit(FRONTEND_SHUTDOWN_EVENT, ()) {
+        warn!(
+            error = %error,
+            event = FRONTEND_SHUTDOWN_EVENT,
+            "failed to emit shutdown hint to frontend before restart; daemon \
+             graceful shutdown will fall back to heartbeat-driven WS disconnect"
+        );
+    }
+
+    // 给前端 close frame 飞过 loopback 的时间。
+    tokio::time::sleep(Duration::from_millis(SHUTDOWN_FRONTEND_GRACE_MS)).await;
+
+    // 主动 graceful shutdown owned daemon,等到 HTTP / LAN 端口完全
+    // 释放再 spawn 新进程 —— 否则新进程 daemon bind 撞 WSAEADDRINUSE,
+    // 即便 Phase 1 已修了连带 panic,daemon 仍然起不来。
+    let ownership = app.state::<DaemonOwnership>().inner().clone();
+    if let Some(handle) = ownership.take_owned() {
+        match handle.shutdown(DAEMON_SHUTDOWN_TIMEOUT).await {
+            Ok(()) => info!("daemon stopped before restart"),
+            Err(err) => error!(
+                error = %err,
+                "daemon shutdown failed before restart; new process may fail to bind"
+            ),
+        }
+    }
+
+    // 新进程 spawn + 当前进程 exit。app.restart() 内部调用
+    // std::process::exit,后续代码不可达。
+    app.restart();
 }

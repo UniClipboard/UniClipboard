@@ -430,6 +430,95 @@ pub async fn check_for_update(
     .await
 }
 
+/// Manual update check triggered from the system tray menu item.
+///
+/// Behaves like the `check_for_update` Tauri command (same `Manual` telemetry
+/// source, same `LastCheckAt` refresh) and additionally routes
+/// "found a new version" through [`NotifyContext::notify_if_new_version`] so
+/// the user sees the Sparkle-style update window without having to open the
+/// main window first.
+///
+/// Fire-and-forget; errors are logged but not propagated — the tray click
+/// handler is synchronous and has no UI to report errors to. The
+/// `UPDATE_AVAILABLE_EVENT` emitted by [`do_check_for_update`] still feeds
+/// the main window's `UpdateContext` if it happens to be open.
+pub(crate) async fn perform_manual_check_from_tray(app: &AppHandle) {
+    let runtime = match app.try_state::<Arc<TauriAppRuntime>>() {
+        Some(r) => r,
+        None => {
+            warn!(
+                target: "updater",
+                "TauriAppRuntime not mounted; aborting tray-initiated update check"
+            );
+            return;
+        }
+    };
+    let pending = match app.try_state::<PendingUpdate>() {
+        Some(p) => p,
+        None => {
+            warn!(
+                target: "updater",
+                "PendingUpdate not mounted; aborting tray-initiated update check"
+            );
+            return;
+        }
+    };
+
+    // Channel resolution mirrors the scheduler / window_show_check path:
+    // settings-pinned channel wins, otherwise detect from app version.
+    let app_version = app.package_info().version.to_string();
+    let resolved_channel = match runtime.settings_port().load().await {
+        Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
+            settings.general.update_channel.clone(),
+            &app_version,
+        ),
+        Err(err) => {
+            warn!(
+                target: "updater",
+                error = %err,
+                "failed to load settings; falling back to version-detected channel"
+            );
+            detect_channel(&app_version)
+        }
+    };
+
+    info!(target: "updater", "running tray-initiated update check");
+    let result = do_check_for_update(app, Some(resolved_channel.clone()), pending.inner()).await;
+
+    app.state::<crate::update_scheduler::LastCheckAt>()
+        .record_now();
+
+    let install_kind = install_kind_for_telemetry(detect_install_kind());
+
+    if let Ok(Some(metadata)) = &result {
+        match app.try_state::<Arc<crate::update_scheduler::NotifyContext>>() {
+            Some(ctx) => {
+                ctx.notify_if_new_version(&resolved_channel, &metadata.version, install_kind)
+                    .await;
+            }
+            None => warn!(
+                target: "updater",
+                "NotifyContext not mounted; tray check found update but cannot dedup/notify"
+            ),
+        }
+    }
+
+    let (outcome, failure_kind) = match &result {
+        Ok(Some(_)) => (UpdateCheckOutcome::Available, None),
+        Ok(None) => (UpdateCheckOutcome::UpToDate, None),
+        Err(err) => (
+            UpdateCheckOutcome::Failed,
+            Some(classify_check_failure(err)),
+        ),
+    };
+    runtime.analytics().capture(Event::UpdateCheckPerformed {
+        source: UpdateCheckSource::Manual,
+        outcome,
+        failure_kind,
+        install_kind,
+    });
+}
+
 /// Download the pending update in the background.
 ///
 /// Crate-internal entry shared by the `download_update` Tauri command and

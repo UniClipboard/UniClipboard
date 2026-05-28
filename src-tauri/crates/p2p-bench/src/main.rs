@@ -170,9 +170,9 @@ enum Cmd {
     ///
     /// This subcommand is intentionally self-contained: it inlines the
     /// staggered-retry constants from
-    /// `uc-infra/src/network/iroh/connect.rs` (ATTEMPT_TIMEOUT = 10s,
-    /// STAGGERED_DELAYS = [0s, 2s, 5s]) so p2p-bench keeps its "throwaway
-    /// spike, no uc-* deps" property.
+    /// `uc-infra/src/network/iroh/connect.rs` (ATTEMPT_TIMEOUT = 3s,
+    /// STAGGERED_DELAYS = [0, 500ms, 1500ms] after phase 4) so
+    /// p2p-bench keeps its "throwaway spike, no uc-* deps" property.
     OfflinePeerDispatchStorm {
         /// Number of back-to-back dispatches to fire (one per simulated
         /// user copy). Default 5 — matches the issue's worked example.
@@ -933,15 +933,17 @@ async fn run_parallel(
 }
 
 /// Per-attempt timeout inside one staggered-retry batch. 1:1 with
-/// `uc-infra/src/network/iroh/connect.rs::ATTEMPT_TIMEOUT`.
-const STORM_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+/// `uc-infra/src/network/iroh/connect.rs::ATTEMPT_TIMEOUT`. Keep
+/// these two values in sync — the bench's whole point is to mirror
+/// production cost.
+const STORM_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Stagger pattern for the three concurrent dial attempts inside a single
 /// dispatch. 1:1 with `uc-infra/src/network/iroh/connect.rs::STAGGERED_DELAYS`.
 const STORM_STAGGERED_DELAYS: [Duration; 3] = [
     Duration::from_millis(0),
-    Duration::from_secs(2),
-    Duration::from_secs(5),
+    Duration::from_millis(500),
+    Duration::from_millis(1500),
 ];
 
 /// `offline-peer-dispatch-storm` subcommand.

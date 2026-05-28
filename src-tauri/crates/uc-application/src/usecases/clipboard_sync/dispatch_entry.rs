@@ -65,16 +65,19 @@ use uc_observability::FlowId;
 /// (调用方 fire-and-forget,语义无损)。
 ///
 /// 之所以做这个截断:`connect_with_staggered_retry` 对不可达 peer 的最长耗
-/// 时是 `STAGGERED_DELAYS[2] (5s) + ATTEMPT_TIMEOUT (10s) = 15s`。在线 peer
-/// 几百 ms 就 ack,但一旦同一笔 dispatch 里有一个离线 peer,整个主流程会被
-/// 拖到 15s,直接影响:
+/// 时是 `STAGGERED_DELAYS[2] (1.5s) + ATTEMPT_TIMEOUT (3s) = 4.5s`(#886
+/// phase 4 之前是 15s)。在线 peer 几百 ms 就 ack,但一旦同一笔 dispatch
+/// 里有一个离线 peer,整个主流程仍会被拖到接近 5s,直接影响:
 ///   - `EntryDeliveryRepository::record_attempt` 写盘晚到 15s,前端 detail
 ///     badge 看到的"已同步到哪些设备"也跟着滞后;
-///   - tokio runtime 上同时挂 N 笔复制 = N 个 15s task,资源占用与可观测
+///   - tokio runtime 上同时挂 N 笔复制 = N 个 4.5s+ task,资源占用与可观测
 ///     性变差。
 /// 5s 取的是"在线 peer 在 LAN/直连下完成 connect + send + ack 的宽松上限"
 /// (实测 ~3s 内完成),既能让主流程在常见场景下等到所有 peer 的真实结果,
-/// 又避免被离线 peer 的 staggered retry 长尾拖死。详见 #785。
+/// 又避免被离线 peer 的 staggered retry 长尾拖死。#886 phase 4 把 staggered
+/// retry worst-case 从 15s 砍到 4.5s 之后,FAN_OUT_DEADLINE 仍保留作为
+/// 主流程的硬上限:phase 4 让"截断后还要等多久才能真正安静"从 ~10s 后台
+/// 长尾缩到 ~0,但主流程本身的截断契约不变。详见 #785。
 const FAN_OUT_DEADLINE: Duration = Duration::from_secs(5);
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
@@ -511,10 +514,11 @@ impl DispatchClipboardEntryUseCase {
 
                     // Skip the dial entirely when presence already reports
                     // Offline. A dial against a silently-dead peer can run
-                    // up to STAGGERED_DELAYS[2] (5s) + ATTEMPT_TIMEOUT (10s)
-                    // = 15s before failing, which is well past the main
-                    // loop's FAN_OUT_DEADLINE (5s) and would otherwise stall
-                    // every clipboard copy on the deadline timeout. Since
+                    // up to STAGGERED_DELAYS[2] (1.5s) + ATTEMPT_TIMEOUT (3s)
+                    // = 4.5s before failing — short of the main loop's
+                    // FAN_OUT_DEADLINE (5s) on its own, but with multiple
+                    // peers piling on the same offline target it still
+                    // stalls every clipboard copy on the deadline. Since
                     // the dispatch adapter writes presence Offline on its
                     // own dial failures (PresencePort::mark_offline) and
                     // the presence fast-path enforces a TTL re-dial, by the

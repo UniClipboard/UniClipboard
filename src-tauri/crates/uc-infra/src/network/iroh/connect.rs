@@ -6,11 +6,41 @@ use iroh::{Endpoint, EndpointAddr, TransportAddr};
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
-const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Per-attempt connect timeout.
+///
+/// 3s sits comfortably above the observed LAN/direct `iroh connect`
+/// success latency (~1s for an Online peer's first attempt) and the
+/// relay-fallback case (~1-2s when pkarr discovery completes before
+/// the direct path), while keeping the worst-case staggered-retry
+/// budget below [`crate::network::iroh::FAN_OUT_DEADLINE_HINT`]'s 5s
+/// dispatch-side hard cap.
+///
+/// Pre-#886 phase 4 this was 10s, picked when staggered retry was the
+/// only thing guarding the dispatch path. Now that the dispatch
+/// adapter has single-flight (one staggered-retry batch per peer per
+/// concurrent storm) and presence has a 30s sticky window after
+/// `mark_offline`, repeated copies against a dead peer no longer
+/// accumulate 15s tails — the leader's first batch alone defines the
+/// per-storm dial cost, so trimming the constant is no longer
+/// trading off ergonomics against repeated-storm cost.
+const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Stagger offsets for the three concurrent attempts inside one
+/// `connect_with_staggered_retry` call. 500ms + 1500ms after the
+/// initial attempt gives slow paths (pkarr discovery, relay
+/// handshake) a chance to overtake a dead direct-path race, without
+/// dragging the worst-case lifetime out past the dispatch deadline.
+///
+/// Worst-case lifetime = `STAGGERED_DELAYS[2]` (1.5s) +
+/// `ATTEMPT_TIMEOUT` (3s) = 4.5s. Storm metric per #886: a 5-copy
+/// burst against an offline peer at 1s intervals lands at ~4s spawn
+/// + 4.5s leader = 8.5s aggregate wall (down from the 19s phase-0
+/// baseline), with `iroh connect` attempts capped at 3 and
+/// `mark_offline` at 1.
 const STAGGERED_DELAYS: [Duration; 3] = [
     Duration::from_millis(0),
-    Duration::from_secs(2),
-    Duration::from_secs(5),
+    Duration::from_millis(500),
+    Duration::from_millis(1500),
 ];
 
 /// LAN-only Mode 反向防御：本端 `RelayMode::Disabled` **不阻止** iroh 用对端

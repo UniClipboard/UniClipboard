@@ -77,6 +77,25 @@ opt-level = 3
 [profile.dev.package.sha2]
 opt-level = 3
 
+# Codec crates carrying clipboard image captures: same pattern as the
+# Argon2id override above. PNG encoding of a 2.4 MB screenshot took ~3.3s
+# in dev profile because the deflate (`miniz_oxide` / `fdeflate`) and the
+# `png` Adaptive-filter loop ran under opt-level=0; release builds do the
+# same encode in ~150-300ms. The watcher path is `clipboard-rs::get_image`
+# (BMP → DynamicImage) followed by `image::DynamicImage::write_to(_, Png)`
+# (DynamicImage → PNG), so the heat lives entirely in these five crates.
+# Keeping business code in debug, optimizing only the codec dependencies.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.flate2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
 [profile.release]
 panic = "abort"                # Strip expensive panic clean-up logic
 codegen-units = 1              # Compile crates one after another so the compiler can optimize better

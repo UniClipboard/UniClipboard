@@ -608,35 +608,43 @@ impl CommonClipboardImpl {
                 image_already_read = captured;
             }
 
-            // Non-macOS: keep original get_image()+to_png() path
-            #[cfg(not(target_os = "macos"))]
+            // Windows: layered fast path that prefers the native "PNG"
+            // clipboard format (zero encoding) before falling back to
+            // CF_DIB+fast-PNG and ultimately to clipboard-rs's
+            // decode+re-encode slow path. See
+            // `super::platform::windows::try_read_image_windows_optimized`
+            // for the rationale and tier breakdown.
+            #[cfg(target_os = "windows")]
             {
-                match ctx.get_image() {
-                    Ok(img) => {
-                        debug!("clipboard-rs get_image() succeeded, converting to PNG");
-                        match img.to_png() {
-                            Ok(png) => {
-                                let bytes = png.get_bytes().to_vec();
-                                debug!(
-                                    format_id = "image",
-                                    size_bytes = bytes.len(),
-                                    "Read image representation via clipboard-rs"
-                                );
-                                reps.push(ObservedClipboardRepresentation::new(
-                                    RepresentationId::new(),
-                                    "image".into(),
-                                    Some(MimeType("image/png".to_string())),
-                                    bytes,
-                                ));
-                                image_already_read = true;
-                            }
-                            Err(err) => {
-                                warn!(error = %err, "clipboard-rs: image available but to_png() failed");
-                            }
-                        }
+                match super::platform::windows::try_read_image_windows_optimized(ctx) {
+                    Ok(Some(bytes)) => {
+                        debug!(
+                            format_id = "image",
+                            size_bytes = bytes.len(),
+                            "Read image representation via Windows optimized path"
+                        );
+                        reps.push(ObservedClipboardRepresentation::new(
+                            RepresentationId::new(),
+                            "image".into(),
+                            Some(MimeType("image/png".to_string())),
+                            bytes,
+                        ));
+                        image_already_read = true;
+                    }
+                    Ok(None) => {
+                        debug!(
+                            "Windows optimized image read returned None; \
+                             clipboard reports Image format but no tier produced bytes"
+                        );
+                        // Treat as transient unreadable so the lazy-data
+                        // retry in `read_snapshot` gets a chance.
+                        had_unreadable_format = true;
                     }
                     Err(err) => {
-                        warn!(error = %err, "clipboard-rs: ContentFormat::Image reported available but get_image() failed");
+                        warn!(
+                            error = %err,
+                            "Windows optimized image read failed across all tiers"
+                        );
                     }
                 }
             }

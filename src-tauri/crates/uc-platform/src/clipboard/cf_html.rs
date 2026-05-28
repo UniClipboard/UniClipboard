@@ -101,4 +101,63 @@ mod tests {
         let html = "<html><body><!--StartFragment--><!--EndFragment--></body></html>";
         assert_eq!(strip_cf_html_wrapper(html), "");
     }
+
+    // Reproduction tests for the upstream `clipboard_rs` panic observed in
+    // production (Sentry issue UNICLIPBOARD-RUST-1V, events
+    // `bffcf352449d47c8a903d5cafd16a08e` and `29c606eab66b49fea65ef4471562c431`).
+    //
+    // `clipboard_rs::platform::win::extract_html_from_clipboard_data` (win.rs:632)
+    // takes the `EndHTML:NNNNNNNNNN` byte offset parsed from the CF_HTML
+    // header and directly slices the UTF-8 buffer:
+    //
+    //     Ok(data[start_idx..end_idx].to_string())
+    //
+    // Some source applications miscompute that offset by 1-2 bytes when the
+    // payload contains multi-byte UTF-8 characters (CJK in particular). When
+    // the offset lands inside such a character the std slice operation aborts
+    // with `byte index N is not a char boundary; it is inside 'X' (bytes A..B)`.
+    //
+    // These tests pin the exact failure mode so any future defensive shim
+    // (catch_unwind wrapper or a char-boundary-aware fallback) has a regression
+    // gate to defend against.
+    mod cf_html_endhtml_panic_repro {
+        /// Minimal reproduction of `clipboard_rs::win::extract_html_from_clipboard_data`'s
+        /// fatal line. Kept as a free function so the panic surface is identical
+        /// to the upstream call site.
+        fn slice_like_clipboard_rs(data: &str, start_idx: usize, end_idx: usize) -> String {
+            data[start_idx..end_idx].to_string()
+        }
+
+        /// Build a payload whose byte length puts a 3-byte CJK char (`'插'`,
+        /// UTF-8 `e6 8f 92`) straddling a target offset, and return that
+        /// offset so the caller can use it as a bogus `EndHTML` value.
+        fn build_payload_with_endhtml_inside_cjk(prefix_padding: usize) -> (String, usize) {
+            let mut buf = String::new();
+            buf.push_str("<html>\r\n<body>\r\n<!--StartFragment-->");
+            for _ in 0..prefix_padding {
+                buf.push('A');
+            }
+            // `'插'` starts at `buf.len()`; offset +1 lands inside its second byte.
+            let end_idx_inside_char = buf.len() + 1;
+            buf.push('插');
+            buf.push_str("<!--EndFragment-->\r\n</body>\r\n</html>");
+            (buf, end_idx_inside_char)
+        }
+
+        #[test]
+        #[should_panic(expected = "is not a char boundary")]
+        fn endhtml_offset_inside_chinese_char_panics() {
+            let (data, end_idx) = build_payload_with_endhtml_inside_cjk(100);
+            let _ = slice_like_clipboard_rs(&data, 0, end_idx);
+        }
+
+        #[test]
+        #[should_panic(expected = "inside '插'")]
+        fn panic_message_matches_production_signature() {
+            // Mirrors the exact wording observed in Sentry so reading the
+            // production stacktrace next to this test is unambiguous.
+            let (data, end_idx) = build_payload_with_endhtml_inside_cjk(6784);
+            let _ = slice_like_clipboard_rs(&data, 0, end_idx);
+        }
+    }
 }

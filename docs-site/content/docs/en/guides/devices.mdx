@@ -183,18 +183,32 @@ strip on the page anymore.
 
 Each card:
 
-- Top: blue `Smartphone` icon; hovering reveals a **Rotate password**
-  and **Delete** icon button in the top-right corner.
+- Top: blue `Smartphone` icon.
 - Middle: the label you gave the device, plus the Basic Auth
   **username** in mono (copy it for diagnostics).
 - Bottom: last-active timestamp.
 
-- **Rotate password** — mints a fresh one-time password and
-  invalidates the previous Argon2id hash atomically. The old
-  credentials stop working immediately; the new password is shown
-  exactly once.
-- **Delete** — removes the device record. Subsequent requests with
-  those credentials get `401 Unauthorized`.
+The **whole card** is clickable. Clicking it opens a **Mobile sync
+device** dialog rather than triggering an inline action. The dialog
+has two views:
+
+- **Info view (default)** — shows the current connection: base URL
+  (with a network-interface dropdown so you can re-pick the
+  advertised IP) and either a QR placeholder ("server only stores a
+  password hash — click Change password to mint a new one and scan
+  it here") or, if you just rotated, the freshly-minted
+  `uniclipboard://connect` QR plus an amber **Credentials** zone
+  with a one-click **Backup** button. Footer buttons: **Change
+  password** (left), **Revoke** + **Done** (right).
+- **Rotate view** — opened by pressing **Change password**. Lets
+  you optionally type a new password (empty → auto-generated) and
+  submit. On success the dialog flips back to Info view with the
+  new QR / amber credentials visible, so you can scan or copy
+  immediately. The old Argon2id hash is invalidated atomically; the
+  old credentials stop working immediately.
+
+Pressing **Revoke** removes the device record. Subsequent requests
+with those credentials get `401 Unauthorized`.
 
 <Callout type="info">
   Mobile cards don't show the `LAN / Direct / Relay` transport badge — mobile sync is **always**

@@ -66,9 +66,14 @@ listener**. Then under **Network parameters**:
 
 - **Bind IP** — leave on `Auto` to have the desktop offer every
   RFC1918 candidate at copy time, or pick a specific interface to
-  fix the advertised URL to one address. Either way the actual
-  socket always binds to `0.0.0.0`; this picker only controls which
-  address gets advertised to the mobile device.
+  fix the advertised URL to one address. Tailscale CGNAT addresses
+  (`100.64.0.0/10`) are included in the dropdown so a Tailscale-
+  reachable phone can be paired the same way as a LAN phone; this
+  is independent of the **Settings → Network → Allow overlay
+  network addrs** toggle, which only affects desktop ↔ desktop
+  pairing. Either way the actual socket always binds to `0.0.0.0`;
+  this picker only controls which address gets advertised to the
+  mobile device.
 - **Port** — defaults to `42720`. Change only if there's a conflict.
 
 The dialog shows the **current listening address** as you go. If
@@ -89,24 +94,34 @@ listener can't bind.
 ### Click **Add device**
 
 Pick a label (e.g. "My iPhone 15"). The desktop mints a one-time
-**username** and **password** and shows them inside a credentials
-modal split by onboarding method, not by platform:
+**username** and **password** and shows them inside a single
+scan-first credentials modal:
 
-- **Scan to add** — a two-step flow. Step ① **Download** shows a QR
-  pointing at the [download page](https://www.uniclipboard.app/download),
-  so first-time users can install the UniClipboard mobile app from
-  their phone; tap **"Installed — next"** to advance to step ②
-  **Pair**, which shows a QR that encodes the base URL and credentials
-  as a single connect URI. Scan it from the **UniClipboard iOS App**
-  (TestFlight public beta — recommended; see
-  [Pair an iPhone](#pair-an-iphone) below) or any SyncClipboard-
-  protocol client, including community Android apps. All fields
-  auto-fill. No typing.
-- **Install Shortcut** — a QR that points at the iCloud-hosted
-  `UniClipboard.shortcut` install link. Scan it to install the
-  Shortcut once, then copy the base URL / username / password
-  from the modal into the Shortcut's fields by hand. Use this when
-  the user doesn't have the UniClipboard iOS App.
+- **Big QR (top, always on)** — encodes the base URL and credentials
+  as a single `uniclipboard://connect` URI. Scan it from the
+  **UniClipboard iOS App** (TestFlight public beta — recommended;
+  see [Pair an iPhone](#pair-an-iphone) below), the
+  [UniClipboard Android client](https://github.com/UniClipboard/uc-android),
+  or any other SyncClipboard-protocol client. All fields auto-fill;
+  no typing. A baseUrl dropdown sits next to the QR so you can
+  switch the advertised IP (LAN candidates, plus Tailscale CGNAT
+  if you have it) without re-opening the Configure modal.
+- **"Haven't installed a client?" disclosure (collapsed by default)** —
+  expand it when the phone has no client yet. Inside are two tabs:
+  **iOS** shows a QR for the TestFlight invite (with a Shortcut
+  install QR as a sub-fallback for users who can't or won't use
+  TestFlight), and **Android** shows a QR for the
+  [GitHub Releases APK download page](https://github.com/UniClipboard/uc-android/releases/latest).
+- **"Credentials" disclosure (amber, collapsed by default)** —
+  expand it to reveal the raw `username` / `password` for clients
+  that need manual entry. A **Backup** button copies a
+  `Server / Username / Password` block to the clipboard in one go.
+
+Closing the modal (the **Done** button, the `X` icon, `Esc`, or
+clicking outside the dialog) all **keep the device** — there's no
+in-modal discard path. To revoke a device, open it from the
+**Mobile sync** device grid instead (see
+[Manage paired devices](#manage-paired-devices)).
 
 The plaintext password is shown **once**. The desktop only retains
 an Argon2id hash after the modal closes.
@@ -147,7 +162,8 @@ are optional and default to auto-mint.
 
 <Callout type="info">
   The plaintext password is shown **once**. If the user loses it,
-  click **Rotate password** on the device row (or
+  click the device card on the **Mobile sync** grid and press
+  **Change password** inside the dialog (or
   `uniclip mobile-sync devices revoke <id>` + `devices add`) — there
   is no way to retrieve the original.
 </Callout>
@@ -196,14 +212,12 @@ then **Install**, and UniClipboard will be added to the Home Screen.
 #### Generate credentials on the desktop **Add device**
 
 Back on the desktop, follow the flow above to click **Add device**
-under **Devices → Mobile sync**. The credentials modal opens on the
-**Scan to add** tab, sub-step **① Download** — it shows a QR
-pointing at the [download page](https://www.uniclipboard.app/download)
-so first-time users can install the mobile app from their phone. If
-you already installed it via the TestFlight steps above, click
-**"Installed — next"** to advance to **② Pair**, which shows the
-connect-URI QR that carries the base URL, username, and one-time
-password.
+under **Devices → Mobile sync**. The credentials modal opens
+directly on the connect-URI QR — base URL, username, and one-time
+password are encoded into a single scan. (If you haven't installed
+the App yet, expand the **"Haven't installed a client?"**
+disclosure for a TestFlight QR; otherwise just scan the big QR
+from the App right away.)
 
 </Step>
 
@@ -211,11 +225,11 @@ password.
 
 #### Enter the connection info in the App
 
-Open the UniClipboard iOS App, tap **Add server**, and scan the QR
-from the desktop's **Scan to add → ② Pair** sub-step. The base URL,
-username, and password are filled in automatically; just confirm
-and save. Once connected, the iPhone syncs clipboard with the
-desktop in both directions.
+Open the UniClipboard iOS App, tap **Add server**, and scan the big
+QR from the desktop credentials modal. The base URL, username, and
+password are filled in automatically; just confirm and save. Once
+connected, the iPhone syncs clipboard with the desktop in both
+directions.
 
 </Step>
 
@@ -237,16 +251,20 @@ desktop over the local network and doesn't depend on the proxy.
 ### iOS (Shortcut — fallback, no UniClipboard App)
 
 If TestFlight isn't an option right now, the Shortcut path still
-works. Switch the credentials modal to the **Install Shortcut**
-tab:
+works. In the credentials modal, expand the **"Haven't installed a
+client?"** disclosure, stay on the **iOS** tab, and look for the
+**"Don't want the App? Scan to install the Shortcut as fallback"**
+sub-QR.
 
-1. Scan the **Install Shortcut** QR with the iPhone Camera (or open
-   the install link in Safari). iOS prompts to install
+1. Scan the Shortcut install QR with the iPhone Camera (or open the
+   install link in Safari). iOS prompts to install
    `UniClipboard.shortcut`.
 2. Open the installed Shortcut and **manually** paste the base URL,
-   username, and password from the credentials modal into its
-   matching fields. The Shortcut QR only carries the install link —
-   it does **not** prefill credentials.
+   username, and password (from the **Credentials** amber disclosure
+   at the bottom of the modal — use its **Backup** button to copy
+   all three in one go) into the Shortcut's matching fields. The
+   Shortcut QR only carries the install link — it does **not**
+   prefill credentials.
 3. Run the Shortcut (or trigger it from the iOS share sheet) to
 
 ### Android / other clients
@@ -293,14 +311,14 @@ Either way, the connection settings are the same:
 
 ## Manage paired devices
 
-| Action               | GUI                                | CLI                                                    |
-| -------------------- | ---------------------------------- | ------------------------------------------------------ |
-| List paired devices  | Devices page → Mobile sync panel   | `uniclip mobile-sync devices list`                     |
-| Add another device   | Mobile sync panel → **Add device** | `uniclip mobile-sync devices add --label "…"`          |
-| Rotate password      | Device row → **Rotate password**   | _GUI only today_; mint a new one and re-edit the phone |
-| Revoke a device      | Device row → **Revoke**            | `uniclip mobile-sync devices revoke <device-id>`       |
-| Disable feature      | Configure dialog → switch off      | `uniclip mobile-sync disable`                          |
-| Inspect listener URL | Mobile sync panel header           | `uniclip mobile-sync status`                           |
+| Action               | GUI                                              | CLI                                                    |
+| -------------------- | ------------------------------------------------ | ------------------------------------------------------ |
+| List paired devices  | Devices page → Mobile sync panel                 | `uniclip mobile-sync devices list`                     |
+| Add another device   | Mobile sync panel → **Add device**               | `uniclip mobile-sync devices add --label "…"`          |
+| Rotate password      | Click device card → dialog → **Change password** | _GUI only today_; mint a new one and re-edit the phone |
+| Revoke a device      | Click device card → dialog → **Revoke**          | `uniclip mobile-sync devices revoke <device-id>`       |
+| Disable feature      | Configure dialog → switch off                    | `uniclip mobile-sync disable`                          |
+| Inspect listener URL | Mobile sync panel header                         | `uniclip mobile-sync status`                           |
 
 **Rotating** mints a fresh one-time password and atomically
 invalidates the previous Argon2id hash. The old credentials stop

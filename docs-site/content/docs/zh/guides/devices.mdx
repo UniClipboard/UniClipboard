@@ -141,14 +141,27 @@ Alert 区域展示，不再有专门的状态条。
 
 每张卡片：
 
-- 顶部：蓝色 `Smartphone` 图标；悬停时右上角浮出「轮换密码」与「删除」两个 icon 按钮。
+- 顶部：蓝色 `Smartphone` 图标。
 - 中部：注册时给的标签 + Basic Auth **用户名**（mono，可直接复制做排错）。
 - 底部：最近一次活动时间。
 
-- **轮换密码** 按钮 —— 签发一个新的一次性密码，并原子失效旧的 Argon2id
-  哈希。旧凭据立即停用；新密码只显示一次。
-- **删除** 按钮 —— 删除设备记录。携带旧凭据的后续请求会拿到
-  `401 Unauthorized`。
+**整张卡片可点**。点击会弹出 **移动端同步设备（Mobile sync device）**
+对话框，而不是在卡片上就地触发某个动作。dialog 内部分两个视图：
+
+- **Info 视图（默认）** —— 展示当前连接信息：base URL（旁边带网卡
+  下拉，可重新挑要对外宣告的 IP），以及一张 QR ——「服务器只存
+  Argon2 哈希，QR 没法再凭空拼出，点 Change password 签发新密码后
+  再来扫」的占位；改密成功后才换成真正的 `uniclipboard://connect`
+  二维码，并在下方多出一块 amber **凭据（Credentials）** 区域，
+  自带一键 **备份** 按钮。底部按钮：左边 **Change password**，
+  右边 **Revoke** + **Done**。
+- **Rotate 视图** —— 点 **Change password** 进入。可以可选输入新
+  密码（留空则自动生成），提交成功后 dialog 会自动切回 Info 视图，
+  顺手把新 QR / amber 凭据呈现出来，方便立刻扫码 / 复制。旧的
+  Argon2id 哈希被原子失效，旧凭据立即停用。
+
+点 **Revoke** 会删除设备记录。携带旧凭据的后续请求会拿到
+`401 Unauthorized`。
 
 <Callout type="info">
   移动卡片 **不** 会出现 `LAN / Direct / Relay` 传输徽标 —— 移动端同步 **总是** 走局域网内的明文

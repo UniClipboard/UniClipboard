@@ -328,10 +328,9 @@ Typical setup:
   tailnet directly.
 
 <Callout type="info">
-  **This only changes _reachability_, not the v1 HTTP wire format.** The
-  listener still speaks plain HTTP + Basic Auth; confidentiality is
-  provided by the Tailscale / WireGuard tunnel you trust. If you don't
-  trust Tailscale as a network layer, keep using the LAN-only setup.
+  **This only changes _reachability_, not the v1 HTTP wire format.** The listener still speaks plain
+  HTTP + Basic Auth; confidentiality is provided by the Tailscale / WireGuard tunnel you trust. If
+  you don't trust Tailscale as a network layer, keep using the LAN-only setup.
 </Callout>
 
 <Steps>
@@ -369,11 +368,9 @@ socket still binds on `0.0.0.0`; **the "Bind IP" picker only controls
 which address is advertised to the phone.**
 
 <Callout type="info">
-  This is **independent** of the **Settings → Network → Allow overlay
-  network addrs** toggle. That toggle gates desktop-↔-desktop P2P path
-  candidates; mobile sync is a manual pick of an address that gets
-  handed to the phone, so the Tailscale CGNAT range is always listed
-  here.
+  This is **independent** of the **Settings → Network → Allow overlay network addrs** toggle. That
+  toggle gates desktop-↔-desktop P2P path candidates; mobile sync is a manual pick of an address
+  that gets handed to the phone, so the Tailscale CGNAT range is always listed here.
 </Callout>
 
 </Step>

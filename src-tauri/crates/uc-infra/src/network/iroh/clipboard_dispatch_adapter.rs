@@ -27,10 +27,13 @@
 //!   peer-side rejection — peer was never contacted; caller is expected
 //!   to route via blob ref / file transfer instead of retrying this peer.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use iroh::endpoint::Connection;
 use iroh::{Endpoint, EndpointAddr};
+use tokio::sync::{broadcast, Mutex};
 use tracing::{debug, instrument, warn};
 
 use uc_core::ids::DeviceId;
@@ -47,6 +50,13 @@ use super::connect::connect_with_staggered_retry;
 /// transports on the same endpoint.
 pub const CLIPBOARD_ALPN: &[u8] = b"uniclipboard/clipboard/0";
 
+/// Result a single in-flight dial broadcasts to every follower waiting
+/// on the same peer's single-flight slot. `Connection: Clone` makes
+/// fan-out cheap (each follower gets its own handle on the same QUIC
+/// connection); the failure branch carries the joined attempt errors so
+/// followers' tracing surfaces the same root cause the leader observed.
+type DialResult = Result<Connection, String>;
+
 pub struct IrohClipboardDispatchAdapter {
     endpoint: Arc<Endpoint>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
@@ -57,6 +67,18 @@ pub struct IrohClipboardDispatchAdapter {
     /// (roster view, fan-out skip logic) observe the truth without waiting
     /// for the keepalive worker's next probe cycle.
     presence: Arc<dyn PresencePort>,
+    /// Single-flight slot per destination device. Concurrent dispatches to
+    /// the same peer collapse to one `connect_with_staggered_retry`
+    /// invocation: the first caller becomes the leader (records its
+    /// sender in this map, runs the dial, broadcasts the verdict), every
+    /// later caller becomes a follower (subscribes and waits). See
+    /// [`Self::dial_single_flight`].
+    ///
+    /// Pre-#886 a storm of N concurrent copies against the same offline
+    /// peer kicked off N parallel staggered-retry loops (3·N raw `iroh
+    /// connect` attempts) and N `mark_offline` calls; single-flight cuts
+    /// both to 1.
+    in_flight_dials: Mutex<HashMap<DeviceId, broadcast::Sender<DialResult>>>,
 }
 
 impl IrohClipboardDispatchAdapter {
@@ -69,6 +91,84 @@ impl IrohClipboardDispatchAdapter {
             endpoint,
             peer_addr_repo,
             presence,
+            in_flight_dials: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Dial `target` with at most one staggered-retry batch in flight per
+    /// device. The first caller becomes the leader: it inserts a
+    /// `broadcast::Sender` into [`Self::in_flight_dials`], drives the
+    /// actual `connect_with_staggered_retry`, and broadcasts the verdict.
+    /// Concurrent callers for the same device become followers and await
+    /// the broadcast.
+    ///
+    /// On dial failure only the leader calls
+    /// [`PresencePort::mark_offline`]; followers inherit the verdict
+    /// through the broadcast. This is what shrinks the storm metric in
+    /// #886's acceptance table: N concurrent copies against an offline
+    /// peer collapse from N·3 raw `iroh connect` attempts and N
+    /// `mark_offline` calls to 3 and 1 respectively.
+    async fn dial_single_flight(&self, target: &DeviceId, addr: EndpointAddr) -> DialResult {
+        enum Role {
+            Leader(broadcast::Sender<DialResult>),
+            Follower(broadcast::Receiver<DialResult>),
+        }
+
+        // Capacity 8 is well above the expected fan-out (per-peer roster
+        // size ≤ 10 in Slice 2; concurrent dispatches per peer realistically
+        // ≤ 3) — broadcast slow-receiver lag is not in the failure modes
+        // this slot needs to defend against.
+        let role = {
+            let mut map = self.in_flight_dials.lock().await;
+            match map.get(target) {
+                Some(tx) => Role::Follower(tx.subscribe()),
+                None => {
+                    let (tx, _) = broadcast::channel::<DialResult>(8);
+                    map.insert(target.clone(), tx.clone());
+                    Role::Leader(tx)
+                }
+            }
+        };
+
+        match role {
+            Role::Leader(tx) => {
+                let result = connect_with_staggered_retry(
+                    Arc::clone(&self.endpoint),
+                    addr,
+                    CLIPBOARD_ALPN,
+                    "clipboard",
+                )
+                .await;
+
+                // First-hand dial verdict — fold mark_offline into the
+                // leader's tail so concurrent followers piling on the
+                // same dead peer collapse to a single side-effect rather
+                // than each calling `presence.mark_offline` on their own
+                // failure return.
+                if let Err(ref err) = result {
+                    debug!(
+                        error = %err,
+                        "clipboard dispatch: single-flight dial failed; marking offline"
+                    );
+                    self.presence.mark_offline(target).await;
+                }
+
+                // Remove the slot before broadcasting so any caller that
+                // races back in after we send sees an empty map and
+                // starts a fresh dial cycle.
+                {
+                    let mut map = self.in_flight_dials.lock().await;
+                    map.remove(target);
+                }
+                let _ = tx.send(result.clone());
+                result
+            }
+            Role::Follower(mut rx) => match rx.recv().await {
+                Ok(result) => result,
+                Err(err) => Err(format!(
+                    "single-flight follower lost leader broadcast: {err}"
+                )),
+            },
         }
     }
 
@@ -139,22 +239,19 @@ impl ClipboardDispatchPort for IrohClipboardDispatchAdapter {
             None => return Err(ClipboardDispatchError::Offline),
         };
 
-        // 3. Dial. Dial failure = offline (no typed iroh error leaks up).
-        //    On failure, feed the verdict back to PresencePort so the next
-        //    consumer of `current_state` / `ensure_reachable` doesn't pay
-        //    another 5-15s dial timeout on the same dead peer.
-        let connection = match connect_with_staggered_retry(
-            Arc::clone(&self.endpoint),
-            addr,
-            CLIPBOARD_ALPN,
-            "clipboard",
-        )
-        .await
-        {
+        // 3. Dial via the per-peer single-flight slot so a concurrent
+        //    dispatch storm against the same offline peer collapses to one
+        //    staggered-retry batch + one `mark_offline`. Dial failure =
+        //    offline (no typed iroh error leaks up); the leader has
+        //    already fed the verdict to PresencePort so this branch only
+        //    has to surface the public error.
+        let connection = match self.dial_single_flight(target, addr).await {
             Ok(connection) => connection,
             Err(err) => {
-                debug!(error = %err, "clipboard dispatch: dial failed, treating as Offline");
-                self.presence.mark_offline(target).await;
+                debug!(
+                    error = %err,
+                    "clipboard dispatch: dial failed (single-flight), treating as Offline"
+                );
                 return Err(ClipboardDispatchError::Offline);
             }
         };
@@ -477,6 +574,114 @@ mod tests {
             Err(ClipboardDispatchError::Offline) => {}
             other => panic!("expected Offline, got {other:?}"),
         }
+    }
+
+    /// Presence fake that counts `mark_offline` calls instead of asserting
+    /// they never happen. Reserved for the single-flight tests below
+    /// (verdicts 5 and 6) — the happy-path tests above keep using
+    /// `presence_mock()` so any accidental call still panics.
+    struct CountingPresence {
+        mark_offline_calls: Arc<std::sync::atomic::AtomicUsize>,
+        events: broadcast::Sender<PresenceEvent>,
+    }
+
+    impl CountingPresence {
+        fn new() -> Self {
+            let (events, _) = broadcast::channel(8);
+            Self {
+                mark_offline_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                events,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl PresencePort for CountingPresence {
+        async fn ensure_reachable(
+            &self,
+            _device: &DeviceId,
+        ) -> Result<ReachabilityState, PresenceError> {
+            Ok(ReachabilityState::Unknown)
+        }
+        async fn current_state(&self, _device: &DeviceId) -> ReachabilityState {
+            ReachabilityState::Unknown
+        }
+        async fn mark_offline(&self, _device: &DeviceId) {
+            self.mark_offline_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+        fn subscribe(&self) -> broadcast::Receiver<PresenceEvent> {
+            self.events.subscribe()
+        }
+    }
+
+    /// Verdict 5 — single-flight collapse. Two dispatches racing against
+    /// the same offline peer must produce exactly one `mark_offline` call
+    /// (the leader's) — followers inherit the verdict through the
+    /// broadcast and surface their own `Offline` without re-stamping
+    /// presence. This is the storm-axis half of #886's acceptance table.
+    #[tokio::test]
+    async fn concurrent_dispatch_to_offline_peer_calls_mark_offline_once() {
+        let sender_endpoint = bind_endpoint().await;
+        wait_for_direct_addrs(&sender_endpoint).await;
+
+        // Seed an unroutable addr blob: a fresh random EndpointId with
+        // no transport addrs and relay disabled on the sender, so the
+        // staggered retry exhausts its three attempts without ever
+        // dialling a live peer.
+        let dead_id = iroh::SecretKey::generate().public();
+        let dead_addr = EndpointAddr::new(dead_id);
+
+        let target = DeviceId::new("offline-storm-target");
+        let repo = Arc::new(MemRepo::default());
+        seed_addr(&repo, &target, &dead_addr).await;
+
+        let presence = Arc::new(CountingPresence::new());
+        let mark_offline_calls = Arc::clone(&presence.mark_offline_calls);
+
+        let adapter = Arc::new(IrohClipboardDispatchAdapter::new(
+            sender_endpoint.clone(),
+            repo,
+            presence,
+        ));
+
+        let header = sample_header();
+        let payload_a = SyncPayload {
+            ciphertext: Bytes::from_static(b"first"),
+        };
+        let payload_b = SyncPayload {
+            ciphertext: Bytes::from_static(b"second"),
+        };
+
+        let adapter_a = Arc::clone(&adapter);
+        let adapter_b = Arc::clone(&adapter);
+        let target_a = target.clone();
+        let target_b = target.clone();
+        let header_a = header.clone();
+        let header_b = header.clone();
+
+        let (result_a, result_b) = tokio::join!(
+            async move { adapter_a.dispatch(&target_a, &header_a, payload_a).await },
+            async move { adapter_b.dispatch(&target_b, &header_b, payload_b).await },
+        );
+
+        match (result_a, result_b) {
+            (Err(ClipboardDispatchError::Offline), Err(ClipboardDispatchError::Offline)) => {}
+            other => panic!("both dispatches should report Offline; got {other:?}"),
+        }
+
+        let calls = mark_offline_calls.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            calls, 1,
+            "single-flight must collapse mark_offline to one call; got {calls}",
+        );
+
+        // Slot must be empty after the leader finishes so a later
+        // dispatch starts a fresh dial cycle (no stale in-flight entry).
+        assert!(
+            adapter.in_flight_dials.lock().await.is_empty(),
+            "in_flight_dials slot must be released after the leader broadcasts",
+        );
     }
 
     /// Verdict 4 — oversized payload. The adapter short-circuits before

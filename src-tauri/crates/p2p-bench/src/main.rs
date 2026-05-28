@@ -8,6 +8,11 @@
 //! Subcommands:
 //!   serve  --path <file> [--split N]      prints 1 or N tickets joined by ','
 //!   fetch  --ticket <t1[,t2,...]>         fetches in parallel, prints aggregate
+//!   offline-peer-dispatch-storm           replays the production "user copies
+//!                                         N times while peer is offline" path,
+//!                                         counting raw `iroh connect` attempts
+//!                                         and total wall time. Used as the
+//!                                         pre-refactor baseline for #886.
 //!
 //! Key knobs (apply to both subcommands unless noted):
 //!   --tuned           (default) match uniclipboard's production QUIC config
@@ -22,7 +27,9 @@
 //! Output line shape (fetch, final summary on stdout):
 //!   FETCH ts=<ISO8601> n=<N> bytes=<total> wall_elapsed_ms=<n> aggregate_mbps=<f>
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -32,13 +39,14 @@ use futures_lite::StreamExt;
 use iroh::address_lookup::memory::MemoryLookup;
 use iroh::endpoint::{presets, QuicTransportConfig, VarInt};
 use iroh::protocol::Router;
-use iroh::{Endpoint, RelayMode};
+use iroh::{Endpoint, EndpointAddr, RelayMode, SecretKey, TransportAddr};
 use iroh_blobs::api::downloader::DownloadProgressItem;
 use iroh_blobs::store::fs::FsStore;
 use iroh_blobs::store::mem::MemStore;
 use iroh_blobs::ticket::BlobTicket;
 use iroh_blobs::BlobsProtocol;
 use noq_proto::congestion::{BbrConfig, CubicConfig};
+use tokio::task::JoinSet;
 
 #[derive(Parser)]
 #[command(version, about = "iroh-blobs P2P throughput spike")]
@@ -147,6 +155,48 @@ enum Cmd {
         #[arg(long)]
         store_dir: Option<PathBuf>,
     },
+
+    /// Replay the production "user copies N times while peer is offline"
+    /// storm against a synthetic unreachable peer. Returns the aggregate
+    /// wall-clock time, total `iroh connect` attempts, and how many times
+    /// the dispatch path would have called `PresencePort::mark_offline`.
+    ///
+    /// Used as the pre-refactor baseline measurement for #886 (collapse
+    /// the in-process negative cache into PresencePort). After phases 1
+    /// and 2 land, the same invocation should show:
+    ///   - wall time dropping from > 30s to < 6s (5 dispatches @ 1s)
+    ///   - `iroh connect` attempts dropping from >= 15 to <= 4
+    ///   - mock `mark_offline` calls dropping from N to 1
+    ///
+    /// This subcommand is intentionally self-contained: it inlines the
+    /// staggered-retry constants from
+    /// `uc-infra/src/network/iroh/connect.rs` (ATTEMPT_TIMEOUT = 10s,
+    /// STAGGERED_DELAYS = [0s, 2s, 5s]) so p2p-bench keeps its "throwaway
+    /// spike, no uc-* deps" property.
+    OfflinePeerDispatchStorm {
+        /// Number of back-to-back dispatches to fire (one per simulated
+        /// user copy). Default 5 — matches the issue's worked example.
+        #[arg(long, default_value_t = 5)]
+        dispatches: u32,
+
+        /// Sleep between successive dispatches. Default 1000ms — matches
+        /// the issue's "5 次复制 / 1s 间隔" baseline. Set to 3000 /
+        /// 10000 / 30000 to sweep the inter-dispatch interval axis.
+        #[arg(long, default_value_t = 1000)]
+        interval_ms: u64,
+
+        /// Synthetic unreachable target. Defaults to TEST-NET-1 (RFC
+        /// 5737), which is guaranteed by RFC to be non-routable, so the
+        /// QUIC handshake hits ATTEMPT_TIMEOUT instead of getting an
+        /// ICMP refusal in <1ms.
+        #[arg(long, default_value = "192.0.2.1:1")]
+        fake_target: SocketAddr,
+
+        /// ALPN the storm dials on. Defaults to production CLIPBOARD_ALPN
+        /// so endpoint behaviour matches the real dispatch path.
+        #[arg(long, default_value = "uniclipboard/clipboard/0")]
+        alpn: String,
+    },
 }
 
 #[derive(Copy, Clone, ValueEnum, PartialEq, Eq)]
@@ -195,6 +245,12 @@ async fn main() -> Result<()> {
             store,
             ref store_dir,
         } => fetch(&cli, ticket.clone(), out.clone(), store, store_dir.clone()).await,
+        Cmd::OfflinePeerDispatchStorm {
+            dispatches,
+            interval_ms,
+            fake_target,
+            ref alpn,
+        } => dispatch_storm(&cli, dispatches, interval_ms, fake_target, alpn.clone()).await,
     }
 }
 
@@ -874,6 +930,210 @@ async fn run_parallel(
         per_task_max.as_secs_f64(),
     );
     Ok(())
+}
+
+/// Per-attempt timeout inside one staggered-retry batch. 1:1 with
+/// `uc-infra/src/network/iroh/connect.rs::ATTEMPT_TIMEOUT`.
+const STORM_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Stagger pattern for the three concurrent dial attempts inside a single
+/// dispatch. 1:1 with `uc-infra/src/network/iroh/connect.rs::STAGGERED_DELAYS`.
+const STORM_STAGGERED_DELAYS: [Duration; 3] = [
+    Duration::from_millis(0),
+    Duration::from_secs(2),
+    Duration::from_secs(5),
+];
+
+/// `offline-peer-dispatch-storm` subcommand.
+///
+/// Spawns `dispatches` background tasks, one every `interval_ms` ms, each
+/// running an inlined copy of `connect_with_staggered_retry` against an
+/// unreachable synthetic peer. Counts how many raw `iroh connect`
+/// attempts happen across the whole storm and how many of the
+/// dispatches reach the "all attempts failed → would call mark_offline"
+/// branch.
+///
+/// The final wall-clock window starts when the first dispatch is fired
+/// and ends when every background staggered-retry has settled — this is
+/// what the user perceives as "how long until the noise stops" and is
+/// the metric the issue's acceptance table moves from `> 30s` to `< 6s`.
+async fn dispatch_storm(
+    cli: &Cli,
+    dispatches: u32,
+    interval_ms: u64,
+    fake_target: SocketAddr,
+    alpn_str: String,
+) -> Result<()> {
+    if dispatches == 0 {
+        anyhow::bail!("--dispatches must be >= 1");
+    }
+    // `Endpoint::connect` wants `&'static [u8]`; leak the user-provided ALPN
+    // once up front so the per-task closures can keep a static slice.
+    let alpn_static: &'static [u8] = Box::leak(alpn_str.into_bytes().into_boxed_slice());
+
+    let endpoint = build_endpoint(cli, None).await?;
+    let endpoint = Arc::new(endpoint);
+    eprintln!(
+        "[storm] node_id={} fake_target={} alpn={}",
+        endpoint.id(),
+        fake_target,
+        String::from_utf8_lossy(alpn_static),
+    );
+
+    // Wait until the local endpoint is online; otherwise the very first
+    // dispatch races endpoint init and skews the wall-clock measurement.
+    let online_started = Instant::now();
+    endpoint.online().await;
+    eprintln!(
+        "[storm] endpoint online after {} ms",
+        online_started.elapsed().as_millis()
+    );
+
+    // Synthetic unreachable peer: a fresh random NodeId paired with a
+    // non-routable IP (TEST-NET-1 by default). No relay / no discovery →
+    // every dial hits STORM_ATTEMPT_TIMEOUT.
+    let fake_secret = SecretKey::generate();
+    let fake_node_id = fake_secret.public();
+    let fake_addr = EndpointAddr::from_parts(fake_node_id, [TransportAddr::Ip(fake_target)]);
+    eprintln!(
+        "[storm] fake peer node_id={} (synthetic, unreachable by construction)",
+        fake_node_id.fmt_short()
+    );
+
+    let connect_attempts = Arc::new(AtomicUsize::new(0));
+    let mock_offline_calls = Arc::new(AtomicUsize::new(0));
+
+    let storm_started = Instant::now();
+    let mut tasks: JoinSet<()> = JoinSet::new();
+
+    for k in 0..dispatches {
+        if k > 0 {
+            tokio::time::sleep(Duration::from_millis(interval_ms)).await;
+        }
+        let endpoint = Arc::clone(&endpoint);
+        let fake_addr = fake_addr.clone();
+        let connect_attempts = Arc::clone(&connect_attempts);
+        let mock_offline_calls = Arc::clone(&mock_offline_calls);
+        let dispatch_started_at = storm_started.elapsed();
+        eprintln!(
+            "[storm] dispatch[{k}] fire t+{}ms",
+            dispatch_started_at.as_millis()
+        );
+        tasks.spawn(async move {
+            mock_dispatch(
+                endpoint,
+                fake_addr,
+                alpn_static,
+                k,
+                connect_attempts,
+                mock_offline_calls,
+            )
+            .await;
+        });
+    }
+
+    // Wait for every background staggered-retry to settle. The wall clock
+    // we report below covers the full noise window from first fire to
+    // last quiet, which is the symptom the refactor in #886 is trying to
+    // shrink.
+    while tasks.join_next().await.is_some() {}
+
+    let wall = storm_started.elapsed();
+    let attempts = connect_attempts.load(Ordering::SeqCst);
+    let offline = mock_offline_calls.load(Ordering::SeqCst);
+
+    println!(
+        "STORM ts={} dispatches={} interval_ms={} wall_elapsed_ms={} total_iroh_connect_attempts={} mock_mark_offline_calls={} per_dispatch_avg_ms={}",
+        iso_now(),
+        dispatches,
+        interval_ms,
+        wall.as_millis() as u64,
+        attempts,
+        offline,
+        (wall.as_millis() as u64) / (dispatches as u64),
+    );
+    eprintln!(
+        "[storm] DONE dispatches={} wall={:.2}s attempts={} mock_mark_offline={}",
+        dispatches,
+        wall.as_secs_f64(),
+        attempts,
+        offline,
+    );
+
+    if let Ok(ep) = Arc::try_unwrap(endpoint) {
+        ep.close().await;
+    }
+    Ok(())
+}
+
+/// In-line replica of `uc-infra/src/network/iroh/connect.rs::
+/// connect_with_staggered_retry`. Kept here verbatim (modulo
+/// `tracing::debug!` → `eprintln!`) so the bench's baseline numbers map
+/// 1:1 onto production's dial cost.
+///
+/// Each call:
+///   1. Spawns three concurrent attempts staggered by `STORM_STAGGERED_DELAYS`
+///   2. Bumps `attempts_counter` once per attempt actually started
+///   3. If every attempt fails, bumps `offline_counter` (this is the
+///      branch that production calls `PresencePort::mark_offline` on).
+///
+/// All attempts are guaranteed to fail because `addr` is synthetic; we
+/// keep the structure faithful so the "abort siblings on first success"
+/// path is still exercised by the compiler / borrow checker (defensive
+/// against future iroh API changes, not because it can fire here).
+async fn mock_dispatch(
+    endpoint: Arc<Endpoint>,
+    addr: EndpointAddr,
+    alpn: &'static [u8],
+    dispatch_idx: u32,
+    attempts_counter: Arc<AtomicUsize>,
+    offline_counter: Arc<AtomicUsize>,
+) {
+    let mut attempts: JoinSet<Result<u32, (u32, String)>> = JoinSet::new();
+
+    for (idx, delay) in STORM_STAGGERED_DELAYS.iter().copied().enumerate() {
+        let endpoint = Arc::clone(&endpoint);
+        let addr = addr.clone();
+        let attempts_counter = Arc::clone(&attempts_counter);
+        attempts.spawn(async move {
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            let attempt_no = (idx + 1) as u32;
+            attempts_counter.fetch_add(1, Ordering::SeqCst);
+            eprintln!("[storm] dispatch[{dispatch_idx}] attempt {attempt_no} started");
+            match tokio::time::timeout(STORM_ATTEMPT_TIMEOUT, endpoint.connect(addr, alpn)).await {
+                Ok(Ok(_conn)) => Ok(attempt_no),
+                Ok(Err(err)) => Err((attempt_no, err.to_string())),
+                Err(_) => Err((
+                    attempt_no,
+                    format!("timed out after {}ms", STORM_ATTEMPT_TIMEOUT.as_millis()),
+                )),
+            }
+        });
+    }
+
+    let mut any_success = false;
+    while let Some(joined) = attempts.join_next().await {
+        match joined {
+            Ok(Ok(_attempt_no)) => {
+                attempts.abort_all();
+                any_success = true;
+                break;
+            }
+            Ok(Err((attempt_no, err))) => {
+                eprintln!("[storm] dispatch[{dispatch_idx}] attempt {attempt_no} failed: {err}");
+            }
+            Err(err) => {
+                eprintln!("[storm] dispatch[{dispatch_idx}] join error: {err}");
+            }
+        }
+    }
+
+    if !any_success {
+        offline_counter.fetch_add(1, Ordering::SeqCst);
+        eprintln!("[storm] dispatch[{dispatch_idx}] all attempts failed → would call mark_offline");
+    }
 }
 
 fn iso_now() -> String {

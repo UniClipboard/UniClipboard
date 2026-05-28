@@ -16,6 +16,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import type { ChatUIMessage, SearchTool } from '@/app/api/chat/route'
 import { Markdown } from '@/components/markdown'
@@ -68,7 +69,7 @@ const Context = createContext<{
   label: (typeof labels)[AILocale]
 } | null>(null)
 
-export function AISearchPanelHeader({ className, ...props }: ComponentProps<'div'>) {
+function AISearchPanelHeader({ className, ...props }: ComponentProps<'div'>) {
   const { label, setOpen } = useAISearchContext()
 
   return (
@@ -85,6 +86,7 @@ export function AISearchPanelHeader({ className, ...props }: ComponentProps<'div
       </div>
 
       <button
+        type="button"
         aria-label={label.close}
         tabIndex={-1}
         className={cn(
@@ -102,7 +104,7 @@ export function AISearchPanelHeader({ className, ...props }: ComponentProps<'div
   )
 }
 
-export function AISearchInputActions() {
+function AISearchInputActions() {
   const { label } = useAISearchContext()
   const { messages, status, setMessages, regenerate } = useChatContext()
   const isLoading = status === 'streaming'
@@ -146,10 +148,25 @@ export function AISearchInputActions() {
 
 const storageKeyInput = '__ai_search_input'
 
-export function AISearchInput(props: ComponentProps<'form'>) {
+const subscribeNoop = () => () => {}
+const getStoredInput = () => {
+  try {
+    return localStorage.getItem(storageKeyInput) ?? ''
+  } catch {
+    return ''
+  }
+}
+const getStoredInputServer = () => ''
+
+function AISearchInput(props: ComponentProps<'form'>) {
   const { label } = useAISearchContext()
   const { status, sendMessage, stop } = useChatContext()
-  const [input, setInput] = useState('')
+  // Read from localStorage via useSyncExternalStore so SSR returns '' and the
+  // client hydrates with the stored value in a single pass — no flicker.
+  const storedInput = useSyncExternalStore(subscribeNoop, getStoredInput, getStoredInputServer)
+  const [edited, setEdited] = useState<string | null>(null)
+  const input = edited ?? storedInput
+  const setInput = (v: string) => setEdited(v)
   const isLoading = status === 'streaming' || status === 'submitted'
   const onStart = (e?: SyntheticEvent) => {
     e?.preventDefault()
@@ -178,10 +195,6 @@ export function AISearchInput(props: ComponentProps<'form'>) {
   useEffect(() => {
     if (isLoading) document.getElementById('nd-ai-input')?.focus()
   }, [isLoading])
-
-  useEffect(() => {
-    setInput(localStorage.getItem(storageKeyInput) ?? '')
-  }, [])
 
   return (
     <form {...props} className={cn('flex items-start pe-2', props.className)} onSubmit={onStart}>
@@ -381,6 +394,7 @@ export function AISearchTrigger({
 
   return (
     <button
+      type="button"
       data-state={open ? 'open' : 'closed'}
       className={cn(
         position === 'float' && [
@@ -423,9 +437,11 @@ export function AISearchPanel() {
         }`}
       </style>
       <Presence present={open}>
-        <div
+        <button
+          type="button"
+          aria-label="Close AI search"
           className={cn(
-            'fixed inset-0 z-30 backdrop-blur-xs bg-fd-overlay lg:hidden',
+            'fixed inset-0 z-30 backdrop-blur-xs bg-fd-overlay lg:hidden cursor-default border-0 p-0',
             open ? 'animate-fd-fade-in' : 'animate-fd-fade-out'
           )}
           onClick={() => setOpen(false)}
@@ -458,7 +474,7 @@ export function AISearchPanel() {
   )
 }
 
-export function AISearchPanelList({ className, style, ...props }: ComponentProps<'div'>) {
+function AISearchPanelList({ className, style, ...props }: ComponentProps<'div'>) {
   const { label } = useAISearchContext()
   const chat = useChatContext()
   const messages = chat.messages.filter(msg => msg.role !== 'system')
@@ -476,7 +492,7 @@ export function AISearchPanelList({ className, style, ...props }: ComponentProps
       {messages.length === 0 ? (
         <div className="text-sm text-fd-muted-foreground/80 size-full flex flex-col items-center justify-center text-center gap-2">
           <MessageCircleIcon fill="currentColor" stroke="none" />
-          <p onClick={e => e.stopPropagation()}>{label.empty}</p>
+          <p>{label.empty}</p>
         </div>
       ) : (
         <div className="flex flex-col px-3 gap-4">
@@ -497,7 +513,7 @@ export function AISearchPanelList({ className, style, ...props }: ComponentProps
   )
 }
 
-export function useHotKey() {
+function useHotKey() {
   const { open, setOpen } = useAISearchContext()
 
   const onKeyPress = useEffectEvent((e: KeyboardEvent) => {

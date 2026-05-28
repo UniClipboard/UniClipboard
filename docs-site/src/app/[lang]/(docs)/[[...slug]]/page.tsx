@@ -19,7 +19,7 @@ export default async function Page(props: PageProps<'/[lang]/[[...slug]]'>) {
   const page = source.getPage(params.slug, params.lang)
   if (!page) notFound()
 
-  const MDX = page.data.body
+  const Mdx = page.data.body
   const markdownUrl = getPageMarkdownUrl(page).url
   const githubUrl = `https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/docs-site/content/docs/${page.path}`
 
@@ -33,7 +33,7 @@ export default async function Page(props: PageProps<'/[lang]/[[...slug]]'>) {
         <PageViewOptions markdownUrl={markdownUrl} githubUrl={githubUrl} />
       </div>
       <DocsBody>
-        <MDX
+        <Mdx
           components={getMDXComponents({
             a: createRelativeLink(source, page),
           })}

@@ -66,25 +66,34 @@ impl ListLanInterfacesUseCase {
             .await
             .map_err(translate_probe_error)?;
 
-        let mut filtered: Vec<LanInterfaceOption> = raw
+        // 排序时需要数值序（"100.64" < "100.127"），而 `LanInterfaceOption`
+        // 对外只保留字符串形式。保留原始 `Ipv4Addr` 作为排序 key，排完再丢。
+        let mut filtered: Vec<(LanInterfaceOption, std::net::Ipv4Addr)> = raw
             .into_iter()
             .filter(is_lan_candidate)
-            .map(|iface| LanInterfaceOption {
-                name: iface.name,
-                ipv4: iface.ipv4.to_string(),
+            .map(|iface| {
+                let raw_ipv4 = iface.ipv4;
+                (
+                    LanInterfaceOption {
+                        name: iface.name,
+                        ipv4: raw_ipv4.to_string(),
+                    },
+                    raw_ipv4,
+                )
             })
             .collect();
 
         // 网段优先级排序：10/8 → 172.16/12 → 192.168/16 → 100.64/10；段内按
-        // 字符串字典序稳定。真实 LAN 永远排在 overlay 之前，让用户拉下拉
-        // 看到的第一个候选最常是"主路由网段"。
+        // IPv4 数值序稳定（不能用字符串字典序，否则 CGNAT 段会出现
+        // "100.127.x" < "100.64.x" 这种反直觉的顺序）。真实 LAN 永远排在
+        // overlay 之前，让用户拉下拉看到的第一个候选最常是"主路由网段"。
         filtered.sort_by(|a, b| {
-            lan_candidate_bucket(&a.ipv4)
-                .cmp(&lan_candidate_bucket(&b.ipv4))
-                .then_with(|| a.ipv4.cmp(&b.ipv4))
+            lan_candidate_bucket(&a.0.ipv4)
+                .cmp(&lan_candidate_bucket(&b.0.ipv4))
+                .then_with(|| a.1.cmp(&b.1))
         });
 
-        Ok(filtered)
+        Ok(filtered.into_iter().map(|(opt, _)| opt).collect())
     }
 }
 

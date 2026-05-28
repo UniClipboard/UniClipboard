@@ -1,48 +1,59 @@
 /**
- * MobileSyncCredentialModal —— 注册成功后展示一次性凭据。
+ * MobileSyncCredentialModal —— 注册成功后展示一次性凭据 + 引导扫码配对。
  *
- * 关键不变量(对应 facade 合约,见 RegisterMobileShortcutDeviceOutput 注释):
- * 1. password 字段是**唯一一次**面向用户的明文回显;关闭后服务端只剩 PHC,
- *    无法再取回。
- * 2. 右上角 ✕ 丢弃本次注册(撤销设备);右下角「完成」须勾选「我已保存」
- *    才确认保留设备并关闭;ESC / 点遮罩仍拦截并提示勾选。
- * 3. password 永远不进 log / 持久化 / analytics(已在 invokeWithTrace 的
- *    sensitive args redaction 处约束;本组件再多一层"卸载即丢"的内存策略,
- *    上层不应把这份对象长期持有)。
+ * 设计意图(由 UX 决策树推导, 见 commit message / PR 描述):
  *
- * tab 不按"平台"分,按"接入方式"分 —— connect URI QR 平台无关 (iOS App 与
- * 任何 SyncClipboard 协议客户端都能扫,Android 第三方应用同理),所以早期
- * "iOS / Android" 的分法没意义且会让 Android 用户看到一个空 tab。新分法:
- * - 「扫码接入」 (默认):
- *   - 主操作: connect URI 二维码 (uniclipboard://connect?v=1&svc=mobile-sync&p=...)
- *   - iPhone 上的 UniClipboard 原生 App 或 SyncClipboard 快捷指令扫到后一次性
- *     解出 url/user/pwd 直接填三栏 —— 替代旧版"用户肉眼抄写"。后端 DTO
- *     `qrCodePngBase64` 自阶段 2 起编码的就是 connect URI。
- * - 「安装快捷指令」 (兜底, 一次性):
- *   - 没装 iOS App 的用户兜底走快捷指令路径,需先把模板装到 iPhone 上 —— 装一次
- *     之后任何"扫码接入" QR 都能用。
- *   - 主 QR 是 install URL 的二维码 (后端 DTO `installQrCodePngBase64` 阶段 5 引入),
- *     iPhone 相机直扫即可安装;桌面端打开 iCloud 共享链接无意义,所以也保留
- *     install URL 的文字 + 复制按钮 (CredentialField), 让用户能复制到别处。
+ * - **核心使命**: 扫码配对。modal 第一屏 = 大 QR + baseUrl 选择, 其它一切下沉。
+ * - **默认起点**: pair (connect URI QR) — 重复添加场景占 99%, 用户大概率已装
+ *   客户端。首次用户通过"还没装客户端?"折叠区开门走兜底安装流程。
+ * - **撤销下沉**: modal 不再承担"撤销刚注册的设备"职责。X、ESC、点遮罩、
+ *   footer"完成"全部走 `onComplete`(保留设备)。用户后悔时去 DevicesPage
+ *   的设备卡片上点 revoke — 单一职责, 也避免了 X 按钮"看着像关闭、实际删
+ *   设备"的 UX 陷阱。
+ * - **多网卡**: 服务地址做成 dropdown 紧贴 QR(语义上 baseUrl 是 QR 的配置
+ *   参数, 不是 username/password 那类"凭据"输出)。切换后前端
+ *   `buildConnectUri` 重算 QR, 不写回 settings, 不重启 listener。单网卡
+ *   机器 dropdown 退化为只读 chip。
+ * - **凭据折叠**: username/password 默认折叠在 amber 警告框内, 提供一键
+ *   "复制全部备份"。99% 扫码用户看不到凭据噪音, 1% 手动输入用户展开或
+ *   一键备份到密码管理器。
  *
- * 关键不变量(对应 facade 合约,见 RegisterMobileShortcutDeviceOutput 注释):
- * 1. password 字段是**唯一一次**面向用户的明文回显;关闭后服务端只剩 PHC,
- *    无法再取回。
- * 2. 右上角 ✕ 丢弃本次注册(撤销设备);右下角「完成」须勾选「我已保存」
- *    才确认保留设备并关闭;ESC / 点遮罩仍拦截并提示勾选。
- * 3. password 永远不进 log / 持久化 / analytics(已在 invokeWithTrace 的
- *    sensitive args redaction 处约束;本组件再多一层"卸载即丢"的内存策略,
- *    上层不应把这份对象长期持有)。
+ * # 关键不变量(对应 facade 合约 `RegisterMobileShortcutDeviceOutput`):
+ * 1. password 是**唯一一次**面向用户的明文回显; 关闭后服务端只剩 PHC。
+ * 2. password 永不进 log / 持久化 / analytics(已在 invokeWithTrace
+ *    sensitive args redaction 处约束; 本组件再多一层"卸载即丢"的内存
+ *    策略, 上层不应把这份对象长期持有)。
+ *
+ * # connect URI 镜像约束
+ * scan QR 的内容由前端 `buildConnectUri()` 实时构造, 与后端
+ * `usecases/mobile_sync/connect_uri.rs` 字节级镜像。改任一侧都要同步
+ * 另一侧 + golden vector。
  */
 
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { AlertTriangle, Check, Copy, ExternalLink, Eye, EyeOff, XIcon } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Smartphone,
+  XIcon,
+} from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { type RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
+import {
+  listMobileLanInterfaces,
+  type LanInterfaceView,
+  type RegisterMobileDeviceResult,
+} from '@/api/tauri-command/mobile_sync'
+import { BaseUrlChip, CopyIconButton } from '@/components/device/MobileSyncBaseUrlChip'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Dialog,
   DialogContent,
@@ -52,84 +63,137 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
+import { buildConnectUri } from '@/lib/mobileSyncConnectUri'
 import { cn } from '@/lib/utils'
 
 const log = createLogger('mobile-sync-credential')
 
-// 官网下载页 — 该页根据 UA 提供 iOS / Android 两个平台的安装入口,
-// 桌面端用户直接扫即可在手机上打开。URL 是产品级常量,不本地化。
-const DOWNLOAD_PAGE_URL = 'https://www.uniclipboard.app/download'
+// 产品级常量 — 不本地化, 直接面向用户。
+// iOS App 当前在 TestFlight public beta, 用户必须先装 TestFlight 才能装本
+// App。短期内是 iOS 推荐路径。
+const TESTFLIGHT_URL = 'https://testflight.apple.com/join/nyNQ8dQe'
+// Android 客户端是 SyncClipboard 协议兼容的 fork, APK 走 GitHub releases。
+const ANDROID_RELEASES_URL = 'https://github.com/UniClipboard/uc-android/releases/latest'
 
 interface Props {
-  /**
-   * 凭据 payload。`null` 表示 modal 关闭(等价 open=false)。父组件清空
-   * payload 即关闭 modal,本组件不持有任何引用。
-   */
+  /** 凭据 payload。`null` 表示 modal 关闭。 */
   payload: RegisterMobileDeviceResult | null
-  /** 用户点 ✕ 放弃:上层应撤销刚注册的设备。 */
-  onDiscard: (deviceId: string) => void | Promise<void>
-  /** 用户勾选已保存并点「完成」:保留设备,仅关闭凭据展示。 */
+  /** 关闭 modal(保留设备)。X / ESC / 点遮罩 / footer 主按钮共用此回调。
+   *  "撤销刚注册的设备"已下沉到 DevicesPage 设备卡片上的 revoke 按钮,
+   *  本组件不再承担该职责。 */
   onComplete: () => void
 }
 
-type OnboardingTab = 'scan' | 'shortcut'
-
-// 扫码接入是两步流程: step 1 引导用户在手机上扫"下载页 QR"装 App,
-// step 2 才扫 connect URI 配对。第一次接入的用户根本没装 App,直接给
-// connect QR 是哑的 —— 必须先把"去哪下载"这件事讲清楚。
-type ScanStep = 'download' | 'pair'
-
-const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComplete }) => {
+const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onComplete }) => {
   const { t } = useTranslation()
-  const [acknowledged, setAcknowledged] = useState(false)
-  const [passwordVisible, setPasswordVisible] = useState(false)
-  const [activeTab, setActiveTab] = useState<OnboardingTab>('scan')
-  const [scanStep, setScanStep] = useState<ScanStep>('download')
-  // 用户尝试关闭但未勾选时的 inline 提示。toast 在 modal 遮罩下很容易被忽视,
-  // 改成把红色高亮 + 错误文本直接挂在勾选框上,视线一定会被引到下一步操作。
-  const [hintActive, setHintActive] = useState(false)
-  const acknowledgeRef = useRef<HTMLLabelElement>(null)
 
-  const resetLocalState = useCallback(() => {
-    setAcknowledged(false)
-    setPasswordVisible(false)
-    setActiveTab('scan')
-    setScanStep('download')
-    setHintActive(false)
-  }, [])
+  // ── 多网卡服务地址 ──────────────────────────────────────────────────
+  const [lanInterfaces, setLanInterfaces] = useState<LanInterfaceView[]>([])
+  const [selectedHost, setSelectedHost] = useState<string | null>(null)
 
-  const handleDiscard = useCallback(() => {
+  // 拆 payload.baseUrl: host 是 dropdown 切换的对象, port 跟随 daemon 不变。
+  const { payloadHost, payloadPort } = useMemo(() => {
+    if (!payload) return { payloadHost: '', payloadPort: '' }
+    try {
+      const u = new URL(payload.baseUrl)
+      return { payloadHost: u.hostname, payloadPort: u.port }
+    } catch {
+      return { payloadHost: '', payloadPort: '' }
+    }
+  }, [payload])
+
+  // payload 切换(新设备)时重置选择, 让初始化 effect 再跑一次。
+  useEffect(() => {
+    setSelectedHost(null)
+  }, [payload?.deviceId])
+
+  // modal 打开时拉一次 LAN 接口列表。失败仅日志, 回退到只读 chip 不影响
+  // "完成保存"流程(凭据本身是 baseUrl 无关的)。
+  useEffect(() => {
     if (!payload) return
-    const { deviceId } = payload
-    resetLocalState()
-    void onDiscard(deviceId)
-  }, [onDiscard, payload, resetLocalState])
+    let cancelled = false
+    listMobileLanInterfaces()
+      .then(list => {
+        if (!cancelled) setLanInterfaces(list)
+      })
+      .catch(err => log.warn({ err }, 'failed to list LAN interfaces'))
+    return () => {
+      cancelled = true
+    }
+  }, [payload?.deviceId])
+
+  // dropdown 数据源 = 后端 list 接口 ∪ payload.baseUrl 的 host(去重)。
+  // 双保险:
+  // 1. 后端 list 拉空(权限/timing/接口故障)时, payloadHost 兜底成单元素
+  //    候选 — 用户至少能在 dropdown 里看到当前正用的 IP, 不会出现
+  //    "看着像 chip 但点不开"的体验断裂。
+  // 2. payloadHost 不在 list 里时(比如机器多网卡, daemon 注册时挑了
+  //    某个但用户在前端不慎切到另一个), 也并入候选, 让"当前在用的"始终
+  //    可被点回。
+  // 即使只剩 1 个候选, 也走 dropdown(UI 一致性 > 严格无意义控件), 用户
+  // 点开能看清"这是这台机器仅有的 LAN 候选"。
+  const dropdownInterfaces = useMemo<LanInterfaceView[]>(() => {
+    const seen = new Set<string>()
+    const out: LanInterfaceView[] = []
+    for (const iface of lanInterfaces) {
+      if (!seen.has(iface.ipv4)) {
+        seen.add(iface.ipv4)
+        out.push(iface)
+      }
+    }
+    if (payloadHost !== '' && !seen.has(payloadHost)) {
+      // 后端没列出当前 host:用 host 自身作 name(没别的可显示)。
+      out.push({ name: payloadHost, ipv4: payloadHost })
+    }
+    return out
+  }, [lanInterfaces, payloadHost])
+
+  // selectedHost 初始化(基于派生后的 dropdownInterfaces, 包含 payloadHost
+  // 兜底):
+  // 1) payloadHost 在候选里 → 保持(用户首次注册时挑过的不要被覆盖)
+  // 2) 未命中且列表非空 → 选第一个
+  // 3) 列表空 → 保持 null, BaseUrlChip 走只读 fallback
+  useEffect(() => {
+    if (selectedHost !== null) return
+    if (dropdownInterfaces.length === 0) return
+    if (dropdownInterfaces.some(i => i.ipv4 === payloadHost)) {
+      setSelectedHost(payloadHost)
+    } else {
+      setSelectedHost(dropdownInterfaces[0].ipv4)
+    }
+  }, [dropdownInterfaces, payloadHost, selectedHost])
+
+  // 派生当前生效的 baseUrl + connect URI。
+  // 有 selectedHost 且 port 已知 → 前端 buildConnectUri 重算(跟 Rust 端
+  // 字节级镜像)。否则回退用 payload 自带的字段。
+  const effectiveBaseUrl = useMemo(() => {
+    if (!payload) return ''
+    if (selectedHost === null || payloadPort === '') return payload.baseUrl
+    return `http://${selectedHost}:${payloadPort}`
+  }, [payload, selectedHost, payloadPort])
+
+  const effectiveConnectUri = useMemo(() => {
+    if (!payload) return ''
+    // 与后端 register_device.rs 的 ConnectUriOther{label, did} 一致。
+    try {
+      return buildConnectUri(effectiveBaseUrl, payload.username, payload.password, {
+        label: payload.label,
+        did: payload.deviceId,
+      })
+    } catch (err) {
+      log.warn({ err }, 'failed to rebuild connect URI, falling back to payload')
+      return payload.connectUri
+    }
+  }, [payload, effectiveBaseUrl])
 
   const handleComplete = useCallback(() => {
-    resetLocalState()
+    setSelectedHost(null)
     onComplete()
-  }, [onComplete, resetLocalState])
-
-  const handleAcknowledge = useCallback((v: boolean) => {
-    setAcknowledged(v)
-    if (v) setHintActive(false)
-  }, [])
-
-  const flagUnacknowledged = useCallback(() => {
-    setHintActive(true)
-    acknowledgeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [])
-
-  const tryClose = useCallback(() => {
-    if (!acknowledged) {
-      flagUnacknowledged()
-      return
-    }
-    handleComplete()
-  }, [acknowledged, flagUnacknowledged, handleComplete])
+  }, [onComplete])
 
   if (!payload) return null
 
@@ -137,250 +201,423 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
     <Dialog open>
       <DialogContent
         showCloseButton={false}
-        // sm:max-w-lg 必须显式覆盖 DialogContent 默认的 sm:max-w-sm,
-        // 否则 64rem 长 install URL 在 24rem 容器里会撑爆。max-h + 内层滚动
-        // 防止列表 + QR + 4 行凭据在小窗口下溢出底部。
-        className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
-        // 拦截 ESC / 点击遮罩关闭 —— 必须走勾选门;同时点亮 inline 提示,
-        // 让用户立刻看到为什么被挡住
-        onEscapeKeyDown={e => {
-          if (!acknowledged) {
-            e.preventDefault()
-            flagUnacknowledged()
-          }
-        }}
-        onPointerDownOutside={e => {
-          if (!acknowledged) {
-            e.preventDefault()
-            flagUnacknowledged()
-          }
-        }}
-        onInteractOutside={e => {
-          if (!acknowledged) {
-            e.preventDefault()
-            flagUnacknowledged()
-          }
-        }}
+        // sm:max-w-lg 必须显式覆盖默认 sm:max-w-sm —— 长 URL/QR/折叠区都
+        // 需要 32rem 才不挤; max-h + 内层滚动是兜底, 但默认状态(两个折叠
+        // 区都收着)应当在 90vh 内, 无滚动条。
+        className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        // X / ESC / 点遮罩 全部走"完成"(保留设备)。撤销操作下沉到
+        // DevicesPage, modal 不再承担。
+        onEscapeKeyDown={() => handleComplete()}
+        onPointerDownOutside={() => handleComplete()}
       >
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
           className="absolute top-2 right-2"
-          aria-label={t('devices.mobileSync.credential.dismiss')}
-          onClick={handleDiscard}
+          aria-label={t('devices.mobileSync.credential.closeAria')}
+          onClick={handleComplete}
         >
           <XIcon />
         </Button>
-        <DialogHeader className="px-4 pt-4 pb-2">
-          <DialogTitle>{t('devices.mobileSync.credential.title')}</DialogTitle>
-          {/* 视觉上不需要副标题 — 警告横幅 + tab + stepper 已经讲明白了。
-              但 Radix DialogContent 要求至少有 description (否则 a11y warn),
-              这里用 sr-only 给屏幕阅读器。 */}
+
+        <DialogHeader className="px-5 pt-5 pb-3">
+          <DialogTitle className="pr-8 text-base">
+            {t('devices.mobileSync.credential.title', { label: payload.label })}
+          </DialogTitle>
           <DialogDescription className="sr-only">
             {t('devices.mobileSync.credential.subtitle')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-2">
-          {/* 警告横幅 — 只留 title 一句。body ("关闭后无法再查看,如不慎遗失需
-              撤销并重新添加") 删了: title 已经传达核心,recovery 路径在 device
-              列表的撤销按钮上,信息不会失传。 */}
-          <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="size-4 shrink-0" />
-            <span>{t('devices.mobileSync.credential.warning.title')}</span>
-          </div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 pb-4">
+          {/* 主区域:大 QR + baseUrl 配置 + 提示文案 */}
+          <ScanArea
+            connectUri={effectiveConnectUri}
+            qrAlt={t('devices.mobileSync.credential.pair.qrAlt')}
+            connectHint={t('devices.mobileSync.credential.pair.connectHint')}
+            baseUrl={effectiveBaseUrl}
+            interfaces={dropdownInterfaces}
+            port={payloadPort}
+            selectedHost={selectedHost}
+            onSelect={setSelectedHost}
+          />
 
-          {/* 接入方式 tab —— 凭据 (URL/user/pwd) 共用,只切换"扫什么 QR" */}
-          <Tabs value={activeTab} onValueChange={v => setActiveTab(v as OnboardingTab)}>
-            <TabsList className="w-full">
-              <TabsTrigger value="scan">
-                {t('devices.mobileSync.credential.platforms.scan')}
-              </TabsTrigger>
-              <TabsTrigger value="shortcut">
-                {t('devices.mobileSync.credential.platforms.shortcut')}
-              </TabsTrigger>
-            </TabsList>
+          {/* 折叠 1: 还没装客户端?(中性色) */}
+          <NoClientCollapsible installQrCodePngBase64={payload.installQrCodePngBase64} />
 
-            {/* Tab A: 扫码接入 (默认主路径) — 两步 stepper
-                  step 1 = 下载 App (QR 指向官网下载页, 页面根据 UA 区分 iOS/Android)
-                  step 2 = 扫码配对 (QR = connect URI, qrCodePngBase64 由后端渲染)
-                connect URI 平台无关 —— iOS App、SyncClipboard 快捷指令、Android
-                客户端均可解; 但前置必须有 App, 所以 step 1 把"去哪下载"先讲清楚。
-                布局精简: 取消独立的提示卡, hint 内嵌到 QR 框顶端, "浏览器打开"
-                变成右上角小图标; pair step 不放"返回"按钮 — stepper 第 1 步可
-                点回退, 不需要重复入口。 */}
-            <TabsContent value="scan" className="mt-3 space-y-3">
-              <ScanStepper currentStep={scanStep} onSelect={setScanStep} />
-
-              {scanStep === 'download' ? (
-                <>
-                  <QrPanel
-                    hint={t('devices.mobileSync.credential.scan.download.hint')}
-                    topRight={
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={t(
-                          'devices.mobileSync.credential.scan.download.openInBrowserAria'
-                        )}
-                        title={t('devices.mobileSync.credential.scan.download.openInBrowserAria')}
-                        onClick={() =>
-                          openUrl(DOWNLOAD_PAGE_URL).catch(err =>
-                            log.error({ err }, 'Failed to open download page URL')
-                          )
-                        }
-                      >
-                        <ExternalLink className="size-3.5" />
-                      </Button>
-                    }
-                  >
-                    {/* 前端用 qrcode.react 现渲: download URL 是静态产品常量,
-                        每次都让后端编码一份 base64 PNG 是浪费。size 176 对应
-                        connect QR 显示 (size-48 减去 p-2)。 */}
-                    <QRCodeSVG
-                      value={DOWNLOAD_PAGE_URL}
-                      size={176}
-                      aria-label={t('devices.mobileSync.credential.scan.download.qrAlt')}
-                    />
-                  </QrPanel>
-                  <Button type="button" className="w-full" onClick={() => setScanStep('pair')}>
-                    {t('devices.mobileSync.credential.scan.download.next')}
-                  </Button>
-                </>
-              ) : (
-                <QrPanel hint={t('devices.mobileSync.credential.scan.pair.hint')}>
-                  <img
-                    src={`data:image/png;base64,${payload.qrCodePngBase64}`}
-                    alt={t('devices.mobileSync.credential.scan.pair.qrAlt')}
-                    className="size-44 rounded bg-white p-2"
-                  />
-                </QrPanel>
-              )}
-            </TabsContent>
-
-            {/* Tab B: 安装快捷指令 (一次性兜底)
-                installQrCodePngBase64 自后端阶段 5 起单独输出, 让 iPhone 相机
-                直接扫码安装 —— 避免用户在桌面上肉眼抄长 iCloud 链接到 Safari。
-                同时保留 install URL 文本 + 复制按钮 (CredentialField), 让用户
-                能复制链接到 IM / 笔记里日后再装。 */}
-            <TabsContent value="shortcut" className="mt-3 space-y-4">
-              <div className="space-y-2 rounded-md border border-border/60 bg-card/50 p-3">
-                <p className="text-sm font-medium">
-                  {t('devices.mobileSync.credential.shortcut.title')}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t('devices.mobileSync.credential.shortcut.body')}
-                </p>
-              </div>
-              <div className="flex flex-col items-center gap-2 rounded-md border border-border/60 bg-muted/30 p-4">
-                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                  {t('devices.mobileSync.credential.shortcut.qr.label')}
-                </Label>
-                <img
-                  src={`data:image/png;base64,${payload.installQrCodePngBase64}`}
-                  alt={t('devices.mobileSync.credential.shortcut.qr.alt')}
-                  className="size-48 rounded bg-white p-2"
-                />
-              </div>
-              <CredentialField
-                label={t('devices.mobileSync.credential.shortcut.linkLabel')}
-                value={payload.installUrl}
-                mono
-              />
-            </TabsContent>
-          </Tabs>
-
-          {/* 共用凭据(放 Tabs 外,两个 tab 都能看到) */}
-          <div className="space-y-3">
-            {/* Server URL */}
-            <CredentialField
-              label={t('devices.mobileSync.credential.baseUrl.label')}
-              value={payload.baseUrl}
-              mono
-            />
-
-            {/* Username */}
-            <CredentialField
-              label={t('devices.mobileSync.credential.username.label')}
-              value={payload.username}
-              mono
-            />
-
-            {/* Password — 默认隐藏,点眼睛切换显示;无论显示与否都可以复制 */}
-            <CredentialField
-              label={t('devices.mobileSync.credential.password.label')}
-              value={payload.password}
-              mono
-              secret={!passwordVisible}
-              extraActions={
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={passwordVisible ? 'hide' : 'show'}
-                  title={passwordVisible ? 'hide' : 'show'}
-                  onClick={() => setPasswordVisible(v => !v)}
-                >
-                  {passwordVisible ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                </Button>
-              }
-            />
-          </div>
-
-          {/* 强制勾选 —— hintActive 时用 primary(蓝色)而非 destructive(红色)
-              高亮:红色容易被误读为"错误/disabled",蓝色 + ring + 阴影才是
-              "请点这里"的可操作信号。错误文本不放这里,挪到 footer 上方,
-              避免视觉重心从 checkbox 上移走。 */}
-          <label
-            ref={acknowledgeRef}
-            className={cn(
-              'flex items-start gap-2 rounded-md border bg-card p-3 transition-all',
-              hintActive
-                ? 'border-primary bg-primary/10 ring-4 ring-primary/30 shadow-md shadow-primary/20'
-                : 'border-border/60'
-            )}
-          >
-            <Checkbox
-              checked={acknowledged}
-              onCheckedChange={v => handleAcknowledge(v === true)}
-              className={cn('mt-0.5', hintActive && 'border-primary ring-3 ring-primary/40')}
-            />
-            <span className={cn('text-sm', hintActive && 'font-medium text-primary')}>
-              {t('devices.mobileSync.credential.confirmSaved')}
-            </span>
-          </label>
+          {/* 折叠 2: 凭据(amber 警告色, 含 [备份] 按钮 + 折叠的 user/pwd) */}
+          <CredentialsCollapsible
+            baseUrl={effectiveBaseUrl}
+            username={payload.username}
+            password={payload.password}
+          />
         </div>
 
-        {/* 未勾选时关闭被挡 —— 在 footer 上方挂一条横幅,紧贴关闭按钮,
-            让用户立刻知道"按了没反应"的原因 */}
-        {hintActive && (
-          <div
-            className="border-t bg-destructive/5 px-4 py-2 text-xs text-destructive"
-            role="alert"
-          >
-            {t('devices.mobileSync.credential.closeBlocked')}
-          </div>
-        )}
-
         <DialogFooter className="m-0">
-          {/* 按钮始终启用:点击未勾选时触发 inline 提示,而不是冷冰冰的 disabled */}
-          <Button onClick={tryClose}>{t('devices.mobileSync.credential.close')}</Button>
+          <Button onClick={handleComplete}>{t('devices.mobileSync.credential.close')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Scan 主区域 —— 大 QR + baseUrl chip dropdown + hint
+// ────────────────────────────────────────────────────────────────────────
+
+interface ScanAreaProps {
+  connectUri: string
+  qrAlt: string
+  connectHint: string
+  baseUrl: string
+  interfaces: LanInterfaceView[]
+  port: string
+  selectedHost: string | null
+  onSelect: (host: string) => void
+}
+
+const ScanArea: React.FC<ScanAreaProps> = ({
+  connectUri,
+  qrAlt,
+  connectHint,
+  baseUrl,
+  interfaces,
+  port,
+  selectedHost,
+  onSelect,
+}) => {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-border/60 bg-muted/30 p-5">
+      {/* 主 QR — 224px, scanability 比原 176px 提升一截; bg-white p-3
+          是 QR scanner 必备的"白底 + quiet zone" */}
+      <div className="rounded-md bg-white p-3">
+        <QRCodeSVG value={connectUri} size={224} aria-label={qrAlt} />
+      </div>
+
+      {/* baseUrl chip dropdown — 多 IP 可切, 单 IP 退化为只读 */}
+      <div className="flex w-full flex-col items-center gap-1.5">
+        {interfaces.length > 1 && (
+          <span className="text-xs text-muted-foreground">
+            {t('devices.mobileSync.credential.pair.wifiHint')}
+          </span>
+        )}
+        <BaseUrlChip
+          baseUrl={baseUrl}
+          interfaces={interfaces}
+          port={port}
+          selectedHost={selectedHost}
+          onSelect={onSelect}
+        />
+      </div>
+
+      <p className="text-center text-xs text-muted-foreground">{connectHint}</p>
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 折叠 1: 还没装客户端?
+// ────────────────────────────────────────────────────────────────────────
+
+interface NoClientCollapsibleProps {
+  /** SyncClipboard 快捷指令的安装 QR (后端渲染 base64 PNG)。 */
+  installQrCodePngBase64: string
+}
+
+type NoClientTab = 'ios' | 'android'
+
+/**
+ * "还没装客户端?" 折叠区 —— 展开后是 iOS / Android 二选一 tab。
+ *
+ * 设计意图: 平台分流明确, 每个 tab 主操作 = 大 QR 扫码下载对应 App
+ * (iOS → TestFlight 邀请链接 QR; Android → GitHub Releases APK 页 QR)。
+ * 用户在桌面上不需要手动复制 URL, 拿手机对屏一扫即可在浏览器打开下载入口。
+ *
+ * iOS tab 多一个二级"或安装快捷指令"link, 作为对不愿/不能装 App 的兜底
+ * (装一次后任何"扫码接入" QR 都能用)。Android 没有这条兜底 — uc-android
+ * 是 SyncClipboard 协议兼容的 fork, 不需要 shortcut。
+ */
+const NoClientCollapsible: React.FC<NoClientCollapsibleProps> = ({ installQrCodePngBase64 }) => {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<NoClientTab>('ios')
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between rounded-md border border-border/60 bg-card px-3 py-2 text-sm hover:bg-accent/50"
+        >
+          <span className="flex items-center gap-2">
+            <Smartphone className="h-4 w-4 text-muted-foreground" />
+            {t('devices.mobileSync.credential.noClient.title')}
+          </span>
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-2 rounded-md border border-border/40 bg-muted/20 p-3">
+        <Tabs value={tab} onValueChange={v => setTab(v as NoClientTab)}>
+          <TabsList className="w-full">
+            <TabsTrigger value="ios">
+              {t('devices.mobileSync.credential.noClient.tabs.ios')}
+            </TabsTrigger>
+            <TabsTrigger value="android">
+              {t('devices.mobileSync.credential.noClient.tabs.android')}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="ios" className="mt-3 space-y-3">
+            <ScanToDownloadPanel
+              qrValue={TESTFLIGHT_URL}
+              qrAlt={t('devices.mobileSync.credential.noClient.ios.scanQrAlt')}
+              caption={t('devices.mobileSync.credential.noClient.ios.scanLabel')}
+              browserLink={t('devices.mobileSync.credential.noClient.ios.openInBrowser')}
+              browserHref={TESTFLIGHT_URL}
+            />
+            {/* 兜底:不想装 App 的用户走快捷指令路径(只装一次后续都通用)。
+                视觉上是次要 link + 小 QR icon 弹 popover, 不抢 App QR 主体。 */}
+            <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2 text-xs">
+              <span className="text-muted-foreground">
+                {t('devices.mobileSync.credential.noClient.ios.shortcutFallback')}
+              </span>
+              <QrPopoverButton
+                ariaLabel={t('devices.mobileSync.credential.noClient.ios.shortcutQrAria')}
+                imageSrc={`data:image/png;base64,${installQrCodePngBase64}`}
+                imageAlt={t('devices.mobileSync.credential.noClient.ios.shortcutQrAlt')}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="android" className="mt-3">
+            <ScanToDownloadPanel
+              qrValue={ANDROID_RELEASES_URL}
+              qrAlt={t('devices.mobileSync.credential.noClient.android.scanQrAlt')}
+              caption={t('devices.mobileSync.credential.noClient.android.scanLabel')}
+              browserLink={t('devices.mobileSync.credential.noClient.android.openInBrowser')}
+              browserHref={ANDROID_RELEASES_URL}
+            />
+          </TabsContent>
+        </Tabs>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+interface ScanToDownloadPanelProps {
+  qrValue: string
+  qrAlt: string
+  caption: string
+  browserLink: string
+  browserHref: string
+}
+
+/**
+ * 通用"扫码下载 App"面板 —— iOS / Android tab 共用:
+ * - 大 QR (160px) 居中, 桌面屏对手机摄像头扫码可达
+ * - 下面一行 caption 说明"扫码安装什么"
+ * - 一行 outline 的"在浏览器打开"次要按钮, 给鼠标用户兜底(他们也能直接在
+ *   桌面浏览器登录 GitHub / Apple ID 完成下载流程)
+ */
+const ScanToDownloadPanel: React.FC<ScanToDownloadPanelProps> = ({
+  qrValue,
+  qrAlt,
+  caption,
+  browserLink,
+  browserHref,
+}) => (
+  <div className="flex flex-col items-center gap-3">
+    <div className="rounded-md bg-white p-2">
+      <QRCodeSVG value={qrValue} size={160} aria-label={qrAlt} />
+    </div>
+    <p className="text-center text-xs text-foreground">{caption}</p>
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-7 text-xs"
+      onClick={() =>
+        openUrl(browserHref).catch(err =>
+          log.warn({ err, href: browserHref }, 'failed to open URL')
+        )
+      }
+    >
+      <ExternalLink className="h-3 w-3" />
+      {browserLink}
+    </Button>
+  </div>
+)
+
+interface QrPopoverButtonProps {
+  ariaLabel: string
+  /** 优先级 1: 直接给 PNG base64 (后端预渲) */
+  imageSrc?: string
+  /** 优先级 2: 给 SVG value, 前端 qrcode.react 现渲 */
+  svgValue?: string
+  imageAlt: string
+}
+
+/**
+ * 一个 📷 icon 按钮, 点击弹 popover 显示 QR。popover 内 QR 用 200px,
+ * 桌面屏对着扫足够; 不需要再大 — 一旦超过 ~240px, popover 自身高度会
+ * 顶到 modal 边界, 看着拥挤。
+ */
+const QrPopoverButton: React.FC<QrPopoverButtonProps> = ({
+  ariaLabel,
+  imageSrc,
+  svgValue,
+  imageAlt,
+}) => (
+  <Popover>
+    <PopoverTrigger asChild>
+      <Button type="button" size="icon-sm" variant="ghost" aria-label={ariaLabel} title={ariaLabel}>
+        <Smartphone className="h-3.5 w-3.5" />
+      </Button>
+    </PopoverTrigger>
+    <PopoverContent className="w-auto p-3" align="end">
+      <div className="rounded bg-white p-2">
+        {imageSrc !== undefined ? (
+          <img src={imageSrc} alt={imageAlt} className="h-48 w-48" />
+        ) : (
+          <QRCodeSVG value={svgValue ?? ''} size={192} aria-label={imageAlt} />
+        )}
+      </div>
+    </PopoverContent>
+  </Popover>
+)
+
+// ────────────────────────────────────────────────────────────────────────
+// 折叠 2: 凭据(amber 警告色, 一键备份 + 折叠 user/pwd)
+// ────────────────────────────────────────────────────────────────────────
+
+interface CredentialsCollapsibleProps {
+  baseUrl: string
+  username: string
+  password: string
+}
+
+const CredentialsCollapsible: React.FC<CredentialsCollapsibleProps> = ({
+  baseUrl,
+  username,
+  password,
+}) => {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const [backupCopied, setBackupCopied] = useState(false)
+
+  const handleBackup = useCallback(
+    async (e: React.MouseEvent) => {
+      // 点 [备份] 不应该展开/折叠 — 它是折叠 header 上的旁置 action。
+      e.stopPropagation()
+      const text = `Server: ${baseUrl}\nUsername: ${username}\nPassword: ${password}`
+      try {
+        await navigator.clipboard.writeText(text)
+        setBackupCopied(true)
+        setTimeout(() => setBackupCopied(false), 1500)
+      } catch {
+        toast.error('Copy failed')
+      }
+    },
+    [baseUrl, username, password]
+  )
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      {/* amber 边框 + amber/5 背景 = "这里有要紧的东西"。即使不展开,
+          色块也会被动入眼, 比单纯灰色折叠更能传达"密码即将丢失"。 */}
+      <div className="rounded-md border border-amber-500/40 bg-amber-500/5">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex flex-1 items-center justify-between gap-2 text-left text-sm"
+            >
+              <span className="font-medium text-amber-700 dark:text-amber-400">
+                {t('devices.mobileSync.credential.credentials.title')}
+                <span className="ml-1.5 text-xs font-normal text-amber-700/80 dark:text-amber-400/80">
+                  {t('devices.mobileSync.credential.credentials.warning')}
+                </span>
+              </span>
+              {open ? (
+                <ChevronDown className="h-3.5 w-3.5 text-amber-700/70 dark:text-amber-400/70" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 text-amber-700/70 dark:text-amber-400/70" />
+              )}
+            </button>
+          </CollapsibleTrigger>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-400"
+            onClick={handleBackup}
+            aria-label={t('devices.mobileSync.credential.credentials.backup')}
+          >
+            {backupCopied ? (
+              <>
+                <Check className="h-3.5 w-3.5" />
+                {t('devices.mobileSync.credential.credentials.backupCopied')}
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" />
+                {t('devices.mobileSync.credential.credentials.backup')}
+              </>
+            )}
+          </Button>
+        </div>
+
+        <CollapsibleContent className="space-y-2 border-t border-amber-500/30 px-3 py-3">
+          <CredentialField
+            label={t('devices.mobileSync.credential.username.label')}
+            value={username}
+            mono
+          />
+          <CredentialField
+            label={t('devices.mobileSync.credential.password.label')}
+            value={password}
+            mono
+            secret={!passwordVisible}
+            extraActions={
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={passwordVisible ? 'hide' : 'show'}
+                title={passwordVisible ? 'hide' : 'show'}
+                onClick={() => setPasswordVisible(v => !v)}
+              >
+                {passwordVisible ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            }
+          />
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// CredentialField —— amber 凭据区里的"键 + 值 + 复制"行
+// ────────────────────────────────────────────────────────────────────────
+
 interface CredentialFieldProps {
   label: string
   value: string
-  /** 用 monospace 字体显示 —— 适合 URL / username / password 等不可读错的字符串。 */
   mono?: boolean
-  /** 当前是否要遮罩(只对 password 字段有意义)。 */
   secret?: boolean
-  /** 复制按钮左侧的额外动作(例如显示/隐藏密码切换)。 */
   extraActions?: React.ReactNode
 }
 
@@ -391,137 +628,26 @@ const CredentialField: React.FC<CredentialFieldProps> = ({
   secret,
   extraActions,
 }) => {
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      // 1.5s 后还原 —— 让用户能再次复制
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      toast.error('Copy failed')
-    }
-  }, [value])
-
   const display = secret ? value.replace(/./g, '•') : value
 
   return (
-    // Inline layout: label 在左, value 框在右, 一行一个字段。比 stacked
-    // (label 在上, 框在下) 节省一半垂直空间, 跟整体精简方向一致。
-    // Label 用固定宽度 w-16 让三个字段对齐, value 框 min-w-0 + truncate 处理
-    // 长 URL 不溢出。
     <div className="flex items-center gap-2">
       <Label className="w-16 shrink-0 text-xs text-muted-foreground">{label}</Label>
       <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-border/60 bg-card px-2 py-1">
         <span
-          className={`min-w-0 flex-1 truncate text-sm ${mono ? 'font-mono' : ''} ${
-            secret ? 'tracking-widest' : ''
-          }`}
+          className={cn(
+            'min-w-0 flex-1 truncate text-sm',
+            mono && 'font-mono',
+            secret && 'tracking-widest'
+          )}
         >
           {display}
         </span>
         {extraActions}
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          aria-label={
-            copied
-              ? t('devices.mobileSync.credential.copied')
-              : t('devices.mobileSync.credential.copy')
-          }
-          title={
-            copied
-              ? t('devices.mobileSync.credential.copied')
-              : t('devices.mobileSync.credential.copy')
-          }
-          onClick={handleCopy}
-        >
-          {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-        </Button>
+        <CopyIconButton value={value} />
       </div>
     </div>
   )
 }
-
-interface ScanStepperProps {
-  currentStep: ScanStep
-  onSelect: (step: ScanStep) => void
-}
-
-/**
- * 极简两步导航 —— "① 下载 · ② 配对",一行文字。
- *
- * 设计上故意没有圆 badge + 连接线: 只有两步, 视觉装饰反而抢 QR 的焦点;
- * 编号 + 标签 + 中点分隔已经足够传达"我在第几步"。
- * 完成步(currentStep 之前)是 muted + clickable(可点回退); 当前步是
- * foreground 加粗。点击规则: 只能往回点, 不能往前点 — 强制走"下一步"
- * 按钮, 让用户对"我装好了"做明确确认。
- */
-const ScanStepper: React.FC<ScanStepperProps> = ({ currentStep, onSelect }) => {
-  const { t } = useTranslation()
-  const steps: { id: ScanStep; labelKey: string }[] = [
-    { id: 'download', labelKey: 'devices.mobileSync.credential.scan.stepper.download' },
-    { id: 'pair', labelKey: 'devices.mobileSync.credential.scan.stepper.pair' },
-  ]
-  const currentIndex = steps.findIndex(s => s.id === currentStep)
-
-  return (
-    <div className="flex items-center justify-center gap-1.5 text-xs">
-      {steps.map((step, index) => {
-        const isCurrent = index === currentIndex
-        const isPast = index < currentIndex
-        const clickable = isPast
-        return (
-          <React.Fragment key={step.id}>
-            <button
-              type="button"
-              disabled={!clickable}
-              onClick={clickable ? () => onSelect(step.id) : undefined}
-              className={cn(
-                'rounded-sm px-1 py-0.5 transition-colors',
-                isCurrent && 'font-medium text-foreground',
-                isPast &&
-                  'cursor-pointer text-muted-foreground underline-offset-2 hover:text-foreground hover:underline',
-                !isCurrent && !isPast && 'cursor-default text-muted-foreground/50'
-              )}
-              aria-current={isCurrent ? 'step' : undefined}
-            >
-              {index + 1}. {t(step.labelKey)}
-            </button>
-            {index < steps.length - 1 && <span className="text-muted-foreground/40">·</span>}
-          </React.Fragment>
-        )
-      })}
-    </div>
-  )
-}
-
-interface QrPanelProps {
-  /** QR 框顶端的一行内嵌说明。 */
-  hint: string
-  /** 右上角的额外操作(如"浏览器打开下载页"图标按钮)。 */
-  topRight?: React.ReactNode
-  children: React.ReactNode
-}
-
-/**
- * QR 展示面板 —— hint + (可选) topRight icon + QR 主体。
- *
- * 把原来的"独立提示卡 + 独立 QR 卡 + 独立兜底链接"压成一个卡, hint 内嵌到
- * 顶端, 兜底操作内嵌到右上角图标位。视觉重心全部落到 QR 上, 减少 7 段
- * 独立文字到 1 段。
- */
-const QrPanel: React.FC<QrPanelProps> = ({ hint, topRight, children }) => (
-  <div className="flex flex-col items-center gap-3 rounded-md border border-border/60 bg-muted/30 p-4">
-    <div className="flex w-full items-center justify-between gap-2">
-      <span className="text-xs text-muted-foreground">{hint}</span>
-      {topRight}
-    </div>
-    {children}
-  </div>
-)
 
 export default MobileSyncCredentialModal

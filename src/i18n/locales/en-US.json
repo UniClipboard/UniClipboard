@@ -944,14 +944,19 @@
         "empty": {
           "title": "No devices paired yet"
         },
-        "addButton": "Add device"
+        "addButton": "Add device",
+        "lastSeen": {
+          "never": "Never active",
+          "justNow": "just now",
+          "label": "Last active · {{rel}}"
+        }
       },
       "add": {
         "title": "Add device",
         "subtitle": "Generate a long-lived credential pair. The same pair works on iOS Shortcut and any Android client that speaks the SyncClipboard protocol.",
         "labelField": {
           "label": "Device label",
-          "placeholder": "My iPhone"
+          "placeholder": "My phone"
         },
         "advanced": {
           "title": "Advanced options",
@@ -972,43 +977,41 @@
         "cancel": "Cancel"
       },
       "credential": {
-        "title": "Device added",
-        "subtitle": "Pick your platform below, then enter the credentials into the client.",
-        "platforms": {
-          "scan": "Scan to add",
-          "shortcut": "Install Shortcut"
-        },
-        "warning": {
-          "title": "Important: this password is shown only once",
-          "body": "After this dialog closes, the password cannot be recovered. If you lose it, you must revoke this device and add it again."
-        },
-        "scan": {
-          "stepper": {
-            "download": "Download",
-            "pair": "Pair"
-          },
-          "download": {
-            "hint": "Scan with your phone to install the app",
-            "openInBrowserAria": "Open download page in browser",
-            "qrAlt": "QR code for the UniClipboard mobile download page",
-            "next": "Installed — next"
-          },
-          "pair": {
-            "hint": "Scan inside the app to pair",
-            "qrAlt": "QR code that auto-fills the sync credentials"
-          }
-        },
-        "shortcut": {
-          "title": "iOS Shortcut — install once on your iPhone",
-          "body": "Scan the QR code to install the shortcut, then manually enter the server URL, username, and password below.",
-          "qr": {
-            "label": "Scan to install the SyncClipboard shortcut",
-            "alt": "QR code for the iCloud shortcut install link"
-          },
-          "linkLabel": "Install link"
+        "title": "Scan to connect {{label}}",
+        "subtitle": "Scan the QR code with your phone to finish mobile sync setup",
+        "pair": {
+          "qrAlt": "QR code that auto-fills the sync credentials",
+          "connectHint": "Scan with your phone to pair",
+          "wifiHint": "Pick the address on the same Wi-Fi as your phone"
         },
         "baseUrl": {
-          "label": "Server URL"
+          "selectAria": "Select server URL"
+        },
+        "noClient": {
+          "title": "Haven't installed a client?",
+          "tabs": {
+            "ios": "iOS",
+            "android": "Android"
+          },
+          "ios": {
+            "scanLabel": "Scan to install UniClipboard App (TestFlight)",
+            "scanQrAlt": "QR code for the TestFlight invite link",
+            "openInBrowser": "Open TestFlight in browser",
+            "shortcutFallback": "Don't want the App? Scan to install the Shortcut as fallback",
+            "shortcutQrAria": "Show iOS shortcut install QR",
+            "shortcutQrAlt": "QR code to install the iOS shortcut"
+          },
+          "android": {
+            "scanLabel": "Scan to download APK (GitHub Releases)",
+            "scanQrAlt": "QR code for the GitHub Releases APK download page",
+            "openInBrowser": "Open GitHub Releases in browser"
+          }
+        },
+        "credentials": {
+          "title": "Credentials",
+          "warning": "won't be visible after closing",
+          "backup": "Backup",
+          "backupCopied": "Backed up"
         },
         "username": {
           "label": "Username"
@@ -1018,10 +1021,8 @@
         },
         "copy": "Copy",
         "copied": "Copied",
-        "confirmSaved": "I have saved these credentials",
-        "dismiss": "Discard registration",
         "close": "Done",
-        "closeBlocked": "Confirm \"I have saved these credentials\" first"
+        "closeAria": "Close"
       },
       "revoke": {
         "confirmTitle": "Revoke {{label}}",
@@ -1053,6 +1054,20 @@
           "confirmSaved": "I have saved the new password",
           "close": "Close",
           "closeBlocked": "Confirm \"I have saved the new password\" first"
+        }
+      },
+      "deviceDialog": {
+        "sections": {
+          "serverAddress": "Connection",
+          "info": "Device info"
+        },
+        "qrPlaceholder": "The server only stores a password hash, so the QR code can't be re-generated. Click \"Change password\" to mint a new one and scan it here.",
+        "fields": {
+          "createdAt": "Added at",
+          "lastSeen": "Last active",
+          "lastSeenIp": "Last source IP",
+          "reportedName": "Client name",
+          "reportedOs": "Client OS"
         }
       },
       "errors": {

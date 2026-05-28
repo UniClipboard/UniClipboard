@@ -120,6 +120,13 @@ appears in `members`:
    interfaces aren't real dial targets, so leave UniClipboard on a
    physical NIC instead.
 
+   This toggle only affects desktop ↔ desktop pairing. Mobile sync
+   has its own Bind IP dropdown (Configure modal / device-card
+   dialog), which always lists Tailscale CGNAT interfaces
+   regardless of `Allow overlay network addrs` — mobile pairing is
+   a manual pick, so a Tailscale-reachable phone can be paired even
+   with the toggle off.
+
 ### "passphrase mismatch" or kicked right after joining
 
 Wrong passphrase makes the key rewrap fail. This is by design — the

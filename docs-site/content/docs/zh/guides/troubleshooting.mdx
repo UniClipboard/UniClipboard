@@ -82,6 +82,8 @@ uniclip invite        # 在 sponsor 上重出一张
 3. 默认握手 TTL 约 3 分钟。超时后 sponsor 会丢弃这次邀请，joiner 拿到的就是"invitation expired"。重新 `invite` 即可。
 4. **sponsor 端跑着 Tailscale 之类的 overlay 网络？** 默认情况下 Tailscale CGNAT (`100.64.0.0/10`) 与 IPv6 ULA (`fd7a:115c:a1e0::/48`) 地址不会被写进邀请，joiner 拿到的全是不可达的 LAN 地址就会一直拨不通。在 sponsor 端 **设置 → 网络 → 允许覆盖网络地址** 打开并重启 daemon，Tailscale 地址才会进入邀请。Clash TUN 的 fake-ip (`198.18.0.0/15`) 与 IPv4 link-local (`169.254.0.0/16`) 始终被过滤、无开关 —— 这类网卡本来就不能拿来真实拨号，让 UniClipboard 走真实物理网卡即可。
 
+   这个开关只影响桌面 ↔ 桌面 pairing。移动端同步有自己的「监听 IP」下拉（配置 modal / 设备卡片 dialog），它 **始终** 会列出 Tailscale CGNAT 网卡，与「允许覆盖网络地址」无关 —— 移动端配对是人工挑选的，所以即使这个开关关着，Tailscale 可达的手机也能正常配对。
+
 ### "passphrase mismatch" / 加入后立刻被踢
 
 口令错误会让密钥重新封装失败。这是设计行为，不是 bug —— sponsor 永远看不到错误的口令明文。校对口令再来一次就好。

@@ -387,8 +387,8 @@ impl CommonClipboardImpl {
             #[cfg(target_os = "windows")]
             let html_result: Result<String> =
                 match super::platform::windows::read_html_windows_native() {
-                    Ok(Some(html)) => Ok(html),
-                    Ok(None) => Err(anyhow!("CF_HTML declared available but payload was empty")),
+                    Ok(Some(html)) if !html.is_empty() => Ok(html),
+                    Ok(Some(_)) | Ok(None) => Err(anyhow!("CF_HTML declared available but payload was empty")),
                     Err(err) => Err(err),
                 };
             #[cfg(not(target_os = "windows"))]

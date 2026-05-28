@@ -55,57 +55,6 @@ export interface PeersConnectionChangedPayload {
   connected: boolean
 }
 
-// ── Type guard functions ────────────────────────────────────────
-
-export function isPeersChangedPayload(payload: unknown): payload is PeersChangedPayload {
-  if (typeof payload !== 'object' || payload === null) return false
-  return 'peers' in payload && Array.isArray((payload as PeersChangedPayload).peers)
-}
-
-export function isPeersNameUpdatedPayload(payload: unknown): payload is PeersNameUpdatedPayload {
-  if (typeof payload !== 'object' || payload === null) return false
-  return 'peerId' in payload && 'deviceName' in payload
-}
-
-export function isPeersConnectionChangedPayload(
-  payload: unknown
-): payload is PeersConnectionChangedPayload {
-  if (typeof payload !== 'object' || payload === null) return false
-  return 'peerId' in payload && 'connected' in payload
-}
-
-// ── useClipboardNewContent ───────────────────────────────────────
-
-/**
- * Subscribe to `clipboard.new_content` events from the daemon WebSocket.
- *
- * The daemon emits this when a new clipboard entry is created locally or synced
- * from a remote device.
- *
- * @param callback  Called with the new clipboard entry each time it arrives.
- *
- * @example
- * useClipboardNewContent((entry) => {
- *   dispatch(prependItem(transformDtoToItemResponse(entry)))
- * })
- */
-export function useClipboardNewContent(callback: (entry: ClipboardEntryDto) => void): void {
-  const callbackRef = useRef(callback)
-  // eslint-disable-next-line react-hooks/refs -- intentional: ref updates stabilize callbacks without re-running effect
-  callbackRef.current = callback
-
-  useEffect(() => {
-    const handler = (event: DaemonWsEvent<ClipboardNewContentPayload>) => {
-      if (event.eventType === 'clipboard.new_content') {
-        callbackRef.current(event.payload.entry)
-      }
-    }
-
-    const unsubscribe = daemonWs.subscribe(['clipboard'], handler)
-    return unsubscribe
-  }, [])
-}
-
 // Slice 4 P5a-3: usePairingEvents + UsePairingEventsCallbacks +
 // SpaceAccessCompletedPayload were removed alongside
 // PairingNotificationProvider/PairingDialog. The new setup-v2 flow

@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import {
   AlertCircle,
   ArrowLeft,
@@ -19,11 +19,8 @@ import type {
   RedeemInvitationErrorKind,
   RedeemResponse,
 } from '@/api/daemon/setupV2'
-import {
-  INVITATION_CODE_LENGTH,
-  InvitationCodeInput,
-  formatInvitationCode,
-} from '@/components/InvitationCodeInput'
+import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/components/invitation-code-utils'
+import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,7 +46,7 @@ function ScreenShell({
   centered?: boolean
 }) {
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
@@ -71,7 +68,7 @@ function ScreenShell({
             centered && 'justify-center'
           )}
         >
-          <AlertCircle className="h-4 w-4 shrink-0" />
+          <AlertCircle className="size-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -81,7 +78,7 @@ function ScreenShell({
       )}
 
       {hint && <div className="mt-4 text-xs text-muted-foreground sm:mt-5">{hint}</div>}
-    </motion.div>
+    </m.div>
   )
 }
 
@@ -99,7 +96,7 @@ export function EntryScreen({
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.welcome' })
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
@@ -121,8 +118,8 @@ export function EntryScreen({
           disabled={loading}
           className="group relative flex flex-1 flex-col items-start gap-5 rounded-xl border border-white/20 bg-white/40 p-7 text-left backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:bg-white/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
         >
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Shield className="h-6 w-6" />
+          <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Shield className="size-6" />
           </div>
           <div className="space-y-2">
             <h3 className="text-lg font-medium text-foreground">{t('create.title')}</h3>
@@ -132,7 +129,7 @@ export function EntryScreen({
           </div>
           <div className="mt-auto flex items-center gap-2 text-sm font-medium text-primary">
             {t('create.cta')}
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
           </div>
         </button>
 
@@ -143,8 +140,8 @@ export function EntryScreen({
           disabled={loading}
           className="group relative flex flex-1 flex-col items-start gap-5 rounded-xl border border-white/20 bg-white/40 p-7 text-left backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:bg-white/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
         >
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Smartphone className="h-6 w-6" />
+          <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Smartphone className="size-6" />
           </div>
           <div className="space-y-2">
             <h3 className="text-lg font-medium text-foreground">{t('join.title')}</h3>
@@ -152,13 +149,13 @@ export function EntryScreen({
           </div>
           <div className="mt-auto flex items-center gap-2 text-sm font-medium text-primary">
             {t('join.cta')}
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
           </div>
         </button>
       </div>
 
       <div className="mt-8 text-center text-xs text-muted-foreground sm:mt-10">{t('footer')}</div>
-    </motion.div>
+    </m.div>
   )
 }
 
@@ -265,7 +262,7 @@ export function InitializeSpaceScreen({
             onClick={onBack}
             disabled={loading}
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            <ArrowLeft className="mr-2 size-4" />
             {t('actions.back')}
           </Button>
           <Button
@@ -276,7 +273,7 @@ export function InitializeSpaceScreen({
           >
             {loading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 size-4 animate-spin" />
                 {t('actions.creating')}
               </>
             ) : (
@@ -315,7 +312,7 @@ export function InitializeSpaceScreen({
               onClick={() => setShowPass1(!showPass1)}
               className="absolute right-0 top-0 flex h-full items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
             >
-              {showPass1 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showPass1 ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
         </div>
@@ -338,7 +335,7 @@ export function InitializeSpaceScreen({
               onClick={() => setShowPass2(!showPass2)}
               className="absolute right-0 top-0 flex h-full items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
             >
-              {showPass2 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showPass2 ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
         </div>
@@ -387,9 +384,9 @@ export function ShowInvitationScreen({
       footer={
         <Button variant="outline" onClick={onCancel} disabled={loading}>
           {loading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-2 size-4 animate-spin" />
           ) : (
-            <XCircle className="mr-2 h-4 w-4" />
+            <XCircle className="mr-2 size-4" />
           )}
           {t('actions.cancel')}
         </Button>
@@ -516,7 +513,7 @@ export function RedeemInvitationScreen({
             onClick={onBack}
             disabled={loading}
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            <ArrowLeft className="mr-2 size-4" />
             {t('actions.back')}
           </Button>
           <Button
@@ -527,7 +524,7 @@ export function RedeemInvitationScreen({
           >
             {loading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 size-4 animate-spin" />
                 {t('actions.joining')}
               </>
             ) : (
@@ -555,7 +552,7 @@ export function RedeemInvitationScreen({
 
         <AnimatePresence initial={false}>
           {codeComplete && (
-            <motion.div
+            <m.div
               key="passphrase"
               initial={{ opacity: 0, height: 0, y: -4 }}
               animate={{ opacity: 1, height: 'auto', y: 0 }}
@@ -585,11 +582,11 @@ export function RedeemInvitationScreen({
                     className="absolute right-0 top-0 flex h-full items-center px-2 text-muted-foreground transition-colors hover:text-foreground"
                     tabIndex={-1}
                   >
-                    {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
               </div>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </div>
@@ -622,7 +619,7 @@ export function PairingCompleteScreen({
       centered
     >
       <div className="mt-8 flex flex-col items-center gap-3 sm:mt-10">
-        <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+        <CheckCircle2 className="size-12 text-emerald-500" />
         {role === 'joiner' && redeem && (
           <div className="mt-2 grid gap-1 text-center text-sm text-muted-foreground">
             <div>

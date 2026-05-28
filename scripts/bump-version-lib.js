@@ -15,7 +15,7 @@ export function parseSemver(version) {
 }
 
 // Format version object back to string
-export function formatVersion(ver) {
+function formatVersion(ver) {
   let version = `${ver.major}.${ver.minor}.${ver.patch}`
   if (ver.prerelease) {
     version += `-${ver.prerelease}.${ver.prereleaseVersion}`

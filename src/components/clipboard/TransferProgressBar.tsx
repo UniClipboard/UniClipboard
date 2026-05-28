@@ -73,7 +73,7 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
   if (variant === 'compact') {
     return (
       <div className="flex items-center gap-1.5 w-full">
-        <DirectionIcon className="h-3 w-3 shrink-0 text-primary" />
+        <DirectionIcon className="size-3 shrink-0 text-primary" />
         <Progress value={percent} className="h-1.5 flex-1" />
         <span className="text-xs text-muted-foreground shrink-0">{percent}%</span>
         {speedLabel && (
@@ -85,7 +85,7 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
             disabled={cancelling}
             onClick={onCancel}
             className={cn(
-              'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-destructive/20 bg-background/80 text-muted-foreground transition-colors',
+              'flex size-5 shrink-0 items-center justify-center rounded-full border border-destructive/20 bg-background/80 text-muted-foreground transition-colors',
               'hover:border-destructive/50 hover:text-destructive',
               cancelling &&
                 'cursor-not-allowed opacity-50 hover:border-destructive/20 hover:text-muted-foreground'
@@ -93,7 +93,7 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
             aria-label={t('clipboard.transfer.cancel')}
             title={t('clipboard.transfer.cancel')}
           >
-            <X className="h-3 w-3" />
+            <X className="size-3" />
           </button>
         )}
       </div>
@@ -102,7 +102,7 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
 
   return (
     <div className="flex items-center gap-2 rounded-lg border border-primary/15 bg-primary/6 px-2.5 py-2">
-      <DirectionIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
+      <DirectionIcon className="size-3.5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center justify-between gap-2">
           <span className="truncate text-[11px] font-medium text-foreground/85">
@@ -118,7 +118,7 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
           disabled={cancelling}
           onClick={onCancel}
           className={cn(
-            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-destructive/20 bg-background/80 text-muted-foreground transition-colors',
+            'flex size-6 shrink-0 items-center justify-center rounded-full border border-destructive/20 bg-background/80 text-muted-foreground transition-colors',
             'hover:border-destructive/50 hover:text-destructive',
             cancelling &&
               'cursor-not-allowed opacity-50 hover:border-destructive/20 hover:text-muted-foreground'
@@ -126,7 +126,7 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
           aria-label={t('clipboard.transfer.cancel')}
           title={t('clipboard.transfer.cancel')}
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="size-3.5" />
         </button>
       )}
       <Popover>
@@ -134,18 +134,18 @@ const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
           <button
             type="button"
             className={cn(
-              'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-background/80 text-muted-foreground transition-colors',
+              'flex size-6 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-background/80 text-muted-foreground transition-colors',
               'hover:border-primary/30 hover:text-primary'
             )}
             aria-label={t('clipboard.preview.information')}
           >
-            <Info className="h-3.5 w-3.5" />
+            <Info className="size-3.5" />
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-72">
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <DirectionIcon className="h-4 w-4 text-primary" />
+              <DirectionIcon className="size-4 text-primary" />
               <span className="text-sm font-medium">{directionLabel}</span>
               <span className="ml-auto text-xs text-muted-foreground">{percent}%</span>
             </div>

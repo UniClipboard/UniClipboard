@@ -232,8 +232,8 @@ const UpdaterWindow: React.FC = () => {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden rounded-xl border border-border/50 bg-background text-foreground shadow-2xl">
       <div data-tauri-drag-region className="flex items-start gap-4 px-6 pt-6">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-lg shadow-primary/20">
-          <Download className="h-7 w-7" />
+        <div className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-lg shadow-primary/20">
+          <Download className="size-7" />
         </div>
         <div className="flex-1 space-y-1">
           <h1 className="text-base font-semibold leading-tight">{headline}</h1>
@@ -298,7 +298,7 @@ const UpdaterWindow: React.FC = () => {
               className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground opacity-60"
               disabled
             >
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
               {t('update.downloading')}
             </button>
           </>

@@ -42,9 +42,6 @@ let snapshot: Snapshot = {
 }
 
 const listeners = new Set<() => void>()
-let stopInvitationIssued: (() => void) | null = null
-let stopInvitationRevoked: (() => void) | null = null
-let stopPairingCompleted: (() => void) | null = null
 let startPromise: Promise<void> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let syncGeneration = 0
@@ -157,9 +154,11 @@ export async function ensureSetupRealtimeSync(): Promise<void> {
         return
       }
 
-      stopInvitationIssued = offIssued
-      stopInvitationRevoked = offRevoked
-      stopPairingCompleted = offCompleted
+      // Stash unlisten handles in the closure-rooted symbols so they survive
+      // the lifetime of the singleton store; we never tear them down.
+      void offIssued
+      void offRevoked
+      void offCompleted
       syncPhase = 'running'
     } catch (err) {
       if (generation !== syncGeneration) return
@@ -210,27 +209,4 @@ export function useSetupRealtimeStore(): Snapshot {
   }, [])
 
   return current
-}
-
-export function resetSetupRealtimeStoreForTests() {
-  syncGeneration += 1
-  syncPhase = 'idle'
-  startPromise = null
-  clearRetryTimer()
-
-  if (stopInvitationIssued) {
-    stopInvitationIssued()
-    stopInvitationIssued = null
-  }
-  if (stopInvitationRevoked) {
-    stopInvitationRevoked()
-    stopInvitationRevoked = null
-  }
-  if (stopPairingCompleted) {
-    stopPairingCompleted()
-    stopPairingCompleted = null
-  }
-
-  snapshot = { flow: { kind: 'loading' }, hydrated: false }
-  emitChange()
 }

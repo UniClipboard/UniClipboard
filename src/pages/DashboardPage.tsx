@@ -25,6 +25,7 @@ const DashboardPage: React.FC = () => {
               : t('lifecycle.networkFailed')}
           </span>
           <button
+            type="button"
             onClick={retryLifecycle}
             disabled={retrying}
             className="text-sm px-3 py-1 rounded bg-destructive/20 hover:bg-destructive/30 text-destructive font-medium disabled:opacity-50"

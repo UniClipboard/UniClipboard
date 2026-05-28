@@ -205,11 +205,7 @@ const ReadOnlyField: React.FC<ReadOnlyFieldProps> = ({ label, value, primary }) 
           }
           onClick={handleCopy}
         >
-          {copied ? (
-            <Check className="h-3.5 w-3.5 text-emerald-500" />
-          ) : (
-            <Copy className="h-3.5 w-3.5" />
-          )}
+          {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
         </Button>
       </div>
     </div>

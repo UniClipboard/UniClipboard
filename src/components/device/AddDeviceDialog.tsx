@@ -9,7 +9,7 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   cancelInvitation,
@@ -18,7 +18,7 @@ import {
   type CurrentInvitation,
 } from '@/api/daemon/setupV2'
 import { onSetupInvitationRevoked, onSetupPairingCompleted } from '@/api/setupEvents'
-import { formatInvitationCode } from '@/components/InvitationCodeInput'
+import { formatInvitationCode } from '@/components/invitation-code-utils'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -173,12 +173,14 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
     }
   }, [open, dispatch])
 
-  // 成功态自动关闭
+  // 成功态自动关闭。把 onOpenChange 包成 useEffectEvent 移出依赖，避免父级
+  // 重渲染导致 setTimeout 被反复重建。
+  const closeDialog = useEffectEvent(() => onOpenChange(false))
   useEffect(() => {
     if (step !== 'success') return
-    const id = setTimeout(() => onOpenChange(false), SUCCESS_AUTO_CLOSE_MS)
+    const id = setTimeout(() => closeDialog(), SUCCESS_AUTO_CLOSE_MS)
     return () => clearTimeout(id)
-  }, [step, onOpenChange])
+  }, [step])
 
   // 关闭时清状态
   useEffect(() => {
@@ -260,8 +262,8 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   if (step === 'success') {
     body = (
       <div className="flex flex-col items-center gap-3 py-8">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-          <CheckCircle2 className="h-8 w-8" />
+        <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="size-8" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-foreground">
@@ -276,8 +278,8 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   } else if (step === 'failed') {
     body = (
       <div className="flex flex-col items-center gap-3 py-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
-          <AlertCircle className="h-7 w-7" />
+        <div className="flex size-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+          <AlertCircle className="size-7" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-foreground">
@@ -290,7 +292,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   } else if (loading && !invitation) {
     body = (
       <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="size-4 animate-spin" />
         {t('devices.addDevice.loading')}
       </div>
     )
@@ -299,7 +301,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
       <div className="flex flex-col items-center gap-3 py-10">
         <p className="text-sm text-destructive">{error}</p>
         <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={loading}>
-          <RefreshCw className="mr-2 h-3.5 w-3.5" />
+          <RefreshCw className="mr-2 size-3.5" />
           {t('devices.addDevice.actions.regenerate')}
         </Button>
       </div>
@@ -338,7 +340,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
                 expired ? 'text-destructive' : 'text-muted-foreground'
               )}
             >
-              <Clock className="h-3 w-3" />
+              <Clock className="size-3" />
               {expired
                 ? t('devices.addDevice.expired')
                 : t('devices.addDevice.expiresIn', { remaining: formatRemaining(remaining) })}
@@ -348,7 +350,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
 
         {/* 提示：还需空间口令 */}
         <div className="flex items-start gap-2.5 rounded-lg bg-muted/50 px-3.5 py-2.5 text-xs text-muted-foreground">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <Info className="mt-0.5 size-3.5 shrink-0" />
           <span className="leading-relaxed">{t('devices.addDevice.passphraseHint')}</span>
         </div>
       </div>
@@ -356,7 +358,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   }
 
   // ── Footer ───────────────────────────────────────────
-  let footer: React.ReactNode = null
+  let footer: React.ReactNode
   if (step === 'success') {
     // 自动关闭，无按钮
     footer = null
@@ -368,9 +370,9 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
         </Button>
         <Button onClick={handleRegenerate} disabled={loading}>
           {loading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-2 size-4 animate-spin" />
           ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <RefreshCw className="mr-2 size-4" />
           )}
           {t('devices.addDevice.actions.regenerate')}
         </Button>
@@ -384,9 +386,9 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
         </Button>
         <Button onClick={handleRegenerate} disabled={loading}>
           {loading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-2 size-4 animate-spin" />
           ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <RefreshCw className="mr-2 size-4" />
           )}
           {t('devices.addDevice.actions.regenerate')}
         </Button>
@@ -397,9 +399,9 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
       <>
         <Button variant="ghost" onClick={handleCancel} disabled={loading || !invitation}>
           {loading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="mr-2 size-4 animate-spin" />
           ) : (
-            <XCircle className="mr-2 h-4 w-4" />
+            <XCircle className="mr-2 size-4" />
           )}
           {t('devices.addDevice.actions.cancel')}
         </Button>
@@ -410,12 +412,12 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
         >
           {copied ? (
             <>
-              <Check className="mr-2 h-4 w-4" />
+              <Check className="mr-2 size-4" />
               {t('devices.addDevice.actions.copied')}
             </>
           ) : (
             <>
-              <Copy className="mr-2 h-4 w-4" />
+              <Copy className="mr-2 size-4" />
               {t('devices.addDevice.actions.copy')}
             </>
           )}

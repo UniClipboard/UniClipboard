@@ -179,7 +179,8 @@
         "tokenPicker": {
           "openPicker": "选取颜色",
           "reset": "恢复为预设",
-          "modified": "已自定义"
+          "modified": "已自定义",
+          "hexInputLabel": "十六进制颜色值"
         },
         "zoom": {
           "title": "界面缩放",
@@ -1373,6 +1374,8 @@
     "history": {
       "searchPlaceholder": "搜索（输入 ':' 进入高级模式）...",
       "advancedPlaceholder": "筛选条件...",
+      "searchAriaLabel": "搜索剪贴板历史",
+      "filterMenuLabel": "打开筛选菜单",
       "filters": {
         "all": "全部",
         "text": "文本",

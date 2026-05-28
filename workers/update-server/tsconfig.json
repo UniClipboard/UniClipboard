@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2023",
     "module": "ES2022",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
+    "lib": ["ES2023"],
     "types": ["@cloudflare/workers-types"],
     "strict": true,
     "noEmit": true,

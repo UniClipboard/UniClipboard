@@ -86,7 +86,7 @@ const AboutSection: React.FC = () => {
     setting?.general.autoDownloadUpdate ?? false
   )
   const [updateChannel, setUpdateChannel] = useState<UpdateChannel | null>(null)
-  const [pendingUpdateChannel, setPendingUpdateChannel] = useState<UpdateChannel | null>(null)
+  const pendingUpdateChannelRef = useRef<UpdateChannel | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
   const [alphaWarningOpen, setAlphaWarningOpen] = useState(false)
@@ -175,7 +175,7 @@ const AboutSection: React.FC = () => {
     if (newChannel === updateChannel) return
 
     if (newChannel === 'alpha' && updateChannel !== 'alpha') {
-      setPendingUpdateChannel(newChannel)
+      pendingUpdateChannelRef.current = newChannel
       setAlphaWarningOpen(true)
       return
     }
@@ -186,14 +186,14 @@ const AboutSection: React.FC = () => {
   const handleAlphaWarningOpenChange = (open: boolean) => {
     setAlphaWarningOpen(open)
     if (!open) {
-      setPendingUpdateChannel(null)
+      pendingUpdateChannelRef.current = null
     }
   }
 
   const handleConfirmAlphaChannel = () => {
-    const channel = pendingUpdateChannel
+    const channel = pendingUpdateChannelRef.current
     setAlphaWarningOpen(false)
-    setPendingUpdateChannel(null)
+    pendingUpdateChannelRef.current = null
 
     if (channel !== 'alpha') return
     void applyUpdateChannelChange(channel)
@@ -269,12 +269,12 @@ const AboutSection: React.FC = () => {
   return (
     <>
       <SettingGroup title={t('settings.sections.about.appName')}>
-        <div className="flex items-center justify-between px-4 py-4">
+        <div className="flex items-center justify-between p-4">
           <div className="flex items-center">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/20">
+            <div className="size-12 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/20">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-7 w-7 text-primary-foreground"
+                className="size-7 text-primary-foreground"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -322,7 +322,7 @@ const AboutSection: React.FC = () => {
               disabled={isBusy || isCheckingUpdate}
               aria-busy={isCheckingUpdate}
             >
-              {isCheckingUpdate && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isCheckingUpdate && <Loader2 className="size-4 animate-spin" />}
               {isCheckingUpdate
                 ? t('settings.sections.about.checkingUpdate')
                 : t('settings.sections.about.checkUpdate')}
@@ -382,9 +382,9 @@ const AboutSection: React.FC = () => {
           </Select>
         </SettingRow>
 
-        <div className="px-4 py-4 space-y-3">
+        <div className="p-4 space-y-3">
           <p className="text-sm text-muted-foreground">{t('settings.sections.about.copyright')}</p>
-          <div className="flex space-x-6 text-sm">
+          <div className="flex gap-x-6 text-sm">
             <a
               href="https://github.com/UniClipboard/UniClipboard"
               className="text-primary hover:text-primary/80 transition-colors"

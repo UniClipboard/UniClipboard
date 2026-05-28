@@ -56,5 +56,3 @@ export function AllowOverlayAddrsDisclosure() {
     </Popover>
   )
 }
-
-export default AllowOverlayAddrsDisclosure

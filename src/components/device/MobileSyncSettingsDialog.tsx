@@ -48,13 +48,12 @@ import { useTranslation } from 'react-i18next'
 import {
   deriveListenUrl,
   getMobileSyncSettings,
-  isMobileSyncError,
   listMobileLanInterfaces,
   updateMobileSyncSettings,
   type LanInterfaceView,
-  type MobileSyncError,
   type MobileSyncSettingsView,
 } from '@/api/tauri-command/mobile_sync'
+import { translateMobileSyncError } from '@/components/device/mobile-sync-errors'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -281,8 +280,8 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                <Smartphone className="h-5 w-5" />
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                <Smartphone className="size-5" />
               </div>
               <div className="min-w-0 flex-1">
                 <DialogTitle className="truncate text-left">
@@ -364,7 +363,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                       ) : (
                         lanInterfaces.map(iface => (
                           <SelectItem key={`${iface.name}-${iface.ipv4}`} value={iface.ipv4}>
-                            {iface.name} — {iface.ipv4}
+                            {iface.name} - {iface.ipv4}
                           </SelectItem>
                         ))
                       )}
@@ -424,7 +423,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                 appliedFlash ? 'opacity-100' : 'pointer-events-none opacity-0'
               )}
             >
-              <Check className="h-3.5 w-3.5" />
+              <Check className="size-3.5" />
               <span>{t('devices.mobileSync.feedback.applied')}</span>
             </div>
             <Button size="sm" onClick={() => onOpenChange(false)}>
@@ -695,9 +694,9 @@ const AutoListenUrlBlock: React.FC<{
  * 抽出来给两条复制路径(单 URL 与 Auto popover 列表行)共享,避免视觉漂移。
  */
 const CopyStateIcon: React.FC<{ state: CopyState }> = ({ state }) => {
-  if (state === 'copied') return <Check className="h-3.5 w-3.5 text-emerald-500" />
-  if (state === 'failed') return <X className="h-3.5 w-3.5 text-destructive" />
-  return <Copy className="h-3.5 w-3.5" />
+  if (state === 'copied') return <Check className="size-3.5 text-emerald-500" />
+  if (state === 'failed') return <X className="size-3.5 text-destructive" />
+  return <Copy className="size-3.5" />
 }
 
 function copyButtonLabel(t: ReturnType<typeof useTranslation>['t'], state: CopyState): string {
@@ -753,37 +752,3 @@ const SettingControlRow: React.FC<{
 // ────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────
-
-/**
- * 把 Tauri 抛出的错误翻译成用户可见文案。本组件实际触发的 settings/restart
- * 路径每条 i18n 都从这里走。其余 register 路径专属 variant 走兜底 unknown。
- */
-function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err: unknown): string {
-  if (isMobileSyncError(err)) {
-    const e = err as MobileSyncError
-    switch (e.code) {
-      case 'FACADE_UNAVAILABLE':
-        return t('devices.mobileSync.errors.facadeUnavailable')
-      case 'INVALID_LAN_PARAMETER':
-        return t('devices.mobileSync.errors.invalidLanParameter', { reason: e.reason })
-      case 'SETTINGS_LOAD_FAILED':
-        return t('devices.mobileSync.errors.settingsLoadFailed', { message: e.message })
-      case 'SETTINGS_SAVE_FAILED':
-        return t('devices.mobileSync.errors.settingsSaveFailed', { message: e.message })
-      case 'ENDPOINT_INFO_FAILED':
-        return t('devices.mobileSync.errors.endpointInfoFailed', { message: e.message })
-      case 'LAN_PROBE_FAILED':
-        return t('devices.mobileSync.errors.lanProbeFailed', { message: e.message })
-      case 'PERSISTENCE_FAILED':
-        return t('devices.mobileSync.errors.persistenceFailed', { message: e.message })
-      default: {
-        const message = (e as { message?: string }).message ?? e.code
-        return t('devices.mobileSync.errors.unknown', { message })
-      }
-    }
-  }
-  const message = err instanceof Error ? err.message : String(err)
-  return t('devices.mobileSync.errors.unknown', { message })
-}
-
-export const __test__ = { translateMobileSyncError }

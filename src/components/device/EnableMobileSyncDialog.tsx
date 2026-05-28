@@ -122,7 +122,7 @@ const EnableMobileSyncDialog: React.FC<Props> = ({ open, onOpenChange, onSuccess
             }}
             disabled={submitting}
           >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting && <Loader2 className="size-4 animate-spin" />}
             {submitting
               ? t('devices.mobileSync.enableConfirm.enabling')
               : t('devices.mobileSync.enableConfirm.confirm')}

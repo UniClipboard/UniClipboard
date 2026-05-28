@@ -372,6 +372,12 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
 
   // Build display items: server search results or Redux browse items
   const clipboardItems = useMemo(() => {
+    // `tick` 看似没在 body 里被读，但 convertToDisplayItem 内部用 `new Date()`
+    // 计算 "minutes ago" 字符串 —— 每次 tick 自增都需要把缓存的 displayItem
+    // 整体抛掉重算，否则时间戳就会停在最近一次依赖变更的那一刻。这里显式
+    // 读一下 tick 让 react-doctor / exhaustive-deps 知道它确实进入语义。
+    void tick
+
     // When a search query is active, use server-side results
     if (isSearchActive && searchResults !== null) {
       return searchResults
@@ -392,25 +398,29 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     //   2. no filenames but a known total size → "Receiving (3.2 MB)…";
     //   3. neither → generic "Receiving…" fallback (e.g. pure image blob).
     const realIds = new Set(realItems.map(it => it.id))
-    const pendingDisplayItems: DisplayClipboardItem[] = pendingItems
-      .filter(p => !realIds.has(p.entryId))
-      .map(p => ({
-        id: p.entryId,
-        type: 'file' as const,
-        time: t('clipboard.time.justNow'),
-        activeTime: p.createdAt,
-        // Synthesize a ClipboardFileItem from the V3-advertised filenames so
-        // FilePreview renders the file card + progress overlay immediately,
-        // not just after fetch completes. Falls back to null only when the
-        // inbound has no filenames at all (pure image / text), in which case
-        // textPreview carries the "Receiving..." fallback.
-        content: buildPendingFileContent(p),
-        // Resolve raw peerId → device name; if the roster doesn't know
-        // this peer yet, leave undefined so FilePreview hides the field
-        // instead of rendering a UUID next to the file size.
-        device: deviceNameByPeerId[p.fromDevice],
-        textPreview: buildPendingPreview(p, t),
-      }))
+    const pendingDisplayItems: DisplayClipboardItem[] = pendingItems.flatMap(p =>
+      realIds.has(p.entryId)
+        ? []
+        : [
+            {
+              id: p.entryId,
+              type: 'file' as const,
+              time: t('clipboard.time.justNow'),
+              activeTime: p.createdAt,
+              // Synthesize a ClipboardFileItem from the V3-advertised filenames so
+              // FilePreview renders the file card + progress overlay immediately,
+              // not just after fetch completes. Falls back to null only when the
+              // inbound has no filenames at all (pure image / text), in which case
+              // textPreview carries the "Receiving..." fallback.
+              content: buildPendingFileContent(p),
+              // Resolve raw peerId → device name; if the roster doesn't know
+              // this peer yet, leave undefined so FilePreview hides the field
+              // instead of rendering a UUID next to the file size.
+              device: deviceNameByPeerId[p.fromDevice],
+              textPreview: buildPendingPreview(p, t),
+            },
+          ]
+    )
 
     let items = [...pendingDisplayItems, ...realItems]
 
@@ -691,7 +701,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
       {/* Search loading indicator */}
       {searchLoading && clipboardItems.length === 0 && (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
+          <Loader2 className="size-5 animate-spin text-muted-foreground mr-2" />
           <span className="text-sm text-muted-foreground">{t('clipboard.search.searching')}</span>
         </div>
       )}
@@ -724,16 +734,17 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
                         key={`ctx-${item.id}`}
                         itemId={item.id}
                         itemType={item.type}
-                        isDownloaded={item.isDownloaded ?? true}
-                        isTransferring={transferringEntries.has(item.id)}
-                        isStale={staleEntryIds.includes(item.id)}
-                        hasMissingFiles={
-                          item.type === 'file'
-                            ? ((item.content as ClipboardFileItem | null)?.file_missing?.some(
-                                Boolean
-                              ) ?? false)
-                            : false
-                        }
+                        transferStatus={{
+                          isDownloaded: item.isDownloaded ?? true,
+                          isTransferring: transferringEntries.has(item.id),
+                          isStale: staleEntryIds.includes(item.id),
+                          hasMissingFiles:
+                            item.type === 'file'
+                              ? ((item.content as ClipboardFileItem | null)?.file_missing?.some(
+                                  Boolean
+                                ) ?? false)
+                              : false,
+                        }}
                         onCopy={id => void handleCopyItem(id)}
                         onDelete={id => {
                           selectItem(id)
@@ -770,20 +781,19 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
                     hasActiveItem={activeItemId !== null}
                     copySuccess={copySuccess}
                     activeItemType={activeItem?.type}
-                    isActiveItemDownloaded={activeItem?.isDownloaded}
-                    isActiveItemTransferring={
-                      activeItemId ? transferringEntries.has(activeItemId) : false
-                    }
-                    isCopyBlocked={isActiveFileCopyBlocked}
-                    copyBlockedReason={
-                      isActiveFileCopyBlocked && activeEntryStatus
-                        ? activeEntryStatus.status === 'pending'
-                          ? t('clipboard.transfer.copyDisabled.pending')
-                          : activeEntryStatus.status === 'transferring'
-                            ? t('clipboard.transfer.copyDisabled.transferring')
-                            : t('clipboard.transfer.copyDisabled.failed')
-                        : undefined
-                    }
+                    transferStatus={{
+                      isDownloaded: activeItem?.isDownloaded,
+                      isTransferring: activeItemId ? transferringEntries.has(activeItemId) : false,
+                      isCopyBlocked: isActiveFileCopyBlocked,
+                      copyBlockedReason:
+                        isActiveFileCopyBlocked && activeEntryStatus
+                          ? activeEntryStatus.status === 'pending'
+                            ? t('clipboard.transfer.copyDisabled.pending')
+                            : activeEntryStatus.status === 'transferring'
+                              ? t('clipboard.transfer.copyDisabled.transferring')
+                              : t('clipboard.transfer.copyDisabled.failed')
+                          : undefined,
+                    }}
                     onCopy={() => {
                       if (activeItemId && !isActiveFileCopyBlocked)
                         void handleCopyItem(activeItemId)
@@ -807,9 +817,9 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         <div className="mx-auto flex h-full w-full max-w-xl flex-col items-center justify-center text-center">
           <div className="mb-5 rounded-full bg-muted/30 p-5 ring-1 ring-border/50">
             {searchQuery ? (
-              <Search className="h-10 w-10 text-muted-foreground/50" />
+              <Search className="size-10 text-muted-foreground/50" />
             ) : (
-              <Inbox className="h-10 w-10 text-muted-foreground/50" />
+              <Inbox className="size-10 text-muted-foreground/50" />
             )}
           </div>
           <h3 className="mb-2 text-xl font-semibold text-foreground">

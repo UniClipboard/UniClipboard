@@ -336,6 +336,16 @@
   }
 }
 
+.aurora-drift-1 {
+  animation: aurora-drift-1 12s ease-in-out infinite;
+}
+.aurora-drift-2 {
+  animation: aurora-drift-2 15s ease-in-out infinite;
+}
+.aurora-drift-3 {
+  animation: aurora-drift-3 18s ease-in-out infinite;
+}
+
 @keyframes particle-float {
   0% {
     transform: translateY(0) translateX(0);

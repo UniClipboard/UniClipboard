@@ -311,13 +311,13 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
 
       <div
         data-uc-decorative-effect="true"
-        className="absolute -bottom-24 -right-16 h-96 w-96 rounded-full bg-primary/5 blur-3xl"
+        className="absolute -bottom-24 -right-16 size-96 rounded-full bg-primary/5 blur-3xl"
       />
 
-      <div className="relative z-10 flex w-full max-w-sm flex-col items-center space-y-8 text-center">
-        <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl bg-muted/30 shadow-inner ring-1 ring-border/50">
+      <div className="relative z-10 flex w-full max-w-sm flex-col items-center gap-y-8 text-center">
+        <div className="relative flex size-24 items-center justify-center rounded-3xl bg-muted/30 shadow-inner ring-1 ring-border/50">
           <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary/10 to-transparent opacity-50" />
-          <Lock className="h-10 w-10 text-primary" />
+          <Lock className="size-10 text-primary" />
         </div>
 
         <div className="space-y-2">
@@ -336,19 +336,19 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
           >
             {unlocking ? (
               <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                <Loader2 className="mr-2 size-5 animate-spin" />
                 {t('unlock.unlocking')}
               </>
             ) : (
               <>
-                <Unlock className="mr-2 h-5 w-5" />
+                <Unlock className="mr-2 size-5" />
                 {t('unlock.button')}
               </>
             )}
           </Button>
 
           <div className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/20 px-4 py-3 backdrop-blur-sm transition-colors hover:bg-muted/30">
-            <div className="flex flex-col items-start space-y-0.5 text-left">
+            <div className="flex flex-col items-start gap-y-0.5 text-left">
               <Label htmlFor="auto-unlock" className="cursor-pointer text-sm font-medium">
                 {t('unlock.autoUnlock.label')}
               </Label>
@@ -408,7 +408,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
             <Button variant="secondary" onClick={handleKeychainVerify} disabled={verifying}>
               {verifying ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 size-4 animate-spin" />
                   {t('unlock.keychainModal.verifying')}
                 </>
               ) : (
@@ -462,7 +462,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
                 )}
                 className="absolute right-0 top-0 flex h-full items-center px-3 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               >
-                {showPassphrase ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassphrase ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
           </div>
@@ -496,7 +496,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
             <Button onClick={handleSubmitPassphrase} disabled={submitting}>
               {submitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 size-4 animate-spin" />
                   {t('unlock.passphraseModal.submitting')}
                 </>
               ) : (
@@ -560,7 +560,7 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
             >
               {resetting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-2 size-4 animate-spin" />
                   {t('unlock.factoryReset.modal.resetting')}
                 </>
               ) : (

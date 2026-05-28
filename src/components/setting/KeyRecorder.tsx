@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRecordHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui'
@@ -33,6 +33,14 @@ export function KeyRecorder({
   const [recordedKey, setRecordedKey] = useState<string | null>(null)
   const [normalizedKey, setNormalizedKey] = useState<string | null>(null)
 
+  // Hold the latest onCancel in a ref so the keys effect doesn't depend on it.
+  // This avoids the "lift state via callback" anti-pattern where the effect
+  // depends on a prop callback alongside local state.
+  const onCancelRef = useRef(onCancel)
+  useEffect(() => {
+    onCancelRef.current = onCancel
+  }, [onCancel])
+
   // Resolve current shortcuts for conflict detection
   const resolvedShortcuts = useMemo(
     () => resolveShortcuts(SHORTCUT_DEFINITIONS, currentOverrides),
@@ -59,6 +67,15 @@ export function KeyRecorder({
     return () => stop()
   }, [start, stop])
 
+  // Escape handling lives in its own effect that only reacts to keys.
+  // Calls onCancel via ref to avoid coupling the keys/state effect to a prop.
+  useEffect(() => {
+    if (keys.has('escape')) {
+      stop()
+      onCancelRef.current()
+    }
+  }, [keys, stop])
+
   // Update recorded key when keys change
   useEffect(() => {
     if (keys.size === 0) {
@@ -67,10 +84,8 @@ export function KeyRecorder({
       return
     }
 
-    // Check for Escape key first - cancels recording
+    // Escape is handled in a separate effect; ignore it here.
     if (keys.has('escape')) {
-      stop()
-      onCancel()
       return
     }
 
@@ -82,7 +97,7 @@ export function KeyRecorder({
     // Normalize for display and comparison
     const normalized = normalizeHotkey(joined)
     setNormalizedKey(normalized)
-  }, [keys, stop, onCancel])
+  }, [keys])
 
   const handleConfirm = () => {
     if (!normalizedKey) return
@@ -106,7 +121,7 @@ export function KeyRecorder({
         {recordedKey ? (
           <div className="flex items-center gap-0.5">
             {keyParts.map((part, idx) => (
-              <span key={idx} className="flex items-center">
+              <span key={`${part}-${idx}`} className="flex items-center">
                 {idx > 0 && <span className="text-muted-foreground text-xs mx-0.5">+</span>}
                 <kbd className="bg-muted text-xs font-mono px-1.5 py-0.5 rounded border border-border/60 text-foreground">
                   {part}
@@ -129,13 +144,19 @@ export function KeyRecorder({
               <span>{t(errorIssue.messageKey, errorIssue.messageParams)}</span>
             </div>
           )}
-          {warningIssues.map((issue, idx) => (
-            <div key={idx} className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+          {warningIssues.map(issue => (
+            <div
+              key={`warning-${issue.messageKey}`}
+              className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400"
+            >
               <span>{t(issue.messageKey, issue.messageParams)}</span>
             </div>
           ))}
-          {infoIssues.map((issue, idx) => (
-            <div key={idx} className="flex items-center gap-2 text-muted-foreground">
+          {infoIssues.map(issue => (
+            <div
+              key={`info-${issue.messageKey}`}
+              className="flex items-center gap-2 text-muted-foreground"
+            >
               <span>{t(issue.messageKey, issue.messageParams)}</span>
             </div>
           ))}

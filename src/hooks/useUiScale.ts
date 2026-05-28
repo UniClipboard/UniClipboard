@@ -14,7 +14,6 @@ export function useUiScale() {
   const [scale, setScaleState] = useState(() => readStoredUiScale())
 
   useEffect(() => {
-    setScaleState(readStoredUiScale())
     return subscribeUiScaleChanges(nextScale => {
       setScaleState(nextScale)
     })

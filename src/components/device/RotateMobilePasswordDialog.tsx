@@ -13,7 +13,7 @@
  */
 
 import { Loader2 } from 'lucide-react'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   isMobileSyncError,
@@ -46,19 +46,23 @@ interface Props {
   onSuccess: (result: RotateMobilePasswordResult) => void
 }
 
-const RotateMobilePasswordDialog: React.FC<Props> = ({ open, onOpenChange, device, onSuccess }) => {
+const RotateMobilePasswordDialog: React.FC<Props> = props => {
+  // 用 `open` 作 React `key`,关→开 时整个内部组件重挂载,自然带回默认
+  // state(尤其密码不留)。这里替换原来的 reset-all-state on open useEffect
+  // (踩 no-reset-all-state-on-prop-change)。
+  return <RotateMobilePasswordDialogInner key={props.open ? 'open' : 'closed'} {...props} />
+}
+
+const RotateMobilePasswordDialogInner: React.FC<Props> = ({
+  open,
+  onOpenChange,
+  device,
+  onSuccess,
+}) => {
   const { t } = useTranslation()
 
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
-
-  // 每次重开 dialog 时重置表单 —— 避免上一次输入残留
-  useEffect(() => {
-    if (open) {
-      setPassword('')
-      setSubmitting(false)
-    }
-  }, [open])
 
   const handleSubmit = useCallback(async () => {
     if (!device) return
@@ -128,7 +132,7 @@ const RotateMobilePasswordDialog: React.FC<Props> = ({ open, onOpenChange, devic
             {t('devices.mobileSync.rotate.dialog.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting && <Loader2 className="size-4 animate-spin" />}
             {submitting
               ? t('devices.mobileSync.rotate.dialog.submitting')
               : t('devices.mobileSync.rotate.dialog.submit')}
@@ -168,7 +172,5 @@ function translateRotateError(t: ReturnType<typeof useTranslation>['t'], err: un
   const message = err instanceof Error ? err.message : String(err)
   return t('devices.mobileSync.errors.unknown', { message })
 }
-
-export const __test__ = { translateRotateError }
 
 export default RotateMobilePasswordDialog

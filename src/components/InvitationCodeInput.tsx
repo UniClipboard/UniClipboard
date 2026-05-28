@@ -1,8 +1,7 @@
 import { type ComponentProps } from 'react'
+import { INVITATION_CODE_LENGTH } from '@/components/invitation-code-utils'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { cn } from '@/lib/utils'
-
-export const INVITATION_CODE_LENGTH = 8
 
 const ALLOWED_CHARS = /[A-Z0-9]/
 
@@ -49,7 +48,7 @@ export function InvitationCodeInput({
   className,
   ...rest
 }: Props) {
-  const handleChange = (next: string) => {
+  const sanitizeInvitationInput = (next: string) => {
     const cleaned = next
       .toUpperCase()
       .split('')
@@ -64,7 +63,7 @@ export function InvitationCodeInput({
   // payload before our onChange filter runs. Passing this transformer also
   // forces input-otp to route paste through JS (preventDefault + manual
   // setValue) on non-iOS browsers, sidestepping the maxLength truncation.
-  const handlePaste = (text: string) =>
+  const stripInvitationCodeSeparator = (text: string) =>
     text
       .toUpperCase()
       .split('')
@@ -77,8 +76,8 @@ export function InvitationCodeInput({
     <InputOTP
       maxLength={INVITATION_CODE_LENGTH}
       value={value}
-      onChange={handleChange}
-      pasteTransformer={handlePaste}
+      onChange={sanitizeInvitationInput}
+      pasteTransformer={stripInvitationCodeSeparator}
       disabled={disabled}
       aria-invalid={invalid || undefined}
       containerClassName={cn('justify-center gap-3', className)}
@@ -96,11 +95,4 @@ export function InvitationCodeInput({
       </InputOTPGroup>
     </InputOTP>
   )
-}
-
-/** Format a raw 8-char code as `XXXX-XXXX` for display surfaces. */
-export function formatInvitationCode(raw: string): string {
-  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  if (clean.length <= 4) return clean
-  return `${clean.slice(0, 4)}-${clean.slice(4, INVITATION_CODE_LENGTH)}`
 }

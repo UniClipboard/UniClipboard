@@ -1,14 +1,4 @@
-const sensitiveKeys = [
-  'password',
-  'passphrase',
-  'pass1',
-  'pass2',
-  'secret',
-  'token',
-  'auth',
-  'api_key',
-  'apikey',
-]
+const sensitiveKeyPattern = /password|passphrase|pass[12]|secret|token|auth|api_?key/
 
 export function redactSensitiveArgs(value: unknown): unknown {
   return redactValue(value, new WeakMap())
@@ -44,7 +34,7 @@ function redactValue(value: unknown, seen: WeakMap<object, unknown>): unknown {
   seen.set(value, result)
   for (const [key, item] of Object.entries(value)) {
     const lowerKey = key.toLowerCase()
-    if (sensitiveKeys.some(sensitive => lowerKey.includes(sensitive))) {
+    if (sensitiveKeyPattern.test(lowerKey)) {
       result[key] = '[REDACTED]'
     } else {
       result[key] = redactValue(item, seen)

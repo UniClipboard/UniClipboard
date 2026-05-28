@@ -29,6 +29,10 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ConnectionChannel } from '@/api/daemon/members'
+import {
+  deriveBadgeKind,
+  type DerivedBadgeKind,
+} from '@/components/device/connection-channel-utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface ConnectionChannelBadgeProps {
@@ -38,31 +42,7 @@ interface ConnectionChannelBadgeProps {
   className?: string
 }
 
-type DerivedKind = 'lan' | 'relay' | 'offline' | 'unknown' | 'outOfLan'
-
-/**
- * `channel + lanOnlyActive` ⇒ 5 态。纯函数,方便单测。
- *
- * * `direct` ⇒ `lan`(无关 LAN-only 设置)
- * * `relay`  ⇒ LAN-only ON 时合成 `outOfLan`,否则 `relay`
- * * `offline` ⇒ LAN-only ON 时合成 `outOfLan`,否则 `offline`
- * * `unknown` ⇒ 永远 `unknown`(还没看清楚之前不下结论)
- */
-export function deriveBadgeKind(channel: ConnectionChannel, lanOnlyActive: boolean): DerivedKind {
-  switch (channel) {
-    case 'direct':
-      return 'lan'
-    case 'relay':
-      return lanOnlyActive ? 'outOfLan' : 'relay'
-    case 'offline':
-      return lanOnlyActive ? 'outOfLan' : 'offline'
-    case 'unknown':
-    default:
-      return 'unknown'
-  }
-}
-
-const KIND_TEXT_CLASS: Record<DerivedKind, string> = {
+const KIND_TEXT_CLASS: Record<DerivedBadgeKind, string> = {
   lan: 'text-emerald-600 dark:text-emerald-400',
   relay: 'text-amber-600 dark:text-amber-400',
   offline: 'text-muted-foreground',

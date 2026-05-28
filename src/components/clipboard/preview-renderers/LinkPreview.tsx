@@ -15,12 +15,12 @@ const LinkPreview: React.FC<LinkPreviewProps> = ({ item }) => {
     <div className="space-y-4 p-8">
       {item.urls.map((url, index) => (
         <button
-          key={index}
+          key={`${url}-${index}`}
           type="button"
           className="group flex w-full items-center gap-3 rounded-xl border border-border/20 bg-muted/10 p-4 text-left transition-all hover:border-primary/30 hover:bg-muted/20"
           onClick={() => openUrl(url).catch(err => log.error({ err }, 'Failed to open URL'))}
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-110">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:scale-110">
             <ExternalLink size={18} />
           </div>
           <div className="min-w-0 flex-1">

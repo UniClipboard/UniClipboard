@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { SearchContext, type TimeRangePreset } from './search-context'
 
 export const SearchProvider = ({ children }: { children: ReactNode }) => {
@@ -13,16 +13,15 @@ export const SearchProvider = ({ children }: { children: ReactNode }) => {
     setTimeRange(range)
   }, [])
 
-  return (
-    <SearchContext.Provider
-      value={{
-        searchValue,
-        setSearchValue: handleSetSearchValue,
-        timeRange,
-        setTimeRange: handleSetTimeRange,
-      }}
-    >
-      {children}
-    </SearchContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      searchValue,
+      setSearchValue: handleSetSearchValue,
+      timeRange,
+      setTimeRange: handleSetTimeRange,
+    }),
+    [searchValue, timeRange, handleSetSearchValue, handleSetTimeRange]
   )
+
+  return <SearchContext.Provider value={contextValue}>{children}</SearchContext.Provider>
 }

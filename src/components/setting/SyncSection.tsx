@@ -23,15 +23,15 @@ const SyncSection: React.FC = () => {
 
   // File sync local state
   const [fileSyncEnabled, setFileSyncEnabled] = useState(setting?.fileSync?.fileSyncEnabled ?? true)
-  const [smallFileThreshold, setSmallFileThreshold] = useState(
+  const [smallFileThreshold, setSmallFileThreshold] = useState(() =>
     bytesToMb(setting?.fileSync?.smallFileThreshold ?? 10 * MB)
   )
   const [smallFileThresholdError, setSmallFileThresholdError] = useState<string | null>(null)
-  const [maxFileSizeLimit, setMaxFileSizeLimit] = useState(
+  const [maxFileSizeLimit, setMaxFileSizeLimit] = useState(() =>
     bytesToMb(setting?.fileSync?.maxFileSize ?? 5120 * MB)
   )
   const [maxFileSizeLimitError, setMaxFileSizeLimitError] = useState<string | null>(null)
-  const [cacheQuota, setCacheQuota] = useState(
+  const [cacheQuota, setCacheQuota] = useState(() =>
     bytesToMb(setting?.fileSync?.fileCacheQuotaPerDevice ?? 500 * MB)
   )
   const [cacheQuotaError, setCacheQuotaError] = useState<string | null>(null)

@@ -24,7 +24,7 @@ const TextPreview: React.FC<TextPreviewProps> = ({ item, loading, preview }) => 
     <div className="p-6">
       {loading ? (
         <div className="flex items-center gap-2 text-muted-foreground/60">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
           <span className="text-sm font-medium">{t('clipboard.item.loading')}</span>
         </div>
       ) : (

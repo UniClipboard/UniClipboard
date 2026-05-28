@@ -19,7 +19,9 @@ const SCOPE_ORDER: ShortcutScope[] = ['global']
 const ShortcutsSection: React.FC = () => {
   const { t } = useTranslation()
   const { setting, updateKeyboardShortcuts } = useSetting()
-  const overrides = setting?.keyboardShortcuts ?? {}
+  // 锁住 overrides 引用，避免 `?? {}` 在 setting 未加载阶段每次都生成新的空
+  // 对象，把下游 useCallback / React.memo 的稳定性击穿。
+  const overrides = useMemo(() => setting?.keyboardShortcuts ?? {}, [setting?.keyboardShortcuts])
 
   const groupedShortcuts = useMemo(() => {
     const groups = new Map<ShortcutScope, ShortcutDefinition[]>()
@@ -45,6 +47,8 @@ const ShortcutsSection: React.FC = () => {
     return defId in overrides
   }
 
+  const shortcutsById = useMemo(() => new Map(SHORTCUT_DEFINITIONS.map(d => [d.id, d])), [])
+
   // Handle override change with conflict clearing
   const handleOverrideChange = useCallback(
     async (id: string, newKey: string, clearedIds?: string[]) => {
@@ -57,7 +61,7 @@ const ShortcutsSection: React.FC = () => {
       if (clearedIds && clearedIds.length > 0) {
         for (const clearedId of clearedIds) {
           // Check if the cleared shortcut's default key equals the new key
-          const clearedDef = SHORTCUT_DEFINITIONS.find(d => d.id === clearedId)
+          const clearedDef = shortcutsById.get(clearedId)
           if (clearedDef) {
             const clearedDefaultKey = Array.isArray(clearedDef.key)
               ? clearedDef.key[0]
@@ -80,7 +84,7 @@ const ShortcutsSection: React.FC = () => {
         log.error({ err: error }, 'Failed to update keyboard shortcuts')
       }
     },
-    [overrides, updateKeyboardShortcuts]
+    [overrides, shortcutsById, updateKeyboardShortcuts]
   )
 
   // Handle single shortcut reset

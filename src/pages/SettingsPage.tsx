@@ -16,9 +16,10 @@ import { SettingContentLayout } from '@/layouts'
 import { captureUserIntent } from '@/observability/breadcrumbs'
 
 function SettingsPage() {
-  const location = useLocation()
+  const routerLocation = useLocation()
+  const { state: locationState, pathname: locationPathname } = routerLocation
   const [activeCategory, setActiveCategory] = useState(
-    (location.state as { category?: string } | null)?.category || DEFAULT_CATEGORY
+    (locationState as { category?: string } | null)?.category || DEFAULT_CATEGORY
   )
   const navigate = useNavigate()
   useShortcutScope('settings')
@@ -42,12 +43,12 @@ function SettingsPage() {
   }, [])
 
   useEffect(() => {
-    if (location.state && (location.state as { category?: string }).category) {
-      const newState = { ...location.state } as Record<string, unknown>
+    if (locationState && (locationState as { category?: string }).category) {
+      const newState = { ...locationState } as Record<string, unknown>
       delete newState.category
-      navigate(location.pathname, { replace: true, state: newState })
+      navigate(locationPathname, { replace: true, state: newState })
     }
-  }, [location.state, navigate, location.pathname])
+  }, [locationState, navigate, locationPathname])
 
   const handleCategoryChange = (category: string) => {
     setActiveCategory(category)

@@ -130,14 +130,14 @@ interface StorageSegment {
  */
 function StorageUsageSkeleton() {
   return (
-    <div className="px-4 py-4 space-y-3.5">
+    <div className="p-4 space-y-3.5">
       {/* Header skeleton */}
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
           <Skeleton className="h-6 w-20" />
           <Skeleton className="h-3 w-8" />
         </div>
-        <Skeleton className="h-6 w-6 rounded-md" />
+        <Skeleton className="size-6 rounded-md" />
       </div>
 
       {/* Bar skeleton */}
@@ -147,8 +147,8 @@ function StorageUsageSkeleton() {
       <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="flex items-center gap-2 min-w-0">
-            <Skeleton className="w-2 h-2 rounded-full shrink-0" />
-            <Skeleton className="w-3 h-3 rounded shrink-0" />
+            <Skeleton className="size-2 rounded-full shrink-0" />
+            <Skeleton className="size-3 rounded shrink-0" />
             <Skeleton className="h-3 w-12" />
             <Skeleton className="h-3 w-10 ml-auto" />
           </div>
@@ -180,7 +180,7 @@ function StorageUsageBar({
       <div className="px-4 py-6 flex flex-col items-center justify-center gap-3 text-center">
         <div className="text-sm text-destructive">{error}</div>
         <Button variant="outline" size="sm" onClick={onRefresh}>
-          <RefreshCw className="w-4 h-4 mr-2" />
+          <RefreshCw className="size-4 mr-2" />
           {t('common.retry')}
         </Button>
       </div>
@@ -188,7 +188,7 @@ function StorageUsageBar({
   }
 
   return (
-    <div className="px-4 py-4 space-y-3.5">
+    <div className="p-4 space-y-3.5">
       {/* Header: total + refresh */}
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-2">
@@ -200,11 +200,12 @@ function StorageUsageBar({
           </span>
         </div>
         <button
+          type="button"
           onClick={onRefresh}
           className="p-1.5 rounded-md text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/60 transition-colors"
           aria-label="Refresh"
         >
-          <RefreshCw className="w-3.5 h-3.5" />
+          <RefreshCw className="size-3.5" />
         </button>
       </div>
 
@@ -241,10 +242,10 @@ function StorageUsageBar({
           return (
             <div key={seg.key} className="flex items-center gap-2 min-w-0">
               <span
-                className="w-2 h-2 rounded-full shrink-0"
+                className="size-2 rounded-full shrink-0"
                 style={{ backgroundColor: seg.color, opacity: 0.85 }}
               />
-              <Icon className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+              <Icon className="size-3 text-muted-foreground/50 shrink-0" />
               <span className="text-xs text-muted-foreground truncate">{seg.label}</span>
               <span className="text-xs tabular-nums text-foreground/70 ml-auto shrink-0">
                 {formatBytes(seg.bytes)}
@@ -518,7 +519,7 @@ const StorageSection: React.FC = () => {
         >
           <div className="flex items-center gap-2">
             <span
-              className={`inline-block w-2 h-2 rounded-full ${
+              className={`inline-block size-2 rounded-full ${
                 searchStatus?.state === 'ready'
                   ? 'bg-green-500'
                   : searchStatus?.state === 'rebuilding'

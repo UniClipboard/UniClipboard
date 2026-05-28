@@ -106,3 +106,4 @@ snap/.snapcraft/
 # p2p-bench spike runtime store (throwaway diagnostic)
 p2p-bench-store/
 src-tauri/p2p-bench-store/
+.claude/scheduled_tasks.lock

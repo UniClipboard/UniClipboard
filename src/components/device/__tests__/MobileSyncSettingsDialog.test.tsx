@@ -8,10 +8,8 @@
 
 import '@testing-library/jest-dom/vitest'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { __test__ } from '@/components/device/MobileSyncSettingsDialog'
+import { translateMobileSyncError } from '@/components/device/mobile-sync-errors'
 import i18n from '@/i18n'
-
-const { translateMobileSyncError } = __test__
 
 beforeAll(async () => {
   await i18n.changeLanguage('zh-CN')

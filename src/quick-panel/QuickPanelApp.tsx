@@ -17,7 +17,6 @@ const QuickPanelApp: React.FC = () => {
 
   useEffect(() => {
     if (daemonClient.initialized) {
-      setDaemonReady(true)
       return
     }
 

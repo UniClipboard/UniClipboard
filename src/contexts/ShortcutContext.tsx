@@ -93,17 +93,16 @@ export const ShortcutProvider: React.FC<ShortcutProviderProps> = ({ children }) 
     }, first)
   }, [entries])
 
-  return (
-    <ShortcutContext.Provider
-      value={{
-        activeScope: activeEntry.scope,
-        activeLayer: activeEntry.layer,
-        activePriority: activeEntry.priority,
-        pushLayer,
-        popLayer,
-      }}
-    >
-      {children}
-    </ShortcutContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      activeScope: activeEntry.scope,
+      activeLayer: activeEntry.layer,
+      activePriority: activeEntry.priority,
+      pushLayer,
+      popLayer,
+    }),
+    [activeEntry, pushLayer, popLayer]
   )
+
+  return <ShortcutContext.Provider value={contextValue}>{children}</ShortcutContext.Provider>
 }

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { ArrowUpCircle, Check, Home, MessageSquare, Monitor, Settings } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -70,7 +70,7 @@ const NavButton: React.FC<{
             }
           >
             {isActive && (
-              <motion.div
+              <m.div
                 layoutId={layoutId}
                 className="absolute inset-0 bg-primary/10 dark:bg-primary/20 rounded-lg"
                 initial={false}
@@ -83,13 +83,13 @@ const NavButton: React.FC<{
             )}
             <div
               className={cn(
-                'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-200 z-10',
+                'relative flex items-center justify-center size-10 rounded-lg transition-colors duration-200 z-10',
                 isActive
                   ? 'text-primary'
                   : 'text-muted-foreground group-hover:text-primary group-hover:bg-muted'
               )}
             >
-              <Icon className="w-5 h-5" />
+              <Icon className="size-5" />
             </div>
           </Link>
         </TooltipTrigger>
@@ -333,27 +333,27 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                   >
                     <div
                       className={cn(
-                        'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-200 z-10',
+                        'relative flex items-center justify-center size-10 rounded-lg transition-colors duration-200 z-10',
                         isReady
                           ? 'text-emerald-600 dark:text-emerald-400 group-hover:bg-muted'
                           : 'text-amber-600 dark:text-amber-400 group-hover:bg-muted'
                       )}
                     >
-                      <ArrowUpCircle className="w-5 h-5" />
+                      <ArrowUpCircle className="size-5" />
 
                       {isAvailable && (
                         <span
                           aria-hidden
-                          className="absolute top-2.5 right-2.5 flex h-2 w-2 motion-reduce:hidden"
+                          className="absolute top-2.5 right-2.5 flex size-2 motion-reduce:hidden"
                         >
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500/70 opacity-75" />
-                          <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                          <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
                         </span>
                       )}
                       {isAvailable && (
                         <span
                           aria-hidden
-                          className="hidden motion-reduce:flex absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-amber-500"
+                          className="hidden motion-reduce:flex absolute top-2.5 right-2.5 size-2 rounded-full bg-amber-500"
                         />
                       )}
 
@@ -364,9 +364,9 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                       {isReady && (
                         <span
                           aria-hidden
-                          className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-white shadow"
+                          className="absolute -top-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-emerald-500 text-white shadow"
                         >
-                          <Check className="h-2.5 w-2.5 stroke-[3]" />
+                          <Check className="size-2.5 stroke-[3]" />
                         </span>
                       )}
                     </div>
@@ -392,11 +392,11 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     >
                       <div
                         className={cn(
-                          'relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-200 z-10',
+                          'relative flex items-center justify-center size-10 rounded-lg transition-colors duration-200 z-10',
                           'text-muted-foreground group-hover:text-primary group-hover:bg-muted'
                         )}
                       >
-                        <MessageSquare className="w-5 h-5" />
+                        <MessageSquare className="size-5" />
                       </div>
                     </button>
                   </TooltipTrigger>

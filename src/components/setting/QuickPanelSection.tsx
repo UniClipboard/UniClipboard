@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RestartBanner } from './RestartBanner'
-import { SettingGroup } from './SettingGroup'
-import { SettingRow } from './SettingRow'
-import { ShortcutRow } from './ShortcutRow'
 import { Switch } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { SHORTCUT_DEFINITIONS, type ShortcutDefinition } from '@/shortcuts/definitions'
+import { RestartBanner } from './RestartBanner'
+import { SettingGroup } from './SettingGroup'
+import { SettingRow } from './SettingRow'
+import { ShortcutRow } from './ShortcutRow'
 
 const log = createLogger('quick-panel-section')
 
@@ -32,7 +32,11 @@ export default function QuickPanelSection() {
   const { t } = useTranslation()
   const { setting, loading, updateQuickPanelSetting, updateKeyboardShortcuts } = useSetting()
 
-  const overrides = setting?.keyboardShortcuts ?? {}
+  // setting?.keyboardShortcuts 可能在 setting 重新加载时被赋成全新对象，但
+  // 内容若未变（同一份持久 JSON re-parse）useCallback 仍会被无谓重建，并把
+  // 下游 ShortcutRow 的 React.memo 全部击穿。这里直接用 useMemo 锁住引用，
+  // 让 `[overrides]` 依赖只在键位真正变化时翻新。
+  const overrides = useMemo(() => setting?.keyboardShortcuts ?? {}, [setting?.keyboardShortcuts])
   const quickPanelDef = useMemo<ShortcutDefinition | undefined>(
     () => SHORTCUT_DEFINITIONS.find(def => def.id === QUICK_PANEL_SHORTCUT_ID),
     []
@@ -90,13 +94,15 @@ export default function QuickPanelSection() {
 
   const isModified = (defId: string): boolean => defId in overrides
 
+  const shortcutsById = useMemo(() => new Map(SHORTCUT_DEFINITIONS.map(d => [d.id, d])), [])
+
   const handleOverrideChange = useCallback(
     async (id: string, newKey: string, clearedIds?: string[]) => {
       const newOverrides = { ...overrides }
       newOverrides[id] = newKey
       if (clearedIds && clearedIds.length > 0) {
         for (const clearedId of clearedIds) {
-          const clearedDef = SHORTCUT_DEFINITIONS.find(d => d.id === clearedId)
+          const clearedDef = shortcutsById.get(clearedId)
           if (clearedDef) {
             const clearedDefaultKey = Array.isArray(clearedDef.key)
               ? clearedDef.key[0]
@@ -115,7 +121,7 @@ export default function QuickPanelSection() {
         log.error({ err }, '更新快捷面板快捷键失败')
       }
     },
-    [overrides, updateKeyboardShortcuts]
+    [overrides, shortcutsById, updateKeyboardShortcuts]
   )
 
   const handleResetShortcut = useCallback(

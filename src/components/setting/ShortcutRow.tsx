@@ -74,7 +74,7 @@ export function ShortcutRow({
       <div className="flex items-center gap-2 shrink-0">
         <div className="flex items-center gap-0.5">
           {keyParts.map((part, idx) => (
-            <span key={idx} className="flex items-center">
+            <span key={`${part}-${idx}`} className="flex items-center">
               {idx > 0 && <span className="text-muted-foreground text-xs mx-0.5">+</span>}
               <kbd className="bg-muted text-xs font-mono px-1.5 py-0.5 rounded border border-border/60 text-foreground">
                 {part}
@@ -86,22 +86,22 @@ export function ShortcutRow({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="size-7"
           onClick={handleEdit}
           title={t('settings.sections.shortcuts.edit')}
         >
-          <Pencil className="h-3.5 w-3.5" />
+          <Pencil className="size-3.5" />
         </Button>
 
         {isModified && (
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="size-7"
             onClick={handleReset}
             title={t('settings.sections.shortcuts.reset')}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
+            <RotateCcw className="size-3.5" />
           </Button>
         )}
       </div>

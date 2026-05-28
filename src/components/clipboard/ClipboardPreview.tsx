@@ -27,6 +27,67 @@ interface ClipboardPreviewProps {
   actions?: React.ReactNode
 }
 
+interface PreviewContentProps {
+  item: DisplayClipboardItem
+  loading: boolean
+  preview: ReturnType<typeof useClipboardPreviewState>['preview']
+  effectiveStatus: ReturnType<typeof useClipboardPreviewState>['effectiveStatus']
+  entryStatus: ReturnType<typeof useClipboardPreviewState>['entryStatus']
+  transfer: ReturnType<typeof useClipboardPreviewState>['transfer']
+  setImageDimensions: ReturnType<typeof useClipboardPreviewState>['setImageDimensions']
+}
+
+const PreviewContent: React.FC<PreviewContentProps> = ({
+  item,
+  loading,
+  preview,
+  effectiveStatus,
+  entryStatus,
+  transfer,
+  setImageDimensions,
+}) => {
+  const { t } = useTranslation()
+  switch (item.type) {
+    case 'text': {
+      return (
+        <TextPreview item={item.content as ClipboardTextItem} loading={loading} preview={preview} />
+      )
+    }
+    case 'image': {
+      return (
+        <ImagePreview
+          item={item.content as ClipboardImageItem}
+          loading={loading}
+          preview={preview}
+          setImageDimensions={setImageDimensions}
+        />
+      )
+    }
+    case 'link': {
+      return <LinkPreview item={item.content as ClipboardLinkItem} />
+    }
+    case 'code': {
+      return <CodePreview item={item.content as ClipboardCodeItem} preview={preview} />
+    }
+    case 'file': {
+      return (
+        <FilePreview
+          effectiveStatus={effectiveStatus}
+          entryStatus={entryStatus}
+          item={item}
+          transfer={transfer}
+        />
+      )
+    }
+    default:
+      return (
+        <div className="p-8 text-center font-medium italic text-muted-foreground opacity-40">
+          {t('clipboard.item.unknownContent')}
+        </div>
+      )
+  }
+}
+
 const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) => {
   const { t } = useTranslation()
   const {
@@ -58,60 +119,26 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   if (!item) {
     return (
       <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 bg-muted/5 text-muted-foreground">
-        <Clipboard className="h-10 w-10 text-muted-foreground/20" />
+        <Clipboard className="size-10 text-muted-foreground/20" />
         <span className="text-sm font-medium opacity-50">{t('clipboard.preview.selectItem')}</span>
       </div>
     )
   }
 
-  const renderContent = () => {
-    switch (item.type) {
-      case 'text': {
-        return (
-          <TextPreview
-            item={item.content as ClipboardTextItem}
-            loading={loading}
-            preview={preview}
-          />
-        )
-      }
-      case 'image': {
-        return (
-          <ImagePreview
-            item={item.content as ClipboardImageItem}
-            loading={loading}
-            preview={preview}
-            setImageDimensions={setImageDimensions}
-          />
-        )
-      }
-      case 'link': {
-        return <LinkPreview item={item.content as ClipboardLinkItem} />
-      }
-      case 'code': {
-        return <CodePreview item={item.content as ClipboardCodeItem} preview={preview} />
-      }
-      case 'file': {
-        return (
-          <FilePreview
-            effectiveStatus={effectiveStatus}
-            entryStatus={entryStatus}
-            item={item}
-            transfer={transfer}
-          />
-        )
-      }
-      default:
-        return (
-          <div className="p-8 text-center font-medium italic text-muted-foreground opacity-40">
-            {t('clipboard.item.unknownContent')}
-          </div>
-        )
-    }
-  }
-
   const isLargeText =
     item.type === 'text' && isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
+
+  const content = (
+    <PreviewContent
+      item={item}
+      loading={loading}
+      preview={preview}
+      effectiveStatus={effectiveStatus}
+      entryStatus={entryStatus}
+      transfer={transfer}
+      setImageDimensions={setImageDimensions}
+    />
+  )
 
   return (
     <div
@@ -127,10 +154,10 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
 
       <div className="relative flex-1 min-h-0">
         {isLargeText ? (
-          <div className="absolute inset-0">{renderContent()}</div>
+          <div className="absolute inset-0">{content}</div>
         ) : (
           <ScrollArea className="h-full [&_[data-slot=scroll-area-viewport]>div]:!block">
-            <div className="min-h-full">{renderContent()}</div>
+            <div className="min-h-full">{content}</div>
           </ScrollArea>
         )}
       </div>

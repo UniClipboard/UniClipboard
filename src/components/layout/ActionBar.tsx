@@ -63,7 +63,7 @@ const ActionBar: React.FC<ActionBarProps> = ({ stats, onSync }) => {
           onClick={handleSync}
           className="rounded-lg bg-primary hover:bg-primary/90 shadow-lg shadow-primary/30"
         >
-          <RefreshCw className="h-4 w-4 mr-2" />
+          <RefreshCw className="size-4 mr-2" />
           立即同步
         </Button>
       </div>

@@ -29,7 +29,7 @@ export const WindowShell: React.FC<WindowShellProps> = ({ titleBar, children }) 
       />
       <div
         data-uc-decorative-effect="true"
-        className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-primary/5 blur-[100px] dark:bg-primary/10"
+        className="pointer-events-none absolute -left-20 -top-20 size-64 rounded-full bg-primary/5 blur-[100px] dark:bg-primary/10"
         aria-hidden="true"
       />
 

@@ -9,7 +9,7 @@ export const isMac =
  *   ctrl       = the physical Control key (⌃ on macOS, Ctrl on Windows)
  *   mod/cmd    = abstract "platform modifier" (= meta on macOS, ctrl on Windows)
  */
-export function formatKeyPart(part: string): string {
+function formatKeyPart(part: string): string {
   const lower = part.toLowerCase().trim()
 
   if (isMac) {
@@ -72,10 +72,10 @@ export function formatKeyPart(part: string): string {
 }
 
 export function formatShortcutParts(shortcut: string): string[] {
-  const rawParts = shortcut
-    .split('+')
-    .map(part => part.trim())
-    .filter(Boolean)
+  const rawParts = shortcut.split('+').flatMap(part => {
+    const trimmed = part.trim()
+    return trimmed ? [trimmed] : []
+  })
   const lowerParts = rawParts.map(part => part.toLowerCase())
 
   if (lowerParts.includes('shift') && lowerParts.includes('equal')) {

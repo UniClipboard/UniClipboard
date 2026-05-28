@@ -39,7 +39,7 @@ type SidebarContextProps = {
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
 
 function useSidebar() {
-  const context = React.useContext(SidebarContext)
+  const context = React.use(SidebarContext)
   if (!context) {
     throw new Error('useSidebar must be used within a SidebarProvider.')
   }
@@ -269,6 +269,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<'button'>) {
 
   return (
     <button
+      type="button"
       data-sidebar="rail"
       data-slot="sidebar-rail"
       aria-label="Toggle Sidebar"

@@ -30,24 +30,31 @@ const PARTICLES: Particle[] = [
   { id: 17, size: 5.8, left: 95, delay: 0.8, duration: 16, opacity: 0.4, drift: -20 },
 ]
 
+type ParticleCSSVars = React.CSSProperties & {
+  '--particle-size': string
+  '--particle-left': string
+  '--particle-duration': string
+  '--particle-delay': string
+  '--particle-drift': string
+  '--particle-opacity': string
+}
+
+function particleStyle(p: Particle): ParticleCSSVars {
+  return {
+    '--particle-size': `${p.size}px`,
+    '--particle-left': `${p.left}%`,
+    '--particle-duration': `${p.duration}s`,
+    '--particle-delay': `${p.delay}s`,
+    '--particle-drift': `${p.drift}px`,
+    '--particle-opacity': String(p.opacity),
+  }
+}
+
 export default function FloatingParticles() {
   return (
     <div className="absolute inset-0 overflow-hidden">
       {PARTICLES.map(p => (
-        <div
-          key={p.id}
-          className="absolute rounded-full bg-foreground/30 dark:bg-foreground/20"
-          style={{
-            width: p.size,
-            height: p.size,
-            left: `${p.left}%`,
-            bottom: '-5%',
-            opacity: 0,
-            animation: `particle-float ${p.duration}s ${p.delay}s ease-in-out infinite`,
-            ['--particle-drift' as string]: `${p.drift}px`,
-            ['--particle-opacity' as string]: p.opacity,
-          }}
-        />
+        <div key={p.id} className="floating-particle" style={particleStyle(p)} />
       ))}
     </div>
   )

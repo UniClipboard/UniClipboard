@@ -187,7 +187,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
               撤销并重新添加") 删了: title 已经传达核心,recovery 路径在 device
               列表的撤销按钮上,信息不会失传。 */}
           <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <AlertTriangle className="size-4 shrink-0" />
             <span>{t('devices.mobileSync.credential.warning.title')}</span>
           </div>
 
@@ -232,13 +232,13 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
                           )
                         }
                       >
-                        <ExternalLink className="h-3.5 w-3.5" />
+                        <ExternalLink className="size-3.5" />
                       </Button>
                     }
                   >
                     {/* 前端用 qrcode.react 现渲: download URL 是静态产品常量,
                         每次都让后端编码一份 base64 PNG 是浪费。size 176 对应
-                        connect QR 显示 (h-48 w-48 减去 p-2)。 */}
+                        connect QR 显示 (size-48 减去 p-2)。 */}
                     <QRCodeSVG
                       value={DOWNLOAD_PAGE_URL}
                       size={176}
@@ -254,7 +254,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
                   <img
                     src={`data:image/png;base64,${payload.qrCodePngBase64}`}
                     alt={t('devices.mobileSync.credential.scan.pair.qrAlt')}
-                    className="h-44 w-44 rounded bg-white p-2"
+                    className="size-44 rounded bg-white p-2"
                   />
                 </QrPanel>
               )}
@@ -281,7 +281,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
                 <img
                   src={`data:image/png;base64,${payload.installQrCodePngBase64}`}
                   alt={t('devices.mobileSync.credential.shortcut.qr.alt')}
-                  className="h-48 w-48 rounded bg-white p-2"
+                  className="size-48 rounded bg-white p-2"
                 />
               </div>
               <CredentialField
@@ -323,11 +323,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onDiscard, onComp
                   title={passwordVisible ? 'hide' : 'show'}
                   onClick={() => setPasswordVisible(v => !v)}
                 >
-                  {passwordVisible ? (
-                    <EyeOff className="h-3.5 w-3.5" />
-                  ) : (
-                    <Eye className="h-3.5 w-3.5" />
-                  )}
+                  {passwordVisible ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                 </Button>
               }
             />
@@ -443,11 +439,7 @@ const CredentialField: React.FC<CredentialFieldProps> = ({
           }
           onClick={handleCopy}
         >
-          {copied ? (
-            <Check className="h-3.5 w-3.5 text-emerald-500" />
-          ) : (
-            <Copy className="h-3.5 w-3.5" />
-          )}
+          {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
         </Button>
       </div>
     </div>

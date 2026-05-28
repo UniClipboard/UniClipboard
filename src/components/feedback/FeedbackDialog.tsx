@@ -29,19 +29,14 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
   const { t } = useTranslation()
   const [content, setContent] = React.useState('')
   const [email, setEmail] = React.useState('')
-  const [savedEmail, setSavedEmail] = React.useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = React.useState(false)
-
-  React.useEffect(() => {
+  const [savedEmail, setSavedEmail] = React.useState<string | null>(() => {
     try {
-      const storedEmail = localStorage.getItem(FEEDBACK_EMAIL_STORAGE_KEY)
-      if (storedEmail) {
-        setSavedEmail(storedEmail)
-      }
+      return localStorage.getItem(FEEDBACK_EMAIL_STORAGE_KEY)
     } catch {
-      setSavedEmail(null)
+      return null
     }
-  }, [])
+  })
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,6 +91,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
             </label>
             <textarea
               id="feedback-content"
+              aria-label={t('feedback.modal.label.content')}
               className={cn(
                 'flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
               )}
@@ -133,7 +129,7 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
           </div>
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
               {t('feedback.modal.submit')}
             </Button>
           </DialogFooter>

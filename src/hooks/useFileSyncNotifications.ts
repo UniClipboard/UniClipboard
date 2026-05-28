@@ -148,15 +148,18 @@ export function useFileSyncNotifications(): void {
         delete prevStatusRef.current[id]
       }
     }
-  }, [activeTransfers, t])
 
-  // Cleanup timers on unmount
-  useEffect(() => {
     return () => {
-      if (startBatchTimer.current) clearTimeout(startBatchTimer.current)
-      if (completeBatchTimer.current) clearTimeout(completeBatchTimer.current)
+      if (startBatchTimer.current) {
+        clearTimeout(startBatchTimer.current)
+        startBatchTimer.current = null
+      }
+      if (completeBatchTimer.current) {
+        clearTimeout(completeBatchTimer.current)
+        completeBatchTimer.current = null
+      }
     }
-  }, [])
+  }, [activeTransfers, t])
 }
 
 async function notify(title: string, body: string): Promise<void> {

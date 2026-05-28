@@ -61,9 +61,11 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof FileContextMe
   const props: React.ComponentProps<typeof FileContextMenu> = {
     itemId: 'entry-ctx-1',
     itemType: 'text',
-    isDownloaded: true,
-    isTransferring: false,
-    isStale: false,
+    transferStatus: {
+      isDownloaded: true,
+      isTransferring: false,
+      isStale: false,
+    },
     onCopy: vi.fn(),
     onDelete: vi.fn(),
     onSyncToClipboard: vi.fn(),

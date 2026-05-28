@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import ConnectionChannelBadge, { deriveBadgeKind } from '@/components/device/ConnectionChannelBadge'
+import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
+import ConnectionChannelBadge from '@/components/device/ConnectionChannelBadge'
 import i18n from '@/i18n'
 
 beforeAll(async () => {

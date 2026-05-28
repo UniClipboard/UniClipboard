@@ -20,14 +20,16 @@ export function ExperimentalBadge() {
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span tabIndex={0} aria-label={tooltip} className="inline-flex">
+          <button
+            type="button"
+            aria-label={tooltip}
+            className="inline-flex cursor-default border-0 bg-transparent p-0"
+          >
             <Badge variant="secondary">{t('devices.settings.badges.experimental')}</Badge>
-          </span>
+          </button>
         </TooltipTrigger>
         <TooltipContent side="top">{tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )
 }
-
-export default ExperimentalBadge

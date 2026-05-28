@@ -52,8 +52,7 @@ export function RestartBanner({
   if (!visible) return null
 
   return (
-    <div
-      role="status"
+    <output
       aria-live="polite"
       className="flex items-start gap-2 px-4 py-3 bg-accent/40 border-b border-border/40 rounded-none"
     >
@@ -105,8 +104,6 @@ export function RestartBanner({
           </>
         )}
       </div>
-    </div>
+    </output>
   )
 }
-
-export default RestartBanner

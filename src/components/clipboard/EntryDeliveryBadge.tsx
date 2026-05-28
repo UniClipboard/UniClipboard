@@ -165,9 +165,7 @@ const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
           aria-label={label}
           data-source={source.tag}
         >
-          <Icon
-            className={cn('h-3.5 w-3.5 transition-colors group-hover:text-foreground/80', tone)}
-          />
+          <Icon className={cn('size-3.5 transition-colors group-hover:text-foreground/80', tone)} />
           <span className="text-[11px] font-semibold tabular-nums text-muted-foreground/60 transition-colors group-hover:text-foreground/80">
             {label}
           </span>
@@ -251,7 +249,7 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
           data-summary={summary}
           data-delivery-summary={summary}
         >
-          <Icon className={cn('h-3.5 w-3.5 transition-colors', tone, spin && 'animate-spin')} />
+          <Icon className={cn('size-3.5 transition-colors', tone, spin && 'animate-spin')} />
           <span
             className={cn(
               'text-[11px] font-semibold tabular-nums transition-colors',
@@ -316,11 +314,11 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, entryId, 
 
   return (
     <li
-      className="flex items-center gap-2 px-1 py-1 text-[11px] leading-tight"
+      className="flex items-center gap-2 p-1 text-[11px] leading-tight"
       data-status={target.status.tag}
     >
       <span className={cn('shrink-0', tone.icon)} aria-hidden>
-        {renderStatusIcon(target.status)}
+        <StatusIcon status={target.status} />
       </span>
       <span
         className={cn(
@@ -330,7 +328,7 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, entryId, 
       >
         {deviceLabel(target.targetDeviceName, target.targetDeviceId)}
       </span>
-      <span className={cn('shrink-0', tone.label)}>{renderStatusLabel(target.status, t)}</span>
+      <span className={cn('shrink-0', tone.label)}>{getStatusLabel(target.status, t)}</span>
       {canResendThis && (
         <ResendPeerButton target={target} entryId={entryId} action={action} t={t} />
       )}
@@ -386,9 +384,9 @@ const ResendEntryButton: React.FC<ResendEntryButtonProps> = ({
       )}
     >
       {entryInFlight ? (
-        <LoaderCircle className="h-3 w-3 animate-spin" />
+        <LoaderCircle className="size-3 animate-spin" />
       ) : (
-        <RefreshCw className="h-3 w-3" />
+        <RefreshCw className="size-3" />
       )}
       <span>{label}</span>
     </button>
@@ -422,27 +420,27 @@ const ResendPeerButton: React.FC<ResendPeerButtonProps> = ({ target, entryId, ac
       )}
     >
       {inFlight ? (
-        <LoaderCircle className="h-3 w-3 animate-spin" />
+        <LoaderCircle className="size-3 animate-spin" />
       ) : (
-        <RefreshCw className="h-3 w-3" />
+        <RefreshCw className="size-3" />
       )}
     </button>
   )
 }
 
-function renderStatusIcon(status: EntryDeliveryStatusView) {
+const StatusIcon: React.FC<{ status: EntryDeliveryStatusView }> = ({ status }) => {
   switch (status.tag) {
     case 'delivered':
     case 'duplicate':
-      return <Check className="h-3 w-3" />
+      return <Check className="size-3" />
     case 'pending':
-      return <CircleDashed className="h-3 w-3" />
+      return <CircleDashed className="size-3" />
     case 'failed':
-      return <X className="h-3 w-3" />
+      return <X className="size-3" />
   }
 }
 
-function renderStatusLabel(
+function getStatusLabel(
   status: EntryDeliveryStatusView,
   t: (key: string, opts?: Record<string, unknown>) => string
 ): string {

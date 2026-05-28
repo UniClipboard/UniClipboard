@@ -15,12 +15,14 @@ import { SettingRow } from './SettingRow'
 const log = createLogger('network-section')
 
 function normalizeRelayUrls(urls: string[]): string[] {
-  return urls.map(url => url.trim()).filter(Boolean)
+  return urls.flatMap(url => {
+    const trimmed = url.trim()
+    return trimmed ? [trimmed] : []
+  })
 }
 
 function relayUrlListsEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  return a.every((value, index) => value === b[index])
+  return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
 function validateRelayUrls(urls: string[]): string | null {
@@ -105,30 +107,59 @@ const NetworkSection: React.FC = () => {
   }, [setting])
 
   // ── Effect 2: debounced PUT for the network settings group ──────
+  //
+  // 设计意图：effect 只在 debounced draft 真正变化时跑一次 PUT。把 setting、
+  // persistedAllow*、t、updateNetworkSetting 这些"读取一下就够"的值塞进
+  // 依赖数组会破坏防抖语义 —— setting 在 PUT 成功后会回流变成新引用，
+  // 进而触发第二次 effect。这里用 ref 把"最新值"做读边界，effect 依赖
+  // 仅保留 debouncedNetwork。
+  const persistedAllowRelayRef = useRef(persistedAllowRelay)
+  const persistedAllowOverlayRef = useRef(persistedAllowOverlay)
+  const persistedCustomRelayUrlsRef = useRef(persistedCustomRelayUrls)
+  const settingLoadedRef = useRef(!!setting)
+  const tRef = useRef(t)
+  const updateNetworkSettingRef = useRef(updateNetworkSetting)
+  useEffect(() => {
+    persistedAllowRelayRef.current = persistedAllowRelay
+    persistedAllowOverlayRef.current = persistedAllowOverlay
+    persistedCustomRelayUrlsRef.current = persistedCustomRelayUrls
+    settingLoadedRef.current = !!setting
+    tRef.current = t
+    updateNetworkSettingRef.current = updateNetworkSetting
+  })
+
   useEffect(() => {
     if (isPristineRef.current) {
       isPristineRef.current = false
       return
     }
-    if (!setting) return
-    const relayChanged = debouncedNetwork.allowRelayFallback !== persistedAllowRelay
-    const overlayChanged = debouncedNetwork.allowOverlayNetworkAddrs !== persistedAllowOverlay
+    if (!settingLoadedRef.current) return
+    const persistedRelay = persistedAllowRelayRef.current
+    const persistedOverlay = persistedAllowOverlayRef.current
+    const persistedCustom = persistedCustomRelayUrlsRef.current
+    const tNow = tRef.current
+    const updateNow = updateNetworkSettingRef.current
+
+    const relayChanged = debouncedNetwork.allowRelayFallback !== persistedRelay
+    const overlayChanged = debouncedNetwork.allowOverlayNetworkAddrs !== persistedOverlay
     const customRelaysChanged = !relayUrlListsEqual(
       debouncedNetwork.customRelayUrls,
-      persistedCustomRelayUrls
+      persistedCustom
     )
     if (!relayChanged && !overlayChanged && !customRelaysChanged) return
 
     const invalidRelayUrl = validateRelayUrls(debouncedNetwork.customRelayUrls)
     if (invalidRelayUrl) {
-      setSaveError(t('settings.sections.network.customRelays.invalidUrl', { url: invalidRelayUrl }))
+      setSaveError(
+        tNow('settings.sections.network.customRelays.invalidUrl', { url: invalidRelayUrl })
+      )
       window.setTimeout(() => setSaveError(null), 5000)
       return
     }
 
     void (async () => {
       try {
-        const result = await updateNetworkSetting(debouncedNetwork)
+        const result = await updateNow(debouncedNetwork)
         if (result.restartRequired) {
           setPending(true)
         } else {
@@ -136,9 +167,9 @@ const NetworkSection: React.FC = () => {
         }
       } catch (err) {
         log.error({ err }, '保存网络设置失败')
-        setAllowRelayFallback(persistedAllowRelay)
-        setAllowOverlayNetworkAddrs(persistedAllowOverlay)
-        setCustomRelayUrls(persistedCustomRelayUrls)
+        setAllowRelayFallback(persistedRelay)
+        setAllowOverlayNetworkAddrs(persistedOverlay)
+        setCustomRelayUrls(persistedCustom)
         setPending(false)
         const message = err instanceof Error ? err.message : String(err)
         const errorKey = customRelaysChanged
@@ -146,7 +177,7 @@ const NetworkSection: React.FC = () => {
           : relayChanged
             ? 'settings.sections.network.lanOnly.saveError'
             : 'settings.sections.network.allowOverlayAddrs.saveError'
-        setSaveError(t(errorKey, { message }))
+        setSaveError(tNow(errorKey, { message }))
         window.setTimeout(() => setSaveError(null), 5000)
       }
     })()

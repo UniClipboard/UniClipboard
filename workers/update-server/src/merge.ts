@@ -29,7 +29,7 @@ function semverEq(a: string, b: string): boolean {
  * 稳定排序——比较相等的条目保留原相对顺序。
  */
 export function sortVersionsDesc<T extends { version: string }>(versions: T[]): T[] {
-  return [...versions].sort((a, b) => {
+  return versions.toSorted((a, b) => {
     const na = normalizeVersion(a.version) ?? '0.0.0'
     const nb = normalizeVersion(b.version) ?? '0.0.0'
     return semver.rcompare(na, nb)

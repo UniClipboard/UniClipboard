@@ -128,169 +128,180 @@ function getPreviewText(item: DisplayClipboardItem): string {
   }
 }
 
-const ClipboardItemRow = React.forwardRef<HTMLDivElement, ClipboardItemRowProps>(
-  ({ item, isActive, isStale, onClick, elementRef, className: extraClassName, ...rest }, ref) => {
-    const { t } = useTranslation()
-    const Icon = FILE_EXT_ICON_MAP[getFileExt(item)] ?? typeIcons[item.type] ?? FileText
-    const transfer = useAppSelector(
-      state =>
-        selectTransferByEntryId(state, item.id) ??
-        selectTransferByTransferIds(state, item.fileTransferIds ?? [])
-    )
-    const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, item.id))
+function ClipboardItemRow({
+  ref,
+  item,
+  isActive,
+  isStale,
+  onClick,
+  elementRef,
+  className: extraClassName,
+  ...rest
+}: ClipboardItemRowProps & { ref?: React.Ref<HTMLDivElement> }) {
+  const { t } = useTranslation()
+  const Icon = FILE_EXT_ICON_MAP[getFileExt(item)] ?? typeIcons[item.type] ?? FileText
+  const transfer = useAppSelector(
+    state =>
+      selectTransferByEntryId(state, item.id) ??
+      selectTransferByTransferIds(state, item.fileTransferIds ?? [])
+  )
+  const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, item.id))
 
-    // Live progress must override stale pending state so the UI reflects actual movement.
-    const isFile = item.type === 'file'
-    const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
-    const isTransferring = effectiveStatus === 'transferring'
-    const isTransferFailed = effectiveStatus === 'failed'
-    const isTransferCancelled = effectiveStatus === 'cancelled'
-    const isPending = effectiveStatus === 'pending'
-    // paste_rep 已 Lost — 点击粘贴会回 daemon 410。视觉与 isStale 一致
-    // (灰色 + 删除线), 让用户能在点击之前识别。但语义不同 (stale 是逻辑
-    // 失效, unavailable 是数据丢失), 用独立 flag 保持代码可读。
-    const isUnavailable = item.isUnavailable === true
+  // Live progress must override stale pending state so the UI reflects actual movement.
+  const isFile = item.type === 'file'
+  const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
+  const isTransferring = effectiveStatus === 'transferring'
+  const isTransferFailed = effectiveStatus === 'failed'
+  const isTransferCancelled = effectiveStatus === 'cancelled'
+  const isPending = effectiveStatus === 'pending'
+  // paste_rep 已 Lost — 点击粘贴会回 daemon 410。视觉与 isStale 一致
+  // (灰色 + 删除线), 让用户能在点击之前识别。但语义不同 (stale 是逻辑
+  // 失效, unavailable 是数据丢失), 用独立 flag 保持代码可读。
+  const isUnavailable = item.isUnavailable === true
 
-    return (
-      <div
-        ref={elementRef ?? ref}
-        {...rest}
-        className={cn(
-          'flex flex-col gap-1 py-2.5 px-3 rounded-lg select-none transition-colors shrink-0 overflow-hidden',
-          isActive ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/50 text-foreground/80',
-          extraClassName
+  return (
+    <div
+      ref={elementRef ?? ref}
+      role="button"
+      tabIndex={0}
+      {...rest}
+      className={cn(
+        'flex flex-col gap-1 py-2.5 px-3 rounded-lg select-none transition-colors shrink-0 overflow-hidden',
+        isActive ? 'bg-primary/10 text-foreground' : 'hover:bg-muted/50 text-foreground/80',
+        extraClassName
+      )}
+      onClick={onClick}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <Icon
+          className={cn(
+            'size-4 shrink-0',
+            isActive ? 'text-primary' : 'text-muted-foreground',
+            (isStale || isUnavailable) && 'opacity-40',
+            isPending && 'opacity-50'
+          )}
+        />
+        <span
+          className={cn(
+            'w-0 flex-grow truncate text-sm',
+            (isStale || isUnavailable) && 'text-muted-foreground line-through opacity-60',
+            isPending && 'text-muted-foreground opacity-70'
+          )}
+        >
+          {getPreviewText(item)}
+        </span>
+        {item.type === 'link' &&
+          item.content &&
+          (item.content as ClipboardLinkItem).urls.length > 1 && (
+            <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-full shrink-0">
+              +{(item.content as ClipboardLinkItem).urls.length - 1}
+            </span>
+          )}
+        {isFile && isPending && (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Clock
+                  className="size-3.5 text-muted-foreground shrink-0"
+                  aria-label={t('clipboard.transfer.statusBadge.pending')}
+                />
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p className="text-xs">{t('clipboard.transfer.pending')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
-        onClick={onClick}
-      >
-        <div className="flex items-center gap-3">
-          <Icon
-            className={cn(
-              'h-4 w-4 shrink-0',
-              isActive ? 'text-primary' : 'text-muted-foreground',
-              (isStale || isUnavailable) && 'opacity-40',
-              isPending && 'opacity-50'
-            )}
-          />
-          <span
-            className={cn(
-              'w-0 flex-grow truncate text-sm',
-              (isStale || isUnavailable) && 'text-muted-foreground line-through opacity-60',
-              isPending && 'text-muted-foreground opacity-70'
-            )}
-          >
-            {getPreviewText(item)}
-          </span>
-          {item.type === 'link' &&
-            item.content &&
-            (item.content as ClipboardLinkItem).urls.length > 1 && (
-              <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded-full shrink-0">
-                +{(item.content as ClipboardLinkItem).urls.length - 1}
-              </span>
-            )}
-          {isFile && isPending && (
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Clock
-                    className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-                    aria-label={t('clipboard.transfer.statusBadge.pending')}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  <p className="text-xs">{t('clipboard.transfer.pending')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          {isFile && isTransferring && (
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Loader2
-                    className="h-3.5 w-3.5 text-primary animate-spin shrink-0"
-                    aria-label={t('clipboard.transfer.statusBadge.transferring')}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  <p className="text-xs">
-                    {transfer?.direction === 'Sending'
-                      ? t('clipboard.transfer.sending')
-                      : transfer?.direction === 'Receiving'
-                        ? t('clipboard.transfer.receiving')
-                        : t('clipboard.transfer.transferring')}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          {isTransferFailed ? (
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <AlertCircle
-                    className="h-3.5 w-3.5 text-destructive shrink-0"
-                    aria-label={t('clipboard.transfer.statusBadge.failed')}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  <p className="text-xs">
-                    {entryStatus?.reason ||
-                      transfer?.errorMessage ||
-                      t('clipboard.transfer.failed')}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : isTransferCancelled ? (
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <XCircle
-                    className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-                    aria-label={t('clipboard.transfer.statusBadge.cancelled')}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  <p className="text-xs">
-                    {(() => {
-                      const reason = normalizeCancelReason(
-                        entryStatus?.reason ?? transfer?.cancelReason
-                      )
-                      if (reason && KNOWN_CANCEL_REASONS.has(reason)) {
-                        return t(`clipboard.transfer.cancelReason.${reason}`)
-                      }
-                      return t('clipboard.transfer.cancelReason.unknown')
-                    })()}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : isUnavailable ? (
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <AlertCircle
-                    className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-                    aria-label={t('clipboard.errors.unavailableBadge')}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  <p className="text-xs">{t('clipboard.errors.unavailableTooltip')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            !isPending &&
-            !isTransferring && (
-              <span className="text-xs text-muted-foreground shrink-0">{item.time}</span>
-            )
-          )}
-        </div>
+        {isFile && isTransferring && (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Loader2
+                  className="size-3.5 text-primary animate-spin shrink-0"
+                  aria-label={t('clipboard.transfer.statusBadge.transferring')}
+                />
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p className="text-xs">
+                  {transfer?.direction === 'Sending'
+                    ? t('clipboard.transfer.sending')
+                    : transfer?.direction === 'Receiving'
+                      ? t('clipboard.transfer.receiving')
+                      : t('clipboard.transfer.transferring')}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {isTransferFailed ? (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertCircle
+                  className="size-3.5 text-destructive shrink-0"
+                  aria-label={t('clipboard.transfer.statusBadge.failed')}
+                />
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p className="text-xs">
+                  {entryStatus?.reason || transfer?.errorMessage || t('clipboard.transfer.failed')}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : isTransferCancelled ? (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <XCircle
+                  className="size-3.5 text-muted-foreground shrink-0"
+                  aria-label={t('clipboard.transfer.statusBadge.cancelled')}
+                />
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p className="text-xs">
+                  {(() => {
+                    const reason = normalizeCancelReason(
+                      entryStatus?.reason ?? transfer?.cancelReason
+                    )
+                    if (reason && KNOWN_CANCEL_REASONS.has(reason)) {
+                      return t(`clipboard.transfer.cancelReason.${reason}`)
+                    }
+                    return t('clipboard.transfer.cancelReason.unknown')
+                  })()}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : isUnavailable ? (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertCircle
+                  className="size-3.5 text-muted-foreground shrink-0"
+                  aria-label={t('clipboard.errors.unavailableBadge')}
+                />
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p className="text-xs">{t('clipboard.errors.unavailableTooltip')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          !isPending &&
+          !isTransferring && (
+            <span className="text-xs text-muted-foreground shrink-0">{item.time}</span>
+          )
+        )}
       </div>
-    )
-  }
-)
-
-ClipboardItemRow.displayName = 'ClipboardItemRow'
+    </div>
+  )
+}
 
 export default ClipboardItemRow

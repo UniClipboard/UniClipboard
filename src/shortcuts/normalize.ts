@@ -57,17 +57,18 @@ const MODIFIER_ORDER = ['ctrl', 'alt', 'shift', 'meta'] as const
  */
 export const normalizeHotkey = (key: string | string[]): string => {
   const normalizeSingleHotkey = (raw: string): string => {
-    const tokens = raw
-      .split('+')
-      .map(t => t.trim().toLowerCase())
-      .filter(Boolean)
-      .map(t => PLATFORM_MODIFIER_ALIASES[t] ?? t)
+    const tokens = raw.split('+').flatMap(t => {
+      const trimmed = t.trim().toLowerCase()
+      if (!trimmed) return []
+      return [PLATFORM_MODIFIER_ALIASES[trimmed] ?? trimmed]
+    })
 
     const modifiers = new Set<string>()
     const nonModifiers: string[] = []
 
+    const modifierSet = new Set<string>(MODIFIER_ORDER)
     for (const token of tokens) {
-      if ((MODIFIER_ORDER as readonly string[]).includes(token)) {
+      if (modifierSet.has(token)) {
         modifiers.add(token)
         continue
       }
@@ -82,8 +83,10 @@ export const normalizeHotkey = (key: string | string[]): string => {
 
   if (Array.isArray(key)) {
     return key
-      .map(raw => normalizeSingleHotkey(raw ?? ''))
-      .filter(Boolean)
+      .flatMap(raw => {
+        const normalized = normalizeSingleHotkey(raw ?? '')
+        return normalized ? [normalized] : []
+      })
       .join(',')
   }
 

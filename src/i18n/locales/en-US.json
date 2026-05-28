@@ -179,7 +179,8 @@
         "tokenPicker": {
           "openPicker": "Pick color",
           "reset": "Reset to preset",
-          "modified": "Custom"
+          "modified": "Custom",
+          "hexInputLabel": "Hex color value"
         },
         "zoom": {
           "title": "Interface Scale",
@@ -1382,6 +1383,8 @@
     "history": {
       "searchPlaceholder": "Search (':' for advanced)...",
       "advancedPlaceholder": "Filter...",
+      "searchAriaLabel": "Search clipboard history",
+      "filterMenuLabel": "Open filter menu",
       "filters": {
         "all": "All",
         "text": "Text",

@@ -6,7 +6,7 @@ export type ItemType = 'text' | 'image' | 'link' | 'code' | 'file' | 'unknown'
  * Extract a human-readable filename from a file URI (e.g. `file:///path/to/file.txt` → `file.txt`).
  * Handles edge cases: trailing slash (directories), whitespace/CR, non-URL paths, decode failures.
  */
-export function extractFileNameFromUri(uri: string): string {
+function extractFileNameFromUri(uri: string): string {
   const trimmed = uri.trim()
   if (!trimmed) return uri
 
@@ -39,11 +39,10 @@ export function extractFileNameFromUri(uri: string): string {
  * Parse a newline-separated URI list into an array of human-readable filenames.
  */
 export function parseFileNamesFromUriList(uriList: string): string[] {
-  return uriList
-    .split('\n')
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(extractFileNameFromUri)
+  return uriList.split('\n').flatMap(s => {
+    const trimmed = s.trim()
+    return trimmed ? [extractFileNameFromUri(trimmed)] : []
+  })
 }
 
 /**
@@ -54,9 +53,9 @@ export function parseFileNamesFromUriList(uriList: string): string[] {
  *
  * Format: `uniclip-missing:///<encoded-filename>?size=<bytes>&reason=cancelled`
  */
-export const UNICLIP_MISSING_SCHEME = 'uniclip-missing:'
+const UNICLIP_MISSING_SCHEME = 'uniclip-missing:'
 
-export function isUniclipMissingUri(uri: string): boolean {
+function isUniclipMissingUri(uri: string): boolean {
   const trimmed = uri.trim().toLowerCase()
   return trimmed.startsWith(`${UNICLIP_MISSING_SCHEME}//`)
 }
@@ -73,14 +72,16 @@ export function parseFileItemsFromUriList(uriList: string): Array<{
   name: string
   missing: boolean
 }> {
-  return uriList
-    .split('\n')
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(uri => ({
-      name: extractFileNameFromUri(uri),
-      missing: isUniclipMissingUri(uri),
-    }))
+  return uriList.split('\n').flatMap(s => {
+    const trimmed = s.trim()
+    if (!trimmed) return []
+    return [
+      {
+        name: extractFileNameFromUri(trimmed),
+        missing: isUniclipMissingUri(trimmed),
+      },
+    ]
+  })
 }
 
 /**
@@ -106,31 +107,6 @@ export function isImageContentType(contentType: string): boolean {
  */
 export function isFileContentType(contentType: string): boolean {
   return contentType.includes('uri-list')
-}
-
-/**
- * 计算 file entry 的 missing 概况。仅在 `item.item.file` 存在时有意义。
- * - `any` = 是否有任意文件被标 missing(决定整条 entry 是否走"取消传输"视觉)
- * - `all` = 是否所有文件都 missing(决定是否禁掉"打开 / 复制 / 拖出")
- *
- * 缺省 `file_missing` 视为全 false(向后兼容历史 entry)。
- */
-export function summarizeFileMissing(item: ClipboardItemResponse): {
-  any: boolean
-  all: boolean
-  count: number
-} {
-  const file = item.item.file
-  if (!file) return { any: false, all: false, count: 0 }
-  const flags = file.file_missing ?? []
-  const total = file.file_names.length
-  if (total === 0) return { any: false, all: false, count: 0 }
-  const missingCount = flags.filter(Boolean).length
-  return {
-    any: missingCount > 0,
-    all: missingCount === total,
-    count: missingCount,
-  }
 }
 
 export function resolveItemType(item: ClipboardItemResponse): ItemType {

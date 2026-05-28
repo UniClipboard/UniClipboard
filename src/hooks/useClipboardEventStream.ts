@@ -56,7 +56,6 @@ export function useClipboardEventStream({
   onDeleted,
 }: UseClipboardEventStreamOptions): void {
   const dispatch = useAppDispatch()
-  const timeoutRef = useRef<number | null>(null)
   const lastReloadTimestampRef = useRef<number | undefined>(undefined)
   const onLocalItemRef = useRef(onLocalItem)
   const onRemoteInvalidateRef = useRef(onRemoteInvalidate)
@@ -74,6 +73,13 @@ export function useClipboardEventStream({
       return
     }
     log.info('subscribing to clipboard topic')
+
+    // throttle 用的 trailing-edge timeout —— 用 effect-local 变量持有，
+    // cleanup 直接闭包捕获最新值；这样 react-doctor 不会再误报
+    // "timeoutRef.current 会在 cleanup 跑时变化"，因为根本不是 ref。
+    // 后果上等价：每次 effect 重订阅都会建一个新 timeoutId 槽位，旧的
+    // 在前一个 cleanup 里已经清掉。
+    let pendingTimeoutId: number | null = null
 
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
       log.info({ eventType: event.eventType }, 'received event')
@@ -147,20 +153,20 @@ export function useClipboardEventStream({
         const lastReload = lastReloadTimestampRef.current
         if (lastReload === undefined || now - lastReload >= throttleMs) {
           lastReloadTimestampRef.current = now
-          if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current)
-            timeoutRef.current = null
+          if (pendingTimeoutId !== null) {
+            clearTimeout(pendingTimeoutId)
+            pendingTimeoutId = null
           }
           onRemoteInvalidateRef.current()
           return
         }
 
-        if (!timeoutRef.current) {
+        if (pendingTimeoutId === null) {
           const delay = throttleMs - (now - lastReload)
-          timeoutRef.current = window.setTimeout(() => {
+          pendingTimeoutId = window.setTimeout(() => {
             lastReloadTimestampRef.current = Date.now()
             onRemoteInvalidateRef.current()
-            timeoutRef.current = null
+            pendingTimeoutId = null
           }, delay)
         }
         return
@@ -174,11 +180,11 @@ export function useClipboardEventStream({
     const unsubscribe = daemonWs.subscribe(['clipboard'], handler)
 
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-        timeoutRef.current = null
+      if (pendingTimeoutId !== null) {
+        clearTimeout(pendingTimeoutId)
+        pendingTimeoutId = null
       }
       unsubscribe()
     }
-  }, [enabled, throttleMs])
+  }, [enabled, throttleMs, dispatch])
 }

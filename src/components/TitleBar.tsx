@@ -215,7 +215,7 @@ export const TitleBar = ({
             >
               <Search
                 className={cn(
-                  'absolute left-2.5 h-3.5 w-3.5 transition-colors duration-200',
+                  'absolute left-2.5 size-3.5 transition-colors duration-200',
                   isSearchFocused ? 'text-primary' : 'text-muted-foreground'
                 )}
               />
@@ -243,20 +243,20 @@ export const TitleBar = ({
         {isWindows && (
           <div className="flex items-center h-full bg-transparent" data-tauri-drag-region="false">
             <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
-              <Minus className="h-4 w-4" />
+              <Minus className="size-4" />
             </TitleBarButton>
             <TitleBarButton
               aria-label={isMaximized ? '还原' : '最大化'}
               onClick={handleToggleMaximize}
             >
-              <Square className="h-3.5 w-3.5" />
+              <Square className="size-3.5" />
             </TitleBarButton>
             <TitleBarButton
               aria-label="关闭"
               onClick={handleClose}
               className="hover:bg-red-500/90 hover:text-white"
             >
-              <X className="h-4 w-4" />
+              <X className="size-4" />
             </TitleBarButton>
           </div>
         )}

@@ -22,6 +22,7 @@ interface ClipboardPreviewInfoProps {
 }
 
 interface InfoRow {
+  id: string
   icon: React.ElementType
   value: React.ReactNode
 }
@@ -32,17 +33,19 @@ function buildInfoRows(
   imageDimensions: { width: number; height: number } | null,
   t: (key: string, options?: Record<string, unknown>) => string
 ): InfoRow[] {
-  const rows: InfoRow[] = [{ icon: Layers, value: t('header.filters.' + item.type) }]
+  const rows: InfoRow[] = [{ id: 'type', icon: Layers, value: t('header.filters.' + item.type) }]
 
   if (item.type === 'text' && item.content) {
     const textItem = item.content as ClipboardTextItem
     const text =
       preview?.contentType === 'text' ? (preview.textContent ?? '') : textItem.display_text
     rows.push({
+      id: 'text-chars',
       icon: Type,
       value: t('clipboard.preview.charactersCount', { count: text.length }),
     })
-    if (textItem.size > 0) rows.push({ icon: Database, value: formatFileSize(textItem.size) })
+    if (textItem.size > 0)
+      rows.push({ id: 'text-size', icon: Database, value: formatFileSize(textItem.size) })
   }
 
   if (item.type === 'code' && item.content) {
@@ -51,6 +54,7 @@ function buildInfoRows(
         ? (preview.textContent ?? (item.content as ClipboardCodeItem).code)
         : (item.content as ClipboardCodeItem).code
     rows.push({
+      id: 'code-chars',
       icon: Type,
       value: t('clipboard.preview.charactersCount', { count: code.length }),
     })
@@ -61,28 +65,33 @@ function buildInfoRows(
     const dims =
       imageDimensions ??
       (imageItem.width > 0 ? { width: imageItem.width, height: imageItem.height } : null)
-    if (dims) rows.push({ icon: Maximize, value: `${dims.width} × ${dims.height}` })
-    if (imageItem.size > 0) rows.push({ icon: Database, value: formatFileSize(imageItem.size) })
+    if (dims)
+      rows.push({ id: 'image-dims', icon: Maximize, value: `${dims.width} × ${dims.height}` })
+    if (imageItem.size > 0)
+      rows.push({ id: 'image-size', icon: Database, value: formatFileSize(imageItem.size) })
   }
 
   if (item.type === 'file' && item.content) {
     const fileItem = item.content as ClipboardFileItem
     rows.push({
+      id: 'file-count',
       icon: Files,
       value: t('clipboard.preview.filesCount', { count: fileItem.file_names.length }),
     })
     const knownSizes = fileItem.file_sizes.filter(size => size >= 0)
     if (knownSizes.length > 0) {
       const totalSize = knownSizes.reduce((sum, size) => sum + size, 0)
-      rows.push({ icon: Database, value: formatFileSize(totalSize) })
+      rows.push({ id: 'file-size', icon: Database, value: formatFileSize(totalSize) })
     }
   }
 
   if (item.type === 'link' && item.content) {
     const linkItem = item.content as ClipboardLinkItem
     const uniqueDomains = [...new Set(linkItem.domains.filter(Boolean))]
-    if (uniqueDomains.length > 0) rows.push({ icon: Globe, value: uniqueDomains[0] })
+    if (uniqueDomains.length > 0)
+      rows.push({ id: 'link-domain', icon: Globe, value: uniqueDomains[0] })
     rows.push({
+      id: 'link-chars',
       icon: Hash,
       value: t('clipboard.preview.charactersCount', { count: linkItem.urls[0]?.length ?? 0 }),
     })
@@ -108,9 +117,9 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
   return (
     <div className="shrink-0 overflow-hidden bg-muted/10 px-6 py-3">
       <div className="flex items-center gap-6">
-        {rows.map((row, index) => (
-          <div key={index} className="group flex shrink-0 items-center gap-2">
-            <row.icon className="h-3.5 w-3.5 text-muted-foreground/20 transition-colors group-hover:text-primary/50" />
+        {rows.map(row => (
+          <div key={row.id} className="group flex shrink-0 items-center gap-2">
+            <row.icon className="size-3.5 text-muted-foreground/20 transition-colors group-hover:text-primary/50" />
             <span className="text-[11px] font-semibold tabular-nums text-muted-foreground/60">
               {row.value}
             </span>

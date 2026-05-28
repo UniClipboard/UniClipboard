@@ -39,15 +39,18 @@ export function useEntryDelivery(entryId: string | null): EntryDeliveryHookResul
   const requestIdRef = useRef(0)
 
   useEffect(() => {
+    let cancelled = false
+    let unlisten: (() => void) | null = null
+
     if (!entryId) {
       requestIdRef.current++
       setDelivery(null)
       setLoading(false)
       setError(null)
-      return
+      return () => {
+        cancelled = true
+      }
     }
-
-    let cancelled = false
 
     // fetch 入口抽出来,首次进入与事件触发的 refetch 共用同一份请求路径。
     // requestIdRef 保留"丢弃过期响应"语义 —— 事件抖动 / 用户快速切 entry
@@ -81,24 +84,35 @@ export function useEntryDelivery(entryId: string | null): EntryDeliveryHookResul
     void fetchDelivery(true)
 
     // tauri-specta 的 `listen` 返回 `Promise<UnlistenFn>`;在 Promise resolve
-    // 之前组件可能就被卸载,所以保留一个 cancelled flag,并在 cleanup 时
-    // 用 then 链调用 unlisten,避免悬挂监听往一个已卸载的组件 setState。
-    const unlistenPromise = events.clipboardDeliveryStatusChanged.listen(event => {
-      if (cancelled) return
-      // 严格按 entryId 匹配 —— 多 entry 并行 dispatch 时,后端会推多个事
-      // 件,只有匹配当前打开 entry 的事件值得 refetch;否则纯属带宽浪费。
-      if (event.payload.entryId !== entryId) return
-      void fetchDelivery(false)
-    })
+    // 之前组件可能就被卸载,所以保留一个 cancelled flag + unlisten 变量,
+    // cleanup 时直接调用 unlisten()(若 Promise 已 resolve),否则在 then
+    // 里依靠 cancelled 短路,避免悬挂监听往一个已卸载的组件 setState。
+    events.clipboardDeliveryStatusChanged
+      .listen(event => {
+        if (cancelled) return
+        // 严格按 entryId 匹配 —— 多 entry 并行 dispatch 时,后端会推多个事
+        // 件,只有匹配当前打开 entry 的事件值得 refetch;否则纯属带宽浪费。
+        if (event.payload.entryId !== entryId) return
+        void fetchDelivery(false)
+      })
+      .then(fn => {
+        if (cancelled) {
+          fn()
+          return
+        }
+        unlisten = fn
+      })
+      .catch(err => {
+        log.debug({ err }, 'listen clipboard-delivery-status-changed failed')
+      })
 
     return () => {
       cancelled = true
       requestIdRef.current++
-      void unlistenPromise
-        .then(unlisten => unlisten())
-        .catch(err => {
-          log.debug({ err }, 'unlisten clipboard-delivery-status-changed failed')
-        })
+      if (unlisten) {
+        unlisten()
+        unlisten = null
+      }
     }
   }, [entryId])
 

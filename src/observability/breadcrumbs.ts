@@ -20,14 +20,3 @@ export function captureUserIntent(intent: UserIntent, context?: Record<string, u
     data: context,
   })
 }
-
-export function captureStateChange(state: string, from: string, to: string) {
-  if (!sentryEnabled) {
-    return
-  }
-  Sentry.addBreadcrumb({
-    category: 'state_change',
-    message: `${state}: ${from} -> ${to}`,
-    level: 'info',
-  })
-}

@@ -1,5 +1,5 @@
 import { Minus, Plus, RotateCcw, X } from 'lucide-react'
-import { useEffect, useState, type MouseEvent } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import { useTranslation } from 'react-i18next'
 import {
@@ -43,6 +43,7 @@ interface ColorPickerRowProps {
   onReset: () => void
   resetLabel: string
   modifiedLabel: string
+  hexInputLabel: string
 }
 
 function ColorPickerRow({
@@ -53,6 +54,7 @@ function ColorPickerRow({
   onReset,
   resetLabel,
   modifiedLabel,
+  hexInputLabel,
 }: ColorPickerRowProps) {
   const isModified = overrideColor !== null
   const effectiveColor = overrideColor ?? presetColor
@@ -62,10 +64,18 @@ function ColorPickerRow({
   const [open, setOpen] = useState(false)
   const [draftHex, setDraftHex] = useState(hex)
 
-  // 外部 effective 值变化时同步回 draft（避免两个 popover 间状态串）。
-  useEffect(() => {
-    if (!open) setDraftHex(hex)
-  }, [hex, open])
+  // Closed-state 直接用最新 hex,避免靠 useEffect 在 hex 变化时回写 draftHex
+  // (那是一个由 prop 派生的状态链,踩 no-chain-state-updates)。打开时
+  // 才用本地 draftHex 做即时预览。
+  const displayedHex = open ? draftHex : hex
+
+  const handleOpenChange = (next: boolean) => {
+    if (next && !open) {
+      // 打开瞬间把外部 hex snapshot 进 draft,作为编辑起点。
+      setDraftHex(hex)
+    }
+    setOpen(next)
+  }
 
   const handleHexChange = (next: string) => {
     setDraftHex(next)
@@ -85,7 +95,7 @@ function ColorPickerRow({
             {modifiedLabel}
           </span>
         )}
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={handleOpenChange}>
           <PopoverTrigger asChild>
             <button
               type="button"
@@ -96,7 +106,7 @@ function ColorPickerRow({
               )}
             >
               <span
-                className="h-4 w-4 rounded-sm border border-border/40 shadow-inner"
+                className="size-4 rounded-sm border border-border/40 shadow-inner"
                 style={{ backgroundColor: hex }}
                 aria-hidden
               />
@@ -104,11 +114,12 @@ function ColorPickerRow({
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-3" align="end">
-            <HexColorPicker color={draftHex} onChange={handleHexChange} />
+            <HexColorPicker color={displayedHex} onChange={handleHexChange} />
             <div className="mt-3 flex items-center justify-between gap-2">
               <input
                 type="text"
-                value={draftHex}
+                aria-label={hexInputLabel}
+                value={displayedHex}
                 onChange={e => {
                   const v = e.target.value.trim()
                   // 只在合法 6/3 位 hex 时调 onChange,避免输入中途崩溃。
@@ -187,7 +198,7 @@ function ThemeWindowPreview({ label, tokens, selected, hint, onSelect }: ThemeWi
             style={{ backgroundColor: tokens.sidebarBorder, width: '60%' }}
           />
         </div>
-        <div className="flex-1 py-3 px-3 flex flex-col gap-1.5">
+        <div className="flex-1 p-3 flex flex-col gap-1.5">
           <span
             className="h-1.5 rounded-full"
             style={{ backgroundColor: tokens.foreground, opacity: 0.85, width: '60%' }}
@@ -230,17 +241,10 @@ interface ThemeSystemPreviewProps {
   onSelect: (e: MouseEvent) => void
 }
 
-function ThemeSystemPreview({
-  label,
-  lightTokens,
-  darkTokens,
-  selected,
-  hint,
-  onSelect,
-}: ThemeSystemPreviewProps) {
-  const renderSystemHalf = (tokens: ThemeTokens) => (
+function SystemHalf({ tokens }: { tokens: ThemeTokens }) {
+  return (
     <div
-      className="flex min-h-[6.625rem] min-w-0 flex-col gap-2.5 px-3 py-3"
+      className="flex min-h-[6.625rem] min-w-0 flex-col gap-2.5 p-3"
       style={{ color: tokens.foreground }}
     >
       <span
@@ -270,7 +274,16 @@ function ThemeSystemPreview({
       </div>
     </div>
   )
+}
 
+function ThemeSystemPreview({
+  label,
+  lightTokens,
+  darkTokens,
+  selected,
+  hint,
+  onSelect,
+}: ThemeSystemPreviewProps) {
   return (
     <button
       type="button"
@@ -287,8 +300,8 @@ function ThemeSystemPreview({
       }}
     >
       <div className="grid min-h-full grid-cols-2">
-        {renderSystemHalf(lightTokens)}
-        {renderSystemHalf(darkTokens)}
+        <SystemHalf tokens={lightTokens} />
+        <SystemHalf tokens={darkTokens} />
       </div>
       <span
         className="pointer-events-none absolute right-3 top-2 text-[10px] uppercase tracking-wider"
@@ -324,6 +337,7 @@ interface ThemePresetSectionProps {
   onOverrideReset: (token: OverridableToken) => Promise<void>
   resetLabel: string
   modifiedLabel: string
+  hexInputLabel: string
 }
 
 function ThemePresetSection({
@@ -338,6 +352,7 @@ function ThemePresetSection({
   onOverrideReset,
   resetLabel,
   modifiedLabel,
+  hexInputLabel,
 }: ThemePresetSectionProps) {
   const preset = themePresets[selectedPreset] ?? themePresets[DEFAULT_THEME_COLOR]
   const tokens = mode === 'dark' ? preset.dark : preset.light
@@ -356,6 +371,7 @@ function ThemePresetSection({
       onReset={() => void onOverrideReset(token)}
       resetLabel={resetLabel}
       modifiedLabel={modifiedLabel}
+      hexInputLabel={hexInputLabel}
     />
   )
 
@@ -384,7 +400,7 @@ function ThemePresetSection({
               {THEME_COLORS.map(item => (
                 <SelectItem key={item.name} value={item.name} className="text-xs">
                   <span className="flex items-center gap-2">
-                    <span className="flex h-3 w-3 overflow-hidden rounded-sm">
+                    <span className="flex size-3 overflow-hidden rounded-sm">
                       {item.previewDots.slice(0, 3).map((dot, i) => (
                         <span key={i} className="flex-1 h-full" style={{ backgroundColor: dot }} />
                       ))}
@@ -553,6 +569,7 @@ export default function AppearanceSection() {
         onOverrideReset={token => handleOverrideReset('light', token)}
         resetLabel={t('settings.sections.appearance.tokenPicker.reset')}
         modifiedLabel={t('settings.sections.appearance.tokenPicker.modified')}
+        hexInputLabel={t('settings.sections.appearance.tokenPicker.hexInputLabel')}
       />
 
       <ThemePresetSection
@@ -572,6 +589,7 @@ export default function AppearanceSection() {
         onOverrideReset={token => handleOverrideReset('dark', token)}
         resetLabel={t('settings.sections.appearance.tokenPicker.reset')}
         modifiedLabel={t('settings.sections.appearance.tokenPicker.modified')}
+        hexInputLabel={t('settings.sections.appearance.tokenPicker.hexInputLabel')}
       />
 
       <SettingGroup title={t('settings.sections.appearance.zoom.title')}>

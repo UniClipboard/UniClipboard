@@ -17,7 +17,7 @@
  */
 
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   isMobileSyncError,
@@ -51,7 +51,14 @@ interface Props {
 type FieldErrorKey = 'label' | 'username' | 'password'
 type FieldErrors = Partial<Record<FieldErrorKey, string>>
 
-const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSuccess }) => {
+const AddMobileSyncDeviceDialog: React.FC<Props> = props => {
+  // 用 `open` 作 React `key`,关→开 时整个内部组件重挂载,自然带回默认
+  // state(尤其密码不留)。这里替换原来的 reset-all-state on open useEffect
+  // (踩 no-reset-all-state-on-prop-change)。
+  return <AddMobileSyncDeviceDialogInner key={props.open ? 'open' : 'closed'} {...props} />
+}
+
+const AddMobileSyncDeviceDialogInner: React.FC<Props> = ({ open, onOpenChange, onSuccess }) => {
   const { t } = useTranslation()
 
   const [label, setLabel] = useState('')
@@ -61,19 +68,6 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
   const [submitting, setSubmitting] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
-
-  // 每次重开 dialog 时重置表单 —— 避免上一次输入残留(尤其密码)
-  useEffect(() => {
-    if (open) {
-      setLabel('')
-      setUsername('')
-      setPassword('')
-      setAdvancedOpen(false)
-      setSubmitting(false)
-      setFieldErrors({})
-      setFormError(null)
-    }
-  }, [open])
 
   const clearFieldError = useCallback((key: FieldErrorKey) => {
     setFieldErrors(prev => {
@@ -167,9 +161,9 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
                 className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
               >
                 {advancedOpen ? (
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  <ChevronDown className="size-3.5" />
                 ) : (
-                  <ChevronRight className="h-3.5 w-3.5" />
+                  <ChevronRight className="size-3.5" />
                 )}
                 {t('devices.mobileSync.add.advanced.title')}
               </button>
@@ -261,7 +255,7 @@ const AddMobileSyncDeviceDialog: React.FC<Props> = ({ open, onOpenChange, onSucc
             {t('devices.mobileSync.add.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={submitting || label.trim() === ''}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting && <Loader2 className="size-4 animate-spin" />}
             {submitting
               ? t('devices.mobileSync.add.submitting')
               : t('devices.mobileSync.add.submit')}

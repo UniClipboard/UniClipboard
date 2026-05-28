@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 
 export type TimeRangePreset =
   | 'all_time'
@@ -19,7 +19,7 @@ export interface SearchContextType {
 export const SearchContext = createContext<SearchContextType | undefined>(undefined)
 
 export const useSearch = () => {
-  const context = useContext(SearchContext)
+  const context = use(SearchContext)
   if (context === undefined) {
     throw new Error('useSearch must be used within a SearchProvider')
   }

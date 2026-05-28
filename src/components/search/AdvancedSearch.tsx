@@ -1,11 +1,11 @@
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion'
+import { AnimatePresence, LayoutGroup, m } from 'framer-motion'
 import { Search, Zap, X, File } from 'lucide-react'
-import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 // Shared Search Constants
-export const TYPE_SUGGESTIONS = ['text', 'image', 'link', 'file', 'code']
-export const EXT_SUGGESTIONS = ['txt', 'md', 'jpg', 'png', 'pdf', 'ts', 'js', 'json', 'rs', 'go']
+const TYPE_SUGGESTIONS = ['text', 'image', 'link', 'file', 'code']
+const EXT_SUGGESTIONS = ['txt', 'md', 'jpg', 'png', 'pdf', 'ts', 'js', 'json', 'rs', 'go']
 
 export interface AdvancedSearchProps {
   value: string
@@ -63,8 +63,6 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
   const isComposingRef = useRef(false)
   const ignoreNextChangeValueRef = useRef<string | null>(null)
   const suppressEnterUntilRef = useRef(0)
-  // State to trigger focus after suggestion application (refs can't be in deps)
-  const [focusTrigger, setFocusTrigger] = useState(0)
 
   const assignInputRef = useCallback(
     (node: HTMLInputElement | null) => {
@@ -83,11 +81,11 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
 
     if (lastWord.startsWith('type:')) {
       const q = lastWord.slice(5)
-      return TYPE_SUGGESTIONS.filter(s => s.startsWith(q)).map(s => `type:${s}`)
+      return TYPE_SUGGESTIONS.flatMap(s => (s.startsWith(q) ? [`type:${s}`] : []))
     }
     if (lastWord.startsWith('ext:')) {
       const q = lastWord.slice(4)
-      return EXT_SUGGESTIONS.filter(s => s.startsWith(q)).map(s => `ext:${s}`)
+      return EXT_SUGGESTIONS.flatMap(s => (s.startsWith(q) ? [`ext:${s}`] : []))
     }
 
     const prefixSuggestions = []
@@ -124,16 +122,14 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
         onValueChange(val)
       }
       setSuggestionIndex(0)
-      // Trigger focus after state updates settle
-      setFocusTrigger(t => t + 1)
+      // Focus input after state updates settle (next microtask) so React has
+      // committed any DOM changes triggered by addToken/onValueChange first.
+      queueMicrotask(() => {
+        inputRef.current?.focus()
+      })
     },
     [onValueChange, addToken]
   )
-
-  // Focus input whenever focusTrigger changes
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [focusTrigger])
 
   const commitValue = useCallback(
     (newVal: string) => {
@@ -186,6 +182,15 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
     commitValue(finalValue)
   }
 
+  // 这些回调只在 keydown 触发时读一次，不应该让 effect 重新订阅 ——
+  // 否则父组件每次 render 都会 detach/re-attach listener，热路径下浪费。
+  // 用 useEffectEvent 锁住最新引用，effect 依赖只保留真正影响订阅的 state。
+  const onAdvancedChangeEvent = useEffectEvent(onAdvancedChange)
+  const removeTokenEvent = useEffectEvent(removeToken)
+  const addTokenEvent = useEffectEvent(addToken)
+  const applySuggestionEvent = useEffectEvent(applySuggestion)
+  const externalOnKeyDownEvent = useEffectEvent((e: KeyboardEvent) => externalOnKeyDown?.(e))
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const nativeEvent = e as KeyboardEvent & { isComposing?: boolean; keyCode?: number }
@@ -208,12 +213,12 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
       }
       if (isAdvanced && value === '' && tokens.length === 0 && e.key === 'Backspace') {
         e.preventDefault()
-        onAdvancedChange(false)
+        onAdvancedChangeEvent(false)
         return
       }
       if (isAdvanced && value === '' && tokens.length > 0 && e.key === 'Backspace') {
         e.preventDefault()
-        removeToken(tokens.length - 1)
+        removeTokenEvent(tokens.length - 1)
         return
       }
       if (suggestions.length > 0) {
@@ -229,31 +234,19 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
         }
         if (e.key === 'Enter' || e.key === 'Tab') {
           e.preventDefault()
-          applySuggestion(suggestions[suggestionIndex])
+          applySuggestionEvent(suggestions[suggestionIndex])
           return
         }
       } else if (isAdvanced && e.key === 'Enter' && value.trim()) {
         e.preventDefault()
-        addToken(value.trim())
+        addTokenEvent(value.trim())
       }
-      externalOnKeyDown?.(e)
+      externalOnKeyDownEvent(e)
     }
     const el = inputRef.current
     el?.addEventListener('keydown', handleKeyDown)
     return () => el?.removeEventListener('keydown', handleKeyDown)
-  }, [
-    isAdvanced,
-    value,
-    tokens,
-    suggestions,
-    suggestionIndex,
-    applySuggestion,
-    onAdvancedChange,
-    removeToken,
-    addToken,
-    externalOnKeyDown,
-    inputRef,
-  ])
+  }, [isAdvanced, value, tokens, suggestions, suggestionIndex])
 
   return (
     <div className={cn('flex flex-col relative', className)}>
@@ -262,32 +255,33 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
             LEFT ANCHOR: Fixed width container ensures the input area 
             NEVER shifts when switching modes.
         */}
-        <div className="shrink-0 w-8 h-8 -ml-1 flex items-center justify-center">
+        <div className="shrink-0 size-8 -ml-1 flex items-center justify-center">
           <button
+            type="button"
             onClick={onIconClick}
             className="w-full h-full flex items-center justify-center hover:bg-muted/50 rounded transition-colors outline-none"
           >
             <AnimatePresence mode="wait">
               {isAdvanced ? (
-                <motion.div
+                <m.div
                   key="zap"
                   initial={{ opacity: 0, scale: 0.5, rotate: -20 }}
                   animate={{ opacity: 1, scale: 1, rotate: 0 }}
                   exit={{ opacity: 0, scale: 0.5, rotate: 20 }}
                   transition={{ duration: 0.12 }}
                 >
-                  <Zap className="h-4 w-4 text-primary fill-primary/20" />
-                </motion.div>
+                  <Zap className="size-4 text-primary fill-primary/20" />
+                </m.div>
               ) : (
-                <motion.div
+                <m.div
                   key="normal"
                   initial={{ opacity: 0, scale: 0.5 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.5 }}
                   transition={{ duration: 0.12 }}
                 >
-                  {icon || <Search className="h-4 w-4 text-muted-foreground/60" />}
-                </motion.div>
+                  {icon || <Search className="size-4 text-muted-foreground/60" />}
+                </m.div>
               )}
             </AnimatePresence>
           </button>
@@ -299,7 +293,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
             <AnimatePresence mode="popLayout">
               {isAdvanced &&
                 tokens.map((token, idx) => (
-                  <motion.span
+                  <m.span
                     key={token}
                     layout
                     initial={{ opacity: 0, scale: 0.8 }}
@@ -310,16 +304,17 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
                   >
                     {token}
                     <button
+                      type="button"
                       onClick={() => removeToken(idx)}
                       className="hover:bg-primary/20 rounded-sm"
                     >
-                      <X className="h-2.5 w-2.5" />
+                      <X className="size-2.5" />
                     </button>
-                  </motion.span>
+                  </m.span>
                 ))}
             </AnimatePresence>
 
-            <motion.div
+            <m.div
               layout="position"
               transition={{ duration: 0.15 }}
               className="flex-1 min-w-[80px]"
@@ -327,6 +322,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
               <input
                 ref={assignInputRef}
                 type="text"
+                aria-label={placeholder}
                 placeholder={
                   isAdvanced ? (tokens.length > 0 ? '' : advancedPlaceholder) : placeholder
                 }
@@ -342,7 +338,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
                   'w-full bg-transparent text-[14px] text-foreground outline-none font-medium placeholder:font-normal placeholder:text-muted-foreground/40 leading-tight'
                 )}
               />
-            </motion.div>
+            </m.div>
           </LayoutGroup>
         </div>
 
@@ -350,6 +346,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
         <div className="shrink-0 flex items-center">
           {(value || tokens.length > 0 || isAdvanced) && (
             <button
+              type="button"
               onClick={() => {
                 onValueChange('')
                 onTokensChange([])
@@ -357,7 +354,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
               }}
               className="p-1.5 hover:bg-muted rounded-full text-muted-foreground/60 hover:text-foreground transition-colors"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="size-3.5" />
             </button>
           )}
         </div>
@@ -366,7 +363,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
       {/* Suggestions List Overlay */}
       <AnimatePresence>
         {isAdvanced && suggestions.length > 0 && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
@@ -374,6 +371,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
           >
             {suggestions.map((suggestion, idx) => (
               <button
+                type="button"
                 key={suggestion}
                 onClick={() => applySuggestion(suggestion)}
                 className={cn(
@@ -384,9 +382,9 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
                 )}
               >
                 {suggestion.includes('type:') ? (
-                  <Zap className="h-3.5 w-3.5 opacity-70" />
+                  <Zap className="size-3.5 opacity-70" />
                 ) : (
-                  <File className="h-3.5 w-3.5 opacity-70" />
+                  <File className="size-3.5 opacity-70" />
                 )}
                 <span className="flex-1 font-mono">{suggestion}</span>
                 {idx === suggestionIndex && (
@@ -396,7 +394,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
                 )}
               </button>
             ))}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

@@ -50,7 +50,7 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
       >
         {loading ? (
           <div className="flex h-full items-center justify-center" aria-live="polite">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         ) : error ? (
           <div className="flex h-full items-center justify-center text-[12px] text-destructive">
@@ -72,8 +72,11 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
           ) : preview.contentType === 'file' && preview.fileNames ? (
             <div className="flex flex-col gap-2">
               {preview.fileNames.map((name, i) => (
-                <div key={i} className="flex items-center gap-2 text-[12px] text-foreground">
-                  <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <div
+                  key={`${name}-${i}`}
+                  className="flex items-center gap-2 text-[12px] text-foreground"
+                >
+                  <File className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="truncate">{name}</span>
                 </div>
               ))}

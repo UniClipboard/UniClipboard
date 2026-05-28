@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { ClipboardCopy, Star, FileText, Image, Link as LinkIcon, Folder, Code } from 'lucide-react'
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -54,7 +54,7 @@ const Header: React.FC<HeaderProps> = ({ onFilterChange, className }) => {
             const isActive = activeFilter === filter.id
 
             return (
-              <motion.button
+              <m.button
                 data-tauri-drag-region="false"
                 key={filter.id}
                 onClick={() => handleFilterClick(filter.id)}
@@ -68,7 +68,7 @@ const Header: React.FC<HeaderProps> = ({ onFilterChange, className }) => {
                 whileTap={{ scale: 0.96 }}
               >
                 {isActive && (
-                  <motion.div
+                  <m.div
                     layoutId="activeFilter"
                     className="absolute inset-0 bg-primary rounded-lg shadow-md shadow-primary/20"
                     transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
@@ -78,7 +78,7 @@ const Header: React.FC<HeaderProps> = ({ onFilterChange, className }) => {
                   <Icon className={cn('h-4 w-4', isActive ? 'text-primary-foreground' : '')} />
                   {t(filter.label)}
                 </span>
-              </motion.button>
+              </m.button>
             )
           })}
         </div>

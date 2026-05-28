@@ -326,7 +326,12 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     return () => {
       systemThemeMedia.removeEventListener('change', handleSystemThemeChange)
     }
+    // 依赖列表包含 `setting` 本体，react-doctor / exhaustive-deps 的
+    // "需要整个 setting" 与作者的"只关心主题字段"两个语义在这里合二为一：
+    // 多出来的 effect 重跑会被上方 prevResolvedMode/Color/Overrides 三个 ref
+    // 比较拦下来，不会触发 startThemeTransition 的 reveal 动画。
   }, [
+    setting,
     setting?.general.theme,
     setting?.general.themeColor,
     setting?.general.themeColorLight,

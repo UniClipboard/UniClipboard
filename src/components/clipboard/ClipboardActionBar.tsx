@@ -1,18 +1,22 @@
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { Check, Copy, Download, Loader2, Trash2 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
 
+export interface ClipboardActionBarTransferStatus {
+  isDownloaded?: boolean
+  isTransferring?: boolean
+  isCopyBlocked?: boolean
+  copyBlockedReason?: string
+}
+
 interface ClipboardActionBarProps {
   hasActiveItem: boolean
   copySuccess: boolean
   activeItemType?: 'text' | 'image' | 'link' | 'code' | 'file' | 'unknown'
-  isActiveItemDownloaded?: boolean
-  isActiveItemTransferring?: boolean
-  isCopyBlocked?: boolean
-  copyBlockedReason?: string
+  transferStatus?: ClipboardActionBarTransferStatus
   onCopy: () => void
   onDelete: () => void
   onSyncToClipboard?: () => void
@@ -22,14 +26,17 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
   hasActiveItem,
   copySuccess,
   activeItemType,
-  isActiveItemDownloaded,
-  isActiveItemTransferring,
-  isCopyBlocked,
-  copyBlockedReason,
+  transferStatus,
   onCopy,
   onDelete,
   onSyncToClipboard,
 }) => {
+  const {
+    isDownloaded: isActiveItemDownloaded,
+    isTransferring: isActiveItemTransferring,
+    isCopyBlocked,
+    copyBlockedReason,
+  } = transferStatus ?? {}
   const { t } = useTranslation()
 
   // Show "Sync to Clipboard" instead of Copy for undownloaded file items
@@ -44,7 +51,7 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
       )}
     >
       {showSyncButton ? (
-        <motion.button
+        <m.button
           whileTap={{ scale: 0.97 }}
           className={cn(
             'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-colors duration-200',
@@ -56,18 +63,18 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
           disabled={!hasActiveItem || isActiveItemTransferring}
         >
           {isActiveItemTransferring ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Loader2 className="size-3 animate-spin" />
           ) : (
-            <Download className="h-3 w-3" />
+            <Download className="size-3" />
           )}
           <span className="font-medium whitespace-nowrap">
             {isActiveItemTransferring
               ? t('clipboard.actionBar.syncing')
               : t('clipboard.actionBar.syncToClipboard')}
           </span>
-        </motion.button>
+        </m.button>
       ) : (
-        <motion.button
+        <m.button
           whileTap={{ scale: 0.97 }}
           className={cn(
             'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-all duration-200 relative group',
@@ -82,25 +89,25 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
         >
           <AnimatePresence mode="wait" initial={false}>
             {copySuccess ? (
-              <motion.div
+              <m.div
                 key="check"
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.5, opacity: 0 }}
                 transition={{ duration: 0.1 }}
               >
-                <Check className="h-3 w-3 text-green-500" />
-              </motion.div>
+                <Check className="size-3 text-green-500" />
+              </m.div>
             ) : (
-              <motion.div
+              <m.div
                 key="copy"
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.8, opacity: 0 }}
                 transition={{ duration: 0.1 }}
               >
-                <Copy className="h-3 w-3" />
-              </motion.div>
+                <Copy className="size-3" />
+              </m.div>
             )}
           </AnimatePresence>
           <span
@@ -119,10 +126,10 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
               C
             </Kbd>
           )}
-        </motion.button>
+        </m.button>
       )}
 
-      <motion.button
+      <m.button
         whileTap={{ scale: 0.97 }}
         className={cn(
           'flex items-center gap-2 px-2.5 py-1 rounded-md text-xs transition-all duration-200 group',
@@ -133,14 +140,14 @@ const ClipboardActionBar: React.FC<ClipboardActionBarProps> = ({
         onClick={hasActiveItem ? onDelete : undefined}
         disabled={!hasActiveItem}
       >
-        <Trash2 className="h-3 w-3" />
+        <Trash2 className="size-3" />
         <span className="font-medium whitespace-nowrap">{t('clipboard.actionBar.delete')}</span>
         {hasActiveItem && (
           <Kbd className="bg-transparent opacity-20 group-hover:opacity-100 transition-opacity border-none h-3 min-w-3 p-0 text-[9px]">
             D
           </Kbd>
         )}
-      </motion.button>
+      </m.button>
     </div>
   )
 }

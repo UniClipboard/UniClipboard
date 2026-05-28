@@ -20,9 +20,9 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageD
       {loading || !imageUrl ? (
         <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/40 bg-muted/20">
           <Loader2
-            className={loading ? 'h-6 w-6 animate-spin text-muted-foreground/40' : 'hidden'}
+            className={loading ? 'size-6 animate-spin text-muted-foreground/40' : 'hidden'}
           />
-          {!loading && <ImageIcon className="h-8 w-8 text-muted-foreground/20" />}
+          {!loading && <ImageIcon className="size-8 text-muted-foreground/20" />}
         </div>
       ) : (
         <img

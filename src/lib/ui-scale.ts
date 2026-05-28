@@ -91,7 +91,7 @@ export const readStoredUiScale = (storage?: Storage | null): number => {
  * Apply zoom via Tauri's native webview API to avoid coordinate mismatches
  * that CSS `zoom` causes with pointer-based libraries (resizable panels, context menus).
  */
-export const applyUiScale = (scale: number): number => {
+const applyUiScale = (scale: number): number => {
   const normalized = clampUiScale(scale)
 
   if (isTauriEnv()) {

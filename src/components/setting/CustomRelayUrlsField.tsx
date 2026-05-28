@@ -32,12 +32,31 @@ function collapseSingleEmptyRow(value: string[]): string[] {
   return value.length === 1 && value[0].trim() === '' ? [] : value
 }
 
+let nextRowSeq = 0
+const allocateRowKey = () => `relay-row-${++nextRowSeq}`
+
 export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldProps) {
   const { t } = useTranslation()
   const rows = visibleRows(value)
   const canRemoveOnlyRow = value.length > 0
   const canAddRow = rows[rows.length - 1]?.trim() !== ''
   const [statuses, setStatuses] = useState<Record<number, ProbeStatus>>({})
+  // Per-row stable identifiers — independent of array position so reordering or
+  // removal doesn't reuse a sibling's React identity. Lazy-init lets the first
+  // render see a length-matched list without touching state during render.
+  const [rowKeys, setRowKeys] = useState<string[]>(() =>
+    Array.from({ length: rows.length }, allocateRowKey)
+  )
+  if (rowKeys.length !== rows.length) {
+    setRowKeys(previous => {
+      if (previous.length === rows.length) return previous
+      if (previous.length < rows.length) {
+        const additions = Array.from({ length: rows.length - previous.length }, allocateRowKey)
+        return [...previous, ...additions]
+      }
+      return previous.slice(0, rows.length)
+    })
+  }
 
   const clearStatusAt = (index: number) => {
     setStatuses(previous => {
@@ -59,6 +78,9 @@ export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldPr
   const handleRemoveRow = (index: number) => {
     if (!canRemoveOnlyRow && rows.length === 1) return
     onChange(collapseSingleEmptyRow(rows.filter((_, rowIndex) => rowIndex !== index)))
+    // Drop the stable key for the removed row so the per-row identity tracks
+    // the URL it was first bound to, not whatever happens to sit at the index.
+    setRowKeys(previous => previous.filter((_, rowIndex) => rowIndex !== index))
     // Indices shift after removal; safest is to drop every cached status so
     // we never display a result against a different URL than the user tested.
     setStatuses({})
@@ -122,8 +144,9 @@ export function CustomRelayUrlsField({ value, onChange }: CustomRelayUrlsFieldPr
           {rows.map((url, index) => {
             const status = statuses[index] ?? IDLE
             const canTest = url.trim().length > 0 && status.kind !== 'testing'
+            const rowKey = rowKeys[index] ?? `relay-row-fallback-${index}`
             return (
-              <div key={index} className="flex min-w-0 items-center gap-2">
+              <div key={rowKey} className="flex min-w-0 items-center gap-2">
                 <Input
                   id={index === 0 ? 'custom-relay-url-0' : undefined}
                   type="url"

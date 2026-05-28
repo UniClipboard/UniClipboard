@@ -1,5 +1,5 @@
-import { MotionConfig } from 'framer-motion'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
@@ -78,7 +78,11 @@ const AppContent = ({
   onSetupComplete: () => void
 }) => {
   const [encryptionStatus, setEncryptionStatus] = useState<EncryptionStatusView | null>(null)
-  const [encryptionError, setEncryptionError] = useState<string | null>(null)
+  // Captures boot-time WS failures so the error UI can surface them even
+  // before the RTK Query attempt fires. The final `encryptionError` view is
+  // derived (see below) from this + the query error so we don't have to
+  // chain a clear-on-success setEncryptionError(null) behind setEncryptionStatus.
+  const [bootEncryptionError, setBootEncryptionError] = useState<string | null>(null)
   const [daemonBootstrapReady, setDaemonBootstrapReady] = useState(false)
   const daemonLifecycleReadySignaledRef = useRef(false)
   // Post-setup auto-unlock is handled by onSetupComplete callback (in AppContentWithBar),
@@ -98,13 +102,13 @@ const AppContent = ({
       .then(() => {
         if (!cancelled) {
           setDaemonBootstrapReady(true)
-          setEncryptionError(null)
+          setBootEncryptionError(null)
         }
       })
       .catch(error => {
         if (!cancelled) {
           const message = error instanceof Error ? error.message : String(error)
-          setEncryptionError(message)
+          setBootEncryptionError(message)
         }
       })
 
@@ -138,32 +142,32 @@ const AppContent = ({
   )
 
   useEffect(() => {
-    if (encryptionData) {
-      setEncryptionStatus(prev => {
-        // Never downgrade session_ready from true → false.
-        // The RTK Query result may be stale (captured before unlock completed),
-        // so if we already know the session is ready (from a SessionReady event),
-        // do not let an older query result roll that back.
-        if (prev?.session_ready && !encryptionData.session_ready) {
-          return prev
-        }
-        return encryptionData
-      })
-      setEncryptionError(null)
-    }
+    if (!encryptionData) return
+    setEncryptionStatus(prev => {
+      // Never downgrade session_ready from true → false.
+      // The RTK Query result may be stale (captured before unlock completed),
+      // so if we already know the session is ready (from a SessionReady event),
+      // do not let an older query result roll that back.
+      if (prev?.session_ready && !encryptionData.session_ready) {
+        return prev
+      }
+      return encryptionData
+    })
   }, [encryptionData])
 
-  useEffect(() => {
-    if (!encryptionQueryError) {
-      return
-    }
-
-    const message =
-      typeof encryptionQueryError === 'object' && 'message' in encryptionQueryError
-        ? String(encryptionQueryError.message)
-        : 'Failed to check encryption status'
-    setEncryptionError(message)
-  }, [encryptionQueryError])
+  // Derive the encryptionError view directly from the RTK Query error +
+  // any locally-captured boot error. Keeping this in a single useState +
+  // useEffect would chain a clear-on-success state update behind the
+  // success-path setEncryptionStatus above; collapsing it to a derived
+  // value avoids that chain.
+  const encryptionQueryErrorMessage = encryptionQueryError
+    ? typeof encryptionQueryError === 'object' && 'message' in encryptionQueryError
+      ? String(encryptionQueryError.message)
+      : 'Failed to check encryption status'
+    : null
+  const encryptionError = encryptionData
+    ? null
+    : (bootEncryptionError ?? encryptionQueryErrorMessage)
 
   const resolvedEncryptionStatus = encryptionStatus ?? encryptionData ?? null
 
@@ -259,17 +263,19 @@ export default function App() {
   const { reduceVisualEffects } = usePlatform()
 
   return (
-    <MotionConfig reducedMotion={reduceVisualEffects ? 'always' : 'user'}>
-      <Router>
-        <SearchProvider>
-          <SettingProvider>
-            <UpdateProvider>
-              <AppContentWithBar />
-            </UpdateProvider>
-          </SettingProvider>
-        </SearchProvider>
-      </Router>
-    </MotionConfig>
+    <LazyMotion features={domMax} strict>
+      <MotionConfig reducedMotion={reduceVisualEffects ? 'always' : 'user'}>
+        <Router>
+          <SearchProvider>
+            <SettingProvider>
+              <UpdateProvider>
+                <AppContentWithBar />
+              </UpdateProvider>
+            </SettingProvider>
+          </SearchProvider>
+        </Router>
+      </MotionConfig>
+    </LazyMotion>
   )
 }
 
@@ -324,10 +330,13 @@ export const AppContentWithBar = () => {
     unlockEncryptionSession().catch(err => console.warn('Post-setup auto-unlock failed:', err))
   }
 
+  const titleBar = useMemo(
+    () => (showCustomTitleBar ? <TitleBarWithSearch isSetupActive={isSetupActive} /> : null),
+    [showCustomTitleBar, isSetupActive]
+  )
+
   return (
-    <WindowShell
-      titleBar={showCustomTitleBar ? <TitleBarWithSearch isSetupActive={isSetupActive} /> : null}
-    >
+    <WindowShell titleBar={titleBar}>
       <AppContent isSetupActive={isSetupActive} onSetupComplete={handleSetupComplete} />
     </WindowShell>
   )

@@ -19,10 +19,7 @@ import {
 } from '@/store/slices/fileTransferSlice'
 import type { DisplayClipboardItem } from './ClipboardContent'
 
-interface FileContextMenuProps {
-  children: React.ReactNode
-  itemId: string
-  itemType: DisplayClipboardItem['type']
+export interface FileContextMenuTransferStatus {
   isDownloaded: boolean
   isTransferring: boolean
   isStale?: boolean
@@ -34,6 +31,13 @@ interface FileContextMenuProps {
    * representation bytes 的 source of truth,作为兜底。
    */
   hasMissingFiles?: boolean
+}
+
+interface FileContextMenuProps {
+  children: React.ReactNode
+  itemId: string
+  itemType: DisplayClipboardItem['type']
+  transferStatus: FileContextMenuTransferStatus
   onCopy: (itemId: string) => void
   onDelete: (itemId: string) => void
   onSyncToClipboard: (itemId: string) => void
@@ -44,15 +48,13 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
   children,
   itemId,
   itemType,
-  isDownloaded,
-  isTransferring,
-  isStale,
-  hasMissingFiles,
+  transferStatus,
   onCopy,
   onDelete,
   onSyncToClipboard,
   onOpenFileLocation,
 }) => {
+  const { isDownloaded, isTransferring, isStale, hasMissingFiles } = transferStatus
   const { t } = useTranslation()
   const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, itemId))
   const transfer = useAppSelector(state => selectTransferByEntryId(state, itemId))
@@ -100,9 +102,9 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
         {showSyncAction && (
           <ContextMenuItem disabled={isTransferring} onClick={() => onSyncToClipboard(itemId)}>
             {isTransferring ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-2 size-4 animate-spin" />
             ) : (
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2 size-4" />
             )}
             {isTransferring
               ? t('clipboard.contextMenu.syncing')
@@ -117,7 +119,7 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
             aria-disabled={isCopyDisabledByTransfer || (isFile && isStale)}
             onClick={() => !isCopyDisabledByTransfer && !isStale && onCopy(itemId)}
           >
-            <Copy className="mr-2 h-4 w-4" />
+            <Copy className="mr-2 size-4" />
             {copyDisabledReason
               ? copyDisabledReason
               : isFile && isStale
@@ -139,7 +141,7 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
           effectiveStatus !== 'cancelled' && (
             <>
               <ContextMenuItem onClick={() => onOpenFileLocation(itemId)}>
-                <FolderOpen className="mr-2 h-4 w-4" />
+                <FolderOpen className="mr-2 size-4" />
                 {t('clipboard.contextMenu.openFileLocation')}
               </ContextMenuItem>
               <ContextMenuSeparator />
@@ -157,9 +159,9 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
               onClick={() => void resendAction.resendAll(itemId)}
             >
               {resendAction.isEntryInFlight(itemId) ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 size-4 animate-spin" />
               ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <RefreshCw className="mr-2 size-4" />
               )}
               {resendAction.isEntryInFlight(itemId)
                 ? t('clipboard.contextMenu.resending')
@@ -175,7 +177,7 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
           className="text-destructive focus:text-destructive"
           onClick={() => onDelete(itemId)}
         >
-          <Trash2 className="mr-2 h-4 w-4" />
+          <Trash2 className="mr-2 size-4" />
           {t('clipboard.contextMenu.delete')}
           <ContextMenuShortcut>D</ContextMenuShortcut>
         </ContextMenuItem>

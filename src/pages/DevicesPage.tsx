@@ -51,7 +51,7 @@ import {
 } from '@/api/tauri-command/mobile_sync'
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import AddMobileSyncDeviceDialog from '@/components/device/AddMobileSyncDeviceDialog'
-import { deriveBadgeKind } from '@/components/device/ConnectionChannelBadge'
+import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
 import { getDeviceIcon } from '@/components/device/device-utils'
 import DeviceSettingsDialog from '@/components/device/DeviceSettingsDialog'
 import EnableMobileSyncDialog from '@/components/device/EnableMobileSyncDialog'
@@ -179,7 +179,7 @@ const HeroSection: React.FC = () => {
             }}
             title={t('devices.list.actions.retry')}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="size-4" />
           </Button>
         </AlertDescription>
       </Alert>
@@ -189,9 +189,9 @@ const HeroSection: React.FC = () => {
   if (localDeviceLoading && localDevice === null) {
     return (
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
-        <div className="rounded-2xl border border-border/60 bg-card px-6 py-6">
+        <div className="rounded-2xl border border-border/60 bg-card p-6">
           <div className="flex items-center gap-5">
-            <Skeleton className="h-16 w-16 rounded-2xl" />
+            <Skeleton className="size-16 rounded-2xl" />
             <div className="flex flex-1 flex-col gap-2">
               <Skeleton className="h-3 w-12" />
               <Skeleton className="h-5 w-40" />
@@ -214,7 +214,7 @@ const HeroSection: React.FC = () => {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]">
       {/* ── 本机 hero (左) ────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card px-6 py-6">
+      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 opacity-[0.04]"
@@ -224,16 +224,16 @@ const HeroSection: React.FC = () => {
           }}
         />
         <div className="relative flex items-center gap-5">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-success/15 text-success shadow-sm ring-1 ring-success/20">
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-success/15 text-success shadow-sm ring-1 ring-success/20">
             {/* eslint-disable-next-line react-hooks/static-components -- `getDeviceIcon` returns a stable lucide icon reference keyed on deviceName, not a freshly-created component */}
-            <Icon className="h-8 w-8" />
+            <Icon className="size-8" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
                 {t('devices.thisDevice.title')}
               </span>
-              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+              <span className="inline-flex size-1.5 rounded-full bg-success" />
             </div>
             <h2 className="mt-1 truncate text-xl font-semibold leading-tight text-foreground">
               {localDevice.deviceName}
@@ -290,7 +290,7 @@ const SpaceChip: React.FC = () => {
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-border/60 transition-colors hover:bg-background hover:text-foreground hover:ring-border"
       >
-        <ArrowRightLeft className="h-3 w-3" />
+        <ArrowRightLeft className="size-3" />
         <span>{t('devices.switchSpace.button')}</span>
       </button>
       <SwitchSpaceDialog open={open} onOpenChange={setOpen} />
@@ -327,8 +327,8 @@ const StatPill: React.FC<StatPillProps> = ({ icon: Icon, label, value, sublabel,
   const a = STAT_ACCENT[accent]
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-4 py-3">
-      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', a.icon)}>
-        <Icon className="h-4 w-4" />
+      <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', a.icon)}>
+        <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
@@ -431,12 +431,12 @@ const DeviceTabs: React.FC = () => {
         <div className="flex items-center justify-between gap-3 border-b border-border/50">
           <TabsList variant="line" className="h-11 gap-8 bg-transparent p-0">
             <TabsTrigger value="p2p" className="gap-2 px-0 text-sm font-medium">
-              <ShieldCheck className="h-4 w-4" />
+              <ShieldCheck className="size-4" />
               {t('devices.pairedDevices.title')}
               <CountChip count={peers.length} active={tab === 'p2p'} />
             </TabsTrigger>
             <TabsTrigger value="mobile" className="gap-2 px-0 text-sm font-medium">
-              <Smartphone className="h-4 w-4" />
+              <Smartphone className="size-4" />
               {t('devices.mobileSync.title')}
               <CountChip count={mobileDevices.length} active={tab === 'mobile'} />
             </TabsTrigger>
@@ -453,7 +453,7 @@ const DeviceTabs: React.FC = () => {
                 size="sm"
                 onClick={() => setAddP2PDialogOpen(true)}
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="size-3.5" />
                 {t('devices.list.actions.addDevice')}
               </Button>
             ) : (
@@ -464,7 +464,7 @@ const DeviceTabs: React.FC = () => {
                   size="sm"
                   onClick={mobileActions.openSettings}
                 >
-                  <Settings2 className="h-3.5 w-3.5" />
+                  <Settings2 className="size-3.5" />
                   {t('devices.mobileSync.configure')}
                 </Button>
                 <Button
@@ -481,7 +481,7 @@ const DeviceTabs: React.FC = () => {
                       : undefined
                   }
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="size-3.5" />
                   {t('devices.mobileSync.list.addButton')}
                 </Button>
               </>
@@ -502,7 +502,7 @@ const DeviceTabs: React.FC = () => {
                     dispatch(fetchSpaceMembers())
                   }}
                 >
-                  <RefreshCw className="h-4 w-4" />
+                  <RefreshCw className="size-4" />
                 </Button>
               </AlertDescription>
             </Alert>
@@ -522,7 +522,7 @@ const DeviceTabs: React.FC = () => {
               <AlertDescription className="flex items-center gap-3">
                 <span className="flex-1">{mobileDevicesError}</span>
                 <Button variant="ghost" size="icon-sm" onClick={mobileActions.reload}>
-                  <RefreshCw className="h-4 w-4" />
+                  <RefreshCw className="size-4" />
                 </Button>
               </AlertDescription>
             </Alert>
@@ -703,17 +703,17 @@ const PeerCard: React.FC<PeerCardProps> = ({ peer, lanOnlyActive, onSelect }) =>
       <div className="flex items-start justify-between">
         <div
           className={cn(
-            'relative flex h-12 w-12 items-center justify-center rounded-xl',
+            'relative flex size-12 items-center justify-center rounded-xl',
             peer.connected ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
           )}
         >
           {/* eslint-disable-next-line react-hooks/static-components -- `getDeviceIcon` returns a stable lucide icon reference keyed on deviceName, not a freshly-created component */}
-          <Icon className="h-6 w-6" />
+          <Icon className="size-6" />
           {peer.connected && (
-            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-success ring-2 ring-card" />
+            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-success ring-2 ring-card" />
           )}
         </div>
-        <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+        <ChevronRight className="size-4 text-muted-foreground/30 transition-all group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
       </div>
 
       <div className="min-w-0">
@@ -765,7 +765,7 @@ const ChannelChip: React.FC<ChannelChipProps> = ({ icon: Icon, label, tone }) =>
       CHANNEL_TONE[tone]
     )}
   >
-    <Icon className="h-3 w-3" />
+    <Icon className="size-3" />
     {label}
   </span>
 )
@@ -815,8 +815,8 @@ const MobileCard: React.FC<{
   return (
     <div className="group relative flex w-full flex-col gap-4 overflow-hidden rounded-2xl border border-border/60 bg-card p-5 text-left transition-all hover:border-border hover:shadow-sm">
       <div className="flex items-start justify-between">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-info/10 text-info">
-          <Smartphone className="h-6 w-6" />
+        <div className="flex size-12 items-center justify-center rounded-xl bg-info/10 text-info">
+          <Smartphone className="size-6" />
         </div>
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <Button
@@ -826,7 +826,7 @@ const MobileCard: React.FC<{
             aria-label={t('devices.mobileSync.rotate.button')}
             title={t('devices.mobileSync.rotate.button')}
           >
-            <KeyRound className="h-4 w-4" />
+            <KeyRound className="size-4" />
           </Button>
           <Button
             variant="ghost"
@@ -835,7 +835,7 @@ const MobileCard: React.FC<{
             aria-label={t('devices.mobileSync.revoke.confirm')}
             title={t('devices.mobileSync.revoke.confirm')}
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="size-4" />
           </Button>
         </div>
       </div>
@@ -868,8 +868,8 @@ const AddCard: React.FC<{ label: string; hint: string; onClick: () => void }> = 
     onClick={onClick}
     className="group flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/60 bg-transparent p-5 text-center transition-all hover:border-primary/40 hover:bg-primary/5"
   >
-    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
-      <Plus className="h-6 w-6" />
+    <div className="flex size-12 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+      <Plus className="size-6" />
     </div>
     <div>
       <p className="text-sm font-medium text-foreground">{label}</p>

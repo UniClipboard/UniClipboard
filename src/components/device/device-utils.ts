@@ -16,17 +16,6 @@ export function getDeviceIcon(deviceName?: string | null) {
   return Monitor
 }
 
-export function getIconColor(index: number) {
-  const colors = [
-    'text-blue-500 bg-blue-500/10 border-blue-500/20',
-    'text-purple-500 bg-purple-500/10 border-purple-500/20',
-    'text-green-500 bg-green-500/10 border-green-500/20',
-    'text-orange-500 bg-orange-500/10 border-orange-500/20',
-    'text-primary bg-primary/10 border-primary/20',
-  ]
-  return colors[index % colors.length]
-}
-
 /** Maps ContentTypes fields to i18n keys */
 export const contentTypeEntries: {
   field: keyof ContentTypes

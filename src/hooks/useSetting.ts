@@ -1,4 +1,4 @@
-import { useContext } from 'react'
+import { use } from 'react'
 import { SettingContext } from '@/contexts/setting-context'
 export type { SettingContextType } from '@/types/setting'
 export type { Theme } from '@/types/setting'
@@ -8,7 +8,7 @@ export type { Theme } from '@/types/setting'
  * @throws {Error} 如果在 SettingProvider 外部使用
  */
 export const useSetting = () => {
-  const context = useContext(SettingContext)
+  const context = use(SettingContext)
 
   if (context === undefined) {
     throw new Error('useSetting必须在SettingProvider内部使用')

@@ -1,5 +1,5 @@
 import { AlertCircle, ArrowRightLeft, CheckCircle2, Eye, EyeOff, Loader2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import {
   queryMigrationProgress,
@@ -9,7 +9,8 @@ import {
   type SwitchSpaceErrorKind,
   type SwitchSpaceResponse,
 } from '@/api/daemon/setupV2'
-import { INVITATION_CODE_LENGTH, InvitationCodeInput } from '@/components/InvitationCodeInput'
+import { INVITATION_CODE_LENGTH } from '@/components/invitation-code-utils'
+import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -49,6 +50,20 @@ interface SwitchSpaceDialogProps {
  * - failed：按 SwitchSpaceErrorKind 显示具体提示，提供重试。
  */
 export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDialogProps) {
+  // `open` is used as a React `key` on the inner body. When the dialog
+  // closes, the inner component unmounts and its state is dropped — the
+  // next open remounts with fresh defaults. This replaces the previous
+  // reset-all-state-on-open useEffect (no-reset-all-state-on-prop-change).
+  return (
+    <SwitchSpaceDialogInner
+      key={open ? 'open' : 'closed'}
+      open={open}
+      onOpenChange={onOpenChange}
+    />
+  )
+}
+
+function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'devices.switchSpace' })
   const dispatch = useAppDispatch()
   const [step, setStep] = useState<Step>('input')
@@ -69,20 +84,6 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
   useEffect(() => {
     if (codeComplete && step === 'input') passInputRef.current?.focus()
   }, [codeComplete, step])
-
-  // 关闭时清状态
-  useEffect(() => {
-    if (open) return
-    setStep('input')
-    setCode('')
-    setPass('')
-    setShowPass(false)
-    setErrorKind(null)
-    setErrorRaw(null)
-    setPhase(null)
-    setBackupCount(0)
-    setResult(null)
-  }, [open])
 
   // 迁移进度轮询：phase 显示哪一步、backup_record_count 提示规模
   useEffect(() => {
@@ -109,13 +110,18 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
   }, [step])
 
   // success 自动关闭 + 刷新 devices state
+  //
+  // 用 useEffectEvent 把 onOpenChange 从 effect 依赖里挪出去 —— 它仅在
+  // setTimeout 触发时被读取一次，没必要因为父组件重新创建函数引用而让
+  // effect 重新订阅（避免重复跑 dispatch / 提前重置 timeout）。
+  const closeDialog = useEffectEvent(() => onOpenChange(false))
   useEffect(() => {
     if (step !== 'success') return
     dispatch(fetchSpaceMembers())
     dispatch(fetchLocalDeviceInfo())
-    const id = setTimeout(() => onOpenChange(false), SUCCESS_AUTO_CLOSE_MS)
+    const id = setTimeout(() => closeDialog(), SUCCESS_AUTO_CLOSE_MS)
     return () => clearTimeout(id)
-  }, [step, dispatch, onOpenChange])
+  }, [step, dispatch])
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -220,14 +226,14 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
                 tabIndex={-1}
                 aria-label={showPass ? 'hide passphrase' : 'show passphrase'}
               >
-                {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
           </div>
         )}
 
         <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5 text-xs text-muted-foreground">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
           <span className="leading-relaxed">{t('warning')}</span>
         </div>
       </div>
@@ -235,8 +241,8 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
   } else if (step === 'migrating') {
     body = (
       <div className="flex flex-col items-center gap-4 py-8">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Loader2 className="h-7 w-7 animate-spin" />
+        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Loader2 className="size-7 animate-spin" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-foreground">{t('migrating.title')}</p>
@@ -252,8 +258,8 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
   } else if (step === 'success' && result) {
     body = (
       <div className="flex flex-col items-center gap-3 py-8">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-          <CheckCircle2 className="h-8 w-8" />
+        <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="size-8" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-foreground">{t('success.title')}</p>
@@ -271,8 +277,8 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
   } else {
     body = (
       <div className="flex flex-col items-center gap-3 py-6">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
-          <AlertCircle className="h-7 w-7" />
+        <div className="flex size-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+          <AlertCircle className="size-7" />
         </div>
         <div className="text-center">
           <p className="text-base font-semibold text-foreground">{t('failed.title')}</p>
@@ -291,7 +297,7 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
           {t('actions.cancel')}
         </Button>
         <Button onClick={handleSubmit} disabled={!canSubmit} className="min-w-28">
-          <ArrowRightLeft className={cn('mr-2 h-4 w-4', !canSubmit && 'opacity-50')} />
+          <ArrowRightLeft className={cn('mr-2 size-4', !canSubmit && 'opacity-50')} />
           {t('actions.switch')}
         </Button>
       </>
@@ -302,7 +308,7 @@ export default function SwitchSpaceDialog({ open, onOpenChange }: SwitchSpaceDia
     // 上拦截。
     footer = (
       <Button variant="outline" disabled>
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <Loader2 className="mr-2 size-4 animate-spin" />
         {t('actions.switching')}
       </Button>
     )

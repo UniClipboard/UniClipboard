@@ -100,9 +100,9 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
                   type="button"
                   aria-label={t('update.packageManager.copyCommand')}
                   onClick={handleCopy}
-                  className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </button>
               </div>
             </div>

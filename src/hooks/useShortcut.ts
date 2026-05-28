@@ -1,4 +1,4 @@
-import { useContext } from 'react'
+import { use } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { SettingContext } from '@/contexts/setting-context'
 import { useShortcutContext } from '@/contexts/shortcut-context'
@@ -52,7 +52,7 @@ export const useShortcut = ({
 
   // Get setting context for keyboard shortcuts override support
   // This is optional - only used when id is provided
-  const settingContext = useContext(SettingContext)
+  const settingContext = use(SettingContext)
   const keyboardShortcuts = settingContext?.setting?.keyboardShortcuts ?? null
 
   // Determine effective key: use override from settings if available

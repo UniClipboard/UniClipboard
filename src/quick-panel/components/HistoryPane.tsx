@@ -94,14 +94,17 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
   }) => {
     const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel.history' })
 
-    const filterTypes = [
-      { id: Filter.All, icon: Layers, label: t('filters.all') },
-      { id: Filter.Text, icon: FileText, label: t('filters.text') },
-      { id: Filter.Image, icon: ImageIcon, label: t('filters.image') },
-      { id: Filter.Link, icon: LinkIcon, label: t('filters.link') },
-      { id: Filter.File, icon: Folder, label: t('filters.file') },
-      { id: Filter.Code, icon: Code, label: t('filters.code') },
-    ]
+    const filterTypes = useMemo(
+      () => [
+        { id: Filter.All, icon: Layers, label: t('filters.all') },
+        { id: Filter.Text, icon: FileText, label: t('filters.text') },
+        { id: Filter.Image, icon: ImageIcon, label: t('filters.image') },
+        { id: Filter.Link, icon: LinkIcon, label: t('filters.link') },
+        { id: Filter.File, icon: Folder, label: t('filters.file') },
+        { id: Filter.Code, icon: Code, label: t('filters.code') },
+      ],
+      [t]
+    )
 
     const timeRanges: { id: TimeRangePreset; label: string }[] = [
       { id: 'all_time', label: t('timeRange.all_time') },
@@ -115,15 +118,15 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
 
     const CurrentFilterIcon = useMemo(() => {
       return filterTypes.find(f => f.id === activeFilter)?.icon || Search
-    }, [activeFilter])
+    }, [activeFilter, filterTypes])
 
     return (
       <div className={quickCardClassName}>
         {isLocked && !loading ? (
           <>
             <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/30">
-                <Lock className="h-6 w-6 text-muted-foreground" />
+              <div className="flex size-12 items-center justify-center rounded-xl bg-muted/30">
+                <Lock className="size-6 text-muted-foreground" />
               </div>
               <div className="space-y-1 text-center">
                 <h2 className="text-sm font-medium text-foreground">{t('locked.title')}</h2>
@@ -137,12 +140,12 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
               >
                 {unlocking ? (
                   <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 className="size-3.5 animate-spin" />
                     {t('locked.unlocking')}
                   </>
                 ) : (
                   <>
-                    <Unlock className="h-3.5 w-3.5" />
+                    <Unlock className="size-3.5" />
                     {t('locked.action')}
                   </>
                 )}
@@ -182,10 +185,8 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                           : 'text-muted-foreground/60'
                       )}
                     >
-                      <CurrentFilterIcon className="h-3.5 w-3.5" />
-                      {!isAdvancedMode && (
-                        <ChevronDown className="h-2.5 w-2.5 opacity-40 shrink-0" />
-                      )}
+                      <CurrentFilterIcon className="size-3.5" />
+                      {!isAdvancedMode && <ChevronDown className="size-2.5 opacity-40 shrink-0" />}
                     </div>
                   }
                   onIconClick={() => {}}
@@ -193,7 +194,11 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 />
                 <DropdownMenuTrigger asChild>
                   {/* Anchor trigger to the fixed width icon container */}
-                  <button className="absolute left-3.5 top-2 w-8 h-8 z-10 opacity-0 cursor-pointer" />
+                  <button
+                    type="button"
+                    aria-label={t('filterMenuLabel')}
+                    className="absolute left-3.5 top-2 size-8 z-10 opacity-0 cursor-pointer"
+                  />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-36 ml-1">
                   {filterTypes.map(f => (
@@ -202,9 +207,9 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                       onClick={() => setActiveFilter(f.id)}
                       className="flex items-center gap-2 text-[12px]"
                     >
-                      <f.icon className="h-3.5 w-3.5 opacity-70" />
+                      <f.icon className="size-3.5 opacity-70" />
                       {f.label}
-                      {activeFilter === f.id && <Check className="ml-auto h-3 w-3 text-primary" />}
+                      {activeFilter === f.id && <Check className="ml-auto size-3 text-primary" />}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -222,21 +227,21 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
             >
               {loading ? (
                 <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <Loader2 className="size-4 animate-spin mr-2" />
                   {t('status.loading')}
                 </div>
               ) : isSearching && filteredItems.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <Loader2 className="size-4 animate-spin mr-2" />
                   {t('status.searching')}
                 </div>
               ) : filteredItems.length === 0 ? (
                 <div className="flex flex-col h-full items-center justify-center text-[13px] text-muted-foreground gap-2">
                   <div className="p-3 bg-muted/20 rounded-full">
                     {isAdvancedMode ? (
-                      <Zap className="h-6 w-6 text-primary/40" />
+                      <Zap className="size-6 text-primary/40" />
                     ) : (
-                      <Search className="h-6 w-6 text-muted-foreground/40" />
+                      <Search className="size-6 text-muted-foreground/40" />
                     )}
                   </div>
                   <div className="text-center">
@@ -269,11 +274,14 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
               <div className="flex items-center">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-1 hover:text-foreground transition-colors outline-none font-medium">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 hover:text-foreground transition-colors outline-none font-medium"
+                    >
                       <span>
                         {timeRanges.find(r => r.id === timeRange)?.label || t('timeRange.all_time')}
                       </span>
-                      <ChevronDown className="h-2.5 w-2.5 opacity-50" />
+                      <ChevronDown className="size-2.5 opacity-50" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="top" className="w-36">
@@ -284,7 +292,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                         className="flex items-center justify-between text-[12px]"
                       >
                         {range.label}
-                        {timeRange === range.id && <Check className="h-3 w-3 text-primary" />}
+                        {timeRange === range.id && <Check className="size-3 text-primary" />}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuContent>

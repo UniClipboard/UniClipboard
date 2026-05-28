@@ -56,7 +56,7 @@ function measureTextMetrics(
  * user-visible layout.
  */
 const WindowedLongText: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
   const [metrics, setMetrics] = useState<{
     charsPerLine: number
     lineHeight: number
@@ -65,8 +65,13 @@ const WindowedLongText: React.FC<{ text: string; className?: string }> = ({ text
   const [scrollTop, setScrollTop] = useState(0)
   const rafRef = useRef(0)
 
-  useEffect(() => {
-    const el = containerRef.current
+  // Callback ref: measure synchronously on mount and observe resizes.
+  // This avoids the useState(null) + useEffect(setState) "initialize state in
+  // effect" anti-pattern flagged by react-doctor's no-initialize-state rule.
+  const setContainerRef = useCallback((el: HTMLDivElement | null) => {
+    // Tear down previous observer when the node detaches or swaps.
+    observerRef.current?.disconnect()
+    observerRef.current = null
     if (!el) return
 
     const update = () => {
@@ -77,7 +82,17 @@ const WindowedLongText: React.FC<{ text: string; className?: string }> = ({ text
 
     const obs = new ResizeObserver(() => update())
     obs.observe(el)
-    return () => obs.disconnect()
+    observerRef.current = obs
+  }, [])
+
+  // Cleanup observer on unmount in case the callback-ref's null call is
+  // skipped (some React versions only invoke it when the node identity
+  // changes).
+  useEffect(() => {
+    return () => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
+    }
   }, [])
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -111,7 +126,7 @@ const WindowedLongText: React.FC<{ text: string; className?: string }> = ({ text
 
   return (
     <div
-      ref={containerRef}
+      ref={setContainerRef}
       className={className}
       style={{ overflow: 'auto' }}
       onScroll={handleScroll}

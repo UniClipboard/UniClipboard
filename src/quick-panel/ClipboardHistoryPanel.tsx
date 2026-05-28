@@ -140,6 +140,7 @@ const ClipboardHistoryPanel: React.FC = () => {
   )
 
   useEffect(() => {
+    let finalizeTimer: ReturnType<typeof setTimeout> | null = null
     const unlistenPrepare = listen('quick-panel://prepare-show', () => {
       setSkipTransition(true)
       clearPreviewTimer()
@@ -157,7 +158,8 @@ const ClipboardHistoryPanel: React.FC = () => {
       setPreviewTargetId(null)
       void reload()
 
-      setTimeout(() => {
+      finalizeTimer = setTimeout(() => {
+        finalizeTimer = null
         setSkipTransition(false)
         void setQuickPanelLayout(readStoredUiScale(), false)
           .then(() => commands.finalizeQuickPanelShow())
@@ -168,6 +170,10 @@ const ClipboardHistoryPanel: React.FC = () => {
 
     return () => {
       clearPreviewTimer()
+      if (finalizeTimer !== null) {
+        clearTimeout(finalizeTimer)
+        finalizeTimer = null
+      }
       unlistenPrepare.then(fn => fn())
     }
   }, [clearPreviewTimer, reload])
@@ -211,13 +217,23 @@ const ClipboardHistoryPanel: React.FC = () => {
     }
   }, [closePreview, isLocked])
 
-  useEffect(() => {
+  // Reset selectedIndex to 0 whenever the visible result set shape changes
+  // (filter/search/etc). Done inline during render with a tracking ref to
+  // avoid a useEffect that chains a state update behind another state.
+  // Deletes set deletingRef.current=true so we keep the user's current row.
+  // The ref imperatively detects "filteredItems length changed" during the
+  // same render — intentional, see https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  /* eslint-disable react-hooks/refs */
+  const lastFilteredCountRef = useRef(filteredItems.length)
+  if (lastFilteredCountRef.current !== filteredItems.length) {
+    lastFilteredCountRef.current = filteredItems.length
     if (deletingRef.current) {
       deletingRef.current = false
-      return
+    } else if (selectedIndex !== 0) {
+      setSelectedIndex(0)
     }
-    setSelectedIndex(0)
-  }, [filteredItems.length])
+  }
+  /* eslint-enable react-hooks/refs */
 
   useEffect(() => {
     const el = itemRefs.current.get(selectedIndex)
@@ -273,7 +289,12 @@ const ClipboardHistoryPanel: React.FC = () => {
       },
       previewEntryId ? PREVIEW_SWITCH_DELAY_MS : PREVIEW_OPEN_DELAY_MS
     )
-    return clearPreviewTimer
+    return () => {
+      if (previewTimerRef.current) {
+        clearTimeout(previewTimerRef.current)
+        previewTimerRef.current = null
+      }
+    }
   }, [
     clearPreviewTimer,
     isLocked,

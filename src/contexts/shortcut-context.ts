@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, use } from 'react'
 import { ShortcutScope } from '@/shortcuts/definitions'
 import { ShortcutLayer } from '@/shortcuts/layers'
 
@@ -27,7 +27,7 @@ export const ShortcutContext = createContext<ShortcutContextType | undefined>(un
  * 使用快捷键上下文的 Hook
  */
 export const useShortcutContext = (): ShortcutContextType => {
-  const context = useContext(ShortcutContext)
+  const context = use(ShortcutContext)
   if (context === undefined) {
     throw new Error('useShortcutContext must be used within ShortcutProvider')
   }

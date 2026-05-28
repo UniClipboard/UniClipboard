@@ -63,5 +63,3 @@ export function LanOnlyDisclosure() {
     </Popover>
   )
 }
-
-export default LanOnlyDisclosure

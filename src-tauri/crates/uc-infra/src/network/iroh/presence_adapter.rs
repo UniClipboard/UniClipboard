@@ -110,6 +110,31 @@ const EVENT_CHANNEL_CAPACITY: usize = 64;
 ///   stale window observable to `dispatch_entry`.
 const FAST_PATH_TTL: Duration = Duration::from_secs(30);
 
+/// How long a `mark_offline` verdict keeps short-circuiting `current_state`
+/// to `Offline` for the affected device, even when `last_state` carries no
+/// opinion (e.g. presence never dialled this peer itself before the dispatch
+/// adapter handed in the verdict).
+///
+/// Pre-#886 the same window lived inside
+/// `DispatchClipboardEntryUseCase::recent_dial_failures`. Moving it onto the
+/// adapter collapses the two sources of "I just observed this peer
+/// unreachable" into one, so every consumer of `PresencePort::current_state`
+/// (roster view, dispatch preflight, fan-out skip, future mobile-sync /
+/// file-transfer paths) sees the same truth window without each having to
+/// keep its own cache. See #886 for the full motivation.
+///
+/// 30s is picked to:
+/// * slightly exceed `connect_with_staggered_retry`'s worst-case lifetime
+///   (~15s) so a freshly-stamped Offline outlives any in-flight dial that
+///   might race against it;
+/// * stay aligned with `peer_keepalive::BASE_INTERVAL = 25s` so a healthy
+///   peer's next inbound presence ping naturally falls inside the window
+///   and clears the stamp via the inbound-Online flip path;
+/// * stay short enough that a peer that genuinely came back online does
+///   not stay locked-out for a perceptibly long time if it never dials in
+///   (e.g. LAN-only with mDNS hiccups).
+const MARK_OFFLINE_STICKY_TTL: Duration = Duration::from_secs(30);
+
 // ============================================================================
 // ProtocolHandler (accept side)
 // ============================================================================
@@ -124,6 +149,11 @@ struct HandlerState {
     member_repo: Arc<dyn MemberRepositoryPort>,
     fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
     last_state: Arc<Mutex<HashMap<DeviceId, ReachabilityState>>>,
+    /// Shared with the dial-side adapter so an inbound presence ping from
+    /// a peer that was previously stamped Offline by `mark_offline` clears
+    /// the negative window in the same map the adapter reads from in
+    /// `current_state`. See [`MARK_OFFLINE_STICKY_TTL`].
+    last_offline_at: Arc<Mutex<HashMap<DeviceId, Instant>>>,
     event_tx: broadcast::Sender<PresenceEvent>,
     clock: Arc<dyn ClockPort>,
 }
@@ -220,6 +250,13 @@ impl ProtocolHandler for IrohPresenceHandler {
             };
 
             if prev != Some(ReachabilityState::Online) {
+                // Inbound presence ping is first-hand evidence the peer is
+                // back online, so drop any sticky Offline window an
+                // earlier `mark_offline` may have armed.
+                {
+                    let mut stamps = self.state.last_offline_at.lock().await;
+                    stamps.remove(&device_id);
+                }
                 let _ = self.state.event_tx.send(PresenceEvent {
                     device_id,
                     state: ReachabilityState::Online,
@@ -281,6 +318,16 @@ pub struct IrohPresenceAdapter {
     /// connections can flip a peer to Online under the same lock the
     /// outbound watchdog uses to flip to Offline.
     last_state: Arc<Mutex<HashMap<DeviceId, ReachabilityState>>>,
+    /// Monotonic `Instant` of the most recent `mark_offline` call per
+    /// device. `current_state` reads this map only when `last_state` has
+    /// no opinion, projecting any stamp inside [`MARK_OFFLINE_STICKY_TTL`]
+    /// as `Offline`. Cleared on successful outbound dials
+    /// (`dial_and_track`'s `Ok` branch) and on inbound presence pings that
+    /// flip the peer Online (see [`HandlerState`]).
+    ///
+    /// Owned here, cloned into [`HandlerState`] so the accept side can
+    /// clear stamps under the same `Arc<Mutex>` the adapter reads from.
+    last_offline_at: Arc<Mutex<HashMap<DeviceId, Instant>>>,
     event_tx: broadcast::Sender<PresenceEvent>,
     /// Cheap-clone state for [`IrohPresenceHandler`]. Constructed once in
     /// [`IrohPresenceAdapter::new`] and handed out via
@@ -332,10 +379,12 @@ impl IrohPresenceAdapter {
     ) -> Self {
         let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let last_state = Arc::new(Mutex::new(HashMap::new()));
+        let last_offline_at = Arc::new(Mutex::new(HashMap::new()));
         let handler_state = Arc::new(HandlerState {
             member_repo,
             fingerprint_factory,
             last_state: Arc::clone(&last_state),
+            last_offline_at: Arc::clone(&last_offline_at),
             event_tx: event_tx.clone(),
             clock: Arc::clone(&clock),
         });
@@ -345,6 +394,7 @@ impl IrohPresenceAdapter {
             clock,
             peers: Arc::new(Mutex::new(HashMap::new())),
             last_state,
+            last_offline_at,
             event_tx,
             handler_state,
         }
@@ -485,6 +535,14 @@ impl IrohPresenceAdapter {
                             let mut last = self.last_state.lock().await;
                             last.insert(*device, ReachabilityState::Online);
                             drop(last);
+                            // Dial succeeded → cancel any sticky Offline
+                            // window left over from an earlier
+                            // `mark_offline` so consumers don't keep seeing
+                            // the stale negative verdict.
+                            {
+                                let mut stamps = self.last_offline_at.lock().await;
+                                stamps.remove(device);
+                            }
                             self.broadcast(*device, ReachabilityState::Online, now);
                             return Ok(ReachabilityState::Online);
                         }
@@ -502,6 +560,12 @@ impl IrohPresenceAdapter {
                 {
                     let mut last = self.last_state.lock().await;
                     last.insert(*device, ReachabilityState::Online);
+                }
+                // Dial succeeded → cancel any sticky Offline window left
+                // over from an earlier `mark_offline`.
+                {
+                    let mut stamps = self.last_offline_at.lock().await;
+                    stamps.remove(device);
                 }
                 info!("dial_and_track: dial succeeded, peer marked Online");
                 self.broadcast(*device, ReachabilityState::Online, now);
@@ -644,6 +708,20 @@ impl PresencePort for IrohPresenceAdapter {
             prev != Some(ReachabilityState::Offline)
         };
 
+        // 3) Stamp the negative window so `current_state` keeps reporting
+        //    Offline for MARK_OFFLINE_STICKY_TTL even if some future code
+        //    path resets `last_state[device]` back to Unknown. Today nothing
+        //    on the dial side clears `last_state`; the stamp exists so #886
+        //    can drop `DispatchClipboardEntryUseCase::recent_dial_failures`
+        //    and let every consumer of `PresencePort::current_state` read
+        //    the same truth window without each maintaining its own cache.
+        //    Refresh unconditionally so repeated `mark_offline` calls
+        //    re-arm the window from the latest verdict.
+        {
+            let mut stamps = self.last_offline_at.lock().await;
+            stamps.insert(*device, Instant::now());
+        }
+
         if should_broadcast {
             let now = self.now();
             debug!("mark_offline: peer marked Offline");
@@ -664,6 +742,21 @@ impl PresencePort for IrohPresenceAdapter {
         // `ensure_reachable` and the watchdog update both under lock.
         if let Some(state) = self.last_state.lock().await.get(device).copied() {
             return state;
+        }
+        // No opinion in `last_state` yet — but if `mark_offline` stamped
+        // this device inside [`MARK_OFFLINE_STICKY_TTL`], project the
+        // negative window as `Offline`. This is what lets #886 collapse
+        // the use-case-local `recent_dial_failures` cache: a fresh
+        // dispatch's preflight reads the same Offline verdict that
+        // `mark_offline` just wrote, even if presence never dialled this
+        // peer itself.
+        {
+            let stamps = self.last_offline_at.lock().await;
+            if let Some(stamped_at) = stamps.get(device) {
+                if stamped_at.elapsed() < MARK_OFFLINE_STICKY_TTL {
+                    return ReachabilityState::Offline;
+                }
+            }
         }
         // Fall back to the tracked-connection map in case something
         // bypassed `last_state` bookkeeping. Under the current API surface
@@ -1125,6 +1218,89 @@ mod tests {
         );
 
         router_b.shutdown().await.expect("router_b shutdown clean");
+        endpoint_a.close().await;
+    }
+
+    // -- mark_offline sticky window ------------------------------------------
+
+    /// Verdict — `mark_offline` arms a sticky window in `last_offline_at`
+    /// that survives a wipe of `last_state`. This is what lets #886 collapse
+    /// `DispatchClipboardEntryUseCase::recent_dial_failures` onto the
+    /// adapter: the negative window lives here, not in the use case.
+    ///
+    /// The test forces `last_state` empty after `mark_offline` to isolate
+    /// the stamp's projection path; under normal flow `last_state` already
+    /// reports `Offline` and `current_state` returns from the early branch.
+    #[tokio::test]
+    async fn mark_offline_arms_sticky_window_projected_by_current_state() {
+        let endpoint_a = bound_endpoint().await;
+        let repo = Arc::new(FakePeerAddressRepo::default());
+        let adapter = build_adapter(endpoint_a.clone(), repo);
+
+        let device = DeviceId::new("sticky-target");
+        adapter.mark_offline(&device).await;
+
+        // Under normal flow current_state returns Offline via `last_state`.
+        assert_eq!(
+            adapter.current_state(&device).await,
+            ReachabilityState::Offline,
+        );
+
+        // Simulate a future code path that drops `last_state[device]`
+        // before the sticky window has expired. `current_state` must still
+        // project the stamp as `Offline`.
+        adapter.last_state.lock().await.remove(&device);
+        assert_eq!(
+            adapter.current_state(&device).await,
+            ReachabilityState::Offline,
+        );
+
+        endpoint_a.close().await;
+    }
+
+    /// Verdict — a successful outbound dial clears the sticky window left
+    /// over from an earlier `mark_offline`, so a peer that recovers does
+    /// not get pinned to Offline for the rest of `MARK_OFFLINE_STICKY_TTL`.
+    #[tokio::test]
+    async fn successful_dial_clears_mark_offline_sticky_window() {
+        let (endpoint_a, _endpoint_b, b_blob, b_device_id, router_b) = setup_two_endpoints().await;
+
+        let repo = Arc::new(FakePeerAddressRepo::default());
+        repo.seed(record(&b_device_id, b_blob));
+
+        let adapter = build_adapter(endpoint_a.clone(), repo);
+
+        // Stamp the negative window first, as the dispatch adapter would
+        // after a failed dial.
+        adapter.mark_offline(&b_device_id).await;
+        assert!(
+            adapter
+                .last_offline_at
+                .lock()
+                .await
+                .contains_key(&b_device_id),
+            "mark_offline must record a stamp",
+        );
+
+        // Now succeed a dial against B. The Ok branch in `dial_and_track`
+        // must remove the stamp; otherwise consumers reading
+        // `current_state` after a `last_state` reset would still see
+        // Offline for ~30s after recovery.
+        let state = timeout(DIAL_BUDGET, adapter.ensure_reachable(&b_device_id))
+            .await
+            .expect("dial within budget")
+            .expect("dial succeeded");
+        assert_eq!(state, ReachabilityState::Online);
+        assert!(
+            !adapter
+                .last_offline_at
+                .lock()
+                .await
+                .contains_key(&b_device_id),
+            "successful dial must clear the sticky Offline stamp",
+        );
+
+        router_b.shutdown().await.ok();
         endpoint_a.close().await;
     }
 

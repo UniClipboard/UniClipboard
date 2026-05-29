@@ -260,10 +260,27 @@ SyncClipboard 协议兼容客户端也能接入。推荐顺序：
 不论选哪一个，配置项都是同一组：
 
 - **Base URL / 服务端地址** —— `http://<对外宣告的 IP>:<port>`，例如
-  `http://192.168.1.5:42720`。注意是 `http://` 而非 `https://`，v1
-  没有 TLS。
+  `http://192.168.1.5:42720`。注意是 `http://` 而非 `https://`，监听器
+  本身在 v1 没有 TLS。
 - **Username** —— 凭据弹窗 / `setup` 输出。
 - **Password** —— 凭据弹窗 / `setup` 输出（一次性）。
+
+<Callout type="info">
+  **经 HTTPS 反向代理走公网。** 需要把移动同步暴露到公网时（例如无头
+  server 节点），在明文监听器前面放一层 TLS 反向代理（Caddy、nginx 等），
+  并宣告它的地址而不是内网 IP：
+
+  ```bash
+  uniclip mobile-sync lan enable \
+      --advertise-url https://clip.example.com \
+      --accept-network-risk
+  ```
+
+  这样安装 URL / 二维码编码的是 `https://clip.example.com`（不带内网
+  端口），而监听器本身仍是内网明文 HTTP。反代终结 TLS 后转发到内网的
+  `mobile_lan` 端口 —— 该端口**绝不能**直接发布到公网。旧的
+  `--advertise <IP>` 形态仍然产出 LAN 的 `http://<IP>:<port>`，两者互斥。
+</Callout>
 
 <Callout type="info">
   `uc-android` 是上游 `Jeric-X/SyncClipboard` 的 fork。我们带自己的补丁、打自己的 APK，但协议层

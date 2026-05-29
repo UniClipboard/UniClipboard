@@ -292,9 +292,30 @@ Either way, the connection settings are the same:
 
 - **Base URL / server address** — `http://<advertised-IP>:<port>`
   (e.g. `http://192.168.1.5:42720`). Note `http://`, not `https://`
-  — there's no TLS in v1.
+  — the listener itself has no TLS in v1.
 - **Username** — printed by the credentials modal / `setup`.
 - **Password** — printed by the credentials modal / `setup` (one-time).
+
+<Callout type="info">
+  **Public access via an HTTPS reverse proxy.** For deployments that
+  expose mobile sync over the public internet (e.g. a headless server
+  node), put a TLS reverse proxy such as Caddy or nginx in front of the
+  plain-HTTP listener and advertise its address instead of an internal
+  IP:
+
+  ```bash
+  uniclip mobile-sync lan enable \
+      --advertise-url https://clip.example.com \
+      --accept-network-risk
+  ```
+
+  The install URL / QR then encodes `https://clip.example.com` (no
+  internal port), while the listener stays plain HTTP on the internal
+  network. The proxy terminates TLS and forwards to the internal
+  `mobile_lan` port, which must **not** be published directly to the
+  public internet. The legacy `--advertise <IP>` form still produces
+  the LAN `http://<IP>:<port>` URL; the two are mutually exclusive.
+</Callout>
 
 <Callout type="info">
   `uc-android` is a fork of upstream `Jeric-X/SyncClipboard`. We carry our own patches and tag our

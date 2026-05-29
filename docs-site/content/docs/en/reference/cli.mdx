@@ -207,7 +207,11 @@ uniclip mobile-sync settings show     # advanced: settings dump
 
 # Listener configuration (write commands — daemon must be stopped)
 uniclip mobile-sync lan list-interfaces
+# LAN form: advertise an internal IPv4 → install URL is http://<IP>:<port>
 uniclip mobile-sync lan enable --advertise <LAN_IPV4> [--port 42720] --accept-network-risk
+# Reverse-proxy form: advertise a full base URL → install URL/QR points at
+# the HTTPS front-end (e.g. Caddy), while the listener stays plain HTTP.
+uniclip mobile-sync lan enable --advertise-url https://clip.example.com --accept-network-risk
 uniclip mobile-sync lan disable
 
 # Paired device management
@@ -237,6 +241,15 @@ Behavioural notes:
 - **Default port is `42720`** (SPEC §3.2). The daemon socket always
   binds to `0.0.0.0:<port>`; `--advertise` only chooses the IPv4 that
   is printed to the install URL.
+- **`lan enable` requires exactly one of `--advertise <IP>` or
+  `--advertise-url <URL>`.** `--advertise` produces the LAN form
+  `http://<IP>:<port>`. `--advertise-url` embeds a full base URL
+  (scheme + host + optional port) such as `https://clip.example.com`,
+  so the install URL / QR points at a TLS reverse proxy (Caddy, nginx,
+  …) while the listener itself stays plain HTTP on the internal
+  network. The two are mutually exclusive and setting one clears the
+  other; `mobile-sync status` / `settings show` reflect whichever is
+  active.
 - A **debug** subcommand group exists (`uniclip mobile-sync debug`)
   but is hidden from `--help` — it is reserved for development and
   E2E scripts (it bypasses HTTP and pokes the facade directly), and

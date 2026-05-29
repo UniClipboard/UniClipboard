@@ -186,7 +186,11 @@ uniclip mobile-sync settings show     # advanced：导出全部设置
 
 # 监听器配置（写命令 —— 必须先停 daemon）
 uniclip mobile-sync lan list-interfaces
+# LAN 形态：宣告内网 IPv4 → 安装 URL 为 http://<IP>:<port>
 uniclip mobile-sync lan enable --advertise <LAN_IPV4> [--port 42720] --accept-network-risk
+# 反代形态：宣告完整 base URL → 安装 URL/二维码指向 HTTPS 前端（如 Caddy），
+# 监听器本身仍是内网明文 HTTP
+uniclip mobile-sync lan enable --advertise-url https://clip.example.com --accept-network-risk
 uniclip mobile-sync lan disable
 
 # 已配对设备管理
@@ -213,6 +217,13 @@ uniclip mobile-sync disable
   或 CI 里管道喂密码，避免泄漏到 shell history。
 - **默认端口 `42720`**（SPEC §3.2）。daemon socket 永远 bind 在
   `0.0.0.0:<port>`，`--advertise` 只决定打印到安装 URL 的 IPv4。
+- **`lan enable` 必须二选一给出 `--advertise <IP>` 或
+  `--advertise-url <URL>`。** `--advertise` 得到 LAN 形态
+  `http://<IP>:<port>`；`--advertise-url` 写入完整 base URL（scheme +
+  host + 可选 port，如 `https://clip.example.com`），让安装 URL / 二维码
+  指向 TLS 反向代理（Caddy、nginx 等），而监听器本身仍是内网明文 HTTP。
+  两者互斥，设一个会清掉另一个；`mobile-sync status` / `settings show`
+  会反映当前生效的那个。
 - 还有一组 **debug** 子命令（`uniclip mobile-sync debug`），从 `--help`
   里隐藏 —— 仅供开发与 E2E 脚本使用（绕过 HTTP，直接打 facade），可能
   在不发版本说明的情况下变化。

@@ -779,21 +779,25 @@ fn map_read_err(err: iroh::endpoint::ReadExactError) -> SessionError {
 /// Pick the more informative error when both discovery channels failed.
 ///
 /// Priority:
-/// * `InvitationNotFound` wins over anything else — it's the most
-///   actionable user-facing message ("check your code for typos").
-/// * `InvitationExpired` next — distinguishes "stale code" from "wrong
-///   code" so the UI can prompt the sponsor to issue a fresh one.
+/// * `InvitationExpired` wins over anything else — at least one channel
+///   matched a real record, so it's the most informative outcome. It
+///   lets the UI distinguish "stale code" from "wrong code" and prompt
+///   the sponsor to issue a fresh one. A timed-out LAN branch reports
+///   `InvitationNotFound`, so checking it first would wrongly mask a
+///   cloud-side `Expired` as a typo.
+/// * `InvitationNotFound` next — the most actionable message when no
+///   channel matched anything ("check your code for typos").
 /// * `ServiceUnavailable` next — accurately describes "neither channel
 ///   was up to answer."
 /// * Otherwise, prefer the cloud-side error; cloud errors carry more
 ///   structured slugs than the mDNS branch.
 fn prefer_dial_error(cloud: DialError, lan: DialError) -> DialError {
     use DialError::*;
-    if matches!(&cloud, InvitationNotFound) || matches!(&lan, InvitationNotFound) {
-        return InvitationNotFound;
-    }
     if matches!(&cloud, InvitationExpired) || matches!(&lan, InvitationExpired) {
         return InvitationExpired;
+    }
+    if matches!(&cloud, InvitationNotFound) || matches!(&lan, InvitationNotFound) {
+        return InvitationNotFound;
     }
     if matches!(&cloud, ServiceUnavailable) && matches!(&lan, ServiceUnavailable) {
         return ServiceUnavailable;
@@ -871,6 +875,23 @@ mod tests {
     fn prefer_expired_over_service_unavailable() {
         assert!(matches!(
             prefer_dial_error(DialError::ServiceUnavailable, DialError::InvitationExpired),
+            DialError::InvitationExpired
+        ));
+    }
+
+    #[test]
+    fn prefer_expired_over_not_found() {
+        // The realistic race: cloud reports `Gone` → `InvitationExpired`
+        // (the directory matched a real record past its TTL) while the LAN
+        // branch only times out → `InvitationNotFound`. The expired signal
+        // is strictly more informative, so it must win regardless of which
+        // channel produced which error.
+        assert!(matches!(
+            prefer_dial_error(DialError::InvitationExpired, DialError::InvitationNotFound),
+            DialError::InvitationExpired
+        ));
+        assert!(matches!(
+            prefer_dial_error(DialError::InvitationNotFound, DialError::InvitationExpired),
             DialError::InvitationExpired
         ));
     }

@@ -17,7 +17,7 @@
 //!   keep listening for the next announcement until timeout.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use swarm_discovery::{Discoverer, IpClass, SpawnError};
 use thiserror::Error;
@@ -25,7 +25,9 @@ use tokio::runtime::Handle;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
-use super::discovery_constants::{compute_code_hash, PAIR_SERVICE_NAME, TXT_CODE_HASH, TXT_TICKET};
+use super::discovery_constants::{
+    compute_code_hash, PAIR_SERVICE_NAME, TXT_CODE_HASH, TXT_EXPIRES_AT_MS, TXT_TICKET,
+};
 
 /// Errors raised while starting / running a resolver. Timeout is
 /// **not** an error — it returns `Ok(None)` so the caller can compose
@@ -130,6 +132,26 @@ impl MdnsPairingResolver {
                 };
 
                 if saw_hash != expected_hash {
+                    return;
+                }
+
+                // Stale-cache guard: mDNS records linger in caches past
+                // the publisher's window, so a matching `code_hash` is not
+                // enough. Honour the publisher's `expires_at_ms` and treat
+                // a missing, unparseable, or already-expired value as a
+                // non-match — keep listening for a fresh announcement.
+                let Some(expires_at_ms) = peer
+                    .txt_attribute(TXT_EXPIRES_AT_MS)
+                    .flatten()
+                    .and_then(|s| s.parse::<i64>().ok())
+                else {
+                    return;
+                };
+                let now_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_millis() as i64)
+                    .unwrap_or(i64::MAX);
+                if expires_at_ms <= now_ms {
                     return;
                 }
 

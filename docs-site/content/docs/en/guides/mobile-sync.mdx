@@ -303,18 +303,19 @@ Either way, the connection settings are the same:
   plain-HTTP listener and advertise its address instead of an internal
   IP:
 
-  ```bash
-  uniclip mobile-sync lan enable \
-      --advertise-url https://clip.example.com \
-      --accept-network-risk
-  ```
+```bash
+uniclip mobile-sync lan enable \
+    --advertise-url https://clip.example.com \
+    --accept-network-risk
+```
 
-  The install URL / QR then encodes `https://clip.example.com` (no
-  internal port), while the listener stays plain HTTP on the internal
-  network. The proxy terminates TLS and forwards to the internal
-  `mobile_lan` port, which must **not** be published directly to the
-  public internet. The legacy `--advertise <IP>` form still produces
-  the LAN `http://<IP>:<port>` URL; the two are mutually exclusive.
+The install URL / QR then encodes `https://clip.example.com` (no
+internal port), while the listener stays plain HTTP on the internal
+network. The proxy terminates TLS and forwards to the internal
+`mobile_lan` port, which must **not** be published directly to the
+public internet. The legacy `--advertise <IP>` form still produces
+the LAN `http://<IP>:<port>` URL; the two are mutually exclusive.
+
 </Callout>
 
 <Callout type="info">

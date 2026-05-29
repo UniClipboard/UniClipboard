@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toReportableError } from '../errors'
+import { isExpectedCommandError, toReportableError } from '../errors'
 
 describe('toReportableError', () => {
   it('passes Error instances through unchanged', () => {
@@ -40,5 +40,27 @@ describe('toReportableError', () => {
   it('leaves objects without a code field alone', () => {
     const weird = { foo: 'bar' }
     expect(toReportableError(weird, 'cmd')).toBe(weird)
+  })
+})
+
+describe('isExpectedCommandError', () => {
+  it('recognizes user/validation error codes as expected', () => {
+    expect(isExpectedCommandError({ code: 'USERNAME_MUST_START_WITH_LETTER' })).toBe(true)
+    expect(isExpectedCommandError({ code: 'WRONG_PASSPHRASE' })).toBe(true)
+    expect(isExpectedCommandError({ code: 'USERNAME_TAKEN', username: 'alice' })).toBe(true)
+  })
+
+  it('treats system error codes as unexpected (reportable)', () => {
+    expect(isExpectedCommandError({ code: 'PERSISTENCE_FAILED', message: 'x' })).toBe(false)
+    expect(isExpectedCommandError({ code: 'INTERNAL', message: 'x' })).toBe(false)
+    expect(isExpectedCommandError({ code: 'PASSWORD_HASH_FAILED', message: 'x' })).toBe(false)
+  })
+
+  it('treats unknown codes and non-envelopes as unexpected (fail-safe)', () => {
+    expect(isExpectedCommandError({ code: 'SOME_FUTURE_CODE' })).toBe(false)
+    expect(isExpectedCommandError(new Error('boom'))).toBe(false)
+    expect(isExpectedCommandError('weird')).toBe(false)
+    expect(isExpectedCommandError(null)).toBe(false)
+    expect(isExpectedCommandError({ code: 42 })).toBe(false)
   })
 })

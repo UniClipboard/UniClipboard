@@ -37,7 +37,7 @@
  * The wrapper transparently injects trace + redacts logs + bubbles errors.
  */
 
-import { toReportableError } from '@/observability/errors'
+import { isExpectedCommandError, toReportableError } from '@/observability/errors'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
@@ -147,10 +147,17 @@ function buildProxy(): TypedCommands {
             }
             return result
           } catch (error) {
-            Sentry.captureException(toReportableError(error, prop), {
-              tags: { command: prop, traceId: trace.traceId },
-              extra: { args: safeArgs },
-            })
+            // User/validation errors (bad input, wrong passphrase, name taken)
+            // are normal product flow handled by the UI — reporting them to
+            // Sentry buries real system-error alerts under input-validation
+            // noise. Only capture genuinely unexpected failures. The breadcrumb
+            // above still records the call for context on later real errors.
+            if (!isExpectedCommandError(error)) {
+              Sentry.captureException(toReportableError(error, prop), {
+                tags: { command: prop, traceId: trace.traceId },
+                extra: { args: safeArgs },
+              })
+            }
             throw error
           } finally {
             traceManager.endTrace()

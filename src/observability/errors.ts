@@ -1,3 +1,4 @@
+import { USER_FACING_ERROR_CODES } from '@/lib/error-severity.generated'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { Sentry, sentryEnabled } from '@/observability/sentry'
 
@@ -26,10 +27,32 @@ export function toReportableError(error: unknown, command: string): unknown {
   return error
 }
 
+/**
+ * Whether a Tauri command rejection is an *expected* user/validation error —
+ * the user typed a bad username, entered the wrong passphrase, picked a name
+ * already taken, etc. These are normal product flow: the UI shows a message and
+ * the user retries. They MUST NOT be reported to Sentry, or real system-error
+ * alerts drown in input-validation noise.
+ *
+ * The taxonomy is owned by the Rust side (`commands/severity.rs`) and exported
+ * to `USER_FACING_ERROR_CODES`; an unrecognized `code` (or a non-envelope
+ * rejection) is treated as a *system* error and reported — failing safe toward
+ * visibility rather than silently swallowing an unexpected failure.
+ */
+export function isExpectedCommandError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof (error as { code: unknown }).code === 'string' &&
+    USER_FACING_ERROR_CODES.has((error as { code: string }).code)
+  )
+}
+
 class ExpectedError extends Error {}
 
 export function reportError(error: unknown, context?: Record<string, unknown>) {
-  if (!sentryEnabled || error instanceof ExpectedError) {
+  if (!sentryEnabled || error instanceof ExpectedError || isExpectedCommandError(error)) {
     return
   }
   Sentry.captureException(error, { extra: context })

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { toReportableError } from '@/observability/errors'
+import { isExpectedCommandError, toReportableError } from '@/observability/errors'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { Sentry } from '@/observability/sentry'
 import { traceManager } from '@/observability/trace'
@@ -40,10 +40,15 @@ export async function invokeWithTrace<T>(
       },
     })
   } catch (error) {
-    Sentry.captureException(toReportableError(error, command), {
-      tags: { command, traceId: trace.traceId },
-      extra: { args: safeArgs },
-    })
+    // Skip expected user/validation errors (see `isExpectedCommandError`) so
+    // input-validation rejections don't raise Sentry alerts. The breadcrumb
+    // above still records the invocation for context on real failures.
+    if (!isExpectedCommandError(error)) {
+      Sentry.captureException(toReportableError(error, command), {
+        tags: { command, traceId: trace.traceId },
+        extra: { args: safeArgs },
+      })
+    }
     throw error
   } finally {
     traceManager.endTrace()

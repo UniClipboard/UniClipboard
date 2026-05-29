@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invokeWithTrace } from '@/lib/tauri-command'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { Sentry } from '@/observability/sentry'
@@ -24,6 +24,10 @@ vi.mock('@/observability/sentry', () => ({
 }))
 
 describe('invokeWithTrace', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('invokes command with trace metadata and args', async () => {
     const trace = { traceId: 'trace-1', startTime: 1234, operation: 'command' }
     const args = { limit: 1, token: 'secret' }
@@ -79,6 +83,37 @@ describe('invokeWithTrace', () => {
         timestamp: trace.startTime,
       },
     })
+    expect(traceManager.endTrace).toHaveBeenCalled()
+  })
+
+  it('does NOT report expected user/validation errors to Sentry', async () => {
+    const trace = { traceId: 'trace-3', startTime: 1, operation: 'command' }
+    // A typed-error envelope whose `code` is a known user error — the user
+    // entered the wrong passphrase. This is normal product flow, not an alert.
+    const userError = { code: 'WRONG_PASSPHRASE' }
+
+    vi.mocked(traceManager.startTrace).mockReturnValue(trace)
+    vi.mocked(invoke).mockRejectedValueOnce(userError)
+
+    await expect(invokeWithTrace('unlock_space_with_passphrase')).rejects.toEqual(userError)
+
+    // Still rethrows for the caller to handle, and still leaves a breadcrumb…
+    expect(Sentry.addBreadcrumb).toHaveBeenCalled()
+    // …but no exception is captured.
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+    expect(traceManager.endTrace).toHaveBeenCalled()
+  })
+
+  it('reports unexpected system errors to Sentry', async () => {
+    const trace = { traceId: 'trace-4', startTime: 2, operation: 'command' }
+    const systemError = { code: 'PERSISTENCE_FAILED', message: 'disk full' }
+
+    vi.mocked(traceManager.startTrace).mockReturnValue(trace)
+    vi.mocked(invoke).mockRejectedValueOnce(systemError)
+
+    await expect(invokeWithTrace('register_mobile_device')).rejects.toEqual(systemError)
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1)
     expect(traceManager.endTrace).toHaveBeenCalled()
   })
 })

@@ -15,6 +15,7 @@ src-tauri/target
 # 保留原样格式以便 git diff 直接对比 cargo 输出；CI 会用 git diff --exit-code
 # 检查 schema drift。
 src/lib/ipc-bindings.generated.ts
+src/lib/error-severity.generated.ts
 
 # Agent and tooling infrastructure (not project source)
 # Rule: any dot-directory that is NOT project source code goes here.

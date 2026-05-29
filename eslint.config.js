@@ -26,6 +26,8 @@ export default tseslint.config(
       // tauri-specta codegen artifact (issue #698) — schema 由 Rust 端
       // 用 cargo test --test specta_export 重新生成；不应被 eslint 校验。
       'src/lib/ipc-bindings.generated.ts',
+      // 同一 specta export test 生成的错误分级表（USER_FACING_ERROR_CODES）。
+      'src/lib/error-severity.generated.ts',
     ],
   },
   js.configs.recommended,

@@ -22,6 +22,9 @@ use specta_typescript::Typescript;
 /// `CARGO_MANIFEST_DIR` 在 compile 时被替换成绝对路径，避免被 cwd 影响。
 const BINDINGS_PATH_FROM_CRATE: &str = "../../../src/lib/ipc-bindings.generated.ts";
 
+/// 错误分级表的导出目标 —— 与 binding 同目录的 `error-severity.generated.ts`。
+const SEVERITY_PATH_FROM_CRATE: &str = "../../../src/lib/error-severity.generated.ts";
+
 /// codegen header —— 写在生成文件最顶部。
 ///
 /// - `@ts-nocheck` + eslint-disable: 生成文件绕开仓库 lint 规则；
@@ -52,4 +55,42 @@ fn export_ipc_bindings() {
     uc_tauri::specta_builder::build()
         .export(exporter, &target)
         .unwrap_or_else(|e| panic!("specta export to {} failed: {e}", target.display()));
+
+    export_error_severity();
+}
+
+/// 把 Rust 侧的"用户错误 code 集合"导出成前端可消费的 `Set<string>`。
+///
+/// ## 为什么和 binding 分开成单独文件
+///
+/// `ipc-bindings.generated.ts` 是 tauri-specta 整文件覆写的产物,没有插桩点;
+/// 而分级表是我们自有的 codegen。拆成 `error-severity.generated.ts` 让两者各
+/// 自独立覆写,互不污染,且共用同一个 schema-drift 闸门:任一错误枚举改了
+/// code / 分级,本 test 会改写文件,CI 的 `git diff --exit-code` 立即报红。
+///
+/// 权威来源是 `commands::severity` 里的分级表,本函数只做格式化落盘 —— 前端
+/// 不再各自维护一份"哪些 code 是用户错误"的清单。
+fn export_error_severity() {
+    let target: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(SEVERITY_PATH_FROM_CRATE);
+
+    let mut body = String::new();
+    body.push_str(HEADER);
+    body.push_str(
+        "//\n\
+         // 用户/校验类错误的 code 集合。前端中央 IPC 封装层据此判断某个 command\n\
+         // 拒绝是否属于「用户操作错误」—— 是则不上报 Sentry(正常产品流程),\n\
+         // 否则按系统错误上报。未列出的 code 默认按系统错误处理(fail-safe)。\n\
+         //\n\
+         // 权威来源:`src-tauri/crates/uc-tauri/src/commands/severity.rs`。\n\n",
+    );
+    body.push_str("export const USER_FACING_ERROR_CODES: ReadonlySet<string> = new Set([\n");
+    for code in uc_tauri::commands::severity::user_facing_error_codes() {
+        body.push_str("  \"");
+        body.push_str(code);
+        body.push_str("\",\n");
+    }
+    body.push_str("]);\n");
+
+    std::fs::write(&target, body)
+        .unwrap_or_else(|e| panic!("severity export to {} failed: {e}", target.display()));
 }

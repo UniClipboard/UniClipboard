@@ -66,6 +66,12 @@ enum Commands {
             help = "Run daemon in foreground (log output to terminal)"
         )]
         foreground: bool,
+        /// Run as a headless server node (VPS / container): no system
+        /// clipboard and no clipboard watcher. The node still syncs over
+        /// iroh as a normal Space member and serves the mobile-sync gateway.
+        /// Join the Space first (`uniclip join`) before starting.
+        #[arg(long)]
+        server: bool,
     },
     /// Stop the running daemon
     Stop,
@@ -305,10 +311,12 @@ fn main() -> anyhow::Result<()> {
         // 标成 `daemon`,Sentry 上能清楚区分 daemon 事件与 CLI 事件。
         std::env::set_var("UC_HOST_ROLE", "daemon");
 
-        // CLI `start` detached-spawns this same binary with the `daemon`
-        // subcommand. Standalone is the only mode this binary ever runs in
-        // since the GUI has been switched to in-process daemon startup.
-        return uc_desktop::daemon::run(uc_desktop::daemon::run_mode::DaemonRunMode::Standalone);
+        // CLI `start [--server]` detached-spawns this same binary with the
+        // `daemon` subcommand plus the `UC_DAEMON_RUN_MODE` spawn contract.
+        // Run-mode resolution AND the headless-implies-Noop-clipboard detail
+        // live in the desktop host (`run_standalone_from_env`), not in the
+        // CLI — the CLI only sets the env contract before spawning. ADR-007 §2.2.
+        return uc_desktop::daemon::run_standalone_from_env();
     }
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -317,8 +325,8 @@ fn main() -> anyhow::Result<()> {
 
     let exit_code = rt.block_on(async {
         match command {
-            Commands::Start { foreground } => {
-                commands::start::run(foreground, cli.json, cli.verbose).await
+            Commands::Start { foreground, server } => {
+                commands::start::run(foreground, server, cli.json, cli.verbose).await
             }
             Commands::Stop => commands::stop::run(cli.json, cli.verbose).await,
             Commands::Status => commands::status::run(cli.json, cli.verbose).await,
@@ -666,5 +674,45 @@ mod tests {
         );
         let r2 = Cli::try_parse_from(["uniclip", "send", "--resend", "ent-1", "--peer", "dev-a"]);
         assert!(r2.is_ok(), "expected resend mode with --peer to parse");
+    }
+
+    #[test]
+    fn start_accepts_server_flag() {
+        // `uniclip start --server` 是无头节点的启动契约 —— 部署脚本依赖它。
+        let cli = Cli::try_parse_from(["uniclip", "start", "--server"])
+            .expect("expected `start --server` to parse");
+        match cli.command {
+            Some(super::Commands::Start { foreground, server }) => {
+                assert!(server, "--server must set the server flag");
+                assert!(!foreground, "foreground must default to false");
+            }
+            _ => panic!("expected Start command"),
+        }
+    }
+
+    #[test]
+    fn start_defaults_to_non_server() {
+        // 不带 --server 时默认普通 daemon（保留真实系统剪贴板行为）。
+        let cli = Cli::try_parse_from(["uniclip", "start"]).expect("expected `start` to parse");
+        match cli.command {
+            Some(super::Commands::Start { server, .. }) => {
+                assert!(!server, "plain `start` must not enable server mode");
+            }
+            _ => panic!("expected Start command"),
+        }
+    }
+
+    #[test]
+    fn start_server_with_foreground_parses() {
+        // `--server` 与 `--foreground` 可叠加（调试时前台跑 server）。
+        let cli = Cli::try_parse_from(["uniclip", "start", "--server", "--foreground"])
+            .expect("expected `start --server --foreground` to parse");
+        match cli.command {
+            Some(super::Commands::Start { foreground, server }) => {
+                assert!(server);
+                assert!(foreground);
+            }
+            _ => panic!("expected Start command"),
+        }
     }
 }

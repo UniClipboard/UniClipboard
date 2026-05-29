@@ -129,6 +129,37 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     })
 }
 
+/// daemon 运行模式的 **spawn 契约环境变量**——CLI `start [--server]` 与它
+/// detached-spawn 出来的 `uniclip daemon` 子进程之间通过它传递运行模式。
+///
+/// 契约定义在桌面 host 这一层（而非 CLI）：CLI 只负责把用户的 `--server`
+/// 意图写成这个 env，子进程继承后由 [`run_standalone_from_env`] 解析。见
+/// ADR-007 §2.2。
+pub const RUN_MODE_ENV: &str = "UC_DAEMON_RUN_MODE";
+
+/// [`RUN_MODE_ENV`] 取此值时选择无头 server 运行模式
+/// （[`DaemonRunMode::ServerHeadless`]）。
+pub const RUN_MODE_SERVER: &str = "server";
+
+/// 独立 daemon binary 入口：**从环境解析运行模式**后启动。
+///
+/// 读 [`RUN_MODE_ENV`]：`"server"` → [`DaemonRunMode::ServerHeadless`]
+/// （无头节点，无 X11/Wayland display）；其余 → [`DaemonRunMode::Standalone`]。
+///
+/// run-mode 解析与"无头 ⇒ 不接系统剪贴板"这个**平台实现细节**都收在桌面
+/// host 内部：server 模式下在 bootstrap 触达 `create_platform_layer` 之前，
+/// 先设 `UC_DISABLE_SYSTEM_CLIPBOARD=1`（与 CLI 业务命令同一开关），让平台层
+/// 装配 Noop 适配器。CLI 只设 [`RUN_MODE_ENV`] 契约，不碰这些细节（ADR-007 §2.2）。
+pub fn run_standalone_from_env() -> anyhow::Result<()> {
+    let run_mode = if std::env::var(RUN_MODE_ENV).as_deref() == Ok(RUN_MODE_SERVER) {
+        std::env::set_var("UC_DISABLE_SYSTEM_CLIPBOARD", "1");
+        DaemonRunMode::ServerHeadless
+    } else {
+        DaemonRunMode::Standalone
+    };
+    run(run_mode)
+}
+
 /// In-process daemon 启动入口（async）。
 ///
 /// 假设 caller 已经在某个 tokio runtime 上下文中。完成装配后用
@@ -182,6 +213,7 @@ pub(crate) async fn start_in_process(
 
     let runtime_workers = build_daemon_runtime_workers(DaemonRuntimeAssemblyInput {
         deps: &deps,
+        run_mode,
         event_tx: runtime_controls.event_tx.clone(),
         clipboard_capture_gate: runtime_controls.clipboard_capture_gate.clone(),
         clipboard_sync_facade: clipboard_sync_facade.clone(),

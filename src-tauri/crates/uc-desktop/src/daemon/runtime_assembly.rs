@@ -24,6 +24,7 @@ use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_platform::clipboard::LocalClipboard;
 use uc_webserver::api::types::DaemonWsEvent;
 
+use crate::daemon::run_mode::DaemonRunMode;
 use crate::daemon::workers::clipboard_watcher::{
     ClipboardWatcherWorker, DaemonClipboardChangeHandler,
 };
@@ -33,6 +34,9 @@ use crate::daemon::workers::inbound_clipboard_sync::InboundClipboardSyncWorker;
 /// daemon worker 装配所需输入。
 pub struct DaemonRuntimeAssemblyInput<'a> {
     pub deps: &'a AppDeps,
+    /// daemon 运行模式。决定是否装配系统剪贴板出站监听——
+    /// `ServerHeadless` 不接 OS 剪贴板，`clipboard_watcher` 产出 `None`。
+    pub run_mode: DaemonRunMode,
     pub event_tx: broadcast::Sender<DaemonWsEvent>,
     pub clipboard_capture_gate: Arc<AtomicBool>,
     pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
@@ -68,7 +72,9 @@ pub struct DaemonRuntimeAssemblyInput<'a> {
 /// 出站管线 fan-out 给其他桌面"成立, 文件类型的 blob 发布逻辑只此一处,
 /// 不重复实现。
 pub struct DaemonRuntimeWorkers {
-    pub clipboard_watcher: Arc<ClipboardWatcherWorker>,
+    /// 系统剪贴板出站监听 worker。`ServerHeadless` 运行模式下为 `None`
+    /// ——无头节点不接 OS 剪贴板，service plan 不会 spawn 它。
+    pub clipboard_watcher: Option<Arc<ClipboardWatcherWorker>>,
     pub inbound_clipboard_sync: Arc<InboundClipboardSyncWorker>,
     pub file_sync_orchestrator: Arc<FileSyncOrchestratorWorker>,
     pub apply_inbound: Arc<ApplyInboundClipboardUseCase>,
@@ -82,13 +88,6 @@ pub struct DaemonRuntimeWorkers {
 pub fn build_daemon_runtime_workers(
     input: DaemonRuntimeAssemblyInput<'_>,
 ) -> anyhow::Result<DaemonRuntimeWorkers> {
-    let local_clipboard: Arc<dyn SystemClipboardPort> = Arc::new(
-        LocalClipboard::new()
-            .map_err(|e| anyhow::anyhow!("failed to create LocalClipboard: {}", e))?,
-    );
-
-    let clipboard_change_origin = input.deps.clipboard.clipboard_change_origin.clone();
-
     let apply_inbound_capture_uc = Arc::new(CaptureClipboardUseCase::new(
         input.deps.clipboard.clipboard_entry_repo.clone(),
         input.deps.clipboard.clipboard_event_repo.clone(),
@@ -114,16 +113,6 @@ pub fn build_daemon_runtime_workers(
         .with_host_event_emitter(input.host_event_bus),
     );
     let inbound_clipboard_facade = Arc::new(InboundClipboardFacade::new(apply_inbound_uc.clone()));
-    let clipboard_capture_facade = Arc::new(ClipboardCaptureFacade::new(apply_inbound_capture_uc));
-    let clipboard_live_index_facade = Arc::new(ClipboardLiveIndexFacade::new(Arc::new(
-        ClipboardLiveIndexer::new(ClipboardLiveIndexDeps {
-            clipboard_entry_repo: input.deps.clipboard.clipboard_entry_repo.clone(),
-            representation_policy: input.deps.clipboard.representation_policy.clone(),
-            search_key_derivation: input.deps.search.search_key_derivation.clone(),
-            search_pipeline: input.deps.search.search_pipeline.clone(),
-            search_index: input.deps.search.search_index.clone(),
-        }),
-    )));
     let clipboard_outbound_facade = Arc::new(ClipboardOutboundFacade::new(ClipboardOutboundDeps {
         // dispatch path
         settings: input.deps.settings.clone(),
@@ -141,18 +130,41 @@ pub fn build_daemon_runtime_workers(
         device_identity: input.deps.device.device_identity.clone(),
     }));
 
-    let clipboard_change_handler = Arc::new(DaemonClipboardChangeHandler::new(
-        input.event_tx.clone(),
-        clipboard_change_origin,
-        input.clipboard_capture_gate,
-        clipboard_capture_facade,
-        clipboard_live_index_facade,
-        clipboard_outbound_facade.clone(),
-    ));
-    let clipboard_watcher = Arc::new(ClipboardWatcherWorker::new(
-        local_clipboard,
-        clipboard_change_handler,
-    ));
+    // 系统剪贴板出站监听：只有接管系统剪贴板的运行模式才装配。
+    // `ServerHeadless` 无 X11/Wayland display —— 既不构造 `LocalClipboard`
+    // （会失败），也不 spawn `ClipboardWatcherWorker`（没有 OS 剪贴板可监
+    // 听）。入站落库 / mobile_lan 网关 / fan-out 全部不受影响。
+    let clipboard_watcher = if input.run_mode.runs_system_clipboard() {
+        let local_clipboard: Arc<dyn SystemClipboardPort> = Arc::new(
+            LocalClipboard::new()
+                .map_err(|e| anyhow::anyhow!("failed to create LocalClipboard: {}", e))?,
+        );
+        let clipboard_capture_facade =
+            Arc::new(ClipboardCaptureFacade::new(apply_inbound_capture_uc));
+        let clipboard_live_index_facade = Arc::new(ClipboardLiveIndexFacade::new(Arc::new(
+            ClipboardLiveIndexer::new(ClipboardLiveIndexDeps {
+                clipboard_entry_repo: input.deps.clipboard.clipboard_entry_repo.clone(),
+                representation_policy: input.deps.clipboard.representation_policy.clone(),
+                search_key_derivation: input.deps.search.search_key_derivation.clone(),
+                search_pipeline: input.deps.search.search_pipeline.clone(),
+                search_index: input.deps.search.search_index.clone(),
+            }),
+        )));
+        let clipboard_change_handler = Arc::new(DaemonClipboardChangeHandler::new(
+            input.event_tx.clone(),
+            input.deps.clipboard.clipboard_change_origin.clone(),
+            input.clipboard_capture_gate,
+            clipboard_capture_facade,
+            clipboard_live_index_facade,
+            clipboard_outbound_facade.clone(),
+        ));
+        Some(Arc::new(ClipboardWatcherWorker::new(
+            local_clipboard,
+            clipboard_change_handler,
+        )))
+    } else {
+        None
+    };
 
     let inbound_clipboard_sync = Arc::new(InboundClipboardSyncWorker::new(
         input.clipboard_sync_facade,

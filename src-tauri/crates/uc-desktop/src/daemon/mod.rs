@@ -25,5 +25,7 @@ pub(crate) mod workers;
 
 pub use handle::DaemonHandle;
 pub(crate) use host::start_in_process;
-pub use host::{run, ProcessRuntimeHandles};
+pub use host::{
+    run, run_standalone_from_env, ProcessRuntimeHandles, RUN_MODE_ENV, RUN_MODE_SERVER,
+};
 pub use ownership::DaemonOwnership;

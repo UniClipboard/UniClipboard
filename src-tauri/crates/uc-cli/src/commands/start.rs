@@ -29,7 +29,20 @@ impl fmt::Display for StartOutput {
 }
 
 /// Run the start command.
-pub async fn run(foreground: bool, json: bool, verbose: bool) -> i32 {
+pub async fn run(foreground: bool, server: bool, json: bool, verbose: bool) -> i32 {
+    if server {
+        // Translate the user's `--server` flag into the daemon spawn
+        // contract. The spawned `uniclip daemon` child inherits this
+        // process's env (same pattern as `--profile` / `UC_PROFILE`); the
+        // desktop host resolves it via `run_standalone_from_env`. The CLI
+        // deliberately does NOT resolve the run mode or touch clipboard
+        // switches here — that knowledge lives in uc-desktop (ADR-007 §2.2).
+        std::env::set_var(
+            uc_desktop::daemon::RUN_MODE_ENV,
+            uc_desktop::daemon::RUN_MODE_SERVER,
+        );
+    }
+
     if let Some(code) = check_setup_complete(json, verbose).await {
         return code;
     }

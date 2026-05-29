@@ -14,7 +14,9 @@ pub struct DaemonServicePlanInput {
     pub run_mode: DaemonRunMode,
     pub encryption_unlocked: bool,
     pub file_sync_orchestrator: Arc<dyn DaemonService>,
-    pub clipboard_watcher: Arc<dyn DaemonService>,
+    /// 系统剪贴板出站监听。`ServerHeadless` 模式下为 `None`——无 OS 剪贴板，
+    /// 既不进 `services` 也不进 `deferred_services`。
+    pub clipboard_watcher: Option<Arc<dyn DaemonService>>,
     pub inbound_clipboard_sync: Arc<dyn DaemonService>,
     pub search_coordinator: Arc<dyn DaemonService>,
 }
@@ -32,19 +34,27 @@ impl DaemonServicePlan {
     pub fn build(input: DaemonServicePlanInput) -> Self {
         let should_defer_clipboard =
             input.run_mode.waits_for_gui_ready() || !input.encryption_unlocked;
+        let has_clipboard_watcher = input.clipboard_watcher.is_some();
         let state = Arc::new(RwLock::new(RuntimeState::new(initial_statuses(
             should_defer_clipboard,
+            has_clipboard_watcher,
         ))));
 
         let mut services: Vec<Arc<dyn DaemonService>> = vec![input.file_sync_orchestrator];
         let mut deferred_services: Vec<Arc<dyn DaemonService>> = Vec::new();
 
+        // `clipboard_watcher` 在 `ServerHeadless` 下为 `None` —— 无头节点没有
+        // OS 剪贴板可监听,跳过它;inbound sync / search 仍按解锁状态编排。
         if should_defer_clipboard {
-            deferred_services.push(input.clipboard_watcher);
+            if let Some(watcher) = input.clipboard_watcher {
+                deferred_services.push(watcher);
+            }
             deferred_services.push(input.inbound_clipboard_sync);
             deferred_services.push(input.search_coordinator);
         } else {
-            services.push(input.clipboard_watcher);
+            if let Some(watcher) = input.clipboard_watcher {
+                services.push(watcher);
+            }
             services.push(input.inbound_clipboard_sync);
             services.push(input.search_coordinator);
         }
@@ -75,33 +85,40 @@ impl DaemonServicePlan {
     }
 }
 
-fn initial_statuses(should_defer_clipboard: bool) -> Vec<DaemonServiceSnapshot> {
-    vec![
-        DaemonServiceSnapshot {
+fn initial_statuses(
+    should_defer_clipboard: bool,
+    has_clipboard_watcher: bool,
+) -> Vec<DaemonServiceSnapshot> {
+    let mut statuses = Vec::new();
+    // `ServerHeadless` 没有 clipboard-watcher —— 不列进 status,免得 status
+    // 输出谎报一个永远不会启动的服务。
+    if has_clipboard_watcher {
+        statuses.push(DaemonServiceSnapshot {
             name: "clipboard-watcher".to_string(),
             health: deferred_health(should_defer_clipboard),
-        },
-        DaemonServiceSnapshot {
-            name: "inbound-clipboard-sync".to_string(),
-            health: deferred_health(should_defer_clipboard),
-        },
-        DaemonServiceSnapshot {
-            name: "file-sync-orchestrator".to_string(),
-            health: ServiceHealth::Healthy,
-        },
-        DaemonServiceSnapshot {
-            name: "peer-keepalive".to_string(),
-            health: ServiceHealth::Healthy,
-        },
-        DaemonServiceSnapshot {
-            name: "peer-monitor".to_string(),
-            health: ServiceHealth::Healthy,
-        },
-        DaemonServiceSnapshot {
-            name: "search-coordinator".to_string(),
-            health: deferred_health(should_defer_clipboard),
-        },
-    ]
+        });
+    }
+    statuses.push(DaemonServiceSnapshot {
+        name: "inbound-clipboard-sync".to_string(),
+        health: deferred_health(should_defer_clipboard),
+    });
+    statuses.push(DaemonServiceSnapshot {
+        name: "file-sync-orchestrator".to_string(),
+        health: ServiceHealth::Healthy,
+    });
+    statuses.push(DaemonServiceSnapshot {
+        name: "peer-keepalive".to_string(),
+        health: ServiceHealth::Healthy,
+    });
+    statuses.push(DaemonServiceSnapshot {
+        name: "peer-monitor".to_string(),
+        health: ServiceHealth::Healthy,
+    });
+    statuses.push(DaemonServiceSnapshot {
+        name: "search-coordinator".to_string(),
+        health: deferred_health(should_defer_clipboard),
+    });
+    statuses
 }
 
 fn deferred_health(deferred: bool) -> ServiceHealth {
@@ -193,12 +210,41 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn server_headless_omits_clipboard_watcher() {
+        // 无头 server: clipboard_watcher = None。watcher 既不进 services 也不进
+        // deferred,status 列表里也不出现 clipboard-watcher。inbound sync +
+        // search 仍照常 —— server 要靠它们收 P2P 入站并建索引。
+        let plan = DaemonServicePlan::build(DaemonServicePlanInput {
+            run_mode: DaemonRunMode::ServerHeadless,
+            encryption_unlocked: true,
+            file_sync_orchestrator: service("file-sync-orchestrator"),
+            clipboard_watcher: None,
+            inbound_clipboard_sync: service("inbound-clipboard-sync"),
+            search_coordinator: service("search-coordinator"),
+        });
+
+        // file-sync + inbound-sync + search-coordinator = 3,无 watcher。
+        assert_eq!(plan.services.len(), 3);
+        assert!(plan.deferred_services.is_empty());
+
+        let state = plan.state.read().await;
+        assert!(
+            health_of(&state, "clipboard-watcher").is_none(),
+            "headless server must not list a clipboard-watcher service"
+        );
+        assert_eq!(
+            health_of(&state, "inbound-clipboard-sync"),
+            Some(ServiceHealth::Healthy)
+        );
+    }
+
     fn input(run_mode: DaemonRunMode, encryption_unlocked: bool) -> DaemonServicePlanInput {
         DaemonServicePlanInput {
             run_mode,
             encryption_unlocked,
             file_sync_orchestrator: service("file-sync-orchestrator"),
-            clipboard_watcher: service("clipboard-watcher"),
+            clipboard_watcher: Some(service("clipboard-watcher")),
             inbound_clipboard_sync: service("inbound-clipboard-sync"),
             search_coordinator: service("search-coordinator"),
         }

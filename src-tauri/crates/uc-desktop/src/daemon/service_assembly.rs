@@ -20,7 +20,10 @@ pub fn build_daemon_service_plan(
         encryption_unlocked,
         file_sync_orchestrator: Arc::clone(&runtime_workers.file_sync_orchestrator)
             as Arc<dyn DaemonService>,
-        clipboard_watcher: Arc::clone(&runtime_workers.clipboard_watcher) as Arc<dyn DaemonService>,
+        clipboard_watcher: runtime_workers
+            .clipboard_watcher
+            .as_ref()
+            .map(|w| Arc::clone(w) as Arc<dyn DaemonService>),
         inbound_clipboard_sync: Arc::clone(&runtime_workers.inbound_clipboard_sync)
             as Arc<dyn DaemonService>,
         search_coordinator: Arc::clone(&search_assembly.service) as Arc<dyn DaemonService>,

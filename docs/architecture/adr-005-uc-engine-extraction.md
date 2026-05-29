@@ -2,7 +2,7 @@
 
 - **状态**：Draft（提案中）
 - **日期**：2026-05-20
-- **相关文档**：`docs/architecture/ports.md`、`docs/agent/architecture-rules.md`、`docs/architecture/module-boundaries.md`、`docs/architecture/bootstrap.md`
+- **相关文档**：`docs/architecture/ports.md`、`docs/agent/architecture-rules.md`、`docs/architecture/module-boundaries.md`、`docs/architecture/bootstrap.md`、[`adr-007-headless-server-node-deployment.md`](./adr-007-headless-server-node-deployment.md)（无头 server 节点部署——本 ADR host 模型的一个运行模式）
 
 ## 1. 背景
 
@@ -386,6 +386,7 @@ Stage 1 全部 land 后才启动。
 1. **iOS share extension 拓扑**：v1 选 (A) extension 内 in-process 跑 engine 子集，还是 (B) extension 仅写持久队列、主 app 处理？
 2. **UniFFI 的 async 标注 vs callback bridge**：哪种风格更适合 `EngineHandle::start` 这种长 init 操作？
 3. **CLI 的 in-process 路径是否仍保留**？还是统一改走 `uc-daemon-client`（即便在同机上也跨进程）？这影响 `EngineHandle` 是否要支持"无 daemon 模式"。
+   - **部分解答（[ADR-007](./adr-007-headless-server-node-deployment.md) §2.2）**：本期保留单二进制自启（`uniclip start` detached-spawn `uniclip daemon`），RunMode 解析下沉 `uc-desktop`（Scope A）；拆独立 `uniclipd` 二进制（Scope B）暂缓，须单独 ADR。完整的"是否统一走 daemon-client"仍待定。
 4. **mobile share intent 触发的 entry 是否走 `clipboard_capture → dispatch_entry → EntryDeliveryRecord`**？需要核 `crates/uc-application/src/facade/mobile_sync/` 的内部路径；若该路径不落 delivery record，mobile 上的 entry 将无法被 resend，需要补一条路径桥接。
 
 ## 8. 决策记录

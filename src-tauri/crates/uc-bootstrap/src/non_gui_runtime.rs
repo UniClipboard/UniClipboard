@@ -571,12 +571,15 @@ pub async fn build_cli_app_runtime(
 
     // 【checker BLOCKER 4 — 单一取反点铁律】见 builders.rs 同处注释。
     // 不在此处内联 `let disable_relays = !allow_relay_fallback;`。
-    let iroh_config = crate::network_policy::relay_policy_to_iroh_config(
+    let mut iroh_config = crate::network_policy::relay_policy_to_iroh_config(
         allow_relay_fallback,
         allow_overlay_network_addrs,
         custom_relay_urls,
         None,
     );
+    // #900：从 env 读取直连可达性（固定 UDP 端口 + 广播公网地址）并写入。
+    // 必须在 `build_space_setup_assembly`（首次 endpoint 快照/配对交换）之前。
+    crate::network_policy::apply_iroh_direct_reachability_from_env(&mut iroh_config);
 
     tracing::info!(
         target: "settings.network",

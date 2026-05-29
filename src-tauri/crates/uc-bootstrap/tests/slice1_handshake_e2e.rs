@@ -346,6 +346,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
             disable_relays: true,
             allow_overlay_network_addrs: false,
             custom_relay_urls: Vec::new(),
+            ..Default::default()
         },
     )
     .await

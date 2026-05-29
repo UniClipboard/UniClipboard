@@ -17,6 +17,7 @@
 //! [`install_presence`]: IrohNodeBuilder::install_presence
 //! [`install_clipboard`]: IrohNodeBuilder::install_clipboard
 
+use std::net::{Ipv4Addr, SocketAddr};
 #[cfg(not(any(test, feature = "test-util")))]
 use std::sync::OnceLock;
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -199,6 +200,29 @@ pub struct IrohNodeConfig {
     /// are unconditionally filtered regardless of this flag — they have no
     /// legitimate cross-host use case.
     pub allow_overlay_network_addrs: bool,
+    /// Pin the iroh UDP socket to a fixed IPv4 port instead of an
+    /// OS-assigned ephemeral one (UniClipboard#900). `None` → bind
+    /// `0.0.0.0:0` (today's behavior). `Some(port)` → bind `0.0.0.0:port`
+    /// so the port is stable across restarts, letting an operator
+    /// port-forward / firewall-allow a known UDP port to a NAT'd or
+    /// containerized node. Only the IPv4 socket is pinned; the IPv6 default
+    /// bind is left untouched (matches the VPS / Docker-bridge scenario and
+    /// avoids a hard-fail on v4-only hosts).
+    ///
+    /// Sourced from `UC_IROH_BIND_PORT` (parsed in `uc-bootstrap`); infra
+    /// only consumes the typed value.
+    pub bind_port: Option<u16>,
+    /// Advertise a configured public socket address as one of this node's
+    /// own direct-connection candidates (UniClipboard#900). `None` → only
+    /// discovered/reflexive addresses are advertised (today's behavior).
+    /// `Some(addr)` → inject `addr` into the advertised endpoint address at
+    /// **bind time** (iroh `Builder::external_addr`), so it is present in the
+    /// very first `endpoint.addr()` snapshot — i.e. before pairing/dispatch
+    /// exchange the address blob with peers. With the relay disabled, a
+    /// remote desktop that knows only this address can dial the node directly.
+    ///
+    /// Sourced from `UC_IROH_PUBLIC_ADDR` (parsed in `uc-bootstrap`).
+    pub public_addr: Option<SocketAddr>,
 }
 
 /// Snapshot the candidate set this endpoint is currently advertising and
@@ -518,6 +542,43 @@ impl IrohNodeBuilder {
             info!(
                 target: "iroh.address_lookup",
                 "LAN-only mode: cleared n0 pkarr/DNS lookup services; only mDNS will publish/resolve",
+            );
+        }
+
+        // UniClipboard#900 (a): pin the UDP socket to a fixed IPv4 port so a
+        // NAT'd / containerized node is reachable at a stable port across
+        // restarts. `bind_addr("0.0.0.0:port")` replaces iroh's default
+        // ephemeral IPv4 socket (still listens on all interfaces); the IPv6
+        // default bind is left untouched. The port is pre-parsed from
+        // `UC_IROH_BIND_PORT` in `uc-bootstrap`, so the only realistic failure
+        // here is the port already being in use — surfaced as `Bind`.
+        if let Some(port) = config.bind_port {
+            endpoint_builder = endpoint_builder
+                .bind_addr((Ipv4Addr::UNSPECIFIED, port))
+                .map_err(|err| {
+                    IrohNodeError::Bind(format!(
+                        "pin iroh UDP port {port} (UC_IROH_BIND_PORT): {err}"
+                    ))
+                })?;
+            info!(
+                target: "iroh.bind",
+                bind_port = port,
+                "pinned iroh UDP socket to fixed IPv4 port 0.0.0.0:{port} (UC_IROH_BIND_PORT)",
+            );
+        }
+
+        // UniClipboard#900 (b): advertise a configured public address as a
+        // direct-connection candidate. `external_addr` is applied at build
+        // time, so the address is present in the very first `endpoint.addr()`
+        // snapshot — before pairing/dispatch exchange the address blob with
+        // peers (acceptance criterion). With the relay disabled, a remote
+        // desktop that knows only this address can dial the node directly.
+        if let Some(public_addr) = config.public_addr {
+            endpoint_builder = endpoint_builder.external_addr(public_addr);
+            info!(
+                target: "iroh.bind",
+                %public_addr,
+                "advertising configured public address as a direct candidate (UC_IROH_PUBLIC_ADDR)",
             );
         }
 
@@ -950,6 +1011,53 @@ mod tests {
             Arc::new(InMemorySecureStorage::default()),
             Arc::new(Sha256IdentityFingerprintFactory),
         ))
+    }
+
+    /// UniClipboard#900: `bind_port` pins the iroh UDP socket to a fixed
+    /// IPv4 port. We grab a currently-free port from the OS, release it, then
+    /// assert the endpoint binds exactly that number (stable across restarts).
+    #[tokio::test]
+    async fn bind_pins_fixed_udp_port() {
+        // Ask the OS for a free UDP port, then drop the probe so iroh can
+        // claim the same number. Small TOCTOU window, acceptable for a test.
+        let probe = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).expect("probe socket");
+        let port = probe.local_addr().expect("probe addr").port();
+        drop(probe);
+
+        let store = identity_store();
+        let cfg = IrohNodeConfig {
+            bind_port: Some(port),
+            ..Default::default()
+        };
+        let builder = IrohNodeBuilder::bind(&store, cfg).await.expect("bind");
+        let bound = builder.endpoint.bound_sockets();
+        assert!(
+            bound.iter().any(|s| s.is_ipv4() && s.port() == port),
+            "expected pinned IPv4 port {port} in bound sockets {bound:?}"
+        );
+    }
+
+    /// UniClipboard#900: `public_addr` injects a configured public address
+    /// into the advertised endpoint address at bind time, so it is present in
+    /// the very first `endpoint.addr()` snapshot — before any pairing exchange.
+    #[tokio::test]
+    async fn bind_advertises_configured_public_addr() {
+        // A public, non-virtual IPv4 — never dropped by the address filter.
+        let public_addr = SocketAddr::V4(std::net::SocketAddrV4::new(
+            Ipv4Addr::new(1, 2, 3, 4),
+            12345,
+        ));
+        let store = identity_store();
+        let cfg = IrohNodeConfig {
+            public_addr: Some(public_addr),
+            ..Default::default()
+        };
+        let builder = IrohNodeBuilder::bind(&store, cfg).await.expect("bind");
+        let addr = builder.endpoint.addr();
+        assert!(
+            addr.ip_addrs().any(|a| *a == public_addr),
+            "configured public addr {public_addr} not advertised in {addr:?}"
+        );
     }
 
     #[tokio::test]

@@ -218,12 +218,15 @@ pub async fn build_daemon_lifecycle(
     // 【checker BLOCKER 4 — 单一取反点铁律】
     // `disable_relays` 的值**只能**通过 `relay_policy_to_iroh_config` 取得,
     // **不**在此处内联写 `let disable_relays = !allow_relay_fallback;`。
-    let iroh_config = crate::network_policy::relay_policy_to_iroh_config(
+    let mut iroh_config = crate::network_policy::relay_policy_to_iroh_config(
         allow_relay_fallback,
         allow_overlay_network_addrs,
         custom_relay_urls,
         None, // production 不 override rendezvous,使用默认 RENDEZVOUS_BASE_URL
     );
+    // #900：从 env 读取直连可达性（固定 UDP 端口 + 广播公网地址）并写入。
+    // 必须在 `build_space_setup_assembly`（首次 endpoint 快照/配对交换）之前。
+    crate::network_policy::apply_iroh_direct_reachability_from_env(&mut iroh_config);
 
     tracing::info!(
         target: "settings.network",

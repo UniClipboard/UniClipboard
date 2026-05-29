@@ -20,6 +20,8 @@
 //!
 //! 见 `.planning/phases/094-backend-network-allow-relay-fallback/094-CONTEXT.md`。
 
+use std::net::SocketAddr;
+
 use crate::space_setup::IrohNodeConfig;
 
 /// 把业务侧 `Settings.network` 翻译为 infra 侧 `IrohNodeConfig`。
@@ -55,7 +57,97 @@ pub(crate) fn relay_policy_to_iroh_config(
         allow_overlay_network_addrs,
         custom_relay_urls,
         rendezvous_base_url,
+        // 直连可达性（#900）来源于 env，不在本设置翻译点决定；由
+        // `apply_iroh_direct_reachability_from_env` 在 daemon / CLI 入口处填充。
+        bind_port: None,
+        public_addr: None,
     }
+}
+
+/// iroh 直连可达性输入（UniClipboard#900），来源于环境变量。两者默认
+/// `None`（沿用现状：随机 UDP 端口、不广播任何公网地址）。
+///
+/// 这是给 NAT / Docker bridge / VPS 后的无头节点用的：固定 UDP 端口让运维
+/// 能端口转发 / 防火墙放行一个已知端口；广播公网地址让远端桌面在 relay 关闭
+/// 时仍能凭存下来的地址直连。见 `docs/architecture/adr-007-...md` §2.4。
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct IrohDirectReachability {
+    pub bind_port: Option<u16>,
+    pub public_addr: Option<SocketAddr>,
+}
+
+/// 纯解析两个直连可达性 env 值（保持纯函数便于单测——只吃 `Option<&str>`，
+/// 不碰进程环境）。非法值**记 WARN 并回退 `None`**，不让 daemon 启动失败 ——
+/// 与 `parse_clipboard_integration_mode` 同样的防御姿态。
+///
+/// `UC_IROH_BIND_PORT=0` 视为"随机端口"哨兵 → 忽略（要固定就给非零端口）。
+pub(crate) fn parse_iroh_direct_reachability(
+    bind_port_raw: Option<&str>,
+    public_addr_raw: Option<&str>,
+) -> IrohDirectReachability {
+    let bind_port = bind_port_raw
+        .map(str::trim)
+        .filter(|raw| !raw.is_empty())
+        .and_then(|raw| match raw.parse::<u16>() {
+            Ok(0) => {
+                tracing::warn!(
+                    uc_iroh_bind_port = %raw,
+                    "UC_IROH_BIND_PORT=0 is the ephemeral-port sentinel; ignoring (use a non-zero fixed port)",
+                );
+                None
+            }
+            Ok(port) => Some(port),
+            Err(err) => {
+                tracing::warn!(
+                    uc_iroh_bind_port = %raw,
+                    error = %err,
+                    "invalid UC_IROH_BIND_PORT; ignoring (expected an integer 1..=65535)",
+                );
+                None
+            }
+        });
+
+    let public_addr = public_addr_raw
+        .map(str::trim)
+        .filter(|raw| !raw.is_empty())
+        .and_then(|raw| match raw.parse::<SocketAddr>() {
+            Ok(addr) => Some(addr),
+            Err(err) => {
+                tracing::warn!(
+                    uc_iroh_public_addr = %raw,
+                    error = %err,
+                    "invalid UC_IROH_PUBLIC_ADDR; ignoring (expected ip:port, e.g. 203.0.113.7:51820)",
+                );
+                None
+            }
+        });
+
+    IrohDirectReachability {
+        bind_port,
+        public_addr,
+    }
+}
+
+/// 读取直连可达性 env 并写入 `cfg`。在每个 production daemon / CLI 入口
+/// （`build_daemon_lifecycle` / `build_cli_app_runtime`）紧跟
+/// `relay_policy_to_iroh_config` 之后调用——daemon 与 CLI 配对路径都要广播
+/// 同一个公网地址。让 `relay_policy_to_iroh_config` 保持纯（只吃 settings、
+/// 不碰 env）。
+pub(crate) fn apply_iroh_direct_reachability_from_env(cfg: &mut IrohNodeConfig) {
+    let reach = parse_iroh_direct_reachability(
+        std::env::var("UC_IROH_BIND_PORT").ok().as_deref(),
+        std::env::var("UC_IROH_PUBLIC_ADDR").ok().as_deref(),
+    );
+    if reach.bind_port.is_some() || reach.public_addr.is_some() {
+        tracing::info!(
+            target: "settings.network",
+            bind_port = ?reach.bind_port,
+            public_addr = ?reach.public_addr,
+            "iroh direct-reachability configured from env (UC_IROH_BIND_PORT / UC_IROH_PUBLIC_ADDR)",
+        );
+    }
+    cfg.bind_port = reach.bind_port;
+    cfg.public_addr = reach.public_addr;
 }
 
 #[cfg(test)]
@@ -123,5 +215,73 @@ mod tests {
             cfg.custom_relay_urls,
             vec!["https://relay.example.com.".to_string()]
         );
+    }
+
+    /// settings 翻译点不负责直连可达性——两个字段恒为 None，由 env applier 填充。
+    #[test]
+    fn relay_policy_leaves_direct_reachability_unset() {
+        let cfg = relay_policy_to_iroh_config(true, false, Vec::new(), None);
+        assert_eq!(cfg.bind_port, None);
+        assert_eq!(cfg.public_addr, None);
+    }
+
+    /// #900：两个 env 都未设置 → 沿用现状（None/None）。
+    #[test]
+    fn direct_reachability_unset_is_none() {
+        let reach = parse_iroh_direct_reachability(None, None);
+        assert_eq!(reach, IrohDirectReachability::default());
+    }
+
+    /// #900：合法端口 + 合法地址 → Some/Some。
+    #[test]
+    fn direct_reachability_valid_values_parse() {
+        let reach = parse_iroh_direct_reachability(Some("51820"), Some("203.0.113.7:51820"));
+        assert_eq!(reach.bind_port, Some(51820));
+        assert_eq!(
+            reach.public_addr,
+            Some("203.0.113.7:51820".parse::<SocketAddr>().unwrap())
+        );
+    }
+
+    /// #900：前后空白被裁剪，仍能解析。
+    #[test]
+    fn direct_reachability_trims_whitespace() {
+        let reach = parse_iroh_direct_reachability(Some("  51820 "), Some(" 203.0.113.7:51820 "));
+        assert_eq!(reach.bind_port, Some(51820));
+        assert_eq!(
+            reach.public_addr,
+            Some("203.0.113.7:51820".parse::<SocketAddr>().unwrap())
+        );
+    }
+
+    /// #900：空字符串等价于未设置。
+    #[test]
+    fn direct_reachability_empty_is_none() {
+        let reach = parse_iroh_direct_reachability(Some("   "), Some(""));
+        assert_eq!(reach.bind_port, None);
+        assert_eq!(reach.public_addr, None);
+    }
+
+    /// #900：端口 0 是随机端口哨兵 → 忽略（回退 None）。
+    #[test]
+    fn direct_reachability_port_zero_ignored() {
+        let reach = parse_iroh_direct_reachability(Some("0"), None);
+        assert_eq!(reach.bind_port, None);
+    }
+
+    /// #900：非法值 WARN 后回退 None，不让 daemon 启动失败。
+    #[test]
+    fn direct_reachability_invalid_values_fall_back_to_none() {
+        let reach = parse_iroh_direct_reachability(Some("abc"), Some("not-an-addr"));
+        assert_eq!(reach.bind_port, None);
+        assert_eq!(reach.public_addr, None);
+
+        // 端口超出 u16 范围同样回退。
+        let overflow = parse_iroh_direct_reachability(Some("70000"), None);
+        assert_eq!(overflow.bind_port, None);
+
+        // 缺少端口的裸 IP 不是合法 SocketAddr → 回退。
+        let no_port = parse_iroh_direct_reachability(None, Some("203.0.113.7"));
+        assert_eq!(no_port.public_addr, None);
     }
 }

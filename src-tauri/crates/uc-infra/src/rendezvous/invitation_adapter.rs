@@ -149,11 +149,19 @@ impl RendezvousPairingInvitationAdapter {
                 .start_mdns_publisher(&code, &endpoint_id, &ticket, expires_at)
                 .await
             {
+                // mDNS is the only publish surface in LAN-only mode, so a
+                // start failure means zero channels were initiated. The port
+                // contract requires `Ok` only when at least one channel is
+                // live, so surface the failure instead of returning an
+                // undialable code.
                 warn!(
                     error = %err,
                     code = %code.as_str(),
                     "mDNS publisher start failed in LAN-only mode; this invitation cannot be discovered",
                 );
+                return Err(InvitationError::Internal(format!(
+                    "mDNS publisher start failed in LAN-only mode: {err}"
+                )));
             }
             return Ok(IssuedInvitation { code, expires_at });
         }
@@ -203,6 +211,16 @@ impl RendezvousPairingInvitationAdapter {
                 cloud_ok,
                 "mDNS publisher start failed; LAN joiners will not resolve via this code",
             );
+            // If the cloud channel also failed (local-mint fallback), mDNS
+            // was the only remaining surface — zero channels initiated. The
+            // port contract requires `Ok` only when at least one channel is
+            // live, so surface the failure. When `cloud_ok` is true the cloud
+            // channel still resolves the code, so the warning above suffices.
+            if !cloud_ok {
+                return Err(InvitationError::Internal(format!(
+                    "all discovery channels failed: cloud unreachable and mDNS start failed: {err}"
+                )));
+            }
         }
 
         Ok(IssuedInvitation { code, expires_at })
@@ -574,6 +592,34 @@ mod tests {
         )
     }
 
+    /// Asserts an invitation came from the local-mint fallback path (cloud
+    /// channel unreachable / misbehaving) rather than being adopted from a
+    /// server response. Two signals distinguish them:
+    ///
+    /// 1. Shape — `mint_invitation_code` emits `XXXX-XXXX` (9 chars).
+    /// 2. TTL — the local path sets `expires_at = now + LOCAL_MINT_TTL`, so
+    ///    the value must land in the window bracketed by the call. A
+    ///    server-minted expiry would carry the response's own timestamp.
+    fn assert_locally_minted(
+        issued: &IssuedInvitation,
+        before: DateTime<Utc>,
+        after: DateTime<Utc>,
+    ) {
+        let code = issued.code.as_str();
+        assert_eq!(code.len(), 9, "local-mint code is XXXX-XXXX, got {code:?}");
+        let (left, right) = code.split_once('-').expect("local-mint code has a hyphen");
+        assert_eq!(left.len(), 4, "left group of {code:?}");
+        assert_eq!(right.len(), 4, "right group of {code:?}");
+        assert!(
+            issued.expires_at >= before + LOCAL_MINT_TTL
+                && issued.expires_at <= after + LOCAL_MINT_TTL,
+            "expires_at {} outside local-mint window [{}, {}]",
+            issued.expires_at,
+            before + LOCAL_MINT_TTL,
+            after + LOCAL_MINT_TTL,
+        );
+    }
+
     // ── issue_invitation ─────────────────────────────────────────────────
 
     #[test]
@@ -720,7 +766,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issue_invitation_maps_5xx_to_service_unavailable() {
+    async fn issue_invitation_falls_back_to_local_mint_on_5xx() {
+        // A 5xx from the cloud channel is recoverable (`is_cloud_recoverable`):
+        // the sponsor mints a code locally and announces it on LAN instead of
+        // failing. This is the first-pair-no-WAN path — the cloud directory is
+        // down, but a same-LAN joiner still resolves the code via mDNS.
         let ep = loopback_endpoint().await;
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -734,8 +784,14 @@ mod tests {
             InMemorySettings::with_device_name(Some("mac")),
             server.uri(),
         );
-        let err = adapter.issue_invitation().await.unwrap_err();
-        assert!(matches!(err, InvitationError::ServiceUnavailable));
+        let before = Utc::now();
+        let issued = adapter
+            .issue_invitation()
+            .await
+            .expect("5xx is recoverable: falls back to local mint");
+        let after = Utc::now();
+
+        assert_locally_minted(&issued, before, after);
     }
 
     #[tokio::test]
@@ -765,7 +821,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issue_invitation_maps_malformed_response_to_internal() {
+    async fn issue_invitation_falls_back_to_local_mint_on_malformed_response() {
+        // A malformed 2xx body surfaces as a Parse error, which
+        // `is_cloud_recoverable` treats as "service misbehaving" → fall back
+        // to local mint rather than failing the issue. (A 4xx with a slug
+        // still maps to Internal — see
+        // `issue_invitation_maps_4xx_to_internal_with_slug`.)
         let ep = loopback_endpoint().await;
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -779,24 +840,35 @@ mod tests {
             InMemorySettings::with_device_name(Some("mac")),
             server.uri(),
         );
-        let err = adapter.issue_invitation().await.unwrap_err();
-        assert!(
-            matches!(err, InvitationError::Internal(ref m) if m.contains("parse")),
-            "got {err:?}"
-        );
+        let before = Utc::now();
+        let issued = adapter
+            .issue_invitation()
+            .await
+            .expect("malformed response is recoverable: falls back to local mint");
+        let after = Utc::now();
+
+        assert_locally_minted(&issued, before, after);
     }
 
     #[tokio::test]
-    async fn issue_invitation_maps_transport_failure_to_service_unavailable() {
+    async fn issue_invitation_falls_back_to_local_mint_on_transport_failure() {
         let ep = loopback_endpoint().await;
         // Point at a port guaranteed to reject — no server running there.
+        // Transport failure is recoverable, so the sponsor mints locally
+        // rather than surfacing an error.
         let adapter = make_adapter(
             ep,
             InMemorySettings::with_device_name(Some("mac")),
             "http://127.0.0.1:1",
         );
-        let err = adapter.issue_invitation().await.unwrap_err();
-        assert!(matches!(err, InvitationError::ServiceUnavailable));
+        let before = Utc::now();
+        let issued = adapter
+            .issue_invitation()
+            .await
+            .expect("transport failure is recoverable: falls back to local mint");
+        let after = Utc::now();
+
+        assert_locally_minted(&issued, before, after);
     }
 
     #[tokio::test]

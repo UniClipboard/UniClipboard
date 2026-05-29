@@ -107,3 +107,8 @@ snap/.snapcraft/
 p2p-bench-store/
 src-tauri/p2p-bench-store/
 .claude/scheduled_tasks.lock
+
+# planning-with-files artifacts (per-session working memory, not project state)
+/task_plan.md
+/progress.md
+/findings.md

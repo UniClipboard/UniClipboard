@@ -41,6 +41,8 @@ pub async fn run(foreground: bool, server: bool, json: bool, verbose: bool) -> i
             uc_desktop::daemon::RUN_MODE_ENV,
             uc_desktop::daemon::RUN_MODE_SERVER,
         );
+    } else {
+        std::env::remove_var(uc_desktop::daemon::RUN_MODE_ENV);
     }
 
     if let Some(code) = check_setup_complete(json, verbose).await {

@@ -133,12 +133,12 @@ echo "==> bob: init (writes baseline settings.json)"
 # `init` for bob also writes a fresh settings.json that bob's later
 # `join` will read. Without this step bob would still try the cloud
 # branch on dial.
+# BOB_DIR was wiped above, so `init` should always succeed here — do
+# not mask failures with `|| true` or by discarding output. Let `set -e`
+# abort with the real error if init fails, so the cause is visible.
 "$CLI" $COMMON_FLAGS --profile bob init \
     --passphrase "$PASSPHRASE" \
-    --device-name "bob (mdns-e2e)" \
-    >/dev/null 2>&1 || true
-# bob's init may complain that the profile is already initialized on
-# rerun — that's fine. We only need the settings file.
+    --device-name "bob (mdns-e2e)"
 if [[ ! -f "$BOB_DIR/settings.json" ]]; then
     echo "ERROR: bob settings.json missing after init" >&2
     exit 1
@@ -186,9 +186,11 @@ echo "    got code: $CODE"
 # Crockford alphabet, joined by a hyphen — `XXXX-XXXX`. If we got a
 # different shape, settings.json wasn't applied (server still minted).
 if [[ ! "$CODE" =~ ^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$ ]]; then
-    echo "WARNING: code '$CODE' does not match local-mint format" >&2
-    echo "    (expected Crockford XXXX-XXXX; may indicate cloud-minted code" >&2
-    echo "     leaked through — check alice log for 'cloud channel issued')" >&2
+    echo "FAIL: code '$CODE' does not match local-mint format" >&2
+    echo "    (expected Crockford XXXX-XXXX; this indicates settings.json" >&2
+    echo "     wasn't applied and a cloud-minted code leaked through —" >&2
+    echo "     check alice log for 'cloud channel issued')" >&2
+    exit 1
 fi
 
 echo "==> bob: join --code $CODE (LAN-only)"

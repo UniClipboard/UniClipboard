@@ -2,14 +2,20 @@
 //!
 //! Sponsor-side capability for issuing and consuming a short-lived
 //! invitation credential that a joiner can redeem to find and dial the
-//! sponsor. The concrete adapter (Slice 1: rendezvous HTTP client) owns
-//! the TTL policy, the transport to the rendezvous service, and the
-//! on-wire code format.
+//! sponsor. Adapters own the TTL policy, the publishing transport(s), and
+//! the on-wire code format.
+//!
+//! An adapter may publish a single invitation through more than one
+//! discovery channel concurrently. `issue_invitation` returns success as
+//! long as the invitation is locally minted and at least one channel is
+//! initiated; per-channel publish outcomes are surfaced through a separate
+//! observability surface, not through this port's return value.
 //!
 //! `issue_invitation` is the sponsor's display-time call; `consume_invitation`
-//! is the post-handshake bookkeeping call that tells the rendezvous service
-//! the code has been redeemed so other joiners can't race on it. Joiner-side
-//! dial lives on [`PairingSessionPort`](crate::ports::pairing::PairingSessionPort).
+//! is the post-handshake bookkeeping call that marks the code consumed on
+//! every discovery channel that holds a record, so other joiners can't race
+//! on it. Joiner-side dial lives on
+//! [`PairingSessionPort`](crate::ports::pairing::PairingSessionPort).
 
 use std::net::IpAddr;
 
@@ -21,11 +27,18 @@ use thiserror::Error;
 pub use crate::pairing::invitation::InvitationCode;
 
 /// Successfully issued invitation.
+///
+/// "Issued" means the invitation has been locally minted and parked for the
+/// sponsor's own lifecycle bookkeeping. Per-channel publish outcomes may
+/// still be in flight when this struct is returned — observers consult the
+/// adapter's status surface for that, not this struct.
 #[derive(Debug, Clone)]
 pub struct IssuedInvitation {
     /// Code the joiner enters.
     pub code: InvitationCode,
-    /// Server-authoritative expiry (decision Q-B1-1).
+    /// Adapter-decided expiry. Treated as ground truth by callers; the
+    /// adapter is responsible for keeping all publish channels and the
+    /// local aggregate aligned on the same instant.
     pub expires_at: DateTime<Utc>,
 }
 
@@ -41,12 +54,17 @@ pub struct PairingInvitationAddressCandidate {
 /// Errors produced while issuing an invitation.
 #[derive(Debug, Error)]
 pub enum InvitationError {
-    /// Adapter couldn't reach its transport (e.g. iroh endpoint not started).
-    /// Surfaced to UI as "start network first".
+    /// Adapter couldn't reach its transport (e.g. local network endpoint
+    /// not started). Surfaced to UI as "start network first".
     #[error("network is not started")]
     NetworkNotStarted,
 
-    /// Rendezvous service unreachable / returned a transient failure.
+    /// Every discovery channel the adapter could publish through is
+    /// currently unable to accept an announcement. For adapters that
+    /// publish through more than one channel, this is returned **only**
+    /// when every channel has failed; if at least one channel can be
+    /// initiated, `issue_invitation` returns `Ok` and per-channel
+    /// degradation is reported on the observability surface instead.
     #[error("pairing invitation service unavailable")]
     ServiceUnavailable,
 
@@ -61,28 +79,35 @@ pub enum InvitationError {
     Internal(String),
 }
 
-/// Errors produced while reporting a successful consume to rendezvous.
+/// Errors produced while marking an invitation consumed on its discovery
+/// channels.
 ///
 /// Semantically "best-effort": the sponsor has already validated the code
 /// against its local holder before calling `consume_invitation`, so these
 /// errors are informational — the local handshake continues regardless.
 /// Callers log and move on.
+///
+/// For adapters that publish through multiple channels, the variants describe
+/// the **aggregate** outcome (e.g. `NotFound` means no channel still held a
+/// queryable record — including the case where some channels never published
+/// because they were unreachable at issue time).
 #[derive(Debug, Error)]
 pub enum ConsumeInvitationError {
-    /// Rendezvous entry is gone (already expired or already consumed).
-    /// Benign — the code's lifecycle on the server is already terminal.
-    #[error("invitation not found on rendezvous")]
+    /// No discovery channel held a queryable record for this code (already
+    /// expired, already consumed, or never successfully published).
+    /// Benign — the code's lifecycle is already terminal.
+    #[error("invitation not found on any discovery channel")]
     NotFound,
 
-    /// Rendezvous entry exists but is past its TTL. Benign for the same
-    /// reason as `NotFound` — kept distinct so logs can distinguish
+    /// A discovery channel held a record but it is past its TTL. Benign for
+    /// the same reason as `NotFound` — kept distinct so logs can distinguish
     /// "never existed" from "raced against TTL".
-    #[error("invitation already expired on rendezvous")]
+    #[error("invitation already expired on discovery channel")]
     Expired,
 
-    /// Rendezvous service unreachable / transient failure. Sponsor
-    /// orchestrator logs and continues — the code TTL will reap the
-    /// server-side entry anyway.
+    /// Every discovery channel the adapter would mark consumed is
+    /// unreachable. Sponsor orchestrator logs and continues — the code TTL
+    /// will reap stale entries anyway.
     #[error("pairing invitation service unavailable")]
     ServiceUnavailable,
 
@@ -96,14 +121,18 @@ pub enum ConsumeInvitationError {
 pub trait PairingInvitationPort: Send + Sync {
     /// Request a fresh invitation code. The adapter decides TTL and code
     /// format; callers treat the returned `expires_at` as ground truth.
+    ///
+    /// Returning `Ok` means the invitation is locally minted and at least
+    /// one publish channel has been initiated. Per-channel publish outcomes
+    /// may still be in flight or partially failed; observers consult the
+    /// adapter's status surface for that signal.
     async fn issue_invitation(&self) -> Result<IssuedInvitation, InvitationError>;
 
-    /// Notify the rendezvous service that the sponsor has accepted an
-    /// inbound joiner carrying this code. The call is best-effort — failures
-    /// do not invalidate the local handshake (the sponsor has already moved
-    /// the local aggregate to `Consumed`). Concrete adapter contract:
-    /// idempotent on the server side (repeated calls for the same code
-    /// return `NotFound` once the entry is reaped, not an error).
+    /// Mark the invitation consumed on every discovery channel that holds a
+    /// record. The call is best-effort — failures do not invalidate the
+    /// local handshake (the sponsor has already moved the local aggregate
+    /// to `Consumed`). Idempotent: repeated calls for the same code after
+    /// the entries are reaped return `NotFound`, not an error.
     async fn consume_invitation(&self, code: &InvitationCode)
         -> Result<(), ConsumeInvitationError>;
 }

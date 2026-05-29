@@ -1,21 +1,32 @@
 //! Sponsor-side port adapter for [`PairingInvitationPort`].
 //!
-//! Owns zero HTTP concerns — delegates every round-trip to the shared
-//! [`RendezvousClient`] gateway. The adapter's only job is:
+//! Drives two discovery channels concurrently per invitation:
 //!
-//! 1. Gather sponsor-side inputs (`DeviceId`, `device_name`, iroh
-//!    [`EndpointAddr`]) from `uc-core` ports.
-//! 2. Call the gateway.
-//! 3. Map [`RendezvousHttpError`] onto the domain error types defined in
-//!    `uc_core::ports::pairing_invitation`.
+//! 1. **Cloud channel** — `RendezvousClient` POST. Best-effort; failure
+//!    here means "cross-network joiners can't resolve via this code,"
+//!    not "issue fails."
+//! 2. **LAN channel** — window-scoped `MdnsPairingPublisher` instance.
+//!    Started for every issued code; dropped on `consume_invitation` or
+//!    when the adapter is dropped.
+//!
+//! Code provenance: when the cloud channel returns Ok, we adopt the
+//! server-minted code (back-compat with the legacy "server is the
+//! issuing authority" flow). When the cloud channel fails, we fall back
+//! to local mint — that's the first-pair-no-WAN path. A future
+//! migration (path 4-C in plan notes) will add `proposed_code` to the
+//! cloud request and always pass the locally minted value, at which
+//! point the conditional disappears.
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, TimeZone, Utc};
 use iroh::{Endpoint, EndpointAddr, TransportAddr};
-use tracing::{debug, instrument};
+use tokio::runtime::Handle as RuntimeHandle;
+use tokio::sync::Mutex;
+use tracing::{debug, instrument, warn};
 
 use uc_core::pairing::invitation::InvitationCode;
 use uc_core::ports::{
@@ -26,15 +37,32 @@ use uc_core::ports::{
 use uc_core::settings::model::Settings;
 
 use crate::network::iroh::filter_endpoint_addr;
+use crate::network::iroh::runtime_consts;
+use crate::pairing::{mint_invitation_code, MdnsPairingPublisher, PublisherHandle};
 
 use super::client::{CreatePairingRequest, RendezvousClient, RendezvousHttpError};
 
+/// TTL used when minting a code locally (cloud channel was unreachable).
+/// Matches the typical TTL the rendezvous service returns for back-compat.
+const LOCAL_MINT_TTL: ChronoDuration = ChronoDuration::seconds(300);
+
 /// Rendezvous-backed adapter for [`PairingInvitationPort`].
+///
+/// Maintains a per-code map of live mDNS publisher handles so
+/// `consume_invitation` can deterministically stop the LAN announce
+/// without relying on TTL expiry.
 pub struct RendezvousPairingInvitationAdapter {
     endpoint: Arc<Endpoint>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     settings: Arc<dyn SettingsPort>,
     rendezvous: Arc<RendezvousClient>,
+    /// Per-code live mDNS publisher handles plus their TTL. Dropping a
+    /// value stops the underlying `swarm-discovery` announce thread.
+    /// The TTL is used by [`Self::gc_expired_publishers`] (lazy GC,
+    /// called on every issue / consume) so a publisher whose code
+    /// expired without being consumed still gets released — no
+    /// background timer needed.
+    publishers: Mutex<HashMap<InvitationCode, (PublisherHandle, DateTime<Utc>)>>,
 }
 
 impl RendezvousPairingInvitationAdapter {
@@ -49,6 +77,7 @@ impl RendezvousPairingInvitationAdapter {
             device_identity,
             settings,
             rendezvous,
+            publishers: Mutex::new(HashMap::new()),
         }
     }
 
@@ -98,31 +127,196 @@ impl RendezvousPairingInvitationAdapter {
         let req = CreatePairingRequest {
             sponsor_device_id: device_id.as_str().to_string(),
             sponsor_device_name: device_name,
-            sponsor_endpoint_id: endpoint_id,
-            sponsor_ticket: ticket,
+            sponsor_endpoint_id: endpoint_id.clone(),
+            sponsor_ticket: ticket.clone(),
             ttl_secs: None,
         };
 
-        let parsed = self
-            .rendezvous
-            .create_pairing(&req)
+        // ── Cloud channel (best-effort, gated by LAN-only mode) ────────
+        // In LAN-only mode the user has explicitly opted out of cloud
+        // discovery. We skip the cloud channel entirely (no HTTP request,
+        // no metadata leak to the directory service) and mint the code
+        // locally — the LAN channel will be the only publish surface.
+        if runtime_consts::lan_only() {
+            let code = InvitationCode::new(mint_invitation_code());
+            let expires_at = Utc::now() + LOCAL_MINT_TTL;
+            debug!(
+                code = %code.as_str(),
+                %expires_at,
+                "LAN-only mode: minted invitation locally, skipping cloud channel"
+            );
+            if let Err(err) = self
+                .start_mdns_publisher(&code, &endpoint_id, &ticket, expires_at)
+                .await
+            {
+                warn!(
+                    error = %err,
+                    code = %code.as_str(),
+                    "mDNS publisher start failed in LAN-only mode; this invitation cannot be discovered",
+                );
+            }
+            return Ok(IssuedInvitation { code, expires_at });
+        }
+
+        let (code, expires_at, cloud_ok) = match self.rendezvous.create_pairing(&req).await {
+            Ok(parsed) => {
+                let code = InvitationCode::new(parsed.code);
+                let expires_at = Utc
+                    .timestamp_millis_opt(parsed.expires_at_ms)
+                    .single()
+                    .ok_or_else(|| {
+                        InvitationError::Internal(format!(
+                            "rendezvous returned invalid expires_at_ms: {}",
+                            parsed.expires_at_ms
+                        ))
+                    })?;
+                debug!(%expires_at, "cloud channel issued invitation");
+                (code, expires_at, true)
+            }
+            Err(err) => {
+                // Cloud unreachable: local mint + mDNS only.
+                // Critical: we only fall back for transient/transport
+                // errors. Unexpected status codes still surface as
+                // Internal so production anomalies stay loud.
+                if !is_cloud_recoverable(&err) {
+                    return Err(map_create_err(err));
+                }
+                let code = InvitationCode::new(mint_invitation_code());
+                let expires_at = Utc::now() + LOCAL_MINT_TTL;
+                warn!(
+                    error = %err,
+                    code = %code.as_str(),
+                    "cloud channel unreachable; minted invitation locally — only LAN joiners will resolve",
+                );
+                (code, expires_at, false)
+            }
+        };
+
+        // ── LAN channel (best-effort, window-scoped) ───────────────────
+        if let Err(err) = self
+            .start_mdns_publisher(&code, &endpoint_id, &ticket, expires_at)
             .await
-            .map_err(map_create_err)?;
+        {
+            warn!(
+                error = %err,
+                code = %code.as_str(),
+                cloud_ok,
+                "mDNS publisher start failed; LAN joiners will not resolve via this code",
+            );
+        }
 
-        let code = InvitationCode::new(parsed.code);
-        let expires_at = Utc
-            .timestamp_millis_opt(parsed.expires_at_ms)
-            .single()
-            .ok_or_else(|| {
-                InvitationError::Internal(format!(
-                    "rendezvous returned invalid expires_at_ms: {}",
-                    parsed.expires_at_ms
-                ))
-            })?;
-
-        debug!(%expires_at, "rendezvous invitation issued");
         Ok(IssuedInvitation { code, expires_at })
     }
+
+    /// Starts a window-scoped mDNS publisher and stores its handle so
+    /// `consume_invitation` can drop it later.
+    ///
+    /// The mDNS ticket is encoded as `hex(postcard(EndpointAddr))`, not
+    /// reusing the JSON form fed to the cloud channel: a single TXT
+    /// attribute can carry at most 254 bytes including the key prefix,
+    /// and JSON-encoded endpoints with 4+ candidate addresses overflow
+    /// that limit (observed in the LAN-only e2e test). postcard cuts
+    /// the byte count by ~60% and hex doubling still keeps room for
+    /// realistic NodeId + LAN IPs.
+    async fn start_mdns_publisher(
+        &self,
+        code: &InvitationCode,
+        endpoint_id: &str,
+        ticket_json: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        // Sweep stale handles before inserting; a sponsor that has
+        // issued multiple codes without consuming them otherwise leaks
+        // multicast sockets until process exit.
+        self.gc_expired_publishers(Utc::now()).await;
+
+        // Re-encode the EndpointAddr in the cloud-channel JSON ticket
+        // into postcard+hex so it fits in a single TXT attribute. See
+        // [`start_mdns_publisher`] doc for the size analysis.
+        let ticket_hex = encode_mdns_ticket(ticket_json)?;
+        // Pick the iroh endpoint's UDP port for the announce. The LAN IPs
+        // we publish come from `if-addrs` inside the publisher, not from
+        // iroh's filtered list — that keeps the publisher's "what to put
+        // on the wire" identical regardless of which `TransportAddr`
+        // variants iroh happens to surface today.
+        let port = pick_endpoint_port(&self.endpoint.addr())?;
+        let handle = MdnsPairingPublisher::start(
+            &RuntimeHandle::current(),
+            code.as_str(),
+            endpoint_id,
+            &ticket_hex,
+            expires_at.timestamp_millis(),
+            port,
+        )
+        .map_err(|err| err.to_string())?;
+        self.publishers
+            .lock()
+            .await
+            .insert(code.clone(), (handle, expires_at));
+        Ok(())
+    }
+
+    /// Drops publisher handles whose codes have expired. Called lazily
+    /// on every issue / consume — sufficient because a sponsor that
+    /// stops issuing also stops needing the GC, and a sponsor that
+    /// keeps issuing sweeps as a side effect of normal operation.
+    async fn gc_expired_publishers(&self, now: DateTime<Utc>) {
+        let mut map = self.publishers.lock().await;
+        let before = map.len();
+        map.retain(|_code, (_handle, exp)| *exp > now);
+        let removed = before.saturating_sub(map.len());
+        if removed > 0 {
+            debug!(
+                removed,
+                remaining = map.len(),
+                "mDNS publisher GC swept expired handles"
+            );
+        }
+    }
+}
+
+/// Re-encode the cloud-channel JSON ticket as `hex(postcard(EndpointAddr))`
+/// for mDNS publishing. Compact enough to fit in a single TXT attribute
+/// (under 254 bytes total including the `tk=` key) for realistic
+/// EndpointAddrs (up to ~4 IPs + relay URL).
+fn encode_mdns_ticket(ticket_json: &str) -> Result<String, String> {
+    let addr: EndpointAddr = serde_json::from_str(ticket_json)
+        .map_err(|err| format!("ticket JSON decode for mDNS re-encode: {err}"))?;
+    let bytes = postcard::to_allocvec(&addr)
+        .map_err(|err| format!("ticket postcard encode for mDNS: {err}"))?;
+    Ok(hex::encode(bytes))
+}
+
+/// Cloud-side errors we treat as "try LAN-only instead." Transport
+/// failures, 5xx responses, and parse errors all qualify — they indicate
+/// the service is unreachable or misbehaving, not that the request was
+/// semantically wrong. 4xx codes (Conflict / NotFound on create — which
+/// shouldn't normally happen) surface as Internal so the anomaly is
+/// visible in logs.
+fn is_cloud_recoverable(err: &RendezvousHttpError) -> bool {
+    matches!(
+        err,
+        RendezvousHttpError::Transport(_)
+            | RendezvousHttpError::ServiceUnavailable(_)
+            | RendezvousHttpError::Parse(_)
+    )
+}
+
+/// Extract the first IP-bound port the endpoint surfaces. Used by the
+/// mDNS publisher as the announced service port — joiners will connect
+/// to whatever port maps to whichever IP they pick.
+///
+/// Real iroh endpoints always have at least one IP `TransportAddr`
+/// online by the time we're issuing invitations, so the `None` case is
+/// a defensive guard for tests / very early init.
+fn pick_endpoint_port(addr: &EndpointAddr) -> Result<u16, String> {
+    addr.addrs
+        .iter()
+        .find_map(|a| match a {
+            TransportAddr::Ip(sa) => Some(sa.port()),
+            _ => None,
+        })
+        .ok_or_else(|| "endpoint exposes no IP transport addresses".to_string())
 }
 
 fn serialize_filtered_endpoint_ticket(
@@ -207,9 +401,19 @@ impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
         &self,
         code: &InvitationCode,
     ) -> Result<(), ConsumeInvitationError> {
+        // Stop the LAN announce immediately (deterministic, not TTL-bound).
+        // Dropping the handle stops `swarm-discovery`'s actor; this also
+        // releases the multicast socket so a follow-up `issue_invitation`
+        // can bind fresh. Also sweep any stale entries piggy-backed on
+        // this call.
+        self.gc_expired_publishers(Utc::now()).await;
+        if self.publishers.lock().await.remove(code).is_some() {
+            debug!("mDNS publisher stopped for consumed invitation");
+        }
+
         match self.rendezvous.consume_pairing(code.as_str()).await {
             Ok(()) => {
-                debug!("rendezvous invitation consumed");
+                debug!("cloud channel invitation consumed");
                 Ok(())
             }
             Err(err) => Err(map_consume_err(err)),

@@ -34,7 +34,7 @@ static LAN_ONLY: OnceLock<bool> = OnceLock::new();
 
 /// 由 [`super::node::IrohNodeBuilder::bind`] 在 production 路径调一次，
 /// 把当前的 LAN-only 状态固化到进程常量。test/test-util build 下 no-op。
-pub(super) fn install_lan_only(lan_only: bool) {
+pub(crate) fn install_lan_only(lan_only: bool) {
     #[cfg(not(any(test, feature = "test-util")))]
     {
         let _ = LAN_ONLY.set(lan_only);
@@ -48,7 +48,7 @@ pub(super) fn install_lan_only(lan_only: bool) {
 /// 当前进程是否处于 LAN-only Mode。production 默认 `false`（在
 /// `install_lan_only` 之前调用也安全）；test/test-util build 永远返回
 /// `false`。
-pub(super) fn lan_only() -> bool {
+pub(crate) fn lan_only() -> bool {
     #[cfg(not(any(test, feature = "test-util")))]
     {
         LAN_ONLY.get().copied().unwrap_or(false)

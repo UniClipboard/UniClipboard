@@ -16,7 +16,7 @@ pub mod node;
 pub mod persistable_addr;
 pub mod presence_adapter;
 pub mod relay_probe;
-mod runtime_consts;
+pub(crate) mod runtime_consts;
 pub mod transfer_progress_adapter;
 pub mod transfer_progress_wire;
 

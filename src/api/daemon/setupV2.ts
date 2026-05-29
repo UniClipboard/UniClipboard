@@ -26,6 +26,13 @@ export interface InitializeSpaceResponse {
 export interface IssueInvitationResponse {
   code: string
   expiresAtMs: number
+  // Future extension point (Phase 5 product-side decision): per-channel
+  // publish status — e.g. `{ lan: 'live', cloud: 'unreachable' }` — so
+  // the issue UI can show "✓ LAN / ✗ Cloud" indicators when only some
+  // channels accepted the announce. Backend support pending a separate
+  // facade query API; until then, callers should not depend on this
+  // field being present.
+  // publishChannels?: { lan?: ChannelStatus; cloud?: ChannelStatus }
 }
 
 export interface RedeemRequest {

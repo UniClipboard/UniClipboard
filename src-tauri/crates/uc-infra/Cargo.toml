@@ -98,6 +98,15 @@ indexmap = "2"
 # pushing it onto Clash TUN paths.
 iroh = { version = "0.98", features = ["address-lookup-mdns"] }
 iroh-blobs = "0.100"
+# Direct dep so pairing's own mDNS publisher/resolver can spin up window-
+# scoped `Discoverer` instances on a separate service name from iroh's
+# `_irohv1._udp.local` peer-discovery flow. We can't reuse iroh's
+# `MdnsAddressLookup` because it is bind-time fixed to the shared Endpoint
+# and has no lifecycle hook for "announce only while a pairing code is
+# pending."
+swarm-discovery = "0.6.0-alpha.2"
+# (`if-addrs` is already declared elsewhere in this manifest; pairing
+# publishers/resolvers reuse that same version.)
 # 直接依赖 iroh-relay 0.98 以使用其 ClientBuilder 做"中继可达性探测"。
 # iroh 本身只 re-export 了 `dns`/`RelayMap`,没有暴露 `client` 模块。
 # default features 已经带上 `tls-ring`,与 iroh 自身保持一致。

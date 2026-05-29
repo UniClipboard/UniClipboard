@@ -49,12 +49,16 @@ impl std::fmt::Display for PairingSessionId {
 /// Errors raised by [`PairingSessionPort::dial_by_invitation`].
 #[derive(Debug, Error)]
 pub enum DialError {
-    /// Rendezvous service returned 404 — the code is unknown (typo or never
-    /// issued).
+    /// No discovery channel returned a record for this code — typo, never
+    /// issued, or already reaped. For adapters that resolve through more
+    /// than one channel, this is returned only after every channel has
+    /// reported "no record".
     #[error("invitation not found")]
     InvitationNotFound,
 
-    /// Rendezvous entry exists but is past its TTL.
+    /// At least one discovery channel returned a record, but it is past
+    /// its TTL. Kept distinct from `InvitationNotFound` so the UI can tell
+    /// stale codes from typos.
     #[error("invitation has expired")]
     InvitationExpired,
 
@@ -63,7 +67,10 @@ pub enum DialError {
     #[error("sponsor is not reachable")]
     SponsorUnreachable,
 
-    /// Rendezvous service unreachable / 5xx.
+    /// Every discovery channel the adapter would query is itself
+    /// unreachable, so no resolution attempt could even start. Distinct
+    /// from `InvitationNotFound`, which means the channel(s) answered but
+    /// had nothing for this code.
     #[error("pairing invitation service unavailable")]
     ServiceUnavailable,
 
@@ -92,10 +99,12 @@ pub enum SessionError {
 /// Session-level pairing transport (Slice 1).
 #[async_trait]
 pub trait PairingSessionPort: Send + Sync {
-    /// Joiner entry point. Resolves the invitation at the rendezvous,
-    /// dials the sponsor, opens a bi-directional stream, and returns the
-    /// session handle. No bytes are sent by this call — the caller writes
-    /// the first [`PairingSessionMessage`] via [`send`](Self::send).
+    /// Joiner entry point. Resolves the invitation through one or more
+    /// discovery channels (adapters may race them in parallel), dials the
+    /// sponsor at the first successful resolution, opens a bi-directional
+    /// stream, and returns the session handle. No bytes are sent by this
+    /// call — the caller writes the first [`PairingSessionMessage`] via
+    /// [`send`](Self::send).
     async fn dial_by_invitation(
         &self,
         code: &InvitationCode,

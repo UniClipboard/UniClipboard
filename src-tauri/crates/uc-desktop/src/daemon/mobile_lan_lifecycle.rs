@@ -44,7 +44,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use uc_application::facade::{AppFacade, FileTransferFacade};
+use uc_application::facade::{AppFacade, FileTransferFacade, MobileSyncSettingsView};
 use uc_core::mobile_sync::LanEndpointInfo;
 use uc_core::ports::{MobileLanLifecyclePort, MobileLanTarget};
 use uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter;
@@ -201,6 +201,30 @@ impl MobileLanLifecyclePort for MobileLanLifecycleController {
     }
 }
 
+/// 移动端 LAN 监听器的默认端口 —— settings 未显式设 `lan_port` 时取此值
+/// (SPEC §3.2)。SyncClipboard 客户端默认指向它,改动会破坏既有手机配置。
+pub(crate) const DEFAULT_MOBILE_LAN_PORT: u16 = 42720;
+
+/// 由持久化的移动端同步设置推导 daemon 启动期的 LAN 监听器目标状态。
+///
+/// 仅当总开关 (`enabled`) 与 LAN 子开关 (`lan_listen_enabled`) **同时**打开
+/// 时才起监听器;端口缺省取 [`DEFAULT_MOBILE_LAN_PORT`]。`view` 为 `None`
+/// (启动期 settings 读取失败) 时保守返回 [`MobileLanTarget::Disabled`] ——
+/// 之后仍可经设置变更把监听器拉起。
+///
+/// **决策只依赖 settings,不接受任何 daemon 运行模式入参**:无头 server 节点
+/// ([`DaemonRunMode::ServerHeadless`](crate::daemon::run_mode::DaemonRunMode::ServerHeadless))
+/// 与普通 daemon 起的是同一个手机网关。保持本签名与 run mode 无关,正是这条
+/// 不变量的结构性保证 (issue #899 / ADR-007 §2.3)。
+pub(crate) fn initial_lan_target(view: Option<&MobileSyncSettingsView>) -> MobileLanTarget {
+    match view {
+        Some(v) if v.enabled && v.lan_listen_enabled => MobileLanTarget::Enabled {
+            port: v.lan_port.unwrap_or(DEFAULT_MOBILE_LAN_PORT),
+        },
+        _ => MobileLanTarget::Disabled,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,10 +303,10 @@ mod tests {
     }
 
     /// 测试用固定端口。FakeSpawner 已经不真实 bind, 这里随便选两个不冲突
-    /// 的就行 —— 不会撞本机环境。选 42720 是因为它就是生产默认值,确保
+    /// 的就行 —— 不会撞本机环境。选生产默认值 [`DEFAULT_MOBILE_LAN_PORT`] 确保
     /// "同端口 no-op" 这条测试断言的语义就是生产意义上的"用户两次保存同
     /// 一个端口"。
-    const FIXED_PORT_A: u16 = 42720;
+    const FIXED_PORT_A: u16 = DEFAULT_MOBILE_LAN_PORT;
     const FIXED_PORT_B: u16 = 51234;
 
     #[tokio::test]
@@ -424,5 +448,73 @@ mod tests {
         ));
 
         c.apply(MobileLanTarget::Disabled).await;
+    }
+
+    // ── initial_lan_target: 启动期 LAN 目标决策 (纯函数, run-mode 无关) ──
+    //
+    // 这组用例钉死 issue #899 的核心不变量:mobile_lan 手机网关在 daemon 启动期
+    // 的开/关 **只看 settings**,跟运行模式 (含 ServerHeadless) 无关。函数签名
+    // 不收 run_mode 入参,从结构上保证无头 server 与普通 daemon 起同一个网关。
+
+    fn settings_view(
+        enabled: bool,
+        lan_listen_enabled: bool,
+        lan_port: Option<u16>,
+    ) -> MobileSyncSettingsView {
+        MobileSyncSettingsView {
+            enabled,
+            lan_listen_enabled,
+            lan_advertise_ip: None,
+            lan_port,
+            lan_listener_error: None,
+            shortcut_install_methods: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn initial_lan_target_enabled_uses_configured_port() {
+        let v = settings_view(true, true, Some(FIXED_PORT_B));
+        assert_eq!(
+            initial_lan_target(Some(&v)),
+            MobileLanTarget::Enabled { port: FIXED_PORT_B }
+        );
+    }
+
+    #[test]
+    fn initial_lan_target_enabled_defaults_port_when_unset() {
+        // lan_port 未设 → 取生产默认端口,而不是把网关留在 Disabled。
+        let v = settings_view(true, true, None);
+        assert_eq!(
+            initial_lan_target(Some(&v)),
+            MobileLanTarget::Enabled {
+                port: DEFAULT_MOBILE_LAN_PORT
+            }
+        );
+    }
+
+    #[test]
+    fn initial_lan_target_master_switch_off_is_disabled() {
+        // 总开关关 —— 即便 LAN 子开关开着、端口也设了,也不起监听器。
+        let v = settings_view(false, true, Some(FIXED_PORT_B));
+        assert_eq!(initial_lan_target(Some(&v)), MobileLanTarget::Disabled);
+    }
+
+    #[test]
+    fn initial_lan_target_lan_subswitch_off_is_disabled() {
+        // 总开关开但 LAN 子开关关 → 不对外暴露 LAN 网关。
+        let v = settings_view(true, false, Some(FIXED_PORT_B));
+        assert_eq!(initial_lan_target(Some(&v)), MobileLanTarget::Disabled);
+    }
+
+    #[test]
+    fn initial_lan_target_unreadable_settings_is_disabled() {
+        // 启动期 settings 读取失败 (None) → 保守 Disabled,之后可经设置变更拉起。
+        assert_eq!(initial_lan_target(None), MobileLanTarget::Disabled);
+    }
+
+    #[test]
+    fn default_mobile_lan_port_matches_syncclipboard_convention() {
+        // 既定默认端口,SyncClipboard 客户端默认指向它;改动会破坏既有手机配置。
+        assert_eq!(DEFAULT_MOBILE_LAN_PORT, 42720);
     }
 }

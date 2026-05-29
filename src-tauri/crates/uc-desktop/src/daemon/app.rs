@@ -351,25 +351,32 @@ impl DaemonApp {
             // MobileSyncFacade::update_settings → controller.apply(target)
             // 即时路径,不再依赖 daemon 启动。
             let settings_view = mobile_sync_facade.get_settings().await.ok();
-            let target = match settings_view.as_ref() {
-                Some(v) if v.enabled && v.lan_listen_enabled => {
-                    uc_core::ports::MobileLanTarget::Enabled {
-                        port: v.lan_port.unwrap_or(42720),
-                    }
+            // 启动期 LAN 目标只由 settings 决定,与 run mode 无关 —— 无头 server
+            // 节点 (ServerHeadless) 跟普通 daemon 起同一个手机网关。决策抽到纯函数
+            // initial_lan_target (无 run_mode 入参) 钉死这条不变量 (issue #899)。
+            let target =
+                crate::daemon::mobile_lan_lifecycle::initial_lan_target(settings_view.as_ref());
+            // Log the boot-time decision exhaustively. The Enabled arm is the
+            // operator's only confirmation that the phone gateway came up —
+            // a ServerHeadless node has no GUI surfacing the listener state.
+            match (&settings_view, &target) {
+                (_, uc_core::ports::MobileLanTarget::Enabled { port }) => {
+                    info!(
+                        port = *port,
+                        "mobile_sync LAN listener enabled by settings; starting at daemon boot"
+                    );
                 }
-                Some(v) => {
+                (Some(v), uc_core::ports::MobileLanTarget::Disabled) => {
                     info!(
                         enabled = v.enabled,
                         lan_listen_enabled = v.lan_listen_enabled,
                         "mobile_sync LAN listener disabled by settings; not starting at daemon boot"
                     );
-                    uc_core::ports::MobileLanTarget::Disabled
                 }
-                None => {
+                (None, uc_core::ports::MobileLanTarget::Disabled) => {
                     warn!("mobile_sync settings unreadable at daemon boot; LAN listener stays Disabled until next update_settings");
-                    uc_core::ports::MobileLanTarget::Disabled
                 }
-            };
+            }
             controller.apply(target).await;
         }
 

@@ -40,6 +40,10 @@ pub struct MobileSyncSettingsView {
     /// 持久化 `Settings.mobile_sync.lan_advertise_ip`。`None` 对应 UI 的
     /// "自动"选项,展示 / register_device base_url 都退回 `0.0.0.0`。
     pub lan_advertise_ip: Option<String>,
+    /// 持久化 `Settings.mobile_sync.lan_advertise_base_url`。`Some` 时优先于
+    /// `lan_advertise_ip` 决定对外公布的 base URL;`None` 时回退到由 advertise
+    /// IP + port 拼出的地址。
+    pub lan_advertise_base_url: Option<String>,
     /// 持久化 `Settings.mobile_sync.lan_port`。`None` 时 daemon 取默认 42720。
     pub lan_port: Option<u16>,
     /// daemon 端 LAN listener 的 bind 失败原因(端口占用 / IP 不存在 /
@@ -126,6 +130,7 @@ impl GetMobileSyncSettingsUseCase {
             enabled: mobile.enabled,
             lan_listen_enabled: mobile.lan_listen_enabled,
             lan_advertise_ip: mobile.lan_advertise_ip,
+            lan_advertise_base_url: mobile.lan_advertise_base_url,
             lan_port: mobile.lan_port,
             lan_listener_error,
             shortcut_install_methods: shortcut_install_methods_v1(),
@@ -258,6 +263,22 @@ mod tests {
         assert!(v.enabled);
         // bind 成功的 URL 不再透出到 view —— 上层从 lan_advertise_ip + lan_port 自行拼接。
         assert!(v.lan_listener_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn surfaces_advertise_base_url_from_persisted_settings() {
+        let settings_port = Arc::new(InMemorySettings::default());
+        let mut s = Settings::default();
+        s.mobile_sync.enabled = true;
+        s.mobile_sync.lan_advertise_base_url = Some("https://clip.example.com".into());
+        settings_port.save(&s).await.unwrap();
+
+        let uc = build_uc(settings_port, None);
+        let v = uc.execute().await.expect("ok");
+        assert_eq!(
+            v.lan_advertise_base_url.as_deref(),
+            Some("https://clip.example.com")
+        );
     }
 
     #[tokio::test]

@@ -21,6 +21,7 @@ struct StatusDto {
     enabled: bool,
     lan_listen_enabled: bool,
     lan_advertise_ip: Option<String>,
+    lan_advertise_base_url: Option<String>,
     lan_port: Option<u16>,
     /// daemon 端 LAN listener 的 bind 失败原因(`Some` 时表示真的尝试过 bind 但失败)。
     lan_listener_error: Option<String>,
@@ -55,10 +56,16 @@ struct InstallMethodDto {
     disabled_reason: Option<String>,
 }
 
-/// 用户视角的"监听 URL":daemon 永远 bind `0.0.0.0:<lan_port>`,
-/// 但 advertise IP 是写进 install URL / 二维码的对外地址,所以这里取
-/// `lan_advertise_ip ?? "0.0.0.0"` + `lan_port ?? 42720`。
+/// 用户视角的"监听 URL"(即写进 install URL / 二维码的对外地址):
+/// - `lan_advertise_base_url=Some(url)` → 直接用该完整地址(优先级最高);
+/// - 否则回退 LAN 形态 `lan_advertise_ip ?? "0.0.0.0"` + `lan_port ?? 42720`。
+///
+/// daemon 永远 bind `0.0.0.0:<lan_port>`,这里展示的是对外公布地址,不是
+/// 实际 bind 地址。
 pub(crate) fn derive_listen_url(v: &MobileSyncSettingsView) -> String {
+    if let Some(base) = v.lan_advertise_base_url.as_deref() {
+        return base.to_string();
+    }
     let host = v.lan_advertise_ip.as_deref().unwrap_or("0.0.0.0");
     let port = v.lan_port.unwrap_or(42720);
     format!("http://{host}:{port}")
@@ -70,6 +77,7 @@ impl From<&MobileSyncSettingsView> for StatusDto {
             enabled: v.enabled,
             lan_listen_enabled: v.lan_listen_enabled,
             lan_advertise_ip: v.lan_advertise_ip.clone(),
+            lan_advertise_base_url: v.lan_advertise_base_url.clone(),
             lan_port: v.lan_port,
             lan_listener_error: v.lan_listener_error.clone(),
             listen_url: derive_listen_url(v),
@@ -122,6 +130,12 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
             view.lan_advertise_ip
                 .as_deref()
                 .unwrap_or("(none, fallback 0.0.0.0)"),
+        );
+        ui::info(
+            "lanAdvertiseUrl",
+            view.lan_advertise_base_url
+                .as_deref()
+                .unwrap_or("(none, using LAN ip:port)"),
         );
         ui::info(
             "lanPort",

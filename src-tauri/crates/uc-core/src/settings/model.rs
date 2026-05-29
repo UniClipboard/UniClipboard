@@ -318,6 +318,9 @@ pub struct NetworkSettings {
 ///   从 list-interfaces 候选里挑一个 RFC1918 私有地址。`None` 对应 UI 的
 ///   "自动"选项,展示 / register_device base_url 都退回 `0.0.0.0`(iPhone
 ///   连不上,需用户挑一个具体 IP 后再添加设备)。
+/// * `lan_advertise_base_url` —— 用户指定的完整广告地址(scheme + host +
+///   可选 port)。`Some` 时优先于 `lan_advertise_ip` 决定对外公布的连接
+///   地址;`None` 时回退到由 advertise IP 与端口拼出的地址形态。
 /// * `lan_port` —— 自定义端口。`None` 时取默认 `42720`(SPEC §3.2)。
 ///
 /// 任意字段变更后都需要重启 daemon 才能生效(v1 不做配置热重载,详见
@@ -353,6 +356,12 @@ pub struct MobileSyncSettings {
     /// (daemon 永远绑 `0.0.0.0`)。`None` 对应 UI 的"自动"选项,退回
     /// `0.0.0.0`(iPhone 连不上,需挑具体 IP)。
     pub lan_advertise_ip: Option<String>,
+
+    /// 用户指定的完整广告地址(scheme + host + 可选 port)。作为对移动
+    /// 客户端公布的连接地址,`Some` 时优先于 [`Self::lan_advertise_ip`];
+    /// `None` 时回退到由 advertise IP 与端口拼出的地址形态。仅影响对外
+    /// 公布的地址本身,不改变本机实际监听的地址。
+    pub lan_advertise_base_url: Option<String>,
 
     /// 用户自定义的 LAN 监听端口。`None` 时取默认 `42720`(SPEC §3.2)。
     pub lan_port: Option<u16>,

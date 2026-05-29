@@ -465,6 +465,7 @@ mod tests {
             enabled,
             lan_listen_enabled,
             lan_advertise_ip: None,
+            lan_advertise_base_url: None,
             lan_port,
             lan_listener_error: None,
             shortcut_install_methods: Vec::new(),

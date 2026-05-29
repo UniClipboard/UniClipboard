@@ -748,6 +748,12 @@ pub async fn update_mobile_sync_settings(
             enabled: args.enabled,
             lan_listen_enabled: args.lan_listen_enabled,
             lan_advertise_ip: args.lan_advertise_ip,
+            // The full base-URL override (reverse-proxy / HTTPS front-end) is
+            // a CLI-only provisioning option for now (`mobile-sync lan enable
+            // --advertise-url`). The GUI never touches it: `None` = leave the
+            // persisted value untouched, so a CLI-set override survives GUI
+            // edits to the other fields.
+            lan_advertise_base_url: None,
             lan_port: args.lan_port,
         };
         let out = facade.update_settings(input).await?;

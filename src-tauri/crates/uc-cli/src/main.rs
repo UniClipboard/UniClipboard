@@ -486,14 +486,52 @@ mod tests {
     }
 
     #[test]
-    fn mobile_sync_lan_enable_requires_advertise() {
-        // `lan enable` 必须强制 `--advertise <IP>` —— iPhone 客户端需要
-        // 一个具体可达的 IP 写进 install URL;daemon 自己始终绑 0.0.0.0,
-        // 与 advertise 无关。
+    fn mobile_sync_lan_enable_requires_an_advertise_target() {
+        // `lan enable` 必须强制给出一个广告目标 —— iPhone 客户端需要一个
+        // 具体可达的地址写进 install URL;daemon 自己始终绑 0.0.0.0,与
+        // advertise 无关。两种形态二选一(`advertise_target` ArgGroup)。
         let result = Cli::try_parse_from(["uniclip", "mobile-sync", "lan", "enable"]);
         assert!(
             result.is_err(),
-            "expected `lan enable` to require --advertise"
+            "expected `lan enable` to require --advertise or --advertise-url"
+        );
+    }
+
+    #[test]
+    fn mobile_sync_lan_enable_accepts_advertise_url() {
+        // 反代形态:`--advertise-url` 单独给出即可满足 advertise_target 组。
+        let result = Cli::try_parse_from([
+            "uniclip",
+            "mobile-sync",
+            "lan",
+            "enable",
+            "--advertise-url",
+            "https://clip.example.com",
+            "--accept-network-risk",
+        ]);
+        assert!(
+            result.is_ok(),
+            "expected `lan enable --advertise-url` to parse"
+        );
+    }
+
+    #[test]
+    fn mobile_sync_lan_enable_rejects_both_advertise_forms() {
+        // 互斥:同时给 --advertise 和 --advertise-url 必须被 ArgGroup 拒绝。
+        let result = Cli::try_parse_from([
+            "uniclip",
+            "mobile-sync",
+            "lan",
+            "enable",
+            "--advertise",
+            "192.168.1.5",
+            "--advertise-url",
+            "https://clip.example.com",
+            "--accept-network-risk",
+        ]);
+        assert!(
+            result.is_err(),
+            "expected `lan enable` to reject both advertise forms at once"
         );
     }
 

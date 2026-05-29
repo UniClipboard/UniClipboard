@@ -269,6 +269,7 @@ impl Default for MobileSyncSettings {
             enabled: false,
             lan_listen_enabled: false,
             lan_advertise_ip: None,
+            lan_advertise_base_url: None,
             lan_port: None,
         }
     }
@@ -547,7 +548,8 @@ mod tests {
         assert_eq!(s.pairing.step_timeout, std::time::Duration::from_secs(30));
     }
 
-    /// `mobile_sync` 段缺 `lan_advertise_ip` / `lan_port` 时回退 None。
+    /// `mobile_sync` 段缺 `lan_advertise_ip` / `lan_advertise_base_url` /
+    /// `lan_port` 时回退 None。
     #[test]
     fn mobile_sync_missing_optional_fields_fall_back_to_none() {
         let json = r#"{ "mobile_sync": { "enabled": true } }"#;
@@ -555,6 +557,7 @@ mod tests {
         assert!(s.mobile_sync.enabled);
         assert!(!s.mobile_sync.lan_listen_enabled);
         assert!(s.mobile_sync.lan_advertise_ip.is_none());
+        assert!(s.mobile_sync.lan_advertise_base_url.is_none());
         assert!(s.mobile_sync.lan_port.is_none());
     }
 

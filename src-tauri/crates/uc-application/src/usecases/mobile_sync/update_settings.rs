@@ -31,6 +31,7 @@
 use std::sync::Arc;
 
 use tracing::instrument;
+use url::Url;
 
 use uc_core::ports::SettingsPort;
 
@@ -45,11 +46,16 @@ use uc_core::ports::SettingsPort;
 /// 这样让 CLI / 前端都能以"只改自己关心的字段"的方式调用,无需先 read-
 /// modify-write。`lan_advertise_ip` 用嵌套 `Option<Option<String>>` 表达三态:
 /// `None` = 不动、`Some(None)` = 显式清空、`Some(Some(ip))` = 写入。
+/// `lan_advertise_base_url` 同款三态语义。
 #[derive(Debug, Clone, Default)]
 pub struct UpdateMobileSyncSettingsInput {
     pub enabled: Option<bool>,
     pub lan_listen_enabled: Option<bool>,
     pub lan_advertise_ip: Option<Option<String>>,
+    /// 完整广告地址(scheme + host + 可选 port)的三态 patch。`Some(Some(url))`
+    /// 时会校验它是合法的 `http://` / `https://` URL 并归一化(去掉尾部斜杠);
+    /// 校验失败翻 [`UpdateMobileSyncSettingsError::InvalidLanParameter`]。
+    pub lan_advertise_base_url: Option<Option<String>>,
     pub lan_port: Option<Option<u16>>,
 }
 
@@ -61,6 +67,8 @@ pub struct UpdateMobileSyncSettingsOutput {
     pub lan_listen_enabled: bool,
     /// 落盘后的 `lan_advertise_ip` 值。
     pub lan_advertise_ip: Option<String>,
+    /// 落盘后的 `lan_advertise_base_url` 值(已归一化)。
+    pub lan_advertise_base_url: Option<String>,
     /// 落盘后的 `lan_port` 值。
     pub lan_port: Option<u16>,
     /// Wire-兼容历史字段。在 lifecycle port 引入前,这个标志告诉调用方
@@ -127,6 +135,18 @@ impl UpdateMobileSyncSettingsUseCase {
                 "lan_port must be 1..=65535, got 0".into(),
             ));
         }
+        // Validate + normalize the advertise base URL patch up front, so a
+        // malformed override fails before any read-modify-write. The stored
+        // value is the normalized form (trailing slash stripped).
+        let lan_advertise_base_url_patch: Option<Option<String>> =
+            match input.lan_advertise_base_url {
+                Some(Some(raw)) => Some(Some(
+                    normalize_advertise_base_url(&raw)
+                        .map_err(UpdateMobileSyncSettingsError::InvalidLanParameter)?,
+                )),
+                Some(None) => Some(None),
+                None => None,
+            };
 
         let mut current =
             self.settings.load().await.map_err(|err| {
@@ -142,17 +162,22 @@ impl UpdateMobileSyncSettingsUseCase {
             .lan_advertise_ip
             .clone()
             .unwrap_or_else(|| prev.lan_advertise_ip.clone());
+        let target_lan_advertise_base_url = lan_advertise_base_url_patch
+            .clone()
+            .unwrap_or_else(|| prev.lan_advertise_base_url.clone());
         let target_lan_port = input.lan_port.unwrap_or(prev.lan_port);
 
         let restart_required = target_enabled != prev.enabled
             || target_lan_listen_enabled != prev.lan_listen_enabled
             || target_lan_advertise_ip != prev.lan_advertise_ip
+            || target_lan_advertise_base_url != prev.lan_advertise_base_url
             || target_lan_port != prev.lan_port;
 
         if restart_required {
             current.mobile_sync.enabled = target_enabled;
             current.mobile_sync.lan_listen_enabled = target_lan_listen_enabled;
             current.mobile_sync.lan_advertise_ip = target_lan_advertise_ip.clone();
+            current.mobile_sync.lan_advertise_base_url = target_lan_advertise_base_url.clone();
             current.mobile_sync.lan_port = target_lan_port;
             self.settings.save(&current).await.map_err(|err| {
                 UpdateMobileSyncSettingsError::SettingsSaveFailed(err.to_string())
@@ -165,6 +190,7 @@ impl UpdateMobileSyncSettingsUseCase {
             enabled: target_enabled,
             lan_listen_enabled: target_lan_listen_enabled,
             lan_advertise_ip: target_lan_advertise_ip,
+            lan_advertise_base_url: target_lan_advertise_base_url,
             lan_port: target_lan_port,
             restart_required,
             // use case 不知道 lifecycle 是否被装配,更不知道 apply 后的
@@ -173,6 +199,37 @@ impl UpdateMobileSyncSettingsUseCase {
             lan_listener_bind_error: None,
         })
     }
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────
+
+/// 校验并归一化用户给的完整广告地址。
+///
+/// 约束:
+/// - 能被解析为 URL;
+/// - scheme 必须是 `http` 或 `https`(install URL / 二维码消费方按这两种
+///   scheme 拼接子路径);
+/// - 必须带非空 host。
+///
+/// 归一化:去掉尾部斜杠,使其与 `http://<ip>:<port>` 形态一致(消费方自行
+/// 拼接 `/...` 子路径,不应出现 `//`)。返回归一化后的字符串;校验失败返回
+/// 面向用户的英文错误描述。
+fn normalize_advertise_base_url(raw: &str) -> Result<String, String> {
+    let parsed =
+        Url::parse(raw).map_err(|e| format!("lan_advertise_base_url is not a valid URL: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => {
+            return Err(format!(
+                "lan_advertise_base_url scheme must be http or https, got `{other}`"
+            ));
+        }
+    }
+    match parsed.host_str() {
+        Some(host) if !host.is_empty() => {}
+        _ => return Err("lan_advertise_base_url must include a host".into()),
+    }
+    Ok(raw.trim_end_matches('/').to_string())
 }
 
 // ─── tests ──────────────────────────────────────────────────────────────
@@ -358,6 +415,7 @@ mod tests {
                 lan_listen_enabled: Some(true),
                 lan_advertise_ip: Some(Some("192.168.1.5".into())),
                 lan_port: Some(Some(42721)),
+                ..Default::default()
             })
             .await
             .expect("ok");
@@ -385,6 +443,90 @@ mod tests {
         );
         assert_eq!(out2.lan_port, Some(42721), "lan_port must be retained");
         assert!(out2.restart_required);
+    }
+
+    #[tokio::test]
+    async fn base_url_round_trips_and_normalizes_trailing_slash() {
+        let settings = Arc::new(InMemorySettings::default());
+        let uc = build_uc(settings.clone());
+
+        // 写入带尾斜杠的 base URL → 落盘的是去掉尾斜杠的归一化形态。
+        let out = uc
+            .execute(UpdateMobileSyncSettingsInput {
+                enabled: Some(true),
+                lan_listen_enabled: Some(true),
+                lan_advertise_base_url: Some(Some("https://clip.example.com/".into())),
+                ..Default::default()
+            })
+            .await
+            .expect("ok");
+        assert_eq!(
+            out.lan_advertise_base_url.as_deref(),
+            Some("https://clip.example.com"),
+            "trailing slash must be normalized away"
+        );
+        assert!(out.restart_required);
+
+        // 同值再写(归一化后)→ 不触发 restart。
+        let out2 = uc
+            .execute(UpdateMobileSyncSettingsInput {
+                lan_advertise_base_url: Some(Some("https://clip.example.com".into())),
+                ..Default::default()
+            })
+            .await
+            .expect("ok");
+        assert!(
+            !out2.restart_required,
+            "same normalized value must not write"
+        );
+
+        // 显式清空。
+        let out3 = uc
+            .execute(UpdateMobileSyncSettingsInput {
+                lan_advertise_base_url: Some(None),
+                ..Default::default()
+            })
+            .await
+            .expect("ok");
+        assert_eq!(
+            out3.lan_advertise_base_url, None,
+            "base url must be cleared"
+        );
+        assert!(out3.restart_required);
+    }
+
+    #[tokio::test]
+    async fn rejects_non_http_base_url() {
+        let settings = Arc::new(InMemorySettings::default());
+        let uc = build_uc(settings);
+        let err = uc
+            .execute(UpdateMobileSyncSettingsInput {
+                lan_advertise_base_url: Some(Some("ftp://clip.example.com".into())),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            UpdateMobileSyncSettingsError::InvalidLanParameter(ref s) if s.contains("http or https")
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_malformed_base_url() {
+        let settings = Arc::new(InMemorySettings::default());
+        let uc = build_uc(settings);
+        let err = uc
+            .execute(UpdateMobileSyncSettingsInput {
+                lan_advertise_base_url: Some(Some("not a url".into())),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            UpdateMobileSyncSettingsError::InvalidLanParameter(_)
+        ));
     }
 
     #[tokio::test]

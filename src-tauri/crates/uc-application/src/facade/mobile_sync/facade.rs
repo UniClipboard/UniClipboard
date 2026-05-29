@@ -1000,6 +1000,7 @@ mod tests {
                 lan_listen_enabled: Some(true),
                 lan_advertise_ip: Some(Some("192.168.1.5".into())),
                 lan_port: Some(Some(42720)),
+                ..Default::default()
             })
             .await
             .expect("update_settings ok");
@@ -1342,6 +1343,7 @@ mod tests {
                 lan_listen_enabled: Some(true),
                 lan_advertise_ip: Some(Some("192.168.1.5".into())),
                 lan_port: Some(Some(43210)),
+                ..Default::default()
             })
             .await
             .unwrap();
@@ -1521,6 +1523,7 @@ mod tests {
             enabled: true,
             lan_listen_enabled: true,
             lan_advertise_ip: None,
+            lan_advertise_base_url: None,
             lan_port: Some(0),
             restart_required: false,
             lan_listener_bind_error: None,

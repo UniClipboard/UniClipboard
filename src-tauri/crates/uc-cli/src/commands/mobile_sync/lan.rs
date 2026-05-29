@@ -2,10 +2,14 @@
 //!
 //! 子命令:
 //! * `list-interfaces` —— 读命令,显示 RFC1918 LAN 候选(daemon 跑时也允许)。
-//! * `enable --advertise <IP> [--port <P>] [--accept-network-risk]` —— 写命令。
-//!   `--advertise` 决定写进 SyncClipboard install URL 给 iPhone 的 IP
-//!   (daemon socket 始终绑 0.0.0.0)。不带 `--accept-network-risk` 时打印
-//!   安全告警 + 交互确认(SPEC §3.4)。
+//! * `enable (--advertise <IP> | --advertise-url <URL>) [--port <P>]
+//!   [--accept-network-risk]` —— 写命令。二选一:
+//!   - `--advertise <IP>` 写进 install URL 的 LAN IP,得到
+//!     `http://<IP>:<port>`;
+//!   - `--advertise-url <URL>` 写进 install URL 的完整 base URL(如
+//!     `https://clip.example.com`),用于 TLS 反向代理前置的公网部署。
+//!   两者互斥且必须给其一。daemon socket 始终绑 `0.0.0.0:<port>`。不带
+//!   `--accept-network-risk` 时打印安全告警 + 交互确认(SPEC §3.4)。
 //! * `disable` —— 写命令。
 
 use clap::Subcommand;
@@ -21,13 +25,26 @@ use crate::ui;
 pub enum LanCommands {
     /// List eligible RFC1918 LAN IPv4 interfaces.
     ListInterfaces,
-    /// Enable the LAN listener (binds 0.0.0.0; --advertise decides the
-    /// IP printed in the install URL given to the iPhone).
+    /// Enable the LAN listener (binds 0.0.0.0). Exactly one of
+    /// --advertise / --advertise-url decides the address printed in the
+    /// install URL / QR given to the phone.
+    #[command(group(
+        clap::ArgGroup::new("advertise_target")
+            .required(true)
+            .args(["advertise", "advertise_url"])
+    ))]
     Enable {
         /// LAN IPv4 to embed in the SyncClipboard install URL
-        /// (e.g. `192.168.1.5`). Pick one from `list-interfaces`.
+        /// (e.g. `192.168.1.5`). Pick one from `list-interfaces`. Produces
+        /// `http://<IP>:<port>`. Mutually exclusive with --advertise-url.
         #[arg(long, value_name = "IP")]
-        advertise: String,
+        advertise: Option<String>,
+        /// Full base URL (scheme + host + optional port) to embed in the
+        /// install URL / QR, e.g. `https://clip.example.com`. Use when a
+        /// TLS reverse proxy (Caddy, nginx, …) fronts the plain-HTTP LAN
+        /// listener for public access. Mutually exclusive with --advertise.
+        #[arg(long, value_name = "URL")]
+        advertise_url: Option<String>,
         /// Custom port; default 42720.
         #[arg(long, value_name = "PORT")]
         port: Option<u16>,
@@ -45,9 +62,20 @@ pub async fn run(command: LanCommands, json: bool, verbose: bool) -> i32 {
         LanCommands::ListInterfaces => list_interfaces(json, verbose).await,
         LanCommands::Enable {
             advertise,
+            advertise_url,
             port,
             accept_network_risk,
-        } => enable(advertise, port, accept_network_risk, json, verbose).await,
+        } => {
+            enable(
+                advertise,
+                advertise_url,
+                port,
+                accept_network_risk,
+                json,
+                verbose,
+            )
+            .await
+        }
         LanCommands::Disable => disable(json, verbose).await,
     }
 }
@@ -102,23 +130,45 @@ struct EnableResult {
     enabled: bool,
     lan_listen_enabled: bool,
     lan_advertise_ip: Option<String>,
+    lan_advertise_base_url: Option<String>,
     lan_port: Option<u16>,
     restart_required: bool,
 }
 
 async fn enable(
-    advertise: String,
+    advertise: Option<String>,
+    advertise_url: Option<String>,
     port: Option<u16>,
     accept_network_risk: bool,
     json: bool,
     verbose: bool,
 ) -> i32 {
-    // Print header + run interactive risk confirmation BEFORE facade wiring,
-    // so we can short-circuit cheaply if the user aborts (or the JSON-mode
-    // missing-flag check fires).
     if !json {
         ui::header("Mobile-sync LAN enable");
     }
+
+    // Translate the advertise choice into the two persisted fields. The
+    // `advertise_target` ArgGroup (required, mutually exclusive) already
+    // guarantees exactly one of the flags at the clap level — the other two
+    // arms are defensive and only reachable if that contract regresses. The
+    // two fields are kept mutually exclusive in storage too: setting one
+    // clears the other, so base_url-vs-ip precedence is never ambiguous.
+    let (advertise_ip_patch, advertise_url_patch) = match (advertise, advertise_url) {
+        (Some(ip), None) => (Some(Some(ip)), Some(None)),
+        (None, Some(url)) => (Some(None), Some(Some(url))),
+        (None, None) => {
+            ui::error("One of --advertise <IP> or --advertise-url <URL> is required.");
+            return exit_codes::EXIT_ERROR;
+        }
+        (Some(_), Some(_)) => {
+            ui::error("--advertise and --advertise-url are mutually exclusive.");
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+
+    // Run interactive risk confirmation BEFORE facade wiring, so we can
+    // short-circuit cheaply if the user aborts (or the JSON-mode missing-flag
+    // check fires).
     if !accept_network_risk {
         if json {
             ui::error("--accept-network-risk is required in JSON mode (no interactive prompt).");
@@ -146,7 +196,8 @@ async fn enable(
             // 否则 daemon 启动时仍因 enabled=false 跳过 listener。
             enabled: Some(true),
             lan_listen_enabled: Some(true),
-            lan_advertise_ip: Some(Some(advertise)),
+            lan_advertise_ip: advertise_ip_patch,
+            lan_advertise_base_url: advertise_url_patch,
             lan_port: Some(port),
         })
         .await;
@@ -158,6 +209,7 @@ async fn enable(
                     enabled: out.enabled,
                     lan_listen_enabled: out.lan_listen_enabled,
                     lan_advertise_ip: out.lan_advertise_ip.clone(),
+                    lan_advertise_base_url: out.lan_advertise_base_url.clone(),
                     lan_port: out.lan_port,
                     restart_required: out.restart_required,
                 };
@@ -167,6 +219,10 @@ async fn enable(
                 ui::info(
                     "advertise",
                     out.lan_advertise_ip.as_deref().unwrap_or("(unset)"),
+                );
+                ui::info(
+                    "advertiseUrl",
+                    out.lan_advertise_base_url.as_deref().unwrap_or("(unset)"),
                 );
                 ui::info(
                     "port",

@@ -231,6 +231,10 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
             enabled: Some(true),
             lan_listen_enabled: Some(true),
             lan_advertise_ip: Some(Some(advertise_ip.clone())),
+            // `setup` provisions the LAN ip:port form; clear any prior full
+            // base-URL override so the two never coexist (the reverse-proxy
+            // path is `lan enable --advertise-url`, see that command).
+            lan_advertise_base_url: Some(None),
             lan_port: Some(Some(port)),
         })
         .await

@@ -31,6 +31,7 @@ struct SettingsDto {
     enabled: bool,
     lan_listen_enabled: bool,
     lan_advertise_ip: Option<String>,
+    lan_advertise_base_url: Option<String>,
     lan_port: Option<u16>,
     /// daemon 端 LAN listener 的 bind 失败原因(`Some` 时表示真的尝试过 bind 但失败)。
     lan_listener_error: Option<String>,
@@ -52,6 +53,7 @@ impl From<&MobileSyncSettingsView> for SettingsDto {
             enabled: v.enabled,
             lan_listen_enabled: v.lan_listen_enabled,
             lan_advertise_ip: v.lan_advertise_ip.clone(),
+            lan_advertise_base_url: v.lan_advertise_base_url.clone(),
             lan_port: v.lan_port,
             lan_listener_error: v.lan_listener_error.clone(),
             listen_url: derive_listen_url(v),
@@ -87,6 +89,12 @@ async fn show(json: bool, verbose: bool) -> i32 {
                     view.lan_advertise_ip
                         .as_deref()
                         .unwrap_or("(none, fallback 0.0.0.0)"),
+                );
+                ui::info(
+                    "lanAdvertiseUrl",
+                    view.lan_advertise_base_url
+                        .as_deref()
+                        .unwrap_or("(none, using LAN ip:port)"),
                 );
                 ui::info(
                     "lanPort",

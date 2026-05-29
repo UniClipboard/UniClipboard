@@ -64,8 +64,9 @@ pub struct RegisterMobileShortcutDeviceOutput {
     /// 调用方若要把它原样转发给上层 view,应再过一次 summary 类型,避免
     /// password_hash 暴露给 UI(`list_devices::MobileDeviceSummary` 已实现)。
     pub device: MobileDevice,
-    /// daemon 当前对外暴露的 LAN URL,用户在 SyncClipboard shortcut 里
-    /// 填进 `url` 框,形如 `http://192.168.1.5:42720`。
+    /// daemon 当前对外公布的 base URL,用户在 SyncClipboard shortcut 里
+    /// 填进 `url` 框。LAN 形态形如 `http://192.168.1.5:42720`;若用户配置了
+    /// `lan_advertise_base_url`,则为该完整地址(可为 `https://域名`)。
     pub base_url: String,
     /// 一次性回显:用户在 SyncClipboard shortcut 里填进 `username` 框。
     /// 自定义模式下与 `input.username` 相同;自动模式下来自 minter。
@@ -264,6 +265,9 @@ impl RegisterMobileShortcutDeviceUseCase {
     ///
     /// base_url 由 settings 决定:
     /// `lan_listen_enabled=false` → `LanListenerDisabled`(用户没开 LAN);
+    /// `lan_advertise_base_url=Some(url)` → 直接用该完整地址(优先级最高,
+    ///   不需要本机有 LAN 网卡);
+    /// 否则回退 LAN 形态:
     /// `lan_advertise_ip=Some(ip)` → 用该 IP;
     /// `lan_advertise_ip=None` → 自动挑一个 RFC1918 LAN IPv4
     ///   ([`auto_pick_advertise_ip`]),没候选时 → `NoLanInterfaceAvailable`。
@@ -317,15 +321,28 @@ impl RegisterMobileShortcutDeviceUseCase {
         if !settings.mobile_sync.lan_listen_enabled {
             return Err(RegisterMobileShortcutDeviceError::LanListenerDisabled);
         }
-        // 用户选了"自动" → 让 daemon 替他挑一个 RFC1918 LAN IP。daemon 永远
-        // bind `0.0.0.0:lan_port`,但 iPhone 得到的 base_url 必须是真实可达
-        // 的 LAN 地址(0.0.0.0 / 127.0.0.1 在 iPhone 上都连不通)。
-        let advertise_ip: String = match settings.mobile_sync.lan_advertise_ip.clone() {
-            Some(ip) => ip,
-            None => self.auto_pick_advertise_ip().await?,
+        // base_url 的真相来源有两条,`lan_advertise_base_url` 优先:
+        //
+        // 1. `lan_advertise_base_url=Some(url)` —— 用户提供了完整广告地址
+        //    (scheme + host + 可选 port)。直接用它,不需要本机有 LAN 网卡 ——
+        //    典型场景:公网部署时 install URL / 二维码要指向前置的 TLS 反向
+        //    代理(如 Caddy 的 `https://域名`),内网仍是明文 mobile_lan
+        //    listener。该地址已在 update_settings 写入时校验 + 归一化。
+        // 2. `lan_advertise_base_url=None` —— 回退 LAN 形态。`lan_advertise_ip`
+        //    为 None("自动")时让 daemon 替他挑一个 RFC1918 LAN IP;daemon
+        //    永远 bind `0.0.0.0:lan_port`,但 iPhone 得到的 base_url 必须是
+        //    真实可达的 LAN 地址(0.0.0.0 / 127.0.0.1 在 iPhone 上都连不通)。
+        let base_url = match settings.mobile_sync.lan_advertise_base_url.clone() {
+            Some(url) => url,
+            None => {
+                let advertise_ip: String = match settings.mobile_sync.lan_advertise_ip.clone() {
+                    Some(ip) => ip,
+                    None => self.auto_pick_advertise_ip().await?,
+                };
+                let port = settings.mobile_sync.lan_port.unwrap_or(42720);
+                format!("http://{advertise_ip}:{port}")
+            }
         };
-        let port = settings.mobile_sync.lan_port.unwrap_or(42720);
-        let base_url = format!("http://{advertise_ip}:{port}");
 
         // 2. 颁发凭据 —— minter 一次性给 4 项 baseline;然后按 input
         //    选择性覆盖 username / (password + password_hash)。device_id
@@ -582,9 +599,11 @@ fn translate_device_error(err: MobileDeviceError) -> RegisterMobileShortcutDevic
 ///
 /// 设计上 build 路径仅可能撞到 [`ConnectUriError::UriTooLong`] —— label
 /// 过长导致 payload 超 800 字符。其余 6 个变体属于"上游契约保证不会发生":
-/// - `MissingField`: `base_url` 由 `format!("http://{ip}:{port}")` 拼出非空,
+/// - `MissingField`: `base_url` 要么由 `format!("http://{ip}:{port}")` 拼出,
+///   要么是 update_settings 已校验非空的 `lan_advertise_base_url`;
 ///   `username` / `password` 走 minter 或 0.1 步前置校验, 都非空。
-/// - `InvalidUrl`: base_url 永远以 `http://` 开头。
+/// - `InvalidUrl`: base_url 永远以 `http://` 或 `https://` 开头
+///   (LAN 形态硬编码 `http://`,override 形态已在 update_settings 校验)。
 /// - `InvalidScheme` / `UnsupportedVersion` / `UnsupportedService` /
 ///   `PayloadDecodeFailed`: 仅 parse 路径出现, build 不调 parse。
 ///
@@ -756,6 +775,22 @@ mod tests {
             settings.mobile_sync.enabled = true;
             settings.mobile_sync.lan_listen_enabled = true;
             settings.mobile_sync.lan_advertise_ip = None;
+            settings.mobile_sync.lan_port = Some(42720);
+            Ok(settings)
+        });
+        s
+    }
+
+    /// `lan_advertise_base_url = Some("https://clip.example.com")` 同时设了一个
+    /// `lan_advertise_ip` + `lan_port` —— 用来证明 base_url override 优先。
+    fn settings_port_base_url() -> MockSettingsPortImpl {
+        let mut s = MockSettingsPortImpl::new();
+        s.expect_load().returning(|| {
+            let mut settings = Settings::default();
+            settings.mobile_sync.enabled = true;
+            settings.mobile_sync.lan_listen_enabled = true;
+            settings.mobile_sync.lan_advertise_ip = Some("192.168.1.5".into());
+            settings.mobile_sync.lan_advertise_base_url = Some("https://clip.example.com".into());
             settings.mobile_sync.lan_port = Some(42720);
             Ok(settings)
         });
@@ -960,6 +995,32 @@ mod tests {
             out.install_qr_code_png_bytes, install_url_qr.0,
             "install QR PNG must encode install_url byte-for-byte"
         );
+    }
+
+    #[tokio::test]
+    async fn base_url_override_takes_precedence_over_advertise_ip() {
+        // settings 同时有 lan_advertise_ip 和 lan_advertise_base_url —— base_url
+        // 必须胜出, 出现在 out.base_url 与 connect_uri payload 里。
+        let uc = RegisterMobileShortcutDeviceUseCase::new(
+            Arc::new(deterministic_minter()),
+            Arc::new(recording_hasher()),
+            Arc::new(empty_device_repo()),
+            Arc::new(settings_port_base_url()),
+            Arc::new(clock_at(1_000)),
+            // probe 永远不该被调到(base_url 已定 → 不走 auto-pick)。给个空
+            // probe, 若实现误调它只会得到 NoLanInterfaceAvailable 而 panic 断言。
+            Arc::new(probe_returning(vec![])),
+            Arc::new(CapturingAnalyticsSink::default()),
+        );
+        let out = uc
+            .execute(label_only("我的 iPhone"))
+            .await
+            .expect("base_url override path must succeed");
+
+        assert_eq!(out.base_url, "https://clip.example.com");
+        let payload = parse_mobile_sync_connect_uri(&out.connect_uri)
+            .expect("connect URI must round-trip parse");
+        assert_eq!(payload.url, "https://clip.example.com");
     }
 
     // ── tests: custom username ─────────────────────────────────────────

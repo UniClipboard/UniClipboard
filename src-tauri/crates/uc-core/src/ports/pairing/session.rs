@@ -79,6 +79,27 @@ pub enum DialError {
     Internal(String),
 }
 
+/// Which discovery channel resolved an invitation before the dial.
+///
+/// Adapters that race several channels report whichever resolution won;
+/// adapters with a single channel always report that channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiscoveryChannel {
+    /// Resolved via the directory service.
+    Cloud,
+    /// Resolved via local-network discovery.
+    Lan,
+}
+
+/// Outcome of a successful [`PairingSessionPort::dial_by_invitation`].
+#[derive(Debug, Clone)]
+pub struct DialOutcome {
+    /// Handle for the opened pairing session.
+    pub session_id: PairingSessionId,
+    /// The discovery channel whose resolution won the dial.
+    pub channel: DiscoveryChannel,
+}
+
 /// Errors raised by send/recv/close on a session.
 #[derive(Debug, Error)]
 pub enum SessionError {
@@ -102,13 +123,11 @@ pub trait PairingSessionPort: Send + Sync {
     /// Joiner entry point. Resolves the invitation through one or more
     /// discovery channels (adapters may race them in parallel), dials the
     /// sponsor at the first successful resolution, opens a bi-directional
-    /// stream, and returns the session handle. No bytes are sent by this
+    /// stream, and returns the session handle together with the discovery
+    /// channel that resolved the invitation. No bytes are sent by this
     /// call — the caller writes the first [`PairingSessionMessage`] via
     /// [`send`](Self::send).
-    async fn dial_by_invitation(
-        &self,
-        code: &InvitationCode,
-    ) -> Result<PairingSessionId, DialError>;
+    async fn dial_by_invitation(&self, code: &InvitationCode) -> Result<DialOutcome, DialError>;
 
     /// Send a pairing message on an existing session. Used by both sides
     /// throughout the handshake.

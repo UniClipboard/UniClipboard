@@ -27,11 +27,11 @@ use tracing::{debug, info, instrument, warn};
 
 use uc_core::pairing::invitation::PairingInvitation;
 use uc_core::ports::pairing_invitation::{
-    InvitationError, IssuedInvitation, PairingInvitationAddressCandidate,
+    CodeOrigin, InvitationError, IssuedInvitation, PairingInvitationAddressCandidate,
     PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
 };
 use uc_core::ports::{ClockPort, DeviceIdentityPort};
-use uc_observability::analytics::{AnalyticsFacade, Event, PairingMethod};
+use uc_observability::analytics::{AnalyticsFacade, Event, InvitationCodeSource, PairingMethod};
 
 use crate::facade::space_setup::{IssuePairingInvitationError, IssuePairingInvitationResult};
 use crate::pairing_invitation::InMemoryPairingInvitationHolder;
@@ -129,6 +129,22 @@ impl IssuePairingInvitationUseCase {
     ) -> Result<IssuePairingInvitationResult, IssuePairingInvitationError> {
         debug!(code = %issued.code.as_str(), expires_at = %issued.expires_at, "invitation issued by rendezvous");
 
+        // pairing_invitation_issued: the sponsor-side outcome anchor. The
+        // 3-way `CodeOrigin` collapses into a 2-way code source plus a
+        // LAN-only flag (intentional LAN-only vs transient directory outage,
+        // both yielding a locally-minted code).
+        let (code_source, lan_only_mode) = match issued.code_origin {
+            CodeOrigin::DirectoryIssued => (InvitationCodeSource::DirectoryIssued, false),
+            CodeOrigin::LocallyMintedLanOnly => (InvitationCodeSource::LocallyMinted, true),
+            CodeOrigin::LocallyMintedDirectoryUnreachable => {
+                (InvitationCodeSource::LocallyMinted, false)
+            }
+        };
+        self.analytics.capture(Event::PairingInvitationIssued {
+            code_source,
+            lan_only_mode,
+        });
+
         let issued_at = self.now_utc()?;
         let device_id = self.device_identity.current_device_id();
         let (invitation, _issued_event) =
@@ -218,6 +234,7 @@ mod tests {
                 next: StdMutex::new(FakeOutcome::Ok(IssuedInvitation {
                     code: InvitationCode::new(code),
                     expires_at,
+                    code_origin: CodeOrigin::DirectoryIssued,
                 })),
                 calls: StdMutex::new(0),
                 selected_calls: StdMutex::new(Vec::new()),
@@ -325,19 +342,55 @@ mod tests {
 
     /// Assert that the analytics sink saw exactly one `PairingStarted`
     /// event with the v1 fixed `PairingMethod::Code`. Slice 8b' funnel
-    /// anchor — fired from `execute()` entry on every code path.
+    /// anchor — fired from `execute()` entry. Use on the *failure* paths
+    /// where issuance never completes (no `pairing_invitation_issued`).
     fn assert_pairing_started(analytics: &Arc<CapturingAnalyticsSink>) {
         let events = analytics.events();
         assert_eq!(
             events.len(),
             1,
-            "execute() must fire exactly one PairingStarted regardless of outcome"
+            "failed issuance must fire exactly one PairingStarted"
         );
         match &events[0] {
             Event::PairingStarted { method } => {
                 assert_eq!(*method, PairingMethod::Code);
             }
             other => panic!("expected PairingStarted, got {other:?}"),
+        }
+    }
+
+    /// Assert the *success* path emits `[PairingStarted, PairingInvitationIssued]`,
+    /// the second carrying the expected code source and LAN-only flag.
+    fn assert_started_then_issued(
+        analytics: &Arc<CapturingAnalyticsSink>,
+        expected_source: InvitationCodeSource,
+        expected_lan_only: bool,
+    ) {
+        let events = analytics.events();
+        assert_eq!(
+            events.len(),
+            2,
+            "successful issuance fires [PairingStarted, PairingInvitationIssued], got {events:?}"
+        );
+        assert!(
+            matches!(
+                events[0],
+                Event::PairingStarted {
+                    method: PairingMethod::Code
+                }
+            ),
+            "first event should be PairingStarted, got {:?}",
+            events[0]
+        );
+        match &events[1] {
+            Event::PairingInvitationIssued {
+                code_source,
+                lan_only_mode,
+            } => {
+                assert_eq!(*code_source, expected_source);
+                assert_eq!(*lan_only_mode, expected_lan_only);
+            }
+            other => panic!("expected PairingInvitationIssued, got {other:?}"),
         }
     }
 
@@ -391,8 +444,8 @@ mod tests {
         }
         assert_eq!(stored.issued_at().timestamp_millis(), issued_at_ms());
 
-        // Slice 8b' · funnel anchor fired exactly once.
-        assert_pairing_started(&h.analytics);
+        // Funnel anchor + issuance outcome: a directory-issued code.
+        assert_started_then_issued(&h.analytics, InvitationCodeSource::DirectoryIssued, false);
     }
 
     #[tokio::test]
@@ -411,7 +464,7 @@ mod tests {
             .get_for_test(&InvitationCode::new("ADDR-0001"))
             .await
             .is_some());
-        assert_pairing_started(&h.analytics);
+        assert_started_then_issued(&h.analytics, InvitationCodeSource::DirectoryIssued, false);
     }
 
     #[tokio::test]
@@ -480,6 +533,7 @@ mod tests {
         *port.next.lock().unwrap() = FakeOutcome::Ok(IssuedInvitation {
             code: InvitationCode::new("SAME"),
             expires_at: second_expiry,
+            code_origin: CodeOrigin::DirectoryIssued,
         });
         h.uc.execute().await.unwrap();
 

@@ -47,8 +47,8 @@ use tracing::{debug, info, instrument, warn};
 
 use uc_core::pairing::{InvitationCode, PairingSessionMessage};
 use uc_core::ports::pairing::{
-    DialError, PairingEventPort, PairingSessionEvent, PairingSessionId, PairingSessionPort,
-    SessionError,
+    DialError, DialOutcome, DiscoveryChannel, PairingEventPort, PairingSessionEvent,
+    PairingSessionId, PairingSessionPort, SessionError,
 };
 
 use super::wire::{self, WireDecodeError};
@@ -131,13 +131,19 @@ impl IrohPairingSessionAdapter {
     ///
     /// In LAN-only mode the cloud branch is skipped entirely (no HTTP
     /// request) and only the LAN branch is awaited.
-    async fn resolve_invitation(&self, code: &InvitationCode) -> Result<EndpointAddr, DialError> {
+    async fn resolve_invitation(
+        &self,
+        code: &InvitationCode,
+    ) -> Result<(EndpointAddr, DiscoveryChannel), DialError> {
         use futures_util::future::{select, Either};
         use std::pin::pin;
 
         if crate::network::iroh::runtime_consts::lan_only() {
             debug!(code = %code.as_str(), "LAN-only mode: skipping cloud channel");
-            return self.resolve_via_mdns(code).await;
+            return self
+                .resolve_via_mdns(code)
+                .await
+                .map(|addr| (addr, DiscoveryChannel::Lan));
         }
 
         let cloud_fut = self.resolve_via_cloud(code);
@@ -145,14 +151,14 @@ impl IrohPairingSessionAdapter {
         let cloud_fut = pin!(cloud_fut);
         let mdns_fut = pin!(mdns_fut);
 
-        let resolved = match select(cloud_fut, mdns_fut).await {
+        let (resolved, channel) = match select(cloud_fut, mdns_fut).await {
             Either::Left((Ok(addr), _)) => {
                 debug!(code = %code.as_str(), channel = "cloud", "discovery race winner");
-                addr
+                (addr, DiscoveryChannel::Cloud)
             }
             Either::Right((Ok(addr), _)) => {
                 debug!(code = %code.as_str(), channel = "lan", "discovery race winner");
-                addr
+                (addr, DiscoveryChannel::Lan)
             }
             Either::Left((Err(cloud_err), pending_mdns)) => {
                 debug!(
@@ -161,7 +167,7 @@ impl IrohPairingSessionAdapter {
                     "cloud channel failed; waiting for LAN channel"
                 );
                 match pending_mdns.await {
-                    Ok(addr) => addr,
+                    Ok(addr) => (addr, DiscoveryChannel::Lan),
                     Err(mdns_err) => {
                         warn!(
                             code = %code.as_str(),
@@ -180,7 +186,7 @@ impl IrohPairingSessionAdapter {
                     "LAN channel failed; waiting for cloud channel"
                 );
                 match pending_cloud.await {
-                    Ok(addr) => addr,
+                    Ok(addr) => (addr, DiscoveryChannel::Cloud),
                     Err(cloud_err) => {
                         warn!(
                             code = %code.as_str(),
@@ -198,9 +204,10 @@ impl IrohPairingSessionAdapter {
             code = %code.as_str(),
             sponsor = %resolved.id.fmt_short(),
             transport_addr_count = resolved.addrs.len(),
+            ?channel,
             "pairing invitation resolved; sponsor address ready"
         );
-        Ok(resolved)
+        Ok((resolved, channel))
     }
 
     async fn resolve_via_cloud(&self, code: &InvitationCode) -> Result<EndpointAddr, DialError> {
@@ -596,11 +603,8 @@ impl PairingEventPort for IrohPairingSessionAdapter {
 #[async_trait]
 impl PairingSessionPort for IrohPairingSessionAdapter {
     #[instrument(skip_all, fields(code = %code.as_str()))]
-    async fn dial_by_invitation(
-        &self,
-        code: &InvitationCode,
-    ) -> Result<PairingSessionId, DialError> {
-        let sponsor_addr = self.resolve_invitation(code).await?;
+    async fn dial_by_invitation(&self, code: &InvitationCode) -> Result<DialOutcome, DialError> {
+        let (sponsor_addr, channel) = self.resolve_invitation(code).await?;
         let sponsor_id = sponsor_addr.id.fmt_short().to_string();
         let transport_addr_count = sponsor_addr.addrs.len();
         info!(
@@ -648,7 +652,10 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
             sponsor = %sponsor_id,
             "pairing outbound session registered"
         );
-        Ok(session)
+        Ok(DialOutcome {
+            session_id: session,
+            channel,
+        })
     }
 
     #[instrument(skip_all, fields(session = %session))]
@@ -1040,10 +1047,12 @@ mod tests {
         wait_for_direct_addrs(&joiner_endpoint).await;
         let adapter = adapter_with_rendezvous(joiner_endpoint, rendezvous.uri());
 
-        let session = adapter
+        let outcome = adapter
             .dial_by_invitation(&InvitationCode::new("CODE-9999"))
             .await
             .expect("dial");
+        assert_eq!(outcome.channel, DiscoveryChannel::Cloud);
+        let session = outcome.session_id;
 
         let msg = sample_request();
         adapter.send(&session, msg.clone()).await.expect("send");

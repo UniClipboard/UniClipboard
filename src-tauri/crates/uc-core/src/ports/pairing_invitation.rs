@@ -26,6 +26,28 @@ use thiserror::Error;
 
 pub use crate::pairing::invitation::InvitationCode;
 
+/// Provenance of an issued invitation code, and — when minted locally —
+/// the reason the directory was not used.
+///
+/// The distinction is observable to the joiner: a locally-minted code is
+/// only resolvable by joiners on the same local network (the directory
+/// holds no record of it), whereas a directory-issued code is resolvable
+/// across networks. The two locally-minted reasons differ in intent: a
+/// LAN-only sponsor deliberately never contacts the directory, whereas a
+/// fallback mint reflects a transient directory outage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodeOrigin {
+    /// The directory service assigned the code — the sponsor had directory
+    /// reachability at issue time.
+    DirectoryIssued,
+    /// Minted locally because the sponsor is configured for LAN-only
+    /// pairing and skips the directory entirely.
+    LocallyMintedLanOnly,
+    /// Minted locally because the directory was unreachable at issue time
+    /// (transient outage); the sponsor would otherwise have used it.
+    LocallyMintedDirectoryUnreachable,
+}
+
 /// Successfully issued invitation.
 ///
 /// "Issued" means the invitation has been locally minted and parked for the
@@ -40,6 +62,10 @@ pub struct IssuedInvitation {
     /// adapter is responsible for keeping all publish channels and the
     /// local aggregate aligned on the same instant.
     pub expires_at: DateTime<Utc>,
+    /// Provenance of the code — see [`CodeOrigin`]. A locally-minted code is
+    /// only resolvable on the local network; callers may surface that
+    /// distinction (e.g. "this code only works on your LAN").
+    pub code_origin: CodeOrigin,
 }
 
 /// A local address the sponsor could publish in a pairing ticket.

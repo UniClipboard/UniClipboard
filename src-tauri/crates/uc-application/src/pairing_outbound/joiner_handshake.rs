@@ -49,7 +49,9 @@ use uc_core::pairing::invitation::InvitationCode;
 use uc_core::pairing::session_message::{
     JoinerChallengeResponse, JoinerRequest, PairingRejectReason, PairingSessionMessage,
 };
-use uc_core::ports::pairing::{DialError, PairingSessionId, PairingSessionPort, SessionError};
+use uc_core::ports::pairing::{
+    DialError, DialOutcome, DiscoveryChannel, PairingSessionId, PairingSessionPort, SessionError,
+};
 use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
 use uc_core::ports::{DeviceIdentityPort, LocalIdentityPort, SettingsPort};
 use uc_core::security::IdentityFingerprint;
@@ -69,6 +71,10 @@ pub(crate) struct JoinerHandshakeOutcome {
     pub space_id: SpaceId,
     pub self_device_id: DeviceId,
     pub self_identity_fingerprint: IdentityFingerprint,
+    /// Discovery channel that resolved the invitation before the dial
+    /// (cloud directory vs LAN). Carried so the outer use case can record
+    /// which channel the first pair actually used.
+    pub discovery_channel: DiscoveryChannel,
     /// Slice 2 Phase 1 · T5：sponsor 从 `SponsorConfirm.transport_address_blob`
     /// 带来的不透明传输地址字节，由 outer use case best-effort upsert 到
     /// `PeerAddressRepositoryPort`。空 `Vec` 表示 sponsor 未附带地址，
@@ -135,14 +141,17 @@ impl JoinerHandshakeCoordinator {
         // without spending any crypto work. A successful dial creates
         // a session in the adapter that we must close on every exit
         // path below (including error paths).
-        let session = self
+        let DialOutcome {
+            session_id: session,
+            channel,
+        } = self
             .pairing_session
             .dial_by_invitation(code)
             .await
             .map_err(map_dial_err)?;
-        info!(session = %session, "pairing session dialled");
+        info!(session = %session, ?channel, "pairing session dialled");
 
-        match self.drive(&session, code, passphrase).await {
+        match self.drive(&session, channel, code, passphrase).await {
             Ok(outcome) => {
                 self.pairing_session
                     .close(&session, Some("handshake completed".into()))
@@ -161,6 +170,7 @@ impl JoinerHandshakeCoordinator {
     async fn drive(
         &self,
         session: &PairingSessionId,
+        channel: DiscoveryChannel,
         code: &InvitationCode,
         passphrase: &Passphrase,
     ) -> Result<JoinerHandshakeOutcome, RedeemPairingInvitationError> {
@@ -309,6 +319,7 @@ impl JoinerHandshakeCoordinator {
             sponsor_device_name: confirm.sender_device_name,
             sponsor_identity_fingerprint: confirm.sender_identity_fingerprint,
             space_id: confirm.space_id,
+            discovery_channel: channel,
             self_device_id: local_device_id,
             self_identity_fingerprint: local_fp,
             sponsor_transport_address_blob: confirm.transport_address_blob,
@@ -436,7 +447,7 @@ mod tests {
     use uc_core::pairing::session_message::{
         JoinerChallengeResponse, JoinerRequest, PairingReject, SponsorConfirm, SponsorKeyslotOffer,
     };
-    use uc_core::ports::pairing::{DialError, SessionError};
+    use uc_core::ports::pairing::{DialError, DialOutcome, DiscoveryChannel, SessionError};
     use uc_core::ports::space::SpaceAccessError;
     use uc_core::ports::LocalIdentityError;
     use uc_core::security::IdentityFingerprint;
@@ -490,9 +501,12 @@ mod tests {
         async fn dial_by_invitation(
             &self,
             _code: &InvitationCode,
-        ) -> Result<PairingSessionId, DialError> {
+        ) -> Result<DialOutcome, DialError> {
             match self.dial_result.lock().unwrap().as_ref() {
-                Some(Ok(id)) => Ok(id.clone()),
+                Some(Ok(id)) => Ok(DialOutcome {
+                    session_id: id.clone(),
+                    channel: DiscoveryChannel::Cloud,
+                }),
                 Some(Err(err)) => Err(clone_dial_err(err)),
                 None => Err(DialError::Internal("test misconfigured".into())),
             }

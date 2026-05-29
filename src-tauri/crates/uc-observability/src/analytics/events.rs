@@ -61,12 +61,27 @@ pub enum Event {
         method: PairingMethod,
         peer_os: Option<Os>,
         duration_ms: u32,
+        /// 加入方解析邀请码命中的发现通道（cloud 目录 vs LAN/mDNS）。
+        /// 发起方侧无从得知对端走哪条通道，故恒为 `None`。
+        discovery_channel: Option<PairingDiscoveryChannel>,
     },
 
     /// 配对中断或超时。
     PairingFailed {
         method: PairingMethod,
         failure_reason: PairingFailureReason,
+    },
+
+    /// 发起方成功签发了一张邀请——本地铸码或目录服务签发，且至少一条
+    /// 发现通道已启动。补齐"发码结局"维度：现有 `pairing_*` 漏斗只覆盖
+    /// 加入方握手，看不到发码方走了 cloud、本地铸码降级还是 LAN-only。
+    PairingInvitationIssued {
+        /// 邀请码来源：目录服务签发 vs 本地铸码。`locally_minted` +
+        /// `lan_only_mode=false` 即代表 cloud 不可达降级路径。
+        code_source: InvitationCodeSource,
+        /// 签发时是否处于 LAN-only 模式（区分"用户主动选 LAN-only"与
+        /// "cloud 恰好不可达"——两者都产出 `locally_minted`）。
+        lan_only_mode: bool,
     },
 
     /// 首次同步发起。
@@ -242,6 +257,7 @@ impl Event {
             Event::PairingStarted { .. } => "pairing_started",
             Event::PairingSucceeded { .. } => "pairing_succeeded",
             Event::PairingFailed { .. } => "pairing_failed",
+            Event::PairingInvitationIssued { .. } => "pairing_invitation_issued",
             Event::FirstClipboardSyncAttempted { .. } => "first_clipboard_sync_attempted",
             Event::FirstClipboardSyncSucceeded { .. } => "first_clipboard_sync_succeeded",
             Event::FirstFileSyncSucceeded { .. } => "first_file_sync_succeeded",
@@ -284,10 +300,12 @@ impl Event {
                 method,
                 peer_os,
                 duration_ms,
+                discovery_channel,
             } => to_map(json!({
                 "method": method,
                 "peer_os": peer_os,
                 "duration_ms": duration_ms,
+                "discovery_channel": discovery_channel,
             })),
             Event::PairingFailed {
                 method,
@@ -295,6 +313,13 @@ impl Event {
             } => to_map(json!({
                 "method": method,
                 "failure_reason": failure_reason,
+            })),
+            Event::PairingInvitationIssued {
+                code_source,
+                lan_only_mode,
+            } => to_map(json!({
+                "code_source": code_source,
+                "lan_only_mode": lan_only_mode,
             })),
             Event::FirstClipboardSyncAttempted { direction } => {
                 to_map(json!({ "direction": direction }))
@@ -606,6 +631,33 @@ pub enum PairingMethod {
     Qr,
     Code,
     Discovery,
+}
+
+/// 邀请码来源（`pairing_invitation_issued` 专用）。
+///
+/// 按 domain 独立、不跨事件共享——区分发码方签发时的网络可达性：
+/// 目录服务签发意味着当时 WAN 可达（跨网加入方也能解析），本地铸码
+/// 意味着只有同 LAN 加入方能经 mDNS 解析。schema doc §7.3 domain-specific 原则。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum InvitationCodeSource {
+    /// 目录服务（rendezvous）签发。
+    DirectoryIssued,
+    /// 本地铸码——cloud 不可达降级，或 LAN-only 模式跳过 cloud。
+    LocallyMinted,
+}
+
+/// 加入方解析邀请码命中的发现通道（`pairing_succeeded.discovery_channel` 专用）。
+///
+/// 头号指标维度：量化 LAN/mDNS 通道相对 cloud 目录的实际命中占比，
+/// 回答"mDNS 首配对通道到底有没有用"。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum PairingDiscoveryChannel {
+    /// cloud 目录（rendezvous HTTP）先解析成功。
+    Cloud,
+    /// LAN（mDNS）先解析成功。
+    Lan,
 }
 
 /// Space 解锁失败原因（`space_unlock_failed` 专用）。
@@ -954,6 +1006,7 @@ mod tests {
                     method: PairingMethod::Qr,
                     peer_os: None,
                     duration_ms: 0,
+                    discovery_channel: None,
                 },
                 "pairing_succeeded",
             ),
@@ -963,6 +1016,13 @@ mod tests {
                     failure_reason: PairingFailureReason::Internal,
                 },
                 "pairing_failed",
+            ),
+            (
+                Event::PairingInvitationIssued {
+                    code_source: InvitationCodeSource::LocallyMinted,
+                    lan_only_mode: true,
+                },
+                "pairing_invitation_issued",
             ),
             (
                 Event::FirstClipboardSyncAttempted {
@@ -1439,6 +1499,27 @@ mod tests {
     }
 
     #[test]
+    fn pairing_channel_enums_wire_format() {
+        // 上线后钉死，任何变更 = 破坏向后兼容。
+        assert_eq!(
+            serde_json::to_value(InvitationCodeSource::DirectoryIssued).unwrap(),
+            "directory_issued"
+        );
+        assert_eq!(
+            serde_json::to_value(InvitationCodeSource::LocallyMinted).unwrap(),
+            "locally_minted"
+        );
+        assert_eq!(
+            serde_json::to_value(PairingDiscoveryChannel::Cloud).unwrap(),
+            "cloud"
+        );
+        assert_eq!(
+            serde_json::to_value(PairingDiscoveryChannel::Lan).unwrap(),
+            "lan"
+        );
+    }
+
+    #[test]
     fn payload_size_bucket_wire_format() {
         assert_eq!(
             serde_json::to_value(PayloadSizeBucket::Lt1Kb).unwrap(),
@@ -1525,6 +1606,7 @@ mod tests {
             method: PairingMethod::Qr,
             peer_os: Some(Os::Windows),
             duration_ms: 1200,
+            discovery_channel: Some(PairingDiscoveryChannel::Lan),
         };
         let props = event.properties();
         assert!(!props.contains_key("anonymous_user_id"));

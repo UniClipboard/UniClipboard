@@ -508,7 +508,7 @@ mod tests {
     use uc_core::crypto::domain::ActiveSpace;
     use uc_core::ids::DeviceId;
     use uc_core::pairing::invitation::InvitationCode;
-    use uc_core::ports::pairing::{DialError, SessionError};
+    use uc_core::ports::pairing::{DialError, DialOutcome, SessionError};
     use uc_core::ports::space::SpaceAccessError;
     use uc_core::ports::LocalIdentityError;
     use uc_core::settings::model::Settings;
@@ -537,7 +537,7 @@ mod tests {
         async fn dial_by_invitation(
             &self,
             _code: &InvitationCode,
-        ) -> Result<PairingSessionId, DialError> {
+        ) -> Result<DialOutcome, DialError> {
             unimplemented!()
         }
         async fn send(

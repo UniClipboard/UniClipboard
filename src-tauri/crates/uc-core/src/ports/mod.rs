@@ -68,11 +68,11 @@ pub use mobile_sync::{
     PasswordHasherPort,
 };
 pub use pairing::{
-    DialError, PairingEventPort, PairingSessionEvent, PairingSessionId, PairingSessionPort,
-    SessionError,
+    DialError, DialOutcome, DiscoveryChannel, PairingEventPort, PairingSessionEvent,
+    PairingSessionId, PairingSessionPort, SessionError,
 };
 pub use pairing_invitation::{
-    ConsumeInvitationError, InvitationCode, InvitationError, IssuedInvitation,
+    CodeOrigin, ConsumeInvitationError, InvitationCode, InvitationError, IssuedInvitation,
     PairingInvitationAddressCandidate, PairingInvitationAddressQueryPort,
     PairingInvitationByAddressPort, PairingInvitationPort,
 };

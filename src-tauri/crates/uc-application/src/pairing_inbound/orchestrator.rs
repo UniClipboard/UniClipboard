@@ -503,6 +503,9 @@ impl PairingInboundOrchestrator {
                 method: PairingMethod::Code,
                 peer_os: None,
                 duration_ms,
+                // Sponsor side accepts an inbound connection and cannot
+                // observe which discovery channel the joiner resolved through.
+                discovery_channel: None,
             });
             let _ = self.outcome_tx.send(PairingOutcome::Success {
                 peer_device_id: facts.device_id.clone(),
@@ -610,7 +613,7 @@ mod tests {
     use uc_core::membership::{MembershipError, SpaceMember};
     use uc_core::pairing::invitation::{InvitationCode, PairingInvitation};
     use uc_core::pairing::session_message::{JoinerChallengeResponse, PairingReject};
-    use uc_core::ports::pairing::{DialError, PairingSessionPort, SessionError};
+    use uc_core::ports::pairing::{DialError, DialOutcome, PairingSessionPort, SessionError};
     use uc_core::ports::pairing_invitation::{InvitationError, IssuedInvitation};
     use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
     use uc_core::ports::LocalIdentityError;
@@ -665,10 +668,7 @@ mod tests {
     }
     #[async_trait]
     impl PairingSessionPort for RecordingSessionPort {
-        async fn dial_by_invitation(
-            &self,
-            _: &InvitationCode,
-        ) -> Result<PairingSessionId, DialError> {
+        async fn dial_by_invitation(&self, _: &InvitationCode) -> Result<DialOutcome, DialError> {
             unimplemented!()
         }
         async fn send(
@@ -1623,9 +1623,14 @@ mod tests {
                 method,
                 peer_os,
                 duration_ms: _,
+                discovery_channel,
             } => {
                 assert_eq!(*method, PairingMethod::Code);
                 assert_eq!(*peer_os, None, "peer_os not yet propagated by handshake");
+                assert_eq!(
+                    *discovery_channel, None,
+                    "sponsor side cannot observe the joiner's discovery channel"
+                );
             }
             other => panic!("expected PairingSucceeded, got {other:?}"),
         }

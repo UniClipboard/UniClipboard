@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use mockall::predicate;
+use uc_core::ports::pairing::DiscoveryChannel;
 
 use uc_core::ids::{DeviceId, EventId, RepresentationId};
 use uc_core::membership::{MembershipError, SpaceMember};
@@ -244,6 +245,7 @@ fn outcome_default() -> JoinerHandshakeOutcome {
         space_id: target_space(),
         self_device_id: DeviceId::new("local-device"),
         self_identity_fingerprint: fp_local(),
+        discovery_channel: DiscoveryChannel::Cloud,
         sponsor_transport_address_blob: vec![],
         // Phase 098 默认 None：switch_space tests 关注迁移流程而非 person
         // 切换；PR 8 才接 switch_space 的 identify。

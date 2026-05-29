@@ -48,10 +48,13 @@ use std::time::Instant;
 use chrono::{DateTime, Utc};
 use tracing::{info, instrument};
 
+use uc_core::ports::pairing::DiscoveryChannel;
 use uc_core::ports::{ClockPort, PeerAddressRecord, PeerAddressRepositoryPort, SetupStatusPort};
 use uc_core::setup::SetupStatus;
 use uc_core::{MemberRepositoryPort, MemberSyncPreferences, TrustedPeerRepositoryPort};
-use uc_observability::analytics::events::{Event, PairingFailureReason, PairingMethod};
+use uc_observability::analytics::events::{
+    Event, PairingDiscoveryChannel, PairingFailureReason, PairingMethod,
+};
 use uc_observability::analytics::AnalyticsFacade;
 
 use crate::facade::space_setup::commands::RedeemPairingInvitationCommand;
@@ -122,24 +125,29 @@ impl RedeemPairingInvitationUseCase {
         let started_at = Instant::now();
         let result = async {
             let outcome = self.handshake.handshake(&cmd.code, &cmd.passphrase).await?;
-            self.persist(outcome).await
+            // `DiscoveryChannel` is `Copy`; capture it before `persist`
+            // consumes the outcome so `pairing_succeeded` can record which
+            // channel resolved this first pair.
+            let channel = outcome.discovery_channel;
+            self.persist(outcome).await.map(|res| (res, channel))
         }
         .await;
         let duration_ms = started_at.elapsed().as_millis().min(u32::MAX as u128) as u32;
         match &result {
-            Ok(_) => self.analytics.capture(Event::PairingSucceeded {
+            Ok((_, channel)) => self.analytics.capture(Event::PairingSucceeded {
                 method: PairingMethod::Code,
                 // peer_os v1 留空——握手 outcome 里没有对端 OS 字段。后续
                 // 协议加入对端 OS 自报后回填,schema 已用 Option 兼容。
                 peer_os: None,
                 duration_ms,
+                discovery_channel: Some(map_discovery_channel(*channel)),
             }),
             Err(err) => self.analytics.capture(Event::PairingFailed {
                 method: PairingMethod::Code,
                 failure_reason: map_redeem_error_to_pairing_failure_reason(err),
             }),
         }
-        result
+        result.map(|(res, _)| res)
     }
 
     async fn persist(
@@ -267,6 +275,15 @@ impl RedeemPairingInvitationUseCase {
 /// 时丢失"这条 join 是 passphrase 错 vs sponsor 主动拒绝 vs 网络超时"
 /// 的关键区分。`Internal` / `SponsorInternal` 占比是架构债务指标
 /// (schema doc §7.4)。
+/// Map the domain discovery channel onto its telemetry wire enum. Keeps the
+/// analytics layer decoupled from `uc-core` port types.
+fn map_discovery_channel(channel: DiscoveryChannel) -> PairingDiscoveryChannel {
+    match channel {
+        DiscoveryChannel::Cloud => PairingDiscoveryChannel::Cloud,
+        DiscoveryChannel::Lan => PairingDiscoveryChannel::Lan,
+    }
+}
+
 fn map_redeem_error_to_pairing_failure_reason(
     err: &RedeemPairingInvitationError,
 ) -> PairingFailureReason {
@@ -344,7 +361,10 @@ mod tests {
     use uc_core::pairing::session_message::{
         PairingSessionMessage, SponsorConfirm, SponsorKeyslotOffer,
     };
-    use uc_core::ports::pairing::{DialError, PairingSessionId, PairingSessionPort, SessionError};
+    use uc_core::ports::pairing::{
+        DialError, DialOutcome, DiscoveryChannel, PairingSessionId, PairingSessionPort,
+        SessionError,
+    };
     use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
     use uc_core::ports::{DeviceIdentityPort, LocalIdentityError, LocalIdentityPort, SettingsPort};
     use uc_core::security::IdentityFingerprint;
@@ -391,11 +411,11 @@ mod tests {
     }
     #[async_trait]
     impl PairingSessionPort for HappySession {
-        async fn dial_by_invitation(
-            &self,
-            _: &InvitationCode,
-        ) -> Result<PairingSessionId, DialError> {
-            Ok(PairingSessionId::new("session-1"))
+        async fn dial_by_invitation(&self, _: &InvitationCode) -> Result<DialOutcome, DialError> {
+            Ok(DialOutcome {
+                session_id: PairingSessionId::new("session-1"),
+                channel: DiscoveryChannel::Cloud,
+            })
         }
         async fn send(
             &self,
@@ -419,10 +439,7 @@ mod tests {
     struct UnreachableSession;
     #[async_trait]
     impl PairingSessionPort for UnreachableSession {
-        async fn dial_by_invitation(
-            &self,
-            _: &InvitationCode,
-        ) -> Result<PairingSessionId, DialError> {
+        async fn dial_by_invitation(&self, _: &InvitationCode) -> Result<DialOutcome, DialError> {
             Err(DialError::InvitationNotFound)
         }
         async fn send(
@@ -781,10 +798,12 @@ mod tests {
                 Event::PairingSucceeded {
                     method: PairingMethod::Code,
                     peer_os: None,
+                    discovery_channel: Some(PairingDiscoveryChannel::Cloud),
                     ..
                 }
             ),
-            "second event should be PairingSucceeded{{method: Code, peer_os: None}}, got {:?}",
+            "second event should be PairingSucceeded{{method: Code, peer_os: None, \
+             discovery_channel: cloud}}, got {:?}",
             events[1]
         );
     }

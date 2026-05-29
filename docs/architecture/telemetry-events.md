@@ -356,8 +356,9 @@ PostHog 标准系统事件，由 sink 在身份切换时显式触发，与业务
 | `setup_started` | 引导页第一帧渲染 | `entry`: `first_run` \| `manual` |
 | `device_name_set` | 用户提交设备名 | `name_length_bucket`: `Lt8` \| `8To16` \| `Gt16` |
 | `pairing_started` | 用户点击配对 | `method`: `qr` \| `code` \| `discovery` |
-| `pairing_succeeded` | 双端握手完成 | `method`, `peer_os`, `duration_ms` |
+| `pairing_succeeded` | 双端握手完成 | `method`, `peer_os`, `duration_ms`, `discovery_channel`: `cloud` \| `lan` \| null（仅 joiner 侧填，记录命中的发现通道；sponsor 侧无从得知，为 null） |
 | `pairing_failed` | 配对中断或超时 | `method`, `failure_reason`（见 §7.4，使用 `PairingFailureReason` 而非 `FailureReason`） |
+| `pairing_invitation_issued` | 发起方成功签发邀请（本地铸码或目录服务签发，且至少一条发现通道已启动）；填补"发码结局"维度——`pairing_*` 漏斗只覆盖加入方握手 | `code_source`: `directory_issued` \| `locally_minted`, `lan_only_mode`: bool（`locally_minted` + `lan_only_mode=false` 即 cloud 不可达降级路径） |
 | `first_clipboard_sync_attempted` | 首次同步发起 | `direction`: `outbound` \| `inbound` |
 | `first_clipboard_sync_succeeded` | 首次同步对端确认 | `direction`, `peer_os`, `transport_type`, `duration_ms` |
 | `first_file_sync_succeeded` | 文件传输已支持时首次成功 | `peer_os`, `transport_type`, `payload_size_bucket` |
@@ -509,6 +510,33 @@ pub enum PairingFailureReason {
 变体与 `RedeemPairingInvitationError`（业务错误）一一映射，使得 funnel
 分析能直接定位漏点的具体业务原因。`Internal` 占比同样应监控——高于 5%
 说明本机持久化层不稳定。
+
+### 7.4a InvitationCodeSource 枚举（pairing_invitation_issued 专用）
+
+```rust
+pub enum InvitationCodeSource {
+    DirectoryIssued,   // 目录服务（rendezvous）签发——发码方当时有 WAN 可达性，跨网加入方也能解析
+    LocallyMinted,     // 本地铸码——cloud 不可达降级，或 LAN-only 模式跳过 cloud；仅同 LAN 加入方能经 mDNS 解析
+}
+```
+
+`code_source` 与 `lan_only_mode`（bool）联合切分发码结局：`directory_issued`
+= cloud 可达；`locally_minted` + `lan_only_mode=true` = 用户主动选 LAN-only；
+`locally_minted` + `lan_only_mode=false` = cloud 不可达降级（first-pair-no-WAN）。
+对应 `uc-core` 领域枚举 `CodeOrigin` 的三态在发射点折叠为这两个字段。
+
+### 7.4b PairingDiscoveryChannel 枚举（pairing_succeeded.discovery_channel 专用）
+
+```rust
+pub enum PairingDiscoveryChannel {
+    Cloud,   // cloud 目录（rendezvous HTTP）先解析成功
+    Lan,     // LAN（mDNS）先解析成功
+}
+```
+
+头号指标维度：量化 LAN/mDNS 通道相对 cloud 的命中占比，回答"mDNS 首配对
+通道是否有用"。仅加入方填（值为 `Some`）；发起方接受入站连接、无从得知对端
+走哪条通道，故为 `None`（不上 wire 即 null）。
 
 ### 7.5 UnlockFailureReason 枚举（space_unlock_failed 专用）
 

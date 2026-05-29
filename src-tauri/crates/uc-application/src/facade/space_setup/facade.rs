@@ -827,11 +827,11 @@ mod tests {
     use uc_core::pairing::invitation::InvitationCode;
     use uc_core::pairing::PairingSessionMessage;
     use uc_core::ports::pairing::{
-        DialError, PairingEventPort, PairingSessionEvent, PairingSessionId, PairingSessionPort,
-        SessionError,
+        DialError, DialOutcome, PairingEventPort, PairingSessionEvent, PairingSessionId,
+        PairingSessionPort, SessionError,
     };
     use uc_core::ports::pairing_invitation::{
-        ConsumeInvitationError, InvitationError, IssuedInvitation,
+        CodeOrigin, ConsumeInvitationError, InvitationError, IssuedInvitation,
         PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
     };
     use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
@@ -1033,6 +1033,7 @@ mod tests {
                 expires_at: DateTime::parse_from_rfc3339("2026-04-20T10:05:00Z")
                     .unwrap()
                     .with_timezone(&Utc),
+                code_origin: CodeOrigin::DirectoryIssued,
             })
         }
 
@@ -1076,7 +1077,7 @@ mod tests {
         async fn dial_by_invitation(
             &self,
             _code: &uc_core::pairing::invitation::InvitationCode,
-        ) -> Result<PairingSessionId, DialError> {
+        ) -> Result<DialOutcome, DialError> {
             unreachable!("smoke tests never dial")
         }
         async fn send(

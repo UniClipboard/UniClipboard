@@ -14,4 +14,6 @@ pub mod events;
 pub mod session;
 
 pub use events::{PairingEventPort, PairingSessionEvent};
-pub use session::{DialError, PairingSessionId, PairingSessionPort, SessionError};
+pub use session::{
+    DialError, DialOutcome, DiscoveryChannel, PairingSessionId, PairingSessionPort, SessionError,
+};

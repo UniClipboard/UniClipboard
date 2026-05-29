@@ -30,7 +30,7 @@ use tracing::{debug, instrument, warn};
 
 use uc_core::pairing::invitation::InvitationCode;
 use uc_core::ports::{
-    ConsumeInvitationError, DeviceIdentityPort, InvitationError, IssuedInvitation,
+    CodeOrigin, ConsumeInvitationError, DeviceIdentityPort, InvitationError, IssuedInvitation,
     PairingInvitationAddressCandidate, PairingInvitationAddressQueryPort,
     PairingInvitationByAddressPort, PairingInvitationPort, SettingsPort,
 };
@@ -163,7 +163,11 @@ impl RendezvousPairingInvitationAdapter {
                     "mDNS publisher start failed in LAN-only mode: {err}"
                 )));
             }
-            return Ok(IssuedInvitation { code, expires_at });
+            return Ok(IssuedInvitation {
+                code,
+                expires_at,
+                code_origin: CodeOrigin::LocallyMintedLanOnly,
+            });
         }
 
         let (code, expires_at, cloud_ok) = match self.rendezvous.create_pairing(&req).await {
@@ -223,7 +227,16 @@ impl RendezvousPairingInvitationAdapter {
             }
         }
 
-        Ok(IssuedInvitation { code, expires_at })
+        let code_origin = if cloud_ok {
+            CodeOrigin::DirectoryIssued
+        } else {
+            CodeOrigin::LocallyMintedDirectoryUnreachable
+        };
+        Ok(IssuedInvitation {
+            code,
+            expires_at,
+            code_origin,
+        })
     }
 
     /// Starts a window-scoped mDNS publisher and stores its handle so
@@ -617,6 +630,13 @@ mod tests {
             issued.expires_at,
             before + LOCAL_MINT_TTL,
             after + LOCAL_MINT_TTL,
+        );
+        // These tests exercise the recoverable-cloud-failure fallback, so the
+        // code's provenance must reflect a directory outage (not LAN-only).
+        assert_eq!(
+            issued.code_origin,
+            CodeOrigin::LocallyMintedDirectoryUnreachable,
+            "fallback mint should record a directory-unreachable origin"
         );
     }
 

@@ -1,0 +1,183 @@
+name: 'Build server image'
+run-name: "build-server-image-${{ github.ref_name }}-${{ github.run_number }}"
+
+# 无头 VPS server 节点镜像 (deploy/vps/Dockerfile)。
+#
+# 触发:
+#   - push tag v* → 跟 release.yml 同一个 tag 触发,并行产出多 arch 镜像并
+#     推到 GHCR(不阻塞 release.yml 的二进制发布,二者相互独立)。
+#   - 手动 dispatch → 临时构建某个 ref,可用 `tag` 覆盖镜像 tag。
+#
+# 多 arch 策略:server 镜像在 Dockerfile 里编 Rust(aws-lc/iroh/sqlx),QEMU
+# 模拟 arm64 编译会慢到不可用,因此每个 arch 在各自的 native runner 上构建,
+# push by digest,最后用 buildx imagetools 合并成一个 manifest list。这与
+# build-cli.yml 的 native 多 arch 思路一致。
+#
+# 首次推送后请到 GitHub Packages 设置里把 uniclipboard-server 的 visibility
+# 调成 public,否则用户 `docker compose pull` 会 401。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '要构建的 git ref(分支/tag/sha),留空用当前 ref'
+        required: false
+        type: string
+        default: ''
+      tag:
+        description: '覆盖镜像 tag(留空时由 ref 推导)'
+        required: false
+        type: string
+        default: ''
+
+# 同一 ref 的新一轮取消旧的在途构建,省 runner。
+concurrency:
+  group: server-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # GHCR path 必须小写,owner 大小写不一定一致,merge 时再 lowercase。
+  IMAGE_NAME: ${{ github.repository_owner }}/uniclipboard-server
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-22.04
+          - platform: linux/arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Lowercase image name
+        id: img
+        run: echo "image=${REGISTRY}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Sanitize platform pair
+        run: echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+        env:
+          platform: ${{ matrix.platform }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          # The musl build needs the vendored iroh-blobs submodule.
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          # Context is the repo root so the Dockerfile reaches the src-tauri/
+          # workspace + the vendored submodule. .dockerignore trims it.
+          context: .
+          file: deploy/vps/Dockerfile
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=server-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=server-${{ env.PLATFORM_PAIR }}
+          outputs: type=image,name=${{ steps.img.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge manifest + push tags
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Lowercase image name
+        id: img
+        run: echo "image=${REGISTRY}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.image }}
+          # v0.13.0 → 0.13.0 + 0.13 (+ latest for stable). Prereleases
+          # (v0.13.0-alpha.1) get the full version tag but NOT latest.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
+          flavor: |
+            latest=auto
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # Intentional word splitting: the jq/printf substitutions must expand
+          # into separate `-t <tag>` flags and `<image>@sha256:<digest>` args.
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ steps.img.outputs.image }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: docker buildx imagetools inspect "${{ steps.img.outputs.image }}:${{ steps.meta.outputs.version }}"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Server image pushed :package:"
+            echo ""
+            echo "Multi-arch (amd64 + arm64) manifest list:"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "Deploy: see \`deploy/vps/README.md\` (Option A — pull the prebuilt image)."
+            echo "> First push only: set the package visibility to public so anonymous \`docker compose pull\` works."
+          } >> "$GITHUB_STEP_SUMMARY"

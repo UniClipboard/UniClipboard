@@ -1,0 +1,254 @@
+---
+title: 自建无头 server 节点
+description: 在 VPS 上把 UniClipboard 以无头方式跑成常驻在线的空间成员，并给手机提供网关。
+---
+
+UniClipboard 自 0.13 起可以**在服务器上常驻运行**（VPS 或容器都行），作为
+你空间里一个**一直在线的成员**：纯后台、没有图形界面，也不读写这台服务器
+自己的剪贴板（这种运行方式就是标题里说的"无头"）。它像桌面端一样通过 iroh
+同步剪贴板，并在 TLS 后面给手机提供 mobile-sync 网关。
+
+适合的场景：希望桌面端都休眠时剪贴板同步仍然在线，并且给手机一个永远可达
+的 HTTPS 端点。
+
+这篇文档解答：
+
+- server 节点是什么、不是什么
+- 怎么用 Docker Compose 部署（拉预构建镜像 / 源码构建两条路径）
+- 置备：加入你的空间、注册你的手机
+- TLS 怎么搞（用自带的 Caddy，或接到你已有的反向代理后面）
+- 怎么验证、运维、备份
+
+## 它是什么、不是什么
+
+server 节点就是一个**普通 iroh 成员**，只是常驻在线、没有显示器：
+
+- **是**：一个在线对端，接收桌面端推来的剪贴板并落库；一个手机网关，提供
+  `GET /SyncClipboard.json`（拉）和 `PUT`（推，推送会经 iroh fan-out 回你
+  的桌面端）。
+- **不是**：它不是中继（relay），也**不是**中央 store-and-forward 信箱。
+  它只持久化 **它在线时收到的** 内容 —— 不是离线信箱。对端离线时未投递的
+  数据留在发送方本地，这与 UniClipboard 的 P2P 模型一致。
+
+如果你要的其实是 NAT 打洞失败时的中转节点，那是另一回事 —— 见
+[自建 iroh relay](./self-host-relay)。
+
+节点永远不会写系统剪贴板（VPS 上没有显示器）；它该做的只是把入站内容
+落库并 fan-out，对一个常驻后台的成员来说，这样就够了。
+
+## 前置条件
+
+- 一台带公网 IPv4 的 VPS，装好 **Docker + Docker Compose v2**。
+- 一个 A/AAAA 记录指向这台 VPS 的 **域名** —— 手机经 HTTPS 访问节点，自带
+  的 Caddy 也要靠它签证书。启动前 DNS **必须**已经能解析。
+- VPS 防火墙 / 安全组放开以下入站端口：
+  - **TCP/443**（HTTP/3 再可选放 **UDP/443**）—— 手机的 HTTPS 网关。
+  - **TCP/80** —— Caddy 走 ACME HTTP-01 签证书要用。
+  - 一个固定的 iroh 直连 **UDP** 端口（如 `42999/udp`）—— 让其它网络的
+    桌面端能直连这个节点。
+- 一个已有的、**还有另一台设备在线** 的空间用来配对。server 节点是**加入**
+  空间，不创建空间。在一台已在空间里的桌面端跑 `uniclip invite` 拿邀请码。
+
+## 拿到部署文件
+
+整套东西在仓库的 `deploy/vps/` 下：
+
+```bash
+git clone https://github.com/UniClipboard/UniClipboard.git
+cd UniClipboard/deploy/vps
+```
+
+镜像有两种拿法，二选一：
+
+**方案 A —— 拉预构建镜像（推荐）。** 每次发版都会把多 arch（amd64 +
+arm64）镜像推到 GitHub Container Registry。不用编译器，只要这个
+`deploy/vps/` 目录：
+
+```bash
+docker compose pull
+```
+
+想锁版本就在 `.env` 里写
+`UC_IMAGE=ghcr.io/uniclipboard/uniclipboard-server:vX.Y.Z`（默认 `:latest`）。
+
+**方案 B —— 源码构建。** 需要带 submodule 检出仓库（构建用到 vendored 的
+`iroh-blobs` 分支）和约 4 GB 内存：
+
+```bash
+git submodule update --init --recursive
+docker compose build
+```
+
+<Callout type="info">
+  小内存 VPS（≤ 2 GB）编不动源码，会 OOM。用方案 A，或者在一台同架构的大内存机器上构建好，再用
+  `docker save … | ssh vps 'docker load'` 传过去。
+</Callout>
+
+## 配置
+
+复制环境变量模板，填上你的值：
+
+```bash
+cp .env.example .env
+```
+
+```bash
+# .env
+UC_DOMAIN=clip.example.com      # A/AAAA 记录指向这台 VPS；Caddy 给它签证书
+UC_PUBLIC_IP=203.0.113.7        # 这台 VPS 的公网 IPv4，广告给桌面端对端
+UC_IROH_BIND_PORT=42999         # iroh 直连用的固定 UDP 端口
+```
+
+这些底层对应守护进程的网络开关，见
+[CLI —— 环境变量](../cli/environment)：`UC_IROH_BIND_PORT` 固定 iroh 的 UDP
+端口，`UC_IROH_PUBLIC_ADDR`（`${UC_PUBLIC_IP}:${UC_IROH_BIND_PORT}`）把这个
+节点的公网 socket 广告出去,让对端可以直连。
+
+## 置备（一次性，先于守护进程）
+
+`join` 和 `mobile-sync` 这些写命令**在 daemon 运行时会拒绝执行**，所以置备
+全部用一次性容器先做完。它们和常驻守护进程共用同一个状态卷。
+
+**1. 加入你的空间。** 在一台已在空间里的桌面端跑 `uniclip invite` 拿邀请码,
+然后：
+
+```bash
+docker compose run --rm app uniclip join
+```
+
+它会交互式提示输入 **邀请码** 和 **空间口令**（在交互式终端里跑，口令就不会
+落进 shell 历史）。
+
+**2. 给你的域名开 mobile-sync 网关。** `--advertise-url` 让手机的安装 URL/QR
+指向你的 HTTPS 端点：
+
+```bash
+docker compose run --rm app \
+  uniclip mobile-sync lan enable \
+  --advertise-url https://clip.example.com \
+  --accept-network-risk
+```
+
+**3. 注册你的手机。** 铸设备凭据并渲染安装 QR：
+
+```bash
+docker compose run --rm app uniclip mobile-sync devices add --label "我的 iPhone"
+```
+
+把它打印的一次性密码记下来 —— 不会再显示第二次。
+
+## 启动
+
+```bash
+docker compose up -d
+```
+
+会拉起两个容器：
+
+- **`app`** —— 无头守护进程（`uniclip start --server`）。通过 iroh 加入
+  空间并提供 mobile-sync 网关。iroh UDP 端口发布到宿主；明文网关端口
+  **只**在 Docker 内网。
+- **`caddy`** —— 在 `443` 终结 TLS，自动给 `UC_DOMAIN` 签证书，反代到 app
+  的网关。
+
+首次启动会跑 ACME 流程；`docker compose logs -f caddy` 看证书是否签发成功。
+
+## 接入手机
+
+在 UniClipboard / SyncClipboard 手机客户端里扫第 3 步的 QR（或打开打印出来的
+`https://<域名>` 安装 URL）。手机此时就能经 Caddy 拉取最新剪贴板、推送新内容;
+推送会经 iroh fan-out 回你的桌面端。客户端那一侧见
+[移动端同步](../core-features/mobile-sync)。
+
+## 接到你已有的反向代理后面
+
+如果宿主上 `80`/`443` 已经被占用（nginx、Caddy、Traefik、1Panel 的
+OpenResty 等），就**别起自带的 Caddy** —— 会冲突。改成把网关绑到 loopback,
+让你已有的代理前置。
+
+在 compose 文件旁边加一个 override：
+
+```yaml
+# docker-compose.override.yml
+services:
+  app:
+    ports:
+      - "127.0.0.1:42720:42720"
+```
+
+只起守护进程（不起 Caddy）：
+
+```bash
+docker compose up -d app
+```
+
+然后在你已有的代理上给 `clip.example.com` 加一个虚拟主机，终结 TLS 并反代到
+`http://127.0.0.1:42720`，把 `Authorization` 头透传过去。网关是明文 HTTP +
+Basic Auth、没有 websocket，一个默认的反代块就够了。
+
+<Callout type="warn">
+  千万别把明文网关端口（`42720`）发布到公网接口 —— 它是 HTTP + Basic Auth，设计上就该待在 TLS
+  后面。让它待在 loopback 或 Docker 内网，只通过你的代理暴露 `443`。
+</Callout>
+
+## 状态与备份
+
+保住身份、空间成员、手机凭据所需的一切都在 `HOME=/data` 的 `uniclip-state`
+卷里，所以节点重启**永不重新配对**。位于
+`/data/.local/share/app.uniclipboard.desktop/` 下：
+
+| 状态                    | 路径                                          |
+| ----------------------- | --------------------------------------------- |
+| iroh 身份（节点私钥）   | `iroh-identity/`                              |
+| 文件式 KEK              | `keyring/`                                    |
+| keyslot + 设备 id       | `vault/keyslot.json`、`vault/device_id.txt`   |
+| 数据库                  | `uniclipboard.db`                             |
+| iroh blob 缓存          | `iroh-blobs/blobs.db`                         |
+| 设置（手机凭据、LAN）   | `settings.json`                               |
+
+这种没有桌面环境的机器上没有系统 keyring，守护进程会自动回退到文件式安全
+存储 —— iroh 私钥和 KEK 都在卷里。把它备份好（顺带 Caddy 的卷，里面是已签发的证书）：
+
+```bash
+docker run --rm -v uniclip-state:/data -v "$PWD":/backup alpine \
+  tar czf /backup/uniclip-state.tgz -C /data .
+```
+
+## 运维
+
+```bash
+docker compose logs -f app                       # 跟随守护进程日志
+docker compose restart app                       # 重启守护进程（状态保留）
+docker compose down                              # 停栈（卷保留）
+docker compose pull && docker compose up -d      # 升级（方案 A：预构建镜像）
+docker compose up -d --build                     # 升级（方案 B：源码构建）
+```
+
+升级保留状态卷，新镜像只是换二进制 —— 不用重新配对。之后要改广告域名或加
+设备，**先停守护进程**（`docker compose down`），重跑对应的 `mobile-sync`
+命令，再 `docker compose up -d` —— 写命令在 daemon 运行时仍然会拒绝。
+
+## 验证
+
+```bash
+docker compose ps                                # app 应为 "healthy"
+
+# TLS + 网关可达；401 = 监听在、需鉴权（不带凭据时就是这样）：
+curl -i https://clip.example.com/SyncClipboard.json
+
+# 明文网关端口没有暴露到宿主（应被拒绝）：
+curl -i http://clip.example.com:42720/SyncClipboard.json
+```
+
+端到端验证：在另一网络的已配对桌面端复制点东西，看它落进
+`docker compose logs app`；再从手机推送，确认它出现在你的桌面端。
+
+## 排错
+
+| 现象                              | 看哪里                                                                            |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| `up -d` 报 `setup not complete`   | 置备（`join`）没落盘。确认 `docker compose run` 命令打的是同一个卷。               |
+| Caddy 一直签不出证书              | `UC_DOMAIN` 的 DNS 必须解析到这台 VPS，且 `80`/`443` 在 `up -d` **之前**已放开。   |
+| 手机拿到的 URL 不对               | 停掉守护进程重跑 `mobile-sync lan enable --advertise-url https://<域名>`，再 `up -d`。 |
+| 另一网络的桌面端同步不上          | 防火墙放开 `UC_IROH_BIND_PORT/udp`，并确认 `UC_PUBLIC_IP` 是真实公网 IP。          |
+| 经你的反代返回 `401`              | 说明网关在、并在要 Basic Auth —— 用 `devices add` 给出的凭据。                     |

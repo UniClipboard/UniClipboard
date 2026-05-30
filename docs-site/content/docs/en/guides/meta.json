@@ -2,5 +2,5 @@
   "title": "Guides",
   "icon": "BookOpen",
   "defaultOpen": true,
-  "pages": ["pairing", "settings", "self-host-relay"]
+  "pages": ["pairing", "settings", "self-host-relay", "self-host-server-node"]
 }

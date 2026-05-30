@@ -39,17 +39,15 @@ pub fn open_or_focus_updater_window(app: &AppHandle, dev: bool) -> Result<(), ta
     };
     let url = WebviewUrl::App(path.into());
 
+    // Standard decorated window so it behaves like a first-class OS window:
+    // native title bar + traffic lights, system shadow, independent lifecycle.
+    // A borderless/transparent window with CSS-drawn chrome looked non-native
+    // and got tied to the main window's miniaturize; native decorations fix
+    // both (the frontend drops its custom border/shadow/drag-region to match).
     let builder = WebviewWindowBuilder::new(app, UPDATER_WINDOW_LABEL, url)
         .title(WINDOW_TITLE)
         .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
         .resizable(false)
-        .decorations(false)
-        .transparent(true)
-        // OS shadow draws a rectangle outside the webview; combined with
-        // transparent + CSS border-radius it bleeds past the rounded corners
-        // (tauri-apps/tauri#9287 macOS, #11321 Win10). CSS shadow-2xl on the
-        // root div already paints a corner-aware shadow.
-        .shadow(false)
         .center()
         .focused(true)
         .visible(true);

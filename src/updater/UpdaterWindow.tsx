@@ -1,5 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Download, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -230,15 +230,10 @@ const UpdaterWindow: React.FC = () => {
       : ''
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden rounded-xl border border-border/50 bg-background text-foreground shadow-2xl">
-      <div data-tauri-drag-region className="flex items-start gap-4 px-6 pt-6">
-        <div className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-lg shadow-primary/20">
-          <Download className="size-7" />
-        </div>
-        <div className="flex-1 space-y-1">
-          <h1 className="text-base font-semibold leading-tight">{headline}</h1>
-          {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-        </div>
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+      <div className="flex flex-col gap-1 px-6 pt-5">
+        <h1 className="text-base font-semibold leading-tight">{headline}</h1>
+        {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
       </div>
 
       {!upToDate && info && (

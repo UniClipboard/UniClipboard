@@ -196,7 +196,7 @@ uniclip search rebuild     # 同步重建（会阻塞直至完成）
 常见情况：
 
 - **"index not ready"** —— 守护进程刚启动 / 大版本升级后正在重建。`status` 会给出进度。
-- **重建后仍然查不到旧条目** —— 旧条目可能在升级时已经被保留策略 GC。`uniclip dump-clipboard --limit N`（隐藏命令）可以核对历史是否真的还在。
+- **重建后仍然查不到旧条目** —— 旧条目可能在升级时已经被保留策略 GC。`uniclip dev dump-clipboard --limit N`（隐藏命令）可以核对历史是否真的还在。
 - **索引文件损坏（罕见）** —— 进程在写索引时被 SIGKILL 等极端场景。删除数据目录下的索引子目录，再 `uniclip search rebuild` 即可；剪贴历史本身是分开存的，不会丢。
 
 ## 移动端同步（iOS 快捷指令）

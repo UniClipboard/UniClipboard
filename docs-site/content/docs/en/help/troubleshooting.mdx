@@ -288,7 +288,7 @@ Common cases:
   in progress. `status` reports progress.
 - **Old entries missing after rebuild** — they may have been GC'd by
   the retention policy during upgrade. The hidden command
-  `uniclip dump-clipboard --limit N` lets you confirm whether they're
+  `uniclip dev dump-clipboard --limit N` lets you confirm whether they're
   still in history at all.
 - **Corrupt index file (rare)** — usually after a SIGKILL during
   writes. Delete the index subdirectory under the data folder, then

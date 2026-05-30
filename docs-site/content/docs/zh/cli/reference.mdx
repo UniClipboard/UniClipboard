@@ -172,8 +172,8 @@ uniclip upgrade advance
 
 - `uniclip probe ...` —— 剪贴诊断子命令组（替代旧的 `clipboard-probe` 独立二进制）。
   CLI 中 **唯一** 写系统剪贴板的入口（仅限 `probe restore`），仅供开发与 E2E 调试。
-- `uniclip seed-clipboard --text <TEXT>` —— switch-space 数据完整性测试用的种子写入。
-- `uniclip dump-clipboard --limit <N>` —— 调试用，打印解密后的历史。
+- `uniclip dev seed-clipboard --text <TEXT>` —— switch-space 数据完整性测试用的种子写入。
+- `uniclip dev dump-clipboard --limit <N>` —— 调试用，打印解密后的历史。
 - `uniclip dev pairing ...` —— 配对邀请的诊断子命令组：`addrs` 列出经过产品过滤后的候选地址，`issue --addr <IP>` 把邀请约束在某一个本机 IP 上。daemon 跑着时会被拒绝；仅供开发与排查 [配对在虚拟网卡环境下打不通](../help/troubleshooting#配对失败) 这类问题使用。
 - `uniclip daemon` —— `uniclip start` 拉起后台进程的内部入口，不作为用户命令使用。
 

@@ -55,8 +55,8 @@ member needs to do.
   - A fixed **UDP** port for iroh direct connections (e.g. `42999/udp`) —
     so desktops on other networks can dial the node directly.
 - An existing Space with **another device online** to pair with. The
-  server node *joins* a Space; it does not create one. Run `uniclip
-  invite` on a desktop already in the Space to get an invitation code.
+  server node _joins_ a Space; it does not create one. Run `uniclip
+invite` on a desktop already in the Space to get an invitation code.
 
 ## Get the stack
 
@@ -192,7 +192,7 @@ Add an override next to the compose file:
 services:
   app:
     ports:
-      - "127.0.0.1:42720:42720"
+      - '127.0.0.1:42720:42720'
 ```
 
 Start only the daemon (not Caddy):
@@ -220,14 +220,14 @@ credentials lives under `HOME=/data` on the `uniclip-state` volume, so
 the node **never re-pairs** across restarts. Under
 `/data/.local/share/app.uniclipboard.desktop/`:
 
-| State                        | Path                                          |
-| ---------------------------- | --------------------------------------------- |
-| iroh identity (node secret)  | `iroh-identity/`                              |
-| file-based KEK               | `keyring/`                                    |
-| keyslot + device id          | `vault/keyslot.json`, `vault/device_id.txt`   |
-| database                     | `uniclipboard.db`                             |
-| iroh blob cache              | `iroh-blobs/blobs.db`                         |
-| settings (mobile creds, LAN) | `settings.json`                               |
+| State                        | Path                                        |
+| ---------------------------- | ------------------------------------------- |
+| iroh identity (node secret)  | `iroh-identity/`                            |
+| file-based KEK               | `keyring/`                                  |
+| keyslot + device id          | `vault/keyslot.json`, `vault/device_id.txt` |
+| database                     | `uniclipboard.db`                           |
+| iroh blob cache              | `iroh-blobs/blobs.db`                       |
+| settings (mobile creds, LAN) | `settings.json`                             |
 
 On a server with no desktop environment there's no system keyring, so the
 daemon falls back to file-based secure storage automatically — the iroh secret and KEK live
@@ -273,10 +273,10 @@ the phone and confirm it appears on your desktops.
 
 ## Troubleshooting
 
-| Symptom                                | Where to look                                                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `setup not complete` on `up -d`        | Provisioning (`join`) didn't persist. Confirm the `docker compose run` commands hit the same volume.   |
-| Caddy never gets a certificate         | DNS for `UC_DOMAIN` must resolve to this VPS and `80`/`443` must be open **before** `up -d`.            |
-| Phone gets the wrong URL               | Re-run `mobile-sync network set --url https://<domain>` (daemon stopped), then `up -d`.                 |
-| Desktop on another network won't sync  | Open `UC_IROH_BIND_PORT/udp` in the firewall and check `UC_PUBLIC_IP` is the real public IP.            |
-| `401` through your reverse proxy       | That means the gateway is up and asking for Basic Auth — use the credentials from `add`.                |
+| Symptom                               | Where to look                                                                                        |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `setup not complete` on `up -d`       | Provisioning (`join`) didn't persist. Confirm the `docker compose run` commands hit the same volume. |
+| Caddy never gets a certificate        | DNS for `UC_DOMAIN` must resolve to this VPS and `80`/`443` must be open **before** `up -d`.         |
+| Phone gets the wrong URL              | Re-run `mobile-sync network set --url https://<domain>` (daemon stopped), then `up -d`.              |
+| Desktop on another network won't sync | Open `UC_IROH_BIND_PORT/udp` in the firewall and check `UC_PUBLIC_IP` is the real public IP.         |
+| `401` through your reverse proxy      | That means the gateway is up and asking for Basic Auth — use the credentials from `add`.             |

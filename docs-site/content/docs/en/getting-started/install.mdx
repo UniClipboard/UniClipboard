@@ -256,11 +256,10 @@ path; see the [Mobile sync guide → Android](../core-features/mobile-sync#andro
 <Callout type="info">
   **Android limitations today.** The Android client runs as an **HTTP companion** over plain HTTP +
   Basic Auth — no iroh P2P, no relay (TLS comes from a reverse proxy) — and it is not a peer of your
-  space's trust mesh (it only exchanges the current clipboard, not the encrypted history). It reaches
-  the desktop on the LAN by default, or across networks via a
-  [headless server node](../guides/self-host-server-node) or Tailscale. Android's
-  background-clipboard restrictions on Android 10+ may also delay or gate writes when the app is not
-  in the foreground.
+  space's trust mesh (it only exchanges the current clipboard, not the encrypted history). It
+  reaches the desktop on the LAN by default, or across networks via a [headless server
+  node](../guides/self-host-server-node) or Tailscale. Android's background-clipboard restrictions
+  on Android 10+ may also delay or gate writes when the app is not in the foreground.
 </Callout>
 
 ## iOS App (public beta)

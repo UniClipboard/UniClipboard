@@ -416,14 +416,14 @@ tailnet 地址。
 
 ## 管理已配对设备
 
-| 操作           | GUI                                       | CLI                                              |
-| -------------- | ----------------------------------------- | ------------------------------------------------ |
-| 列出已配对     | 设备页 → 移动端同步面板                   | `uniclip mobile-sync status`                     |
-| 再加一台       | 移动端同步面板 → **Add device**           | `uniclip mobile-sync add --label "…"`            |
-| 轮换密码       | 点设备卡片 → dialog → **Change password** | _目前只 GUI_；签新的并更新手机端                 |
-| 吊销一台设备   | 点设备卡片 → dialog → **Revoke**          | `uniclip mobile-sync revoke <device-id>`         |
-| 关闭整个功能   | 配置 modal → 关闭总开关                   | `uniclip mobile-sync disable`                    |
-| 查当前监听 URL | 移动端同步面板状态条                      | `uniclip mobile-sync status`                     |
+| 操作           | GUI                                       | CLI                                      |
+| -------------- | ----------------------------------------- | ---------------------------------------- |
+| 列出已配对     | 设备页 → 移动端同步面板                   | `uniclip mobile-sync status`             |
+| 再加一台       | 移动端同步面板 → **Add device**           | `uniclip mobile-sync add --label "…"`    |
+| 轮换密码       | 点设备卡片 → dialog → **Change password** | _目前只 GUI_；签新的并更新手机端         |
+| 吊销一台设备   | 点设备卡片 → dialog → **Revoke**          | `uniclip mobile-sync revoke <device-id>` |
+| 关闭整个功能   | 配置 modal → 关闭总开关                   | `uniclip mobile-sync disable`            |
+| 查当前监听 URL | 移动端同步面板状态条                      | `uniclip mobile-sync status`             |
 
 **轮换密码** 会签发一个新的一次性密码，并原子失效旧的 Argon2id 哈希。
 旧凭据立即停用。需要把新密码同步更新到手机端（UniClipboard iOS
@@ -437,13 +437,13 @@ App、快捷指令或其他客户端）。
 
 ## 安全模型 —— 覆盖了什么、没覆盖什么
 
-| 范围                       | 是否覆盖                                                        |
-| -------------------------- | --------------------------------------------------------------- |
-| 桌面侧密码存储             | **是** —— 只持久化 Argon2id 哈希。                              |
-| 凭据轮换                   | **是** —— `Rotate password` 签发新值并失效旧哈希。              |
-| LAN 上的传输机密性         | **否（v1）** —— 明文 HTTP。TLS 在 v2 才会有。                   |
+| 范围                       | 是否覆盖                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| 桌面侧密码存储             | **是** —— 只持久化 Argon2id 哈希。                                                          |
+| 凭据轮换                   | **是** —— `Rotate password` 签发新值并失效旧哈希。                                          |
+| LAN 上的传输机密性         | **否（v1）** —— 明文 HTTP。TLS 在 v2 才会有。                                               |
 | 跨网络可达性               | **默认走 LAN** —— 可经 server 节点（公网 HTTPS）或 Tailscale / VPN overlay 扩展（见下方）。 |
-| 把手机当作 peer 加入信任网 | **否** —— 手机不会进入 iroh / 空间的信任网络。                  |
+| 把手机当作 peer 加入信任网 | **否** —— 手机不会进入 iroh / 空间的信任网络。                                              |
 
 实操含义：
 

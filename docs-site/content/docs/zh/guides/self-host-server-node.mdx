@@ -173,7 +173,7 @@ OpenResty 等），就**别起自带的 Caddy** —— 会冲突。改成把网�
 services:
   app:
     ports:
-      - "127.0.0.1:42720:42720"
+      - '127.0.0.1:42720:42720'
 ```
 
 只起守护进程（不起 Caddy）：
@@ -197,14 +197,14 @@ Basic Auth、没有 websocket，一个默认的反代块就够了。
 卷里，所以节点重启**永不重新配对**。位于
 `/data/.local/share/app.uniclipboard.desktop/` 下：
 
-| 状态                    | 路径                                          |
-| ----------------------- | --------------------------------------------- |
-| iroh 身份（节点私钥）   | `iroh-identity/`                              |
-| 文件式 KEK              | `keyring/`                                    |
-| keyslot + 设备 id       | `vault/keyslot.json`、`vault/device_id.txt`   |
-| 数据库                  | `uniclipboard.db`                             |
-| iroh blob 缓存          | `iroh-blobs/blobs.db`                         |
-| 设置（手机凭据、LAN）   | `settings.json`                               |
+| 状态                  | 路径                                        |
+| --------------------- | ------------------------------------------- |
+| iroh 身份（节点私钥） | `iroh-identity/`                            |
+| 文件式 KEK            | `keyring/`                                  |
+| keyslot + 设备 id     | `vault/keyslot.json`、`vault/device_id.txt` |
+| 数据库                | `uniclipboard.db`                           |
+| iroh blob 缓存        | `iroh-blobs/blobs.db`                       |
+| 设置（手机凭据、LAN） | `settings.json`                             |
 
 这种没有桌面环境的机器上没有系统 keyring，守护进程会自动回退到文件式安全
 存储 —— iroh 私钥和 KEK 都在卷里。把它备份好（顺带 Caddy 的卷，里面是已签发的证书）：
@@ -245,10 +245,10 @@ curl -i http://clip.example.com:42720/SyncClipboard.json
 
 ## 排错
 
-| 现象                              | 看哪里                                                                            |
-| --------------------------------- | --------------------------------------------------------------------------------- |
-| `up -d` 报 `setup not complete`   | 置备（`join`）没落盘。确认 `docker compose run` 命令打的是同一个卷。               |
-| Caddy 一直签不出证书              | `UC_DOMAIN` 的 DNS 必须解析到这台 VPS，且 `80`/`443` 在 `up -d` **之前**已放开。   |
-| 手机拿到的 URL 不对               | 停掉守护进程重跑 `mobile-sync network set --url https://<域名>`，再 `up -d`。      |
-| 另一网络的桌面端同步不上          | 防火墙放开 `UC_IROH_BIND_PORT/udp`，并确认 `UC_PUBLIC_IP` 是真实公网 IP。          |
-| 经你的反代返回 `401`              | 说明网关在、并在要 Basic Auth —— 用 `add` 给出的凭据。                             |
+| 现象                            | 看哪里                                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| `up -d` 报 `setup not complete` | 置备（`join`）没落盘。确认 `docker compose run` 命令打的是同一个卷。             |
+| Caddy 一直签不出证书            | `UC_DOMAIN` 的 DNS 必须解析到这台 VPS，且 `80`/`443` 在 `up -d` **之前**已放开。 |
+| 手机拿到的 URL 不对             | 停掉守护进程重跑 `mobile-sync network set --url https://<域名>`，再 `up -d`。    |
+| 另一网络的桌面端同步不上        | 防火墙放开 `UC_IROH_BIND_PORT/udp`，并确认 `UC_PUBLIC_IP` 是真实公网 IP。        |
+| 经你的反代返回 `401`            | 说明网关在、并在要 Basic Auth —— 用 `add` 给出的凭据。                           |

@@ -331,8 +331,8 @@ public internet. The `--ip <IP>` form instead produces the LAN
 
 <Callout type="info">
   **Android limitations today.** No TLS at the listener (plain HTTP + Basic Auth — TLS comes from a
-  reverse proxy or overlay), same-LAN by default (cross-network via a server node or Tailscale), not a
-  peer of your space's trust mesh, and Android 10+ background-clipboard restrictions can delay or
+  reverse proxy or overlay), same-LAN by default (cross-network via a server node or Tailscale), not
+  a peer of your space's trust mesh, and Android 10+ background-clipboard restrictions can delay or
   gate writes when the app is not in the foreground.
 </Callout>
 
@@ -491,13 +491,13 @@ records, use `revoke` (or the GUI revoke button) explicitly.
 
 ## Security model — what's covered, what isn't
 
-| Surface                       | Covered                                                                   |
-| ----------------------------- | ------------------------------------------------------------------------- |
-| On-disk password storage      | **Yes** — only an Argon2id hash is persisted server-side.                 |
-| Credential rotation           | **Yes** — `Rotate password` mints a new one and invalidates the old hash. |
-| LAN-side wire confidentiality | **No (v1)** — plain HTTP. TLS comes in v2.                                |
+| Surface                       | Covered                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| On-disk password storage      | **Yes** — only an Argon2id hash is persisted server-side.                                              |
+| Credential rotation           | **Yes** — `Rotate password` mints a new one and invalidates the old hash.                              |
+| LAN-side wire confidentiality | **No (v1)** — plain HTTP. TLS comes in v2.                                                             |
 | Cross-network reachability    | **LAN by default** — extend it with a server node (public HTTPS) or a Tailscale / VPN overlay (below). |
-| Mobile-as-peer trust          | **No** — phone never participates in the iroh / space trust mesh.         |
+| Mobile-as-peer trust          | **No** — phone never participates in the iroh / space trust mesh.                                      |
 
 Practical implications:
 

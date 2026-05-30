@@ -1,4 +1,4 @@
-//! `uniclip dump-clipboard` —— 调试 / E2E 测试用：读出最近 N 条剪贴板
+//! `uniclip dev dump-clipboard` —— 调试 / E2E 测试用：读出最近 N 条剪贴板
 //! 条目的明文 preview。
 //!
 //! 走 `ClipboardHistoryFacade::list_entries`，背后是

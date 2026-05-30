@@ -8,7 +8,7 @@ use serde::Serialize;
 use uc_application::facade::{IssuePairingInvitationError, PairingInvitationAddressCandidate};
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
-use crate::commands::invite;
+use crate::commands::{dump_clipboard, invite, seed_clipboard};
 use crate::exit_codes;
 use crate::output;
 use crate::ui;
@@ -19,6 +19,22 @@ pub enum DevCommands {
     Pairing {
         #[command(subcommand)]
         subcommand: DevPairingCommands,
+    },
+    /// Insert one text clipboard entry encrypted with the current session
+    /// master key. Used by switch-space data-integrity tests as a seeding
+    /// helper. Not part of the user-facing surface.
+    SeedClipboard {
+        /// Plaintext to seed.
+        #[arg(long)]
+        text: String,
+    },
+    /// Print the latest decrypted clipboard entries (preview field is
+    /// plaintext after decryption). Pair with `dev seed-clipboard` to verify
+    /// switch-space preserves data round-trip.
+    DumpClipboard {
+        /// Maximum number of entries to print (default 10).
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
     },
 }
 
@@ -73,6 +89,12 @@ impl From<PairingInvitationAddressCandidate> for PairingAddressView {
 pub async fn run(command: DevCommands, json: bool, verbose: bool) -> i32 {
     match command {
         DevCommands::Pairing { subcommand } => run_pairing(subcommand, json, verbose).await,
+        DevCommands::SeedClipboard { text } => {
+            seed_clipboard::run(seed_clipboard::SeedClipboardArgs { text }, verbose).await
+        }
+        DevCommands::DumpClipboard { limit } => {
+            dump_clipboard::run(dump_clipboard::DumpClipboardArgs { limit }, json, verbose).await
+        }
     }
 }
 

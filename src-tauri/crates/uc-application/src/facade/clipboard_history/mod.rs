@@ -318,7 +318,7 @@ impl ClipboardHistoryFacade {
     /// 行，让 `list_entries` / `get_entry` 能看到这条记录。
     ///
     /// 这是 switch-space E2E 数据完整性验证的种子方法（CLI
-    /// `uniclip seed-clipboard` 命令的后端）；常态业务路径走
+    /// `uniclip dev seed-clipboard` 命令的后端）；常态业务路径走
     /// `CaptureClipboardUseCase`，不要和这个方法混用。
     pub async fn seed_text_entry(&self, text: &str) -> Result<String, ClipboardHistoryError> {
         let event_id = EventId::new();

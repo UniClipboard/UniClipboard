@@ -115,22 +115,6 @@ enum Commands {
         #[arg(long)]
         device_name: Option<String>,
     },
-    /// Debug / E2E only: insert one text clipboard entry encrypted with
-    /// the current session master key. Used by switch-space data-integrity
-    /// tests as a seeding helper. Not part of the user-facing surface.
-    SeedClipboard {
-        /// Plaintext to seed.
-        #[arg(long)]
-        text: String,
-    },
-    /// Debug / E2E only: print the latest decrypted clipboard entries
-    /// (preview field is plaintext after decryption). Pair with
-    /// `seed-clipboard` to verify switch-space preserves data round-trip.
-    DumpClipboard {
-        /// Maximum number of entries to print (default 10).
-        #[arg(long, default_value_t = 10)]
-        limit: usize,
-    },
     /// Switch to another sponsor's space, re-encrypting local clipboard
     /// history under the new master key (4-phase migration).
     ///
@@ -355,21 +339,6 @@ fn main() -> anyhow::Result<()> {
                         passphrase,
                         device_name,
                     },
-                    cli.verbose,
-                )
-                .await
-            }
-            Commands::SeedClipboard { text } => {
-                commands::seed_clipboard::run(
-                    commands::seed_clipboard::SeedClipboardArgs { text },
-                    cli.verbose,
-                )
-                .await
-            }
-            Commands::DumpClipboard { limit } => {
-                commands::dump_clipboard::run(
-                    commands::dump_clipboard::DumpClipboardArgs { limit },
-                    cli.json,
                     cli.verbose,
                 )
                 .await
@@ -664,6 +633,37 @@ mod tests {
         ] {
             let result = Cli::try_parse_from(args.clone());
             assert!(result.is_ok(), "expected `{args:?}` to parse");
+        }
+    }
+
+    #[test]
+    fn dev_clipboard_seed_and_dump_commands_parse() {
+        // seed/dump 是调试 / E2E 入口,已从顶层搬进隐藏的 `dev` 组。
+        // 锁住新路径的解析契约 —— e2e 脚本依赖 `dev seed-clipboard` /
+        // `dev dump-clipboard`。
+        for args in [
+            vec!["uniclip", "dev", "seed-clipboard", "--text", "hello"],
+            vec!["uniclip", "dev", "dump-clipboard"],
+            vec!["uniclip", "dev", "dump-clipboard", "--limit", "5"],
+        ] {
+            let result = Cli::try_parse_from(args.clone());
+            assert!(result.is_ok(), "expected `{args:?}` to parse");
+        }
+    }
+
+    #[test]
+    fn top_level_clipboard_seed_and_dump_are_removed() {
+        // 迁移到 `dev` 组后,顶层路径必须消失,避免两套入口并存,
+        // 也确保它们不再出现在公开 help 契约里。
+        for args in [
+            vec!["uniclip", "seed-clipboard", "--text", "hello"],
+            vec!["uniclip", "dump-clipboard"],
+        ] {
+            let result = Cli::try_parse_from(args.clone());
+            assert!(
+                result.is_err(),
+                "expected top-level `{args:?}` to be rejected after move under `dev`"
+            );
         }
     }
 

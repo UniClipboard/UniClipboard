@@ -68,12 +68,12 @@ echo "==> bob: init (passphrase B — bob's original space, will be migrated awa
     --passphrase "$PASSPHRASE_BOB" \
     --device-name "bob (e2e)"
 
-echo "==> bob: seed-clipboard (encrypted under passphrase B's master key)"
-"$CLI" $COMMON_FLAGS --profile bob seed-clipboard \
+echo "==> bob: dev seed-clipboard (encrypted under passphrase B's master key)"
+"$CLI" $COMMON_FLAGS --profile bob dev seed-clipboard \
     --text "$SEED_TEXT"
 
-echo "==> bob: dump-clipboard (sanity — should show seeded text decrypted under B's key)"
-PRE_DUMP="$("$CLI" $COMMON_FLAGS --profile bob dump-clipboard --limit 5)"
+echo "==> bob: dev dump-clipboard (sanity — should show seeded text decrypted under B's key)"
+PRE_DUMP="$("$CLI" $COMMON_FLAGS --profile bob dev dump-clipboard --limit 5)"
 echo "$PRE_DUMP" | sed 's/^/    bob_pre | /'
 if ! echo "$PRE_DUMP" | grep -qF "$SEED_TEXT"; then
     echo "FAIL: bob's pre-switch dump did not contain the seeded text" >&2
@@ -138,8 +138,8 @@ if [[ $ALICE_EXIT -ne 0 ]]; then
     exit 1
 fi
 
-echo "==> bob: dump-clipboard (post-switch — must still show seeded text decrypted under A's master key)"
-POST_DUMP="$("$CLI" $COMMON_FLAGS --profile bob dump-clipboard --limit 5)"
+echo "==> bob: dev dump-clipboard (post-switch — must still show seeded text decrypted under A's master key)"
+POST_DUMP="$("$CLI" $COMMON_FLAGS --profile bob dev dump-clipboard --limit 5)"
 echo "$POST_DUMP" | sed 's/^/    bob_post | /'
 if ! echo "$POST_DUMP" | grep -qF "$SEED_TEXT"; then
     echo "FAIL: bob's post-switch dump did not contain the seeded text — re-encryption broke data" >&2

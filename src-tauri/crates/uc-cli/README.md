@@ -74,13 +74,11 @@ uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
 
 发布会输出后续拉取需要的 ticket 和 entry id。拉取时必须同时提供这两个值。
 
-## 空间切换和测试辅助命令
+## 空间切换
 
 | 命令 | 用途 |
 | --- | --- |
 | `uniclip switch-space` | 切换到另一个 sponsor 的空间，并迁移本地历史数据。 |
-| `uniclip seed-clipboard --text <TEXT>` | 调试 / 端到端测试用，直接写入一条加密文本记录。 |
-| `uniclip dump-clipboard --limit <N>` | 调试 / 端到端测试用，打印最近的解密记录预览。 |
 
 ## 隐藏的剪贴板诊断命令组（`probe`）
 
@@ -95,6 +93,18 @@ uniclip probe capture --out snap.json  # 抓取当前剪贴板到文件
 uniclip probe inspect --in snap.json   # 解析快照文件
 uniclip probe restore --in snap.json   # 把快照写回系统剪贴板（诊断用）
 uniclip probe restore --in snap.json --select 0  # 多 representation 时选其一
+```
+
+## 隐藏的开发者命令组（`dev`）
+
+`uniclip dev` 是隐藏子命令（不会出现在 `--help` 中），仅供开发与 E2E
+调试，不属于用户接口。
+
+```bash
+uniclip dev seed-clipboard --text <TEXT>  # 写入一条加密文本记录（测试种子）
+uniclip dev dump-clipboard --limit <N>    # 打印最近的解密记录预览
+uniclip dev pairing addrs                 # 列出配对邀请候选地址
+uniclip dev pairing issue --addr <IP>     # 指定本机 IP 发起配对邀请
 ```
 
 ## 行为边界

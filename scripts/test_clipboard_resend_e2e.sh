@@ -162,12 +162,12 @@ echo "    bob device_id: $BOB_DEVICE_ID"
 
 # ─── Seed an entry on alice ─────────────────────────────────────────────────
 
-echo "==> alice: seed-clipboard --text \"$FIXTURE_TEXT\""
+echo "==> alice: dev seed-clipboard --text \"$FIXTURE_TEXT\""
 SEED_OUT="$(mktemp -t uc_seed.XXXXXX)"
-"$CLI" $COMMON_FLAGS --profile alice seed-clipboard --text "$FIXTURE_TEXT" > "$SEED_OUT" 2>&1
+"$CLI" $COMMON_FLAGS --profile alice dev seed-clipboard --text "$FIXTURE_TEXT" > "$SEED_OUT" 2>&1
 ENTRY_ID="$(grep -E '^SEED_ENTRY_ID=' "$SEED_OUT" | head -1 | cut -d= -f2)"
 if [[ -z "$ENTRY_ID" ]]; then
-    echo "FAIL: alice seed-clipboard didn't emit SEED_ENTRY_ID" >&2
+    echo "FAIL: alice dev seed-clipboard didn't emit SEED_ENTRY_ID" >&2
     cat "$SEED_OUT" >&2
     exit 1
 fi

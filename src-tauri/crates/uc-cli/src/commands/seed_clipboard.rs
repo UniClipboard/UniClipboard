@@ -1,4 +1,4 @@
-//! `uniclip seed-clipboard` —— 调试 / E2E 测试用：往本地 SQLite 落一条
+//! `uniclip dev seed-clipboard` —— 调试 / E2E 测试用：往本地 SQLite 落一条
 //! 文本剪贴板条目（用当前 session master_key 加密）。
 //!
 //! 与生产路径 `CaptureClipboardUseCase` 不同——不走 normalization /

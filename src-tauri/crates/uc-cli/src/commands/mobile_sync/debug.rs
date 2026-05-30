@@ -95,7 +95,7 @@ fn debug_source_device_id() -> MobileDeviceId {
 
 /// Silently resume the encryption session before any debug command that
 /// touches the clipboard pipeline. capture / dedup / snapshot reads all
-/// require an unlocked space. Mirrors `seed-clipboard` (see
+/// require an unlocked space. Mirrors `dev seed-clipboard` (see
 /// `commands::seed_clipboard`); without this, capture errors out with
 /// `failed to encrypt inline_data` and snapshot reads fail with
 /// `failed to decrypt inline_data`.

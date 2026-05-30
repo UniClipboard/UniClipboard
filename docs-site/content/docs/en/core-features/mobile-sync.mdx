@@ -1,27 +1,31 @@
 ---
 title: Mobile sync
-description: How to sync clipboard between desktop and an iPhone or any SyncClipboard-compatible client over the LAN.
+description: How to sync clipboard between desktop and an iPhone or any SyncClipboard-compatible client — on the LAN, or across networks via a server node or Tailscale.
 ---
 
 import { Step, Steps } from 'fumadocs-ui/components/steps'
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 <Feature since="0.7.0" status="experimental">
-  LAN-only HTTP companion mode. iPhone via the **UniClipboard iOS App (TestFlight public beta)** —
-  recommended — or the bundled Shortcut, or any SyncClipboard-compatible client.
+  HTTP companion mode — LAN by default, cross-network via a server node or Tailscale. iPhone via the
+  **UniClipboard iOS App (TestFlight public beta)** — recommended — or the bundled Shortcut, or any
+  SyncClipboard-compatible client.
 </Feature>
 
-Mobile sync is the **0.7 LAN companion mode**: the desktop daemon
-exposes a small SyncClipboard-compatible HTTP service on your local
-network, and a paired phone reads / pushes clips to it with HTTP
-Basic Auth.
+Mobile sync is an **HTTP companion mode** (introduced in 0.7): the
+desktop daemon exposes a small SyncClipboard-compatible HTTP service,
+and a paired phone reads / pushes clips to it with HTTP Basic Auth.
 
 It is intentionally narrower than desktop ↔ desktop sync:
 
-- Same Wi-Fi only — no NAT punching, no relay, no cross-network
-  reachability.
-- Plain HTTP with Basic Auth (TLS comes in v2). Only enable on
-  trusted networks.
+- **Not P2P.** The phone is a plain HTTP client — no NAT punching, no
+  relay. It works on your LAN out of the box; for cross-network reach,
+  run a [headless server node](../guides/self-host-server-node) (a
+  public HTTPS endpoint) or use a Tailscale / VPN overlay (see
+  [below](#cross-network-sync-via-tailscale)).
+- Plain HTTP + Basic Auth at the listener — TLS is added by a reverse
+  proxy or the overlay tunnel, not the listener itself. On a bare LAN,
+  only enable on networks you trust.
 - Phone is **not** a peer of the space — it doesn't get a node ID
   and doesn't see the encrypted history database.
 
@@ -326,16 +330,23 @@ the LAN `http://<IP>:<port>` URL; the two are mutually exclusive.
 </Callout>
 
 <Callout type="info">
-  **Android limitations today.** No TLS (plain HTTP + Basic Auth on the LAN), same-Wi-Fi only, not a
+  **Android limitations today.** No TLS at the listener (plain HTTP + Basic Auth — TLS comes from a
+  reverse proxy or overlay), same-LAN by default (cross-network via a server node or Tailscale), not a
   peer of your space's trust mesh, and Android 10+ background-clipboard restrictions can delay or
   gate writes when the app is not in the foreground.
 </Callout>
 
 ## Cross-network sync via Tailscale
 
-By default, **mobile sync is same-Wi-Fi only** — once the phone moves
-to cellular (4G/5G) or to a different Wi-Fi, it can't reach the
-desktop's listener. Since **0.12**, the **Bind IP** dropdown also
+Tailscale is one of two ways to use mobile sync across networks; the
+other is a [headless server node](../guides/self-host-server-node) that
+exposes the gateway as a public HTTPS endpoint. Tailscale is the
+lighter-weight option when you control both the desktop and the phone
+and don't want to run a VPS.
+
+By default, **the desktop listener is only reachable on the same Wi-Fi**
+— once the phone moves to cellular (4G/5G) or to a different Wi-Fi, it
+can't reach the listener. Since **0.12**, the **Bind IP** dropdown also
 lists addresses in `100.64.0.0/10` (the CGNAT block Tailscale assigns
 to its virtual interfaces). If both the desktop and the phone are
 signed in to the same Tailscale network (tailnet), you can pair them
@@ -485,7 +496,7 @@ records, use `devices revoke` (or the GUI revoke button) explicitly.
 | On-disk password storage      | **Yes** — only an Argon2id hash is persisted server-side.                 |
 | Credential rotation           | **Yes** — `Rotate password` mints a new one and invalidates the old hash. |
 | LAN-side wire confidentiality | **No (v1)** — plain HTTP. TLS comes in v2.                                |
-| Cross-network reachability    | **No by default** — LAN only. Tailscale / VPN gives a workaround (below). |
+| Cross-network reachability    | **LAN by default** — extend it with a server node (public HTTPS) or a Tailscale / VPN overlay (below). |
 | Mobile-as-peer trust          | **No** — phone never participates in the iroh / space trust mesh.         |
 
 Practical implications:
@@ -494,6 +505,10 @@ Practical implications:
   selective about where you turn it on.
 - Public Wi-Fi: keep the listener disabled. Re-enable on a trusted
   network when you actually want the integration.
+- Server node: for always-on, cross-network access from anywhere
+  (without putting every device on a VPN), run a headless server node
+  that fronts the gateway with a TLS reverse proxy — full steps in
+  [Self-hosting a headless server node](../guides/self-host-server-node).
 - VPN / Tailscale: a VPN or Tailscale tailnet that puts both the
   desktop and the phone on the same virtual subnet (RFC1918 or
   Tailscale's `100.64.0.0/10`) is a reasonable "LAN-style sync from
@@ -519,7 +534,10 @@ images, what to do after changing the LAN IP), see
   the **Scan to add** QR.
 - [CLI reference — Mobile sync](../cli/reference#mobile-sync) — every
   `uniclip mobile-sync ...` subcommand and flag.
-- [Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only)
+- [Self-hosting a headless server node](../guides/self-host-server-node)
+  — run the gateway on a public VPS so the phone reaches it over HTTPS
+  from any network.
+- [Pairing & sync — Mobile companion](../guides/pairing#mobile-companion)
   — how mobile sync compares to desktop ↔ desktop pairing.
 - [Devices — Mobile sync devices](./devices#mobile-sync-devices) —
   the panel layout and per-device row controls.

@@ -1,24 +1,29 @@
 ---
 title: 移动端同步
-description: 在桌面与 iPhone 或任意兼容 SyncClipboard 客户端之间，通过局域网同步剪贴。
+description: 在桌面与 iPhone 或任意兼容 SyncClipboard 客户端之间同步剪贴 —— 默认走局域网，也可经自建 server 节点或 Tailscale 跨网络。
 ---
 
 import { Step, Steps } from 'fumadocs-ui/components/steps'
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 <Feature since="0.7.0" status="experimental">
-  仅限局域网的 HTTP 伴侣模式：iPhone 推荐使用 **UniClipboard iOS App（TestFlight beta 公测中）**；
-  也支持内置的 iOS 快捷指令或任意兼容 SyncClipboard 协议的客户端。
+  HTTP 伴侣模式 —— 默认走局域网，也可经自建 server 节点或 Tailscale 跨网络。iPhone 推荐使用
+  **UniClipboard iOS App（TestFlight beta 公测中）**；也支持内置的 iOS 快捷指令或任意兼容
+  SyncClipboard 协议的客户端。
 </Feature>
 
-移动端同步是 **0.7 引入的局域网伴侣模式**：桌面守护进程在本地网络上
-暴露一个兼容 SyncClipboard 的小型 HTTP 服务，已配对的手机用 HTTP
-Basic Auth 与之读写剪贴。
+移动端同步是一种 **HTTP 伴侣模式**（0.7 引入）：桌面守护进程暴露一个
+兼容 SyncClipboard 的小型 HTTP 服务，已配对的手机用 HTTP Basic Auth
+与之读写剪贴。
 
 它能力上比桌面 ↔ 桌面同步窄一截：
 
-- 仅限同一 Wi-Fi —— 不打洞、不走中继、不做跨网络可达。
-- 明文 HTTP + Basic Auth（TLS 在 v2 才有）。只在可信网络下打开。
+- **不走 P2P。** 手机就是个普通 HTTP 客户端 —— 不打洞、不走中继。
+  同一 LAN 下开箱即用；需要跨网络时，自建
+  [无头 server 节点](../guides/self-host-server-node)（公网 HTTPS 端点）
+  或走 Tailscale / VPN overlay（见 [下文](#跨网络同步搭配-tailscale)）。
+- 监听器本身是明文 HTTP + Basic Auth —— TLS 由反向代理或 overlay 隧道
+  提供，监听器自己不做。裸 LAN 下只在可信网络打开。
 - 手机 **不是** 空间的对端 —— 不分配 node ID，看不到加密历史数据库。
 
 两台手机不会互相同步，它们都跟桌面通信。
@@ -291,14 +296,20 @@ uniclip mobile-sync lan enable \
 </Callout>
 
 <Callout type="info">
-  **当前 Android 限制：** LAN 上明文 HTTP + Basic Auth（v1 无 TLS）、必须同一 Wi-Fi、移动端不进
-  空间的信任网格，并且 Android 10+ 的后台剪贴板限制会让 App 不在前台时收发被延迟或拦截。
+  **当前 Android 限制：** 监听器是明文 HTTP + Basic Auth（TLS 由反向代理或 overlay 提供）、默认同
+  LAN（跨网络可经 server 节点或 Tailscale）、移动端不进空间的信任网格，并且 Android 10+ 的后台剪贴板
+  限制会让 App 不在前台时收发被延迟或拦截。
 </Callout>
 
 ## 跨网络同步：搭配 Tailscale
 
-默认场景里，**移动端同步** 只覆盖同一个 Wi-Fi —— 手机走 4G/5G、或人在
-外面接别人的 Wi-Fi 时，是 **拨不通** 桌面那个监听器的。从
+Tailscale 是移动端跨网络同步的两条路径之一；另一条是自建
+[无头 server 节点](../guides/self-host-server-node)，把网关暴露成公网
+HTTPS 端点。当你自己同时掌握桌面与手机、又不想跑 VPS 时，Tailscale
+是更轻量的选择。
+
+默认情况下，**桌面那个监听器只在同一个 Wi-Fi 下可达** —— 手机走
+4G/5G、或人在外面接别人的 Wi-Fi 时，是 **拨不通** 它的。从
 **0.12** 起，「监听 IP」下拉额外把 `100.64.0.0/10` 这一段 CGNAT
 地址（Tailscale 默认给虚拟网卡用的 IPv4 区段）也列了出来，所以只要
 桌面与手机都接入同一个 Tailscale 网络（tailnet），就能像在同一个
@@ -431,13 +442,16 @@ App、快捷指令或其他客户端）。
 | 桌面侧密码存储             | **是** —— 只持久化 Argon2id 哈希。                              |
 | 凭据轮换                   | **是** —— `Rotate password` 签发新值并失效旧哈希。              |
 | LAN 上的传输机密性         | **否（v1）** —— 明文 HTTP。TLS 在 v2 才会有。                   |
-| 跨网络可达性               | **默认否** —— 仅限 LAN。可通过 Tailscale / VPN 折中（见下方）。 |
+| 跨网络可达性               | **默认走 LAN** —— 可经 server 节点（公网 HTTPS）或 Tailscale / VPN overlay 扩展（见下方）。 |
 | 把手机当作 peer 加入信任网 | **否** —— 手机不会进入 iroh / 空间的信任网络。                  |
 
 实操含义：
 
 - 把 LAN 监听器当作私网里的 SSH 服务来对待 —— 选择性地开启。
 - 公共 Wi-Fi：保持监听器关闭。回到可信网络再启用。
+- server 节点：想要常在线、从任意网络都能跨网络访问（又不必给每台设备
+  挂 VPN），可以跑一个无头 server 节点，用 TLS 反向代理把网关挡在前面 ——
+  具体步骤见 [自建无头 server 节点](../guides/self-host-server-node)。
 - VPN / Tailscale：让桌面与手机进入同一个虚拟子网（RFC1918 VPN 或
   Tailscale 的 `100.64.0.0/10` tailnet）可以当成「我想在家里之外用
   LAN 风格同步」的折中。具体步骤见
@@ -459,7 +473,9 @@ App、快捷指令或其他客户端）。
   看这一页。
 - [CLI 参考 — 移动端同步](../cli/reference#移动端同步) —— 所有
   `uniclip mobile-sync ...` 子命令与参数。
-- [配对与同步 — 移动端伴侣](../guides/pairing#移动端伴侣仅限-lan) —— 移动端
+- [自建无头 server 节点](../guides/self-host-server-node) —— 把网关跑在
+  公网 VPS 上，让手机从任意网络都能经 HTTPS 访问。
+- [配对与同步 — 移动端伴侣](../guides/pairing#移动端伴侣) —— 移动端
   同步与桌面 ↔ 桌面配对的对照。
 - [设备 — 移动端同步设备](./devices#移动端同步设备) —— 面板布局与
   设备行控件细节。

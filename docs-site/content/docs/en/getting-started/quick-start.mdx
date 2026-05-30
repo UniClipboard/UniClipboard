@@ -147,12 +147,11 @@ hole-punching, encrypted relay fallback) and how to debug a stuck peer.
 
 ## Add a phone (optional)
 
-UniClipboard also supports an **experimental LAN companion** for
-phones, useful for pasting between desktop and mobile on the same
-Wi-Fi. Mobile uses a different pairing path than desktops — it
-doesn't join the space's iroh trust mesh, doesn't get a node ID, and
-won't reach the desktop off-LAN. The trade-off is that it works
-without any mobile app store presence.
+UniClipboard also supports an **experimental HTTP companion** for
+phones, useful for pasting between desktop and mobile. Mobile uses a
+different pairing path than desktops — it doesn't join the space's
+iroh trust mesh and doesn't get a node ID. It reaches the desktop on
+the LAN by default, or across networks via a server node or Tailscale.
 
 1. On the desktop, open **Devices → Add → Mobile sync** and pick a
    label.
@@ -177,7 +176,7 @@ without any mobile app store presence.
 
 Walkthrough and protocol details:
 [Mobile sync](../core-features/mobile-sync) (end-to-end setup),
-[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only),
+[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion),
 and [Mobile LAN API](../reference/mobile-api).
 
 ## What's next
@@ -191,7 +190,7 @@ and [Mobile LAN API](../reference/mobile-api).
   `uniclip switch-space`, e.g. to keep personal and work machines in
   separate spaces. Local history is re-encrypted under the new space's
   key during the switch.
-- **Sync with a phone (experimental, LAN only).** See
+- **Sync with a phone (experimental).** See
   [Mobile sync](../core-features/mobile-sync) for the end-to-end walkthrough.
 
 <Callout type="warn">

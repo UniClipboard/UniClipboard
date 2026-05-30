@@ -16,13 +16,14 @@ the desktop side during pairing and are bound to a single registered device.
 
 <Callout type="info">
   This API is the **mobile companion** path. It is independent of the iroh P2P transport that
-  desktop ↔ desktop sync uses, runs on plain HTTP over the LAN, and intentionally has **no NAT
-  hole-punching, no encrypted relay, and no cross-network reachability**. Off-LAN clients cannot
-  reach this service. See [Pairing & sync — Mobile
-  companion](../guides/pairing#mobile-companion-lan-only) for the trade-offs.
+  desktop ↔ desktop sync uses, runs on plain HTTP, and intentionally has **no NAT hole-punching and
+  no encrypted relay** of its own. Off-LAN clients can't reach it directly — front it with a
+  [headless server node](../guides/self-host-server-node) (public HTTPS) or a Tailscale / VPN overlay
+  to reach it across networks. See [Pairing & sync — Mobile
+  companion](../guides/pairing#mobile-companion) for the trade-offs.
 </Callout>
 
-For setup, see [Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only)
+For setup, see [Pairing & sync — Mobile companion](../guides/pairing#mobile-companion)
 and the **Devices → Mobile sync** panel in the desktop app.
 
 ## Compatibility boundary

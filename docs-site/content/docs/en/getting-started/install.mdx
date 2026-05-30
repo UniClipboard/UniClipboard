@@ -254,9 +254,11 @@ Pairing flow (URL + Basic Auth credentials) is identical to the iOS
 path; see the [Mobile sync guide → Android](../core-features/mobile-sync#android--other-clients).
 
 <Callout type="info">
-  **Android limitations today.** The Android client runs as a **LAN companion** over plain HTTP +
-  Basic Auth — no iroh P2P, no relay, no TLS, same-Wi-Fi only — and it is not a peer of your space's
-  trust mesh (it only exchanges the current clipboard, not the encrypted history). Android's
+  **Android limitations today.** The Android client runs as an **HTTP companion** over plain HTTP +
+  Basic Auth — no iroh P2P, no relay (TLS comes from a reverse proxy) — and it is not a peer of your
+  space's trust mesh (it only exchanges the current clipboard, not the encrypted history). It reaches
+  the desktop on the LAN by default, or across networks via a
+  [headless server node](../guides/self-host-server-node) or Tailscale. Android's
   background-clipboard restrictions on Android 10+ may also delay or gate writes when the app is not
   in the foreground.
 </Callout>
@@ -294,8 +296,9 @@ UniClipboard is added to the Home Screen.
 
 ### Generate connection credentials on the desktop
 
-The App syncs with your desktop over the LAN (same Wi-Fi only). See
-the [Mobile sync guide](../core-features/mobile-sync) for the full
+The App syncs with your desktop over the LAN by default (or across
+networks via a server node or Tailscale). See the
+[Mobile sync guide](../core-features/mobile-sync) for the full
 pairing flow.
 
 </Step>

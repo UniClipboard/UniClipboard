@@ -123,7 +123,7 @@ random nonce) is derived from the space MasterKey, not from the QUIC
 session keys. Relay compromise does not weaken payload
 confidentiality.
 
-## Mobile companion (LAN-only)
+## Mobile companion
 
 Mobile devices use a **separate, simpler path** than desktop peers.
 They don't join the iroh trust mesh, they don't get a node ID, and
@@ -137,9 +137,17 @@ Basic Auth credentials minted at registration.
 | Trust unit     | Space + passphrase (PAKE)                      | Per-device username + password (Basic Auth)          |
 | Identity       | iroh node ID (Ed25519 keypair)                 | Registered device record on the desktop              |
 | Discovery      | mDNS + rendezvous + cached direct addrs        | Manual base URL (LAN IP + port) shown at pairing     |
-| Transport      | iroh QUIC, P2P first, encrypted relay fallback | Plain HTTP on the LAN — **no QUIC, no relay**        |
-| Cross-network  | Yes (hole-punching, relay)                     | **No** — same LAN only                               |
+| Transport      | iroh QUIC, P2P first, encrypted relay fallback | Plain HTTP + Basic Auth — **no QUIC, no relay** (TLS comes from a reverse proxy) |
+| Cross-network  | Yes (hole-punching, relay)                     | **Yes, via a server node or Tailscale** — not P2P; the phone reaches an HTTPS gateway or overlay address |
 | End-to-end key | XChaCha20-Poly1305 under the space MasterKey   | TLS-less HTTP; payload hashed and authenticated only |
+
+The phone is always just a SyncClipboard HTTP client — it never becomes
+an iroh peer. "Cross-network," then, means reaching the gateway from
+another network rather than P2P: run a
+[headless server node](./self-host-server-node) that exposes the gateway
+as a public HTTPS endpoint, or put the desktop and phone on the same
+Tailscale / VPN overlay. See
+[Mobile sync](../core-features/mobile-sync) for both paths.
 
 ### Pairing a mobile device
 
@@ -170,7 +178,10 @@ the **Mobile sync settings** sheet on the same page.
 
 - **No iroh / no relay.** The mobile listener is a separate HTTP
   service. There's no NAT hole-punching, no encrypted-relay fallback,
-  no QUIC. Off-LAN clients simply can't reach the desktop.
+  no QUIC. Off-LAN clients can't reach the desktop _directly_ — front
+  the gateway with a [headless server node](./self-host-server-node)
+  (public HTTPS) or a Tailscale / VPN overlay to reach it from another
+  network.
 - **No mobile ↔ mobile sync.** Two phones don't talk to each other —
   they each talk to the desktop, and the desktop relays.
 - **No per-direction / per-content-type gates yet.** The

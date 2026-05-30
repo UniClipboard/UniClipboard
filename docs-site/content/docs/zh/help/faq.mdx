@@ -154,22 +154,24 @@ Android 侧装 **UniClipboard Android 客户端**：
 下载侧载（暂不发布到 Google Play）。其他任意 SyncClipboard 协议兼容客户端
 也可以填入相同的 base URL + 凭据接入。
 
-不论用哪个客户端，**移动端同步都走「局域网伴侣（LAN companion）」
-模式**：桌面守护进程在 LAN 上暴露一个 SyncClipboard 兼容的 HTTP 服务，
+不论用哪个客户端，**移动端同步都走「HTTP 伴侣（companion）」
+模式**：桌面守护进程暴露一个 SyncClipboard 兼容的 HTTP 服务，
 客户端用 base URL + Basic Auth 与之读写。原内置的 iOS 快捷指令仍然
 作为备选保留。
 
 "伴侣"的含义在使用上是：
 
-- **同一 Wi-Fi 下双向工作。** 桌面 → 移动端和移动端 → 桌面都可以。
-- **仅限局域网。** 移动端同步走的是局域网内的普通 HTTP —— **不走 iroh P2P、
-  不做 NAT 打洞、也不会回落到加密中继**。离开局域网，移动端无法触达桌面。
+- **双向工作。** 桌面 → 移动端和移动端 → 桌面都可以。
+- **不走 P2P。** 移动端同步走的是普通 HTTP —— **不走 iroh P2P、
+  不做 NAT 打洞、也不会回落到加密中继**。同一 LAN 下开箱即用；需要
+  跨网络时，自建 [无头 server 节点](../guides/self-host-server-node)
+  （公网 HTTPS 端点）或走 Tailscale / VPN overlay。
 - **移动端不是真正的对端。** 移动设备不会加入空间的信任网络，也不会在移动设备
   之间互相同步；它们只与配对的那一台桌面互通剪贴。
 
 端到端配置流程见 [移动端同步指南](../core-features/mobile-sync)，协议细节见
 [移动端 LAN API](../reference/mobile-api)，配对界面见
-[配对与同步 — 移动端伴侣](../guides/pairing#移动端伴侣仅限-lan)。
+[配对与同步 — 移动端伴侣](../guides/pairing#移动端伴侣)。
 
 ### iOS App 为什么不能像桌面那样在后台静默同步剪贴板？
 

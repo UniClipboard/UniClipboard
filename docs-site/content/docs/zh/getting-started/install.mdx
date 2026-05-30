@@ -242,10 +242,11 @@ bun tauri build
 [移动端同步指南 → Android](../core-features/mobile-sync#android--其他客户端)。
 
 <Callout type="info">
-  **当前 Android 的限制。** Android 客户端走 **局域网伴侣** 模式：明文 HTTP + Basic Auth， 没有 iroh
-  P2P、没有 relay、没有 TLS、必须同一 Wi-Fi；它 **不是空间对端**，不会加入信任网格，
-  只交换当下的剪贴板内容，不复制加密历史。Android 10+ 的后台剪贴板限制也可能导致 App 不在前台时
-  收发延迟或被系统拦截。
+  **当前 Android 的限制。** Android 客户端走 **HTTP 伴侣** 模式：明文 HTTP + Basic Auth，没有 iroh
+  P2P、没有 relay（TLS 由反向代理提供）；它 **不是空间对端**，不会加入信任网格，
+  只交换当下的剪贴板内容，不复制加密历史。默认在 LAN 下与桌面互通，需要跨网络时可经
+  [无头 server 节点](../guides/self-host-server-node) 或 Tailscale。Android 10+ 的后台剪贴板限制
+  也可能导致 App 不在前台时收发延迟或被系统拦截。
 </Callout>
 
 ## iOS App（beta 公测）
@@ -281,8 +282,8 @@ TestFlight App，点击 **「接受」→「安装」**，UniClipboard 就会装
 
 ### 在桌面端生成连接凭据
 
-App 走的是与桌面端的局域网同步（仅限同一 Wi-Fi）。连接流程详见
-[移动端同步指南](../core-features/mobile-sync)。
+App 默认走与桌面端的局域网同步（也可经 server 节点或 Tailscale 跨网络）。
+连接流程详见 [移动端同步指南](../core-features/mobile-sync)。
 
 </Step>
 

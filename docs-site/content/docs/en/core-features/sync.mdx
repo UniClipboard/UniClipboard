@@ -88,23 +88,26 @@ forthcoming `uniclip devices` config commands in the CLI.
 
 ## Mobile sync (companion mode)
 
-Paired mobile devices flow through a separate, **LAN-only** HTTP path
-rather than the iroh wire format described above. The desktop daemon
-exposes the SyncClipboard JSON protocol; the iOS Shortcut and any
+Paired mobile devices flow through a separate HTTP path rather than the
+iroh wire format described above. The desktop daemon exposes the
+SyncClipboard JSON protocol; the iOS Shortcut and any
 SyncClipboard-compatible Android client read and write through it.
 
 What works:
 
 - **Bidirectional text, images, and files** between desktop and the
-  paired mobile client, on the same Wi-Fi.
+  paired mobile client.
 - **Per-device credentials** — username and password are minted at
   pairing and bound to a single registered mobile device.
 - **Password rotation** without re-pairing the device.
 
 Known limits compared to desktop ↔ desktop sync:
 
-- **Same Wi-Fi only.** No iroh, no NAT hole-punching, no encrypted
-  relay on the mobile side.
+- **Not P2P on the mobile side.** The mobile client never does iroh,
+  NAT hole-punching, or relay — it's a plain HTTP client. On the same
+  LAN it works out of the box; to reach it across networks, run a
+  [headless server node](../guides/self-host-server-node) (a public
+  HTTPS endpoint) or put both ends on a Tailscale / VPN overlay.
 - **No mobile-to-mobile sync.** Two phones don't talk directly to
   each other; both talk to the desktop.
 - **No per-direction or per-content-type gates yet** for mobile
@@ -115,7 +118,7 @@ Known limits compared to desktop ↔ desktop sync:
 
 For the full protocol surface, see
 [Mobile LAN API](../reference/mobile-api). For the pairing UI, see
-[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only).
+[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion).
 
 ## What sync does _not_ do
 

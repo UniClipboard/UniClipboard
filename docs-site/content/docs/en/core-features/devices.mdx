@@ -211,15 +211,15 @@ Pressing **Revoke** removes the device record. Subsequent requests
 with those credentials get `401 Unauthorized`.
 
 <Callout type="info">
-  Mobile cards don't show the `LAN / Direct / Relay` transport badge — mobile sync is **always**
-  plain HTTP on the LAN, so there's nothing to compare against.
+  Mobile cards don't show the `LAN / Direct / Relay` transport badge — mobile sync speaks
+  SyncClipboard HTTP rather than the iroh transport, so there's nothing to compare against.
 </Callout>
 
 For the full setup walkthrough (LAN listener, advertised IP, iOS
 Shortcut install, security caveats), jump to
 [Mobile sync](./mobile-sync). The pairing flow itself is also
 described under
-[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only).
+[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion).
 
 ## How fast does online status update
 

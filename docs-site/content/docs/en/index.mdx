@@ -55,9 +55,10 @@ relay only ever sees ciphertext.
 - **CLI parity.** The `uniclip` CLI mirrors the GUI and works on
   headless servers, SSH sessions, and tmux workflows.
 - **Cross-platform.** Windows, macOS, and Linux are all first-class.
-- **Mobile companion (LAN).** Pair an iPhone with the **UniClipboard
+- **Mobile companion.** Pair an iPhone with the **UniClipboard
   iOS App** (TestFlight public beta) — or the bundled iOS Shortcut —
   and on Android use any SyncClipboard-compatible client. Either way
   the phone exchanges clipboard with the desktop in both directions.
-  Mobile is a companion — same-Wi-Fi only, no cross-network P2P or
-  relay yet — but the desktop ↔ phone path covers the everyday case.
+  Mobile is a companion — a plain HTTP client, not an iroh peer — and
+  works on the LAN out of the box, or across networks via a server node
+  or Tailscale.

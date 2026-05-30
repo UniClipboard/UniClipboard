@@ -232,20 +232,19 @@ protocol-compatible, with APKs published in
 (side-load only, no Google Play). Any other SyncClipboard-compatible
 client can also connect by entering the same base URL + credentials.
 
-Either way, **mobile sync runs as a LAN companion**: the desktop
-daemon exposes a SyncClipboard-compatible HTTP service on your
-local network, and the mobile client talks to it with base URL +
-Basic Auth. The bundled iOS Shortcut remains available as a
-fallback.
+Either way, **mobile sync runs as an HTTP companion**: the desktop
+daemon exposes a SyncClipboard-compatible HTTP service, and the
+mobile client talks to it with base URL + Basic Auth. The bundled
+iOS Shortcut remains available as a fallback.
 
 What "companion" means in practice:
 
-- **Bidirectional on the same Wi-Fi.** Desktop → mobile and mobile →
-  desktop both work.
-- **LAN only.** Mobile sync runs over plain HTTP on your local
-  network — there is **no iroh P2P, no NAT hole-punching, and no
-  encrypted relay** on the mobile side. Off-LAN, mobile clients
-  cannot reach the desktop.
+- **Bidirectional.** Desktop → mobile and mobile → desktop both work.
+- **Not P2P.** Mobile sync runs over plain HTTP — there is **no iroh
+  P2P, no NAT hole-punching, and no encrypted relay** on the mobile
+  side. It works on the LAN out of the box; for cross-network reach,
+  run a [headless server node](../guides/self-host-server-node) (a
+  public HTTPS endpoint) or use a Tailscale / VPN overlay.
 - **Mobile is not a peer.** Mobile devices don't join the space's
   trust mesh and don't sync between each other; they exchange
   clipboard with whichever desktop they're paired to.
@@ -253,7 +252,7 @@ What "companion" means in practice:
 See the [Mobile sync guide](../core-features/mobile-sync) for the end-to-end
 setup flow, [Mobile LAN API](../reference/mobile-api) for the protocol
 surface, and
-[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only)
+[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion)
 for the pairing UI.
 
 ### Why can't the iOS app sync clipboard silently in the background like the desktop?

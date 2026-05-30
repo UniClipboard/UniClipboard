@@ -297,18 +297,20 @@ Common cases:
 
 ## Mobile sync (iOS Shortcut)
 
-The mobile companion runs over plain HTTP on the LAN with Basic
-Auth — completely separate from the iroh peer mesh. Most failures
-fall into one of these buckets.
+The mobile companion runs over plain HTTP with Basic Auth (TLS comes
+from a reverse proxy) — completely separate from the iroh peer mesh.
+Most failures fall into one of these buckets.
 
 ### Phone can't open the URL
 
 Symptom: tapping the install URL or running the Shortcut times out
 without ever showing a 401 / 4xx response.
 
-1. **Same LAN?** Phone and desktop must be on the same Wi-Fi /
-   subnet. Mobile sync has no relay, no NAT punching, no
-   cross-network reachability.
+1. **Can the phone reach the address you advertised?** In the default
+   setup the phone and desktop must be on the same Wi-Fi / subnet; if
+   you're using a server node (public HTTPS) or Tailscale / VPN, make
+   sure the phone is going through that channel. Mobile sync itself has
+   no relay and no NAT punching.
 2. **The advertised IP must be reachable from the phone.** The
    desktop socket always binds to `0.0.0.0`, but the URL baked into
    the install link must be a real LAN IPv4 the phone can dial. The

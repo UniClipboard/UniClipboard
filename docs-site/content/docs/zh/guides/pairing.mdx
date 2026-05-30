@@ -92,7 +92,7 @@ flowchart LR
 应用层加密（XChaCha20-Poly1305，24 字节随机 nonce）由空间 MasterKey 派生，与 QUIC 会话密钥无关。
 中继被攻陷不会削弱负载机密性。
 
-## 移动端伴侣（仅限 LAN）
+## 移动端伴侣
 
 移动设备使用一条 **独立、更简的路径**，与桌面对端不一样。它们不加入 iroh
 信任网络、不分配 node ID、也不走 邀请码 + 口令 + PAKE 流程。桌面守护进程在
@@ -104,9 +104,15 @@ flowchart LR
 | 信任单位   | 空间 + 口令（PAKE）                       | 每设备一组用户名 + 密码（Basic Auth）          |
 | 身份       | iroh node ID（Ed25519 公私钥）            | 桌面端持久化的注册设备记录                     |
 | 发现       | mDNS + rendezvous + 直连地址缓存          | 手动填入 base URL（LAN IP + 端口），配对时显示 |
-| 传输       | iroh QUIC，先 P2P 直连，失败回落加密中继  | 局域网上的明文 HTTP —— **无 QUIC、无中继**     |
-| 跨网络     | 支持（打洞 / 中继）                       | **不支持**，仅同一局域网                       |
+| 传输       | iroh QUIC，先 P2P 直连，失败回落加密中继  | 明文 HTTP + Basic Auth —— **无 QUIC、无中继**（TLS 由反向代理提供） |
+| 跨网络     | 支持（打洞 / 中继）                       | **支持,经 server 节点或 Tailscale** —— 非 P2P;手机访问 HTTPS 网关或 overlay 地址 |
 | 端到端密钥 | XChaCha20-Poly1305，由空间 MasterKey 派生 | 没有 TLS；负载只做哈希与鉴权                   |
+
+手机端始终只是个 SyncClipboard HTTP 客户端，永远不会成为 iroh 对端。
+所谓「跨网络」指的是 **从另一个网络访问到这个网关**，而非 P2P：可以自建
+[无头 server 节点](./self-host-server-node) 把网关暴露成公网 HTTPS 端点，
+或让桌面与手机接入同一个 Tailscale / VPN overlay。两条路径详见
+[移动端同步](../core-features/mobile-sync)。
 
 ### 配对移动设备
 
@@ -130,7 +136,9 @@ LAN 监听开关、对外宣告的 IP 与端口等设置位于同一面板的 **
 ### 移动端同步 **不** 做这些事
 
 - **不走 iroh、不走中继。** 移动端监听器是独立的 HTTP 服务，没有 NAT 打洞、
-  没有加密中继回落、没有 QUIC。离开 LAN 的客户端根本无法触达桌面。
+  没有加密中继回落、没有 QUIC。离开 LAN 的客户端 **无法直接** 触达桌面 ——
+  需要跨网络时，用 [无头 server 节点](./self-host-server-node)（公网 HTTPS）
+  或 Tailscale / VPN overlay 把网关暴露出去。
 - **移动端不会两两互联。** 两部手机不会直接通信，它们各自与桌面通信，由桌面转发。
 - **暂无按方向 / 按内容类型的开关。** 设备页对端设置抽屉的
   [按对端的内容类型白名单](../core-features/devices#内容类型白名单)目前只对桌面 ↔ 桌面生效。

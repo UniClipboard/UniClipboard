@@ -25,6 +25,10 @@ When documentation conflicts with code, treat the code as the source of truth an
 - [Error Handling](guides/error-handling.md) - Error handling strategy
 - [GitHub Releases Updater](guides/github-releases-updater.md) - Auto-update pipeline with latest.json
 
+**For Operators / Deployment:**
+
+- [Headless VPS Server Node](../deploy/vps/README.md) - Docker + Caddy stack and provisioning runbook for a self-hosted always-online member ([ADR-007](architecture/adr-007-headless-server-node-deployment.md))
+
 **For Code Review:**
 
 - [Coding Standards](guides/coding-standards.md) - Code style and conventions

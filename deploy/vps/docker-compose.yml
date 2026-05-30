@@ -1,0 +1,94 @@
+# UniClipboard headless server node + Caddy TLS reverse proxy (ADR-007 §2.8).
+#
+# Topology:
+#   - app   : the headless daemon. Joins the Space over iroh as a normal member
+#             and serves the mobile_lan gateway. State persists on a named
+#             volume mounted at /data (HOME). The iroh UDP port is published to
+#             the host for direct desktop dialing; the plaintext mobile_lan port
+#             is only `expose`d on the internal network — never to the host.
+#   - caddy : terminates TLS on 443 with an automatic certificate for your
+#             domain and reverse-proxies to app's mobile_lan port.
+#
+# Configure deploy/vps/.env first (copy from .env.example). Provisioning
+# (join + mobile-sync) runs via `docker compose run` BEFORE `up -d` — see README.
+
+services:
+  app:
+    # Option A (recommended): pull the prebuilt multi-arch image published on
+    # release (`docker compose pull`). Pin a version via UC_IMAGE in .env.
+    # Option B: build from source (`docker compose build` / `up -d --build`) —
+    # the build: block below tags the result under this same name.
+    image: ${UC_IMAGE:-ghcr.io/uniclipboard/uniclipboard-server:latest}
+    build:
+      # Context is the repo root so the Dockerfile can reach the src-tauri/
+      # workspace and the vendored iroh-blobs submodule.
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+    restart: unless-stopped
+    # tini as PID 1: reaps the daemon's children and forwards signals cleanly.
+    init: true
+    stop_grace_period: 30s
+    environment:
+      # Anchor all state on the volume (redundant with the image ENV, kept
+      # explicit so the contract is visible at the orchestration layer).
+      HOME: /data
+      # No system clipboard on a headless box. `start --server` and the
+      # provisioning commands (join / mobile-sync) already enable Noop on their
+      # own paths; setting it service-wide also keeps ad-hoc debugging commands
+      # (e.g. `uniclip status`) from trying to open a non-existent display.
+      UC_DISABLE_SYSTEM_CLIPBOARD: "1"
+      # Pin the iroh UDP port and advertise this VPS's public socket so
+      # desktops on other networks can dial directly (RelayMode::Disabled).
+      UC_IROH_BIND_PORT: ${UC_IROH_BIND_PORT:-42999}
+      UC_IROH_PUBLIC_ADDR: ${UC_PUBLIC_IP}:${UC_IROH_BIND_PORT:-42999}
+    volumes:
+      - uniclip-state:/data
+    ports:
+      # iroh direct-connection UDP port — MUST be reachable from the public
+      # internet (open it in the VPS firewall / security group too).
+      - "${UC_IROH_BIND_PORT:-42999}:${UC_IROH_BIND_PORT:-42999}/udp"
+    expose:
+      # mobile_lan plaintext HTTP — internal Docker network ONLY. Caddy reaches
+      # it as app:42720. Never published to the host.
+      - "42720"
+    networks:
+      - uniclip
+    command: ["uniclip", "start", "--server", "--foreground"]
+    healthcheck:
+      # The daemon's loopback control server answers /health on 42715 when no
+      # UC_PROFILE is set (the recommended VPS config). Proves the daemon is
+      # alive and serving; Caddy waits for this before starting.
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:42715/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      # Consumed by the Caddyfile via {$UC_DOMAIN}.
+      UC_DOMAIN: ${UC_DOMAIN}
+    ports:
+      - "80:80"        # ACME HTTP-01 challenge + HTTPS redirect
+      - "443:443"      # TLS (HTTP/1.1, HTTP/2)
+      - "443:443/udp"  # HTTP/3 (optional)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # certificates + ACME account (persist these!)
+      - caddy-config:/config
+    networks:
+      - uniclip
+
+volumes:
+  uniclip-state: # iroh identity, vault/KEK, sqlite db, blob cache, settings
+  caddy-data: # issued TLS certificates — keep to avoid re-issuance/rate limits
+  caddy-config:
+
+networks:
+  uniclip:
+    driver: bridge

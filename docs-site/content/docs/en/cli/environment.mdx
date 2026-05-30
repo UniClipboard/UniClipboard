@@ -11,31 +11,31 @@ a single machine. Values are read once at startup, so set them before launching
 
 ## Profile & data location
 
-| Variable     | Effect                                                                                                                                                                                                                          |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Variable     | Effect                                                                                                                                                                                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UC_PROFILE` | Run under a named profile, isolating the data dir, log dir, keychain entry, and iroh identity. The environment equivalent of [`--profile`](../cli/getting-started#global-flags). For example `UC_PROFILE=dev` stores under `app.uniclipboard.desktop-dev`. |
 
 ## Headless / server node
 
-| Variable                      | Effect                                                                                                                                              |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UC_DISABLE_SYSTEM_CLIPBOARD` | When set, the daemon never reads or writes the OS clipboard; it still syncs over iroh as a normal member. Useful on headless hosts. |
+| Variable                      | Effect                                                                                                                                                                                                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `UC_DISABLE_SYSTEM_CLIPBOARD` | When set, the daemon never reads or writes the OS clipboard; it still syncs over iroh as a normal member. Useful on headless hosts.                                                                                                                                |
 | `UC_DAEMON_RUN_MODE`          | Internal spawn contract for the in-process daemon: `server` selects the headless server-node mode (which also disables the system clipboard). From the terminal prefer [`uniclip start --server`](../cli/getting-started#daemon-lifecycle), which sets it for you. |
-| `UC_HOST_ROLE`                | Diagnostics role label for this process — `gui-host`, `daemon`, or `cli` — used in error/telemetry attribution. Normally set automatically; override only to relabel events. |
+| `UC_HOST_ROLE`                | Diagnostics role label for this process — `gui-host`, `daemon`, or `cli` — used in error/telemetry attribution. Normally set automatically; override only to relabel events.                                                                                       |
 
 ## Network
 
-| Variable              | Effect                                                                                                                            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `UC_IROH_BIND_PORT`   | Pin the local iroh UDP port instead of letting the OS assign one — handy when you need a stable port to forward through a firewall or NAT. |
+| Variable              | Effect                                                                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UC_IROH_BIND_PORT`   | Pin the local iroh UDP port instead of letting the OS assign one — handy when you need a stable port to forward through a firewall or NAT.           |
 | `UC_IROH_PUBLIC_ADDR` | Advertise a specific public address for this node, for hosts behind static NAT or with a known public IP. Typically paired with `UC_IROH_BIND_PORT`. |
 
 ## Logging
 
-| Variable         | Effect                                                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Variable         | Effect                                                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RUST_LOG`       | Standard tracing filter; **overrides `UC_LOG_PROFILE`** when set. Accepts a level (`RUST_LOG=debug`) or per-module directives (`RUST_LOG=uniclip=debug,iroh=info`). |
-| `UC_LOG_PROFILE` | Select a logging preset — `dev`, `prod`, `debug_clipboard`, or `cli`. Defaults to `dev` on debug builds and `prod` on release builds. |
+| `UC_LOG_PROFILE` | Select a logging preset — `dev`, `prod`, `debug_clipboard`, or `cli`. Defaults to `dev` on debug builds and `prod` on release builds.                               |
 
 For everyday setup see [Install](../getting-started/install) and
 [Self-host a relay](../guides/self-host-relay). The binary's `--help` and the

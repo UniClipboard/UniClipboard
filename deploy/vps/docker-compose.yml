@@ -36,7 +36,7 @@ services:
       # provisioning commands (join / mobile-sync) already enable Noop on their
       # own paths; setting it service-wide also keeps ad-hoc debugging commands
       # (e.g. `uniclip status`) from trying to open a non-existent display.
-      UC_DISABLE_SYSTEM_CLIPBOARD: "1"
+      UC_DISABLE_SYSTEM_CLIPBOARD: '1'
       # Pin the iroh UDP port and advertise this VPS's public socket so
       # desktops on other networks can dial directly (RelayMode::Disabled).
       UC_IROH_BIND_PORT: ${UC_IROH_BIND_PORT:-42999}
@@ -46,19 +46,19 @@ services:
     ports:
       # iroh direct-connection UDP port — MUST be reachable from the public
       # internet (open it in the VPS firewall / security group too).
-      - "${UC_IROH_BIND_PORT:-42999}:${UC_IROH_BIND_PORT:-42999}/udp"
+      - '${UC_IROH_BIND_PORT:-42999}:${UC_IROH_BIND_PORT:-42999}/udp'
     expose:
       # mobile_lan plaintext HTTP — internal Docker network ONLY. Caddy reaches
       # it as app:42720. Never published to the host.
-      - "42720"
+      - '42720'
     networks:
       - uniclip
-    command: ["uniclip", "start", "--server", "--foreground"]
+    command: ['uniclip', 'start', '--server', '--foreground']
     healthcheck:
       # The daemon's loopback control server answers /health on 42715 when no
       # UC_PROFILE is set (the recommended VPS config). Proves the daemon is
       # alive and serving; Caddy waits for this before starting.
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:42715/health"]
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1:42715/health']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -74,12 +74,12 @@ services:
       # Consumed by the Caddyfile via {$UC_DOMAIN}.
       UC_DOMAIN: ${UC_DOMAIN}
     ports:
-      - "80:80"        # ACME HTTP-01 challenge + HTTPS redirect
-      - "443:443"      # TLS (HTTP/1.1, HTTP/2)
-      - "443:443/udp"  # HTTP/3 (optional)
+      - '80:80' # ACME HTTP-01 challenge + HTTPS redirect
+      - '443:443' # TLS (HTTP/1.1, HTTP/2)
+      - '443:443/udp' # HTTP/3 (optional)
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data      # certificates + ACME account (persist these!)
+      - caddy-data:/data # certificates + ACME account (persist these!)
       - caddy-config:/config
     networks:
       - uniclip

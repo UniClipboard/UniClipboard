@@ -132,15 +132,15 @@ see [Self-hosting an iroh relay](./self-host-relay).
 
 The biggest section, and the one with the most footguns.
 
-| Block              | Content                                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage usage      | Four bars — database, encrypted vault, cache, logs — plus a `Refresh` button.                                                                                 |
+| Block              | Content                                                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage usage      | Four bars — database, encrypted vault, cache, logs — plus a `Refresh` button.                                                                                                |
 | Search index       | Status pill (Ready / Rebuilding / Unavailable), last rebuild timestamp, `Rebuild` button. See [Full-text search — Index lifecycle](../core-features/search#index-lifecycle). |
-| Auto-clear history | Master switch. Off → cleanup is manual only.                                                                                                                  |
-| Retention days     | 7 / 30 / 90 / 180 / 365.                                                                                                                                      |
-| Max items          | 100 / 500 / 1 000 / 2 000 / 5 000. Either limit triggers a cleanup pass.                                                                                      |
-| Skip pinned        | Skip pinned entries during cleanup.                                                                                                                           |
-| Danger zone        | `Clear cache` (drops blob chunks, history intact), `Clear all history` (irreversible), `Open data folder` (jumps to the on-disk location).                    |
+| Auto-clear history | Master switch. Off → cleanup is manual only.                                                                                                                                 |
+| Retention days     | 7 / 30 / 90 / 180 / 365.                                                                                                                                                     |
+| Max items          | 100 / 500 / 1 000 / 2 000 / 5 000. Either limit triggers a cleanup pass.                                                                                                     |
+| Skip pinned        | Skip pinned entries during cleanup.                                                                                                                                          |
+| Danger zone        | `Clear cache` (drops blob chunks, history intact), `Clear all history` (irreversible), `Open data folder` (jumps to the on-disk location).                                   |
 
 The data directory paths are listed under
 [Install — Where data lives](../getting-started/install#where-data-lives).

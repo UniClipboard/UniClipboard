@@ -1,0 +1,6 @@
+{
+  "title": "核心功能",
+  "icon": "Sparkles",
+  "defaultOpen": true,
+  "pages": ["sync", "search", "devices", "quick-panel", "mobile-sync", "privacy"]
+}

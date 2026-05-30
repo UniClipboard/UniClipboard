@@ -1,0 +1,91 @@
+---
+title: Getting Started
+description: Install uniclip, start the daemon, and create or join a space — all from the terminal.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+The `uniclip` binary is the terminal-side equivalent of the desktop
+app. It runs the daemon in-process, so anything the GUI can do — pair,
+sync, send, search — works headlessly over SSH, in tmux, on a server,
+or from a script.
+
+Install via the [Install](../getting-started/install) page (Homebrew
+on macOS, the headless `uniclip` artefact on Linux servers, etc.).
+
+## Global flags
+
+These work on every subcommand:
+
+| Flag               | Effect                                                                            |
+| ------------------ | --------------------------------------------------------------------------------- |
+| `--json`           | Emit machine-readable JSON. Field names are stable; suitable for scripting.       |
+| `-v`, `--verbose`  | Show debug-level diagnostics on the console.                                      |
+| `--profile <NAME>` | Run as a separate profile — isolates data dir, keychain entry, and iroh identity. |
+| `--dev`            | Use file-based secure storage instead of the system keychain. Development only.   |
+
+`--profile` is the supported way to simulate two devices on one
+machine for end-to-end testing — run two terminals, each with a
+different `--profile` value.
+
+## Daemon lifecycle
+
+| Command                      | Effect                                                                                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uniclip start`              | Start the daemon in the background.                                                                                                                 |
+| `uniclip start --foreground` | Run the daemon in the foreground; logs go to the TTY.                                                                                               |
+| `uniclip start --server`     | Run as a headless server node: no system clipboard or clipboard watcher; syncs over iroh as a normal member. For a VPS / container with no display. |
+| `uniclip stop`               | Stop the running daemon.                                                                                                                            |
+| `uniclip status`             | Show daemon health, pairing state, and presence.                                                                                                    |
+
+The daemon starts automatically when you run a command that needs it,
+so explicit `start` is mostly for log-streaming setups and headless
+servers that want a long-lived background process.
+
+## Space lifecycle
+
+The CLI mirrors the GUI flow described in
+[Pairing & sync](../guides/pairing).
+
+<Tabs items={['Sponsor (first device)', 'Joiner (new device)']}>
+
+<Tab value="Sponsor (first device)">
+
+```bash
+# Create a fresh encrypted space on this profile
+uniclip init
+
+# Issue a one-time invitation and wait for the joiner
+uniclip invite
+```
+
+`init` prompts for the passphrase interactively. Pass `--passphrase`
+or `--device-name` only in non-interactive contexts (e.g. an E2E test
+script).
+
+</Tab>
+
+<Tab value="Joiner (new device)">
+
+```bash
+# Redeem an invitation and join the sponsor's space
+uniclip join <invitation-code>
+
+# Verify the pairing landed
+uniclip members
+```
+
+`join` prompts for the passphrase if `--passphrase` is omitted. The
+passphrase is verified locally via PAKE — a wrong value fails fast
+without leaking the guess to the sponsor.
+
+</Tab>
+
+</Tabs>
+
+To switch this device to a different sponsor's space (re-encrypting
+local history under the new MasterKey):
+
+```bash
+uniclip switch-space
+```

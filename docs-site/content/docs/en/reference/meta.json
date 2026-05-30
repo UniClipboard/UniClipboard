@@ -2,5 +2,5 @@
   "title": "Reference",
   "icon": "Wrench",
   "defaultOpen": true,
-  "pages": ["cli", "mobile-api", "mobile-connect-uri", "search-internals"]
+  "pages": ["mobile-api", "mobile-connect-uri", "search-internals"]
 }

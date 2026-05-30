@@ -1,83 +1,9 @@
 ---
-title: 命令行（uniclip）
-description: 在终端中无界面控制 UniClipboard。
+title: 命令参考
+description: uniclip 全部子命令 —— 成员、发送/监听、搜索、blob、移动端同步与退出码。
 ---
 
-import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
-
-`uniclip` 是 UniClipboard 的终端版本。它把守护进程跑在进程内，
-所以 GUI 能做的（配对、同步、发送、搜索）都能在 SSH、tmux、服务器或脚本里完成。
-
-安装方式见[安装](../getting-started/install)（macOS Homebrew、Linux 服务器单装 `uniclip` 等）。
-
-## 全局参数
-
-以下参数对所有子命令生效：
-
-| 参数               | 作用                                                           |
-| ------------------ | -------------------------------------------------------------- |
-| `--json`           | 输出机器可读的 JSON。字段名稳定，适合脚本调用。                |
-| `-v`, `--verbose`  | 在控制台打印 debug 级别日志。                                  |
-| `--profile <NAME>` | 使用独立 profile 运行 —— 隔离数据目录、密钥环条目、iroh 身份。 |
-| `--dev`            | 用文件式安全存储替代系统密钥环。仅供开发使用。                 |
-
-`--profile` 是单机模拟两台设备做端到端测试的官方方式 ——
-两个终端各用不同的 `--profile` 即可。
-
-## 守护进程生命周期
-
-| 命令                         | 作用                                                                                                           |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `uniclip start`              | 后台启动守护进程。                                                                                             |
-| `uniclip start --foreground` | 前台启动并把日志输出到当前终端。                                                                               |
-| `uniclip start --server`     | 以无头 server 节点运行：不接系统剪贴板、不监听剪贴板，作为普通成员经 iroh 同步。用于无 display 的 VPS / 容器。 |
-| `uniclip stop`               | 停止运行中的守护进程。                                                                                         |
-| `uniclip status`             | 查看守护进程健康度、配对状态、在线状态。                                                                       |
-
-需要守护进程的命令会自动拉起它，所以显式 `start` 主要用于"日志流式查看"或"长驻后台"的服务器场景。
-
-## 空间生命周期
-
-CLI 与 GUI 流程一致，详见[配对与同步](../guides/pairing)。
-
-<Tabs items={['Sponsor（首台设备）', 'Joiner（新设备）']}>
-
-<Tab value="Sponsor（首台设备）">
-
-```bash
-# 在当前 profile 下新建加密空间
-uniclip init
-
-# 发起一次性邀请并等待 joiner
-uniclip invite
-```
-
-`init` 默认交互式输入口令。`--passphrase` 与 `--device-name` 仅在非交互场景（如 E2E 测试脚本）中使用。
-
-</Tab>
-
-<Tab value="Joiner（新设备）">
-
-```bash
-# 用邀请码加入 sponsor 的空间
-uniclip join <invitation-code>
-
-# 验证配对结果
-uniclip members
-```
-
-`join` 在不带 `--passphrase` 时会提示输入。口令通过 PAKE 在本地验证 —— 输错会立即失败，
-不会把口令值发给 sponsor。
-
-</Tab>
-
-</Tabs>
-
-把当前设备切换到另一个 sponsor 的空间（用新 MasterKey 重新加密本地历史）：
-
-```bash
-uniclip switch-space
-```
+这是 `uniclip` 的完整子命令参考。第一次用 CLI？先看 [CLI 概览](../cli/getting-started)。
 
 ## 成员与设备
 
@@ -157,7 +83,7 @@ uniclip search query "报告" \
 ## Blob（大负载）诊断
 
 `uniclip blob` 是分块 blob 管线的命令行入口，参见
-[同步内容 — 大负载（文件与大图）](../guides/sync#大负载文件与大图)。
+[同步内容 — 大负载（文件与大图）](../core-features/sync#大负载文件与大图)。
 
 ```bash
 # 把本地文件作为加密 blob 发布，输出对应 ticket
@@ -173,7 +99,7 @@ uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
 
 `uniclip mobile-sync ...` 是移动端同步功能的命令行入口，覆盖
 **设备 → 移动端同步** 面板的所有动作。协议层文档见
-[移动端 LAN API](./mobile-api)。
+[移动端 LAN API](../reference/mobile-api)。
 
 ```bash
 # 一键向导：开启功能、配置 LAN 监听器、注册一台 iPhone，打印
@@ -229,7 +155,7 @@ uniclip mobile-sync disable
   在不发版本说明的情况下变化。
 
 完整的端到端配置教程（监听器风险提示、iOS 快捷指令安装、密码轮换）见
-[移动端同步指南](../guides/mobile-sync)。
+[移动端同步指南](../core-features/mobile-sync)。
 
 ## 升级检测游标
 
@@ -248,7 +174,7 @@ uniclip upgrade advance
   CLI 中 **唯一** 写系统剪贴板的入口（仅限 `probe restore`），仅供开发与 E2E 调试。
 - `uniclip seed-clipboard --text <TEXT>` —— switch-space 数据完整性测试用的种子写入。
 - `uniclip dump-clipboard --limit <N>` —— 调试用，打印解密后的历史。
-- `uniclip dev pairing ...` —— 配对邀请的诊断子命令组：`addrs` 列出经过产品过滤后的候选地址，`issue --addr <IP>` 把邀请约束在某一个本机 IP 上。daemon 跑着时会被拒绝；仅供开发与排查 [配对在虚拟网卡环境下打不通](../guides/troubleshooting#配对失败) 这类问题使用。
+- `uniclip dev pairing ...` —— 配对邀请的诊断子命令组：`addrs` 列出经过产品过滤后的候选地址，`issue --addr <IP>` 把邀请约束在某一个本机 IP 上。daemon 跑着时会被拒绝；仅供开发与排查 [配对在虚拟网卡环境下打不通](../help/troubleshooting#配对失败) 这类问题使用。
 - `uniclip daemon` —— `uniclip start` 拉起后台进程的内部入口，不作为用户命令使用。
 
 这些不会出现在 shell 补全或 `--help` 中，并且可能在不发版本说明的情况下变化。

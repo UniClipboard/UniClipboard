@@ -1,0 +1,6 @@
+{
+  "title": "Core Features",
+  "icon": "Sparkles",
+  "defaultOpen": true,
+  "pages": ["sync", "search", "devices", "quick-panel", "mobile-sync", "privacy"]
+}

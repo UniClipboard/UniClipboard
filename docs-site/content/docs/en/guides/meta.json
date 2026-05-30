@@ -2,16 +2,5 @@
   "title": "Guides",
   "icon": "BookOpen",
   "defaultOpen": true,
-  "pages": [
-    "pairing",
-    "sync",
-    "quick-panel",
-    "search",
-    "devices",
-    "mobile-sync",
-    "privacy",
-    "settings",
-    "self-host-relay",
-    "troubleshooting"
-  ]
+  "pages": ["pairing", "settings", "self-host-relay"]
 }

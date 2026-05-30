@@ -18,8 +18,8 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 <Callout type="info">
   快捷键被其它应用占用了？面板"按了没反应"通常是热键冲突，不是 bug。到 [设置 —
-  快捷键](./settings#快捷键)改成空闲组合即可。如果根本不想要这个面板，也可以在 [设置 —
-  快捷面板](./settings#快捷面板) 里整体关掉它 —— 关闭即时反注册全局快捷键。
+  快捷键](../guides/settings#快捷键)改成空闲组合即可。如果根本不想要这个面板，也可以在 [设置 —
+  快捷面板](../guides/settings#快捷面板) 里整体关掉它 —— 关闭即时反注册全局快捷键。
 </Callout>
 
 ## 键盘操作
@@ -86,7 +86,7 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 <Callout type="info">
   CLI 端的等价能力是 `uniclip search query`，参数与上面对应：`--type` / `--ext` / `--from-ms` /
-  `--to-ms`。详见 [CLI 参考 — 搜索](../reference/cli#搜索)。
+  `--to-ms`。详见 [CLI 参考 — 搜索](../cli/reference#搜索)。
 </Callout>
 
 ## 自定义快捷键
@@ -120,10 +120,10 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 | 立刻粘贴最近的某一项               | 快捷面板                                       |
 | 跨多设备查找几天前的内容           | 快捷面板的 `:` 高级搜索 / CLI `uniclip search` |
 | 长时间整理、批量删除、导出         | 主窗口仪表盘                                   |
-| 配置筛选规则、按设备的内容类型限制 | [设备页](./devices) / [设置](./settings)       |
+| 配置筛选规则、按设备的内容类型限制 | [设备页](./devices) / [设置](../guides/settings)       |
 
 ## 排查
 
-- 按了快捷键没反应：先看 [故障排查 — 剪贴板权限](./troubleshooting#剪贴板权限)，macOS 还要确认 **输入监控** 已授权并彻底重启过应用。
+- 按了快捷键没反应：先看 [故障排查 — 剪贴板权限](../help/troubleshooting#剪贴板权限)，macOS 还要确认 **输入监控** 已授权并彻底重启过应用。
 - 面板里看不到刚复制的内容：守护进程没起或剪贴板监听被系统隔离。`uniclip status` 看 `daemon.running` 与剪贴板监听日志。
 - 同步过来的项目从未出现在面板：可能在发送端被设备规则挡掉了，到对端的 [设备 → 内容类型白名单](./devices#内容类型白名单) 检查。

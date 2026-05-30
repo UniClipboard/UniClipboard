@@ -1,0 +1,6 @@
+{
+  "title": "CLI",
+  "icon": "Terminal",
+  "defaultOpen": true,
+  "pages": ["getting-started", "reference", "environment"]
+}

@@ -5,7 +5,7 @@ description: Tokenizer and prefix-expansion rules, and the known long-token boun
 
 This page explains how the local search index used by the quick panel and the
 `uniclip search` CLI behaves at the tokenizer level. For day-to-day usage, see
-[Full-text search](../guides/search).
+[Full-text search](../core-features/search).
 
 ## Prefix expansion is decided per token
 
@@ -52,4 +52,4 @@ Any tokenization-rule change (such as the per-token prefix expansion described
 here) bumps `CURRENT_INDEX_VERSION`. The daemon detects the mismatch on next
 startup and rebuilds the index automatically; queries during the rebuild return
 incomplete result sets until it finishes. See
-[Full-text search — Index lifecycle](../guides/search#index-lifecycle).
+[Full-text search — Index lifecycle](../core-features/search#index-lifecycle).

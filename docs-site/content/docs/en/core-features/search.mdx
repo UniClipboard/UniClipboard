@@ -14,7 +14,7 @@ the history database — see
 | Surface              | Status / when to use it                                                                                                    |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Quick Panel          | **Primary entry.** Live filtering, advanced syntax, keyboard-first. See [Quick Panel](./quick-panel#advanced-search--mode) |
-| `uniclip search` CLI | Scripts, SSH, remote sessions. See [CLI — Search](../reference/cli#search)                                                 |
+| `uniclip search` CLI | Scripts, SSH, remote sessions. See [CLI — Search](../cli/reference#search)                                                 |
 | Dashboard search box | Placeholder — **not wired up in the current build**. The input doesn't reach the query pipeline yet                        |
 
 <Callout type="info">
@@ -129,7 +129,7 @@ subdirectory under the data folder, then run `rebuild` to recreate it
 from history. The clipboard history lives in a separate file and
 **isn't affected**.
 
-See [Troubleshooting — Search & index](./troubleshooting#search--index).
+See [Troubleshooting — Search & index](../help/troubleshooting#search--index).
 
 ## Privacy
 
@@ -149,7 +149,7 @@ Most likely first:
    noisy by nature.
 2. Time filter is too tight. Reset the time dropdown to "All".
 3. The entry was GC'd by the retention policy. Check the limits under
-   [Settings — Storage](./settings#storage) and confirm the entry is
+   [Settings — Storage](../guides/settings#storage) and confirm the entry is
    still inside the window.
 4. The entry never synced over — check
    [Devices — Content-type allowlist](./devices#content-type-allowlist)

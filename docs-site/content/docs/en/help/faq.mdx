@@ -5,7 +5,7 @@ description: Privacy, deployment model, multi-device & multi-space, data, and up
 
 Answers below are grouped by topic. Each one leads with a one-line
 verdict, then the reasoning. If you're chasing a specific bug, jump to
-[Troubleshooting](./guides/troubleshooting) instead.
+[Troubleshooting](./troubleshooting) instead.
 
 ## Privacy & security
 
@@ -34,7 +34,7 @@ Your clipboard history never lands on any of our servers. There is no
 
 Diagnostics and usage analytics use separate channels for crash
 debugging and product reliability analysis. They do not carry clipboard
-content. See [Privacy & data collection](./guides/privacy) for the full
+content. See [Privacy & data collection](../core-features/privacy) for the full
 field list.
 
 ### What diagnostics or usage data does UniClipboard collect?
@@ -44,7 +44,7 @@ diagnostics (crashes, errors, anonymous logs, performance traces, and
 frontend diagnostics) and usage analytics (first-open, pairing funnel,
 and sync reliability events). They do not include clipboard content,
 file content, passphrases, or keys. See
-[Privacy & data collection](./guides/privacy).
+[Privacy & data collection](../core-features/privacy).
 
 ### Can I recover a forgotten passphrase?
 
@@ -69,14 +69,14 @@ A compromised relay can affect **performance and reachability**, not
 confidentiality. The attacker sees ciphertext over QUIC plus end-to-end
 sealed envelopes — without the MasterKey, none of it is meaningful.
 See
-[Pairing & sync — What the relay sees vs. what your peers see](./guides/pairing#what-the-relay-sees-vs-what-your-peers-see).
+[Pairing & sync — What the relay sees vs. what your peers see](../guides/pairing#what-the-relay-sees-vs-what-your-peers-see).
 
 ### Is anything stored in plaintext on disk?
 
 No. The local clipboard database and the full-text search index are
 both encrypted at rest, with keys held by the OS keyring (macOS
 Keychain / Windows Credential Manager / Linux Secret Service). See
-[What syncs — Local storage](./guides/sync#local-storage).
+[What syncs — Local storage](../core-features/sync#local-storage).
 
 ### Can I disable relay entirely?
 
@@ -118,7 +118,7 @@ Same-Wi-Fi sync runs P2P direct and works with the WAN cut entirely.
 
 **There is no account system.** The trust boundary is a space + a
 passphrase — no third-party identity provider involved. See
-[Pairing & sync — Trust](./guides/pairing#trust-the-space--invite-model).
+[Pairing & sync — Trust](../guides/pairing#trust-the-space--invite-model).
 
 ### Can I self-host rendezvous / relay?
 
@@ -127,7 +127,7 @@ UniClipboard exposes custom iroh **relay** URLs in
 use the default iroh relays, or enter one relay URL per line to use
 only your own relay nodes. Restart the daemon after changing the list.
 For an end-to-end walkthrough of standing up a relay, see
-[Self-hosting an iroh relay](./guides/self-host-relay).
+[Self-hosting an iroh relay](../guides/self-host-relay).
 
 Custom rendezvous discovery is still not exposed. First-time pairing
 continues to use UniClipboard's rendezvous service, and cross-network
@@ -168,7 +168,7 @@ only updates to the space's trusted set do.
 
 No. Each addition issues a one-time invite and uses it on the new
 device. There's no concept of a "primary" device. See
-[Quick start — Add a second device](./getting-started/quick-start#add-a-second-device).
+[Quick start — Add a second device](../getting-started/quick-start#add-a-second-device).
 
 ## Data & history
 
@@ -179,7 +179,7 @@ applies and old items are GC'd. Each device keeps its own history;
 deletes don't propagate across devices.
 
 For finer-grained control by content type or per device, see
-[What syncs — Per-device sync toggles](./guides/sync#per-device-sync-gates).
+[What syncs — Per-device sync toggles](../core-features/sync#per-device-sync-gates).
 
 ### Will a newly joined device receive my old history?
 
@@ -194,7 +194,7 @@ device from siphoning the entire space history.
 No — uninstalling the package does **not** automatically clear the
 data directory or keyring entries. That's deliberate, to avoid
 accidental data loss. To wipe completely, follow
-[Troubleshooting — Emergency reset](./guides/troubleshooting#emergency-reset-last-resort).
+[Troubleshooting — Emergency reset](./troubleshooting#emergency-reset-last-resort).
 
 ### Will an upgrade lose history?
 
@@ -222,7 +222,7 @@ beta**. Invite link:
 — install **TestFlight** from the App Store, then open the link to
 accept and install the beta build (full walkthrough plus the
 proxy/VPN gotchas is in
-[Mobile sync — Pair an iPhone](./guides/mobile-sync#pair-an-iphone)).
+[Mobile sync — Pair an iPhone](../core-features/mobile-sync#pair-an-iphone)).
 
 On Android, install the **UniClipboard Android client** at
 [github.com/UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)
@@ -250,10 +250,10 @@ What "companion" means in practice:
   trust mesh and don't sync between each other; they exchange
   clipboard with whichever desktop they're paired to.
 
-See the [Mobile sync guide](./guides/mobile-sync) for the end-to-end
-setup flow, [Mobile LAN API](./reference/mobile-api) for the protocol
+See the [Mobile sync guide](../core-features/mobile-sync) for the end-to-end
+setup flow, [Mobile LAN API](../reference/mobile-api) for the protocol
 surface, and
-[Pairing & sync — Mobile companion](./guides/pairing#mobile-companion-lan-only)
+[Pairing & sync — Mobile companion](../guides/pairing#mobile-companion-lan-only)
 for the pairing UI.
 
 ### Why can't the iOS app sync clipboard silently in the background like the desktop?
@@ -294,7 +294,7 @@ on-demand companion to that.
 ### How do I build from source?
 
 Source build steps live in
-[Install — Build from source](./getting-started/install#build-from-source).
+[Install — Build from source](../getting-started/install#build-from-source).
 
 ## Workflow
 
@@ -310,13 +310,13 @@ to keep them separate.
 Yes. Each paired device has per-direction (send / receive) and
 per-content-type toggles. Configured in the GUI Devices page today;
 CLI equivalents are on the roadmap. See
-[Per-device sync toggles](./guides/sync#per-device-sync-gates).
+[Per-device sync toggles](../core-features/sync#per-device-sync-gates).
 
 ### Can I script against UniClipboard?
 
 Yes. `uniclip` supports `--json` on every subcommand, exit codes are
 stable, and stdin works (`echo ... | uniclip send`). See
-[CLI reference](./reference/cli).
+[CLI reference](../cli/getting-started).
 
 ## Feedback & disclosure
 

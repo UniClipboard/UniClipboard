@@ -3,7 +3,7 @@ title: 搜索内部机制
 description: 分词器与前缀展开规则，以及长 token 的已知边界。
 ---
 
-本页面解释快捷面板、`uniclip search` CLI 共用的本地搜索索引在分词层面的行为。普通使用请看 [全文搜索](../guides/search)。
+本页面解释快捷面板、`uniclip search` CLI 共用的本地搜索索引在分词层面的行为。普通使用请看 [全文搜索](../core-features/search)。
 
 ## 前缀展开按 token 自身决策
 
@@ -34,4 +34,4 @@ description: 分词器与前缀展开规则，以及长 token 的已知边界。
 
 ## 索引版本
 
-任何分词规则的变化（例如本文档描述的 token-级前缀展开）都会 bump `CURRENT_INDEX_VERSION`。守护进程下次启动时检测到版本不一致，会自动重建索引，期间查询返回的结果集合在补齐之前是不完整的。详见 [全文搜索 — 索引生命周期](../guides/search#索引生命周期)。
+任何分词规则的变化（例如本文档描述的 token-级前缀展开）都会 bump `CURRENT_INDEX_VERSION`。守护进程下次启动时检测到版本不一致，会自动重建索引，期间查询返回的结果集合在补齐之前是不完整的。详见 [全文搜索 — 索引生命周期](../core-features/search#索引生命周期)。

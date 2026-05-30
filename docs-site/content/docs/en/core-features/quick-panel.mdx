@@ -23,9 +23,9 @@ hold focus indefinitely.
 
 <Callout type="info">
   Hotkey doesn't seem to fire? It's almost always a conflict with another app's shortcut, not a bug.
-  Rebind it under [Settings — Shortcuts](./settings#shortcuts) to a free combo. If you'd rather not
+  Rebind it under [Settings — Shortcuts](../guides/settings#shortcuts) to a free combo. If you'd rather not
   have the panel at all, you can turn the whole feature off under [Settings — Quick
-  Panel](./settings#quick-panel) — that unregisters the hotkey immediately.
+  Panel](../guides/settings#quick-panel) — that unregisters the hotkey immediately.
 </Callout>
 
 ## Keyboard controls
@@ -108,7 +108,7 @@ see [Full-text search — Query syntax](./search#query-syntax).
 
 <Callout type="info">
   The CLI equivalent is `uniclip search query` with `--type`, `--ext`, `--from-ms`, and `--to-ms`.
-  See [CLI reference — Search](../reference/cli#search).
+  See [CLI reference — Search](../cli/reference#search).
 </Callout>
 
 ## Customizing the hotkey
@@ -147,12 +147,12 @@ Combinations that are unlikely to clash with system or IDE shortcuts:
 | Paste a recent item right now                      | Quick Panel                                              |
 | Find something from days ago across devices        | Quick Panel `:` advanced search, or CLI `uniclip search` |
 | Long sessions of triage, bulk delete, export       | Main window (Dashboard)                                  |
-| Configure filters or per-device content-type rules | [Devices](./devices) / [Settings](./settings)            |
+| Configure filters or per-device content-type rules | [Devices](./devices) / [Settings](../guides/settings)            |
 
 ## Troubleshooting
 
 - Hotkey doesn't fire: see
-  [Troubleshooting — Clipboard permissions](./troubleshooting#clipboard-permissions).
+  [Troubleshooting — Clipboard permissions](../help/troubleshooting#clipboard-permissions).
   On macOS confirm **Input Monitoring** is granted and the app was
   fully relaunched afterwards.
 - Items you just copied don't appear: the daemon isn't running or the

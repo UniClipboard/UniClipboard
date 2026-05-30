@@ -1,0 +1,80 @@
+---
+title: 上手
+description: 在终端中安装 uniclip、启动守护进程、创建或加入空间。
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+`uniclip` 是 UniClipboard 的终端版本。它把守护进程跑在进程内，
+所以 GUI 能做的（配对、同步、发送、搜索）都能在 SSH、tmux、服务器或脚本里完成。
+
+安装方式见[安装](../getting-started/install)（macOS Homebrew、Linux 服务器单装 `uniclip` 等）。
+
+## 全局参数
+
+以下参数对所有子命令生效：
+
+| 参数               | 作用                                                           |
+| ------------------ | -------------------------------------------------------------- |
+| `--json`           | 输出机器可读的 JSON。字段名稳定，适合脚本调用。                |
+| `-v`, `--verbose`  | 在控制台打印 debug 级别日志。                                  |
+| `--profile <NAME>` | 使用独立 profile 运行 —— 隔离数据目录、密钥环条目、iroh 身份。 |
+| `--dev`            | 用文件式安全存储替代系统密钥环。仅供开发使用。                 |
+
+`--profile` 是单机模拟两台设备做端到端测试的官方方式 ——
+两个终端各用不同的 `--profile` 即可。
+
+## 守护进程生命周期
+
+| 命令                         | 作用                                                                                                           |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `uniclip start`              | 后台启动守护进程。                                                                                             |
+| `uniclip start --foreground` | 前台启动并把日志输出到当前终端。                                                                               |
+| `uniclip start --server`     | 以无头 server 节点运行：不接系统剪贴板、不监听剪贴板，作为普通成员经 iroh 同步。用于无 display 的 VPS / 容器。 |
+| `uniclip stop`               | 停止运行中的守护进程。                                                                                         |
+| `uniclip status`             | 查看守护进程健康度、配对状态、在线状态。                                                                       |
+
+需要守护进程的命令会自动拉起它，所以显式 `start` 主要用于"日志流式查看"或"长驻后台"的服务器场景。
+
+## 空间生命周期
+
+CLI 与 GUI 流程一致，详见[配对与同步](../guides/pairing)。
+
+<Tabs items={['Sponsor（首台设备）', 'Joiner（新设备）']}>
+
+<Tab value="Sponsor（首台设备）">
+
+```bash
+# 在当前 profile 下新建加密空间
+uniclip init
+
+# 发起一次性邀请并等待 joiner
+uniclip invite
+```
+
+`init` 默认交互式输入口令。`--passphrase` 与 `--device-name` 仅在非交互场景（如 E2E 测试脚本）中使用。
+
+</Tab>
+
+<Tab value="Joiner（新设备）">
+
+```bash
+# 用邀请码加入 sponsor 的空间
+uniclip join <invitation-code>
+
+# 验证配对结果
+uniclip members
+```
+
+`join` 在不带 `--passphrase` 时会提示输入。口令通过 PAKE 在本地验证 —— 输错会立即失败，
+不会把口令值发给 sponsor。
+
+</Tab>
+
+</Tabs>
+
+把当前设备切换到另一个 sponsor 的空间（用新 MasterKey 重新加密本地历史）：
+
+```bash
+uniclip switch-space
+```

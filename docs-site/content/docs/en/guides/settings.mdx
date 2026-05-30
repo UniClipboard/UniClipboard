@@ -11,7 +11,7 @@ it.
 Mobile-sync configuration lives in its own dialog on the
 **Devices** page rather than under Settings — it's documented
 [further down](#mobile-sync) and in the
-[Mobile sync](./mobile-sync) guide.
+[Mobile sync](../core-features/mobile-sync) guide.
 
 ## General
 
@@ -28,7 +28,7 @@ The device name is purely a display alias; it doesn't enter the
 encryption identity. Renaming doesn't affect the node ID or pairing
 state.
 
-Diagnostics and usage analytics are separate toggles. They do not include clipboard content, file content, passphrases, or keys; the full field list is documented in [Privacy & data collection](./privacy).
+Diagnostics and usage analytics are separate toggles. They do not include clipboard content, file content, passphrases, or keys; the full field list is documented in [Privacy & data collection](../core-features/privacy).
 
 ## Appearance
 
@@ -47,7 +47,7 @@ Bindable commands are organized by **scope**. Each entry can be
 overridden, reset, or cleared individually.
 
 - **Global** — fires across processes, including the
-  [Quick Panel](./quick-panel) hotkey.
+  [Quick Panel](../core-features/quick-panel) hotkey.
 - **Clipboard** — navigation in the main dashboard's history view.
 - **Settings** — navigation inside this panel.
 - **Devices** — navigation in the Devices page.
@@ -63,7 +63,7 @@ empty.
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Enable quick panel | Master switch. On → register the global hotkey and pre-create the panel window in the background. Off → unregister the hotkey now. |
 
-On by default — the [Quick Panel](./quick-panel) is the product's
+On by default — the [Quick Panel](../core-features/quick-panel) is the product's
 keyboard-first entry point. Turn it off if the hotkey clashes with
 another app you can't reconfigure, or if a policy in your environment
 doesn't allow background panel windows.
@@ -96,7 +96,7 @@ How this device participates in sync, plus file-related thresholds:
 
 Per-content-type and per-peer **gates** live elsewhere — they're in
 each peer's
-[Device settings modal](./devices#content-type-allowlist).
+[Device settings modal](../core-features/devices#content-type-allowlist).
 
 ## Security
 
@@ -135,7 +135,7 @@ The biggest section, and the one with the most footguns.
 | Block              | Content                                                                                                                                                       |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Storage usage      | Four bars — database, encrypted vault, cache, logs — plus a `Refresh` button.                                                                                 |
-| Search index       | Status pill (Ready / Rebuilding / Unavailable), last rebuild timestamp, `Rebuild` button. See [Full-text search — Index lifecycle](./search#index-lifecycle). |
+| Search index       | Status pill (Ready / Rebuilding / Unavailable), last rebuild timestamp, `Rebuild` button. See [Full-text search — Index lifecycle](../core-features/search#index-lifecycle). |
 | Auto-clear history | Master switch. Off → cleanup is manual only.                                                                                                                  |
 | Retention days     | 7 / 30 / 90 / 180 / 365.                                                                                                                                      |
 | Max items          | 100 / 500 / 1 000 / 2 000 / 5 000. Either limit triggers a cleanup pass.                                                                                      |
@@ -171,7 +171,7 @@ Quick reference for what's in that dialog:
 </Callout>
 
 For the full setup walkthrough, security caveats, and troubleshooting
-checklist, see the dedicated [Mobile sync guide](./mobile-sync).
+checklist, see the dedicated [Mobile sync guide](../core-features/mobile-sync).
 
 ## About
 
@@ -214,7 +214,7 @@ don't hunt for them:
   it from their own machine; the new name then syncs into the
   members list everywhere else.
 - **Space-wide content-type blocklist** — only per-peer gates are
-  available today (in [Devices](./devices)).
+  available today (in [Devices](../core-features/devices)).
 - **Never use relay** — "LAN-only mode" is the closest knob, but it
   also cuts off off-LAN peers entirely.
 

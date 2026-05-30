@@ -1,0 +1,6 @@
+{
+  "title": "帮助",
+  "icon": "LifeBuoy",
+  "defaultOpen": true,
+  "pages": ["faq", "troubleshooting"]
+}

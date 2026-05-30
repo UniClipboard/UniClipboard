@@ -209,14 +209,14 @@ If both devices are on the same network and you still see relay use:
   means the proxy is also forwarding relay traffic, bottlenecking
   bandwidth at the proxy egress and degrading UDP/QUIC. Route the
   relay domain to DIRECT — see
-  [Self-host an iroh relay — Direct-connect the relay if you also run a local proxy](./self-host-relay#direct-connect-the-relay-if-you-also-run-a-local-proxy).
+  [Self-host an iroh relay — Direct-connect the relay if you also run a local proxy](../guides/self-host-relay#direct-connect-the-relay-if-you-also-run-a-local-proxy).
 
 > The relay only ever sees ciphertext. Its availability affects
 > **performance and reachability**, not confidentiality. See
-> [Pairing & sync — Transport](./pairing#transport-how-bytes-actually-move).
+> [Pairing & sync — Transport](../guides/pairing#transport-how-bytes-actually-move).
 
 File-class payloads use a chunked blob protocol (see
-[What syncs — Large payloads](./sync#large-payloads-files--big-images)),
+[What syncs — Large payloads](../core-features/sync#large-payloads-files--big-images)),
 which resumes after disconnects and wake-from-sleep. If a single big
 file has been creeping along for **hours** at near-zero rate, a chunk
 is probably stuck without retrying. On the sender,
@@ -471,7 +471,7 @@ keyring's KEK entry will be overwritten by the next `init`.
 
 ## Still stuck?
 
-- Skim the [FAQ](../faq) — many "issues" turn out to be intentional
+- Skim the [FAQ](./faq) — many "issues" turn out to be intentional
   behavior, not bugs.
 - If something is genuinely off, file an issue at
   [github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues). Follow the log

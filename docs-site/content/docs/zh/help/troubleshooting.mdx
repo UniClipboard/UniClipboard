@@ -138,11 +138,11 @@ uniclip invite        # 在 sponsor 上重出一张
 - **对称 NAT。** 部分运营商 / 移动网络下 NAT 端口分配不可预测，打洞会失败。换网络（或开 IPv6）通常立刻好。
 - **IPv6 被禁。** 路径上某一跳关掉了 IPv6 时直连会回退到 IPv4 NAT 打洞。
 - **企业网络。** 出站 UDP 全封的环境只能走中继，且某些网络会进一步把中继也封掉，那种情况下 UniClipboard 在该网络就是不可用。
-- **本机代理在转发 relay 流量。** 海外 relay + 本机开梯子时，默认规则常常把 relay 域名也走代理，导致带宽被代理出口压住、UDP/QUIC 兼容性变差。让 relay 域名走 DIRECT，详见 [自建 iroh relay — 本机有梯子时让 relay 走直连](./self-host-relay#本机有梯子时让-relay-走直连)。
+- **本机代理在转发 relay 流量。** 海外 relay + 本机开梯子时，默认规则常常把 relay 域名也走代理，导致带宽被代理出口压住、UDP/QUIC 兼容性变差。让 relay 域名走 DIRECT，详见 [自建 iroh relay — 本机有梯子时让 relay 走直连](../guides/self-host-relay#本机有梯子时让-relay-走直连)。
 
-> 中继看到的永远是密文。中继可用性影响的是 **性能** 与 **可达性**，不影响机密性。详见 [配对与同步 — 传输](./pairing#传输字节实际怎么走)。
+> 中继看到的永远是密文。中继可用性影响的是 **性能** 与 **可达性**，不影响机密性。详见 [配对与同步 — 传输](../guides/pairing#传输字节实际怎么走)。
 
-文件类负载走的是分块 blob 协议（见 [同步内容 — 大负载](./sync#大负载文件与大图)），中途断网 / 唤醒后会续传。如果一个大文件 **几小时** 还在零星传，多半是某一块卡住没重试 —— 在发送端 `uniclip stop && uniclip start` 通常能踢一脚。
+文件类负载走的是分块 blob 协议（见 [同步内容 — 大负载](../core-features/sync#大负载文件与大图)），中途断网 / 唤醒后会续传。如果一个大文件 **几小时** 还在零星传，多半是某一块卡住没重试 —— 在发送端 `uniclip stop && uniclip start` 通常能踢一脚。
 
 ## 剪贴板权限
 
@@ -347,6 +347,6 @@ rm -rf ~/.local/share/app.uniclipboard.desktop
 
 ## 还是没解决？
 
-- 翻一遍 [常见问题（FAQ）](../faq) —— 很多"故障"其实是行为差异，不是 bug。
+- 翻一遍 [常见问题（FAQ）](./faq) —— 很多"故障"其实是行为差异，不是 bug。
 - 仍然不对劲就提 issue：[github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues)。请遵循上面的"收集日志"清单。
 - 安全相关问题请走 [SECURITY.md](https://github.com/UniClipboard/UniClipboard/blob/main/SECURITY.md) 里给出的私有披露渠道，**不要** 直接开 public issue。

@@ -455,67 +455,107 @@ mod tests {
     }
 
     #[test]
-    fn mobile_sync_lan_enable_requires_an_advertise_target() {
-        // `lan enable` 必须强制给出一个广告目标 —— iPhone 客户端需要一个
+    fn mobile_sync_network_set_requires_an_advertise_target() {
+        // `network set` 必须强制给出一个广告目标 —— iPhone 客户端需要一个
         // 具体可达的地址写进 install URL;daemon 自己始终绑 0.0.0.0,与
         // advertise 无关。两种形态二选一(`advertise_target` ArgGroup)。
-        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "lan", "enable"]);
+        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "network", "set"]);
         assert!(
             result.is_err(),
-            "expected `lan enable` to require --advertise or --advertise-url"
+            "expected `network set` to require --ip or --url"
         );
     }
 
     #[test]
-    fn mobile_sync_lan_enable_accepts_advertise_url() {
-        // 反代形态:`--advertise-url` 单独给出即可满足 advertise_target 组。
+    fn mobile_sync_network_set_accepts_url() {
+        // 反代形态:`--url` 单独给出即可满足 advertise_target 组。
         let result = Cli::try_parse_from([
             "uniclip",
             "mobile-sync",
-            "lan",
-            "enable",
-            "--advertise-url",
+            "network",
+            "set",
+            "--url",
             "https://clip.example.com",
             "--accept-network-risk",
         ]);
-        assert!(
-            result.is_ok(),
-            "expected `lan enable --advertise-url` to parse"
-        );
+        assert!(result.is_ok(), "expected `network set --url` to parse");
     }
 
     #[test]
-    fn mobile_sync_lan_enable_rejects_both_advertise_forms() {
-        // 互斥:同时给 --advertise 和 --advertise-url 必须被 ArgGroup 拒绝。
+    fn mobile_sync_network_set_rejects_both_forms() {
+        // 互斥:同时给 --ip 和 --url 必须被 ArgGroup 拒绝。
         let result = Cli::try_parse_from([
             "uniclip",
             "mobile-sync",
-            "lan",
-            "enable",
-            "--advertise",
+            "network",
+            "set",
+            "--ip",
             "192.168.1.5",
-            "--advertise-url",
+            "--url",
             "https://clip.example.com",
             "--accept-network-risk",
         ]);
         assert!(
             result.is_err(),
-            "expected `lan enable` to reject both advertise forms at once"
+            "expected `network set` to reject both --ip and --url at once"
         );
     }
 
     #[test]
-    fn mobile_sync_devices_add_requires_label() {
-        // `devices add` 接管原 `shortcut add` 的契约 —— `--label` 必填,
-        // 否则 register flow 拿不到设备名。
-        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "devices", "add"]);
-        assert!(result.is_err(), "expected `devices add` to require --label");
+    fn mobile_sync_network_off_and_interfaces_parse() {
+        // `network off` / `network interfaces` 是无参子命令,锁住解析契约。
+        let off = Cli::try_parse_from(["uniclip", "mobile-sync", "network", "off"]);
+        assert!(off.is_ok(), "expected `network off` to parse");
+        let ifaces = Cli::try_parse_from(["uniclip", "mobile-sync", "network", "interfaces"]);
+        assert!(ifaces.is_ok(), "expected `network interfaces` to parse");
+    }
+
+    #[test]
+    fn mobile_sync_add_requires_label() {
+        // 顶层 `add`(原 `devices add`)—— `--label` 必填,否则 register
+        // flow 拿不到设备名。
+        let missing = Cli::try_parse_from(["uniclip", "mobile-sync", "add"]);
+        assert!(missing.is_err(), "expected `add` to require --label");
+        let ok = Cli::try_parse_from(["uniclip", "mobile-sync", "add", "--label", "My iPhone"]);
+        assert!(ok.is_ok(), "expected `add --label` to parse");
+    }
+
+    #[test]
+    fn mobile_sync_revoke_id_optional() {
+        // 顶层 `revoke` device_id 可选(无 id 走交互式选)。clap 解析层应
+        // 允许两种形态。
+        let r1 = Cli::try_parse_from(["uniclip", "mobile-sync", "revoke"]);
+        assert!(r1.is_ok(), "expected `revoke` (no id) to parse");
+        let r2 = Cli::try_parse_from(["uniclip", "mobile-sync", "revoke", "did_abc"]);
+        assert!(r2.is_ok(), "expected `revoke <id>` to parse");
+    }
+
+    #[test]
+    fn mobile_sync_legacy_command_groups_are_removed() {
+        // 干净删除(无 deprecation 周期):旧分组 `lan` / `devices` /
+        // `settings` 已不再解析 —— 改用 `network` / 顶层 `add`·`revoke` /
+        // `status`。
+        for args in [
+            vec!["uniclip", "mobile-sync", "lan", "list-interfaces"],
+            vec!["uniclip", "mobile-sync", "lan", "enable"],
+            vec!["uniclip", "mobile-sync", "lan", "disable"],
+            vec!["uniclip", "mobile-sync", "devices", "list"],
+            vec!["uniclip", "mobile-sync", "devices", "add", "--label", "X"],
+            vec!["uniclip", "mobile-sync", "devices", "revoke", "did_abc"],
+            vec!["uniclip", "mobile-sync", "settings", "show"],
+        ] {
+            let pretty = args.join(" ");
+            assert!(
+                Cli::try_parse_from(args).is_err(),
+                "expected removed legacy command `{pretty}` to no longer parse"
+            );
+        }
     }
 
     #[test]
     fn mobile_sync_shortcut_subcommand_is_removed() {
-        // Step 4/5 拓扑重组:`shortcut add` 已搬到 `devices add`,老路径
-        // 直接删除(项目未发布,无 deprecation 周期)。
+        // 拓扑重组:`shortcut add` 已搬到 `add` / `devices add`,老路径
+        // 直接删除(无 deprecation 周期)。
         let result =
             Cli::try_parse_from(["uniclip", "mobile-sync", "shortcut", "add", "--label", "X"]);
         assert!(
@@ -526,22 +566,12 @@ mod tests {
 
     #[test]
     fn mobile_sync_enable_subcommand_is_removed() {
-        // Step 4/5 拓扑重组:`enable` 与 `setup` / `lan enable` 重叠, 已删除。
+        // 拓扑重组:顶层 `enable` 与 `setup` / `network set` 重叠, 已删除。
         let result = Cli::try_parse_from(["uniclip", "mobile-sync", "enable"]);
         assert!(
             result.is_err(),
             "expected `enable` subcommand to be removed"
         );
-    }
-
-    #[test]
-    fn mobile_sync_revoke_id_optional() {
-        // Step 4/5: `devices revoke` device_id 改为可选(无 id 走交互式
-        // 选)。clap 解析层应允许两种形态。
-        let r1 = Cli::try_parse_from(["uniclip", "mobile-sync", "devices", "revoke"]);
-        assert!(r1.is_ok(), "expected `devices revoke` (no id) to parse");
-        let r2 = Cli::try_parse_from(["uniclip", "mobile-sync", "devices", "revoke", "did_abc"]);
-        assert!(r2.is_ok(), "expected `devices revoke <id>` to parse");
     }
 
     #[test]
@@ -589,7 +619,7 @@ mod tests {
     #[test]
     fn mobile_sync_setup_parses_with_no_args() {
         // `setup` 不强制任何 flag —— 默认全交互式。runtime 才会按
-        // `--non-interactive` / `--json` 决定是否要求 --label / --advertise /
+        // `--non-interactive` / `--json` 决定是否要求 --label / --ip /
         // --accept-network-risk;clap 解析层不下结论。
         let r = Cli::try_parse_from(["uniclip", "mobile-sync", "setup"]);
         assert!(r.is_ok(), "expected `setup` to parse with no args");
@@ -605,7 +635,7 @@ mod tests {
             "--non-interactive",
             "--label",
             "iPhone",
-            "--advertise",
+            "--ip",
             "192.168.1.5",
             "--port",
             "42720",

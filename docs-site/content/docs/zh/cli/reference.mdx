@@ -108,48 +108,46 @@ uniclip mobile-sync setup
 
 # 只读命令（daemon 在跑时也可以调）
 uniclip mobile-sync status            # 综合视图：功能 + LAN + 已配对设备
-uniclip mobile-sync settings show     # advanced：导出全部设置
-
-# 监听器配置（写命令 —— 必须先停 daemon）
-uniclip mobile-sync lan list-interfaces
-# LAN 形态：宣告内网 IPv4 → 安装 URL 为 http://<IP>:<port>
-uniclip mobile-sync lan enable --advertise <LAN_IPV4> [--port 42720] --accept-network-risk
-# 反代形态：宣告完整 base URL → 安装 URL/二维码指向 HTTPS 前端（如 Caddy），
-# 监听器本身仍是内网明文 HTTP
-uniclip mobile-sync lan enable --advertise-url https://clip.example.com --accept-network-risk
-uniclip mobile-sync lan disable
 
 # 已配对设备管理
-uniclip mobile-sync devices list
-uniclip mobile-sync devices add --label "My iPhone" \
+uniclip mobile-sync add --label "My iPhone" \
     [--username my_user] [--password-stdin]
-uniclip mobile-sync devices revoke <device-id>
+uniclip mobile-sync revoke <device-id>
+
+# 进阶监听器配置（写命令 —— 必须先停 daemon）。`setup` 已覆盖常用场景，
+# 需要手动改地址或反代前置时才用这一组。
+uniclip mobile-sync network interfaces
+# LAN 形态：宣告内网 IPv4 → 安装 URL 为 http://<IP>:<port>
+uniclip mobile-sync network set --ip <LAN_IPV4> [--port 42720] --accept-network-risk
+# 反代形态：宣告完整 base URL → 安装 URL/二维码指向 HTTPS 前端（如 Caddy），
+# 监听器本身仍是内网明文 HTTP
+uniclip mobile-sync network set --url https://clip.example.com --accept-network-risk
+uniclip mobile-sync network off       # 只关 LAN 监听器
 
 # 把整个功能彻底关掉（总开关 + 监听器都关；已配对设备记录保留，
-# 想清掉用 `devices revoke`）
+# 想清掉用 `revoke`）
 uniclip mobile-sync disable
 ```
 
 行为约定：
 
-- **写命令在同 profile daemon 跑着时会被拒绝。** 跑 `setup`、`lan enable`、
-  `devices add` 等之前先 `uniclip stop` / 退掉 GUI。读命令
-  （`status`、`devices list`、`settings show`）在 daemon 跑着时也可以。
+- **写命令在同 profile daemon 跑着时会被拒绝。** 跑 `setup`、`add`、
+  `network set` 等之前先 `uniclip stop` / 退掉 GUI。读命令（`status`）在
+  daemon 跑着时也可以。
 - **`--json` 隐含 non-interactive。** 不会出任何交互提示。`setup` 在
-  non-interactive / JSON 模式下必须显式给 `--label`、`--advertise`、
+  non-interactive / JSON 模式下必须显式给 `--label`、`--ip`、
   `--accept-network-risk`；`--username` / `--password-stdin` 仍可选，
   缺省走自动生成。
 - **`--password-stdin`** 从 stdin 读取一行作为密码。用它从密码管理器
   或 CI 里管道喂密码，避免泄漏到 shell history。
 - **默认端口 `42720`**（SPEC §3.2）。daemon socket 永远 bind 在
-  `0.0.0.0:<port>`，`--advertise` 只决定打印到安装 URL 的 IPv4。
-- **`lan enable` 必须二选一给出 `--advertise <IP>` 或
-  `--advertise-url <URL>`。** `--advertise` 得到 LAN 形态
-  `http://<IP>:<port>`；`--advertise-url` 写入完整 base URL（scheme +
+  `0.0.0.0:<port>`，`--ip` 只决定打印到安装 URL 的 IPv4。
+- **`network set` 必须二选一给出 `--ip <IP>` 或
+  `--url <URL>`。** `--ip` 得到 LAN 形态
+  `http://<IP>:<port>`；`--url` 写入完整 base URL（scheme +
   host + 可选 port，如 `https://clip.example.com`），让安装 URL / 二维码
   指向 TLS 反向代理（Caddy、nginx 等），而监听器本身仍是内网明文 HTTP。
-  两者互斥，设一个会清掉另一个；`mobile-sync status` / `settings show`
-  会反映当前生效的那个。
+  两者互斥，设一个会清掉另一个；`mobile-sync status` 会反映当前生效的那个。
 - 还有一组 **debug** 子命令（`uniclip mobile-sync debug`），从 `--help`
   里隐藏 —— 仅供开发与 E2E 脚本使用（绕过 HTTP，直接打 facade），可能
   在不发版本说明的情况下变化。

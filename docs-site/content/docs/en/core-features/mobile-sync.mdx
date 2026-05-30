@@ -147,7 +147,7 @@ uniclip mobile-sync setup                    # interactive (recommended)
 # Or non-interactive (e.g. CI / scripts)
 uniclip mobile-sync setup \
     --label "My iPhone 15" \
-    --advertise 192.168.1.5 \
+    --ip 192.168.1.5 \
     --accept-network-risk \
     --non-interactive
 # → prints baseUrl, username, password (one-time), installUrl,
@@ -156,7 +156,7 @@ uniclip mobile-sync setup \
 uniclip start                                # bring the daemon back up
 ```
 
-For non-interactive runs, `--label`, `--advertise`, and
+For non-interactive runs, `--label`, `--ip`, and
 `--accept-network-risk` are required. `--username` / `--password-stdin`
 are optional and default to auto-mint.
 
@@ -168,7 +168,7 @@ are optional and default to auto-mint.
   The plaintext password is shown **once**. If the user loses it,
   click the device card on the **Mobile sync** grid and press
   **Change password** inside the dialog (or
-  `uniclip mobile-sync devices revoke <id>` + `devices add`) — there
+  `uniclip mobile-sync revoke <id>` + `add`) — there
   is no way to retrieve the original.
 </Callout>
 
@@ -308,8 +308,8 @@ Either way, the connection settings are the same:
   IP:
 
 ```bash
-uniclip mobile-sync lan enable \
-    --advertise-url https://clip.example.com \
+uniclip mobile-sync network set \
+    --url https://clip.example.com \
     --accept-network-risk
 ```
 
@@ -317,8 +317,8 @@ The install URL / QR then encodes `https://clip.example.com` (no
 internal port), while the listener stays plain HTTP on the internal
 network. The proxy terminates TLS and forwards to the internal
 `mobile_lan` port, which must **not** be published directly to the
-public internet. The legacy `--advertise <IP>` form still produces
-the LAN `http://<IP>:<port>` URL; the two are mutually exclusive.
+public internet. The `--ip <IP>` form instead produces the LAN
+`http://<IP>:<port>` URL; the two are mutually exclusive.
 
 </Callout>
 
@@ -469,10 +469,10 @@ the Tailscale "Machines" list and confirm a **direct** connection
 
 | Action               | GUI                                              | CLI                                                    |
 | -------------------- | ------------------------------------------------ | ------------------------------------------------------ |
-| List paired devices  | Devices page → Mobile sync panel                 | `uniclip mobile-sync devices list`                     |
-| Add another device   | Mobile sync panel → **Add device**               | `uniclip mobile-sync devices add --label "…"`          |
+| List paired devices  | Devices page → Mobile sync panel                 | `uniclip mobile-sync status`                           |
+| Add another device   | Mobile sync panel → **Add device**               | `uniclip mobile-sync add --label "…"`                  |
 | Rotate password      | Click device card → dialog → **Change password** | _GUI only today_; mint a new one and re-edit the phone |
-| Revoke a device      | Click device card → dialog → **Revoke**          | `uniclip mobile-sync devices revoke <device-id>`       |
+| Revoke a device      | Click device card → dialog → **Revoke**          | `uniclip mobile-sync revoke <device-id>`               |
 | Disable feature      | Configure dialog → switch off                    | `uniclip mobile-sync disable`                          |
 | Inspect listener URL | Mobile sync panel header                         | `uniclip mobile-sync status`                           |
 
@@ -487,7 +487,7 @@ the old credentials gets `401 Unauthorized`.
 **Disabling** the feature turns the master switch and listener off
 together but **leaves paired-device records in place** — re-enable
 later and the same usernames continue to work. To wipe paired
-records, use `devices revoke` (or the GUI revoke button) explicitly.
+records, use `revoke` (or the GUI revoke button) explicitly.
 
 ## Security model — what's covered, what isn't
 

@@ -4,7 +4,7 @@
 //! --advertise` → `shortcut add --label`)合并为一条命令:
 //!
 //!   1. 安全告警 + 确认(可被 `--accept-network-risk` 跳过)
-//!   2. 选 LAN advertise IP(传 `--advertise` 跳过;否则交互式从
+//!   2. 选 LAN advertise IP(传 `--ip` 跳过;否则交互式从
 //!      `list_lan_interfaces` 结果里挑)
 //!   3. 选 port(`--port` 显式给, 否则用 SPEC 默认 42720, 不交互)
 //!   4. 选 label(`--label` 给, 否则 prompt;`--non-interactive` 必须给)
@@ -18,15 +18,16 @@
 //!   9. register_device(label, username, password)
 //!  10. 渲染 QR + 一次性凭据 + 重启提示
 //!
-//! ## 与老命令的关系
+//! ## 与其他命令的关系
 //!
-//! 本步骤(Step 3/5)只新增 `setup` 子命令, 老 `enable` / `shortcut add` /
-//! `lan enable` 仍然存在;Step 4 一并清理老路径。
+//! `setup` 是首次一键入口;之后再加手机用顶层 `add`,改监听地址用
+//! `network set`。三者底层都是同一批 facade 调用(update_settings /
+//! register_device)的编排。
 //!
 //! ## JSON 模式
 //!
 //! `--json` 隐含 non-interactive(无交互式 prompt 出口);仍须显式
-//! `--accept-network-risk` 与 `--label`, `--advertise` 必填。
+//! `--accept-network-risk` 与 `--label`, `--ip` 必填。
 //! `--username` / `--password-stdin` 可选, 缺省走自动生成。
 
 use clap::Args;
@@ -54,7 +55,7 @@ pub struct SetupArgs {
     /// Required in `--non-interactive` / `--json` mode; otherwise picked
     /// interactively from the RFC1918 candidate list.
     #[arg(long, value_name = "IP")]
-    pub advertise: Option<String>,
+    pub ip: Option<String>,
 
     /// Custom port for the LAN listener; defaults to 42720.
     #[arg(long, value_name = "PORT")]
@@ -77,7 +78,7 @@ pub struct SetupArgs {
     #[arg(long)]
     pub accept_network_risk: bool,
 
-    /// Skip all interactive prompts. `--label`, `--advertise`,
+    /// Skip all interactive prompts. `--label`, `--ip`,
     /// `--accept-network-risk` must all be given. `--username` /
     /// `--password-stdin` remain optional (default to auto-mint).
     #[arg(long)]
@@ -145,8 +146,8 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
             ui::error("--label is required in --non-interactive / --json mode.");
             return exit_codes::EXIT_ERROR;
         }
-        if args.advertise.is_none() {
-            ui::error("--advertise is required in --non-interactive / --json mode.");
+        if args.ip.is_none() {
+            ui::error("--ip is required in --non-interactive / --json mode.");
             return exit_codes::EXIT_ERROR;
         }
     }
@@ -161,8 +162,8 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
         Err(code) => return code,
     };
 
-    // 5. Resolve advertise IP. --advertise wins; otherwise interactive pick.
-    let advertise_ip = match args.advertise {
+    // 5. Resolve advertise IP. --ip wins; otherwise interactive pick.
+    let advertise_ip = match args.ip {
         Some(ip) => ip,
         None => {
             // non_interactive case is already rejected above.
@@ -233,7 +234,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
             lan_advertise_ip: Some(Some(advertise_ip.clone())),
             // `setup` provisions the LAN ip:port form; clear any prior full
             // base-URL override so the two never coexist (the reverse-proxy
-            // path is `lan enable --advertise-url`, see that command).
+            // path is `network set --url`, see that command).
             lan_advertise_base_url: Some(None),
             lan_port: Some(Some(port)),
         })
@@ -307,7 +308,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
 // ── Interactive helpers ──────────────────────────────────────────────────
 
 /// Print the SPEC §3.4 LAN exposure warning. Mirrors the banner used by
-/// `lan enable` so users see consistent wording across both entry points.
+/// `network set` so users see consistent wording across both entry points.
 fn print_network_risk_banner() {
     ui::warn("Enabling LAN listener exposes clipboard data over your local network.");
     ui::info("•", "Body is unencrypted in v1 (HTTPS comes in v2).");

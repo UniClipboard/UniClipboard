@@ -1,16 +1,19 @@
-//! `uniclip mobile-sync lan ...` —— LAN listener 管理。
+//! `uniclip mobile-sync network ...` —— LAN listener 高级配置。
+//!
+//! `setup` 已覆盖常用场景;本组面向需要手动调地址/端口或反代部署的进阶用户。
 //!
 //! 子命令:
-//! * `list-interfaces` —— 读命令,显示 RFC1918 LAN 候选(daemon 跑时也允许)。
-//! * `enable (--advertise <IP> | --advertise-url <URL>) [--port <P>]
-//!   [--accept-network-risk]` —— 写命令。二选一:
-//!   - `--advertise <IP>` 写进 install URL 的 LAN IP,得到
-//!     `http://<IP>:<port>`;
-//!   - `--advertise-url <URL>` 写进 install URL 的完整 base URL(如
+//! * `interfaces` —— 读命令,显示 RFC1918 LAN 候选(daemon 跑时也允许)。
+//! * `set (--ip <IP> | --url <URL>) [--port <P>] [--accept-network-risk]`
+//!   —— 写命令。二选一:
+//!   - `--ip <IP>` 写进 install URL 的 LAN IP,得到 `http://<IP>:<port>`;
+//!   - `--url <URL>` 写进 install URL 的完整 base URL(如
 //!     `https://clip.example.com`),用于 TLS 反向代理前置的公网部署。
+//!
 //!   两者互斥且必须给其一。daemon socket 始终绑 `0.0.0.0:<port>`。不带
 //!   `--accept-network-risk` 时打印安全告警 + 交互确认(SPEC §3.4)。
-//! * `disable` —— 写命令。
+//! * `off` —— 写命令;只关 LAN listener,总开关与已配对设备不动。要让
+//!   mobile-sync 完整下线用顶层 `disable`。
 
 use clap::Subcommand;
 use serde::Serialize;
@@ -22,29 +25,31 @@ use crate::exit_codes;
 use crate::ui;
 
 #[derive(Subcommand)]
-pub enum LanCommands {
-    /// List eligible RFC1918 LAN IPv4 interfaces.
-    ListInterfaces,
-    /// Enable the LAN listener (binds 0.0.0.0). Exactly one of
-    /// --advertise / --advertise-url decides the address printed in the
-    /// install URL / QR given to the phone.
+pub enum NetworkCommands {
+    /// List eligible RFC1918 LAN IPv4 interfaces (candidates for
+    /// `network set --ip`).
+    Interfaces,
+    /// Set the LAN listener address and turn it on (binds 0.0.0.0). Exactly
+    /// one of --ip / --url decides the address printed in the install URL /
+    /// QR given to the phone. Re-run to re-point the address or change the
+    /// port.
     #[command(group(
         clap::ArgGroup::new("advertise_target")
             .required(true)
-            .args(["advertise", "advertise_url"])
+            .args(["ip", "url"])
     ))]
-    Enable {
+    Set {
         /// LAN IPv4 to embed in the SyncClipboard install URL
-        /// (e.g. `192.168.1.5`). Pick one from `list-interfaces`. Produces
-        /// `http://<IP>:<port>`. Mutually exclusive with --advertise-url.
+        /// (e.g. `192.168.1.5`). Pick one from `network interfaces`. Produces
+        /// `http://<IP>:<port>`. Mutually exclusive with --url.
         #[arg(long, value_name = "IP")]
-        advertise: Option<String>,
+        ip: Option<String>,
         /// Full base URL (scheme + host + optional port) to embed in the
         /// install URL / QR, e.g. `https://clip.example.com`. Use when a
         /// TLS reverse proxy (Caddy, nginx, …) fronts the plain-HTTP LAN
-        /// listener for public access. Mutually exclusive with --advertise.
+        /// listener for public access. Mutually exclusive with --ip.
         #[arg(long, value_name = "URL")]
-        advertise_url: Option<String>,
+        url: Option<String>,
         /// Custom port; default 42720.
         #[arg(long, value_name = "PORT")]
         port: Option<u16>,
@@ -53,30 +58,21 @@ pub enum LanCommands {
         #[arg(long)]
         accept_network_risk: bool,
     },
-    /// Disable the LAN listener (already paired devices stay registered).
-    Disable,
+    /// Turn off just the LAN listener (master switch and paired devices stay;
+    /// use top-level `disable` to take mobile-sync fully offline).
+    Off,
 }
 
-pub async fn run(command: LanCommands, json: bool, verbose: bool) -> i32 {
+pub async fn run(command: NetworkCommands, json: bool, verbose: bool) -> i32 {
     match command {
-        LanCommands::ListInterfaces => list_interfaces(json, verbose).await,
-        LanCommands::Enable {
-            advertise,
-            advertise_url,
+        NetworkCommands::Interfaces => interfaces(json, verbose).await,
+        NetworkCommands::Set {
+            ip,
+            url,
             port,
             accept_network_risk,
-        } => {
-            enable(
-                advertise,
-                advertise_url,
-                port,
-                accept_network_risk,
-                json,
-                verbose,
-            )
-            .await
-        }
-        LanCommands::Disable => disable(json, verbose).await,
+        } => set(ip, url, port, accept_network_risk, json, verbose).await,
+        NetworkCommands::Off => off(json, verbose).await,
     }
 }
 
@@ -95,7 +91,7 @@ impl From<&MobileSyncLanInterfaceOption> for InterfaceDto {
     }
 }
 
-async fn list_interfaces(json: bool, verbose: bool) -> i32 {
+async fn interfaces(json: bool, verbose: bool) -> i32 {
     let ctx = match shared::enter_read("LAN interfaces", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
@@ -135,16 +131,16 @@ struct EnableResult {
     restart_required: bool,
 }
 
-async fn enable(
-    advertise: Option<String>,
-    advertise_url: Option<String>,
+async fn set(
+    ip: Option<String>,
+    url: Option<String>,
     port: Option<u16>,
     accept_network_risk: bool,
     json: bool,
     verbose: bool,
 ) -> i32 {
     if !json {
-        ui::header("Mobile-sync LAN enable");
+        ui::header("Mobile-sync network set");
     }
 
     // Translate the advertise choice into the two persisted fields. The
@@ -153,15 +149,15 @@ async fn enable(
     // arms are defensive and only reachable if that contract regresses. The
     // two fields are kept mutually exclusive in storage too: setting one
     // clears the other, so base_url-vs-ip precedence is never ambiguous.
-    let (advertise_ip_patch, advertise_url_patch) = match (advertise, advertise_url) {
+    let (advertise_ip_patch, advertise_url_patch) = match (ip, url) {
         (Some(ip), None) => (Some(Some(ip)), Some(None)),
         (None, Some(url)) => (Some(None), Some(Some(url))),
         (None, None) => {
-            ui::error("One of --advertise <IP> or --advertise-url <URL> is required.");
+            ui::error("One of --ip <IP> or --url <URL> is required.");
             return exit_codes::EXIT_ERROR;
         }
         (Some(_), Some(_)) => {
-            ui::error("--advertise and --advertise-url are mutually exclusive.");
+            ui::error("--ip and --url are mutually exclusive.");
             return exit_codes::EXIT_ERROR;
         }
     };
@@ -249,8 +245,8 @@ struct DisableResult {
     restart_required: bool,
 }
 
-async fn disable(json: bool, verbose: bool) -> i32 {
-    let ctx = match shared::enter_write("Mobile-sync LAN disable", json, verbose).await {
+async fn off(json: bool, verbose: bool) -> i32 {
+    let ctx = match shared::enter_write("Mobile-sync network off", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };

@@ -110,20 +110,20 @@ run you can pass them as flags instead — note these land in your shell history
 docker compose run --rm app uniclip join --code <CODE> --passphrase <PASSPHRASE>
 ```
 
-**b. Enable the mobile-sync gateway for the public domain.** `--advertise-url`
+**b. Enable the mobile-sync gateway for the public domain.** `--url`
 makes the phone's install URL/QR point at Caddy instead of a LAN IP:
 
 ```bash
 docker compose run --rm app \
-  uniclip mobile-sync lan enable \
-  --advertise-url https://${UC_DOMAIN:-clip.example.com} \
+  uniclip mobile-sync network set \
+  --url https://${UC_DOMAIN:-clip.example.com} \
   --accept-network-risk
 ```
 
 **c. Register your phone.** Mints credentials and prints the install QR/URL:
 
 ```bash
-docker compose run --rm app uniclip mobile-sync devices add --label "My iPhone"
+docker compose run --rm app uniclip mobile-sync add --label "My iPhone"
 ```
 
 Scan the QR (or open the printed `https://<domain>` URL) in the SyncClipboard /
@@ -226,6 +226,6 @@ still refuse to run while the daemon is up.
 - **Caddy cannot get a certificate** — DNS for `UC_DOMAIN` must resolve to this
   VPS and `80`/`443` must be open before `up -d`. Check `docker compose logs caddy`.
 - **Phone gets the wrong URL** — re-run step 2b with the correct
-  `--advertise-url https://<domain>` (daemon stopped), then `up -d`.
+  `--url https://<domain>` (daemon stopped), then `up -d`.
 - **Desktop on another network won't connect** — verify `42999/udp` is open in
   the VPS firewall and that `UC_PUBLIC_IP` in `.env` is the real public IP.

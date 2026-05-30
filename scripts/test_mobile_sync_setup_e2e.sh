@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
-# CLI Redesign Step 1-5 (2026-05-06): mobile-sync setup / status / devices
-# 命令拓扑 + 自定义凭据校验的本地端到端 e2e。
+# mobile-sync setup / add / revoke / status 命令拓扑 + 自定义凭据校验的
+# 本地端到端 e2e。
 #
 # 验证范围:
 #   * `setup` 一键向导 (--non-interactive --json) → register_device 出
 #     install_url + 一次性 password
-#   * `setup` 缺 flag 拒绝 (--label / --advertise / --accept-network-risk)
-#   * `status` / `devices list` / `disable` 综合行为
-#   * `devices add` 自动凭据 + 自定义 username + --password-stdin pipe
+#   * `setup` 缺 flag 拒绝 (--label / --ip / --accept-network-risk)
+#   * `status` / `disable` 综合行为(设备列表由 status 呈现)
+#   * `add` 自动凭据 + 自定义 username + --password-stdin pipe
 #   * username/password 校验 5 种拒绝形态:
 #     UsernameTaken / InvalidShape (短/数字头/连字符) / PasswordTooShort
-#   * `devices revoke <id>` 显式 + JSON 模式无 id 拒绝
+#   * `revoke <id>` 显式 + JSON 模式无 id 拒绝
 #
 # 不在范围:
 #   * 真 LAN HTTP 路由层(走 webserver 集成测试)
@@ -149,7 +149,7 @@ step "Step 1 — setup --non-interactive --json happy path"
 run_capture "$CLI" "${COMMON[@]}" --json mobile-sync setup \
     --non-interactive \
     --label "iPhone-A" \
-    --advertise "127.0.0.1" \
+    --ip "127.0.0.1" \
     --port 42720 \
     --accept-network-risk
 assert_exit_zero "setup happy path" "$LAST_RC"
@@ -168,23 +168,23 @@ note "iPhone-A device_id: $DEVICE_A_ID"
 step "Step 2.1 — setup --non-interactive without --label rejected"
 run_capture "$CLI" "${COMMON[@]}" --json mobile-sync setup \
     --non-interactive \
-    --advertise "127.0.0.1" \
+    --ip "127.0.0.1" \
     --accept-network-risk
 assert_exit_nonzero "missing --label" "$LAST_RC"
 assert_contains "error mentions --label" "--label is required" "$LAST_OUT"
 
-step "Step 2.2 — setup --non-interactive without --advertise rejected"
+step "Step 2.2 — setup --non-interactive without --ip rejected"
 run_capture "$CLI" "${COMMON[@]}" --json mobile-sync setup \
     --non-interactive \
     --label "X" \
     --accept-network-risk
-assert_exit_nonzero "missing --advertise" "$LAST_RC"
-assert_contains "error mentions --advertise" "--advertise is required" "$LAST_OUT"
+assert_exit_nonzero "missing --ip" "$LAST_RC"
+assert_contains "error mentions --ip" "--ip is required" "$LAST_OUT"
 
 step "Step 2.3 — setup --json without --accept-network-risk rejected"
 run_capture "$CLI" "${COMMON[@]}" --json mobile-sync setup \
     --label "X" \
-    --advertise "127.0.0.1"
+    --ip "127.0.0.1"
 assert_exit_nonzero "missing --accept-network-risk" "$LAST_RC"
 assert_contains "error mentions risk" "--accept-network-risk is required" "$LAST_OUT"
 
@@ -198,18 +198,11 @@ assert_contains "status lan_listen_enabled=true" '"lan_listen_enabled": true' "$
 assert_contains "status device_count=1" '"device_count": 1' "$LAST_OUT"
 assert_contains "status devices array contains iPhone-A" '"label": "iPhone-A"' "$LAST_OUT"
 
-# ── Step 4: devices list ─────────────────────────────────────────────────
+# ── Step 4: add (auto credentials) ───────────────────────────────────────
 
-step "Step 4 — devices list --json shows iPhone-A"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync devices list
-assert_exit_zero "devices list" "$LAST_RC"
-assert_contains "list shows iPhone-A" '"label": "iPhone-A"' "$LAST_OUT"
-
-# ── Step 5: devices add (auto credentials) ───────────────────────────────
-
-step "Step 5 — devices add --label B (auto credentials)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync devices add --label "iPhone-B"
-assert_exit_zero "devices add auto" "$LAST_RC"
+step "Step 4 — add --label B (auto credentials)"
+run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add --label "iPhone-B"
+assert_exit_zero "add auto" "$LAST_RC"
 DEVICE_B_USERNAME="$(extract_username "$LAST_OUT")"
 note "iPhone-B auto username: $DEVICE_B_USERNAME"
 # Auto-minted username starts with `mobile_` per project convention.
@@ -219,95 +212,95 @@ else
     fail "auto username '$DEVICE_B_USERNAME' missing mobile_ prefix"
 fi
 
-# ── Step 6: devices add custom username + --password-stdin ───────────────
+# ── Step 5: add custom username + --password-stdin ───────────────
 
-step "Step 6 — devices add --label C --username alice_001 --password-stdin"
+step "Step 5 — add --label C --username alice_001 --password-stdin"
 CUSTOM_PW="MyStrongPassword123"
 run_capture_stdin "$CUSTOM_PW" \
-    "$CLI" "${COMMON[@]}" --json mobile-sync devices add \
+    "$CLI" "${COMMON[@]}" --json mobile-sync add \
     --label "iPhone-C" \
     --username "alice_001" \
     --password-stdin
-assert_exit_zero "devices add custom" "$LAST_RC"
+assert_exit_zero "add custom" "$LAST_RC"
 assert_contains "custom username echoed" '"username": "alice_001"' "$LAST_OUT"
 assert_contains "custom password echoed" "\"password\": \"$CUSTOM_PW\"" "$LAST_OUT"
 
-# ── Step 7: 5 种校验拒绝 ─────────────────────────────────────────────────
+# ── Step 6: 5 种校验拒绝 ─────────────────────────────────────────────────
 
-step "Step 7.1 — devices add --username alice_001 rejected (taken)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync devices add \
+step "Step 6.1 — add --username alice_001 rejected (taken)"
+run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add \
     --label "iPhone-Dup" \
     --username "alice_001"
 assert_exit_nonzero "duplicate username" "$LAST_RC"
 assert_contains "error mentions taken" "already taken" "$LAST_OUT"
 
-step "Step 7.2 — devices add --username ali rejected (too short)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync devices add \
+step "Step 6.2 — add --username ali rejected (too short)"
+run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add \
     --label "iPhone-Short" \
     --username "ali"
 assert_exit_nonzero "username too short" "$LAST_RC"
-assert_contains "error mentions invalid username" "Invalid username" "$LAST_OUT"
+assert_contains "error mentions too short" "Username is too short" "$LAST_OUT"
 
-step "Step 7.3 — devices add --username 1abc12 rejected (digit-leading)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync devices add \
+step "Step 6.3 — add --username 1abc12 rejected (digit-leading)"
+run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add \
     --label "iPhone-DigitHead" \
     --username "1abc12"
 assert_exit_nonzero "username digit-leading" "$LAST_RC"
-assert_contains "error mentions invalid username" "Invalid username" "$LAST_OUT"
+assert_contains "error mentions letter-leading" "must start with an ASCII letter" "$LAST_OUT"
 
-step "Step 7.4 — devices add --username has-hyphen rejected (invalid char)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync devices add \
+step "Step 6.4 — add --username has-hyphen rejected (invalid char)"
+run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add \
     --label "iPhone-Hyphen" \
     --username "alice-002"
 assert_exit_nonzero "username with hyphen" "$LAST_RC"
-assert_contains "error mentions invalid username" "Invalid username" "$LAST_OUT"
+assert_contains "error mentions forbidden chars" "forbidden characters" "$LAST_OUT"
 
-step "Step 7.5 — devices add --password-stdin too short (<8) rejected"
+step "Step 6.5 — add --password-stdin too short (<8) rejected"
 run_capture_stdin "abc" \
-    "$CLI" "${COMMON[@]}" --json mobile-sync devices add \
+    "$CLI" "${COMMON[@]}" --json mobile-sync add \
     --label "iPhone-WeakPw" \
     --password-stdin
 assert_exit_nonzero "password too short" "$LAST_RC"
 assert_contains "error mentions password length" "Password is too short" "$LAST_OUT"
 
-# ── Step 8: status now shows 3 devices (A, B, C) ────────────────────────
+# ── Step 7: status now shows 3 devices (A, B, C) ────────────────────────
 
-step "Step 8 — status --json now shows 3 devices"
+step "Step 7 — status --json now shows 3 devices"
 run_capture "$CLI" "${COMMON[@]}" --json mobile-sync status
 assert_exit_zero "status after adds" "$LAST_RC"
 assert_contains "device_count=3" '"device_count": 3' "$LAST_OUT"
 
-# ── Step 9: devices revoke <id> 显式 ─────────────────────────────────────
+# ── Step 8: revoke <id> 显式 ─────────────────────────────────────
 
-step "Step 9 — devices revoke <id> (iPhone-A explicit id)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync devices revoke "$DEVICE_A_ID"
+step "Step 8 — revoke <id> (iPhone-A explicit id)"
+run_capture "$CLI" "${COMMON[@]}" --json mobile-sync revoke "$DEVICE_A_ID"
 assert_exit_zero "revoke explicit" "$LAST_RC"
 assert_contains "revoked=true" '"revoked": true' "$LAST_OUT"
 assert_contains "revoke echoes device_id" "\"device_id\": \"$DEVICE_A_ID\"" "$LAST_OUT"
 
-# ── Step 10: devices revoke (no id) --json 拒绝 ─────────────────────────
+# ── Step 9: revoke (no id) --json 拒绝 ─────────────────────────
 
-step "Step 10 — devices revoke (no id) --json rejected"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync devices revoke
+step "Step 9 — revoke (no id) --json rejected"
+run_capture "$CLI" "${COMMON[@]}" --json mobile-sync revoke
 assert_exit_nonzero "revoke no id JSON" "$LAST_RC"
 assert_contains "error mentions device-id required" "device-id" "$LAST_OUT"
 
-# ── Step 11: status now 2 devices ───────────────────────────────────────
+# ── Step 10: status now 2 devices ───────────────────────────────────────
 
-step "Step 11 — status --json now shows 2 devices"
+step "Step 10 — status --json now shows 2 devices"
 run_capture "$CLI" "${COMMON[@]}" --json mobile-sync status
 assert_exit_zero "status after revoke" "$LAST_RC"
 assert_contains "device_count=2 after revoke" '"device_count": 2' "$LAST_OUT"
 
-# ── Step 12: disable -> both flags off ──────────────────────────────────
+# ── Step 11: disable -> both flags off ──────────────────────────────────
 
-step "Step 12 — disable --json (master + LAN both off)"
+step "Step 11 — disable --json (master + LAN both off)"
 run_capture "$CLI" "${COMMON[@]}" --json mobile-sync disable
 assert_exit_zero "disable" "$LAST_RC"
 assert_contains "disable enabled=false" '"enabled": false' "$LAST_OUT"
 assert_contains "disable lan_listen_enabled=false" '"lan_listen_enabled": false' "$LAST_OUT"
 
-step "Step 12.1 — status reflects disabled state, devices retained"
+step "Step 11.1 — status reflects disabled state, devices retained"
 run_capture "$CLI" "${COMMON[@]}" --json mobile-sync status
 assert_exit_zero "status after disable" "$LAST_RC"
 assert_contains "status enabled=false" '"enabled": false' "$LAST_OUT"
@@ -319,6 +312,6 @@ assert_contains "status devices retained" '"device_count": 2' "$LAST_OUT"
 echo
 echo "============================================="
 echo "PASS: all $PASS_COUNT assertions OK"
-echo "  CLI Redesign (Step 1-5/5) — setup wizard / devices add / 校验 / status"
+echo "  mobile-sync — setup wizard / add / revoke / 校验 / status"
 echo "  全部命令拓扑 + 自定义凭据规则 + 综合视图本地 e2e 验证通过"
 echo "============================================="

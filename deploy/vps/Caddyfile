@@ -4,8 +4,8 @@
 # (ACME HTTP-01 / TLS-ALPN), then proxies every request to the app container's
 # mobile_lan listener over the internal Docker network. The plaintext mobile_lan
 # port is never published to the host — only Caddy's 80/443 are. The phone's
-# install URL must point at https://$UC_DOMAIN (set via `mobile-sync lan enable
-# --advertise-url`).
+# install URL must point at https://$UC_DOMAIN (set via `mobile-sync network set
+# --url`).
 #
 # mobile_lan is plain HTTP + Basic Auth with no websockets, so a default
 # reverse_proxy (which forwards the Authorization header and streams bodies) is

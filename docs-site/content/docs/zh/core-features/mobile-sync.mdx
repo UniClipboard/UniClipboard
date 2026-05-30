@@ -133,7 +133,7 @@ uniclip mobile-sync setup                    # 推荐：交互式
 # 或非交互（如 CI / 脚本）
 uniclip mobile-sync setup \
     --label "My iPhone 15" \
-    --advertise 192.168.1.5 \
+    --ip 192.168.1.5 \
     --accept-network-risk \
     --non-interactive
 # → 输出 baseUrl、username、password (one-time)、installUrl、
@@ -142,7 +142,7 @@ uniclip mobile-sync setup \
 uniclip start                                # 把 daemon 拉回来
 ```
 
-非交互模式下 `--label`、`--advertise`、`--accept-network-risk`
+非交互模式下 `--label`、`--ip`、`--accept-network-risk`
 必填；`--username` / `--password-stdin` 可选，缺省走自动生成。
 
 </Tab>
@@ -152,7 +152,7 @@ uniclip start                                # 把 daemon 拉回来
 <Callout type="info">
   明文密码 **只显示一次**。丢了就在 **移动端同步** 设备列表里点对应
   设备卡片，在弹出的 dialog 里点 **修改密码（Change password）**，
-  或 `uniclip mobile-sync devices revoke <id>` + `devices add` 重新
+  或 `uniclip mobile-sync revoke <id>` + `add` 重新
   签发 —— 没法把原始密码再拿回来。
 </Callout>
 
@@ -276,15 +276,15 @@ SyncClipboard 协议兼容客户端也能接入。推荐顺序：
   并宣告它的地址而不是内网 IP：
 
 ```bash
-uniclip mobile-sync lan enable \
-    --advertise-url https://clip.example.com \
+uniclip mobile-sync network set \
+    --url https://clip.example.com \
     --accept-network-risk
 ```
 
 这样安装 URL / 二维码编码的是 `https://clip.example.com`（不带内网
 端口），而监听器本身仍是内网明文 HTTP。反代终结 TLS 后转发到内网的
-`mobile_lan` 端口 —— 该端口**绝不能**直接发布到公网。旧的
-`--advertise <IP>` 形态仍然产出 LAN 的 `http://<IP>:<port>`，两者互斥。
+`mobile_lan` 端口 —— 该端口**绝不能**直接发布到公网。`--ip <IP>`
+形态则产出 LAN 的 `http://<IP>:<port>`，两者互斥。
 
 </Callout>
 
@@ -418,10 +418,10 @@ tailnet 地址。
 
 | 操作           | GUI                                       | CLI                                              |
 | -------------- | ----------------------------------------- | ------------------------------------------------ |
-| 列出已配对     | 设备页 → 移动端同步面板                   | `uniclip mobile-sync devices list`               |
-| 再加一台       | 移动端同步面板 → **Add device**           | `uniclip mobile-sync devices add --label "…"`    |
+| 列出已配对     | 设备页 → 移动端同步面板                   | `uniclip mobile-sync status`                     |
+| 再加一台       | 移动端同步面板 → **Add device**           | `uniclip mobile-sync add --label "…"`            |
 | 轮换密码       | 点设备卡片 → dialog → **Change password** | _目前只 GUI_；签新的并更新手机端                 |
-| 吊销一台设备   | 点设备卡片 → dialog → **Revoke**          | `uniclip mobile-sync devices revoke <device-id>` |
+| 吊销一台设备   | 点设备卡片 → dialog → **Revoke**          | `uniclip mobile-sync revoke <device-id>`         |
 | 关闭整个功能   | 配置 modal → 关闭总开关                   | `uniclip mobile-sync disable`                    |
 | 查当前监听 URL | 移动端同步面板状态条                      | `uniclip mobile-sync status`                     |
 
@@ -432,7 +432,7 @@ App、快捷指令或其他客户端）。
 **吊销** 会删除设备记录。携带旧凭据的后续请求会拿到 `401 Unauthorized`。
 
 **关闭功能** 把总开关与监听器一起关掉，但 **不会** 清掉已配对设备记录
-—— 后面再启用，原有的用户名仍然有效。要彻底清掉，用 `devices revoke`
+—— 后面再启用，原有的用户名仍然有效。要彻底清掉，用 `revoke`
 （或 GUI 上的吊销按钮）。
 
 ## 安全模型 —— 覆盖了什么、没覆盖什么

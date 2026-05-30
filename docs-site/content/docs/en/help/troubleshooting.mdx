@@ -318,8 +318,8 @@ without ever showing a 401 / 4xx response.
    "Current listening address" row expands inline into every RFC1918
    candidate — copy the one the phone is on; with a specific
    interface picked, the row shows that single fixed URL. From the
-   CLI, pass `--advertise <LAN_IPV4>` to
-   `uniclip mobile-sync lan enable`.
+   CLI, pass `--ip <LAN_IPV4>` to
+   `uniclip mobile-sync network set`.
 3. **Check listener state.** `uniclip mobile-sync status` reports
    `lan_listener_error` if the daemon tried to bind and failed (port
    in use, permission denied). Resolve the underlying error or pick
@@ -336,7 +336,7 @@ The username or password is wrong. Reasons:
 
 - The plaintext password is shown **once** at registration. If you
   lost it, click **Rotate password** on the device row (or
-  `uniclip mobile-sync devices revoke <id>` + `devices add`) — there
+  `uniclip mobile-sync revoke <id>` + `add`) — there
   is no way to recover the original.
 - The Shortcut on the phone may still hold an old credential after
   rotation. Re-edit the `url` / `username` / `password` fields.
@@ -356,7 +356,7 @@ Don't run the LAN listener on coffee shop / airport / conference
 Wi-Fi. The v1 wire format is plain HTTP with Basic Auth — anyone on
 the same SSID can sniff your clipboard. If you need to use it on an
 untrusted network, set the listener to disabled first
-(`uniclip mobile-sync lan disable`) and re-enable on a trusted
+(`uniclip mobile-sync network off`) and re-enable on a trusted
 network.
 
 ### Changed the LAN IP / port?
@@ -367,7 +367,7 @@ Two things have to happen for the new value to be live:
 2. Update the Shortcut's `url` field on the phone to match the new
    advertised URL.
 
-`uniclip mobile-sync settings show` is a fast way to confirm what
+`uniclip mobile-sync status` is a fast way to confirm what
 the daemon is currently advertising.
 
 ## Collecting logs

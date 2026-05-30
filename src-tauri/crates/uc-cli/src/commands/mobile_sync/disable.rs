@@ -49,7 +49,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
                 ui::info(
                     "note",
                     "Paired devices remain registered. Revoke individually with \
-                     `uniclip mobile-sync devices revoke`.",
+                     `uniclip mobile-sync revoke`.",
                 );
                 if out.restart_required {
                     ui::warn(shared::restart_hint());

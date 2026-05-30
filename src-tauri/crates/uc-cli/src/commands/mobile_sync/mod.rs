@@ -1,17 +1,19 @@
 //! `uniclip mobile-sync` —— 移动端同步管理命令组。
 //!
-//! Step 4/5 重组后的命令拓扑(详见 `.context/mobile-sync-cli-redesign/`):
+//! 任务导向的命令拓扑 —— 顶层只暴露用户高频动作,网络细节收进 `network`:
 //!
-//! | 写命令(daemon 必须 stop) | 读命令(daemon 跑时也允许) |
+//! | 动作 | 命令 |
 //! |---|---|
-//! | `setup`(一键向导)| `status`(综合视图) |
-//! | `disable`(关总开关 + 关 LAN)| `settings show`(advanced) |
-//! | `lan enable / disable`(advanced)| `lan list-interfaces`(advanced) |
-//! | `devices add / revoke` | `devices list` |
+//! | 首次一键向导 | `setup` |
+//! | 新增一台 iPhone | `add` |
+//! | 移除一台 iPhone | `revoke [<device-id>]` |
+//! | 查看全部状态 | `status`(读命令,daemon 跑时也允许) |
+//! | 完全停用 | `disable`(关总开关 + 关 LAN) |
+//! | 高级网络配置 | `network interfaces / set / off`(advanced) |
 //!
-//! 老命令 `enable` / `shortcut add` 已删除:
-//! - `enable` 与 `lan enable` 重叠 + `setup` 一键已含, 无独立价值
-//! - `shortcut add` 改名为更直观的 `devices add`(同时支持自定义凭据 flags)
+//! 旧分组 `lan` / `devices` / `settings` 已删除(无 deprecation 周期):
+//! `add` / `revoke` 提到顶层,`lan` 改名 `network`,`settings show` 的字段
+//! 并入 `status`。
 //!
 //! 全部 in-process 调 [`MobileSyncFacade`],不走 daemon HTTP API
 //! (项目惯例,详见 `uc-cli/AGENTS.md`)。写命令在执行前调
@@ -25,8 +27,7 @@ use clap::Subcommand;
 pub mod debug;
 pub mod devices;
 pub mod disable;
-pub mod lan;
-pub mod settings;
+pub mod network;
 pub mod setup;
 mod shared;
 pub mod status;
@@ -37,27 +38,27 @@ pub enum MobileSyncCommands {
     /// listener, registers an iPhone, and prints the install QR + a
     /// one-time password — all in a single command.
     Setup(setup::SetupArgs),
+    /// Pair a new iPhone: mint credentials and print the install QR. Use this
+    /// to add another phone after the initial `setup`.
+    Add(devices::AddArgs),
+    /// Unpair an iPhone. Without `<device-id>`, interactively pick from the
+    /// paired list (JSON mode requires the id explicitly).
+    Revoke {
+        /// Device id printed by `status` (e.g. `did_<32hex>`).
+        device_id: Option<String>,
+    },
     /// Combined status view: feature + LAN settings + paired devices +
     /// install methods. Daemon-running tolerant.
     Status,
     /// Disable mobile-sync entirely: master switch off + LAN listener off.
-    /// Paired devices stay registered (use `devices revoke` to drop them).
+    /// Paired devices stay registered (use `revoke` to drop them). To stop
+    /// only the LAN listener, use `network off`.
     Disable,
-    /// Settings inspection (advanced — prefer `status`).
-    Settings {
+    /// Advanced LAN / reverse-proxy listener configuration. `setup` already
+    /// handles the common case.
+    Network {
         #[command(subcommand)]
-        subcommand: settings::SettingsCommands,
-    },
-    /// LAN listener configuration (advanced — `setup` already handles the
-    /// common case).
-    Lan {
-        #[command(subcommand)]
-        subcommand: lan::LanCommands,
-    },
-    /// Paired iPhone management.
-    Devices {
-        #[command(subcommand)]
-        subcommand: devices::DevicesCommands,
+        subcommand: network::NetworkCommands,
     },
     /// Debug helpers that simulate the SyncClipboard protocol locally
     /// (no iPhone required). Bypasses HTTP and calls `MobileSyncFacade`
@@ -76,13 +77,11 @@ pub enum MobileSyncCommands {
 pub async fn run(command: MobileSyncCommands, json: bool, verbose: bool) -> i32 {
     match command {
         MobileSyncCommands::Setup(args) => setup::run(args, json, verbose).await,
+        MobileSyncCommands::Add(args) => devices::add(args, json, verbose).await,
+        MobileSyncCommands::Revoke { device_id } => devices::revoke(device_id, json, verbose).await,
         MobileSyncCommands::Status => status::run(json, verbose).await,
         MobileSyncCommands::Disable => disable::run(json, verbose).await,
-        MobileSyncCommands::Settings { subcommand } => {
-            settings::run(subcommand, json, verbose).await
-        }
-        MobileSyncCommands::Lan { subcommand } => lan::run(subcommand, json, verbose).await,
-        MobileSyncCommands::Devices { subcommand } => devices::run(subcommand, json, verbose).await,
+        MobileSyncCommands::Network { subcommand } => network::run(subcommand, json, verbose).await,
         MobileSyncCommands::Debug { subcommand } => debug::run(subcommand, json, verbose).await,
     }
 }

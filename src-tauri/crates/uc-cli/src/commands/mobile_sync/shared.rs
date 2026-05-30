@@ -157,7 +157,7 @@ pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String 
             "Device label is too long (max 64 chars).".into()
         }
         RegisterMobileShortcutDeviceError::LanListenerDisabled => {
-            "LAN listener is not enabled — run `uniclip mobile-sync lan enable --bind <IP>` first."
+            "LAN listener is not enabled — run `uniclip mobile-sync setup` or `network set --ip <IP>` first."
                 .into()
         }
         RegisterMobileShortcutDeviceError::UsernameTaken(name) => {
@@ -194,7 +194,7 @@ pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String 
             format!("Settings load failed: {msg}")
         }
         RegisterMobileShortcutDeviceError::NoLanInterfaceAvailable => {
-            "No usable LAN interface found for auto-pick — connect to a LAN or set `lan_advertise_ip` explicitly via `mobile-sync lan enable --bind <IP>`."
+            "No usable LAN interface found for auto-pick — connect to a LAN or set `lan_advertise_ip` explicitly via `mobile-sync network set --ip <IP>`."
                 .into()
         }
         RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed(msg) => {

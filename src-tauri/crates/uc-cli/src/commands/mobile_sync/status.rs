@@ -1,8 +1,8 @@
 //! `uniclip mobile-sync status` —— 综合视图(读命令)。
 //!
 //! 一条命令拼出 settings 总开关 + LAN advertise IP / port + 已配对设备
-//! 数量 + install methods 状态;免去用户分别跑 `settings show` /
-//! `lan list-interfaces` / `devices list` 的心智成本(P9 痛点)。
+//! 数量 + install methods 状态,是查看 mobile-sync 配置快照的唯一入口
+//! (旧 `settings show` 已删,字段全部并入这里)。
 //!
 //! 这是只读命令。展示给用户的 listen URL 由持久化设置直接拼接(daemon
 //! 永远 bind 在 `0.0.0.0:<lan_port>`),无需运行时探测。bind 失败原因

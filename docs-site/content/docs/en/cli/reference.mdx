@@ -117,27 +117,27 @@ the protocol is documented in the [Mobile LAN API](../reference/mobile-api).
 # register one iPhone, print the install QR + a one-time password.
 uniclip mobile-sync setup
 
-# Read-only views (allowed while the daemon is running)
+# Read-only view (allowed while the daemon is running)
 uniclip mobile-sync status            # combined: feature + LAN + paired devices
-uniclip mobile-sync settings show     # advanced: settings dump
-
-# Listener configuration (write commands — daemon must be stopped)
-uniclip mobile-sync lan list-interfaces
-# LAN form: advertise an internal IPv4 → install URL is http://<IP>:<port>
-uniclip mobile-sync lan enable --advertise <LAN_IPV4> [--port 42720] --accept-network-risk
-# Reverse-proxy form: advertise a full base URL → install URL/QR points at
-# the HTTPS front-end (e.g. Caddy), while the listener stays plain HTTP.
-uniclip mobile-sync lan enable --advertise-url https://clip.example.com --accept-network-risk
-uniclip mobile-sync lan disable
 
 # Paired device management
-uniclip mobile-sync devices list
-uniclip mobile-sync devices add --label "My iPhone" \
+uniclip mobile-sync add --label "My iPhone" \
     [--username my_user] [--password-stdin]
-uniclip mobile-sync devices revoke <device-id>
+uniclip mobile-sync revoke <device-id>
+
+# Advanced listener configuration (write commands — daemon must be stopped).
+# `setup` already covers the common case; reach for these to re-point the
+# address or front the listener with a reverse proxy.
+uniclip mobile-sync network interfaces
+# LAN form: advertise an internal IPv4 → install URL is http://<IP>:<port>
+uniclip mobile-sync network set --ip <LAN_IPV4> [--port 42720] --accept-network-risk
+# Reverse-proxy form: advertise a full base URL → install URL/QR points at
+# the HTTPS front-end (e.g. Caddy), while the listener stays plain HTTP.
+uniclip mobile-sync network set --url https://clip.example.com --accept-network-risk
+uniclip mobile-sync network off       # stop just the LAN listener
 
 # Disable the feature entirely (master switch + listener off; paired
-# device records stay until you `devices revoke` them).
+# device records stay until you `revoke` them).
 uniclip mobile-sync disable
 ```
 
@@ -145,27 +145,26 @@ Behavioural notes:
 
 - **Write commands refuse to run while a same-profile daemon is up.**
   Stop the daemon (`uniclip stop` / quit the GUI) before running
-  `setup`, `lan enable`, `devices add`, etc. Read commands (`status`,
-  `devices list`, `settings show`) are tolerant of a running daemon.
+  `setup`, `add`, `network set`, etc. The read command (`status`) is
+  tolerant of a running daemon.
 - **`--json` implies non-interactive.** No prompts will be shown.
   `setup` in non-interactive / JSON mode requires `--label`,
-  `--advertise`, and `--accept-network-risk`. `--username` /
+  `--ip`, and `--accept-network-risk`. `--username` /
   `--password-stdin` remain optional and default to auto-mint.
 - **`--password-stdin`** reads exactly one line from stdin. Use it to
   pipe a password from a manager / CI without leaving it in shell
   history.
 - **Default port is `42720`** (SPEC §3.2). The daemon socket always
-  binds to `0.0.0.0:<port>`; `--advertise` only chooses the IPv4 that
+  binds to `0.0.0.0:<port>`; `--ip` only chooses the IPv4 that
   is printed to the install URL.
-- **`lan enable` requires exactly one of `--advertise <IP>` or
-  `--advertise-url <URL>`.** `--advertise` produces the LAN form
-  `http://<IP>:<port>`. `--advertise-url` embeds a full base URL
+- **`network set` requires exactly one of `--ip <IP>` or
+  `--url <URL>`.** `--ip` produces the LAN form
+  `http://<IP>:<port>`. `--url` embeds a full base URL
   (scheme + host + optional port) such as `https://clip.example.com`,
   so the install URL / QR points at a TLS reverse proxy (Caddy, nginx,
   …) while the listener itself stays plain HTTP on the internal
   network. The two are mutually exclusive and setting one clears the
-  other; `mobile-sync status` / `settings show` reflect whichever is
-  active.
+  other; `mobile-sync status` reflects whichever is active.
 - A **debug** subcommand group exists (`uniclip mobile-sync debug`)
   but is hidden from `--help` — it is reserved for development and
   E2E scripts (it bypasses HTTP and pokes the facade directly), and

@@ -119,20 +119,20 @@ docker compose run --rm app uniclip join
 它会交互式提示输入 **邀请码** 和 **空间口令**（在交互式终端里跑，口令就不会
 落进 shell 历史）。
 
-**2. 给你的域名开 mobile-sync 网关。** `--advertise-url` 让手机的安装 URL/QR
+**2. 给你的域名开 mobile-sync 网关。** `--url` 让手机的安装 URL/QR
 指向你的 HTTPS 端点：
 
 ```bash
 docker compose run --rm app \
-  uniclip mobile-sync lan enable \
-  --advertise-url https://clip.example.com \
+  uniclip mobile-sync network set \
+  --url https://clip.example.com \
   --accept-network-risk
 ```
 
 **3. 注册你的手机。** 铸设备凭据并渲染安装 QR：
 
 ```bash
-docker compose run --rm app uniclip mobile-sync devices add --label "我的 iPhone"
+docker compose run --rm app uniclip mobile-sync add --label "我的 iPhone"
 ```
 
 把它打印的一次性密码记下来 —— 不会再显示第二次。
@@ -249,6 +249,6 @@ curl -i http://clip.example.com:42720/SyncClipboard.json
 | --------------------------------- | --------------------------------------------------------------------------------- |
 | `up -d` 报 `setup not complete`   | 置备（`join`）没落盘。确认 `docker compose run` 命令打的是同一个卷。               |
 | Caddy 一直签不出证书              | `UC_DOMAIN` 的 DNS 必须解析到这台 VPS，且 `80`/`443` 在 `up -d` **之前**已放开。   |
-| 手机拿到的 URL 不对               | 停掉守护进程重跑 `mobile-sync lan enable --advertise-url https://<域名>`，再 `up -d`。 |
+| 手机拿到的 URL 不对               | 停掉守护进程重跑 `mobile-sync network set --url https://<域名>`，再 `up -d`。      |
 | 另一网络的桌面端同步不上          | 防火墙放开 `UC_IROH_BIND_PORT/udp`，并确认 `UC_PUBLIC_IP` 是真实公网 IP。          |
-| 经你的反代返回 `401`              | 说明网关在、并在要 Basic Auth —— 用 `devices add` 给出的凭据。                     |
+| 经你的反代返回 `401`              | 说明网关在、并在要 Basic Auth —— 用 `add` 给出的凭据。                             |

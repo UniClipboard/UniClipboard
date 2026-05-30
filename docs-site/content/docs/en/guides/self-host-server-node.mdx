@@ -134,20 +134,20 @@ This prompts interactively for the **invitation code** and the **Space
 passphrase** (run it from an interactive terminal so the passphrase
 never lands in your shell history).
 
-**2. Enable the mobile-sync gateway for your domain.** `--advertise-url`
+**2. Enable the mobile-sync gateway for your domain.** `--url`
 makes the phone's install URL/QR point at your HTTPS endpoint:
 
 ```bash
 docker compose run --rm app \
-  uniclip mobile-sync lan enable \
-  --advertise-url https://clip.example.com \
+  uniclip mobile-sync network set \
+  --url https://clip.example.com \
   --accept-network-risk
 ```
 
 **3. Register your phone.** Mints credentials and renders the install QR:
 
 ```bash
-docker compose run --rm app uniclip mobile-sync devices add --label "My iPhone"
+docker compose run --rm app uniclip mobile-sync add --label "My iPhone"
 ```
 
 Copy the one-time password it prints — it is not shown again.
@@ -277,6 +277,6 @@ the phone and confirm it appears on your desktops.
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `setup not complete` on `up -d`        | Provisioning (`join`) didn't persist. Confirm the `docker compose run` commands hit the same volume.   |
 | Caddy never gets a certificate         | DNS for `UC_DOMAIN` must resolve to this VPS and `80`/`443` must be open **before** `up -d`.            |
-| Phone gets the wrong URL               | Re-run `mobile-sync lan enable --advertise-url https://<domain>` (daemon stopped), then `up -d`.        |
+| Phone gets the wrong URL               | Re-run `mobile-sync network set --url https://<domain>` (daemon stopped), then `up -d`.                 |
 | Desktop on another network won't sync  | Open `UC_IROH_BIND_PORT/udp` in the firewall and check `UC_PUBLIC_IP` is the real public IP.            |
-| `401` through your reverse proxy       | That means the gateway is up and asking for Basic Auth — use the credentials from `devices add`.        |
+| `401` through your reverse proxy       | That means the gateway is up and asking for Basic Auth — use the credentials from `add`.                |

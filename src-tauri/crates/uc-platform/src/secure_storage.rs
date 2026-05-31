@@ -246,6 +246,19 @@ pub fn create_default_secure_storage(
 pub fn create_default_secure_storage_in_app_data_root(
     app_data_root: PathBuf,
 ) -> Result<Arc<dyn SecureStoragePort>, SecureStorageFactoryError> {
+    // Portable ("green") builds must not write the KEK into a per-user system
+    // secret store (Windows Credential Manager / macOS Keychain / Secret
+    // Service): that would leave a trace outside the portable folder and break
+    // the "runs from a USB stick, leaves nothing behind" contract. Keep the KEK
+    // in a file under the portable data root instead.
+    if crate::portable::is_portable() {
+        info!("Portable mode: storing KEK as a file under the portable data root (skipping system secure storage)");
+        return Ok(
+            Arc::new(FileSecureStorage::new_in_app_data_root(app_data_root)?)
+                as Arc<dyn SecureStoragePort>,
+        );
+    }
+
     let capability = detect_storage_capability();
     debug!(capability = ?capability, "Detected secure storage capability");
 

@@ -89,12 +89,23 @@ impl DirsAppDirsAdapter {
         if let Some(base) = &self.base_data_local_dir_override {
             return Some(base.clone());
         }
+        // Portable ("green") builds keep all data next to the executable so the
+        // app leaves no trace in the per-user system data directory. The
+        // redirect is resolved here (the lowest common platform layer) so every
+        // call site — daemon socket path, secure storage, process metadata —
+        // follows it without knowing portable mode exists.
+        if let Some(portable_root) = crate::portable::portable_data_root() {
+            return Some(portable_root);
+        }
         dirs::data_local_dir()
     }
 
     fn base_cache_dir(&self) -> Option<PathBuf> {
         if let Some(base) = &self.base_data_local_dir_override {
             return Some(base.clone());
+        }
+        if let Some(portable_root) = crate::portable::portable_data_root() {
+            return Some(portable_root);
         }
         dirs::cache_dir()
     }

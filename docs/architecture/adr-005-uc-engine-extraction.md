@@ -387,6 +387,7 @@ Stage 1 全部 land 后才启动。
 2. **UniFFI 的 async 标注 vs callback bridge**：哪种风格更适合 `EngineHandle::start` 这种长 init 操作？
 3. **CLI 的 in-process 路径是否仍保留**？还是统一改走 `uc-daemon-client`（即便在同机上也跨进程）？这影响 `EngineHandle` 是否要支持"无 daemon 模式"。
    - **部分解答（[ADR-007](./adr-007-headless-server-node-deployment.md) §2.2）**：本期保留单二进制自启（`uniclip start` detached-spawn `uniclip daemon`），RunMode 解析下沉 `uc-desktop`（Scope A）；拆独立 `uniclipd` 二进制（Scope B）暂缓，须单独 ADR。完整的"是否统一走 daemon-client"仍待定。
+   - **后续立项（[ADR-008](./adr-008-uniclipd-split-gui-as-client.md)）**：Scope B 正式立项——拆独立 `uniclipd` 二进制、GUI 删除 `GuiInProcess` 永久转 client、轻量模式（GUI 退出后 daemon detach 留守）。即对本 OQ "统一走 daemon-client（即便同机也跨进程）" 给出肯定回答（GUI 侧；CLI 的一次性业务命令仍保留 in-process `uc-bootstrap` 路径）。
 4. **mobile share intent 触发的 entry 是否走 `clipboard_capture → dispatch_entry → EntryDeliveryRecord`**？需要核 `crates/uc-application/src/facade/mobile_sync/` 的内部路径；若该路径不落 delivery record，mobile 上的 entry 将无法被 resend，需要补一条路径桥接。
 
 ## 8. 决策记录

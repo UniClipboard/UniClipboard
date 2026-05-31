@@ -100,7 +100,7 @@ function findFirstFile(artifactsDir, predicate) {
   return files.find(predicate) || ''
 }
 
-function buildInstallerTable({ artifactsDir, baseUrl }) {
+export function buildInstallerTable({ artifactsDir, baseUrl }) {
   // Tauri v2 Linux 产物命名约定:
   //   .deb       — `<lower-product>_<version>_<amd64|arm64>.deb`        (Debian arch)
   //   .rpm       — `<ProductName>-<version>-1.<x86_64|aarch64>.rpm`     (RPM arch)
@@ -123,7 +123,22 @@ function buildInstallerTable({ artifactsDir, baseUrl }) {
     artifactsDir,
     file => file.endsWith('.AppImage') && isArm(file)
   )
-  const windowsExe = findFirstFile(artifactsDir, file => file.endsWith('.exe'))
+  // Windows 产物命名约定 (Tauri NSIS + 自定义 portable 打包):
+  //   安装包  — `<ProductName>_<version>_<x64|arm64>-setup.exe`
+  //   便携版  — `<ProductName>_<version>_<x64|arm64>-portable.zip`
+  // 必须按架构分别匹配:文件按字母序排序时 arm64 会排在 x64 前面,
+  // 若只取第一个 .exe 会把 arm64 安装包误标成 x86_64。
+  const isPortable = file => /portable/.test(file)
+  const windowsSetupX64 = findFirstFile(artifactsDir, file => file.endsWith('.exe') && isX64(file))
+  const windowsSetupArm = findFirstFile(artifactsDir, file => file.endsWith('.exe') && isArm(file))
+  const windowsPortableX64 = findFirstFile(
+    artifactsDir,
+    file => file.endsWith('.zip') && isPortable(file) && isX64(file)
+  )
+  const windowsPortableArm = findFirstFile(
+    artifactsDir,
+    file => file.endsWith('.zip') && isPortable(file) && isArm(file)
+  )
 
   const makeRow = (platform, arch, fileName) =>
     `| ${platform} | ${arch} | [${fileName}](${baseUrl}/${fileName}) |`
@@ -137,7 +152,10 @@ function buildInstallerTable({ artifactsDir, baseUrl }) {
   if (linuxRpmArm) rows.push(makeRow('Linux', 'Fedora/RHEL aarch64 (.rpm)', linuxRpmArm))
   if (linuxAppImageX64) rows.push(makeRow('Linux', 'AppImage x86_64', linuxAppImageX64))
   if (linuxAppImageArm) rows.push(makeRow('Linux', 'AppImage aarch64', linuxAppImageArm))
-  if (windowsExe) rows.push(makeRow('Windows', 'x86_64', windowsExe))
+  if (windowsSetupX64) rows.push(makeRow('Windows', 'x86_64 (Installer)', windowsSetupX64))
+  if (windowsSetupArm) rows.push(makeRow('Windows', 'ARM64 (Installer)', windowsSetupArm))
+  if (windowsPortableX64) rows.push(makeRow('Windows', 'x86_64 (Portable)', windowsPortableX64))
+  if (windowsPortableArm) rows.push(makeRow('Windows', 'ARM64 (Portable)', windowsPortableArm))
 
   if (rows.length === 0) {
     return 'No installer artifacts found for this release.'

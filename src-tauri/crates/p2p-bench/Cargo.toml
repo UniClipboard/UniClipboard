@@ -3,11 +3,25 @@ name = "p2p-bench"
 version = "0.0.0"
 edition = "2021"
 publish = false
-description = "Throwaway spike: minimal iroh + iroh-blobs CLI to measure raw P2P blob throughput, isolated from the uniclipboard app stack."
+description = "Throwaway spike bins, isolated from the uniclipboard app stack. `p2p-bench` (needs --features iroh) measures raw iroh P2P blob throughput; `http_blob_bench` measures the full-buffer blob-over-loopback path for ADR-008 OQ-perf-gate."
 
+# Raw iroh P2P throughput bench. Heavy iroh deps are feature-gated so the
+# lightweight http_blob_bench can build without dragging iroh/iroh-blobs in.
 [[bin]]
 name = "p2p-bench"
 path = "src/main.rs"
+required-features = ["iroh"]
+
+# ADR-008 OQ-perf-gate spike: minimal axum loopback server reproducing the
+# production full-buffer blob endpoint (Vec<u8> -> Full<Bytes>), measuring
+# TTFB / throughput / RSS. No iroh deps.
+[[bin]]
+name = "http_blob_bench"
+path = "src/bin/http_blob_bench.rs"
+
+[features]
+# Opt-in to the heavy iroh stack (only the p2p-bench bin needs it).
+iroh = ["dep:iroh", "dep:iroh-blobs", "dep:noq-proto", "dep:futures-lite", "dep:time"]
 
 [dependencies]
 anyhow = "1"
@@ -15,9 +29,17 @@ clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-futures-lite = "2"
 
-iroh = { version = "0.98", features = ["address-lookup-mdns"] }
-iroh-blobs = "0.100"
-noq-proto = "0.17"
-time = { version = "0.3", features = ["formatting", "macros"] }
+# iroh P2P bench deps (optional, gated behind the `iroh` feature)
+iroh = { version = "0.98", features = ["address-lookup-mdns"], optional = true }
+iroh-blobs = { version = "0.100", optional = true }
+noq-proto = { version = "0.17", optional = true }
+futures-lite = { version = "2", optional = true }
+time = { version = "0.3", features = ["formatting", "macros"], optional = true }
+
+# http_blob_bench deps (all already in src-tauri/Cargo.lock — no new downloads/lock churn)
+axum = { version = "0.7", default-features = false, features = ["tokio", "http1"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-webpki-roots", "stream"] }
+bytes = "1"
+futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }

@@ -11,7 +11,10 @@ use uc_core::ports::SettingsPort;
 use crate::daemon::app::DaemonApp;
 use crate::daemon::run_mode::DaemonRunMode;
 use crate::daemon::startup_recovery::{spawn_startup_recovery, StartupRecoveryInput};
-use crate::DAEMON_VERSION;
+
+/// daemon 版本号。迁入 uc-daemon 后取本 crate 的 `CARGO_PKG_VERSION`——与原
+/// uc-desktop `DAEMON_VERSION` 同为 workspace 版本，运行值不变（ADR-008 P1）。
+const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// daemon 运行循环输入。
 pub struct DaemonRunLoopInput {

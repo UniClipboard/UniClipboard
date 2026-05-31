@@ -62,7 +62,7 @@ struct RunningListener {
 /// 如何起一个 LAN listener。抽出来一是为了单测 mock,二是为了把"读 facade"
 /// 与"状态机推进"解耦 —— controller 不需要知道 facade 具体长什么样。
 #[async_trait]
-pub(crate) trait LanListenerSpawner: Send + Sync {
+pub trait LanListenerSpawner: Send + Sync {
     async fn spawn(
         &self,
         bind: SocketAddr,
@@ -72,16 +72,13 @@ pub(crate) trait LanListenerSpawner: Send + Sync {
 
 /// 生产实现:从 [`AppFacade`] 的 mobile_sync OnceLock lazy 读取当前 facade,
 /// 配合 file_transfer facade 调 [`start_mobile_lan_server`]。
-pub(crate) struct AppFacadeListenerSpawner {
+pub struct AppFacadeListenerSpawner {
     app_facade: Arc<AppFacade>,
     file_transfer: Option<Arc<FileTransferFacade>>,
 }
 
 impl AppFacadeListenerSpawner {
-    pub(crate) fn new(
-        app_facade: Arc<AppFacade>,
-        file_transfer: Option<Arc<FileTransferFacade>>,
-    ) -> Self {
+    pub fn new(app_facade: Arc<AppFacade>, file_transfer: Option<Arc<FileTransferFacade>>) -> Self {
         Self {
             app_facade,
             file_transfer,
@@ -110,7 +107,7 @@ pub struct MobileLanLifecycleController {
 }
 
 impl MobileLanLifecycleController {
-    pub(crate) fn new(
+    pub fn new(
         endpoint_info: Arc<InMemoryMobileSyncEndpointInfoAdapter>,
         spawner: Arc<dyn LanListenerSpawner>,
     ) -> Self {

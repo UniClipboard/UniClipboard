@@ -130,6 +130,7 @@ members = [
   "crates/uc-daemon-contract",
   "crates/uc-daemon-local",
   "crates/uc-webserver",
+  "crates/uc-daemon",
   "crates/uc-desktop",
   "crates/uc-cli",
   "crates/uc-cli-macros",

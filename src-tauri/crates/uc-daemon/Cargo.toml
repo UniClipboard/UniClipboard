@@ -1,42 +1,35 @@
 [package]
-name = "uc-desktop"
+name = "uc-daemon"
 version.workspace = true
 license.workspace = true
 edition = "2021"
-description = "Desktop host for UniClipboard runtime, daemon mode, local API, and desktop event sources"
+description = "GUI-agnostic daemon runtime extracted from uc-desktop (ADR-008 P1); hosts uniclipd later"
 
 [lib]
-name = "uc_desktop"
+name = "uc_daemon"
 path = "src/lib.rs"
 
 [dependencies]
-uc-bootstrap = { path = "../uc-bootstrap" }
 uc-application = { path = "../uc-application" }
 uc-core = { path = "../uc-core" }
+uc-bootstrap = { path = "../uc-bootstrap" }
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }
 uc-observability = { path = "../uc-observability" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
-uc-daemon-client = { path = "../uc-daemon-client" }
 uc-webserver = { path = "../uc-webserver" }
-uc-daemon = { path = "../uc-daemon" }
-tokio = { version = "1", features = ["full", "test-util"] }
+tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
+async-trait = "0.1"
+anyhow = "1.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-anyhow = "1.0"
-async-trait = "0.1"
-thiserror = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
-url = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 uc-daemon-local = { path = "../uc-daemon-local", features = ["test-helpers"] }
 tempfile = "3"
 chrono = { version = "0.4", default-features = true }
-diesel = { version = "2.3.5", features = ["sqlite"] }
 mockall = "0.13"
-wiremock = "0.6"

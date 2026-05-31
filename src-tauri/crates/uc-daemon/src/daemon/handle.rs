@@ -1,11 +1,11 @@
 //! In-process daemon 控制句柄。
 //!
-//! [`DaemonHandle`] 是 GUI 进程内启动 daemon（[`crate::daemon::start_in_process`]）的产物。
+//! [`DaemonHandle`] 是 GUI 进程内启动 daemon（uc-desktop 的 `start_in_process`）的产物。
 //! 它持有 daemon main loop 的 `JoinHandle` 和一个外部触发的 `CancellationToken`：
 //! caller 调用 [`DaemonHandle::shutdown`] 即可优雅关闭整个 daemon 子系统并等待
 //! 资源回收完成。
 //!
-//! 独立 daemon 进程入口（`daemon` binary 的 [`crate::daemon::run`]）不使用此句柄
+//! 独立 daemon 进程入口（uc-desktop 的 `run`）不使用此句柄
 //! ——它在自己的 tokio runtime 里 block 到 main loop 自然退出。
 
 use std::time::Duration;
@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 /// In-process daemon 实例的控制句柄。
 ///
-/// 由 [`crate::daemon::start_in_process`] 返回，由 GUI shell 持有；GUI 关闭时
+/// 由 uc-desktop 的 `start_in_process` 返回，由 GUI shell 持有；GUI 关闭时
 /// 调用 [`DaemonHandle::shutdown`] 触发 daemon 的优雅退出（cancel cascade →
 /// HTTP graceful shutdown → service stop 顺序，与独立进程模式行为一致）。
 pub struct DaemonHandle {
@@ -24,7 +24,7 @@ pub struct DaemonHandle {
 }
 
 impl DaemonHandle {
-    pub(crate) fn new(cancel: CancellationToken, join: JoinHandle<anyhow::Result<()>>) -> Self {
+    pub fn new(cancel: CancellationToken, join: JoinHandle<anyhow::Result<()>>) -> Self {
         Self { cancel, join }
     }
 

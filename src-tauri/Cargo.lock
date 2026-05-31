@@ -6025,13 +6025,18 @@ name = "p2p-bench"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "axum",
+ "bytes",
  "clap",
  "futures-lite",
+ "futures-util",
  "iroh",
  "iroh-blobs",
  "noq-proto",
+ "reqwest 0.12.28",
  "time",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
 ]
@@ -7191,12 +7196,14 @@ dependencies = [
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "tower",
  "tower-http",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams 0.4.2",
  "web-sys",
  "webpki-roots",
 ]
@@ -7239,7 +7246,7 @@ dependencies = [
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams",
+ "wasm-streams 0.5.0",
  "web-sys",
 ]
 
@@ -9845,6 +9852,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "uc-daemon"
+version = "0.13.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "mockall 0.13.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uc-application",
+ "uc-bootstrap",
+ "uc-core",
+ "uc-daemon-contract",
+ "uc-daemon-local",
+ "uc-infra",
+ "uc-observability",
+ "uc-platform",
+ "uc-webserver",
+]
+
+[[package]]
 name = "uc-daemon-client"
 version = "0.14.0-alpha.4"
 dependencies = [
@@ -9911,6 +9943,7 @@ dependencies = [
  "uc-application",
  "uc-bootstrap",
  "uc-core",
+ "uc-daemon",
  "uc-daemon-client",
  "uc-daemon-contract",
  "uc-daemon-local",
@@ -10630,6 +10663,19 @@ dependencies = [
  "indexmap 2.14.0",
  "wasm-encoder",
  "wasmparser",
+]
+
+[[package]]
+name = "wasm-streams"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
+dependencies = [
+ "futures-util",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

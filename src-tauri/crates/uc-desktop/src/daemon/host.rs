@@ -31,20 +31,24 @@ use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
 use uc_bootstrap::assembly::WiredDependencies;
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
 
-use crate::daemon::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
-use crate::daemon::app_facade_assembly::{
+use uc_daemon::daemon::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
+use uc_daemon::daemon::app_facade_assembly::{
     build_daemon_lifecycle_facades, DaemonLifecycleFacadesInput,
 };
-use crate::daemon::bootstrap::{build_daemon_bootstrap_assembly, DaemonBootstrapAssembly};
-use crate::daemon::handle::DaemonHandle;
-use crate::daemon::mobile_lan_lifecycle::{AppFacadeListenerSpawner, MobileLanLifecycleController};
-use crate::daemon::run_loop::{run_daemon_main, DaemonRunLoopInput};
-use crate::daemon::run_mode::DaemonRunMode;
-use crate::daemon::runtime_assembly::{build_daemon_runtime_workers, DaemonRuntimeAssemblyInput};
-use crate::daemon::runtime_controls::build_daemon_runtime_controls;
-use crate::daemon::search_assembly::build_daemon_search_assembly;
-use crate::daemon::service_assembly::build_daemon_service_plan;
-use crate::daemon::tokio_runtime::build_daemon_tokio_runtime;
+use uc_daemon::daemon::bootstrap::{build_daemon_bootstrap_assembly, DaemonBootstrapAssembly};
+use uc_daemon::daemon::handle::DaemonHandle;
+use uc_daemon::daemon::mobile_lan_lifecycle::{
+    AppFacadeListenerSpawner, MobileLanLifecycleController,
+};
+use uc_daemon::daemon::run_loop::{run_daemon_main, DaemonRunLoopInput};
+use uc_daemon::daemon::run_mode::DaemonRunMode;
+use uc_daemon::daemon::runtime_assembly::{
+    build_daemon_runtime_workers, DaemonRuntimeAssemblyInput,
+};
+use uc_daemon::daemon::runtime_controls::build_daemon_runtime_controls;
+use uc_daemon::daemon::search_assembly::build_daemon_search_assembly;
+use uc_daemon::daemon::service_assembly::build_daemon_service_plan;
+use uc_daemon::daemon::tokio_runtime::build_daemon_tokio_runtime;
 
 /// 进程级一次性资源句柄,daemon 每次 spawn 都从 caller 拿一份 clone。
 ///

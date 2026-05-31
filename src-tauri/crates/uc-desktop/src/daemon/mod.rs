@@ -1,31 +1,19 @@
-//! daemon 运行模式。
+//! daemon host 胶水。
+//!
+//! GUI-agnostic runtime 主体已迁出至 `uc-daemon`（ADR-008 P1）；本模块仅保留
+//! host 胶水（`host`：GuiInProcess 装配 `start_in_process` / `ProcessRuntimeHandles`，
+//! 以及独立入口 `run` / `run_standalone_from_env`），并 re-export `uc-daemon`
+//! 的公共符号以保持 `uc_desktop::daemon::*` 接口面不变。
+//!
+//! `host` 内部已直接 `use uc_daemon::daemon::*` 调用 runtime 装配函数（前向依赖）。
 
-pub(crate) mod app;
-pub(crate) mod app_assembly;
-pub(crate) mod app_facade_assembly;
-pub(crate) mod bootstrap;
-pub(crate) mod handle;
 pub(crate) mod host;
-pub(crate) mod mobile_lan_lifecycle;
-pub(crate) mod ownership;
-pub(crate) mod peers;
-pub(crate) mod run_loop;
-pub mod run_mode;
-pub(crate) mod runtime_assembly;
-pub(crate) mod runtime_controls;
-pub(crate) mod search;
-pub(crate) mod search_assembly;
-pub(crate) mod service;
-pub(crate) mod service_assembly;
-pub(crate) mod service_plan;
-pub(crate) mod startup_recovery;
-pub(crate) mod state;
-pub(crate) mod tokio_runtime;
-pub(crate) mod workers;
 
-pub use handle::DaemonHandle;
+// ── re-exports from uc-daemon（保 uc_desktop::daemon::* 公共面）──
+pub use uc_daemon::daemon::run_mode;
+pub use uc_daemon::{DaemonHandle, DaemonOwnership};
+
 pub(crate) use host::start_in_process;
 pub use host::{
     run, run_standalone_from_env, ProcessRuntimeHandles, RUN_MODE_ENV, RUN_MODE_SERVER,
 };
-pub use ownership::DaemonOwnership;

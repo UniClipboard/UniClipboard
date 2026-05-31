@@ -2,7 +2,7 @@
 
 ## 定位
 
-`uc-desktop` 是 UniClipboard 的**桌面宿主层（desktop host layer）**，
+`uc-desktop` 是 UniClipboard 的 **桌面宿主层（desktop host layer）**，
 不是业务层，**也不是任何特定 GUI 框架的实现**。
 
 它负责把 UniClipboard 的 app runtime（`uc-application`）跑在桌面环境
@@ -30,7 +30,7 @@
 - ✅ `tokio` / `axum` / `tokio-util`
 - ✅ 文件系统、进程管理、IPC、网络
 
-如果某项能力同时**同时**有"GUI 框架版本"和"系统能力版本"，desktop 只能
+如果某项能力同时 **同时** 有"GUI 框架版本"和"系统能力版本"，desktop 只能
 依赖系统能力版本；GUI 适配交给 shell crate。
 
 ### 已知 shell（桌面 GUI 实现）
@@ -51,7 +51,7 @@
 - 本地 HTTP / WebSocket / IPC 接入（桌面侧路由、鉴权外壳）
 - 桌面事件源（剪贴板监听、文件系统、电源/网络事件）
 - 后台任务调度运行时（tokio task registry、定时器、循环）
-- 系统能力抽象（autostart / 单实例 / 通知 / 托盘等的 trait 与共用策略，**不**含任何 GUI 框架的具体 builder）
+- 系统能力抽象（autostart / 单实例 / 通知 / 托盘等的 trait 与共用策略，**不** 含任何 GUI 框架的具体 builder）
 - 桌面侧策略（IPC 路径约定、token 策略、健康检查）
 
 它不负责：
@@ -75,20 +75,24 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
 - 不要在 HTTP handler、daemon worker 里重新拼业务流程；这些入口只做
   参数解析、鉴权外壳、转调 facade、序列化结果。**Tauri command 等
   GUI 框架入口在 shell crate 里，desktop 不直接拥有它们**。
-- 事件源只负责监听桌面事件，并把事件**原样**交给应用层入口；不在
+- 事件源只负责监听桌面事件，并把事件 **原样** 交给应用层入口；不在
   desktop 层做内容判断或路由决策。
-- 后台任务的**运行时调度**（什么时候触发、跑在哪个线程）可以在这里，
-  任务的**业务定义**（具体做什么、状态如何流转）放在应用层。
+- 后台任务的 **运行时调度**（什么时候触发、跑在哪个线程）可以在这里，
+  任务的 **业务定义**（具体做什么、状态如何流转）放在应用层。
 - 桌面侧只能依赖 `uc-application` / `uc-core` 暴露的稳定接口，禁止
   依赖应用层内部模块。
 - 涉及外部进程/UI 框架的扩展点（如 daemon spawn、托盘渲染、autostart 写入），
   desktop 提供 trait + 默认协调逻辑，shell 注入具体实现。
-- `uc-daemon` 现在只是兼容壳；新增 daemon 宿主能力应放在这里。
+- daemon **runtime 主体** 已迁出至独立 `uc-daemon` crate（[ADR-008](../../../docs/architecture/adr-008-uniclipd-split-gui-as-client.md)
+  P1 已落地）；本 crate `src/daemon/` 仅保留 **host 胶水**（`host`：GuiInProcess
+  装配 `start_in_process` / `ProcessRuntimeHandles` + 独立入口 `run`）——见文件末尾。
 
 ## 当前落地边界
 
-- daemon 实现放在 `src/daemon/`，外部只应使用 `uc_desktop::daemon::run`
-  和 `uc_desktop::daemon::run_mode`。
+- daemon runtime 主体已迁至 `uc-daemon`（ADR-008 P1）；本 crate `src/daemon/`
+  只剩 host 胶水（`host`）。`uc_desktop::daemon::*` 公共面（`run` / `run_mode` /
+  `DaemonHandle` / `DaemonOwnership`）经 re-export 保持不变；新增 runtime 构件
+  请加到 `uc-daemon`，**不要** 回流本 crate。
 - `uc-webserver` 暂时保持独立 crate，由 `uc-desktop` 作为宿主调用；不要为了
   目录一致性直接把 HTTP/WS 物理迁入 `uc-desktop`。它不依赖 GUI 框架，符合
   "可被多 shell 共享" 的约束。
@@ -102,4 +106,9 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
   也不是与 desktop 平级的层。它消费 `uc-desktop` 的能力，提供 Tauri 框架
   特定的 builder / commands / tray / quick_panel。新增 Tauri-only 能力放
   这里，新增"未来 native shell 也会用到的"能力放 `uc-desktop`。
-- `uc-daemon` 只保留旧二进制和旧路径兼容；不要在其中新增宿主逻辑。
+- `uc-daemon`（**已恢复，[ADR-008](../../../docs/architecture/adr-008-uniclipd-split-gui-as-client.md) P1 已落地**）：
+    承载从本 crate `src/daemon/` 迁出的 **GUI-agnostic daemon runtime 主体**（run_mode、
+    后台 worker / 服务、装配链、main loop、startup recovery 等），不依赖 GUI 框架、
+    **不反依赖 `uc-desktop`**；本 crate `host` 前向调用其装配函数。**后续阶段**：
+    `uniclipd` 二进制（P2）、GUI 删除 `GuiInProcess` 永久转 client（P3）——届时
+    `start_in_process` / `ProcessRuntimeHandles` 等残余从本 crate 清除。

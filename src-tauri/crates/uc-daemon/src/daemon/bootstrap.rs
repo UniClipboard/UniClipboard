@@ -2,7 +2,7 @@
 //!
 //! 进程级资源 (sqlite pool / repos / settings / secure storage / blob
 //! workers / clipboard_write_coordinator / file_transfer_lifecycle 等)
-//! 由 caller 通过 [`crate::bootstrap::build_process_runtime`] 一次性装好,
+//! 由 caller 通过 uc-desktop 的 `build_process_runtime` 一次性装好,
 //! 透传 [`uc_bootstrap::WiredDependencies`] 给本模块复用。
 //!
 //! 这条链上**不再** 跑 `wire_dependencies` —— sqlite pool 等跨 daemon
@@ -20,7 +20,7 @@ use uc_bootstrap::SpaceSetupAssembly;
 /// 方案 C 后 daemon 进程内只起一次, 这些字段也只装一次, 跟随 AppFacade
 /// Arc drop 自然回收。caller 持有的进程级资源 (deps / storage_paths /
 /// clipboard_write_coordinator / file_transfer_lifecycle / emitter_cell)
-/// 不在这里 —— 它们走 [`crate::daemon::host::ProcessRuntimeHandles`]
+/// 不在这里 —— 它们走 uc-desktop host 的 `ProcessRuntimeHandles`
 /// 传入 daemon spawn。
 pub struct DaemonBootstrapAssembly {
     pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
@@ -41,7 +41,7 @@ pub struct DaemonBootstrapAssembly {
 /// async 形态 —— caller 必须在 tokio runtime 上下文中调用 ([`build_daemon_lifecycle`]
 /// 内部 `Endpoint::bind` 会 spawn magicsock / relay / STUN actor)。
 ///
-/// `wired` 由 caller 通过 [`crate::bootstrap::build_process_runtime`] 一次
+/// `wired` 由 caller 通过 uc-desktop 的 `build_process_runtime` 一次
 /// 性装好,daemon reload 复用同一份 —— sqlite pool / repos / settings repo
 /// 跨 daemon 启停**不重建**。
 pub async fn build_daemon_bootstrap_assembly(

@@ -119,6 +119,12 @@ Windows 提供两种形式：**安装版**（NSIS 安装包，推荐大多数人
   文件夹保留不动。便携版同样需要系统已安装 Microsoft Edge WebView2 Runtime（新版 Windows 已预装）。
 </Callout>
 
+<Callout type="warn">
+  **已知限制：** 目前 WebView2 运行时的浏览器缓存仍写在 `%LOCALAPPDATA%`，尚未跟随便携文件夹，因此便携运行**并非
+  100% 零痕迹**。不过这只是浏览器缓存，你真正的数据（数据库、密钥、搜索索引、日志）都在程序旁边的 `data\`
+  目录里。
+</Callout>
+
 按需从
 [Releases](https://github.com/UniClipboard/UniClipboard/releases)
 页面下载安装包或便携包。

@@ -140,6 +140,14 @@ the system directories.
   Microsoft Edge WebView2 Runtime (preinstalled on current Windows).
 </Callout>
 
+<Callout type="warn">
+  **Known limitation:** the WebView2 runtime's browser cache is still written
+  under `%LOCALAPPDATA%` and does not follow the portable folder yet, so a
+  portable run is **not 100% trace-free**. That's only the browser cache,
+  though — your actual data (database, keys, search index, logs) lives in the
+  `data\` folder next to the app.
+</Callout>
+
 Download the installer or portable zip from the
 [Releases](https://github.com/UniClipboard/UniClipboard/releases) page.
 

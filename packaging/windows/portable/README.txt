@@ -4,8 +4,8 @@ UniClipboard — 便携版（绿色版）
 
 English
 -------
-This is the portable build of UniClipboard. It needs no installation and
-leaves no traces in the Windows system directories.
+This is the portable build of UniClipboard. It needs no installation and keeps
+all of your data next to the executable.
 
 How to use:
   1. Keep UniClipboard.exe and portable.dat together in the same folder.
@@ -32,10 +32,16 @@ Requirements:
   current Windows). The x64 zip runs on Intel/AMD; the arm64 zip runs on
   Windows on ARM devices.
 
+Known limitation:
+  The WebView2 runtime's browser cache is still written under %LOCALAPPDATA%
+  (it is not redirected into the portable folder yet), so a portable run is not
+  100% trace-free. Your actual data (database, keys, search index, logs) does
+  live in the "data" folder next to the exe.
+
 
 中文
 ----
-这是 UniClipboard 的便携版（绿色版），免安装、不在系统目录留下痕迹。
+这是 UniClipboard 的便携版（绿色版），免安装，所有数据都放在程序旁边。
 
 使用方法：
   1. 让 UniClipboard.exe 与 portable.dat 保持在同一个文件夹内。
@@ -57,3 +63,8 @@ Requirements:
 运行要求：
   Windows 10/11，并安装 Microsoft Edge WebView2 Runtime（新版 Windows 已
   预装）。x64 版用于 Intel/AMD 设备，arm64 版用于 Windows on ARM 设备。
+
+已知限制：
+  WebView2 运行时的浏览器缓存目前仍写在 %LOCALAPPDATA%（尚未重定向进便携
+  文件夹），因此便携运行并非 100% 零痕迹。但你真正的数据（数据库、密钥、
+  搜索索引、日志）都在 exe 旁边的 “data” 文件夹里。

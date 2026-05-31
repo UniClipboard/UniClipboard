@@ -92,19 +92,36 @@ cask 与 formula 互不冲突，需要的话两个都装即可（GUI + 终端 `u
 
 <Tab value="Windows">
 
-Windows 发行版本提供 NSIS 安装包（`UniClipboard_<version>_x64-setup.exe`）。
-按标准安装流程一路下一步即可，安装器会写入开始菜单，并在 **设置 → 应用** 下注册卸载项。
+Windows 提供两种形式：**安装版**（NSIS 安装包，推荐大多数人）和 **便携版**（绿色版，免安装）。两种都覆盖 `x64`（Intel/AMD）与 `arm64`（Windows on ARM）。
+
+### 安装版（NSIS）
+
+下载 `UniClipboard_<version>_<arch>-setup.exe`（`<arch>` 为 `x64` 或 `arm64`），一路下一步即可。安装器会写入开始菜单，并在 **设置 → 应用** 下注册卸载项。
 
 安装包已数字签名。
-
-按需从
-[Releases](https://github.com/UniClipboard/UniClipboard/releases)
-页面下载。
 
 <Callout type="info">
   首次运行新版本时 SmartScreen 可能弹出警告。如果发布者信息与签名身份一致，点击 **更多信息 →
   仍要运行**。如果不放心，可以在 **属性 → 数字签名** 中校验签名。
 </Callout>
+
+### 便携版（绿色版）
+
+不想安装、想随身带着跑（比如放 U 盘），就用便携版。下载 `UniClipboard_<version>_<arch>-portable.zip`，解压后双击里面的 `UniClipboard.exe` 即可运行——免安装、不写注册表、不在系统目录留痕。
+
+- **数据就放在程序旁边。** 所有数据（加密数据库、密钥、搜索索引、日志）都保存在 `UniClipboard.exe` 同目录下自动创建的 `data` 文件夹里。把整个文件夹（exe + `portable.dat` + `data`）一起拷走，配置就跟着走；删掉 `data` 即可重置。
+- **`portable.dat` 是开关。** 压缩包里这个标记文件用来开启便携模式。删掉它，应用就会和安装版一样把数据写到 `%LOCALAPPDATA%\app.uniclipboard.desktop\`。
+- **选对架构。** `arm64` 版用于 Surface Pro X 等 Windows on ARM 设备，`x64` 版用于常见的 Intel/AMD 电脑。
+
+<Callout type="info">
+  便携版**不会**应用内自更新（自更新走的 NSIS 安装器会装到 Program Files，与便携理念冲突）。升级时点
+  **检查更新** 会提示你去发布页下载新的 `*-portable.zip`，替换 `UniClipboard.exe` 即可，`data`
+  文件夹保留不动。便携版同样需要系统已安装 Microsoft Edge WebView2 Runtime（新版 Windows 已预装）。
+</Callout>
+
+按需从
+[Releases](https://github.com/UniClipboard/UniClipboard/releases)
+页面下载安装包或便携包。
 
 </Tab>
 
@@ -321,6 +338,9 @@ UniClipboard 把加密数据库、搜索索引与日志放在各平台标准的�
 日志位于其下的 `logs/` 子目录。设置 `UC_PROFILE` 环境变量（如
 `UC_PROFILE=dev`）可在目录名后追加后缀（变成
 `app.uniclipboard.desktop-dev`），这样开发版与正式版可以并存。
+
+Windows **便携版**例外：它把上述数据全部改放到 `UniClipboard.exe` 同目录下的
+`data\` 文件夹里，不写 `%LOCALAPPDATA%`。详见上面 Windows 标签页的「便携版」小节。
 
 ## 下一步
 

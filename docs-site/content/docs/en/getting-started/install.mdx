@@ -97,21 +97,51 @@ quit and reopen the app for the change to take effect.
 
 <Tab value="Windows">
 
-The Windows release ships an NSIS installer
-(`UniClipboard_<version>_x64-setup.exe`). It walks through the standard
-install flow, places shortcuts in the Start Menu, and registers an entry
-under **Settings → Apps** for clean uninstall.
+Windows comes in two forms: an **installer** (NSIS, recommended for most
+people) and a **portable** build (no install). Both cover `x64` (Intel/AMD)
+and `arm64` (Windows on ARM).
+
+### Installer (NSIS)
+
+Download `UniClipboard_<version>_<arch>-setup.exe` (`<arch>` is `x64` or
+`arm64`) and click through the standard flow. It places Start Menu shortcuts
+and registers an entry under **Settings → Apps** for clean uninstall.
 
 The installer is code-signed.
-
-Download the one you want from the
-[Releases](https://github.com/UniClipboard/UniClipboard/releases) page.
 
 <Callout type="info">
   SmartScreen may warn the first time you run a new release. Click **More info → Run anyway** if the
   publisher matches the signed identity. Verify the signature in **Properties → Digital Signatures**
   if you're unsure.
 </Callout>
+
+### Portable build
+
+Want to skip installation or carry the app on a USB stick? Use the portable
+build. Download `UniClipboard_<version>_<arch>-portable.zip`, unzip it, and
+double-click `UniClipboard.exe` — no install, no registry writes, no traces in
+the system directories.
+
+- **Data lives next to the app.** Everything (encrypted database, keys, search
+  index, logs) is stored in a `data` folder created next to
+  `UniClipboard.exe`. Move the whole folder (exe + `portable.dat` + `data`) to
+  carry your setup; delete `data` to reset.
+- **`portable.dat` is the switch.** This marker file in the zip is what enables
+  portable mode. Remove it and the app reverts to storing data under
+  `%LOCALAPPDATA%\app.uniclipboard.desktop\` like the installed version.
+- **Pick the right arch.** The `arm64` zip is for Windows on ARM devices (e.g.
+  Surface Pro X); the `x64` zip is for regular Intel/AMD PCs.
+
+<Callout type="info">
+  The portable build does **not** self-update (the in-app updater runs the NSIS
+  installer, which would install into Program Files). **Check for updates** points
+  you to the release page to download a newer `*-portable.zip`; replace
+  `UniClipboard.exe` and your `data` folder is preserved. It still needs the
+  Microsoft Edge WebView2 Runtime (preinstalled on current Windows).
+</Callout>
+
+Download the installer or portable zip from the
+[Releases](https://github.com/UniClipboard/UniClipboard/releases) page.
 
 </Tab>
 
@@ -340,6 +370,10 @@ the platform's standard application-data directory under
 Logs sit under a `logs/` subdirectory. If you set the `UC_PROFILE` env
 var (e.g. `UC_PROFILE=dev`), the directory name is suffixed (e.g.
 `app.uniclipboard.desktop-dev`) so dev and prod can run side by side.
+
+The Windows **portable** build is the exception: it keeps all of the above in a
+`data\` folder next to `UniClipboard.exe` instead of `%LOCALAPPDATA%`. See the
+"Portable build" section under the Windows tab above.
 
 ## Next
 

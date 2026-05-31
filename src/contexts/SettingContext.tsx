@@ -77,8 +77,12 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     await saveSetting(newSetting)
   }
 
-  // 更新通用设置
-  const updateGeneralSetting = async (newGeneralSetting: Partial<Settings['general']>) => {
+  // 更新通用设置。autoStart 被排除在外:它是桌面宿主 OS 副作用,必须走专用的
+  // updateAutostart 命令,否则会静默跳过 OS 启动项注册(daemon settings 管线
+  // 不触碰操作系统)。
+  const updateGeneralSetting = async (
+    newGeneralSetting: Partial<Omit<Settings['general'], 'autoStart'>>
+  ) => {
     if (!setting) return
     const updatedSetting: Settings = {
       ...setting,

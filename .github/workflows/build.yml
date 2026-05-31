@@ -13,6 +13,8 @@ on:
           - 'ubuntu-22.04'
           - 'ubuntu-22.04-arm'
           - 'windows-latest'
+          - 'windows-x86_64'
+          - 'windows-arm64'
           - 'all'
         default: 'all'
       channel:
@@ -69,7 +71,7 @@ jobs:
           # cross-compile webkit/gtk 栈;x86_64 仍在 ubuntu-22.04。
           PLATFORM="${{ inputs.platform || 'all' }}"
           if [ "$PLATFORM" == "all" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"},{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"},{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""},{"platform":"windows-latest","target":"aarch64-pc-windows-msvc","args":"--target aarch64-pc-windows-msvc"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
@@ -79,9 +81,13 @@ jobs:
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
             echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
+            echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""},{"platform":"windows-latest","target":"aarch64-pc-windows-msvc","args":"--target aarch64-pc-windows-msvc"}]' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "windows-x86_64" ]; then
             echo 'matrix=[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","args":""}]' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "windows-arm64" ]; then
+            echo 'matrix=[{"platform":"windows-latest","target":"aarch64-pc-windows-msvc","args":"--target aarch64-pc-windows-msvc"}]' >> "$GITHUB_OUTPUT"
           else
-            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, windows-latest"
+            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-x86_64, windows-arm64"
             exit 1
           fi
 
@@ -120,7 +126,7 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target == 'aarch64-pc-windows-msvc' && 'aarch64-pc-windows-msvc' || '' }}
 
       - name: Prepend cargo bin to PATH
         # macos-15-arm64 runner image 20260511+ 预装了 Homebrew rustup
@@ -145,6 +151,19 @@ jobs:
           TC=$(cd src-tauri && rustup show active-toolchain | awk '{print $1}')
           echo "pinned toolchain: $TC"
           rustup target add --toolchain "$TC" aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: ensure windows arm64 target installed on pinned toolchain
+        # Same pinned-vs-stable split as the darwin step above: the arm64
+        # Windows portable / NSIS build cross-compiles from the x64
+        # windows-latest runner, so the pinned toolchain must have the
+        # aarch64-pc-windows-msvc target (MSVC ARM64 cross tools ship with the
+        # runner's Visual Studio install).
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: bash
+        run: |
+          TC=$(cd src-tauri && rustup show active-toolchain | awk '{print $1}')
+          echo "pinned toolchain: $TC"
+          rustup target add --toolchain "$TC" aarch64-pc-windows-msvc
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -267,6 +286,56 @@ jobs:
           else
             bun run tauri build ${{ matrix.args }}
           fi
+
+      - name: package Windows portable zip
+        # Portable ("green") build: the standalone exe + a `portable.dat` marker
+        # that flips the binary into portable mode at runtime (data stored next
+        # to the exe, no install, no system traces). The NSIS installer does NOT
+        # ship the marker, so the same compiled exe serves both forms. Written
+        # under bundle/ so the existing artifact upload glob picks it up.
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.app-version.outputs.version }}"
+          case "${{ matrix.target }}" in
+            aarch64-pc-windows-msvc) ARCH="arm64" ;;
+            *) ARCH="x64" ;;
+          esac
+
+          # x64 builds with the host default target (args=""), landing in
+          # target/release; arm64 cross-builds with --target into target/<triple>.
+          if [ -n "${{ matrix.args }}" ]; then
+            RELEASE_DIR="src-tauri/target/${{ matrix.target }}/release"
+          else
+            RELEASE_DIR="src-tauri/target/release"
+          fi
+
+          # Tauri may rename the cargo binary (uniclipboard.exe) to the
+          # productName (UniClipboard.exe); accept either, ship as UniClipboard.exe.
+          EXE=""
+          for cand in "UniClipboard.exe" "uniclipboard.exe"; do
+            if [ -f "$RELEASE_DIR/$cand" ]; then EXE="$RELEASE_DIR/$cand"; break; fi
+          done
+          if [ -z "$EXE" ]; then
+            echo "::error::portable exe not found under $RELEASE_DIR"
+            ls -la "$RELEASE_DIR" || true
+            exit 1
+          fi
+
+          STAGE="portable-stage"
+          OUT_DIR="$RELEASE_DIR/bundle/portable"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE" "$OUT_DIR"
+          cp "$EXE" "$STAGE/UniClipboard.exe"
+          # Marker file: presence next to the exe enables portable mode.
+          : > "$STAGE/portable.dat"
+          cp packaging/windows/portable/README.txt "$STAGE/README.txt"
+
+          ZIP="$OUT_DIR/UniClipboard_${VERSION}_${ARCH}-portable.zip"
+          powershell -Command "Compress-Archive -Path '$STAGE/*' -DestinationPath '$ZIP' -Force"
+          echo "Built portable zip:"
+          ls -la "$OUT_DIR"
 
       - name: Upload Sentry debug symbols
         # 把 release 编译出的 .dSYM (macOS) / .pdb (Windows) / DWARF (Linux)

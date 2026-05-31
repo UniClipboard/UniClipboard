@@ -25,6 +25,8 @@ on:
           - 'ubuntu-22.04'
           - 'ubuntu-22.04-arm'
           - 'windows-latest'
+          - 'windows-x86_64'
+          - 'windows-arm64'
         default: 'all'
       bump:
         description: '版本升级类型'
@@ -251,6 +253,7 @@ jobs:
             -name "*.AppImage" -o \
             -name "*.msi" -o \
             -name "*.exe" -o \
+            -name "*-portable.zip" -o \
             -name "*.sig" -o \
             -name "*.json" \
           \) | sort)

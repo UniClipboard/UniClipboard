@@ -70,7 +70,13 @@ function parseArgs() {
  *   - aarch64 + .app.tar.gz.sig  → darwin-aarch64
  *   - x64/x86_64 + .app.tar.gz.sig → darwin-x86_64
  *   - .AppImage.sig or .AppImage.tar.gz.sig → linux-x86_64
- *   - .exe.sig / .nsis.zip.sig / .msi.zip.sig → windows-x86_64
+ *   - arm64/aarch64 + .exe.sig / .nsis.zip.sig / .msi.zip.sig → windows-aarch64
+ *   - .exe.sig / .nsis.zip.sig / .msi.zip.sig (otherwise) → windows-x86_64
+ *
+ * The Windows arch split matters: the Tauri updater requests its platform key
+ * as `windows-<arch>`, so an arm64 NSIS sig MUST map to `windows-aarch64` or it
+ * would collide with the x64 entry under `windows-x86_64` and one would clobber
+ * the other (whichever scanned last), leaving one arch unable to self-update.
  *
  * Returns null if no match.
  */
@@ -100,6 +106,13 @@ function detectPlatform(filePath) {
     normalized.endsWith('.msi.zip.sig') ||
     normalized.endsWith('.exe.sig')
   ) {
+    if (
+      normalized.includes('aarch64-pc-windows') ||
+      normalized.includes('aarch64') ||
+      normalized.includes('arm64')
+    ) {
+      return 'windows-aarch64'
+    }
     return 'windows-x86_64'
   }
 
@@ -229,6 +242,8 @@ function createMockArtifacts() {
       'dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIG1pbmlzaWduIHNlY3JldCBrZXkKUldRVEFBQUFBQUFBQUFBQSttb2NrLXNpZ25hdHVyZS1saW51eA==',
     'uniclipboard_0.1.0-alpha.1_x64-setup.nsis.zip.sig':
       'dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIG1pbmlzaWduIHNlY3JldCBrZXkKUldRVEFBQUFBQUFBQUFBQSttb2NrLXNpZ25hdHVyZS13aW5kb3dz',
+    'uniclipboard_0.1.0-alpha.1_arm64-setup.nsis.zip.sig':
+      'dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIG1pbmlzaWduIHNlY3JldCBrZXkKUldRVEFBQUFBQUFBQUFBQSttb2NrLXNpZ25hdHVyZS13aW5kb3dzLWFybTY0',
   }
 
   for (const [filename, content] of Object.entries(mockFiles)) {

@@ -42,6 +42,10 @@ describe('assemble-update-manifest', () => {
       'sig-linux'
     )
     writeSigFile(path.join(artifactsDir, 'UniClipboard_0.1.0-alpha.2_x64-setup.exe.sig'), 'sig-win')
+    writeSigFile(
+      path.join(artifactsDir, 'UniClipboard_0.1.0-alpha.2_arm64-setup.exe.sig'),
+      'sig-win-arm64'
+    )
     writeSigFile(path.join(artifactsDir, 'UniClipboard-0.1.0-alpha.2-1.x86_64.rpm.sig'), 'sig-rpm')
     writeSigFile(path.join(artifactsDir, 'UniClipboard_0.1.0-alpha.2_amd64.deb.sig'), 'sig-deb')
 
@@ -74,6 +78,7 @@ describe('assemble-update-manifest', () => {
       'darwin-aarch64',
       'darwin-x86_64',
       'linux-x86_64',
+      'windows-aarch64',
       'windows-x86_64',
     ])
 
@@ -88,6 +93,9 @@ describe('assemble-update-manifest', () => {
     )
     expect(manifest.platforms['windows-x86_64'].url).toBe(
       `${baseUrl}/UniClipboard_0.1.0-alpha.2_x64-setup.exe`
+    )
+    expect(manifest.platforms['windows-aarch64'].url).toBe(
+      `${baseUrl}/UniClipboard_0.1.0-alpha.2_arm64-setup.exe`
     )
   })
 })

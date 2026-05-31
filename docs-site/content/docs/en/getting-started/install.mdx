@@ -133,19 +133,17 @@ the system directories.
   Surface Pro X); the `x64` zip is for regular Intel/AMD PCs.
 
 <Callout type="info">
-  The portable build does **not** self-update (the in-app updater runs the NSIS
-  installer, which would install into Program Files). **Check for updates** points
-  you to the release page to download a newer `*-portable.zip`; replace
-  `UniClipboard.exe` and your `data` folder is preserved. It still needs the
-  Microsoft Edge WebView2 Runtime (preinstalled on current Windows).
+  The portable build does **not** self-update (the in-app updater runs the NSIS installer, which
+  would install into Program Files). **Check for updates** points you to the release page to
+  download a newer `*-portable.zip`; replace `UniClipboard.exe` and your `data` folder is preserved.
+  It still needs the Microsoft Edge WebView2 Runtime (preinstalled on current Windows).
 </Callout>
 
 <Callout type="warn">
-  **Known limitation:** the WebView2 runtime's browser cache is still written
-  under `%LOCALAPPDATA%` and does not follow the portable folder yet, so a
-  portable run is **not 100% trace-free**. That's only the browser cache,
-  though — your actual data (database, keys, search index, logs) lives in the
-  `data\` folder next to the app.
+  **Known limitation:** the WebView2 runtime's browser cache is still written under `%LOCALAPPDATA%`
+  and does not follow the portable folder yet, so a portable run is **not 100% trace-free**. That's
+  only the browser cache, though — your actual data (database, keys, search index, logs) lives in
+  the `data\` folder next to the app.
 </Callout>
 
 Download the installer or portable zip from the

@@ -354,7 +354,14 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // 避免对用不到该功能的用户造成全局快捷键占用 / 资源浪费。
             // 运行期的开关切换由 `set_quick_panel_enabled` command 协调，
             // 这里只负责"以最近持久化的偏好启动"。
-            let (silent_start, initial_language, lan_only_active, quick_panel_enabled, auto_start) = {
+            let (
+                silent_start,
+                initial_language,
+                lan_only_active,
+                quick_panel_enabled,
+                auto_start,
+                settings_loaded,
+            ) = {
                 let settings_port = runtime.settings_port();
                 match tauri::async_runtime::block_on(settings_port.load()) {
                     Ok(settings) => {
@@ -366,11 +373,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         let lan_only = !settings.network.allow_relay_fallback;
                         let quick_panel = settings.quick_panel.enabled;
                         let auto = settings.general.auto_start;
-                        (silent, lang, lan_only, quick_panel, auto)
+                        (silent, lang, lan_only, quick_panel, auto, true)
                     }
                     Err(e) => {
                         warn!("Failed to load settings for startup: {}, using defaults", e);
-                        (false, "en-US".to_string(), false, false, false)
+                        (false, "en-US".to_string(), false, false, false, false)
                     }
                 }
             };
@@ -381,12 +388,19 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // installs / dev builds / moved binaries — the root cause of
             // silently-broken autostart. setup runs on the main thread, where
             // the autostart plugin's APIs are safe to call.
-            {
+            //
+            // Gate on `settings_loaded`: a transient settings read failure falls
+            // back to `auto_start = false`, and reconciling on that stale default
+            // would remove a launch-at-login entry the user had actually enabled.
+            // When settings didn't load we leave the existing OS state untouched.
+            if settings_loaded {
                 let port = crate::adapters::autostart::TauriAutostart::new(app.handle().clone());
                 if let Err(error) = crate::adapters::autostart::reconcile_autostart(&port, auto_start)
                 {
                     warn!(error = %error, auto_start, "Failed to reconcile OS autostart on startup");
                 }
+            } else {
+                warn!("Skipping OS autostart reconcile: startup settings failed to load");
             }
 
             // Initialize system tray

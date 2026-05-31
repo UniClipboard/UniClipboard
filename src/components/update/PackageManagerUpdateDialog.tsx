@@ -1,13 +1,16 @@
-//! Dialog that routes Linux deb/rpm users to their system package manager.
+//! Dialog that routes out-of-band updates (Linux deb/rpm, Windows portable
+//! zip) away from the in-app updater.
 //!
 //! Tauri's Linux updater can only download/install AppImage payloads, so
 //! invoking it on a deb/rpm install either fails outright or — worse —
 //! drops files outside the dpkg/rpm DB and leaves the system in an
-//! inconsistent state. When `UpdateContext.installKind` is `deb` or `rpm`,
-//! `AboutSection`'s check-update flow and `Sidebar`'s update indicator both
-//! mount this dialog instead of the regular update dialog. It surfaces the
-//! exact upgrade command and a copy/release-page action so the user can
-//! finish the upgrade out-of-band.
+//! inconsistent state. The Windows portable ("green") zip has the same
+//! problem in reverse: its NSIS updater installs into Program Files instead
+//! of refreshing the portable folder. When `UpdateContext.installKind` is
+//! `deb`, `rpm`, or `windowsportable`, `AboutSection`'s check-update flow and
+//! `Sidebar`'s update indicator both mount this dialog instead of the regular
+//! update dialog. For deb/rpm it surfaces the exact upgrade command; for the
+//! portable zip it points the user at the release page to grab a fresh zip.
 
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Check, Copy } from 'lucide-react'
@@ -34,7 +37,7 @@ const RELEASE_PAGE_URL = 'https://github.com/UniClipboard/UniClipboard/releases/
 interface PackageManagerUpdateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Must be `'deb'` or `'rpm'`. Other values render nothing. */
+  /** Must be `'deb'`, `'rpm'`, or `'windowsportable'`. Other values render nothing. */
   installKind: InstallKind
   /** Update metadata for version display; `null` while not checked. */
   updateInfo: UpdateMetadata | null
@@ -49,13 +52,30 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
-  if (installKind !== 'deb' && installKind !== 'rpm') return null
+  if (installKind !== 'deb' && installKind !== 'rpm' && installKind !== 'windowsportable') {
+    return null
+  }
 
-  const hintKey =
-    installKind === 'deb' ? 'update.packageManager.debHint' : 'update.packageManager.rpmHint'
-  const command = t(
-    installKind === 'deb' ? 'update.packageManager.debCommand' : 'update.packageManager.rpmCommand'
-  )
+  // The portable zip has no package-manager command — the user just downloads
+  // a fresh zip from the release page — so it renders the title/hint and the
+  // open-release-page action without the copy-able command block.
+  const isPortable = installKind === 'windowsportable'
+
+  const title = isPortable
+    ? t('update.packageManager.portableTitle')
+    : t('update.packageManager.title')
+  const hintKey = isPortable
+    ? 'update.packageManager.portableHint'
+    : installKind === 'deb'
+      ? 'update.packageManager.debHint'
+      : 'update.packageManager.rpmHint'
+  const command = isPortable
+    ? ''
+    : t(
+        installKind === 'deb'
+          ? 'update.packageManager.debCommand'
+          : 'update.packageManager.rpmCommand'
+      )
 
   const handleCopy = async () => {
     try {
@@ -78,7 +98,7 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t('update.packageManager.title')}</AlertDialogTitle>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               {updateInfo && (
@@ -94,17 +114,19 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
                 </div>
               )}
               <p className="text-sm text-muted-foreground">{t(hintKey)}</p>
-              <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-xs text-foreground break-all">
-                {command}
-                <button
-                  type="button"
-                  aria-label={t('update.packageManager.copyCommand')}
-                  onClick={handleCopy}
-                  className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                </button>
-              </div>
+              {!isPortable && (
+                <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-xs text-foreground break-all">
+                  {command}
+                  <button
+                    type="button"
+                    aria-label={t('update.packageManager.copyCommand')}
+                    onClick={handleCopy}
+                    className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                  </button>
+                </div>
+              )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>

@@ -333,6 +333,7 @@ pub(crate) fn install_kind_for_telemetry(kind: InstallKind) -> AnalyticsInstallK
     match kind {
         InstallKind::Macos => AnalyticsInstallKind::Macos,
         InstallKind::Windows => AnalyticsInstallKind::Windows,
+        InstallKind::WindowsPortable => AnalyticsInstallKind::WindowsPortable,
         InstallKind::AppImage => AnalyticsInstallKind::AppImage,
         InstallKind::Deb => AnalyticsInstallKind::Deb,
         InstallKind::Rpm => AnalyticsInstallKind::Rpm,
@@ -1016,6 +1017,11 @@ pub async fn install_update(
 pub enum InstallKind {
     Macos,
     Windows,
+    /// Windows portable ("green") zip. The in-app updater would try to run the
+    /// NSIS installer, which installs into Program Files rather than updating
+    /// the portable folder — so the frontend routes this kind to a
+    /// "download the new portable zip" dialog instead of self-installing.
+    WindowsPortable,
     AppImage,
     Deb,
     Rpm,
@@ -1070,7 +1076,13 @@ pub(crate) fn detect_install_kind() -> InstallKind {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn detect_install_kind() -> InstallKind {
-    InstallKind::Windows
+    // Portable ("green") builds ship a marker next to the exe; they must not
+    // self-install via NSIS. Route them to the manual-download dialog instead.
+    if uc_platform::portable::is_portable() {
+        InstallKind::WindowsPortable
+    } else {
+        InstallKind::Windows
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -1215,12 +1227,14 @@ mod tests {
 
     #[test]
     fn install_kind_wire_format_matches_frontend_union() {
-        // The TS side has `type InstallKind = "macos" | "windows" | "appimage"
-        // | "deb" | "rpm" | "unknown"`. Changing serde rename_all here will
-        // silently desync the package-manager dialog routing.
+        // The TS side has `type InstallKind = "macos" | "windows"
+        // | "windowsportable" | "appimage" | "deb" | "rpm" | "unknown"`.
+        // Changing serde rename_all here will silently desync the
+        // package-manager / portable dialog routing.
         for (variant, expected) in [
             (InstallKind::Macos, r#""macos""#),
             (InstallKind::Windows, r#""windows""#),
+            (InstallKind::WindowsPortable, r#""windowsportable""#),
             (InstallKind::AppImage, r#""appimage""#),
             (InstallKind::Deb, r#""deb""#),
             (InstallKind::Rpm, r#""rpm""#),
@@ -1254,6 +1268,7 @@ mod tests {
         for (src, expected_wire) in [
             (InstallKind::Macos, r#""macos""#),
             (InstallKind::Windows, r#""windows""#),
+            (InstallKind::WindowsPortable, r#""windowsportable""#),
             (InstallKind::AppImage, r#""appimage""#),
             (InstallKind::Deb, r#""deb""#),
             (InstallKind::Rpm, r#""rpm""#),

@@ -147,6 +147,7 @@ function renderAboutSection({
           downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
           installKind: 'macos',
           isSystemManaged: false,
+          isManualUpdate: false,
         }}
       >
         <AboutSection />

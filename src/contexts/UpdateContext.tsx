@@ -37,6 +37,10 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [installKind, setInstallKind] = useState<InstallKind | null>(null)
   const isSystemManaged = installKind === 'deb' || installKind === 'rpm'
+  // Portable Windows zip joins deb/rpm in "can't self-install" territory: its
+  // NSIS updater would install into Program Files instead of refreshing the
+  // portable folder, so it's routed to the manual-download dialog too.
+  const isManualUpdate = isSystemManaged || installKind === 'windowsportable'
 
   const activeCheckRef = useRef<Promise<UpdateMetadata | null> | null>(null)
   const activeCheckChannelRef = useRef<UpdateChannel | null>(null)
@@ -347,6 +351,7 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       installUpdate: doInstallUpdate,
       installKind,
       isSystemManaged,
+      isManualUpdate,
     }),
     [
       state,
@@ -358,6 +363,7 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       doInstallUpdate,
       installKind,
       isSystemManaged,
+      isManualUpdate,
     ]
   )
 

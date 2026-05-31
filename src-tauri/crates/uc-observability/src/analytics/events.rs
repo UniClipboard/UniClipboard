@@ -857,6 +857,9 @@ pub enum InstallKind {
     Macos,
     /// Windows `.exe` / `.msi`（走 Tauri updater）。
     Windows,
+    /// Windows 便携 ("green") zip（走 `PackageManagerUpdateDialog` 引导，
+    /// 不走应用内 NSIS 自更新）。
+    WindowsPortable,
     /// Linux AppImage（走 Tauri updater）。
     AppImage,
     /// Debian / Ubuntu 包（走 `PackageManagerUpdateDialog` 引导）。
@@ -1740,6 +1743,7 @@ mod tests {
         for (val, expected) in [
             (InstallKind::Macos, "macos"),
             (InstallKind::Windows, "windows"),
+            (InstallKind::WindowsPortable, "windowsportable"),
             (InstallKind::AppImage, "appimage"),
             (InstallKind::Deb, "deb"),
             (InstallKind::Rpm, "rpm"),

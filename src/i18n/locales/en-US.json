@@ -42,8 +42,10 @@
     "installing": "Installing...",
     "packageManager": {
       "title": "Please upgrade via your package manager",
+      "portableTitle": "Please download the new portable version",
       "debHint": "UniClipboard was installed via apt (Debian/Ubuntu). Run this in a terminal to upgrade:",
       "rpmHint": "UniClipboard was installed via dnf/yum (Fedora/RHEL). Run this in a terminal to upgrade:",
+      "portableHint": "You're running the portable build. It doesn't update in place — download the new portable zip from the release page and replace the executable (your data folder stays untouched).",
       "debCommand": "sudo apt update && sudo apt install --only-upgrade uniclipboard",
       "rpmCommand": "sudo dnf upgrade uniclipboard",
       "copyCommand": "Copy command",

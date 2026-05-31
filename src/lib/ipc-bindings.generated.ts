@@ -678,7 +678,14 @@ export type FactoryResetResult = Record<string, never>;
  *  system-packaged Linux build: Tauri's Linux updater only supports
  *  AppImage, so deb/rpm users must be routed to their package manager.
  */
-export type InstallKind = "macos" | "windows" | "appimage" | "deb" | "rpm" | "unknown";
+export type InstallKind = "macos" | "windows" | 
+/**
+ *  Windows portable ("green") zip. The in-app updater would try to run the
+ *  NSIS installer, which installs into Program Files rather than updating
+ *  the portable folder — so the frontend routes this kind to a
+ *  "download the new portable zip" dialog instead of self-installing.
+ */
+"windowsportable" | "appimage" | "deb" | "rpm" | "unknown";
 
 /**  `list_mobile_lan_interfaces` 单条结果。 */
 export type LanInterfaceView = {

@@ -179,7 +179,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     downloadUpdate,
     cancelDownload,
     installKind,
-    isSystemManaged,
+    isManualUpdate,
   } = useUpdate()
   const phase = state.phase
 
@@ -259,7 +259,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const handleIndicatorClick = () => {
     const uiPhase = toUiPhase(phase)
     if (!uiPhase) return
-    if (isSystemManaged) {
+    if (isManualUpdate) {
       captureUpdateDialogOpened('sidebar_icon', uiPhase)
       setPackageManagerDialogOpen(true)
     } else {

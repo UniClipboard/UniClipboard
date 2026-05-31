@@ -41,6 +41,14 @@ export interface UpdateContextType {
    * manager (deb/rpm). In-app download & install must be suppressed.
    */
   isSystemManaged: boolean
+  /**
+   * Convenience: `true` when updates must be applied out-of-band rather than
+   * via the in-app updater — system packages (deb/rpm) plus the Windows
+   * portable zip (`windowsportable`), whose NSIS updater would install into
+   * Program Files instead of refreshing the portable folder. Callers route
+   * these to `PackageManagerUpdateDialog` instead of self-installing.
+   */
+  isManualUpdate: boolean
 }
 
 export const UpdateContext = createContext<UpdateContextType | undefined>(undefined)

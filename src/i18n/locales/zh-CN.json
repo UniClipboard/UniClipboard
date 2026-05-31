@@ -42,8 +42,10 @@
     "installing": "正在安装...",
     "packageManager": {
       "title": "请通过系统包管理器升级",
+      "portableTitle": "请下载新的便携版",
       "debHint": "你当前通过 apt（Debian/Ubuntu）安装了 UniClipboard，请在终端执行以下命令升级：",
       "rpmHint": "你当前通过 dnf/yum（Fedora/RHEL）安装了 UniClipboard，请在终端执行以下命令升级：",
+      "portableHint": "你正在运行便携版，它不会原地自更新——请从发布页下载新的便携版 zip 并替换可执行文件（你的数据目录不受影响）。",
       "debCommand": "sudo apt update && sudo apt install --only-upgrade uniclipboard",
       "rpmCommand": "sudo dnf upgrade uniclipboard",
       "copyCommand": "复制命令",

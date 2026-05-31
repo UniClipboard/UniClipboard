@@ -512,7 +512,15 @@ mod tests {
 
     #[test]
     fn should_auto_download_blocks_system_packages_and_unknown() {
-        for kind in [InstallKind::Deb, InstallKind::Rpm, InstallKind::Unknown] {
+        // WindowsPortable is deliberately NOT in the in-place list: the NSIS
+        // updater would install into Program Files instead of refreshing the
+        // portable folder, so portable users update by downloading a new zip.
+        for kind in [
+            InstallKind::Deb,
+            InstallKind::Rpm,
+            InstallKind::WindowsPortable,
+            InstallKind::Unknown,
+        ] {
             assert!(
                 !should_auto_download(kind),
                 "expected NO auto-download for {kind:?} (handled by package manager / defensive)"

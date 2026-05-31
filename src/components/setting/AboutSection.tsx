@@ -78,7 +78,7 @@ const AboutSection: React.FC = () => {
     installUpdate,
     downloadProgress,
     installKind,
-    isSystemManaged,
+    isManualUpdate,
   } = useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
   const [autoCheckUpdate, setAutoCheckUpdate] = useState(setting?.general.autoCheckUpdate ?? true)
@@ -221,8 +221,10 @@ const AboutSection: React.FC = () => {
       const uiPhase = toUiPhase(downloadProgress.phase) ?? 'available'
       captureUpdateDialogOpened('sidebar_icon', uiPhase)
       // deb/rpm: Tauri's in-app updater can't install system packages; route
-      // the user to apt/dnf with a copy-able command instead.
-      if (isSystemManaged) {
+      // the user to apt/dnf with a copy-able command instead. windowsportable:
+      // the NSIS updater would install into Program Files, not the portable
+      // folder, so route it to the same "download out-of-band" dialog.
+      if (isManualUpdate) {
         setPackageManagerDialogOpen(true)
       } else {
         setUpdateDialogOpen(true)

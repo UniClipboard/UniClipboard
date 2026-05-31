@@ -87,6 +87,7 @@ function buildUpdateValue(state: UpdateState): UpdateContextType {
     installUpdate: vi.fn().mockResolvedValue(undefined),
     installKind: 'macos',
     isSystemManaged: false,
+    isManualUpdate: false,
   }
 }
 

@@ -282,8 +282,12 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
   const patch: SettingsPatchRequest = {}
 
   if (settings.general) {
+    // NOTE: `autoStart` is intentionally NOT carried through this patch. The OS
+    // launch-at-login registration is a desktop-host side effect that the
+    // settings/daemon pipeline does not perform. Autostart is toggled via the
+    // dedicated `update_autostart` command (see `@/api/tauri-command/settings`),
+    // which persists the preference and applies the OS state atomically.
     const {
-      autoStart,
       silentStart,
       autoCheckUpdate,
       autoDownloadUpdate,
@@ -301,7 +305,6 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
     } = settings.general
 
     patch.general = {
-      autoStart,
       silentStart,
       autoCheckUpdate,
       autoDownloadUpdate,

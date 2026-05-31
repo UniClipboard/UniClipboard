@@ -354,7 +354,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // 避免对用不到该功能的用户造成全局快捷键占用 / 资源浪费。
             // 运行期的开关切换由 `set_quick_panel_enabled` command 协调，
             // 这里只负责"以最近持久化的偏好启动"。
-            let (silent_start, initial_language, lan_only_active, quick_panel_enabled) = {
+            let (silent_start, initial_language, lan_only_active, quick_panel_enabled, auto_start) = {
                 let settings_port = runtime.settings_port();
                 match tauri::async_runtime::block_on(settings_port.load()) {
                     Ok(settings) => {
@@ -365,14 +365,29 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         // 与 NetworkSection.tsx / SpaceMembersPanel.tsx 同源。
                         let lan_only = !settings.network.allow_relay_fallback;
                         let quick_panel = settings.quick_panel.enabled;
-                        (silent, lang, lan_only, quick_panel)
+                        let auto = settings.general.auto_start;
+                        (silent, lang, lan_only, quick_panel, auto)
                     }
                     Err(e) => {
                         warn!("Failed to load settings for startup: {}, using defaults", e);
-                        (false, "en-US".to_string(), false, false)
+                        (false, "en-US".to_string(), false, false, false)
                     }
                 }
             };
+
+            // Reconcile the OS launch-at-login registration with the persisted
+            // preference. When enabled this always rewrites the entry to the
+            // current executable path, self-healing stale entries left by older
+            // installs / dev builds / moved binaries — the root cause of
+            // silently-broken autostart. setup runs on the main thread, where
+            // the autostart plugin's APIs are safe to call.
+            {
+                let port = crate::adapters::autostart::TauriAutostart::new(app.handle().clone());
+                if let Err(error) = crate::adapters::autostart::reconcile_autostart(&port, auto_start)
+                {
+                    warn!(error = %error, auto_start, "Failed to reconcile OS autostart on startup");
+                }
+            }
 
             // Initialize system tray
             let tray_state = app.state::<TrayState>();

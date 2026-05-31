@@ -110,6 +110,7 @@ const setup = (theme: Settings['general']['theme'] = 'light') => {
     error: null,
     updateSetting: vi.fn(),
     updateGeneralSetting,
+    updateAutostart: vi.fn(),
     updateSyncSetting: vi.fn(),
     updateSecuritySetting: vi.fn(),
     updateRetentionPolicy: vi.fn(),

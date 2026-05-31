@@ -55,9 +55,7 @@ pub fn build() -> Builder<tauri::Wry> {
             // ── restart (Phase 95) ──────────────────────────────────────────────
             crate::commands::restart::restart_app,
             // ── autostart ───────────────────────────────────────────────────────
-            crate::commands::autostart::enable_autostart,
-            crate::commands::autostart::disable_autostart,
-            crate::commands::autostart::is_autostart_enabled,
+            crate::commands::autostart::update_autostart,
             // ── updater ─────────────────────────────────────────────────────────
             crate::commands::updater::check_for_update,
             crate::commands::updater::download_update,

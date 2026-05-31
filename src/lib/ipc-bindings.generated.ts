@@ -82,53 +82,21 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("restart_app", { trace })),
 	/**
-	 *  Enable autostart (launch app on system login)
-	 *  启用开机自启动（系统登录时启动应用）
+	 *  Update the "launch at login" preference and apply it to the OS.
 	 * 
-	 *  ## Architecture / 架构
+	 *  Persists `auto_start` through the settings facade first (the stored
+	 *  preference is the source of truth), then reconciles the OS-level launch
+	 *  registration via [`AutostartPort`]. If the OS step fails, the persisted
+	 *  setting is rolled back so settings never claim a state the OS rejected.
 	 * 
-	 *  This is a simple wrapper command that delegates to the tauri_plugin_autostart plugin.
-	 *  No use case is needed as this is a platform plugin wrapper, not business logic.
-	 *  这是一个简单的包装命令，委托给 tauri_plugin_autostart 插件。
-	 *  不需要用例，因为这是平台插件包装器，而非业务逻辑。
+	 *  更新开机自启动偏好并应用到操作系统：先经设置 facade 持久化（存储偏好为
+	 *  真相源），再通过 [`AutostartPort`] 对齐 OS 启动项；OS 步骤失败时回滚已
+	 *  持久化的设置，避免设置声称一个 OS 未能达成的状态。
 	 */
-	enableAutostart: (trace: {
+	updateAutostart: (enabled: boolean, trace: {
 	trace_id: string,
 	timestamp: number,
-} | null) => typedError<null, string>(__TAURI_INVOKE("enable_autostart", { trace })),
-	/**
-	 *  Disable autostart
-	 *  禁用开机自启动
-	 * 
-	 *  ## Architecture / 架构
-	 * 
-	 *  This is a simple wrapper command that delegates to the tauri_plugin_autostart plugin.
-	 *  No use case is needed as this is a platform plugin wrapper, not business logic.
-	 *  这是一个简单的包装命令，委托给 tauri_plugin_autostart 插件。
-	 *  不需要用例，因为这是平台插件包装器，而非业务逻辑。
-	 */
-	disableAutostart: (trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<null, string>(__TAURI_INVOKE("disable_autostart", { trace })),
-	/**
-	 *  Check if autostart is enabled
-	 *  检查是否已启用开机自启动
-	 * 
-	 *  ## Returns / 返回值
-	 *  - `true` if autostart is enabled, `false` otherwise
-	 * 
-	 *  ## Architecture / 架构
-	 * 
-	 *  This is a simple wrapper command that delegates to the tauri_plugin_autostart plugin.
-	 *  No use case is needed as this is a platform plugin wrapper, not business logic.
-	 *  这是一个简单的包装命令，委托给 tauri_plugin_autostart 插件。
-	 *  不需要用例，因为这是平台插件包装器，而非业务逻辑。
-	 */
-	isAutostartEnabled: (trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<boolean, string>(__TAURI_INVOKE("is_autostart_enabled", { trace })),
+} | null) => typedError<null, CommandError>(__TAURI_INVOKE("update_autostart", { enabled, trace })),
 	/**
 	 *  Tauri command — thin shell over [`do_check_for_update`] that emits
 	 *  `update_check_performed { source: "manual", ... }` after the inner

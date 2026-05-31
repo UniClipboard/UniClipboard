@@ -242,6 +242,12 @@ export interface SettingContextType {
   error: string | null
   updateSetting: (newSetting: Settings) => Promise<void>
   updateGeneralSetting: (newGeneralSetting: Partial<GeneralSettings>) => Promise<void>
+  /**
+   * Toggle "launch at login". Goes through the dedicated `update_autostart`
+   * Tauri command (persist + OS launch registration in one call) rather than
+   * the daemon settings patch, which performs no OS side effects.
+   */
+  updateAutostart: (enabled: boolean) => Promise<void>
   updateSyncSetting: (newSyncSetting: Partial<SyncSettings>) => Promise<void>
   updateSecuritySetting: (newSecuritySetting: Partial<SecuritySettings>) => Promise<void>
   updateRetentionPolicy: (newPolicy: Partial<RetentionPolicy>) => Promise<void>

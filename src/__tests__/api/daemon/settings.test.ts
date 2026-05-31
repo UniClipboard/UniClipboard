@@ -173,7 +173,11 @@ describe('Settings API', () => {
       expect((opts as { method: string }).method).toBe('PUT')
       const body = (opts as unknown as { body: Record<string, unknown> }).body
       expect(body).toHaveProperty('general')
-      expect(body.general as Record<string, unknown>).toHaveProperty('autoStart')
+      // autoStart is intentionally NOT sent through the daemon patch: the OS
+      // launch-at-login registration is a desktop-host side effect the settings
+      // pipeline does not perform. It is toggled via the dedicated
+      // `update_autostart` command instead (see toSettingsPatchRequest).
+      expect(body.general as Record<string, unknown>).not.toHaveProperty('autoStart')
       expect(body.general as Record<string, unknown>).toHaveProperty('theme')
       expect(body.general as Record<string, unknown>).toHaveProperty('usageAnalyticsEnabled', true)
     })

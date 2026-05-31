@@ -21,7 +21,7 @@ const log = createLogger('general-section')
 
 export default function GeneralSection() {
   const { t } = useTranslation()
-  const { setting, loading: settingLoading, updateGeneralSetting } = useSetting()
+  const { setting, loading: settingLoading, updateGeneralSetting, updateAutostart } = useSetting()
   const [autoStart, setAutoStart] = useState(setting?.general.autoStart ?? false)
   const [silentStart, setSilentStart] = useState(setting?.general.silentStart ?? false)
   const [telemetryEnabled, setTelemetryEnabled] = useState(
@@ -39,7 +39,7 @@ export default function GeneralSection() {
   const [saving, setSaving] = useState(false)
   const isBusy = settingLoading || saving
 
-  // 从配置中读取设置（auto_start 状态由后端管理，直接从 settings 读取）
+  // 从配置中读取设置（auto_start 展示值来自持久化设置；切换走专用命令，见下）
   useEffect(() => {
     if (!setting?.general) return
     setAutoStart(setting.general.autoStart)
@@ -54,11 +54,13 @@ export default function GeneralSection() {
     setDeviceName(setting.general.deviceName ?? '')
   }, [setting])
 
-  // 处理自启动开关变化（后端 update_settings 会自动调用 ApplyAutostartSetting）
+  // 处理自启动开关变化。走专用命令 update_autostart：在同一后端调用里持久化
+  // auto_start 偏好并应用 OS 启动项注册，失败会回滚设置。不能走通用
+  // updateGeneralSetting —— 设置链路不会触发任何 OS 副作用。
   const handleAutoStartChange = async (checked: boolean) => {
     try {
       setSaving(true)
-      await updateGeneralSetting({ autoStart: checked })
+      await updateAutostart(checked)
       setAutoStart(checked)
     } catch (error) {
       log.error({ err: error }, '更改自启动状态失败')

@@ -126,6 +126,7 @@ function renderAboutSection({
         error: null,
         updateSetting: vi.fn(),
         updateGeneralSetting,
+        updateAutostart: vi.fn(),
         updateSyncSetting: vi.fn(),
         updateSecuritySetting: vi.fn(),
         updateRetentionPolicy: vi.fn(),

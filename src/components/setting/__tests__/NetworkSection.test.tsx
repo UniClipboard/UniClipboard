@@ -122,6 +122,7 @@ const setupSetting = ({
     error,
     updateSetting: vi.fn(),
     updateGeneralSetting: vi.fn(),
+    updateAutostart: vi.fn(),
     updateSyncSetting: vi.fn(),
     updateSecuritySetting: vi.fn(),
     updateRetentionPolicy: vi.fn(),

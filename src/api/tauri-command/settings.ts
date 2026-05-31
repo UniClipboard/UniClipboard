@@ -66,6 +66,20 @@ export async function setQuickPanelEnabled(enabled: boolean): Promise<void> {
 }
 
 /**
+ * Set "launch at login" — persists the `auto_start` preference AND applies the
+ * OS-level launch registration in one backend call, rolling back the setting if
+ * the OS step fails. This is the only path that should toggle autostart: the
+ * generic settings patch deliberately omits `autoStart` so the OS side effect
+ * is never silently skipped (see `toSettingsPatchRequest` in
+ * `@/api/daemon/settings`).
+ *
+ * Backend: `commands::autostart::update_autostart`.
+ */
+export async function updateAutostart(enabled: boolean): Promise<void> {
+  await commands.updateAutostart(enabled)
+}
+
+/**
  * Run a one-shot reachability probe against an iroh relay URL.
  *
  * Returns a discriminated `RelayProbeOutcome` — successful handshakes and

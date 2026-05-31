@@ -55,10 +55,14 @@ impl SlidingWindowRateLimiter {
         let mut inner = self.inner.write().await;
         let entries = &mut inner.entries;
 
-        // Prune stale entries (older than window)
-        let cutoff = now - window;
-        if let Some(timestamps) = entries.get_mut(client_id) {
-            timestamps.retain(|&t| t > cutoff);
+        // Prune stale entries (older than window). On Windows `tokio::time::Instant`
+        // is anchored at system boot, so within the first `window` after boot
+        // `now - window` underflows and panics. In that case no entry can be stale
+        // yet, so skip pruning instead of subtracting.
+        if let Some(cutoff) = now.checked_sub(window) {
+            if let Some(timestamps) = entries.get_mut(client_id) {
+                timestamps.retain(|&t| t > cutoff);
+            }
         }
 
         // Check current count
@@ -78,7 +82,11 @@ impl SlidingWindowRateLimiter {
     pub async fn cleanup_stale(&self) {
         let now = tokio::time::Instant::now();
         let window = std::time::Duration::from_secs(self.window_secs);
-        let cutoff = now - window;
+        // See `check`: within the first `window` after boot the subtraction
+        // underflows on Windows and there is nothing to clean up yet.
+        let Some(cutoff) = now.checked_sub(window) else {
+            return;
+        };
 
         let mut inner = self.inner.write().await;
         for timestamps in inner.entries.values_mut() {
@@ -90,5 +98,39 @@ impl SlidingWindowRateLimiter {
 impl Default for SlidingWindowRateLimiter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a limiter whose window is larger than any possible process uptime,
+    /// so `now - window` underflows `Instant` deterministically. This reproduces
+    /// the Windows boot-time crash (where `tokio::time::Instant::now()` is anchored
+    /// at boot and is smaller than the window) without depending on real uptime.
+    fn limiter_with_overflowing_window() -> SlidingWindowRateLimiter {
+        SlidingWindowRateLimiter {
+            inner: Arc::new(RwLock::new(RateLimiterInner {
+                entries: HashMap::new(),
+            })),
+            max_requests: MAX_REQUESTS,
+            window_secs: u64::MAX,
+        }
+    }
+
+    #[tokio::test]
+    async fn check_does_not_panic_when_window_exceeds_uptime() {
+        let limiter = limiter_with_overflowing_window();
+        // Must not panic on `now - window` underflow, and the request is allowed.
+        assert!(limiter.check("client-a").await);
+    }
+
+    #[tokio::test]
+    async fn cleanup_stale_does_not_panic_when_window_exceeds_uptime() {
+        let limiter = limiter_with_overflowing_window();
+        limiter.check("client-a").await;
+        // Must not panic on `now - window` underflow.
+        limiter.cleanup_stale().await;
     }
 }

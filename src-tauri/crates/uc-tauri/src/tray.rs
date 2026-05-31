@@ -84,17 +84,36 @@ impl TrayState {
         let restart = MenuItem::with_id(app, "tray.restart", labels.restart, true, None::<&str>)?;
         let quit = MenuItem::with_id(app, "tray.quit", labels.quit, true, None::<&str>)?;
 
+        // Debug-only: open the updater window straight from the tray (with dev
+        // mock data). Lets us trigger the popup while the app is a no-Dock
+        // Accessory background process (main window hidden) — the exact state
+        // needed to verify the popup surfaces on top. Not created in release.
+        #[cfg(debug_assertions)]
+        let dev_open_updater = MenuItem::with_id(
+            app,
+            "tray.dev_open_updater",
+            "打开更新窗 (dev)",
+            true,
+            None::<&str>,
+        )?;
+
         // Build the context menu.
         // 布局意图:
         //   - "检查更新" 紧贴 "设置",语义上属于"应用维护"组
         //   - "重启" 与 "退出" 同组(都是进程级动作),但用分隔符与上方拉开
         //     一些距离,降低"想点退出却点到重启"的误触
-        let menu = MenuBuilder::new(app)
+        #[cfg_attr(not(debug_assertions), allow(unused_mut))]
+        let mut menu_builder = MenuBuilder::new(app)
             .item(&status)
             .separator()
             .item(&open)
             .item(&settings)
-            .item(&check_update)
+            .item(&check_update);
+        #[cfg(debug_assertions)]
+        {
+            menu_builder = menu_builder.separator().item(&dev_open_updater);
+        }
+        let menu = menu_builder
             .separator()
             .item(&restart)
             .item(&quit)
@@ -125,6 +144,17 @@ impl TrayState {
                     tauri::async_runtime::spawn(async move {
                         crate::commands::updater::perform_manual_check_from_tray(&app).await;
                     });
+                }
+                #[cfg(debug_assertions)]
+                "tray.dev_open_updater" => {
+                    // Debug aid: surface the updater window (dev mock data) so we
+                    // can verify it pops to the top even from the no-Dock
+                    // Accessory state. Mirrors the `dev_open_updater_window`
+                    // command but reachable from the tray without the main window.
+                    if let Err(e) = crate::update_scheduler::open_or_focus_updater_window(app, true)
+                    {
+                        warn!("Failed to open updater window from tray (dev): {}", e);
+                    }
                 }
                 "tray.restart" => {
                     // Fire-and-forget。`perform_restart` 内部走 graceful

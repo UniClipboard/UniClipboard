@@ -22,8 +22,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rand::Rng;
-use tokio::time::Instant;
 use tauri::{AppHandle, Manager};
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 use uc_core::ports::{SettingsPort, SetupStatusPort};

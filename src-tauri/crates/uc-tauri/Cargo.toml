@@ -96,10 +96,10 @@ windows = { version = "0.61", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow", "NSColor", "NSGraphics", "NSWorkspace", "NSRunningApplication", "NSStackView", "NSProgressIndicator", "NSTextField", "NSText", "NSButton", "NSControl", "NSCell", "NSView", "NSVisualEffectView", "NSLayoutConstraint", "NSFont", "objc2-quartz-core", "libc"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow", "NSColor", "NSGraphics", "NSWorkspace", "NSRunningApplication", "NSStackView", "NSProgressIndicator", "NSTextField", "NSText", "NSButton", "NSControl", "NSCell", "NSView", "NSVisualEffectView", "NSLayoutConstraint", "NSFont", "objc2-quartz-core", "libc"] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
 core-graphics = "0.24"
-objc2-foundation = { version = "0.3", features = ["NSGeometry", "objc2-core-foundation", "NSBackgroundActivityScheduler", "NSString", "NSDate", "block2"] }
+objc2-foundation = { version = "0.3", features = ["NSBundle", "NSGeometry", "objc2-core-foundation", "NSBackgroundActivityScheduler", "NSString", "NSDate", "block2"] }
 # block2 drives the NSBackgroundActivityScheduler completion-handler block used
 # by the update scheduler's macOS wake source (background_activity_macos.rs).
 block2 = "0.6"

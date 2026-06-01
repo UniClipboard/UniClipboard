@@ -410,9 +410,16 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 // Non-fatal: continue startup without tray
             }
 
+            // 仅在静默启动时隐藏 Dock。非静默启动时 app 以 `Regular` 起步,
+            // 紧接着会 `show_main_window`;若此处先翻成 `Accessory` 再翻回
+            // `Regular`,macOS(尤其 Sequoia/Tahoe)会把 app 重新塞回 Dock 却
+            // 不重读 bundle 图标,留下「运行小圆点 + 空白图标」。静默启动没有
+            // 这次紧接着的回翻,照常隐藏即可。
             #[cfg(target_os = "macos")]
-            if let Err(error) = app.handle().set_dock_visibility(false) {
-                warn!(error = %error, "Failed to hide Dock icon during startup");
+            if silent_start {
+                if let Err(error) = app.handle().set_dock_visibility(false) {
+                    warn!(error = %error, "Failed to hide Dock icon during startup");
+                }
             }
 
             // Register global shortcut plugin (empty — shortcuts registered dynamically).

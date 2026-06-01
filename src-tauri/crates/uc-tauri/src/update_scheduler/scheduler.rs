@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rand::Rng;
+use tokio::time::Instant;
 use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -167,9 +168,14 @@ async fn main_loop(
             sleep_secs = sleep_dur.as_secs(),
             "iteration done; scheduling next"
         );
+        // Create a single sleep deadline to preserve the cadence even when a wake is skipped.
+        let deadline = Instant::now() + sleep_dur;
+        let sleep_future = tokio::time::sleep_until(deadline);
+        tokio::pin!(sleep_future);
+
         tokio::select! {
             _ = token.cancelled() => return,
-            _ = tokio::time::sleep(sleep_dur) => {
+            _ = &mut sleep_future => {
                 // 整段 cadence 睡满 → 正常补检查。
                 outcome = run_one_iteration(deps, install_kind).await;
             }
@@ -196,7 +202,8 @@ async fn main_loop(
                             seconds_since = since,
                             "native wake source fired but checked recently; skipping"
                         );
-                        // outcome 不变 → 下一轮继续按原 cadence 排程。
+                        // Preserve the original cadence by continuing to wait on the same sleep deadline.
+                        continue;
                     }
                 }
                 None => {

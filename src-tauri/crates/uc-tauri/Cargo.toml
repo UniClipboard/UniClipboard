@@ -87,6 +87,10 @@ windows = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Threading",
+    # Suspend/resume notification for the update scheduler's wake source
+    # (resume_listener_windows.rs): RegisterSuspendResumeNotification +
+    # DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS live under Win32_System_Power.
+    "Win32_System_Power",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -95,7 +99,10 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow", "NSColor", "NSGraphics", "NSWorkspace", "NSRunningApplication", "NSStackView", "NSProgressIndicator", "NSTextField", "NSText", "NSButton", "NSControl", "NSCell", "NSView", "NSVisualEffectView", "NSLayoutConstraint", "NSFont", "objc2-quartz-core", "libc"] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
 core-graphics = "0.24"
-objc2-foundation = { version = "0.3", features = ["NSGeometry", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "objc2-core-foundation", "NSBackgroundActivityScheduler", "NSString", "NSDate", "block2"] }
+# block2 drives the NSBackgroundActivityScheduler completion-handler block used
+# by the update scheduler's macOS wake source (background_activity_macos.rs).
+block2 = "0.6"
 
 [dev-dependencies]
 uc-platform = { path = "../uc-platform", features = ["test-helpers"] }

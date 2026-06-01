@@ -101,7 +101,7 @@ pub fn open_or_focus_updater_window(app: &AppHandle, dev: bool) -> Result<(), ta
 ///   apps regardless, keeping it visible even when activation didn't fully take.
 ///
 /// AppKit calls must run on the main thread. `open_or_focus_updater_window` is
-/// invoked from the scheduler / window_show_check on a tokio worker thread, so
+/// invoked from the scheduler / manual tray check on a tokio worker thread, so
 /// this dispatches fire-and-forget to the main thread. The `NSWindow` pointer is
 /// re-fetched inside the main-thread closure (raw pointers aren't `Send`), the
 /// same pattern as `commands::window_chrome`.

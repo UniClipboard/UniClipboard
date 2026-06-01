@@ -328,14 +328,7 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
 }
 
 /// Show the main window: make Dock icon visible on macOS, then unminimize, show, and focus.
-///
-/// Phase 5B: 在所有 caller 共享入口处触发"窗口打开顺手补一次更新检查"。
-/// helper 自带 30min 阈值 + `auto_check_update` 双重 gate，远低于阈值时
-/// 直接 return，对 UI 路径零延迟。详见
-/// [`crate::update_scheduler::window_show_check`]。
 pub fn show_main_window(app: &tauri::AppHandle) {
-    crate::update_scheduler::maybe_trigger_window_show_check(app);
-
     #[cfg(target_os = "macos")]
     if let Err(error) = app.set_dock_visibility(true) {
         warn!(error = %error, "Failed to show Dock icon before showing main window");

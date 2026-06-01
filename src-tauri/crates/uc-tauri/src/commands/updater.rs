@@ -465,7 +465,7 @@ pub(crate) async fn perform_manual_check_from_tray(app: &AppHandle) {
         }
     };
 
-    // Channel resolution mirrors the scheduler / window_show_check path:
+    // Channel resolution mirrors the scheduler path:
     // settings-pinned channel wins, otherwise detect from app version.
     let app_version = app.package_info().version.to_string();
     let resolved_channel = match runtime.settings_port().load().await {

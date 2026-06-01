@@ -48,6 +48,13 @@ pub(crate) const SUCCESS_BASE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 
 pub(crate) const SUCCESS_JITTER: Duration = Duration::from_secs(15 * 60);
 /// 失败重试间隔（Q9：固定 30min，不是指数 backoff）。
 pub(crate) const FAILURE_RETRY_INTERVAL: Duration = Duration::from_secs(30 * 60);
+/// 被「原生唤醒源」(macOS NSBackgroundActivityScheduler fire / Windows 从睡眠
+/// 恢复) 叫醒后，距上次任意 source 的 check 至少这么久，才真正补一次检查。
+///
+/// 低于它说明刚查过（例如 cadence 刚跑完、或只休眠了几分钟就恢复），跳过以免
+/// 重复打 release CDN。取 1h：远低于 6h cadence 减 tolerance，保证正常的 6h
+/// 后台活动 fire 一定能通过；又足够高，挡住频繁的 resume 抖动。
+pub(crate) const WAKE_MIN_RECHECK_SECS: i64 = 60 * 60;
 
 /// Scheduler 启动所需的全部依赖。
 ///
@@ -56,16 +63,25 @@ pub(crate) const FAILURE_RETRY_INTERVAL: Duration = Duration::from_secs(30 * 60)
 /// 路径，Phase 3C 接入）。
 ///
 /// 与"通知/弹窗/去重"相关的依赖打包在 [`NotifyContext`] 里，scheduler
-/// 主循环和 `window_show_check` 通过 `Arc<NotifyContext>` 共享同一份。
+/// 主循环和托盘手动检查通过 `Arc<NotifyContext>` 共享同一份。
 pub struct SchedulerDeps {
     pub settings_port: Arc<dyn SettingsPort>,
     pub setup_status_port: Arc<dyn SetupStatusPort>,
     pub notify: Arc<NotifyContext>,
 }
 
-/// 启动 scheduler 主循环。调用方 `run.rs:480` 内 `tauri::async_runtime::spawn`
-/// 它，把 `task_registry.child_token()` 传进来。
-pub async fn run(deps: SchedulerDeps, token: CancellationToken) {
+/// 启动 scheduler 主循环。调用方 `run.rs` 内 `task_registry.spawn` 它，把
+/// `task_registry.child_token()` 和一个 `wake_rx` 传进来。
+///
+/// `wake_rx`：平台原生唤醒源 (`wake_source`) 的接收端。macOS App Nap /
+/// Windows Modern Standby 会挂起下面 `main_loop` 里的 `tokio::sleep`，使后台
+/// 周期检查迟迟不发车（历史症状：「只有打开主窗口才检测/弹更新窗口」）。原生
+/// 唤醒源在那种状态下仍会触发，通过此 channel 把主循环从被挂起的 sleep 里叫醒。
+pub async fn run(
+    deps: SchedulerDeps,
+    wake_rx: tokio::sync::mpsc::Receiver<()>,
+    token: CancellationToken,
+) {
     info!(target: "update_scheduler", "starting");
 
     // Phase 4C: install_kind 在进程生命期内不变（用户不会从 dpkg 包切到 rpm
@@ -86,7 +102,7 @@ pub async fn run(deps: SchedulerDeps, token: CancellationToken) {
         return;
     }
     info!(target: "update_scheduler", "setup completed; entering main loop");
-    main_loop(&deps, install_kind, token).await;
+    main_loop(&deps, install_kind, wake_rx, token).await;
     info!(target: "update_scheduler", "exited main loop");
 }
 
@@ -135,9 +151,15 @@ async fn wait_for_setup(port: &Arc<dyn SetupStatusPort>, token: &CancellationTok
     }
 }
 
-async fn main_loop(deps: &SchedulerDeps, install_kind: InstallKind, token: CancellationToken) {
+async fn main_loop(
+    deps: &SchedulerDeps,
+    install_kind: InstallKind,
+    mut wake_rx: tokio::sync::mpsc::Receiver<()>,
+    token: CancellationToken,
+) {
+    // 启动即查一次（保持原行为：进入等待前先跑一轮）。
+    let mut outcome = run_one_iteration(deps, install_kind).await;
     loop {
-        let outcome = run_one_iteration(deps, install_kind).await;
         let sleep_dur = next_sleep_after(outcome);
         debug!(
             target: "update_scheduler",
@@ -147,8 +169,68 @@ async fn main_loop(deps: &SchedulerDeps, install_kind: InstallKind, token: Cance
         );
         tokio::select! {
             _ = token.cancelled() => return,
+            _ = tokio::time::sleep(sleep_dur) => {
+                // 整段 cadence 睡满 → 正常补检查。
+                outcome = run_one_iteration(deps, install_kind).await;
+            }
+            recv = wake_rx.recv() => match recv {
+                Some(()) => {
+                    // 被原生唤醒源叫醒（App Nap 退出 / 从睡眠恢复 / 后台活动 fire）。
+                    // 当 tokio sleep 在后台被挂起时，这是唯一能让 check 发车的路径。
+                    // 用墙钟 LastCheckAt 做 guard：刚查过就跳过，避免重复打 CDN。
+                    let since = deps
+                        .notify
+                        .app_handle
+                        .state::<LastCheckAt>()
+                        .seconds_since();
+                    if since >= WAKE_MIN_RECHECK_SECS {
+                        info!(
+                            target: "update_scheduler",
+                            seconds_since = since,
+                            "native wake source fired; running update check"
+                        );
+                        outcome = run_one_iteration(deps, install_kind).await;
+                    } else {
+                        debug!(
+                            target: "update_scheduler",
+                            seconds_since = since,
+                            "native wake source fired but checked recently; skipping"
+                        );
+                        // outcome 不变 → 下一轮继续按原 cadence 排程。
+                    }
+                }
+                None => {
+                    // 所有 sender 已 drop。理论上不会发生：run.rs 把一份 sender
+                    // 作为 keepalive 移进本 task。真出现就退化为纯 cadence——
+                    // 并停止 select wake_rx，否则 recv() 会立即返回 None 形成
+                    // busy loop。
+                    warn!(
+                        target: "update_scheduler",
+                        "wake channel closed; falling back to cadence-only loop"
+                    );
+                    cadence_only_loop(deps, install_kind, outcome, token).await;
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/// 唤醒 channel 关闭后的退化路径：丢掉 `wake_rx`，只靠 tokio cadence 驱动。
+/// 与改造前的 `main_loop` 行为一致——后台可能被 App Nap 拖慢，但前台仍可用。
+async fn cadence_only_loop(
+    deps: &SchedulerDeps,
+    install_kind: InstallKind,
+    mut outcome: IterationOutcome,
+    token: CancellationToken,
+) {
+    loop {
+        let sleep_dur = next_sleep_after(outcome);
+        tokio::select! {
+            _ = token.cancelled() => return,
             _ = tokio::time::sleep(sleep_dur) => {}
         }
+        outcome = run_one_iteration(deps, install_kind).await;
     }
 }
 

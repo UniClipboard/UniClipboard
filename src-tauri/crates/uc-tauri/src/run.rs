@@ -495,10 +495,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             app.manage(PendingUpdate::new());
-            // Phase 5B: `LastCheckAt` 跟踪上次任意 source 的 check 完成时间，
-            // 给 `show_main_window` 顺手检查阈值用。初始化为当前 epoch 而非 0
-            // ——避免 silent_start=false 下首次 show_main_window 与 scheduler
-            // 首次 check 双发 update_check_performed（详见 last_check_at.rs）。
+            // `LastCheckAt` 跟踪上次任意 source 的 check 完成时间，供 scheduler
+            // 被原生唤醒源叫醒时的墙钟 guard 判断「距上次检查是否够久」。初始化为
+            // 当前 epoch 而非 0——避免启动后紧接着的一次原生唤醒（如 Windows
+            // resume）误判「从没检查过」而在 scheduler 首次 check 之后立刻重复检查。
             app.manage(crate::update_scheduler::LastCheckAt::initialized_now());
 
             // Start file cache cleanup task (runs once at startup).
@@ -635,8 +635,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     &last_notified_path,
                 )
                 .await;
-                // 同一个 Arc<NotifyContext> 同时给 scheduler 和
-                // window_show_check 用：app.manage 一份，SchedulerDeps 收一份。
+                // 同一个 Arc<NotifyContext> 同时给 scheduler 和托盘手动检查
+                // 用：app.manage 一份，SchedulerDeps 收一份。
                 // 共享意味着去重 mutex / 落盘路径 / analytics 出口完全一致。
                 let notify_ctx = Arc::new(crate::update_scheduler::NotifyContext {
                     app_handle: app_handle_for_startup.clone(),
@@ -650,11 +650,27 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     setup_status_port: runtime.setup_status_port(),
                     notify: notify_ctx,
                 };
+
+                // 平台原生唤醒源：让后台周期检查在 macOS App Nap / Windows Modern
+                // Standby 下也能发车——否则 scheduler 的 tokio::sleep 被系统挂起，
+                // 更新检查只有在打开主窗口时才触发（被反复误修的老症状）。
+                //
+                // channel 容量 1：堆积多个 tick 无意义，满了 try_send 直接丢即可。
+                // 一份 sender 交给唤醒源，另一份作为 keepalive 移进 task——这样在
+                // 没有原生唤醒源的平台（Linux）上 channel 也不会提前关闭，
+                // `wake_rx.recv()` 不会返回 None 触发退化路径。
+                let (wake_tx, wake_rx) = tokio::sync::mpsc::channel::<()>(1);
+                crate::update_scheduler::start_wake_source(
+                    &app_handle_for_startup,
+                    wake_tx.clone(),
+                    crate::update_scheduler::scheduler::SUCCESS_BASE_INTERVAL,
+                );
                 runtime
                     .task_registry()
                     .spawn("update_scheduler", move |token| async move {
                         use tracing::Instrument;
-                        crate::update_scheduler::run(scheduler_deps, token)
+                        let _wake_keepalive = wake_tx;
+                        crate::update_scheduler::run(scheduler_deps, wake_rx, token)
                             .instrument(tracing::info_span!("update_scheduler"))
                             .await;
                     })

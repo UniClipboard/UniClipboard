@@ -1,7 +1,7 @@
 //! 共享的"找到新版本 → 去重 → 弹更新窗口 → 持久化已通知版本"上下文。
 //!
-//! Scheduler 主循环和 `window_show_check` 都会走这条路径，所以把所需
-//! 依赖打包成一个 struct 挂到 Tauri app state；两条路径都通过
+//! Scheduler 主循环和托盘手动检查都会走这条路径，所以把所需
+//! 依赖打包成一个 struct 挂到 Tauri app state；多条路径都通过
 //! `app.state::<Arc<NotifyContext>>()` 拿同一份，确保去重 store 的
 //! `Mutex` 是同一把、落盘路径是同一个、analytics 出口也一致。
 

@@ -27,9 +27,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// 上次 `check_for_update` 完成的 epoch 时间戳（秒）。Tauri-managed state。
 ///
-/// 任何 source（manual / scheduled / startup / window_show）的 check 完成时
-/// 调用 [`LastCheckAt::record_now`]；`show_main_window` 读 [`LastCheckAt::seconds_since`]
-/// 决定是否触发顺手检查。
+/// 任何 source（manual / scheduled / startup）的 check 完成时调用
+/// [`LastCheckAt::record_now`]；scheduler 主循环被原生唤醒源叫醒时读
+/// [`LastCheckAt::seconds_since`]，判断距上次检查是否够久、需不需要补一次。
 #[derive(Debug)]
 pub struct LastCheckAt(AtomicI64);
 

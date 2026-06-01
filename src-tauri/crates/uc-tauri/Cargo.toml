@@ -38,7 +38,7 @@ url = "2"
 # Async
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
-rand = "0.9"
+rand = "0.10"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -79,10 +79,10 @@ tracing = "0.1"
 # TrayIconBuilder::build 之前用 libloading 自己探一遍 4 个候选 .so，
 # 没一个能加载就跳过 tray init 而不是让上游 panic 撂倒整个进程。
 # 版本钉到 0.7 — 与 Cargo.lock 现有的间接依赖对齐避免双版本膨胀。
-libloading = "0.7"
+libloading = "0.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
@@ -98,7 +98,7 @@ core-foundation = "0.10"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSEvent", "NSScreen", "NSPanel", "NSResponder", "NSWindow", "NSColor", "NSGraphics", "NSWorkspace", "NSRunningApplication", "NSStackView", "NSProgressIndicator", "NSTextField", "NSText", "NSButton", "NSControl", "NSCell", "NSView", "NSVisualEffectView", "NSLayoutConstraint", "NSFont", "objc2-quartz-core", "libc"] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
-core-graphics = "0.24"
+core-graphics = "0.25"
 objc2-foundation = { version = "0.3", features = ["NSBundle", "NSGeometry", "objc2-core-foundation", "NSBackgroundActivityScheduler", "NSString", "NSDate", "block2"] }
 # block2 drives the NSBackgroundActivityScheduler completion-handler block used
 # by the update scheduler's macOS wake source (background_activity_macos.rs).
@@ -109,6 +109,6 @@ uc-platform = { path = "../uc-platform", features = ["test-helpers"] }
 sentry = { version = "0.48.1", default-features = false, features = ["test"] }
 tauri = { workspace = true, features = ["test"] }
 tempfile = "3"
-mockall = "0.13"
+mockall = "0.14"
 async-trait = "0.1"
 tokio = { version = "1", features = ["full", "test-util"] }

@@ -38,6 +38,7 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg", "deb", "rpm", "appimage", "nsis"],
+    "category": "Utility",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -47,10 +48,12 @@
     ],
     "linux": {
       "deb": {
-        "depends": ["libayatana-appindicator3-1"]
+        "depends": ["libayatana-appindicator3-1"],
+        "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
       },
       "rpm": {
-        "depends": ["libayatana-appindicator-gtk3"]
+        "depends": ["libayatana-appindicator-gtk3"],
+        "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
       }
     },
     "createUpdaterArtifacts": true

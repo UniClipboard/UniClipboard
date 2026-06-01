@@ -1,16 +1,58 @@
 //! Quick-panel Tauri commands
 //! 快捷面板相关的 Tauri 命令
 
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tracing::{error, info_span, Instrument};
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
-use uc_daemon_contract::api::dto::settings::{QuickPanelSettingsPatchDto, SettingsPatchDto};
+use uc_daemon_contract::api::dto::settings::{
+    QuickPanelPositionDto, QuickPanelSettingsPatchDto, SettingsPatchDto,
+};
+use uc_core::settings::model::QuickPanelPosition;
 use uc_desktop::shortcuts::{self, CurrentShortcuts};
 use uc_platform::ports::observability::TraceMetadata;
 
 use crate::commands::settings::KeyboardShortcutsUpdateLock;
 use crate::commands::{record_trace_fields, CommandError};
 use crate::quick_panel;
+
+/// Quick panel placement preference (Tauri command wire form).
+///
+/// wire form: `center` | `follow_cursor`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickPanelPositionArg {
+    Center,
+    FollowCursor,
+}
+
+impl From<QuickPanelPositionArg> for QuickPanelPosition {
+    fn from(value: QuickPanelPositionArg) -> Self {
+        match value {
+            QuickPanelPositionArg::Center => Self::Center,
+            QuickPanelPositionArg::FollowCursor => Self::FollowCursor,
+        }
+    }
+}
+
+/// Which side the inline preview opens toward (Tauri command wire form).
+///
+/// wire form: `right` | `left`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickPanelExpandSide {
+    Right,
+    Left,
+}
+
+impl From<quick_panel::ExpandSide> for QuickPanelExpandSide {
+    fn from(value: quick_panel::ExpandSide) -> Self {
+        match value {
+            quick_panel::ExpandSide::Right => Self::Right,
+            quick_panel::ExpandSide::Left => Self::Left,
+        }
+    }
+}
 
 /// Dismiss the quick panel and return focus to the previous app (no paste).
 ///
@@ -180,6 +222,7 @@ pub async fn set_quick_panel_enabled(
         let patch = SettingsPatchDto {
             quick_panel: Some(QuickPanelSettingsPatchDto {
                 enabled: Some(enabled),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -269,7 +312,59 @@ async fn apply_quick_panel_state_on_main_thread(
         .map_err(|_| CommandError::internal("main thread dropped quick panel update result"))?
 }
 
-/// Update quick panel size and centered position from the active UI scale.
+/// Persist the quick panel placement preference and update the live cache.
+///
+/// Unlike `set_quick_panel_enabled`, this has no OS-registration side effects:
+/// the placement only changes where the *next* `show()` puts the window. So
+/// the flow is simply "persist via daemon, then refresh the cached mode that
+/// the synchronous main-thread `show()` reads". Persist first so a save
+/// failure leaves the cache matching disk.
+///
+/// 持久化快捷面板出现位置偏好，并刷新供 `show()` 读取的缓存。
+#[tauri::command]
+#[specta::specta]
+pub async fn set_quick_panel_position(
+    connection_state: State<'_, DaemonConnectionState>,
+    position: QuickPanelPositionArg,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), CommandError> {
+    let span = info_span!(
+        "command.quick_panel.set_position",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+        position = ?position,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async {
+        // ADR-008 P3-3 B2': persist the placement preference through the daemon
+        // over loopback HTTP instead of the in-process facade. The in-memory
+        // cache refresh below stays native.
+        let core_position = QuickPanelPosition::from(position);
+        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let patch = SettingsPatchDto {
+            quick_panel: Some(QuickPanelSettingsPatchDto {
+                position: Some(QuickPanelPositionDto::from(core_position)),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        client
+            .update_settings(patch)
+            .await
+            .map_err(CommandError::internal)?;
+
+        // Refresh the cache consumed by the synchronous, main-thread show().
+        quick_panel::set_position(core_position);
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}
+
+/// Update quick panel size and position from the active UI scale and whether
+/// the inline preview is expanded (flipping the preview left near the right edge).
 #[tauri::command]
 #[specta::specta]
 pub async fn set_quick_panel_layout(
@@ -294,6 +389,48 @@ pub async fn set_quick_panel_layout(
         })
         .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
         Ok(())
+    }
+    .instrument(span)
+    .await
+}
+
+/// Resolve which side the inline preview will open toward, *without* moving the
+/// window.
+///
+/// The frontend calls this before expanding so it can reverse its flex layout
+/// (preview-left) ahead of the window reposition — otherwise the history pane
+/// would visibly jump when the window shifts left to open the preview leftward.
+/// Read-only: it only inspects the remembered anchor and the monitor geometry.
+///
+/// 在不移动窗口的前提下，解析 preview 将朝哪一侧展开（供前端先翻转布局）。
+#[tauri::command]
+#[specta::specta]
+pub async fn resolve_quick_panel_expand_side(
+    app: tauri::AppHandle,
+    scale: f64,
+    _trace: Option<TraceMetadata>,
+) -> Result<QuickPanelExpandSide, String> {
+    let span = info_span!(
+        "command.quick_panel.resolve_expand_side",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+        scale = scale,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async {
+        let handle = app.clone();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        // Monitor/cursor APIs must run on the Tauri main thread.
+        app.run_on_main_thread(move || {
+            let side = quick_panel::resolve_expand_side(&handle, scale);
+            let _ = tx.send(side);
+        })
+        .map_err(|e| format!("Failed to dispatch to main thread: {e}"))?;
+        let side = rx
+            .await
+            .map_err(|_| "Main thread dropped expand-side result".to_string())?;
+        Ok(QuickPanelExpandSide::from(side))
     }
     .instrument(span)
     .await

@@ -99,6 +99,7 @@ const baseSetting: Settings = {
   },
   quickPanel: {
     enabled: true,
+    position: 'center',
   },
 }
 

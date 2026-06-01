@@ -325,17 +325,32 @@ pub struct NetworkSettings {
 ///
 /// 任意字段变更后都需要重启 daemon 才能生效(v1 不做配置热重载,详见
 /// `.context/mobile-sync/SPEC.md` §1.2.5)。
-/// 快捷面板（Spotlight 风格）功能开关。
+/// 快捷面板出现的位置偏好。
 ///
-/// 表达用户"是否启用快捷面板"这一偏好。具体如何落地（全局快捷键注册、
-/// 窗口生命周期等）由上层执行，与本模型无关。
+/// 表达用户希望面板"在哪里出现"这一领域偏好，不关心具体的几何换算或
+/// 屏幕坐标系实现：
+/// * `Center` —— 在用户当前活动屏幕的中央出现。
+/// * `FollowCursor` —— 在用户指针附近出现，靠近指针落点。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickPanelPosition {
+    Center,
+    FollowCursor,
+}
+
+/// 快捷面板（Spotlight 风格）功能偏好。
 ///
-/// 默认 `true`：快捷面板是产品的核心交互入口，新装即应可用；需要避开
-/// 全局快捷键的用户（与其他工具冲突 / 企业策略）可在设置页关闭。
+/// 表达用户对快捷面板的偏好：是否启用、出现在哪里。具体如何落地（全局
+/// 快捷键注册、窗口生命周期、坐标换算等）由上层执行，与本模型无关。
+///
+/// `enabled` 默认 `true`：快捷面板是产品的核心交互入口，新装即应可用；
+/// 需要避开全局快捷键的用户（与其他工具冲突 / 企业策略）可在设置页关闭。
+/// `position` 默认 `Center`，保持历史行为。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct QuickPanelSettings {
     pub enabled: bool,
+    pub position: QuickPanelPosition,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

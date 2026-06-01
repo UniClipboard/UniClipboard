@@ -437,6 +437,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         let lan_only = !settings.network.allow_relay_fallback;
                         let quick_panel = settings.quick_panel.enabled;
                         let auto = settings.general.auto_start;
+                        // Seed the cached placement preference so the first
+                        // shortcut-triggered show() picks the right position
+                        // without an async settings read on the main thread.
+                        quick_panel::set_position(settings.quick_panel.position);
                         (silent, lang, lan_only, quick_panel, auto, true)
                     }
                     Err(e) => {

@@ -9,7 +9,7 @@
  * 强制对齐）。
  */
 
-import type { ShortcutKey } from '@/api/daemon/settings'
+import type { QuickPanelPosition, ShortcutKey } from '@/api/daemon/settings'
 import { commands } from '@/lib/ipc'
 import type { RelayProbeOutcome } from '@/lib/ipc-bindings.generated'
 
@@ -63,6 +63,19 @@ function shortcutKeyEquals(left: ShortcutKey | undefined, right: ShortcutKey | u
  */
 export async function setQuickPanelEnabled(enabled: boolean): Promise<void> {
   await commands.setQuickPanelEnabled(enabled)
+}
+
+/**
+ * Persist the quick panel placement preference (center vs. follow-cursor).
+ *
+ * This has no OS side effects — it only changes where the next panel `show()`
+ * positions the window, and refreshes the backend's cached placement mode so
+ * the synchronous, shortcut-triggered show picks it up immediately.
+ *
+ * Backend: `commands::quick_panel::set_quick_panel_position`.
+ */
+export async function setQuickPanelPosition(position: QuickPanelPosition): Promise<void> {
+  await commands.setQuickPanelPosition(position)
 }
 
 /**

@@ -8,6 +8,14 @@
 export type Theme = 'light' | 'dark' | 'system'
 
 /**
+ * 快捷面板出现位置 - 对应 Rust QuickPanelPosition enum
+ *
+ * - `center`：在当前活动屏幕中央展示
+ * - `follow_cursor`：在光标附近展示（靠近指针落点，自动避开屏幕边缘）
+ */
+export type QuickPanelPosition = 'center' | 'follow_cursor'
+
+/**
  * 更新频道 - 对应 Rust UpdateChannel enum
  */
 export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
@@ -169,9 +177,13 @@ export interface NetworkSettings {
  * 变更走 `set_quick_panel_enabled` Tauri command：开启即时注册全局快捷键
  * 并预创建隐藏窗口；关闭即时反注册快捷键，但窗口与底层 WebContent 进程
  * 留到 GUI 重启后才彻底释放（macOS 上销毁路径会崩溃）。
+ *
+ * `position` 默认 `center`：控制面板出现在屏幕中央还是光标附近，变更走
+ * `set_quick_panel_position` Tauri command（仅影响下次展示位置，无 OS 副作用）。
  */
 export interface QuickPanelSettings {
   enabled: boolean
+  position: QuickPanelPosition
 }
 
 /**

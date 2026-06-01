@@ -236,7 +236,10 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("dismiss_quick_panel", { trace })),
-	/**  Update quick panel size and centered position from the active UI scale. */
+	/**
+	 *  Update quick panel size and position from the active UI scale and whether
+	 *  the inline preview is expanded (flipping the preview left near the right edge).
+	 */
 	setQuickPanelLayout: (scale: number | null, previewExpanded: boolean, trace: {
 	trace_id: string,
 	timestamp: number,
@@ -280,6 +283,36 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("set_quick_panel_enabled", { enabled, trace })),
+	/**
+	 *  Persist the quick panel placement preference and update the live cache.
+	 * 
+	 *  Unlike `set_quick_panel_enabled`, this has no OS-registration side effects:
+	 *  the placement only changes where the *next* `show()` puts the window. So
+	 *  the flow is simply "persist via daemon, then refresh the cached mode that
+	 *  the synchronous main-thread `show()` reads". Persist first so a save
+	 *  failure leaves the cache matching disk.
+	 * 
+	 *  持久化快捷面板出现位置偏好，并刷新供 `show()` 读取的缓存。
+	 */
+	setQuickPanelPosition: (position: QuickPanelPositionArg, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, CommandError>(__TAURI_INVOKE("set_quick_panel_position", { position, trace })),
+	/**
+	 *  Resolve which side the inline preview will open toward, *without* moving the
+	 *  window.
+	 * 
+	 *  The frontend calls this before expanding so it can reverse its flex layout
+	 *  (preview-left) ahead of the window reposition — otherwise the history pane
+	 *  would visibly jump when the window shifts left to open the preview leftward.
+	 *  Read-only: it only inspects the remembered anchor and the monitor geometry.
+	 * 
+	 *  在不移动窗口的前提下，解析 preview 将朝哪一侧展开（供前端先翻转布局）。
+	 */
+	resolveQuickPanelExpandSide: (scale: number | null, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<QuickPanelExpandSide, string>(__TAURI_INVOKE("resolve_quick_panel_expand_side", { scale, trace })),
 	/**  保存键盘快捷键，并同步快捷面板全局快捷键的 OS 注册状态。 */
 	updateKeyboardShortcuts: (shortcuts: { [key in string]: ShortcutKeyDto | null }, trace: {
 	trace_id: string,
@@ -409,6 +442,20 @@ export type InstallKind = "macos" | "windows" |
  *  "download the new portable zip" dialog instead of self-installing.
  */
 "windowsportable" | "appimage" | "deb" | "rpm" | "unknown";
+
+/**
+ *  Which side the inline preview opens toward (Tauri command wire form).
+ * 
+ *  wire form: `right` | `left`.
+ */
+export type QuickPanelExpandSide = "right" | "left";
+
+/**
+ *  Quick panel placement preference (Tauri command wire form).
+ * 
+ *  wire form: `center` | `follow_cursor`.
+ */
+export type QuickPanelPositionArg = "center" | "follow_cursor";
 
 /**
  *  一次 `probe_relay_url` 调用的细分结果。

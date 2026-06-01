@@ -163,57 +163,52 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
         ) : (
           <>
             {/* --- SPOTLIGHT STYLE TOP BAR --- */}
-            <div className="border-b border-border/50 relative">
-              <DropdownMenu>
-                <AdvancedSearch
-                  value={searchQuery}
-                  onValueChange={onSearchChange}
-                  isAdvanced={isAdvancedMode}
-                  onAdvancedChange={setIsAdvancedMode}
-                  tokens={tokens}
-                  onTokensChange={setTokens}
-                  placeholder={t('searchPlaceholder')}
-                  advancedPlaceholder={t('advancedPlaceholder')}
-                  inputRef={searchInputRef}
-                  onKeyDown={onKeyDown}
-                  icon={
-                    <div
-                      className={cn(
-                        'flex items-center gap-0.5 px-1 py-0.5 rounded transition-all',
-                        activeFilter !== Filter.All
-                          ? 'text-primary bg-primary/5'
-                          : 'text-muted-foreground/60'
-                      )}
-                    >
-                      <CurrentFilterIcon className="size-3.5" />
-                      {!isAdvancedMode && <ChevronDown className="size-2.5 opacity-40 shrink-0" />}
-                    </div>
-                  }
-                  onIconClick={() => {}}
-                  className="w-full"
-                />
-                <DropdownMenuTrigger asChild>
-                  {/* Anchor trigger to the fixed width icon container */}
-                  <button
-                    type="button"
-                    aria-label={t('filterMenuLabel')}
-                    className="absolute left-3.5 top-2 size-8 z-10 opacity-0 cursor-pointer"
-                  />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-36 ml-1">
-                  {filterTypes.map(f => (
-                    <DropdownMenuItem
-                      key={f.id}
-                      onClick={() => setActiveFilter(f.id)}
-                      className="flex items-center gap-2 text-[12px]"
-                    >
-                      <f.icon className="size-3.5 opacity-70" />
-                      {f.label}
-                      {activeFilter === f.id && <Check className="ml-auto size-3 text-primary" />}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <div className="border-b border-border/50">
+              <AdvancedSearch
+                value={searchQuery}
+                onValueChange={onSearchChange}
+                isAdvanced={isAdvancedMode}
+                onAdvancedChange={setIsAdvancedMode}
+                tokens={tokens}
+                onTokensChange={setTokens}
+                placeholder={t('searchPlaceholder')}
+                advancedPlaceholder={t('advancedPlaceholder')}
+                inputRef={searchInputRef}
+                onKeyDown={onKeyDown}
+                leftSlot={
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t('filterMenuLabel')}
+                        className={cn(
+                          'flex items-center gap-0.5 rounded px-1.5 py-1 outline-none transition-colors hover:bg-muted/50',
+                          activeFilter !== Filter.All ? 'text-primary' : 'text-muted-foreground/50'
+                        )}
+                      >
+                        <CurrentFilterIcon className="size-3.5" />
+                        <ChevronDown className="size-2.5 shrink-0 opacity-50" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-36">
+                      {filterTypes.map(f => (
+                        <DropdownMenuItem
+                          key={f.id}
+                          onClick={() => setActiveFilter(f.id)}
+                          className="flex items-center gap-2 text-[12px]"
+                        >
+                          <f.icon className="size-3.5 opacity-70" />
+                          {f.label}
+                          {activeFilter === f.id && (
+                            <Check className="ml-auto size-3 text-primary" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                }
+                className="w-full"
+              />
             </div>
 
             {/* --- SCROLLABLE LIST --- */}

@@ -256,7 +256,10 @@ impl Default for NetworkSettings {
 
 impl Default for QuickPanelSettings {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            position: QuickPanelPosition::Center,
+        }
     }
 }
 

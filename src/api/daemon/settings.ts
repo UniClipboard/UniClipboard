@@ -34,6 +34,9 @@ import { daemonClient } from './client'
 /** Theme preference. / 主题偏好。 */
 export type Theme = 'light' | 'dark' | 'system'
 
+/** Quick panel placement. / 快捷面板出现位置。wire: `center` | `follow_cursor`。 */
+export type QuickPanelPosition = 'center' | 'follow_cursor'
+
 /** Update channel override. / 更新通道覆盖。 */
 export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
 
@@ -154,6 +157,7 @@ export interface NetworkSettings {
  */
 export interface QuickPanelSettings {
   enabled: boolean
+  position: QuickPanelPosition
 }
 
 /**

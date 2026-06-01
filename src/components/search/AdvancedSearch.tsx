@@ -1,5 +1,5 @@
 import { AnimatePresence, LayoutGroup, m } from 'framer-motion'
-import { Search, Zap, X, File } from 'lucide-react'
+import { Zap, X, File } from 'lucide-react'
 import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -14,8 +14,8 @@ export interface AdvancedSearchProps {
   onAdvancedChange: (isAdvanced: boolean) => void
   tokens: string[]
   onTokensChange: (tokens: string[]) => void
-  icon?: React.ReactNode
-  onIconClick?: () => void
+  /** Optional control rendered at the leading edge, before the input (e.g. a filter dropdown). */
+  leftSlot?: React.ReactNode
   placeholder?: string
   advancedPlaceholder?: string
   className?: string
@@ -46,10 +46,9 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
   onAdvancedChange,
   tokens,
   onTokensChange,
-  icon,
-  onIconClick,
-  placeholder = "Search (':' for advanced)...",
-  advancedPlaceholder = 'Filter...',
+  leftSlot,
+  placeholder = 'Search clipboard history…',
+  advancedPlaceholder = 'Filter…',
   className,
   inputRef: externalInputRef,
   onKeyDown: externalOnKeyDown,
@@ -250,44 +249,9 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
 
   return (
     <div className={cn('flex flex-col relative', className)}>
-      <div className="flex items-center gap-3 px-4 pt-2.5 pb-1.5 min-h-[44px]">
-        {/* 
-            LEFT ANCHOR: Fixed width container ensures the input area 
-            NEVER shifts when switching modes.
-        */}
-        <div className="shrink-0 size-8 -ml-1 flex items-center justify-center">
-          <button
-            type="button"
-            onClick={onIconClick}
-            className="w-full h-full flex items-center justify-center hover:bg-muted/50 rounded transition-colors outline-none"
-          >
-            <AnimatePresence mode="wait">
-              {isAdvanced ? (
-                <m.div
-                  key="zap"
-                  initial={{ opacity: 0, scale: 0.5, rotate: -20 }}
-                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                  exit={{ opacity: 0, scale: 0.5, rotate: 20 }}
-                  transition={{ duration: 0.12 }}
-                >
-                  <Zap className="size-4 text-primary fill-primary/20" />
-                </m.div>
-              ) : (
-                <m.div
-                  key="normal"
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.5 }}
-                  transition={{ duration: 0.12 }}
-                >
-                  {icon || <Search className="size-4 text-muted-foreground/60" />}
-                </m.div>
-              )}
-            </AnimatePresence>
-          </button>
-        </div>
-
-        {/* Unified Search Space - START POINT IS NOW FIXED */}
+      <div className="flex items-center gap-2.5 px-4 py-2 min-h-[38px]">
+        {leftSlot && <div className="shrink-0 flex items-center">{leftSlot}</div>}
+        {/* Search space (tokens + input) fills the remaining width. */}
         <div className="flex-1 flex flex-wrap items-center gap-1.5 min-w-0">
           <LayoutGroup>
             <AnimatePresence mode="popLayout">
@@ -342,17 +306,18 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
           </LayoutGroup>
         </div>
 
-        {/* Right Action (Clear) */}
+        {/* Right Action: clear */}
         <div className="shrink-0 flex items-center">
           {(value || tokens.length > 0 || isAdvanced) && (
             <button
               type="button"
+              aria-label="Clear search"
               onClick={() => {
                 onValueChange('')
                 onTokensChange([])
                 if (isAdvanced) onAdvancedChange(false)
               }}
-              className="p-1.5 hover:bg-muted rounded-full text-muted-foreground/60 hover:text-foreground transition-colors"
+              className="p-1 hover:bg-muted rounded-full text-muted-foreground/60 hover:text-foreground transition-colors"
             >
               <X className="size-3.5" />
             </button>

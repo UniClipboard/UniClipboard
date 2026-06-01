@@ -296,21 +296,33 @@ pub struct NetworkSettingsDto {
     pub custom_relay_urls: Vec<String>,
 }
 
-/// 快捷面板（Spotlight 风格）功能开关 DTO。
+/// 快捷面板出现位置 DTO。wire form: `center` | `follow_cursor`。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickPanelPositionDto {
+    Center,
+    FollowCursor,
+}
+
+/// 快捷面板（Spotlight 风格）功能偏好 DTO。
 ///
-/// wire 字段命名为 camelCase（`enabled`）。`#[serde(default)]` 让缺字段时
-/// 回退到 `Default`（`enabled = true`），与 `core::QuickPanelSettings` 默认
-/// 保持一致——新装/老 wire 缺字段都视为"启用"，避免出现 wire 与磁盘真相
-/// 撕裂。
+/// wire 字段命名为 camelCase（`enabled` / `position`）。`#[serde(default)]`
+/// 让缺字段时回退到 `Default`（`enabled = true`、`position = center`），与
+/// `core::QuickPanelSettings` 默认保持一致——新装/老 wire 缺字段都视为
+/// "启用 + 居中"，避免出现 wire 与磁盘真相撕裂。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct QuickPanelSettingsDto {
     pub enabled: bool,
+    pub position: QuickPanelPositionDto,
 }
 
 impl Default for QuickPanelSettingsDto {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            position: QuickPanelPositionDto::Center,
+        }
     }
 }
 
@@ -449,6 +461,7 @@ pub struct NetworkSettingsPatchDto {
 #[serde(rename_all = "camelCase")]
 pub struct QuickPanelSettingsPatchDto {
     pub enabled: Option<bool>,
+    pub position: Option<QuickPanelPositionDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -648,10 +661,20 @@ impl From<core::NetworkSettings> for NetworkSettingsDto {
     }
 }
 
+impl From<core::QuickPanelPosition> for QuickPanelPositionDto {
+    fn from(value: core::QuickPanelPosition) -> Self {
+        match value {
+            core::QuickPanelPosition::Center => Self::Center,
+            core::QuickPanelPosition::FollowCursor => Self::FollowCursor,
+        }
+    }
+}
+
 impl From<core::QuickPanelSettings> for QuickPanelSettingsDto {
     fn from(value: core::QuickPanelSettings) -> Self {
         Self {
             enabled: value.enabled,
+            position: value.position.into(),
         }
     }
 }
@@ -708,6 +731,15 @@ impl From<SyncFrequencyDto> for core::SyncFrequency {
         match value {
             SyncFrequencyDto::Realtime => Self::Realtime,
             SyncFrequencyDto::Interval => Self::Interval,
+        }
+    }
+}
+
+impl From<QuickPanelPositionDto> for core::QuickPanelPosition {
+    fn from(value: QuickPanelPositionDto) -> Self {
+        match value {
+            QuickPanelPositionDto::Center => Self::Center,
+            QuickPanelPositionDto::FollowCursor => Self::FollowCursor,
         }
     }
 }

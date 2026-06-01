@@ -472,6 +472,12 @@
           "label": "启用快捷面板",
           "description": "开启后会注册全局快捷键，并在后台创建快捷面板窗口；关闭即时反注册快捷键。"
         },
+        "position": {
+          "label": "展示位置",
+          "description": "选择按下快捷键时，快捷面板出现的位置。",
+          "center": "屏幕中央",
+          "followCursor": "跟随光标"
+        },
         "restartHint": "快捷面板已停用。建议重启应用以彻底释放后台进程。"
       },
       "about": {
@@ -1395,8 +1401,8 @@
     "loading": "正在连接剪贴板历史...",
     "unavailable": "当前无法使用剪贴板历史。",
     "history": {
-      "searchPlaceholder": "搜索（输入 ':' 进入高级模式）...",
-      "advancedPlaceholder": "筛选条件...",
+      "searchPlaceholder": "搜索剪贴板历史…",
+      "advancedPlaceholder": "筛选条件…",
       "searchAriaLabel": "搜索剪贴板历史",
       "filterMenuLabel": "打开筛选菜单",
       "filters": {

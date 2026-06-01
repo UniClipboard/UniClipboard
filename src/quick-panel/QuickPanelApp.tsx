@@ -1,6 +1,8 @@
+import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
+import { usePlatform } from '@/hooks/usePlatform'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import ClipboardHistoryPanel from './ClipboardHistoryPanel'
 
@@ -12,6 +14,7 @@ const errorClassName =
 
 const QuickPanelApp: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
+  const { reduceVisualEffects } = usePlatform()
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
 
@@ -39,15 +42,25 @@ const QuickPanelApp: React.FC = () => {
     }
   }, [])
 
+  let content: React.ReactNode
   if (!daemonReady) {
-    if (bootstrapError) {
-      return <div className={errorClassName}>{t('unavailable')}</div>
-    }
-
-    return <div className={loadingClassName}>{t('loading')}</div>
+    content = bootstrapError ? (
+      <div className={errorClassName}>{t('unavailable')}</div>
+    ) : (
+      <div className={loadingClassName}>{t('loading')}</div>
+    )
+  } else {
+    content = <ClipboardHistoryPanel />
   }
 
-  return <ClipboardHistoryPanel />
+  // The quick panel is a separate webview from the main window, so it needs its
+  // own framer-motion provider — without it, `m.*` elements stay stuck at their
+  // `initial` state (e.g. opacity 0) and never render. Mirrors src/App.tsx.
+  return (
+    <LazyMotion features={domMax} strict>
+      <MotionConfig reducedMotion={reduceVisualEffects ? 'always' : 'user'}>{content}</MotionConfig>
+    </LazyMotion>
+  )
 }
 
 export default QuickPanelApp

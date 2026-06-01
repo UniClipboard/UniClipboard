@@ -31,6 +31,24 @@ async function setQuickPanelLayout(scale: number, previewExpanded: boolean): Pro
   await commands.setQuickPanelLayout(scale, previewExpanded)
 }
 
+/** Which side the inline preview opens toward, relative to the history pane. */
+type PreviewSide = 'left' | 'right'
+
+/**
+ * Ask the backend which side the preview will open toward, before the window
+ * moves. Used to reverse the flex layout ahead of the reposition so the pinned
+ * history pane doesn't visibly jump when the preview opens leftward. Defaults
+ * to 'right' on any failure.
+ */
+async function resolveExpandSide(scale: number): Promise<PreviewSide> {
+  try {
+    const side = await commands.resolveQuickPanelExpandSide(scale)
+    return side === 'left' ? 'left' : 'right'
+  } catch {
+    return 'right'
+  }
+}
+
 const initialPreviewState: PreviewState = {
   entryId: null,
   mode: 'closed',
@@ -93,6 +111,10 @@ const ClipboardHistoryPanel: React.FC = () => {
   const previewLayoutTokenRef = useRef(0)
   const deletingRef = useRef(false)
   const [skipTransition, setSkipTransition] = useState(false)
+  // Which side the preview opens toward. Driven by the backend (it knows the
+  // window's screen position): 'left' when the right edge can't fit the
+  // expanded panel. Reversing the flex order keeps the history pane pinned.
+  const [previewSide, setPreviewSide] = useState<PreviewSide>('right')
 
   const previewExpanded = previewState.mode === 'expanded'
   const previewReservingSpace = previewState.mode === 'reserving'
@@ -134,6 +156,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       clearPreviewTimer()
       previewLayoutTokenRef.current += 1
       dispatchPreview({ type: 'reset', suppressed: suppressUntilNextSelection })
+      setPreviewSide('right')
       void setQuickPanelLayout(readStoredUiScale(), false).catch(() => {})
     },
     [clearPreviewTimer]
@@ -146,6 +169,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       clearPreviewTimer()
       previewLayoutTokenRef.current += 1
       dispatchPreview({ type: 'reset' })
+      setPreviewSide('right')
       setSearchQuery('')
       setTokens([])
       setIsAdvancedMode(false)
@@ -261,6 +285,7 @@ const ClipboardHistoryPanel: React.FC = () => {
     if (!targetPreviewItem) {
       previewLayoutTokenRef.current += 1
       dispatchPreview({ type: 'reset' })
+      setPreviewSide('right')
       void setQuickPanelLayout(uiScale, false).catch(() => {})
       return
     }
@@ -274,18 +299,24 @@ const ClipboardHistoryPanel: React.FC = () => {
         const token = previewLayoutTokenRef.current + 1
         const nextHistoryWidth = historyPaneRef.current?.getBoundingClientRect().width ?? 0
         previewLayoutTokenRef.current = token
-        dispatchPreview({
-          type: 'reserve-space',
-          entryId: nextEntryId,
-          historyLockedWidth: nextHistoryWidth > 0 ? nextHistoryWidth : null,
-        })
-        void setQuickPanelLayout(uiScale, true)
-          .then(() => {
+        void (async () => {
+          // Resolve the open side and reverse the layout BEFORE moving the
+          // window, so the pinned history pane never jumps when opening left.
+          const side = await resolveExpandSide(uiScale)
+          if (previewLayoutTokenRef.current !== token) return
+          setPreviewSide(side)
+          dispatchPreview({
+            type: 'reserve-space',
+            entryId: nextEntryId,
+            historyLockedWidth: nextHistoryWidth > 0 ? nextHistoryWidth : null,
+          })
+          try {
+            await setQuickPanelLayout(uiScale, true)
             if (previewLayoutTokenRef.current === token) dispatchPreview({ type: 'expand' })
-          })
-          .catch(() => {
+          } catch {
             if (previewLayoutTokenRef.current === token) dispatchPreview({ type: 'reset' })
-          })
+          }
+        })()
       },
       previewEntryId ? PREVIEW_SWITCH_DELAY_MS : PREVIEW_OPEN_DELAY_MS
     )
@@ -431,7 +462,15 @@ const ClipboardHistoryPanel: React.FC = () => {
   const handleHistoryMouseMove = useCallback(() => setHasPointerMovedSinceShow(true), [])
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-transparent p-4">
+    <div
+      className={cn(
+        'flex h-screen w-screen overflow-hidden bg-transparent p-4',
+        // Open the preview to the left of the history pane near the right edge.
+        // Reversing the row keeps the history pane (now the last child) pinned
+        // at its anchor while the preview occupies the freed space on the left.
+        previewSide === 'left' && 'flex-row-reverse'
+      )}
+    >
       <div
         ref={historyPaneRef}
         className={
@@ -481,10 +520,18 @@ const ClipboardHistoryPanel: React.FC = () => {
       <div
         className={cn(
           'min-w-0',
+          // Gap between preview and history. With `flex-row-reverse` (preview
+          // on the left) the gap must sit on the preview's right edge instead.
           previewExpanded
-            ? 'ml-2 flex-1 basis-0 opacity-100 translate-x-0'
+            ? cn(
+                previewSide === 'left' ? 'mr-2' : 'ml-2',
+                'flex-1 basis-0 opacity-100 translate-x-0'
+              )
             : previewReservingSpace && historyLockedWidth != null
-              ? 'ml-2 shrink-0 opacity-0 translate-x-0 pointer-events-none'
+              ? cn(
+                  previewSide === 'left' ? 'mr-2' : 'ml-2',
+                  'shrink-0 opacity-0 translate-x-0 pointer-events-none'
+                )
               : 'ml-0 w-0 opacity-0 translate-x-2 pointer-events-none'
         )}
         style={

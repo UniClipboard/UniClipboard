@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from '@/api/daemon'
 import {
   updateKeyboardShortcuts as persistKeyboardShortcuts,
   setQuickPanelEnabled as persistQuickPanelEnabled,
+  setQuickPanelPosition as persistQuickPanelPosition,
   updateAutostart as persistAutostart,
 } from '@/api/tauri-command'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
@@ -207,20 +208,29 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
 
   // Update quick panel settings.
   //
-  // GUI 路径必须走 Tauri in-process command:启用/禁用会即时触发全局快捷键
-  // 注册/反注册 + 隐藏窗口的创建/销毁,这些副作用只能在 GUI 进程内完成。
-  // 命令内部已经协调好 OS 注册和 facade 持久化的事务性(失败回滚),所以
-  // 这里只在成功后更新本地 setState + 广播,不再额外走 daemon HTTP PUT。
+  // GUI 路径必须走 Tauri in-process command:`enabled` 启用/禁用会即时触发
+  // 全局快捷键注册/反注册 + 隐藏窗口的创建/销毁；`position` 则刷新后端缓存
+  // 的展示位置（供同步执行的 show() 读取）。这些副作用都只能在 GUI 进程内
+  // 完成,命令内部已协调好 OS 副作用与 facade 持久化的事务性,所以这里只在
+  // 成功后更新本地 setState + 广播,不再额外走 daemon HTTP PUT。
+  //
+  // 两个字段对应两条独立命令,按本次 patch 里实际出现的字段分别下发。
   const updateQuickPanelSetting = async (
     newQuickPanelSetting: Partial<Settings['quickPanel']>
   ): Promise<{ restartRequired: boolean }> => {
     if (!setting) return { restartRequired: false }
-    if (newQuickPanelSetting.enabled === undefined) {
+    const { enabled, position } = newQuickPanelSetting
+    if (enabled === undefined && position === undefined) {
       return { restartRequired: false }
     }
     try {
       setLoading(true)
-      await persistQuickPanelEnabled(newQuickPanelSetting.enabled)
+      if (enabled !== undefined) {
+        await persistQuickPanelEnabled(enabled)
+      }
+      if (position !== undefined) {
+        await persistQuickPanelPosition(position)
+      }
       const updatedSetting: Settings = {
         ...setting,
         quickPanel: { ...setting.quickPanel, ...newQuickPanelSetting },

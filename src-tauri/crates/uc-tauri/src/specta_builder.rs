@@ -20,7 +20,7 @@
 //!
 //! 所有命令在所有 OS 上都 collect，保证任何 runner 跑 `cargo test
 //! --test specta_export` 得到同一份 binding（CI 可以用单一 Linux runner
-//! 做 schema drift check）。当前 33 条命令都不依赖平台特定 mod 编译。
+//! 做 schema drift check）。当前 27 条命令都不依赖平台特定 mod 编译。
 
 use tauri_specta::{collect_commands, Builder};
 
@@ -69,6 +69,8 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::quick_panel::set_quick_panel_layout,
         crate::commands::quick_panel::finalize_quick_panel_show,
         crate::commands::quick_panel::set_quick_panel_enabled,
+        crate::commands::quick_panel::set_quick_panel_position,
+        crate::commands::quick_panel::resolve_quick_panel_expand_side,
         // ── settings ────────────────────────────────────────────────────────
         crate::commands::settings::update_keyboard_shortcuts,
         crate::commands::settings::probe_relay_url,

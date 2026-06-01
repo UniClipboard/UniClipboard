@@ -352,6 +352,7 @@ pub fn settings_patch_from_dto(patch: SettingsPatchDto) -> app_settings::Setting
             .quick_panel
             .map(|quick_panel| app_settings::QuickPanelSettingsPatch {
                 enabled: quick_panel.enabled,
+                position: quick_panel.position.map(quick_panel_position_from_dto),
             }),
     }
 }
@@ -425,6 +426,7 @@ pub fn settings_view_to_dto(value: app_settings::SettingsView) -> SettingsDto {
         },
         quick_panel: QuickPanelSettingsDto {
             enabled: value.quick_panel.enabled,
+            position: quick_panel_position_to_dto(value.quick_panel.position),
         },
     }
 }
@@ -517,6 +519,32 @@ fn theme_to_dto(value: app_settings::ThemeView) -> crate::api::dto::settings::Th
         app_settings::ThemeView::Light => crate::api::dto::settings::ThemeDto::Light,
         app_settings::ThemeView::Dark => crate::api::dto::settings::ThemeDto::Dark,
         app_settings::ThemeView::System => crate::api::dto::settings::ThemeDto::System,
+    }
+}
+
+fn quick_panel_position_from_dto(
+    value: crate::api::dto::settings::QuickPanelPositionDto,
+) -> app_settings::QuickPanelPositionView {
+    match value {
+        crate::api::dto::settings::QuickPanelPositionDto::Center => {
+            app_settings::QuickPanelPositionView::Center
+        }
+        crate::api::dto::settings::QuickPanelPositionDto::FollowCursor => {
+            app_settings::QuickPanelPositionView::FollowCursor
+        }
+    }
+}
+
+fn quick_panel_position_to_dto(
+    value: app_settings::QuickPanelPositionView,
+) -> crate::api::dto::settings::QuickPanelPositionDto {
+    match value {
+        app_settings::QuickPanelPositionView::Center => {
+            crate::api::dto::settings::QuickPanelPositionDto::Center
+        }
+        app_settings::QuickPanelPositionView::FollowCursor => {
+            crate::api::dto::settings::QuickPanelPositionDto::FollowCursor
+        }
     }
 }
 

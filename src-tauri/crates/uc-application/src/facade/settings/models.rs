@@ -152,11 +152,19 @@ pub struct NetworkSettingsView {
     pub custom_relay_urls: Vec<String>,
 }
 
-/// 快捷面板功能开关业务镜像。承载用户对"是否启用快捷面板"这一偏好；
-/// 落地副作用（OS 快捷键、窗口生命周期等）由消费此视图的上层负责。
+/// 快捷面板出现位置业务镜像。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuickPanelPositionView {
+    Center,
+    FollowCursor,
+}
+
+/// 快捷面板功能偏好业务镜像。承载用户对"是否启用 / 出现在哪里"的偏好；
+/// 落地副作用（OS 快捷键、窗口生命周期、坐标换算等）由消费此视图的上层负责。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuickPanelSettingsView {
     pub enabled: bool,
+    pub position: QuickPanelPositionView,
 }
 
 #[derive(Debug, Clone)]
@@ -269,6 +277,7 @@ pub struct NetworkSettingsPatch {
 #[derive(Debug, Clone, Default)]
 pub struct QuickPanelSettingsPatch {
     pub enabled: Option<bool>,
+    pub position: Option<QuickPanelPositionView>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -311,6 +320,24 @@ impl From<core::UpdateChannel> for UpdateChannelView {
             core::UpdateChannel::Alpha => Self::Alpha,
             core::UpdateChannel::Beta => Self::Beta,
             core::UpdateChannel::Rc => Self::Rc,
+        }
+    }
+}
+
+impl From<core::QuickPanelPosition> for QuickPanelPositionView {
+    fn from(value: core::QuickPanelPosition) -> Self {
+        match value {
+            core::QuickPanelPosition::Center => Self::Center,
+            core::QuickPanelPosition::FollowCursor => Self::FollowCursor,
+        }
+    }
+}
+
+impl From<QuickPanelPositionView> for core::QuickPanelPosition {
+    fn from(value: QuickPanelPositionView) -> Self {
+        match value {
+            QuickPanelPositionView::Center => Self::Center,
+            QuickPanelPositionView::FollowCursor => Self::FollowCursor,
         }
     }
 }
@@ -511,6 +538,7 @@ impl From<core::Settings> for SettingsView {
             },
             quick_panel: QuickPanelSettingsView {
                 enabled: value.quick_panel.enabled,
+                position: value.quick_panel.position.into(),
             },
         }
     }
@@ -668,6 +696,9 @@ pub(crate) fn apply_settings_patch(
     if let Some(quick_panel) = patch.quick_panel {
         if let Some(v) = quick_panel.enabled {
             existing.quick_panel.enabled = v;
+        }
+        if let Some(v) = quick_panel.position {
+            existing.quick_panel.position = v.into();
         }
     }
 

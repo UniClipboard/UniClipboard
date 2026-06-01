@@ -20,6 +20,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tracing::{debug, error, info, warn};
+use uc_core::settings::model::QuickPanelPosition;
 
 /// Timestamp of the last `show()` call. Blur events within
 /// [`BLUR_DEBOUNCE_MS`] of this timestamp are ignored to prevent
@@ -33,6 +34,19 @@ static LAST_SHOW_TIME: Mutex<Option<Instant>> = Mutex::new(None);
 /// window grows and shrinks relative to the history pane instead of jumping
 /// to re-center the full width.
 static PANEL_ORIGIN: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+/// The user's preferred placement for the quick panel.
+///
+/// Mirrors the persisted `quick_panel.position` setting so `show()` —— which
+/// runs synchronously on the main thread off a global-shortcut callback —— can
+/// pick a placement without an async settings read. Seeded at startup from the
+/// loaded settings and updated whenever the user changes the preference.
+static PANEL_POSITION: Mutex<QuickPanelPosition> = Mutex::new(QuickPanelPosition::Center);
+
+/// Gap (logical pixels) between the cursor and the nearest panel edge when the
+/// panel is anchored to the cursor. Keeps the pointer from overlapping the
+/// panel's border on open.
+const CURSOR_ANCHOR_GAP: f64 = 6.0;
 
 /// How long (ms) after `show()` to suppress blur events.
 const BLUR_DEBOUNCE_MS: u128 = 300;
@@ -83,13 +97,20 @@ fn centered_panel_position_from_monitor(
     )
 }
 
-/// Get the quick panel position centered on the monitor that currently
-/// contains the mouse cursor.
+/// Resolve the monitor that should host the panel: the one under `cursor`,
+/// falling back to the primary monitor.
 ///
-/// 获取鼠标所在屏幕上的面板居中位置。
-fn panel_position_for_cursor_screen(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
-    let target_monitor = match app.cursor_position() {
-        Ok(cursor) => match app.monitor_from_point(cursor.x, cursor.y) {
+/// `cursor` is the physical cursor position, or `None` when it couldn't be
+/// read. A `None` result means no monitor could be resolved at all (no cursor
+/// monitor *and* no primary) —— callers fall back to a fixed rectangle.
+///
+/// 解析承载面板的屏幕：优先鼠标所在屏，回退到主屏。
+fn resolve_panel_monitor(
+    app: &tauri::AppHandle,
+    cursor: Option<tauri::PhysicalPosition<f64>>,
+) -> Option<tauri::Monitor> {
+    cursor
+        .and_then(|cursor| match app.monitor_from_point(cursor.x, cursor.y) {
             Ok(Some(monitor)) => Some(monitor),
             Ok(None) => {
                 // Normal fallback path: cursor is between monitors / on a
@@ -112,27 +133,36 @@ fn panel_position_for_cursor_screen(app: &tauri::AppHandle, width: f64, height: 
                 );
                 None
             }
-        },
+        })
+        .or_else(|| match app.primary_monitor() {
+            Ok(monitor) => monitor,
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    "Failed to resolve primary monitor for quick panel positioning"
+                );
+                None
+            }
+        })
+}
+
+/// Read the physical cursor position, logging on failure.
+fn cursor_position(app: &tauri::AppHandle) -> Option<tauri::PhysicalPosition<f64>> {
+    match app.cursor_position() {
+        Ok(cursor) => Some(cursor),
         Err(error) => {
-            warn!(
-                error = %error,
-                "Failed to read cursor position; falling back to primary monitor"
-            );
+            warn!(error = %error, "Failed to read cursor position for quick panel positioning");
             None
         }
     }
-    .or_else(|| match app.primary_monitor() {
-        Ok(monitor) => monitor,
-        Err(error) => {
-            warn!(
-                error = %error,
-                "Failed to resolve primary monitor for quick panel positioning"
-            );
-            None
-        }
-    });
+}
 
-    target_monitor
+/// Get the quick panel position centered on the monitor that currently
+/// contains the mouse cursor.
+///
+/// 获取鼠标所在屏幕上的面板居中位置。
+fn panel_position_for_cursor_screen(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
+    resolve_panel_monitor(app, cursor_position(app))
         .map(|monitor| {
             let size = monitor.size();
             let position = monitor.position();
@@ -150,6 +180,179 @@ fn panel_position_for_cursor_screen(app: &tauri::AppHandle, width: f64, height: 
             warn!("No monitor detected, using 800x600 fallback for quick panel positioning");
             centered_panel_position_from_monitor(0, 0, 800, 600, 1.0, width, height)
         })
+}
+
+/// Get the quick panel top-left so the panel opens from the cursor.
+///
+/// The panel prefers to open down-right with its top-left near the cursor; if
+/// it would overflow the monitor's right/bottom edge it flips to open up/left
+/// (far edge near the cursor); if it fits on neither side it is clamped fully
+/// onto the monitor. Falls back to centering when the cursor or its monitor
+/// can't be resolved.
+///
+/// 让面板从光标处展开：默认向右下、必要时翻转向左上，始终夹取在屏幕内。
+fn cursor_anchored_position(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
+    let Some(cursor) = cursor_position(app) else {
+        return panel_position_for_cursor_screen(app, width, height);
+    };
+    let Some(monitor) = resolve_panel_monitor(app, Some(cursor)) else {
+        warn!("No monitor detected for cursor-anchored quick panel; centering instead");
+        return panel_position_for_cursor_screen(app, width, height);
+    };
+
+    let scale = monitor.scale_factor();
+    let origin = monitor.position();
+    let size = monitor.size();
+    cursor_anchored_position_from_monitor(
+        cursor.x / scale,
+        cursor.y / scale,
+        origin.x as f64 / scale,
+        origin.y as f64 / scale,
+        size.width as f64 / scale,
+        size.height as f64 / scale,
+        width,
+        height,
+    )
+}
+
+/// Pure placement math (all logical pixels) for cursor-anchored positioning.
+/// Each axis is resolved independently by [`axis_anchored_position`].
+fn cursor_anchored_position_from_monitor(
+    cursor_x: f64,
+    cursor_y: f64,
+    monitor_x: f64,
+    monitor_y: f64,
+    monitor_width: f64,
+    monitor_height: f64,
+    panel_width: f64,
+    panel_height: f64,
+) -> (f64, f64) {
+    (
+        axis_anchored_position(cursor_x, monitor_x, monitor_width, panel_width),
+        axis_anchored_position(cursor_y, monitor_y, monitor_height, panel_height),
+    )
+}
+
+/// One-axis cursor anchoring:
+/// 1. Prefer opening forward: panel near edge at `cursor + gap`.
+/// 2. Else flip backward: panel far edge at `cursor - gap`.
+/// 3. Else clamp the panel fully within the monitor span.
+fn axis_anchored_position(
+    cursor: f64,
+    monitor_origin: f64,
+    monitor_extent: f64,
+    panel_extent: f64,
+) -> f64 {
+    let monitor_end = monitor_origin + monitor_extent;
+
+    let forward = cursor + CURSOR_ANCHOR_GAP;
+    if forward + panel_extent <= monitor_end {
+        return forward;
+    }
+
+    let backward = cursor - CURSOR_ANCHOR_GAP - panel_extent;
+    if backward >= monitor_origin {
+        return backward;
+    }
+
+    // Panel is wider/taller than either side of the cursor leaves; keep it on
+    // the monitor. `max(monitor_origin)` guards the case where the panel is
+    // larger than the monitor itself (prefer showing the top-left).
+    (monitor_end - panel_extent).max(monitor_origin)
+}
+
+/// Which side the inline preview pane opens toward, relative to the history pane.
+///
+/// `Right` is the default (preview grows rightward, history pinned at its
+/// anchor). `Left` is the flipped layout used when the right edge can't fit the
+/// expanded panel: the preview grows leftward instead, the history pane staying
+/// put. The frontend mirrors this by reversing the flex order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpandSide {
+    Right,
+    Left,
+}
+
+/// Logical-pixel bounds of the monitor that hosts the panel (cursor's monitor,
+/// primary fallback). `(x, y, width, height)`. `None` when none resolves.
+fn panel_monitor_logical_rect(app: &tauri::AppHandle) -> Option<(f64, f64, f64, f64)> {
+    let monitor = resolve_panel_monitor(app, cursor_position(app))?;
+    let scale = monitor.scale_factor();
+    let origin = monitor.position();
+    let size = monitor.size();
+    Some((
+        origin.x as f64 / scale,
+        origin.y as f64 / scale,
+        size.width as f64 / scale,
+        size.height as f64 / scale,
+    ))
+}
+
+/// Decide the horizontal window position and preview side for a layout change.
+///
+/// `anchor_x` is the history-pane window-left (the narrow-panel origin recorded
+/// at show time). The history pane must stay at `anchor_x` regardless of side:
+/// - `Right`: window-left = `anchor_x`, preview grows rightward.
+/// - `Left`:  window-left = `anchor_x - (wide - narrow)`, so the history pane
+///   (now the right child) still lands on `anchor_x` and the preview occupies
+///   the freed space on the left.
+///
+/// Returns `(window_x, side)`. When collapsed, always `(anchor_x, Right)`.
+/// Falls back to a clamped right layout when neither side fits.
+fn resolve_horizontal_layout(
+    anchor_x: f64,
+    monitor_x: f64,
+    monitor_width: f64,
+    narrow_width: f64,
+    wide_width: f64,
+    preview_expanded: bool,
+) -> (f64, ExpandSide) {
+    if !preview_expanded {
+        return (anchor_x, ExpandSide::Right);
+    }
+
+    let monitor_right = monitor_x + monitor_width;
+    let delta = wide_width - narrow_width;
+
+    if anchor_x + wide_width <= monitor_right {
+        // Room on the right: history pinned, preview grows rightward.
+        (anchor_x, ExpandSide::Right)
+    } else if anchor_x - delta >= monitor_x {
+        // No room right but room left: history pinned, preview grows leftward.
+        (anchor_x - delta, ExpandSide::Left)
+    } else {
+        // Fits on neither side (panel wider than the monitor allows around the
+        // anchor): keep the window on-screen, accepting that the history pane
+        // shifts. Prefer the top-left when even that overflows.
+        (
+            (monitor_right - wide_width).max(monitor_x),
+            ExpandSide::Right,
+        )
+    }
+}
+
+/// Resolve the preview side for the current remembered anchor and UI scale,
+/// without moving the window. Lets the frontend reverse its layout *before* the
+/// window is repositioned, so the history pane never visibly jumps.
+pub fn resolve_expand_side(app: &tauri::AppHandle, scale: f64) -> ExpandSide {
+    let (narrow_width, height) = panel_dimensions(scale, false);
+    let (wide_width, _) = panel_dimensions(scale, true);
+    let (anchor_x, _) = panel_origin_or_default(app, narrow_width, height);
+
+    match panel_monitor_logical_rect(app) {
+        Some((monitor_x, _, monitor_width, _)) => {
+            resolve_horizontal_layout(
+                anchor_x,
+                monitor_x,
+                monitor_width,
+                narrow_width,
+                wide_width,
+                true,
+            )
+            .1
+        }
+        None => ExpandSide::Right,
+    }
 }
 
 fn normalize_ui_scale(scale: f64) -> f64 {
@@ -181,17 +384,40 @@ fn remember_panel_origin(x: f64, y: f64) {
     }
 }
 
-fn resolve_panel_origin(
-    remembered_origin: Option<(f64, f64)>,
-    centered_origin: (f64, f64),
-) -> (f64, f64) {
-    remembered_origin.unwrap_or(centered_origin)
+/// Update the cached placement preference. Cheap (a mutex write); safe to call
+/// off any thread, including the main thread.
+///
+/// 更新缓存的面板出现位置偏好。
+pub fn set_position(position: QuickPanelPosition) {
+    if let Ok(mut guard) = PANEL_POSITION.lock() {
+        *guard = position;
+    }
 }
 
-fn panel_origin_or_center(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
+fn current_position() -> QuickPanelPosition {
+    PANEL_POSITION
+        .lock()
+        .map(|guard| *guard)
+        .unwrap_or(QuickPanelPosition::Center)
+}
+
+/// Compute the panel top-left for a fresh show, honoring the user's placement
+/// preference.
+fn default_panel_position(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
+    match current_position() {
+        QuickPanelPosition::Center => panel_position_for_cursor_screen(app, width, height),
+        QuickPanelPosition::FollowCursor => cursor_anchored_position(app, width, height),
+    }
+}
+
+/// Reuse the remembered origin (so inline preview expand/collapse doesn't jump)
+/// or fall back to the preference-appropriate default position.
+fn panel_origin_or_default(app: &tauri::AppHandle, width: f64, height: f64) -> (f64, f64) {
     let remembered_origin = PANEL_ORIGIN.lock().ok().and_then(|guard| *guard);
-    let centered_origin = panel_position_for_cursor_screen(app, width, height);
-    resolve_panel_origin(remembered_origin, centered_origin)
+    match remembered_origin {
+        Some(origin) => origin,
+        None => default_panel_position(app, width, height),
+    }
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -316,11 +542,14 @@ pub fn toggle(app: &tauri::AppHandle) {
 /// 在屏幕中央显示快捷面板（类似 Raycast）。
 pub fn show(app: &tauri::AppHandle) {
     let (width, height) = panel_dimensions(1.0, false);
-    let (panel_x, panel_y) = panel_position_for_cursor_screen(app, width, height);
+    let position = current_position();
+    let (panel_x, panel_y) = default_panel_position(app, width, height);
 
     info!(
         panel_x,
-        panel_y, "Showing quick panel centered on the monitor containing the cursor"
+        panel_y,
+        ?position,
+        "Showing quick panel at the resolved position on the monitor containing the cursor"
     );
 
     // If panel doesn't exist yet (pre_create wasn't called), create it now
@@ -406,39 +635,68 @@ pub fn dismiss(app: &tauri::AppHandle) {
     }
 }
 
-/// Update quick panel size and center position from the current UI scale.
+/// Update quick panel size and position from the current UI scale and whether
+/// the inline preview is expanded.
+///
+/// The history pane is pinned to its anchor (the narrow-panel origin recorded
+/// at show time). When the preview expands and the right edge can't fit it, the
+/// window is shifted left by the preview's extra width so the preview opens to
+/// the *left* while the history pane stays put — the frontend reverses its flex
+/// order to match. See [`resolve_horizontal_layout`].
 pub fn set_layout(app: &tauri::AppHandle, scale: f64, preview_expanded: bool) {
     let Some(window) = app.get_webview_window(PANEL_LABEL) else {
         return;
     };
 
-    let (width, height) = panel_dimensions(scale, preview_expanded);
-    let (panel_x, panel_y) = panel_origin_or_center(app, width, height);
+    let (narrow_width, height) = panel_dimensions(scale, false);
+    let (wide_width, _) = panel_dimensions(scale, true);
+    let display_width = if preview_expanded {
+        wide_width
+    } else {
+        narrow_width
+    };
 
-    if let Err(e) = window.set_size(tauri::LogicalSize::new(width, height)) {
+    // History-pane anchor (narrow-panel window-left). Remembered from show();
+    // never overwritten with the shifted left-open position, so collapsing or
+    // re-expanding keeps the history pane stable.
+    let (anchor_x, anchor_y) = panel_origin_or_default(app, narrow_width, height);
+
+    let (window_x, side) = match panel_monitor_logical_rect(app) {
+        Some((monitor_x, _, monitor_width, _)) => resolve_horizontal_layout(
+            anchor_x,
+            monitor_x,
+            monitor_width,
+            narrow_width,
+            wide_width,
+            preview_expanded,
+        ),
+        None => (anchor_x, ExpandSide::Right),
+    };
+
+    if let Err(e) = window.set_size(tauri::LogicalSize::new(display_width, height)) {
         warn!(
             error = %e,
             preview_expanded,
             scale,
-            width,
+            display_width,
             height,
             "Failed to update quick panel size"
         );
     }
 
     if let Err(e) = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(
-        panel_x, panel_y,
+        window_x, anchor_y,
     ))) {
         warn!(
             error = %e,
             preview_expanded,
             scale,
-            panel_x,
-            panel_y,
+            window_x,
+            ?side,
             "Failed to update quick panel position"
         );
     } else {
-        remember_panel_origin(panel_x, panel_y);
+        remember_panel_origin(anchor_x, anchor_y);
     }
 }
 /// Dismiss the quick panel, then paste clipboard content to the previous app.
@@ -486,5 +744,130 @@ pub fn paste(app: &tauri::AppHandle) -> Result<(), String> {
     {
         dismiss(app);
         Err("Paste to previous app is not yet supported on this platform".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Monitor spanning logical [0, 1000) on each axis for readability.
+    const MON_ORIGIN: f64 = 0.0;
+    const MON_EXTENT: f64 = 1000.0;
+    const PANEL: f64 = 360.0;
+
+    #[test]
+    fn axis_opens_forward_when_room() {
+        // Cursor with plenty of room ahead: panel opens at cursor + gap.
+        let pos = axis_anchored_position(200.0, MON_ORIGIN, MON_EXTENT, PANEL);
+        assert_eq!(pos, 200.0 + CURSOR_ANCHOR_GAP);
+    }
+
+    #[test]
+    fn axis_flips_backward_near_far_edge() {
+        // Cursor close to the far edge: panel can't open forward (would overflow
+        // 1000), so it flips and its far edge sits at cursor - gap.
+        let cursor = 900.0;
+        let pos = axis_anchored_position(cursor, MON_ORIGIN, MON_EXTENT, PANEL);
+        assert_eq!(pos, cursor - CURSOR_ANCHOR_GAP - PANEL);
+        // Fully on-screen.
+        assert!(pos >= MON_ORIGIN);
+        assert!(pos + PANEL <= MON_ORIGIN + MON_EXTENT);
+    }
+
+    #[test]
+    fn axis_clamps_when_fits_neither_side() {
+        // Panel as wide as the monitor: neither side has room → clamp on-screen.
+        let pos = axis_anchored_position(500.0, MON_ORIGIN, MON_EXTENT, MON_EXTENT);
+        assert_eq!(pos, MON_ORIGIN);
+    }
+
+    #[test]
+    fn axis_respects_monitor_origin_offset() {
+        // Secondary monitor offset to [2000, 3000): forward placement stays in
+        // that monitor's coordinate space.
+        let origin = 2000.0;
+        let pos = axis_anchored_position(2100.0, origin, MON_EXTENT, PANEL);
+        assert_eq!(pos, 2100.0 + CURSOR_ANCHOR_GAP);
+    }
+
+    #[test]
+    fn axis_flips_backward_on_offset_monitor() {
+        let origin = 2000.0;
+        let cursor = 2950.0; // near far edge (3000)
+        let pos = axis_anchored_position(cursor, origin, MON_EXTENT, PANEL);
+        assert_eq!(pos, cursor - CURSOR_ANCHOR_GAP - PANEL);
+        assert!(pos >= origin);
+    }
+
+    #[test]
+    fn both_axes_resolved_independently() {
+        // Cursor near the right edge but with room below: x flips, y opens forward.
+        let (x, y) = cursor_anchored_position_from_monitor(
+            950.0, 100.0, // cursor
+            0.0, 0.0, 1000.0, 1000.0, // monitor
+            PANEL, PANEL, // panel
+        );
+        assert_eq!(x, 950.0 - CURSOR_ANCHOR_GAP - PANEL);
+        assert_eq!(y, 100.0 + CURSOR_ANCHOR_GAP);
+    }
+
+    // Realistic panel widths (logical px at scale 1): narrow = history only,
+    // wide = history + gap + preview. delta = wide - narrow = 368.
+    const NARROW: f64 = 392.0;
+    const WIDE: f64 = 760.0;
+
+    #[test]
+    fn layout_collapsed_keeps_anchor_and_right() {
+        let (x, side) = resolve_horizontal_layout(300.0, 0.0, 1000.0, NARROW, WIDE, false);
+        assert_eq!(x, 300.0);
+        assert_eq!(side, ExpandSide::Right);
+    }
+
+    #[test]
+    fn layout_opens_right_when_room() {
+        // Anchor with room on the right: window stays at anchor, opens right.
+        let (x, side) = resolve_horizontal_layout(100.0, 0.0, 1000.0, NARROW, WIDE, true);
+        assert_eq!(x, 100.0);
+        assert_eq!(side, ExpandSide::Right);
+        assert!(x + WIDE <= 1000.0); // preview fully on-screen
+    }
+
+    #[test]
+    fn layout_flips_left_when_right_edge_blocks() {
+        // Narrow panel anchored near the right edge: wide panel can't fit on the
+        // right, so flip left. Window shifts left by delta; the history pane
+        // (right child) lands back on the anchor, preview fully on-screen.
+        let anchor = axis_anchored_position(998.0, 0.0, 1000.0, NARROW);
+        assert!(anchor + WIDE > 1000.0); // would overflow opening right
+        let (x, side) = resolve_horizontal_layout(anchor, 0.0, 1000.0, NARROW, WIDE, true);
+        assert_eq!(side, ExpandSide::Left);
+        assert_eq!(x, anchor - (WIDE - NARROW));
+        assert!(x >= 0.0); // window stays on-screen
+                           // History pane (window-right minus narrow card) is unchanged: the wide
+                           // window's right edge equals the narrow panel's right edge at the anchor.
+        assert_eq!(x + WIDE, anchor + NARROW);
+    }
+
+    #[test]
+    fn layout_clamps_when_neither_side_fits() {
+        // Tiny monitor (800) where the wide panel (760) fits neither opening
+        // right (anchor 100 + 760 = 860 > 800) nor flipping left (100 - 368 < 0).
+        // Fall back to a clamped right layout flush against the right edge.
+        let (x, side) = resolve_horizontal_layout(100.0, 0.0, 800.0, NARROW, WIDE, true);
+        assert_eq!(side, ExpandSide::Right);
+        assert_eq!(x, 800.0 - WIDE); // flush against the right edge
+        assert!(x >= 0.0);
+    }
+
+    #[test]
+    fn layout_respects_offset_monitor_when_flipping() {
+        // Secondary monitor at [2000, 3000). Anchor near its right edge flips
+        // left within that monitor's coordinate space.
+        let anchor = axis_anchored_position(2998.0, 2000.0, 1000.0, NARROW);
+        let (x, side) = resolve_horizontal_layout(anchor, 2000.0, 1000.0, NARROW, WIDE, true);
+        assert_eq!(side, ExpandSide::Left);
+        assert_eq!(x, anchor - (WIDE - NARROW));
+        assert!(x >= 2000.0);
     }
 }

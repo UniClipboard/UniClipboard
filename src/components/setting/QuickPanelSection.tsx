@@ -1,10 +1,18 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Switch } from '@/components/ui'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Switch,
+} from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { SHORTCUT_DEFINITIONS, type ShortcutDefinition } from '@/shortcuts/definitions'
+import type { QuickPanelPosition } from '@/types/setting'
 import { RestartBanner } from './RestartBanner'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
@@ -43,6 +51,7 @@ export default function QuickPanelSection() {
   )
 
   const enabled = setting?.quickPanel?.enabled ?? false
+  const position: QuickPanelPosition = setting?.quickPanel?.position ?? 'center'
   const [saving, setSaving] = useState(false)
   const isBusy = loading || saving
 
@@ -65,6 +74,18 @@ export default function QuickPanelSection() {
       }
     } catch (err) {
       log.error({ err }, '更改快捷面板开关失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handlePositionChange = async (next: QuickPanelPosition) => {
+    if (next === position) return
+    try {
+      setSaving(true)
+      await updateQuickPanelSetting({ position: next })
+    } catch (err) {
+      log.error({ err }, '更改快捷面板展示位置失败')
     } finally {
       setSaving(false)
     }
@@ -153,6 +174,28 @@ export default function QuickPanelSection() {
           description={t('settings.sections.quickPanel.enable.description')}
         >
           <Switch checked={enabled} onCheckedChange={handleEnabledChange} disabled={isBusy} />
+        </SettingRow>
+        <SettingRow
+          label={t('settings.sections.quickPanel.position.label')}
+          description={t('settings.sections.quickPanel.position.description')}
+        >
+          <Select
+            value={position}
+            onValueChange={value => void handlePositionChange(value as QuickPanelPosition)}
+            disabled={isBusy || !enabled}
+          >
+            <SelectTrigger className="h-7 w-[160px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="center" className="text-xs">
+                {t('settings.sections.quickPanel.position.center')}
+              </SelectItem>
+              <SelectItem value="follow_cursor" className="text-xs">
+                {t('settings.sections.quickPanel.position.followCursor')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </SettingRow>
       </SettingGroup>
 

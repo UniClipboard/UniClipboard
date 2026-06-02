@@ -85,19 +85,24 @@ async fn wait_for_daemon_connection(
     }
 }
 
-#[cfg(target_os = "windows")]
+// Windows 与 Linux 都没有可用的系统标题栏方案：Windows 一向自绘 chrome；
+// Linux(GNOME/Wayland)的 CSD 与本应用的 transparent + 自绘 titlebar 叠加，
+// 会出现非原生、窗口按钮无法点击的标题栏。两个平台统一关掉系统装饰，由前端
+// `TitleBar.tsx` 自绘最小化/最大化/关闭按钮（调用 Tauri 窗口 API）。
+// macOS 仍走原生红绿灯，落到下面的 no-op 分支。
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn configure_main_window_for_platform(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
-        warn!("Main window not found during Windows window configuration");
+        warn!("Main window not found during window decoration setup");
         return;
     };
 
     if let Err(error) = window.set_decorations(false) {
-        warn!(error = %error, "Failed to disable Windows main window decorations");
+        warn!(error = %error, "Failed to disable main window decorations");
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 
 /// Builds the process runtime, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.

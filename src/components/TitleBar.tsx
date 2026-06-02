@@ -70,7 +70,7 @@ export const TitleBar = ({
   const { t } = useTranslation()
 
   // 使用 usePlatform hook 获取平台信息
-  const { isWindows, isMac, isTauri } = usePlatform()
+  const { isWindows, isMac, isLinux, isTauri } = usePlatform()
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
 
   // 检测是否在 Dashboard 页面
@@ -193,11 +193,11 @@ export const TitleBar = ({
             aria-label="Toggle window maximize"
             className="absolute inset-0 z-0 cursor-default bg-transparent"
             onDoubleClick={() => {
-              if (!isWindows) return
+              if (!isWindows && !isLinux) return
               handleToggleMaximize()
             }}
             onKeyDown={event => {
-              if (!isWindows) return
+              if (!isWindows && !isLinux) return
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
                 handleToggleMaximize()
@@ -240,7 +240,9 @@ export const TitleBar = ({
             </div>
           ) : null}
         </div>
-        {isWindows && (
+        {/* Windows / Linux 没有可用的原生标题栏（后端已 set_decorations(false)），
+            统一自绘最小化/最大化/关闭按钮；macOS 用原生红绿灯，不在此渲染。 */}
+        {(isWindows || isLinux) && (
           <div className="flex items-center h-full bg-transparent" data-tauri-drag-region="false">
             <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
               <Minus className="size-4" />

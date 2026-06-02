@@ -13,6 +13,7 @@ path = "src/main.rs"
 uc-bootstrap = { path = "../uc-bootstrap" }
 uc-observability = { path = "../uc-observability" }
 uc-core = { path = "../uc-core" }
+uc-daemon-client = { path = "../uc-daemon-client" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly

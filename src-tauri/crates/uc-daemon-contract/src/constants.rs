@@ -50,6 +50,11 @@ pub mod ws_event {
     pub const SEARCH_STATUS_SNAPSHOT: &str = "search.status_snapshot";
     /// Search rebuild progress event (Phase 92).
     pub const SEARCH_REBUILD_PROGRESS: &str = "search.rebuild_progress";
+    /// Inbound clipboard notice with full V3 envelope payload (ADR-008 P2.5).
+    /// Emitted alongside `CLIPBOARD_NEW_CONTENT`; carries base64-encoded
+    /// plaintext so CLI `watch` can decode and render without an extra HTTP
+    /// round-trip.
+    pub const CLIPBOARD_INBOUND_NOTICE: &str = "clipboard.inbound_notice";
 }
 
 /// Pairing stage labels used in pairing session state payloads.
@@ -114,6 +119,12 @@ pub mod http_route {
     pub const UPGRADE_STATUS: &str = "/upgrade/status";
     /// POST /upgrade/ack — advance the version cursor to the running build.
     pub const UPGRADE_ACK: &str = "/upgrade/ack";
+    /// POST /clipboard/dispatch — dispatch plaintext to online peers (ADR-008 P2.5 / D7)
+    pub const CLIPBOARD_DISPATCH: &str = "/clipboard/dispatch";
+    /// POST /clipboard/resend — resend a previously captured entry (ADR-008 P2.5 / D7)
+    pub const CLIPBOARD_RESEND: &str = "/clipboard/resend";
+    /// POST /clipboard/cancel-transfer/:transfer_id — cancel an in-flight inbound transfer
+    pub const CLIPBOARD_CANCEL_TRANSFER: &str = "/clipboard/cancel-transfer";
 }
 
 /// HTTP route paths for the v2 daemon REST endpoints (Slice4 P3 T3.2).

@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 pub mod connection;
 pub mod http;
+pub mod http_ws_service;
 pub mod realtime;
+pub mod service;
 pub mod setup;
 pub mod ws_bridge;
 
@@ -21,6 +23,8 @@ pub use http::{
     DaemonClipboardClient, DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient,
     DaemonSearchClient, DaemonSearchRequestError, DaemonSetupClient, SearchQueryRequest,
 };
+pub use http_ws_service::HttpWsDaemonService;
+pub use service::DaemonService;
 pub use ws_bridge::{BridgeState, DaemonWsBridge, DaemonWsBridgeConfig, DaemonWsBridgeError};
 
 const ENV_BASE_URL: &str = "UNICLIPBOARD_DAEMON_BASE_URL";
@@ -98,7 +102,12 @@ pub fn resolve_connection_info_from_env() -> Result<DaemonConnectionInfo> {
     let cli_pid = std::process::id();
     Ok(DaemonConnectionInfo {
         base_url: base_url.clone(),
-        ws_url: format!("{}/ws", base_url),
+        ws_url: format!(
+            "{}/ws",
+            base_url
+                .replacen("http://", "ws://", 1)
+                .replacen("https://", "wss://", 1)
+        ),
         token,
         pid: cli_pid,
     })

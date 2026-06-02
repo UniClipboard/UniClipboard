@@ -32,10 +32,13 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
 use uc_application::facade::{
-    ClipboardSyncFacade, InboundClipboardApplyOutcome, InboundClipboardFacade,
+    ClipboardSyncFacade, InboundAction, InboundClipboardApplyOutcome, InboundClipboardFacade,
     InboundClipboardNoticeInput, InboundNotice,
 };
+use uc_daemon_contract::api::dto::clipboard_command::InboundNoticeEvent;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
 use crate::daemon::service::{DaemonService, ServiceHealth};
@@ -80,6 +83,8 @@ impl InboundClipboardSyncWorker {
     }
 
     async fn handle_one(&self, notice: InboundNotice) {
+        Self::emit_inbound_notice_event(&self.event_tx, &notice);
+
         let input = InboundClipboardNoticeInput {
             from_device: notice.from_device.as_str().to_string(),
             content_hash: notice.content_hash,
@@ -134,6 +139,40 @@ impl InboundClipboardSyncWorker {
 
         if let Err(e) = event_tx.send(event) {
             debug!(error = %e, "No WS subscribers for clipboard.new_content");
+        }
+    }
+
+    fn emit_inbound_notice_event(
+        event_tx: &broadcast::Sender<DaemonWsEvent>,
+        notice: &InboundNotice,
+    ) {
+        let action = match notice.action {
+            InboundAction::NewEntry => "new_entry",
+            InboundAction::DuplicateIgnored => "duplicate_ignored",
+        };
+        let payload = InboundNoticeEvent {
+            from_device: notice.from_device.as_str().to_string(),
+            content_hash: notice.content_hash.clone(),
+            plaintext_base64: STANDARD.encode(&notice.plaintext),
+            action: action.to_string(),
+            at_ms: notice.at_ms,
+        };
+        let payload_value = match serde_json::to_value(payload) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "Failed to serialize clipboard.inbound_notice payload");
+                return;
+            }
+        };
+        let event = DaemonWsEvent {
+            topic: ws_topic::CLIPBOARD.to_string(),
+            event_type: ws_event::CLIPBOARD_INBOUND_NOTICE.to_string(),
+            session_id: None,
+            ts: chrono::Utc::now().timestamp_millis(),
+            payload: payload_value,
+        };
+        if let Err(e) = event_tx.send(event) {
+            debug!(error = %e, "No WS subscribers for clipboard.inbound_notice");
         }
     }
 }

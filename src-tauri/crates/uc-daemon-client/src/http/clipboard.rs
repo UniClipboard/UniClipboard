@@ -2,6 +2,11 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use reqwest::Method;
+use uc_daemon_contract::api::dto::clipboard_command::{
+    CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
+    ResendRequest, ResendResponse,
+};
+use uc_daemon_contract::constants::http_route;
 
 use crate::http::authorized_daemon_request_with_type;
 use crate::DaemonConnectionState;
@@ -82,5 +87,128 @@ impl DaemonClipboardClient {
                 body
             ))
         }
+    }
+
+    pub async fn dispatch_text(
+        &self,
+        text: &str,
+        peers: Option<Vec<String>>,
+    ) -> Result<DispatchOutcomeResponse> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        let req_body = DispatchTextRequest {
+            text: text.to_string(),
+            peers,
+        };
+        let request = authorized_daemon_request_with_type(
+            &*self.http,
+            &self.connection_state,
+            Method::POST,
+            http_route::CLIPBOARD_DISPATCH,
+            connection.pid,
+            &self.client_type,
+        )
+        .await?;
+
+        let response = request
+            .json(&req_body)
+            .send()
+            .await
+            .context("failed to call daemon clipboard dispatch")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("clipboard dispatch failed ({}): {}", status, body);
+        }
+
+        response
+            .json::<DispatchOutcomeResponse>()
+            .await
+            .context("failed to decode dispatch response")
+    }
+
+    pub async fn resend_entry(
+        &self,
+        entry_id: &str,
+        peers: Option<Vec<String>>,
+    ) -> Result<ResendResponse> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        let req_body = ResendRequest {
+            entry_id: entry_id.to_string(),
+            peers,
+        };
+        let request = authorized_daemon_request_with_type(
+            &*self.http,
+            &self.connection_state,
+            Method::POST,
+            http_route::CLIPBOARD_RESEND,
+            connection.pid,
+            &self.client_type,
+        )
+        .await?;
+
+        let response = request
+            .json(&req_body)
+            .send()
+            .await
+            .context("failed to call daemon clipboard resend")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("clipboard resend failed ({}): {}", status, body);
+        }
+
+        response
+            .json::<ResendResponse>()
+            .await
+            .context("failed to decode resend response")
+    }
+
+    pub async fn cancel_transfer(
+        &self,
+        transfer_id: &str,
+        reason: &str,
+    ) -> Result<CancelTransferResponse> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        let path = format!("{}/{transfer_id}", http_route::CLIPBOARD_CANCEL_TRANSFER);
+        let req_body = CancelTransferRequest {
+            reason: reason.to_string(),
+        };
+        let request = authorized_daemon_request_with_type(
+            &*self.http,
+            &self.connection_state,
+            Method::POST,
+            &path,
+            connection.pid,
+            &self.client_type,
+        )
+        .await?;
+
+        let response = request
+            .json(&req_body)
+            .send()
+            .await
+            .context("failed to call daemon cancel transfer")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("cancel transfer failed ({}): {}", status, body);
+        }
+
+        response
+            .json::<CancelTransferResponse>()
+            .await
+            .context("failed to decode cancel transfer response")
     }
 }

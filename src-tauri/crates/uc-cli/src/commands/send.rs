@@ -39,7 +39,13 @@ use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
+use uc_daemon_client::DaemonService;
+use uc_daemon_contract::api::dto::clipboard_command::DispatchOutcomeResponse;
+
+use crate::commands::app_session::{
+    build_app_session, refuse_if_daemon_running, resolve_execution_mode, CliAppSession,
+    CliExecutionMode,
+};
 use crate::exit_codes;
 use crate::ui;
 
@@ -87,20 +93,11 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         ui::header(mode.header());
     }
 
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-
-    // Defense in depth: clap already declares `text` conflicts with
-    // `--resend`, but if both leaked through (e.g. via a future refactor),
-    // bail out before touching stdin / facades.
     if args.resend.is_some() && args.text.is_some() {
         ui::error("--resend cannot be combined with positional text.");
         return exit_codes::EXIT_ERROR;
     }
 
-    // For new-entry mode read text/stdin up front so stdin errors surface
-    // before we spin a session up. Resend mode never reads stdin.
     let plaintext = match mode {
         SendMode::Resend => None,
         SendMode::New => match read_plaintext(args.text) {
@@ -116,15 +113,147 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         },
     };
 
-    let target_filter: Option<Vec<DeviceId>> = if args.peers.is_empty() {
+    let peers_str: Option<Vec<String>> = if args.peers.is_empty() {
         None
     } else {
-        Some(args.peers.iter().map(DeviceId::new).collect())
+        Some(args.peers.clone())
     };
 
-    let cli = match build_app_session(verbose).await {
-        Ok(bundle) => bundle,
+    let exec_mode = match resolve_execution_mode(verbose).await {
+        Ok(m) => m,
         Err(code) => return code,
+    };
+
+    match exec_mode {
+        CliExecutionMode::DaemonClient(service) => {
+            run_send_via_daemon(&*service, mode, plaintext, args.resend, peers_str, json).await
+        }
+        CliExecutionMode::InProcess(cli) => {
+            run_send_in_process(cli, mode, plaintext, args.resend, &args.peers, json).await
+        }
+    }
+}
+
+async fn run_send_via_daemon(
+    service: &dyn DaemonService,
+    mode: SendMode,
+    plaintext: Option<String>,
+    resend_id: Option<String>,
+    peers: Option<Vec<String>>,
+    json: bool,
+) -> i32 {
+    match mode {
+        SendMode::New => {
+            let text = plaintext.expect("plaintext populated in new-entry mode");
+            let dispatch_spinner = ui::spinner("Dispatching to online peers via daemon...");
+            match service.dispatch_text(&text, peers).await {
+                Ok(resp) => {
+                    ui::spinner_finish_success(
+                        &dispatch_spinner,
+                        &format!(
+                            "{} accepted, {} duplicate, {} offline, {} error(s)",
+                            resp.total_accepted,
+                            resp.total_duplicate,
+                            resp.total_offline,
+                            resp.total_errored
+                        ),
+                    );
+                    if json {
+                        if let Ok(s) = serde_json::to_string_pretty(&resp) {
+                            println!("{s}");
+                        }
+                    } else {
+                        render_daemon_dispatch(&resp);
+                    }
+                    if resp.total_accepted == 0 && resp.total_duplicate == 0 {
+                        exit_codes::EXIT_ERROR
+                    } else {
+                        exit_codes::EXIT_SUCCESS
+                    }
+                }
+                Err(err) => {
+                    ui::spinner_finish_error(&dispatch_spinner, &format!("Dispatch failed: {err}"));
+                    exit_codes::EXIT_ERROR
+                }
+            }
+        }
+        SendMode::Resend => {
+            let entry_id_str = resend_id.expect("resend id present");
+            let resend_spinner = ui::spinner("Resending entry via daemon...");
+            match service.resend_entry(&entry_id_str, peers).await {
+                Ok(resp) => {
+                    ui::spinner_finish_success(
+                        &resend_spinner,
+                        &format!(
+                            "{} accepted, {} duplicate, {} offline, {} error(s), {} pending",
+                            resp.accepted, resp.duplicate, resp.offline, resp.errored, resp.pending,
+                        ),
+                    );
+                    if json {
+                        if let Ok(s) = serde_json::to_string_pretty(&resp) {
+                            println!("{s}");
+                        }
+                    } else {
+                        ui::bar();
+                        ui::info("entry", &entry_id_str);
+                        ui::info(
+                            "summary",
+                            &format!(
+                                "{} accepted, {} duplicate, {} offline, {} error(s), {} pending",
+                                resp.accepted,
+                                resp.duplicate,
+                                resp.offline,
+                                resp.errored,
+                                resp.pending,
+                            ),
+                        );
+                        ui::bar();
+                    }
+                    if resp.accepted == 0 && resp.duplicate == 0 && resp.pending == 0 {
+                        exit_codes::EXIT_ERROR
+                    } else {
+                        exit_codes::EXIT_SUCCESS
+                    }
+                }
+                Err(err) => {
+                    ui::spinner_finish_error(&resend_spinner, &format!("Resend failed: {err}"));
+                    exit_codes::EXIT_ERROR
+                }
+            }
+        }
+    }
+}
+
+fn render_daemon_dispatch(resp: &DispatchOutcomeResponse) {
+    ui::bar();
+    ui::info("hash", short_hash(&resp.content_hash));
+    if resp.per_target.is_empty() {
+        ui::info("targets", "(none — no online peers)");
+    } else {
+        for t in &resp.per_target {
+            let detail = match t.outcome.as_str() {
+                "accepted" => "accepted".to_string(),
+                "duplicate" => "duplicate (peer already had it)".to_string(),
+                _ => format!("failed: {}", t.error.as_deref().unwrap_or("unknown")),
+            };
+            ui::info("·", &format!("{} → {}", t.device_id, detail));
+        }
+    }
+    ui::bar();
+}
+
+async fn run_send_in_process(
+    cli: CliAppSession,
+    mode: SendMode,
+    plaintext: Option<String>,
+    resend_id: Option<String>,
+    peers: &[String],
+    json: bool,
+) -> i32 {
+    let target_filter: Option<Vec<DeviceId>> = if peers.is_empty() {
+        None
+    } else {
+        Some(peers.iter().map(DeviceId::new).collect())
     };
 
     let resume_spinner = ui::spinner("Resuming space session...");
@@ -161,9 +290,6 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         }
     }
 
-    // Refresh presence so `dispatch_entry`'s Online-only filter sees the
-    // current peer state instead of stale `Unknown`. Same pattern as the
-    // `members` command.
     let probe_spinner = ui::spinner("Probing paired peers...");
     match cli.app_facade().refresh_presence().await {
         Ok(report) => ui::spinner_finish_success(
@@ -182,21 +308,9 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         ),
     }
 
-    // Branch on mode. Each branch builds the same `SendOutcomeView` so
-    // human / JSON rendering is shared below.
     let view = match mode {
         SendMode::New => {
-            // `unwrap` is sound: New branch always populates `plaintext`
-            // above (or already returned with EXIT_ERROR).
             let plaintext = plaintext.expect("plaintext populated in new-entry mode");
-
-            // Phase 3 · T9: wrap the CLI text into a single-representation
-            // `SystemClipboardSnapshot` with `text/plain` mime — same shape
-            // the daemon would emit if the user copied this text through a
-            // real `SystemClipboardPort`. `dispatch_snapshot` handles V3
-            // envelope encoding + canonical `snapshot_hash` (which matches
-            // the receiver's local `clipboard_event.snapshot_hash` for
-            // dedup).
             let snapshot = SystemClipboardSnapshot {
                 ts_ms: chrono::Utc::now().timestamp_millis(),
                 representations: vec![ObservedClipboardRepresentation::new(
@@ -236,9 +350,7 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
             }
         }
         SendMode::Resend => {
-            // `unwrap` is sound: Resend branch only entered when
-            // `args.resend.is_some()`.
-            let entry_id_str = args.resend.clone().expect("resend id present");
+            let entry_id_str = resend_id.expect("resend id present");
             let cmd = ResendEntryCommand {
                 entry_id: EntryId::from(entry_id_str.as_str()),
                 target_filter: target_filter.clone(),
@@ -290,20 +402,12 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
     match &view {
         SendOutcomeView::New(o) => {
             if o.total_accepted == 0 && o.total_duplicate == 0 {
-                // Nothing actually landed: at least one peer was online but
-                // every attempt errored (or no peers paired at all). Surface
-                // as non-zero so dual-profile shell harness can detect
-                // failure.
                 exit_codes::EXIT_ERROR
             } else {
                 exit_codes::EXIT_SUCCESS
             }
         }
         SendOutcomeView::Resend { report, .. } => {
-            // Resend success criterion mirrors new-entry: at least one
-            // delivery materialized (accepted or duplicate-on-peer). All-
-            // pending is treated as success because the work has been
-            // accepted into the background and will resolve via host events.
             if report.accepted == 0 && report.duplicate == 0 && report.pending == 0 {
                 exit_codes::EXIT_ERROR
             } else {

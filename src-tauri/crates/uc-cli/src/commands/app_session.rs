@@ -1,11 +1,13 @@
-//! 独立 CLI 业务命令共享的启动辅助函数。
+//! CLI session helpers: daemon probe, in-process wiring, and dual-dispatch.
 //!
-//! 每个业务命令都运行一个自包含 application session,不再走 daemon HTTP。
-//! 这里集中处理 daemon 冲突探测、日志 profile 和默认设备名。
+//! Business commands either build a self-contained `CliAppSession` (no
+//! daemon) or delegate to a running daemon via `DaemonService`.
 
 use crate::exit_codes;
 use crate::local_daemon::probe_running;
 use crate::ui;
+
+use uc_daemon_client::{DaemonClientContext, DaemonService, HttpWsDaemonService};
 
 /// [`build_app_session`] 返回的 CLI 会话。
 pub struct CliAppSession {
@@ -66,6 +68,43 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
         Err(err) => {
             ui::error(&format!("Failed to wire dependencies: {err}"));
             Err(exit_codes::EXIT_ERROR)
+        }
+    }
+}
+
+/// Execution mode determined by daemon probe.
+pub enum CliExecutionMode {
+    /// No daemon running — use in-process AppFacade.
+    InProcess(CliAppSession),
+    /// Daemon running — delegate via transport-agnostic DaemonService.
+    DaemonClient(Box<dyn DaemonService>),
+}
+
+/// Probe for a running daemon and return the appropriate execution mode.
+///
+/// If a daemon is running, builds a `DaemonService` client. Otherwise
+/// falls back to the in-process `CliAppSession`.
+pub async fn resolve_execution_mode(verbose: bool) -> Result<CliExecutionMode, i32> {
+    match probe_running().await {
+        Ok(true) => {
+            let ctx = match DaemonClientContext::from_env() {
+                Ok(ctx) => ctx,
+                Err(err) => {
+                    ui::error(&format!("Daemon is running but failed to connect: {err}"));
+                    return Err(exit_codes::EXIT_ERROR);
+                }
+            };
+            let service = HttpWsDaemonService::new(ctx);
+            Ok(CliExecutionMode::DaemonClient(Box::new(service)))
+        }
+        Ok(false) => {
+            let session = build_app_session(verbose).await?;
+            Ok(CliExecutionMode::InProcess(session))
+        }
+        Err(err) => {
+            tracing::debug!(error = %err, "daemon probe failed; assuming no daemon");
+            let session = build_app_session(verbose).await?;
+            Ok(CliExecutionMode::InProcess(session))
         }
     }
 }

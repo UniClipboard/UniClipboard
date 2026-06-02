@@ -19,7 +19,12 @@ use uc_application::facade::space_setup::TryResumeSessionError;
 use uc_application::facade::{decode_v3_bytes_to_snapshot, InboundAction, InboundNotice};
 use uc_core::SystemClipboardSnapshot;
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
+use uc_daemon_client::DaemonService;
+use uc_daemon_contract::api::dto::clipboard_command::InboundNoticeEvent;
+
+use crate::commands::app_session::{resolve_execution_mode, CliExecutionMode};
 use crate::exit_codes;
 use crate::ui;
 
@@ -28,15 +33,99 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         ui::header("Watch inbound clipboard");
     }
 
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-
-    let cli = match build_app_session(verbose).await {
-        Ok(bundle) => bundle,
+    let exec_mode = match resolve_execution_mode(verbose).await {
+        Ok(m) => m,
         Err(code) => return code,
     };
 
+    match exec_mode {
+        CliExecutionMode::DaemonClient(service) => run_watch_via_daemon(&*service, json).await,
+        CliExecutionMode::InProcess(cli) => run_watch_in_process(cli, json).await,
+    }
+}
+
+async fn run_watch_via_daemon(service: &dyn DaemonService, json: bool) -> i32 {
+    let subscribe_spinner = ui::spinner("Subscribing to daemon clipboard events...");
+    let mut rx = match service.subscribe_inbound_notices().await {
+        Ok(rx) => {
+            ui::spinner_finish_success(&subscribe_spinner, "Subscribed via daemon WS");
+            rx
+        }
+        Err(err) => {
+            ui::spinner_finish_error(&subscribe_spinner, &format!("Failed to subscribe: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+
+    if !json {
+        ui::info("status", "Listening via daemon — press Ctrl-C to stop");
+        ui::bar();
+    }
+    emit_watch_ready();
+
+    loop {
+        tokio::select! {
+            biased;
+            _ = tokio::signal::ctrl_c() => {
+                if !json { ui::end("Stopped"); }
+                return exit_codes::EXIT_SUCCESS;
+            }
+            recv = rx.recv() => match recv {
+                Some(event) => render_daemon_notice(&event, json),
+                None => {
+                    if !json { ui::warn("Daemon WS channel closed; exiting."); }
+                    return exit_codes::EXIT_ERROR;
+                }
+            }
+        }
+    }
+}
+
+fn render_daemon_notice(event: &InboundNoticeEvent, json: bool) {
+    let plaintext_bytes = STANDARD.decode(&event.plaintext_base64).ok();
+    let snapshot = plaintext_bytes
+        .as_deref()
+        .and_then(|b| decode_v3_bytes_to_snapshot(b).ok());
+    let text_preview = snapshot.as_ref().and_then(first_text_preview);
+    let rep_summary = snapshot.as_ref().map(rep_summary_line);
+
+    if json {
+        #[derive(Serialize)]
+        struct DaemonNoticeDto {
+            from_device: String,
+            content_hash: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            text: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            rep_summary: Option<String>,
+            action: String,
+            at_ms: i64,
+        }
+        let dto = DaemonNoticeDto {
+            from_device: event.from_device.clone(),
+            content_hash: event.content_hash.clone(),
+            text: text_preview.clone(),
+            rep_summary: rep_summary.clone(),
+            action: event.action.clone(),
+            at_ms: event.at_ms,
+        };
+        if let Ok(line) = serde_json::to_string(&dto) {
+            println!("{line}");
+        }
+        return;
+    }
+
+    let body = match text_preview {
+        Some(t) => truncate_preview(&t),
+        None => rep_summary.unwrap_or_else(|| "(undecodable envelope)".to_string()),
+    };
+    ui::info(
+        "·",
+        &format!("[{}] {} ({})", event.from_device, body, event.action),
+    );
+}
+
+async fn run_watch_in_process(cli: crate::commands::app_session::CliAppSession, json: bool) -> i32 {
     let resume_spinner = ui::spinner("Resuming space session...");
     match cli.app_facade().try_resume_session().await {
         Ok(true) => ui::spinner_finish_success(&resume_spinner, "Session resumed"),
@@ -71,8 +160,6 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         }
     }
 
-    // Refresh presence so the sender side, when it dispatches, doesn't
-    // skip us under "Unknown" — same routine as `members` / `send`.
     let probe_spinner = ui::spinner("Probing paired peers...");
     match cli.app_facade().refresh_presence().await {
         Ok(report) => ui::spinner_finish_success(
@@ -105,18 +192,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         ui::info("status", "Listening — press Ctrl-C to stop");
         ui::bar();
     }
-    // Machine-readable handshake marker: scripts (e.g. the single-machine
-    // clipboard e2e) can wait for this on stderr before driving the
-    // sender side. Without it, a sender racing the watch's subscribe
-    // setup time emits notices to a not-yet-connected public broadcast
-    // and the assertion times out. Explicit flush because stderr is
-    // line-buffered when piped, but we want zero delay regardless.
-    {
-        use std::io::Write;
-        let mut err = std::io::stderr().lock();
-        let _ = writeln!(err, "WATCH_READY");
-        let _ = err.flush();
-    }
+    emit_watch_ready();
 
     let exit_code = loop {
         tokio::select! {
@@ -150,6 +226,13 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
 
     cli.shutdown().await;
     exit_code
+}
+
+fn emit_watch_ready() {
+    use std::io::Write;
+    let mut err = std::io::stderr().lock();
+    let _ = writeln!(err, "WATCH_READY");
+    let _ = err.flush();
 }
 
 fn render_notice(notice: &InboundNotice, json: bool) {

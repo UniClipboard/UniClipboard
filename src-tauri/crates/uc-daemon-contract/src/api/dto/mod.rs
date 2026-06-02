@@ -1,4 +1,5 @@
 pub mod clipboard;
+pub mod clipboard_command;
 pub mod device;
 pub mod encryption;
 pub mod member;

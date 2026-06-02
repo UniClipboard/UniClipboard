@@ -3,6 +3,8 @@
 //! All routes are protected by the auth_extractor + rate_limit middleware chain
 //! applied at the router level (see routes::router_l2_plus).
 
+use std::sync::Arc;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
@@ -10,10 +12,21 @@ use axum::{Json, Router};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use serde::Deserialize;
+use uc_application::facade::{AppFacade, ResendEntryCommand};
 use uc_application::facade::{
     ClipboardClearHistoryResultView, ClipboardHistoryError, ClipboardHistoryFacade,
     ClipboardListInput, ClipboardStatsView, EntryDetailView, EntryProjectionView,
     EntryResourceView,
+};
+use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
+use uc_core::ports::DispatchAck;
+use uc_core::{
+    ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+};
+
+use uc_daemon_contract::api::dto::clipboard_command::{
+    CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
+    PerTargetOutcomeDto, ResendRequest, ResendResponse,
 };
 
 use crate::api::dto::clipboard::{
@@ -49,6 +62,7 @@ fn require_facade(
 }
 
 pub fn router() -> Router<DaemonApiState> {
+    use uc_daemon_contract::constants::http_route;
     Router::new()
         .route("/clipboard/entries", get(list_entries))
         .route("/clipboard/entries/clear", post(clear_history))
@@ -57,6 +71,12 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/clipboard/entries/:id/favorite", post(toggle_favorite))
         .route("/clipboard/stats", get(get_stats))
         .route("/clipboard/entries/:id/resource", get(get_entry_resource))
+        .route(http_route::CLIPBOARD_DISPATCH, post(dispatch_text))
+        .route(http_route::CLIPBOARD_RESEND, post(resend_entry))
+        .route(
+            &format!("{}/:transfer_id", http_route::CLIPBOARD_CANCEL_TRANSFER),
+            post(cancel_transfer),
+        )
 }
 
 /// GET /clipboard/entries?limit=50&offset=0
@@ -290,6 +310,176 @@ async fn clear_history(
         ts: chrono::Utc::now().timestamp_millis(),
     }))
 }
+
+// ── Command endpoints (ADR-008 P2.5 / D7) ───────────────────────
+
+fn require_app_facade(state: &DaemonApiState) -> Result<Arc<AppFacade>, ApiError> {
+    state.app_facade_or_error()
+}
+
+async fn dispatch_text(
+    State(state): State<DaemonApiState>,
+    body: Result<Json<DispatchTextRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<DispatchOutcomeResponse>, ApiError> {
+    let app = require_app_facade(&state)?;
+    let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
+
+    if req.text.is_empty() {
+        return Err(ApiError::bad_request("text must not be empty"));
+    }
+
+    let target_filter: Option<Vec<DeviceId>> = req
+        .peers
+        .filter(|p| !p.is_empty())
+        .map(|ids| ids.iter().map(DeviceId::new).collect());
+
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: chrono::Utc::now().timestamp_millis(),
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("text"),
+            Some(MimeType("text/plain".to_string())),
+            req.text.into_bytes(),
+        )],
+    };
+
+    let outcome = app
+        .dispatch_clipboard_snapshot(snapshot, ClipboardChangeOrigin::LocalCapture, target_filter)
+        .await
+        .map_err(|e| {
+            log_facade_failure(
+                "clipboard_command",
+                "dispatch_text",
+                "dispatch_error",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &e.to_string(),
+            );
+            ApiError::internal(e.to_string())
+        })?;
+
+    Ok(Json(dispatch_outcome_to_dto(outcome)))
+}
+
+async fn resend_entry(
+    State(state): State<DaemonApiState>,
+    body: Result<Json<ResendRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<ResendResponse>, ApiError> {
+    let app = require_app_facade(&state)?;
+    let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
+
+    let target_filter: Option<Vec<DeviceId>> = req
+        .peers
+        .filter(|p| !p.is_empty())
+        .map(|ids| ids.iter().map(DeviceId::new).collect());
+
+    let cmd = ResendEntryCommand {
+        entry_id: EntryId::from(req.entry_id.as_str()),
+        target_filter,
+    };
+
+    let report = app.resend_entry(cmd).await.map_err(|e| {
+        let status = match &e {
+            uc_application::facade::ResendEntryError::EntryNotFound(_) => StatusCode::NOT_FOUND,
+            uc_application::facade::ResendEntryError::NoEligibleTargets => StatusCode::CONFLICT,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        log_facade_failure(
+            "clipboard_command",
+            "resend_entry",
+            "resend_error",
+            status,
+            &e.to_string(),
+        );
+        ApiError {
+            status,
+            code: "resend_error".to_string(),
+            message: e.to_string(),
+        }
+    })?;
+
+    Ok(Json(ResendResponse {
+        accepted: report.accepted,
+        duplicate: report.duplicate,
+        offline: report.offline,
+        errored: report.errored,
+        pending: report.pending,
+    }))
+}
+
+async fn cancel_transfer(
+    State(state): State<DaemonApiState>,
+    Path(transfer_id): Path<String>,
+    body: Result<Json<CancelTransferRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<CancelTransferResponse>, ApiError> {
+    let app = require_app_facade(&state)?;
+    let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
+
+    let reason = match req.reason.as_str() {
+        "local_user" => uc_core::FileTransferCancellationReason::LocalUser,
+        "timeout" => uc_core::FileTransferCancellationReason::Timeout,
+        other => {
+            return Err(ApiError::bad_request(&format!(
+                "unknown cancellation reason: {other}"
+            )));
+        }
+    };
+
+    let outcome = app
+        .cancel_inbound_transfer(&transfer_id, reason)
+        .await
+        .map_err(|e| {
+            log_facade_failure(
+                "clipboard_command",
+                "cancel_transfer",
+                "cancel_error",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &e.to_string(),
+            );
+            ApiError::internal(e.to_string())
+        })?;
+
+    let outcome_str = match outcome {
+        uc_application::facade::InboundCancelOutcome::Cancelled => "cancelled",
+        uc_application::facade::InboundCancelOutcome::NotInflight => "not_inflight",
+    };
+
+    Ok(Json(CancelTransferResponse {
+        outcome: outcome_str.to_string(),
+    }))
+}
+
+fn dispatch_outcome_to_dto(
+    o: uc_application::facade::DispatchEntryOutcome,
+) -> DispatchOutcomeResponse {
+    let per_target = o
+        .per_target
+        .iter()
+        .map(|t| {
+            let (outcome, error) = match &t.outcome {
+                Ok(DispatchAck::Accepted) => ("accepted", None),
+                Ok(DispatchAck::DuplicateIgnored) => ("duplicate", None),
+                Err(msg) => ("error", Some(msg.clone())),
+            };
+            PerTargetOutcomeDto {
+                device_id: t.device_id.as_str().to_string(),
+                outcome: outcome.to_string(),
+                error,
+            }
+        })
+        .collect();
+
+    DispatchOutcomeResponse {
+        content_hash: o.content_hash,
+        at_ms: o.at_ms,
+        total_accepted: o.total_accepted,
+        total_duplicate: o.total_duplicate,
+        total_offline: o.total_offline,
+        total_errored: o.total_errored,
+        per_target,
+    }
+}
+
+// ── Clipboard history helpers ────────────────────────────────────
 
 fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
     use ClipboardHistoryError as E;

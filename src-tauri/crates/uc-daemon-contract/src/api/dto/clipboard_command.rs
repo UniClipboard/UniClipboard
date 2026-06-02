@@ -1,0 +1,172 @@
+//! DTOs for clipboard command endpoints (ADR-008 P2.5 / D7).
+//!
+//! These types are shared between `uc-webserver` (server) and
+//! `uc-daemon-client` (consumer). All response payloads use `camelCase`
+//! field names to match frontend/CLI conventions.
+
+use serde::{Deserialize, Serialize};
+
+// ── POST /clipboard/dispatch ─────────────────────────────────────
+
+/// Request body for `POST /clipboard/dispatch`.
+///
+/// The daemon wraps the text into a single `text/plain`
+/// `SystemClipboardSnapshot` and fans it out to online peers.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchTextRequest {
+    /// Plaintext to dispatch.
+    pub text: String,
+    /// Optional target device IDs. Empty or absent = full fan-out.
+    #[serde(default)]
+    pub peers: Option<Vec<String>>,
+}
+
+/// Per-target delivery outcome in the dispatch response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerTargetOutcomeDto {
+    pub device_id: String,
+    /// `"accepted"` | `"duplicate"` | `"error"`.
+    pub outcome: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Response body for `POST /clipboard/dispatch`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchOutcomeResponse {
+    pub content_hash: String,
+    pub at_ms: i64,
+    pub total_accepted: usize,
+    pub total_duplicate: usize,
+    pub total_offline: usize,
+    pub total_errored: usize,
+    pub per_target: Vec<PerTargetOutcomeDto>,
+}
+
+// ── POST /clipboard/resend ───────────────────────────────────────
+
+/// Request body for `POST /clipboard/resend`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResendRequest {
+    /// ID of the previously captured entry to resend.
+    pub entry_id: String,
+    /// Optional target device IDs.
+    #[serde(default)]
+    pub peers: Option<Vec<String>>,
+}
+
+/// Response body for `POST /clipboard/resend`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResendResponse {
+    pub accepted: usize,
+    pub duplicate: usize,
+    pub offline: usize,
+    pub errored: usize,
+    pub pending: usize,
+}
+
+// ── POST /clipboard/cancel-transfer/:transfer_id ─────────────────
+
+/// Request body for `POST /clipboard/cancel-transfer/:transfer_id`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelTransferRequest {
+    /// Cancellation reason: `"local_user"` | `"timeout"` etc.
+    pub reason: String,
+}
+
+/// Response body for `POST /clipboard/cancel-transfer/:transfer_id`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelTransferResponse {
+    /// `"cancelled"` | `"not_inflight"`.
+    pub outcome: String,
+}
+
+// ── WS clipboard.inbound_notice payload ──────────────────────────
+
+/// Payload for the `clipboard.inbound_notice` WebSocket event.
+///
+/// Carries the full V3 envelope as base64 so CLI `watch` can decode
+/// content without an extra HTTP round-trip.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InboundNoticeEvent {
+    pub from_device: String,
+    pub content_hash: String,
+    /// Base64-encoded V3 envelope bytes.
+    pub plaintext_base64: String,
+    /// `"new_entry"` | `"duplicate_ignored"`.
+    pub action: String,
+    pub at_ms: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dispatch_request_round_trip() {
+        let json = r#"{"text":"hello","peers":["device-1"]}"#;
+        let req: DispatchTextRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.text, "hello");
+        assert_eq!(req.peers.as_deref(), Some(&["device-1".to_string()][..]));
+    }
+
+    #[test]
+    fn dispatch_request_without_peers() {
+        let json = r#"{"text":"hello"}"#;
+        let req: DispatchTextRequest = serde_json::from_str(json).unwrap();
+        assert!(req.peers.is_none());
+    }
+
+    #[test]
+    fn dispatch_outcome_response_camel_case() {
+        let resp = DispatchOutcomeResponse {
+            content_hash: "abc".into(),
+            at_ms: 1000,
+            total_accepted: 1,
+            total_duplicate: 0,
+            total_offline: 0,
+            total_errored: 0,
+            per_target: vec![PerTargetOutcomeDto {
+                device_id: "d1".into(),
+                outcome: "accepted".into(),
+                error: None,
+            }],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert!(json.get("contentHash").is_some());
+        assert!(json.get("atMs").is_some());
+        assert!(json.get("totalAccepted").is_some());
+        assert!(json.get("perTarget").is_some());
+    }
+
+    #[test]
+    fn resend_request_round_trip() {
+        let json = r#"{"entryId":"e1","peers":null}"#;
+        let req: ResendRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.entry_id, "e1");
+        assert!(req.peers.is_none());
+    }
+
+    #[test]
+    fn inbound_notice_event_camel_case() {
+        let evt = InboundNoticeEvent {
+            from_device: "d1".into(),
+            content_hash: "h".into(),
+            plaintext_base64: "base64data".into(),
+            action: "new_entry".into(),
+            at_ms: 123,
+        };
+        let json = serde_json::to_value(&evt).unwrap();
+        assert!(json.get("fromDevice").is_some());
+        assert!(json.get("contentHash").is_some());
+        assert!(json.get("plaintextBase64").is_some());
+    }
+}

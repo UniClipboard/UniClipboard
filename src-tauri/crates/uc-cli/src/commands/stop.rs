@@ -48,28 +48,36 @@ impl fmt::Display for StopOutput {
 pub async fn run(json: bool, _verbose: bool) -> i32 {
     run_stop_with(
         || uc_daemon_local::process_metadata::read_pid_metadata(),
-        |pid| is_process_running(pid),
+        |meta| verify_identity(meta),
         |pid| send_sigterm(pid),
         json,
     )
     .await
 }
 
+/// D22 identity-aware liveness check: verify the PID is alive AND belongs
+/// to a daemon binary. Returns `true` only if both conditions hold.
+fn verify_identity(metadata: &DaemonPidMetadata) -> bool {
+    use uc_daemon_local::process_metadata::{verify_pid_identity, PidVerification};
+    matches!(verify_pid_identity(metadata), PidVerification::Active)
+}
+
 /// Testable inner implementation that accepts injectable closures.
 ///
 /// `read_metadata` returns `Result<Option<DaemonPidMetadata>>` — the daemon
 /// PID + process mode if a daemon is registered.
-/// `is_process_running` checks whether a process with the given PID exists.
+/// `is_daemon_active` checks whether the metadata points to a live daemon
+/// (D22: liveness + executable identity verification).
 /// `send_sigterm` sends SIGTERM to the given PID; returns `true` on success.
-pub(crate) async fn run_stop_with<ReadMetadata, IsRunning, SendSignal>(
+pub(crate) async fn run_stop_with<ReadMetadata, IsActive, SendSignal>(
     read_metadata: ReadMetadata,
-    is_process_running: IsRunning,
+    is_daemon_active: IsActive,
     send_sigterm: SendSignal,
     json: bool,
 ) -> i32
 where
     ReadMetadata: FnOnce() -> anyhow::Result<Option<DaemonPidMetadata>>,
-    IsRunning: Fn(u32) -> bool,
+    IsActive: Fn(&DaemonPidMetadata) -> bool,
     SendSignal: FnOnce(u32) -> bool,
 {
     // Step 1: Read PID metadata.
@@ -95,13 +103,14 @@ where
     let pid = metadata.pid;
 
     // Step 2: Stale-PID guard — daemon registered itself but the OS process
-    // is gone (kill -9, crash, reboot without cleanup). Treat as not running.
+    // is gone or the PID has been recycled by a non-daemon process (D22:
+    // liveness + exe identity verification). Treat as not running.
     //
     // Must run BEFORE the InProcess check below: a crashed GUI leaves stale
     // InProcess metadata behind, and reporting "managed_by_gui" for a dead
     // process would tell the user to "quit the GUI from its tray menu" when
     // there's no GUI to quit.
-    if !is_process_running(pid) {
+    if !is_daemon_active(&metadata) {
         let out = StopOutput {
             status: "not_running",
             pid: None,
@@ -140,7 +149,7 @@ where
     loop {
         tokio::time::sleep(STOP_POLL_INTERVAL).await;
 
-        if !is_process_running(pid) {
+        if !is_daemon_active(&metadata) {
             break;
         }
 
@@ -168,22 +177,8 @@ where
 }
 
 #[cfg(unix)]
-pub(crate) fn is_process_running(pid: u32) -> bool {
-    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
-}
-
-#[cfg(unix)]
 pub(crate) fn send_sigterm(pid: u32) -> bool {
     unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) == 0 }
-}
-
-#[cfg(windows)]
-pub(crate) fn is_process_running(pid: u32) -> bool {
-    std::process::Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {}", pid), "/NH"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
-        .unwrap_or(false)
 }
 
 #[cfg(windows)]
@@ -219,7 +214,7 @@ mod tests {
 
         let exit = run_stop_with(
             || Ok(Some(metadata(4242, DaemonProcessMode::InProcess))),
-            |_pid| true,
+            |_meta| true,
             move |_pid| {
                 signal_sent_for_closure.store(true, Ordering::SeqCst);
                 true
@@ -245,7 +240,7 @@ mod tests {
 
         let exit = run_stop_with(
             || Ok(Some(metadata(7777, DaemonProcessMode::Standalone))),
-            move |_pid| process_alive_check.load(Ordering::SeqCst),
+            move |_meta| process_alive_check.load(Ordering::SeqCst),
             move |_pid| {
                 signal_sent_for_closure.store(true, Ordering::SeqCst);
                 process_alive.store(false, Ordering::SeqCst);
@@ -279,7 +274,7 @@ mod tests {
 
         let exit = run_stop_with(
             || Ok(Some(metadata(4242, DaemonProcessMode::InProcess))),
-            |_pid| false, // GUI crashed — process is gone, metadata stale
+            |_meta| false, // GUI crashed — process is gone, metadata stale
             move |_pid| {
                 signal_sent_for_closure.store(true, Ordering::SeqCst);
                 true
@@ -310,7 +305,7 @@ mod tests {
 
         let exit = run_stop_with(
             || Ok(Some(metadata(4242, DaemonProcessMode::Standalone))),
-            |_pid| false,
+            |_meta| false,
             move |_pid| {
                 signal_sent_for_closure.store(true, Ordering::SeqCst);
                 true

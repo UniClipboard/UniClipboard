@@ -17,6 +17,10 @@ uc-application = { path = "../uc-application" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-platform = { path = "../uc-platform" }
 anyhow = "1.0"
+fs2 = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

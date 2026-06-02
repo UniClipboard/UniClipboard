@@ -70,6 +70,12 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
             config: _config,
         } = super::process_bootstrap::build_process_runtime().await?;
 
+        // D22: acquire per-profile instance lock before any port binding.
+        let _instance_lock = uc_daemon_local::instance_lock::DaemonInstanceLock::try_acquire(
+            &storage_paths.app_data_root_dir,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
         let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
         let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
         let file_transfer_facade = wired.file_transfer_facade.clone();

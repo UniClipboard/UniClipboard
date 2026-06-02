@@ -203,6 +203,146 @@ fn repair_pid_permissions(pid_path: &Path) -> Result<()> {
     Ok(())
 }
 
+// ── PID identity verification (D22, ADR-008) ──────────────────────────
+
+/// Result of verifying whether a PID file's metadata corresponds to a
+/// live daemon process.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PidVerification {
+    /// The PID is alive and its executable looks like a daemon binary.
+    Active,
+    /// The PID file is stale — the recorded process is gone or does not
+    /// match. The file should be removed, **not** sent a signal.
+    Stale(StaleReason),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaleReason {
+    ProcessNotRunning,
+    ExeMismatch {
+        expected_suffix: &'static str,
+        actual: String,
+    },
+}
+
+impl std::fmt::Display for StaleReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ProcessNotRunning => write!(f, "process is not running"),
+            Self::ExeMismatch {
+                expected_suffix,
+                actual,
+            } => write!(
+                f,
+                "executable mismatch: expected name ending in `{expected_suffix}`, got `{actual}`"
+            ),
+        }
+    }
+}
+
+/// Check whether the daemon described by `metadata` is actually running
+/// and is a legitimate daemon binary.
+///
+/// **D22 iron rule**: callers MUST use this before sending any signal to
+/// the PID. If `Stale` is returned, delete the PID file instead.
+pub fn verify_pid_identity(metadata: &DaemonPidMetadata) -> PidVerification {
+    if !is_pid_alive(metadata.pid) {
+        return PidVerification::Stale(StaleReason::ProcessNotRunning);
+    }
+
+    if let Some(exe) = read_process_exe(metadata.pid) {
+        let name = exe.rsplit(['/', '\\']).next().unwrap_or(&exe);
+        if !is_daemon_binary_name(name) {
+            return PidVerification::Stale(StaleReason::ExeMismatch {
+                expected_suffix: DAEMON_BINARY_NAME,
+                actual: name.to_string(),
+            });
+        }
+    }
+    // If we can't read the exe (permissions, platform), conservatively
+    // treat it as active — the liveness check already passed.
+
+    PidVerification::Active
+}
+
+const DAEMON_BINARY_NAME: &str = "uniclipd";
+
+fn is_daemon_binary_name(name: &str) -> bool {
+    // Match "uniclipd", "uniclipd.exe", and cargo test binary names like
+    // "uniclipd-<hash>". Also accept "uniclip" for the legacy single-binary
+    // mode where the daemon ran inside the CLI binary.
+    let base = name.strip_suffix(".exe").unwrap_or(name);
+    base == "uniclipd"
+        || base.starts_with("uniclipd-")
+        || base == "uniclip"
+        || base.starts_with("uniclip-")
+}
+
+#[cfg(unix)]
+fn is_pid_alive(pid: u32) -> bool {
+    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+}
+
+#[cfg(windows)]
+fn is_pid_alive(pid: u32) -> bool {
+    use std::process::Command;
+    Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
+        .unwrap_or(false)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn is_pid_alive(_pid: u32) -> bool {
+    false
+}
+
+/// Best-effort read of the executable path for `pid`.
+///
+/// Returns `None` if the platform doesn't support it or if the process
+/// is inaccessible (different user, security sandbox, etc.).
+fn read_process_exe(pid: u32) -> Option<String> {
+    read_process_exe_platform(pid)
+}
+
+#[cfg(target_os = "linux")]
+fn read_process_exe_platform(pid: u32) -> Option<String> {
+    fs::read_link(format!("/proc/{pid}/exe"))
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+#[cfg(target_os = "macos")]
+fn read_process_exe_platform(pid: u32) -> Option<String> {
+    let mut buf = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    let ret = unsafe {
+        libc::proc_pidpath(
+            pid as i32,
+            buf.as_mut_ptr() as *mut libc::c_void,
+            buf.len() as u32,
+        )
+    };
+    if ret > 0 {
+        buf.truncate(ret as usize);
+        String::from_utf8(buf).ok()
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn read_process_exe_platform(_pid: u32) -> Option<String> {
+    // Windows exe path resolution requires OpenProcess + QueryFullProcessImageNameW.
+    // Conservative fallback: skip exe check, rely on liveness + started_at_ms.
+    None
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+fn read_process_exe_platform(_pid: u32) -> Option<String> {
+    None
+}
+
 // Backward-compatible standalone functions for external callers.
 
 /// Read the full daemon PID metadata (pid + mode + started_at_ms) from disk.

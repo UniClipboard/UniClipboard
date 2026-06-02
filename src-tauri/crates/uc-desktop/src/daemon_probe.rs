@@ -263,8 +263,30 @@ async fn start_owned_in_process(
 /// 那个 GUI 一起带挂。这里读 `DaemonPidMetadata` 而不是 raw PID，正是为了
 /// 对 [`DaemonProcessMode::InProcess`] 留出"我们不能自己处理，请用户去关
 /// 那个 GUI"的拒绝路径。
+///
+/// D22: verifies PID identity (liveness + exe match) before signaling.
 pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstrapError> {
-    terminate_incompatible_daemon_with(read_pid_metadata, terminate_local_daemon_pid)
+    use uc_daemon_local::process_metadata::{verify_pid_identity, PidVerification};
+
+    let metadata = read_pid_metadata()
+        .map_err(|error| DaemonBootstrapError::IncompatibleDaemon {
+            details: format!("failed to read daemon pid metadata: {error}"),
+        })?
+        .ok_or_else(|| DaemonBootstrapError::IncompatibleDaemon {
+            details: "expected incompatible daemon pid metadata was missing".to_string(),
+        })?;
+
+    // D22: verify PID identity before sending any signal.
+    if let PidVerification::Stale(reason) = verify_pid_identity(&metadata) {
+        tracing::info!(
+            pid = metadata.pid,
+            %reason,
+            "incompatible daemon PID is stale — skipping terminate"
+        );
+        return Ok(());
+    }
+
+    terminate_incompatible_daemon_with(|| Ok(Some(metadata)), terminate_local_daemon_pid)
 }
 
 /// Inner implementation that takes injected reader/terminator closures so the

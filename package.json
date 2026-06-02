@@ -10,6 +10,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "version:bump": "node scripts/bump-version.js",
+    "gen:openapi": "cd src-tauri && cargo run -p uc-webserver --bin gen-openapi",
     "tauri": "tauri",
     "tauri:dev": "cross-env UNICLIPBOARD_ENV=development UC_PROFILE=dev tauri dev",
     "tauri:build:dev": "tauri build --config src-tauri/tauri.dev.conf.json --features dev-profile",

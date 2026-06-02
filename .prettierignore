@@ -17,6 +17,14 @@ src-tauri/target
 src/lib/ipc-bindings.generated.ts
 src/lib/error-severity.generated.ts
 
+# Generated OpenAPI document — produced by `cargo run -p uc-webserver --bin gen-openapi`.
+# Kept raw so `git diff` matches the bin output byte-for-byte; CI uses git diff --exit-code
+# to detect schema drift (same policy as the IPC bindings above).
+schema/openapi.json
+
+# Generated @hey-api/openapi-ts TypeScript client — produced by `npm run gen:client` (P5).
+src/api/generated/
+
 # Agent and tooling infrastructure (not project source)
 # Rule: any dot-directory that is NOT project source code goes here.
 # When adding a new tool/planning directory, add it below before merging.

@@ -1,0 +1,5723 @@
+{
+  "components": {
+    "schemas": {
+      "AckUpgradeEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AckUpgradePayload"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "AckUpgradePayload": {
+        "description": "Payload for `POST /upgrade/ack`, wrapped by `AckUpgradeEnvelope`\n(`ApiEnvelope<AckUpgradePayload>`).",
+        "properties": {
+          "acknowledged": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "acknowledged"
+        ],
+        "type": "object"
+      },
+      "ApiErrorResponse": {
+        "description": "Canonical daemon HTTP error body.\n\nWire shape: `{ \"code\": \"<machine_code>\", \"message\": \"<human text>\" }` plus an\noptional `details` object. `code` is a stable snake_case token (e.g.\n`not_found`, `bad_request`, `runtime_unavailable`, `conflict`,\n`internal_error`, `payload_unavailable`). `message` is human-readable\nEnglish; setup-v2 error classifiers and the clipboard restore-410 handler\nsubstring-match it, so the strings are LOAD-BEARING — do not silently reword.\n\n`Deserialize` is added (the original webserver struct was Serialize-only) so\nthe Rust `uc-daemon-client` and tests can decode error bodies.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "description": "Optional structured context (per §0.3). E.g. the restore-410\n`payload_unavailable` error carries `{ entry_id, rep_id, state }`.\nOmitted from the wire when `None`.",
+            "nullable": true
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "CancelTransferEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CancelTransferResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "CancelTransferRequest": {
+        "description": "Request body for `POST /clipboard/cancel-transfer/:transfer_id`.",
+        "properties": {
+          "reason": {
+            "description": "Cancellation reason: `\"local_user\"` | `\"timeout\"` etc.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "CancelTransferResponse": {
+        "description": "Response body for `POST /clipboard/cancel-transfer/:transfer_id`.",
+        "properties": {
+          "outcome": {
+            "description": "`\"cancelled\"` | `\"not_inflight\"`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "ClearCacheEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClearCacheResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ClearCacheRequest": {
+        "description": "Request payload for `POST /storage/clear-cache`.",
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "confirmed"
+        ],
+        "type": "object"
+      },
+      "ClearCacheResponse": {
+        "description": "Response payload for `POST /storage/clear-cache` on success.",
+        "properties": {
+          "freedBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "freedBytes"
+        ],
+        "type": "object"
+      },
+      "ClearHistoryEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClearHistoryResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ClearHistoryResultDto": {
+        "description": "Result of clearing clipboard history.\nMatches the frontend `ClearHistoryResult` interface.",
+        "properties": {
+          "deletedCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failedEntries": {
+            "items": {
+              "items": {
+                "allOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deletedCount",
+          "failedEntries"
+        ],
+        "type": "object"
+      },
+      "ClipboardStatsDto": {
+        "description": "Aggregate clipboard statistics.\nMatches the frontend `ClipboardStats` interface.",
+        "properties": {
+          "totalItems": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "totalSize": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "totalItems",
+          "totalSize"
+        ],
+        "type": "object"
+      },
+      "ClipboardStatsEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClipboardStatsDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ConnectRequest": {
+        "description": "Request body for `POST /auth/connect`.",
+        "properties": {
+          "clientType": {
+            "description": "Client type: `\"gui\"`, `\"cli\"`, or `\"other\"`.",
+            "type": "string"
+          },
+          "pid": {
+            "description": "Client process ID. Used for PID whitelist verification in JWT middleware.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pid",
+          "clientType"
+        ],
+        "type": "object"
+      },
+      "ContentTypesDto": {
+        "properties": {
+          "codeSnippet": {
+            "type": "boolean"
+          },
+          "file": {
+            "type": "boolean"
+          },
+          "image": {
+            "type": "boolean"
+          },
+          "link": {
+            "type": "boolean"
+          },
+          "richText": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "image",
+          "link",
+          "file",
+          "codeSnippet",
+          "richText"
+        ],
+        "type": "object"
+      },
+      "ContentTypesPatchDto": {
+        "properties": {
+          "codeSnippet": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "file": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "image": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "link": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "richText": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "text": {
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "CurrentInvitation": {
+        "description": "Companion to [`SetupStateResponse::current_invitation`].",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "expiresAtMs": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "expiresAtMs"
+        ],
+        "type": "object"
+      },
+      "DaemonWsEvent": {
+        "properties": {
+          "payload": {
+            "type": "object"
+          },
+          "sessionId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "ts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "type",
+          "ts",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "DispatchOutcomeEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DispatchOutcomeResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "DispatchOutcomeResponse": {
+        "description": "Response body for `POST /clipboard/dispatch`.",
+        "properties": {
+          "atMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "perTarget": {
+            "items": {
+              "$ref": "#/components/schemas/PerTargetOutcomeDto"
+            },
+            "type": "array"
+          },
+          "totalAccepted": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalDuplicate": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalErrored": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalOffline": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "contentHash",
+          "atMs",
+          "totalAccepted",
+          "totalDuplicate",
+          "totalOffline",
+          "totalErrored",
+          "perTarget"
+        ],
+        "type": "object"
+      },
+      "DispatchTextRequest": {
+        "description": "Request body for `POST /clipboard/dispatch`.\n\nThe daemon wraps the text into a single `text/plain`\n`SystemClipboardSnapshot` and fans it out to online peers.",
+        "properties": {
+          "peers": {
+            "description": "Optional target device IDs. Empty or absent = full fan-out.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "text": {
+            "description": "Plaintext to dispatch.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "EncryptionActionEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EncryptionActionResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "EncryptionActionResponse": {
+        "description": "Shared response payload for `POST /encryption/unlock` and\n`POST /encryption/lock`.",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "type": "object"
+      },
+      "EncryptionStateEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EncryptionStateResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "EncryptionStateResponse": {
+        "description": "Response payload for GET /encryption/state.",
+        "properties": {
+          "initialized": {
+            "type": "boolean"
+          },
+          "sessionReady": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "initialized",
+          "sessionReady"
+        ],
+        "type": "object"
+      },
+      "EntryDetailDto": {
+        "description": "Full entry detail (text content).\nMatches the frontend `EntryDetail` interface.",
+        "properties": {
+          "activeTimeMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "content": {
+            "type": "string"
+          },
+          "createdAtMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mimeType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "content",
+          "sizeBytes",
+          "createdAtMs",
+          "activeTimeMs"
+        ],
+        "type": "object"
+      },
+      "EntryDetailEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EntryDetailDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "EntryProjectionResponseDto": {
+        "description": "Clipboard entry projection — lightweight summary for list views.\nMatches the frontend `ClipboardEntryDto` interface.",
+        "properties": {
+          "activeTime": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "capturedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "fileSizes": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "fileTransferReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fileTransferStatus": {
+            "nullable": true,
+            "type": "string"
+          },
+          "hasDetail": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "imageHeight": {
+            "description": "Original image height in pixels (only for image entries).",
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "imageWidth": {
+            "description": "Original image width in pixels (only for image entries).",
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "isEncrypted": {
+            "type": "boolean"
+          },
+          "isFavorited": {
+            "type": "boolean"
+          },
+          "linkDomains": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "linkUrls": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "payloadState": {
+            "description": "`paste_rep` 的 payload_state, 仅在 `Lost` 时输出。前端用此把\"内容已\n丢失\"的 entry 灰显, 让用户在点击粘贴前就知道这条记录已不可用。",
+            "nullable": true,
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "thumbnailUrl": {
+            "nullable": true,
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "preview",
+          "hasDetail",
+          "sizeBytes",
+          "capturedAt",
+          "contentType",
+          "isEncrypted",
+          "isFavorited",
+          "updatedAt",
+          "activeTime"
+        ],
+        "type": "object"
+      },
+      "EntryResourceDto": {
+        "description": "Resource metadata (blob URL or inline data).\nMatches the frontend `ClipboardEntryResource` interface.",
+        "properties": {
+          "blobId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "inlineData": {
+            "description": "Base64-encoded inline data (when content is stored inline, not in blob).",
+            "nullable": true,
+            "type": "string"
+          },
+          "mimeType": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "url": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "sizeBytes"
+        ],
+        "type": "object"
+      },
+      "EntryResourceEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EntryResourceDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "FileSyncSettingsDto": {
+        "properties": {
+          "fileAutoCleanup": {
+            "type": "boolean"
+          },
+          "fileCacheQuotaPerDevice": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fileRetentionHours": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fileSyncEnabled": {
+            "type": "boolean"
+          },
+          "maxFileSize": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "smallFileThreshold": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fileSyncEnabled",
+          "smallFileThreshold",
+          "maxFileSize",
+          "fileCacheQuotaPerDevice",
+          "fileRetentionHours",
+          "fileAutoCleanup"
+        ],
+        "type": "object"
+      },
+      "FileSyncSettingsPatchDto": {
+        "properties": {
+          "fileAutoCleanup": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "fileCacheQuotaPerDevice": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "fileRetentionHours": {
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "fileSyncEnabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "maxFileSize": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "smallFileThreshold": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "GeneralSettingsDto": {
+        "properties": {
+          "autoCheckUpdate": {
+            "type": "boolean"
+          },
+          "autoDownloadUpdate": {
+            "description": "Whether to download the next available update in the background.\nPersisted alongside `auto_check_update`; consumed by the frontend's\n`UpdateContext` after a successful `check_for_update` to decide\nwhether to start a silent download.",
+            "type": "boolean"
+          },
+          "autoStart": {
+            "type": "boolean"
+          },
+          "deviceName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "language": {
+            "nullable": true,
+            "type": "string"
+          },
+          "silentStart": {
+            "type": "boolean"
+          },
+          "telemetryEnabled": {
+            "description": "Whether anonymous diagnostic telemetry is enabled.",
+            "type": "boolean"
+          },
+          "theme": {
+            "$ref": "#/components/schemas/ThemeDto"
+          },
+          "themeColor": {
+            "description": "旧版\"统一主题预设\"字段（v0.7 之前唯一字段）。新前端不再写入,\n但 wire 仍透传以便老 daemon ↔ 新前端 / 新 daemon ↔ 老前端兼容。\n删除计划见 `uc_core::settings::model::GeneralSettings::theme_color`。",
+            "nullable": true,
+            "type": "string"
+          },
+          "themeColorDark": {
+            "description": "Dark 模式下的主题预设名（如 `\"zinc\"`）；为 `None` 时 daemon 端\n将回退到 `theme_color`。wire 字段名 `themeColorDark`（camelCase）。",
+            "nullable": true,
+            "type": "string"
+          },
+          "themeColorLight": {
+            "description": "Light 模式下的主题预设名（如 `\"zinc\"`）；为 `None` 时 daemon 端\n将回退到 `theme_color`。wire 字段名 `themeColorLight`（camelCase）。",
+            "nullable": true,
+            "type": "string"
+          },
+          "themeOverridesDark": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Dark 模式下用户对预设 token 的自定义覆盖（语义同 light）。wire 字段名 `themeOverridesDark`。",
+            "type": "object"
+          },
+          "themeOverridesLight": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Light 模式下用户对预设 token 的自定义覆盖（`{ tokenName: oklchString }`）。\n为空 map 表示完全跟随 preset。wire 字段名 `themeOverridesLight`。",
+            "type": "object"
+          },
+          "updateChannel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UpdateChannelDto"
+              }
+            ],
+            "nullable": true
+          },
+          "usageAnalyticsEnabled": {
+            "description": "Whether anonymous product usage analytics is enabled.\n与 `telemetry_enabled` 拆开（schema doc §6.4）：前者控制 Sentry 错误\n上报，本字段控制产品 telemetry（漏斗 / 留存 / 同步可靠性事件）。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "autoStart",
+          "silentStart",
+          "autoCheckUpdate",
+          "theme",
+          "telemetryEnabled"
+        ],
+        "type": "object"
+      },
+      "GeneralSettingsPatchDto": {
+        "description": "All fields are optional — only provided fields are updated.",
+        "properties": {
+          "autoCheckUpdate": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "autoDownloadUpdate": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "autoStart": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "deviceName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "language": {
+            "nullable": true,
+            "type": "string"
+          },
+          "silentStart": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "telemetryEnabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "theme": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ThemeDto"
+              }
+            ],
+            "nullable": true
+          },
+          "themeColor": {
+            "description": "旧版\"统一主题预设\"patch 字段。`Some(None)` = 显式清空,`None` = 不修改。",
+            "nullable": true,
+            "type": "string"
+          },
+          "themeColorDark": {
+            "description": "Dark 模式预设 patch。`Some(None)` = 显式清空（回退到 `theme_color` 或引擎默认）。",
+            "nullable": true,
+            "type": "string"
+          },
+          "themeColorLight": {
+            "description": "Light 模式预设 patch。`Some(None)` = 显式清空（回退到 `theme_color` 或引擎默认）。",
+            "nullable": true,
+            "type": "string"
+          },
+          "themeOverridesDark": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Dark 模式 overrides patch（语义同 light）。",
+            "nullable": true,
+            "type": "object"
+          },
+          "themeOverridesLight": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Light 模式 overrides patch。`Some(map)` 整体替换；`None` 表示不修改。",
+            "nullable": true,
+            "type": "object"
+          },
+          "updateChannel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UpdateChannelDto"
+              }
+            ],
+            "nullable": true
+          },
+          "usageAnalyticsEnabled": {
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "HealthEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HealthResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "apiRevision": {
+            "type": "string"
+          },
+          "packageVersion": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "packageVersion",
+          "apiRevision"
+        ],
+        "type": "object"
+      },
+      "InitializeSpaceRequest": {
+        "description": "Request body for `POST /v2/setup/initialize`. Maps to\n`SpaceSetupFacade::initialize_space(InitializeSpaceCommand)`.",
+        "properties": {
+          "deviceName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "passphrase": {
+            "type": "string"
+          },
+          "passphraseConfirm": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "passphrase",
+          "passphraseConfirm"
+        ],
+        "type": "object"
+      },
+      "InitializeSpaceResponse": {
+        "description": "Response body for `POST /v2/setup/initialize`. Mirrors\n`InitializeSpaceResult` flattened to wire-friendly strings.",
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "selfDeviceId": {
+            "type": "string"
+          },
+          "spaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "spaceId",
+          "selfDeviceId",
+          "fingerprint"
+        ],
+        "type": "object"
+      },
+      "IssueInvitationResponse": {
+        "description": "Response body for `POST /v2/setup/issue-invitation`. Mirrors\n`IssuePairingInvitationResult` with an epoch-millis expiry to keep\nthe wire form free of timezone parsing on the client.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "expiresAtMs": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "expiresAtMs"
+        ],
+        "type": "object"
+      },
+      "KeyboardShortcutsPatchDto": {
+        "properties": {
+          "shortcuts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ShortcutKeyDto"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "shortcuts"
+        ],
+        "type": "object"
+      },
+      "KeychainAccessEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeychainAccessResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "KeychainAccessResponse": {
+        "description": "Response payload for GET /encryption/keychain-access.",
+        "properties": {
+          "granted": {
+            "description": "Whether Keychain access is granted (Always Allow permission).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "granted"
+        ],
+        "type": "object"
+      },
+      "LifecycleStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LifecycleStatusResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "LifecycleStatusResponse": {
+        "description": "Response payload for GET /lifecycle/status.\nMirrors the frontend LifecycleStatusDto shape so the HTTP endpoint\ncan replace the Tauri get_lifecycle_status command without frontend type changes.",
+        "properties": {
+          "state": {
+            "description": "Current lifecycle state.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "ListEntriesEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/EntryProjectionResponseDto"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "LocalDeviceInfoDto": {
+        "properties": {
+          "deviceName": {
+            "type": "string"
+          },
+          "peerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "peerId",
+          "deviceName"
+        ],
+        "type": "object"
+      },
+      "LocalDeviceInfoEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LocalDeviceInfoDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "MemberSyncPreferencesDto": {
+        "description": "Sync preferences recorded for a space member.",
+        "properties": {
+          "receiveContentTypes": {
+            "$ref": "#/components/schemas/ContentTypesDto"
+          },
+          "receiveEnabled": {
+            "type": "boolean"
+          },
+          "sendContentTypes": {
+            "$ref": "#/components/schemas/ContentTypesDto"
+          },
+          "sendEnabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sendEnabled",
+          "receiveEnabled",
+          "sendContentTypes",
+          "receiveContentTypes"
+        ],
+        "type": "object"
+      },
+      "MemberSyncPreferencesEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MemberSyncPreferencesDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "MemberSyncPreferencesPatchDto": {
+        "description": "Partial sync preferences for PATCH /member/:device_id/sync-preferences.\n\n服务器侧 `get → merge → save` 后持久化；未提供的字段保留当前值。\n重置到默认值的调用方应显式传入所有字段的默认值（`MemberSyncPreferences::default()`）。",
+        "properties": {
+          "receiveContentTypes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContentTypesPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "receiveEnabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "sendContentTypes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContentTypesPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "sendEnabled": {
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "MemberSyncResultDto": {
+        "description": "Folded payload for `PATCH /member/:device_id/sync-preferences` (ADR-008 §0.1).\n\nThe current handler returns `success` as a top-level sibling of the\n`{data,ts}` envelope. This DTO folds it INTO the payload so the endpoint can\nreturn `ApiEnvelope<MemberSyncResultDto>` with no bespoke wrapper. P1 only\ndefines the type; the handler is rewired in P2.",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "type": "object"
+      },
+      "MemberSyncResultEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MemberSyncResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "MigrationPhaseDto": {
+        "description": "Coarse-grained migration phase exposed to the UI. The internal\n`MigrationPhase` carries `run_id` / `target_space_id`; those are\nimplementation detail and not surfaced over the wire.",
+        "enum": [
+          "prepared",
+          "handshake_done",
+          "swapped"
+        ],
+        "type": "string"
+      },
+      "MigrationProgressResponse": {
+        "description": "Response body for `GET /v2/setup/migration-progress`. Mirrors\n`MigrationProgress`. `phase = null` means no migration is in\nflight (idle / completed); polling clients should stop their loop\nwhen they observe this transition while `backup_record_count == 0`.",
+        "properties": {
+          "backupRecordCount": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "phase": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MigrationPhaseDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "backupRecordCount"
+        ],
+        "type": "object"
+      },
+      "NetworkSettingsDto": {
+        "description": "LAN-only Mode（v0.7.0）DTO 镜像。\n\n反向命名规则（Pitfall 1）：业务正向语义 `allow_relay_fallback`，\n不在此层重命名为 `lan_only` 或类似镜像。wire 字段 = `allowRelayFallback`\n（camelCase 自动转换）。取反唯一发生在 `uc-bootstrap/src/network_policy.rs`。\n\n`allow_overlay_network_addrs` 控制是否把 VPN/overlay 类虚拟网卡 IP（CGNAT\n100.64.0.0/10、Tailscale ULA fd7a:115c:a1e0::/48）作为 iroh 直连候选发布\n给对端。默认 `false`（过滤）。专业用户在两端都接入同一 VPN 时可开启。\n\n`custom_relay_urls` 为空时继续使用 iroh 默认 relay；非空时只使用这些\n用户配置的 relay URL。LAN-only 模式关闭 relay 时该列表保留但不生效。",
+        "properties": {
+          "allowOverlayNetworkAddrs": {
+            "type": "boolean"
+          },
+          "allowRelayFallback": {
+            "type": "boolean"
+          },
+          "customRelayUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "allowRelayFallback"
+        ],
+        "type": "object"
+      },
+      "NetworkSettingsPatchDto": {
+        "description": "LAN-only Mode 字段 patch DTO 镜像 — `null` = 不修改。",
+        "properties": {
+          "allowOverlayNetworkAddrs": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "allowRelayFallback": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "customRelayUrls": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "PairingSettingsDto": {
+        "properties": {
+          "maxRetries": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "protocolVersion": {
+            "type": "string"
+          },
+          "sessionTimeout": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stepTimeout": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "userVerificationTimeout": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stepTimeout",
+          "userVerificationTimeout",
+          "sessionTimeout",
+          "maxRetries",
+          "protocolVersion"
+        ],
+        "type": "object"
+      },
+      "PairingSettingsPatchDto": {
+        "properties": {
+          "maxRetries": {
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "sessionTimeout": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "stepTimeout": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "userVerificationTimeout": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PeerSnapshotDto": {
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "channel": {
+            "description": "Phase 96 INDIC-01:连接通道 4 态 wire 字符串。\n取值严格限定 `\"direct\" | \"relay\" | \"offline\" | \"unknown\"`,\n由 application 层 `connection_channel_to_wire` 单点产出,\n前端按字符串模式匹配渲染徽章。**禁止**新增枚举值或缩写;\n\"Out of LAN\" 灰态由前端基于 `channel + LAN-only setting`\n合成,不在 wire 协议里。",
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "connectionAddress": {
+            "description": "当前活跃连接地址。直连时为对端 IP:port,中转时为 relay 地址。",
+            "nullable": true,
+            "type": "string"
+          },
+          "deviceName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "isPaired": {
+            "type": "boolean"
+          },
+          "pairingState": {
+            "type": "string"
+          },
+          "peerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "peerId",
+          "addresses",
+          "isPaired",
+          "connected",
+          "pairingState",
+          "channel"
+        ],
+        "type": "object"
+      },
+      "PeerSnapshotListEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/PeerSnapshotDto"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "PerTargetOutcomeDto": {
+        "description": "Per-target delivery outcome in the dispatch response.",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "outcome": {
+            "description": "`\"accepted\"` | `\"duplicate\"` | `\"error\"`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "PresenceRefreshEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PresenceRefreshResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "PresenceRefreshResponse": {
+        "description": "Result of a `POST /presence/refresh` round.\n\n主动 probe 一轮 `ensure_reachable_all` 后的统计回执。UI 不靠这里直接判定\n在线状态：probe 过程中各设备的 Online/Offline 变化会通过既有\n`peers.changed` WebSocket 链路推送，前端再走 `GET /paired-devices`\n重拉。该响应只用于调用方显示进度或排障。",
+        "properties": {
+          "errors": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "offline": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "online": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "online",
+          "offline",
+          "errors"
+        ],
+        "type": "object"
+      },
+      "QuickPanelSettingsDto": {
+        "description": "快捷面板（Spotlight 风格）功能开关 DTO。\n\nwire 字段命名为 camelCase（`enabled`）。`#[serde(default)]` 让缺字段时\n回退到 `Default`（`enabled = true`），与 `core::QuickPanelSettings` 默认\n保持一致——新装/老 wire 缺字段都视为\"启用\"，避免出现 wire 与磁盘真相\n撕裂。",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "QuickPanelSettingsPatchDto": {
+        "description": "快捷面板字段 patch DTO 镜像 — `null` = 不修改。",
+        "properties": {
+          "enabled": {
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "RedeemRequest": {
+        "description": "Request body for `POST /v2/setup/redeem`. Maps to\n`SpaceSetupFacade::redeem_pairing_invitation(RedeemPairingInvitationCommand)`.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "passphrase": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "passphrase"
+        ],
+        "type": "object"
+      },
+      "RedeemResponse": {
+        "description": "Response body for `POST /v2/setup/redeem`. Mirrors\n`RedeemPairingInvitationResult` flattened to wire-friendly strings.",
+        "properties": {
+          "selfDeviceId": {
+            "type": "string"
+          },
+          "selfIdentityFingerprint": {
+            "type": "string"
+          },
+          "spaceId": {
+            "type": "string"
+          },
+          "sponsorDeviceId": {
+            "type": "string"
+          },
+          "sponsorIdentityFingerprint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sponsorDeviceId",
+          "sponsorIdentityFingerprint",
+          "spaceId",
+          "selfDeviceId",
+          "selfIdentityFingerprint"
+        ],
+        "type": "object"
+      },
+      "ResendEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ResendResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ResendRequest": {
+        "description": "Request body for `POST /clipboard/resend`.",
+        "properties": {
+          "entryId": {
+            "description": "ID of the previously captured entry to resend.",
+            "type": "string"
+          },
+          "peers": {
+            "description": "Optional target device IDs.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "entryId"
+        ],
+        "type": "object"
+      },
+      "ResendResponse": {
+        "description": "Response body for `POST /clipboard/resend`.",
+        "properties": {
+          "accepted": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "duplicate": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errored": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "offline": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted",
+          "duplicate",
+          "offline",
+          "errored",
+          "pending"
+        ],
+        "type": "object"
+      },
+      "RestoreEntryEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RestoreEntryResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "RestoreEntryResponse": {
+        "description": "Response body for `POST /clipboard/restore/:entry_id`.\n\nWrapped in `ApiEnvelope` per §0.1. The success body was previously the\nad-hoc `{ \"success\": true }` shape; consumers ignore it today.",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "type": "object"
+      },
+      "RetentionPolicyDto": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/RuleEvaluationDto"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionRuleDto"
+            },
+            "type": "array"
+          },
+          "skipPinned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "rules",
+          "skipPinned",
+          "evaluation"
+        ],
+        "type": "object"
+      },
+      "RetentionPolicyPatchDto": {
+        "properties": {
+          "enabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "evaluation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RuleEvaluationDto"
+              }
+            ],
+            "nullable": true
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionRuleDto"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "skipPinned": {
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "RetentionRuleDto": {
+        "oneOf": [
+          {
+            "properties": {
+              "byAge": {
+                "description": "按时间清理",
+                "properties": {
+                  "max_age": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "max_age"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "byAge"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "byCount": {
+                "description": "按总数量上限",
+                "properties": {
+                  "max_items": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "max_items"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "byCount"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "byContentType": {
+                "description": "按内容类型的最大存活时间",
+                "properties": {
+                  "content_type": {
+                    "$ref": "#/components/schemas/ContentTypesDto"
+                  },
+                  "max_age": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "content_type",
+                  "max_age"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "byContentType"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "byTotalSize": {
+                "description": "按磁盘占用大小",
+                "properties": {
+                  "max_bytes": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "max_bytes"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "byTotalSize"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "sensitive": {
+                "description": "敏感内容快速过期",
+                "properties": {
+                  "max_age": {
+                    "format": "int64",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "max_age"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "sensitive"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "RuleEvaluationDto": {
+        "enum": [
+          "anyMatch",
+          "allMatch"
+        ],
+        "type": "string"
+      },
+      "SearchQueryEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SearchQueryResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SearchQueryResultDto": {
+        "description": "Folded payload for `GET /search/query` (ADR-008 §0.1).\n\nThe current handler returns `total` and `hasMore` as top-level siblings of\nthe `{data,ts}` envelope (`data` is the items array). This DTO folds those\nsiblings INTO the payload (renaming `data` → `items`) so the endpoint can\nreturn `ApiEnvelope<SearchQueryResultDto>` with no bespoke wrapper. P1 only\ndefines the type; the handler is rewired in P2.",
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResultDto"
+            },
+            "type": "array"
+          },
+          "total": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "hasMore"
+        ],
+        "type": "object"
+      },
+      "SearchRebuildAcceptedData": {
+        "description": "Acceptance payload — the `ApiEnvelope` payload for `POST /search/rebuild`\n(ADR-008 §0.1).",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "SearchRebuildEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SearchRebuildAcceptedData"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SearchResultDto": {
+        "description": "Single search result — mirrors `SearchResult` with camelCase transport names.",
+        "properties": {
+          "activeTimeMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "entryId": {
+            "type": "string"
+          },
+          "fileExtensions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "textPreview": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entryId",
+          "contentType",
+          "activeTimeMs",
+          "mimeType",
+          "fileExtensions"
+        ],
+        "type": "object"
+      },
+      "SearchStatusData": {
+        "description": "Search index availability snapshot — the `ApiEnvelope` payload for\n`GET /search/status` (ADR-008 §0.1).",
+        "properties": {
+          "lastRebuildCompletedAtMs": {
+            "description": "Millisecond timestamp of the last completed rebuild (from `SearchIndexMeta`).",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "lastRebuildStartedAtMs": {
+            "description": "Millisecond timestamp of the last rebuild start (from `SearchIndexMeta`).",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Optional reason code (present when rebuilding or unavailable).",
+            "nullable": true,
+            "type": "string"
+          },
+          "state": {
+            "description": "One of: \"ready\", \"rebuilding\", \"unavailable\"",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "SearchStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SearchStatusData"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SecuritySettingsDto": {
+        "properties": {
+          "autoUnlockEnabled": {
+            "description": "是否启用启动时自动解锁\n\n仅用于 UI 与流程判断\n需要用户在系统弹窗中选择“始终允许”才能静默生效",
+            "type": "boolean"
+          },
+          "encryptionEnabled": {
+            "description": "是否启用本地数据加密",
+            "type": "boolean"
+          },
+          "passphraseConfigured": {
+            "description": "是否已经在 keyring 中设置过口令\n\n仅用于 UI 与流程判断\n不代表当前口令是否“可用”",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "encryptionEnabled",
+          "passphraseConfigured"
+        ],
+        "type": "object"
+      },
+      "SecuritySettingsPatchDto": {
+        "properties": {
+          "autoUnlockEnabled": {
+            "description": "写入时设置是否启用启动时自动解锁",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "encryptionEnabled": {
+            "description": "写入时设置是否启用本地数据加密（需要 passphrase）",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "passphrase": {
+            "description": "写入时设置 passphrase（由前端/daemon 内部触发解锁流程）",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SessionTokenEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SessionTokenResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SessionTokenResponse": {
+        "description": "Response body for `POST /auth/connect`.\n\nMirrors the current flat shape returned by the webserver `ConnectResponse`\nand decoded by the native client's local `ConnectResponse`:\n`{ \"sessionToken\", \"expiresInSecs\", \"refreshAtSecs\" }`.",
+        "properties": {
+          "expiresInSecs": {
+            "description": "Token time-to-live in seconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "refreshAtSecs": {
+            "description": "Recommended refresh time in seconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sessionToken": {
+            "description": "HS256-signed JWT session token.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionToken",
+          "expiresInSecs",
+          "refreshAtSecs"
+        ],
+        "type": "object"
+      },
+      "SettingsDto": {
+        "properties": {
+          "fileSync": {
+            "$ref": "#/components/schemas/FileSyncSettingsDto"
+          },
+          "general": {
+            "$ref": "#/components/schemas/GeneralSettingsDto"
+          },
+          "keyboardShortcuts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ShortcutKeyDto"
+            },
+            "type": "object"
+          },
+          "network": {
+            "$ref": "#/components/schemas/NetworkSettingsDto"
+          },
+          "pairing": {
+            "$ref": "#/components/schemas/PairingSettingsDto"
+          },
+          "quickPanel": {
+            "$ref": "#/components/schemas/QuickPanelSettingsDto"
+          },
+          "retentionPolicy": {
+            "$ref": "#/components/schemas/RetentionPolicyDto"
+          },
+          "schemaVersion": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "security": {
+            "$ref": "#/components/schemas/SecuritySettingsDto"
+          },
+          "sync": {
+            "$ref": "#/components/schemas/SyncSettingsDto"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "general",
+          "sync",
+          "retentionPolicy",
+          "security",
+          "pairing",
+          "keyboardShortcuts",
+          "fileSync",
+          "network"
+        ],
+        "type": "object"
+      },
+      "SettingsEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SettingsDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SettingsPatchDto": {
+        "properties": {
+          "fileSync": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FileSyncSettingsPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "general": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GeneralSettingsPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "keyboardShortcuts": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/KeyboardShortcutsPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "network": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkSettingsPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "pairing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PairingSettingsPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "quickPanel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuickPanelSettingsPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "retentionPolicy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetentionPolicyPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "security": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SecuritySettingsPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "sync": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SyncSettingsPatchDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "type": "object"
+      },
+      "SettingsUpdateResultDto": {
+        "description": "Folded payload for `PUT /settings` (ADR-008 §0.1).\n\nThe current handler returns `success` and `restartRequired` as top-level\nsiblings of the `{data,ts}` envelope. This DTO folds those siblings INTO the\npayload so the endpoint can return `ApiEnvelope<SettingsUpdateResultDto>`\nwith no bespoke wrapper. P1 only defines the type; the handler is rewired in\nP2.",
+        "properties": {
+          "restartRequired": {
+            "description": "Whether the patch touched fields requiring a daemon restart (currently\nonly `network.*`).",
+            "type": "boolean"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "restartRequired"
+        ],
+        "type": "object"
+      },
+      "SettingsUpdateResultEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SettingsUpdateResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SetupInitializeEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/InitializeSpaceResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SetupIssueInvitationEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/IssueInvitationResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SetupMigrationProgressEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MigrationProgressResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SetupRedeemEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RedeemResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SetupStateEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SetupStateResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SetupStateResponse": {
+        "description": "Response body for `GET /v2/setup/state`. Mirrors `SetupStateView`.",
+        "properties": {
+          "currentInvitation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrentInvitation"
+              }
+            ],
+            "nullable": true
+          },
+          "deviceName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "hasCompleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hasCompleted"
+        ],
+        "type": "object"
+      },
+      "SetupSwitchSpaceEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SwitchSpaceResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ShortcutKeyDto": {
+        "description": "A keyboard shortcut value that can be either a single key combo or multiple alternatives.\n\nSerialised with `#[serde(untagged)]` so that `\"Ctrl+C\"` and `[\"Ctrl+C\",\"Meta+C\"]` are both\naccepted without a wrapping tag, matching the TypeScript type `string | string[]`.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        ]
+      },
+      "SpaceMemberDto": {
+        "properties": {
+          "channel": {
+            "description": "Phase 96 INDIC-01:连接通道 4 态 wire 字符串。同 `PeerSnapshotDto.channel`,\n取值严格限定 `\"direct\" | \"relay\" | \"offline\" | \"unknown\"`。前端\n`SpaceMember` 直接消费,`ConnectionChannelBadge` 渲染。",
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "connectionAddress": {
+            "description": "当前活跃连接地址。直连时为对端 IP:port,中转时为 relay 地址。",
+            "nullable": true,
+            "type": "string"
+          },
+          "deviceName": {
+            "type": "string"
+          },
+          "lastSeenAtMs": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "pairingState": {
+            "type": "string"
+          },
+          "peerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "peerId",
+          "deviceName",
+          "pairingState",
+          "connected",
+          "channel"
+        ],
+        "type": "object"
+      },
+      "SpaceMemberListEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SpaceMemberDto"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "StatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StatusResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "StatusResponse": {
+        "properties": {
+          "apiRevision": {
+            "type": "string"
+          },
+          "packageVersion": {
+            "type": "string"
+          },
+          "uptimeSeconds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workers": {
+            "items": {
+              "$ref": "#/components/schemas/WorkerStatusDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "packageVersion",
+          "apiRevision",
+          "uptimeSeconds",
+          "workers"
+        ],
+        "type": "object"
+      },
+      "StorageStatsDto": {
+        "description": "Response payload for `GET /storage/stats`.",
+        "properties": {
+          "cacheBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "databaseBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "logsBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "vaultBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "totalBytes",
+          "databaseBytes",
+          "vaultBytes",
+          "cacheBytes",
+          "logsBytes"
+        ],
+        "type": "object"
+      },
+      "StorageStatsEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StorageStatsDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SwitchSpaceRequest": {
+        "description": "Request body for `POST /v2/setup/switch-space`. Maps to\n`SpaceSetupFacade::switch_space(SwitchSpaceInput)`. Pre-conditions\n(setup completed + session unlocked + no pending migration) are\nchecked inside the facade and surface as 409 / 423 / 423 respectively.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "newPassphrase": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "newPassphrase"
+        ],
+        "type": "object"
+      },
+      "SwitchSpaceResponse": {
+        "description": "Response body for `POST /v2/setup/switch-space`. Mirrors\n`SwitchSpaceResult` flattened to wire-friendly strings, plus\n`migrated_records` so the UI can show \"迁移了 N 条历史\".",
+        "properties": {
+          "migratedRecords": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "selfDeviceId": {
+            "type": "string"
+          },
+          "selfIdentityFingerprint": {
+            "type": "string"
+          },
+          "spaceId": {
+            "type": "string"
+          },
+          "sponsorDeviceId": {
+            "type": "string"
+          },
+          "sponsorIdentityFingerprint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sponsorDeviceId",
+          "sponsorIdentityFingerprint",
+          "spaceId",
+          "selfDeviceId",
+          "selfIdentityFingerprint",
+          "migratedRecords"
+        ],
+        "type": "object"
+      },
+      "SyncFrequencyDto": {
+        "enum": [
+          "realtime",
+          "interval"
+        ],
+        "type": "string"
+      },
+      "SyncSettingsDto": {
+        "properties": {
+          "autoSync": {
+            "type": "boolean"
+          },
+          "contentTypes": {
+            "$ref": "#/components/schemas/ContentTypesDto"
+          },
+          "syncFrequency": {
+            "$ref": "#/components/schemas/SyncFrequencyDto"
+          }
+        },
+        "required": [
+          "autoSync",
+          "syncFrequency",
+          "contentTypes"
+        ],
+        "type": "object"
+      },
+      "SyncSettingsPatchDto": {
+        "properties": {
+          "autoSync": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "contentTypes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContentTypesPatchDto"
+              }
+            ],
+            "nullable": true
+          },
+          "syncFrequency": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SyncFrequencyDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "type": "object"
+      },
+      "ThemeDto": {
+        "enum": [
+          "light",
+          "dark",
+          "system"
+        ],
+        "type": "string"
+      },
+      "ToggleFavoriteEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ToggleFavoriteResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ToggleFavoriteRequest": {
+        "description": "POST /clipboard/entries/:id/favorite request body.",
+        "properties": {
+          "isFavorited": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "isFavorited"
+        ],
+        "type": "object"
+      },
+      "ToggleFavoriteResultDto": {
+        "description": "Result of toggling favorite state.",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "type": "object"
+      },
+      "UnpairDeviceRequest": {
+        "properties": {
+          "peerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "peerId"
+        ],
+        "type": "object"
+      },
+      "UpdateChannelDto": {
+        "enum": [
+          "stable",
+          "alpha",
+          "beta",
+          "rc"
+        ],
+        "type": "string"
+      },
+      "UpgradeStatusDto": {
+        "description": "Discriminated union mirroring `uc_application::facade::UpgradeStatus`.\n\nWire encoding uses `kind` discriminator with snake_case variants to\nkeep parity with the CLI JSON output produced by `uniclip upgrade\nstatus --json`.\n\n防御性补丁(issue #606 followup):同时声明 `rename_all_fields`,\n避免未来新增多词字段(如 `target_version`)时 wire 字段名漂回\nsnake_case 与上层契约不一致。当前字段都是单词,加这个对 wire 无影响,\n但锁定未来添加字段的默认风格。详见 `docs/agent/rust-tauri-rules.md`\n的 \"Enum Wire Serialization\" 一节。",
+        "discriminator": {
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "description": "First time the app is launched on this profile.",
+            "properties": {
+              "current": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "fresh_install"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "current",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Cursor matches the running build; no action needed.",
+            "properties": {
+              "current": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "no_change"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "current",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Cursor lags the running build (or is missing on a setup-completed\nprofile). `from = None` means the previous version is unknown\n(pre-cursor era / corrupt cursor fallback).",
+            "properties": {
+              "from": {
+                "nullable": true,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "upgraded"
+                ],
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "to",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Cursor leads the running build — the user rolled back.",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "downgraded"
+                ],
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "UpgradeStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UpgradeStatusDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "WorkerStatusDto": {
+        "properties": {
+          "health": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "health"
+        ],
+        "type": "object"
+      },
+      "WsErrorResponse": {
+        "description": "Error response sent via HTTP status + JSON body when the WebSocket upgrade fails.",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "retryAfterSecs": {
+            "description": "Only present for rate-limit errors.",
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "WsSubscribeRequest": {
+        "description": "Request body sent by a client to subscribe to daemon event topics.",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "action",
+          "topics"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "session_header": {
+        "in": "header",
+        "name": "Authorization",
+        "type": "apiKey"
+      },
+      "session_query": {
+        "in": "query",
+        "name": "auth",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "Local daemon HTTP API for the UniClipboard GUI and native clients. All enveloped responses use the canonical `{ data, ts }` shape; errors use `{ code, message, details? }`. Binary and WebSocket endpoints are exempt from the envelope. L2+ operations require a session token (query `?auth=` or the `Authorization` header).",
+    "license": {
+      "name": "AGPL-3.0-only"
+    },
+    "title": "UniClipboard Daemon API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/auth/connect": {
+      "post": {
+        "description": "Validates the bearer token in the Authorization header, registers the client\nPID, and returns a JWT session token wrapped in the canonical envelope.\n\nRate limiting: This endpoint has no session token yet, so rate limiting\nis applied by client IP address (from ConnectInfo). This is trustworthy\nbecause it comes from the TCP stack, not caller-controlled input.\n\nNOTE on ConnectInfo: ConnectInfo<SocketAddr> reads the socket address from\nthe TCP connection metadata, NOT from HTTP headers. In test contexts (using\ntower::ServiceExt::oneshot without a real TCP listener), the socket address\nwill be a default value (typically 127.0.0.1:0 or ::1:0). The unit tests\nfor SlidingWindowRateLimiter cover the rate limiting logic independently.\nIP-based rate limiting for /auth/connect works correctly in production.\n\nIMPORTANT: ConnectInfo<SocketAddr> works ONLY when the server uses\n`into_make_service_with_connect_info::<SocketAddr>()`.\nIn test contexts using tower::ServiceExt::oneshot, ConnectInfo may be absent.\nThe handler uses Option<ConnectInfo<SocketAddr>> so tests work correctly.\nIP-based rate limiting is skipped when ConnectInfo is unavailable (test-only code path).",
+        "operationId": "authConnect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTokenEnvelope"
+                }
+              }
+            },
+            "description": "JWT session token issued"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed connect request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Too many requests from this client IP"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Failed to sign the session token"
+          }
+        },
+        "summary": "POST /auth/connect.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/clipboard/blobs/{blob_id}": {
+      "get": {
+        "description": "Serves the raw bytes of a stored blob. Binary endpoint: the response is\n`application/octet-stream` (the resolved MIME type when known), NOT the\n`{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints exempt).\nReturns 404 if the blob is unknown, 500 on an internal resolution failure.",
+        "operationId": "getClipboardBlob",
+        "parameters": [
+          {
+            "description": "Blob identifier",
+            "in": "path",
+            "name": "blob_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Raw blob bytes"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Blob not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/blobs/:blob_id",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/cancel-transfer/{transfer_id}": {
+      "post": {
+        "description": "Cancels an in-flight inbound file transfer. Returns the cancellation outcome.",
+        "operationId": "cancelClipboardTransfer",
+        "parameters": [
+          {
+            "description": "Inbound transfer ID",
+            "in": "path",
+            "name": "transfer_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelTransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelTransferEnvelope"
+                }
+              }
+            },
+            "description": "Transfer cancellation outcome"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown cancellation reason"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/cancel-transfer/:transfer_id",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/dispatch": {
+      "post": {
+        "description": "Wraps plaintext into a single `text/plain` snapshot and fans it out to\nonline peers. Returns the per-target delivery outcome.",
+        "operationId": "dispatchClipboardText",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchTextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchOutcomeEnvelope"
+                }
+              }
+            },
+            "description": "Dispatch fan-out outcome"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Empty or malformed request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/dispatch",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/entries": {
+      "get": {
+        "description": "Lists clipboard entries with pagination. Returns camelCase entry projections.\nPopulates `linkDomains` from `linkUrls`. Limit is clamped to 1000.",
+        "operationId": "listClipboardEntries",
+        "parameters": [
+          {
+            "description": "Maximum entries to return (default 50, clamped to 1000).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of entries to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListEntriesEnvelope"
+                }
+              }
+            },
+            "description": "Clipboard entries listed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/entries?limit=50&offset=0",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/entries/clear": {
+      "post": {
+        "description": "Clears all clipboard history via bulk deletion.\nReturns the number of entries deleted and any failures.",
+        "operationId": "clearClipboardHistory",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearHistoryEnvelope"
+                }
+              }
+            },
+            "description": "Clipboard history cleared"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/entries/clear",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/entries/{id}": {
+      "delete": {
+        "description": "Deletes an entry. Returns 204 on success, 404 if not found.",
+        "operationId": "deleteClipboardEntry",
+        "parameters": [
+          {
+            "description": "Entry ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Entry deleted"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "DELETE /clipboard/entries/:id",
+        "tags": [
+          "clipboard"
+        ]
+      },
+      "get": {
+        "description": "Returns entry detail (full text content). Returns 404 if not found,\n422 if entry is not text content.",
+        "operationId": "getClipboardEntry",
+        "parameters": [
+          {
+            "description": "Entry ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryDetailEnvelope"
+                }
+              }
+            },
+            "description": "Entry detail retrieved"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry is not text content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/entries/:id",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/entries/{id}/favorite": {
+      "post": {
+        "description": "Toggles favorite state for an entry. Returns 200 on success, 404 if not found.",
+        "operationId": "toggleClipboardEntryFavorite",
+        "parameters": [
+          {
+            "description": "Entry ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleFavoriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToggleFavoriteEnvelope"
+                }
+              }
+            },
+            "description": "Favorite state toggled"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Missing isFavorited field"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/entries/:id/favorite",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/entries/{id}/resource": {
+      "get": {
+        "description": "Returns resource metadata (blob URL or inline content).",
+        "operationId": "getClipboardEntryResource",
+        "parameters": [
+          {
+            "description": "Entry ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResourceEnvelope"
+                }
+              }
+            },
+            "description": "Entry resource metadata retrieved"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/entries/:id/resource",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/resend": {
+      "post": {
+        "description": "Re-dispatches a previously captured entry to (optionally filtered) peers.",
+        "operationId": "resendClipboardEntry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResendEnvelope"
+                }
+              }
+            },
+            "description": "Resend fan-out outcome"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "No eligible targets"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/resend",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/restore/{entry_id}": {
+      "post": {
+        "description": "Re-apply a stored clipboard entry to the local system clipboard. Wrapped in\nthe canonical `{ data, ts }` envelope (ADR-008 §0.1/§0.2); errors use the\ncanonical `ApiErrorResponse`. The `payload_unavailable` (410) error carries\n`{ entry_id, rep_id, state }` in `details` (§0.3); the `code`/`message`\nstrings are LOAD-BEARING and preserved.",
+        "operationId": "restoreClipboardEntry",
+        "parameters": [
+          {
+            "description": "Clipboard entry id to restore",
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restore as plain text only (strip rich representations)",
+            "in": "query",
+            "name": "plain",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreEntryEnvelope"
+                }
+              }
+            },
+            "description": "Entry restored to the system clipboard"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry not found"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry payload is no longer available (orphaned/lost)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/restore/{entry_id}",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/stats": {
+      "get": {
+        "description": "Returns aggregate clipboard statistics (total items and total size).",
+        "operationId": "getClipboardStats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipboardStatsEnvelope"
+                }
+              }
+            },
+            "description": "Clipboard statistics retrieved"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/stats",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/thumbnails/{rep_id}": {
+      "get": {
+        "description": "Serves the raw bytes of a representation's thumbnail. Binary endpoint: the\nresponse is `application/octet-stream` (the resolved MIME type when known),\nNOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints\nexempt). Returns 404 if the thumbnail is unknown, 500 on an internal\nresolution failure.",
+        "operationId": "getClipboardThumbnail",
+        "parameters": [
+          {
+            "description": "Representation identifier",
+            "in": "path",
+            "name": "rep_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Raw thumbnail bytes"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Thumbnail not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/thumbnails/:rep_id",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/device/me": {
+      "get": {
+        "description": "Returns the local device's peer ID and resolved device name.",
+        "operationId": "getLocalDeviceInfo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalDeviceInfoEnvelope"
+                }
+              }
+            },
+            "description": "Local device identity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /device/me",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/encryption/keychain-access": {
+      "get": {
+        "description": "Verifies macOS Keychain \"Always Allow\" permission for this app.\nReturns `granted: true` if Keychain access succeeds silently, `false` if permission denied.",
+        "operationId": "verifyKeychainAccess",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeychainAccessEnvelope"
+                }
+              }
+            },
+            "description": "Keychain access verified"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /encryption/keychain-access",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/encryption/lock": {
+      "post": {
+        "description": "Locks the encryption session by clearing the master key.",
+        "operationId": "lockEncryptionSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EncryptionActionEnvelope"
+                }
+              }
+            },
+            "description": "Encryption session locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /encryption/lock",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/encryption/state": {
+      "get": {
+        "description": "Returns the current encryption state and session readiness.",
+        "operationId": "getEncryptionState",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EncryptionStateEnvelope"
+                }
+              }
+            },
+            "description": "Encryption state retrieved"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /encryption/state",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/encryption/unlock": {
+      "post": {
+        "description": "Attempts to auto-unlock the encryption session using keyring-stored KEK.\nNo passphrase is required — credentials are retrieved from the OS keychain.\nOn success, broadcasts the `encryption.session_ready` WebSocket event.",
+        "operationId": "unlockEncryptionSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EncryptionActionEnvelope"
+                }
+              }
+            },
+            "description": "Encryption session unlocked (or already ready)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /encryption/unlock",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Public (L1) liveness probe. Returns the daemon status string plus version\nmetadata wrapped in the canonical `{ data, ts }` envelope (ADR-008 §0.2).\nThe previous bare `{ status, ... }` shape is retired.",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthEnvelope"
+                }
+              }
+            },
+            "description": "Daemon is alive"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "GET /health",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/lifecycle/ready": {
+      "post": {
+        "description": "在 `GuiInProcess` 模式下，剪贴板采集被门控住，直到 GUI 在用户解锁\n应用之后显式发出\"就绪\"信号；本端点负责打开该门控。",
+        "operationId": "signalLifecycleReady",
+        "responses": {
+          "204": {
+            "description": "Ready signal accepted; clipboard capture gate opened"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "通知 daemon：GUI 已解锁，可以开始采集剪贴板。",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/retry": {
+      "post": {
+        "description": "Slice4 P5c: libp2p `start_network` 已退役,iroh 路由由\n`SpaceSetupAssembly` 启动时即装好,no longer 需要 retry 出动 network。\n这个 endpoint 现在只做 lifecycle 状态推进 + 触发 deferred 服务启动,\n等价于 GUI 端 `/lifecycle/ready` 的 idempotent 重试入口。",
+        "operationId": "retryLifecycle",
+        "responses": {
+          "204": {
+            "description": "Retry completed; lifecycle advanced to ready"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Lifecycle retry failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Daemon runtime unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /lifecycle/retry",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/status": {
+      "get": {
+        "description": "Returns the current daemon lifecycle state wrapped in the canonical\n`{ data, ts }` envelope (ADR-008). The bare `{ state }` shape is retired.",
+        "operationId": "getLifecycleStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleStatusEnvelope"
+                }
+              }
+            },
+            "description": "Current lifecycle state"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Daemon runtime unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /lifecycle/status",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/member/{device_id}/sync-preferences": {
+      "get": {
+        "description": "返回已接纳成员的同步偏好（双向 send/receive + 双套 content_types）。",
+        "operationId": "getMemberSyncPreferences",
+        "parameters": [
+          {
+            "description": "Space member's device ID (same string as peer_id, D5)",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberSyncPreferencesEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Member not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /member/:device_id/sync-preferences",
+        "tags": [
+          "member"
+        ]
+      },
+      "patch": {
+        "description": "部分更新成员的同步偏好；未提供的字段保留当前值。\n\n内部 `get → merge → save`，保持与 `UpdateMemberSettingsUseCase` 的全量覆盖语义对齐。",
+        "operationId": "updateMemberSyncPreferences",
+        "parameters": [
+          {
+            "description": "Space member's device ID",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberSyncPreferencesPatchDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberSyncResultEnvelope"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Member not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "PATCH /member/:device_id/sync-preferences",
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/paired-devices": {
+      "get": {
+        "description": "List paired space members with presence. Wrapped in the canonical\n`{ data, ts }` envelope (ADR-008 §0.2); the previous bare top-level array\nis retired.",
+        "operationId": "listPairedDevices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceMemberListEnvelope"
+                }
+              }
+            },
+            "description": "Paired space-member list"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /paired-devices",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/pairing/unpair": {
+      "post": {
+        "description": "Revokes the local member record for the given peer. Success is signalled by\n`204 No Content` with no body (ADR-008 §B Rule 3 — 204 endpoints are NOT\nenveloped). Errors flow through the shared `ApiError` carrier and therefore\nserialize to `ApiErrorResponse { code, message, details? }` on the wire —\nthe dedicated `PairingApiErrorResponse` contract only covers the retired\nlibp2p pairing routes, not this revoke path.",
+        "operationId": "unpairDevice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnpairDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Device unpaired (no body)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Member not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Runtime unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /pairing/unpair",
+        "tags": [
+          "pairing"
+        ]
+      }
+    },
+    "/peers": {
+      "get": {
+        "description": "List discovered peer snapshots (topology view). Wrapped in the canonical\n`{ data, ts }` envelope (ADR-008 §0.2); the previous bare top-level array\nis retired.",
+        "operationId": "listPeers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerSnapshotListEnvelope"
+                }
+              }
+            },
+            "description": "Peer snapshot list"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /peers",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/presence/refresh": {
+      "post": {
+        "description": "Actively probe paired peers' reachability and return the round's counters.\nWrapped in the canonical `{ data, ts }` envelope (ADR-008 §0.2); the\nprevious bare object (counters at top level) is retired.",
+        "operationId": "refreshPresence",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresenceRefreshEnvelope"
+                }
+              }
+            },
+            "description": "Presence refresh round completed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /presence/refresh",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/search/query": {
+      "get": {
+        "description": "Execute a structured search query against the local encrypted search index.\nReturns HTTP 423 if the encryption session is locked.\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).",
+        "operationId": "searchQuery",
+        "parameters": [
+          {
+            "description": "Required free-text query string.",
+            "in": "query",
+            "name": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional explicit operator: \"and\" or \"or\".",
+            "in": "query",
+            "name": "operator",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional time preset: today, yesterday, last_24h, last_7d, last_30d, this_week, this_month.",
+            "in": "query",
+            "name": "timePreset",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Absolute range start (ms since epoch). Must be paired with `to_ms`.",
+            "in": "query",
+            "name": "fromMs",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "nullable": true,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Absolute range end (ms since epoch). Must be paired with `from_ms`.",
+            "in": "query",
+            "name": "toMs",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "nullable": true,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Comma-separated file types (text, html, link, file, image, other).",
+            "in": "query",
+            "name": "contentTypes",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated file extensions (e.g. \"md,txt\").",
+            "in": "query",
+            "name": "extensions",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum results. Default 50, clamped to 200.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination offset. Default 0.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchQueryEnvelope"
+                }
+              }
+            },
+            "description": "Search results page"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid or malformed query"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Search index not ready or unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /search/query",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/search/rebuild": {
+      "post": {
+        "description": "Trigger a manual full rebuild of the search index.\nReturns HTTP 202 on accept, HTTP 409 with `rebuild_already_running` when another rebuild is in progress.\nReturns HTTP 423 if the encryption session is locked.\n\nAlready on `{ data, ts }`; the bespoke wrapper is replaced by the canonical\n`ApiEnvelope<SearchRebuildAcceptedData>` (identical JSON, not a wire change).",
+        "operationId": "rebuildSearchIndex",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchRebuildEnvelope"
+                }
+              }
+            },
+            "description": "Rebuild accepted"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "A rebuild is already in progress"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Search index unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /search/rebuild",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/search/status": {
+      "get": {
+        "description": "Returns the current search index availability snapshot (coordinator status + index meta timestamps).\nReturns HTTP 423 if the encryption session is locked.\n\nAlready on `{ data, ts }`; the bespoke wrapper is replaced by the canonical\n`ApiEnvelope<SearchStatusData>` (identical JSON, not a wire change).",
+        "operationId": "getSearchStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchStatusEnvelope"
+                }
+              }
+            },
+            "description": "Search index availability snapshot"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Search index unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /search/status",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/settings": {
+      "get": {
+        "description": "Returns the current application settings as a typed Settings struct.",
+        "operationId": "getSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsEnvelope"
+                }
+              }
+            },
+            "description": "Current application settings"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "description": "Updates application settings. Accepts a partial settings object and merges it\nwith the existing settings.\n\nNOTE: Unlike the Tauri command, this handler does NOT apply OS-level side\neffects (no autostart registration, no keyboard shortcut updates). It only\npersists the settings domain model.",
+        "operationId": "updateSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatchDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsUpdateResultEnvelope"
+                }
+              }
+            },
+            "description": "Settings persisted; carries success + restart-required signal"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "PUT /settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/status": {
+      "get": {
+        "description": "Diagnostic snapshot: version metadata, uptime, and worker health. Wrapped\nin the canonical `{ data, ts }` envelope (ADR-008 §0.2); the previous bare\nobject shape is retired.",
+        "operationId": "getStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusEnvelope"
+                }
+              }
+            },
+            "description": "Daemon status snapshot"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/storage/clear-cache": {
+      "post": {
+        "description": "Clears the cache directory contents. Requires `confirmed: true` in the request body.\nReturns 400 if confirmation is missing or false.",
+        "operationId": "clearStorageCache",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearCacheRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClearCacheEnvelope"
+                }
+              }
+            },
+            "description": "Cache cleared"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Confirmation missing or false"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /storage/clear-cache",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/storage/stats": {
+      "get": {
+        "description": "Returns storage statistics across database, cache, and spool directories.\nIncludes blob_count derived from the total number of clipboard entries.",
+        "operationId": "getStorageStats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageStatsEnvelope"
+                }
+              }
+            },
+            "description": "Storage statistics retrieved"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /storage/stats",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/upgrade/ack": {
+      "post": {
+        "description": "Advance the stored version cursor to the running build, clearing the\n\"re-pair after upgrade\" notice.",
+        "operationId": "acknowledgeUpgrade",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckUpgradeEnvelope"
+                }
+              }
+            },
+            "description": "Upgrade acknowledged"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /upgrade/ack",
+        "tags": [
+          "upgrade"
+        ]
+      }
+    },
+    "/upgrade/status": {
+      "get": {
+        "description": "Detect whether the running build is a fresh install / unchanged / upgraded\n/ downgraded relative to the stored version cursor.",
+        "operationId": "getUpgradeStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeStatusEnvelope"
+                }
+              }
+            },
+            "description": "Upgrade status detected"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /upgrade/status",
+        "tags": [
+          "upgrade"
+        ]
+      }
+    },
+    "/v2/setup/cancel": {
+      "post": {
+        "operationId": "setupV2Cancel",
+        "responses": {
+          "204": {
+            "description": "Invitation cancelled"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "No in-flight invitation to cancel"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Facade not assembled"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
+    "/v2/setup/initialize": {
+      "post": {
+        "operationId": "setupV2Initialize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitializeSpaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupInitializeEnvelope"
+                }
+              }
+            },
+            "description": "Space initialised"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Passphrase mismatch or device name missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Setup already completed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Facade not assembled"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
+    "/v2/setup/issue-invitation": {
+      "post": {
+        "operationId": "setupV2IssueInvitation",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupIssueInvitationEnvelope"
+                }
+              }
+            },
+            "description": "Invitation issued"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Facade not assembled or network not started"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
+    "/v2/setup/migration-progress": {
+      "get": {
+        "operationId": "setupV2GetMigrationProgress",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupMigrationProgressEnvelope"
+                }
+              }
+            },
+            "description": "Migration progress snapshot"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Storage failure"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Facade not assembled"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
+    "/v2/setup/redeem": {
+      "post": {
+        "operationId": "setupV2Redeem",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupRedeemEnvelope"
+                }
+              }
+            },
+            "description": "Invitation redeemed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invitation not found / expired"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Sponsor unreachable / service unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
+    "/v2/setup/reset": {
+      "post": {
+        "operationId": "setupV2Reset",
+        "responses": {
+          "204": {
+            "description": "Setup reset"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Storage failure"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Facade not assembled"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
+    "/v2/setup/state": {
+      "get": {
+        "operationId": "setupV2GetState",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStateEnvelope"
+                }
+              }
+            },
+            "description": "Setup state snapshot"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Storage failure"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Facade not assembled"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
+    "/v2/setup/switch-space": {
+      "post": {
+        "operationId": "setupV2SwitchSpace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchSpaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupSwitchSpaceEnvelope"
+                }
+              }
+            },
+            "description": "Switched space"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Wrong passphrase / device name missing"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invitation not found / expired"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Not setup, pending migration, sponsor rejected, or session locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error / corrupted ciphertext / storage failure"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Sponsor unreachable / service unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "setup-v2"
+        ]
+      }
+    },
+    "/ws": {
+      "get": {
+        "description": "`GET /ws` is a protocol upgrade, NOT a `{ data, ts }` envelope endpoint. On\nsuccess it returns `101 Switching Protocols` and the connection then speaks\nthe daemon WebSocket protocol: the client sends `WsSubscribeRequest` frames\nand the server streams `DaemonWsEvent` frames (one per subscribed topic\nevent). These frame schemas are documented here for reference only; the live\nstream is not modelled by the OpenAPI response body.",
+        "operationId": "websocketUpgrade",
+        "parameters": [
+          {
+            "description": "JWT session token prefixed with 'Session '. Used when the client cannot set custom headers (e.g., browser WebSocket). Native clients may instead send the 'Authorization: Session <jwt>' header.",
+            "in": "query",
+            "name": "auth",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "WebSocket upgrade accepted; the connection then exchanges WsSubscribeRequest (client→server) and DaemonWsEvent (server→client) frames."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WsErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid session token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WsErrorResponse"
+                }
+              }
+            },
+            "description": "PID not allowed"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WsErrorResponse"
+                }
+              }
+            },
+            "description": "Rate limit exceeded"
+          }
+        },
+        "security": [
+          {},
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "Returns the WebSocket router.",
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Clipboard entry CRUD, stats, resources, binary blobs/thumbnails, history actions, and delivery",
+      "name": "clipboard"
+    },
+    {
+      "description": "Query, index status, and index rebuild",
+      "name": "search"
+    },
+    {
+      "description": "Storage stats and cache maintenance",
+      "name": "storage"
+    },
+    {
+      "description": "Local device identity",
+      "name": "device"
+    },
+    {
+      "description": "Per-space-member sync preferences",
+      "name": "member"
+    },
+    {
+      "description": "Space-member unpair lifecycle",
+      "name": "pairing"
+    },
+    {
+      "description": "Encryption state and session lock/unlock",
+      "name": "encryption"
+    },
+    {
+      "description": "Persisted settings read/update (no OS side effects)",
+      "name": "settings"
+    },
+    {
+      "description": "Daemon lifecycle state, retry, and ready-signal",
+      "name": "lifecycle"
+    },
+    {
+      "description": "Version upgrade detection and acknowledgement",
+      "name": "upgrade"
+    },
+    {
+      "description": "Diagnostics and topology: health, status, peer/member snapshots, presence, websocket, connect",
+      "name": "system"
+    },
+    {
+      "description": "Stateless v2 space-setup and invitation flow",
+      "name": "setup-v2"
+    }
+  ]
+}

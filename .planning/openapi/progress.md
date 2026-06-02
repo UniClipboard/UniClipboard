@@ -1,0 +1,35 @@
+# OpenAPI Normalization — Phase Progress (ADR-008)
+
+Tracks phase status + cross-phase carry-overs. Authoritative spec: `normalization-spec.md` (§0 = locked decisions, supersedes all else).
+
+## Status
+- **P1 Contract foundation** — ✅ DONE + adversarially verified (`cargo check -p uc-daemon-contract -p uc-webserver` clean). 2026-06-02.
+- **P2 Webserver annotate + normalize wire** — ⬜ NEXT (breaking server change)
+- **P3 Native Rust consumer lockstep** — ⬜
+- **P4 gen-openapi bin + schema** — ⬜
+- **P5 FE codegen + bridge** — ⬜
+- **P6 FE consumer migration** — ⬜
+
+## P1 result
+- **New files (contract):** `dto/envelope.rs` (`ApiEnvelope<T>` + 38 `#[aliases]`, bare generic NOT registered), `dto/error.rs` (`ApiErrorResponse{code,message,details:Option<Value>}` + `new()`/`with_details()`), `dto/auth.rs` (`ConnectRequest`, `SessionTokenResponse`), `dto/storage.rs` (`StorageStatsDto`,`ClearCacheRequest`,`ClearCacheResponse`), `openapi_meta.rs` (metadata + `SecurityAddon` registering BOTH `session_query` + `session_header`).
+- **Edited (contract):** `dto/{clipboard_command,encryption,settings,member,search}.rs` (+ToSchema +folded DTOs), `api/types.rs` (+ToSchema on Health/Status/Worker/Lifecycle/PeerSnapshot/SpaceMember/PresenceRefresh/DaemonWsEvent), `dto/mod.rs`+`api/mod.rs` (wiring), `Cargo.toml` (+chrono).
+- **Edited (webserver, no wire change):** `dto/error.rs` (re-export contract `ApiErrorResponse`; one ctor site set `details:None`), `storage.rs` (import contract storage DTOs via `as StorageStatsResponse` alias; json output byte-identical).
+- **Folded payloads:** `SettingsUpdateResultDto{success,restart_required}`, `MemberSyncResultDto{success}`, `SearchQueryResultDto{items,total,has_more}` (items field renamed from `data`→`items`).
+- **Pairing graveyard:** NOTHING deleted — all 9 `dto/pairing.rs` DTOs are LIVE (used by `uc-daemon-client/src/http/pairing.rs`, `ws.rs`). §C.7's "dead" assumption was wrong.
+
+## Carry-overs INTO P2 (webserver wire normalization)
+1. Rewire EVERY handler to build `ApiEnvelope::now(payload)` / alias bodies; flip bare/ad-hoc → envelope for ALL §H breaking endpoints. `/auth/connect` → `SessionTokenEnvelope`. Binary (`blob.rs`) + `/ws` stay un-enveloped.
+2. DELETE the legacy bespoke `{data,ts}` wrapper structs after rewiring: `SearchQueryResponse`/`SearchStatusResponse`/`SearchRebuildAcceptedResponse` (search.rs), `GetMemberSyncPreferencesResponse`/`UpdateMemberSyncPreferencesResponse` (member.rs), `GetSettingsResponse`/`UpdateSettingsResponse` (settings.rs), `ListEntriesResponse`, `GetUpgradeStatusResponse`, + any sibling wrappers. P1 added NO new wrappers; these pre-existing ones must go so "no `{data,ts}` wrappers remain" (§0.1) holds.
+3. `SearchQueryResultDto` renamed items field `data`→`items`; the query handler must build it that way and fold `total`/`hasMore` INTO the payload.
+4. `storage.rs` still emits `json!({"data":..,"ts":..})` with `StorageStatsDto as StorageStatsResponse`; rewire to `ApiEnvelope`/`StorageStatsEnvelope`/`ClearCacheEnvelope`, drop the alias import.
+5. restore 410: put `entry_id`/`rep_id`/`state` into `ApiErrorResponse.details` (`with_details`). Preserve `code` + exact English `message` strings (setup-v2 + restore classifiers depend on them).
+6. `openapi.rs` assembly = SINGLE owner: register all ops in `paths()`, all alias names + DTOs in `components(schemas())`, wire `openapi_meta` SecurityAddon (dual) + tags + a `PUBLIC_PATHS` allowlist for L1 endpoints. Register the 2 missing setup-v2 ops (`switch-space`, `migration-progress`).
+7. Use §D operation_ids + tags for every op; add `#[derive(IntoParams)]` to query structs (`RestoreQuery`, `SearchQueryParams`, `PaginationParams`).
+
+## Carry-overs INTO P3 (native Rust clients)
+- `uc-daemon-client/src/http/{clipboard,query,mod}.rs` + `uc-cli/src/send.rs`: unwrap `ApiEnvelope` (`.data`) for dispatch/resend/cancel/restore/peers/paired-devices/status/health/lifecycle/connect.
+- **ENCRYPTION DESERIALIZE:** `EncryptionStateResponse`/`KeychainAccessResponse`/`EncryptionActionResponse` derive only `Serialize`. If any native client decodes enveloped encryption responses, add `Deserialize` (P1 left them Serialize-only).
+- Wire mismatch is RUNTIME-only (cargo check won't catch it). After P2+P3, run a live smoke: connect handshake + one dispatch.
+
+## Out-of-scope working-tree changes — DO NOT TOUCH / COMMIT (handoff §8)
+- `src/api/file_transfer.ts` (new), `src/api/__tests__/file_transfer.test.ts` (new), `src/api/tauri-command/file_transfer.ts` (deleted), `src/components/clipboard/ClipboardPreview.tsx` (modified). Unrelated file_transfer migration. P5/P6 must avoid these. (`src/api/clipboardItems.ts` is NOT currently modified despite an earlier reviewer note.)

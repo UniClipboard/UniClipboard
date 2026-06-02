@@ -80,8 +80,8 @@ impl ActivityHudEmitter {
     }
 
     /// 暴露内部状态句柄,给 `cancel` 按钮路径用 (UI 点击取消 ->
-    /// `mark_cancel_pending` -> invoke `cancel_file_transfer` 命令)。
-    /// 出 emitter 之外尽量别拿这个,大多数场景应该走事件管道。
+    /// `mark_cancel_pending` 乐观切状态 -> 走 daemon `cancel-transfer`
+    /// 端点真正发出取消)。出 emitter 之外尽量别拿这个,大多数场景应该走事件管道。
     pub fn state_handle(&self) -> Arc<Mutex<ActivityHudState>> {
         Arc::clone(&self.state)
     }

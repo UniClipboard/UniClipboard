@@ -2,7 +2,6 @@ pub mod autostart;
 pub mod clipboard_delivery;
 pub mod error;
 pub mod factory_reset;
-pub mod file_transfer;
 pub mod mobile_sync;
 pub mod quick_panel;
 pub mod restart;

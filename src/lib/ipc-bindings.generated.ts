@@ -59,7 +59,7 @@ export const commands = {
 } | null, CommandError>(__TAURI_INVOKE("get_daemon_connection_info", { trace })),
 	/**
 	 *  Exchange daemon bearer credentials for a short-lived webview session.
-	 *
+	 * 
 	 *  The raw bearer token stays in the native Tauri side; the webview only receives
 	 *  the daemon's session JWT and its refresh metadata.
 	 */
@@ -260,17 +260,6 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<ResendEntryReportDto, ResendEntryCommandError>(__TAURI_INVOKE("clipboard_resend_entry", { args, trace })),
 	/**
-	 *  取消一次进行中的入站文件传输。
-	 * 
-	 *  幂等:`transfer_id` 不在 inflight registry 时(没有进行中的 fetch /
-	 *  已经被取消过)正常返回。本命令完成后前端会通过 `file-transfer.status_changed`
-	 *  host event 收到 cancelled 状态。
-	 */
-	cancelFileTransfer: (transferId: string, reason: CancelTransferReasonDto, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<null, CommandError>(__TAURI_INVOKE("cancel_file_transfer", { transferId, reason, trace })),
-	/**
 	 *  Hide the quick panel, re-activate the previous app, and paste.
 	 * 
 	 *  隐藏快捷面板，重新激活之前的应用，并粘贴。
@@ -467,16 +456,6 @@ export const events = {
 };
 
 /* Types */
-/**
- *  取消原因的前端可序列化镜像。与领域 `FileTransferCancellationReason`
- *  一一对应,但用 camelCase tag 让前端 union 写起来自然。
- * 
- *  当前 P1 只暴露 `LocalUser` —— 用户主动点取消按钮触发本命令。
- *  其它变体(`RemotePeer` / `Replaced` / `Unknown`)是 domain 内部状态
- *  转移,不通过本 IPC 入口。
- */
-export type CancelTransferReasonDto = { tag: "localUser" };
-
 /**
  *  `clipboard_delivery_status_changed` 事件 payload。
  * 
@@ -1115,3 +1094,4 @@ function makeEvent<T>(name: string, serialize?: (payload: T) => unknown, deseria
 
     return Object.assign(fn, base);
 }
+

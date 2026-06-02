@@ -32,6 +32,17 @@ src/lib/error-severity.generated.ts
 # Markdown — not formatted by prettier per project policy
 **/*.md
 
+# Linux desktop-entry template. Prettier's glimmer/handlebars parser treats
+# this .hbs as an Ember template and reflows it — joining the group header
+# onto the first key (`[Desktop Entry] Categories=...`), indenting keys inside
+# {{#if}} blocks, and merging `Terminal=false`/`Type=Application` onto one
+# line. That yields an invalid desktop entry that appimagetool's
+# desktop-file-validate rejects, breaking AppImage bundling (`failed to run
+# linuxdeploy`). deb/rpm don't validate, so it slipped through. The release
+# PR's `prettier --write .` auto-format step kept reverting the hand-fix
+# (#942 fixed it, #943's auto-format reverted it), so exclude it outright.
+packaging/linux/uniclipboard.desktop.hbs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

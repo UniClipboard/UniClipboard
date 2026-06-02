@@ -128,6 +128,10 @@ jobs:
       - name: build alpha release
         uses: tauri-apps/tauri-action@v0
         env:
+          # 见 build.yml 同名变量注释:容器内无 FUSE,linuxdeploy(AppImage)
+          # 无法挂载自身,AppImage 打包报 `failed to run linuxdeploy`。设此变量
+          # 让 AppImage runtime 自解压运行,绕开 FUSE。非 Linux 平台忽略。
+          APPIMAGE_EXTRACT_AND_RUN: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

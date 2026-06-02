@@ -267,6 +267,13 @@ jobs:
         if: matrix.platform != 'macos-latest'
         shell: bash
         env:
+          # Linux AppImage 打包用的 linuxdeploy / linuxdeploy-plugin-appimage
+          # 本身是 AppImage,运行时默认靠 FUSE 把自己挂载起来。GitHub Actions
+          # 的 container job 跑在非特权容器里,没有 /dev/fuse,linuxdeploy 起
+          # 不来,只吐一句笼统的 `failed to run linuxdeploy`。设这个变量让
+          # AppImage runtime 改成自解压到临时目录再执行,绕开 FUSE。Windows
+          # 构建忽略此变量,无副作用。
+          APPIMAGE_EXTRACT_AND_RUN: "1"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_APP_VERSION: ${{ steps.app-version.outputs.version }}

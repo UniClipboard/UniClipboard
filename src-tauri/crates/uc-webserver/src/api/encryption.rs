@@ -3,14 +3,15 @@
 use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde_json::json;
 use tokio::sync::broadcast::error::SendError;
 use tracing::{info, warn};
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 use utoipa;
 
 use crate::api::dto::encryption::{
-    EncryptionSessionReadyPayload, EncryptionStateResponse, KeychainAccessResponse,
+    EncryptionActionResponse, EncryptionSessionReadyPayload, EncryptionStateResponse,
+    KeychainAccessResponse,
 };
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
@@ -43,16 +44,16 @@ pub fn router() -> Router<DaemonApiState> {
 #[utoipa::path(
     get,
     path = "/encryption/state",
+    operation_id = "getEncryptionState",
     tag = "encryption",
     responses(
-        (status = 200, description = "Encryption state retrieved"),
-        (status = 503, description = "Daemon runtime unavailable"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Encryption state retrieved", body = EncryptionStateEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn get_encryption_state_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+) -> Result<Json<ApiEnvelope<EncryptionStateResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
     let view = app
         .encryption
@@ -60,13 +61,9 @@ async fn get_encryption_state_handler(
         .await
         .map_err(|e| map_encryption_internal("encryption_state", e.to_string()))?;
 
-    let ts = chrono::Utc::now().timestamp_millis();
-    Ok(Json(json!({
-        "data": EncryptionStateResponse {
-            initialized: view.initialized,
-            session_ready: view.session_ready
-        },
-        "ts": ts
+    Ok(Json(ApiEnvelope::now(EncryptionStateResponse {
+        initialized: view.initialized,
+        session_ready: view.session_ready,
     })))
 }
 
@@ -77,15 +74,16 @@ async fn get_encryption_state_handler(
 #[utoipa::path(
     post,
     path = "/encryption/unlock",
+    operation_id = "unlockEncryptionSession",
     tag = "encryption",
     responses(
-        (status = 200, description = "Encryption session unlocked (or already ready)"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Encryption session unlocked (or already ready)", body = EncryptionActionEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn unlock_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
 
     // Route to `space_setup.try_resume_session()` rather than the bare
@@ -114,12 +112,15 @@ async fn unlock_handler(
                 warn!("failed to broadcast encryption.session_ready event — no active subscribers");
             }
 
-            Ok(Json(json!({ "data": { "success": true }, "ts": ts })))
+            Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
+                success: true,
+            })))
         }
         Ok(false) => {
             info!("encryption not initialized, skipping auto-unlock");
-            let ts = chrono::Utc::now().timestamp_millis();
-            Ok(Json(json!({ "data": { "success": false }, "ts": ts })))
+            Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
+                success: false,
+            })))
         }
         Err(e) => Err(map_encryption_internal(
             "encryption_unlock",
@@ -133,24 +134,25 @@ async fn unlock_handler(
 #[utoipa::path(
     post,
     path = "/encryption/lock",
+    operation_id = "lockEncryptionSession",
     tag = "encryption",
     responses(
-        (status = 200, description = "Encryption session locked"),
-        (status = 503, description = "Daemon runtime unavailable"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Encryption session locked", body = EncryptionActionEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn lock_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
     app.encryption.lock().await.map_err(|e| {
         map_encryption_internal("encryption_lock", format!("failed to lock encryption: {e}"))
     })?;
 
     info!("encryption session cleared (locked)");
-    let ts = chrono::Utc::now().timestamp_millis();
-    Ok(Json(json!({ "data": { "success": true }, "ts": ts })))
+    Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
+        success: true,
+    })))
 }
 
 /// GET /encryption/keychain-access
@@ -159,16 +161,16 @@ async fn lock_handler(
 #[utoipa::path(
     get,
     path = "/encryption/keychain-access",
+    operation_id = "verifyKeychainAccess",
     tag = "encryption",
     responses(
-        (status = 200, description = "Keychain access verified"),
-        (status = 503, description = "Daemon runtime unavailable"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Keychain access verified", body = KeychainAccessEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn verify_keychain_access_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+) -> Result<Json<ApiEnvelope<KeychainAccessResponse>>, ApiError> {
     let app = state.app_facade_or_error()?;
     let granted = app.encryption.verify_keychain_access().await.map_err(|e| {
         map_encryption_internal(
@@ -177,9 +179,5 @@ async fn verify_keychain_access_handler(
         )
     })?;
 
-    let ts = chrono::Utc::now().timestamp_millis();
-    Ok(Json(json!({
-        "data": KeychainAccessResponse { granted },
-        "ts": ts
-    })))
+    Ok(Json(ApiEnvelope::now(KeychainAccessResponse { granted })))
 }

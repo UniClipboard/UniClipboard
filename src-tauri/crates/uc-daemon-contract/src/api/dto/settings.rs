@@ -7,13 +7,14 @@ use utoipa::ToSchema;
 
 use uc_core::settings::model as core;
 
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetSettingsResponse {
-    pub data: SettingsDto,
-    pub ts: i64,
-}
-
+// NOTE (ADR-008 §0.1 / P2): the legacy `GetSettingsResponse { data, ts }`
+// bespoke wrapper has been deleted — `GET /settings` now returns the pure
+// generic `ApiEnvelope<SettingsDto>` (alias `SettingsEnvelope`). The
+// `UpdateSettingsResponse` wrapper below is NOT yet deletable: two webserver
+// integration tests (`tests/settings_network_smoke.rs`,
+// `tests/settings_retention_smoke.rs`) and an in-module test still construct it
+// to lock the historical wire shape. It will go once those tests migrate to
+// `ApiEnvelope<SettingsUpdateResultDto>` in a follow-up.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSettingsResponse {
@@ -429,8 +430,15 @@ pub struct QuickPanelSettingsPatchDto {
     pub enabled: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct KeyboardShortcutsPatchDto {
+    // `null` map values mean "clear this shortcut" at runtime, but utoipa v4
+    // cannot express a nullable `additionalProperties` ($ref + nullable becomes
+    // an `allOf`, which utoipa 4.x refuses to place under additionalProperties).
+    // The wire schema therefore advertises the non-nullable value type; the
+    // nullability is documented behaviorally and enforced by serde, not by the
+    // OpenAPI schema.
+    #[schema(value_type = std::collections::HashMap<String, ShortcutKeyDto>)]
     pub shortcuts: HashMap<String, Option<ShortcutKeyDto>>,
 }
 

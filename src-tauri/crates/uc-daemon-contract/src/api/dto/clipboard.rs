@@ -47,16 +47,6 @@ pub struct EntryProjectionResponseDto {
     pub payload_state: Option<String>,
 }
 
-// ── List entries response ─────────────────────────────────────────
-
-/// GET /clipboard/entries response.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ListEntriesResponse {
-    pub data: Vec<EntryProjectionResponseDto>,
-    pub ts: i64,
-}
-
 // ── Entry detail ──────────────────────────────────────────────────
 
 /// Full entry detail (text content).
@@ -70,14 +60,6 @@ pub struct EntryDetailDto {
     pub created_at_ms: i64,
     pub active_time_ms: i64,
     pub mime_type: Option<String>,
-}
-
-/// GET /clipboard/entries/:id response.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetEntryDetailResponse {
-    pub data: EntryDetailDto,
-    pub ts: i64,
 }
 
 // ── Entry resource ────────────────────────────────────────────────
@@ -95,14 +77,6 @@ pub struct EntryResourceDto {
     pub inline_data: Option<String>,
 }
 
-/// GET /clipboard/entries/:id/resource response.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetEntryResourceResponse {
-    pub data: EntryResourceDto,
-    pub ts: i64,
-}
-
 // ── Clipboard stats ───────────────────────────────────────────────
 
 /// Aggregate clipboard statistics.
@@ -114,23 +88,7 @@ pub struct ClipboardStatsDto {
     pub total_size: i64,
 }
 
-/// GET /clipboard/stats response.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetClipboardStatsResponse {
-    pub data: ClipboardStatsDto,
-    pub ts: i64,
-}
-
 // ── Clear history ─────────────────────────────────────────────────
-
-/// POST /clipboard/entries/clear response.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ClearHistoryResponse {
-    pub data: ClearHistoryResultDto,
-    pub ts: i64,
-}
 
 /// Result of clearing clipboard history.
 /// Matches the frontend `ClearHistoryResult` interface.
@@ -148,14 +106,6 @@ pub struct ClearHistoryResultDto {
 #[serde(rename_all = "camelCase")]
 pub struct ToggleFavoriteRequest {
     pub is_favorited: bool,
-}
-
-/// POST /clipboard/entries/:id/favorite response.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ToggleFavoriteResponse {
-    pub data: ToggleFavoriteResultDto,
-    pub ts: i64,
 }
 
 /// Result of toggling favorite state.

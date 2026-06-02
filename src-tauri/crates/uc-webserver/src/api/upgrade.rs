@@ -9,6 +9,12 @@
 //!   discriminated status (FreshInstall / NoChange / Upgraded / Downgraded).
 //! - `POST /upgrade/ack` — advance the version cursor to the running build.
 //!
+//! All responses use the canonical `ApiEnvelope<T> { data, ts }` success
+//! envelope (ADR-008 §0.1) and `ApiErrorResponse { code, message, details? }`
+//! for errors (§0.3). Both endpoints were already on `{ data, ts }`, so this
+//! is NOT a wire change — only the bespoke wrapper structs are collapsed onto
+//! the generic envelope.
+//!
 //! The version string fed to the facade is `env!("CARGO_PKG_VERSION")` of
 //! `uc-webserver`, which is workspace-versioned alongside `uc-desktop`
 //! (the daemon binary). Both crates resolve to the same value.
@@ -17,9 +23,8 @@ use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use uc_application::facade::{AcknowledgeUpgradeError, DetectUpgradeError, UpgradeStatus};
-use uc_daemon_contract::api::dto::upgrade::{
-    AckUpgradePayload, AckUpgradeResponse, GetUpgradeStatusResponse, UpgradeStatusDto,
-};
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+use uc_daemon_contract::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
@@ -34,18 +39,22 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/upgrade/ack", post(ack_upgrade_handler))
 }
 
+/// GET /upgrade/status
+/// Detect whether the running build is a fresh install / unchanged / upgraded
+/// / downgraded relative to the stored version cursor.
 #[utoipa::path(
     get,
     path = "/upgrade/status",
+    operation_id = "getUpgradeStatus",
     tag = "upgrade",
     responses(
-        (status = 200, body = GetUpgradeStatusResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
+        (status = 200, description = "Upgrade status detected", body = UpgradeStatusEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn get_upgrade_status_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<GetUpgradeStatusResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<UpgradeStatusDto>>, ApiError> {
     let app = state.app_facade_or_error()?;
     let status = app
         .upgrade
@@ -53,36 +62,34 @@ async fn get_upgrade_status_handler(
         .await
         .map_err(detect_error_to_api)?;
 
-    Ok(Json(GetUpgradeStatusResponse {
-        data: status_to_dto(status),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(status_to_dto(status))))
 }
 
+/// POST /upgrade/ack
+/// Advance the stored version cursor to the running build, clearing the
+/// "re-pair after upgrade" notice.
 #[utoipa::path(
     post,
     path = "/upgrade/ack",
+    operation_id = "acknowledgeUpgrade",
     tag = "upgrade",
     responses(
-        (status = 200, body = AckUpgradeResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
+        (status = 200, description = "Upgrade acknowledged", body = AckUpgradeEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn ack_upgrade_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<AckUpgradeResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<AckUpgradePayload>>, ApiError> {
     let app = state.app_facade_or_error()?;
     app.upgrade
         .acknowledge(SERVER_VERSION)
         .await
         .map_err(ack_error_to_api)?;
 
-    Ok(Json(AckUpgradeResponse {
-        data: AckUpgradePayload {
-            acknowledged: SERVER_VERSION.to_string(),
-        },
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(AckUpgradePayload {
+        acknowledged: SERVER_VERSION.to_string(),
+    })))
 }
 
 fn status_to_dto(status: UpgradeStatus) -> UpgradeStatusDto {

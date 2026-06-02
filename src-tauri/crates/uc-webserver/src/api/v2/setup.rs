@@ -22,6 +22,7 @@ use uc_application::facade::{
 use uc_application::facade::{
     InitializeSpaceInput, InitializeSpaceResult, RedeemPairingInvitationInput,
 };
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
     CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
     MigrationPhaseDto, MigrationProgressResponse, RedeemRequest, RedeemResponse,
@@ -67,19 +68,20 @@ fn require_facade(state: &DaemonApiState) -> Result<std::sync::Arc<SpaceSetupFac
     post,
     path = "/v2/setup/initialize",
     tag = "setup-v2",
+    operation_id = "setupV2Initialize",
     request_body = InitializeSpaceRequest,
     responses(
-        (status = 200, body = InitializeSpaceResponse),
-        (status = 400, description = "Passphrase mismatch or device name missing", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 409, description = "Setup already completed", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 503, description = "Facade not assembled", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Space initialised", body = SetupInitializeEnvelope),
+        (status = 400, description = "Passphrase mismatch or device name missing", body = ApiErrorResponse),
+        (status = 409, description = "Setup already completed", body = ApiErrorResponse),
+        (status = 503, description = "Facade not assembled", body = ApiErrorResponse),
+        (status = 500, description = "Internal error", body = ApiErrorResponse),
     ),
 )]
 pub(crate) async fn initialize(
     State(state): State<DaemonApiState>,
     Json(req): Json<InitializeSpaceRequest>,
-) -> Result<Json<InitializeSpaceResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<InitializeSpaceResponse>>, ApiError> {
     let facade = require_facade(&state)?;
     let input = InitializeSpaceInput {
         passphrase: req.passphrase,
@@ -87,7 +89,7 @@ pub(crate) async fn initialize(
         device_name: req.device_name,
     };
     let out = facade.initialize_space(input).await.map_err(map_init_err)?;
-    Ok(Json(initialize_to_dto(out)))
+    Ok(Json(ApiEnvelope::now(initialize_to_dto(out))))
 }
 
 fn map_init_err(err: InitializeSpaceError) -> ApiError {
@@ -138,21 +140,22 @@ fn initialize_to_dto(out: InitializeSpaceResult) -> InitializeSpaceResponse {
     post,
     path = "/v2/setup/issue-invitation",
     tag = "setup-v2",
+    operation_id = "setupV2IssueInvitation",
     responses(
-        (status = 200, body = IssueInvitationResponse),
-        (status = 503, description = "Facade not assembled or network not started", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Invitation issued", body = SetupIssueInvitationEnvelope),
+        (status = 503, description = "Facade not assembled or network not started", body = ApiErrorResponse),
+        (status = 500, description = "Internal error", body = ApiErrorResponse),
     ),
 )]
 pub(crate) async fn issue_invitation(
     State(state): State<DaemonApiState>,
-) -> Result<Json<IssueInvitationResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<IssueInvitationResponse>>, ApiError> {
     let facade = require_facade(&state)?;
     let out = facade
         .issue_pairing_invitation()
         .await
         .map_err(map_issue_err)?;
-    Ok(Json(issue_to_dto(out)))
+    Ok(Json(ApiEnvelope::now(issue_to_dto(out))))
 }
 
 fn map_issue_err(err: uc_application::facade::IssuePairingInvitationError) -> ApiError {
@@ -204,19 +207,20 @@ fn issue_to_dto(out: IssuePairingInvitationResult) -> IssueInvitationResponse {
     post,
     path = "/v2/setup/redeem",
     tag = "setup-v2",
+    operation_id = "setupV2Redeem",
     request_body = RedeemRequest,
     responses(
-        (status = 200, body = RedeemResponse),
-        (status = 400, description = "Invalid request", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 404, description = "Invitation not found / expired", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 503, description = "Sponsor unreachable / service unavailable", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Invitation redeemed", body = SetupRedeemEnvelope),
+        (status = 400, description = "Invalid request", body = ApiErrorResponse),
+        (status = 404, description = "Invitation not found / expired", body = ApiErrorResponse),
+        (status = 503, description = "Sponsor unreachable / service unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal error", body = ApiErrorResponse),
     ),
 )]
 pub(crate) async fn redeem(
     State(state): State<DaemonApiState>,
     Json(req): Json<RedeemRequest>,
-) -> Result<Json<RedeemResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<RedeemResponse>>, ApiError> {
     let facade = require_facade(&state)?;
     let input = RedeemPairingInvitationInput {
         code: req.code,
@@ -226,7 +230,7 @@ pub(crate) async fn redeem(
         .redeem_pairing_invitation(input)
         .await
         .map_err(map_redeem_err)?;
-    Ok(Json(redeem_to_dto(out)))
+    Ok(Json(ApiEnvelope::now(redeem_to_dto(out))))
 }
 
 fn map_redeem_err(err: RedeemPairingInvitationError) -> ApiError {
@@ -314,11 +318,12 @@ fn redeem_to_dto(out: RedeemPairingInvitationResult) -> RedeemResponse {
     post,
     path = "/v2/setup/cancel",
     tag = "setup-v2",
+    operation_id = "setupV2Cancel",
     responses(
         (status = 204, description = "Invitation cancelled"),
-        (status = 409, description = "No in-flight invitation to cancel", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 503, description = "Facade not assembled", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 409, description = "No in-flight invitation to cancel", body = ApiErrorResponse),
+        (status = 503, description = "Facade not assembled", body = ApiErrorResponse),
+        (status = 500, description = "Internal error", body = ApiErrorResponse),
     ),
 )]
 pub(crate) async fn cancel(State(state): State<DaemonApiState>) -> Result<StatusCode, ApiError> {
@@ -354,10 +359,11 @@ fn map_cancel_err(err: CancelInvitationError) -> ApiError {
     post,
     path = "/v2/setup/reset",
     tag = "setup-v2",
+    operation_id = "setupV2Reset",
     responses(
         (status = 204, description = "Setup reset"),
-        (status = 503, description = "Facade not assembled", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Storage failure", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 503, description = "Facade not assembled", body = ApiErrorResponse),
+        (status = 500, description = "Storage failure", body = ApiErrorResponse),
     ),
 )]
 pub(crate) async fn reset(State(state): State<DaemonApiState>) -> Result<StatusCode, ApiError> {
@@ -384,21 +390,22 @@ fn map_reset_err(err: ResetSpaceError) -> ApiError {
     get,
     path = "/v2/setup/state",
     tag = "setup-v2",
+    operation_id = "setupV2GetState",
     responses(
-        (status = 200, body = SetupStateResponse),
-        (status = 503, description = "Facade not assembled", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Storage failure", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Setup state snapshot", body = SetupStateEnvelope),
+        (status = 503, description = "Facade not assembled", body = ApiErrorResponse),
+        (status = 500, description = "Storage failure", body = ApiErrorResponse),
     ),
 )]
 pub(crate) async fn get_state(
     State(state): State<DaemonApiState>,
-) -> Result<Json<SetupStateResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<SetupStateResponse>>, ApiError> {
     let facade = require_facade(&state)?;
     let view = facade
         .query_setup_state()
         .await
         .map_err(map_query_setup_state_err)?;
-    Ok(Json(state_to_dto(view)))
+    Ok(Json(ApiEnvelope::now(state_to_dto(view))))
 }
 
 fn map_query_setup_state_err(err: QuerySetupStateError) -> ApiError {
@@ -436,20 +443,21 @@ fn state_to_dto(view: SetupStateView) -> SetupStateResponse {
     post,
     path = "/v2/setup/switch-space",
     tag = "setup-v2",
+    operation_id = "setupV2SwitchSpace",
     request_body = SwitchSpaceRequest,
     responses(
-        (status = 200, body = SwitchSpaceResponse),
-        (status = 400, description = "Wrong passphrase / device name missing", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 404, description = "Invitation not found / expired", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 409, description = "Not setup, pending migration, sponsor rejected, or session locked", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 503, description = "Sponsor unreachable / service unavailable", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal error / corrupted ciphertext / storage failure", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Switched space", body = SetupSwitchSpaceEnvelope),
+        (status = 400, description = "Wrong passphrase / device name missing", body = ApiErrorResponse),
+        (status = 404, description = "Invitation not found / expired", body = ApiErrorResponse),
+        (status = 409, description = "Not setup, pending migration, sponsor rejected, or session locked", body = ApiErrorResponse),
+        (status = 503, description = "Sponsor unreachable / service unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal error / corrupted ciphertext / storage failure", body = ApiErrorResponse),
     ),
 )]
 pub(crate) async fn switch_space(
     State(state): State<DaemonApiState>,
     Json(req): Json<SwitchSpaceRequest>,
-) -> Result<Json<SwitchSpaceResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<SwitchSpaceResponse>>, ApiError> {
     let facade = require_facade(&state)?;
     let input = SwitchSpaceInput {
         code: req.code,
@@ -459,7 +467,7 @@ pub(crate) async fn switch_space(
         .switch_space(input)
         .await
         .map_err(map_switch_space_err)?;
-    Ok(Json(switch_space_to_dto(out)))
+    Ok(Json(ApiEnvelope::now(switch_space_to_dto(out))))
 }
 
 fn map_switch_space_err(err: SwitchSpaceError) -> ApiError {
@@ -568,21 +576,22 @@ fn switch_space_to_dto(out: SwitchSpaceResult) -> SwitchSpaceResponse {
     get,
     path = "/v2/setup/migration-progress",
     tag = "setup-v2",
+    operation_id = "setupV2GetMigrationProgress",
     responses(
-        (status = 200, body = MigrationProgressResponse),
-        (status = 503, description = "Facade not assembled", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Storage failure", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Migration progress snapshot", body = SetupMigrationProgressEnvelope),
+        (status = 503, description = "Facade not assembled", body = ApiErrorResponse),
+        (status = 500, description = "Storage failure", body = ApiErrorResponse),
     ),
 )]
 pub(crate) async fn query_migration_progress(
     State(state): State<DaemonApiState>,
-) -> Result<Json<MigrationProgressResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<MigrationProgressResponse>>, ApiError> {
     let facade = require_facade(&state)?;
     let progress = facade
         .query_migration_progress()
         .await
         .map_err(map_query_migration_progress_err)?;
-    Ok(Json(migration_progress_to_dto(progress)))
+    Ok(Json(ApiEnvelope::now(migration_progress_to_dto(progress))))
 }
 
 fn map_query_migration_progress_err(err: QueryMigrationProgressError) -> ApiError {

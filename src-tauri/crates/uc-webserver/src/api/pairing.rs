@@ -21,16 +21,24 @@ pub fn router() -> Router<DaemonApiState> {
 }
 
 /// POST /pairing/unpair
+///
+/// Revokes the local member record for the given peer. Success is signalled by
+/// `204 No Content` with no body (ADR-008 §B Rule 3 — 204 endpoints are NOT
+/// enveloped). Errors flow through the shared `ApiError` carrier and therefore
+/// serialize to `ApiErrorResponse { code, message, details? }` on the wire —
+/// the dedicated `PairingApiErrorResponse` contract only covers the retired
+/// libp2p pairing routes, not this revoke path.
 #[utoipa::path(
     post,
     path = "/pairing/unpair",
     tag = "pairing",
+    operation_id = "unpairDevice",
     request_body = UnpairDeviceRequest,
     responses(
-        (status = 204, description = "Device unpaired"),
-        (status = 400, description = "Bad request"),
-        (status = 503, description = "Runtime unavailable"),
-        (status = 500, description = "Internal error"),
+        (status = 204, description = "Device unpaired (no body)"),
+        (status = 404, description = "Member not found", body = ApiErrorResponse),
+        (status = 503, description = "Runtime unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 pub(crate) async fn handle_unpair_device(

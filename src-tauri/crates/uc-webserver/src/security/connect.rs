@@ -3,6 +3,19 @@
 //! This endpoint is the entry point for the daemon's JWT authentication flow.
 //! It accepts a bearer token (the daemon's local secret), validates it,
 //! registers the client PID, and returns a short-lived JWT session token.
+//!
+//! Wire shape (ADR-008 §0.2): the success body is the canonical
+//! `ApiEnvelope<SessionTokenResponse> { data: { sessionToken, expiresInSecs,
+//! refreshAtSecs }, ts }`. This is a deliberate BREAKING change — the previous
+//! shape was the flat `SessionTokenResponse` with no envelope. The native Rust
+//! decoder (`uc-daemon-client/src/http/mod.rs`) is updated in lockstep (P3) to
+//! unwrap `data`. `/auth/connect` is L1/PUBLIC (bootstrap: no session token yet)
+//! and authenticates with `Authorization: Bearer <local-secret>`, so it is on
+//! the `PUBLIC_PATHS` allowlist and does NOT carry the session security scheme.
+//!
+//! Errors use the canonical `ApiErrorResponse { code, message, details? }`
+//! (§0.3). The native client only decodes the success body (it reads the error
+//! body as opaque text), so normalising the error shape is safe.
 
 use std::net::SocketAddr;
 
@@ -12,41 +25,20 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::collections::HashMap;
+use uc_daemon_contract::api::dto::auth::{ConnectRequest, SessionTokenResponse};
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use url::form_urlencoded;
 
 use crate::api::auth::parse_bearer_token;
+use crate::api::dto::error::ApiErrorResponse;
 use crate::api::server::DaemonApiState;
 use crate::security::claims::{SessionTokenClaims, LEVEL_L2, REFRESH_AT_SECS, TTL_SECS};
-
-/// Request body for POST /auth/connect
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConnectRequest {
-    /// Client process ID. Used for PID whitelist verification in JWT middleware.
-    pub pid: u32,
-    /// Client type: "gui", "cli", or "other".
-    pub client_type: String,
-}
 
 struct ParsedConnectRequest {
     pid: u32,
     client_type: String,
     token: Option<String>,
-}
-
-/// Response body for POST /auth/connect
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConnectResponse {
-    /// HS256-signed JWT session token.
-    pub session_token: String,
-    /// Token time-to-live in seconds (5 minutes).
-    pub expires_in_secs: i64,
-    /// Recommended refresh time in seconds (4 minutes).
-    pub refresh_at_secs: i64,
 }
 
 /// Router for auth-related routes.
@@ -62,10 +54,10 @@ pub fn router() -> Router<DaemonApiState> {
     )
 }
 
-/// Handler for POST /auth/connect.
+/// POST /auth/connect.
 ///
-/// Validates the bearer token in Authorization header, registers the client PID,
-/// and returns a JWT session token.
+/// Validates the bearer token in the Authorization header, registers the client
+/// PID, and returns a JWT session token wrapped in the canonical envelope.
 ///
 /// Rate limiting: This endpoint has no session token yet, so rate limiting
 /// is applied by client IP address (from ConnectInfo). This is trustworthy
@@ -83,6 +75,27 @@ pub fn router() -> Router<DaemonApiState> {
 /// In test contexts using tower::ServiceExt::oneshot, ConnectInfo may be absent.
 /// The handler uses Option<ConnectInfo<SocketAddr>> so tests work correctly.
 /// IP-based rate limiting is skipped when ConnectInfo is unavailable (test-only code path).
+#[utoipa::path(
+    post,
+    path = "/auth/connect",
+    operation_id = "authConnect",
+    tag = "system",
+    request_body = ConnectRequest,
+    // L1/PUBLIC bootstrap endpoint: authenticates with `Authorization: Bearer
+    // <local-secret>`, NOT a session token. It is on the `PUBLIC_PATHS`
+    // allowlist in `openapi_meta::apply_metadata`, so the session security
+    // schemes are intentionally NOT applied. No `security(...)` requirement is
+    // declared here because the metadata module (assembly-owned) registers only
+    // the two session schemes; declaring an undeclared `bearer_token` scheme
+    // would emit a dangling reference.
+    responses(
+        (status = 200, description = "JWT session token issued", body = SessionTokenEnvelope),
+        (status = 400, description = "Malformed connect request", body = ApiErrorResponse),
+        (status = 401, description = "Missing or invalid bearer token", body = ApiErrorResponse),
+        (status = 429, description = "Too many requests from this client IP", body = ApiErrorResponse),
+        (status = 500, description = "Failed to sign the session token", body = ApiErrorResponse),
+    )
+)]
 async fn connect_handler(
     State(state): State<DaemonApiState>,
     connect_info: Option<ConnectInfo<SocketAddr>>,
@@ -95,22 +108,22 @@ async fn connect_handler(
     if let Some(ConnectInfo(client_ip)) = connect_info {
         let client_ip_str = client_ip.ip().to_string();
         if !state.security.rate_limiter.check(&client_ip_str).await {
-            return (
+            return error_response(
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(json!({"error": "rate_limit_exceeded", "retry_after_secs": 60})),
-            )
-                .into_response();
+                "rate_limit_exceeded",
+                "too many connect requests; retry after 60 seconds",
+            );
         }
     }
 
     let parsed = match parse_connect_request(request).await {
         Some(parsed) => parsed,
         None => {
-            return (
+            return error_response(
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "invalid_connect_request"})),
-            )
-                .into_response();
+                "bad_request",
+                "invalid connect request",
+            );
         }
     };
 
@@ -123,11 +136,11 @@ async fn connect_handler(
     });
 
     let Some(token) = token else {
-        return unauthorized().into_response();
+        return unauthorized();
     };
 
     if token != state.auth_token.as_str() {
-        return unauthorized().into_response();
+        return unauthorized();
     }
 
     // Step 3: Register PID in whitelist
@@ -162,21 +175,22 @@ async fn connect_handler(
         Ok(t) => t,
         Err(e) => {
             tracing::error!(error = %e, "failed to sign session token");
-            return (
+            return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "token_generation_failed"})),
-            )
-                .into_response();
+                "internal_error",
+                "failed to generate session token",
+            );
         }
     };
 
-    let response = ConnectResponse {
+    // Canonical envelope: `{ data: { sessionToken, expiresInSecs, refreshAtSecs }, ts }`.
+    let payload = SessionTokenResponse {
         session_token: token,
         expires_in_secs: TTL_SECS,
         refresh_at_secs: REFRESH_AT_SECS,
     };
 
-    (StatusCode::OK, Json(response)).into_response()
+    (StatusCode::OK, Json(ApiEnvelope::now(payload))).into_response()
 }
 
 async fn parse_connect_request(request: Request<Body>) -> Option<ParsedConnectRequest> {
@@ -216,9 +230,12 @@ async fn parse_connect_request(request: Request<Body>) -> Option<ParsedConnectRe
     })
 }
 
-fn unauthorized() -> (StatusCode, Json<serde_json::Value>) {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(json!({"error": "unauthorized"})),
-    )
+/// Build a canonical `ApiErrorResponse` body with the given status + code/message.
+fn error_response(status: StatusCode, code: &str, message: &str) -> axum::response::Response {
+    let body = ApiErrorResponse::new(code, message);
+    (status, Json(body)).into_response()
+}
+
+fn unauthorized() -> axum::response::Response {
+    error_response(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
 }

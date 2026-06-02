@@ -12,12 +12,14 @@ use tracing::{info, instrument};
 use uc_application::facade::settings as app_settings;
 use utoipa;
 
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::settings::{
     ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto, GeneralSettingsDto,
-    GetSettingsResponse, KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto,
-    QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto, SecuritySettingsDto, SettingsDto,
-    SettingsPatchDto, SyncSettingsDto, UpdateSettingsResponse,
+    KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto, QuickPanelSettingsDto,
+    RetentionPolicyDto, RetentionRuleDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto,
+    SettingsUpdateResultDto, SyncSettingsDto,
 };
 use crate::api::server::DaemonApiState;
 
@@ -31,17 +33,18 @@ pub fn router() -> Router<DaemonApiState> {
 /// Returns the current application settings as a typed Settings struct.
 #[utoipa::path(
     get,
-    path =  "/settings",
+    path = "/settings",
     tag = "settings",
+    operation_id = "getSettings",
     responses(
-        (status=200, body=GetSettingsResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
+        (status = 200, description = "Current application settings", body = SettingsEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
     )
 )]
 #[instrument(name = "api.settings.get", level = "info", skip(state))]
 async fn get_settings_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<GetSettingsResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<SettingsDto>>, ApiError> {
     info!("get settings request received");
     let app = state.app_facade_or_error()?;
     let settings = app
@@ -51,10 +54,7 @@ async fn get_settings_handler(
         .map_err(|e| settings_error_to_api("get_settings", e))?;
 
     info!("get settings succeeded");
-    Ok(Json(GetSettingsResponse {
-        data: settings_view_to_dto(settings),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(settings_view_to_dto(settings))))
 }
 
 /// PUT /settings
@@ -66,12 +66,14 @@ async fn get_settings_handler(
 /// persists the settings domain model.
 #[utoipa::path(
     put,
-    path =  "/settings",
+    path = "/settings",
     tag = "settings",
+    operation_id = "updateSettings",
+    request_body = SettingsPatchDto,
     responses(
-        (status=200, body=UpdateSettingsResponse),
-        (status = 400, description = "Invalid request", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
+        (status = 200, description = "Settings persisted; carries success + restart-required signal", body = SettingsUpdateResultEnvelope),
+        (status = 400, description = "Invalid request", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
     )
 )]
 #[instrument(
@@ -93,7 +95,7 @@ async fn get_settings_handler(
 async fn update_settings_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<SettingsPatchDto>,
-) -> Result<Json<UpdateSettingsResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<SettingsUpdateResultDto>>, ApiError> {
     info!("update settings request received");
     let app = state.app_facade_or_error()?;
 
@@ -121,8 +123,11 @@ async fn update_settings_handler(
         .as_ref()
         .and_then(|g| g.usage_analytics_enabled);
 
-    let updated = app
-        .settings
+    // The facade persists the patch. ADR-008 §0.1 folds `success` +
+    // `restart_required` INTO the payload DTO, so the updated `SettingsView` is
+    // no longer echoed back on the wire (the FE re-reads settings via GET). The
+    // write must still happen for its side effects and error propagation.
+    app.settings
         .update(settings_patch_from_dto(payload))
         .await
         .map_err(|e| settings_error_to_api("update_settings", e))?;
@@ -135,12 +140,13 @@ async fn update_settings_handler(
     }
 
     info!(restart_required, "update settings succeeded");
-    Ok(Json(UpdateSettingsResponse {
+    // ADR-008 §0.1: wire is `ApiEnvelope<SettingsUpdateResultDto>` —
+    // `{ data: { success, restartRequired }, ts }`. The previously top-level
+    // `success` / `restartRequired` siblings are folded into the payload.
+    Ok(Json(ApiEnvelope::now(SettingsUpdateResultDto {
         success: true,
-        data: settings_view_to_dto(updated),
-        ts: chrono::Utc::now().timestamp_millis(),
         restart_required,
-    }))
+    })))
 }
 
 fn settings_error_to_api(op: &'static str, err: app_settings::SettingsFacadeError) -> ApiError {

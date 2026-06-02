@@ -21,9 +21,15 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
 use uc_application::facade::ClipboardRestoreError;
+use uc_daemon_contract::api::dto::clipboard_command::RestoreEntryResponse;
+use uc_daemon_contract::api::dto::envelope::{
+    ApiEnvelope, HealthEnvelope, PeerSnapshotListEnvelope, PresenceRefreshEnvelope,
+    RestoreEntryEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
+};
+use uc_daemon_contract::api::dto::error::ApiErrorResponse;
 use uc_daemon_contract::constants::http_route;
 
-use crate::api::dto::error::log_facade_failure;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 use crate::security::middleware::{auth_extractor_middleware, rate_limit_middleware};
 
@@ -114,8 +120,23 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
         ))
 }
 
-async fn health(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    Json(state.health_response())
+/// GET /health
+///
+/// Public (L1) liveness probe. Returns the daemon status string plus version
+/// metadata wrapped in the canonical `{ data, ts }` envelope (ADR-008 §0.2).
+/// The previous bare `{ status, ... }` shape is retired.
+#[utoipa::path(
+    get,
+    path = "/health",
+    operation_id = "getHealth",
+    tag = "system",
+    responses(
+        (status = 200, description = "Daemon is alive", body = HealthEnvelope)
+    ),
+    security(())
+)]
+async fn health(State(state): State<DaemonApiState>) -> Json<HealthEnvelope> {
+    Json(ApiEnvelope::now(state.health_response()))
 }
 
 /// Restore endpoint 的可选 query 参数。
@@ -131,6 +152,29 @@ struct RestoreQuery {
     plain: bool,
 }
 
+/// POST /clipboard/restore/{entry_id}
+///
+/// Re-apply a stored clipboard entry to the local system clipboard. Wrapped in
+/// the canonical `{ data, ts }` envelope (ADR-008 §0.1/§0.2); errors use the
+/// canonical `ApiErrorResponse`. The `payload_unavailable` (410) error carries
+/// `{ entry_id, rep_id, state }` in `details` (§0.3); the `code`/`message`
+/// strings are LOAD-BEARING and preserved.
+#[utoipa::path(
+    post,
+    path = "/clipboard/restore/{entry_id}",
+    operation_id = "restoreClipboardEntry",
+    tag = "clipboard",
+    params(
+        ("entry_id" = String, Path, description = "Clipboard entry id to restore"),
+        ("plain" = Option<bool>, Query, description = "Restore as plain text only (strip rich representations)")
+    ),
+    responses(
+        (status = 200, description = "Entry restored to the system clipboard", body = RestoreEntryEnvelope),
+        (status = 404, description = "Entry not found", body = ApiErrorResponse),
+        (status = 410, description = "Entry payload is no longer available (orphaned/lost)", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+    )
+)]
 async fn restore_clipboard_entry_handler(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
@@ -150,9 +194,8 @@ async fn restore_clipboard_entry_handler(
     let restore_facade = match app.clipboard_restore.as_ref() {
         Some(facade) => facade,
         None => {
-            return internal_error(
-                "restore_facade_check",
-                anyhow::anyhow!("clipboard_restore facade unavailable in this entry point"),
+            return ApiError::internal(
+                "clipboard_restore facade unavailable in this entry point".to_string(),
             )
             .into_response();
         }
@@ -176,31 +219,49 @@ async fn restore_clipboard_entry_handler(
                 plain = query.plain,
                 "daemon restore request succeeded"
             );
-            restore_success_response().into_response()
+            let (status, body) = restore_success_response();
+            (status, body).into_response()
         }
-        Err(error) => restore_error_to_response(op, error, &entry_id).into_response(),
+        Err(error) => {
+            let (status, body) = restore_error_to_response(op, error, &entry_id);
+            (status, body).into_response()
+        }
     }
 }
 
-fn restore_success_response() -> (StatusCode, Json<serde_json::Value>) {
-    (StatusCode::OK, Json(json!({"success": true})))
-}
-
-/// Map `ClipboardRestoreError` to (status, JSON body).
+/// Build the canonical 200 success body for a restore.
 ///
 /// Free function so the status-code contract is unit-testable without
-/// spinning up an axum app or `DaemonApiState`. The handler above is a
-/// thin wrapper around this.
+/// spinning up an axum app or `DaemonApiState`. The handler above is a thin
+/// wrapper around this.
+fn restore_success_response() -> (StatusCode, Json<RestoreEntryEnvelope>) {
+    (
+        StatusCode::OK,
+        Json(ApiEnvelope::now(RestoreEntryResponse { success: true })),
+    )
+}
+
+/// Map `ClipboardRestoreError` to (status, canonical `ApiErrorResponse` body).
+///
+/// Free function so the status-code + error-shape contract is unit-testable
+/// without spinning up an axum app or `DaemonApiState`. `code`/`message` are
+/// LOAD-BEARING (consumers substring-match them) and must not be reworded.
 fn restore_error_to_response(
     op: &'static str,
     error: ClipboardRestoreError,
     entry_id: &str,
-) -> (StatusCode, Json<serde_json::Value>) {
+) -> (StatusCode, Json<ApiErrorResponse>) {
     use ClipboardRestoreError as E;
     match error {
         E::NotFound => {
             tracing::warn!(entry_id = %entry_id, "daemon restore: entry not found");
-            (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"})))
+            (
+                StatusCode::NOT_FOUND,
+                Json(ApiErrorResponse::new(
+                    "not_found",
+                    "clipboard entry not found",
+                )),
+            )
         }
         E::PayloadUnavailable {
             entry_id: e_id,
@@ -218,12 +279,15 @@ fn restore_error_to_response(
             );
             (
                 StatusCode::GONE,
-                Json(json!({
-                    "error": "payload_unavailable",
-                    "entry_id": e_id,
-                    "rep_id": rep_id,
-                    "state": state,
-                })),
+                Json(ApiErrorResponse::with_details(
+                    "payload_unavailable",
+                    "clipboard entry payload is no longer available",
+                    json!({
+                        "entry_id": e_id,
+                        "rep_id": rep_id,
+                        "state": state,
+                    }),
+                )),
             )
         }
         E::Internal(message) => {
@@ -236,47 +300,112 @@ fn restore_error_to_response(
             );
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "internal_error"})),
+                Json(ApiErrorResponse::new("internal_error", "internal error")),
             )
         }
     }
 }
 
-async fn status(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    Json(state.status_response()).into_response()
-}
-
-async fn peers(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    match state.peer_snapshots().await {
-        Ok(response) => Json(response).into_response(),
-        Err(error) => internal_error("peers", error).into_response(),
-    }
-}
-
-async fn paired_devices(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    match state.paired_devices().await {
-        Ok(response) => Json(response).into_response(),
-        Err(error) => internal_error("paired_devices", error).into_response(),
-    }
-}
-
-async fn refresh_presence(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    match state.refresh_presence().await {
-        Ok(response) => Json(response).into_response(),
-        Err(error) => internal_error("refresh_presence", error).into_response(),
-    }
-}
-
-/// Legacy 500 兜底，供尚未迁到 `ApiError` 的 handler（peers / paired_devices /
-/// refresh_presence / storage / lifecycle / blob fallback 等）使用。
+/// GET /status
 ///
-/// 每个调用点必须传入 `op` 名，以便 Sentry 按 `facade="daemon_api"` + op 分桶；
-/// 不要把这个 helper 当成"全场兜底"——新 handler 应直接用 `ApiError` 与
-/// 域 facade 的 `log_facade_failure` 调用。
-pub(crate) fn internal_error(
-    op: &'static str,
-    error: anyhow::Error,
-) -> (StatusCode, Json<serde_json::Value>) {
+/// Diagnostic snapshot: version metadata, uptime, and worker health. Wrapped
+/// in the canonical `{ data, ts }` envelope (ADR-008 §0.2); the previous bare
+/// object shape is retired.
+#[utoipa::path(
+    get,
+    path = "/status",
+    operation_id = "getStatus",
+    tag = "system",
+    responses(
+        (status = 200, description = "Daemon status snapshot", body = StatusEnvelope)
+    )
+)]
+async fn status(State(state): State<DaemonApiState>) -> Json<StatusEnvelope> {
+    Json(ApiEnvelope::now(state.status_response()))
+}
+
+/// GET /peers
+///
+/// List discovered peer snapshots (topology view). Wrapped in the canonical
+/// `{ data, ts }` envelope (ADR-008 §0.2); the previous bare top-level array
+/// is retired.
+#[utoipa::path(
+    get,
+    path = "/peers",
+    operation_id = "listPeers",
+    tag = "system",
+    responses(
+        (status = 200, description = "Peer snapshot list", body = PeerSnapshotListEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+    )
+)]
+async fn peers(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<PeerSnapshotListEnvelope>, ApiError> {
+    let response = state
+        .peer_snapshots()
+        .await
+        .map_err(|error| diagnostics_internal_error("peers", error))?;
+    Ok(Json(ApiEnvelope::now(response)))
+}
+
+/// GET /paired-devices
+///
+/// List paired space members with presence. Wrapped in the canonical
+/// `{ data, ts }` envelope (ADR-008 §0.2); the previous bare top-level array
+/// is retired.
+#[utoipa::path(
+    get,
+    path = "/paired-devices",
+    operation_id = "listPairedDevices",
+    tag = "system",
+    responses(
+        (status = 200, description = "Paired space-member list", body = SpaceMemberListEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+    )
+)]
+async fn paired_devices(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<SpaceMemberListEnvelope>, ApiError> {
+    let response = state
+        .paired_devices()
+        .await
+        .map_err(|error| diagnostics_internal_error("paired_devices", error))?;
+    Ok(Json(ApiEnvelope::now(response)))
+}
+
+/// POST /presence/refresh
+///
+/// Actively probe paired peers' reachability and return the round's counters.
+/// Wrapped in the canonical `{ data, ts }` envelope (ADR-008 §0.2); the
+/// previous bare object (counters at top level) is retired.
+#[utoipa::path(
+    post,
+    path = "/presence/refresh",
+    operation_id = "refreshPresence",
+    tag = "system",
+    responses(
+        (status = 200, description = "Presence refresh round completed", body = PresenceRefreshEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+    )
+)]
+async fn refresh_presence(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<PresenceRefreshEnvelope>, ApiError> {
+    let response = state
+        .refresh_presence()
+        .await
+        .map_err(|error| diagnostics_internal_error("refresh_presence", error))?;
+    Ok(Json(ApiEnvelope::now(response)))
+}
+
+/// Map a diagnostics-handler `anyhow::Error` onto a canonical 500 `ApiError`,
+/// preserving the structured `facade / op` Sentry signal previously emitted by
+/// the legacy `internal_error` helper. Used by the `system` topology handlers
+/// (peers / paired_devices / refresh_presence) now that they return
+/// `ApiErrorResponse` instead of the ad-hoc `{ "error": "internal_error" }`
+/// body.
+fn diagnostics_internal_error(op: &'static str, error: anyhow::Error) -> ApiError {
     log_facade_failure(
         "daemon_api",
         op,
@@ -284,37 +413,33 @@ pub(crate) fn internal_error(
         StatusCode::INTERNAL_SERVER_ERROR,
         &error.to_string(),
     );
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "internal_error"})),
-    )
+    ApiError::internal(error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn body_value(json: Json<serde_json::Value>) -> serde_json::Value {
-        json.0
-    }
-
     #[test]
-    fn restore_success_returns_200_with_success_true() {
+    fn restore_success_returns_200_with_enveloped_success_true() {
         let (status, body) = restore_success_response();
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body_value(body), json!({"success": true}));
+        // Canonical `{ data: { success: true }, ts }` envelope (ADR-008 §0.1).
+        assert!(body.0.data.success);
     }
 
     #[test]
-    fn restore_not_found_returns_404() {
+    fn restore_not_found_returns_404_with_not_found_code() {
         let (status, body) =
             restore_error_to_response("restore_entry", ClipboardRestoreError::NotFound, "entry-1");
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body_value(body), json!({"error": "not_found"}));
+        // `code` token is LOAD-BEARING and preserved.
+        assert_eq!(body.0.code, "not_found");
+        assert!(body.0.details.is_none());
     }
 
     #[test]
-    fn restore_payload_unavailable_returns_410_with_full_context() {
+    fn restore_payload_unavailable_returns_410_with_full_context_in_details() {
         let (status, body) = restore_error_to_response(
             "restore_entry",
             ClipboardRestoreError::PayloadUnavailable {
@@ -326,15 +451,12 @@ mod tests {
         );
         // 410 Gone — known business outcome, never 500
         assert_eq!(status, StatusCode::GONE);
-        assert_eq!(
-            body_value(body),
-            json!({
-                "error": "payload_unavailable",
-                "entry_id": "entry-1",
-                "rep_id": "rep-2",
-                "state": "Lost",
-            })
-        );
+        assert_eq!(body.0.code, "payload_unavailable");
+        // The 410 context moves into `details` (ADR-008 §0.3).
+        let details = body.0.details.expect("410 must carry structured details");
+        assert_eq!(details["entry_id"], "entry-1");
+        assert_eq!(details["rep_id"], "rep-2");
+        assert_eq!(details["state"], "Lost");
     }
 
     #[test]
@@ -349,8 +471,8 @@ mod tests {
             "e",
         );
         assert_eq!(status, StatusCode::GONE);
-        let value = body_value(body);
-        assert_eq!(value["state"], "Staged");
+        let details = body.0.details.expect("410 must carry structured details");
+        assert_eq!(details["state"], "Staged");
     }
 
     #[test]
@@ -361,14 +483,8 @@ mod tests {
             "entry-3",
         );
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        // 内部错误细节不能泄漏到响应 body
-        assert_eq!(body_value(body), json!({"error": "internal_error"}));
-    }
-
-    #[test]
-    fn internal_error_returns_500_with_generic_body() {
-        let (status, body) = internal_error("test_op", anyhow::anyhow!("boom"));
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(body_value(body), json!({"error": "internal_error"}));
+        // 内部错误细节不能泄漏到响应 body — only the generic code/message.
+        assert_eq!(body.0.code, "internal_error");
+        assert_eq!(body.0.message, "internal error");
     }
 }

@@ -15,12 +15,17 @@ use tracing::{debug, info, instrument};
 use uc_application::facade::{
     SearchFacadeError, SearchPageView, SearchQueryInput, SearchStatusView,
 };
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::http_route;
+use utoipa::IntoParams;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
+// `SearchQueryEnvelope`/`SearchStatusEnvelope`/`SearchRebuildEnvelope` (the alias
+// names referenced as `#[utoipa::path]` response bodies) are the utoipa-v4
+// `ApiEnvelope<T>` aliases declared in the contract's `dto/envelope.rs`. The
+// concrete payload DTOs below are re-exported through `crate::api::dto::search`.
 use crate::api::dto::search::{
-    SearchQueryResponse, SearchRebuildAcceptedData, SearchRebuildAcceptedResponse, SearchResultDto,
-    SearchStatusData, SearchStatusResponse,
+    SearchQueryResultDto, SearchRebuildAcceptedData, SearchResultDto, SearchStatusData,
 };
 use crate::api::server::DaemonApiState;
 
@@ -35,7 +40,8 @@ use crate::api::server::DaemonApiState;
 /// bind repeated params to `Vec<T>` without extra middleware.
 /// The client sends `?fileTypes=text,html` or `?fileTypes=text&fileTypes=html`.
 /// The parser handles both forms: each value is split on commas.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchQueryParams {
     /// Required free-text query string.
@@ -130,6 +136,25 @@ pub fn router() -> Router<DaemonApiState> {
 ///
 /// Execute a structured search query against the local encrypted search index.
 /// Returns HTTP 423 if the encryption session is locked.
+///
+/// ADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of
+/// the envelope — they are folded INTO the `data` payload alongside the renamed
+/// `items` array (`SearchQueryResultDto`). The response is the canonical
+/// `ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).
+#[utoipa::path(
+    get,
+    path = "/search/query",
+    tag = "search",
+    operation_id = "searchQuery",
+    params(SearchQueryParams),
+    responses(
+        (status = 200, description = "Search results page", body = SearchQueryEnvelope),
+        (status = 400, description = "Invalid or malformed query", body = ApiErrorResponse),
+        (status = 423, description = "Encryption session is locked", body = ApiErrorResponse),
+        (status = 503, description = "Search index not ready or unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 #[instrument(
     name = "api.search_query",
     level = "info",
@@ -139,7 +164,7 @@ pub fn router() -> Router<DaemonApiState> {
 async fn search_query_handler(
     State(state): State<DaemonApiState>,
     Query(params): Query<SearchQueryParams>,
-) -> Result<Json<SearchQueryResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<SearchQueryResultDto>>, ApiError> {
     require_encryption_ready(&state).await?;
 
     let app = state.app_facade_or_error()?;
@@ -155,7 +180,7 @@ async fn search_query_handler(
     let result_count = page.items.len();
     let total = page.total;
     let has_more = page.has_more;
-    let data = search_page_to_dto(page);
+    let items = search_page_to_dto(page);
 
     info!(
         total,
@@ -164,22 +189,38 @@ async fn search_query_handler(
         "search query completed"
     );
 
-    Ok(Json(SearchQueryResponse {
+    // Fold `total`/`hasMore` into the payload (ADR-008 §0.1) and wrap in the
+    // canonical envelope.
+    Ok(Json(ApiEnvelope::now(SearchQueryResultDto {
+        items,
         total,
         has_more,
-        data,
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    })))
 }
 
 /// GET /search/status
 ///
 /// Returns the current search index availability snapshot (coordinator status + index meta timestamps).
 /// Returns HTTP 423 if the encryption session is locked.
+///
+/// Already on `{ data, ts }`; the bespoke wrapper is replaced by the canonical
+/// `ApiEnvelope<SearchStatusData>` (identical JSON, not a wire change).
+#[utoipa::path(
+    get,
+    path = "/search/status",
+    tag = "search",
+    operation_id = "getSearchStatus",
+    responses(
+        (status = 200, description = "Search index availability snapshot", body = SearchStatusEnvelope),
+        (status = 423, description = "Encryption session is locked", body = ApiErrorResponse),
+        (status = 503, description = "Search index unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 #[instrument(name = "api.search_status", level = "info", skip(state))]
 async fn search_status_handler(
     State(state): State<DaemonApiState>,
-) -> Result<Json<SearchStatusResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<SearchStatusData>>, ApiError> {
     require_encryption_ready(&state).await?;
 
     let app = state.app_facade_or_error()?;
@@ -195,10 +236,7 @@ async fn search_status_handler(
         "search status queried"
     );
 
-    Ok(Json(SearchStatusResponse {
-        data: search_status_to_dto(view),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(search_status_to_dto(view))))
 }
 
 /// POST /search/rebuild
@@ -206,10 +244,26 @@ async fn search_status_handler(
 /// Trigger a manual full rebuild of the search index.
 /// Returns HTTP 202 on accept, HTTP 409 with `rebuild_already_running` when another rebuild is in progress.
 /// Returns HTTP 423 if the encryption session is locked.
+///
+/// Already on `{ data, ts }`; the bespoke wrapper is replaced by the canonical
+/// `ApiEnvelope<SearchRebuildAcceptedData>` (identical JSON, not a wire change).
+#[utoipa::path(
+    post,
+    path = "/search/rebuild",
+    tag = "search",
+    operation_id = "rebuildSearchIndex",
+    responses(
+        (status = 202, description = "Rebuild accepted", body = SearchRebuildEnvelope),
+        (status = 409, description = "A rebuild is already in progress", body = ApiErrorResponse),
+        (status = 423, description = "Encryption session is locked", body = ApiErrorResponse),
+        (status = 503, description = "Search index unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 #[instrument(name = "api.search_rebuild", level = "info", skip(state))]
 async fn search_rebuild_handler(
     State(state): State<DaemonApiState>,
-) -> Result<(StatusCode, Json<SearchRebuildAcceptedResponse>), ApiError> {
+) -> Result<(StatusCode, Json<ApiEnvelope<SearchRebuildAcceptedData>>), ApiError> {
     require_encryption_ready(&state).await?;
 
     let app = state.app_facade_or_error()?;
@@ -222,12 +276,9 @@ async fn search_rebuild_handler(
     info!("manual search index rebuild accepted");
     Ok((
         StatusCode::ACCEPTED,
-        Json(SearchRebuildAcceptedResponse {
-            data: SearchRebuildAcceptedData {
-                accepted: accepted.accepted,
-            },
-            ts: chrono::Utc::now().timestamp_millis(),
-        }),
+        Json(ApiEnvelope::now(SearchRebuildAcceptedData {
+            accepted: accepted.accepted,
+        })),
     ))
 }
 

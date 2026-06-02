@@ -4,7 +4,7 @@ Tracks phase status + cross-phase carry-overs. Authoritative spec: `normalizatio
 
 ## Status
 - **P1 Contract foundation** — ✅ DONE + adversarially verified (`cargo check -p uc-daemon-contract -p uc-webserver` clean). 2026-06-02.
-- **P2 Webserver annotate + normalize wire** — ⬜ NEXT (breaking server change)
+- **P2 Webserver annotate + normalize wire** — ✅ DONE + verified (cargo check clean; permanent `api_doc_has_no_dangling_refs` test green; 227 $refs / 0 dangling / 122 schemas). 2026-06-02.
 - **P3 Native Rust consumer lockstep** — ⬜
 - **P4 gen-openapi bin + schema** — ⬜
 - **P5 FE codegen + bridge** — ⬜
@@ -16,6 +16,13 @@ Tracks phase status + cross-phase carry-overs. Authoritative spec: `normalizatio
 - **Edited (webserver, no wire change):** `dto/error.rs` (re-export contract `ApiErrorResponse`; one ctor site set `details:None`), `storage.rs` (import contract storage DTOs via `as StorageStatsResponse` alias; json output byte-identical).
 - **Folded payloads:** `SettingsUpdateResultDto{success,restart_required}`, `MemberSyncResultDto{success}`, `SearchQueryResultDto{items,total,has_more}` (items field renamed from `data`→`items`).
 - **Pairing graveyard:** NOTHING deleted — all 9 `dto/pairing.rs` DTOs are LIVE (used by `uc-daemon-client/src/http/pairing.rs`, `ws.rs`). §C.7's "dead" assumption was wrong.
+
+## P2 result
+- **48 operations / 45 path templates** registered in `openapi.rs` `paths()`; **122 component schemas**; §D 12-tag set; dual security (`session_query`+`session_header`) + `PUBLIC_PATHS=[/health, /auth/connect]`, sourced from contract `openapi_meta` via a `ContractMeta` Modify.
+- All §H breaking endpoints normalized to `ApiEnvelope`/`ApiErrorResponse`. `restore` handler lives in `routes.rs` (not clipboard.rs) — rewired there: `ApiEnvelope<RestoreEntryResponse>`, 410 context → `details`, `code`/`message` preserved; 5 restore unit tests updated and passing.
+- Folded payloads wired: settings PUT → `SettingsUpdateResultEnvelope`, member PATCH → `MemberSyncResultEnvelope`, search query → `SearchQueryEnvelope`.
+- **P2-fix (ref integrity):** utoipa v4 stringifies fully-qualified `body =` paths into dotted schema names → 69 FQ refs rewritten to bare names across 10 files; 9 `*PatchDto` + `ConnectRequest` registered in components; `KeyboardShortcutsPatchDto` got `ToSchema` + `#[schema(value_type = HashMap<String, ShortcutKeyDto>)]` (utoipa Option-valued-map limitation). Added a permanent `#[cfg(test)] api_doc_has_no_dangling_refs` guard (walks every `$ref`; regression net for P4/P5).
+- **Surviving bespoke wrappers (NOT registered in the doc; deletion deferred):** `SearchQueryResponse`/`SearchStatusResponse`/`SearchRebuildAcceptedResponse` (still decoded by `uc-daemon-client/src/http/search.rs` → delete in **P3**); `UpdateSettingsResponse` (still built by settings smoke tests + an in-module test → delete in **P6**).
 
 ## Carry-overs INTO P2 (webserver wire normalization)
 1. Rewire EVERY handler to build `ApiEnvelope::now(payload)` / alias bodies; flip bare/ad-hoc → envelope for ALL §H breaking endpoints. `/auth/connect` → `SessionTokenEnvelope`. Binary (`blob.rs`) + `/ws` stay un-enveloped.

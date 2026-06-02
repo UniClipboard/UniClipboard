@@ -1,31 +1,38 @@
 //! HTTP route handlers for storage management endpoints.
 //!
 //! Provides GET /storage/stats and POST /storage/clear-cache.
+//!
+//! All responses use the canonical `ApiEnvelope<T> { data, ts }` success
+//! envelope (ADR-008 §0.1) and `ApiErrorResponse { code, message, details? }`
+//! for errors (§0.3). Storage DTOs live in the contract crate (§C.4).
 
 use axum::extract::{rejection::JsonRejection, State};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Serialize;
-use serde_json::json;
+use uc_application::facade::StorageFacadeError;
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
 // Storage DTOs relocated to the contract crate (ADR-008 §C.4). The handlers keep
-// their current JSON shape; `StorageStatsResponse` is an alias for the moved
-// `StorageStatsDto` so the handler bodies stay unchanged.
+// their current JSON shape; both endpoints are non-breaking (`{ data, ts }`).
 use uc_daemon_contract::api::dto::storage::{
-    ClearCacheRequest, ClearCacheResponse, StorageStatsDto as StorageStatsResponse,
+    ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
 };
 
-use crate::api::routes::internal_error;
+use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 
-/// Error response for POST /storage/clear-cache when confirmed is false or absent.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClearCacheErrorResponse {
-    pub code: String,
-    pub message: String,
+/// Map a `StorageFacadeError` onto a 500 `ApiError`, emitting the root-cause
+/// ERROR at the mapping point (per `dto::error` rule). The facade exposes a
+/// typed enum, so `error_variant` reflects the failing operation.
+fn map_storage_err(op: &'static str, err: StorageFacadeError) -> ApiError {
+    let variant = match &err {
+        StorageFacadeError::Stats(_) => "stats",
+        StorageFacadeError::ClearCache(_) => "clear_cache",
+    };
+    let api = ApiError::internal(err.to_string());
+    log_facade_failure("storage", op, variant, api.status, &api.message);
+    api
 }
 
 pub fn router() -> Router<DaemonApiState> {
@@ -37,88 +44,84 @@ pub fn router() -> Router<DaemonApiState> {
 /// GET /storage/stats
 /// Returns storage statistics across database, cache, and spool directories.
 /// Includes blob_count derived from the total number of clipboard entries.
-async fn get_storage_stats_handler(State(state): State<DaemonApiState>) -> impl IntoResponse {
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(error) => return error.into_response(),
-    };
+#[utoipa::path(
+    get,
+    path = "/storage/stats",
+    operation_id = "getStorageStats",
+    tag = "storage",
+    responses(
+        (status = 200, description = "Storage statistics retrieved", body = StorageStatsEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+async fn get_storage_stats_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<StorageStatsDto>>, ApiError> {
+    let app = state.app_facade_or_error()?;
 
-    let result = match app.storage.stats().await {
-        Ok(r) => r,
-        Err(e) => {
-            return internal_error("storage_stats", anyhow::anyhow!("{}", e)).into_response();
-        }
-    };
+    let result = app
+        .storage
+        .stats()
+        .await
+        .map_err(|e| map_storage_err("storage_stats", e))?;
 
-    let response = StorageStatsResponse {
+    Ok(Json(ApiEnvelope::now(StorageStatsDto {
         total_bytes: result.total_bytes,
         database_bytes: result.database_bytes,
         vault_bytes: result.vault_bytes,
         cache_bytes: result.cache_bytes,
         logs_bytes: result.logs_bytes,
-    };
-
-    let ts = chrono::Utc::now().timestamp_millis();
-    Json(json!({ "data": response, "ts": ts })).into_response()
+    })))
 }
 
 /// POST /storage/clear-cache
 /// Clears the cache directory contents. Requires `confirmed: true` in the request body.
 /// Returns 400 if confirmation is missing or false.
+#[utoipa::path(
+    post,
+    path = "/storage/clear-cache",
+    operation_id = "clearStorageCache",
+    tag = "storage",
+    request_body = ClearCacheRequest,
+    responses(
+        (status = 200, description = "Cache cleared", body = ClearCacheEnvelope),
+        (status = 400, description = "Confirmation missing or false", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 async fn clear_cache_handler(
     State(state): State<DaemonApiState>,
     body: Result<Json<ClearCacheRequest>, JsonRejection>,
-) -> impl IntoResponse {
-    let Json(req) = match body {
-        Ok(b) => b,
-        Err(_) => {
-            let ts = chrono::Utc::now().timestamp_millis();
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": ClearCacheErrorResponse {
-                        code: "confirmation_required".to_string(),
-                        message: "confirmed field must be set to true".to_string(),
-                    },
-                    "ts": ts,
-                })),
-            )
-                .into_response();
+) -> Result<Json<ApiEnvelope<ClearCacheResponse>>, ApiError> {
+    let req = match body {
+        Ok(Json(req)) if req.confirmed => req,
+        // Missing/invalid body OR `confirmed` not set to true → 400 with the
+        // canonical error body. Preserve the exact `code`/`message` strings.
+        _ => {
+            return Err(ApiError {
+                status: StatusCode::BAD_REQUEST,
+                code: "confirmation_required".to_string(),
+                message: "confirmed field must be set to true".to_string(),
+            });
         }
     };
 
-    if !req.confirmed {
-        let ts = chrono::Utc::now().timestamp_millis();
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": ClearCacheErrorResponse {
-                    code: "confirmation_required".to_string(),
-                    message: "confirmed field must be set to true".to_string(),
-                },
-                "ts": ts,
-            })),
-        )
-            .into_response();
-    }
+    debug_assert!(req.confirmed);
 
-    let app = match state.app_facade_or_error() {
-        Ok(app) => app,
-        Err(error) => return error.into_response(),
-    };
+    let app = state.app_facade_or_error()?;
 
-    match app.storage.clear_cache().await {
-        Ok(result) => {
-            tracing::info!(
-                freed_bytes = result.freed_bytes,
-                "Cache cleared via HTTP API"
-            );
-            let ts = chrono::Utc::now().timestamp_millis();
-            Json(
-                json!({ "data": ClearCacheResponse { freed_bytes: result.freed_bytes }, "ts": ts }),
-            )
-            .into_response()
-        }
-        Err(e) => internal_error("storage_clear_cache", anyhow::anyhow!("{}", e)).into_response(),
-    }
+    let result = app
+        .storage
+        .clear_cache()
+        .await
+        .map_err(|e| map_storage_err("storage_clear_cache", e))?;
+
+    tracing::info!(
+        freed_bytes = result.freed_bytes,
+        "Cache cleared via HTTP API"
+    );
+
+    Ok(Json(ApiEnvelope::now(ClearCacheResponse {
+        freed_bytes: result.freed_bytes,
+    })))
 }

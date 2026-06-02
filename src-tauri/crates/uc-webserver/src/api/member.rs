@@ -11,12 +11,10 @@ use tracing::{info, instrument};
 use uc_application::facade::{
     ContentTypesPatch, MemberSyncPreferencesPatch, MemberSyncPreferencesView, RosterError,
 };
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
-use crate::api::dto::member::{
-    GetMemberSyncPreferencesResponse, MemberSyncPreferencesPatchDto,
-    UpdateMemberSyncPreferencesResponse,
-};
+use crate::api::dto::member::{MemberSyncPreferencesPatchDto, MemberSyncResultDto};
 use crate::api::server::DaemonApiState;
 
 pub fn router() -> Router<DaemonApiState> {
@@ -37,13 +35,14 @@ pub fn router() -> Router<DaemonApiState> {
     get,
     path = "/member/{device_id}/sync-preferences",
     tag = "member",
+    operation_id = "getMemberSyncPreferences",
     params(
         ("device_id" = String, Path, description = "Space member's device ID (same string as peer_id, D5)")
     ),
     responses(
-        (status = 200, body = GetMemberSyncPreferencesResponse),
-        (status = 404, description = "Member not found", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
+        (status = 200, body = MemberSyncPreferencesEnvelope),
+        (status = 404, description = "Member not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
     )
 )]
 #[instrument(
@@ -55,7 +54,7 @@ pub fn router() -> Router<DaemonApiState> {
 pub async fn get_member_sync_preferences_handler(
     State(state): State<DaemonApiState>,
     Path(device_id): Path<String>,
-) -> Result<Json<GetMemberSyncPreferencesResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<crate::api::dto::member::MemberSyncPreferencesDto>>, ApiError> {
     info!("get member sync preferences request received");
     let app = state.app_facade_or_error()?;
     let roster = app
@@ -73,10 +72,11 @@ pub async fn get_member_sync_preferences_handler(
         receive_enabled = prefs.receive_enabled,
         "get member sync preferences succeeded"
     );
-    Ok(Json(GetMemberSyncPreferencesResponse {
-        data: member_sync_preferences_to_dto(prefs),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    // Canonical `{ data, ts }` envelope (ADR-008 §0.1). Identical wire shape to
+    // the legacy `GetMemberSyncPreferencesResponse` wrapper — not a wire change.
+    Ok(Json(ApiEnvelope::now(member_sync_preferences_to_dto(
+        prefs,
+    ))))
 }
 
 /// PATCH /member/:device_id/sync-preferences
@@ -87,15 +87,16 @@ pub async fn get_member_sync_preferences_handler(
     patch,
     path = "/member/{device_id}/sync-preferences",
     tag = "member",
+    operation_id = "updateMemberSyncPreferences",
     params(
         ("device_id" = String, Path, description = "Space member's device ID")
     ),
     request_body = MemberSyncPreferencesPatchDto,
     responses(
-        (status = 200, body = UpdateMemberSyncPreferencesResponse),
-        (status = 400, description = "Invalid request", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 404, description = "Member not found", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse)
+        (status = 200, body = MemberSyncResultEnvelope),
+        (status = 400, description = "Invalid request", body = ApiErrorResponse),
+        (status = 404, description = "Member not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse)
     )
 )]
 #[instrument(
@@ -114,7 +115,7 @@ pub async fn update_member_sync_preferences_handler(
     State(state): State<DaemonApiState>,
     Path(device_id): Path<String>,
     Json(payload): Json<MemberSyncPreferencesPatchDto>,
-) -> Result<Json<UpdateMemberSyncPreferencesResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<MemberSyncResultDto>>, ApiError> {
     info!("update member sync preferences request received");
     let app = state.app_facade_or_error()?;
     let roster = app
@@ -132,11 +133,13 @@ pub async fn update_member_sync_preferences_handler(
         receive_enabled = updated.receive_enabled,
         "update member sync preferences succeeded"
     );
-    Ok(Json(UpdateMemberSyncPreferencesResponse {
+    // BREAKING (ADR-008 §0.1): the legacy `{ success, data, ts }` shape collapses
+    // into `ApiEnvelope<MemberSyncResultDto> = { data: { success }, ts }`. The
+    // top-level `success` flag folds into the payload; the merged preferences
+    // view is no longer echoed (consumers re-read via the GET endpoint).
+    Ok(Json(ApiEnvelope::now(MemberSyncResultDto {
         success: true,
-        data: member_sync_preferences_to_dto(updated),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    })))
 }
 
 fn member_sync_preferences_patch_from_dto(

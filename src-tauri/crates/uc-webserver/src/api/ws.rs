@@ -66,15 +66,23 @@ enum SendMsg {
 // ---------------------------------------------------------------------------
 
 /// Returns the WebSocket router.
+///
+/// `GET /ws` is a protocol upgrade, NOT a `{ data, ts }` envelope endpoint. On
+/// success it returns `101 Switching Protocols` and the connection then speaks
+/// the daemon WebSocket protocol: the client sends `WsSubscribeRequest` frames
+/// and the server streams `DaemonWsEvent` frames (one per subscribed topic
+/// event). These frame schemas are documented here for reference only; the live
+/// stream is not modelled by the OpenAPI response body.
 #[utoipa::path(
     get,
     path = "/ws",
-    tag = "websocket",
+    operation_id = "websocketUpgrade",
+    tag = "system",
     params(
-        ("auth" = String, Query, description = "JWT session token prefixed with 'Session '. Used when the client cannot set custom headers (e.g., browser WebSocket).")
+        ("auth" = String, Query, description = "JWT session token prefixed with 'Session '. Used when the client cannot set custom headers (e.g., browser WebSocket). Native clients may instead send the 'Authorization: Session <jwt>' header.")
     ),
     responses(
-        (status = 101, description = "WebSocket upgrade accepted"),
+        (status = 101, description = "WebSocket upgrade accepted; the connection then exchanges WsSubscribeRequest (client→server) and DaemonWsEvent (server→client) frames."),
         (status = 401, description = "Missing or invalid session token", body = WsErrorResponse),
         (status = 403, description = "PID not allowed", body = WsErrorResponse),
         (status = 429, description = "Rate limit exceeded", body = WsErrorResponse),

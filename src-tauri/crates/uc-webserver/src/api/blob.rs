@@ -19,6 +19,31 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/clipboard/thumbnails/:rep_id", get(get_thumbnail))
 }
 
+/// GET /clipboard/blobs/:blob_id
+///
+/// Serves the raw bytes of a stored blob. Binary endpoint: the response is
+/// `application/octet-stream` (the resolved MIME type when known), NOT the
+/// `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints exempt).
+/// Returns 404 if the blob is unknown, 500 on an internal resolution failure.
+#[utoipa::path(
+    get,
+    path = "/clipboard/blobs/{blob_id}",
+    tag = "clipboard",
+    operation_id = "getClipboardBlob",
+    params(
+        ("blob_id" = String, Path, description = "Blob identifier"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Raw blob bytes",
+            content_type = "application/octet-stream",
+            body = Vec<u8>,
+        ),
+        (status = 404, description = "Blob not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 async fn get_blob(
     State(state): State<DaemonApiState>,
     Path(blob_id): Path<String>,
@@ -51,6 +76,32 @@ async fn get_blob(
     }
 }
 
+/// GET /clipboard/thumbnails/:rep_id
+///
+/// Serves the raw bytes of a representation's thumbnail. Binary endpoint: the
+/// response is `application/octet-stream` (the resolved MIME type when known),
+/// NOT the `{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints
+/// exempt). Returns 404 if the thumbnail is unknown, 500 on an internal
+/// resolution failure.
+#[utoipa::path(
+    get,
+    path = "/clipboard/thumbnails/{rep_id}",
+    tag = "clipboard",
+    operation_id = "getClipboardThumbnail",
+    params(
+        ("rep_id" = String, Path, description = "Representation identifier"),
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Raw thumbnail bytes",
+            content_type = "application/octet-stream",
+            body = Vec<u8>,
+        ),
+        (status = 404, description = "Thumbnail not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 async fn get_thumbnail(
     State(state): State<DaemonApiState>,
     Path(rep_id): Path<String>,

@@ -23,25 +23,29 @@ use uc_core::ports::DispatchAck;
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
+use utoipa::IntoParams;
 
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
     PerTargetOutcomeDto, ResendRequest, ResendResponse,
 };
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
 use crate::api::dto::clipboard::{
-    ClearHistoryResponse, ClearHistoryResultDto, ClipboardStatsDto, EntryDetailDto,
-    EntryProjectionResponseDto, EntryResourceDto, GetClipboardStatsResponse,
-    GetEntryDetailResponse, GetEntryResourceResponse, ListEntriesResponse, ToggleFavoriteRequest,
-    ToggleFavoriteResponse, ToggleFavoriteResultDto,
+    ClearHistoryResultDto, ClipboardStatsDto, EntryDetailDto, EntryProjectionResponseDto,
+    EntryResourceDto, ToggleFavoriteRequest, ToggleFavoriteResultDto,
 };
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 
-#[derive(Deserialize)]
+/// Query parameters for `GET /clipboard/entries`.
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct PaginationParams {
+    /// Maximum entries to return (default 50, clamped to 1000).
     #[serde(default = "default_limit")]
     pub limit: usize,
+    /// Number of entries to skip.
     #[serde(default)]
     pub offset: usize,
 }
@@ -86,20 +90,18 @@ pub fn router() -> Router<DaemonApiState> {
 #[utoipa::path(
     get,
     path = "/clipboard/entries",
+    operation_id = "listClipboardEntries",
     tag = "clipboard",
-    params(
-        ("limit" = Option<usize>, Query, description = "Maximum entries to return (default 50, max 1000)"),
-        ("offset" = Option<usize>, Query, description = "Number of entries to skip"),
-    ),
+    params(PaginationParams),
     responses(
-        (status = 200, body = ListEntriesResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Clipboard entries listed", body = ListEntriesEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn list_entries(
     State(state): State<DaemonApiState>,
     Query(params): Query<PaginationParams>,
-) -> Result<Json<ListEntriesResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<Vec<EntryProjectionResponseDto>>>, ApiError> {
     let facade = require_facade(&state)?;
     let limit = clamp_limit(params.limit);
     let entries = facade
@@ -113,10 +115,7 @@ async fn list_entries(
     let response_entries: Vec<EntryProjectionResponseDto> =
         entries.into_iter().map(entry_projection_to_dto).collect();
 
-    Ok(Json(ListEntriesResponse {
-        data: response_entries,
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(response_entries)))
 }
 
 /// GET /clipboard/entries/:id
@@ -126,31 +125,29 @@ async fn list_entries(
 #[utoipa::path(
     get,
     path = "/clipboard/entries/{id}",
+    operation_id = "getClipboardEntry",
     tag = "clipboard",
     params(
         ("id" = String, Path, description = "Entry ID"),
     ),
     responses(
-        (status = 200, body = GetEntryDetailResponse),
-        (status = 404, description = "Entry not found", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 422, description = "Entry is not text content", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Entry detail retrieved", body = EntryDetailEnvelope),
+        (status = 404, description = "Entry not found", body = ApiErrorResponse),
+        (status = 422, description = "Entry is not text content", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn get_entry(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
-) -> Result<Json<GetEntryDetailResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<EntryDetailDto>>, ApiError> {
     let facade = require_facade(&state)?;
     let detail = facade
         .get_entry(&entry_id)
         .await
         .map_err(|e| map_clipboard_err("get_entry", e))?;
 
-    Ok(Json(GetEntryDetailResponse {
-        data: entry_detail_to_dto(detail),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(entry_detail_to_dto(detail))))
 }
 
 /// DELETE /clipboard/entries/:id
@@ -159,14 +156,15 @@ async fn get_entry(
 #[utoipa::path(
     delete,
     path = "/clipboard/entries/{id}",
+    operation_id = "deleteClipboardEntry",
     tag = "clipboard",
     params(
         ("id" = String, Path, description = "Entry ID"),
     ),
     responses(
         (status = 204, description = "Entry deleted"),
-        (status = 404, description = "Entry not found", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 404, description = "Entry not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn delete_entry(
@@ -188,23 +186,24 @@ async fn delete_entry(
 #[utoipa::path(
     post,
     path = "/clipboard/entries/{id}/favorite",
+    operation_id = "toggleClipboardEntryFavorite",
     tag = "clipboard",
     params(
         ("id" = String, Path, description = "Entry ID"),
     ),
     request_body = ToggleFavoriteRequest,
     responses(
-        (status = 200, body = ToggleFavoriteResponse),
-        (status = 400, description = "Missing isFavorited field", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 404, description = "Entry not found", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Favorite state toggled", body = ToggleFavoriteEnvelope),
+        (status = 400, description = "Missing isFavorited field", body = ApiErrorResponse),
+        (status = 404, description = "Entry not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn toggle_favorite(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
     body: Result<Json<ToggleFavoriteRequest>, axum::extract::rejection::JsonRejection>,
-) -> Result<Json<ToggleFavoriteResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<ToggleFavoriteResultDto>>, ApiError> {
     let facade = require_facade(&state)?;
 
     let Json(body) = body.map_err(|_| ApiError::bad_request("missing isFavorited field"))?;
@@ -218,10 +217,9 @@ async fn toggle_favorite(
         return Err(ApiError::not_found("entry not found"));
     }
 
-    Ok(Json(ToggleFavoriteResponse {
-        data: ToggleFavoriteResultDto { success: true },
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(ToggleFavoriteResultDto {
+        success: true,
+    })))
 }
 
 /// GET /clipboard/stats
@@ -230,25 +228,23 @@ async fn toggle_favorite(
 #[utoipa::path(
     get,
     path = "/clipboard/stats",
+    operation_id = "getClipboardStats",
     tag = "clipboard",
     responses(
-        (status = 200, body = GetClipboardStatsResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Clipboard statistics retrieved", body = ClipboardStatsEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn get_stats(
     State(state): State<DaemonApiState>,
-) -> Result<Json<GetClipboardStatsResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<ClipboardStatsDto>>, ApiError> {
     let facade = require_facade(&state)?;
     let stats = facade
         .stats()
         .await
         .map_err(|e| map_clipboard_err("get_stats", e))?;
 
-    Ok(Json(GetClipboardStatsResponse {
-        data: clipboard_stats_to_dto(stats),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(clipboard_stats_to_dto(stats))))
 }
 
 /// GET /clipboard/entries/:id/resource
@@ -257,30 +253,28 @@ async fn get_stats(
 #[utoipa::path(
     get,
     path = "/clipboard/entries/{id}/resource",
+    operation_id = "getClipboardEntryResource",
     tag = "clipboard",
     params(
         ("id" = String, Path, description = "Entry ID"),
     ),
     responses(
-        (status = 200, body = GetEntryResourceResponse),
-        (status = 404, description = "Entry not found", body = crate::api::dto::error::ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Entry resource metadata retrieved", body = EntryResourceEnvelope),
+        (status = 404, description = "Entry not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn get_entry_resource(
     State(state): State<DaemonApiState>,
     Path(entry_id): Path<String>,
-) -> Result<Json<GetEntryResourceResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<EntryResourceDto>>, ApiError> {
     let facade = require_facade(&state)?;
     let resource = facade
         .get_entry_resource(&entry_id)
         .await
         .map_err(|e| map_clipboard_err("get_entry_resource", e))?;
 
-    Ok(Json(GetEntryResourceResponse {
-        data: entry_resource_to_dto(resource),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(entry_resource_to_dto(resource))))
 }
 
 /// POST /clipboard/entries/clear
@@ -290,25 +284,23 @@ async fn get_entry_resource(
 #[utoipa::path(
     post,
     path = "/clipboard/entries/clear",
+    operation_id = "clearClipboardHistory",
     tag = "clipboard",
     responses(
-        (status = 200, body = ClearHistoryResponse),
-        (status = 500, description = "Internal server error", body = crate::api::dto::error::ApiErrorResponse),
+        (status = 200, description = "Clipboard history cleared", body = ClearHistoryEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
 async fn clear_history(
     State(state): State<DaemonApiState>,
-) -> Result<Json<ClearHistoryResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<ClearHistoryResultDto>>, ApiError> {
     let facade = require_facade(&state)?;
     let result = facade
         .clear_history()
         .await
         .map_err(|e| map_clipboard_err("clear_history", e))?;
 
-    Ok(Json(ClearHistoryResponse {
-        data: clear_history_to_dto(result),
-        ts: chrono::Utc::now().timestamp_millis(),
-    }))
+    Ok(Json(ApiEnvelope::now(clear_history_to_dto(result))))
 }
 
 // ── Command endpoints (ADR-008 P2.5 / D7) ───────────────────────
@@ -317,10 +309,26 @@ fn require_app_facade(state: &DaemonApiState) -> Result<Arc<AppFacade>, ApiError
     state.app_facade_or_error()
 }
 
+/// POST /clipboard/dispatch
+///
+/// Wraps plaintext into a single `text/plain` snapshot and fans it out to
+/// online peers. Returns the per-target delivery outcome.
+#[utoipa::path(
+    post,
+    path = "/clipboard/dispatch",
+    operation_id = "dispatchClipboardText",
+    tag = "clipboard",
+    request_body = DispatchTextRequest,
+    responses(
+        (status = 200, description = "Dispatch fan-out outcome", body = DispatchOutcomeEnvelope),
+        (status = 400, description = "Empty or malformed request", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 async fn dispatch_text(
     State(state): State<DaemonApiState>,
     body: Result<Json<DispatchTextRequest>, axum::extract::rejection::JsonRejection>,
-) -> Result<Json<DispatchOutcomeResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<DispatchOutcomeResponse>>, ApiError> {
     let app = require_app_facade(&state)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
 
@@ -357,13 +365,30 @@ async fn dispatch_text(
             ApiError::internal(e.to_string())
         })?;
 
-    Ok(Json(dispatch_outcome_to_dto(outcome)))
+    Ok(Json(ApiEnvelope::now(dispatch_outcome_to_dto(outcome))))
 }
 
+/// POST /clipboard/resend
+///
+/// Re-dispatches a previously captured entry to (optionally filtered) peers.
+#[utoipa::path(
+    post,
+    path = "/clipboard/resend",
+    operation_id = "resendClipboardEntry",
+    tag = "clipboard",
+    request_body = ResendRequest,
+    responses(
+        (status = 200, description = "Resend fan-out outcome", body = ResendEnvelope),
+        (status = 400, description = "Malformed request", body = ApiErrorResponse),
+        (status = 404, description = "Entry not found", body = ApiErrorResponse),
+        (status = 409, description = "No eligible targets", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 async fn resend_entry(
     State(state): State<DaemonApiState>,
     body: Result<Json<ResendRequest>, axum::extract::rejection::JsonRejection>,
-) -> Result<Json<ResendResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<ResendResponse>>, ApiError> {
     let app = require_app_facade(&state)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
 
@@ -397,20 +422,38 @@ async fn resend_entry(
         }
     })?;
 
-    Ok(Json(ResendResponse {
+    Ok(Json(ApiEnvelope::now(ResendResponse {
         accepted: report.accepted,
         duplicate: report.duplicate,
         offline: report.offline,
         errored: report.errored,
         pending: report.pending,
-    }))
+    })))
 }
 
+/// POST /clipboard/cancel-transfer/:transfer_id
+///
+/// Cancels an in-flight inbound file transfer. Returns the cancellation outcome.
+#[utoipa::path(
+    post,
+    path = "/clipboard/cancel-transfer/{transfer_id}",
+    operation_id = "cancelClipboardTransfer",
+    tag = "clipboard",
+    params(
+        ("transfer_id" = String, Path, description = "Inbound transfer ID"),
+    ),
+    request_body = CancelTransferRequest,
+    responses(
+        (status = 200, description = "Transfer cancellation outcome", body = CancelTransferEnvelope),
+        (status = 400, description = "Unknown cancellation reason", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
 async fn cancel_transfer(
     State(state): State<DaemonApiState>,
     Path(transfer_id): Path<String>,
     body: Result<Json<CancelTransferRequest>, axum::extract::rejection::JsonRejection>,
-) -> Result<Json<CancelTransferResponse>, ApiError> {
+) -> Result<Json<ApiEnvelope<CancelTransferResponse>>, ApiError> {
     let app = require_app_facade(&state)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
 
@@ -443,9 +486,9 @@ async fn cancel_transfer(
         uc_application::facade::InboundCancelOutcome::NotInflight => "not_inflight",
     };
 
-    Ok(Json(CancelTransferResponse {
+    Ok(Json(ApiEnvelope::now(CancelTransferResponse {
         outcome: outcome_str.to_string(),
-    }))
+    })))
 }
 
 fn dispatch_outcome_to_dto(

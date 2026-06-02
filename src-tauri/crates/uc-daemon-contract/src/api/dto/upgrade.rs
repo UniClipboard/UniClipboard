@@ -7,14 +7,6 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-/// Response wrapper for `GET /upgrade/status`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetUpgradeStatusResponse {
-    pub data: UpgradeStatusDto,
-    pub ts: i64,
-}
-
 /// Discriminated union mirroring `uc_application::facade::UpgradeStatus`.
 ///
 /// Wire encoding uses `kind` discriminator with snake_case variants to
@@ -45,14 +37,8 @@ pub enum UpgradeStatusDto {
     Downgraded { from: String, to: String },
 }
 
-/// Response wrapper for `POST /upgrade/ack`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AckUpgradeResponse {
-    pub data: AckUpgradePayload,
-    pub ts: i64,
-}
-
+/// Payload for `POST /upgrade/ack`, wrapped by `AckUpgradeEnvelope`
+/// (`ApiEnvelope<AckUpgradePayload>`).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AckUpgradePayload {

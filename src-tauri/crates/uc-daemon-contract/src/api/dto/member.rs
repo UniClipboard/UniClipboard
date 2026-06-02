@@ -34,23 +34,6 @@ pub struct MemberSyncPreferencesPatchDto {
     pub receive_content_types: Option<ContentTypesPatchDto>,
 }
 
-/// Response wrapper for GET /member/:device_id/sync-preferences.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetMemberSyncPreferencesResponse {
-    pub data: MemberSyncPreferencesDto,
-    pub ts: i64,
-}
-
-/// Response wrapper for PATCH /member/:device_id/sync-preferences.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateMemberSyncPreferencesResponse {
-    pub success: bool,
-    pub data: MemberSyncPreferencesDto,
-    pub ts: i64,
-}
-
 /// Folded payload for `PATCH /member/:device_id/sync-preferences` (ADR-008 §0.1).
 ///
 /// The current handler returns `success` as a top-level sibling of the

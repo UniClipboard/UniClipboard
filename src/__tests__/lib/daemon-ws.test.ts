@@ -9,7 +9,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // ── Mock WebSocket ─────────────────────────────────────────────
 class MockWebSocket {
@@ -41,14 +41,40 @@ class MockWebSocket {
 }
 
 // ── Mock daemonClient ─────────────────────────────────────────
-vi.mock('@/api/daemon/client', () => ({
-  daemonClient: {
+const mockDaemonClient = vi.hoisted(() => {
+  let refreshCount = 0
+  const client = {
     currentSession: {
       token: 'test-session-token',
       expiresAt: Date.now() + 300_000,
       encryptionReady: false,
     },
-  },
+    async refreshSession() {
+      refreshCount++
+      client.currentSession = {
+        token: `test-session-token-${refreshCount}`,
+        expiresAt: Date.now() + 300_000,
+        encryptionReady: false,
+      }
+      return client.currentSession
+    },
+    reset() {
+      refreshCount = 0
+      client.currentSession = {
+        token: 'test-session-token',
+        expiresAt: Date.now() + 300_000,
+        encryptionReady: false,
+      }
+    },
+    get refreshCount() {
+      return refreshCount
+    },
+  }
+  return client
+})
+
+vi.mock('@/api/daemon/client', () => ({
+  daemonClient: mockDaemonClient,
 }))
 
 const { DaemonWsClient } = await import('@/lib/daemon-ws')
@@ -80,6 +106,7 @@ function closeSocket(ws: MockWebSocket): void {
 
 function freshClient(): { client: ClientInstance } {
   MockWebSocket._nextId = 0
+  mockDaemonClient.reset()
   const client = new DaemonWsClient((url: string) => new MockWebSocket(url) as unknown as WebSocket)
   return { client }
 }
@@ -88,29 +115,35 @@ function currentWs(client: ClientInstance): MockWebSocket {
   return client['_ws'] as unknown as MockWebSocket
 }
 
+async function waitForSocket(client: ClientInstance): Promise<MockWebSocket> {
+  await Promise.resolve()
+  return currentWs(client)
+}
+
 // ── connect() ─────────────────────────────────────────────────
 
 describe('connect()', () => {
   it('resolves when the socket opens successfully', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
     expect(ws.readyState).toBe(OPEN)
   })
 
-  it('passes the URL with auth token to the WebSocket factory', () => {
+  it('refreshes the session before passing the auth URL to the WebSocket factory', async () => {
     const { client } = freshClient()
     void client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
-    expect(ws.url).toBe('ws://127.0.0.1:42715/ws?auth=Session%20test-session-token')
+    const ws = await waitForSocket(client)
+    expect(mockDaemonClient.refreshCount).toBe(1)
+    expect(ws.url).toBe('ws://127.0.0.1:42715/ws?auth=Session%20test-session-token-1')
   })
 
   it('resolves immediately if already connected', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
     // Second connect while socket is open resolves immediately (no factory call).
@@ -122,7 +155,7 @@ describe('connect()', () => {
   it('rejects if socket closes before opening', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     closeSocket(ws)
     await expect(p).rejects.toThrow('WebSocket closed before open')
   })
@@ -130,7 +163,7 @@ describe('connect()', () => {
   it('rejects on socket error', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     ws.readyState = CLOSED
     if (ws.onerror) ws.onerror(new Event('error'))
     await expect(p).rejects.toThrow('WebSocket error')
@@ -143,7 +176,7 @@ describe('disconnect()', () => {
   it('closes the socket and clears reconnect state', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -163,7 +196,7 @@ describe('subscribe()', () => {
   it('sends a subscribe message with the correct shape', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -180,7 +213,7 @@ describe('subscribe()', () => {
   it('returns an unsubscribe function', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -211,7 +244,7 @@ describe('subscribe()', () => {
   it('includes multiple topics in one subscribe message', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -224,7 +257,7 @@ describe('subscribe()', () => {
   it('dispatches incoming events to the registered callback', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -252,7 +285,7 @@ describe('subscribe()', () => {
   it('dispatches pairing events to pairing topic subscribers', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -291,7 +324,7 @@ describe('subscribe()', () => {
   it('dispatches to multiple callbacks registered for the same topic', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -316,7 +349,7 @@ describe('subscribe()', () => {
   it('handles null session_id without crashing', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -345,25 +378,26 @@ describe('reconnect', () => {
     vi.restoreAllMocks()
   })
 
-  it('schedules reconnect with exponential backoff when socket closes unexpectedly', () => {
+  it('schedules reconnect with exponential backoff when socket closes unexpectedly', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     const { client } = freshClient()
     void client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     vi.runAllTicks()
 
     closeSocket(ws)
-    vi.advanceTimersByTime(1000)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(client['_reconnectAttempt']).toBe(1)
+    expect(mockDaemonClient.refreshCount).toBe(2)
   })
 
-  it('does NOT reconnect after disconnect()', () => {
+  it('does NOT reconnect after disconnect()', async () => {
     vi.useFakeTimers()
     const { client } = freshClient()
     void client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     vi.runAllTicks()
 
@@ -373,36 +407,35 @@ describe('reconnect', () => {
     expect(client['_reconnectAttempt']).toBe(0)
   })
 
-  it('gives up after MAX_RECONNECT_ATTEMPTS (10)', () => {
+  it('gives up after MAX_RECONNECT_ATTEMPTS (10)', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     const { client } = freshClient()
     void client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     vi.runAllTicks()
 
+    closeSocket(ws)
+
     for (let i = 1; i <= 10; i++) {
-      closeSocket(ws)
-      vi.advanceTimersByTime(1000 * 2 ** (i - 1))
-      const newWs = client['_ws'] as unknown as MockWebSocket
-      openSocket(newWs)
-      Object.assign(ws, newWs)
       expect(client['_reconnectAttempt']).toBe(i)
+      await vi.advanceTimersByTimeAsync(Math.min(30000, 1000 * 2 ** (i - 1)))
+      const newWs = await waitForSocket(client)
+      closeSocket(newWs)
     }
 
-    closeSocket(ws)
-    vi.advanceTimersByTime(10000)
+    await vi.advanceTimersByTimeAsync(10000)
     expect(client['_reconnectAttempt']).toBe(10)
     expect(client['_isReconnecting']).toBe(false)
   })
 
-  it('reconnect auto-resubscribes topics on the new socket', () => {
+  it('reconnect refreshes the session and auto-resubscribes topics on the new socket', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     const { client } = freshClient()
     void client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     vi.runAllTicks()
 
@@ -410,20 +443,23 @@ describe('reconnect', () => {
     ws.sentMessages = []
 
     closeSocket(ws)
-    vi.advanceTimersByTime(1000)
-    const newWs = currentWs(client)
+    await vi.advanceTimersByTimeAsync(1000)
+    const newWs = await waitForSocket(client)
     openSocket(newWs)
 
+    expect(mockDaemonClient.refreshCount).toBe(2)
+    expect(newWs.url).toBe('ws://127.0.0.1:42715/ws?auth=Session%20test-session-token-2')
     const msg = JSON.parse(newWs.sentMessages[0])
     expect(msg.topics).toEqual(['clipboard', 'encryption'])
+    expect(client['_reconnectAttempt']).toBe(0)
   })
 
-  it('receives events on the new socket after reconnect', () => {
+  it('receives events on the new socket after reconnect', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     const { client } = freshClient()
     void client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     vi.runAllTicks()
 
@@ -431,8 +467,8 @@ describe('reconnect', () => {
     client.subscribe(['clipboard'], (e: DaemonWsEvent) => received.push(e))
 
     closeSocket(ws)
-    vi.advanceTimersByTime(1000)
-    const newWs = client['_ws'] as unknown as MockWebSocket
+    await vi.advanceTimersByTimeAsync(1000)
+    const newWs = await waitForSocket(client)
     openSocket(newWs)
 
     receiveMessage(newWs, {
@@ -447,12 +483,12 @@ describe('reconnect', () => {
     expect(received[0]).toMatchObject({ payload: { id: 'after-reconnect' } })
   })
 
-  it('does not reconnect just because the socket is idle with no app-level messages', () => {
+  it('does not reconnect just because the socket is idle with no app-level messages', async () => {
     vi.useFakeTimers()
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     const { client } = freshClient()
     void client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     vi.runAllTicks()
 
@@ -470,7 +506,7 @@ describe('Topic filtering', () => {
   it('delivers clipboard events only to clipboard subscribers', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -495,7 +531,7 @@ describe('Topic filtering', () => {
   it('delivers encryption lock/unlock events', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -517,7 +553,7 @@ describe('Topic filtering', () => {
   it('does not deliver events for topics with no subscribers', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -542,7 +578,7 @@ describe('Error resilience', () => {
   it('does not crash when JSON parse fails', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -554,7 +590,7 @@ describe('Error resilience', () => {
   it('does not crash when callback throws', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -585,7 +621,7 @@ describe('Rapid events', () => {
   it('delivers all events when many arrive in rapid succession', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -608,7 +644,7 @@ describe('Rapid events', () => {
   it('unsubscribe stops delivery of subsequent events', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -646,7 +682,7 @@ describe('Event latency', () => {
   it('delivers events synchronously with no artificial delay', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -669,7 +705,7 @@ describe('Event latency', () => {
   it('events delivered within 100ms when using 80ms spacing', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
 
@@ -700,7 +736,7 @@ describe('reset()', () => {
   it('clears all state and closes the socket', async () => {
     const { client } = freshClient()
     const p = client.connect('ws://127.0.0.1:42715/ws')
-    const ws = currentWs(client)
+    const ws = await waitForSocket(client)
     openSocket(ws)
     await p
     client.subscribe(['clipboard'], () => {})

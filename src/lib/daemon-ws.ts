@@ -4,7 +4,8 @@
  * Daemon 事件流的 WebSocket 客户端单例，管理连接生命周期、重连、topic 订阅和心跳检测。
  *
  * # Connection Flow / 连接流程
- * 1. `connect(wsUrl)` opens a WebSocket to the daemon's /ws endpoint.
+ * 1. `connect(wsUrl)` refreshes the daemon session, then opens a WebSocket to the daemon's
+ *    /ws endpoint.
  *    The daemon extracts the session token from the `Authorization: Session <token>` header
  *    (the token comes from `daemonClient.currentSession.token`).
  * 2. `subscribe(topics, callback)` sends a `{ action: "subscribe", topics: [...], nonce }`
@@ -104,7 +105,8 @@ export class DaemonWsClient {
   /**
    * Open a WebSocket connection to the daemon.
    *
-   * Uses the session token from `daemonClient.currentSession`.
+   * Refreshes the daemon session before opening the socket, then uses
+   * `daemonClient.currentSession`.
    * Resolves when the socket is open; rejects on connection failure.
    * If already connected, resolves immediately.
    *
@@ -122,7 +124,15 @@ export class DaemonWsClient {
       this._connectResolve = resolve
       this._connectReject = reject
 
-      this._openSocket()
+      this._openSocket().catch(err => {
+        log.error({ err }, 'failed to open daemon WebSocket')
+        const rejectConnect = this._connectReject
+        this._connectResolve = null
+        this._connectReject = null
+        if (rejectConnect) {
+          rejectConnect(err instanceof Error ? err : new Error('failed to open daemon WebSocket'))
+        }
+      })
     })
   }
 
@@ -204,7 +214,13 @@ export class DaemonWsClient {
 
   // ── Private helpers ────────────────────────────────────────────
 
-  private _openSocket(): void {
+  private async _openSocket(): Promise<void> {
+    await daemonClient.refreshSession()
+
+    if (!this._wsUrl) {
+      return
+    }
+
     const token = daemonClient.currentSession?.token
 
     // Close any previous socket before opening a new one.
@@ -222,6 +238,8 @@ export class DaemonWsClient {
     this._ws = ws
 
     ws.onopen = () => {
+      this._reconnectAttempt = 0
+      this._isReconnecting = false
       const r = this._connectResolve
       this._connectResolve = null
       this._connectReject = null
@@ -355,7 +373,10 @@ export class DaemonWsClient {
     this._reconnectTimer = setTimeout(() => {
       this._isReconnecting = false
       if (this._wsUrl) {
-        this._openSocket()
+        this._openSocket().catch(err => {
+          log.error({ err }, 'failed to refresh session before reconnect')
+          this._scheduleReconnect()
+        })
       }
     }, delayMs)
   }

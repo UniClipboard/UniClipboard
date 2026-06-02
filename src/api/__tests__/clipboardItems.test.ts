@@ -4,7 +4,14 @@ import {
   favoriteClipboardItem,
   unfavoriteClipboardItem,
   resolveResourceImageUrl,
+  syncClipboardItems,
 } from '@/api/clipboardItems'
+
+const mockRetryLifecycle = vi.hoisted(() => vi.fn())
+
+vi.mock('@/api/lifecycle', () => ({
+  retryLifecycle: mockRetryLifecycle,
+}))
 
 vi.mock('@/api/daemon/client', () => ({
   daemonClient: {
@@ -53,6 +60,22 @@ describe('favoriteClipboardItem / unfavoriteClipboardItem', () => {
     await unfavoriteClipboardItem('entry-1')
 
     expect(mockDaemonClipboard.toggleFavorite).toHaveBeenCalledWith('entry-1', false)
+  })
+})
+
+describe('syncClipboardItems', () => {
+  it('retries daemon lifecycle readiness instead of invoking a Tauri command', async () => {
+    mockRetryLifecycle.mockResolvedValueOnce(undefined)
+
+    await expect(syncClipboardItems()).resolves.toBe(true)
+
+    expect(mockRetryLifecycle).toHaveBeenCalledTimes(1)
+  })
+
+  it('propagates lifecycle retry failures', async () => {
+    mockRetryLifecycle.mockRejectedValueOnce(new Error('lifecycle retry failed'))
+
+    await expect(syncClipboardItems()).rejects.toThrow('lifecycle retry failed')
   })
 })
 

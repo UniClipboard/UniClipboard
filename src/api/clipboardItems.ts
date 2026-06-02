@@ -8,6 +8,7 @@ import {
   getClipboardEntryResource as daemonGetResource,
   getEntryDetail as daemonGetDetail,
 } from '@/api/daemon/clipboard'
+import { retryLifecycle } from '@/api/lifecycle'
 import { createLogger } from '@/lib/logger'
 import { invokeWithTrace } from '@/lib/tauri-command'
 
@@ -263,17 +264,11 @@ export async function clearClipboardItems(): Promise<number> {
   }
 }
 
-/**
- * 同步剪贴板内容
- *
- * TODO(issue #698 follow-up): Rust 端 `sync_clipboard_items` command 不存在
- * (`src-tauri/` grep 不到)，调用会 runtime 报 "command not found"。
- * tauri-specta 迁移阶段保留原 `invokeWithTrace` 字符串调用，待后续 daemon 化
- * 或在 Rust 端补回 command 时再切到 typed `commands.xxx`。
- */
+/** Retry daemon lifecycle readiness and deferred clipboard services. */
 export async function syncClipboardItems(): Promise<boolean> {
   try {
-    return await invokeWithTrace('sync_clipboard_items')
+    await retryLifecycle()
+    return true
   } catch (error) {
     log.error({ err: error }, '同步剪贴板内容失败')
     throw error

@@ -12,6 +12,7 @@
 use std::time::Duration;
 
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::HealthResponse;
 use uc_daemon_contract::DAEMON_API_REVISION;
 use uc_daemon_local::contract::{
@@ -84,8 +85,12 @@ pub async fn probe_daemon_health_at(
             anyhow::Error::new(error).context("failed to read daemon health response body"),
         )
     })?;
-    let health = match serde_json::from_str::<HealthResponse>(&body) {
-        Ok(health) => health,
+    // ADR-008 P2: `/health` returns the canonical `{ data, ts }` envelope, not a
+    // bare `HealthResponse`. Decode the envelope and take `.data` — decoding the
+    // bare struct fails with `missing field \`status\`` and wrongly classifies a
+    // healthy daemon as Incompatible, which stalls cold-start bootstrap forever.
+    let health = match serde_json::from_str::<ApiEnvelope<HealthResponse>>(&body) {
+        Ok(envelope) => envelope.data,
         Err(error) => {
             return Ok(ProbeOutcome::Incompatible {
                 details: format!("failed to decode daemon health response: {error}"),
@@ -459,7 +464,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(HEALTH_PATH))
-            .respond_with(ResponseTemplate::new(200).set_body_json(ok_health()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ApiEnvelope::now(ok_health())))
             .mount(&server)
             .await;
 
@@ -476,6 +481,69 @@ mod tests {
             .await
             .expect("probe must succeed against healthy daemon");
         assert_eq!(outcome, ProbeOutcome::Compatible(ok_health()));
+    }
+
+    #[tokio::test]
+    async fn probe_at_decodes_enveloped_health_body() {
+        // Regression (ADR-008 P2): `/health` returns the canonical
+        // `{ "data": HealthResponse, "ts": <i64> }` envelope. The probe must
+        // unwrap `.data`; decoding a bare `HealthResponse` fails with
+        // `missing field \`status\`` and classifies a healthy daemon Incompatible,
+        // which hangs cold-start bootstrap forever. Use a raw wire body (not
+        // serialize-then-parse) so the exact envelope shape is what's asserted.
+        let server = MockServer::start().await;
+        let body = format!(
+            r#"{{"data":{{"status":"ok","packageVersion":"{TEST_PACKAGE_VERSION}","apiRevision":"{DAEMON_API_REVISION}"}},"ts":1717368000000}}"#
+        );
+        Mock::given(method("GET"))
+            .and(path(HEALTH_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+        let url: url::Url = server.uri().parse().unwrap();
+        let addr = std::net::SocketAddr::new(
+            url.host_str().unwrap().parse().unwrap(),
+            url.port().unwrap(),
+        );
+
+        let outcome = probe_daemon_health_at(&build_test_client(), addr, TEST_PACKAGE_VERSION)
+            .await
+            .expect("enveloped health body must decode");
+        assert_eq!(outcome, ProbeOutcome::Compatible(ok_health()));
+    }
+
+    #[tokio::test]
+    async fn probe_at_rejects_legacy_bare_health_body() {
+        // The pre-envelope bare `{ status, packageVersion, apiRevision }` shape is
+        // retired (ADR-008 P2). A daemon still emitting it is genuinely on the old
+        // contract, so it must classify Incompatible rather than slip through.
+        let server = MockServer::start().await;
+        let body = format!(
+            r#"{{"status":"ok","packageVersion":"{TEST_PACKAGE_VERSION}","apiRevision":"{DAEMON_API_REVISION}"}}"#
+        );
+        Mock::given(method("GET"))
+            .and(path(HEALTH_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+        let url: url::Url = server.uri().parse().unwrap();
+        let addr = std::net::SocketAddr::new(
+            url.host_str().unwrap().parse().unwrap(),
+            url.port().unwrap(),
+        );
+
+        let outcome = probe_daemon_health_at(&build_test_client(), addr, TEST_PACKAGE_VERSION)
+            .await
+            .expect("legacy bare body must classify, not error out");
+        match outcome {
+            ProbeOutcome::Incompatible { details, .. } => {
+                assert!(
+                    details.contains("decode") || details.contains("status"),
+                    "details should surface the decode failure: {details}"
+                );
+            }
+            other => panic!("expected Incompatible for legacy bare body, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -559,7 +627,7 @@ mod tests {
         bad.package_version = "9.9.9".into();
         Mock::given(method("GET"))
             .and(path(HEALTH_PATH))
-            .respond_with(ResponseTemplate::new(200).set_body_json(bad))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ApiEnvelope::now(bad)))
             .mount(&server)
             .await;
         let url: url::Url = server.uri().parse().unwrap();

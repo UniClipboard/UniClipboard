@@ -28,6 +28,11 @@ export default tseslint.config(
       'src/lib/ipc-bindings.generated.ts',
       // 同一 specta export test 生成的错误分级表（USER_FACING_ERROR_CODES）。
       'src/lib/error-severity.generated.ts',
+      // @hey-api/openapi-ts 生成的 daemon HTTP 客户端（ADR-008 P5）。由
+      // `bun run gen:api` 从 schema/openapi.json 重新生成；committed 的内容必须
+      // 与生成器输出逐字节一致（CI 用 git diff --exit-code 做 drift-check）。
+      // 因此排除在 eslint 之外，避免 lint-staged 的 `eslint --fix` 改写它。
+      'src/api/generated/',
     ],
   },
   js.configs.recommended,

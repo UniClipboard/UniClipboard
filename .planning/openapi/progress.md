@@ -7,7 +7,7 @@ Tracks phase status + cross-phase carry-overs. Authoritative spec: `normalizatio
 - **P2 Webserver annotate + normalize wire** — ✅ DONE + verified (cargo check clean; permanent `api_doc_has_no_dangling_refs` test green; 227 $refs / 0 dangling / 122 schemas). 2026-06-02.
 - **P3 Native Rust consumer lockstep** — ✅ DONE + verified (7 decode sites → `ApiEnvelope.data`; 3 contract search wrappers deleted; cargo check + uc-cli/uc-daemon-client tests green; ref-integrity guard still passes). ⚠️ Live connect/dispatch smoke = recommended manual follow-up (no daemon in CI env). 2026-06-02.
 - **P4 gen-openapi bin + schema** — ✅ DONE + verified (gen-openapi bin = hard $ref-integrity gate; `schema/openapi.json` 194 KB, byte-deterministic, 0 dangling, 48 ops; `gen:openapi` npm script added). 2026-06-02.
-- **P5 FE codegen + bridge** — ⬜
+- **P5 FE codegen + bridge** — ✅ DONE + verified (gen:client idempotent; tsc 0 new errors; bridge injects `?auth` query + `callSdk` 401-retry; `src/api/generated/` excluded from prettier+eslint; CI drift-checks added to pr-check.yml). 2026-06-02.
 - **P6 FE consumer migration** — ⬜
 
 ## P1 result

@@ -81,6 +81,20 @@ jobs:
       - name: Type check & build frontend
         run: bun run build
 
+      # @hey-api generated client drift check (ADR-008 P5) —— `bun run gen:client`
+      # 从 committed 的 schema/openapi.json 重新生成 src/api/generated/。如果 schema
+      # 变了但没重新生成客户端，diff 会非零退出。本地修复: `bun run gen:client` 后
+      # git add src/api/generated/。
+      - name: Verify generated API client is up to date
+        run: |
+          cp -r src/api/generated /tmp/api-generated.committed
+          bun run gen:client
+          if ! diff -r -q /tmp/api-generated.committed src/api/generated; then
+            echo "::error::Generated API client drift detected. Run 'bun run gen:client' locally and commit src/api/generated/."
+            diff -r -u /tmp/api-generated.committed src/api/generated || true
+            exit 1
+          fi
+
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
@@ -163,5 +177,23 @@ jobs:
           if ! cmp -s /tmp/ipc-bindings.committed.ts src/lib/ipc-bindings.generated.ts; then
             echo "::error::IPC schema drift detected. Run 'cargo test -p uc-tauri --test specta_export' locally and commit the regenerated src/lib/ipc-bindings.generated.ts."
             diff -u /tmp/ipc-bindings.committed.ts src/lib/ipc-bindings.generated.ts || true
+            exit 1
+          fi
+
+      # OpenAPI schema drift check (ADR-008) —— `cargo run --bin gen-openapi`
+      # 物化 ApiDoc::openapi() 写到仓库根 schema/openapi.json。如果 PR 改了任何
+      # #[utoipa::path] / DTO / alias 但没把 schema/openapi.json 一起提交，cmp
+      # 会非零退出。本地修复: `bun run gen:openapi` 后 git add schema/openapi.json。
+      # 用 cmp 而非 git diff 的原因同上 (容器内 git 看不到 safe.directory)。
+      - name: Snapshot committed OpenAPI schema
+        run: cp schema/openapi.json /tmp/openapi.committed.json
+      - name: Generate OpenAPI schema
+        working-directory: src-tauri
+        run: cargo run -p uc-webserver --bin gen-openapi --locked
+      - name: Verify OpenAPI schema is up to date
+        run: |
+          if ! cmp -s /tmp/openapi.committed.json schema/openapi.json; then
+            echo "::error::OpenAPI schema drift detected. Run 'bun run gen:openapi' locally and commit the regenerated schema/openapi.json."
+            diff -u /tmp/openapi.committed.json schema/openapi.json || true
             exit 1
           fi

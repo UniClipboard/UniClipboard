@@ -17,6 +17,7 @@
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { DaemonApiError, DaemonErrorCode, mapStatusToErrorCode } from './errors'
+import { installGeneratedClientBridge, SdkRequestError } from './generated-bridge'
 import type { DaemonConfig, SessionToken } from './types'
 import { isSessionExpired } from './types'
 
@@ -84,6 +85,10 @@ class DaemonClient {
   initialize(config: DaemonConfig): void {
     this.config = config
     this.startKeepAlive()
+    // Wire the @hey-api generated fetch client to this session lifecycle
+    // (baseUrl + ?auth= query token + 401 observability). Makes the typed SDK
+    // AVAILABLE; nothing routes through it yet (ADR-008 P5; consumers in P6).
+    installGeneratedClientBridge(config.baseUrl)
   }
 
   /**
@@ -151,6 +156,51 @@ class DaemonClient {
     }
 
     return this.handleResponse<T>(response, endpoint)
+  }
+
+  /**
+   * Run a generated (@hey-api) SDK call through the daemon session lifecycle.
+   *
+   * Mirrors {@link request}: pre-emptive refresh when the session is expired,
+   * plus a one-shot refresh + retry on a 401. `installGeneratedClientBridge`
+   * configures the generated client to inject the `?auth=` query token and to
+   * throw {@link SdkRequestError} (carrying `.response`) on non-2xx, so a 401 is
+   * observable here. Call SDK fns with `{ throwOnError: true }` so they resolve
+   * to `{ data }` and reject on error.
+   *
+   * 让生成的 SDK 调用走 daemon 的 session 生命周期：过期预刷新 + 401 单次刷新重试。
+   * SDK 函数需以 `{ throwOnError: true }` 调用。
+   *
+   * @param call Thunk invoking a generated SDK fn; resolves to `{ data }`.
+   * @returns The unwrapped `data`.
+   * @throws {DaemonApiError} If the client is not initialized.
+   */
+  async callSdk<T>(call: () => Promise<{ data: T }>): Promise<T> {
+    if (!this.config) {
+      throw new DaemonApiError(
+        DaemonErrorCode.INTERNAL_ERROR,
+        'DaemonClient not initialized — call initialize() first'
+      )
+    }
+
+    // Pre-emptive refresh if session is expired.
+    if (isSessionExpired(this.session)) {
+      await this.refreshSession()
+    }
+
+    try {
+      const { data } = await call()
+      return data
+    } catch (err) {
+      // Retry once on 401 (session may have been invalidated server-side).
+      if (err instanceof SdkRequestError && err.response?.status === 401) {
+        this.session = null
+        await this.refreshSession()
+        const { data } = await call()
+        return data
+      }
+      throw err
+    }
   }
 
   /**

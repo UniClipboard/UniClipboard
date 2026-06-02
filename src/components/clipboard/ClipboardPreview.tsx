@@ -7,7 +7,7 @@ import {
   ClipboardLinkItem,
   ClipboardTextItem,
 } from '@/api/clipboardItems'
-import { cancelFileTransfer } from '@/api/tauri-command/file_transfer'
+import { cancelFileTransfer } from '@/api/file_transfer'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'

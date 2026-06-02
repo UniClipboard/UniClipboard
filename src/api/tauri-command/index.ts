@@ -9,6 +9,5 @@
  * Backend equivalents live in `src-tauri/crates/uc-tauri/src/commands/`.
  */
 
-export * from './file_transfer'
 export * from './mobile_sync'
 export * from './settings'

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { daemonClient } from '@/api/daemon/client'
 import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
+import { SdkRequestError } from '@/api/daemon/generated-bridge'
 import type { DaemonConfig } from '@/api/daemon/types'
 
 const mockGetDaemonSession = vi.fn()
@@ -220,6 +221,80 @@ describe('DaemonClient', () => {
         expect(err).toBeInstanceOf(DaemonApiError)
         expect((err as DaemonApiError).code).toBe(DaemonErrorCode.NOT_FOUND)
       }
+    })
+  })
+
+  // ── callSdk<T> ──────────────────────────────────────────────
+
+  describe('callSdk<T>', () => {
+    /** Minimal Response stand-in — normalizeSdkError only reads status + url. */
+    function fakeResponse(status: number, url: string): Response {
+      return { status, url } as unknown as Response
+    }
+
+    it('unwraps { data } on the happy path', async () => {
+      daemonClient.initialize(TEST_CONFIG)
+      await daemonClient.refreshSession()
+
+      const result = await daemonClient.callSdk(() => Promise.resolve({ data: { theme: 'dark' } }))
+      expect(result).toEqual({ theme: 'dark' })
+    })
+
+    it('normalizes a non-401 SdkRequestError to DaemonApiError (status→code, body→details)', async () => {
+      daemonClient.initialize(TEST_CONFIG)
+      await daemonClient.refreshSession()
+
+      // 410 Gone — the restore PAYLOAD_UNAVAILABLE path. The normalized server
+      // body carries the lost-payload context under `.details`.
+      const body = {
+        code: 'PAYLOAD_UNAVAILABLE',
+        message: 'content lost',
+        details: { entryId: 'e1' },
+      }
+      const promise = daemonClient.callSdk(() =>
+        Promise.reject(
+          new SdkRequestError(
+            body,
+            fakeResponse(410, 'http://127.0.0.1:9999/clipboard/restore/e1?plain=true')
+          )
+        )
+      )
+
+      await expect(promise).rejects.toBeInstanceOf(DaemonApiError)
+      await expect(promise).rejects.toMatchObject({
+        code: DaemonErrorCode.PAYLOAD_UNAVAILABLE,
+        // `.details` is the full normalized body → `.details.message` /
+        // `.details.details` stay reachable for downstream classifiers.
+        details: body,
+      })
+      // setupV2 classifiers regex the status out of the message prefix.
+      await expect(promise).rejects.toMatchObject({
+        message: expect.stringMatching(/^410 on \/clipboard\/restore\/e1/),
+      })
+    })
+
+    it('refreshes once and retries on 401, then succeeds', async () => {
+      daemonClient.initialize(TEST_CONFIG)
+      await daemonClient.refreshSession()
+      mockGetDaemonSession.mockClear()
+
+      let attempts = 0
+      const result = await daemonClient.callSdk(() => {
+        attempts += 1
+        if (attempts === 1) {
+          return Promise.reject(
+            new SdkRequestError(
+              { code: 'UNAUTHORIZED' },
+              fakeResponse(401, 'http://127.0.0.1:9999/settings')
+            )
+          )
+        }
+        return Promise.resolve({ data: { ok: true } })
+      })
+
+      expect(result).toEqual({ ok: true })
+      expect(attempts).toBe(2)
+      expect(mockGetDaemonSession).toHaveBeenCalledTimes(1)
     })
   })
 

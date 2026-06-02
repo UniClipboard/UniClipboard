@@ -6,8 +6,19 @@
  * # Endpoints / 端点
  * - `GET /storage/stats` → storage usage statistics
  * - `POST /storage/clear-cache` → clear the blob cache (requires `confirmed: true`)
+ *
+ * # Transport / 传输 (ADR-008 P7)
+ * `getStorageStats` / `clearCache` route through the @hey-api generated SDK
+ * (`getStorageStatsSdk` / `clearStorageCacheSdk`) via `daemonClient.callSdk`,
+ * which drives the daemon session lifecycle. The public wrapper signatures and
+ * the hand-written `StorageStats` domain type below are preserved verbatim for
+ * downstream consumers.
  */
 
+import {
+  clearStorageCache as clearStorageCacheSdk,
+  getStorageStats as getStorageStatsSdk,
+} from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
 
 // ── Response types ─────────────────────────────────────────────
@@ -25,11 +36,6 @@ export interface StorageStats {
   logsBytes: number
 }
 
-interface StorageStatsEnvelope {
-  data: StorageStats
-  ts: number
-}
-
 // ── Public API ─────────────────────────────────────────────────
 
 /**
@@ -41,8 +47,12 @@ interface StorageStatsEnvelope {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function getStorageStats(): Promise<StorageStats> {
-  const res = await daemonClient.request<StorageStatsEnvelope>('/storage/stats')
-  return res.data
+  // Route through the generated SDK; `callSdk` unwraps the SDK's `{ data }` to the
+  // `StorageStatsEnvelope`, then we unwrap `.data` to the payload. The generated
+  // `StorageStatsDto` is structurally equivalent to the hand-written `StorageStats`,
+  // bridged here to keep the public return type stable for downstream consumers.
+  const envelope = await daemonClient.callSdk(() => getStorageStatsSdk({ throwOnError: true }))
+  return envelope.data as unknown as StorageStats
 }
 
 /**
@@ -57,8 +67,9 @@ export async function getStorageStats(): Promise<StorageStats> {
  * @throws {DaemonApiError} On HTTP errors — specifically 400 if `confirmed` is absent/false.
  */
 export async function clearCache(confirmed: boolean): Promise<void> {
-  await daemonClient.request<void>('/storage/clear-cache', {
-    method: 'POST',
-    body: { confirmed },
-  })
+  // Route through the generated SDK. The endpoint returns an envelope with a
+  // `freedBytes` payload, but this wrapper is void, so we do not read `.data`.
+  await daemonClient.callSdk(() =>
+    clearStorageCacheSdk({ body: { confirmed }, throwOnError: true })
+  )
 }

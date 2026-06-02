@@ -5,11 +5,17 @@
  *
  * # Endpoints / 端点
  * - `GET /encryption/state` → current encryption initialization & session state
- * - `POST /encryption/unlock` → unlock encryption session with passphrase
+ * - `POST /encryption/unlock` → auto-unlock encryption session via keyring (no passphrase)
  * - `POST /encryption/lock` → lock encryption session (clear master key)
  * - `GET /encryption/keychain-access` → verify Keychain "Always Allow" permission
  */
 
+import {
+  getEncryptionState as getEncryptionStateSdk,
+  lockEncryptionSession as lockEncryptionSessionSdk,
+  unlockEncryptionSession as unlockEncryptionSessionSdk,
+  verifyKeychainAccess as verifyKeychainAccessSdk,
+} from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
 
 // ── Response types ─────────────────────────────────────────────
@@ -28,24 +34,6 @@ export interface EncryptionStateResponse {
   sessionReady: boolean
 }
 
-/** Wrapper for GET /encryption/state JSON envelope. */
-interface EncryptionStateEnvelope {
-  data: EncryptionStateResponse
-  ts: number
-}
-
-/** Wrapper for POST /encryption/unlock and /encryption/lock JSON envelope. */
-interface EncryptionActionEnvelope {
-  data: { success: boolean }
-  ts: number
-}
-
-/** Wrapper for GET /encryption/keychain-access JSON envelope. */
-interface KeychainAccessEnvelope {
-  data: { granted: boolean }
-  ts: number
-}
-
 // ── Public API ─────────────────────────────────────────────────
 
 /**
@@ -57,8 +45,12 @@ interface KeychainAccessEnvelope {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function getEncryptionState(): Promise<EncryptionStateResponse> {
-  const res = await daemonClient.request<EncryptionStateEnvelope>('/encryption/state')
-  return res.data
+  // Route through the generated SDK; `callSdk` unwraps the SDK's outer `{ data }`
+  // to the `EncryptionStateEnvelope`, and we unwrap `.data` to the payload. The
+  // generated `EncryptionStateResponse` DTO is structurally equivalent to the
+  // hand-written interface, bridged here to keep the public return type stable.
+  const envelope = await daemonClient.callSdk(() => getEncryptionStateSdk({ throwOnError: true }))
+  return envelope.data as unknown as EncryptionStateResponse
 }
 
 /**
@@ -71,9 +63,9 @@ export async function getEncryptionState(): Promise<EncryptionStateResponse> {
  * @throws {DaemonApiError} On unlock errors (500) or if encryption not initialized.
  */
 export async function unlockEncryption(): Promise<void> {
-  await daemonClient.request<EncryptionActionEnvelope>('/encryption/unlock', {
-    method: 'POST',
-  })
+  // Action endpoint: the daemon auto-unlocks via keyring (no passphrase body).
+  // The `{ success }` payload is discarded; we only need to surface failures.
+  await daemonClient.callSdk(() => unlockEncryptionSessionSdk({ throwOnError: true }))
 }
 
 /**
@@ -84,9 +76,8 @@ export async function unlockEncryption(): Promise<void> {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function lockEncryption(): Promise<void> {
-  await daemonClient.request<EncryptionActionEnvelope>('/encryption/lock', {
-    method: 'POST',
-  })
+  // Action endpoint: the `{ success }` payload is discarded; only failures matter.
+  await daemonClient.callSdk(() => lockEncryptionSessionSdk({ throwOnError: true }))
 }
 
 /**
@@ -100,6 +91,8 @@ export async function lockEncryption(): Promise<void> {
  * @throws {DaemonApiError} On HTTP or permission check errors.
  */
 export async function verifyKeychainAccess(): Promise<boolean> {
-  const res = await daemonClient.request<KeychainAccessEnvelope>('/encryption/keychain-access')
-  return res.data.granted
+  // Route through the generated SDK; `callSdk` unwraps to the
+  // `KeychainAccessEnvelope`, then `.data.granted` is the boolean payload.
+  const envelope = await daemonClient.callSdk(() => verifyKeychainAccessSdk({ throwOnError: true }))
+  return envelope.data.granted
 }

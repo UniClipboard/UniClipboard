@@ -12,6 +12,7 @@
 import { daemonClient } from '@/api/daemon/client'
 import { DaemonApiError } from '@/api/daemon/errors'
 import type { DaemonConfig, SessionToken } from '@/api/daemon/types'
+import { getEncryptionState, getHealth } from '@/api/generated/sdk.gen'
 import { waitForDaemonConnectionInfo } from '@/lib/daemon-connection-info'
 import { createLogger } from '@/lib/logger'
 
@@ -44,16 +45,6 @@ export interface AuthStateResult {
   encryptionInitialized: boolean
   /** Whether the encryption session is ready (unlocked). */
   encryptionSessionReady: boolean
-}
-
-/**
- * Response shape from GET /encryption/state.
- *
- * GET /encryption/state 的响应数据格式。
- */
-interface EncryptionStateData {
-  initialized: boolean
-  sessionReady: boolean
 }
 
 /**
@@ -97,26 +88,26 @@ export async function verifyAuthState(): Promise<AuthStateResult> {
   }
 
   // Step 1: Health check (L1, no auth required).
-  // /health is now enveloped: { data: { status }, ts } (ADR-008 P2).
+  // /health is enveloped: { data: { status, ... }, ts } (ADR-008 P2).
+  // Call the generated `getHealth` SDK fn DIRECTLY (not via `callSdk`): the
+  // health probe runs during bootstrap before a session exists, and `callSdk`
+  // would pre-emptively refresh the session, gating this unauthenticated check.
+  // `res.data` is the ApiEnvelope; `res.data.data` is the HealthResponse payload.
   try {
-    const health = await daemonClient.request<{
-      data: { status: string }
-      ts: number
-    }>('/health')
-    result.daemonReady = health.data.status === 'ok'
+    const res = await getHealth({ throwOnError: true })
+    result.daemonReady = res.data.data.status === 'ok'
   } catch {
     // Daemon not reachable — return early with all-false state.
     return result
   }
 
-  // Step 2: Encryption state (L2, requires session token).
+  // Step 2: Encryption state (L2, requires session token). Route through
+  // `callSdk` so it drives the session lifecycle; `callSdk` unwraps the SDK's
+  // outer `{ data }` to the EncryptionStateEnvelope, whose `.data` is the payload.
   try {
-    const response = await daemonClient.request<{
-      data: EncryptionStateData
-      ts: number
-    }>('/encryption/state')
-    result.encryptionInitialized = response.data.initialized
-    result.encryptionSessionReady = response.data.sessionReady
+    const envelope = await daemonClient.callSdk(() => getEncryptionState({ throwOnError: true }))
+    result.encryptionInitialized = envelope.data.initialized
+    result.encryptionSessionReady = envelope.data.sessionReady
   } catch (err) {
     // If encryption state check fails (e.g. 401), daemon is reachable but
     // encryption info is unavailable. daemonReady stays true.
@@ -141,12 +132,9 @@ export async function waitForEncryptionReady(timeoutMs = 30_000): Promise<boolea
 
   while (Date.now() < deadline) {
     try {
-      const response = await daemonClient.request<{
-        data: EncryptionStateData
-        ts: number
-      }>('/encryption/state')
+      const envelope = await daemonClient.callSdk(() => getEncryptionState({ throwOnError: true }))
 
-      if (response.data.sessionReady) {
+      if (envelope.data.sessionReady) {
         return true
       }
     } catch {

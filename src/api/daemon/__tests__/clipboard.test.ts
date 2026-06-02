@@ -8,12 +8,28 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ClipboardEntryDto, ClipboardEntriesResponse, ClipboardStats } from '../clipboard'
 
-// Mock the daemonClient
+// ADR-008 P7: clipboard wrappers route through the generated SDK + `callSdk`.
+// - `../client` exposes a `callSdk` mock that replicates the happy path:
+//   invoke the SDK thunk and unwrap its outer `{ data }` (= ApiEnvelope).
+// - The generated SDK fns are mocked so each test controls the returned
+//   `{ data: <envelope> }` and can assert path/query/body/throwOnError.
 vi.mock('../client', () => ({
   daemonClient: {
     request: vi.fn(),
+    callSdk: vi.fn((call: () => Promise<{ data: unknown }>) => call().then(r => r.data)),
     initialized: true,
   },
+}))
+
+vi.mock('../../generated/sdk.gen', () => ({
+  listClipboardEntries: vi.fn(),
+  getClipboardEntry: vi.fn(),
+  deleteClipboardEntry: vi.fn(),
+  restoreClipboardEntry: vi.fn(),
+  toggleClipboardEntryFavorite: vi.fn(),
+  clearClipboardHistory: vi.fn(),
+  getClipboardStats: vi.fn(),
+  getClipboardEntryResource: vi.fn(),
 }))
 
 // ── Type tests ───────────────────────────────────────────────────
@@ -158,72 +174,73 @@ describe('ClipboardStats type', () => {
 // ── API function contract tests ──────────────────────────────────
 
 describe('toggleFavorite HTTP contract', () => {
-  it('uses POST method as defined by daemon route', async () => {
-    const { daemonClient } = await import('../client')
+  it('calls toggleClipboardEntryFavorite with the entry id path param', async () => {
+    const { toggleClipboardEntryFavorite } = await import('../../generated/sdk.gen')
     const { toggleFavorite } = await import('../clipboard')
 
-    // Mock successful response
-    vi.mocked(daemonClient.request).mockResolvedValue(undefined)
+    vi.mocked(toggleClipboardEntryFavorite).mockResolvedValue({
+      data: { data: { success: true }, ts: 0 },
+    } as never)
 
     await toggleFavorite('entry-123', true)
 
-    expect(daemonClient.request).toHaveBeenCalledWith(
-      '/clipboard/entries/entry-123/favorite',
-      expect.objectContaining({ method: 'POST' })
+    expect(toggleClipboardEntryFavorite).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { id: 'entry-123' }, throwOnError: true })
     )
   })
 
   it('sends isFavorited in request body', async () => {
-    const { daemonClient } = await import('../client')
+    const { toggleClipboardEntryFavorite } = await import('../../generated/sdk.gen')
     const { toggleFavorite } = await import('../clipboard')
 
-    vi.mocked(daemonClient.request).mockResolvedValue(undefined)
+    vi.mocked(toggleClipboardEntryFavorite).mockResolvedValue({
+      data: { data: { success: true }, ts: 0 },
+    } as never)
 
     await toggleFavorite('entry-123', true)
 
-    expect(daemonClient.request).toHaveBeenCalledWith(
-      '/clipboard/entries/entry-123/favorite',
-      expect.objectContaining({
-        body: { isFavorited: true },
-      })
+    expect(toggleClipboardEntryFavorite).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { isFavorited: true } })
     )
   })
 })
 
 describe('clearClipboardHistory HTTP contract', () => {
-  it('uses POST method to /clipboard/entries/clear', async () => {
-    const { daemonClient } = await import('../client')
+  it('calls clearClipboardHistory SDK fn with throwOnError', async () => {
+    const { clearClipboardHistory: clearClipboardHistorySdk } =
+      await import('../../generated/sdk.gen')
     const { clearClipboardHistory } = await import('../clipboard')
 
-    vi.mocked(daemonClient.request).mockResolvedValue({
-      data: { deletedCount: 5, failedEntries: [] },
-      ts: Date.now(),
-    })
+    vi.mocked(clearClipboardHistorySdk).mockResolvedValue({
+      data: { data: { deletedCount: 5, failedEntries: [] }, ts: 0 },
+    } as never)
 
     const result = await clearClipboardHistory()
 
-    expect(daemonClient.request).toHaveBeenCalledWith(
-      '/clipboard/entries/clear',
-      expect.objectContaining({ method: 'POST' })
+    expect(clearClipboardHistorySdk).toHaveBeenCalledWith(
+      expect.objectContaining({ throwOnError: true })
     )
     expect(result.deletedCount).toBe(5)
     expect(result.failedEntries).toEqual([])
   })
 
   it('returns result with failed entries when some deletions fail', async () => {
-    const { daemonClient } = await import('../client')
+    const { clearClipboardHistory: clearClipboardHistorySdk } =
+      await import('../../generated/sdk.gen')
     const { clearClipboardHistory } = await import('../clipboard')
 
-    vi.mocked(daemonClient.request).mockResolvedValue({
+    vi.mocked(clearClipboardHistorySdk).mockResolvedValue({
       data: {
-        deletedCount: 3,
-        failedEntries: [
-          ['entry-4', 'database error'],
-          ['entry-5', 'not found'],
-        ],
+        data: {
+          deletedCount: 3,
+          failedEntries: [
+            ['entry-4', 'database error'],
+            ['entry-5', 'not found'],
+          ],
+        },
+        ts: 0,
       },
-      ts: Date.now(),
-    })
+    } as never)
 
     const result = await clearClipboardHistory()
 
@@ -233,35 +250,39 @@ describe('clearClipboardHistory HTTP contract', () => {
 })
 
 describe('getEntryDetail HTTP contract', () => {
-  it('uses GET method to /clipboard/entries/:id', async () => {
-    const { daemonClient } = await import('../client')
+  it('calls getClipboardEntry SDK fn with the entry id path param', async () => {
+    const { getClipboardEntry } = await import('../../generated/sdk.gen')
     const { getEntryDetail } = await import('../clipboard')
 
-    vi.mocked(daemonClient.request).mockResolvedValue({
+    vi.mocked(getClipboardEntry).mockResolvedValue({
       data: {
-        id: 'entry-123',
-        content: 'Hello, World!',
-        sizeBytes: 13,
-        createdAtMs: 1710000000000,
-        activeTimeMs: 1710000000000,
-        mimeType: 'text/plain',
+        data: {
+          id: 'entry-123',
+          content: 'Hello, World!',
+          sizeBytes: 13,
+          createdAtMs: 1710000000000,
+          activeTimeMs: 1710000000000,
+          mimeType: 'text/plain',
+        },
+        ts: 0,
       },
-      ts: Date.now(),
-    })
+    } as never)
 
     const result = await getEntryDetail('entry-123')
 
-    expect(daemonClient.request).toHaveBeenCalledWith('/clipboard/entries/entry-123')
+    expect(getClipboardEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { id: 'entry-123' }, throwOnError: true })
+    )
     expect(result?.content).toBe('Hello, World!')
   })
 
   it('returns null on not-found error', async () => {
-    const { daemonClient } = await import('../client')
+    const { getClipboardEntry } = await import('../../generated/sdk.gen')
     const { getEntryDetail } = await import('../clipboard')
 
     const notFoundError = new Error('not found')
     ;(notFoundError as unknown as { code: string }).code = 'NOT_FOUND'
-    vi.mocked(daemonClient.request).mockRejectedValue(notFoundError)
+    vi.mocked(getClipboardEntry).mockRejectedValue(notFoundError)
 
     const result = await getEntryDetail('nonexistent-id')
 
@@ -269,45 +290,51 @@ describe('getEntryDetail HTTP contract', () => {
   })
 
   it('re-throws non-not-found errors', async () => {
-    const { daemonClient } = await import('../client')
+    const { getClipboardEntry } = await import('../../generated/sdk.gen')
     const { getEntryDetail } = await import('../clipboard')
 
     const serverError = new Error('server error')
-    vi.mocked(daemonClient.request).mockRejectedValue(serverError)
+    vi.mocked(getClipboardEntry).mockRejectedValue(serverError)
 
     await expect(getEntryDetail('entry-123')).rejects.toThrow('server error')
   })
 })
 
 describe('getClipboardEntryResource HTTP contract', () => {
-  it('uses GET to /clipboard/entries/:id/resource', async () => {
-    const { daemonClient } = await import('../client')
+  it('calls getClipboardEntryResource SDK fn with the entry id path param', async () => {
+    const { getClipboardEntryResource: getClipboardEntryResourceSdk } =
+      await import('../../generated/sdk.gen')
     const { getClipboardEntryResource } = await import('../clipboard')
 
-    vi.mocked(daemonClient.request).mockResolvedValue({
+    vi.mocked(getClipboardEntryResourceSdk).mockResolvedValue({
       data: {
-        blobId: 'blob-abc',
-        mimeType: 'text/plain',
-        sizeBytes: 1024,
-        url: null,
-        inlineData: 'Hello World',
+        data: {
+          blobId: 'blob-abc',
+          mimeType: 'text/plain',
+          sizeBytes: 1024,
+          url: null,
+          inlineData: 'Hello World',
+        },
+        ts: 0,
       },
-      ts: Date.now(),
-    })
+    } as never)
 
     const result = await getClipboardEntryResource('entry-123')
 
-    expect(daemonClient.request).toHaveBeenCalledWith('/clipboard/entries/entry-123/resource')
+    expect(getClipboardEntryResourceSdk).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { id: 'entry-123' }, throwOnError: true })
+    )
     expect(result?.blobId).toBe('blob-abc')
   })
 
   it('returns null on not-found', async () => {
-    const { daemonClient } = await import('../client')
+    const { getClipboardEntryResource: getClipboardEntryResourceSdk } =
+      await import('../../generated/sdk.gen')
     const { getClipboardEntryResource } = await import('../clipboard')
 
     const notFoundError = new Error('not found')
     ;(notFoundError as unknown as { code: string }).code = 'NOT_FOUND'
-    vi.mocked(daemonClient.request).mockRejectedValue(notFoundError)
+    vi.mocked(getClipboardEntryResourceSdk).mockRejectedValue(notFoundError)
 
     const result = await getClipboardEntryResource('nonexistent-id')
 
@@ -316,17 +343,19 @@ describe('getClipboardEntryResource HTTP contract', () => {
 })
 
 describe('deleteClipboardEntry HTTP contract', () => {
-  it('uses DELETE method', async () => {
-    const { daemonClient } = await import('../client')
+  it('calls deleteClipboardEntry SDK fn with the entry id path param', async () => {
+    const { deleteClipboardEntry: deleteClipboardEntrySdk } =
+      await import('../../generated/sdk.gen')
     const { deleteClipboardEntry } = await import('../clipboard')
 
-    vi.mocked(daemonClient.request).mockResolvedValue(undefined)
+    // 204 endpoint — the SDK resolves to `{ data: undefined }`; the wrapper
+    // ignores the payload entirely.
+    vi.mocked(deleteClipboardEntrySdk).mockResolvedValue({ data: undefined } as never)
 
     await deleteClipboardEntry('entry-123')
 
-    expect(daemonClient.request).toHaveBeenCalledWith(
-      '/clipboard/entries/entry-123',
-      expect.objectContaining({ method: 'DELETE' })
+    expect(deleteClipboardEntrySdk).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { id: 'entry-123' }, throwOnError: true })
     )
   })
 })

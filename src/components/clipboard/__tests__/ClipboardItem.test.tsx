@@ -1,21 +1,32 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { daemonClient } from '@/api/daemon/client'
+import { getClipboardEntryResource } from '@/api/generated/sdk.gen'
 import ClipboardItem from '@/components/clipboard/ClipboardItem'
 
 vi.mock('@/api/daemon/client', () => ({
   daemonClient: {
-    request: vi.fn(),
+    // Replay the happy path: callSdk unwraps the SDK's outer { data } to the envelope.
+    callSdk: vi.fn((call: () => Promise<{ data: unknown }>) => call().then(r => r.data)),
     blobUrl: vi.fn((path: string) => `http://127.0.0.1:12345${path}?auth=Session+test`),
   },
 }))
 
-const requestMock = vi.mocked(daemonClient.request)
+vi.mock('@/api/generated/sdk.gen', () => ({
+  getClipboardEntryResource: vi.fn(),
+}))
+
+const resourceMock = vi.mocked(getClipboardEntryResource)
 const blobUrlMock = vi.mocked(daemonClient.blobUrl)
+
+// Resolve the SDK fn to { data: envelope } where envelope = { data: payload, ts }.
+function mockResource(payload: unknown) {
+  resourceMock.mockResolvedValue({ data: { data: payload, ts: Date.now() } } as never)
+}
 
 describe('ClipboardItem', () => {
   beforeEach(() => {
-    requestMock.mockReset()
+    resourceMock.mockReset()
     blobUrlMock.mockImplementation(
       (path: string) => `http://127.0.0.1:12345${path}?auth=Session+test`
     )
@@ -31,15 +42,12 @@ describe('ClipboardItem', () => {
     const fullText = 'full content'
     const url = '/clipboard/blobs/blob-1'
 
-    requestMock.mockResolvedValue({
-      data: {
-        blobId: 'blob-1',
-        mimeType: 'text/plain',
-        sizeBytes: fullText.length,
-        url,
-        inlineData: null,
-      },
-      ts: Date.now(),
+    mockResource({
+      blobId: 'blob-1',
+      mimeType: 'text/plain',
+      sizeBytes: fullText.length,
+      url,
+      inlineData: null,
     })
 
     const fetchMock = vi.mocked(globalThis.fetch)
@@ -61,7 +69,7 @@ describe('ClipboardItem', () => {
     await userEvent.click(screen.getByText(/Expand|展开/))
 
     await waitFor(() => {
-      expect(requestMock).toHaveBeenCalledWith('/clipboard/entries/entry-1/resource')
+      expect(resourceMock).toHaveBeenCalledWith({ path: { id: 'entry-1' }, throwOnError: true })
       expect(fetchMock).toHaveBeenCalledWith(
         'http://127.0.0.1:12345/clipboard/blobs/blob-1?auth=Session+test'
       )
@@ -71,15 +79,12 @@ describe('ClipboardItem', () => {
   })
 
   it('loads blob-backed images through authenticated daemon URLs on demand', async () => {
-    requestMock.mockResolvedValue({
-      data: {
-        blobId: 'image-1',
-        mimeType: 'image/png',
-        sizeBytes: 123,
-        url: '/clipboard/blobs/image-1',
-        inlineData: null,
-      },
-      ts: Date.now(),
+    mockResource({
+      blobId: 'image-1',
+      mimeType: 'image/png',
+      sizeBytes: 123,
+      url: '/clipboard/blobs/image-1',
+      inlineData: null,
     })
 
     render(
@@ -92,12 +97,12 @@ describe('ClipboardItem', () => {
       />
     )
 
-    expect(requestMock).not.toHaveBeenCalled()
+    expect(resourceMock).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByText(/Expand|展开/))
 
     await waitFor(() => {
-      expect(requestMock).toHaveBeenCalledWith('/clipboard/entries/entry-2/resource')
+      expect(resourceMock).toHaveBeenCalledWith({ path: { id: 'entry-2' }, throwOnError: true })
     })
 
     const image = await screen.findByAltText(/Clipboard Image|剪贴板图片/)
@@ -108,15 +113,12 @@ describe('ClipboardItem', () => {
   })
 
   it('keeps inline data image URLs as data URLs instead of prefixing daemon base URL', async () => {
-    requestMock.mockResolvedValue({
-      data: {
-        blobId: null,
-        mimeType: 'image/png',
-        sizeBytes: 123,
-        url: null,
-        inlineData: 'iVBORw0KGgo=',
-      },
-      ts: Date.now(),
+    mockResource({
+      blobId: null,
+      mimeType: 'image/png',
+      sizeBytes: 123,
+      url: null,
+      inlineData: 'iVBORw0KGgo=',
     })
 
     render(
@@ -129,7 +131,7 @@ describe('ClipboardItem', () => {
       />
     )
 
-    expect(requestMock).not.toHaveBeenCalled()
+    expect(resourceMock).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByText(/Expand|展开/))
 

@@ -169,11 +169,12 @@ class DaemonClient {
    * to `{ data }` and reject on error.
    *
    * 让生成的 SDK 调用走 daemon 的 session 生命周期：过期预刷新 + 401 单次刷新重试。
-   * SDK 函数需以 `{ throwOnError: true }` 调用。
+   * SDK 函数需以 `{ throwOnError: true }` 调用。错误统一规范化为 {@link DaemonApiError}
+   * （与 {@link request} 同形态），下游 wrapper/consumer 的错误分类逻辑无需改动。
    *
    * @param call Thunk invoking a generated SDK fn; resolves to `{ data }`.
    * @returns The unwrapped `data`.
-   * @throws {DaemonApiError} If the client is not initialized.
+   * @throws {DaemonApiError} If the client is not initialized, or on any HTTP error.
    */
   async callSdk<T>(call: () => Promise<{ data: T }>): Promise<T> {
     if (!this.config) {
@@ -196,11 +197,56 @@ class DaemonClient {
       if (err instanceof SdkRequestError && err.response?.status === 401) {
         this.session = null
         await this.refreshSession()
-        const { data } = await call()
-        return data
+        try {
+          const { data } = await call()
+          return data
+        } catch (retryErr) {
+          throw this.normalizeSdkError(retryErr)
+        }
       }
-      throw err
+      throw this.normalizeSdkError(err)
     }
+  }
+
+  /**
+   * Normalize a thrown SDK error into the same {@link DaemonApiError} shape that
+   * {@link request} / {@link handleResponse} produce, so SDK-routed wrappers keep
+   * the legacy error contract: `code` from the HTTP status, the full normalized
+   * body (`{ code, message, details? }`) on `.details`, and a `"<status> on
+   * <path>"` message. This is what existing error-classification consumers rely
+   * on — e.g. `ClipboardContent` reads `err.code === PAYLOAD_UNAVAILABLE` (410),
+   * `getEntryDetail` swallows `NOT_FOUND` (404), and the setupV2 classifiers
+   * regex the status out of `.message` and read the server text from
+   * `.details.message`.
+   *
+   * 把生成 SDK 抛出的 {@link SdkRequestError} 归一为 {@link DaemonApiError}，
+   * 与 `request()` 同形态，保持下游错误分类契约不变。非 SDK 错误原样透传。
+   *
+   * @param err The error caught from a generated SDK call.
+   * @returns A {@link DaemonApiError} for SDK HTTP errors; the original error otherwise.
+   */
+  private normalizeSdkError(err: unknown): unknown {
+    if (!(err instanceof SdkRequestError)) {
+      return err
+    }
+    const status = err.response?.status
+    const code = status != null ? mapStatusToErrorCode(status) : DaemonErrorCode.INTERNAL_ERROR
+
+    let endpoint = 'sdk request'
+    const rawUrl = err.response?.url
+    if (rawUrl) {
+      try {
+        endpoint = new URL(rawUrl).pathname
+      } catch {
+        endpoint = rawUrl
+      }
+    }
+    const message = status != null ? `${status} on ${endpoint}` : 'SDK request failed'
+
+    // `err.cause` is the parsed normalized body (`{ code, message, details? }`),
+    // mirroring `handleResponse`'s `details = body`. Carry it through verbatim so
+    // `.details.message` / `.details.details` stay reachable for classifiers.
+    return new DaemonApiError(code, message, err.cause)
   }
 
   /**

@@ -6,6 +6,21 @@
  * stateful `SetupFacade` HTTP surface that lived under `/setup/*`.
  */
 
+import {
+  setupV2Cancel,
+  setupV2GetMigrationProgress,
+  setupV2GetState,
+  setupV2Initialize,
+  setupV2IssueInvitation,
+  setupV2Redeem,
+  setupV2Reset,
+  setupV2SwitchSpace,
+} from '@/api/generated/sdk.gen'
+import type {
+  InitializeSpaceRequest as InitializeSpaceRequestDto,
+  RedeemRequest as RedeemRequestDto,
+  SwitchSpaceRequest as SwitchSpaceRequestDto,
+} from '@/api/generated/types.gen'
 import { daemonClient } from './client'
 import { DaemonApiError } from './errors'
 
@@ -80,49 +95,16 @@ export interface MigrationProgressResponse {
   backupRecordCount: number
 }
 
-// ── API response wrappers (matching Rust { data, ts } envelope) ─────────────
+// ── Transport (ADR-008 P7) ──────────────────────────────────────────────────
 //
-// Each /v2/setup/* success body is now wrapped in `ApiEnvelope<T> { data, ts }`
-// (ADR-008 P2 normalized these endpoints from bare bodies). The payload `T`
-// keeps the same field shape as before — callers read `.data`. Error bodies
-// are NOT enveloped (still `ApiErrorResponse { code, message, details? }`), so
-// the `classify*Error` matchers below remain unchanged.
-
-/** POST /v2/setup/initialize JSON envelope. */
-interface InitializeSpaceEnvelope {
-  data: InitializeSpaceResponse
-  ts: number
-}
-
-/** POST /v2/setup/issue-invitation JSON envelope. */
-interface IssueInvitationEnvelope {
-  data: IssueInvitationResponse
-  ts: number
-}
-
-/** POST /v2/setup/redeem JSON envelope. */
-interface RedeemEnvelope {
-  data: RedeemResponse
-  ts: number
-}
-
-/** GET /v2/setup/state JSON envelope. */
-interface SetupStateEnvelope {
-  data: SetupStateResponse
-  ts: number
-}
-
-/** POST /v2/setup/switch-space JSON envelope. */
-interface SwitchSpaceEnvelope {
-  data: SwitchSpaceResponse
-  ts: number
-}
-
-/** GET /v2/setup/migration-progress JSON envelope. */
-interface MigrationProgressEnvelope {
-  data: MigrationProgressResponse
-  ts: number
-}
+// Each /v2/setup/* call routes through the @hey-api generated SDK via
+// `daemonClient.callSdk`, which drives the daemon session lifecycle and unwraps
+// the SDK's outer `{ data }` to the canonical `ApiEnvelope<T> { data, ts }`;
+// the wrappers below read `envelope.data` for the payload. Error bodies are NOT
+// enveloped (still `ApiErrorResponse { code, message, details? }`); `callSdk`
+// normalizes thrown SDK errors back into the `DaemonApiError` shape — preserving
+// the `"<status> on <path>"` message and the body on `.details` — so the
+// `classify*Error` matchers below remain unchanged.
 
 // ── Typed errors (HTTP status → discriminated union) ───────────────────────
 //
@@ -374,27 +356,19 @@ function classifyMigrationProgressError(
 }
 
 // ── HTTP calls ──────────────────────────────────────────────────────────────
-
-const ROUTE = {
-  initialize: '/v2/setup/initialize',
-  issueInvitation: '/v2/setup/issue-invitation',
-  redeem: '/v2/setup/redeem',
-  cancel: '/v2/setup/cancel',
-  reset: '/v2/setup/reset',
-  state: '/v2/setup/state',
-  switchSpace: '/v2/setup/switch-space',
-  migrationProgress: '/v2/setup/migration-progress',
-} as const
+//
+// Endpoint paths (`/v2/setup/*`) now live inside the generated SDK fns
+// (`src/api/generated/sdk.gen.ts`); the former local `ROUTE` map was removed as
+// dead code once every call routed through `daemonClient.callSdk`.
 
 export async function initializeSpace(
   body: InitializeSpaceRequest
 ): Promise<InitializeSpaceResponse> {
   try {
-    const res = await daemonClient.request<InitializeSpaceEnvelope>(ROUTE.initialize, {
-      method: 'POST',
-      body,
-    })
-    return res.data
+    const envelope = await daemonClient.callSdk(() =>
+      setupV2Initialize({ body: body as unknown as InitializeSpaceRequestDto, throwOnError: true })
+    )
+    return envelope.data as unknown as InitializeSpaceResponse
   } catch (err) {
     throw classifyInitializeError(err)
   }
@@ -402,10 +376,10 @@ export async function initializeSpace(
 
 export async function issuePairingInvitation(): Promise<IssueInvitationResponse> {
   try {
-    const res = await daemonClient.request<IssueInvitationEnvelope>(ROUTE.issueInvitation, {
-      method: 'POST',
-    })
-    return res.data
+    const envelope = await daemonClient.callSdk(() =>
+      setupV2IssueInvitation({ throwOnError: true })
+    )
+    return envelope.data as unknown as IssueInvitationResponse
   } catch (err) {
     throw classifyIssueError(err)
   }
@@ -426,11 +400,13 @@ function normalizeInvitationCode(raw: string): string {
 
 export async function redeemInvitation(body: RedeemRequest): Promise<RedeemResponse> {
   try {
-    const res = await daemonClient.request<RedeemEnvelope>(ROUTE.redeem, {
-      method: 'POST',
-      body: { ...body, code: normalizeInvitationCode(body.code) },
-    })
-    return res.data
+    const envelope = await daemonClient.callSdk(() =>
+      setupV2Redeem({
+        body: { ...body, code: normalizeInvitationCode(body.code) } as unknown as RedeemRequestDto,
+        throwOnError: true,
+      })
+    )
+    return envelope.data as unknown as RedeemResponse
   } catch (err) {
     throw classifyRedeemError(err)
   }
@@ -438,7 +414,7 @@ export async function redeemInvitation(body: RedeemRequest): Promise<RedeemRespo
 
 export async function cancelInvitation(): Promise<void> {
   try {
-    await daemonClient.request<void>(ROUTE.cancel, { method: 'POST' })
+    await daemonClient.callSdk(() => setupV2Cancel({ throwOnError: true }))
   } catch (err) {
     throw classifyCancelError(err)
   }
@@ -446,7 +422,7 @@ export async function cancelInvitation(): Promise<void> {
 
 export async function resetSetup(): Promise<void> {
   try {
-    await daemonClient.request<void>(ROUTE.reset, { method: 'POST' })
+    await daemonClient.callSdk(() => setupV2Reset({ throwOnError: true }))
   } catch (err) {
     throw classifyResetError(err)
   }
@@ -454,8 +430,8 @@ export async function resetSetup(): Promise<void> {
 
 export async function getSetupState(): Promise<SetupStateResponse> {
   try {
-    const res = await daemonClient.request<SetupStateEnvelope>(ROUTE.state)
-    return res.data
+    const envelope = await daemonClient.callSdk(() => setupV2GetState({ throwOnError: true }))
+    return envelope.data as unknown as SetupStateResponse
   } catch (err) {
     throw classifyQueryError(err)
   }
@@ -477,11 +453,16 @@ export async function getSetupState(): Promise<SetupStateResponse> {
  */
 export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpaceResponse> {
   try {
-    const res = await daemonClient.request<SwitchSpaceEnvelope>(ROUTE.switchSpace, {
-      method: 'POST',
-      body: { ...body, code: normalizeInvitationCode(body.code) },
-    })
-    return res.data
+    const envelope = await daemonClient.callSdk(() =>
+      setupV2SwitchSpace({
+        body: {
+          ...body,
+          code: normalizeInvitationCode(body.code),
+        } as unknown as SwitchSpaceRequestDto,
+        throwOnError: true,
+      })
+    )
+    return envelope.data as unknown as SwitchSpaceResponse
   } catch (err) {
     throw classifySwitchSpaceError(err)
   }
@@ -495,8 +476,10 @@ export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpace
  */
 export async function queryMigrationProgress(): Promise<MigrationProgressResponse> {
   try {
-    const res = await daemonClient.request<MigrationProgressEnvelope>(ROUTE.migrationProgress)
-    return res.data
+    const envelope = await daemonClient.callSdk(() =>
+      setupV2GetMigrationProgress({ throwOnError: true })
+    )
+    return envelope.data as unknown as MigrationProgressResponse
   } catch (err) {
     throw classifyMigrationProgressError(err)
   }

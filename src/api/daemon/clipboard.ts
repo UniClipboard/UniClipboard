@@ -21,14 +21,18 @@
  * 此模块专注于与 daemon HTTP API 的交互。
  */
 
+import {
+  listClipboardEntries as listClipboardEntriesSdk,
+  getClipboardEntry as getClipboardEntrySdk,
+  deleteClipboardEntry as deleteClipboardEntrySdk,
+  restoreClipboardEntry as restoreClipboardEntrySdk,
+  toggleClipboardEntryFavorite as toggleClipboardEntryFavoriteSdk,
+  clearClipboardHistory as clearClipboardHistorySdk,
+  getClipboardStats as getClipboardStatsSdk,
+  getClipboardEntryResource as getClipboardEntryResourceSdk,
+} from '@/api/generated/sdk.gen'
+import type { ListClipboardEntriesData } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
-import type { RequestOptions } from './client'
-
-// ── HTTP route constants ────────────────────────────────────────
-
-const CLIPBOARD_ENTRIES = '/clipboard/entries'
-const CLIPBOARD_STATS = '/clipboard/stats'
-const CLIPBOARD_RESTORE = '/clipboard/restore'
 
 // ── Response types matching Rust DTOs ──────────────────────────
 
@@ -81,51 +85,6 @@ export interface ClipboardEntryDto {
 export interface ClipboardEntriesResponse {
   status: 'ready' | 'not_ready'
   entries?: ClipboardEntryDto[]
-}
-
-// ── API response wrappers (matching Rust { data, ts } envelope) ──
-
-/** GET /clipboard/entries API envelope. */
-interface ListEntriesApiResponse {
-  data: ClipboardEntryDto[]
-  ts: number
-}
-
-/** GET /clipboard/entries/:id API envelope. */
-interface GetEntryDetailApiResponse {
-  data: EntryDetail
-  ts: number
-}
-
-/** GET /clipboard/stats API envelope. */
-interface GetStatsApiResponse {
-  data: ClipboardStats
-  ts: number
-}
-
-/** GET /clipboard/entries/:id/resource API envelope. */
-interface GetResourceApiResponse {
-  data: ClipboardEntryResource
-  ts: number
-}
-
-/** POST /clipboard/entries/clear API envelope. */
-interface ClearHistoryApiResponse {
-  data: ClearHistoryResult
-  ts: number
-}
-
-/**
- * POST /clipboard/restore/:id API envelope.
- *
- * Was an ad-hoc `{ success: true }` body; now wrapped in the canonical
- * `{ data, ts }` envelope (ADR-008 §0.1). The body is still discarded by
- * `restoreClipboardEntry` (tolerant), but typing it as the envelope keeps
- * the request<T>() type honest and mirrors the other enveloped endpoints.
- */
-interface RestoreEntryApiResponse {
-  data: RestoreResult
-  ts: number
 }
 
 /**
@@ -191,9 +150,10 @@ export async function getClipboardEntries(
   limit: number = 50,
   offset: number = 0
 ): Promise<ClipboardEntriesResponse> {
-  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
-  const res = await daemonClient.request<ListEntriesApiResponse>(`${CLIPBOARD_ENTRIES}?${params}`)
-  return { status: 'ready', entries: res.data }
+  const envelope = await daemonClient.callSdk(() =>
+    listClipboardEntriesSdk({ query: { limit, offset }, throwOnError: true })
+  )
+  return { status: 'ready', entries: envelope.data as unknown as ClipboardEntryDto[] }
 }
 
 /**
@@ -206,12 +166,17 @@ export async function getClipboardEntries(
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function getClipboardEntry(id: string): Promise<ClipboardEntryDto | null> {
-  const params = new URLSearchParams({ id })
-  const response = await daemonClient.request<ListEntriesApiResponse>(
-    `${CLIPBOARD_ENTRIES}?${params}`
+  // This intentionally uses the LIST endpoint with an `?id` filter (NOT the
+  // path-param GET, which returns full text detail). The generated
+  // `ListClipboardEntriesData.query` type only declares `limit`/`offset`, so the
+  // `id` filter is cast at the boundary — the daemon still honors it on the wire.
+  const envelope = await daemonClient.callSdk(() =>
+    listClipboardEntriesSdk({
+      query: { id } as unknown as NonNullable<ListClipboardEntriesData['query']>,
+      throwOnError: true,
+    })
   )
-
-  return response.data?.[0] ?? null
+  return (envelope.data as unknown as ClipboardEntryDto[])?.[0] ?? null
 }
 
 /**
@@ -223,10 +188,7 @@ export async function getClipboardEntry(id: string): Promise<ClipboardEntryDto |
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function deleteClipboardEntry(id: string): Promise<void> {
-  const options: RequestOptions = {
-    method: 'DELETE',
-  }
-  await daemonClient.request<void>(`${CLIPBOARD_ENTRIES}/${id}`, options)
+  await daemonClient.callSdk(() => deleteClipboardEntrySdk({ path: { id }, throwOnError: true }))
 }
 
 /**
@@ -254,16 +216,17 @@ export async function restoreClipboardEntry(
   id: string,
   opts?: { plainOnly?: boolean }
 ): Promise<RestoreResult> {
-  const options: RequestOptions = {
-    method: 'POST',
-  }
-  const path = opts?.plainOnly
-    ? `${CLIPBOARD_RESTORE}/${id}?plain=true`
-    : `${CLIPBOARD_RESTORE}/${id}`
-  // The success body is now the enveloped `{ data: { success }, ts }` shape
-  // (was ad-hoc `{ success: true }`). It is intentionally discarded — restore
-  // is fire-and-forget; only the HTTP error path (esp. 410) carries meaning.
-  await daemonClient.request<RestoreEntryApiResponse>(path, options)
+  // The success body is the enveloped `{ data: { success }, ts }` shape and is
+  // intentionally discarded — restore is fire-and-forget; only the HTTP error
+  // path carries meaning. A 410 (payload demoted to `Lost`) is mapped by
+  // `callSdk` to `DaemonApiError(PAYLOAD_UNAVAILABLE)`, so we just let it throw.
+  await daemonClient.callSdk(() =>
+    restoreClipboardEntrySdk({
+      path: { entry_id: id },
+      query: opts?.plainOnly ? { plain: true } : undefined,
+      throwOnError: true,
+    })
+  )
   return { success: true }
 }
 
@@ -279,11 +242,13 @@ export async function restoreClipboardEntry(
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function toggleFavorite(id: string, favorited: boolean): Promise<void> {
-  const options: RequestOptions = {
-    method: 'POST',
-    body: { isFavorited: favorited },
-  }
-  await daemonClient.request<void>(`${CLIPBOARD_ENTRIES}/${id}/favorite`, options)
+  await daemonClient.callSdk(() =>
+    toggleClipboardEntryFavoriteSdk({
+      path: { id },
+      body: { isFavorited: favorited },
+      throwOnError: true,
+    })
+  )
 }
 
 /**
@@ -295,14 +260,10 @@ export async function toggleFavorite(id: string, favorited: boolean): Promise<vo
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function clearClipboardHistory(): Promise<ClearHistoryResult> {
-  const options: RequestOptions = {
-    method: 'POST',
-  }
-  const res = await daemonClient.request<ClearHistoryApiResponse>(
-    `${CLIPBOARD_ENTRIES}/clear`,
-    options
+  const envelope = await daemonClient.callSdk(() =>
+    clearClipboardHistorySdk({ throwOnError: true })
   )
-  return res.data
+  return envelope.data as unknown as ClearHistoryResult
 }
 
 /**
@@ -318,8 +279,10 @@ export async function clearClipboardHistory(): Promise<ClearHistoryResult> {
  */
 export async function getEntryDetail(id: string): Promise<EntryDetail | null> {
   try {
-    const res = await daemonClient.request<GetEntryDetailApiResponse>(`${CLIPBOARD_ENTRIES}/${id}`)
-    return res.data
+    const envelope = await daemonClient.callSdk(() =>
+      getClipboardEntrySdk({ path: { id }, throwOnError: true })
+    )
+    return envelope.data as unknown as EntryDetail
   } catch (error) {
     if (
       error instanceof Error &&
@@ -341,8 +304,8 @@ export async function getEntryDetail(id: string): Promise<EntryDetail | null> {
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function getClipboardStats(): Promise<ClipboardStats> {
-  const res = await daemonClient.request<GetStatsApiResponse>(CLIPBOARD_STATS)
-  return res.data
+  const envelope = await daemonClient.callSdk(() => getClipboardStatsSdk({ throwOnError: true }))
+  return envelope.data as unknown as ClipboardStats
 }
 
 /**
@@ -361,10 +324,10 @@ export async function getClipboardEntryResource(
   id: string
 ): Promise<ClipboardEntryResource | null> {
   try {
-    const res = await daemonClient.request<GetResourceApiResponse>(
-      `${CLIPBOARD_ENTRIES}/${id}/resource`
+    const envelope = await daemonClient.callSdk(() =>
+      getClipboardEntryResourceSdk({ path: { id }, throwOnError: true })
     )
-    return res.data
+    return envelope.data as unknown as ClipboardEntryResource
   } catch (error) {
     // Return null for not-found rather than throwing
     if (

@@ -14,8 +14,20 @@
  * - `upgraded`: build is newer than cursor (or cursor missing on a setup-completed
  *   profile, in which case `from = null`)
  * - `downgraded`: build is older than cursor — the user rolled back
+ *
+ * # Transport / 传输 (ADR-008 P7)
+ * Both endpoints route through the @hey-api generated SDK
+ * (`getUpgradeStatus` / `acknowledgeUpgrade`) via `daemonClient.callSdk`, which
+ * drives the daemon session lifecycle. `callSdk` unwraps the SDK's outer
+ * `{ data }` to the canonical `ApiEnvelope { data, ts }`; the payload is then
+ * read from `envelope.data`. The public wrapper signatures and the hand-written
+ * `UpgradeStatus` domain type below are preserved verbatim for consumers.
  */
 
+import {
+  acknowledgeUpgrade as acknowledgeUpgradeSdk,
+  getUpgradeStatus as getUpgradeStatusSdk,
+} from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
 
 // ── Wire types ─────────────────────────────────────────────────
@@ -25,20 +37,6 @@ export type UpgradeStatus =
   | { kind: 'no_change'; current: string }
   | { kind: 'upgraded'; from: string | null; to: string }
   | { kind: 'downgraded'; from: string; to: string }
-
-interface UpgradeStatusEnvelope {
-  data: UpgradeStatus
-  ts: number
-}
-
-interface AckUpgradePayload {
-  acknowledged: string
-}
-
-interface AckUpgradeEnvelope {
-  data: AckUpgradePayload
-  ts: number
-}
 
 // ── Public API ─────────────────────────────────────────────────
 
@@ -53,8 +51,13 @@ interface AckUpgradeEnvelope {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function getUpgradeStatus(): Promise<UpgradeStatus> {
-  const res = await daemonClient.request<UpgradeStatusEnvelope>('/upgrade/status')
-  return res.data
+  // Route through the generated SDK; `callSdk` unwraps the SDK's `{ data }` to
+  // the `UpgradeStatusEnvelope`, then we unwrap `.data` to the payload. The
+  // generated `UpgradeStatusDto` is structurally equivalent to the hand-written
+  // `UpgradeStatus` discriminated union, bridged here to keep the public return
+  // type stable for consumers.
+  const envelope = await daemonClient.callSdk(() => getUpgradeStatusSdk({ throwOnError: true }))
+  return envelope.data as unknown as UpgradeStatus
 }
 
 /**
@@ -70,8 +73,9 @@ export async function getUpgradeStatus(): Promise<UpgradeStatus> {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function acknowledgeUpgrade(): Promise<string> {
-  const res = await daemonClient.request<AckUpgradeEnvelope>('/upgrade/ack', {
-    method: 'POST',
-  })
-  return res.data.acknowledged
+  // Route through the generated SDK; `callSdk` unwraps the SDK's `{ data }` to
+  // the `AckUpgradeEnvelope`, then we read `.data.acknowledged` (the written
+  // version string).
+  const envelope = await daemonClient.callSdk(() => acknowledgeUpgradeSdk({ throwOnError: true }))
+  return envelope.data.acknowledged
 }

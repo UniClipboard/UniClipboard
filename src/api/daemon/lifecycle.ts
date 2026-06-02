@@ -5,23 +5,30 @@
  * - `POST /lifecycle/ready` → notify the daemon that the GUI is ready for clipboard capture
  * - `GET /lifecycle/status` → current lifecycle status
  * - `POST /lifecycle/retry` → retry lifecycle initialization
+ *
+ * # Transport / 传输 (ADR-008 P7)
+ * Routes through the @hey-api generated SDK via `daemonClient.callSdk`, which
+ * drives the daemon session lifecycle (pre-emptive refresh + one-shot 401
+ * retry). `callSdk` unwraps the SDK's outer `{ data }` to the `ApiEnvelope`;
+ * for value-returning endpoints the payload is `envelope.data`. The public
+ * wrapper signatures and the hand-written `LifecycleStatusDto` domain type are
+ * preserved verbatim for downstream consumers.
  */
 
-import type { LifecycleStatusDto, LifecycleStatusEnvelope } from '@/api/types'
+import {
+  getLifecycleStatus as getLifecycleStatusSdk,
+  retryLifecycle as retryLifecycleSdk,
+  signalLifecycleReady as signalLifecycleReadySdk,
+} from '@/api/generated/sdk.gen'
+import type { LifecycleStatusDto } from '@/api/types'
 import { daemonClient } from './client'
-
-interface LifecycleReadyResponse {
-  data?: { success: boolean }
-  ts?: number
-}
 
 /**
  * Notify the daemon that the GUI is ready and deferred services can start.
  */
 export async function signalLifecycleReady(): Promise<void> {
-  await daemonClient.request<LifecycleReadyResponse>('/lifecycle/ready', {
-    method: 'POST',
-  })
+  // 204 No Content endpoint with no body; do not read `.data`.
+  await daemonClient.callSdk(() => signalLifecycleReadySdk({ throwOnError: true }))
 }
 
 /**
@@ -33,10 +40,13 @@ export async function signalLifecycleReady(): Promise<void> {
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function getLifecycleStatus(): Promise<LifecycleStatusDto> {
-  // `/lifecycle/status` now returns the canonical `{ data, ts }` envelope
-  // (ADR-008 §H). Unwrap `data` so the public return type stays unchanged.
-  const res = await daemonClient.request<LifecycleStatusEnvelope>('/lifecycle/status')
-  return res.data
+  // `/lifecycle/status` returns the canonical `{ data, ts }` envelope
+  // (ADR-008 §H). `callSdk` unwraps the SDK's outer `{ data }` to the envelope;
+  // the payload lives at `envelope.data`. The generated `LifecycleStatusResponse`
+  // (`{ state: string }`) is bridged to the hand-written `LifecycleStatusDto`
+  // (union-typed `state`) so the public return type stays unchanged.
+  const envelope = await daemonClient.callSdk(() => getLifecycleStatusSdk({ throwOnError: true }))
+  return envelope.data as unknown as LifecycleStatusDto
 }
 
 /**
@@ -48,5 +58,6 @@ export async function getLifecycleStatus(): Promise<LifecycleStatusDto> {
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function retryLifecycle(): Promise<void> {
-  await daemonClient.request<void>('/lifecycle/retry', { method: 'POST' })
+  // 204 No Content endpoint with no body; do not read `.data`.
+  await daemonClient.callSdk(() => retryLifecycleSdk({ throwOnError: true }))
 }

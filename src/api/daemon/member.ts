@@ -13,11 +13,12 @@
  * 未来若要暴露接收开关,直接扩展本模块与 `DeviceSettingsSheet` 即可。
  */
 
+import {
+  getMemberSyncPreferences as getMemberSyncPreferencesSdk,
+  updateMemberSyncPreferences as updateMemberSyncPreferencesSdk,
+} from '@/api/generated/sdk.gen'
+import type { MemberSyncPreferencesPatchDto } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
-
-// ── Route constant ──────────────────────────────────────────────
-
-const MEMBER_SYNC_PREFERENCES = (deviceId: string) => `/member/${deviceId}/sync-preferences`
 
 // ── Value objects ───────────────────────────────────────────────
 
@@ -63,30 +64,18 @@ export interface MemberSyncPreferencesPatch {
   receiveContentTypes?: ContentTypesPatch
 }
 
-// ── Response wrappers ───────────────────────────────────────────
-
-interface MemberSyncPreferencesGetResponse {
-  data: MemberSyncPreferences
-  ts: number
-}
-
-/**
- * PATCH /member/:id/sync-preferences response (ADR-008): the daemon now returns
- * only `{ data: { success }, ts }` (MemberSyncResultEnvelope) and no longer echoes
- * the full preferences, so callers re-fetch the authoritative merged value via GET.
- */
-interface MemberSyncResultResponse {
-  data: { success: boolean }
-  ts: number
-}
-
 // ── Public API ──────────────────────────────────────────────────
 
 export async function getMemberSyncPreferences(deviceId: string): Promise<MemberSyncPreferences> {
-  const res = await daemonClient.request<MemberSyncPreferencesGetResponse>(
-    MEMBER_SYNC_PREFERENCES(deviceId)
+  // Route through the generated SDK; `callSdk` unwraps the SDK's `{ data }` to the
+  // `MemberSyncPreferencesEnvelope`, then we unwrap `.data` to the preferences
+  // payload. The generated `MemberSyncPreferencesDto` is structurally equivalent to
+  // the hand-written `MemberSyncPreferences` (camelCase wire fields), bridged here to
+  // keep the public return type stable for downstream consumers.
+  const envelope = await daemonClient.callSdk(() =>
+    getMemberSyncPreferencesSdk({ path: { device_id: deviceId }, throwOnError: true })
   )
-  return res.data
+  return envelope.data as unknown as MemberSyncPreferences
 }
 
 export async function updateMemberSyncPreferences(
@@ -94,13 +83,18 @@ export async function updateMemberSyncPreferences(
   patch: MemberSyncPreferencesPatch
 ): Promise<MemberSyncPreferences> {
   // PATCH returns only `{ data: { success } }` (ApiEnvelope<MemberSyncResultDto>);
-  // request() throws on non-2xx, so reaching here means success. Re-fetch to return
+  // callSdk throws on non-2xx, so reaching here means success. Re-fetch to return
   // the authoritative merged preferences (preserves the Promise<MemberSyncPreferences>
   // contract that devicesSlice stores into state — the PATCH body no longer echoes it).
-  await daemonClient.request<MemberSyncResultResponse>(MEMBER_SYNC_PREFERENCES(deviceId), {
-    method: 'PATCH',
-    body: patch,
-  })
+  await daemonClient.callSdk(() =>
+    updateMemberSyncPreferencesSdk({
+      path: { device_id: deviceId },
+      // `MemberSyncPreferencesPatch` is structurally equivalent to the generated
+      // `MemberSyncPreferencesPatchDto`; bridge for the SDK body param.
+      body: patch as unknown as MemberSyncPreferencesPatchDto,
+      throwOnError: true,
+    })
+  )
   return getMemberSyncPreferences(deviceId)
 }
 

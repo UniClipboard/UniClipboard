@@ -12,10 +12,23 @@
  * - `TimeRangePreset` values match backend `timePreset` param values directly.
  * - `Filter` enum values match backend `fileTypes` param values directly
  *   (except `Filter.All` / `Filter.Favorited` which are omitted).
+ *
+ * # Transport / 传输 (ADR-008 P7)
+ * All three endpoints route through the @hey-api generated SDK
+ * (`searchQuery` / `getSearchStatus` / `rebuildSearchIndex`) via
+ * `daemonClient.callSdk`, which drives the daemon session lifecycle and
+ * normalizes SDK errors back into `DaemonApiError`. `callSdk` unwraps the SDK's
+ * outer `{ data }` to the canonical `ApiEnvelope { data, ts }`. The public
+ * wrappers preserve their exact return shapes (the query/status wrappers return
+ * the envelope so consumers keep reading `.data`).
  */
 
+import {
+  searchQuery,
+  getSearchStatus as getSearchStatusSdk,
+  rebuildSearchIndex,
+} from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
-import type { RequestOptions } from './client'
 
 // ── Response types matching Rust DTOs ──────────────────────────
 
@@ -71,17 +84,6 @@ export interface SearchParams {
   offset?: number
 }
 
-function buildSearchQueryString(params: SearchParams): string {
-  const qs = new URLSearchParams()
-  qs.set('query', params.query)
-  if (params.contentTypes) qs.set('contentTypes', params.contentTypes)
-  if (params.extensions) qs.set('extensions', params.extensions)
-  if (params.timePreset) qs.set('timePreset', params.timePreset)
-  if (params.limit != null) qs.set('limit', String(params.limit))
-  if (params.offset != null) qs.set('offset', String(params.offset))
-  return qs.toString()
-}
-
 // ── API functions ──────────────────────────────────────────────
 
 /**
@@ -96,9 +98,26 @@ export async function querySearch(
   params: SearchParams,
   signal?: AbortSignal
 ): Promise<SearchQueryResponse> {
-  const qs = buildSearchQueryString(params)
-  const options: RequestOptions = { signal }
-  return daemonClient.request<SearchQueryResponse>(`/search/query?${qs}`, options)
+  // Only emit query keys that are actually present, preserving the previous
+  // "undefined/empty == no filter" wire semantics (the old query-string builder
+  // skipped falsy optional params).
+  const query: { query: string; [key: string]: string | number } = {
+    query: params.query,
+  }
+  if (params.contentTypes) query.contentTypes = params.contentTypes
+  if (params.extensions) query.extensions = params.extensions
+  if (params.timePreset) query.timePreset = params.timePreset
+  if (params.limit != null) query.limit = params.limit
+  if (params.offset != null) query.offset = params.offset
+
+  // `callSdk` unwraps the SDK's `{ data }` to the canonical envelope
+  // (`SearchQueryEnvelope`), which is structurally equivalent to the
+  // hand-written `SearchQueryResponse`. Consumers read `.data`, so the envelope
+  // is returned as-is, bridged to keep the public return type stable.
+  const envelope = await daemonClient.callSdk(() =>
+    searchQuery({ query, signal, throwOnError: true })
+  )
+  return envelope as unknown as SearchQueryResponse
 }
 
 /**
@@ -108,7 +127,11 @@ export async function querySearch(
  * @throws {DaemonApiError} On HTTP errors (423 = session locked).
  */
 export async function getSearchStatus(): Promise<SearchStatusResponse> {
-  return daemonClient.request<SearchStatusResponse>('/search/status')
+  // `callSdk` unwraps the SDK's `{ data }` to the canonical envelope
+  // (`SearchStatusEnvelope`); consumers read `.data`, so return the envelope
+  // as-is, bridged to the hand-written `SearchStatusResponse` shape.
+  const envelope = await daemonClient.callSdk(() => getSearchStatusSdk({ throwOnError: true }))
+  return envelope as unknown as SearchStatusResponse
 }
 
 /**
@@ -117,5 +140,6 @@ export async function getSearchStatus(): Promise<SearchStatusResponse> {
  * @throws {DaemonApiError} 409 if rebuild already in progress, 423 if session locked.
  */
 export async function triggerSearchRebuild(): Promise<void> {
-  await daemonClient.request<unknown>('/search/rebuild', { method: 'POST' })
+  // Void endpoint: drive the rebuild and ignore the acceptance payload.
+  await daemonClient.callSdk(() => rebuildSearchIndex({ throwOnError: true }))
 }

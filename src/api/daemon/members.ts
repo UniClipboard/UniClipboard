@@ -6,30 +6,28 @@
  * type shape are. SpaceMember is now aligned with the daemon
  * `SpaceMemberDto` and no longer carries the mDNS-era
  * `sharedSecret`/`pairedAt`/`lastSeen`/`lastKnownAddresses` fields.
+ *
+ * # Transport / 传输 (ADR-008 P7)
+ * The three wrappers route through the @hey-api generated SDK
+ * (`getLocalDeviceInfo` / `listPairedDevices` / `unpairDevice`) via
+ * `daemonClient.callSdk`, which drives the daemon session lifecycle and
+ * normalizes thrown SDK errors back into the shared `DaemonApiError` shape.
+ * Every endpoint returns the canonical `ApiEnvelope { data, ts }`; the public
+ * wrapper signatures and the hand-written domain types below are preserved
+ * verbatim for downstream consumers, with the generated DTOs bridged at the
+ * boundary.
  */
 
+import {
+  getLocalDeviceInfo as getLocalDeviceInfoSdk,
+  listPairedDevices as listPairedDevicesSdk,
+  unpairDevice as unpairDeviceSdk,
+} from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
 
 export interface LocalDeviceInfo {
   peerId: string
   deviceName: string
-}
-
-interface LocalDeviceInfoResponse {
-  data: LocalDeviceInfo
-  ts: number
-}
-
-/**
- * `GET /paired-devices` envelope (ADR-008 P2).
- *
- * The endpoint was a bare top-level JSON array and is now normalized to
- * `ApiEnvelope<Vec<SpaceMemberDto>>` (alias `SpaceMemberListEnvelope`): the
- * member array lives under `data`.
- */
-interface SpaceMemberListResponse {
-  data: SpaceMember[]
-  ts: number
 }
 
 /**
@@ -67,8 +65,12 @@ export interface SpaceMember {
  * 获取本地设备信息（peer ID + 解析后的设备名称）。
  */
 export async function getLocalDeviceInfo(): Promise<LocalDeviceInfo> {
-  const response = await daemonClient.request<LocalDeviceInfoResponse>('/device/me')
-  return response.data
+  // `callSdk` unwraps the SDK's `{ data }` to the `LocalDeviceInfoEnvelope`,
+  // then we unwrap `.data` to the payload. The generated `LocalDeviceInfoDto`
+  // is structurally equivalent to the hand-written `LocalDeviceInfo`, bridged
+  // here to keep the public return type stable for consumers.
+  const envelope = await daemonClient.callSdk(() => getLocalDeviceInfoSdk({ throwOnError: true }))
+  return envelope.data as unknown as LocalDeviceInfo
 }
 
 /**
@@ -77,8 +79,11 @@ export async function getLocalDeviceInfo(): Promise<LocalDeviceInfo> {
  * 获取已配对的设备列表。
  */
 export async function getPairedPeers(): Promise<SpaceMember[]> {
-  const response = await daemonClient.request<SpaceMemberListResponse>('/paired-devices')
-  return response.data
+  // Backed by the `listPairedDevices` SDK fn (GET /paired-devices). `callSdk`
+  // unwraps the SDK's `{ data }` to the `SpaceMemberListEnvelope`, then `.data`
+  // is the `SpaceMemberDto[]` payload, bridged to the hand-written `SpaceMember[]`.
+  const envelope = await daemonClient.callSdk(() => listPairedDevicesSdk({ throwOnError: true }))
+  return envelope.data as unknown as SpaceMember[]
 }
 
 /**
@@ -95,8 +100,7 @@ export async function getPairedPeersWithStatus(): Promise<SpaceMember[]> {
  * 取消配对：从本机成员仓库移除该设备。
  */
 export async function unpairDevice(peerId: string): Promise<void> {
-  await daemonClient.request<void>('/pairing/unpair', {
-    method: 'POST',
-    body: { peerId },
-  })
+  // POST /pairing/unpair — 204 No Content, so do NOT read `.data`. The
+  // `peerId` goes in the request body (`UnpairDeviceRequest`).
+  await daemonClient.callSdk(() => unpairDeviceSdk({ body: { peerId }, throwOnError: true }))
 }

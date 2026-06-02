@@ -10,6 +10,7 @@
  * Online/Offline 变化会通过既有 `peers.changed` WebSocket 链路推到前端。
  */
 
+import { refreshPresence as refreshPresenceSdk } from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
 
 export interface PresenceRefreshResult {
@@ -20,26 +21,21 @@ export interface PresenceRefreshResult {
 }
 
 /**
- * `POST /presence/refresh` envelope (ADR-008 P2).
- *
- * The endpoint used to return the probe counters at the top level and is now
- * normalized to `ApiEnvelope<PresenceRefreshResponse>` (alias
- * `PresenceRefreshEnvelope`): the counters live under `data`.
- */
-interface PresenceRefreshResponse {
-  data: PresenceRefreshResult
-  ts: number
-}
-
-/**
  * 触发一轮 ensure_reachable_all 探测。
  *
  * 后端会对所有已配对 peer 并发拨号；离线 peer 立即被标记 Offline，进而
  * 推送 `peers.changed`，前端再走 fetchSpaceMembers 重拉刷新 UI。
+ *
+ * # Transport / 传输 (ADR-008 P7)
+ * Routes through the @hey-api generated SDK (`refreshPresence`) via
+ * `daemonClient.callSdk`, which unwraps the SDK's `{ data }` to the
+ * `PresenceRefreshEnvelope` and drives the daemon session lifecycle. The
+ * probe counters live under `envelope.data`; the generated
+ * `PresenceRefreshResponse` is structurally equivalent to the hand-written
+ * `PresenceRefreshResult`, bridged at the boundary to keep the public return
+ * type stable for downstream consumers.
  */
 export async function refreshPresence(): Promise<PresenceRefreshResult> {
-  const response = await daemonClient.request<PresenceRefreshResponse>('/presence/refresh', {
-    method: 'POST',
-  })
-  return response.data
+  const envelope = await daemonClient.callSdk(() => refreshPresenceSdk({ throwOnError: true }))
+  return envelope.data as unknown as PresenceRefreshResult
 }

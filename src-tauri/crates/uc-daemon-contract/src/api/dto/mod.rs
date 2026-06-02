@@ -1,13 +1,17 @@
+pub mod auth;
 pub mod clipboard;
 pub mod clipboard_command;
 pub mod device;
 pub mod encryption;
+pub mod envelope;
+pub mod error;
 pub mod member;
 pub mod pairing;
 pub mod search;
 pub mod settings;
 pub mod setup;
 pub mod setup_events;
+pub mod storage;
 pub mod upgrade;
 pub mod v2;
 pub mod ws;

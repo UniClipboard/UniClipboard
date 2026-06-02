@@ -51,6 +51,18 @@ pub struct UpdateMemberSyncPreferencesResponse {
     pub ts: i64,
 }
 
+/// Folded payload for `PATCH /member/:device_id/sync-preferences` (ADR-008 §0.1).
+///
+/// The current handler returns `success` as a top-level sibling of the
+/// `{data,ts}` envelope. This DTO folds it INTO the payload so the endpoint can
+/// return `ApiEnvelope<MemberSyncResultDto>` with no bespoke wrapper. P1 only
+/// defines the type; the handler is rewired in P2.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberSyncResultDto {
+    pub success: bool,
+}
+
 impl From<MemberSyncPreferences> for MemberSyncPreferencesDto {
     fn from(value: MemberSyncPreferences) -> Self {
         Self {

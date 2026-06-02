@@ -5,6 +5,7 @@
 //! field names to match frontend/CLI conventions.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 // ── POST /clipboard/dispatch ─────────────────────────────────────
 
@@ -12,7 +13,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The daemon wraps the text into a single `text/plain`
 /// `SystemClipboardSnapshot` and fans it out to online peers.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchTextRequest {
     /// Plaintext to dispatch.
@@ -23,7 +24,7 @@ pub struct DispatchTextRequest {
 }
 
 /// Per-target delivery outcome in the dispatch response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PerTargetOutcomeDto {
     pub device_id: String,
@@ -34,7 +35,7 @@ pub struct PerTargetOutcomeDto {
 }
 
 /// Response body for `POST /clipboard/dispatch`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchOutcomeResponse {
     pub content_hash: String,
@@ -49,7 +50,7 @@ pub struct DispatchOutcomeResponse {
 // ── POST /clipboard/resend ───────────────────────────────────────
 
 /// Request body for `POST /clipboard/resend`.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResendRequest {
     /// ID of the previously captured entry to resend.
@@ -60,7 +61,7 @@ pub struct ResendRequest {
 }
 
 /// Response body for `POST /clipboard/resend`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResendResponse {
     pub accepted: usize,
@@ -73,7 +74,7 @@ pub struct ResendResponse {
 // ── POST /clipboard/cancel-transfer/:transfer_id ─────────────────
 
 /// Request body for `POST /clipboard/cancel-transfer/:transfer_id`.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelTransferRequest {
     /// Cancellation reason: `"local_user"` | `"timeout"` etc.
@@ -81,11 +82,23 @@ pub struct CancelTransferRequest {
 }
 
 /// Response body for `POST /clipboard/cancel-transfer/:transfer_id`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelTransferResponse {
     /// `"cancelled"` | `"not_inflight"`.
     pub outcome: String,
+}
+
+// ── POST /clipboard/restore/:entry_id ────────────────────────────
+
+/// Response body for `POST /clipboard/restore/:entry_id`.
+///
+/// Wrapped in `ApiEnvelope` per §0.1. The success body was previously the
+/// ad-hoc `{ "success": true }` shape; consumers ignore it today.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreEntryResponse {
+    pub success: bool,
 }
 
 // ── WS clipboard.inbound_notice payload ──────────────────────────
@@ -94,7 +107,7 @@ pub struct CancelTransferResponse {
 ///
 /// Carries the full V3 envelope as base64 so CLI `watch` can decode
 /// content without an extra HTTP round-trip.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InboundNoticeEvent {
     pub from_device: String,

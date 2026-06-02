@@ -7,36 +7,18 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
+
+// Storage DTOs relocated to the contract crate (ADR-008 §C.4). The handlers keep
+// their current JSON shape; `StorageStatsResponse` is an alias for the moved
+// `StorageStatsDto` so the handler bodies stay unchanged.
+use uc_daemon_contract::api::dto::storage::{
+    ClearCacheRequest, ClearCacheResponse, StorageStatsDto as StorageStatsResponse,
+};
 
 use crate::api::routes::internal_error;
 use crate::api::server::DaemonApiState;
-
-/// Response payload for GET /storage/stats.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StorageStatsResponse {
-    pub total_bytes: u64,
-    pub database_bytes: u64,
-    pub vault_bytes: u64,
-    pub cache_bytes: u64,
-    pub logs_bytes: u64,
-}
-
-/// Request payload for POST /storage/clear-cache.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClearCacheRequest {
-    pub confirmed: bool,
-}
-
-/// Response payload for POST /storage/clear-cache on success.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClearCacheResponse {
-    pub freed_bytes: u64,
-}
 
 /// Error response for POST /storage/clear-cache when confirmed is false or absent.
 #[derive(Debug, Clone, Serialize)]

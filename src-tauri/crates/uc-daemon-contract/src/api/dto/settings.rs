@@ -26,6 +26,22 @@ pub struct UpdateSettingsResponse {
     pub restart_required: bool,
 }
 
+/// Folded payload for `PUT /settings` (ADR-008 §0.1).
+///
+/// The current handler returns `success` and `restartRequired` as top-level
+/// siblings of the `{data,ts}` envelope. This DTO folds those siblings INTO the
+/// payload so the endpoint can return `ApiEnvelope<SettingsUpdateResultDto>`
+/// with no bespoke wrapper. P1 only defines the type; the handler is rewired in
+/// P2.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsUpdateResultDto {
+    pub success: bool,
+    /// Whether the patch touched fields requiring a daemon restart (currently
+    /// only `network.*`).
+    pub restart_required: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneralSettingsDto {

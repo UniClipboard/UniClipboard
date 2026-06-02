@@ -24,3 +24,11 @@ pub struct KeychainAccessResponse {
     /// Whether Keychain access is granted (Always Allow permission).
     pub granted: bool,
 }
+
+/// Shared response payload for `POST /encryption/unlock` and
+/// `POST /encryption/lock`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptionActionResponse {
+    pub success: bool,
+}

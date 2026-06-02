@@ -9918,6 +9918,7 @@ dependencies = [
 name = "uc-daemon-contract"
 version = "0.14.0-alpha.4"
 dependencies = [
+ "chrono",
  "serde",
  "serde_json",
  "serde_with",

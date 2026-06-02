@@ -59,50 +59,12 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde::Serialize;
-use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ApiErrorResponse {
-    pub code: String,
-    pub message: String,
-}
-
-impl ApiErrorResponse {
-    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            code: code.into(),
-            message: message.into(),
-        }
-    }
-
-    pub fn internal(message: impl Into<String>) -> Self {
-        Self {
-            code: "internal_error".to_string(),
-            message: message.into(),
-        }
-    }
-
-    pub fn bad_request(message: impl Into<String>) -> Self {
-        Self {
-            code: "bad_request".to_string(),
-            message: message.into(),
-        }
-    }
-
-    pub fn unauthorized(message: impl Into<String>) -> Self {
-        Self {
-            code: "unauthorized".to_string(),
-            message: message.into(),
-        }
-    }
-}
-
-impl IntoResponse for ApiErrorResponse {
-    fn into_response(self) -> Response {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(self)).into_response()
-    }
-}
+// The canonical error body now lives in the contract crate (ADR-008 §C.2) so it
+// can be shared by the generated TS client and the native Rust client. The
+// axum-coupled `ApiError` carrier, its constructors, `IntoResponse`, and
+// `log_facade_failure` stay here.
+pub use uc_daemon_contract::api::dto::error::ApiErrorResponse;
 
 #[derive(Debug)]
 pub struct ApiError {
@@ -166,6 +128,7 @@ impl IntoResponse for ApiError {
         let body = ApiErrorResponse {
             code: self.code,
             message: self.message,
+            details: None,
         };
         (self.status, Json(body)).into_response()
     }

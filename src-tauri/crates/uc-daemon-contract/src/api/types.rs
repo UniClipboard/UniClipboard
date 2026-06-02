@@ -3,8 +3,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uc_core::file_transfer::FileTransferDirection;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthResponse {
     pub status: String,
@@ -12,7 +13,7 @@ pub struct HealthResponse {
     pub api_revision: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusResponse {
     pub package_version: String,
@@ -21,14 +22,14 @@ pub struct StatusResponse {
     pub workers: Vec<WorkerStatusDto>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkerStatusDto {
     pub name: String,
     pub health: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PeerSnapshotDto {
     pub peer_id: String,
@@ -48,7 +49,7 @@ pub struct PeerSnapshotDto {
     pub connection_address: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SpaceMemberDto {
     pub peer_id: String,
@@ -70,7 +71,7 @@ pub struct SpaceMemberDto {
 /// 在线状态：probe 过程中各设备的 Online/Offline 变化会通过既有
 /// `peers.changed` WebSocket 链路推送，前端再走 `GET /paired-devices`
 /// 重拉。该响应只用于调用方显示进度或排障。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PresenceRefreshResponse {
     pub total: u32,
@@ -158,7 +159,7 @@ pub struct SpaceMembersChangedPayload {
 /// Response payload for GET /lifecycle/status.
 /// Mirrors the frontend LifecycleStatusDto shape so the HTTP endpoint
 /// can replace the Tauri get_lifecycle_status command without frontend type changes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LifecycleStatusResponse {
     /// Current lifecycle state.
@@ -172,7 +173,7 @@ pub struct DaemonWsSubscribeRequest {
     pub topics: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DaemonWsEvent {
     pub topic: String,
@@ -180,6 +181,7 @@ pub struct DaemonWsEvent {
     pub event_type: String,
     pub session_id: Option<String>,
     pub ts: i64,
+    #[schema(value_type = Object)]
     pub payload: Value,
 }
 

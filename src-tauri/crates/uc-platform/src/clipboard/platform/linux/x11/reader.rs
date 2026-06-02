@@ -31,7 +31,9 @@ use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt as _, Property, Prop
 use x11rb::protocol::Event;
 use x11rb::CURRENT_TIME;
 
-use super::atoms::{format_id_for, is_interesting_mime, is_text_mime, text_mime_priority};
+use super::atoms::{
+    format_id_for, is_interesting_mime, is_text_mime, rfc_mime_for, text_mime_priority,
+};
 use super::connection::X11Server;
 use super::writer::WriterState;
 
@@ -130,10 +132,14 @@ pub(super) fn read_snapshot(
         if image_mime {
             image_captured = true;
         }
+        let fid = format_id_for(&mime);
+        let rfc_mime = rfc_mime_for(&mime)
+            .map(|m| MimeType(m.to_string()))
+            .unwrap_or(MimeType(mime));
         reps.push(ObservedClipboardRepresentation::new(
             RepresentationId::new(),
-            format_id_for(&mime).into(),
-            Some(MimeType(mime)),
+            fid.into(),
+            Some(rfc_mime),
             bytes,
         ));
     }

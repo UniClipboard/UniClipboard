@@ -134,6 +134,19 @@ pub(super) fn text_mime_priority(mime: &str) -> u32 {
     }
 }
 
+/// Translate an X11 atom name to an RFC MIME type.
+///
+/// Platform-native targets (`UTF8_STRING`, `STRING`, `TEXT`) are not valid
+/// RFC media types; they must be mapped before constructing a
+/// `MimeType`. Returns `None` for names that are already RFC-shaped — the
+/// caller should use the original string.
+pub(super) fn rfc_mime_for(atom_name: &str) -> Option<&'static str> {
+    match atom_name {
+        "UTF8_STRING" | "STRING" | "TEXT" => Some("text/plain"),
+        _ => None,
+    }
+}
+
 /// Map a snapshot `format_id` → the canonical X11 mime atom name we advertise.
 /// Mirrors `wayland::protocol::default_mime_for_format`.
 pub(super) fn default_mime_for_format(format_id: &str) -> Option<&'static str> {

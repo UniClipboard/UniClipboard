@@ -5,6 +5,7 @@ use reqwest::{Method, RequestBuilder};
 
 use crate::http::authorized_daemon_request_with_type;
 use crate::DaemonConnectionState;
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::{PeerSnapshotDto, SpaceMemberDto, StatusResponse};
 
 #[derive(Clone)]
@@ -143,6 +144,11 @@ impl DaemonQueryClient {
         .await
     }
 
+    /// GET a query route whose body is the canonical `ApiEnvelope<T>` (ADR-008 §H:
+    /// `/peers`, `/paired-devices`, `/status` are all enveloped now). Decodes
+    /// `{ data: T, ts }` and returns the unwrapped `T`; the public method return
+    /// types (`Vec<PeerSnapshotDto>`, `Vec<SpaceMemberDto>`, `StatusResponse`)
+    /// stay the inner payload.
     async fn get_json<T>(&self, method: Method, path: &str) -> Result<T>
     where
         T: serde::de::DeserializeOwned,
@@ -156,10 +162,11 @@ impl DaemonQueryClient {
 
         let status = response.status();
         if status.is_success() {
-            return response
-                .json::<T>()
+            let envelope = response
+                .json::<ApiEnvelope<T>>()
                 .await
-                .with_context(|| format!("failed to decode daemon query response for {path}"));
+                .with_context(|| format!("failed to decode daemon query response for {path}"))?;
+            return Ok(envelope.data);
         }
 
         let body = response

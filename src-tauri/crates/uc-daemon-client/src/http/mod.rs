@@ -88,18 +88,18 @@ pub async fn exchange_session_token_with_metadata(
         );
     }
 
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ConnectResponse {
-        session_token: String,
-        expires_in_secs: i64,
-        refresh_at_secs: i64,
-    }
+    // Wire shape (ADR-008 §H): `/auth/connect` is now enveloped as
+    // `{ data: SessionTokenResponse, ts }`. This is the L1/public bootstrap
+    // handshake — decode the canonical envelope and unwrap `.data`. The public
+    // `ExchangedSessionToken` return type is unchanged.
+    use uc_daemon_contract::api::dto::auth::SessionTokenResponse;
+    use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
-    let resp: ConnectResponse = response
+    let envelope: ApiEnvelope<SessionTokenResponse> = response
         .json()
         .await
         .context("failed to decode session token exchange response")?;
+    let resp = envelope.data;
 
     Ok(ExchangedSessionToken {
         session_token: resp.session_token,

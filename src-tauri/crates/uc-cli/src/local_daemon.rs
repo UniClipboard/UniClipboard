@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use reqwest::Client;
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::HealthResponse;
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
 
@@ -171,13 +172,18 @@ async fn probe_daemon_health(client: &Client, base_url: &str) -> Result<bool, Lo
         return Ok(false);
     }
 
-    let health = response.json::<HealthResponse>().await.map_err(|error| {
-        LocalDaemonError::Probe(
-            anyhow::Error::new(error).context("failed to decode daemon health response"),
-        )
-    })?;
+    // Wire shape (ADR-008 §H): `/health` is now enveloped as
+    // `{ data: HealthResponse, ts }`. Decode the envelope and read `data.status`.
+    let envelope = response
+        .json::<ApiEnvelope<HealthResponse>>()
+        .await
+        .map_err(|error| {
+            LocalDaemonError::Probe(
+                anyhow::Error::new(error).context("failed to decode daemon health response"),
+            )
+        })?;
 
-    Ok(health.status == "ok")
+    Ok(envelope.data.status == "ok")
 }
 
 fn resolve_base_url() -> Result<String, LocalDaemonError> {

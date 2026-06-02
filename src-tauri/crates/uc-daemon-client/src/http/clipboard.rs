@@ -6,6 +6,7 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
     ResendRequest, ResendResponse,
 };
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::http_route;
 
 use crate::http::authorized_daemon_request_with_type;
@@ -124,10 +125,13 @@ impl DaemonClipboardClient {
             anyhow::bail!("clipboard dispatch failed ({}): {}", status, body);
         }
 
-        response
-            .json::<DispatchOutcomeResponse>()
+        // Wire shape (ADR-008 §H): `{ data: DispatchOutcomeResponse, ts }`.
+        // Unwrap the envelope; the public return type stays `DispatchOutcomeResponse`.
+        let envelope = response
+            .json::<ApiEnvelope<DispatchOutcomeResponse>>()
             .await
-            .context("failed to decode dispatch response")
+            .context("failed to decode dispatch response")?;
+        Ok(envelope.data)
     }
 
     pub async fn resend_entry(
@@ -165,10 +169,12 @@ impl DaemonClipboardClient {
             anyhow::bail!("clipboard resend failed ({}): {}", status, body);
         }
 
-        response
-            .json::<ResendResponse>()
+        // Wire shape (ADR-008 §H): `{ data: ResendResponse, ts }`.
+        let envelope = response
+            .json::<ApiEnvelope<ResendResponse>>()
             .await
-            .context("failed to decode resend response")
+            .context("failed to decode resend response")?;
+        Ok(envelope.data)
     }
 
     pub async fn cancel_transfer(
@@ -206,9 +212,11 @@ impl DaemonClipboardClient {
             anyhow::bail!("cancel transfer failed ({}): {}", status, body);
         }
 
-        response
-            .json::<CancelTransferResponse>()
+        // Wire shape (ADR-008 §H): `{ data: CancelTransferResponse, ts }`.
+        let envelope = response
+            .json::<ApiEnvelope<CancelTransferResponse>>()
             .await
-            .context("failed to decode cancel transfer response")
+            .context("failed to decode cancel transfer response")?;
+        Ok(envelope.data)
     }
 }

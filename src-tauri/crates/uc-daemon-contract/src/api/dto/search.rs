@@ -18,16 +18,6 @@ pub struct SearchResultDto {
     pub file_extensions: Vec<String>,
 }
 
-/// Response envelope for `GET /search/query`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchQueryResponse {
-    pub data: Vec<SearchResultDto>,
-    pub total: u32,
-    pub has_more: bool,
-    pub ts: i64,
-}
-
 /// Folded payload for `GET /search/query` (ADR-008 §0.1).
 ///
 /// The current handler returns `total` and `hasMore` as top-level siblings of
@@ -43,7 +33,8 @@ pub struct SearchQueryResultDto {
     pub has_more: bool,
 }
 
-/// Search index availability snapshot embedded in `SearchStatusResponse`.
+/// Search index availability snapshot — the `ApiEnvelope` payload for
+/// `GET /search/status` (ADR-008 §0.1).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchStatusData {
@@ -57,25 +48,10 @@ pub struct SearchStatusData {
     pub last_rebuild_completed_at_ms: Option<i64>,
 }
 
-/// Response envelope for `GET /search/status`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchStatusResponse {
-    pub data: SearchStatusData,
-    pub ts: i64,
-}
-
-/// Data payload inside `SearchRebuildAcceptedResponse`.
+/// Acceptance payload — the `ApiEnvelope` payload for `POST /search/rebuild`
+/// (ADR-008 §0.1).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchRebuildAcceptedData {
     pub accepted: bool,
-}
-
-/// Response envelope for `POST /search/rebuild`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchRebuildAcceptedResponse {
-    pub data: SearchRebuildAcceptedData,
-    pub ts: i64,
 }

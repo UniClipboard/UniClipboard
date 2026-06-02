@@ -11,8 +11,9 @@ use reqwest::{Method, RequestBuilder, StatusCode};
 
 use crate::http::authorized_daemon_request_with_type;
 use crate::DaemonConnectionState;
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::search::{
-    SearchQueryResponse, SearchRebuildAcceptedResponse, SearchStatusResponse,
+    SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData,
 };
 use uc_daemon_contract::constants::http_route;
 
@@ -102,7 +103,7 @@ impl DaemonSearchClient {
     ///
     /// Sends `GET /search/query` with camelCase query params.
     /// Does NOT strip inline AND/OR or infer operators locally.
-    pub async fn query(&self, request: SearchQueryRequest) -> Result<SearchQueryResponse> {
+    pub async fn query(&self, request: SearchQueryRequest) -> Result<SearchQueryResultDto> {
         let path = http_route::SEARCH_QUERY;
         let mut params: Vec<(&str, String)> = vec![
             ("query", request.query),
@@ -142,7 +143,7 @@ impl DaemonSearchClient {
     /// Fetch the current search index availability status.
     ///
     /// Sends `GET /search/status`.
-    pub async fn status(&self) -> Result<SearchStatusResponse> {
+    pub async fn status(&self) -> Result<SearchStatusData> {
         let path = http_route::SEARCH_STATUS;
         let response = self
             .authorized_request(Method::GET, path)
@@ -159,7 +160,7 @@ impl DaemonSearchClient {
     /// Sends `POST /search/rebuild`. A `rebuild_already_running` daemon response
     /// is returned as a structured `DaemonSearchRequestError` rather than a plain string
     /// so callers can distinguish it from other failures.
-    pub async fn rebuild(&self) -> Result<SearchRebuildAcceptedResponse> {
+    pub async fn rebuild(&self) -> Result<SearchRebuildAcceptedData> {
         let path = http_route::SEARCH_REBUILD;
         let response = self
             .authorized_request(Method::POST, path)
@@ -187,16 +188,20 @@ impl DaemonSearchClient {
         .await
     }
 
+    /// Decode an enveloped search success body (ADR-008 §H: query/status/rebuild
+    /// are all `ApiEnvelope<T>` now) and return the unwrapped payload `T`, or map
+    /// a non-success body to a structured `DaemonSearchRequestError`.
     async fn decode_json_response<T: serde::de::DeserializeOwned>(
         response: reqwest::Response,
         path: &str,
     ) -> Result<T> {
         let status = response.status();
         if status.is_success() {
-            return response
-                .json::<T>()
+            let envelope = response
+                .json::<ApiEnvelope<T>>()
                 .await
-                .with_context(|| format!("failed to decode daemon search response for {path}"));
+                .with_context(|| format!("failed to decode daemon search response for {path}"))?;
+            return Ok(envelope.data);
         }
 
         Err(Self::decode_error_response(response, path).await)

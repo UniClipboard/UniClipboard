@@ -60,6 +60,10 @@ jobs:
         if: matrix.container != ''
         run: |
           apt-get update
+          # libglib2.0-bin / libgdk-pixbuf2.0-bin / libgtk-3-bin:AppImage 打包时
+          # 新版 tauri-bundler 跑的 linuxdeploy-plugin-gtk.sh 在 set -e 下要用
+          # glib-compile-schemas / gdk-pixbuf-query-loaders / gtk-query-immodules-3.0,
+          # 缺失即报笼统的 `failed to run linuxdeploy`。详见 build-bookworm.Dockerfile 注释。
           apt-get install -y --no-install-recommends \
             git curl wget ca-certificates xz-utils unzip sudo \
             build-essential pkg-config cmake clang \
@@ -67,7 +71,8 @@ jobs:
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
             libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             file desktop-file-utils \
-            xdg-utils
+            xdg-utils \
+            libglib2.0-bin libgdk-pixbuf2.0-bin libgtk-3-bin
 
       - uses: actions/checkout@v4
         with:

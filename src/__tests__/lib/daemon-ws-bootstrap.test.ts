@@ -10,7 +10,6 @@ import { resetDaemonConnectionInfoPollingForTests } from '@/lib/daemon-connectio
 const TEST_PAYLOAD = {
   baseUrl: 'http://127.0.0.1:42715',
   wsUrl: 'ws://127.0.0.1:42715/ws',
-  token: 'tauri-bearer-token',
 }
 
 let _sessionToken: string | null = null

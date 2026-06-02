@@ -56,8 +56,21 @@ export const commands = {
 } | null) => typedError<{
 	baseUrl: string,
 	wsUrl: string,
-	token: string,
 } | null, CommandError>(__TAURI_INVOKE("get_daemon_connection_info", { trace })),
+	/**
+	 *  Exchange daemon bearer credentials for a short-lived webview session.
+	 *
+	 *  The raw bearer token stays in the native Tauri side; the webview only receives
+	 *  the daemon's session JWT and its refresh metadata.
+	 */
+	getDaemonSession: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<{
+	sessionToken: string,
+	expiresInSecs: number,
+	refreshAtSecs: number,
+} | null, CommandError>(__TAURI_INVOKE("get_daemon_session", { trace })),
 	/**
 	 *  Restarts the running Tauri application to apply settings changes.
 	 * 
@@ -492,7 +505,12 @@ export type CommandError = { code: "NotFound"; message: string } | { code: "Inte
 export type DaemonConnectionPayload = {
 	baseUrl: string,
 	wsUrl: string,
-	token: string,
+};
+
+export type DaemonSessionPayload = {
+	sessionToken: string,
+	expiresInSecs: number,
+	refreshAtSecs: number,
 };
 
 /**  失败原因。i18n key 命名约定:`delivery.failureReason.<variant 小驼峰>`。 */
@@ -1097,4 +1115,3 @@ function makeEvent<T>(name: string, serialize?: (payload: T) => unknown, deseria
 
     return Object.assign(fn, base);
 }
-

@@ -6,12 +6,7 @@ import { loadDaemonAuth, verifyAuthState, waitForEncryptionReady } from '@/lib/d
 import type { DaemonAuthResult } from '@/lib/daemon-auth'
 import { resetDaemonConnectionInfoPollingForTests } from '@/lib/daemon-connection-info'
 
-const mockInvoke = vi.fn()
 const mockInvokeWithTrace = vi.fn()
-
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => mockInvoke(...args),
-}))
 
 // 实现已切到 typed `commands` proxy（`@/lib/ipc`）；mock target 改成
 // `commands.getDaemonConnectionInfo`。变量名保留以减少 diff 噪声。
@@ -41,7 +36,6 @@ vi.mock('@/api/daemon/client', () => ({
 const TEST_CONNECTION_PAYLOAD = {
   baseUrl: 'http://127.0.0.1:42715',
   wsUrl: 'ws://127.0.0.1:42715/ws',
-  token: 'test-bearer-token',
 }
 
 const TEST_SESSION = {
@@ -53,7 +47,6 @@ const TEST_SESSION = {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
-  mockInvoke.mockResolvedValue(4242)
   resetDaemonConnectionInfoPollingForTests()
 })
 
@@ -75,8 +68,6 @@ describe('loadDaemonAuth', () => {
     expect(mockInitialize).toHaveBeenCalledWith({
       baseUrl: TEST_CONNECTION_PAYLOAD.baseUrl,
       wsUrl: TEST_CONNECTION_PAYLOAD.wsUrl,
-      token: TEST_CONNECTION_PAYLOAD.token,
-      pid: 4242,
     })
     expect(mockRefreshSession).toHaveBeenCalledOnce()
     expect(result.session).toEqual(TEST_SESSION)

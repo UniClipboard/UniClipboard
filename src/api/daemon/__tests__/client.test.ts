@@ -3,25 +3,25 @@ import { daemonClient } from '@/api/daemon/client'
 import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
 import type { DaemonConfig } from '@/api/daemon/types'
 
+const mockGetDaemonSession = vi.fn()
+
+vi.mock('@/lib/ipc', () => ({
+  commands: {
+    getDaemonSession: (...args: unknown[]) => mockGetDaemonSession(...args),
+  },
+}))
+
 // ── Test helpers ────────────────────────────────────────────────
 
 const TEST_CONFIG: DaemonConfig = {
   baseUrl: 'http://127.0.0.1:9999',
   wsUrl: 'ws://127.0.0.1:9999/ws',
-  pid: 12345,
-  token: 'test-bearer-token',
 }
 
-function mockFetchOk(body: unknown, status = 200): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status,
-      json: () => Promise.resolve(body),
-      text: () => Promise.resolve(JSON.stringify(body)),
-    })
-  )
+const TEST_SESSION_PAYLOAD = {
+  sessionToken: 'jwt-abc',
+  expiresInSecs: 300,
+  refreshAtSecs: 240,
 }
 
 function mockFetchSequence(responses: Array<{ ok: boolean; status: number; body: unknown }>): void {
@@ -37,18 +37,6 @@ function mockFetchSequence(responses: Array<{ ok: boolean; status: number; body:
   vi.stubGlobal('fetch', fetchMock)
 }
 
-function mockFetchError(status: number, body: unknown = { error: 'fail' }): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: false,
-      status,
-      json: () => Promise.resolve(body),
-      text: () => Promise.resolve(JSON.stringify(body)),
-    })
-  )
-}
-
 // ── Tests ───────────────────────────────────────────────────────
 
 describe('DaemonClient', () => {
@@ -56,10 +44,12 @@ describe('DaemonClient', () => {
     vi.useFakeTimers()
     // Reset the singleton between tests by destroying any prior state.
     daemonClient.destroy()
+    mockGetDaemonSession.mockResolvedValue(TEST_SESSION_PAYLOAD)
   })
 
   afterEach(() => {
     daemonClient.destroy()
+    mockGetDaemonSession.mockReset()
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
@@ -77,12 +67,6 @@ describe('DaemonClient', () => {
 
   describe('blobUrl', () => {
     it('returns non-daemon urls unchanged', async () => {
-      mockFetchOk({
-        sessionToken: 'jwt-abc',
-        expiresInSecs: 300,
-        refreshAtSecs: 240,
-      })
-
       daemonClient.initialize(TEST_CONFIG)
       await daemonClient.refreshSession()
 
@@ -99,12 +83,6 @@ describe('DaemonClient', () => {
     })
 
     it('adds auth only for relative daemon resource paths', async () => {
-      mockFetchOk({
-        sessionToken: 'jwt-abc',
-        expiresInSecs: 300,
-        refreshAtSecs: 240,
-      })
-
       daemonClient.initialize(TEST_CONFIG)
       await daemonClient.refreshSession()
 
@@ -121,38 +99,16 @@ describe('DaemonClient', () => {
       await expect(daemonClient.refreshSession()).rejects.toThrow(DaemonApiError)
     })
 
-    it('POSTs to /auth/connect with bearer token and returns session', async () => {
-      mockFetchOk({
-        sessionToken: 'jwt-abc',
-        expiresInSecs: 300,
-        refreshAtSecs: 240,
-      })
-
+    it('gets a native-managed session and returns it', async () => {
       daemonClient.initialize(TEST_CONFIG)
       const session = await daemonClient.refreshSession()
 
       expect(session.token).toBe('jwt-abc')
       expect(session.expiresAt).toBeGreaterThan(Date.now())
-
-      const fetchCall = vi.mocked(fetch).mock.calls[0]
-      expect(fetchCall[0]).toBe('http://127.0.0.1:9999/auth/connect')
-      expect(fetchCall[1]?.method).toBe('POST')
-      expect(fetchCall[1]?.body).toEqual(
-        new URLSearchParams({
-          token: 'test-bearer-token',
-          pid: '12345',
-          clientType: 'gui',
-        })
-      )
+      expect(mockGetDaemonSession).toHaveBeenCalledOnce()
     })
 
     it('coalesces concurrent refresh calls', async () => {
-      mockFetchOk({
-        sessionToken: 'jwt-abc',
-        expiresInSecs: 300,
-        refreshAtSecs: 240,
-      })
-
       daemonClient.initialize(TEST_CONFIG)
 
       const [s1, s2] = await Promise.all([
@@ -161,15 +117,16 @@ describe('DaemonClient', () => {
       ])
 
       expect(s1).toBe(s2)
-      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
+      expect(mockGetDaemonSession).toHaveBeenCalledTimes(1)
     })
 
-    it('throws DaemonApiError on auth failure', async () => {
-      mockFetchError(401, { error: 'unauthorized' })
+    it('throws DaemonApiError when native session is unavailable', async () => {
+      mockGetDaemonSession.mockResolvedValueOnce(null)
 
       daemonClient.initialize(TEST_CONFIG)
-      await expect(daemonClient.refreshSession()).rejects.toThrow(DaemonApiError)
-      await expect(daemonClient.refreshSession()).rejects.toMatchObject({
+      const promise = daemonClient.refreshSession()
+      await expect(promise).rejects.toThrow(DaemonApiError)
+      await expect(promise).rejects.toMatchObject({
         code: DaemonErrorCode.UNAUTHORIZED,
       })
     })
@@ -184,22 +141,21 @@ describe('DaemonClient', () => {
 
     it('auto-refreshes session and sends request with session header', async () => {
       mockFetchSequence([
-        // refreshSession response
-        {
-          ok: true,
-          status: 200,
-          body: { sessionToken: 'jwt-new', expiresInSecs: 300, refreshAtSecs: 240 },
-        },
         // actual GET /settings response
         { ok: true, status: 200, body: { theme: 'dark' } },
       ])
+      mockGetDaemonSession.mockResolvedValueOnce({
+        sessionToken: 'jwt-new',
+        expiresInSecs: 300,
+        refreshAtSecs: 240,
+      })
 
       daemonClient.initialize(TEST_CONFIG)
       const result = await daemonClient.request<{ theme: string }>('/settings')
 
       expect(result.theme).toBe('dark')
 
-      const settingsCall = vi.mocked(fetch).mock.calls[1]
+      const settingsCall = vi.mocked(fetch).mock.calls[0]
       expect(settingsCall[0]).toBeInstanceOf(URL)
       expect(settingsCall[0]?.toString()).toBe(
         'http://127.0.0.1:9999/settings?auth=Session+jwt-new'
@@ -208,41 +164,38 @@ describe('DaemonClient', () => {
 
     it('auto-retries once on 401', async () => {
       mockFetchSequence([
-        // initial refreshSession (pre-request)
-        {
-          ok: true,
-          status: 200,
-          body: { sessionToken: 'jwt-old', expiresInSecs: 300, refreshAtSecs: 240 },
-        },
         // first request → 401
         { ok: false, status: 401, body: { error: 'unauthorized' } },
-        // retry refreshSession
-        {
-          ok: true,
-          status: 200,
-          body: { sessionToken: 'jwt-fresh', expiresInSecs: 300, refreshAtSecs: 240 },
-        },
         // retry request → success
         { ok: true, status: 200, body: { data: 'ok' } },
       ])
+      mockGetDaemonSession
+        .mockResolvedValueOnce({
+          sessionToken: 'jwt-old',
+          expiresInSecs: 300,
+          refreshAtSecs: 240,
+        })
+        .mockResolvedValueOnce({
+          sessionToken: 'jwt-fresh',
+          expiresInSecs: 300,
+          refreshAtSecs: 240,
+        })
 
       daemonClient.initialize(TEST_CONFIG)
       const result = await daemonClient.request<{ data: string }>('/endpoint')
 
       expect(result.data).toBe('ok')
-      // 4 fetch calls: refresh + request + re-refresh + retry-request
-      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(4)
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+      expect(mockGetDaemonSession).toHaveBeenCalledTimes(2)
     })
 
     it('returns typed response', async () => {
-      mockFetchSequence([
-        {
-          ok: true,
-          status: 200,
-          body: { sessionToken: 'jwt-t', expiresInSecs: 300, refreshAtSecs: 240 },
-        },
-        { ok: true, status: 200, body: { count: 42, items: ['a', 'b'] } },
-      ])
+      mockFetchSequence([{ ok: true, status: 200, body: { count: 42, items: ['a', 'b'] } }])
+      mockGetDaemonSession.mockResolvedValueOnce({
+        sessionToken: 'jwt-t',
+        expiresInSecs: 300,
+        refreshAtSecs: 240,
+      })
 
       daemonClient.initialize(TEST_CONFIG)
       const result = await daemonClient.request<{ count: number; items: string[] }>('/items')
@@ -252,14 +205,12 @@ describe('DaemonClient', () => {
     })
 
     it('throws DaemonApiError with mapped error code on non-401 failure', async () => {
-      mockFetchSequence([
-        {
-          ok: true,
-          status: 200,
-          body: { sessionToken: 'jwt-t', expiresInSecs: 300, refreshAtSecs: 240 },
-        },
-        { ok: false, status: 404, body: { error: 'not found' } },
-      ])
+      mockFetchSequence([{ ok: false, status: 404, body: { error: 'not found' } }])
+      mockGetDaemonSession.mockResolvedValueOnce({
+        sessionToken: 'jwt-t',
+        expiresInSecs: 300,
+        refreshAtSecs: 240,
+      })
 
       daemonClient.initialize(TEST_CONFIG)
       try {
@@ -295,7 +246,7 @@ describe('DaemonClient', () => {
 
   describe('keep-alive', () => {
     it('calls refreshSession every 240 seconds', async () => {
-      mockFetchOk({
+      mockGetDaemonSession.mockResolvedValue({
         sessionToken: 'jwt-alive',
         expiresInSecs: 300,
         refreshAtSecs: 240,
@@ -305,15 +256,15 @@ describe('DaemonClient', () => {
 
       // Advance 240 seconds → should trigger one refresh
       await vi.advanceTimersByTimeAsync(240_000)
-      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
+      expect(mockGetDaemonSession).toHaveBeenCalledTimes(1)
 
       // Advance another 240 seconds → second refresh
       await vi.advanceTimersByTimeAsync(240_000)
-      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+      expect(mockGetDaemonSession).toHaveBeenCalledTimes(2)
     })
 
     it('stops after destroy', async () => {
-      mockFetchOk({
+      mockGetDaemonSession.mockResolvedValue({
         sessionToken: 'jwt-alive',
         expiresInSecs: 300,
         refreshAtSecs: 240,
@@ -323,7 +274,7 @@ describe('DaemonClient', () => {
       daemonClient.destroy()
 
       await vi.advanceTimersByTimeAsync(240_000)
-      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(0)
+      expect(mockGetDaemonSession).toHaveBeenCalledTimes(0)
     })
   })
 })

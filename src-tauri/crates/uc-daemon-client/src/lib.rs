@@ -21,7 +21,8 @@ use uc_daemon_local::socket::resolve_daemon_http_addr;
 pub use connection::DaemonConnectionState;
 pub use http::{
     DaemonClipboardClient, DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient,
-    DaemonSearchClient, DaemonSearchRequestError, DaemonSetupClient, SearchQueryRequest,
+    DaemonSearchClient, DaemonSearchRequestError, DaemonSetupClient, ExchangedSessionToken,
+    SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::DaemonService;
@@ -234,6 +235,21 @@ impl DaemonClientContext {
     /// Get a clone of the underlying HTTP client.
     pub fn http(&self) -> Arc<reqwest::Client> {
         self.http.clone()
+    }
+
+    /// Exchange the raw bearer token for a short-lived daemon session token.
+    pub async fn exchange_session_token(
+        &self,
+        pid: u32,
+        client_type: &str,
+    ) -> Result<ExchangedSessionToken> {
+        http::exchange_session_token_with_metadata(
+            self.http.as_ref(),
+            &self.connection_state,
+            pid,
+            client_type,
+        )
+        .await
     }
 
     /// Get a clone of the client type.

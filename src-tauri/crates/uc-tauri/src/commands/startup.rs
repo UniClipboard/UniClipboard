@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::Serialize;
 use tauri::AppHandle;
 use tracing::{info, info_span, Instrument};
-use uc_daemon_client::DaemonConnectionState;
+use uc_daemon_client::{DaemonClientContext, DaemonConnectionState};
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_platform::ports::observability::TraceMetadata;
 
@@ -18,7 +18,6 @@ use crate::tray::show_main_window;
 pub struct DaemonConnectionPayload {
     base_url: String,
     ws_url: String,
-    token: String,
 }
 
 impl From<&DaemonConnectionInfo> for DaemonConnectionPayload {
@@ -26,9 +25,18 @@ impl From<&DaemonConnectionInfo> for DaemonConnectionPayload {
         Self {
             base_url: value.base_url.clone(),
             ws_url: value.ws_url.clone(),
-            token: value.token.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DaemonSessionPayload {
+    session_token: String,
+    #[specta(type = specta_typescript::Number<i64>)]
+    expires_in_secs: i64,
+    #[specta(type = specta_typescript::Number<i64>)]
+    refresh_at_secs: i64,
 }
 
 pub fn read_daemon_connection_info(
@@ -56,6 +64,44 @@ pub async fn get_daemon_connection_info(
     async move { Ok(read_daemon_connection_info(&state)) }
         .instrument(span)
         .await
+}
+
+/// Exchange daemon bearer credentials for a short-lived webview session.
+///
+/// The raw bearer token stays in the native Tauri side; the webview only receives
+/// the daemon's session JWT and its refresh metadata.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_daemon_session(
+    state: tauri::State<'_, DaemonConnectionState>,
+    _trace: Option<TraceMetadata>,
+) -> Result<Option<DaemonSessionPayload>, crate::commands::CommandError> {
+    let span = info_span!(
+        "command.startup.get_daemon_session",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let Some(connection_info) = state.get() else {
+            return Ok(None);
+        };
+
+        let context = DaemonClientContext::with_connection_info(connection_info, "gui".to_string());
+        let session = context
+            .exchange_session_token(std::process::id(), "gui")
+            .await
+            .map_err(crate::commands::CommandError::internal)?;
+
+        Ok(Some(DaemonSessionPayload {
+            session_token: session.session_token,
+            expires_in_secs: session.expires_in_secs,
+            refresh_at_secs: session.refresh_at_secs,
+        }))
+    }
+    .instrument(span)
+    .await
 }
 
 /// Startup barrier used to coordinate backend readiness.

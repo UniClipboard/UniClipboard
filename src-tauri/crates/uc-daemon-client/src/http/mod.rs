@@ -24,6 +24,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 static SESSION_TOKEN_CACHE: tokio::sync::RwLock<Option<(String, u64)>> =
     tokio::sync::RwLock::const_new(None);
 
+/// Session details returned by `/auth/connect`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExchangedSessionToken {
+    pub session_token: String,
+    pub expires_in_secs: i64,
+    pub refresh_at_secs: i64,
+}
+
 /// Exchange the bearer token for a JWT session token via POST /auth/connect.
 ///
 /// The returned session token must be used with `Authorization: Session <token>` header
@@ -40,6 +48,20 @@ pub async fn exchange_session_token(
     pid: u32,
     client_type: &str,
 ) -> Result<String> {
+    Ok(
+        exchange_session_token_with_metadata(http, connection_state, pid, client_type)
+            .await?
+            .session_token,
+    )
+}
+
+/// Exchange the bearer token for JWT session metadata via POST /auth/connect.
+pub async fn exchange_session_token_with_metadata(
+    http: &reqwest::Client,
+    connection_state: &DaemonConnectionState,
+    pid: u32,
+    client_type: &str,
+) -> Result<ExchangedSessionToken> {
     let connection = connection_state
         .get()
         .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
@@ -70,8 +92,8 @@ pub async fn exchange_session_token(
     #[serde(rename_all = "camelCase")]
     struct ConnectResponse {
         session_token: String,
-        #[allow(dead_code)]
         expires_in_secs: i64,
+        refresh_at_secs: i64,
     }
 
     let resp: ConnectResponse = response
@@ -79,7 +101,11 @@ pub async fn exchange_session_token(
         .await
         .context("failed to decode session token exchange response")?;
 
-    Ok(resp.session_token)
+    Ok(ExchangedSessionToken {
+        session_token: resp.session_token,
+        expires_in_secs: resp.expires_in_secs,
+        refresh_at_secs: resp.refresh_at_secs,
+    })
 }
 
 /// Exchange bearer token for JWT session using the CLI client type.

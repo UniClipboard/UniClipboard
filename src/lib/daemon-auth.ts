@@ -9,7 +9,6 @@
  * - `waitForEncryptionReady(timeout)`: Poll encryption state until session_ready or timeout.
  */
 
-import { invoke } from '@tauri-apps/api/core'
 import { daemonClient } from '@/api/daemon/client'
 import { DaemonApiError } from '@/api/daemon/errors'
 import type { DaemonConfig, SessionToken } from '@/api/daemon/types'
@@ -72,10 +71,6 @@ export async function loadDaemonAuth(): Promise<DaemonAuthResult> {
   const config: DaemonConfig = {
     baseUrl: payload.baseUrl,
     wsUrl: payload.wsUrl,
-    token: payload.token,
-    // The webview cannot access the OS process ID directly.
-    // Use a Tauri command to get the real OS PID for /auth/connect.
-    pid: await invoke<number>('get_tauri_pid'),
   }
 
   daemonClient.initialize(config)

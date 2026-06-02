@@ -4,16 +4,17 @@
  * Daemon 单例 HTTP 客户端，管理 session token 生命周期并提供类型化请求方法。
  *
  * # Bootstrap Flow / 启动流程
- * 1. Frontend polls `get_daemon_connection_info` until it receives `{ baseUrl, wsUrl, token }`.
+ * 1. Frontend polls `get_daemon_connection_info` until it receives `{ baseUrl, wsUrl }`.
  * 2. Call `daemonClient.initialize(config)` with the received config.
- * 3. The client auto-refreshes the session token every 4 minutes.
+ * 3. The client asks native Tauri for short-lived daemon sessions every 4 minutes.
  *
  * # Session Token Lifecycle / Session Token 生命周期
- * - POST `/auth/connect` with bearer token → JWT session token (TTL 300s, refresh at 240s).
+ * - Native Tauri exchanges bearer token → JWT session token (TTL 300s, refresh at 240s).
  * - `request<T>()` auto-refreshes on 401 (one retry).
  * - `destroy()` clears the keep-alive timer.
  */
 
+import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { DaemonApiError, DaemonErrorCode, mapStatusToErrorCode } from './errors'
 import type { DaemonConfig, SessionToken } from './types'
@@ -86,9 +87,9 @@ class DaemonClient {
   }
 
   /**
-   * Exchange the bearer token for a JWT session token via POST /auth/connect.
+   * Ask native Tauri for a short-lived daemon session token.
    *
-   * 使用 bearer token 交换 JWT session token。
+   * 向 Tauri 原生侧请求短期 daemon session token。
    *
    * @returns The new session token.
    * @throws {DaemonApiError} If the request fails.
@@ -192,33 +193,10 @@ class DaemonClient {
   // ── Private helpers ──────────────────────────────────────────
 
   private async doRefreshSession(): Promise<SessionToken> {
-    const config = this.config!
-    const url = `${config.baseUrl}/auth/connect`
-    const body = new URLSearchParams({
-      token: config.token,
-      pid: String(config.pid),
-      clientType: 'gui',
-    })
-
-    const response = await fetch(url, {
-      method: 'POST',
-      body,
-    })
-
-    if (!response.ok) {
-      const errorCode = mapStatusToErrorCode(response.status)
-      let message = `POST /auth/connect failed with status ${response.status}`
-      try {
-        const body = await response.json()
-        if (body.error) message = body.error
-      } catch {
-        // ignore parse failures
-      }
-      throw new DaemonApiError(errorCode, message)
+    const data = await commands.getDaemonSession()
+    if (!data) {
+      throw new DaemonApiError(DaemonErrorCode.UNAUTHORIZED, 'Daemon session is not available yet')
     }
-
-    const data: { sessionToken: string; expiresInSecs: number; refreshAtSecs: number } =
-      await response.json()
 
     const now = Date.now()
     this.session = {

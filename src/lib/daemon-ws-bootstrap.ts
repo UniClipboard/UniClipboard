@@ -40,7 +40,7 @@ function resetConnectionState(): void {
  * The full bootstrap sequence is:
  *   1. Poll `get_daemon_connection_info` until the daemon reports ready.
  *   2. Initialize `daemonClient` with the received connection config.
- *   3. Exchange the bearer token for a JWT session via POST /auth/connect.
+ *   3. Ask native Tauri for a JWT session.
  *   4. Open the WebSocket with the session token in the URL.
  *
  * WebSocket connect never starts before step 3 is complete, ensuring the daemon
@@ -64,11 +64,9 @@ export function connectDaemonWs(): Promise<void> {
       daemonClient.initialize({
         baseUrl: payload.baseUrl,
         wsUrl: payload.wsUrl,
-        token: payload.token,
-        pid: 0,
       })
 
-      // Step 2: Exchange the bearer token for a JWT session before opening the WebSocket.
+      // Step 2: Receive a short-lived daemon session before opening the WebSocket.
       // This is the critical ordering requirement — daemonWs._openSocket() reads
       // daemonClient.currentSession.token to build the auth URL, so the session
       // must exist before connect() is called.

@@ -52,6 +52,7 @@ pub fn build() -> Builder<tauri::Wry> {
             crate::commands::get_device_id,
             crate::commands::get_device_meta,
             crate::commands::startup::get_daemon_connection_info,
+            crate::commands::startup::get_daemon_session,
             // ── restart (Phase 95) ──────────────────────────────────────────────
             crate::commands::restart::restart_app,
             // ── autostart ───────────────────────────────────────────────────────

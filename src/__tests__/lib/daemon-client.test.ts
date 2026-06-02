@@ -25,8 +25,6 @@ import type { DaemonConfig, SessionToken } from '@/api/daemon/types'
 const TEST_CONFIG: DaemonConfig = {
   baseUrl: 'http://127.0.0.1:42715',
   wsUrl: 'ws://127.0.0.1:42715/ws',
-  pid: 12345,
-  token: 'test-bearer-token',
 }
 
 const DEFAULT_SESSION: SessionToken = {

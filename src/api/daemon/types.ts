@@ -14,10 +14,6 @@ export interface DaemonConfig {
   baseUrl: string
   /** WebSocket URL, e.g. "ws://127.0.0.1:42715/ws" */
   wsUrl: string
-  /** Process ID of the daemon (or the GUI client PID for auth). */
-  pid: number
-  /** Bearer token for initial authentication (from daemon.token file). */
-  token: string
 }
 
 /**

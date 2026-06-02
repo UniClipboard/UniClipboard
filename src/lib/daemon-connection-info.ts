@@ -42,13 +42,10 @@ function validatePayload(payload: unknown): asserts payload is DaemonConnectionP
     payload === null ||
     !('baseUrl' in payload) ||
     !('wsUrl' in payload) ||
-    !('token' in payload) ||
     typeof (payload as DaemonConnectionPayload).baseUrl !== 'string' ||
     typeof (payload as DaemonConnectionPayload).wsUrl !== 'string' ||
-    typeof (payload as DaemonConnectionPayload).token !== 'string' ||
     !(payload as DaemonConnectionPayload).baseUrl ||
-    !(payload as DaemonConnectionPayload).wsUrl ||
-    !(payload as DaemonConnectionPayload).token
+    !(payload as DaemonConnectionPayload).wsUrl
   ) {
     throw new Error('Malformed daemon connection payload: missing required fields')
   }

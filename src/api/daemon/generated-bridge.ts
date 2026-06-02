@@ -74,12 +74,37 @@ export function installGeneratedClientBridge(baseUrl: string): void {
   //     Request.url is read-only -> rebuild the Request with the rewritten URL.
   //     Re-reads the freshly refreshed token on each call (incl. the retry),
   //     so the 401 refresh+retry in callSdk transparently picks up the new token.
-  generatedClient.interceptors.request.use((request: Request) => {
+  //
+  //     The body MUST be materialized (arrayBuffer) before rebuilding. Doing
+  //     `new Request(url, request)` directly re-uses the source Request's body
+  //     as a ReadableStream, and WKWebView's fetch refuses to UPLOAD a stream
+  //     body — it throws "ReadableStream uploading is not supported", failing
+  //     every body-bearing SDK call (POST/PATCH: initializeSpace, settings,
+  //     clipboard…). This surfaces only in the real Tauri WebView; Chromium
+  //     (vite dev) tolerates stream uploads, which is why it slipped through.
+  //     A buffered ArrayBuffer body sidesteps the limitation; GET/HEAD carry
+  //     no body. `arrayBuffer()` (Body mixin) is used rather than `request.body`
+  //     so we don't depend on the streams API being exposed.
+  generatedClient.interceptors.request.use(async (request: Request) => {
     const token = daemonClient.currentSession?.token
     if (!token) return request
     const url = new URL(request.url)
     url.searchParams.set('auth', `Session ${token}`)
-    return new Request(url, request)
+
+    const method = request.method.toUpperCase()
+    let body: ArrayBuffer | undefined
+    if (method !== 'GET' && method !== 'HEAD') {
+      const buffered = await request.arrayBuffer()
+      body = buffered.byteLength > 0 ? buffered : undefined
+    }
+
+    return new Request(url, {
+      method: request.method,
+      headers: request.headers,
+      body,
+      redirect: request.redirect,
+      signal: request.signal,
+    })
   })
 
   // (c) Wrap thrown errors so the HTTP status is observable. The generated

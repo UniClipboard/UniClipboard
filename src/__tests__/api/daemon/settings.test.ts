@@ -8,7 +8,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, expect, it, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 // `./_test-helpers` 必须先于 `@/api/daemon/*` 加载: 它在 top-level 注册了
 // `vi.mock('@/api/daemon/client', ...)`,只有先跑过才能保证 storage/settings
 // 拿到的是被 mock 的 client; 一旦顺序反了,真实 client 会先进 ESM 缓存。
@@ -17,17 +17,33 @@ import {
   makeSettingsDto,
   setupMockClient,
   teardownMockClient,
-  mockDaemonClient,
   makeValidationError,
   makeNotFoundError,
 } from './_test-helpers'
 import { DaemonErrorCode } from '@/api/daemon/errors'
 import { getSettings, updateSettings } from '@/api/daemon/settings'
 import type { Settings } from '@/api/daemon/settings'
+import {
+  getSettings as getSettingsSdk,
+  updateSettings as updateSettingsSdk,
+} from '@/api/generated/sdk.gen'
+
+// ADR-008 P6: settings 走生成的 SDK + daemonClient.callSdk（见 _test-helpers 的
+// callSdk 默认实现，忠实复刻真实 happy-path）。GET/PUT 的返回与错误都由这两个
+// SDK fn mock 控制；callSdk 把 SDK fn 的 `{ data: <envelope> }` 透传给 wrapper。
+vi.mock('@/api/generated/sdk.gen', () => ({
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+}))
+
+const getSdkMock = getSettingsSdk as unknown as ReturnType<typeof vi.fn>
+const updateSdkMock = updateSettingsSdk as unknown as ReturnType<typeof vi.fn>
 
 describe('Settings API', () => {
   beforeEach(() => {
     setupMockClient()
+    getSdkMock.mockReset()
+    updateSdkMock.mockReset()
   })
 
   afterEach(() => {
@@ -39,7 +55,7 @@ describe('Settings API', () => {
   describe('getSettings()', () => {
     it('returns the full Settings object on success', async () => {
       const settings = makeSettingsDto()
-      mockDaemonClient.request.mockResolvedValueOnce({ data: settings, ts: Date.now() })
+      getSdkMock.mockResolvedValueOnce({ data: { data: settings, ts: Date.now() } })
 
       const result = await getSettings()
 
@@ -73,7 +89,7 @@ describe('Settings API', () => {
           usageAnalyticsEnabled: false,
         },
       })
-      mockDaemonClient.request.mockResolvedValueOnce({ data: settings, ts: Date.now() })
+      getSdkMock.mockResolvedValueOnce({ data: { data: settings, ts: Date.now() } })
 
       const result = await getSettings()
 
@@ -104,7 +120,7 @@ describe('Settings API', () => {
           },
         },
       })
-      mockDaemonClient.request.mockResolvedValueOnce({ data: settings, ts: Date.now() })
+      getSdkMock.mockResolvedValueOnce({ data: { data: settings, ts: Date.now() } })
 
       const result = await getSettings()
 
@@ -122,7 +138,7 @@ describe('Settings API', () => {
           evaluation: 'allMatch',
         },
       })
-      mockDaemonClient.request.mockResolvedValueOnce({ data: settings, ts: Date.now() })
+      getSdkMock.mockResolvedValueOnce({ data: { data: settings, ts: Date.now() } })
 
       const result = await getSettings()
 
@@ -133,7 +149,7 @@ describe('Settings API', () => {
     })
 
     it('re-throws DaemonApiError on HTTP failure', async () => {
-      mockDaemonClient.request.mockRejectedValueOnce(makeNotFoundError('500 on /settings'))
+      getSdkMock.mockRejectedValueOnce(makeNotFoundError('500 on /settings'))
 
       await expect(getSettings()).rejects.toMatchObject({
         code: DaemonErrorCode.NOT_FOUND,
@@ -145,7 +161,9 @@ describe('Settings API', () => {
 
   describe('updateSettings(partial)', () => {
     it('sends PUT with camelCase payload matching Settings schema', async () => {
-      mockDaemonClient.request.mockResolvedValueOnce({ data: { success: true }, ts: Date.now() })
+      updateSdkMock.mockResolvedValueOnce({
+        data: { data: { success: true, restartRequired: false }, ts: Date.now() },
+      })
 
       await updateSettings({
         schemaVersion: 1,
@@ -168,10 +186,9 @@ describe('Settings API', () => {
         },
       })
 
-      expect(mockDaemonClient.request).toHaveBeenCalledTimes(1)
-      const [, opts] = mockDaemonClient.request.mock.calls[0] as [string, RequestInit]
-      expect((opts as { method: string }).method).toBe('PUT')
-      const body = (opts as unknown as { body: Record<string, unknown> }).body
+      expect(updateSdkMock).toHaveBeenCalledTimes(1)
+      const [opts] = updateSdkMock.mock.calls[0] as [{ body: Record<string, unknown> }]
+      const body = opts.body
       expect(body).toHaveProperty('general')
       // autoStart is intentionally NOT sent through the daemon patch: the OS
       // launch-at-login registration is a desktop-host side effect the settings
@@ -183,7 +200,9 @@ describe('Settings API', () => {
     })
 
     it('accepts a minimal partial update with only changed fields', async () => {
-      mockDaemonClient.request.mockResolvedValueOnce({ data: { success: true }, ts: Date.now() })
+      updateSdkMock.mockResolvedValueOnce({
+        data: { data: { success: true, restartRequired: false }, ts: Date.now() },
+      })
 
       await updateSettings({
         general: {
@@ -205,11 +224,13 @@ describe('Settings API', () => {
         },
       })
 
-      expect(mockDaemonClient.request).toHaveBeenCalledTimes(1)
+      expect(updateSdkMock).toHaveBeenCalledTimes(1)
     })
 
     it('encodes keyboardShortcuts as a patch object with nested shortcuts map', async () => {
-      mockDaemonClient.request.mockResolvedValueOnce({ data: { success: true }, ts: Date.now() })
+      updateSdkMock.mockResolvedValueOnce({
+        data: { data: { success: true, restartRequired: false }, ts: Date.now() },
+      })
 
       await updateSettings({
         keyboardShortcuts: {
@@ -217,9 +238,9 @@ describe('Settings API', () => {
         },
       })
 
-      expect(mockDaemonClient.request).toHaveBeenCalledTimes(1)
-      const [, opts] = mockDaemonClient.request.mock.calls[0] as [string, RequestInit]
-      const body = (opts as unknown as { body: Record<string, unknown> }).body
+      expect(updateSdkMock).toHaveBeenCalledTimes(1)
+      const [opts] = updateSdkMock.mock.calls[0] as [{ body: Record<string, unknown> }]
+      const body = opts.body
       expect(body.keyboardShortcuts).toEqual({
         shortcuts: {
           toggle_main_window: ['CommandOrControl+Shift+V', 'Alt+Shift+V'],
@@ -228,7 +249,7 @@ describe('Settings API', () => {
     })
 
     it('re-throws DaemonApiError with validation detail on 400', async () => {
-      mockDaemonClient.request.mockRejectedValueOnce(
+      updateSdkMock.mockRejectedValueOnce(
         makeValidationError('field "theme" must be one of light|dark|system', {
           field: 'general.theme',
           constraint: 'enum',
@@ -261,7 +282,7 @@ describe('Settings API', () => {
     })
 
     it('re-throws DaemonApiError on HTTP failure', async () => {
-      mockDaemonClient.request.mockRejectedValueOnce(makeValidationError('500 on /settings'))
+      updateSdkMock.mockRejectedValueOnce(makeValidationError('500 on /settings'))
 
       await expect(updateSettings({})).rejects.toMatchObject({
         code: DaemonErrorCode.INTERNAL_ERROR,

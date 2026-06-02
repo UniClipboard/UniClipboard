@@ -29,10 +29,21 @@ export interface SearchResultDto {
   fileExtensions: string[]
 }
 
-export interface SearchQueryResponse {
-  data: SearchResultDto[]
+/**
+ * Folded payload for `GET /search/query` (ADR-008 §0.1).
+ *
+ * `total`/`hasMore` are no longer top-level siblings of the envelope — they are
+ * folded INTO the `data` payload alongside the renamed `items` array. The
+ * endpoint now returns the canonical `ApiEnvelope<SearchQueryResultDto>`.
+ */
+export interface SearchQueryResultDto {
+  items: SearchResultDto[]
   total: number
   hasMore: boolean
+}
+
+export interface SearchQueryResponse {
+  data: SearchQueryResultDto
   ts: number
 }
 

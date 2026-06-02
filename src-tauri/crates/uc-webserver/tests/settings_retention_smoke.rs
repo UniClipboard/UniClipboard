@@ -30,8 +30,9 @@ use serde_json::{json, Value};
 use uc_application::facade::settings::SettingsFacade;
 use uc_core::ports::SettingsPort;
 use uc_core::settings::model::Settings;
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::settings::{
-    RetentionRuleDto, SettingsPatchDto, UpdateSettingsResponse,
+    RetentionRuleDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
 use uc_webserver::api::dto::settings::SettingsDto;
 use uc_webserver::api::settings::{settings_patch_from_dto, settings_view_to_dto};
@@ -65,16 +66,21 @@ fn build_facade() -> SettingsFacade {
 
 async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
     let payload: SettingsPatchDto = serde_json::from_str(body_json).expect("parse PUT body");
-    let view = facade
+    let restart_required = payload.network.is_some();
+    // ADR-008 §0.1: handler writes the patch then returns only
+    // `{ data: { success, restartRequired }, ts }` — the updated SettingsView is
+    // no longer echoed on the wire. Written values are verified via `simulate_get`.
+    facade
         .update(settings_patch_from_dto(payload))
         .await
         .expect("settings update");
-    let resp = UpdateSettingsResponse {
-        success: true,
-        data: settings_view_to_dto(view),
-        ts: 0,
-        restart_required: false,
-    };
+    let resp = ApiEnvelope::with_ts(
+        SettingsUpdateResultDto {
+            success: true,
+            restart_required,
+        },
+        0,
+    );
     serde_json::to_value(&resp).expect("serialize response")
 }
 
@@ -211,21 +217,15 @@ async fn put_retention_rules_camelcase_round_trips() {
     .to_string();
 
     let put_resp = simulate_put(&facade, &put_body).await;
+    // ADR-008 §0.1: PUT wire is `{ data: { success, restartRequired }, ts }`.
     assert_eq!(
-        put_resp["success"],
+        put_resp["data"]["success"],
         Value::Bool(true),
         "PUT /settings must succeed with camelCase retention rules (issue #606)"
     );
 
-    // PUT 响应里 data.retentionPolicy 必须保留写入的两条规则，且字段名仍是 camelCase。
-    let rules = put_resp["data"]["retentionPolicy"]["rules"]
-        .as_array()
-        .expect("rules array");
-    assert_eq!(rules.len(), 2);
-    assert_eq!(rules[0]["byAge"]["maxAge"], json!(60 * 86_400));
-    assert_eq!(rules[1]["byCount"]["maxItems"], json!(1000));
-
-    // GET 二次确认写盘 → 读取一致。
+    // PUT 响应不再回显 SettingsDto（ADR-008 §0.1）；写入的两条规则改由 GET 读回
+    // 验证 —— 既确认写盘成功，也锁定 wire 字段名仍是 camelCase（issue #606 回归点）。
     let get_resp = simulate_get(&facade).await;
     let get_rules = get_resp["retentionPolicy"]["rules"]
         .as_array()
@@ -268,17 +268,21 @@ async fn get_then_put_full_retention_section_succeeds() {
     // 在用户拨"自动清理"开关时构造 patch 的方式。
     let full_put = json!({ "retentionPolicy": retention }).to_string();
     let resp = simulate_put(&facade, &full_put).await;
+    // ADR-008 §0.1: PUT wire is `{ data: { success, restartRequired }, ts }`.
     assert_eq!(
-        resp["success"],
+        resp["data"]["success"],
         Value::Bool(true),
         "round-trip GET → PUT of the full retentionPolicy must succeed"
     );
+
+    // PUT 响应不再回显 SettingsDto；round-trip 后的 rules 改由 GET 读回验证。
+    let after = simulate_get(&facade).await;
     assert_eq!(
-        resp["data"]["retentionPolicy"]["rules"][0]["byAge"]["maxAge"],
+        after["retentionPolicy"]["rules"][0]["byAge"]["maxAge"],
         json!(14 * 86_400)
     );
     assert_eq!(
-        resp["data"]["retentionPolicy"]["rules"][1]["byCount"]["maxItems"],
+        after["retentionPolicy"]["rules"][1]["byCount"]["maxItems"],
         json!(200)
     );
 }

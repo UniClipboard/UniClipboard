@@ -8,7 +8,12 @@ Tracks phase status + cross-phase carry-overs. Authoritative spec: `normalizatio
 - **P3 Native Rust consumer lockstep** — ✅ DONE + verified (7 decode sites → `ApiEnvelope.data`; 3 contract search wrappers deleted; cargo check + uc-cli/uc-daemon-client tests green; ref-integrity guard still passes). ⚠️ Live connect/dispatch smoke = recommended manual follow-up (no daemon in CI env). 2026-06-02.
 - **P4 gen-openapi bin + schema** — ✅ DONE + verified (gen-openapi bin = hard $ref-integrity gate; `schema/openapi.json` 194 KB, byte-deterministic, 0 dangling, 48 ops; `gen:openapi` npm script added). 2026-06-02.
 - **P5 FE codegen + bridge** — ✅ DONE + verified (gen:client idempotent; tsc 0 new errors; bridge injects `?auth` query + `callSdk` 401-retry; `src/api/generated/` excluded from prettier+eslint; CI drift-checks added to pr-check.yml). 2026-06-02.
-- **P6 FE consumer migration** — ⬜
+- **P6 FE consumer migration** — ✅ DONE + verified (all §H JS consumers read `.data`; settings via generated SDK `callSdk`; `UpdateSettingsResponse` deleted + Rust smoke tests migrated; tsc 0 new errors; vitest 99 green; cargo clean; `classify*Error` + restore-410 ride through `DaemonApiError.details`). 2026-06-02.
+
+## Remaining follow-ups (non-blocking)
+- **Live smoke (from P3):** no daemon in this env — manually run `uniclip start` + a connect/dispatch/health/peers round-trip against a P2+ daemon to confirm the enveloped decode paths end-to-end (esp. the L1 `/auth/connect` bootstrap + unauthenticated `/health` probe).
+- **client.ts error-message polish:** `src/api/daemon/client.ts` `handleResponse` still extracts the human message via `if (body.error)`, but the normalized `ApiErrorResponse` is `{ code, message, details? }` (no `.error`). Classifiers are unaffected (they read `DaemonApiError.details.message`) and status-based `DaemonErrorCode` mapping is unaffected, but the top-level `DaemonApiError.message` falls back to `"<status> on <endpoint>"` instead of surfacing `body.message`. Cosmetic UX polish for a later pass.
+- **Spec §G/§H stale rows:** a couple of §H/§G prose rows still say "PUT /settings keep success/restartRequired top-level (non-breaking)" — superseded by §0.1 (folded into `data`). §0 is authoritative; left as-is (historical rationale).
 
 ## P1 result
 - **New files (contract):** `dto/envelope.rs` (`ApiEnvelope<T>` + 38 `#[aliases]`, bare generic NOT registered), `dto/error.rs` (`ApiErrorResponse{code,message,details:Option<Value>}` + `new()`/`with_details()`), `dto/auth.rs` (`ConnectRequest`, `SessionTokenResponse`), `dto/storage.rs` (`StorageStatsDto`,`ClearCacheRequest`,`ClearCacheResponse`), `openapi_meta.rs` (metadata + `SecurityAddon` registering BOTH `session_query` + `session_header`).

@@ -351,9 +351,16 @@ export async function unfavoriteClipboardItem(id: string): Promise<boolean> {
 
 /**
  * Copy a file entry to the system clipboard via the daemon restore endpoint.
+ *
+ * Routes through the typed `restoreClipboardEntry` wrapper, which now reads the
+ * enveloped `{ data, ts }` restore response (ADR-008 §0.1) and discards the
+ * body. The success body is irrelevant here; the 410 `PAYLOAD_UNAVAILABLE`
+ * error (whose `entry_id`/`rep_id`/`state` context lives in
+ * `ApiErrorResponse.details` per §0.3) still propagates as a `DaemonApiError`
+ * so callers can render the "content unavailable" UX.
  */
 export async function copyFileToClipboard(entryId: string): Promise<void> {
-  await daemonClient.request(`/clipboard/restore/${entryId}`, { method: 'POST' })
+  await daemonRestoreEntry(entryId)
 }
 
 /**

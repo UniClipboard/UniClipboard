@@ -21,8 +21,10 @@ describe('lifecycle api facade', () => {
   })
 
   it('getLifecycleStatus calls daemon getLifecycleStatus', async () => {
+    // ADR-008: GET /lifecycle/status now returns ApiEnvelope<LifecycleStatusDto>
+    // = `{ data: { state }, ts }`; the wrapper unwraps `.data`.
     const payload: LifecycleStatusDto = { state: 'Ready' }
-    requestSpy.mockResolvedValueOnce(payload)
+    requestSpy.mockResolvedValueOnce({ data: payload, ts: 0 })
 
     const result = await getLifecycleStatus()
 
@@ -33,7 +35,7 @@ describe('lifecycle api facade', () => {
   })
 
   it('getLifecycleStatus returns typed dto with lifecycleState union', async () => {
-    requestSpy.mockResolvedValueOnce({ state: 'Pending' })
+    requestSpy.mockResolvedValueOnce({ data: { state: 'Pending' }, ts: 0 })
 
     const result = await getLifecycleStatus()
 

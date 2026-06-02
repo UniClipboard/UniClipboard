@@ -87,7 +87,9 @@ describe('loadDaemonAuth', () => {
 
 describe('verifyAuthState', () => {
   it('returns full state when daemon is healthy and encryption initialized', async () => {
-    mockRequest.mockResolvedValueOnce({ status: 'ok' })
+    // ADR-008: GET /health returns `{ data: { status }, ts }`; verifyAuthState
+    // reads `health.data.status`.
+    mockRequest.mockResolvedValueOnce({ data: { status: 'ok' }, ts: Date.now() })
     mockRequest.mockResolvedValueOnce({
       data: { initialized: true, sessionReady: true },
       ts: Date.now(),
@@ -114,7 +116,7 @@ describe('verifyAuthState', () => {
   })
 
   it('returns daemonReady=true but encryption=false when encryption check fails', async () => {
-    mockRequest.mockResolvedValueOnce({ status: 'ok' })
+    mockRequest.mockResolvedValueOnce({ data: { status: 'ok' }, ts: Date.now() })
     mockRequest.mockRejectedValueOnce(
       new DaemonApiError(DaemonErrorCode.UNAUTHORIZED, 'session expired')
     )

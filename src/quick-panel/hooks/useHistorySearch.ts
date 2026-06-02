@@ -178,8 +178,9 @@ export function useHistorySearch({
     doSearch(searchQuery, tokens, activeFilter, timeRange, isAdvancedMode, controller.signal)
       .then(response => {
         if (controller.signal.aborted) return
-        setSearchResults(response.data.map(searchResultToDisplayItem))
-        setSearchTotal(response.total)
+        // ADR-008 §0.1: items + total now live inside the enveloped `data` payload.
+        setSearchResults(response.data.items.map(searchResultToDisplayItem))
+        setSearchTotal(response.data.total)
         setIsSearching(false)
       })
       .catch(err => {

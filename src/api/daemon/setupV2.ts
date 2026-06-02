@@ -80,6 +80,50 @@ export interface MigrationProgressResponse {
   backupRecordCount: number
 }
 
+// ── API response wrappers (matching Rust { data, ts } envelope) ─────────────
+//
+// Each /v2/setup/* success body is now wrapped in `ApiEnvelope<T> { data, ts }`
+// (ADR-008 P2 normalized these endpoints from bare bodies). The payload `T`
+// keeps the same field shape as before — callers read `.data`. Error bodies
+// are NOT enveloped (still `ApiErrorResponse { code, message, details? }`), so
+// the `classify*Error` matchers below remain unchanged.
+
+/** POST /v2/setup/initialize JSON envelope. */
+interface InitializeSpaceEnvelope {
+  data: InitializeSpaceResponse
+  ts: number
+}
+
+/** POST /v2/setup/issue-invitation JSON envelope. */
+interface IssueInvitationEnvelope {
+  data: IssueInvitationResponse
+  ts: number
+}
+
+/** POST /v2/setup/redeem JSON envelope. */
+interface RedeemEnvelope {
+  data: RedeemResponse
+  ts: number
+}
+
+/** GET /v2/setup/state JSON envelope. */
+interface SetupStateEnvelope {
+  data: SetupStateResponse
+  ts: number
+}
+
+/** POST /v2/setup/switch-space JSON envelope. */
+interface SwitchSpaceEnvelope {
+  data: SwitchSpaceResponse
+  ts: number
+}
+
+/** GET /v2/setup/migration-progress JSON envelope. */
+interface MigrationProgressEnvelope {
+  data: MigrationProgressResponse
+  ts: number
+}
+
 // ── Typed errors (HTTP status → discriminated union) ───────────────────────
 //
 // Backend returns descriptive English messages in the body; we keep the raw
@@ -346,10 +390,11 @@ export async function initializeSpace(
   body: InitializeSpaceRequest
 ): Promise<InitializeSpaceResponse> {
   try {
-    return await daemonClient.request<InitializeSpaceResponse>(ROUTE.initialize, {
+    const res = await daemonClient.request<InitializeSpaceEnvelope>(ROUTE.initialize, {
       method: 'POST',
       body,
     })
+    return res.data
   } catch (err) {
     throw classifyInitializeError(err)
   }
@@ -357,9 +402,10 @@ export async function initializeSpace(
 
 export async function issuePairingInvitation(): Promise<IssueInvitationResponse> {
   try {
-    return await daemonClient.request<IssueInvitationResponse>(ROUTE.issueInvitation, {
+    const res = await daemonClient.request<IssueInvitationEnvelope>(ROUTE.issueInvitation, {
       method: 'POST',
     })
+    return res.data
   } catch (err) {
     throw classifyIssueError(err)
   }
@@ -380,10 +426,11 @@ function normalizeInvitationCode(raw: string): string {
 
 export async function redeemInvitation(body: RedeemRequest): Promise<RedeemResponse> {
   try {
-    return await daemonClient.request<RedeemResponse>(ROUTE.redeem, {
+    const res = await daemonClient.request<RedeemEnvelope>(ROUTE.redeem, {
       method: 'POST',
       body: { ...body, code: normalizeInvitationCode(body.code) },
     })
+    return res.data
   } catch (err) {
     throw classifyRedeemError(err)
   }
@@ -407,7 +454,8 @@ export async function resetSetup(): Promise<void> {
 
 export async function getSetupState(): Promise<SetupStateResponse> {
   try {
-    return await daemonClient.request<SetupStateResponse>(ROUTE.state)
+    const res = await daemonClient.request<SetupStateEnvelope>(ROUTE.state)
+    return res.data
   } catch (err) {
     throw classifyQueryError(err)
   }
@@ -429,10 +477,11 @@ export async function getSetupState(): Promise<SetupStateResponse> {
  */
 export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpaceResponse> {
   try {
-    return await daemonClient.request<SwitchSpaceResponse>(ROUTE.switchSpace, {
+    const res = await daemonClient.request<SwitchSpaceEnvelope>(ROUTE.switchSpace, {
       method: 'POST',
       body: { ...body, code: normalizeInvitationCode(body.code) },
     })
+    return res.data
   } catch (err) {
     throw classifySwitchSpaceError(err)
   }
@@ -446,7 +495,8 @@ export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpace
  */
 export async function queryMigrationProgress(): Promise<MigrationProgressResponse> {
   try {
-    return await daemonClient.request<MigrationProgressResponse>(ROUTE.migrationProgress)
+    const res = await daemonClient.request<MigrationProgressEnvelope>(ROUTE.migrationProgress)
+    return res.data
   } catch (err) {
     throw classifyMigrationProgressError(err)
   }

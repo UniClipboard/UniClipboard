@@ -11,8 +11,10 @@
 //! 不组装完整 axum Router + AppFacade（后者需 14+ sub-facades 远超 settings smoke
 //! 范围）；改为：
 //!   - **PUT 模拟**：`serde_json::from_str::<SettingsPatchDto>` →
-//!     `settings_patch_from_dto` → `SettingsFacade::update` → `settings_view_to_dto`
-//!     → 含 handler 内联计算的 `restart_required` 的 `UpdateSettingsResponse`
+//!     `settings_patch_from_dto` → `SettingsFacade::update` → 含 handler 内联
+//!     计算的 `restart_required` 的 `ApiEnvelope<SettingsUpdateResultDto>`
+//!     （ADR-008 §0.1：PUT 响应只回 `{ data: { success, restartRequired }, ts }`，
+//!     不再回显整份 SettingsDto；写盘后的值由 `simulate_get` 单独读回验证）
 //!   - **GET 模拟**：`SettingsFacade::get` → `settings_view_to_dto`
 //!   - **持久化**：用 tempdir-backed `Mutex<Settings>` 的 in-memory `SettingsPort`
 //!     保证写盘 → 读取一致（与 `FileSettingsRepository` 等价行为，但成本更低）
@@ -27,8 +29,9 @@ use serde_json::{json, Value};
 use uc_application::facade::settings::SettingsFacade;
 use uc_core::ports::SettingsPort;
 use uc_core::settings::model::Settings;
+use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::settings::{
-    GeneralSettingsPatchDto, NetworkSettingsPatchDto, SettingsPatchDto, UpdateSettingsResponse,
+    GeneralSettingsPatchDto, NetworkSettingsPatchDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
 use uc_webserver::api::dto::settings::SettingsDto;
 use uc_webserver::api::settings::{settings_patch_from_dto, settings_view_to_dto};
@@ -84,8 +87,10 @@ async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
     //    `uc_observability::set_telemetry_enabled` atomic — 这里复刻同一行为。
     let telemetry_update = payload.general.as_ref().and_then(|g| g.telemetry_enabled);
 
-    // 4. DTO → View patch → SettingsFacade::update → View
-    let view = facade
+    // 4. DTO → View patch → SettingsFacade::update（写盘）。ADR-008 §0.1：handler
+    //    不再回显更新后的 SettingsView —— 它只把 success + restart_required 折进
+    //    payload。写盘后的实际值改由 `simulate_get` 单独读回验证。
+    facade
         .update(settings_patch_from_dto(payload))
         .await
         .expect("settings update");
@@ -94,13 +99,15 @@ async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
         uc_observability::set_telemetry_enabled(enabled);
     }
 
-    // 4. View → DTO，组装 UpdateSettingsResponse
-    let resp = UpdateSettingsResponse {
-        success: true,
-        data: settings_view_to_dto(view),
-        ts: 0, // 测试不关心 timestamp 精确值
-        restart_required,
-    };
+    // 4. 组装 `ApiEnvelope<SettingsUpdateResultDto>`，wire 形态
+    //    `{ data: { success, restartRequired }, ts }`。
+    let resp = ApiEnvelope::with_ts(
+        SettingsUpdateResultDto {
+            success: true,
+            restart_required,
+        },
+        0, // 测试不关心 timestamp 精确值
+    );
 
     // 5. 序列化回 wire JSON
     serde_json::to_value(&resp).expect("serialize response")
@@ -125,19 +132,15 @@ async fn roundtrip_network_disable() {
     let put_body = json!({"network": {"allowRelayFallback": false}}).to_string();
     let put_resp = simulate_put(&facade, &put_body).await;
 
-    assert_eq!(put_resp["success"], Value::Bool(true));
+    // ADR-008 §0.1: PUT wire is `{ data: { success, restartRequired }, ts }`.
+    assert_eq!(put_resp["data"]["success"], Value::Bool(true));
     assert_eq!(
-        put_resp["restartRequired"],
+        put_resp["data"]["restartRequired"],
         Value::Bool(true),
         "restartRequired wire must be true when network patch present"
     );
-    assert_eq!(
-        put_resp["data"]["network"]["allowRelayFallback"],
-        Value::Bool(false),
-        "PUT response data must reflect written value"
-    );
 
-    // GET 二次确认（写盘 → 读取一致）
+    // GET 确认写盘 → 读取一致（PUT 响应不再回显 SettingsDto，写入值改由 GET 验证）。
     let get_resp = simulate_get(&facade).await;
     assert_eq!(
         get_resp["network"]["allowRelayFallback"],
@@ -161,17 +164,13 @@ async fn general_only_patch_no_op() {
     .await;
 
     assert_eq!(
-        legacy_resp["restartRequired"],
+        legacy_resp["data"]["restartRequired"],
         Value::Bool(false),
         "legacy patch (no network) must NOT signal restart"
     );
-    assert_eq!(
-        legacy_resp["data"]["network"]["allowRelayFallback"],
-        Value::Bool(true),
-        "legacy PUT MUST NOT clobber existing network field; default true preserved (NETSET-02 #2)"
-    );
 
-    // GET 二次确认（持久层未被抹掉，仍是 default true）
+    // GET 确认持久层未被抹掉，仍是 default true（NETSET-02 #2 — PUT 响应不再
+    // 回显 SettingsDto，未被 clobber 这点改由 GET 验证）。
     let get_resp = simulate_get(&facade).await;
     assert_eq!(
         get_resp["network"]["allowRelayFallback"],
@@ -189,13 +188,10 @@ async fn roundtrip_custom_relay_urls() {
         json!({"network": {"customRelayUrls": ["https://relay.example.com."]}}).to_string();
     let put_resp = simulate_put(&facade, &put_body).await;
 
-    assert_eq!(put_resp["success"], Value::Bool(true));
-    assert_eq!(put_resp["restartRequired"], Value::Bool(true));
-    assert_eq!(
-        put_resp["data"]["network"]["customRelayUrls"],
-        json!(["https://relay.example.com."])
-    );
+    assert_eq!(put_resp["data"]["success"], Value::Bool(true));
+    assert_eq!(put_resp["data"]["restartRequired"], Value::Bool(true));
 
+    // 写入的 relay URL 列表改由 GET 读回验证（PUT 响应不再回显 SettingsDto）。
     let get_resp = simulate_get(&facade).await;
     assert_eq!(
         get_resp["network"]["customRelayUrls"],
@@ -293,7 +289,7 @@ async fn restart_required_truth_table() {
     )
     .await;
     assert_eq!(
-        case3_resp["restartRequired"],
+        case3_resp["data"]["restartRequired"],
         Value::Bool(true),
         "wire case 3: Some(allow=false) → restartRequired=true"
     );
@@ -304,7 +300,7 @@ async fn restart_required_truth_table() {
     )
     .await;
     assert_eq!(
-        case5_resp["restartRequired"],
+        case5_resp["data"]["restartRequired"],
         Value::Bool(false),
         "wire case 5: legacy general-only payload → restartRequired=false"
     );
@@ -332,14 +328,17 @@ async fn telemetry_toggle_runtime_gate_no_restart() {
     )
     .await;
     assert_eq!(
-        off_resp["restartRequired"],
+        off_resp["data"]["restartRequired"],
         Value::Bool(false),
         "telemetry toggle must NOT signal restart (260505-1np runtime gate)"
     );
+    // PUT 响应不再回显 SettingsDto（ADR-008 §0.1）；写入的 telemetry 值改由
+    // GET 读回验证（同时运行时 gate atomic 也由下方断言确认已被推进）。
+    let off_get = simulate_get(&facade).await;
     assert_eq!(
-        off_resp["data"]["general"]["telemetryEnabled"],
+        off_get["general"]["telemetryEnabled"],
         Value::Bool(false),
-        "PUT response must reflect written telemetry value"
+        "GET must reflect written telemetry value"
     );
     assert!(
         !uc_observability::is_telemetry_enabled(),
@@ -352,7 +351,7 @@ async fn telemetry_toggle_runtime_gate_no_restart() {
         &json!({"general": {"telemetryEnabled": true}}).to_string(),
     )
     .await;
-    assert_eq!(on_resp["restartRequired"], Value::Bool(false));
+    assert_eq!(on_resp["data"]["restartRequired"], Value::Bool(false));
     assert!(
         uc_observability::is_telemetry_enabled(),
         "re-enable path must flip atomic back to true"
@@ -366,7 +365,10 @@ async fn telemetry_toggle_runtime_gate_no_restart() {
         &json!({"general": {"deviceName": "ws-1"}}).to_string(),
     )
     .await;
-    assert_eq!(unrelated_resp["restartRequired"], Value::Bool(false));
+    assert_eq!(
+        unrelated_resp["data"]["restartRequired"],
+        Value::Bool(false)
+    );
     assert!(
         !uc_observability::is_telemetry_enabled(),
         "patches without telemetry_enabled must leave the atomic untouched"

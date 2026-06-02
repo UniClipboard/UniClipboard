@@ -39,7 +39,8 @@ describe('Lifecycle API', () => {
 
   describe('getLifecycleStatus', () => {
     it('calls GET /lifecycle/status and returns parsed dto', async () => {
-      requestSpy.mockResolvedValueOnce({ state: 'Ready' })
+      // ADR-008: GET /lifecycle/status returns `{ data: { state }, ts }`.
+      requestSpy.mockResolvedValueOnce({ data: { state: 'Ready' }, ts: 0 })
 
       const result = await getLifecycleStatus()
 
@@ -51,7 +52,7 @@ describe('Lifecycle API', () => {
     it.each(['Idle', 'Pending', 'Ready', 'WatcherFailed', 'NetworkFailed'])(
       'handles state: %s',
       async state => {
-        requestSpy.mockResolvedValueOnce({ state })
+        requestSpy.mockResolvedValueOnce({ data: { state }, ts: 0 })
 
         const result = await getLifecycleStatus()
 

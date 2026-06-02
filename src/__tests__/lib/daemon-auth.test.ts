@@ -189,7 +189,9 @@ describe('daemon-auth module', () => {
   describe('verifyAuthState()', () => {
     it('returns daemonReady=true when GET /health returns ok', async () => {
       const { verifyAuthState } = await import('@/lib/daemon-auth')
-      _fetchQueue.push(okResponse({ status: 'ok' }))
+      // ADR-008: GET /health now returns ApiEnvelope<HealthResponse>
+      // = `{ data: { status }, ts }`; verifyAuthState reads `health.data.status`.
+      _fetchQueue.push(okResponse({ data: { status: 'ok' }, ts: 1710000000000 }))
       _fetchQueue.push(errResponse(401))
 
       const result = await verifyAuthState()

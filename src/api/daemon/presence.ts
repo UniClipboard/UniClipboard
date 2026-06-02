@@ -20,13 +20,26 @@ export interface PresenceRefreshResult {
 }
 
 /**
+ * `POST /presence/refresh` envelope (ADR-008 P2).
+ *
+ * The endpoint used to return the probe counters at the top level and is now
+ * normalized to `ApiEnvelope<PresenceRefreshResponse>` (alias
+ * `PresenceRefreshEnvelope`): the counters live under `data`.
+ */
+interface PresenceRefreshResponse {
+  data: PresenceRefreshResult
+  ts: number
+}
+
+/**
  * 触发一轮 ensure_reachable_all 探测。
  *
  * 后端会对所有已配对 peer 并发拨号；离线 peer 立即被标记 Offline，进而
  * 推送 `peers.changed`，前端再走 fetchSpaceMembers 重拉刷新 UI。
  */
 export async function refreshPresence(): Promise<PresenceRefreshResult> {
-  return daemonClient.request<PresenceRefreshResult>('/presence/refresh', {
+  const response = await daemonClient.request<PresenceRefreshResponse>('/presence/refresh', {
     method: 'POST',
   })
+  return response.data
 }

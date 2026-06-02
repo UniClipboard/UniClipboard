@@ -271,7 +271,8 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     )
       .then(response => {
         if (controller.signal.aborted) return
-        const items: DisplayClipboardItem[] = response.data.map(r => ({
+        // ADR-008 §0.1: items + total now live inside the enveloped `data` payload.
+        const items: DisplayClipboardItem[] = response.data.items.map(r => ({
           id: r.entryId,
           type: mapSearchContentType(r.contentType),
           time: formatRelativeTime(r.activeTimeMs, t),
@@ -280,7 +281,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
           textPreview: r.textPreview ?? undefined,
         }))
         setSearchResults(items)
-        setSearchTotal(response.total)
+        setSearchTotal(response.data.total)
         setSearchLoading(false)
       })
       .catch(err => {

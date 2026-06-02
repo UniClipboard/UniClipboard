@@ -7,7 +7,7 @@
  * - `POST /lifecycle/retry` → retry lifecycle initialization
  */
 
-import type { LifecycleStatusDto } from '@/api/types'
+import type { LifecycleStatusDto, LifecycleStatusEnvelope } from '@/api/types'
 import { daemonClient } from './client'
 
 interface LifecycleReadyResponse {
@@ -33,7 +33,10 @@ export async function signalLifecycleReady(): Promise<void> {
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function getLifecycleStatus(): Promise<LifecycleStatusDto> {
-  return daemonClient.request<LifecycleStatusDto>('/lifecycle/status')
+  // `/lifecycle/status` now returns the canonical `{ data, ts }` envelope
+  // (ADR-008 §H). Unwrap `data` so the public return type stays unchanged.
+  const res = await daemonClient.request<LifecycleStatusEnvelope>('/lifecycle/status')
+  return res.data
 }
 
 /**

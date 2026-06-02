@@ -21,6 +21,18 @@ interface LocalDeviceInfoResponse {
 }
 
 /**
+ * `GET /paired-devices` envelope (ADR-008 P2).
+ *
+ * The endpoint was a bare top-level JSON array and is now normalized to
+ * `ApiEnvelope<Vec<SpaceMemberDto>>` (alias `SpaceMemberListEnvelope`): the
+ * member array lives under `data`.
+ */
+interface SpaceMemberListResponse {
+  data: SpaceMember[]
+  ts: number
+}
+
+/**
  * 连接通道 4 态 wire 字符串 —— Phase 96 INDIC-01。
  *
  * 取值由后端 `connection_channel_to_wire`（uc-application/facade/roster/mod.rs）
@@ -65,7 +77,8 @@ export async function getLocalDeviceInfo(): Promise<LocalDeviceInfo> {
  * 获取已配对的设备列表。
  */
 export async function getPairedPeers(): Promise<SpaceMember[]> {
-  return daemonClient.request<SpaceMember[]>('/paired-devices')
+  const response = await daemonClient.request<SpaceMemberListResponse>('/paired-devices')
+  return response.data
 }
 
 /**

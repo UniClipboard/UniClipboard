@@ -97,9 +97,13 @@ export async function verifyAuthState(): Promise<AuthStateResult> {
   }
 
   // Step 1: Health check (L1, no auth required).
+  // /health is now enveloped: { data: { status }, ts } (ADR-008 P2).
   try {
-    const health = await daemonClient.request<{ status: string }>('/health')
-    result.daemonReady = health.status === 'ok'
+    const health = await daemonClient.request<{
+      data: { status: string }
+      ts: number
+    }>('/health')
+    result.daemonReady = health.data.status === 'ok'
   } catch {
     // Daemon not reachable — return early with all-false state.
     return result

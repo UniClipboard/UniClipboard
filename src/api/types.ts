@@ -9,6 +9,14 @@ export interface LifecycleStatusDto {
   state: LifecycleState
 }
 
+// `GET /lifecycle/status` now returns the canonical `{ data, ts }` envelope
+// (ADR-008 §H). The lifecycle state lives inside `data`; readers extract
+// `envelope.data.state`.
+export interface LifecycleStatusEnvelope {
+  data: LifecycleStatusDto
+  ts: number
+}
+
 // CommandError serialization uses serde `tag = "code", content = "message"`.
 // 在前端表现为 { code: string, message: string } 判别联合。
 export type CommandErrorCode =

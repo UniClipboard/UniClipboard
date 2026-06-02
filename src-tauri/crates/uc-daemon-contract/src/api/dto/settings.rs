@@ -7,25 +7,12 @@ use utoipa::ToSchema;
 
 use uc_core::settings::model as core;
 
-// NOTE (ADR-008 §0.1 / P2): the legacy `GetSettingsResponse { data, ts }`
-// bespoke wrapper has been deleted — `GET /settings` now returns the pure
-// generic `ApiEnvelope<SettingsDto>` (alias `SettingsEnvelope`). The
-// `UpdateSettingsResponse` wrapper below is NOT yet deletable: two webserver
-// integration tests (`tests/settings_network_smoke.rs`,
-// `tests/settings_retention_smoke.rs`) and an in-module test still construct it
-// to lock the historical wire shape. It will go once those tests migrate to
-// `ApiEnvelope<SettingsUpdateResultDto>` in a follow-up.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateSettingsResponse {
-    pub success: bool,
-    pub data: SettingsDto,
-    pub ts: i64,
-    /// 表示本次 patch 涉及需要重启 daemon 才能生效的字段（目前仅 `network.*`）。
-    /// 该字段由 webserver handler 内联计算（plan 04），不依赖 application facade
-    /// 公共签名变更（D-D1 / Pitfall 3 防御 — 调用方显式承担"还没真正生效"）。
-    pub restart_required: bool,
-}
+// NOTE (ADR-008 §0.1): both bespoke `{data,ts}` wrappers for the settings
+// endpoints have been deleted. `GET /settings` returns the pure generic
+// `ApiEnvelope<SettingsDto>` (alias `SettingsEnvelope`) and `PUT /settings`
+// returns `ApiEnvelope<SettingsUpdateResultDto>` (alias
+// `SettingsUpdateResultEnvelope`) with `success` + `restartRequired` folded into
+// the payload below. No legacy `UpdateSettingsResponse` wrapper remains.
 
 /// Folded payload for `PUT /settings` (ADR-008 §0.1).
 ///
@@ -791,17 +778,25 @@ mod network_dto_tests {
     }
 
     #[test]
-    fn update_settings_response_serializes_restart_required_camel_case() {
-        let resp = UpdateSettingsResponse {
-            success: true,
-            data: SettingsDto::from(core::Settings::default()),
-            ts: 0,
-            restart_required: true,
-        };
+    fn settings_update_result_serializes_restart_required_camel_case() {
+        // ADR-008 §0.1: PUT /settings returns `ApiEnvelope<SettingsUpdateResultDto>`
+        // = `{ data: { success, restartRequired }, ts }`. `restartRequired` must
+        // still serialize camelCase inside the folded payload.
+        let resp = crate::api::dto::envelope::ApiEnvelope::with_ts(
+            SettingsUpdateResultDto {
+                success: true,
+                restart_required: true,
+            },
+            0,
+        );
         let json = serde_json::to_string(&resp).expect("serialize");
         assert!(
             json.contains(r#""restartRequired":true"#),
             "wire field MUST be camelCase: got {json}"
+        );
+        assert!(
+            json.contains(r#""success":true"#),
+            "success must be folded into the envelope data: got {json}"
         );
     }
 

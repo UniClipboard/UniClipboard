@@ -11,8 +11,22 @@
  * Unlike the Tauri command, the daemon HTTP settings endpoint does NOT apply
  * OS-level side effects (autostart registration, keyboard shortcut updates).
  * It only persists the settings domain model.
+ *
+ * # Transport / 传输 (ADR-008 P6)
+ * This module is the SDK exemplar: `getSettings` / `updateSettings` route through
+ * the @hey-api generated SDK (`getSettingsSdk` / `updateSettingsSdk`) via
+ * `daemonClient.callSdk`, which drives the daemon session lifecycle (pre-emptive
+ * refresh + one-shot 401 retry). Both endpoints now return the canonical
+ * `ApiEnvelope { data, ts }`; PUT folds `success` + `restartRequired` INTO `data`
+ * (`SettingsUpdateResultDto`). The public wrapper signatures and the hand-written
+ * `Settings` domain types below are preserved verbatim for downstream consumers.
  */
 
+import {
+  getSettings as getSettingsSdk,
+  updateSettings as updateSettingsSdk,
+} from '@/api/generated/sdk.gen'
+import type { SettingsPatchDto } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
 
 // ── Enums ──────────────────────────────────────────────────────
@@ -191,26 +205,7 @@ export interface Settings {
   quickPanel: QuickPanelSettings
 }
 
-// ── API response wrappers ──────────────────────────────────────
-
-/** GET /settings response shape. / GET /settings 响应结构。 */
-interface SettingsGetResponse {
-  data: Settings
-  ts: number
-}
-
-/** PUT /settings response shape. / PUT /settings 响应结构。
- *
- * 后端 `UpdateSettingsResponse` 的 `success` 与 `restartRequired` 在 **顶层**，
- * `data` 是 `SettingsDto`（更新后的完整设置）。前端只关心 `success` + `restartRequired`，
- * 故 `data` 用 `unknown` 占位避免 over-typing。
- */
-interface SettingsUpdateResponse {
-  success: boolean
-  data: unknown
-  ts: number
-  restartRequired: boolean
-}
+// ── API request shape ──────────────────────────────────────────
 
 interface SettingsPatchRequest {
   general?: Partial<GeneralSettings>
@@ -246,8 +241,13 @@ interface SettingsPatchRequest {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function getSettings(): Promise<Settings> {
-  const res = await daemonClient.request<SettingsGetResponse>('/settings')
-  return res.data
+  // Route through the generated SDK; `callSdk` unwraps the SDK's `{ data }` to
+  // the `SettingsEnvelope`, then we unwrap `.data` to the Settings payload. The
+  // generated `SettingsDto` is structurally equivalent to the hand-written
+  // `Settings` (camelCase wire fields), bridged here to keep the public return
+  // type stable for downstream consumers.
+  const envelope = await daemonClient.callSdk(() => getSettingsSdk({ throwOnError: true }))
+  return envelope.data as unknown as Settings
 }
 
 /**
@@ -265,11 +265,18 @@ export async function updateSettings(
   settings: Partial<Settings>
 ): Promise<{ success: boolean; restartRequired: boolean }> {
   const patch = toSettingsPatchRequest(settings)
-  const res = await daemonClient.request<SettingsUpdateResponse>('/settings', {
-    method: 'PUT',
-    body: patch,
-  })
-  return { success: res.success, restartRequired: res.restartRequired }
+  // Route through the generated SDK. `success` + `restartRequired` are now folded
+  // INTO the envelope payload (`SettingsUpdateResultDto`) per ADR-008 §0.1, so we
+  // read them from `envelope.data` rather than top-level siblings.
+  const envelope = await daemonClient.callSdk(() =>
+    updateSettingsSdk({
+      // `toSettingsPatchRequest` returns a structurally-equivalent camelCase patch;
+      // bridge to the generated `SettingsPatchDto` shape for the SDK body param.
+      body: patch as unknown as SettingsPatchDto,
+      throwOnError: true,
+    })
+  )
+  return { success: envelope.data.success, restartRequired: envelope.data.restartRequired }
 }
 
 /**

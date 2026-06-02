@@ -9,22 +9,32 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { daemonClient } from '@/api/daemon/client'
 import { updateSettings, type Settings } from '@/api/daemon/settings'
+import { updateSettings as updateSettingsSdk } from '@/api/generated/sdk.gen'
 
-// Mock daemonClient 模块 — 所有 updateSettings 调用都会通过此 mock。
+// ADR-008 P6: settings 走生成的 SDK + daemonClient.callSdk。
+// - `@/api/daemon/client` 的 callSdk 被 mock 成"直接调用 thunk 并解包 { data }"，
+//   忠实复刻真实实现（client.ts callSdk 在快乐路径上就是 `const { data } = await call()`）。
+// - 生成的 SDK fn `updateSettings` 被 mock：updateSettings wrapper 会带 { body }
+//   调它，测试因此能检查 SDK body 并控制返回的 envelope。
 // vi.mock 由 vitest 在 import 之前 hoist，所以下方的 import 拿到的就是 mock 版本。
 vi.mock('@/api/daemon/client', () => ({
   daemonClient: {
-    request: vi.fn(),
+    // 复刻 callSdk 快乐路径：调用 SDK thunk，解包其 { data }（= ApiEnvelope）。
+    callSdk: vi.fn((call: () => Promise<{ data: unknown }>) => call().then(r => r.data)),
   },
 }))
 
+vi.mock('@/api/generated/sdk.gen', () => ({
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+}))
+
 // 类型化的 mock 引用，方便 mockResolvedValue / 访问 mock.calls。
-const requestMock = daemonClient.request as unknown as ReturnType<typeof vi.fn>
+const updateSdkMock = updateSettingsSdk as unknown as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
-  requestMock.mockReset()
+  updateSdkMock.mockReset()
 })
 
 afterEach(() => {
@@ -32,13 +42,15 @@ afterEach(() => {
 })
 
 // 默认成功响应 — 各测试可以 mockResolvedValueOnce 覆盖。
-// 后端 UpdateSettingsResponse 形态：{ success, data, ts, restartRequired }（顶层）。
+// ADR-008 §0.1: PUT /settings 返回 ApiEnvelope<SettingsUpdateResultDto> =
+// `{ data: { success, restartRequired }, ts }`（success + restartRequired 折进 data）。
+// SDK fn 以 `{ throwOnError: true }` 调用，resolve 到 `{ data: <envelope> }`。
 function mockUpdateOk(restartRequired: boolean) {
-  requestMock.mockResolvedValueOnce({
-    success: true,
-    data: {},
-    ts: 0,
-    restartRequired,
+  updateSdkMock.mockResolvedValueOnce({
+    data: {
+      data: { success: true, restartRequired },
+      ts: 0,
+    },
   })
 }
 
@@ -49,10 +61,9 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
       network: { allowRelayFallback: false },
     } as Partial<Settings>)
 
-    expect(requestMock).toHaveBeenCalledTimes(1)
-    const [endpoint, options] = requestMock.mock.calls[0]
-    expect(endpoint).toBe('/settings')
-    expect(options.method).toBe('PUT')
+    expect(updateSdkMock).toHaveBeenCalledTimes(1)
+    const [options] = updateSdkMock.mock.calls[0]
+    expect(options.throwOnError).toBe(true)
     expect(options.body).toMatchObject({
       network: { allowRelayFallback: false },
     })
@@ -66,8 +77,8 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
       network: { allowRelayFallback: true },
     } as Partial<Settings>)
 
-    expect(requestMock).toHaveBeenCalledTimes(1)
-    const [, options] = requestMock.mock.calls[0]
+    expect(updateSdkMock).toHaveBeenCalledTimes(1)
+    const [options] = updateSdkMock.mock.calls[0]
     expect(options.body.network).toEqual({ allowRelayFallback: true })
   })
 
@@ -77,8 +88,8 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
       network: { customRelayUrls: ['https://relay.example.com.'] },
     } as Partial<Settings>)
 
-    expect(requestMock).toHaveBeenCalledTimes(1)
-    const [, options] = requestMock.mock.calls[0]
+    expect(updateSdkMock).toHaveBeenCalledTimes(1)
+    const [options] = updateSdkMock.mock.calls[0]
     expect(options.body.network).toEqual({
       customRelayUrls: ['https://relay.example.com.'],
     })
@@ -105,8 +116,8 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
       },
     } as Partial<Settings>)
 
-    expect(requestMock).toHaveBeenCalledTimes(1)
-    const [, options] = requestMock.mock.calls[0]
+    expect(updateSdkMock).toHaveBeenCalledTimes(1)
+    const [options] = updateSdkMock.mock.calls[0]
     expect(Object.keys(options.body)).toContain('general')
     expect(options.body.general).toMatchObject({
       telemetryEnabled: false,
@@ -152,8 +163,8 @@ describe('settings api — updateSettings restartRequired signal', () => {
       network: { allowRelayFallback: false },
     } as Partial<Settings>)
 
-    expect(requestMock).toHaveBeenCalledTimes(1)
-    const [, options] = requestMock.mock.calls[0]
+    expect(updateSdkMock).toHaveBeenCalledTimes(1)
+    const [options] = updateSdkMock.mock.calls[0]
     expect(options.body.network).toEqual({ allowRelayFallback: false })
   })
 })
@@ -192,7 +203,7 @@ describe('反向命名审计 (Pitfall 1 fence)', () => {
       network: { allowRelayFallback: true },
     } as Partial<Settings>)
 
-    const [, options] = requestMock.mock.calls[0]
+    const [options] = updateSdkMock.mock.calls[0]
     // 显式断言不被悄悄取反（防御 toSettingsPatchRequest 内部加 ! 表达式）
     expect(options.body.network.allowRelayFallback).toBe(true)
     expect(options.body.network.allowRelayFallback).not.toBe(false)

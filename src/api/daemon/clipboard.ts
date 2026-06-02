@@ -116,6 +116,19 @@ interface ClearHistoryApiResponse {
 }
 
 /**
+ * POST /clipboard/restore/:id API envelope.
+ *
+ * Was an ad-hoc `{ success: true }` body; now wrapped in the canonical
+ * `{ data, ts }` envelope (ADR-008 §0.1). The body is still discarded by
+ * `restoreClipboardEntry` (tolerant), but typing it as the envelope keeps
+ * the request<T>() type honest and mirrors the other enveloped endpoints.
+ */
+interface RestoreEntryApiResponse {
+  data: RestoreResult
+  ts: number
+}
+
+/**
  * Aggregate clipboard statistics.
  * Matches `ClipboardStats` on the Rust side.
  *
@@ -232,6 +245,10 @@ export async function deleteClipboardEntry(id: string): Promise<void> {
  *   应用粘出纯文本（Markdown 源码 / HTML 标签 / RTF 等富文本被剔除）。
  *   条目没有 plain 表示时由 daemon 静默降级为多格式恢复。
  * @throws {DaemonApiError} On HTTP errors, session failures, or entry not found.
+ *   A 410 Gone (payload demoted to `Lost`) surfaces as
+ *   `DaemonErrorCode.PAYLOAD_UNAVAILABLE`; its `entry_id`/`rep_id`/`state`
+ *   context now lives in the `ApiErrorResponse.details` payload (ADR-008 §0.3),
+ *   carried through on `DaemonApiError.details` by the client's error handler.
  */
 export async function restoreClipboardEntry(
   id: string,
@@ -243,7 +260,10 @@ export async function restoreClipboardEntry(
   const path = opts?.plainOnly
     ? `${CLIPBOARD_RESTORE}/${id}?plain=true`
     : `${CLIPBOARD_RESTORE}/${id}`
-  await daemonClient.request<void>(path, options)
+  // The success body is now the enveloped `{ data: { success }, ts }` shape
+  // (was ad-hoc `{ success: true }`). It is intentionally discarded — restore
+  // is fire-and-forget; only the HTTP error path (esp. 410) carries meaning.
+  await daemonClient.request<RestoreEntryApiResponse>(path, options)
   return { success: true }
 }
 

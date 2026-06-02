@@ -23,11 +23,18 @@ import type { Settings } from '@/api/daemon/settings'
 // MUST be at the top of this file so vi.mock can reference it before hoisting.
 const mockRequest = vi.fn()
 const mockRefreshSession = vi.fn()
+// ADR-008 P6: SDK-routed domains (settings, …) go through daemonClient.callSdk
+// instead of .request. The default impl faithfully mirrors the real client's
+// happy path (`const { data } = await call(); return data`) so SDK-fn mocks that
+// resolve to `{ data: <envelope> }` flow straight through. Tests that don't use
+// callSdk are unaffected.
+const mockCallSdk = vi.fn((call: () => Promise<{ data: unknown }>) => call().then(r => r.data))
 
 export const mockDaemonClient = {
   initialize: vi.fn(),
   destroy: vi.fn(),
   request: mockRequest,
+  callSdk: mockCallSdk,
   refreshSession: mockRefreshSession,
   session: null as { token: string; expiresAt: number; encryptionReady: boolean } | null,
   get initialized() {

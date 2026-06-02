@@ -70,9 +70,13 @@ interface MemberSyncPreferencesGetResponse {
   ts: number
 }
 
-interface MemberSyncPreferencesUpdateResponse {
-  success: boolean
-  data: MemberSyncPreferences
+/**
+ * PATCH /member/:id/sync-preferences response (ADR-008): the daemon now returns
+ * only `{ data: { success }, ts }` (MemberSyncResultEnvelope) and no longer echoes
+ * the full preferences, so callers re-fetch the authoritative merged value via GET.
+ */
+interface MemberSyncResultResponse {
+  data: { success: boolean }
   ts: number
 }
 
@@ -89,11 +93,15 @@ export async function updateMemberSyncPreferences(
   deviceId: string,
   patch: MemberSyncPreferencesPatch
 ): Promise<MemberSyncPreferences> {
-  const res = await daemonClient.request<MemberSyncPreferencesUpdateResponse>(
-    MEMBER_SYNC_PREFERENCES(deviceId),
-    { method: 'PATCH', body: patch }
-  )
-  return res.data
+  // PATCH returns only `{ data: { success } }` (ApiEnvelope<MemberSyncResultDto>);
+  // request() throws on non-2xx, so reaching here means success. Re-fetch to return
+  // the authoritative merged preferences (preserves the Promise<MemberSyncPreferences>
+  // contract that devicesSlice stores into state — the PATCH body no longer echoes it).
+  await daemonClient.request<MemberSyncResultResponse>(MEMBER_SYNC_PREFERENCES(deviceId), {
+    method: 'PATCH',
+    body: patch,
+  })
+  return getMemberSyncPreferences(deviceId)
 }
 
 // ── Default-value helpers (used by "restore defaults" button) ──

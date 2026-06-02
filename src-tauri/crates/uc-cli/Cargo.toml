@@ -13,7 +13,6 @@ path = "src/main.rs"
 uc-bootstrap = { path = "../uc-bootstrap" }
 uc-observability = { path = "../uc-observability" }
 uc-core = { path = "../uc-core" }
-uc-desktop = { path = "../uc-desktop" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly
@@ -56,6 +55,7 @@ uc-application = { path = "../uc-application" }
 # surfaces certs as `CertificateError::BadEncoding`.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 uuid = { version = "1.10.0", features = ["v4"] }
+which = "7"
 
 [dev-dependencies]
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }

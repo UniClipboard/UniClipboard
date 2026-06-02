@@ -32,17 +32,17 @@ impl fmt::Display for StartOutput {
 pub async fn run(foreground: bool, server: bool, json: bool, verbose: bool) -> i32 {
     if server {
         // Translate the user's `--server` flag into the daemon spawn
-        // contract. The spawned `uniclip daemon` child inherits this
-        // process's env (same pattern as `--profile` / `UC_PROFILE`); the
-        // desktop host resolves it via `run_standalone_from_env`. The CLI
-        // deliberately does NOT resolve the run mode or touch clipboard
-        // switches here — that knowledge lives in uc-desktop (ADR-007 §2.2).
+        // contract. The spawned `uniclipd` child inherits this process's
+        // env (same pattern as `--profile` / `UC_PROFILE`); the daemon
+        // resolves it via `run_standalone_from_env`. The CLI deliberately
+        // does NOT resolve the run mode or touch clipboard switches here —
+        // that knowledge lives in the daemon binary (ADR-007 §2.2).
         std::env::set_var(
-            uc_desktop::daemon::RUN_MODE_ENV,
-            uc_desktop::daemon::RUN_MODE_SERVER,
+            uc_daemon_local::spawn_contract::RUN_MODE_ENV,
+            uc_daemon_local::spawn_contract::RUN_MODE_SERVER,
         );
     } else {
-        std::env::remove_var(uc_desktop::daemon::RUN_MODE_ENV);
+        std::env::remove_var(uc_daemon_local::spawn_contract::RUN_MODE_ENV);
     }
 
     if let Some(code) = check_setup_complete(json, verbose).await {
@@ -128,7 +128,7 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
         return exit_codes::EXIT_SUCCESS;
     }
 
-    let cli_exe = match local_daemon::resolve_cli_exe_path() {
+    let daemon_exe = match local_daemon::resolve_daemon_exe_path() {
         Ok(path) => path,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -140,8 +140,7 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
         println!("Starting daemon in foreground... (press Ctrl+C to stop)");
     }
 
-    let mut child = match std::process::Command::new(&cli_exe)
-        .arg("daemon")
+    let mut child = match std::process::Command::new(&daemon_exe)
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

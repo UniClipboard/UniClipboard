@@ -16,3 +16,4 @@ pub mod contract;
 pub mod health_wait;
 pub mod process_metadata;
 pub mod socket;
+pub mod spawn_contract;

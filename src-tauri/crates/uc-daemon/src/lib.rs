@@ -1,20 +1,22 @@
-//! `uc-daemon`：UniClipboard 的 GUI-agnostic daemon runtime 库。
+//! `uc-daemon` — UniClipboard GUI-agnostic daemon runtime library + `uniclipd`
+//! binary.
 //!
-//! 承载从 `uc-desktop/src/daemon/` 迁出的 daemon runtime 构件（run_mode、
-//! 后台服务 / worker、装配链、main loop、startup recovery 等）。
+//! Hosts the full daemon runtime: run_mode, workers, assembly chain, main loop,
+//! startup recovery, process bootstrap, and host entry points (`run` /
+//! `start_in_process`). The `uniclipd` binary target is a thin wrapper that
+//! delegates to [`daemon::host::run_standalone_from_env`].
 //!
-//! **硬约束**：不依赖任何 GUI / UI 框架，也**不依赖 `uc-desktop`**——
-//! `uc-desktop` 反过来依赖本 crate（forward dep）。GuiInProcess 专属装配
-//! （`start_in_process` / `ProcessRuntimeHandles`）暂留 `uc-desktop`，由 host
-//! 胶水前向调用本 crate 的装配函数。
+//! **Hard constraint**: no GUI / UI framework dependencies. `uc-desktop`
+//! depends on this crate (forward dep), not the other way around.
 //!
-//! `uniclipd` 二进制 target 在后续阶段加入（ADR-008 P2）。
-//!
-//! 见 `docs/architecture/adr-008-uniclipd-split-gui-as-client.md`
-//! 与 `docs/architecture/adr-008-p1-extraction-plan.md`。
+//! See `docs/architecture/adr-008-uniclipd-split-gui-as-client.md`.
 
 pub mod daemon;
 
+pub use daemon::host::{
+    run_standalone_from_env, ProcessRuntimeHandles, RUN_MODE_ENV, RUN_MODE_SERVER,
+};
+pub use daemon::process_bootstrap::{build_process_runtime, ProcessRuntimeContext};
 pub use daemon::run_mode;
 pub use daemon::DaemonHandle;
 pub use daemon::DaemonOwnership;

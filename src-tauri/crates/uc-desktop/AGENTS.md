@@ -83,16 +83,17 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
   依赖应用层内部模块。
 - 涉及外部进程/UI 框架的扩展点（如 daemon spawn、托盘渲染、autostart 写入），
   desktop 提供 trait + 默认协调逻辑，shell 注入具体实现。
-- daemon **runtime 主体** 已迁出至独立 `uc-daemon` crate（[ADR-008](../../../docs/architecture/adr-008-uniclipd-split-gui-as-client.md)
-  P1 已落地）；本 crate `src/daemon/` 仅保留 **host 胶水**（`host`：GuiInProcess
-  装配 `start_in_process` / `ProcessRuntimeHandles` + 独立入口 `run`）——见文件末尾。
+- daemon runtime + host entry points 已全部迁至 `uc-daemon`（ADR-008 P1+P2）；
+  本 crate `src/daemon/` 仅保留 **re-export shim**，`src/bootstrap.rs` 同理。
+  `uc-daemon` 产出 `uniclipd` 独立二进制。
 
 ## 当前落地边界
 
-- daemon runtime 主体已迁至 `uc-daemon`（ADR-008 P1）；本 crate `src/daemon/`
-  只剩 host 胶水（`host`）。`uc_desktop::daemon::*` 公共面（`run` / `run_mode` /
-  `DaemonHandle` / `DaemonOwnership`）经 re-export 保持不变；新增 runtime 构件
-  请加到 `uc-daemon`，**不要** 回流本 crate。
+- daemon runtime + host entry points + process bootstrap 已全部迁至 `uc-daemon`
+  （ADR-008 P1+P2）。本 crate `src/daemon/` 和 `src/bootstrap.rs` 现在是纯
+  re-export shim。`uc_desktop::daemon::*` / `uc_desktop::bootstrap::*` 公共面
+  经 re-export 保持不变；新增 runtime 构件请加到 `uc-daemon`，**不要** 回流本 crate。
+  `uc-cli` 已不再依赖本 crate（P2 Slice 2d）。
 - `uc-webserver` 暂时保持独立 crate，由 `uc-desktop` 作为宿主调用；不要为了
   目录一致性直接把 HTTP/WS 物理迁入 `uc-desktop`。它不依赖 GUI 框架，符合
   "可被多 shell 共享" 的约束。
@@ -106,9 +107,8 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
   也不是与 desktop 平级的层。它消费 `uc-desktop` 的能力，提供 Tauri 框架
   特定的 builder / commands / tray / quick_panel。新增 Tauri-only 能力放
   这里，新增"未来 native shell 也会用到的"能力放 `uc-desktop`。
-- `uc-daemon`（**已恢复，[ADR-008](../../../docs/architecture/adr-008-uniclipd-split-gui-as-client.md) P1 已落地**）：
-    承载从本 crate `src/daemon/` 迁出的 **GUI-agnostic daemon runtime 主体**（run_mode、
-    后台 worker / 服务、装配链、main loop、startup recovery 等），不依赖 GUI 框架、
-    **不反依赖 `uc-desktop`**；本 crate `host` 前向调用其装配函数。**后续阶段**：
-    `uniclipd` 二进制（P2）、GUI 删除 `GuiInProcess` 永久转 client（P3）——届时
-    `start_in_process` / `ProcessRuntimeHandles` 等残余从本 crate 清除。
+- `uc-daemon`（[ADR-008](../../../docs/architecture/adr-008-uniclipd-split-gui-as-client.md) P1+P2 已落地）：
+    承载 **GUI-agnostic daemon runtime 全部构件**（run_mode、后台 worker / 服务、
+    装配链、main loop、startup recovery、process bootstrap、host entry points）+
+    `uniclipd` 独立二进制。不依赖 GUI 框架、**不反依赖 `uc-desktop`**。
+    **后续阶段**：GUI 删除 `GuiInProcess` 永久转 client（P3）。

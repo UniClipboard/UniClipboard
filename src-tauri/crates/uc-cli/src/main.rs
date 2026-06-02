@@ -249,9 +249,6 @@ enum Commands {
         #[command(subcommand)]
         subcommand: commands::mobile_sync::MobileSyncCommands,
     },
-    /// 内联运行 daemon 进程，供 `start` 内部使用
-    #[command(hide = true)]
-    Daemon,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -280,28 +277,11 @@ fn main() -> anyhow::Result<()> {
         std::env::set_var("UC_PROFILE", profile);
     }
 
-    // Handle `daemon` subcommand before creating the tokio runtime —
-    // the daemon entrypoint creates its own runtime internally.
     let Some(command) = cli.command else {
         Cli::command().print_help()?;
         println!();
         return Ok(());
     };
-
-    if let Commands::Daemon = command {
-        // `uniclip` 二进制既能当 CLI 又能当 standalone daemon,光看
-        // current_exe 区分不出来。在调 bootstrap 之前先打这个标记,让
-        // `uc_observability::ScopeContext::resolve` 把本进程的 device.role
-        // 标成 `daemon`,Sentry 上能清楚区分 daemon 事件与 CLI 事件。
-        std::env::set_var("UC_HOST_ROLE", "daemon");
-
-        // CLI `start [--server]` detached-spawns this same binary with the
-        // `daemon` subcommand plus the `UC_DAEMON_RUN_MODE` spawn contract.
-        // Run-mode resolution AND the headless-implies-Noop-clipboard detail
-        // live in the desktop host (`run_standalone_from_env`), not in the
-        // CLI — the CLI only sets the env contract before spawning. ADR-007 §2.2.
-        return uc_desktop::daemon::run_standalone_from_env();
-    }
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -394,7 +374,6 @@ fn main() -> anyhow::Result<()> {
             Commands::MobileSync { subcommand } => {
                 commands::mobile_sync::run(subcommand, cli.json, cli.verbose).await
             }
-            Commands::Daemon => unreachable!("handled above"),
         }
     });
 

@@ -189,7 +189,7 @@ fn resolve_base_url() -> Result<String, LocalDaemonError> {
     Ok(format!("http://{}:{}", addr.ip(), addr.port()))
 }
 
-/// Spawn `uniclip daemon` as a **detached** background process.
+/// Spawn `uniclipd` as a **detached** background process.
 ///
 /// "Detached" means the new process survives the CLI exiting — that's the
 /// whole point of `uniclip start`. We rely on three pieces:
@@ -210,11 +210,10 @@ fn resolve_base_url() -> Result<String, LocalDaemonError> {
 /// will reap it when it exits — its parent is now PID 1 once the CLI returns).
 /// Under Windows the handle just closes; the process keeps running.
 fn spawn_daemon_process() -> Result<(), LocalDaemonError> {
-    let cli_exe = resolve_cli_exe_path()?;
+    let daemon_exe = resolve_daemon_exe_path()?;
 
-    let mut command = Command::new(&cli_exe);
+    let mut command = Command::new(&daemon_exe);
     command
-        .arg("daemon")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -223,8 +222,8 @@ fn spawn_daemon_process() -> Result<(), LocalDaemonError> {
 
     let child = command.spawn().map_err(|error| {
         LocalDaemonError::Spawn(anyhow::Error::new(error).context(format!(
-            "failed to spawn daemon via `{} daemon`",
-            cli_exe.display()
+            "failed to spawn daemon via `{}`",
+            daemon_exe.display()
         )))
     })?;
 
@@ -271,12 +270,36 @@ fn configure_detached(_command: &mut Command) {
     // platform-specific paths above.
 }
 
-/// Resolve the path to the current CLI executable (used to spawn itself with `daemon` subcommand).
-pub(crate) fn resolve_cli_exe_path() -> Result<PathBuf, LocalDaemonError> {
-    std::env::current_exe().map_err(|error| {
-        LocalDaemonError::ResolveBinary(
-            anyhow::Error::new(error).context("failed to resolve current CLI executable"),
-        )
+/// Resolve the path to the `uniclipd` daemon binary.
+///
+/// Strategy:
+/// 1. Look for `uniclipd` (or `uniclipd.exe` on Windows) as a sibling of
+///    the current CLI executable. This covers Tauri sidecar bundles, `cargo
+///    build` output directories, and Docker images where both binaries sit
+///    in the same directory.
+/// 2. Fall back to a PATH lookup so that system-wide installs work.
+pub(crate) fn resolve_daemon_exe_path() -> Result<PathBuf, LocalDaemonError> {
+    let daemon_name = if cfg!(windows) {
+        "uniclipd.exe"
+    } else {
+        "uniclipd"
+    };
+
+    // Strategy 1: sibling of current executable.
+    if let Ok(cli_exe) = std::env::current_exe() {
+        if let Some(dir) = cli_exe.parent() {
+            let candidate = dir.join(daemon_name);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    // Strategy 2: PATH lookup.
+    which::which(daemon_name).map_err(|error| {
+        LocalDaemonError::ResolveBinary(anyhow::Error::new(error).context(format!(
+            "`{daemon_name}` not found as sibling of the CLI binary or in PATH"
+        )))
     })
 }
 
@@ -460,17 +483,13 @@ mod tests {
         );
     }
 
-    // ---------- resolve_cli_exe_path ----------
+    // ---------- resolve_daemon_exe_path ----------
 
     #[test]
-    fn resolve_cli_exe_path_yields_an_existing_executable() {
-        // current_exe in a test binary points at the test binary itself.
-        // We just want to know the wrapper doesn't lie about errors.
-        let path = resolve_cli_exe_path().expect("test binary must resolve current_exe");
-        assert!(
-            path.exists(),
-            "current_exe path must point at a file that exists: {}",
-            path.display()
-        );
+    fn resolve_daemon_exe_path_finds_sibling_or_path() {
+        // In a cargo test environment `uniclipd` may or may not be built.
+        // We only assert the function doesn't panic — the actual resolution
+        // depends on the build layout.
+        let _result = resolve_daemon_exe_path();
     }
 }

@@ -1,0 +1,245 @@
+//! Daemon host entry points.
+//!
+//! Provides two interfaces:
+//!
+//! - [`run`]: Synchronous blocking entry for the standalone daemon binary
+//!   (`uniclipd`) — creates its own tokio runtime, listens for OS signals
+//!   until the main loop exits.
+//! - [`start_in_process`]: Async entry for GUI shells running on their own
+//!   tokio runtime — spawns the daemon main loop as a task and returns a
+//!   [`DaemonHandle`] for explicit shutdown.
+//!
+//! Both entry points share the same assembly + main loop implementation
+//! ([`build_daemon_bootstrap_assembly`] / [`run_daemon_main`]) and differ
+//! only in which runtime they run on and who triggers shutdown.
+//!
+//! Migrated from `uc-desktop/src/daemon/host.rs` (ADR-008 P2, Slice 2b).
+
+use std::sync::Arc;
+
+use tokio_util::sync::CancellationToken;
+use uc_application::clipboard_write::ClipboardWriteCoordinator;
+use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
+use uc_bootstrap::assembly::WiredDependencies;
+use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
+
+use super::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
+use super::app_facade_assembly::{build_daemon_lifecycle_facades, DaemonLifecycleFacadesInput};
+use super::bootstrap::{build_daemon_bootstrap_assembly, DaemonBootstrapAssembly};
+use super::handle::DaemonHandle;
+use super::mobile_lan_lifecycle::{AppFacadeListenerSpawner, MobileLanLifecycleController};
+use super::process_runtime::DaemonProcessRuntime;
+use super::run_loop::{run_daemon_main, DaemonRunLoopInput};
+use super::run_mode::DaemonRunMode;
+use super::runtime_assembly::{build_daemon_runtime_workers, DaemonRuntimeAssemblyInput};
+use super::runtime_controls::build_daemon_runtime_controls;
+use super::search_assembly::build_daemon_search_assembly;
+use super::service_assembly::build_daemon_service_plan;
+use super::tokio_runtime::build_daemon_tokio_runtime;
+
+/// Process-level persistent resource handles passed to the daemon on each spawn.
+///
+/// Daemon-lifecycle resources (iroh node / space_setup / HTTP server / LAN
+/// listener) are rebuilt on each daemon start/stop, but these persistent
+/// resources survive daemon reloads — the sqlite pool etc. are not destroyed
+/// when the daemon restarts.
+///
+/// `Clone` is derived: `wired` internally holds `Arc<dyn Port>` / `PathBuf`,
+/// other fields are also `Arc`, so clone is just a set of `Arc::clone` calls.
+#[derive(Clone)]
+pub struct ProcessRuntimeHandles {
+    pub wired: WiredDependencies,
+    pub storage_paths: AppPaths,
+    pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
+    pub file_transfer_lifecycle: Arc<FileTransferLifecycle>,
+    pub file_transfer_facade: Arc<FileTransferFacade>,
+}
+
+/// Standalone daemon binary entry: creates its own tokio runtime, starts the
+/// daemon, and blocks until exit.
+///
+/// GUI shells should not use this — use [`start_in_process`] instead for
+/// in-process daemon hosting.
+pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
+    let rt = build_daemon_tokio_runtime()?;
+    rt.block_on(async move {
+        let super::process_bootstrap::ProcessRuntimeContext {
+            wired,
+            background,
+            storage_paths,
+            config: _config,
+        } = super::process_bootstrap::build_process_runtime().await?;
+
+        let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
+        let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
+        let file_transfer_facade = wired.file_transfer_facade.clone();
+
+        let runtime = DaemonProcessRuntime::new(
+            wired.deps.clone(),
+            storage_paths.clone(),
+            clipboard_write_coordinator.clone(),
+            file_transfer_facade.clone(),
+        );
+        let app_facade = Arc::clone(runtime.app_facade());
+
+        let blob_ports = uc_bootstrap::BlobProcessingPorts::from_app_deps(&wired.deps);
+        let task_registry_for_blob = Arc::clone(runtime.task_registry());
+        tokio::spawn(async move {
+            uc_bootstrap::spawn_blob_processing_tasks(
+                background,
+                blob_ports,
+                &task_registry_for_blob,
+            )
+            .await;
+        });
+
+        let handles = ProcessRuntimeHandles {
+            wired,
+            storage_paths,
+            clipboard_write_coordinator,
+            file_transfer_lifecycle,
+            file_transfer_facade,
+        };
+        let handle = start_in_process(run_mode, app_facade, handles).await?;
+        let result = handle.wait().await;
+        drop(runtime);
+        result
+    })
+}
+
+pub use uc_daemon_local::spawn_contract::RUN_MODE_ENV;
+pub use uc_daemon_local::spawn_contract::RUN_MODE_SERVER;
+
+/// Standalone daemon binary entry: parse run mode from environment, then start.
+///
+/// Reads [`RUN_MODE_ENV`]: `"server"` → [`DaemonRunMode::ServerHeadless`]
+/// (headless node, no X11/Wayland); otherwise → [`DaemonRunMode::Standalone`].
+pub fn run_standalone_from_env() -> anyhow::Result<()> {
+    let run_mode = if std::env::var(RUN_MODE_ENV).as_deref() == Ok(RUN_MODE_SERVER) {
+        std::env::set_var("UC_DISABLE_SYSTEM_CLIPBOARD", "1");
+        DaemonRunMode::ServerHeadless
+    } else {
+        DaemonRunMode::Standalone
+    };
+    run(run_mode)
+}
+
+/// In-process daemon start (async).
+///
+/// Assumes the caller already has an active tokio runtime context. Assembles
+/// the daemon, spawns the main loop as a task, and returns a [`DaemonHandle`]
+/// for explicit shutdown.
+pub async fn start_in_process(
+    run_mode: DaemonRunMode,
+    app_facade: Arc<AppFacade>,
+    handles: ProcessRuntimeHandles,
+) -> anyhow::Result<DaemonHandle> {
+    let cancel = CancellationToken::new();
+
+    let DaemonBootstrapAssembly {
+        clipboard_sync_facade,
+        blob_transfer_facade,
+        space_setup_assembly,
+        mobile_sync_endpoint_info,
+    } = build_daemon_bootstrap_assembly(&handles.wired).await?;
+
+    let ProcessRuntimeHandles {
+        wired,
+        storage_paths,
+        clipboard_write_coordinator,
+        file_transfer_lifecycle,
+        file_transfer_facade,
+    } = handles;
+
+    let deps = wired.deps;
+    let host_event_bus = wired.host_event_bus;
+    let settings_port = deps.settings.clone();
+    let runtime_controls = build_daemon_runtime_controls(run_mode);
+
+    let runtime_workers = build_daemon_runtime_workers(DaemonRuntimeAssemblyInput {
+        deps: &deps,
+        run_mode,
+        event_tx: runtime_controls.event_tx.clone(),
+        clipboard_capture_gate: runtime_controls.clipboard_capture_gate.clone(),
+        clipboard_sync_facade: clipboard_sync_facade.clone(),
+        blob_transfer_facade: blob_transfer_facade.clone(),
+        file_cache_dir: storage_paths.file_cache_dir.clone(),
+        file_transfer_lifecycle,
+        clipboard_write_coordinator: clipboard_write_coordinator.clone(),
+        host_event_bus: host_event_bus.clone(),
+        entry_delivery_repo: wired.entry_delivery_repo.clone(),
+        clipboard_event_reader_repo: wired.clipboard_event_reader_repo.clone(),
+        trusted_peer_repo: wired.trusted_peer_repo.clone(),
+    })?;
+
+    let search_assembly = build_daemon_search_assembly(&deps, runtime_controls.event_tx.clone());
+
+    let service_plan = build_daemon_service_plan(
+        run_mode,
+        runtime_controls.encryption_unlocked,
+        &runtime_workers,
+        &search_assembly,
+    );
+
+    let storage_paths_for_daemon = storage_paths.clone();
+
+    let mobile_lan_lifecycle: Arc<MobileLanLifecycleController> =
+        Arc::new(MobileLanLifecycleController::new(
+            mobile_sync_endpoint_info.clone(),
+            Arc::new(AppFacadeListenerSpawner::new(
+                Arc::clone(&app_facade),
+                Some(file_transfer_facade.clone()),
+            )),
+        ));
+
+    let (lifecycle_facades, local_device_id) =
+        build_daemon_lifecycle_facades(DaemonLifecycleFacadesInput {
+            deps: &deps,
+            storage_paths: &storage_paths_for_daemon,
+            space_setup_assembly: &space_setup_assembly,
+            clipboard_sync: clipboard_sync_facade.clone(),
+            blob_transfer: blob_transfer_facade.clone(),
+            file_transfer: file_transfer_facade.clone(),
+            mobile_sync_apply_inbound: runtime_workers.apply_inbound.clone(),
+            clipboard_outbound: runtime_workers.clipboard_outbound.clone(),
+            lan_lifecycle: Arc::clone(&mobile_lan_lifecycle)
+                as Arc<dyn uc_core::ports::MobileLanLifecyclePort>,
+        });
+
+    app_facade.install_daemon_lifecycle(lifecycle_facades);
+
+    app_facade
+        .search
+        .set_coordinator(Arc::clone(&search_assembly.coordinator));
+
+    let app_facade_for_daemon = Arc::clone(&app_facade);
+    let daemon = build_daemon_app_instance(DaemonAppAssemblyInput {
+        service_plan,
+        app_facade: Arc::clone(&app_facade_for_daemon),
+        storage_paths: storage_paths_for_daemon,
+        host_event_bus: host_event_bus.clone(),
+        event_tx: runtime_controls.event_tx,
+        encryption_unlocked: runtime_controls.encryption_unlocked,
+        deferred_ready_notify: runtime_controls.deferred_ready_notify.clone(),
+        external_shutdown: Some(cancel.clone()),
+        clipboard_capture_gate: runtime_controls.clipboard_capture_gate.clone(),
+        local_device_id,
+        listens_to_os_signals: run_mode.listens_to_os_signals(),
+        process_mode: run_mode.process_mode(),
+        mobile_sync_endpoint_info,
+        mobile_lan_lifecycle: Arc::clone(&mobile_lan_lifecycle),
+    });
+
+    let input = DaemonRunLoopInput {
+        run_mode,
+        daemon,
+        app_facade: app_facade_for_daemon,
+        settings: settings_port,
+        space_setup_assembly,
+        deferred_ready_notify: runtime_controls.deferred_ready_notify,
+        clipboard_capture_gate: runtime_controls.clipboard_capture_gate,
+    };
+    let join = tokio::spawn(run_daemon_main(input));
+
+    Ok(DaemonHandle::new(cancel, join))
+}

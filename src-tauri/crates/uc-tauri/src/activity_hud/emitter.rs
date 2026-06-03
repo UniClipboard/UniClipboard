@@ -3,11 +3,11 @@
 //!
 //! ## 接入位置
 //!
-//! 在 Tauri setup callback 中 `host_event_bus.register("activity_hud",
-//! Arc::new(ActivityHudEmitter::new(...)))`,与现有
-//! `TauriHostEventEmitter` 并行挂载;两者各自只处理自己关心的事件子集
-//! (Tauri 处理 Delivery,本 emitter 处理 Transfer + IncomingPending),
-//! 不会互相重复推送。
+//! ADR-008 P3-3 (B2'-3): GUI 已是外部 daemon 的纯客户端,无 in-process
+//! host_event_bus。`run.rs` 用 `DaemonWsBridge` 订阅 daemon WS 的
+//! file-transfer + clipboard topic,把 `RealtimeEvent` 翻成 `HostEvent`
+//! 后调本 emitter 的 [`emit`](HostEventEmitterPort::emit)。本 emitter 只
+//! 消费 Transfer + IncomingPending,其它事件类别静默跳过。
 //!
 //! ## 节流
 //!

@@ -4,7 +4,7 @@
 //! This module preserves `uc_desktop::daemon::host::*` import paths for
 //! backward compatibility.
 
-pub use uc_daemon::daemon::host::{
-    run, run_standalone_from_env, start_in_process, ProcessRuntimeHandles, RUN_MODE_ENV,
-    RUN_MODE_SERVER,
-};
+// ADR-008 P3-3 (B2'-3): `start_in_process` + `ProcessRuntimeHandles` re-exports
+// dropped — the GUI no longer runs an in-process daemon. Consumers of the daemon
+// body reach these via `uc_daemon::daemon::host` directly.
+pub use uc_daemon::daemon::host::{run, run_standalone_from_env, RUN_MODE_ENV, RUN_MODE_SERVER};

@@ -19,29 +19,26 @@
 //!
 //! ## 用法示例
 //!
+//! ADR-008 P3-3 (B2'-3): 业务调用走 daemon HTTP/WS (`uc-daemon-client`),不再
+//! 经 runtime。runtime 只提供进程基础设施 (settings / device-id / analytics /
+//! task-registry) 与 Tauri `AppHandle`。
+//!
 //! ```rust,ignore
 //! use uc_tauri::bootstrap::TauriAppRuntime;
 //! use tauri::State;
 //!
 //! #[tauri::command]
-//! async fn list_entries(
+//! async fn current_device(
 //!     runtime: State<'_, std::sync::Arc<TauriAppRuntime>>,
-//! ) -> Result<(), String> {
-//!     let facade = runtime.app_facade();
-//!     let entries = facade
-//!         .clipboard_history
-//!         .list_entry_projections(/* input */)
-//!         .await
-//!         .map_err(|e| e.to_string())?;
-//!     Ok(())
+//! ) -> Result<String, String> {
+//!     Ok(runtime.device_id())
 //! }
 //! ```
 
 use std::sync::{Arc, RwLock};
 
-use uc_application::deps::AppDeps;
-use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
-use uc_bootstrap::TaskRegistry;
+use uc_application::facade::AppPaths;
+use uc_bootstrap::{GuiClientDeps, TaskRegistry};
 use uc_core::ports::{SettingsPort, SetupStatusPort};
 use uc_desktop::DesktopRuntime;
 use uc_observability::analytics::AnalyticsPort;
@@ -58,23 +55,11 @@ pub struct TauriAppRuntime {
 }
 
 impl TauriAppRuntime {
-    /// 装配 `DesktopRuntime` + 在外层加一个空 `AppHandle`,产出
-    /// `TauriAppRuntime`。host event 总线由 application 层(`WiredDependencies::
-    /// host_event_bus`)直接持有,不再经过 runtime 中转。
-    pub fn new(
-        deps: AppDeps,
-        storage_paths: AppPaths,
-        clipboard_write_coordinator: Arc<
-            uc_application::clipboard_write::ClipboardWriteCoordinator,
-        >,
-        file_transfer_facade: Arc<FileTransferFacade>,
-    ) -> Self {
-        Self::from_desktop(Arc::new(DesktopRuntime::new(
-            deps,
-            storage_paths,
-            clipboard_write_coordinator,
-            file_transfer_facade,
-        )))
+    /// 从 [`GuiClientDeps`] 装配纯客户端 `DesktopRuntime` + 在外层加一个空
+    /// `AppHandle`,产出 `TauriAppRuntime`。ADR-008 P3-3 (B2'-3): GUI 是外部
+    /// daemon 的纯客户端,不再持有进程内 facade / sqlite。
+    pub fn new(client: GuiClientDeps) -> Self {
+        Self::from_desktop(Arc::new(DesktopRuntime::new(client)))
     }
 
     /// 已经有 `DesktopRuntime` 时直接包一层。
@@ -123,11 +108,6 @@ impl TauriAppRuntime {
     // ---------------------------------------------------------------------
     // 透传 DesktopRuntime 字段，保持历史 API 不破坏。
     // ---------------------------------------------------------------------
-
-    /// 业务入口 —— commands / 后台任务通过它访问业务。
-    pub fn app_facade(&self) -> &Arc<AppFacade> {
-        self.desktop.app_facade()
-    }
 
     pub fn device_id(&self) -> String {
         self.desktop.device_id()

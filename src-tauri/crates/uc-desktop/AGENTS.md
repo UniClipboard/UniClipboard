@@ -100,9 +100,11 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
 - `uc-daemon-local` 是 desktop 宿主的"进程协调工具集"——逻辑上属于 desktop
   范畴，因为需要被 GUI shell 与 daemon 同时消费而物理外置。它**不依赖任何
   GUI 框架**，仅承载 PID 文件、socket 路径、auth token、健康探测、
-  错误契约等纯协调工具。GUI 进程内拉起 daemon 走 `start_in_process`，
-  外部 daemon binary 由 CLI 用 `std::process::Command` detached spawn——
-  desktop 不再提供 sidecar spawn hook。
+  错误契约等纯协调工具。ADR-008 P3-3 (B2'-3) 起 GUI 是外部 daemon 的纯
+  客户端：探测到没有 daemon 时，`daemon_probe::bootstrap_daemon_in_process`
+  调 `uc_daemon_local::spawn::spawn_detached_daemon` detached 拉起 `uniclipd`
+  外部进程 (GUI 与 CLI 共用同一 spawn 原语),再 poll `/health`。不再有
+  in-process daemon。
 - `uc-tauri` 是 desktop 的 **Tauri shell 适配器**，不是 desktop 的子集，
   也不是与 desktop 平级的层。它消费 `uc-desktop` 的能力，提供 Tauri 框架
   特定的 builder / commands / tray / quick_panel。新增 Tauri-only 能力放
@@ -111,4 +113,7 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
     承载 **GUI-agnostic daemon runtime 全部构件**（run_mode、后台 worker / 服务、
     装配链、main loop、startup recovery、process bootstrap、host entry points）+
     `uniclipd` 独立二进制。不依赖 GUI 框架、**不反依赖 `uc-desktop`**。
-    **后续阶段**：GUI 删除 `GuiInProcess` 永久转 client（P3）。
+    ADR-008 P3-3 (B2'-3) 已落地：GUI 永久转纯 client，删除 in-process
+    daemon 拉起路径 (`start_in_process`/`ProcessRuntimeHandles` re-export
+    shim 已移除);`GuiInProcess` run-mode 变体作为死代码在后续 cleanup
+    中删除，`DaemonProcessMode::InProcess` enum 保留供 legacy PID 文件读取。

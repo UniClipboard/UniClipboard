@@ -22,7 +22,7 @@
 //! --test specta_export` 得到同一份 binding（CI 可以用单一 Linux runner
 //! 做 schema drift check）。当前 33 条命令都不依赖平台特定 mod 编译。
 
-use tauri_specta::{collect_commands, collect_events, Builder};
+use tauri_specta::{collect_commands, Builder};
 
 /// 构造 IPC commands 的 tauri-specta `Builder`。
 ///
@@ -34,52 +34,47 @@ use tauri_specta::{collect_commands, collect_events, Builder};
 /// 否则前端 TS 类型与后端实际可调用的命令会漂移。所以这里把两条路径
 /// 都收口到这一个函数。
 pub fn build() -> Builder<tauri::Wry> {
-    Builder::<tauri::Wry>::new()
-        .events(collect_events![
-            // Issue #747 Phase 5:dispatch fan-out 完成、delivery 写入后
-            // 由 `TauriHostEventEmitter` emit;事件 payload 只携带
-            // (entry_id, target_device_id),前端按 entry_id 匹配后 refetch
-            // view 拿 status 真相 —— 事件本身不承载状态。事件丢失被前端
-            // 的幂等 refetch 吸收,所以不在 specta 层加任何"必须收到"
-            // 的保护。
-            crate::host_event_emitter::ClipboardDeliveryStatusChanged,
-        ])
-        .commands(collect_commands![
-            // ── tray ────────────────────────────────────────────────────────────
-            crate::commands::tray::set_tray_language,
-            // ── lifecycle / device ──────────────────────────────────────────────
-            crate::commands::get_tauri_pid,
-            crate::commands::get_device_id,
-            crate::commands::get_device_meta,
-            crate::commands::startup::get_daemon_connection_info,
-            crate::commands::startup::get_daemon_session,
-            // ── restart (Phase 95) ──────────────────────────────────────────────
-            crate::commands::restart::restart_app,
-            // ── autostart ───────────────────────────────────────────────────────
-            crate::commands::autostart::update_autostart,
-            // ── updater ─────────────────────────────────────────────────────────
-            crate::commands::updater::check_for_update,
-            crate::commands::updater::download_update,
-            crate::commands::updater::cancel_download,
-            crate::commands::updater::get_download_progress,
-            crate::commands::updater::install_update,
-            crate::commands::updater::get_install_kind,
-            crate::commands::updater::dev_open_updater_window,
-            // ── update telemetry (Phase 5A) ─────────────────────────────────────
-            crate::commands::update_telemetry::capture_update_ui_event,
-            // ── storage ─────────────────────────────────────────────────────────
-            crate::commands::storage::open_data_directory,
-            crate::commands::storage::open_logs_directory,
-            // ── quick panel ─────────────────────────────────────────────────────
-            crate::commands::quick_panel::paste_to_previous_app,
-            crate::commands::quick_panel::dismiss_quick_panel,
-            crate::commands::quick_panel::set_quick_panel_layout,
-            crate::commands::quick_panel::finalize_quick_panel_show,
-            crate::commands::quick_panel::set_quick_panel_enabled,
-            // ── settings ────────────────────────────────────────────────────────
-            crate::commands::settings::update_keyboard_shortcuts,
-            crate::commands::settings::probe_relay_url,
-            // ── window chrome (macOS traffic lights) ────────────────────────────
-            crate::commands::window_chrome::set_traffic_light_position,
-        ])
+    // ADR-008 P3-3 (B2'-3): no tauri-specta events. The former
+    // `clipboardDeliveryStatusChanged` Tauri event was retired once the GUI
+    // became a pure client — delivery refetch signals now travel over the
+    // daemon WS (`clipboard.delivery_status_changed`, GAP-WS-1), consumed by
+    // the frontend `useEntryDelivery` via `daemonWs.subscribe`.
+    Builder::<tauri::Wry>::new().commands(collect_commands![
+        // ── tray ────────────────────────────────────────────────────────────
+        crate::commands::tray::set_tray_language,
+        // ── lifecycle / device ──────────────────────────────────────────────
+        crate::commands::get_tauri_pid,
+        crate::commands::get_device_id,
+        crate::commands::get_device_meta,
+        crate::commands::startup::get_daemon_connection_info,
+        crate::commands::startup::get_daemon_session,
+        // ── restart (Phase 95) ──────────────────────────────────────────────
+        crate::commands::restart::restart_app,
+        // ── autostart ───────────────────────────────────────────────────────
+        crate::commands::autostart::update_autostart,
+        // ── updater ─────────────────────────────────────────────────────────
+        crate::commands::updater::check_for_update,
+        crate::commands::updater::download_update,
+        crate::commands::updater::cancel_download,
+        crate::commands::updater::get_download_progress,
+        crate::commands::updater::install_update,
+        crate::commands::updater::get_install_kind,
+        crate::commands::updater::dev_open_updater_window,
+        // ── update telemetry (Phase 5A) ─────────────────────────────────────
+        crate::commands::update_telemetry::capture_update_ui_event,
+        // ── storage ─────────────────────────────────────────────────────────
+        crate::commands::storage::open_data_directory,
+        crate::commands::storage::open_logs_directory,
+        // ── quick panel ─────────────────────────────────────────────────────
+        crate::commands::quick_panel::paste_to_previous_app,
+        crate::commands::quick_panel::dismiss_quick_panel,
+        crate::commands::quick_panel::set_quick_panel_layout,
+        crate::commands::quick_panel::finalize_quick_panel_show,
+        crate::commands::quick_panel::set_quick_panel_enabled,
+        // ── settings ────────────────────────────────────────────────────────
+        crate::commands::settings::update_keyboard_shortcuts,
+        crate::commands::settings::probe_relay_url,
+        // ── window chrome (macOS traffic lights) ────────────────────────────
+        crate::commands::window_chrome::set_traffic_light_position,
+    ])
 }

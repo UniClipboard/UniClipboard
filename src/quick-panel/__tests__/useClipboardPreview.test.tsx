@@ -14,15 +14,13 @@ vi.mock('@/api/daemon/client', () => ({
   },
 }))
 
-// useClipboardPreview 内部嵌了 useEntryDelivery —— 它会订阅 Tauri 事件并
-// 调 `getEntryDeliveryView` Tauri command。本测试只验证 preview 路径,
-// 把 delivery 这条侧链全部桩掉,避免触达真实 Tauri runtime 产生
-// unhandled rejection。
-vi.mock('@/lib/ipc', () => ({
-  events: {
-    clipboardDeliveryStatusChanged: {
-      listen: vi.fn(() => Promise.resolve(() => {})),
-    },
+// useClipboardPreview 内部嵌了 useEntryDelivery —— 它订阅 daemon WS 的
+// `clipboard` topic 并调 `getEntryDeliveryView`。本测试只验证 preview 路径,
+// 把 delivery 这条侧链全部桩掉,避免触达真实 daemon WS 产生 unhandled
+// rejection (ADR-008 P3-3 B2'-3: delivery 改走 daemon WS,不再走 Tauri 事件)。
+vi.mock('@/lib/daemon-ws', () => ({
+  daemonWs: {
+    subscribe: vi.fn(() => () => {}),
   },
 }))
 

@@ -9,7 +9,4 @@ pub mod host;
 pub use uc_daemon::daemon::run_mode;
 pub use uc_daemon::{DaemonHandle, DaemonOwnership};
 
-pub use host::{
-    run, run_standalone_from_env, start_in_process, ProcessRuntimeHandles, RUN_MODE_ENV,
-    RUN_MODE_SERVER,
-};
+pub use host::{run, run_standalone_from_env, RUN_MODE_ENV, RUN_MODE_SERVER};

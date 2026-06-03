@@ -21,13 +21,9 @@ use uc_daemon_local::contract::{
 use uc_daemon_local::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
 use uc_daemon_local::process_metadata::{read_pid_metadata, DaemonPidMetadata, DaemonProcessMode};
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
+use uc_daemon_local::spawn::spawn_detached_daemon;
 
-use std::sync::Arc;
-
-use uc_application::facade::AppFacade;
-
-use crate::daemon::run_mode::DaemonRunMode;
-use crate::daemon::{start_in_process, DaemonOwnership, ProcessRuntimeHandles};
+use crate::daemon::DaemonOwnership;
 
 pub const HEALTH_PATH: &str = "/health";
 pub const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(8);
@@ -167,28 +163,29 @@ pub fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBoots
 
 /// GUI 进程启动时统一的"探测 → 连或拉"入口（双模 daemon 模型）。
 ///
+/// ADR-008 P3-3 (B2'-3): GUI 是外部 `uniclipd` 的纯客户端。不再有 in-process
+/// daemon —— 没有 daemon 时拉起的是一个 **detached 外部进程**
+/// ([`spawn_detached_daemon`])。
+///
 /// 行为：
 /// 1. 探测本机 daemon HTTP 端点；
 /// 2. **Compatible** —— 已有外部 daemon（如 `cli start` 拉起的独立进程）
 ///    在跑且版本匹配，把 `ownership` 标记为 [`DaemonOwnership::set_external`]
 ///    并返回连接信息；
-/// 3. **Absent** —— 没有 daemon，调 [`start_in_process`] in-process 拉起
-///    （[`DaemonRunMode::GuiInProcess`]），把 handle 存进 `ownership`，
-///    等到 daemon 健康再返回连接信息；
+/// 3. **Absent** —— 没有 daemon，detached spawn `uniclipd` 外部进程，等到
+///    daemon 健康再返回连接信息；
 /// 4. **Incompatible** —— 旧版 daemon（决策 B1：legacy "杀并替换"）：
-///    SIGTERM 旧 daemon → 等端点消失 → in-process 拉起 → 等健康。
+///    SIGTERM 旧 daemon → 等端点消失 → detached spawn → 等健康。
 ///
-/// 调用方（shell）持有 `ownership` 的 clone；GUI 退出 hook 里调
-/// [`DaemonOwnership::take_owned`] 拿到 handle 触发 shutdown，仅在
-/// `Owned` 状态生效——`External` 状态下 daemon 是别人的不动它。
+/// 所有拉起路径都把 `ownership` 标记为 `External`：GUI-spawned daemon 现在是
+/// 独立进程,GUI 退出不再 owns 它的生命周期(ADR-008 D3 orphan-on-quit,
+/// 作为 interim 接受,留待 P4 ownership 重设计)。
 pub async fn bootstrap_daemon_in_process(
     ownership: &DaemonOwnership,
     expected_package_version: &str,
     incompatible_exit_timeout: Duration,
     health_check_timeout: Duration,
     health_poll_interval: Duration,
-    app_facade: Arc<AppFacade>,
-    process_handles: ProcessRuntimeHandles,
 ) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
     let client = reqwest::Client::builder()
         .timeout(PROBE_TIMEOUT)
@@ -204,14 +201,12 @@ pub async fn bootstrap_daemon_in_process(
             ownership.set_external();
         }
         ProbeOutcome::Absent => {
-            start_owned_in_process(
+            spawn_external_and_wait_health(
                 ownership,
                 &client,
                 expected_package_version,
                 health_check_timeout,
                 health_poll_interval,
-                Arc::clone(&app_facade),
-                process_handles.clone(),
             )
             .await?;
         }
@@ -226,14 +221,12 @@ pub async fn bootstrap_daemon_in_process(
                 &details,
             )
             .await?;
-            start_owned_in_process(
+            spawn_external_and_wait_health(
                 ownership,
                 &client,
                 expected_package_version,
                 health_check_timeout,
                 health_poll_interval,
-                Arc::clone(&app_facade),
-                process_handles.clone(),
             )
             .await?;
         }
@@ -242,21 +235,22 @@ pub async fn bootstrap_daemon_in_process(
     load_daemon_connection_info()
 }
 
-async fn start_owned_in_process(
+/// Detached-spawn the external `uniclipd` binary, mark ownership `External`, then
+/// poll `/health` until the daemon is reachable. The GUI does not own the
+/// spawned process's lifecycle (it survives GUI quit — ADR-008 D3 interim).
+async fn spawn_external_and_wait_health(
     ownership: &DaemonOwnership,
     client: &reqwest::Client,
     expected_package_version: &str,
     health_check_timeout: Duration,
     health_poll_interval: Duration,
-    app_facade: Arc<AppFacade>,
-    process_handles: ProcessRuntimeHandles,
 ) -> Result<(), DaemonBootstrapError> {
-    let handle = start_in_process(DaemonRunMode::GuiInProcess, app_facade, process_handles)
-        .await
-        .map_err(|error| {
-            DaemonBootstrapError::Spawn(error.context("in-process daemon start failed"))
-        })?;
-    ownership.set_owned(handle);
+    spawn_detached_daemon().map_err(|error| {
+        DaemonBootstrapError::Spawn(
+            anyhow::Error::new(error).context("detached daemon spawn failed"),
+        )
+    })?;
+    ownership.set_external();
 
     let mut probe_fn = || async { probe_daemon_health(client, expected_package_version).await };
     wait_for_daemon_health(&mut probe_fn, health_check_timeout, health_poll_interval).await

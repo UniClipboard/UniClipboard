@@ -10,7 +10,7 @@
 //! ## 模块分层
 //!
 //! ```text
-//!   host_event_bus
+//!   daemon WS → DaemonWsBridge → HostEvent (run.rs)
 //!         │
 //!         ▼
 //!   emitter (跨平台)
@@ -43,13 +43,15 @@
 //!
 //! ## 装配
 //!
-//! 上层 (run.rs) 只需调一次 [`install`]:
+//! 上层 (run.rs) 调一次 [`install`] 拿到 emitter,再用 `DaemonWsBridge`
+//! 把 daemon WS 上的 transfer / incoming-pending 事件翻成 `HostEvent`
+//! 喂给它 (ADR-008 P3-3 B2'-3 —— GUI 已无 in-process host_event_bus):
 //!
 //! ```ignore
-//! activity_hud::install(activity_hud::InstallDeps {
+//! let hud = activity_hud::install(activity_hud::InstallDeps {
 //!     app_handle: app.handle().clone(),
-//!     host_event_bus: host_event_bus.clone(),
 //! });
+//! // run.rs: bridge.subscribe([FileTransfer, Clipboard]) → translate → hud.emit(..)
 //! ```
 //!
 //! 内部完成:
@@ -57,8 +59,7 @@
 //! 2. 构造 actions (持 emitter)
 //! 3. 创建平台 listener (持 actions)
 //! 4. `emitter.set_listener(real)` 完成接线
-//! 5. 把 emitter 注册到 host_event_bus
-//! 6. spawn 后台 sweep tick 周期清理终态行
+//! 5. spawn 后台 sweep tick 周期清理终态行
 
 pub mod actions;
 pub mod clock;
@@ -70,9 +71,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::AppHandle;
-use tracing::info;
-
-use uc_application::facade::{HostEventBus, HostEventEmitterPort};
 
 use self::actions::{ActivityHudActions, DefaultActivityHudActions};
 use self::clock::{Clock, SystemClock};
@@ -81,12 +79,7 @@ use self::emitter::{ActivityHudEmitter, ActivityHudListener};
 /// 装配 HUD 需要的外部依赖。所有字段都从 Tauri setup callback 拿得到。
 pub struct InstallDeps {
     pub app_handle: AppHandle,
-    pub host_event_bus: Arc<HostEventBus>,
 }
-
-/// 注册到 host event bus 上的 emitter 名字。`HostEventBus::unregister`
-/// 用同名字反注册;暴露成常量便于排障搜索。
-pub const REGISTRATION_NAME: &str = "activity_hud";
 
 /// 后台 sweep tick 周期 —— 清理过保留期的终态行。500ms 对 2-4s 的保留
 /// 期是 4-8 倍精度,行的"完成→消失"过渡看不出抖动。
@@ -102,10 +95,7 @@ const SWEEP_INTERVAL: Duration = Duration::from_millis(500);
 /// `Arc::new_cyclic` + `Weak` 把环改成无循环;当前 emitter 进程级单例
 /// 活到进程退出,内存不漏。
 pub fn install(deps: InstallDeps) -> Arc<ActivityHudEmitter> {
-    let InstallDeps {
-        app_handle,
-        host_event_bus,
-    } = deps;
+    let InstallDeps { app_handle } = deps;
 
     // 1) 状态机 + emitter,先用 tracing listener 占位。
     let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
@@ -123,18 +113,12 @@ pub fn install(deps: InstallDeps) -> Arc<ActivityHudEmitter> {
     let real_listener = self::ui::create_listener(app_handle, actions);
     emitter.set_listener(real_listener);
 
-    // 4) 挂到 host event bus,与 TauriHostEventEmitter 并行接收事件。
-    host_event_bus.register(
-        REGISTRATION_NAME,
-        Arc::clone(&emitter) as Arc<dyn HostEventEmitterPort>,
-    );
-    info!(
-        registration = REGISTRATION_NAME,
-        "activity_hud emitter registered on host_event_bus"
-    );
-
-    // 5) 后台 sweep tick:周期清理过保留期的终态行。MissedTickBehavior::Skip
+    // 4) 后台 sweep tick:周期清理过保留期的终态行。MissedTickBehavior::Skip
     //    避免 runtime 偶发卡顿后追补一堆 tick。
+    //
+    // ADR-008 P3-3 (B2'-3): emitter 不再注册到进程内 host_event_bus —— GUI
+    // 已无 in-process bus。事件改由 run.rs 的 `DaemonWsBridge` 从 daemon WS
+    // 拉取后翻成 HostEvent 喂给返回的 emitter。
     let sweep_emitter = Arc::clone(&emitter);
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(SWEEP_INTERVAL);

@@ -687,7 +687,10 @@
         "clipboardImage": "Clipboard Image",
         "copyButton": "Copy",
         "favoriteButton": "Favorite"
-      }
+      },
+      "largeImageTitle": "Large image",
+      "largeImageHint": "{{size}} — not loaded automatically",
+      "loadLargeImage": "Load image"
     },
     "time": {
       "justNow": "Just now",
@@ -1326,7 +1329,10 @@
     "imageUnavailable": "Image not available",
     "empty": "Hover over an item to preview",
     "imageAlt": "Clipboard image",
-    "deleteHint": "{{modifier}}⌫ delete"
+    "deleteHint": "{{modifier}}⌫ delete",
+    "largeImageTitle": "Large image",
+    "largeImageHint": "{{size}} — not loaded automatically",
+    "loadLargeImage": "Load image"
   },
   "delivery": {
     "section": {

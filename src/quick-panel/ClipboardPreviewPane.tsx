@@ -1,5 +1,5 @@
-import { File, Loader2 } from 'lucide-react'
-import React, { useMemo } from 'react'
+import { File, ImageDown, Loader2 } from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import EntryDeliveryBadge from '@/components/clipboard/EntryDeliveryBadge'
 import VirtualizedText from '@/components/clipboard/VirtualizedText'
@@ -19,6 +19,15 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
   const { t } = useTranslation(undefined, { keyPrefix: 'previewPanel' })
   const { preview, loading, error, delivery } = useClipboardPreview(entryId)
   const isMac = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
+
+  // D6 (ADR-008 P3-d): originals above the inline threshold are not auto-pulled.
+  // Reveal the `<img>` (and thus the blob fetch) only after an explicit click,
+  // resetting whenever the selected entry changes.
+  const [revealedLargeImage, setRevealedLargeImage] = useState(false)
+  useEffect(() => {
+    setRevealedLargeImage(false)
+  }, [entryId])
+  const gateLargeImage = preview?.requiresExplicitLoad === true && !revealedLargeImage
 
   const isLargeText =
     preview?.contentType === 'text' &&
@@ -59,7 +68,24 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
         ) : preview ? (
           preview.contentType === 'image' ? (
             <div className="flex h-full items-center justify-center">
-              {preview.imageUrl ? (
+              {gateLargeImage ? (
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <span className="text-[12px] font-medium text-foreground">
+                    {t('largeImageTitle')}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {t('largeImageHint', { size: formatBytes(preview.sizeBytes) })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRevealedLargeImage(true)}
+                    className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-muted/50"
+                  >
+                    <ImageDown className="size-3.5" />
+                    {t('loadLargeImage')}
+                  </button>
+                </div>
+              ) : preview.imageUrl ? (
                 <img
                   src={preview.imageUrl}
                   className="max-h-full max-w-full rounded-md object-contain"

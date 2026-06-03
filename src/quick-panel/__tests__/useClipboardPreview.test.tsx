@@ -103,6 +103,54 @@ describe('useClipboardPreview', () => {
     })
   })
 
+  it('does not flag sub-threshold images for explicit load (D6)', async () => {
+    const { getClipboardEntryResource } = await import('@/api/daemon/clipboard')
+
+    vi.mocked(getClipboardEntryResource).mockResolvedValue({
+      blobId: 'blob-small',
+      mimeType: 'image/png',
+      sizeBytes: 8 * 1024 * 1024, // exactly the inline ceiling → still inlined
+      url: '/clipboard/blobs/blob-small',
+      inlineData: null,
+    })
+
+    const { result } = renderHook(() => useClipboardPreview('entry-small'))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+      expect(result.current.preview).toMatchObject({
+        contentType: 'image',
+        imageUrl: expect.stringContaining('/clipboard/blobs/blob-small'),
+      })
+    })
+    expect(result.current.preview?.requiresExplicitLoad).toBeFalsy()
+  })
+
+  it('flags above-threshold images for explicit load without dropping the URL (D6)', async () => {
+    const { getClipboardEntryResource } = await import('@/api/daemon/clipboard')
+
+    vi.mocked(getClipboardEntryResource).mockResolvedValue({
+      blobId: 'blob-large',
+      mimeType: 'image/png',
+      sizeBytes: 8 * 1024 * 1024 + 1, // one byte over the inline ceiling
+      url: '/clipboard/blobs/blob-large',
+      inlineData: null,
+    })
+
+    const { result } = renderHook(() => useClipboardPreview('entry-large'))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+      expect(result.current.preview).toMatchObject({
+        contentType: 'image',
+        requiresExplicitLoad: true,
+        // URL is still resolved (it's just a string); the `<img>` mount is
+        // gated by the consumer, so no blob is pulled until the user asks.
+        imageUrl: expect.stringContaining('/clipboard/blobs/blob-large'),
+      })
+    })
+  })
+
   it('reuses cached preview data for the same entry within TTL', async () => {
     const { getClipboardEntryResource } = await import('@/api/daemon/clipboard')
 

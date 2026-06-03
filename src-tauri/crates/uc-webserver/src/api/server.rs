@@ -17,7 +17,7 @@ use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::Router;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
 use tokio_util::sync::CancellationToken;
 use uc_application::facade::AppFacade;
 use uc_observability::analytics::{AnalyticsPort, NoopAnalyticsSink};
@@ -57,7 +57,23 @@ pub struct DaemonApiState {
     /// wire analytics still construct cleanly; the real (gated) sink is injected
     /// via [`Self::with_analytics`] in the daemon runtime.
     pub analytics: Arc<dyn AnalyticsPort>,
+    /// Concurrency cap for full-buffer blob pulls (`GET /clipboard/blobs/:id`).
+    ///
+    /// D6 (ADR-008 P3-d) interim RSS guard: the blob endpoint materializes the
+    /// whole payload into a `Vec<u8>` (no streaming `BlobReaderPort` yet), so
+    /// concurrent large pulls scale daemon RSS linearly (≈ K × payload, see
+    /// [`adr-008-perf-spike-results.md`](../../../../../docs/architecture/adr-008-perf-spike-results.md)
+    /// §4). This semaphore pins the worst case to `MAX_CONCURRENT_BLOB_PULLS ×
+    /// payload` until the streaming reader supersedes it. Thumbnails are
+    /// exempt (small, served via the separate `/clipboard/thumbnails` route).
+    pub large_blob_semaphore: Arc<Semaphore>,
 }
+
+/// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
+/// [`DaemonApiState::large_blob_semaphore`]). Matches the P0 spike's `concurrent=4`
+/// scenario — high enough that one-at-a-time inline previews never queue, low
+/// enough to cap the worst-case resident set from concurrent large downloads.
+const MAX_CONCURRENT_BLOB_PULLS: usize = 4;
 
 impl DaemonApiState {
     pub fn new(
@@ -75,6 +91,7 @@ impl DaemonApiState {
             deferred_ready_notify: None,
             security,
             analytics: Arc::new(NoopAnalyticsSink),
+            large_blob_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_PULLS)),
         }
     }
 

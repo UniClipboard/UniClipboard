@@ -7,6 +7,14 @@ export interface ClipboardPreviewData {
   textContent?: string
   imageUrl?: string
   fileNames?: string[]
+  /**
+   * Image preview exceeds the auto-inline threshold (D6 / ADR-008 P3-d): the
+   * original must not be auto-pulled. `imageUrl` still carries the resolved
+   * (auth-bearing) URL, but consumers must gate the actual `<img>` mount behind
+   * an explicit user action so the daemon only materializes the large payload
+   * on demand. See `INLINE_PREVIEW_MAX_BYTES`.
+   */
+  requiresExplicitLoad?: boolean
 }
 
 interface CacheRecord {

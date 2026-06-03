@@ -678,7 +678,10 @@
         "clipboardImage": "剪贴板图片",
         "copyButton": "复制",
         "favoriteButton": "收藏"
-      }
+      },
+      "largeImageTitle": "大图片",
+      "largeImageHint": "{{size}} — 未自动加载",
+      "loadLargeImage": "加载图片"
     },
     "time": {
       "justNow": "刚刚",
@@ -1317,7 +1320,10 @@
     "imageUnavailable": "图片不可用",
     "empty": "将鼠标悬停在项目上以预览",
     "imageAlt": "剪贴板图片",
-    "deleteHint": "{{modifier}}⌫ 删除"
+    "deleteHint": "{{modifier}}⌫ 删除",
+    "largeImageTitle": "大图片",
+    "largeImageHint": "{{size}} — 未自动加载",
+    "loadLargeImage": "加载图片"
   },
   "delivery": {
     "section": {

@@ -1,8 +1,9 @@
-import { Image as ImageIcon, Loader2 } from 'lucide-react'
-import React from 'react'
+import { Image as ImageIcon, ImageDown, Loader2 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ClipboardImageItem } from '@/api/clipboardItems'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
+import { formatFileSize } from '@/utils/formatters'
 
 interface ImagePreviewProps {
   item: ClipboardImageItem
@@ -14,6 +15,41 @@ interface ImagePreviewProps {
 const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageDimensions }) => {
   const { t } = useTranslation()
   const imageUrl = preview?.contentType === 'image' ? (preview.imageUrl ?? null) : null
+
+  // D6 (ADR-008 P3-d): originals above the inline threshold are not auto-pulled.
+  // Reveal the `<img>` (and its blob fetch) only after an explicit click, reset
+  // whenever the previewed entry changes.
+  const [revealedLargeImage, setRevealedLargeImage] = useState(false)
+  useEffect(() => {
+    setRevealedLargeImage(false)
+  }, [preview?.entryId])
+  const gateLargeImage = preview?.requiresExplicitLoad === true && !revealedLargeImage
+
+  if (gateLargeImage) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/40 bg-muted/20">
+          <ImageIcon className="size-8 text-muted-foreground/30" />
+          <span className="text-sm font-medium text-foreground">
+            {t('clipboard.item.largeImageTitle')}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t('clipboard.item.largeImageHint', {
+              size: formatFileSize(preview?.sizeBytes),
+            })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setRevealedLargeImage(true)}
+            className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/50"
+          >
+            <ImageDown className="size-4" />
+            {t('clipboard.item.loadLargeImage')}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center justify-center p-8">

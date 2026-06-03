@@ -59,6 +59,20 @@ async fn get_blob(
         }
     };
 
+    // D6 (ADR-008 P3-d) interim RSS guard: bound concurrent full-buffer blob
+    // materialization until the streaming `BlobReaderPort` lands (see
+    // `DaemonApiState::large_blob_semaphore` and the P0 perf spike §4). Held for
+    // the materialization window — the dominant RSS driver; the subsequent
+    // loopback send is sub-10ms (spike §2). `acquire_owned` only errors if the
+    // semaphore is closed (we never close it); on that impossible path we
+    // proceed unguarded rather than fail the pull.
+    let _permit = state
+        .large_blob_semaphore
+        .clone()
+        .acquire_owned()
+        .await
+        .ok();
+
     match app.resource.blob(&blob_id).await {
         Ok(result) => {
             let content_type = result

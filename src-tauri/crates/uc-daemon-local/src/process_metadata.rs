@@ -25,6 +25,58 @@ pub enum DaemonProcessMode {
     InProcess,
 }
 
+/// Environment variable a spawner sets on the detached `uniclipd` child to
+/// record who launched it (see [`DaemonSpawnOrigin`]).
+pub const SPAWN_ORIGIN_ENV: &str = "UC_DAEMON_SPAWN_ORIGIN";
+
+/// Who launched this daemon process (ADR-008 D3 ownership).
+///
+/// Persisted in the PID file so that even a *cold-restarted* GUI can tell
+/// whether the daemon it attached to is one a GUI brought up (lifecycle-bound,
+/// stoppable on full quit) versus a user's own `uniclip start` daemon (an
+/// independent service a GUI must never stop).
+///
+/// Resolved from [`SPAWN_ORIGIN_ENV`], which the spawn primitive
+/// ([`crate::spawn::spawn_detached_daemon`]) sets on the child; a manually-run
+/// `uniclipd` (or a legacy PID file predating this field) is [`Self::Unknown`]
+/// and conservatively treated as **not** GUI-owned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DaemonSpawnOrigin {
+    /// Detached-spawned by a GUI process — its lifecycle is bound to the GUI.
+    Gui,
+    /// Started by `uniclip start` / headless / oneshot / a service manager —
+    /// an independent daemon a GUI must leave running.
+    Cli,
+    /// Unknown launcher: legacy PID files, or `uniclipd` run directly.
+    #[default]
+    Unknown,
+}
+
+impl DaemonSpawnOrigin {
+    /// Stable wire/env token for this origin.
+    pub fn as_env_str(self) -> &'static str {
+        match self {
+            Self::Gui => "gui",
+            Self::Cli => "cli",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// Resolve the origin of the *current* process from [`SPAWN_ORIGIN_ENV`].
+    ///
+    /// An unset or unrecognized value yields [`Self::Unknown`] — never panics,
+    /// so a daemon launched outside the spawn primitive still writes a valid
+    /// (conservative) PID file.
+    pub fn from_env() -> Self {
+        match std::env::var(SPAWN_ORIGIN_ENV).as_deref() {
+            Ok("gui") => Self::Gui,
+            Ok("cli") => Self::Cli,
+            _ => Self::Unknown,
+        }
+    }
+}
+
 /// daemon 进程元数据（JSON 序列化进 PID 文件）。
 ///
 /// 取代历史上"PID 文件 = 一个 u32 字符串"的格式。`cli stop` / 健康探测
@@ -38,11 +90,16 @@ pub struct DaemonPidMetadata {
     /// Unix epoch milliseconds 时刻——daemon 写 PID 文件那一瞬间。
     /// 只用于诊断（`uniclip status` / 日志），不参与功能判断。
     pub started_at_ms: u64,
+    /// Who launched this daemon (ADR-008 D3). `#[serde(default)]` so PID files
+    /// predating the field deserialize to [`DaemonSpawnOrigin::Unknown`] — i.e.
+    /// conservatively not GUI-owned.
+    #[serde(default)]
+    pub spawned_by: DaemonSpawnOrigin,
 }
 
 impl DaemonPidMetadata {
-    /// 构造一份"现在"的元数据：`pid` + `mode` + 当前时间戳。
-    pub fn now(pid: u32, mode: DaemonProcessMode) -> Self {
+    /// 构造一份"现在"的元数据：`pid` + `mode` + `spawned_by` + 当前时间戳。
+    pub fn now(pid: u32, mode: DaemonProcessMode, spawned_by: DaemonSpawnOrigin) -> Self {
         let started_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -51,7 +108,17 @@ impl DaemonPidMetadata {
             pid,
             mode,
             started_at_ms,
+            spawned_by,
         }
+    }
+
+    /// Whether this daemon was detached-spawned by a GUI (ADR-008 D3).
+    ///
+    /// The "彻底退出→停" decision combines this with a successful
+    /// [`verify_pid_identity`] check; a `cli start` / unknown daemon returns
+    /// `false` and is never auto-stopped by a GUI.
+    pub fn is_gui_spawned(&self) -> bool {
+        self.spawned_by == DaemonSpawnOrigin::Gui
     }
 }
 
@@ -95,7 +162,10 @@ impl DaemonPidManager {
     pub fn write_current_pid_with_mode(&self, mode: DaemonProcessMode) -> Result<u32> {
         let pid_path = self.pid_path();
         let pid = std::process::id();
-        let metadata = DaemonPidMetadata::now(pid, mode);
+        // Origin is inherited from the spawner via SPAWN_ORIGIN_ENV (same
+        // pattern as UC_HOST_ROLE for the log role); a daemon run outside the
+        // spawn primitive resolves to Unknown.
+        let metadata = DaemonPidMetadata::now(pid, mode, DaemonSpawnOrigin::from_env());
         let payload = serde_json::to_string(&metadata).with_context(|| {
             format!(
                 "failed to serialize daemon pid metadata for {}",
@@ -167,6 +237,7 @@ impl DaemonPidManager {
             pid,
             mode: DaemonProcessMode::Standalone,
             started_at_ms: 0,
+            spawned_by: DaemonSpawnOrigin::Unknown,
         }))
     }
 
@@ -446,5 +517,45 @@ mod tests {
         let mgr = manager_in(&temp);
 
         assert!(mgr.read_pid_metadata().unwrap().is_none());
+    }
+
+    #[test]
+    fn spawned_by_round_trips_through_json() {
+        let meta =
+            DaemonPidMetadata::now(42, DaemonProcessMode::Standalone, DaemonSpawnOrigin::Gui);
+        let json = serde_json::to_string(&meta).unwrap();
+        assert!(json.contains("\"spawnedBy\":\"gui\""), "got {json}");
+
+        let parsed: DaemonPidMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.spawned_by, DaemonSpawnOrigin::Gui);
+        assert!(parsed.is_gui_spawned());
+    }
+
+    #[test]
+    fn json_without_spawned_by_defaults_to_unknown() {
+        // PID files written before the field exists must still parse.
+        let legacy = r#"{"pid":7,"mode":"standalone","startedAtMs":123}"#;
+        let parsed: DaemonPidMetadata = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.spawned_by, DaemonSpawnOrigin::Unknown);
+        assert!(
+            !parsed.is_gui_spawned(),
+            "legacy daemons must never be treated as GUI-owned"
+        );
+    }
+
+    #[test]
+    fn from_env_resolves_origin() {
+        // UC_DAEMON_SPAWN_ORIGIN is process-global; serialise the env mutation.
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _env = ENV_LOCK.lock().unwrap();
+
+        std::env::set_var(SPAWN_ORIGIN_ENV, "gui");
+        assert_eq!(DaemonSpawnOrigin::from_env(), DaemonSpawnOrigin::Gui);
+        std::env::set_var(SPAWN_ORIGIN_ENV, "cli");
+        assert_eq!(DaemonSpawnOrigin::from_env(), DaemonSpawnOrigin::Cli);
+        std::env::set_var(SPAWN_ORIGIN_ENV, "bogus");
+        assert_eq!(DaemonSpawnOrigin::from_env(), DaemonSpawnOrigin::Unknown);
+        std::env::remove_var(SPAWN_ORIGIN_ENV);
+        assert_eq!(DaemonSpawnOrigin::from_env(), DaemonSpawnOrigin::Unknown);
     }
 }

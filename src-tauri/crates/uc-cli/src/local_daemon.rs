@@ -5,6 +5,7 @@ use std::time::Duration;
 use reqwest::Client;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::HealthResponse;
+use uc_daemon_local::process_metadata::DaemonSpawnOrigin;
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
 use uc_daemon_local::spawn::{spawn_detached_daemon, SpawnDaemonError};
 
@@ -112,7 +113,9 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
     // progress — daemon cold start can take many seconds in debug builds.
     let spinner = crate::ui::spinner("Starting local daemon…");
 
-    if let Err(error) = spawn_detached_daemon().map_err(LocalDaemonError::from) {
+    if let Err(error) =
+        spawn_detached_daemon(DaemonSpawnOrigin::Cli).map_err(LocalDaemonError::from)
+    {
         crate::ui::spinner_finish_error(&spinner, "Failed to spawn local daemon");
         return Err(error);
     }

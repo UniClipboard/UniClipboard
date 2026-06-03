@@ -19,7 +19,9 @@ use uc_daemon_local::contract::{
     terminate_local_daemon_pid, DaemonBootstrapError, ProbeOutcome, TerminateDaemonError,
 };
 use uc_daemon_local::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
-use uc_daemon_local::process_metadata::{read_pid_metadata, DaemonPidMetadata, DaemonProcessMode};
+use uc_daemon_local::process_metadata::{
+    read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
+};
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
 use uc_daemon_local::spawn::spawn_detached_daemon;
 
@@ -245,7 +247,9 @@ async fn spawn_external_and_wait_health(
     health_check_timeout: Duration,
     health_poll_interval: Duration,
 ) -> Result<(), DaemonBootstrapError> {
-    spawn_detached_daemon().map_err(|error| {
+    // ADR-008 D3: tag the spawn as GUI-owned so its PID file records
+    // `spawned_by = gui` — this (or another) GUI may stop it on full quit.
+    spawn_detached_daemon(DaemonSpawnOrigin::Gui).map_err(|error| {
         DaemonBootstrapError::Spawn(
             anyhow::Error::new(error).context("detached daemon spawn failed"),
         )
@@ -653,6 +657,7 @@ mod tests {
             pid,
             mode,
             started_at_ms: 0,
+            spawned_by: DaemonSpawnOrigin::Unknown,
         }
     }
 

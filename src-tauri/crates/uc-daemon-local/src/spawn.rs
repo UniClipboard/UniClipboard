@@ -19,6 +19,8 @@ use std::fmt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use crate::process_metadata::{DaemonSpawnOrigin, SPAWN_ORIGIN_ENV};
+
 /// Failure modes of [`spawn_detached_daemon`] / [`resolve_daemon_exe_path`].
 ///
 /// Deliberately uses a hand-rolled `Display` (no `thiserror`) so the module
@@ -67,14 +69,20 @@ impl std::error::Error for SpawnDaemonError {}
 /// when it exits, its parent reparents to PID 1 once the spawner returns).
 /// Under Windows the handle just closes; the process keeps running. Proving the
 /// daemon actually came up is the caller's job (poll `/health`).
-pub fn spawn_detached_daemon() -> Result<(), SpawnDaemonError> {
+///
+/// `origin` records who is bringing the daemon up (ADR-008 D3). It is passed to
+/// the child via [`SPAWN_ORIGIN_ENV`]; the daemon reads it back when writing its
+/// PID file ([`DaemonSpawnOrigin::from_env`]), so a GUI can later tell whether
+/// the daemon it attached to is one a GUI spawned (stoppable on full quit).
+pub fn spawn_detached_daemon(origin: DaemonSpawnOrigin) -> Result<(), SpawnDaemonError> {
     let daemon_exe = resolve_daemon_exe_path()?;
 
     let mut command = Command::new(&daemon_exe);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::null())
+        .env(SPAWN_ORIGIN_ENV, origin.as_env_str());
 
     configure_detached(&mut command);
 

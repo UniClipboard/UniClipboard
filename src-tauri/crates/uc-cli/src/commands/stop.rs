@@ -201,6 +201,7 @@ mod tests {
             pid,
             mode,
             started_at_ms: 0,
+            spawned_by: uc_daemon_local::process_metadata::DaemonSpawnOrigin::Unknown,
         }
     }
 

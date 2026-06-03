@@ -48,11 +48,12 @@
 - 确认 D21 shutdown 序列对在途 transfer/sync 的排空覆盖面（`app.rs:417` 已 flush delivery 记录，核实 iroh endpoint / `BIND_LOCK` 释放在 cancel cascade 内）。
 - **gate**：`cargo check --workspace` + 起两进程（GUI+daemon）确认产出两份角色日志文件；clippy clean。
 
-### P4-1 · ownership 分类数据面（无 UX 变化） `feat:`
+### P4-1 · ownership 分类数据面（无 UX 变化） `feat:` ✅ 已落地
 - `DaemonPidMetadata` 加 `spawned_by: DaemonSpawnOrigin`（`Gui` / `Cli` / `Unknown`），随 `write_current_pid_with_mode` 写入；旧 PID 文件缺字段 → `Unknown`（serde default，向后兼容 OQ-migration）。
-- `spawn_detached_daemon` 接受 origin 入参，经 env（如 `UC_DAEMON_SPAWN_ORIGIN`）透传给被拉起的 `uniclipd`，daemon 自检后写入自己的 PID metadata。
-- `DaemonOwnership` 引入「本 GUI spawn 的可停 standalone」语义：不再恢复 in-process `Owned(handle)`（已删），而是 `External { stoppable: bool }`——`stoppable` 由「本 GUI 读到的 PID metadata `spawned_by==Gui` 且 identity 校验通过」推导。
-- **gate**：`cargo check --workspace`；`uc-daemon-local` 单测（新字段 serde 向后兼容 + origin 透传）；行为不变（无 UX 改动）。
+- `spawn_detached_daemon(origin)` 经 env `UC_DAEMON_SPAWN_ORIGIN` 透传给被拉起的 `uniclipd`，daemon 写 PID 时 `DaemonSpawnOrigin::from_env()` 自检回填（与 `UC_HOST_ROLE` 同款，无 app.rs 改动）；GUI spawn → `Gui`、`cli start` → `Cli`。
+- 分类 predicate `DaemonPidMetadata::is_gui_spawned()`。
+- **`DaemonOwnership` 枚举重设计移至 P4-3**（与其消费者「彻底退出→停」同切片落地，避免一个用不上的中间态枚举）；P4-1 只做持久数据面与分类原语。
+- **gate（已过）**：`cargo check --workspace` clean；clippy clean（changed crate）；`uc-daemon-local` process_metadata 6/6（含 spawned_by round-trip / serde default / env 解析）、daemon_probe 16/16、stop 5/5。行为不变。
 
 ### P4-2 · D9 解锁契约（autostart 硬前置） `feat:`
 - `uniclipd` 启动契约 attended / unattended（由拉起方传入 flag/env，**非 run mode**）：
@@ -63,6 +64,7 @@
 - **gate**：`cargo check --workspace`；纯函数单测（互斥矩阵）；attended GUI-spawned daemon 在 `auto_unlock=false` 下保持 locked 等 GUI 解锁（不再 force-unlock）；`--unattended` + `auto_unlock=false` fail-fast。
 
 ### P4-3 · D3 三态 UX（功能交付核心） `feat:`
+- `DaemonOwnership` 枚举重设计（从 P4-1 移入，与消费者同切片）：删死的 in-process `Owned(handle)` 变体（无生产 caller），改为表达「连到的 daemon 是否本 GUI/某 GUI spawn 可停」——`stoppable` 由 probe 读到的 PID metadata `is_gui_spawned()` 且 `verify_pid_identity` 通过推导（P4-1 原语已就绪）。
 - 托盘新增「轻量模式」菜单项（`uc-tauri/src/tray.rs`）：发完一次性系统通知（`tauri-plugin-notification`，已注册 `run.rs:229`）→ await → GUI 进程整体退出；不停 daemon。去重用 `app_data_root` 下自愈 JSON 标志（tempfile + rename，per-profile，**不塞 settings.json**），文案中英双版「它还在后台跑 + 从应用图标重开」。
 - 「彻底退出」路径（托盘 Quit / 显式）：GUI 退出前，**仅当** 本 GUI spawn 的 daemon（P4-1 的 `stoppable`）→ 复用 `cli stop` 的 SIGTERM + `verify_pid_identity` + graceful-wait（D21/D22 已就绪）停它；对用户 `cli start` 的常驻 daemon 退化为「只退 GUI、不停 daemon」。改 `uc-tauri/src/run.rs:663` ExitRequested + `tray.rs:168`。
 - 重开 attach + resync 收尾（D8 已大部就绪）：核实 probe attach 既有 daemon 后前端 reconnect 触发全量 resync（`DaemonWsBridge` 自动重连 + clipboard 面板 refetch）。

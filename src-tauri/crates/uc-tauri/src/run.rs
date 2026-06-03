@@ -666,17 +666,17 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     task_registry_for_run.token().cancel();
                     // ADR-008 D3 (P4-3): three-state quit. The daemon is always a
                     // separate process. Only an explicit "彻底退出" (tray Quit)
-                    // sets QuitIntent → stop the daemon, and only if a GUI spawned
-                    // it (a user's `uniclip start` daemon is left alone). Window
-                    // close (hide), lightweight mode, Cmd-Q and restart all leave
-                    // the daemon running. The daemon's own SIGTERM handler (D21)
-                    // drains in-flight work; the GUI does not block.
+                    // sets QuitIntent → stop the daemon (regardless of who spawned
+                    // it; revised D3). Window close (hide), lightweight mode, Cmd-Q
+                    // and restart all leave the daemon running. The daemon's own
+                    // SIGTERM handler (D21) drains in-flight work; the GUI does not
+                    // block. Identity + legacy-in-process safety live in the helper.
                     if app_handle
                         .state::<crate::lightweight::QuitIntent>()
                         .should_stop_daemon()
                     {
-                        let stopped = uc_desktop::daemon_probe::stop_gui_spawned_daemon();
-                        info!(stopped, "full quit: GUI-spawned daemon stop attempt complete");
+                        let stopped = uc_desktop::daemon_probe::stop_local_daemon_on_full_quit();
+                        info!(stopped, "full quit: local daemon stop attempt complete");
                     }
                 }
                 tauri::RunEvent::Exit => {

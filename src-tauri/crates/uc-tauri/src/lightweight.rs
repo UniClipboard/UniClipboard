@@ -6,12 +6,14 @@
 //! - **轻量模式** (tray "Lightweight") → GUI process fully exits, the external
 //!   `uniclipd` keeps running. A one-time system notification tells the user it
 //!   is still alive and how to reopen it ([`enter_lightweight_mode`]).
-//! - **彻底退出** (tray "Quit") → GUI exits AND stops the daemon *if a GUI
-//!   spawned it* ([`request_full_quit`] sets [`QuitIntent`]; `run.rs`'s
-//!   `ExitRequested` reads it and calls `stop_gui_spawned_daemon`).
+//! - **彻底退出** (tray "Quit") → GUI exits AND stops the connected daemon
+//!   regardless of who spawned it ([`request_full_quit`] sets [`QuitIntent`];
+//!   `run.rs`'s `ExitRequested` reads it and calls
+//!   `stop_local_daemon_on_full_quit`). Identity + legacy-in-process safety
+//!   carve-outs live in that helper.
 //!
-//! Default intent is "leave the daemon running", so Cmd-Q / restart / any other
-//! exit never kills the daemon — only the explicit tray "Quit" does.
+//! Default intent is "leave the daemon running", so window-close / lightweight /
+//! Cmd-Q / restart never kill the daemon — only the explicit tray "Quit" does.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,7 +25,7 @@ use tracing::{info, warn};
 
 use crate::bootstrap::TauriAppRuntime;
 
-/// Whether the pending app exit should also stop the GUI-spawned daemon.
+/// Whether the pending app exit should also stop the connected daemon.
 ///
 /// Default `false`: window-close, lightweight mode, Cmd-Q, and restart all leave
 /// the daemon running. Only the tray "Quit (彻底退出)" action flips it, so the
@@ -42,11 +44,11 @@ impl QuitIntent {
     }
 }
 
-/// Tray "彻底退出": mark the exit as a full quit (stop the GUI-spawned daemon),
+/// Tray "彻底退出": mark the exit as a full quit (stop the connected daemon),
 /// then exit. The actual stop happens in the `ExitRequested` handler.
 pub fn request_full_quit(app: &AppHandle) {
     app.state::<QuitIntent>().request_full_quit();
-    info!("full quit requested from tray — daemon will be stopped if GUI-spawned");
+    info!("full quit requested from tray — connected daemon will be stopped");
     app.exit(0);
 }
 

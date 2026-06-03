@@ -65,13 +65,13 @@
 - **遗留至 P4-4**：把 `validate_unattended_unlock` 接进 GUI 设置页 / CLI 的前置友好报错 + autostart 单元的 `UC_DAEMON_UNATTENDED=1`（互斥左操作数「unattended 自启开关」随 P4-4 per-profile 单元投影新增）；D16 setup→operational 重启透传 flag。
 
 ### P4-3 · D3 三态 UX（功能交付核心） `feat:` ✅ 自动门禁已过（三态真机 UAT 待用户）
-> **决策（人确认）**：彻底退出的优雅关停 = **GUI 发 SIGTERM、daemon 自排空**（复用 cli stop + D21 handler，无新 detach-RPC）。
-- **退出决策不读内存 ownership，读 PID 文件**：`uc_desktop::daemon_probe::stop_gui_spawned_daemon()` 读 PID metadata，`is_gui_spawned()`（`spawned_by==Gui`）且 `verify_pid_identity==Active` 才 SIGTERM（复用 `terminate_local_daemon_pid`）。这样跨 GUI 重启成立：GUI-A spawn → 走轻量 → GUI-B 冷重启仍能停它。`cli start`/unknown/stale 一律不动（D22 铁律#11）。
+> **决策（人确认）**：① 彻底退出的优雅关停 = **GUI 发 SIGTERM、daemon 自排空**（复用 cli stop + D21 handler，无新 detach-RPC）。② **修订（2026-06-03）**：明确点「退出」**停连接的 daemon、不论谁拉起**（推翻原 D3"只停本 GUI spawn 的"；三态里关窗/轻量已是"保留 daemon"出口）。
+- **退出决策读 PID 文件 + 两个安全闸**：`uc_desktop::daemon_probe::stop_local_daemon_on_full_quit()` 读 PID metadata，`verify_pid_identity==Active` 且 **非** legacy `InProcess`（旧 GUI 进程内 daemon，杀它会带挂旧 GUI）才 SIGTERM（复用 `terminate_local_daemon_pid`）。不再看 `spawned_by`——`cli start` 的常驻 daemon 也停。stale / 复用 PID 绝不发信号（D22 铁律#11）。`spawned_by` 仍服务 D9 attended 判定。
 - `DaemonOwnership` 收敛为 None/External 轻量标记：删死的 in-process `Owned(DaemonHandle)` 变体 + `set_owned/is_owned/take_owned`（无生产 caller），不再耦合 `DaemonHandle`。
-- **三态 UX**（`uc-tauri`）：`QuitIntent`（managed AtomicBool，默认 = 不停 daemon）→ 只有托盘「退出」`request_full_quit` 翻它；`ExitRequested` 读它，true 才 `stop_gui_spawned_daemon()`。故关窗（hide）/ 轻量 / Cmd-Q / restart 都不停 daemon，只有显式「彻底退出」停。
+- **三态 UX**（`uc-tauri`）：`QuitIntent`（managed AtomicBool，默认 = 不停 daemon）→ 只有托盘「退出」`request_full_quit` 翻它；`ExitRequested` 读它，true 才 `stop_local_daemon_on_full_quit()`。故关窗（hide）/ 轻量 / Cmd-Q / restart 都不停 daemon，只有显式「彻底退出」停。
 - 托盘新增「轻量模式 / Lightweight Mode」项（i18n 进 `MenuLabels`）：`enter_lightweight_mode` 发一次性系统通知（`tauri-plugin-notification`）后 `app.exit(0)`，daemon 留守。去重用 `app_data_root/lightweight-notified.json` 自愈标志（temp+rename，per-profile，不塞 settings.json），中英双版文案。
 - **gate（已过）**：`cargo check --workspace` clean；clippy clean（changed files）；uc-daemon --lib 45/45（ownership 3 + startup_recovery 3 …）、uc-desktop daemon_probe 20/20（含 4 个 full_quit ownership/identity 门禁测试）、uc-tauri lightweight 2/2（QuitIntent 默认不停 + flag 原子写）。无 TS/command 变更，故无需 binding 重生 / tsc。
-- **待用户三态真机 UAT**：关窗留托盘 / 轻量退进程留 daemon + 通知只弹一次 / 彻底退停本 GUI daemon 但不动 `cli start` daemon / 重开 attach 后剪贴板面板 resync 非空（D8 框架 `DaemonWsBridge` 自动重连已在）。
+- **待用户三态真机 UAT**：关窗留托盘 / 轻量退进程留 daemon + 通知只弹一次 / 彻底退 **停连接的 daemon（含 `cli start` 起的）** / 重开 attach 后剪贴板面板 resync 非空（D8 框架 `DaemonWsBridge` 自动重连已在）。
 
 ### P4-4 · D10/D17 autostart 投影 `feat:`
 - `uc-platform` 新增 `StartupIntegrationProvider`（`src/ports/startup.rs`），覆盖 autostart + keepalive + 目标二进制选择；平台差异由 adapter 吸收（参考 `AutostartPort` / `AppDirsPort` 体例，**不在 uc-platform 内 `cfg(target_os)` 分支**）。

@@ -181,9 +181,9 @@ impl TrayState {
                     crate::lightweight::enter_lightweight_mode(app);
                 }
                 "tray.quit" => {
-                    // ADR-008 D3 彻底退出: stop the daemon too (if GUI-spawned).
-                    // The ExitRequested handler reads the QuitIntent and runs the
-                    // graceful stop.
+                    // ADR-008 D3 彻底退出: stop the connected daemon too
+                    // (regardless of who spawned it). The ExitRequested handler
+                    // reads the QuitIntent and runs the graceful stop.
                     crate::lightweight::request_full_quit(app);
                 }
                 _ => {}

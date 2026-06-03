@@ -8,11 +8,10 @@
 //! - **None**：还没探测 / attach 任何 daemon。
 //! - **External**：已连接到外部 daemon 进程（GUI 只是 client）。
 //!
-//! 注意：**"彻底退出时是否停 daemon" 不读这个标记**。那个决策按 PID 文件里
-//! 持久化的 `spawned_by`（[`uc_daemon_local::process_metadata::DaemonSpawnOrigin`]）
-//! 再叠加 identity 校验裁定（见 `uc-desktop` 的 `stop_gui_spawned_daemon`），
-//! 因为它必须跨 GUI 重启成立：GUI-A spawn 的 daemon，GUI-B 冷重启 attach 后仍
-//! 应能在彻底退出时停掉它，而进程内标记只知道本会话。
+//! 注意：**"彻底退出时是否停 daemon" 不读这个标记**。那个决策（修订版 D3）是
+//! "明确点退出就停连接的 daemon，不论谁拉起"，仅保留 identity 校验 + 拒杀
+//! legacy in-process 两个安全闸（见 `uc-desktop` 的
+//! `stop_local_daemon_on_full_quit`）。想留 daemon 的用户用关窗 / 轻量模式。
 
 use std::sync::{Arc, Mutex};
 

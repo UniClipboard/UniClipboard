@@ -79,6 +79,7 @@
 - 轻量模式下 **无托盘、无全局快捷键**（GUI 进程全退）。唤回 GUI 的 **唯一入口 = 重新启动 app**（点 Dock/开始菜单图标 → 冷启动 → probe attach 既有 `uniclipd` → reconnect/resync）。`uniclipd` 完全不碰 GUI/快捷键，保持 GUI-agnostic。
 - 这点比 clash-verge 更激进（clash-verge 轻量保留托盘）——本产品选择"轻量 = 完全隐形"。**已知 UX 风险**：用户进轻量后屏幕零痕迹，可能忘了它在跑 / 不知如何唤回；缓解见 §5.2（首次进入轻量给一次性系统通知，不留守组件）。
 - **ownership 模型须重做（评审订正）**：原稿"映射既有 `DaemonOwnership(Owned/External)`，补全 detach 路径"方向错误——`Owned` 唯一生产者是 `daemon_probe set_owned → start_in_process(GuiInProcess)`，被 D2 整条删除；拆分后 GUI 与 daemon 永远两进程、结构上 **恒为 External**。后果：①"关窗→留"与"轻量→留 (detach)"在 daemon 层是 **相同的 no-op**（daemon 从未 attach 到 GUI 生命周期，"detach"动词误导），差异纯在 GUI 进程层；②"彻底退出→停"若照搬 `take_owned()` 则 External 永返 None、根本不成立；③两态无法区分"**本 GUI spawn 的可停 daemon**"vs"用户 `cli start` 的常驻 daemon"，无条件停会误杀后者。故须 **新增"由本 GUI spawn 的 standalone daemon（彻底退出时可优雅停止）"状态**（spawn 归属持久化到 `DaemonPidMetadata` 或 ownership 记录），"彻底退出→停"只停 **本 GUI 自己 spawn 的** daemon，对用户显式 `cli start` 的常驻 daemon 退化为"只退 GUI、不停 daemon"。与 D22 协同。
+  - **修订（2026-06-03，产品决策，P4-3 落地）**：上面"只停本 GUI spawn 的"被 **推翻**。**明确点击托盘「退出」→ 停连接的 daemon，不论谁拉起**（含用户 `cli start` 的常驻 daemon）。理由：托盘三态本身已给"保留 daemon"的明确出口（**关窗** 隐藏 + **轻量模式** 退 GUI 留 daemon），故「退出」可取字面"彻底"语义——想留 daemon 的用户不会点它。`spawned_by`（持久化进 `DaemonPidMetadata`）不再参与退出决策，但仍服务 D9 attended 判定（`spawn_origin==Gui` 决定是否尊重 `auto_unlock`）。**两个安全闸保留**：① identity 校验（D22 铁律#11，绝不对 stale/复用 PID 发信号）；② 拒杀 legacy `DaemonProcessMode::InProcess`（那是旧版 GUI 的进程内 daemon，SIGTERM 会连旧 GUI 一起杀，与 `cli stop` 契约一致）。落地见 `uc-desktop` 的 `stop_local_daemon_on_full_quit`。
 - 登录自启目标改为 `uniclipd`（见 D10/D17），GUI 降级为可选前端。
 
 ### D4：复用现有 `127.0.0.1` HTTP+WS，不新开 IPC
@@ -213,7 +214,7 @@
 
 - D2 删除了唯一的进程内 graceful 通道（in-process `DaemonHandle::shutdown` + `FRONTEND_SHUTDOWN_EVENT`）。拆进程后 GUI 永不再持有 daemon handle，D3"彻底退出→停"、D13 Windows `taskkill`、D17 service-manager stop 全是 **外部信号** 路径，须有 daemon 侧 graceful handler 承接，否则 §5.3#8"先 graceful"落空。
 - **契约**：`uniclipd` 注册 graceful-shutdown handler（SIGTERM / Windows `CTRL_CLOSE_EVENT`）→ 停收新任务、排空在途 transfer/sync、flush `EntryDeliveryRecord`、释放 `BIND_LOCK`（D22）/ iroh endpoint，**带超时**；超时后才允许外层 SIGKILL / `taskkill /F`。
-- **统一载体**：该 handler 是兑现 §5.3#8 的 **唯一载体**。D3"彻底退出→停"、D13 Windows 路径、D17 service-manager stop **全部重定向到"先 SIGTERM、等 handler、超时再强杀"**。复用既有 `cli stop` 的 PID-based SIGTERM + graceful-wait（随 detached-spawn 逻辑一并上移共享）。D3"彻底退出"显式复用此路径只停本 GUI spawn 的 daemon。
+- **统一载体**：该 handler 是兑现 §5.3#8 的 **唯一载体**。D3"彻底退出→停"、D13 Windows 路径、D17 service-manager stop **全部重定向到"先 SIGTERM、等 handler、超时再强杀"**。复用既有 `cli stop` 的 PID-based SIGTERM + graceful-wait（随 detached-spawn 逻辑一并上移共享）。D3"彻底退出"显式复用此路径停连接的 daemon（不论谁拉起，见 D3 §2026-06-03 修订；仅保留 identity + 拒杀 legacy InProcess 两个安全闸）。
 - **前端协调（待落地 / 可留 OQ）**：跨进程下"前端先关 WS"由谁触发须定——daemon 收 SIGTERM 后 `with_graceful_shutdown` 自等 WS 排空 vs GUI 彻底退出前先发 detach RPC；graceful 超时具体值同。
 
 ### D22：单实例 authority——daemon 为 per-profile singleton（评审新增，OQ-single-instance 升格）

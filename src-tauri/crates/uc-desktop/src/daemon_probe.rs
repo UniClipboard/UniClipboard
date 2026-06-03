@@ -292,22 +292,27 @@ pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstr
     terminate_incompatible_daemon_with(|| Ok(Some(metadata)), terminate_local_daemon_pid)
 }
 
-/// ADR-008 D3 (P4-3): on a full GUI quit ("彻底退出"), stop the daemon **only**
-/// when a GUI spawned it (its PID file records `spawned_by = gui`) and it is
-/// genuinely live. A user's own `uniclip start` daemon, an unknown launcher, or
-/// a stale PID file is left untouched — the GUI never kills a daemon it does not
-/// own.
+/// ADR-008 D3 (P4-3, revised 2026-06-03): on an explicit full GUI quit
+/// ("彻底退出"), stop the connected daemon **regardless of who spawned it** — an
+/// explicit Quit means "shut everything down". Users who want the daemon to keep
+/// running have the dedicated 关窗 (hide) and 轻量模式 (lightweight) actions, so
+/// Quit is free to mean a thorough teardown — including a user's own `uniclip
+/// start` daemon. (This reverses the original D3 "only stop GUI-spawned" rule on
+/// the product owner's call; the three-state tray already covers "keep daemon".)
 ///
-/// Reading `spawned_by` from the PID file (not in-memory ownership) makes this
-/// correct across GUI restarts: GUI-A spawns the daemon, goes lightweight, and
-/// a cold-restarted GUI-B can still stop it on full quit.
+/// Two safety carve-outs remain — neither contradicts "kill the daemon":
+/// - **D22 identity check**: only ever signal a PID that is alive AND is a real
+///   daemon binary — never a stale or recycled PID.
+/// - **legacy `InProcess` refusal**: a live PID marked `InProcess` belongs to an
+///   OLD GUI hosting its daemon in-process; SIGTERM would kill that *other GUI*
+///   process, not a standalone daemon. Mirrors the `cli stop` contract.
 ///
 /// Best-effort: sends SIGTERM and returns whether a stop was signaled. The
 /// daemon's own graceful-shutdown handler (D21) drains in-flight transfer/sync;
 /// the GUI does not block — it is exiting anyway.
-pub fn stop_gui_spawned_daemon() -> bool {
+pub fn stop_local_daemon_on_full_quit() -> bool {
     use uc_daemon_local::process_metadata::verify_pid_identity;
-    stop_gui_spawned_daemon_with(
+    stop_local_daemon_on_full_quit_with(
         read_pid_metadata,
         verify_pid_identity,
         terminate_local_daemon_pid,
@@ -315,9 +320,9 @@ pub fn stop_gui_spawned_daemon() -> bool {
 }
 
 /// Inner implementation with injected reader / verifier / terminator closures so
-/// the GUI-ownership + identity gating can be unit-tested without a real PID
-/// file or real signals.
-pub(crate) fn stop_gui_spawned_daemon_with<R, V, T>(
+/// the identity + InProcess gating can be unit-tested without a real PID file or
+/// real signals.
+pub(crate) fn stop_local_daemon_on_full_quit_with<R, V, T>(
     read_metadata: R,
     verify: V,
     terminate: T,
@@ -338,21 +343,24 @@ where
         }
     };
 
-    if !metadata.is_gui_spawned() {
-        tracing::info!(
-            pid = metadata.pid,
-            origin = ?metadata.spawned_by,
-            "full-quit: daemon was not GUI-spawned — leaving it running"
-        );
-        return false;
-    }
-
-    // D22 rule #11: never signal a PID that failed identity verification.
+    // D22 rule #11: never signal a stale / recycled PID. Checked first so a
+    // crashed old GUI's stale InProcess metadata is treated as "gone", not as a
+    // live GUI to protect.
     if let PidVerification::Stale(reason) = verify(&metadata) {
         tracing::info!(
             pid = metadata.pid,
             %reason,
-            "full-quit: GUI-spawned daemon PID is stale — nothing to stop"
+            "full-quit: daemon PID is stale — nothing to stop"
+        );
+        return false;
+    }
+
+    // Safety: a *live* in-process daemon PID is an OLD GUI process — SIGTERM
+    // would kill that GUI, not a standalone daemon. Refuse (cli-stop contract).
+    if matches!(metadata.mode, DaemonProcessMode::InProcess) {
+        tracing::info!(
+            pid = metadata.pid,
+            "full-quit: daemon is a legacy in-process GUI worker — refusing to signal"
         );
         return false;
     }
@@ -361,12 +369,13 @@ where
         Ok(()) => {
             tracing::info!(
                 pid = metadata.pid,
-                "full-quit: sent SIGTERM to GUI-spawned daemon"
+                origin = ?metadata.spawned_by,
+                "full-quit: sent SIGTERM to local daemon"
             );
             true
         }
         Err(error) => {
-            tracing::warn!(pid = metadata.pid, %error, "full-quit: failed to terminate GUI-spawned daemon");
+            tracing::warn!(pid = metadata.pid, %error, "full-quit: failed to terminate daemon");
             false
         }
     }
@@ -815,7 +824,7 @@ mod tests {
         }
     }
 
-    // ------- stop_gui_spawned_daemon: full-quit ownership + identity gating ----
+    // ------- stop_local_daemon_on_full_quit: explicit-quit teardown + safety ----
 
     fn metadata_origin(pid: u32, origin: DaemonSpawnOrigin) -> DaemonPidMetadata {
         DaemonPidMetadata {
@@ -827,53 +836,61 @@ mod tests {
     }
 
     #[test]
-    fn full_quit_stops_live_gui_spawned_daemon() {
+    fn full_quit_stops_any_live_standalone_daemon_regardless_of_origin() {
+        // Revised D3: explicit Quit kills the daemon no matter who spawned it —
+        // GUI-spawned, `uniclip start`, or a manually-run uniclipd.
         use uc_daemon_local::process_metadata::PidVerification;
-        let captured = Cell::new(None);
-
-        let stopped = stop_gui_spawned_daemon_with(
-            || Ok(Some(metadata_origin(5050, DaemonSpawnOrigin::Gui))),
-            |_m| PidVerification::Active,
-            |pid| {
-                captured.set(Some(pid));
-                Ok(())
-            },
-        );
-
-        assert!(
-            stopped,
-            "a live GUI-spawned daemon must be stopped on full quit"
-        );
-        assert_eq!(captured.get(), Some(5050));
-    }
-
-    #[test]
-    fn full_quit_leaves_cli_started_daemon_running() {
-        use uc_daemon_local::process_metadata::PidVerification;
-        for origin in [DaemonSpawnOrigin::Cli, DaemonSpawnOrigin::Unknown] {
-            let signaled = Cell::new(false);
-            let stopped = stop_gui_spawned_daemon_with(
-                || Ok(Some(metadata_origin(6060, origin))),
+        for origin in [
+            DaemonSpawnOrigin::Gui,
+            DaemonSpawnOrigin::Cli,
+            DaemonSpawnOrigin::Unknown,
+        ] {
+            let captured = Cell::new(None);
+            let stopped = stop_local_daemon_on_full_quit_with(
+                || Ok(Some(metadata_origin(5050, origin))),
                 |_m| PidVerification::Active,
-                |_pid| {
-                    signaled.set(true);
+                |pid| {
+                    captured.set(Some(pid));
                     Ok(())
                 },
             );
             assert!(
-                !stopped,
-                "{origin:?} daemon must be left running on full quit"
+                stopped,
+                "{origin:?} daemon must be stopped on explicit quit"
             );
-            assert!(!signaled.get(), "{origin:?} daemon must never be signaled");
+            assert_eq!(captured.get(), Some(5050), "must SIGTERM the recorded pid");
         }
     }
 
     #[test]
-    fn full_quit_skips_stale_gui_spawned_pid() {
+    fn full_quit_refuses_live_in_process_daemon() {
+        // A live InProcess PID is an OLD GUI hosting its daemon — SIGTERM would
+        // kill that GUI, not a standalone daemon. Refuse even on explicit quit.
+        use uc_daemon_local::process_metadata::PidVerification;
+        let signaled = Cell::new(false);
+
+        let stopped = stop_local_daemon_on_full_quit_with(
+            || Ok(Some(metadata_with_mode(8080, DaemonProcessMode::InProcess))),
+            |_m| PidVerification::Active,
+            |_pid| {
+                signaled.set(true);
+                Ok(())
+            },
+        );
+
+        assert!(!stopped);
+        assert!(
+            !signaled.get(),
+            "a live in-process daemon (another GUI) must never be signaled"
+        );
+    }
+
+    #[test]
+    fn full_quit_skips_stale_pid() {
         use uc_daemon_local::process_metadata::{PidVerification, StaleReason};
         let signaled = Cell::new(false);
 
-        let stopped = stop_gui_spawned_daemon_with(
+        let stopped = stop_local_daemon_on_full_quit_with(
             || Ok(Some(metadata_origin(7070, DaemonSpawnOrigin::Gui))),
             |_m| PidVerification::Stale(StaleReason::ProcessNotRunning),
             |_pid| {
@@ -885,15 +902,18 @@ mod tests {
         assert!(!stopped);
         assert!(
             !signaled.get(),
-            "D22: a stale PID must never be signaled even if marked GUI-spawned"
+            "D22: a stale / recycled PID must never be signaled"
         );
     }
 
     #[test]
     fn full_quit_with_no_pid_file_is_a_noop() {
         use uc_daemon_local::process_metadata::PidVerification;
-        let stopped =
-            stop_gui_spawned_daemon_with(|| Ok(None), |_m| PidVerification::Active, |_pid| Ok(()));
+        let stopped = stop_local_daemon_on_full_quit_with(
+            || Ok(None),
+            |_m| PidVerification::Active,
+            |_pid| Ok(()),
+        );
         assert!(!stopped);
     }
 }

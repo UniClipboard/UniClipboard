@@ -25,9 +25,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
 use tracing::warn;
-use uc_core::FileTransferCancellationReason;
-
-use crate::bootstrap::TauriAppRuntime;
+use uc_daemon_client::{DaemonClipboardClient, DaemonConnectionState};
 
 use super::emitter::ActivityHudEmitter;
 
@@ -66,18 +64,18 @@ impl ActivityHudActions for DefaultActivityHudActions {
         // 1) 乐观切到 CancelPending —— UI 立即反馈,不等 facade 回应。
         self.emitter.mark_cancel_pending(transfer_id);
 
-        // 2) 真正发出取消请求。spawn 到 Tauri 自维护的 runtime;facade
-        //    是 async,主线程不能 block 等待。
+        // 2) 真正发出取消请求。spawn 到 Tauri 自维护的 runtime;调用是
+        //    async,主线程不能 block 等待。ADR-008 P3-3 B2':经 daemon
+        //    loopback HTTP (`POST /clipboard/cancel-transfer/:id`) 而非
+        //    in-process facade —— GUI 转纯 client。
         let transfer_id = transfer_id.to_string();
         let app_handle = self.app_handle.clone();
         tauri::async_runtime::spawn(async move {
-            let runtime: Arc<TauriAppRuntime> =
-                app_handle.state::<Arc<TauriAppRuntime>>().inner().clone();
-            if let Err(err) = runtime
-                .app_facade()
-                .cancel_inbound_transfer(&transfer_id, FileTransferCancellationReason::LocalUser)
-                .await
-            {
+            let connection_state = app_handle.state::<DaemonConnectionState>().inner().clone();
+            let client = DaemonClipboardClient::new(connection_state);
+            // `local_user` is the reason string the daemon parses back into
+            // `FileTransferCancellationReason::LocalUser`.
+            if let Err(err) = client.cancel_transfer(&transfer_id, "local_user").await {
                 warn!(
                     error = %err,
                     transfer_id = %transfer_id,

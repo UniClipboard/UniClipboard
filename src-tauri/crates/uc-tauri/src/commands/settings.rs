@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{error, info_span, Instrument};
-use uc_application::facade::settings::{
-    RelayProbeReportView, SettingsFacadeError, SettingsPatch, ShortcutKeyView,
-};
+use uc_application::facade::settings::{SettingsPatch, ShortcutKeyView};
+use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
+use uc_daemon_contract::api::dto::settings::RelayProbeOutcomeDto;
 use uc_desktop::shortcuts::{self, CurrentShortcuts, QUICK_PANEL_SHORTCUT_SETTINGS_KEY};
 use uc_platform::ports::observability::TraceMetadata;
 
@@ -216,10 +216,20 @@ pub enum RelayProbeOutcome {
     Other { message: String },
 }
 
-impl From<RelayProbeReportView> for RelayProbeOutcome {
-    fn from(value: RelayProbeReportView) -> Self {
-        RelayProbeOutcome::Success {
-            latency_ms: value.latency_ms,
+impl From<RelayProbeOutcomeDto> for RelayProbeOutcome {
+    fn from(value: RelayProbeOutcomeDto) -> Self {
+        match value {
+            RelayProbeOutcomeDto::Success { latency_ms } => {
+                RelayProbeOutcome::Success { latency_ms }
+            }
+            RelayProbeOutcomeDto::InvalidUrl { message } => {
+                RelayProbeOutcome::InvalidUrl { message }
+            }
+            RelayProbeOutcomeDto::Dns { message } => RelayProbeOutcome::Dns { message },
+            RelayProbeOutcomeDto::Tls { message } => RelayProbeOutcome::Tls { message },
+            RelayProbeOutcomeDto::Handshake { message } => RelayProbeOutcome::Handshake { message },
+            RelayProbeOutcomeDto::Timeout => RelayProbeOutcome::Timeout,
+            RelayProbeOutcomeDto::Other { message } => RelayProbeOutcome::Other { message },
         }
     }
 }
@@ -232,7 +242,7 @@ impl From<RelayProbeReportView> for RelayProbeOutcome {
 #[tauri::command]
 #[specta::specta]
 pub async fn probe_relay_url(
-    runtime: State<'_, std::sync::Arc<crate::bootstrap::TauriAppRuntime>>,
+    connection_state: State<'_, DaemonConnectionState>,
     url: String,
     _trace: Option<TraceMetadata>,
 ) -> Result<RelayProbeOutcome, CommandError> {
@@ -244,30 +254,16 @@ pub async fn probe_relay_url(
     record_trace_fields(&span, &_trace);
 
     async move {
-        let facade = runtime.app_facade();
-        match facade.settings.probe_relay_url(&url).await {
-            Ok(report) => Ok(report.into()),
-            Err(SettingsFacadeError::RelayProbeInvalidUrl(msg)) => {
-                Ok(RelayProbeOutcome::InvalidUrl { message: msg })
-            }
-            Err(SettingsFacadeError::RelayProbeDns(msg)) => {
-                Ok(RelayProbeOutcome::Dns { message: msg })
-            }
-            Err(SettingsFacadeError::RelayProbeTls(msg)) => {
-                Ok(RelayProbeOutcome::Tls { message: msg })
-            }
-            Err(SettingsFacadeError::RelayProbeHandshake(msg)) => {
-                Ok(RelayProbeOutcome::Handshake { message: msg })
-            }
-            Err(SettingsFacadeError::RelayProbeTimeout) => Ok(RelayProbeOutcome::Timeout),
-            Err(SettingsFacadeError::RelayProbeOther(msg)) => {
-                Ok(RelayProbeOutcome::Other { message: msg })
-            }
-            Err(SettingsFacadeError::RelayProbeUnavailable) => Err(CommandError::internal(
-                "relay probe adapter is not wired up in this runtime",
-            )),
-            Err(other) => Err(CommandError::internal(other)),
-        }
+        // ADR-008 P3-3 B2': route through the daemon over loopback HTTP instead
+        // of the in-process facade. The daemon already maps probe failures to
+        // 200 `RelayProbeOutcomeDto` variants (parity with the old facade
+        // mapping), so a non-Ok here is a genuine transport / adapter fault.
+        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let outcome = client
+            .probe_relay_url(&url)
+            .await
+            .map_err(CommandError::internal)?;
+        Ok(RelayProbeOutcome::from(outcome))
     }
     .instrument(span)
     .await

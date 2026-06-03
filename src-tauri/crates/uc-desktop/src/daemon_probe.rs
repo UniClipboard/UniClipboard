@@ -179,9 +179,9 @@ pub fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBoots
 /// 4. **Incompatible** —— 旧版 daemon（决策 B1：legacy "杀并替换"）：
 ///    SIGTERM 旧 daemon → 等端点消失 → detached spawn → 等健康。
 ///
-/// 所有拉起路径都把 `ownership` 标记为 `External`：GUI-spawned daemon 现在是
-/// 独立进程,GUI 退出不再 owns 它的生命周期(ADR-008 D3 orphan-on-quit,
-/// 作为 interim 接受,留待 P4 ownership 重设计)。
+/// 所有拉起路径都把 `ownership` 标记为 `External`（拆分后 GUI 与 daemon 永远
+/// 两进程）。"彻底退出是否停 daemon" **不**由这个进程内标记决定——见 ADR-008
+/// D3（2026-06-03 修订）与 [`stop_local_daemon_on_full_quit`]。
 pub async fn bootstrap_daemon_in_process(
     ownership: &DaemonOwnership,
     expected_package_version: &str,

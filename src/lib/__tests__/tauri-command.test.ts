@@ -89,13 +89,14 @@ describe('invokeWithTrace', () => {
   it('does NOT report expected user/validation errors to Sentry', async () => {
     const trace = { traceId: 'trace-3', startTime: 1, operation: 'command' }
     // A typed-error envelope whose `code` is a known user error — the user
-    // entered the wrong passphrase. This is normal product flow, not an alert.
-    const userError = { code: 'WRONG_PASSPHRASE' }
+    // picked a username that's already taken. This is normal product flow, not
+    // an alert. (`USERNAME_TAKEN` is classified UserError in `severity.rs`.)
+    const userError = { code: 'USERNAME_TAKEN', username: 'alice' }
 
     vi.mocked(traceManager.startTrace).mockReturnValue(trace)
     vi.mocked(invoke).mockRejectedValueOnce(userError)
 
-    await expect(invokeWithTrace('unlock_space_with_passphrase')).rejects.toEqual(userError)
+    await expect(invokeWithTrace('register_mobile_device')).rejects.toEqual(userError)
 
     // Still rethrows for the caller to handle, and still leaves a breadcrumb…
     expect(Sentry.addBreadcrumb).toHaveBeenCalled()

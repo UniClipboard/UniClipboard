@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcknowledgeUpgradeData, AcknowledgeUpgradeErrors, AcknowledgeUpgradeResponses, AuthConnectData, AuthConnectErrors, AuthConnectResponses, CancelClipboardTransferData, CancelClipboardTransferErrors, CancelClipboardTransferResponses, ClearClipboardHistoryData, ClearClipboardHistoryErrors, ClearClipboardHistoryResponses, ClearStorageCacheData, ClearStorageCacheErrors, ClearStorageCacheResponses, DeleteClipboardEntryData, DeleteClipboardEntryErrors, DeleteClipboardEntryResponses, DispatchClipboardTextData, DispatchClipboardTextErrors, DispatchClipboardTextResponses, GetClipboardBlobData, GetClipboardBlobErrors, GetClipboardBlobResponses, GetClipboardEntryData, GetClipboardEntryErrors, GetClipboardEntryResourceData, GetClipboardEntryResourceErrors, GetClipboardEntryResourceResponses, GetClipboardEntryResponses, GetClipboardStatsData, GetClipboardStatsErrors, GetClipboardStatsResponses, GetClipboardThumbnailData, GetClipboardThumbnailErrors, GetClipboardThumbnailResponses, GetEncryptionStateData, GetEncryptionStateErrors, GetEncryptionStateResponses, GetHealthData, GetHealthResponses, GetLifecycleStatusData, GetLifecycleStatusErrors, GetLifecycleStatusResponses, GetLocalDeviceInfoData, GetLocalDeviceInfoErrors, GetLocalDeviceInfoResponses, GetMemberSyncPreferencesData, GetMemberSyncPreferencesErrors, GetMemberSyncPreferencesResponses, GetSearchStatusData, GetSearchStatusErrors, GetSearchStatusResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetStatusData, GetStatusResponses, GetStorageStatsData, GetStorageStatsErrors, GetStorageStatsResponses, GetUpgradeStatusData, GetUpgradeStatusErrors, GetUpgradeStatusResponses, ListClipboardEntriesData, ListClipboardEntriesErrors, ListClipboardEntriesResponses, ListPairedDevicesData, ListPairedDevicesErrors, ListPairedDevicesResponses, ListPeersData, ListPeersErrors, ListPeersResponses, LockEncryptionSessionData, LockEncryptionSessionErrors, LockEncryptionSessionResponses, RebuildSearchIndexData, RebuildSearchIndexErrors, RebuildSearchIndexResponses, RefreshPresenceData, RefreshPresenceErrors, RefreshPresenceResponses, ResendClipboardEntryData, ResendClipboardEntryErrors, ResendClipboardEntryResponses, RestoreClipboardEntryData, RestoreClipboardEntryErrors, RestoreClipboardEntryResponses, RetryLifecycleData, RetryLifecycleErrors, RetryLifecycleResponses, SearchQueryData, SearchQueryErrors, SearchQueryResponses, SetupV2CancelData, SetupV2CancelErrors, SetupV2CancelResponses, SetupV2GetMigrationProgressData, SetupV2GetMigrationProgressErrors, SetupV2GetMigrationProgressResponses, SetupV2GetStateData, SetupV2GetStateErrors, SetupV2GetStateResponses, SetupV2InitializeData, SetupV2InitializeErrors, SetupV2InitializeResponses, SetupV2IssueInvitationData, SetupV2IssueInvitationErrors, SetupV2IssueInvitationResponses, SetupV2RedeemData, SetupV2RedeemErrors, SetupV2RedeemResponses, SetupV2ResetData, SetupV2ResetErrors, SetupV2ResetResponses, SetupV2SwitchSpaceData, SetupV2SwitchSpaceErrors, SetupV2SwitchSpaceResponses, SignalLifecycleReadyData, SignalLifecycleReadyResponses, ToggleClipboardEntryFavoriteData, ToggleClipboardEntryFavoriteErrors, ToggleClipboardEntryFavoriteResponses, UnlockEncryptionSessionData, UnlockEncryptionSessionErrors, UnlockEncryptionSessionResponses, UnpairDeviceData, UnpairDeviceErrors, UnpairDeviceResponses, UpdateMemberSyncPreferencesData, UpdateMemberSyncPreferencesErrors, UpdateMemberSyncPreferencesResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, VerifyKeychainAccessData, VerifyKeychainAccessErrors, VerifyKeychainAccessResponses, WebsocketUpgradeData, WebsocketUpgradeErrors } from './types.gen';
+import type { AcknowledgeUpgradeData, AcknowledgeUpgradeErrors, AcknowledgeUpgradeResponses, AuthConnectData, AuthConnectErrors, AuthConnectResponses, CancelClipboardTransferData, CancelClipboardTransferErrors, CancelClipboardTransferResponses, ClearClipboardHistoryData, ClearClipboardHistoryErrors, ClearClipboardHistoryResponses, ClearStorageCacheData, ClearStorageCacheErrors, ClearStorageCacheResponses, DeleteClipboardEntryData, DeleteClipboardEntryErrors, DeleteClipboardEntryResponses, DispatchClipboardTextData, DispatchClipboardTextErrors, DispatchClipboardTextResponses, FactoryResetSpaceData, FactoryResetSpaceErrors, FactoryResetSpaceResponses, GetClipboardBlobData, GetClipboardBlobErrors, GetClipboardBlobResponses, GetClipboardEntryData, GetClipboardEntryDeliveryData, GetClipboardEntryDeliveryErrors, GetClipboardEntryDeliveryResponses, GetClipboardEntryErrors, GetClipboardEntryResourceData, GetClipboardEntryResourceErrors, GetClipboardEntryResourceResponses, GetClipboardEntryResponses, GetClipboardStatsData, GetClipboardStatsErrors, GetClipboardStatsResponses, GetClipboardThumbnailData, GetClipboardThumbnailErrors, GetClipboardThumbnailResponses, GetEncryptionStateData, GetEncryptionStateErrors, GetEncryptionStateResponses, GetHealthData, GetHealthResponses, GetLifecycleStatusData, GetLifecycleStatusErrors, GetLifecycleStatusResponses, GetLocalDeviceInfoData, GetLocalDeviceInfoErrors, GetLocalDeviceInfoResponses, GetMemberSyncPreferencesData, GetMemberSyncPreferencesErrors, GetMemberSyncPreferencesResponses, GetSearchStatusData, GetSearchStatusErrors, GetSearchStatusResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetStatusData, GetStatusResponses, GetStorageStatsData, GetStorageStatsErrors, GetStorageStatsResponses, GetUpgradeStatusData, GetUpgradeStatusErrors, GetUpgradeStatusResponses, ListClipboardEntriesData, ListClipboardEntriesErrors, ListClipboardEntriesResponses, ListPairedDevicesData, ListPairedDevicesErrors, ListPairedDevicesResponses, ListPeersData, ListPeersErrors, ListPeersResponses, LockEncryptionSessionData, LockEncryptionSessionErrors, LockEncryptionSessionResponses, RebuildSearchIndexData, RebuildSearchIndexErrors, RebuildSearchIndexResponses, RefreshPresenceData, RefreshPresenceErrors, RefreshPresenceResponses, ResendClipboardEntryData, ResendClipboardEntryErrors, ResendClipboardEntryResponses, RestoreClipboardEntryData, RestoreClipboardEntryErrors, RestoreClipboardEntryResponses, RetryLifecycleData, RetryLifecycleErrors, RetryLifecycleResponses, SearchQueryData, SearchQueryErrors, SearchQueryResponses, SetupV2CancelData, SetupV2CancelErrors, SetupV2CancelResponses, SetupV2GetMigrationProgressData, SetupV2GetMigrationProgressErrors, SetupV2GetMigrationProgressResponses, SetupV2GetStateData, SetupV2GetStateErrors, SetupV2GetStateResponses, SetupV2InitializeData, SetupV2InitializeErrors, SetupV2InitializeResponses, SetupV2IssueInvitationData, SetupV2IssueInvitationErrors, SetupV2IssueInvitationResponses, SetupV2RedeemData, SetupV2RedeemErrors, SetupV2RedeemResponses, SetupV2ResetData, SetupV2ResetErrors, SetupV2ResetResponses, SetupV2SwitchSpaceData, SetupV2SwitchSpaceErrors, SetupV2SwitchSpaceResponses, SignalLifecycleReadyData, SignalLifecycleReadyResponses, ToggleClipboardEntryFavoriteData, ToggleClipboardEntryFavoriteErrors, ToggleClipboardEntryFavoriteResponses, UnlockEncryptionSessionData, UnlockEncryptionSessionErrors, UnlockEncryptionSessionResponses, UnlockSpaceWithPassphraseData, UnlockSpaceWithPassphraseErrors, UnlockSpaceWithPassphraseResponses, UnpairDeviceData, UnpairDeviceErrors, UnpairDeviceResponses, UpdateMemberSyncPreferencesData, UpdateMemberSyncPreferencesErrors, UpdateMemberSyncPreferencesResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, VerifyKeychainAccessData, VerifyKeychainAccessErrors, VerifyKeychainAccessResponses, WebsocketUpgradeData, WebsocketUpgradeErrors } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -171,6 +171,24 @@ export const getClipboardEntry = <ThrowOnError extends boolean = false>(options:
 });
 
 /**
+ * GET /clipboard/entries/:id/delivery
+ *
+ * Returns the entry's origin + per-trusted-peer delivery status for the detail
+ * panel (ADR-008 P3-1 / D15; formerly the GUI-only
+ * `clipboard_entry_delivery_view` Tauri command). Entry-not-found is a normal
+ * degraded-render case for the frontend, so it maps to a plain 404.
+ */
+export const getClipboardEntryDelivery = <ThrowOnError extends boolean = false>(options: Options<GetClipboardEntryDeliveryData, ThrowOnError>) => (options.client ?? client).get<GetClipboardEntryDeliveryResponses, GetClipboardEntryDeliveryErrors, ThrowOnError>({
+    security: [{
+            in: 'query',
+            name: 'auth',
+            type: 'apiKey'
+        }, { name: 'Authorization', type: 'apiKey' }],
+    url: '/clipboard/entries/{id}/delivery',
+    ...options
+});
+
+/**
  * POST /clipboard/entries/:id/favorite
  *
  * Toggles favorite state for an entry. Returns 200 on success, 404 if not found.
@@ -292,6 +310,23 @@ export const getLocalDeviceInfo = <ThrowOnError extends boolean = false>(options
 });
 
 /**
+ * POST /encryption/factory-reset
+ *
+ * Wipes key material + clears setup status + cancels pending invitations
+ * (ADR-008 P3-1 / D15). Routes through `SpaceSetupFacade::factory_reset`,
+ * mirroring the former in-process `factory_reset_space` Tauri command.
+ */
+export const factoryResetSpace = <ThrowOnError extends boolean = false>(options?: Options<FactoryResetSpaceData, ThrowOnError>) => (options?.client ?? client).post<FactoryResetSpaceResponses, FactoryResetSpaceErrors, ThrowOnError>({
+    security: [{
+            in: 'query',
+            name: 'auth',
+            type: 'apiKey'
+        }, { name: 'Authorization', type: 'apiKey' }],
+    url: '/encryption/factory-reset',
+    ...options
+});
+
+/**
  * GET /encryption/keychain-access
  *
  * Verifies macOS Keychain "Always Allow" permission for this app.
@@ -352,6 +387,35 @@ export const unlockEncryptionSession = <ThrowOnError extends boolean = false>(op
         }, { name: 'Authorization', type: 'apiKey' }],
     url: '/encryption/unlock',
     ...options
+});
+
+/**
+ * POST /encryption/unlock-with-passphrase
+ *
+ * Unlocks the space with a user-supplied plaintext passphrase (ADR-008 D15).
+ *
+ * Routes through `SpaceSetupFacade::unlock_space`, which (unlike the bare
+ * `encryption.unlock`) also runs the switch-space migration recovery hook —
+ * the same reason the keyring `unlock_handler` above delegates to
+ * `try_resume_session`. On success it broadcasts `encryption.session_ready`
+ * so WS subscribers react identically regardless of which unlock path ran.
+ *
+ * D14: this endpoint is session-JWT gated (it is NOT in `PUBLIC_PATHS`) and
+ * the handler MUST NOT log the request body — there is intentionally no
+ * `?req` / passphrase field on any span or tracing event here.
+ */
+export const unlockSpaceWithPassphrase = <ThrowOnError extends boolean = false>(options: Options<UnlockSpaceWithPassphraseData, ThrowOnError>) => (options.client ?? client).post<UnlockSpaceWithPassphraseResponses, UnlockSpaceWithPassphraseErrors, ThrowOnError>({
+    security: [{
+            in: 'query',
+            name: 'auth',
+            type: 'apiKey'
+        }, { name: 'Authorization', type: 'apiKey' }],
+    url: '/encryption/unlock-with-passphrase',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

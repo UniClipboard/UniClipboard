@@ -7,17 +7,26 @@ use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use serde::Deserialize;
-use uc_application::facade::{AppFacade, ResendEntryCommand};
+use serde_json::json;
+use uc_application::facade::{
+    AppFacade, NotResendableReason, ResendEntryCommand, ResendEntryError,
+};
 use uc_application::facade::{
     ClipboardClearHistoryResultView, ClipboardHistoryError, ClipboardHistoryFacade,
     ClipboardListInput, ClipboardStatsView, EntryDetailView, EntryProjectionView,
     EntryResourceView,
 };
+use uc_application::facade::{
+    EntryDeliveryStatusView, EntryDeliveryTargetView, EntryDeliveryView, EntrySource,
+    GetEntryDeliveryViewError,
+};
+use uc_core::clipboard::DeliveryFailureReason;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::DispatchAck;
 use uc_core::{
@@ -29,13 +38,17 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
     PerTargetOutcomeDto, ResendRequest, ResendResponse,
 };
+use uc_daemon_contract::api::dto::clipboard_delivery::{
+    DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
+    EntrySourceDto,
+};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
 use crate::api::dto::clipboard::{
     ClearHistoryResultDto, ClipboardStatsDto, EntryDetailDto, EntryProjectionResponseDto,
     EntryResourceDto, ToggleFavoriteRequest, ToggleFavoriteResultDto,
 };
-use crate::api::dto::error::{log_facade_failure, ApiError};
+use crate::api::dto::error::{log_facade_failure, ApiError, ApiErrorResponse};
 use crate::api::server::DaemonApiState;
 
 /// Query parameters for `GET /clipboard/entries`.
@@ -75,6 +88,10 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/clipboard/entries/:id/favorite", post(toggle_favorite))
         .route("/clipboard/stats", get(get_stats))
         .route("/clipboard/entries/:id/resource", get(get_entry_resource))
+        .route(
+            "/clipboard/entries/:id/delivery",
+            get(get_entry_delivery_view_handler),
+        )
         .route(http_route::CLIPBOARD_DISPATCH, post(dispatch_text))
         .route(http_route::CLIPBOARD_RESEND, post(resend_entry))
         .route(
@@ -381,16 +398,16 @@ async fn dispatch_text(
         (status = 200, description = "Resend fan-out outcome", body = ResendEnvelope),
         (status = 400, description = "Malformed request", body = ApiErrorResponse),
         (status = 404, description = "Entry not found", body = ApiErrorResponse),
-        (status = 409, description = "No eligible targets", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 409, description = "Entry not resendable / target not trusted / no eligible targets", body = ApiErrorResponse),
+        (status = 500, description = "Storage or dispatch failure", body = ApiErrorResponse),
     )
 )]
 async fn resend_entry(
     State(state): State<DaemonApiState>,
     body: Result<Json<ResendRequest>, axum::extract::rejection::JsonRejection>,
-) -> Result<Json<ApiEnvelope<ResendResponse>>, ApiError> {
-    let app = require_app_facade(&state)?;
-    let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
+) -> Result<Json<ApiEnvelope<ResendResponse>>, Response> {
+    let app = require_app_facade(&state).map_err(IntoResponse::into_response)?;
+    let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()).into_response())?;
 
     let target_filter: Option<Vec<DeviceId>> = req
         .peers
@@ -402,25 +419,10 @@ async fn resend_entry(
         target_filter,
     };
 
-    let report = app.resend_entry(cmd).await.map_err(|e| {
-        let status = match &e {
-            uc_application::facade::ResendEntryError::EntryNotFound(_) => StatusCode::NOT_FOUND,
-            uc_application::facade::ResendEntryError::NoEligibleTargets => StatusCode::CONFLICT,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        log_facade_failure(
-            "clipboard_command",
-            "resend_entry",
-            "resend_error",
-            status,
-            &e.to_string(),
-        );
-        ApiError {
-            status,
-            code: "resend_error".to_string(),
-            message: e.to_string(),
-        }
-    })?;
+    let report = app
+        .resend_entry(cmd)
+        .await
+        .map_err(|e| resend_error_to_response(e).into_response())?;
 
     Ok(Json(ApiEnvelope::now(ResendResponse {
         accepted: report.accepted,
@@ -429,6 +431,194 @@ async fn resend_entry(
         errored: report.errored,
         pending: report.pending,
     })))
+}
+
+/// Map the typed [`ResendEntryError`] to (status, canonical `ApiErrorResponse`).
+///
+/// `code` is the SCREAMING_SNAKE tag the frontend `ResendEntryCommandError`
+/// union switches on; the per-variant structured fields ride `details` so the
+/// FE i18n placeholders (`entryId` / `deviceId` / `reason` / `message`) survive
+/// the HTTP boundary (`callSdk` normalization exposes the body on
+/// `DaemonApiError.details`, and the FE reconstructs `{ code, ...details }`).
+/// The client-recoverable variants are 4xx (not 5xx) so they neither trip
+/// `callSdk`'s 401 refresh-retry nor escalate to Sentry via `log_facade_failure`.
+fn resend_error_to_response(err: ResendEntryError) -> (StatusCode, Json<ApiErrorResponse>) {
+    use ResendEntryError as E;
+    let (status, variant, code, message, details): (
+        StatusCode,
+        &'static str,
+        &'static str,
+        String,
+        Option<serde_json::Value>,
+    ) = match err {
+        E::EntryNotFound(id) => (
+            StatusCode::NOT_FOUND,
+            "entry_not_found",
+            "ENTRY_NOT_FOUND",
+            format!("entry not found: {}", id.inner()),
+            Some(json!({ "entryId": id.inner() })),
+        ),
+        E::EntryNotResendable { entry_id, reason } => {
+            let reason_tag = match reason {
+                NotResendableReason::RemoteOrigin => "remoteOrigin",
+                NotResendableReason::PayloadLost => "payloadLost",
+            };
+            (
+                StatusCode::CONFLICT,
+                "entry_not_resendable",
+                "ENTRY_NOT_RESENDABLE",
+                format!("entry {} is not resendable", entry_id.inner()),
+                Some(json!({ "entryId": entry_id.inner(), "reason": reason_tag })),
+            )
+        }
+        E::TargetNotTrusted(device_id) => (
+            StatusCode::CONFLICT,
+            "target_not_trusted",
+            "TARGET_NOT_TRUSTED",
+            format!("target device {} is not a trusted peer", device_id.as_str()),
+            Some(json!({ "deviceId": device_id.as_str() })),
+        ),
+        E::NoEligibleTargets => (
+            StatusCode::CONFLICT,
+            "no_eligible_targets",
+            "NO_ELIGIBLE_TARGETS",
+            "no eligible targets for resend".to_string(),
+            None,
+        ),
+        E::Storage(msg) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "storage",
+            "STORAGE",
+            msg.clone(),
+            Some(json!({ "message": msg })),
+        ),
+        E::Dispatch(msg) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "dispatch",
+            "DISPATCH",
+            msg.clone(),
+            Some(json!({ "message": msg })),
+        ),
+    };
+    log_facade_failure(
+        "clipboard_command",
+        "resend_entry",
+        variant,
+        status,
+        &message,
+    );
+    let body = match details {
+        Some(d) => ApiErrorResponse::with_details(code, message, d),
+        None => ApiErrorResponse::new(code, message),
+    };
+    (status, Json(body))
+}
+
+/// GET /clipboard/entries/:id/delivery
+///
+/// Returns the entry's origin + per-trusted-peer delivery status for the detail
+/// panel (ADR-008 P3-1 / D15; formerly the GUI-only
+/// `clipboard_entry_delivery_view` Tauri command). Entry-not-found is a normal
+/// degraded-render case for the frontend, so it maps to a plain 404.
+#[utoipa::path(
+    get,
+    path = "/clipboard/entries/{id}/delivery",
+    operation_id = "getClipboardEntryDelivery",
+    tag = "clipboard",
+    params(("id" = String, Path, description = "Entry id")),
+    responses(
+        (status = 200, description = "Entry delivery view", body = EntryDeliveryViewEnvelope),
+        (status = 404, description = "Entry not found", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+async fn get_entry_delivery_view_handler(
+    State(state): State<DaemonApiState>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiEnvelope<EntryDeliveryViewDto>>, ApiError> {
+    let app = state.app_facade_or_error()?;
+    let entry = EntryId::from_string(id);
+    let view = app
+        .get_entry_delivery_view(&entry)
+        .await
+        .map_err(map_delivery_view_err)?;
+    Ok(Json(ApiEnvelope::now(entry_delivery_view_to_dto(view))))
+}
+
+fn map_delivery_view_err(err: GetEntryDeliveryViewError) -> ApiError {
+    use GetEntryDeliveryViewError as E;
+    let (variant, api): (&'static str, ApiError) = match err {
+        E::EntryNotFound(id) => (
+            "entry_not_found",
+            ApiError::not_found(format!("entry not found: {id}")),
+        ),
+        E::Storage(msg) => ("storage", ApiError::internal(msg)),
+    };
+    log_facade_failure(
+        "clipboard",
+        "get_entry_delivery_view",
+        variant,
+        api.status,
+        &api.message,
+    );
+    api
+}
+
+fn entry_delivery_view_to_dto(view: EntryDeliveryView) -> EntryDeliveryViewDto {
+    EntryDeliveryViewDto {
+        entry_id: view.entry_id.as_str().to_string(),
+        source: entry_source_to_dto(view.source),
+        deliveries: view
+            .deliveries
+            .into_iter()
+            .map(entry_delivery_target_to_dto)
+            .collect(),
+    }
+}
+
+fn entry_source_to_dto(source: EntrySource) -> EntrySourceDto {
+    match source {
+        EntrySource::Local => EntrySourceDto::Local,
+        EntrySource::Remote {
+            device_id,
+            device_name,
+        } => EntrySourceDto::Remote {
+            device_id: device_id.as_str().to_string(),
+            device_name,
+        },
+        EntrySource::Historical => EntrySourceDto::Historical,
+    }
+}
+
+fn entry_delivery_target_to_dto(target: EntryDeliveryTargetView) -> EntryDeliveryTargetDto {
+    EntryDeliveryTargetDto {
+        target_device_id: target.target_device_id.as_str().to_string(),
+        target_device_name: target.target_device_name,
+        status: entry_delivery_status_to_dto(target.status),
+        reason_detail: target.reason_detail,
+        updated_at_ms: target.updated_at_ms,
+    }
+}
+
+fn entry_delivery_status_to_dto(status: EntryDeliveryStatusView) -> EntryDeliveryStatusDto {
+    match status {
+        EntryDeliveryStatusView::Pending => EntryDeliveryStatusDto::Pending,
+        EntryDeliveryStatusView::Delivered => EntryDeliveryStatusDto::Delivered,
+        EntryDeliveryStatusView::Duplicate => EntryDeliveryStatusDto::Duplicate,
+        EntryDeliveryStatusView::Failed { reason } => EntryDeliveryStatusDto::Failed {
+            reason: delivery_failure_reason_to_dto(reason),
+        },
+    }
+}
+
+fn delivery_failure_reason_to_dto(reason: DeliveryFailureReason) -> DeliveryFailureReasonDto {
+    match reason {
+        DeliveryFailureReason::Offline => DeliveryFailureReasonDto::Offline,
+        DeliveryFailureReason::LocalPolicy => DeliveryFailureReasonDto::LocalPolicy,
+        DeliveryFailureReason::PeerRejected => DeliveryFailureReasonDto::PeerRejected,
+        DeliveryFailureReason::Io => DeliveryFailureReasonDto::Io,
+        DeliveryFailureReason::Internal => DeliveryFailureReasonDto::Internal,
+    }
 }
 
 /// POST /clipboard/cancel-transfer/:transfer_id
@@ -598,5 +788,62 @@ fn clear_history_to_dto(view: ClipboardClearHistoryResultView) -> ClearHistoryRe
     ClearHistoryResultDto {
         deleted_count: view.deleted_count,
         failed_entries: view.failed_entries,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The FE `ResendEntryCommandError` union reconstructs `{ code, ...details }`
+    /// off the normalized error body, so each variant must emit its SCREAMING_SNAKE
+    /// `code` plus its structured fields in `details`, and the client-recoverable
+    /// variants must be 4xx (not 5xx → no Sentry escalation, no 401 retry).
+    #[test]
+    fn resend_error_carries_typed_code_and_structured_details() {
+        let (status, body) =
+            resend_error_to_response(ResendEntryError::TargetNotTrusted(DeviceId::new("dev-x")));
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0.code, "TARGET_NOT_TRUSTED");
+        assert_eq!(body.0.details.as_ref().unwrap()["deviceId"], "dev-x");
+
+        let (status, body) = resend_error_to_response(ResendEntryError::EntryNotResendable {
+            entry_id: EntryId::from("ent-1"),
+            reason: NotResendableReason::PayloadLost,
+        });
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0.code, "ENTRY_NOT_RESENDABLE");
+        let details = body.0.details.as_ref().unwrap();
+        assert_eq!(details["entryId"], "ent-1");
+        assert_eq!(details["reason"], "payloadLost");
+
+        let (status, body) = resend_error_to_response(ResendEntryError::EntryNotFound(
+            EntryId::from("ent-missing"),
+        ));
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.0.code, "ENTRY_NOT_FOUND");
+        assert_eq!(body.0.details.as_ref().unwrap()["entryId"], "ent-missing");
+
+        let (status, body) = resend_error_to_response(ResendEntryError::Dispatch(
+            "encrypt session locked".to_string(),
+        ));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.0.code, "DISPATCH");
+        assert_eq!(
+            body.0.details.as_ref().unwrap()["message"],
+            "encrypt session locked"
+        );
+
+        let (_, body) = resend_error_to_response(ResendEntryError::NoEligibleTargets);
+        assert_eq!(body.0.code, "NO_ELIGIBLE_TARGETS");
+        assert!(body.0.details.is_none());
+    }
+
+    /// Delivery-view: entry-not-found is a normal degraded-render case → plain 404.
+    #[test]
+    fn delivery_view_entry_not_found_is_404() {
+        let api = map_delivery_view_err(GetEntryDeliveryViewError::EntryNotFound("ent-x".into()));
+        assert_eq!(api.status, StatusCode::NOT_FOUND);
+        assert_eq!(api.code, "not_found");
     }
 }

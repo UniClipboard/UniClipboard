@@ -254,6 +254,11 @@ export type DaemonWsEvent = {
 };
 
 /**
+ * Failure reason. i18n key convention: `delivery.failureReason.<variant>`.
+ */
+export type DeliveryFailureReasonDto = 'offline' | 'localPolicy' | 'peerRejected' | 'io' | 'internal';
+
+/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -369,6 +374,73 @@ export type EncryptionStateResponse = {
 };
 
 /**
+ * Per-target status: `tag` + (on failure) a `reason` sub-discriminator.
+ */
+export type EntryDeliveryStatusDto = {
+    tag: 'pending';
+} | {
+    tag: 'delivered';
+} | {
+    tag: 'duplicate';
+} | {
+    reason: DeliveryFailureReasonDto;
+    tag: 'failed';
+};
+
+/**
+ * One trusted peer's current sync status for the entry.
+ */
+export type EntryDeliveryTargetDto = {
+    /**
+     * Wire-level failure detail for UI tooltips; `null` on success / pending.
+     */
+    reasonDetail?: string | null;
+    status: EntryDeliveryStatusDto;
+    targetDeviceId: string;
+    /**
+     * Human-readable name from the member directory; `null` when unresolved.
+     */
+    targetDeviceName?: string | null;
+    /**
+     * `null` when `Pending` (never attempted). Epoch milliseconds.
+     */
+    updatedAtMs?: number | null;
+};
+
+/**
+ * Mirror of the domain `EntryDeliveryView`: origin + every trusted peer's
+ * latest delivery status.
+ */
+export type EntryDeliveryViewDto = {
+    deliveries: Array<EntryDeliveryTargetDto>;
+    entryId: string;
+    source: EntrySourceDto;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type EntryDeliveryViewEnvelope = {
+    data: EntryDeliveryViewDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
  * Full entry detail (text content).
  * Matches the frontend `EntryDetail` interface.
  */
@@ -476,6 +548,19 @@ export type EntryResourceEnvelope = {
      * Server time when the response was built (unix epoch milliseconds).
      */
     ts: number;
+};
+
+/**
+ * Entry origin. `tag` drives the frontend discriminated union.
+ */
+export type EntrySourceDto = {
+    tag: 'local';
+} | {
+    device_id: string;
+    device_name?: string | null;
+    tag: 'remote';
+} | {
+    tag: 'historical';
 };
 
 export type FileSyncSettingsDto = {
@@ -1826,6 +1911,51 @@ export type ToggleFavoriteResultDto = {
     success: boolean;
 };
 
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type UnlockSpaceEnvelope = {
+    data: UnlockSpaceResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /encryption/unlock-with-passphrase` (ADR-008 D15).
+ *
+ * Carries the user's plaintext passphrase over the loopback API. Per D14 the
+ * endpoint is session-JWT gated (not in `PUBLIC_PATHS`) and the handler MUST
+ * never log this body — see the rule in `uc-webserver` `api/encryption.rs`.
+ * This formally retires the historical "passphrase 不出进程" invariant: under
+ * the "same UID = trusted" model (D14) an attacker who can sniff loopback can
+ * already dump the master key from daemon memory, so loopback transport adds
+ * zero incremental exposure.
+ */
+export type UnlockSpaceRequest = {
+    passphrase: string;
+};
+
+/**
+ * Response payload for `POST /encryption/unlock-with-passphrase`.
+ */
+export type UnlockSpaceResponse = {
+    spaceId: string;
+};
+
 export type UnpairDeviceRequest = {
     peerId: string;
 };
@@ -2173,6 +2303,40 @@ export type GetClipboardEntryResponses = {
 
 export type GetClipboardEntryResponse = GetClipboardEntryResponses[keyof GetClipboardEntryResponses];
 
+export type GetClipboardEntryDeliveryData = {
+    body?: never;
+    path: {
+        /**
+         * Entry id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/clipboard/entries/{id}/delivery';
+};
+
+export type GetClipboardEntryDeliveryErrors = {
+    /**
+     * Entry not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type GetClipboardEntryDeliveryError = GetClipboardEntryDeliveryErrors[keyof GetClipboardEntryDeliveryErrors];
+
+export type GetClipboardEntryDeliveryResponses = {
+    /**
+     * Entry delivery view
+     */
+    200: EntryDeliveryViewEnvelope;
+};
+
+export type GetClipboardEntryDeliveryResponse = GetClipboardEntryDeliveryResponses[keyof GetClipboardEntryDeliveryResponses];
+
 export type ToggleClipboardEntryFavoriteData = {
     body: ToggleFavoriteRequest;
     path: {
@@ -2262,11 +2426,11 @@ export type ResendClipboardEntryErrors = {
      */
     404: ApiErrorResponse;
     /**
-     * No eligible targets
+     * Entry not resendable / target not trusted / no eligible targets
      */
     409: ApiErrorResponse;
     /**
-     * Internal server error
+     * Storage or dispatch failure
      */
     500: ApiErrorResponse;
 };
@@ -2409,6 +2573,31 @@ export type GetLocalDeviceInfoResponses = {
 
 export type GetLocalDeviceInfoResponse = GetLocalDeviceInfoResponses[keyof GetLocalDeviceInfoResponses];
 
+export type FactoryResetSpaceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/encryption/factory-reset';
+};
+
+export type FactoryResetSpaceErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type FactoryResetSpaceError = FactoryResetSpaceErrors[keyof FactoryResetSpaceErrors];
+
+export type FactoryResetSpaceResponses = {
+    /**
+     * Space reset to factory state
+     */
+    200: EncryptionActionEnvelope;
+};
+
+export type FactoryResetSpaceResponse = FactoryResetSpaceResponses[keyof FactoryResetSpaceResponses];
+
 export type VerifyKeychainAccessData = {
     body?: never;
     path?: never;
@@ -2508,6 +2697,43 @@ export type UnlockEncryptionSessionResponses = {
 };
 
 export type UnlockEncryptionSessionResponse = UnlockEncryptionSessionResponses[keyof UnlockEncryptionSessionResponses];
+
+export type UnlockSpaceWithPassphraseData = {
+    body: UnlockSpaceRequest;
+    path?: never;
+    query?: never;
+    url: '/encryption/unlock-with-passphrase';
+};
+
+export type UnlockSpaceWithPassphraseErrors = {
+    /**
+     * Wrong passphrase
+     */
+    403: ApiErrorResponse;
+    /**
+     * Setup not completed / space not initialized
+     */
+    409: ApiErrorResponse;
+    /**
+     * Space key material corrupted
+     */
+    422: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type UnlockSpaceWithPassphraseError = UnlockSpaceWithPassphraseErrors[keyof UnlockSpaceWithPassphraseErrors];
+
+export type UnlockSpaceWithPassphraseResponses = {
+    /**
+     * Space unlocked
+     */
+    200: UnlockSpaceEnvelope;
+};
+
+export type UnlockSpaceWithPassphraseResponse = UnlockSpaceWithPassphraseResponses[keyof UnlockSpaceWithPassphraseResponses];
 
 export type GetHealthData = {
     body?: never;

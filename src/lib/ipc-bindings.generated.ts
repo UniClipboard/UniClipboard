@@ -232,34 +232,6 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("open_logs_directory", { trace })),
 	/**
-	 *  拉一条 entry 的同步状态视图。
-	 * 
-	 *  前端 detail 面板在 entry 切换时调用,失败时(facade 未装配 / DB 故障)
-	 *  返回 `InternalError`;entry 不存在返回 `NotFound`,前端据此降级渲染。
-	 */
-	clipboardEntryDeliveryView: (entryId: string, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<EntryDeliveryViewDto, CommandError>(__TAURI_INVOKE("clipboard_entry_delivery_view", { entryId, trace })),
-	/**
-	 *  用户主动 resend 一条本机 entry。命令走 in-process facade
-	 *  (`AppFacade::resend_entry` → `ClipboardOutboundFacade::resend_entry`),
-	 *  与 `clipboard_entry_delivery_view` 一致;不经 HTTP/webserver。
-	 * 
-	 *  入参:
-	 *  - `entryId` —— 要重发的 entry id (字符串形态);
-	 *  - `targetDeviceIds` —— `None` 派生差集,`Some(list)` 显式 fan-out;
-	 *    `Some(vec![])` 与差集为空等价,返回 `NO_ELIGIBLE_TARGETS`。
-	 * 
-	 *  返回 `ResendEntryReportDto` (各 bucket 计数);失败返回 typed
-	 *  `ResendEntryCommandError`,前端按 `code` 字段做 i18n。详细错误语义见
-	 *  [`ResendEntryError`](uc_application::facade::ResendEntryError)。
-	 */
-	clipboardResendEntry: (args: ResendEntryArgs, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<ResendEntryReportDto, ResendEntryCommandError>(__TAURI_INVOKE("clipboard_resend_entry", { args, trace })),
-	/**
 	 *  Hide the quick panel, re-activate the previous app, and paste.
 	 * 
 	 *  隐藏快捷面板，重新激活之前的应用，并粘贴。
@@ -395,50 +367,6 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<LanInterfaceView[], MobileSyncError>(__TAURI_INVOKE("list_mobile_lan_interfaces", { trace })),
 	/**
-	 *  用户主动输入口令解锁(in-process)。
-	 * 
-	 *  调用链:Tauri command → `runtime.app_facade().space_setup` →
-	 *  `SpaceSetupFacade::unlock_space(input)` →
-	 *  `UnlockSpaceUseCase` → `SpaceAccessPort::unlock(space_id, passphrase)`。
-	 *  全程同进程,`passphrase` 不进任何 socket。
-	 * 
-	 *  成功后 `InMemorySession::set_master_key` 已写入,session 立即 ready;
-	 *  前端继续调 `POST /lifecycle/ready` 触发 daemon deferred services
-	 *  (clipboard watcher / sync 等)启动。
-	 */
-	unlockSpaceWithPassphrase: (args: UnlockSpaceArgs, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<UnlockSpaceResultDto, UnlockSpaceCommandError>(__TAURI_INVOKE("unlock_space_with_passphrase", { args, trace })),
-	/**
-	 *  In-process 等价于历史 HTTP `POST /encryption/unlock`(silent keyring
-	 *  resume,不接受 passphrase)。**这是替换 `DaemonQueryClient::unlock_encryption()`
-	 *  的 in-process 路径**——GUI 与 daemon 同进程,完全没必要再绕 HTTP。
-	 * 
-	 *  语义保持原 endpoint 一致: `Ok(true)` keyring 命中、`Ok(false)`
-	 *  "nothing to resume"(空 profile / 还没 setup)、`Err` 异常 / 漂移。
-	 */
-	trySilentUnlock: (trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<TrySilentUnlockResult, TrySilentUnlockError>(__TAURI_INVOKE("try_silent_unlock", { trace })),
-	/**
-	 *  用户主动触发的"重置并重新开始"。
-	 * 
-	 *  调用链:Tauri command → `runtime.app_facade().space_setup` →
-	 *  `SpaceSetupFacade::factory_reset()` →
-	 *  `SpaceAccessPort::factory_reset` + `SetupStatusPort::set_status` +
-	 *  `invitation_holder.cancel_all()`。全程同进程。
-	 * 
-	 *  不接收任何参数:`SpaceAccessAdapter` 用 `current_profile` 推 keyslot
-	 *  范围,facade 内部 mint 一个新的 `SpaceId` 作为 opaque handle。前端
-	 *  应在调用本 command **前** 通过二次确认对话框收集用户的明确意图。
-	 */
-	factoryResetSpace: (trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<FactoryResetResult, FactoryResetCommandError>(__TAURI_INVOKE("factory_reset_space", { trace })),
-	/**
 	 *  调整 macOS 主窗口三色交通灯（close/min/zoom）按钮位置。
 	 * 
 	 *  `offset_x` / `offset_y` 相对系统给的标准位置偏移，**屏幕坐标系**：
@@ -459,10 +387,9 @@ export const events = {
 /**
  *  `clipboard_delivery_status_changed` 事件 payload。
  * 
- *  前端 detail 视图按 `entry_id` 过滤后 refetch
- *  [`crate::commands::clipboard_delivery::EntryDeliveryViewDto`],
- *  拿 view 内的 status 渲染。`target_device_id` 当前未被消费,留作未来
- *  per-peer 局部刷新的钩子。
+ *  前端 detail 视图按 `entry_id` 过滤后 refetch `GET /clipboard/entries/{id}/delivery`
+ *  (ADR-008 P3-1 起走 daemon loopback API),拿 view 内的 status 渲染。
+ *  `target_device_id` 当前未被消费,留作未来 per-peer 局部刷新的钩子。
  */
 export type ClipboardDeliveryStatusChanged = {
 	/**
@@ -491,9 +418,6 @@ export type DaemonSessionPayload = {
 	expiresInSecs: number,
 	refreshAtSecs: number,
 };
-
-/**  失败原因。i18n key 命名约定:`delivery.failureReason.<variant 小驼峰>`。 */
-export type DeliveryFailureReasonDto = "offline" | "localPolicy" | "peerRejected" | "io" | "internal";
 
 /**
  *  暴露给 webview 的设备和应用元数据，用于补齐前端 Sentry scope。
@@ -562,80 +486,6 @@ export type DownloadProgressSnapshot = {
 	date: string | null,
 };
 
-/**  状态枚举:`tag` + `reason` 形式,便于前端区分四档与失败子分类。 */
-export type EntryDeliveryStatusDto = { tag: "pending" } | { tag: "delivered" } | { tag: "duplicate" } | { tag: "failed"; reason: DeliveryFailureReasonDto };
-
-export type EntryDeliveryTargetDto = {
-	targetDeviceId: string,
-	/**
-	 *  取自空间成员目录中的人类可读名;不命中时为 `null`,前端 fallback
-	 *  到 `targetDeviceId` 截断。
-	 */
-	targetDeviceName: string | null,
-	status: EntryDeliveryStatusDto,
-	/**  失败时的 wire 层错误细节,供 UI tooltip / 详情展开使用。 */
-	reasonDetail: string | null,
-	/**
-	 *  `Pending` 时为 `None`(从未尝试过)。`#[specta(type = ...)]` 告诉 specta
-	 *  这是个 ms 精度的 epoch,实际值不会超过 JS Number 安全整数范围 (~285 万年),
-	 *  用 `Number<i64>` 包装绕过 BigInt 禁用规则,与 mobile_sync.rs 的 `last_seen_at_ms`
-	 *  同源。
-	 */
-	updatedAtMs: number | null,
-};
-
-/**
- *  `EntryDeliveryView` 的前端可序列化镜像。字段命名与领域模型保持一致,
- *  只在序列化时改写成 camelCase。
- */
-export type EntryDeliveryViewDto = {
-	entryId: string,
-	source: EntrySourceDto,
-	deliveries: EntryDeliveryTargetDto[],
-};
-
-/**  entry 来源描述。`tag` 字段供前端 discriminated union 直接 switch。 */
-export type EntrySourceDto = 
-/**  本机捕获。 */
-{ tag: "local" } | 
-/**
- *  远端推送。`deviceId` 是来源设备,`deviceName` 取自空间成员目录;
- *  不命中时为 `null`,前端 fallback 到 device_id 截断。
- */
-{ tag: "remote"; deviceId: string; deviceName: string | null } | 
-/**  追踪机制启用前已存在的老 entry,无可靠投递信息。 */
-{ tag: "historical" };
-
-/**
- *  前端可 `error.code` switch 的 typed 错误。序列化形态:
- *  `{"code": "KEY_MATERIAL_WIPE_FAILED", "message": "..."}` 等。
- */
-export type FactoryResetCommandError = 
-/**
- *  space_setup facade 尚未装配——bootstrap 还没跑完或装配失败。
- *  前端应延后重试或提示用户重启应用。
- */
-{ code: "FACADE_UNAVAILABLE" } | 
-/**
- *  keyslot / KEK 删除失败。前端应展示通用错误并保留 UnlockPage 状态
- *  (用户至少还能继续尝试输口令);不应跳回 SetupPage——因为残留的
- *  keyslot 会让随后的 init 立即撞 AlreadyInitialized。
- */
-{ code: "KEY_MATERIAL_WIPE_FAILED"; message: string } | 
-/**
- *  key material 已清但 setup_status 没清。UI 现在处于过渡态:keyslot
- *  已无、setup_status 仍说 completed。最稳的引导是让用户重启应用。
- */
-{ code: "STORAGE_FAILED"; message: string } | 
-/**  兜底:其他非预期失败。 */
-{ code: "INTERNAL"; message: string };
-
-/**
- *  重置成功后返回的占位元数据。当前无字段——保留为对象以便未来扩展
- *  (比如下一步推荐操作的提示),而不必改 wire 形状。
- */
-export type FactoryResetResult = Record<string, never>;
-
 /**
  *  Installation provenance of the running binary.
  * 
@@ -699,19 +549,6 @@ export type MobileSyncSettingsViewDto = {
 	shortcutInstallMethods: ShortcutInstallMethodView[],
 };
 
-/**  不可重发的细分原因。i18n key 命名约定:`delivery.resend.error.notResendable.<variant>`。 */
-export type NotResendableReasonDto = 
-/**
- *  entry 来自远端 peer。视图层已对远端 entry 隐藏重发按钮;走到此处
- *  说明前端绕过视图直接调命令,或视图状态过期。
- */
-"remoteOrigin" | 
-/**
- *  本机已不持有 plaintext / 必要 blob (paste rep `Lost` / 文件被 GC /
- *  blob store 已清理)。前端提示用户该 entry 已无法重新发送。
- */
-"payloadLost";
-
 /**  `register_mobile_device` 入参。 */
 export type RegisterMobileDeviceArgs = {
 	label: string,
@@ -773,53 +610,6 @@ export type RegisterMobileDeviceResult = {
 export type RelayProbeOutcome = { kind: "success"; latencyMs: number } | { kind: "invalidUrl"; message: string } | { kind: "dns"; message: string } | { kind: "tls"; message: string } | { kind: "handshake"; message: string } | { kind: "timeout" } | { kind: "other"; message: string };
 
 /**
- *  `clipboard_resend_entry` 入参。
- * 
- *  `targetDeviceIds`:
- *  - 字段缺失 / `null` → `None` → use case 派生 `trusted_peer \
- *    (Delivered ∪ Duplicate)` 差集；
- *  - `[]` → `Some(vec![])`，等价于零目标，use case 返回 `NoEligibleTargets`；
- *  - `["dev-a", "dev-b"]` → 仅向列出的设备重发，列表里的 device 必须在
- *    trusted_peer 列表内，否则返回 `TargetNotTrusted`。
- */
-export type ResendEntryArgs = {
-	entryId: string,
-	targetDeviceIds?: string[] | null,
-};
-
-/**
- *  `clipboard_resend_entry` 失败时的 typed 错误。前端 `error.code` 即
- *  discriminator,各变体的额外字段对应 ADR §2.5.4 的失败语义。
- * 
- *  不复用 `CommandError`:`Conflict(String)` 只能塞一段文本,而本错误
- *  集合需要 `deviceId` / `reason` / `entryId` 等结构化字段供 i18n key
- *  选择与文案占位。参考 `mobile_sync::MobileSyncError` 同模式。
- */
-export type ResendEntryCommandError = { code: "ENTRY_NOT_FOUND"; entryId: string } | { code: "ENTRY_NOT_RESENDABLE"; entryId: string; reason: NotResendableReasonDto } | { code: "TARGET_NOT_TRUSTED"; deviceId: string } | { code: "NO_ELIGIBLE_TARGETS" } | { code: "STORAGE"; message: string } | { code: "DISPATCH"; message: string };
-
-/**
- *  `clipboard_resend_entry` 成功返回 —— fan-out 后的聚合计数。语义同
- *  [`ResendReport`](uc_application::facade::ResendReport)，camelCase 后给前端
- *  渲染 toast / detail badge。
- */
-export type ResendEntryReportDto = {
-	/**  已落 `Delivered` 投递记录的目标数。 */
-	accepted: number,
-	/**  对端确认为重复内容 (content_hash 已存在) 的目标数。 */
-	duplicate: number,
-	/**  对端不可达 (presence offline / dial 失败) 的目标数。 */
-	offline: number,
-	/**  其他错误 (peer rejected / IO / internal) 的目标数。 */
-	errored: number,
-	/**
-	 *  fan-out deadline 内未 settle、被搬到后台继续 join 的目标数。
-	 *  后台完成时会写 delivery record 并发 `ClipboardDeliveryStatusChanged`
-	 *  事件,前端 detail badge 据此自动刷新。
-	 */
-	pending: number,
-};
-
-/**
  *  `rotate_mobile_password` 入参。`password = None` (字段缺失或 null) 走
  *  minter 自动颁发新明文;给值则按规则严格校验。
  */
@@ -854,26 +644,6 @@ export type TraceMetadata = {
 	timestamp: number,
 };
 
-export type TrySilentUnlockError = 
-/**  app facade 尚未装配。 */
-{ code: "FACADE_UNAVAILABLE" } | 
-/**
- *  keyring 中 KEK 与磁盘 keyslot 漂移 / 损坏 / 其他非预期错误。
- *  前端应弹出 "Unlock space" modal 收集明文口令,走
- *  [`unlock_space_with_passphrase`] 兜底。
- */
-{ code: "INTERNAL"; message: string };
-
-export type TrySilentUnlockResult = {
-	/**
-	 *  `true` = keyring 命中 + unwrap 成功,session 已 ready;
-	 *  `false` = "没什么可恢复的"(还没 setup / setup 完但 keyslot 缺失);
-	 *  注意 keyring 与 keyslot **漂移**会走 `Err` 而不是 `Ok(false)`,
-	 *  前端据此区分"该弹解锁 modal" vs "该走 init/join 引导"。
-	 */
-	resumed: boolean,
-};
-
 /**  见 [`analytics::DialogOpenSource`]。wire form: `notification` | `sidebar_icon`。 */
 export type UiDialogOpenSource = "notification" | "sidebar_icon";
 
@@ -894,55 +664,6 @@ export type UiUpdateActionOutcome = "started" | "succeeded" | "failed" | "cancel
 
 /**  见 [`analytics::UpdatePhase`]。wire form: `available` | `downloading` | `ready`。 */
 export type UiUpdatePhase = "available" | "downloading" | "ready";
-
-/**
- *  前端 modal 提交的解锁请求。
- * 
- *  `passphrase` 在 Tauri IPC 边界以明文存在,**绝不**应当再往 HTTP/TCP
- *  上序列化(那等于送到本机 socket 上,违反 §安全)——这一边界仅止于
- *  同进程内 invoke handler。
- */
-export type UnlockSpaceArgs = {
-	passphrase: string,
-};
-
-/**
- *  前端可 `error.code` switch 的 typed 错误。序列化形态:
- *  `{"code": "WRONG_PASSPHRASE"}` / `{"code": "INTERNAL", "message": "..."}`。
- */
-export type UnlockSpaceCommandError = 
-/**
- *  space_setup facade 尚未装配——bootstrap 还没跑完或装配失败。
- *  前端应延后重试或提示用户重启应用。
- */
-{ code: "FACADE_UNAVAILABLE" } | 
-/**  没有 setup 过——前端应引导走 init / join 流程,而不是 unlock。 */
-{ code: "SETUP_NOT_COMPLETED" } | 
-/**
- *  `setup_status.has_completed=true` 但磁盘 keyslot 缺失。
- *  前端应引导 factory reset。
- */
-{ code: "SPACE_NOT_INITIALIZED" } | 
-/**
- *  口令不能 unwrap 已存 master key。前端应在 modal 中提示
- *  "口令错误,请重试",**不关闭** modal。
- */
-{ code: "WRONG_PASSPHRASE" } | 
-/**
- *  keyslot 文件存在但版本不支持 / 反序列化失败。再正确的口令也
- *  派生不出能解开的 KEK。前端应引导 factory reset 或重新 join。
- */
-{ code: "CORRUPTED_KEY_MATERIAL" } | 
-/**
- *  兜底:IO / 序列化 / migration resume 等非预期失败。`message`
- *  仅面向开发者日志,前端展示通用错误对话框 + Sentry 上报即可。
- */
-{ code: "INTERNAL"; message: string };
-
-/**  解锁成功后返回的最小元数据。 */
-export type UnlockSpaceResultDto = {
-	spaceId: string,
-};
 
 export type UpdateKeyboardShortcutsResult = {
 	keyboardShortcuts: { [key in string]: ShortcutKeyDto },

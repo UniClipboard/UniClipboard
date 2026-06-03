@@ -66,11 +66,8 @@ macro_rules! classify {
     };
 }
 
-use crate::commands::clipboard_delivery::ResendEntryCommandError;
 use crate::commands::error::CommandError;
-use crate::commands::factory_reset::FactoryResetCommandError;
 use crate::commands::mobile_sync::MobileSyncError;
-use crate::commands::space_setup::{TrySilentUnlockError, UnlockSpaceCommandError};
 
 // Generic command taxonomy. `#[serde(tag = "code", content = "message")]` with
 // no `rename_all`, so codes are the PascalCase variant names verbatim.
@@ -107,45 +104,17 @@ classify!(MobileSyncError {
     "QR_RENDER_FAILED" => SystemError,
 });
 
-classify!(UnlockSpaceCommandError {
-    "FACADE_UNAVAILABLE" => SystemError,
-    "SETUP_NOT_COMPLETED" => UserError,
-    "SPACE_NOT_INITIALIZED" => UserError,
-    "WRONG_PASSPHRASE" => UserError,
-    "CORRUPTED_KEY_MATERIAL" => SystemError,
-    "INTERNAL" => SystemError,
-});
-
-classify!(TrySilentUnlockError {
-    "FACADE_UNAVAILABLE" => SystemError,
-    "INTERNAL" => SystemError,
-});
-
-classify!(FactoryResetCommandError {
-    "FACADE_UNAVAILABLE" => SystemError,
-    "KEY_MATERIAL_WIPE_FAILED" => SystemError,
-    "STORAGE_FAILED" => SystemError,
-    "INTERNAL" => SystemError,
-});
-
-classify!(ResendEntryCommandError {
-    "ENTRY_NOT_FOUND" => UserError,
-    "ENTRY_NOT_RESENDABLE" => UserError,
-    "TARGET_NOT_TRUSTED" => UserError,
-    "NO_ELIGIBLE_TARGETS" => UserError,
-    "STORAGE" => SystemError,
-    "DISPATCH" => SystemError,
-});
+// NOTE (ADR-008 P3-1): the unlock / silent-unlock / factory-reset / resend
+// command errors moved off Tauri commands onto the daemon loopback API, so their
+// severity classifications were removed here. The daemon emits user-recoverable
+// outcomes as 4xx (no Sentry escalation) and the FE error wrappers log them at
+// info/warn — they no longer flow through `invokeWithTrace` / this taxonomy.
 
 /// Every `(code, severity)` pair across all frontend-facing command errors.
 fn all_code_severities() -> Vec<(&'static str, ErrorSeverity)> {
     let mut all = Vec::new();
     all.extend_from_slice(CommandError::code_severities());
     all.extend_from_slice(MobileSyncError::code_severities());
-    all.extend_from_slice(UnlockSpaceCommandError::code_severities());
-    all.extend_from_slice(TrySilentUnlockError::code_severities());
-    all.extend_from_slice(FactoryResetCommandError::code_severities());
-    all.extend_from_slice(ResendEntryCommandError::code_severities());
     all
 }
 
@@ -291,95 +260,6 @@ mod tests {
     }
 
     #[test]
-    fn unlock_space_error_table_is_complete() {
-        use UnlockSpaceCommandError as E;
-        fn _coverage(e: &E) {
-            match e {
-                E::FacadeUnavailable
-                | E::SetupNotCompleted
-                | E::SpaceNotInitialized
-                | E::WrongPassphrase
-                | E::CorruptedKeyMaterial
-                | E::Internal { .. } => {}
-            }
-        }
-        assert_table_matches(&[
-            E::FacadeUnavailable,
-            E::SetupNotCompleted,
-            E::SpaceNotInitialized,
-            E::WrongPassphrase,
-            E::CorruptedKeyMaterial,
-            E::Internal {
-                message: "x".to_string(),
-            },
-        ]);
-    }
-
-    #[test]
-    fn try_silent_unlock_error_table_is_complete() {
-        use TrySilentUnlockError as E;
-        fn _coverage(e: &E) {
-            match e {
-                E::FacadeUnavailable | E::Internal { .. } => {}
-            }
-        }
-        assert_table_matches(&[
-            E::FacadeUnavailable,
-            E::Internal {
-                message: "x".to_string(),
-            },
-        ]);
-    }
-
-    #[test]
-    fn factory_reset_error_table_is_complete() {
-        use FactoryResetCommandError as E;
-        fn _coverage(e: &E) {
-            match e {
-                E::FacadeUnavailable
-                | E::KeyMaterialWipeFailed { .. }
-                | E::StorageFailed { .. }
-                | E::Internal { .. } => {}
-            }
-        }
-        let m = || "x".to_string();
-        assert_table_matches(&[
-            E::FacadeUnavailable,
-            E::KeyMaterialWipeFailed { message: m() },
-            E::StorageFailed { message: m() },
-            E::Internal { message: m() },
-        ]);
-    }
-
-    #[test]
-    fn resend_entry_error_table_is_complete() {
-        use crate::commands::clipboard_delivery::NotResendableReasonDto;
-        use ResendEntryCommandError as E;
-        fn _coverage(e: &E) {
-            match e {
-                E::EntryNotFound { .. }
-                | E::EntryNotResendable { .. }
-                | E::TargetNotTrusted { .. }
-                | E::NoEligibleTargets
-                | E::Storage { .. }
-                | E::Dispatch { .. } => {}
-            }
-        }
-        let m = || "x".to_string();
-        assert_table_matches(&[
-            E::EntryNotFound { entry_id: m() },
-            E::EntryNotResendable {
-                entry_id: m(),
-                reason: NotResendableReasonDto::RemoteOrigin,
-            },
-            E::TargetNotTrusted { device_id: m() },
-            E::NoEligibleTargets,
-            E::Storage { message: m() },
-            E::Dispatch { message: m() },
-        ]);
-    }
-
-    #[test]
     fn user_facing_codes_are_sorted_unique_and_user_only() {
         let codes = user_facing_error_codes();
 
@@ -391,8 +271,6 @@ mod tests {
         // Spot-check the case that motivated this module, and that a system
         // error never leaks into the user set.
         assert!(codes.contains(&"USERNAME_MUST_START_WITH_LETTER"));
-        assert!(codes.contains(&"WRONG_PASSPHRASE"));
         assert!(!codes.contains(&"PERSISTENCE_FAILED"));
-        assert!(!codes.contains(&"INTERNAL"));
     }
 }

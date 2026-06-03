@@ -6,14 +6,18 @@
  * # Endpoints / 端点
  * - `GET /encryption/state` → current encryption initialization & session state
  * - `POST /encryption/unlock` → auto-unlock encryption session via keyring (no passphrase)
+ * - `POST /encryption/unlock-with-passphrase` → user-driven passphrase unlock (ADR-008 D15)
  * - `POST /encryption/lock` → lock encryption session (clear master key)
+ * - `POST /encryption/factory-reset` → wipe key material + clear setup status
  * - `GET /encryption/keychain-access` → verify Keychain "Always Allow" permission
  */
 
 import {
+  factoryResetSpace as factoryResetSpaceSdk,
   getEncryptionState as getEncryptionStateSdk,
   lockEncryptionSession as lockEncryptionSessionSdk,
   unlockEncryptionSession as unlockEncryptionSessionSdk,
+  unlockSpaceWithPassphrase as unlockSpaceWithPassphraseSdk,
   verifyKeychainAccess as verifyKeychainAccessSdk,
 } from '@/api/generated/sdk.gen'
 import { daemonClient } from './client'
@@ -95,4 +99,52 @@ export async function verifyKeychainAccess(): Promise<boolean> {
   // `KeychainAccessEnvelope`, then `.data.granted` is the boolean payload.
   const envelope = await daemonClient.callSdk(() => verifyKeychainAccessSdk({ throwOnError: true }))
   return envelope.data.granted
+}
+
+/**
+ * Silent keyring-only resume (no passphrase) via `POST /encryption/unlock`.
+ *
+ * 用 keyring 已存 KEK 静默解锁。
+ *
+ * @returns `true` if the session resumed from the keyring, `false` if there is
+ *          nothing to resume (no setup yet / keyslot missing).
+ * @throws {DaemonApiError} on keyring↔keyslot drift / unexpected failure (500),
+ *          so the caller can fall back to prompting for the passphrase.
+ */
+export async function trySilentUnlock(): Promise<boolean> {
+  const envelope = await daemonClient.callSdk(() =>
+    unlockEncryptionSessionSdk({ throwOnError: true })
+  )
+  return envelope.data.success
+}
+
+/**
+ * User-driven passphrase unlock via `POST /encryption/unlock-with-passphrase`
+ * (ADR-008 D15 — passphrase now rides the session-gated loopback API).
+ *
+ * 用户主动输入明文口令解锁。
+ *
+ * @returns The unlocked space id.
+ * @throws {DaemonApiError} whose `.details.code` carries the semantic unlock
+ *          error tag (`WRONG_PASSPHRASE`, `SPACE_NOT_INITIALIZED`, …) for the
+ *          `security.ts` classifier to translate.
+ */
+export async function unlockSpaceWithPassphrase(passphrase: string): Promise<{ spaceId: string }> {
+  const envelope = await daemonClient.callSdk(() =>
+    unlockSpaceWithPassphraseSdk({ body: { passphrase }, throwOnError: true })
+  )
+  return { spaceId: envelope.data.spaceId }
+}
+
+/**
+ * Factory-reset the space via `POST /encryption/factory-reset` — wipe key
+ * material + clear setup status + cancel pending invitations.
+ *
+ * 重置并重新开始。
+ *
+ * @throws {DaemonApiError} whose `.details.code` carries the semantic reset
+ *          error tag (`KEY_MATERIAL_WIPE_FAILED`, `STORAGE_FAILED`, …).
+ */
+export async function factoryResetSpace(): Promise<void> {
+  await daemonClient.callSdk(() => factoryResetSpaceSdk({ throwOnError: true }))
 }

@@ -33,10 +33,9 @@ use uc_application::facade::{DeliveryHostEvent, EmitError, HostEvent, HostEventE
 
 /// `clipboard_delivery_status_changed` 事件 payload。
 ///
-/// 前端 detail 视图按 `entry_id` 过滤后 refetch
-/// [`crate::commands::clipboard_delivery::EntryDeliveryViewDto`],
-/// 拿 view 内的 status 渲染。`target_device_id` 当前未被消费,留作未来
-/// per-peer 局部刷新的钩子。
+/// 前端 detail 视图按 `entry_id` 过滤后 refetch `GET /clipboard/entries/{id}/delivery`
+/// (ADR-008 P3-1 起走 daemon loopback API),拿 view 内的 status 渲染。
+/// `target_device_id` 当前未被消费,留作未来 per-peer 局部刷新的钩子。
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Event)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipboardDeliveryStatusChanged {

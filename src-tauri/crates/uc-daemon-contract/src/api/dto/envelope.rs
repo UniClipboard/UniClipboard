@@ -20,9 +20,10 @@ use crate::api::dto::clipboard::{
 use crate::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, ResendResponse, RestoreEntryResponse,
 };
+use crate::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use crate::api::dto::device::LocalDeviceInfoDto;
 use crate::api::dto::encryption::{
-    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse,
+    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceResponse,
 };
 use crate::api::dto::member::{MemberSyncPreferencesDto, MemberSyncResultDto};
 use crate::api::dto::search::{SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData};
@@ -66,6 +67,7 @@ use crate::api::types::{
     ResendEnvelope = ApiEnvelope<ResendResponse>,
     CancelTransferEnvelope = ApiEnvelope<CancelTransferResponse>,
     RestoreEntryEnvelope = ApiEnvelope<RestoreEntryResponse>,
+    EntryDeliveryViewEnvelope = ApiEnvelope<EntryDeliveryViewDto>,
     // ── settings (GET + PUT both enveloped per §0.1) ───────────────
     SettingsEnvelope = ApiEnvelope<SettingsDto>,
     SettingsUpdateResultEnvelope = ApiEnvelope<SettingsUpdateResultDto>,
@@ -77,6 +79,7 @@ use crate::api::types::{
     EncryptionStateEnvelope = ApiEnvelope<EncryptionStateResponse>,
     KeychainAccessEnvelope = ApiEnvelope<KeychainAccessResponse>,
     EncryptionActionEnvelope = ApiEnvelope<EncryptionActionResponse>,
+    UnlockSpaceEnvelope = ApiEnvelope<UnlockSpaceResponse>,
     // ── upgrade ─────────────────────────────────────────────────────
     UpgradeStatusEnvelope = ApiEnvelope<UpgradeStatusDto>,
     AckUpgradeEnvelope = ApiEnvelope<AckUpgradePayload>,

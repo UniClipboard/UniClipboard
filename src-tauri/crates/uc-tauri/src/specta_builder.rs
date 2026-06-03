@@ -70,10 +70,6 @@ pub fn build() -> Builder<tauri::Wry> {
             // ── storage ─────────────────────────────────────────────────────────
             crate::commands::storage::open_data_directory,
             crate::commands::storage::open_logs_directory,
-            // ── clipboard delivery view (entry detail "源 + 同步状态") ──────────
-            crate::commands::clipboard_delivery::clipboard_entry_delivery_view,
-            // ── clipboard resend (ADR-005 Stage 1a) ─────────────────────────────
-            crate::commands::clipboard_delivery::clipboard_resend_entry,
             // ── quick panel ─────────────────────────────────────────────────────
             crate::commands::quick_panel::paste_to_previous_app,
             crate::commands::quick_panel::dismiss_quick_panel,
@@ -91,11 +87,6 @@ pub fn build() -> Builder<tauri::Wry> {
             crate::commands::mobile_sync::get_mobile_sync_settings,
             crate::commands::mobile_sync::update_mobile_sync_settings,
             crate::commands::mobile_sync::list_mobile_lan_interfaces,
-            // ── space setup ─────────────────────────────────────────────────────
-            crate::commands::space_setup::unlock_space_with_passphrase,
-            crate::commands::space_setup::try_silent_unlock,
-            // ── factory reset ───────────────────────────────────────────────────
-            crate::commands::factory_reset::factory_reset_space,
             // ── window chrome (macOS traffic lights) ────────────────────────────
             crate::commands::window_chrome::set_traffic_light_position,
         ])

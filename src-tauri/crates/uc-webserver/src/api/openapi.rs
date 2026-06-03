@@ -22,7 +22,8 @@ use crate::api::dto::clipboard::{
 };
 use crate::api::dto::device::LocalDeviceInfoDto;
 use crate::api::dto::encryption::{
-    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse,
+    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceRequest,
+    UnlockSpaceResponse,
 };
 use crate::api::dto::error::ApiErrorResponse;
 use crate::api::dto::member::{
@@ -46,18 +47,22 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
     PerTargetOutcomeDto, ResendRequest, ResendResponse, RestoreEntryResponse,
 };
+use uc_daemon_contract::api::dto::clipboard_delivery::{
+    DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
+    EntrySourceDto,
+};
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelTransferEnvelope, ClearCacheEnvelope, ClearHistoryEnvelope,
     ClipboardStatsEnvelope, DispatchOutcomeEnvelope, EncryptionActionEnvelope,
-    EncryptionStateEnvelope, EntryDetailEnvelope, EntryResourceEnvelope, KeychainAccessEnvelope,
-    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope,
+    EncryptionStateEnvelope, EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryResourceEnvelope,
+    KeychainAccessEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope,
     MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, PeerSnapshotListEnvelope,
     PresenceRefreshEnvelope, ResendEnvelope, RestoreEntryEnvelope, SearchQueryEnvelope,
     SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope, SettingsEnvelope,
     SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
     SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
     SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope, StorageStatsEnvelope,
-    ToggleFavoriteEnvelope, UpgradeStatusEnvelope,
+    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -110,6 +115,7 @@ impl Modify for ContractMeta {
         crate::api::clipboard::toggle_favorite,
         crate::api::clipboard::get_stats,
         crate::api::clipboard::get_entry_resource,
+        crate::api::clipboard::get_entry_delivery_view_handler,
         crate::api::clipboard::clear_history,
         crate::api::clipboard::dispatch_text,
         crate::api::clipboard::resend_entry,
@@ -135,7 +141,9 @@ impl Modify for ContractMeta {
         // ── encryption ─────────────────────────────────────────────
         crate::api::encryption::get_encryption_state_handler,
         crate::api::encryption::unlock_handler,
+        crate::api::encryption::unlock_with_passphrase_handler,
         crate::api::encryption::lock_handler,
+        crate::api::encryption::factory_reset_handler,
         crate::api::encryption::verify_keychain_access_handler,
         // ── settings ───────────────────────────────────────────────
         crate::api::settings::get_settings_handler,
@@ -181,6 +189,7 @@ impl Modify for ContractMeta {
             ResendEnvelope,
             CancelTransferEnvelope,
             RestoreEntryEnvelope,
+            EntryDeliveryViewEnvelope,
             // ── clipboard: payload + request DTOs ──────────────────
             EntryProjectionResponseDto,
             EntryDetailDto,
@@ -196,6 +205,12 @@ impl Modify for ContractMeta {
             ResendResponse,
             CancelTransferRequest,
             CancelTransferResponse,
+            // ── clipboard: delivery view (ADR-008 P3-1) ────────────
+            EntryDeliveryViewDto,
+            EntrySourceDto,
+            EntryDeliveryTargetDto,
+            EntryDeliveryStatusDto,
+            DeliveryFailureReasonDto,
             RestoreEntryResponse,
             // ── search ─────────────────────────────────────────────
             SearchQueryEnvelope,
@@ -228,9 +243,12 @@ impl Modify for ContractMeta {
             EncryptionStateEnvelope,
             EncryptionActionEnvelope,
             KeychainAccessEnvelope,
+            UnlockSpaceEnvelope,
             EncryptionStateResponse,
             EncryptionActionResponse,
             KeychainAccessResponse,
+            UnlockSpaceRequest,
+            UnlockSpaceResponse,
             // ── settings ───────────────────────────────────────────
             SettingsEnvelope,
             SettingsUpdateResultEnvelope,
@@ -401,11 +419,13 @@ mod assembly_smoke_tests {
         );
 
         // Endpoint cardinality is frozen by §D. The `paths(...)` list registers
-        // 48 handler operations, but 3 paths carry two HTTP methods each
+        // 51 handler operations, but 3 paths carry two HTTP methods each
         // (`/settings` GET+PUT, `/clipboard/entries/{id}` GET+DELETE,
         // `/member/{device_id}/sync-preferences` GET+PATCH), so they collapse to
-        // 45 unique path templates / 48 operations. Freeze both numbers so a
-        // dropped handler OR a dropped path is caught.
+        // 48 unique path templates / 51 operations. Freeze both numbers so a
+        // dropped handler OR a dropped path is caught. (ADR-008 P3-1 D15 added
+        // `POST /encryption/unlock-with-passphrase`, `POST /encryption/factory-reset`,
+        // and `GET /clipboard/entries/{id}/delivery`: +3 paths, +3 operations.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -414,8 +434,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            45,
-            "expected exactly 45 path templates, found {}: {:?}",
+            48,
+            "expected exactly 48 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -429,8 +449,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 48,
-            "expected exactly 48 operations across all paths, found {operation_count}"
+            operation_count, 51,
+            "expected exactly 51 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

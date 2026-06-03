@@ -234,6 +234,7 @@ pub async fn start_in_process(
         process_mode: run_mode.process_mode(),
         mobile_sync_endpoint_info,
         mobile_lan_lifecycle: Arc::clone(&mobile_lan_lifecycle),
+        analytics: Arc::clone(&deps.analytics),
     });
 
     let input = DaemonRunLoopInput {

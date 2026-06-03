@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 // Payload DTOs that get wrapped (imported from their own modules):
+use crate::api::dto::analytics::CaptureUiEventResponse;
 use crate::api::dto::auth::SessionTokenResponse;
 use crate::api::dto::clipboard::{
     ClearHistoryResultDto, ClipboardStatsDto, EntryDetailDto, EntryProjectionResponseDto,
@@ -96,6 +97,8 @@ use crate::api::types::{
     // ── upgrade ─────────────────────────────────────────────────────
     UpgradeStatusEnvelope = ApiEnvelope<UpgradeStatusDto>,
     AckUpgradeEnvelope = ApiEnvelope<AckUpgradePayload>,
+    // ── analytics (ADR-008 D20) ────────────────────────────────────
+    CaptureUiEventEnvelope = ApiEnvelope<CaptureUiEventResponse>,
     // ── search (status + rebuild + query all enveloped per §0.1) ───
     SearchStatusEnvelope = ApiEnvelope<SearchStatusData>,
     SearchRebuildEnvelope = ApiEnvelope<SearchRebuildAcceptedData>,

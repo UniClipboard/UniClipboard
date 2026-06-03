@@ -117,6 +117,61 @@ export type CancelTransferResponse = {
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
+export type CaptureUiEventEnvelope = {
+    data: CaptureUiEventResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Tagged union of GUI-originated UI analytics events (discriminated by `kind`).
+ *
+ * Wire-compatible with the retired `capture_update_ui_event` Tauri command's
+ * `UpdateUiEvent` (same discriminators / field names), except `DialogOpened`
+ * now carries `install_kind` explicitly (see [`UiInstallKind`]).
+ */
+export type CaptureUiEventRequest = {
+    install_kind: UiInstallKind;
+    kind: 'dialog_opened';
+    phase: UiUpdatePhase;
+    source: UiDialogOpenSource;
+} | {
+    kind: 'dismissed';
+    phase: UiUpdatePhase;
+    source: UiDismissSource;
+} | {
+    action: UiUpdateAction;
+    error_kind?: string | null;
+    kind: 'action_invoked';
+    outcome: UiUpdateActionOutcome;
+};
+
+/**
+ * Response for `POST /analytics/capture`. `capture` is fire-and-forget, so
+ * `accepted` only confirms the daemon decoded the event and handed it to the
+ * sink — not that it reached PostHog.
+ */
+export type CaptureUiEventResponse = {
+    accepted: boolean;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
 export type ClearCacheEnvelope = {
     data: ClearCacheResponse;
     /**
@@ -2166,6 +2221,46 @@ export type ToggleFavoriteResultDto = {
 };
 
 /**
+ * Mirrors `analytics::DialogOpenSource`. wire: `notification` | `sidebar_icon`.
+ */
+export type UiDialogOpenSource = 'notification' | 'sidebar_icon';
+
+/**
+ * Mirrors `analytics::DismissSource`. wire: `dialog_later` | `dialog_closed` |
+ * `package_manager_dialog_closed`.
+ */
+export type UiDismissSource = 'dialog_later' | 'dialog_closed' | 'package_manager_dialog_closed';
+
+/**
+ * Mirrors `analytics::InstallKind`. wire (lowercase): `macos` | `windows` |
+ * `windowsportable` | `appimage` | `deb` | `rpm` | `unknown`.
+ *
+ * Cross-process note (ADR-008 D20): `install_kind` was historically probed
+ * backend-side and the webview "knew nothing". After the process split the
+ * install provenance of the *running app* is owned by the native GUI shell
+ * (it holds `current_exe` / the portable marker / the `APPIMAGE` env), while
+ * the daemon has no install-detection code. So the webview now supplies it —
+ * it reads `get_install_kind` (native, cached) and forwards the result here.
+ */
+export type UiInstallKind = 'macos' | 'windows' | 'windowsportable' | 'appimage' | 'deb' | 'rpm' | 'unknown';
+
+/**
+ * Mirrors `analytics::UpdateAction`. wire: `download_bg` | `install`.
+ */
+export type UiUpdateAction = 'download_bg' | 'install';
+
+/**
+ * Mirrors `analytics::UpdateActionOutcome`. wire: `started` | `succeeded` |
+ * `failed` | `cancelled`.
+ */
+export type UiUpdateActionOutcome = 'started' | 'succeeded' | 'failed' | 'cancelled';
+
+/**
+ * Mirrors `analytics::UpdatePhase`. wire: `available` | `downloading` | `ready`.
+ */
+export type UiUpdatePhase = 'available' | 'downloading' | 'ready';
+
+/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -2354,6 +2449,22 @@ export type WsSubscribeRequest = {
     action: string;
     topics: Array<string>;
 };
+
+export type CaptureUiEventData = {
+    body: CaptureUiEventRequest;
+    path?: never;
+    query?: never;
+    url: '/analytics/capture';
+};
+
+export type CaptureUiEventResponses = {
+    /**
+     * Event accepted for dispatch
+     */
+    200: CaptureUiEventEnvelope;
+};
+
+export type CaptureUiEventResponse2 = CaptureUiEventResponses[keyof CaptureUiEventResponses];
 
 export type AuthConnectData = {
     body: ConnectRequest;

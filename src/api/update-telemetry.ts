@@ -1,15 +1,18 @@
-//! 前端 UI 触发的更新事件 → 后端 PostHog facade 的薄包装。
+//! 前端 UI 触发的更新事件 → daemon `POST /analytics/capture` 的薄包装
+//! （ADR-008 D20：daemon 为 product analytics 唯一权威发送方）。
 //!
-//! 后端 `capture_update_ui_event` Tauri command 接受三类 variant
-//! (`dialog_opened` / `dismissed` / `action_invoked`)，对应的字符串枚举
-//! 跟 `docs/architecture/telemetry-events.md §7.8` 一致。具体语义：
+//! 端点接受三类 variant（`dialog_opened` / `dismissed` / `action_invoked`），
+//! 对应的字符串枚举跟 `docs/architecture/telemetry-events.md §7.8` 一致。语义：
 //!
 //! - 所有 capture 都是 fire-and-forget；网络/序列化失败仅 `log.warn`。
-//! - `install_kind` 由后端反查注入，前端不传也无法传。
+//! - `install_kind`（仅 `dialog_opened` 需要）由前端反查 `getInstallKind`
+//!   （native，缓存）后透传——拆进程后 daemon 无安装探测代码，运行中 app 的
+//!   安装来源由 GUI 原生壳掌握，故由前端供给（见 contract `UiInstallKind` 注释）。
 //! - `idle` / `installing` 不属于 schema 的 `UiUpdatePhase` 集合，调用方
 //!   遇到时应通过 `toUiPhase` 过滤后再调，或直接跳过 capture。
-import { commands } from '@/lib/ipc'
+import { captureUiEvent } from '@/api/daemon/analytics'
 import { createLogger } from '@/lib/logger'
+import { getInstallKind } from './updater'
 import type { DownloadPhase } from './updater'
 
 const log = createLogger('update-telemetry')
@@ -37,19 +40,26 @@ export function toUiPhase(phase: DownloadPhase): UiPhase | null {
 
 function fireAndForget(promise: Promise<unknown>, tag: string): void {
   promise.catch(err => {
-    log.warn({ err, event: tag }, 'capture_update_ui_event 失败')
+    log.warn({ err, event: tag }, 'capture ui event 失败')
   })
 }
 
 export function captureUpdateDialogOpened(source: DialogOpenSource, phase: UiPhase): void {
+  // `dialog_opened` is the only variant needing install_kind. Probe it natively
+  // (cached) and forward; on probe failure fall back to `unknown` so the event
+  // still fires rather than being dropped.
   fireAndForget(
-    commands.captureUpdateUiEvent({ kind: 'dialog_opened', source, phase }),
+    getInstallKind()
+      .catch(() => 'unknown' as const)
+      .then(installKind =>
+        captureUiEvent({ kind: 'dialog_opened', source, phase, install_kind: installKind })
+      ),
     'dialog_opened'
   )
 }
 
 export function captureUpdateDismissed(phase: UiPhase, source: DismissSource): void {
-  fireAndForget(commands.captureUpdateUiEvent({ kind: 'dismissed', phase, source }), 'dismissed')
+  fireAndForget(captureUiEvent({ kind: 'dismissed', phase, source }), 'dismissed')
 }
 
 export function captureUpdateActionInvoked(
@@ -58,7 +68,7 @@ export function captureUpdateActionInvoked(
   errorKind?: string
 ): void {
   fireAndForget(
-    commands.captureUpdateUiEvent({
+    captureUiEvent({
       kind: 'action_invoked',
       action,
       outcome,

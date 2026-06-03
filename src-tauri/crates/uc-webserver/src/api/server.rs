@@ -20,6 +20,7 @@ use axum::Router;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use uc_application::facade::AppFacade;
+use uc_observability::analytics::{AnalyticsPort, NoopAnalyticsSink};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -50,6 +51,12 @@ pub struct DaemonApiState {
     /// Wrapped in Arc so middleware (which receives Arc<DaemonApiState>) can share
     /// the same state with the server without cloning the inner fields.
     pub security: Arc<SecurityState>,
+    /// Analytics sink — the daemon is the single authoritative product-analytics
+    /// sender (ADR-008 D20). `POST /analytics/capture` dispatches GUI UI events
+    /// through this. Defaults to a no-op so assembly paths / tests that don't
+    /// wire analytics still construct cleanly; the real (gated) sink is injected
+    /// via [`Self::with_analytics`] in the daemon runtime.
+    pub analytics: Arc<dyn AnalyticsPort>,
 }
 
 impl DaemonApiState {
@@ -67,11 +74,19 @@ impl DaemonApiState {
             clipboard_capture_gate: None,
             deferred_ready_notify: None,
             security,
+            analytics: Arc::new(NoopAnalyticsSink),
         }
     }
 
     pub fn with_security(mut self, security: Arc<SecurityState>) -> Self {
         self.security = security;
+        self
+    }
+
+    /// Inject the daemon's analytics sink so `POST /analytics/capture` reports
+    /// through the single authoritative sender (ADR-008 D20).
+    pub fn with_analytics(mut self, analytics: Arc<dyn AnalyticsPort>) -> Self {
+        self.analytics = analytics;
         self
     }
 

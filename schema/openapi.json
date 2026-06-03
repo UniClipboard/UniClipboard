@@ -95,6 +95,121 @@
         ],
         "type": "object"
       },
+      "CaptureUiEventEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CaptureUiEventResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "CaptureUiEventRequest": {
+        "description": "Tagged union of GUI-originated UI analytics events (discriminated by `kind`).\n\nWire-compatible with the retired `capture_update_ui_event` Tauri command's\n`UpdateUiEvent` (same discriminators / field names), except `DialogOpened`\nnow carries `install_kind` explicitly (see [`UiInstallKind`]).",
+        "discriminator": {
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "description": "User opened `UpdateDialog` / `PackageManagerUpdateDialog`.",
+            "properties": {
+              "install_kind": {
+                "$ref": "#/components/schemas/UiInstallKind"
+              },
+              "kind": {
+                "enum": [
+                  "dialog_opened"
+                ],
+                "type": "string"
+              },
+              "phase": {
+                "$ref": "#/components/schemas/UiUpdatePhase"
+              },
+              "source": {
+                "$ref": "#/components/schemas/UiDialogOpenSource"
+              }
+            },
+            "required": [
+              "source",
+              "phase",
+              "install_kind",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "User dismissed the dialog (later / closed / cancelled).",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "dismissed"
+                ],
+                "type": "string"
+              },
+              "phase": {
+                "$ref": "#/components/schemas/UiUpdatePhase"
+              },
+              "source": {
+                "$ref": "#/components/schemas/UiDismissSource"
+              }
+            },
+            "required": [
+              "phase",
+              "source",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A pure-UI action path (e.g. `Cancelled`). `error_kind` must be a short\nidentifier (< 32 chars, e.g. `user_cancelled`) and MUST NOT contain\npaths / URLs / IPs (telemetry schema doc §6.1).",
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/UiUpdateAction"
+              },
+              "error_kind": {
+                "nullable": true,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "action_invoked"
+                ],
+                "type": "string"
+              },
+              "outcome": {
+                "$ref": "#/components/schemas/UiUpdateActionOutcome"
+              }
+            },
+            "required": [
+              "action",
+              "outcome",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "CaptureUiEventResponse": {
+        "description": "Response for `POST /analytics/capture`. `capture` is fire-and-forget, so\n`accepted` only confirms the daemon decoded the event and handed it to the\nsink — not that it reached PostHog.",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
       "ClearCacheEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -3328,6 +3443,63 @@
         ],
         "type": "object"
       },
+      "UiDialogOpenSource": {
+        "description": "Mirrors `analytics::DialogOpenSource`. wire: `notification` | `sidebar_icon`.",
+        "enum": [
+          "notification",
+          "sidebar_icon"
+        ],
+        "type": "string"
+      },
+      "UiDismissSource": {
+        "description": "Mirrors `analytics::DismissSource`. wire: `dialog_later` | `dialog_closed` |\n`package_manager_dialog_closed`.",
+        "enum": [
+          "dialog_later",
+          "dialog_closed",
+          "package_manager_dialog_closed"
+        ],
+        "type": "string"
+      },
+      "UiInstallKind": {
+        "description": "Mirrors `analytics::InstallKind`. wire (lowercase): `macos` | `windows` |\n`windowsportable` | `appimage` | `deb` | `rpm` | `unknown`.\n\nCross-process note (ADR-008 D20): `install_kind` was historically probed\nbackend-side and the webview \"knew nothing\". After the process split the\ninstall provenance of the *running app* is owned by the native GUI shell\n(it holds `current_exe` / the portable marker / the `APPIMAGE` env), while\nthe daemon has no install-detection code. So the webview now supplies it —\nit reads `get_install_kind` (native, cached) and forwards the result here.",
+        "enum": [
+          "macos",
+          "windows",
+          "windowsportable",
+          "appimage",
+          "deb",
+          "rpm",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "UiUpdateAction": {
+        "description": "Mirrors `analytics::UpdateAction`. wire: `download_bg` | `install`.",
+        "enum": [
+          "download_bg",
+          "install"
+        ],
+        "type": "string"
+      },
+      "UiUpdateActionOutcome": {
+        "description": "Mirrors `analytics::UpdateActionOutcome`. wire: `started` | `succeeded` |\n`failed` | `cancelled`.",
+        "enum": [
+          "started",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "UiUpdatePhase": {
+        "description": "Mirrors `analytics::UpdatePhase`. wire: `available` | `downloading` | `ready`.",
+        "enum": [
+          "available",
+          "downloading",
+          "ready"
+        ],
+        "type": "string"
+      },
       "UnlockSpaceEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -3655,6 +3827,46 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/analytics/capture": {
+      "post": {
+        "description": "Decode a GUI UI-interaction event and hand it to the daemon's analytics sink.\nFire-and-forget: `accepted: true` only confirms the event was decoded and\ndispatched, not that it reached PostHog.",
+        "operationId": "captureUiEvent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureUiEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureUiEventEnvelope"
+                }
+              }
+            },
+            "description": "Event accepted for dispatch"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /analytics/capture",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
     "/auth/connect": {
       "post": {
         "description": "Validates the bearer token in the Authorization header, registers the client\nPID, and returns a JWT session token wrapped in the canonical envelope.\n\nRate limiting: This endpoint has no session token yet, so rate limiting\nis applied by client IP address (from ConnectInfo). This is trustworthy\nbecause it comes from the TCP stack, not caller-controlled input.\n\nNOTE on ConnectInfo: ConnectInfo<SocketAddr> reads the socket address from\nthe TCP connection metadata, NOT from HTTP headers. In test contexts (using\ntower::ServiceExt::oneshot without a real TCP listener), the socket address\nwill be a default value (typically 127.0.0.1:0 or ::1:0). The unit tests\nfor SlidingWindowRateLimiter cover the rate limiting logic independently.\nIP-based rate limiting for /auth/connect works correctly in production.\n\nIMPORTANT: ConnectInfo<SocketAddr> works ONLY when the server uses\n`into_make_service_with_connect_info::<SocketAddr>()`.\nIn test contexts using tower::ServiceExt::oneshot, ConnectInfo may be absent.\nThe handler uses Option<ConnectInfo<SocketAddr>> so tests work correctly.\nIP-based rate limiting is skipped when ConnectInfo is unavailable (test-only code path).",

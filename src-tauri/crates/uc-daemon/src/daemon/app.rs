@@ -135,6 +135,11 @@ pub struct DaemonApp {
     /// listener (测试 / 未来 GUI-only 路径)。
     mobile_lan_lifecycle:
         Option<Arc<crate::daemon::mobile_lan_lifecycle::MobileLanLifecycleController>>,
+    /// Analytics sink injected into `DaemonApiState` so `POST /analytics/capture`
+    /// reports through the daemon — the single authoritative analytics sender
+    /// (ADR-008 D20). `None` (test / GUI-only assembly) leaves the API state's
+    /// no-op default in place.
+    analytics: Option<Arc<dyn uc_observability::analytics::AnalyticsPort>>,
 }
 
 impl DaemonApp {
@@ -165,6 +170,7 @@ impl DaemonApp {
             process_mode: DaemonProcessMode::Standalone,
             mobile_lan_endpoint_info: None,
             mobile_lan_lifecycle: None,
+            analytics: None,
         }
     }
 
@@ -216,6 +222,7 @@ impl DaemonApp {
             process_mode,
             mobile_lan_endpoint_info: None,
             mobile_lan_lifecycle: None,
+            analytics: None,
         }
     }
 
@@ -244,6 +251,16 @@ impl DaemonApp {
         controller: Arc<crate::daemon::mobile_lan_lifecycle::MobileLanLifecycleController>,
     ) -> Self {
         self.mobile_lan_lifecycle = Some(controller);
+        self
+    }
+
+    /// Inject the analytics sink so the daemon's `POST /analytics/capture`
+    /// endpoint reports through the single authoritative sender (ADR-008 D20).
+    pub fn with_analytics(
+        mut self,
+        analytics: Arc<dyn uc_observability::analytics::AnalyticsPort>,
+    ) -> Self {
+        self.analytics = Some(analytics);
         self
     }
 
@@ -283,6 +300,10 @@ impl DaemonApp {
         };
         let api_state = match &self.deferred_ready_notify {
             Some(notify) => api_state.with_deferred_ready_notify(Arc::clone(notify)),
+            None => api_state,
+        };
+        let api_state = match &self.analytics {
+            Some(analytics) => api_state.with_analytics(Arc::clone(analytics)),
             None => api_state,
         };
         // 4. Register the daemon's WS emitter on the shared host-event bus

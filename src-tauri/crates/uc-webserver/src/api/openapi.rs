@@ -48,6 +48,10 @@ use crate::api::dto::settings::{
     SettingsPatchDto, SettingsUpdateResultDto, ShortcutKeyDto, SyncFrequencyDto, SyncSettingsDto,
     SyncSettingsPatchDto, ThemeDto, UpdateChannelDto,
 };
+use uc_daemon_contract::api::dto::analytics::{
+    CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
+    UiInstallKind, UiUpdateAction, UiUpdateActionOutcome, UiUpdatePhase,
+};
 use uc_daemon_contract::api::dto::auth::{ConnectRequest, SessionTokenResponse};
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
@@ -58,20 +62,20 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
     EntrySourceDto,
 };
 use uc_daemon_contract::api::dto::envelope::{
-    AckUpgradeEnvelope, CancelTransferEnvelope, ClearCacheEnvelope, ClearHistoryEnvelope,
-    ClipboardStatsEnvelope, DispatchOutcomeEnvelope, EncryptionActionEnvelope,
-    EncryptionStateEnvelope, EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryResourceEnvelope,
-    KeychainAccessEnvelope, LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
-    LocalDeviceInfoEnvelope, MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope,
-    MobileDeviceListEnvelope, MobileSyncActionEnvelope, MobileSyncSettingsEnvelope,
-    PeerSnapshotListEnvelope, PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope,
-    ResendEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope,
-    SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope, SettingsEnvelope,
-    SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
-    SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
-    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope, StorageStatsEnvelope,
-    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateMobileSyncSettingsEnvelope,
-    UpgradeStatusEnvelope,
+    AckUpgradeEnvelope, CancelTransferEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
+    ClearHistoryEnvelope, ClipboardStatsEnvelope, DispatchOutcomeEnvelope,
+    EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
+    EntryDetailEnvelope, EntryResourceEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
+    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope,
+    MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
+    MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope,
+    PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope, ResendEnvelope, RestoreEntryEnvelope,
+    RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
+    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
+    SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
+    SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
+    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope,
+    UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -172,6 +176,8 @@ impl Modify for ContractMeta {
         // ── upgrade ────────────────────────────────────────────────
         crate::api::upgrade::get_upgrade_status_handler,
         crate::api::upgrade::ack_upgrade_handler,
+        // ── analytics (ADR-008 D20) ────────────────────────────────
+        crate::api::analytics::capture_handler,
         // ── system: diagnostics & topology ─────────────────────────
         crate::api::routes::health,
         crate::api::routes::status,
@@ -324,6 +330,16 @@ impl Modify for ContractMeta {
             AckUpgradeEnvelope,
             UpgradeStatusDto,
             AckUpgradePayload,
+            // ── analytics (ADR-008 D20) ────────────────────────────
+            CaptureUiEventEnvelope,
+            CaptureUiEventRequest,
+            CaptureUiEventResponse,
+            UiDialogOpenSource,
+            UiUpdatePhase,
+            UiDismissSource,
+            UiUpdateAction,
+            UiUpdateActionOutcome,
+            UiInstallKind,
             // ── system: diagnostics & topology ─────────────────────
             StatusEnvelope,
             PeerSnapshotListEnvelope,
@@ -460,11 +476,12 @@ mod assembly_smoke_tests {
         // (`/settings` GET+PUT, `/clipboard/entries/{id}` GET+DELETE,
         // `/member/{device_id}/sync-preferences` GET+PATCH, `/mobile-sync/devices`
         // GET+POST, `/mobile-sync/settings` GET+PATCH), so they collapse to
-        // 53 unique path templates / 58 operations. Freeze both numbers so a
+        // 54 unique path templates / 59 operations. Freeze both numbers so a
         // dropped handler OR a dropped path is caught. (ADR-008 P3-1 D15 added
         // `POST /encryption/unlock-with-passphrase`, `POST /encryption/factory-reset`,
         // and `GET /clipboard/entries/{id}/delivery`; ADR-008 P3-b added the 7
-        // `/mobile-sync/*` operations: +5 paths, +7 operations.)
+        // `/mobile-sync/*` operations: +5 paths, +7 operations; ADR-008 P3-c D20
+        // added `POST /analytics/capture`: +1 path, +1 operation.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -473,8 +490,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            53,
-            "expected exactly 53 path templates, found {}: {:?}",
+            54,
+            "expected exactly 54 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -488,8 +505,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 58,
-            "expected exactly 58 operations across all paths, found {operation_count}"
+            operation_count, 59,
+            "expected exactly 59 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

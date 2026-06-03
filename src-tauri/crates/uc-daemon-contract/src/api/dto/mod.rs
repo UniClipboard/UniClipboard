@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod auth;
 pub mod clipboard;
 pub mod clipboard_command;

@@ -26,11 +26,11 @@ pub struct DaemonAppAssemblyInput {
     pub external_shutdown: Option<CancellationToken>,
     pub clipboard_capture_gate: Arc<AtomicBool>,
     pub local_device_id: String,
-    /// 见 `DaemonApp::listens_to_os_signals`——
-    /// `GuiInProcess` 模式置 false，其他置 true。
+    /// 见 `DaemonApp::listens_to_os_signals`——现存 run-mode 恒为 true
+    /// (ADR-008 P3-3 后 daemon 永远是独立进程)。
     pub listens_to_os_signals: bool,
-    /// 写进 PID 文件的进程模式标记。
-    /// `GuiInProcess` → `InProcess`；其他 → `Standalone`。
+    /// 写进 PID 文件的进程模式标记。现存 run-mode 恒为 `Standalone`;
+    /// `InProcess` 仅作 legacy PID 文件读取保留。
     pub process_mode: DaemonProcessMode,
     /// Mobile sync LAN endpoint adapter — daemon listener 启停时通过 inherent
     /// `set` / `clear` 写入,facade 端只读。

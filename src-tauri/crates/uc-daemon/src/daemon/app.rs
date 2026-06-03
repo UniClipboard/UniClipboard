@@ -169,12 +169,12 @@ pub struct DaemonApp {
     local_device_id: Option<String>,
     /// 是否在 main loop 里监听 OS 信号（SIGTERM/SIGINT/Ctrl-C）。
     ///
-    /// `Standalone` 置 true；`GuiInProcess` 置 false——OS 信号属于 GUI 的
-    /// 责任，daemon 不能抢占 handler，shutdown 必须通过 caller 持有的
-    /// cancel token 触发。
+    /// 现存所有 run-mode（`Standalone` / `ServerHeadless`）都是独立进程,
+    /// 恒置 true——daemon 自己处理 OS 信号(ADR-008 P3-3 后不再有同进程 GUI)。
     listens_to_os_signals: bool,
     /// 写进 PID 文件的进程模式——决定 `cli stop` 能不能 SIGTERM 这个
-    /// daemon。`GuiInProcess` → `InProcess`；`Standalone` → `Standalone`。
+    /// daemon。现存 run-mode 恒为 `Standalone`(可 SIGTERM);`InProcess` 仅作
+    /// legacy PID 文件读取保留(ADR-008 P3-3)。
     process_mode: DaemonProcessMode,
     /// Mobile sync LAN endpoint adapter 的具体类型,daemon 启动时用它 spawn
     /// `mobile_lan` listener,起来后 `set` 当前 URL,关闭后 `clear`。

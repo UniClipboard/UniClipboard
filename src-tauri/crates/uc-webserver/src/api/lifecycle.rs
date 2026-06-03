@@ -24,10 +24,11 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/lifecycle/ready", post(lifecycle_ready_handler))
 }
 
-/// 通知 daemon：GUI 已解锁，可以开始采集剪贴板。
+/// 通知 daemon：已解锁，可以开始采集剪贴板——打开 clipboard capture 门控。
 ///
-/// 在 `GuiInProcess` 模式下，剪贴板采集被门控住，直到 GUI 在用户解锁
-/// 应用之后显式发出"就绪"信号；本端点负责打开该门控。
+/// 锁定期 daemon 把剪贴板采集门控住(deferred services);解锁后用本端点
+/// 放行。ADR-008 P3-3 起 daemon 永远是独立进程,GUI 作为纯客户端经 loopback
+/// HTTP 调它(旧 `GuiInProcess` 同进程模式已删除)。
 #[utoipa::path(
     post,
     path = "/lifecycle/ready",

@@ -17,12 +17,11 @@ pub enum DaemonProcessMode {
     /// 独立 daemon 进程：`cli start` 拉起的 detached 子进程，或者用户在
     /// 终端直接 `uniclipboard-daemon`。`cli stop` 可以安全地 SIGTERM 它。
     Standalone,
-    /// in-process daemon：跑在 GUI shell 自己的进程里（`uc-tauri` 等
-    /// 通过 [`DaemonRunMode::GuiInProcess`] 启动）。`cli stop` **必须拒绝**
-    /// 对它发 SIGTERM——会把整个 GUI 一起带挂；正确的关闭方式是用户去
-    /// 关闭 GUI。
-    ///
-    /// [`DaemonRunMode::GuiInProcess`]: ../uc_desktop/daemon/run_mode/enum.DaemonRunMode.html#variant.GuiInProcess
+    /// in-process daemon：旧版 GUI 在自己的进程里跑 daemon 时写下的标记。
+    /// ADR-008 P3-3 (B2'-3) 起 GUI 转纯客户端,**不再产生**此模式;保留它
+    /// 只为读取旧版 GUI 留下的 legacy PID 文件——`cli stop` 据此**拒绝**对
+    /// 这类 PID 发 SIGTERM(旧 GUI 进程内 daemon,SIGTERM 会把 GUI 一起带挂),
+    /// 提示用户去关闭那个 GUI。
     InProcess,
 }
 

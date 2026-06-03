@@ -179,8 +179,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gui_in_process_or_locked_mode_defers_clipboard_services() {
-        let mut plan = DaemonServicePlan::build(input(DaemonRunMode::GuiInProcess, false));
+    async fn locked_mode_defers_clipboard_services() {
+        // ADR-008 P3-3 (B2'-3): the GuiInProcess run-mode (which deferred via
+        // `waits_for_gui_ready`) is gone. Deferral now hinges solely on the
+        // encryption-locked branch — a locked Standalone daemon defers the same way.
+        let mut plan = DaemonServicePlan::build(input(DaemonRunMode::Standalone, false));
 
         assert_eq!(plan.services.len(), 1);
         assert_eq!(plan.deferred_services.len(), 3);

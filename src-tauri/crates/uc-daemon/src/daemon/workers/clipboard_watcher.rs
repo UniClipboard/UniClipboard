@@ -62,9 +62,11 @@ pub struct DaemonClipboardChangeHandler {
     event_tx: broadcast::Sender<DaemonWsEvent>,
     clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
     /// Gate that controls whether clipboard capture is active.
-    /// When false, clipboard change events are silently dropped.
-    /// Used in `GuiInProcess` mode to defer clipboard capture until
-    /// the GUI user explicitly unlocks the app and POSTs `/lifecycle/ready`.
+    /// When false, clipboard change events are silently dropped. Defers capture
+    /// while encryption is still locked; the daemon opens the gate once it
+    /// unlocks and triggers its deferred services (ADR-008 P3-3: the former
+    /// `GuiInProcess` `/lifecycle/ready` path is gone — daemon is always
+    /// standalone and drives this itself).
     capture_gate: Arc<AtomicBool>,
     clipboard_capture: Arc<ClipboardCaptureFacade>,
     clipboard_live_index: Arc<ClipboardLiveIndexFacade>,

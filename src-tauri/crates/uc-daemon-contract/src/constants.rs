@@ -45,6 +45,12 @@ pub mod ws_event {
     pub const CLIPBOARD_INCOMING_PENDING: &str = "clipboard.incoming_pending";
     pub const FILE_TRANSFER_STATUS_CHANGED: &str = "file-transfer.status_changed";
     pub const FILE_TRANSFER_PROGRESS: &str = "file-transfer.progress";
+    /// 某条 entry 对某个对端的投递状态发生变化(ADR-008 P3-3 GAP-WS-1)。
+    /// 仅携带 `(entry_id, target_device_id)`,**不带 status** —— 订阅方按
+    /// entry_id 过滤后 refetch `GET /clipboard/entries/{id}/delivery`,view 是
+    /// status 的唯一真相源(语义见 `DeliveryHostEvent`)。在 `clipboard` topic 上
+    /// 发,与 GUI 详情页的 delivery badge 配套;LAN 客户端不订阅即可忽略。
+    pub const CLIPBOARD_DELIVERY_STATUS_CHANGED: &str = "clipboard.delivery_status_changed";
     pub const ENCRYPTION_SESSION_READY: &str = "encryption.session_ready";
     /// Search availability snapshot event (Phase 92).
     pub const SEARCH_STATUS_SNAPSHOT: &str = "search.status_snapshot";

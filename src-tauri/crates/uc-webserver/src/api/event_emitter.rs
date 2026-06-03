@@ -1,12 +1,15 @@
 use serde::Serialize;
 use tokio::sync::broadcast;
 use uc_application::facade::{
-    ClipboardHostEvent, EmitError, HostEvent, HostEventEmitterPort, TransferHostEvent,
+    ClipboardHostEvent, DeliveryHostEvent, EmitError, HostEvent, HostEventEmitterPort,
+    TransferHostEvent,
 };
-// `HostEvent::Delivery` 暂不对 LAN WS 客户端开放(目前只供 GUI Tauri 前端):
-// 这条 emitter 是 daemon 侧 WS 通道,LAN 客户端没有"我当前在看哪条 entry"
-// 的概念,把 delivery 事件挂上去会产生无关流量。日后若需要让其它 LAN/桌面
-// 同步状态,再单独决策。
+// `HostEvent::Delivery` is forwarded on the `clipboard` topic (ADR-008 P3-3
+// GAP-WS-1). It used to be GUI-only via the in-process `TauriHostEventEmitter`;
+// once the GUI becomes a pure client (B2'-3) the in-process path is gone, so the
+// delivery refetch signal must travel over WS like every other host event. LAN
+// WS clients (which have no "entry I'm viewing" notion) simply don't subscribe
+// to it; the GUI filters by entry_id client-side, so the extra type is cheap.
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
 use crate::api::types::{DaemonWsEvent, FileTransferProgressPayload};
@@ -29,6 +32,13 @@ struct ClipboardNewContentPayload {
     origin: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     content_type: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardDeliveryStatusChangedPayload {
+    entry_id: String,
+    target_device_id: String,
 }
 
 #[derive(Serialize)]
@@ -164,13 +174,19 @@ impl HostEventEmitterPort for DaemonApiEventEmitter {
                     },
                 );
             }
-            HostEvent::Delivery(_) => {
-                // GUI Tauri 前端通过 TauriHostEventEmitter 接收 delivery
-                // 事件;daemon WS 通道暂不转发(见模块顶部注释)。本路径只
-                // 落 trace,保留事件经过 daemon emitter 这一可观测性事实。
-                tracing::trace!(
-                    event_type = "delivery",
-                    "daemon api emitter: skip WS forward"
+            HostEvent::Delivery(DeliveryHostEvent::StatusChanged {
+                entry_id,
+                target_device_id,
+            }) => {
+                self.emit_ws_event(
+                    ws_event::CLIPBOARD_DELIVERY_STATUS_CHANGED,
+                    ws_topic::CLIPBOARD,
+                    None,
+                    Self::now_ms(),
+                    ClipboardDeliveryStatusChangedPayload {
+                        entry_id,
+                        target_device_id,
+                    },
                 );
             }
         }

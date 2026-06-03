@@ -9,10 +9,13 @@
  * hook,组件可以让它和 preview 并发执行 —— React 在同一组件里调用
  * 两个 useEffect 是天然并发的。
  *
- * Phase 5 (Issue #747):订阅后端 `clipboard-delivery-status-changed`
- * 事件,匹配当前 `entryId` 时重新拉取 view,detail 视图无需手动切换
- * entry 就能反映"对端 ack 完成"。事件丢失或乱序由 refetch 幂等吸收 ——
- * 不依赖事件本身的状态,事件仅作为"该不该 refetch"的触发信号。
+ * ADR-008 P3-3 GAP-WS-1:订阅 daemon WS 的 `clipboard.delivery_status_changed`
+ * 事件(`clipboard` topic),匹配当前 `entryId` 时重新拉取 view,detail 视图
+ * 无需手动切换 entry 就能反映"对端 ack 完成"。改走 WS(取代旧的进程内
+ * Tauri 事件 `clipboard-delivery-status-changed`)后,GUI 转为纯 client 时
+ * (B2'-3 删除 in-process host_event_bus)这条 refetch 信号仍然可用。事件
+ * 丢失或乱序由 refetch 幂等吸收 —— 不依赖事件本身的状态,事件仅作为
+ * "该不该 refetch"的触发信号。
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -20,7 +23,7 @@ import {
   type EntryDeliveryView,
   getEntryDeliveryView,
 } from '@/api/tauri-command/clipboard_delivery'
-import { events } from '@/lib/ipc'
+import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('entry-delivery')
@@ -40,7 +43,6 @@ export function useEntryDelivery(entryId: string | null): EntryDeliveryHookResul
 
   useEffect(() => {
     let cancelled = false
-    let unlisten: (() => void) | null = null
 
     if (!entryId) {
       requestIdRef.current++
@@ -83,36 +85,23 @@ export function useEntryDelivery(entryId: string | null): EntryDeliveryHookResul
 
     void fetchDelivery(true)
 
-    // tauri-specta 的 `listen` 返回 `Promise<UnlistenFn>`;在 Promise resolve
-    // 之前组件可能就被卸载,所以保留一个 cancelled flag + unlisten 变量,
-    // cleanup 时直接调用 unlisten()(若 Promise 已 resolve),否则在 then
-    // 里依靠 cancelled 短路,避免悬挂监听往一个已卸载的组件 setState。
-    events.clipboardDeliveryStatusChanged
-      .listen(event => {
-        if (cancelled) return
-        // 严格按 entryId 匹配 —— 多 entry 并行 dispatch 时,后端会推多个事
-        // 件,只有匹配当前打开 entry 的事件值得 refetch;否则纯属带宽浪费。
-        if (event.payload.entryId !== entryId) return
-        void fetchDelivery(false)
-      })
-      .then(fn => {
-        if (cancelled) {
-          fn()
-          return
-        }
-        unlisten = fn
-      })
-      .catch(err => {
-        log.debug({ err }, 'listen clipboard-delivery-status-changed failed')
-      })
+    // `daemonWs.subscribe` 同步返回 unsubscribe(不像 tauri-specta `listen`
+    // 返回 Promise),所以无需 then/cancelled 双保险来处理"卸载早于订阅
+    // 建立"。仍保留 `cancelled` flag 给异步 fetchDelivery 的丢弃过期响应。
+    const unsubscribe = daemonWs.subscribe(['clipboard'], event => {
+      if (cancelled) return
+      if (event.eventType !== 'clipboard.delivery_status_changed') return
+      const payload = event.payload as { entryId: string; targetDeviceId: string }
+      // 严格按 entryId 匹配 —— 多 entry 并行 dispatch 时,后端会推多个事件,
+      // 只有匹配当前打开 entry 的事件值得 refetch;否则纯属带宽浪费。
+      if (payload.entryId !== entryId) return
+      void fetchDelivery(false)
+    })
 
     return () => {
       cancelled = true
       requestIdRef.current++
-      if (unlisten) {
-        unlisten()
-        unlisten = null
-      }
+      unsubscribe()
     }
   }, [entryId])
 

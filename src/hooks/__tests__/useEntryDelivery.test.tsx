@@ -3,13 +3,14 @@
  *
  * 关注点:
  * 1. 首次挂载就拉一次 view(回归 phase 1 行为)。
- * 2. 后端 emit `clipboardDeliveryStatusChanged` 且 entryId 匹配 → refetch。
+ * 2. 后端经 daemon WS emit `clipboard.delivery_status_changed` 且 entryId
+ *    匹配 → refetch。
  * 3. 事件 entryId 与当前打开的 entry 不匹配 → 不 refetch(避免抖动 / 流量浪费)。
  * 4. 切换 entryId / 组件卸载 → 取消订阅,不再触发刷新。
  *
  * 不测的部分(同样重要,但不在本 hook 职责内):
  * - 后端 emit 时机 → 由 dispatch_entry.rs 的 Rust 单元测试覆盖。
- * - tauri-specta 事件 wire shape → 由 cargo test --test specta_export 守门。
+ * - WS 事件 wire shape → 由 uc-webserver 的 emitter 与契约常量守门。
  */
 
 import { act, renderHook, waitFor } from '@testing-library/react'
@@ -17,24 +18,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getEntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
 import { useEntryDelivery } from '../useEntryDelivery'
 
-// ── mock 事件总线 ─────────────────────────────────────────────────────
+// ── mock daemon WS ────────────────────────────────────────────────────
 //
-// `events.clipboardDeliveryStatusChanged.listen(cb)` 返回 Promise<UnlistenFn>。
-// 测试把 cb 抓出来,直接调它模拟后端推送。每次 listen 都生成新的 unlisten
-// fn,以便断言 cleanup 真的释放。
-let capturedListener: ((event: { payload: unknown }) => void) | null = null
+// `daemonWs.subscribe(topics, cb)` 同步返回 unsubscribe fn。测试把 cb 抓出来,
+// 直接调它模拟后端 WS 推送;每次 subscribe 都返回同一个 unsubscribe spy,
+// 以便断言 cleanup 真的释放。
+type WsEvent = { topic: string; eventType: string; payload: unknown }
+let capturedListener: ((event: WsEvent) => void) | null = null
 const unlistenSpy = vi.fn()
 
-vi.mock('@/lib/ipc', () => ({
-  events: {
-    clipboardDeliveryStatusChanged: {
-      listen: vi.fn((cb: (event: { payload: unknown }) => void) => {
-        capturedListener = cb
-        return Promise.resolve(unlistenSpy)
-      }),
-    },
+vi.mock('@/lib/daemon-ws', () => ({
+  daemonWs: {
+    subscribe: vi.fn((_topics: string[], cb: (event: WsEvent) => void) => {
+      capturedListener = cb
+      return unlistenSpy
+    }),
   },
 }))
+
+// 构造一条 delivery WS 事件帧(topic + eventType + payload)。
+function deliveryEvent(entryId: string): WsEvent {
+  return {
+    topic: 'clipboard',
+    eventType: 'clipboard.delivery_status_changed',
+    payload: { entryId, targetDeviceId: 'peer-1' },
+  }
+}
 
 // ── mock fetch 入口 ───────────────────────────────────────────────────
 
@@ -96,19 +105,13 @@ describe('useEntryDelivery', () => {
       expect(result.current.delivery?.deliveries[0].targetDeviceName).toBe('initial')
     })
 
-    // listener 在 listen() resolve 后才被抓到 —— 等待一次 microtask flush。
+    // subscribe 同步返回,listener 在渲染时即被抓到。
     await waitFor(() => {
       expect(capturedListener).not.toBeNull()
     })
 
     await act(async () => {
-      capturedListener!({
-        payload: {
-          entryId: 'entry-1',
-          targetDeviceId: 'peer-1',
-          status: { tag: 'delivered' },
-        },
-      })
+      capturedListener!(deliveryEvent('entry-1'))
     })
 
     await waitFor(() => {
@@ -132,13 +135,7 @@ describe('useEntryDelivery', () => {
 
     // 推一条 entry_id=别人 的事件 —— 当前 hook 不该响应。
     await act(async () => {
-      capturedListener!({
-        payload: {
-          entryId: 'entry-other',
-          targetDeviceId: 'peer-1',
-          status: { tag: 'delivered' },
-        },
-      })
+      capturedListener!(deliveryEvent('entry-other'))
     })
 
     // 给 React 一次微任务时间,确保任何潜在的 refetch 都已经被排进队列。
@@ -156,20 +153,12 @@ describe('useEntryDelivery', () => {
     })
 
     unmount()
-    // unlisten Promise 链是异步执行的 —— 等到下一个 microtask 才能看到调用。
-    await waitFor(() => {
-      expect(unlistenSpy).toHaveBeenCalledTimes(1)
-    })
+    // unsubscribe 是同步调用,卸载即触发。
+    expect(unlistenSpy).toHaveBeenCalledTimes(1)
 
     // 即便卸载后事件再来,hook 内部 cancelled flag 会让 fetch 跳过 setState,
     // mockGet 不会被再次调用。
-    capturedListener!({
-      payload: {
-        entryId: 'entry-1',
-        targetDeviceId: 'peer-1',
-        status: { tag: 'delivered' },
-      },
-    })
+    capturedListener!(deliveryEvent('entry-1'))
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(mockGet).toHaveBeenCalledTimes(1)
   })

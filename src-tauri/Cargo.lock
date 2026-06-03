@@ -9908,6 +9908,7 @@ dependencies = [
  "tokio-tungstenite",
  "tokio-util",
  "tracing",
+ "uc-core",
  "uc-daemon-contract",
  "uc-daemon-local",
  "url",

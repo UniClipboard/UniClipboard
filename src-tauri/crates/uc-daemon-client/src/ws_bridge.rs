@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::Duration;
 
 use crate::realtime::{
-    ClipboardNewContentEvent, PairingCompleteEvent, PairingFailedEvent, PairingUpdatedEvent,
+    ClipboardIncomingPendingEvent, ClipboardNewContentEvent, FileTransferProgressEvent,
+    FileTransferStatusChangedEvent, PairingCompleteEvent, PairingFailedEvent, PairingUpdatedEvent,
     PairingVerificationRequiredEvent, PeerChangedEvent, PeerConnectionChangedEvent,
     PeerNameUpdatedEvent, RealtimeEvent, RealtimePeerSummary, RealtimeTopic, RealtimeTopicPort,
     SpaceMembersChangedEvent,
@@ -21,9 +22,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, info_span, instrument, warn, Instrument};
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_contract::api::types::{
-    DaemonWsEvent, PairingFailurePayload, PairingSessionChangedPayload, PairingVerificationPayload,
-    PeerConnectionChangedPayload, PeerNameUpdatedPayload, PeersChangedFullPayload,
-    SpaceMembersChangedPayload,
+    DaemonWsEvent, FileTransferProgressPayload, PairingFailurePayload,
+    PairingSessionChangedPayload, PairingVerificationPayload, PeerConnectionChangedPayload,
+    PeerNameUpdatedPayload, PeersChangedFullPayload, SpaceMembersChangedPayload,
 };
 use uc_daemon_contract::constants::{pairing_stage, ws_event, ws_topic};
 
@@ -1162,6 +1163,152 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
                 }
             }
         }
+        ws_event::CLIPBOARD_INCOMING_PENDING => {
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct IncomingPendingPayload {
+                entry_id: String,
+                from_device: String,
+                #[serde(default)]
+                total_bytes: Option<u64>,
+                #[serde(default)]
+                filenames: Vec<String>,
+            }
+            match serde_json::from_value::<IncomingPendingPayload>(event.payload) {
+                Ok(payload) => {
+                    debug!(
+                        event = "bridge.payload_decoded",
+                        source_topic = %topic,
+                        source_event_type = %event_type,
+                        session_id = session_id.as_deref().unwrap_or(""),
+                        payload_type = "IncomingPendingPayload",
+                        entry_id = %payload.entry_id,
+                        filename_count = payload.filenames.len(),
+                        "decoded websocket payload"
+                    );
+                    log_bridge_routing(
+                        &topic,
+                        &event_type,
+                        session_id.as_deref(),
+                        None,
+                        "ClipboardIncomingPending",
+                    );
+                    Some(RealtimeEvent::ClipboardIncomingPending(
+                        ClipboardIncomingPendingEvent {
+                            entry_id: payload.entry_id,
+                            from_device: payload.from_device,
+                            total_bytes: payload.total_bytes,
+                            filenames: payload.filenames,
+                        },
+                    ))
+                }
+                Err(err) => {
+                    log_decode_failed(
+                        &topic,
+                        &event_type,
+                        session_id.as_deref(),
+                        "IncomingPendingPayload",
+                        &err,
+                    );
+                    None
+                }
+            }
+        }
+        ws_event::FILE_TRANSFER_STATUS_CHANGED => {
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct StatusChangedPayload {
+                transfer_id: String,
+                entry_id: String,
+                status: String,
+                #[serde(default)]
+                reason: Option<String>,
+            }
+            match serde_json::from_value::<StatusChangedPayload>(event.payload) {
+                Ok(payload) => {
+                    debug!(
+                        event = "bridge.payload_decoded",
+                        source_topic = %topic,
+                        source_event_type = %event_type,
+                        session_id = session_id.as_deref().unwrap_or(""),
+                        payload_type = "StatusChangedPayload",
+                        transfer_id = %payload.transfer_id,
+                        entry_id = %payload.entry_id,
+                        status = %payload.status,
+                        "decoded websocket payload"
+                    );
+                    log_bridge_routing(
+                        &topic,
+                        &event_type,
+                        session_id.as_deref(),
+                        None,
+                        "FileTransferStatusChanged",
+                    );
+                    Some(RealtimeEvent::FileTransferStatusChanged(
+                        FileTransferStatusChangedEvent {
+                            transfer_id: payload.transfer_id,
+                            entry_id: payload.entry_id,
+                            status: payload.status,
+                            reason: payload.reason,
+                        },
+                    ))
+                }
+                Err(err) => {
+                    log_decode_failed(
+                        &topic,
+                        &event_type,
+                        session_id.as_deref(),
+                        "StatusChangedPayload",
+                        &err,
+                    );
+                    None
+                }
+            }
+        }
+        ws_event::FILE_TRANSFER_PROGRESS => {
+            match serde_json::from_value::<FileTransferProgressPayload>(event.payload) {
+                Ok(payload) => {
+                    debug!(
+                        event = "bridge.payload_decoded",
+                        source_topic = %topic,
+                        source_event_type = %event_type,
+                        session_id = session_id.as_deref().unwrap_or(""),
+                        payload_type = "FileTransferProgressPayload",
+                        transfer_id = %payload.transfer_id,
+                        peer_id = %payload.peer_id,
+                        bytes_transferred = payload.bytes_transferred,
+                        "decoded websocket payload"
+                    );
+                    log_bridge_routing(
+                        &topic,
+                        &event_type,
+                        session_id.as_deref(),
+                        None,
+                        "FileTransferProgress",
+                    );
+                    Some(RealtimeEvent::FileTransferProgress(
+                        FileTransferProgressEvent {
+                            transfer_id: payload.transfer_id,
+                            entry_id: payload.entry_id,
+                            peer_id: payload.peer_id,
+                            direction: payload.direction,
+                            bytes_transferred: payload.bytes_transferred,
+                            total_bytes: payload.total_bytes,
+                        },
+                    ))
+                }
+                Err(err) => {
+                    log_decode_failed(
+                        &topic,
+                        &event_type,
+                        session_id.as_deref(),
+                        "FileTransferProgressPayload",
+                        &err,
+                    );
+                    None
+                }
+            }
+        }
         _ => None,
     }
 }
@@ -1176,7 +1323,12 @@ fn event_topic(event: &RealtimeEvent) -> RealtimeTopic {
         | RealtimeEvent::PeersNameUpdated(_)
         | RealtimeEvent::PeersConnectionChanged(_) => RealtimeTopic::Peers,
         RealtimeEvent::SpaceMembersChanged(_) => RealtimeTopic::PairedDevices,
-        RealtimeEvent::ClipboardNewContent(_) => RealtimeTopic::Clipboard,
+        RealtimeEvent::ClipboardNewContent(_) | RealtimeEvent::ClipboardIncomingPending(_) => {
+            RealtimeTopic::Clipboard
+        }
+        RealtimeEvent::FileTransferStatusChanged(_) | RealtimeEvent::FileTransferProgress(_) => {
+            RealtimeTopic::FileTransfer
+        }
     }
 }
 
@@ -1187,6 +1339,7 @@ fn topic_name(topic: &RealtimeTopic) -> &'static str {
         RealtimeTopic::PairedDevices => ws_topic::PAIRED_DEVICES,
         RealtimeTopic::Setup => ws_topic::SETUP,
         RealtimeTopic::Clipboard => ws_topic::CLIPBOARD,
+        RealtimeTopic::FileTransfer => ws_topic::FILE_TRANSFER,
     }
 }
 

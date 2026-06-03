@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use uc_core::file_transfer::FileTransferDirection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RealtimeTopic {
@@ -8,6 +9,7 @@ pub enum RealtimeTopic {
     PairedDevices,
     Setup,
     Clipboard,
+    FileTransfer,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +87,36 @@ pub struct ClipboardNewContentEvent {
     pub origin: String, // "local" or "remote"
 }
 
+/// 接收端确认一个 inbound clipboard 即将到达(V3 envelope 已解码,blob 拉取
+/// 尚未完成)。携带最终 entry_id —— 订阅方据此插入占位卡片。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardIncomingPendingEvent {
+    pub entry_id: String,
+    pub from_device: String,
+    pub total_bytes: Option<u64>,
+    pub filenames: Vec<String>,
+}
+
+/// 文件传输状态变化(running / completed / failed 等)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileTransferStatusChangedEvent {
+    pub transfer_id: String,
+    pub entry_id: String,
+    pub status: String,
+    pub reason: Option<String>,
+}
+
+/// 文件传输 byte-level 进度快照。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileTransferProgressEvent {
+    pub transfer_id: String,
+    pub entry_id: Option<String>,
+    pub peer_id: String,
+    pub direction: FileTransferDirection,
+    pub bytes_transferred: u64,
+    pub total_bytes: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum RealtimeEvent {
     PairingUpdated(PairingUpdatedEvent),
@@ -96,6 +128,9 @@ pub enum RealtimeEvent {
     PeersConnectionChanged(PeerConnectionChangedEvent),
     SpaceMembersChanged(SpaceMembersChangedEvent),
     ClipboardNewContent(ClipboardNewContentEvent),
+    ClipboardIncomingPending(ClipboardIncomingPendingEvent),
+    FileTransferStatusChanged(FileTransferStatusChangedEvent),
+    FileTransferProgress(FileTransferProgressEvent),
 }
 
 #[async_trait]

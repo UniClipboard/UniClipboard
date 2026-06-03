@@ -3,7 +3,7 @@
 ## 定位
 
 `uc-daemon-local` 是 **`uc-desktop` 桌面宿主层的"进程协调工具集"**——
-逻辑上属于 desktop 范畴，因为需要被 GUI shell 与 daemon 二进制**同时**
+逻辑上属于 desktop 范畴，因为需要被 GUI shell 与 daemon 二进制 **同时**
 消费而物理外置成独立 crate。
 
 它处理的是"桌面双进程模型"的进程间协调，包括：
@@ -13,6 +13,8 @@
 - daemon 进程元数据（PID 文件读写、`DaemonProcessMode`）
 - daemon 健康探测的纯协议契约（`ProbeOutcome` / `DaemonBootstrapError`）
 - 健康轮询 helpers（probe 等待健康 / 等待端点消失）
+- `uniclipd` 二进制的 **detached spawn**（`setsid` / `DETACHED_PROCESS`）—— CLI
+  与 GUI shell 共用（ADR-008 P3：GUI 转纯 client 后自己 spawn 外部 daemon）
 
 ## ⚠️ 硬约束：GUI-framework agnostic
 
@@ -24,8 +26,12 @@
 
 整个 crate 的默认编译路径已经是纯 GUI-agnostic 的了——历史上为 Tauri
 sidecar 拉起编排准备的 `sidecar-lifecycle` feature 已经在 in-process
-化迁移完成后删除（GUI 不再 spawn 子 daemon，CLI 用
-`std::process::Command` 自己 detached spawn daemon binary）。
+化迁移完成后删除。
+
+`spawn` 模块用的是 `std::process::Command` + `setsid`（unix）/
+`DETACHED_PROCESS`（windows），**不** 触碰任何 GUI/窗口 API，仍满足硬约束。
+ADR-008 P3 起 GUI 转纯 client，自己 detached spawn 外部 `uniclipd`，所以
+detached spawn 原语从 `uc-cli` 下沉到此处由 CLI 与 GUI shell 共用。
 
 ## 模块职责
 
@@ -36,13 +42,15 @@ sidecar 拉起编排准备的 `sidecar-lifecycle` feature 已经在 in-process
 | `health_wait.rs` | probe-only 的健康轮询（`wait_for_daemon_health`、`wait_for_endpoint_absent`） |
 | `process_metadata.rs` | PID 文件读写 + `DaemonProcessMode` |
 | `socket.rs` | IPC/HTTP socket 路径解析（`try_resolve_daemon_http_addr`） |
+| `spawn.rs` | `uniclipd` detached spawn + 二进制解析（`spawn_detached_daemon`、`resolve_daemon_exe_path`） |
 
 ## 不负责
 
 - ❌ 任何业务规则（pairing / sync / transfer 决策都在 `uc-application`）
-- ❌ daemon **业务**逻辑（daemon 内部的 worker 在 `uc-desktop/src/daemon/`）
-- ❌ 任何具体的 spawn 实现——CLI 用 `std::process::Command` + `setsid` /
-  Windows `DETACHED_PROCESS` 自己写在 `uc-cli/src/local_daemon.rs`
+- ❌ daemon **业务** 逻辑（daemon 内部的 worker 在 `uc-desktop/src/daemon/`）
+- ❌ spawn 的 **编排**（probe→spawn→等健康、spinner / 超时 UX）——那是各 shell
+  / CLI 自己的事（如 `uc-cli/src/local_daemon.rs`）。本 crate 只提供 detached
+  spawn **原语**（`spawn::spawn_detached_daemon`），不含编排。
 - ❌ HTTP/WS API 路由实现（在 `uc-webserver`）
 
 ## 与其他 crate 的关系

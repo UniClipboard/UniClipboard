@@ -10,6 +10,7 @@
 //! - [`health_wait`]：probe-only 的健康轮询 helpers
 //! - [`process_metadata`]：PID 文件读写
 //! - [`socket`]：IPC / HTTP socket 路径解析
+//! - [`spawn`]：`uniclipd` 二进制的 detached spawn（CLI 与 GUI shell 共用）
 
 pub mod auth;
 pub mod contract;
@@ -17,4 +18,5 @@ pub mod health_wait;
 pub mod instance_lock;
 pub mod process_metadata;
 pub mod socket;
+pub mod spawn;
 pub mod spawn_contract;

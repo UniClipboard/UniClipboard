@@ -56,7 +56,6 @@ uc-application = { path = "../uc-application" }
 # surfaces certs as `CertificateError::BadEncoding`.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 uuid = { version = "1.10.0", features = ["v4"] }
-which = "7"
 
 [dev-dependencies]
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }

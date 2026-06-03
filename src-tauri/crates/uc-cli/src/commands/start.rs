@@ -128,7 +128,7 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
         return exit_codes::EXIT_SUCCESS;
     }
 
-    let daemon_exe = match local_daemon::resolve_daemon_exe_path() {
+    let daemon_exe = match uc_daemon_local::spawn::resolve_daemon_exe_path() {
         Ok(path) => path,
         Err(e) => {
             eprintln!("Error: {}", e);

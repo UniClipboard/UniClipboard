@@ -9829,7 +9829,6 @@ dependencies = [
  "uc-observability",
  "uc-platform",
  "uuid",
- "which",
 ]
 
 [[package]]
@@ -9943,6 +9942,7 @@ dependencies = [
  "uc-application",
  "uc-daemon-contract",
  "uc-platform",
+ "which",
 ]
 
 [[package]]

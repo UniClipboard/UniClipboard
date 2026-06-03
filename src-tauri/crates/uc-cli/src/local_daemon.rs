@@ -1,13 +1,12 @@
 use std::fmt;
 use std::future::Future;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use reqwest::Client;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::HealthResponse;
 use uc_daemon_local::socket::try_resolve_daemon_http_addr;
+use uc_daemon_local::spawn::{spawn_detached_daemon, SpawnDaemonError};
 
 const HEALTH_PATH: &str = "/health";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -74,6 +73,15 @@ impl fmt::Display for LocalDaemonError {
 
 impl std::error::Error for LocalDaemonError {}
 
+impl From<SpawnDaemonError> for LocalDaemonError {
+    fn from(error: SpawnDaemonError) -> Self {
+        match error {
+            SpawnDaemonError::ResolveBinary(error) => Self::ResolveBinary(error),
+            SpawnDaemonError::Spawn(error) => Self::Spawn(error),
+        }
+    }
+}
+
 /// Probe-only check: returns Ok(true) if the daemon is already healthy, Ok(false) otherwise.
 /// Does NOT spawn a daemon process.
 pub async fn probe_running() -> Result<bool, LocalDaemonError> {
@@ -104,7 +112,7 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
     // progress — daemon cold start can take many seconds in debug builds.
     let spinner = crate::ui::spinner("Starting local daemon…");
 
-    if let Err(error) = spawn_daemon_process() {
+    if let Err(error) = spawn_detached_daemon().map_err(LocalDaemonError::from) {
         crate::ui::spinner_finish_error(&spinner, "Failed to spawn local daemon");
         return Err(error);
     }
@@ -195,119 +203,10 @@ fn resolve_base_url() -> Result<String, LocalDaemonError> {
     Ok(format!("http://{}:{}", addr.ip(), addr.port()))
 }
 
-/// Spawn `uniclipd` as a **detached** background process.
-///
-/// "Detached" means the new process survives the CLI exiting — that's the
-/// whole point of `uniclip start`. We rely on three pieces:
-///
-/// 1. `Stdio::null()` on all three streams so the daemon never inherits the
-///    terminal — closing the controlling tty must not propagate SIGHUP to it.
-/// 2. **Unix**: `setsid()` in a `pre_exec` hook. The child becomes a new
-///    session leader detached from the parent's controlling terminal, so
-///    `Ctrl+C` / shell exit doesn't reach it. Since the daemon is now session
-///    leader of its own session, signals to the *CLI's* process group don't
-///    hit it either.
-/// 3. **Windows**: `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP` flags. The
-///    daemon gets no console of its own and is a separate process group, so
-///    `Ctrl+C` on the parent console doesn't deliver `CTRL_C_EVENT` to it.
-///
-/// The returned `Child` is intentionally dropped: under Unix that does *not*
-/// reap the process (we made it a session leader and cut stdio, the kernel
-/// will reap it when it exits — its parent is now PID 1 once the CLI returns).
-/// Under Windows the handle just closes; the process keeps running.
-fn spawn_daemon_process() -> Result<(), LocalDaemonError> {
-    let daemon_exe = resolve_daemon_exe_path()?;
-
-    let mut command = Command::new(&daemon_exe);
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-
-    configure_detached(&mut command);
-
-    let child = command.spawn().map_err(|error| {
-        LocalDaemonError::Spawn(anyhow::Error::new(error).context(format!(
-            "failed to spawn daemon via `{}`",
-            daemon_exe.display()
-        )))
-    })?;
-
-    // Drop the handle deliberately — see fn doc. The detached child runs on
-    // its own; the CLI's responsibility ends here. Polling for health is the
-    // caller's job.
-    drop(child);
-    Ok(())
-}
-
-#[cfg(unix)]
-fn configure_detached(command: &mut Command) {
-    use std::os::unix::process::CommandExt;
-
-    // SAFETY: `setsid` is async-signal-safe and only touches process group
-    // / session ids. It's the documented way to detach a child from the
-    // controlling terminal between fork and exec.
-    unsafe {
-        command.pre_exec(|| {
-            if libc::setsid() == -1 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-}
-
-#[cfg(windows)]
-fn configure_detached(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-
-    // CreateProcess flags. Combined: no console + own process group, so
-    // `Ctrl+C` to the parent's console does not propagate to the daemon.
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-}
-
-#[cfg(not(any(unix, windows)))]
-fn configure_detached(_command: &mut Command) {
-    // No detachment configured for unknown platforms — the daemon will still
-    // be spawned but may receive parent signals. Acceptable as a degraded
-    // fallback; uc-cli's main targets (macOS / Linux / Windows) all hit the
-    // platform-specific paths above.
-}
-
-/// Resolve the path to the `uniclipd` daemon binary.
-///
-/// Strategy:
-/// 1. Look for `uniclipd` (or `uniclipd.exe` on Windows) as a sibling of
-///    the current CLI executable. This covers Tauri sidecar bundles, `cargo
-///    build` output directories, and Docker images where both binaries sit
-///    in the same directory.
-/// 2. Fall back to a PATH lookup so that system-wide installs work.
-pub(crate) fn resolve_daemon_exe_path() -> Result<PathBuf, LocalDaemonError> {
-    let daemon_name = if cfg!(windows) {
-        "uniclipd.exe"
-    } else {
-        "uniclipd"
-    };
-
-    // Strategy 1: sibling of current executable.
-    if let Ok(cli_exe) = std::env::current_exe() {
-        if let Some(dir) = cli_exe.parent() {
-            let candidate = dir.join(daemon_name);
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-    }
-
-    // Strategy 2: PATH lookup.
-    which::which(daemon_name).map_err(|error| {
-        LocalDaemonError::ResolveBinary(anyhow::Error::new(error).context(format!(
-            "`{daemon_name}` not found as sibling of the CLI binary or in PATH"
-        )))
-    })
-}
+/// Detached daemon spawn + binary resolution now live in the shared
+/// [`uc_daemon_local::spawn`] module so GUI shells (ADR-008 P3) reuse the exact
+/// same `setsid` / `DETACHED_PROCESS` detach semantics. The CLI keeps only the
+/// probe→spawn→wait-health orchestration above.
 
 #[cfg(test)]
 mod tests {
@@ -489,13 +388,6 @@ mod tests {
         );
     }
 
-    // ---------- resolve_daemon_exe_path ----------
-
-    #[test]
-    fn resolve_daemon_exe_path_finds_sibling_or_path() {
-        // In a cargo test environment `uniclipd` may or may not be built.
-        // We only assert the function doesn't panic — the actual resolution
-        // depends on the build layout.
-        let _result = resolve_daemon_exe_path();
-    }
+    // `resolve_daemon_exe_path` moved to `uc_daemon_local::spawn`; its
+    // no-panic test lives there now.
 }

@@ -59,7 +59,7 @@ sudo snap connect uniclipboard:password-manager-service
 # 接好之后重启应用
 ```
 
-更早的版本（r118 之前）遇到同样情况会直接 `Daemon startup/probe failed during Tauri bootstrap` 崩溃。`sudo snap refresh uniclipboard --edge` 升到最新 edge 就好；这种情况下 plug 只决定 KEK _存在哪里_，不再决定守护进程能不能起。
+更早的版本（r118 之前）遇到同样情况会直接 `Daemon startup/probe failed during Tauri bootstrap` 崩溃。`sudo snap refresh uniclipboard` 升到最新版就好；这种情况下 plug 只决定 KEK _存在哪里_，不再决定守护进程能不能起。
 
 ## 配对失败
 

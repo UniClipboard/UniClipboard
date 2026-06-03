@@ -176,7 +176,10 @@ See the [COPR deployment notes](https://github.com/UniClipboard/UniClipboard/blo
 The Snap is built with strict confinement on `core22` and bundles its own GTK + WebKit stack, so it runs the same on Ubuntu 20.04+, Debian 11+, RHEL 9, openSUSE Leap, and similar.
 
 ```bash
-# While UniClipboard is in alpha, only the edge channel publishes builds.
+# Stable channel (final releases, amd64 + arm64)
+sudo snap install uniclipboard
+
+# Edge channel (includes pre-releases, updated more often)
 sudo snap install uniclipboard --edge
 ```
 

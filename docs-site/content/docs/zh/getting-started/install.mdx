@@ -157,7 +157,10 @@ sudo dnf install uniclipboard
 Snap 包基于 `core22` 严格沙箱构建，自带 GTK + WebKit 运行时，因此在 Ubuntu 20.04+、Debian 11+、RHEL 9、openSUSE Leap 等老发行版上都能正常运行。
 
 ```bash
-# 当前仍处于 alpha 阶段，仅 edge 通道有包。
+# 正式渠道（稳定版，amd64 + arm64 双架构）
+sudo snap install uniclipboard
+
+# Edge 渠道（含预发布版本，更新更频繁）
 sudo snap install uniclipboard --edge
 ```
 

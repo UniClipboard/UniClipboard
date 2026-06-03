@@ -78,7 +78,7 @@ sudo snap connect uniclipboard:password-manager-service
 
 On older revisions (pre-r118) the same situation crashed the daemon
 with `Daemon startup/probe failed during Tauri bootstrap`. `sudo snap
-refresh uniclipboard --edge` to a current revision fixes that on its
+refresh uniclipboard` to a current revision fixes that on its
 own; connecting the plug is then only about _where_ the KEK is stored,
 not _whether_ the daemon starts.
 

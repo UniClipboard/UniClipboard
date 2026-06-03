@@ -14,10 +14,25 @@ use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
 
+/// Escape valve mirroring the GUI's `UC_DISABLE_SINGLE_INSTANCE` (set to `1`).
+///
+/// When set, the daemon skips the per-profile lock so multiple daemons may run
+/// on one profile. Test/dev only — production must keep the singleton invariant
+/// (ADR-008 D22); this exists for harnesses that intentionally spin up several
+/// daemons against the same data dir.
+const DISABLE_ENV: &str = "UC_DISABLE_DAEMON_SINGLE_INSTANCE";
+
+fn single_instance_disabled() -> bool {
+    std::env::var(DISABLE_ENV).as_deref() == Ok("1")
+}
+
 /// Held for the daemon's lifetime. Dropping it releases the lock.
+///
+/// `_file` is `None` only when the lock was bypassed via [`DISABLE_ENV`]; the
+/// guard is still returned so the call site is unchanged.
 #[derive(Debug)]
 pub struct DaemonInstanceLock {
-    _file: File,
+    _file: Option<File>,
     path: PathBuf,
 }
 
@@ -64,6 +79,20 @@ impl DaemonInstanceLock {
         fs::create_dir_all(data_dir).map_err(InstanceLockError::Io)?;
 
         let lock_path = data_dir.join(".uniclipd.lock");
+
+        if single_instance_disabled() {
+            tracing::warn!(
+                env = DISABLE_ENV,
+                "daemon single-instance lock disabled via env — concurrent \
+                 daemons on this profile are allowed (test/dev escape valve, \
+                 ADR-008 D22)"
+            );
+            return Ok(Self {
+                _file: None,
+                path: lock_path,
+            });
+        }
+
         let file = File::create(&lock_path).map_err(InstanceLockError::Io)?;
 
         #[cfg(unix)]
@@ -71,7 +100,7 @@ impl DaemonInstanceLock {
 
         match file.try_lock_exclusive() {
             Ok(()) => Ok(Self {
-                _file: file,
+                _file: Some(file),
                 path: lock_path,
             }),
             Err(error) if is_would_block(&error) => {
@@ -111,9 +140,16 @@ fn repair_lock_permissions(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // `try_acquire` reads the process-global `DISABLE_ENV`; serialise every test
+    // here so the disabled-path test cannot leak the env var into a concurrent
+    // test that expects the lock to be live.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn acquire_and_release() {
+        let _env = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let lock = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
         assert!(lock.path().exists());
@@ -122,6 +158,7 @@ mod tests {
 
     #[test]
     fn second_acquire_fails_with_already_running() {
+        let _env = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let _lock = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
 
@@ -133,9 +170,24 @@ mod tests {
 
     #[test]
     fn reacquire_after_drop() {
+        let _env = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let lock = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
         drop(lock);
         let _lock2 = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn disable_env_bypasses_lock_for_concurrent_daemons() {
+        let _env = ENV_LOCK.lock().unwrap();
+        std::env::set_var(DISABLE_ENV, "1");
+        let dir = tempfile::tempdir().unwrap();
+
+        // Both acquisitions succeed because the singleton invariant is disabled.
+        let lock_a = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
+        let lock_b = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
+
+        std::env::remove_var(DISABLE_ENV);
+        drop((lock_a, lock_b));
     }
 }

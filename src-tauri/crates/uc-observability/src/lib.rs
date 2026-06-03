@@ -63,6 +63,6 @@ pub use context::{global_device_id, set_global_device_id};
 pub use flow::FlowId;
 pub use init::{build_console_layer, build_json_layer, init_tracing_subscriber};
 pub use profile::LogProfile;
-pub use scope::{global_scope, set_global_scope, ScopeContext};
+pub use scope::{global_scope, role_log_file_stem, set_global_scope, ScopeContext};
 pub use telemetry_gate::{is_telemetry_enabled, set_telemetry_enabled};
 pub use tracing_appender::non_blocking::WorkerGuard;

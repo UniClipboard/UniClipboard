@@ -70,7 +70,8 @@ where
 ///
 /// # Arguments
 ///
-/// * `logs_dir` - Directory for JSON log files (creates `uniclipboard.json.YYYY-MM-DD`)
+/// * `logs_dir` - Directory for JSON log files (creates `uniclipboard-<role>.json.YYYY-MM-DD`,
+///   role from [`crate::scope::role_log_file_stem`] so co-resident processes don't share a file)
 /// * `profile` - The [`LogProfile`] controlling filter verbosity
 ///
 /// # Errors
@@ -87,7 +88,10 @@ where
 
     let json_filter = profile.json_filter();
 
-    let daily_appender = tracing_appender::rolling::daily(logs_dir, "uniclipboard.json");
+    // ADR-008 D20 (P4-0): per-role file name so the GUI host and the detached
+    // `uniclipd` never append to the same rolling log file.
+    let file_name = format!("{}.json", crate::scope::role_log_file_stem());
+    let daily_appender = tracing_appender::rolling::daily(logs_dir, file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(daily_appender);
 
     let json_layer = fmt::layer()
@@ -114,7 +118,8 @@ where
 ///
 /// # Arguments
 ///
-/// * `logs_dir` - Directory for JSON log files (creates `uniclipboard.json.YYYY-MM-DD`)
+/// * `logs_dir` - Directory for JSON log files (creates `uniclipboard-<role>.json.YYYY-MM-DD`,
+///   role from [`crate::scope::role_log_file_stem`] so co-resident processes don't share a file)
 /// * `profile` - The [`LogProfile`] controlling filter verbosity
 ///
 /// # Errors

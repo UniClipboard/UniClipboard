@@ -117,6 +117,31 @@ fn detect_role() -> &'static str {
     }
 }
 
+/// Per-role log file stem (ADR-008 D20 P4-0).
+///
+/// Two co-resident processes (the GUI host and the detached `uniclipd`) must
+/// not append to the same rolling log file — concurrent appends race and the
+/// merged stream is unreadable. The daily appender prefixes the file with the
+/// process role so each writes its own family:
+///
+/// - `gui-host` → `uniclipboard-gui` → `uniclipboard-gui.json.<date>`
+/// - `daemon`   → `uniclipboard-daemon`
+/// - `cli`      → `uniclipboard-cli`
+/// - `unknown`  → `uniclipboard` (legacy base name; only lib tests / edge
+///   processes land here and never run concurrently with a real process).
+///
+/// Resolves the role the same way [`ScopeContext::resolve`] does — via
+/// [`detect_role`] (`UC_HOST_ROLE` env / `current_exe` basename) — so it is
+/// correct even when called before [`set_global_scope`].
+pub fn role_log_file_stem() -> &'static str {
+    match detect_role() {
+        "gui-host" => "uniclipboard-gui",
+        "daemon" => "uniclipboard-daemon",
+        "cli" => "uniclipboard-cli",
+        _ => "uniclipboard",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,6 +175,28 @@ mod tests {
         std::env::set_var("UC_HOST_ROLE", "bogus-value");
         let ctx = ScopeContext::resolve(None, "0.0.0");
         assert_eq!(ctx.device_role, "unknown");
+        std::env::remove_var("UC_HOST_ROLE");
+    }
+
+    #[test]
+    fn log_file_stem_is_role_prefixed() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        for (role, expected) in [
+            ("gui-host", "uniclipboard-gui"),
+            ("daemon", "uniclipboard-daemon"),
+            ("cli", "uniclipboard-cli"),
+        ] {
+            std::env::set_var("UC_HOST_ROLE", role);
+            assert_eq!(role_log_file_stem(), expected, "role {role}");
+        }
+        std::env::remove_var("UC_HOST_ROLE");
+    }
+
+    #[test]
+    fn log_file_stem_unknown_keeps_legacy_base() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("UC_HOST_ROLE", "bogus-value");
+        assert_eq!(role_log_file_stem(), "uniclipboard");
         std::env::remove_var("UC_HOST_ROLE");
     }
 }

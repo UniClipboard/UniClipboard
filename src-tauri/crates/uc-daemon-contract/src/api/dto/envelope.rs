@@ -33,7 +33,7 @@ use crate::api::dto::mobile_sync::{
     UpdateMobileSyncSettingsResultDto,
 };
 use crate::api::dto::search::{SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData};
-use crate::api::dto::settings::{SettingsDto, SettingsUpdateResultDto};
+use crate::api::dto::settings::{RelayProbeOutcomeDto, SettingsDto, SettingsUpdateResultDto};
 use crate::api::dto::storage::{ClearCacheResponse, StorageStatsDto};
 use crate::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 use crate::api::dto::v2::setup::{
@@ -77,6 +77,7 @@ use crate::api::types::{
     // ── settings (GET + PUT both enveloped per §0.1) ───────────────
     SettingsEnvelope = ApiEnvelope<SettingsDto>,
     SettingsUpdateResultEnvelope = ApiEnvelope<SettingsUpdateResultDto>,
+    RelayProbeOutcomeEnvelope = ApiEnvelope<RelayProbeOutcomeDto>,
     // ── device / member ────────────────────────────────────────────
     LocalDeviceInfoEnvelope = ApiEnvelope<LocalDeviceInfoDto>,
     MemberSyncPreferencesEnvelope = ApiEnvelope<MemberSyncPreferencesDto>,

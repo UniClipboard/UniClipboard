@@ -43,10 +43,11 @@ use crate::api::dto::settings::{
     ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto, FileSyncSettingsPatchDto,
     GeneralSettingsDto, GeneralSettingsPatchDto, KeyboardShortcutsPatchDto, NetworkSettingsDto,
     NetworkSettingsPatchDto, PairingSettingsDto, PairingSettingsPatchDto, QuickPanelSettingsDto,
-    QuickPanelSettingsPatchDto, RetentionPolicyDto, RetentionPolicyPatchDto, RetentionRuleDto,
-    RuleEvaluationDto, SecuritySettingsDto, SecuritySettingsPatchDto, SettingsDto,
-    SettingsPatchDto, SettingsUpdateResultDto, ShortcutKeyDto, SyncFrequencyDto, SyncSettingsDto,
-    SyncSettingsPatchDto, ThemeDto, UpdateChannelDto,
+    QuickPanelSettingsPatchDto, RelayProbeOutcomeDto, RelayProbeRequestDto, RetentionPolicyDto,
+    RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto,
+    SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
+    ShortcutKeyDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto, ThemeDto,
+    UpdateChannelDto,
 };
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
@@ -69,13 +70,14 @@ use uc_daemon_contract::api::dto::envelope::{
     LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope,
     MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
     MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope,
-    PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope, ResendEnvelope, RestoreEntryEnvelope,
-    RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
-    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
-    SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
-    SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
-    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope,
-    UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
+    PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope,
+    ResendEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope,
+    SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope, SettingsEnvelope,
+    SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
+    SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
+    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope, StorageStatsEnvelope,
+    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateMobileSyncSettingsEnvelope,
+    UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -169,6 +171,7 @@ impl Modify for ContractMeta {
         // ── settings ───────────────────────────────────────────────
         crate::api::settings::get_settings_handler,
         crate::api::settings::update_settings_handler,
+        crate::api::settings::probe_relay_url_handler,
         // ── lifecycle ──────────────────────────────────────────────
         crate::api::lifecycle::get_lifecycle_status_handler,
         crate::api::lifecycle::retry_lifecycle_handler,
@@ -294,8 +297,11 @@ impl Modify for ContractMeta {
             // ── settings ───────────────────────────────────────────
             SettingsEnvelope,
             SettingsUpdateResultEnvelope,
+            RelayProbeOutcomeEnvelope,
             SettingsDto,
             SettingsUpdateResultDto,
+            RelayProbeRequestDto,
+            RelayProbeOutcomeDto,
             SettingsPatchDto,
             GeneralSettingsDto,
             SyncSettingsDto,
@@ -481,7 +487,8 @@ mod assembly_smoke_tests {
         // `POST /encryption/unlock-with-passphrase`, `POST /encryption/factory-reset`,
         // and `GET /clipboard/entries/{id}/delivery`; ADR-008 P3-b added the 7
         // `/mobile-sync/*` operations: +5 paths, +7 operations; ADR-008 P3-c D20
-        // added `POST /analytics/capture`: +1 path, +1 operation.)
+        // added `POST /analytics/capture`: +1 path, +1 operation; ADR-008 P3-3 B2'-1
+        // added `POST /settings/relay-probe`: +1 path, +1 operation → 55 / 60.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -490,8 +497,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            54,
-            "expected exactly 54 path templates, found {}: {:?}",
+            55,
+            "expected exactly 55 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -505,8 +512,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 59,
-            "expected exactly 59 operations across all paths, found {operation_count}"
+            operation_count, 60,
+            "expected exactly 60 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

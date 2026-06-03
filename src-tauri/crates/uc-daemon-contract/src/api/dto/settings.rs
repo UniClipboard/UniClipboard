@@ -30,6 +30,40 @@ pub struct SettingsUpdateResultDto {
     pub restart_required: bool,
 }
 
+/// Request body for `POST /settings/relay-probe`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayProbeRequestDto {
+    /// Candidate relay URL to probe. Not persisted; the probe is repeatable.
+    pub url: String,
+}
+
+/// Outcome of a relay reachability probe (`POST /settings/relay-probe`).
+///
+/// Mirrors the desktop `RelayProbeOutcome` Tauri DTO: a probe that fails to
+/// reach the relay is a NORMAL categorized outcome (returned 200), not an HTTP
+/// error — the daemon is healthy, the *relay* is the subject under test. Only a
+/// missing relay-diagnostic adapter (server misconfiguration) surfaces as an
+/// `ApiError`. The frontend selects user-facing copy off the `tag`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "tag", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum RelayProbeOutcomeDto {
+    /// Relay reachable; carries end-to-end round-trip latency.
+    Success { latency_ms: u32 },
+    /// The supplied URL is not a valid relay URL.
+    InvalidUrl { message: String },
+    /// DNS resolution of the relay host failed.
+    Dns { message: String },
+    /// TLS handshake with the relay failed.
+    Tls { message: String },
+    /// Relay-protocol handshake failed after TLS.
+    Handshake { message: String },
+    /// The probe exceeded its time budget.
+    Timeout,
+    /// Any other categorized probe failure.
+    Other { message: String },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneralSettingsDto {

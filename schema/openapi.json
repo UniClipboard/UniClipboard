@@ -2215,6 +2215,175 @@
         ],
         "type": "object"
       },
+      "RelayProbeOutcomeDto": {
+        "description": "Outcome of a relay reachability probe (`POST /settings/relay-probe`).\n\nMirrors the desktop `RelayProbeOutcome` Tauri DTO: a probe that fails to\nreach the relay is a NORMAL categorized outcome (returned 200), not an HTTP\nerror — the daemon is healthy, the *relay* is the subject under test. Only a\nmissing relay-diagnostic adapter (server misconfiguration) surfaces as an\n`ApiError`. The frontend selects user-facing copy off the `tag`.",
+        "discriminator": {
+          "propertyName": "tag"
+        },
+        "oneOf": [
+          {
+            "description": "Relay reachable; carries end-to-end round-trip latency.",
+            "properties": {
+              "latency_ms": {
+                "format": "int32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "tag": {
+                "enum": [
+                  "success"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "latency_ms",
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The supplied URL is not a valid relay URL.",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "tag": {
+                "enum": [
+                  "invalidUrl"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "DNS resolution of the relay host failed.",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "tag": {
+                "enum": [
+                  "dns"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "TLS handshake with the relay failed.",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "tag": {
+                "enum": [
+                  "tls"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Relay-protocol handshake failed after TLS.",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "tag": {
+                "enum": [
+                  "handshake"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "tag": {
+                "enum": [
+                  "timeout"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Any other categorized probe failure.",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "tag": {
+                "enum": [
+                  "other"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "tag"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "RelayProbeOutcomeEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RelayProbeOutcomeDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "RelayProbeRequestDto": {
+        "description": "Request body for `POST /settings/relay-probe`.",
+        "properties": {
+          "url": {
+            "description": "Candidate relay URL to probe. Not persisted; the probe is repeatable.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
       "ResendEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -6436,6 +6605,56 @@
           }
         ],
         "summary": "PUT /settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/relay-probe": {
+      "post": {
+        "description": "Probes a candidate relay URL for reachability. Reads/writes no persisted\nsettings, so it is safe to call repeatedly (\"test before save\"). A probe\nthat fails to reach the relay is a NORMAL categorized outcome returned 200\n(mirrors the Tauri command contract) — only a missing relay-diagnostic\nadapter (server misconfiguration) becomes a 500 `ApiError`.",
+        "operationId": "probeRelayUrl",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelayProbeRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelayProbeOutcomeEnvelope"
+                }
+              }
+            },
+            "description": "Relay probe outcome (reachable or a categorized failure)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Relay-diagnostic adapter unavailable / internal error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /settings/relay-probe",
         "tags": [
           "settings"
         ]

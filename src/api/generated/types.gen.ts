@@ -1399,6 +1399,70 @@ export type RegisterMobileDeviceResultDto = {
 };
 
 /**
+ * Outcome of a relay reachability probe (`POST /settings/relay-probe`).
+ *
+ * Mirrors the desktop `RelayProbeOutcome` Tauri DTO: a probe that fails to
+ * reach the relay is a NORMAL categorized outcome (returned 200), not an HTTP
+ * error — the daemon is healthy, the *relay* is the subject under test. Only a
+ * missing relay-diagnostic adapter (server misconfiguration) surfaces as an
+ * `ApiError`. The frontend selects user-facing copy off the `tag`.
+ */
+export type RelayProbeOutcomeDto = {
+    latency_ms: number;
+    tag: 'success';
+} | {
+    message: string;
+    tag: 'invalidUrl';
+} | {
+    message: string;
+    tag: 'dns';
+} | {
+    message: string;
+    tag: 'tls';
+} | {
+    message: string;
+    tag: 'handshake';
+} | {
+    tag: 'timeout';
+} | {
+    message: string;
+    tag: 'other';
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type RelayProbeOutcomeEnvelope = {
+    data: RelayProbeOutcomeDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /settings/relay-probe`.
+ */
+export type RelayProbeRequestDto = {
+    /**
+     * Candidate relay URL to probe. Not persisted; the probe is repeatable.
+     */
+    url: string;
+};
+
+/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -3857,6 +3921,31 @@ export type UpdateSettingsResponses = {
 };
 
 export type UpdateSettingsResponse = UpdateSettingsResponses[keyof UpdateSettingsResponses];
+
+export type ProbeRelayUrlData = {
+    body: RelayProbeRequestDto;
+    path?: never;
+    query?: never;
+    url: '/settings/relay-probe';
+};
+
+export type ProbeRelayUrlErrors = {
+    /**
+     * Relay-diagnostic adapter unavailable / internal error
+     */
+    500: ApiErrorResponse;
+};
+
+export type ProbeRelayUrlError = ProbeRelayUrlErrors[keyof ProbeRelayUrlErrors];
+
+export type ProbeRelayUrlResponses = {
+    /**
+     * Relay probe outcome (reachable or a categorized failure)
+     */
+    200: RelayProbeOutcomeEnvelope;
+};
+
+export type ProbeRelayUrlResponse = ProbeRelayUrlResponses[keyof ProbeRelayUrlResponses];
 
 export type GetStatusData = {
     body?: never;

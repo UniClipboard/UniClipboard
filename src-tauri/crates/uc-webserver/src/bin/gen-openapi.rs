@@ -39,8 +39,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// `POST /encryption/factory-reset`, `GET /clipboard/entries/{id}/delivery`.
 /// ADR-008 P3-b added the 7 `/mobile-sync/*` operations.
 /// ADR-008 P3-c (D20) added `POST /analytics/capture`.
-const EXPECTED_PATHS: usize = 54;
-const EXPECTED_OPERATIONS: usize = 59;
+/// ADR-008 P3-3 (B2'-1) added `POST /settings/relay-probe`.
+const EXPECTED_PATHS: usize = 55;
+const EXPECTED_OPERATIONS: usize = 60;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ClipboardItemResponse } from '@/api/clipboardItems'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
 import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
+import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { useClipboardEventStream } from './useClipboardEventStream'
 import { useEncryptionSessionState } from './useEncryptionSessionState'
@@ -55,6 +56,19 @@ export function useClipboardCollection(): ClipboardCollectionResult {
 
     void reload()
   }, [encryptionReady, isLocked, reload])
+
+  // D8 resync: after the WS reconnects (e.g. daemon restart), the live event
+  // stream resumes but events missed during the outage are not replayed.
+  // Re-pull the full list — getClipboardEntries is idempotent, so a fresh
+  // snapshot reconciles any entries that arrived while we were disconnected.
+  useEffect(() => {
+    const unsubscribe = daemonWs.onReconnect(() => {
+      if (encryptionReady) {
+        void reload()
+      }
+    })
+    return unsubscribe
+  }, [encryptionReady, reload])
 
   useClipboardEventStream({
     enabled: encryptionReady,

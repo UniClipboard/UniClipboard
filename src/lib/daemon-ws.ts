@@ -86,6 +86,16 @@ export class DaemonWsClient {
   /** Topics that are currently active (for re-subscribe on reconnect). */
   private _activeTopics = new Set<string>()
 
+  /** Callbacks fired after a genuine reconnect (not the first connect). */
+  private _onReconnectCallbacks = new Set<() => void>()
+
+  /**
+   * Whether the socket has opened successfully at least once since the last
+   * connect()/disconnect(). Used to distinguish the initial open from a
+   * reconnect so `onReconnect` consumers only fire on the latter.
+   */
+  private _hasConnectedOnce = false
+
   /** Pending connect() resolver / rejecter. */
   private _connectResolve: (() => void) | null = null
   private _connectReject: ((err: Error) => void) | null = null
@@ -143,6 +153,7 @@ export class DaemonWsClient {
     this._cancelReconnect()
     this._reconnectAttempt = 0
     this._isReconnecting = false
+    this._hasConnectedOnce = false
     if (this._ws) {
       this._ws.onopen = null
       this._ws.onmessage = null
@@ -187,6 +198,25 @@ export class DaemonWsClient {
   }
 
   /**
+   * Register a callback fired after the socket successfully reconnects following
+   * an unexpected drop (NOT on the initial connect).
+   *
+   * Re-subscribing on reconnect only resumes the live event stream; events that
+   * occurred while the socket was down are not replayed. Consumers that mirror
+   * daemon state from incremental WS events (e.g. the clipboard panel) should
+   * use this hook to re-pull a fresh snapshot over HTTP (D8 resync).
+   *
+   * @param callback Invoked on each successful reconnect.
+   * @returns Unregister function.
+   */
+  onReconnect(callback: () => void): () => void {
+    this._onReconnectCallbacks.add(callback)
+    return () => {
+      this._onReconnectCallbacks.delete(callback)
+    }
+  }
+
+  /**
    * Reset all internal state — used for test cleanup.
    *
    * 清除所有内部状态 — 供测试清理使用。
@@ -206,10 +236,12 @@ export class DaemonWsClient {
     }
     this._callbacks.clear()
     this._activeTopics.clear()
+    this._onReconnectCallbacks.clear()
     this._connectResolve = null
     this._connectReject = null
     this._reconnectAttempt = 0
     this._isReconnecting = false
+    this._hasConnectedOnce = false
   }
 
   // ── Private helpers ────────────────────────────────────────────
@@ -238,6 +270,10 @@ export class DaemonWsClient {
     this._ws = ws
 
     ws.onopen = () => {
+      // Distinguish the very first successful open (cold-start attach) from a
+      // reconnect after an unexpected drop. Capture before flipping the flag.
+      const wasReconnect = this._hasConnectedOnce
+      this._hasConnectedOnce = true
       this._reconnectAttempt = 0
       this._isReconnecting = false
       const r = this._connectResolve
@@ -247,6 +283,12 @@ export class DaemonWsClient {
       // Re-subscribe any topics that were registered before the socket opened.
       if (this._activeTopics.size > 0) {
         this._sendSubscribe([...this._activeTopics])
+      }
+      // On a genuine reconnect, notify consumers so they can re-pull any state
+      // (e.g. clipboard entries) that may have changed while the socket was
+      // down — re-subscribing alone does not replay missed events (D8 resync).
+      if (wasReconnect) {
+        this._fireReconnect()
       }
     }
 
@@ -385,6 +427,16 @@ export class DaemonWsClient {
     if (this._reconnectTimer !== null) {
       clearTimeout(this._reconnectTimer)
       this._reconnectTimer = null
+    }
+  }
+
+  private _fireReconnect(): void {
+    for (const cb of this._onReconnectCallbacks) {
+      try {
+        cb()
+      } catch (err) {
+        log.error({ err }, 'onReconnect callback threw')
+      }
     }
   }
 

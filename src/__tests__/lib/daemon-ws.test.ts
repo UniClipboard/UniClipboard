@@ -500,6 +500,93 @@ describe('reconnect', () => {
   })
 })
 
+// ── onReconnect ─────────────────────────────────────────────
+
+describe('onReconnect', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('does NOT fire on the initial connect', async () => {
+    const { client } = freshClient()
+    const cb = vi.fn()
+    client.onReconnect(cb)
+
+    const p = client.connect('ws://127.0.0.1:42715/ws')
+    const ws = await waitForSocket(client)
+    openSocket(ws)
+    await p
+
+    expect(cb).not.toHaveBeenCalled()
+  })
+
+  it('fires after a genuine reconnect', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const { client } = freshClient()
+    const cb = vi.fn()
+    client.onReconnect(cb)
+
+    void client.connect('ws://127.0.0.1:42715/ws')
+    const ws = await waitForSocket(client)
+    openSocket(ws)
+    vi.runAllTicks()
+    expect(cb).not.toHaveBeenCalled()
+
+    closeSocket(ws)
+    await vi.advanceTimersByTimeAsync(1000)
+    const newWs = await waitForSocket(client)
+    openSocket(newWs)
+
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns an unregister function that stops further callbacks', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const { client } = freshClient()
+    const cb = vi.fn()
+    const unregister = client.onReconnect(cb)
+
+    void client.connect('ws://127.0.0.1:42715/ws')
+    const ws = await waitForSocket(client)
+    openSocket(ws)
+    vi.runAllTicks()
+
+    unregister()
+
+    closeSocket(ws)
+    await vi.advanceTimersByTimeAsync(1000)
+    const newWs = await waitForSocket(client)
+    openSocket(newWs)
+
+    expect(cb).not.toHaveBeenCalled()
+  })
+
+  it('does not fire again on a fresh connect after disconnect()', async () => {
+    const { client } = freshClient()
+    const cb = vi.fn()
+    client.onReconnect(cb)
+
+    const p = client.connect('ws://127.0.0.1:42715/ws')
+    const ws = await waitForSocket(client)
+    openSocket(ws)
+    await p
+
+    client.disconnect()
+
+    const p2 = client.connect('ws://127.0.0.1:42715/ws')
+    const ws2 = await waitForSocket(client)
+    openSocket(ws2)
+    await p2
+
+    // disconnect() reset the "connected once" flag, so this counts as an
+    // initial connect, not a reconnect.
+    expect(cb).not.toHaveBeenCalled()
+  })
+})
+
 // ── Topic filtering ─────────────────────────────────────────
 
 describe('Topic filtering', () => {

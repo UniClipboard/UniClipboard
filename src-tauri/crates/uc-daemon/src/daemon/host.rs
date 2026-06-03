@@ -141,6 +141,23 @@ pub async fn start_in_process(
 ) -> anyhow::Result<DaemonHandle> {
     let cancel = CancellationToken::new();
 
+    // ADR-008 D9 (P4-2): strict-unattended self-check — the only hard boundary
+    // for the unlock contract. A daemon launched with no GUI fallback
+    // (autostart / service manager sets UC_DAEMON_UNATTENDED=1, P4-4) cannot
+    // honor `auto_unlock_enabled = false`, so fail fast with a clear log + a
+    // non-zero exit instead of coming up locked and silently doing nothing.
+    // (Machine-readable status file + GUI red banner land in P4-5.)
+    if uc_daemon_local::spawn_contract::unattended_from_env() {
+        let settings = handles.wired.deps.settings.load().await.unwrap_or_default();
+        if let Err(violation) = uc_daemon_local::spawn_contract::validate_unattended_unlock(
+            true,
+            settings.security.auto_unlock_enabled,
+        ) {
+            tracing::error!(%violation, "daemon refusing to start (ADR-008 D9 unlock contract)");
+            return Err(anyhow::anyhow!("{violation}"));
+        }
+    }
+
     let DaemonBootstrapAssembly {
         clipboard_sync_facade,
         blob_transfer_facade,

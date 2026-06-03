@@ -55,13 +55,14 @@
 - **`DaemonOwnership` 枚举重设计移至 P4-3**（与其消费者「彻底退出→停」同切片落地，避免一个用不上的中间态枚举）；P4-1 只做持久数据面与分类原语。
 - **gate（已过）**：`cargo check --workspace` clean；clippy clean（changed crate）；`uc-daemon-local` process_metadata 6/6（含 spawned_by round-trip / serde default / env 解析）、daemon_probe 16/16、stop 5/5。行为不变。
 
-### P4-2 · D9 解锁契约（autostart 硬前置） `feat:`
-- `uniclipd` 启动契约 attended / unattended（由拉起方传入 flag/env，**非 run mode**）：
-  - **attended**（GUI 会来）：尊重 `auto_unlock_enabled`；`false` → 保持 locked 等 GUI `POST /encryption/unlock`（恢复 P3-3 回归掉的 attended 路径，修 `run_mode.rs:61` 恒 force-unlock）。
-  - **unattended**（自启 / headless / 轻量常驻）：要求 keyring auto-unlock 可用，否则 fail-fast 退出 + 写机器可读状态文件。
-- 互斥校验纯函数（`uc-daemon-local` 或 `uc-bootstrap`，单一事实源）：禁「unattended 自启开关 = on」+「`auto_unlock_enabled = false`」。GUI 设置页 + CLI 调它做前置友好报错；**唯一硬边界 = `uniclipd --unattended` 自检**。
-- 枚举并验证所有拉起 operational daemon 的路径都携带并触发自检：GUI spawn（attended）/ `cli start` / service-manager 单元（D10 ExecStart 固定带 flag）/ D16 setup→operational 重启透传 flag。
-- **gate**：`cargo check --workspace`；纯函数单测（互斥矩阵）；attended GUI-spawned daemon 在 `auto_unlock=false` 下保持 locked 等 GUI 解锁（不再 force-unlock）；`--unattended` + `auto_unlock=false` fail-fast。
+### P4-2 · D9 解锁契约（autostart 硬前置） `feat:` ✅ 已落地
+> **范围决策（人确认）**：① 仅 GUI-spawned 转 attended；`cli start` / headless / 手跑保持现状 force-unlock（最小/安全，复用 P4-1 spawn origin）。② P4-2 只 fail-fast，机器可读状态文件 + GUI 红条并入 **P4-5**。
+- **attended 判定**（`startup_recovery::is_attended`，纯函数）：`spawn_origin == Gui && run_mode != ServerHeadless && !strict_unattended`。attended → 尊重 `auto_unlock_enabled`（`false` → 保持 locked，GUI 解锁后经 `/lifecycle/ready` 释放 deferred 服务，通路已核实：`App.tsx` `shouldSignalDaemonLifecycleReady` 在 `session_ready` 时触发）；其余 → force-unlock（历史行为）。修掉 P3-3 把 GUI-spawned daemon 也 force-unlock 的回归。
+- **互斥校验纯函数**（`uc-daemon-local::spawn_contract::validate_unattended_unlock`，单一事实源）：禁「strict-unattended」+「`auto_unlock_enabled = false`」。
+- **strict-unattended 自检**（`host.rs::start_in_process` 最前）：`UC_DAEMON_UNATTENDED=1`（autostart/service-manager 设，P4-4 接上）+ `auto_unlock=false` → `tracing::error!` + 返回 `Err` → 进程非零退出。`cli start`/headless 不设该 env，故不触发（保持现状）。
+- 移除 run-mode 维度的死方法 `uses_auto_unlock_setting()`（解锁决策已迁至 D9 契约）。
+- **gate（已过）**：`cargo check --workspace` clean；clippy clean（changed files）；spawn_contract 2/2（互斥矩阵 + env 真值）、run_mode 4/4、startup_recovery 3/3（attended 矩阵）。
+- **遗留至 P4-4**：把 `validate_unattended_unlock` 接进 GUI 设置页 / CLI 的前置友好报错 + autostart 单元的 `UC_DAEMON_UNATTENDED=1`（互斥左操作数「unattended 自启开关」随 P4-4 per-profile 单元投影新增）；D16 setup→operational 重启透传 flag。
 
 ### P4-3 · D3 三态 UX（功能交付核心） `feat:`
 - `DaemonOwnership` 枚举重设计（从 P4-1 移入，与消费者同切片）：删死的 in-process `Owned(handle)` 变体（无生产 caller），改为表达「连到的 daemon 是否本 GUI/某 GUI spawn 可停」——`stoppable` 由 probe 读到的 PID metadata `is_gui_spawned()` 且 `verify_pid_identity` 通过推导（P4-1 原语已就绪）。

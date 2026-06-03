@@ -7,8 +7,24 @@ use tokio::sync::Notify;
 use tracing::{info_span, Instrument};
 use uc_application::facade::{AppFacade, SpaceSetupFacade};
 use uc_core::ports::SettingsPort;
+use uc_daemon_local::process_metadata::DaemonSpawnOrigin;
+use uc_daemon_local::spawn_contract::unattended_from_env;
 
 use super::run_mode::DaemonRunMode;
+
+/// ADR-008 D9: whether this daemon is *attended* — i.e. respects the user's
+/// `auto_unlock_enabled` setting because a GUI will connect and drive the
+/// unlock. Attended iff the daemon was GUI-spawned, is not a headless node, and
+/// was not launched strict-unattended. Every other launch force-unlocks.
+fn is_attended(
+    run_mode: DaemonRunMode,
+    spawn_origin: DaemonSpawnOrigin,
+    strict_unattended: bool,
+) -> bool {
+    matches!(spawn_origin, DaemonSpawnOrigin::Gui)
+        && !matches!(run_mode, DaemonRunMode::ServerHeadless)
+        && !strict_unattended
+}
 
 /// 启动恢复任务所需输入。
 pub struct StartupRecoveryInput {
@@ -26,11 +42,26 @@ pub struct StartupRecoveryInput {
 /// HTTP 监听拉起来，再让这个后台任务慢慢恢复。
 pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
     tokio::spawn(async move {
-        // Standalone daemon 在这里强制走 `true` 分支——CLI 拉起的独立 daemon
-        // 没有 GUI 通道接收手动解锁，启动期不解锁就等于让剪贴板/同步服务
-        // 永久卡在 deferred 队列里。详见
-        // [`DaemonRunMode::uses_auto_unlock_setting`] 的注释。
-        let auto_unlock_enabled = if input.run_mode.uses_auto_unlock_setting() {
+        // ADR-008 D9 (P4-2): only an *attended* daemon respects the user's
+        // `auto_unlock_enabled` setting. Attended = this daemon was spawned by
+        // a GUI (which will connect and drive unlock + `POST /lifecycle/ready`),
+        // is not a headless node, and was not launched strict-unattended. For
+        // an attended daemon with `auto_unlock_enabled = false` we stay locked
+        // and let the GUI unlock — the deferred services are released by the
+        // GUI's lifecycle/ready once the session becomes ready.
+        //
+        // Every other launch — interactive `uniclip start`, strict-unattended
+        // autostart, headless, or a manually-run `uniclipd` — has no GUI
+        // fallback, so it force-unlocks via keyring (the historical behavior):
+        // without an unlock the clipboard/sync workers stay stuck in the
+        // deferred queue and the daemon looks alive while doing nothing.
+        let attended = is_attended(
+            input.run_mode,
+            DaemonSpawnOrigin::from_env(),
+            unattended_from_env(),
+        );
+
+        let auto_unlock_enabled = if attended {
             let settings = input.settings.load().await.unwrap_or_default();
             settings.security.auto_unlock_enabled
         } else {
@@ -92,4 +123,41 @@ pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
             tracing::info!("background unlock: persistent mode auto-triggered deferred services");
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_gui_spawned_standalone_is_attended() {
+        // The one attended case: GUI-spawned, not headless, not strict.
+        assert!(is_attended(
+            DaemonRunMode::Standalone,
+            DaemonSpawnOrigin::Gui,
+            false
+        ));
+    }
+
+    #[test]
+    fn cli_and_manual_launches_force_unlock() {
+        for origin in [DaemonSpawnOrigin::Cli, DaemonSpawnOrigin::Unknown] {
+            assert!(
+                !is_attended(DaemonRunMode::Standalone, origin, false),
+                "{origin:?} has no GUI fallback — must force-unlock"
+            );
+        }
+    }
+
+    #[test]
+    fn headless_and_strict_unattended_force_unlock_even_if_gui_spawned() {
+        assert!(
+            !is_attended(DaemonRunMode::ServerHeadless, DaemonSpawnOrigin::Gui, false),
+            "headless has no display/GUI surface — force-unlock"
+        );
+        assert!(
+            !is_attended(DaemonRunMode::Standalone, DaemonSpawnOrigin::Gui, true),
+            "strict-unattended overrides the GUI origin — force-unlock"
+        );
+    }
 }

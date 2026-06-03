@@ -29,8 +29,9 @@ pub use analytics::{build_analytics_sink, compose_event_context};
 
 // Re-export primary public items
 pub use assembly::{
-    build_clipboard_write_coordinator, get_storage_paths, resolve_pairing_device_name,
-    wire_dependencies, BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult,
+    build_clipboard_write_coordinator, build_gui_client_context, get_storage_paths,
+    resolve_pairing_device_name, wire_dependencies, wire_gui_client_deps, BackgroundRuntimeDeps,
+    GuiClientDeps, WiredDependencies, WiringError, WiringResult,
 };
 pub use background_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
 pub use builders::{

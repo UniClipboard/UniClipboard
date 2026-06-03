@@ -693,6 +693,71 @@ pub fn get_storage_paths(
     resolve_app_paths(&platform_dirs, config)
 }
 
+/// File-backed / in-memory ports a pure-client GUI needs (ADR-008 P3-3 B2'-3).
+///
+/// Unlike [`WiredDependencies`], this carries ONLY the ports that do not touch
+/// the sqlite pool: settings + setup-status (file-backed), analytics, the
+/// stable device id, and the resolved storage paths. The external `uniclipd`
+/// daemon owns the sqlite pool, blob store, clipboard infra and the in-process
+/// `AppFacade`; a GUI that is a pure client of that daemon must never open the
+/// same database (split-brain), so it assembles only this subset.
+pub struct GuiClientDeps {
+    pub settings: Arc<dyn SettingsPort>,
+    pub setup_status: Arc<dyn SetupStatusPort>,
+    pub analytics: Arc<dyn uc_observability::analytics::AnalyticsPort>,
+    pub device_id: String,
+    pub storage_paths: uc_application::facade::AppPaths,
+}
+
+/// Assemble only the file-backed / in-memory ports a pure-client GUI needs,
+/// WITHOUT opening the sqlite pool, initialising secure storage, or building any
+/// blob / clipboard infra. See [`GuiClientDeps`] for the rationale.
+///
+/// All four ports here are file-backed or in-memory: settings (`settings.json`),
+/// setup-status (vault dir file), the device identity (app-data-root identity
+/// dir) and the analytics sink. They are the same files the daemon reads, so the
+/// GUI reading them concurrently is eventually-consistent and split-brain-free.
+pub fn wire_gui_client_deps(config: &AppConfig) -> WiringResult<GuiClientDeps> {
+    let platform_dirs = get_default_app_dirs()?;
+    let paths = resolve_app_paths(&platform_dirs, config)?;
+    let app_data_root = paths.app_data_root_dir.clone();
+
+    let settings: Arc<dyn SettingsPort> =
+        Arc::new(FileSettingsRepository::new(paths.settings_path.clone()));
+    let setup_status: Arc<dyn SetupStatusPort> = Arc::new(
+        FileSetupStatusRepository::with_defaults(paths.vault_dir.clone()),
+    );
+    let analytics = crate::analytics::build_analytics_sink();
+
+    let device_identity: Arc<dyn DeviceIdentityPort> = Arc::new(
+        LocalDeviceIdentity::load_or_create(app_data_root).map_err(|e| {
+            WiringError::SettingsInit(format!("Failed to create device identity: {}", e))
+        })?,
+    );
+    let device_id = device_identity.current_device_id().to_string();
+
+    Ok(GuiClientDeps {
+        settings,
+        setup_status,
+        analytics,
+        device_id,
+        storage_paths: paths,
+    })
+}
+
+/// Build the pure-client GUI runtime context (ADR-008 P3-3 B2'-3).
+///
+/// The client counterpart of [`build_process_runtime`](crate::build_process_runtime):
+/// initialises the tracing subscriber + panic hook (idempotent), then assembles
+/// only the file-backed ports via [`wire_gui_client_deps`]. It does NOT open the
+/// sqlite pool — the external `uniclipd` daemon owns all sqlite-backed state.
+pub fn build_gui_client_context() -> anyhow::Result<GuiClientDeps> {
+    crate::tracing::init_tracing_subscriber()?;
+    crate::tracing::install_panic_logging_hook();
+    let config = AppConfig::empty();
+    wire_gui_client_deps(&config).map_err(|e| anyhow::anyhow!("GUI client wiring failed: {}", e))
+}
+
 /// Build `AppPaths` from platform dirs and config overrides.
 pub fn resolve_app_paths(
     platform_dirs: &uc_core::app_dirs::AppDirs,

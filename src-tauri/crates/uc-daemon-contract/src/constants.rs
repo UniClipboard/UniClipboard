@@ -94,6 +94,8 @@ pub mod http_route {
     pub const CLIPBOARD_STATS: &str = "/clipboard/stats";
     /// GET /settings — daemon settings
     pub const SETTINGS: &str = "/settings";
+    /// POST /settings/relay-probe — probe a candidate relay URL (ADR-008 P3-3 B2'-1)
+    pub const SETTINGS_RELAY_PROBE: &str = "/settings/relay-probe";
     /// GET /encryption/state — encryption state
     pub const ENCRYPTION_STATE: &str = "/encryption/state";
     /// POST /encryption/unlock — unlock encryption with passphrase

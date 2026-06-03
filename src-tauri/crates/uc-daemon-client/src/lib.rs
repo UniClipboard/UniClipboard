@@ -21,8 +21,8 @@ use uc_daemon_local::socket::resolve_daemon_http_addr;
 pub use connection::DaemonConnectionState;
 pub use http::{
     DaemonClipboardClient, DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient,
-    DaemonSearchClient, DaemonSearchRequestError, DaemonSetupClient, ExchangedSessionToken,
-    SearchQueryRequest,
+    DaemonSearchClient, DaemonSearchRequestError, DaemonSettingsClient, DaemonSetupClient,
+    ExchangedSessionToken, SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::DaemonService;
@@ -212,6 +212,15 @@ impl DaemonClientContext {
     /// Spawn a [`DaemonClipboardClient`] that shares this context's connection state and HTTP client.
     pub fn clipboard_client(&self) -> DaemonClipboardClient {
         DaemonClipboardClient::with_http_conn_state_and_type(
+            self.http.clone(),
+            self.connection_state.clone(),
+            self.client_type.clone(),
+        )
+    }
+
+    /// Spawn a [`DaemonSettingsClient`] that shares this context's connection state and HTTP client.
+    pub fn settings_client(&self) -> DaemonSettingsClient {
+        DaemonSettingsClient::with_http_conn_state_and_type(
             self.http.clone(),
             self.connection_state.clone(),
             self.client_type.clone(),

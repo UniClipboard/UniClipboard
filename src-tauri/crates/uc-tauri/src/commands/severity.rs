@@ -67,7 +67,6 @@ macro_rules! classify {
 }
 
 use crate::commands::error::CommandError;
-use crate::commands::mobile_sync::MobileSyncError;
 
 // Generic command taxonomy. `#[serde(tag = "code", content = "message")]` with
 // no `rename_all`, so codes are the PascalCase variant names verbatim.
@@ -80,41 +79,18 @@ classify!(CommandError {
     "Conflict" => UserError,
 });
 
-classify!(MobileSyncError {
-    "FACADE_UNAVAILABLE" => SystemError,
-    "LABEL_EMPTY" => UserError,
-    "LABEL_TOO_LONG" => UserError,
-    "LAN_LISTENER_DISABLED" => UserError,
-    "USERNAME_TAKEN" => UserError,
-    "USERNAME_TOO_SHORT" => UserError,
-    "USERNAME_TOO_LONG" => UserError,
-    "USERNAME_MUST_START_WITH_LETTER" => UserError,
-    "USERNAME_CONTAINS_FORBIDDEN_CHARS" => UserError,
-    "PASSWORD_TOO_SHORT" => UserError,
-    "PASSWORD_TOO_LONG" => UserError,
-    "PASSWORD_HASH_FAILED" => SystemError,
-    "DEVICE_NOT_FOUND" => UserError,
-    "INVALID_LAN_PARAMETER" => UserError,
-    "SETTINGS_LOAD_FAILED" => SystemError,
-    "SETTINGS_SAVE_FAILED" => SystemError,
-    "ENDPOINT_INFO_FAILED" => SystemError,
-    "LAN_PROBE_FAILED" => SystemError,
-    "NO_LAN_INTERFACE_AVAILABLE" => SystemError,
-    "PERSISTENCE_FAILED" => SystemError,
-    "QR_RENDER_FAILED" => SystemError,
-});
-
-// NOTE (ADR-008 P3-1): the unlock / silent-unlock / factory-reset / resend
-// command errors moved off Tauri commands onto the daemon loopback API, so their
-// severity classifications were removed here. The daemon emits user-recoverable
-// outcomes as 4xx (no Sentry escalation) and the FE error wrappers log them at
-// info/warn — they no longer flow through `invokeWithTrace` / this taxonomy.
+// NOTE (ADR-008 P3-1 / P3-b): the unlock / silent-unlock / factory-reset /
+// resend command errors (P3-1) and the mobile-sync command errors (P3-b) moved
+// off Tauri commands onto the daemon loopback API, so their severity
+// classifications were removed here. The daemon emits user-recoverable outcomes
+// as 4xx (no Sentry escalation) and the FE error wrappers log them at info/warn
+// — they no longer flow through `invokeWithTrace` / this taxonomy. `CommandError`
+// is the last remaining frontend-facing Tauri command error.
 
 /// Every `(code, severity)` pair across all frontend-facing command errors.
 fn all_code_severities() -> Vec<(&'static str, ErrorSeverity)> {
     let mut all = Vec::new();
     all.extend_from_slice(CommandError::code_severities());
-    all.extend_from_slice(MobileSyncError::code_severities());
     all
 }
 
@@ -206,60 +182,6 @@ mod tests {
     }
 
     #[test]
-    fn mobile_sync_error_table_is_complete() {
-        use MobileSyncError as E;
-        fn _coverage(e: &E) {
-            match e {
-                E::FacadeUnavailable
-                | E::LabelEmpty
-                | E::LabelTooLong { .. }
-                | E::LanListenerDisabled
-                | E::UsernameTaken { .. }
-                | E::UsernameTooShort { .. }
-                | E::UsernameTooLong { .. }
-                | E::UsernameMustStartWithLetter
-                | E::UsernameContainsForbiddenChars
-                | E::PasswordTooShort { .. }
-                | E::PasswordTooLong { .. }
-                | E::PasswordHashFailed { .. }
-                | E::DeviceNotFound { .. }
-                | E::InvalidLanParameter { .. }
-                | E::SettingsLoadFailed { .. }
-                | E::SettingsSaveFailed { .. }
-                | E::EndpointInfoFailed { .. }
-                | E::LanProbeFailed { .. }
-                | E::NoLanInterfaceAvailable
-                | E::PersistenceFailed { .. }
-                | E::QrRenderFailed { .. } => {}
-            }
-        }
-        let m = || "x".to_string();
-        assert_table_matches(&[
-            E::FacadeUnavailable,
-            E::LabelEmpty,
-            E::LabelTooLong { max: 1 },
-            E::LanListenerDisabled,
-            E::UsernameTaken { username: m() },
-            E::UsernameTooShort { min: 1, got: 0 },
-            E::UsernameTooLong { max: 1, got: 2 },
-            E::UsernameMustStartWithLetter,
-            E::UsernameContainsForbiddenChars,
-            E::PasswordTooShort { min: 1 },
-            E::PasswordTooLong { max: 1 },
-            E::PasswordHashFailed { message: m() },
-            E::DeviceNotFound { device_id: m() },
-            E::InvalidLanParameter { reason: m() },
-            E::SettingsLoadFailed { message: m() },
-            E::SettingsSaveFailed { message: m() },
-            E::EndpointInfoFailed { message: m() },
-            E::LanProbeFailed { message: m() },
-            E::NoLanInterfaceAvailable,
-            E::PersistenceFailed { message: m() },
-            E::QrRenderFailed { message: m() },
-        ]);
-    }
-
-    #[test]
     fn user_facing_codes_are_sorted_unique_and_user_only() {
         let codes = user_facing_error_codes();
 
@@ -268,9 +190,10 @@ mod tests {
         sorted.dedup();
         assert_eq!(codes, sorted, "user-facing codes must be sorted and unique");
 
-        // Spot-check the case that motivated this module, and that a system
-        // error never leaks into the user set.
-        assert!(codes.contains(&"USERNAME_MUST_START_WITH_LETTER"));
-        assert!(!codes.contains(&"PERSISTENCE_FAILED"));
+        // Spot-check that a user error is present and a system error never
+        // leaks into the user set. (Mobile-sync codes moved to the daemon API
+        // in P3-b, so the taxonomy now covers only `CommandError`.)
+        assert!(codes.contains(&"ValidationError"));
+        assert!(!codes.contains(&"InternalError"));
     }
 }

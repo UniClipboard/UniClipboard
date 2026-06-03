@@ -795,7 +795,7 @@ const MobileCard: React.FC<{
   onSelect: () => void
 }> = ({ mobile, onSelect }) => {
   const { t } = useTranslation()
-  const lastSeen = formatLastSeen(mobile.lastSeenAtMs, t)
+  const lastSeen = formatLastSeen(mobile.lastSeenAtMs ?? null, t)
 
   return (
     <button

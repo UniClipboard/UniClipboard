@@ -210,9 +210,10 @@ export const commands: TypedCommands = buildProxy()
 export const events = rawEvents
 
 // Re-export the generated DTO/error types so call sites can `import { type
-// MobileSyncError } from '@/lib/ipc'` without having to know about the
-// generated file path. Keeps the generated artifact a hidden implementation
-// detail.
+// CommandError } from '@/lib/ipc'` without having to know about the generated
+// file path. Keeps the generated artifact a hidden implementation detail.
+// (Mobile-sync types moved to `@/api/tauri-command/mobile_sync` in ADR-008
+// P3-b when those commands became daemon HTTP endpoints.)
 export type {
   ClipboardDeliveryStatusChanged,
   CommandError,
@@ -222,19 +223,8 @@ export type {
   DownloadPhase,
   DownloadProgressSnapshot,
   InstallKind,
-  LanInterfaceView,
-  MobileDeviceView,
-  MobileSyncError,
-  MobileSyncSettingsViewDto,
-  RegisterMobileDeviceArgs,
-  RegisterMobileDeviceResult,
-  RotateMobilePasswordArgs,
-  RotateMobilePasswordResult,
-  ShortcutInstallMethodView,
   ShortcutKeyDto,
   TraceMetadata,
   UpdateKeyboardShortcutsResult,
   UpdateMetadata,
-  UpdateMobileSyncSettingsArgs,
-  UpdateMobileSyncSettingsResult,
 } from './ipc-bindings.generated'

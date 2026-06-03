@@ -1,116 +1,207 @@
 /**
- * Mobile sync Tauri command wrappers.
+ * Mobile sync public API wrappers.
  *
- * GUI 走 in-process facade 直调 `uc-application::MobileSyncFacade`，不经过
- * daemon webserver（参见 memory `project_gui_uses_inprocess_facade.md`）。
+ * ADR-008 P3-b: the GUI is a cross-process client, so these used to be
+ * in-process Tauri commands and now ride the daemon loopback HTTP API through
+ * the generated SDK (`src/api/daemon/mobile-sync.ts`). The path name is kept
+ * (`tauri-command/`) so the ~6 consumer call sites are unchanged.
  *
- * 本文件作为 *thin re-export*：契约真正的真相源是 `src/lib/ipc.ts` 的
- * 类型化 commands proxy（背后是 `cargo test --test specta_export` 生成的
- * `ipc-bindings.generated.ts`）。这里只做两件事：
- * 1. 把 `commands.xxx` 重命名成历史调用方习惯的函数名；
- * 2. 把生成的 DTO 类型重导出，并保留少量更窄的 TS-only 联合类型
- *    （如 `MobileClientType = 'ios_shortcut'`），让调用方拿到比 Rust
- *    `String` 更精确的类型信息。
+ * This module owns the FE-facing contract that the specta bindings used to
+ * generate: the `MobileSyncError` discriminated union (with its structured
+ * fields), the request/result types (narrowed over the generated DTOs), and
+ * `isMobileSyncError`. Errors thrown by the daemon wrappers arrive as
+ * `DaemonApiError`; `toMobileSyncError` reconstructs the same `{ code,
+ * ...fields }` union consumers already `switch (err.code)` on, off
+ * `DaemonApiError.details` (`{ code, message, details? }`).
  *
- * Backend: `src-tauri/crates/uc-tauri/src/commands/mobile_sync.rs`
+ * Backend: `src-tauri/crates/uc-webserver/src/api/mobile_sync.rs`
  */
 
-import { commands } from '@/lib/ipc'
+import { DaemonApiError } from '@/api/daemon/errors'
+import * as daemon from '@/api/daemon/mobile-sync'
 import type {
-  LanInterfaceView,
-  MobileDeviceView as GeneratedMobileDeviceView,
-  MobileSyncError,
+  LanInterfaceViewDto,
+  MobileDeviceViewDto,
+  RegisterMobileDeviceRequest,
+  RegisterMobileDeviceResultDto,
+  RotateMobilePasswordResultDto,
   MobileSyncSettingsViewDto,
-  RegisterMobileDeviceArgs,
-  RegisterMobileDeviceResult as GeneratedRegisterMobileDeviceResult,
-  RotateMobilePasswordArgs,
-  RotateMobilePasswordResult,
-  ShortcutInstallMethodView as GeneratedShortcutInstallMethodView,
-  UpdateMobileSyncSettingsArgs,
-  UpdateMobileSyncSettingsResult,
-} from '@/lib/ipc'
+  ShortcutInstallMethodViewDto,
+  UpdateMobileSyncSettingsRequest,
+  UpdateMobileSyncSettingsResultDto,
+} from '@/api/generated/types.gen'
 
 // ============================================================================
-// Re-exported error taxonomy + type guard
+// Error taxonomy ─ hand-authored union (wire-identical to the old specta one)
 // ============================================================================
-
-export type { MobileSyncError }
 
 /**
- * Type guard for catch blocks. Tauri rejects with the typed-error envelope
- * shape (`{ code: '...' , ...payload }`); this widens unknown errors back
- * to the typed union so call sites can do `switch (err.code)`.
+ * Typed mobile-sync error. Serialized form on the daemon side is
+ * `{ "code": "USERNAME_TAKEN", "username": "..." }`; the structured fields are
+ * what `AddMobileSyncDeviceDialog` reads for i18n interpolation. Reconstructed
+ * by {@link toMobileSyncError} from `DaemonApiError.details`.
+ */
+export type MobileSyncError =
+  | { code: 'FACADE_UNAVAILABLE' }
+  | { code: 'LABEL_EMPTY' }
+  | { code: 'LABEL_TOO_LONG'; max: number }
+  | { code: 'LAN_LISTENER_DISABLED' }
+  | { code: 'USERNAME_TAKEN'; username: string }
+  | { code: 'USERNAME_TOO_SHORT'; min: number; got: number }
+  | { code: 'USERNAME_TOO_LONG'; max: number; got: number }
+  | { code: 'USERNAME_MUST_START_WITH_LETTER' }
+  | { code: 'USERNAME_CONTAINS_FORBIDDEN_CHARS' }
+  | { code: 'PASSWORD_TOO_SHORT'; min: number }
+  | { code: 'PASSWORD_TOO_LONG'; max: number }
+  | { code: 'PASSWORD_HASH_FAILED'; message: string }
+  | { code: 'DEVICE_NOT_FOUND'; deviceId: string }
+  | { code: 'INVALID_LAN_PARAMETER'; reason: string }
+  | { code: 'SETTINGS_LOAD_FAILED'; message: string }
+  | { code: 'SETTINGS_SAVE_FAILED'; message: string }
+  | { code: 'ENDPOINT_INFO_FAILED'; message: string }
+  | { code: 'LAN_PROBE_FAILED'; message: string }
+  | { code: 'NO_LAN_INTERFACE_AVAILABLE' }
+  | { code: 'PERSISTENCE_FAILED'; message: string }
+  | { code: 'QR_RENDER_FAILED'; message: string }
+
+/** Every semantic `code` the daemon emits for mobile-sync. */
+const MOBILE_SYNC_CODES: ReadonlySet<string> = new Set([
+  'FACADE_UNAVAILABLE',
+  'LABEL_EMPTY',
+  'LABEL_TOO_LONG',
+  'LAN_LISTENER_DISABLED',
+  'USERNAME_TAKEN',
+  'USERNAME_TOO_SHORT',
+  'USERNAME_TOO_LONG',
+  'USERNAME_MUST_START_WITH_LETTER',
+  'USERNAME_CONTAINS_FORBIDDEN_CHARS',
+  'PASSWORD_TOO_SHORT',
+  'PASSWORD_TOO_LONG',
+  'PASSWORD_HASH_FAILED',
+  'DEVICE_NOT_FOUND',
+  'INVALID_LAN_PARAMETER',
+  'SETTINGS_LOAD_FAILED',
+  'SETTINGS_SAVE_FAILED',
+  'ENDPOINT_INFO_FAILED',
+  'LAN_PROBE_FAILED',
+  'NO_LAN_INTERFACE_AVAILABLE',
+  'PERSISTENCE_FAILED',
+  'QR_RENDER_FAILED',
+])
+
+/**
+ * Type guard for catch blocks: widens an unknown error back to the typed union
+ * so call sites can `switch (err.code)`. (Daemon errors are translated to this
+ * shape by {@link toMobileSyncError} before being thrown.)
  */
 export function isMobileSyncError(error: unknown): error is MobileSyncError {
   return (
     typeof error === 'object' &&
     error !== null &&
     'code' in error &&
-    typeof (error as { code: unknown }).code === 'string'
+    typeof (error as { code: unknown }).code === 'string' &&
+    MOBILE_SYNC_CODES.has((error as { code: string }).code)
   )
+}
+
+/**
+ * Reconstruct a `MobileSyncError` from a thrown `DaemonApiError`. The semantic
+ * `code` and structured fields live on `DaemonApiError.details` (the normalized
+ * `{ code, message, details? }` body): `details.code` is the tag, `details.details`
+ * carries the per-variant fields. A bare facade-unavailable 503 surfaces as
+ * `runtime_unavailable` (from `app_facade_or_error`) and is folded into
+ * `FACADE_UNAVAILABLE`. Non-daemon / unrecognized errors pass through unchanged
+ * so they are not masked as typed mobile-sync errors.
+ */
+function toMobileSyncError(error: unknown): unknown {
+  if (!(error instanceof DaemonApiError)) {
+    return error
+  }
+  const body = error.details as { code?: string; details?: Record<string, unknown> } | undefined
+  const rawCode = body?.code
+  if (rawCode === 'runtime_unavailable') {
+    return { code: 'FACADE_UNAVAILABLE' } as MobileSyncError
+  }
+  if (typeof rawCode === 'string' && MOBILE_SYNC_CODES.has(rawCode)) {
+    return { code: rawCode, ...(body?.details ?? {}) } as MobileSyncError
+  }
+  return error
 }
 
 // ============================================================================
 // DTO types — narrow re-exports of generated bindings
 // ============================================================================
 
+/** Register-device request. Wire shape = generated `RegisterMobileDeviceRequest`. */
+export type RegisterMobileDeviceArgs = RegisterMobileDeviceRequest
+
+/** Rotate-password request. `deviceId` is the path param; `password` the body. */
+export type RotateMobilePasswordArgs = {
+  deviceId: string
+  password?: string | null
+}
+
+/** Update-settings patch. Wire shape = generated `UpdateMobileSyncSettingsRequest`. */
+export type UpdateMobileSyncSettingsArgs = UpdateMobileSyncSettingsRequest
+
+export type RotateMobilePasswordResult = RotateMobilePasswordResultDto
+export type UpdateMobileSyncSettingsResult = UpdateMobileSyncSettingsResultDto
+export type LanInterfaceView = LanInterfaceViewDto
+
 /**
- * Mobile client kind. Rust serializes a `String` here; the only value the
- * server currently mints is `'ios_shortcut'`. The narrower TS type lets
- * callers `switch (clientType)` exhaustively.
+ * Mobile client kind. The daemon serializes a `String`; the only value the
+ * server currently mints is `'ios_shortcut'`. The narrower TS type lets callers
+ * `switch (clientType)` exhaustively.
  */
 export type MobileClientType = 'ios_shortcut'
 
-/** Shortcut install delivery method —— same justification as `MobileClientType`. */
+/** Shortcut install delivery method — same justification as `MobileClientType`. */
 export type ShortcutInstallMethodKind = 'tokenInjected' | 'icloudGeneric'
 
-export type {
-  RegisterMobileDeviceArgs,
-  RotateMobilePasswordArgs,
-  RotateMobilePasswordResult,
-  UpdateMobileSyncSettingsArgs,
-  UpdateMobileSyncSettingsResult,
-  LanInterfaceView,
-}
-
-/** `MobileDeviceView` with narrowed `clientType` literal type. */
-export type MobileDeviceView = Omit<GeneratedMobileDeviceView, 'clientType'> & {
+/** `MobileDeviceViewDto` with narrowed `clientType` literal type. */
+export type MobileDeviceView = Omit<MobileDeviceViewDto, 'clientType'> & {
   clientType: MobileClientType
 }
 
 /** Same narrowing as `MobileDeviceView`. */
-export type RegisterMobileDeviceResult = Omit<GeneratedRegisterMobileDeviceResult, 'clientType'> & {
+export type RegisterMobileDeviceResult = Omit<RegisterMobileDeviceResultDto, 'clientType'> & {
   clientType: MobileClientType
 }
 
 /** Same narrowing on `method` field. */
-export type ShortcutInstallMethodView = Omit<GeneratedShortcutInstallMethodView, 'method'> & {
+export type ShortcutInstallMethodView = Omit<ShortcutInstallMethodViewDto, 'method'> & {
   method: ShortcutInstallMethodKind
 }
 
 /**
  * Settings view aliased back to the historical short name for ergonomic
- * imports; the wire shape is exactly `MobileSyncSettingsViewDto` from the
- * generated bindings, with `shortcutInstallMethods` narrowed.
+ * imports; the wire shape is exactly `MobileSyncSettingsViewDto`, with
+ * `shortcutInstallMethods` narrowed.
  */
 export type MobileSyncSettingsView = Omit<MobileSyncSettingsViewDto, 'shortcutInstallMethods'> & {
   shortcutInstallMethods: ShortcutInstallMethodView[]
 }
 
 // ============================================================================
-// Command wrappers
+// Command wrappers (loopback via generated SDK, typed-error translation)
 // ============================================================================
 
 /**
  * Register a new iPhone Shortcut device. Returns the long-lived credentials
  * along with the install QR code. The plaintext password in the response is
  * shown to the user only once — see `RegisterMobileDeviceResult.password`.
+ *
+ * @throws {MobileSyncError} typed union — `switch` on `error.code`.
  */
 export async function registerMobileDevice(
   args: RegisterMobileDeviceArgs
 ): Promise<RegisterMobileDeviceResult> {
-  const result = await commands.registerMobileDevice(args)
-  return result as RegisterMobileDeviceResult
+  try {
+    const result = await daemon.registerMobileDevice(args)
+    return result as RegisterMobileDeviceResult
+  } catch (error) {
+    throw toMobileSyncError(error)
+  }
 }
 
 /**
@@ -119,7 +210,11 @@ export async function registerMobileDevice(
  * request.
  */
 export async function revokeMobileDevice(deviceId: string): Promise<void> {
-  await commands.revokeMobileDevice(deviceId)
+  try {
+    await daemon.revokeMobileDevice(deviceId)
+  } catch (error) {
+    throw toMobileSyncError(error)
+  }
 }
 
 /**
@@ -130,7 +225,11 @@ export async function revokeMobileDevice(deviceId: string): Promise<void> {
 export async function rotateMobilePassword(
   args: RotateMobilePasswordArgs
 ): Promise<RotateMobilePasswordResult> {
-  return await commands.rotateMobilePassword(args)
+  try {
+    return await daemon.rotateMobilePassword(args.deviceId, { password: args.password })
+  } catch (error) {
+    throw toMobileSyncError(error)
+  }
 }
 
 /**
@@ -139,8 +238,12 @@ export async function rotateMobilePassword(
  * exposed as an auxiliary identifier for the UI (paired with `label`).
  */
 export async function listMobileDevices(): Promise<MobileDeviceView[]> {
-  const devices = await commands.listMobileDevices()
-  return devices as MobileDeviceView[]
+  try {
+    const devices = await daemon.listMobileDevices()
+    return devices as MobileDeviceView[]
+  } catch (error) {
+    throw toMobileSyncError(error)
+  }
 }
 
 /**
@@ -148,8 +251,12 @@ export async function listMobileDevices(): Promise<MobileDeviceView[]> {
  * available shortcut install methods.
  */
 export async function getMobileSyncSettings(): Promise<MobileSyncSettingsView> {
-  const view = await commands.getMobileSyncSettings()
-  return view as MobileSyncSettingsView
+  try {
+    const view = await daemon.getMobileSyncSettings()
+    return view as MobileSyncSettingsView
+  } catch (error) {
+    throw toMobileSyncError(error)
+  }
 }
 
 /**
@@ -160,7 +267,11 @@ export async function getMobileSyncSettings(): Promise<MobileSyncSettingsView> {
 export async function updateMobileSyncSettings(
   args: UpdateMobileSyncSettingsArgs
 ): Promise<UpdateMobileSyncSettingsResult> {
-  return await commands.updateMobileSyncSettings(args)
+  try {
+    return await daemon.updateMobileSyncSettings(args)
+  } catch (error) {
+    throw toMobileSyncError(error)
+  }
 }
 
 /**
@@ -168,7 +279,11 @@ export async function updateMobileSyncSettings(
  * private addresses, sorted 10/8 → 172.16/12 → 192.168/16.
  */
 export async function listMobileLanInterfaces(): Promise<LanInterfaceView[]> {
-  return await commands.listMobileLanInterfaces()
+  try {
+    return await daemon.listMobileLanInterfaces()
+  } catch (error) {
+    throw toMobileSyncError(error)
+  }
 }
 
 /**

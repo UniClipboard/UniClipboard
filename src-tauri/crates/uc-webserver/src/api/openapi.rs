@@ -29,6 +29,12 @@ use crate::api::dto::error::ApiErrorResponse;
 use crate::api::dto::member::{
     MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
 };
+use crate::api::dto::mobile_sync::{
+    LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
+    RegisterMobileDeviceRequest, RegisterMobileDeviceResultDto, RotateMobilePasswordRequest,
+    RotateMobilePasswordResultDto, ShortcutInstallMethodViewDto, UpdateMobileSyncSettingsRequest,
+    UpdateMobileSyncSettingsResultDto,
+};
 use crate::api::dto::pairing::UnpairDeviceRequest;
 use crate::api::dto::search::{
     SearchQueryResultDto, SearchRebuildAcceptedData, SearchResultDto, SearchStatusData,
@@ -55,14 +61,17 @@ use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelTransferEnvelope, ClearCacheEnvelope, ClearHistoryEnvelope,
     ClipboardStatsEnvelope, DispatchOutcomeEnvelope, EncryptionActionEnvelope,
     EncryptionStateEnvelope, EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryResourceEnvelope,
-    KeychainAccessEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope,
-    MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, PeerSnapshotListEnvelope,
-    PresenceRefreshEnvelope, ResendEnvelope, RestoreEntryEnvelope, SearchQueryEnvelope,
+    KeychainAccessEnvelope, LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
+    LocalDeviceInfoEnvelope, MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope,
+    MobileDeviceListEnvelope, MobileSyncActionEnvelope, MobileSyncSettingsEnvelope,
+    PeerSnapshotListEnvelope, PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope,
+    ResendEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope,
     SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope, SettingsEnvelope,
     SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
     SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
     SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope, StorageStatsEnvelope,
-    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpgradeStatusEnvelope,
+    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateMobileSyncSettingsEnvelope,
+    UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -136,6 +145,14 @@ impl Modify for ContractMeta {
         // ── member ─────────────────────────────────────────────────
         crate::api::member::get_member_sync_preferences_handler,
         crate::api::member::update_member_sync_preferences_handler,
+        // ── mobile-sync ────────────────────────────────────────────
+        crate::api::mobile_sync::register_mobile_device_handler,
+        crate::api::mobile_sync::list_mobile_devices_handler,
+        crate::api::mobile_sync::revoke_mobile_device_handler,
+        crate::api::mobile_sync::rotate_mobile_password_handler,
+        crate::api::mobile_sync::get_mobile_sync_settings_handler,
+        crate::api::mobile_sync::update_mobile_sync_settings_handler,
+        crate::api::mobile_sync::list_mobile_lan_interfaces_handler,
         // ── pairing ────────────────────────────────────────────────
         crate::api::pairing::handle_unpair_device,
         // ── encryption ─────────────────────────────────────────────
@@ -237,6 +254,25 @@ impl Modify for ContractMeta {
             MemberSyncPreferencesPatchDto,
             ContentTypesDto,
             ContentTypesPatchDto,
+            // ── mobile-sync ────────────────────────────────────────
+            RegisterMobileDeviceEnvelope,
+            RotateMobilePasswordEnvelope,
+            MobileSyncActionEnvelope,
+            MobileDeviceListEnvelope,
+            MobileSyncSettingsEnvelope,
+            UpdateMobileSyncSettingsEnvelope,
+            LanInterfaceListEnvelope,
+            RegisterMobileDeviceRequest,
+            RegisterMobileDeviceResultDto,
+            RotateMobilePasswordRequest,
+            RotateMobilePasswordResultDto,
+            MobileSyncActionResultDto,
+            MobileDeviceViewDto,
+            MobileSyncSettingsViewDto,
+            ShortcutInstallMethodViewDto,
+            UpdateMobileSyncSettingsRequest,
+            UpdateMobileSyncSettingsResultDto,
+            LanInterfaceViewDto,
             // ── pairing ────────────────────────────────────────────
             UnpairDeviceRequest,
             // ── encryption ─────────────────────────────────────────
@@ -333,6 +369,7 @@ impl Modify for ContractMeta {
         (name = "storage", description = "Storage stats and cache maintenance"),
         (name = "device", description = "Local device identity"),
         (name = "member", description = "Per-space-member sync preferences"),
+        (name = "mobile-sync", description = "iPhone Shortcut device registration, credentials, and LAN settings"),
         (name = "pairing", description = "Space-member unpair lifecycle"),
         (name = "encryption", description = "Encryption state and session lock/unlock"),
         (name = "settings", description = "Persisted settings read/update (no OS side effects)"),
@@ -419,13 +456,15 @@ mod assembly_smoke_tests {
         );
 
         // Endpoint cardinality is frozen by §D. The `paths(...)` list registers
-        // 51 handler operations, but 3 paths carry two HTTP methods each
+        // 58 handler operations, but 5 paths carry two HTTP methods each
         // (`/settings` GET+PUT, `/clipboard/entries/{id}` GET+DELETE,
-        // `/member/{device_id}/sync-preferences` GET+PATCH), so they collapse to
-        // 48 unique path templates / 51 operations. Freeze both numbers so a
+        // `/member/{device_id}/sync-preferences` GET+PATCH, `/mobile-sync/devices`
+        // GET+POST, `/mobile-sync/settings` GET+PATCH), so they collapse to
+        // 53 unique path templates / 58 operations. Freeze both numbers so a
         // dropped handler OR a dropped path is caught. (ADR-008 P3-1 D15 added
         // `POST /encryption/unlock-with-passphrase`, `POST /encryption/factory-reset`,
-        // and `GET /clipboard/entries/{id}/delivery`: +3 paths, +3 operations.)
+        // and `GET /clipboard/entries/{id}/delivery`; ADR-008 P3-b added the 7
+        // `/mobile-sync/*` operations: +5 paths, +7 operations.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -434,8 +473,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            48,
-            "expected exactly 48 path templates, found {}: {:?}",
+            53,
+            "expected exactly 53 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -449,8 +488,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 51,
-            "expected exactly 51 operations across all paths, found {operation_count}"
+            operation_count, 58,
+            "expected exactly 58 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

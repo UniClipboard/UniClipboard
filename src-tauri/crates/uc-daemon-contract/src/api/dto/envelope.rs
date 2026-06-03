@@ -26,6 +26,11 @@ use crate::api::dto::encryption::{
     EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceResponse,
 };
 use crate::api::dto::member::{MemberSyncPreferencesDto, MemberSyncResultDto};
+use crate::api::dto::mobile_sync::{
+    LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
+    RegisterMobileDeviceResultDto, RotateMobilePasswordResultDto,
+    UpdateMobileSyncSettingsResultDto,
+};
 use crate::api::dto::search::{SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData};
 use crate::api::dto::settings::{SettingsDto, SettingsUpdateResultDto};
 use crate::api::dto::storage::{ClearCacheResponse, StorageStatsDto};
@@ -75,6 +80,14 @@ use crate::api::types::{
     LocalDeviceInfoEnvelope = ApiEnvelope<LocalDeviceInfoDto>,
     MemberSyncPreferencesEnvelope = ApiEnvelope<MemberSyncPreferencesDto>,
     MemberSyncResultEnvelope = ApiEnvelope<MemberSyncResultDto>,
+    // ── mobile sync ────────────────────────────────────────────────
+    RegisterMobileDeviceEnvelope = ApiEnvelope<RegisterMobileDeviceResultDto>,
+    RotateMobilePasswordEnvelope = ApiEnvelope<RotateMobilePasswordResultDto>,
+    MobileSyncActionEnvelope = ApiEnvelope<MobileSyncActionResultDto>,
+    MobileDeviceListEnvelope = ApiEnvelope<Vec<MobileDeviceViewDto>>,
+    MobileSyncSettingsEnvelope = ApiEnvelope<MobileSyncSettingsViewDto>,
+    UpdateMobileSyncSettingsEnvelope = ApiEnvelope<UpdateMobileSyncSettingsResultDto>,
+    LanInterfaceListEnvelope = ApiEnvelope<Vec<LanInterfaceViewDto>>,
     // ── encryption ─────────────────────────────────────────────────
     EncryptionStateEnvelope = ApiEnvelope<EncryptionStateResponse>,
     KeychainAccessEnvelope = ApiEnvelope<KeychainAccessResponse>,

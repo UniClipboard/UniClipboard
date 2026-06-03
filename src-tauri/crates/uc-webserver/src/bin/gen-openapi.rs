@@ -30,14 +30,16 @@ use utoipa::OpenApi;
 
 use uc_webserver::api::openapi::ApiDoc;
 
-/// Frozen §D cardinality. The `paths(...)` list registers 51 handler operations,
-/// but 3 paths carry two HTTP methods each (`/settings` GET+PUT,
+/// Frozen §D cardinality. The `paths(...)` list registers 58 handler operations,
+/// but 5 paths carry two HTTP methods each (`/settings` GET+PUT,
 /// `/clipboard/entries/{id}` GET+DELETE, `/member/{device_id}/sync-preferences`
-/// GET+PATCH), so they collapse to 48 unique path templates / 51 operations.
+/// GET+PATCH, `/mobile-sync/devices` GET+POST, `/mobile-sync/settings` GET+PATCH),
+/// so they collapse to 53 unique path templates / 58 operations.
 /// ADR-008 P3-1 (D15) added `POST /encryption/unlock-with-passphrase`,
 /// `POST /encryption/factory-reset`, `GET /clipboard/entries/{id}/delivery`.
-const EXPECTED_PATHS: usize = 48;
-const EXPECTED_OPERATIONS: usize = 51;
+/// ADR-008 P3-b added the 7 `/mobile-sync/*` operations.
+const EXPECTED_PATHS: usize = 53;
+const EXPECTED_OPERATIONS: usize = 58;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

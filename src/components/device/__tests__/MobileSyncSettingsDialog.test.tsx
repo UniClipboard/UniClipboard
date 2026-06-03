@@ -48,9 +48,9 @@ describe('MobileSyncSettingsDialog.translateMobileSyncError — settings 路径�
     expect(result).toContain('保存')
   })
 
-  it('ENDPOINT_INFO_PROBE_FAILED → 含 message', () => {
+  it('ENDPOINT_INFO_FAILED → 含 message', () => {
     const result = translateMobileSyncError(t, {
-      code: 'ENDPOINT_INFO_PROBE_FAILED',
+      code: 'ENDPOINT_INFO_FAILED',
       message: 'no iface',
     })
     expect(result).toContain('no iface')

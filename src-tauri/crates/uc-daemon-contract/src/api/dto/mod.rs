@@ -7,6 +7,7 @@ pub mod encryption;
 pub mod envelope;
 pub mod error;
 pub mod member;
+pub mod mobile_sync;
 pub mod pairing;
 pub mod search;
 pub mod settings;

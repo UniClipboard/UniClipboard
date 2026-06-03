@@ -1292,6 +1292,43 @@
         ],
         "type": "object"
       },
+      "LanInterfaceListEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/LanInterfaceViewDto"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "LanInterfaceViewDto": {
+        "description": "One usable IPv4 LAN interface candidate for the QR URL.",
+        "properties": {
+          "ipv4": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ipv4"
+        ],
+        "type": "object"
+      },
       "LifecycleStatusEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -1507,6 +1544,159 @@
         },
         "required": [
           "backupRecordCount"
+        ],
+        "type": "object"
+      },
+      "MobileDeviceListEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MobileDeviceViewDto"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "MobileDeviceViewDto": {
+        "description": "One registered device (no password hash; `username` is an identifier aid).",
+        "properties": {
+          "clientType": {
+            "type": "string"
+          },
+          "createdAtMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "lastSeenAtMs": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "lastSeenIp": {
+            "nullable": true,
+            "type": "string"
+          },
+          "reportedName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "reportedOs": {
+            "nullable": true,
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "label",
+          "clientType",
+          "username",
+          "createdAtMs"
+        ],
+        "type": "object"
+      },
+      "MobileSyncActionEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MobileSyncActionResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "MobileSyncActionResultDto": {
+        "description": "Result of revoking a device. Enveloped `{ success: true }` so every 200\ncarries a `{ data, ts }` body per §0.1; the FE wrapper discards it.",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "type": "object"
+      },
+      "MobileSyncSettingsEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MobileSyncSettingsViewDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "MobileSyncSettingsViewDto": {
+        "description": "Synthesized mobile-sync settings view (settings + current LAN URL parts +\navailable install methods).",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "lanAdvertiseIp": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lanListenEnabled": {
+            "type": "boolean"
+          },
+          "lanListenerError": {
+            "description": "Why the daemon's LAN listener failed to bind (port in use / IP absent /\npermission). `Some` means a bind was actually attempted and failed.",
+            "nullable": true,
+            "type": "string"
+          },
+          "lanPort": {
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "shortcutInstallMethods": {
+            "items": {
+              "$ref": "#/components/schemas/ShortcutInstallMethodViewDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "lanListenEnabled",
+          "shortcutInstallMethods"
         ],
         "type": "object"
       },
@@ -1816,6 +2006,100 @@
         ],
         "type": "object"
       },
+      "RegisterMobileDeviceEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RegisterMobileDeviceResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "RegisterMobileDeviceRequest": {
+        "description": "Request body for `POST /mobile-sync/devices`.\n\n`username` / `password` absent (missing field or explicit null) routes\nthrough the auto-mint path; a value is strictly validated.",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "password": {
+            "nullable": true,
+            "type": "string"
+          },
+          "username": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "type": "object"
+      },
+      "RegisterMobileDeviceResultDto": {
+        "description": "Result of registering an iPhone Shortcut device. `password` is the **one\nand only** plaintext echo to the frontend — afterwards it exists solely as\na PHC hash server-side. The two QR PNGs arrive base64-encoded (encoded\ndaemon-side) ready for `<img src=\"data:image/png;base64,...\">`.",
+        "properties": {
+          "baseUrl": {
+            "type": "string"
+          },
+          "clientType": {
+            "type": "string"
+          },
+          "connectUri": {
+            "description": "`uniclipboard://connect?...` deep link (the main QR content).",
+            "type": "string"
+          },
+          "createdAtMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "installQrCodePngBase64": {
+            "description": "Base64 PNG of the iCloud shortcut-install URL.",
+            "type": "string"
+          },
+          "installUrl": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "qrCodePngBase64": {
+            "description": "Base64 PNG encoding `connectUri`.",
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "label",
+          "clientType",
+          "createdAtMs",
+          "baseUrl",
+          "username",
+          "password",
+          "installUrl",
+          "installQrCodePngBase64",
+          "connectUri",
+          "qrCodePngBase64"
+        ],
+        "type": "object"
+      },
       "ResendEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -2088,6 +2372,54 @@
             "type": "object"
           }
         ]
+      },
+      "RotateMobilePasswordEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RotateMobilePasswordResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "RotateMobilePasswordRequest": {
+        "description": "Request body for `POST /mobile-sync/devices/{device_id}/rotate-password`.\n`password` absent → auto-mint a new plaintext; a value is validated.",
+        "properties": {
+          "password": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RotateMobilePasswordResultDto": {
+        "description": "Result of rotating a device password. `password` is the one-time plaintext\necho; the old password is immediately invalidated.",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceId",
+          "username",
+          "password"
+        ],
+        "type": "object"
       },
       "RuleEvaluationDto": {
         "enum": [
@@ -2650,6 +2982,26 @@
         ],
         "type": "object"
       },
+      "ShortcutInstallMethodViewDto": {
+        "description": "One shortcut-install method option (`tokenInjected` / `icloudGeneric`).",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "available"
+        ],
+        "type": "object"
+      },
       "ShortcutKeyDto": {
         "description": "A keyboard shortcut value that can be either a single key combo or multiple alternatives.\n\nSerialised with `#[serde(untagged)]` so that `\"Ctrl+C\"` and `[\"Ctrl+C\",\"Meta+C\"]` are both\naccepted without a wrapping tag, matching the TypeScript type `string | string[]`.",
         "oneOf": [
@@ -3037,6 +3389,84 @@
           "rc"
         ],
         "type": "string"
+      },
+      "UpdateMobileSyncSettingsEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UpdateMobileSyncSettingsResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "UpdateMobileSyncSettingsRequest": {
+        "description": "Request body (patch) for `PATCH /mobile-sync/settings`.\n\n`lanAdvertiseIp` / `lanPort` are three-state: field absent = leave\nuntouched; explicit `null` = clear; value = set. The frontend's\n`JSON.stringify` drops `undefined` (absent) and serializes `null`\nexplicitly. The `Option<Option<T>>` Rust type preserves the distinction;\nthe wire type is just `T | null` optional (declared via `schema(value_type)`).",
+        "properties": {
+          "enabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "lanAdvertiseIp": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lanListenEnabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "lanPort": {
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateMobileSyncSettingsResultDto": {
+        "description": "Result of updating mobile-sync settings.",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "lanAdvertiseIp": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lanListenEnabled": {
+            "type": "boolean"
+          },
+          "lanListenerBindError": {
+            "description": "Reason the LAN listener failed to bind under the immediate-apply path\n(port in use, permission, unassignable IP). `None` in the CLI fallback /\nno-lifecycle assembly.",
+            "nullable": true,
+            "type": "string"
+          },
+          "lanPort": {
+            "format": "int32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "restartRequired": {
+            "description": "Wire-compat historical flag. In the GUI/daemon path settings take effect\nimmediately so this is always false; the CLI fallback assembly still\nreturns \"any field actually changed → true\" to express the old\n\"next daemon restart\" semantics. The frontend shows a restart banner\nonly when true.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "lanListenEnabled",
+          "restartRequired"
+        ],
+        "type": "object"
       },
       "UpgradeStatusDto": {
         "description": "Discriminated union mirroring `uc_application::facade::UpgradeStatus`.\n\nWire encoding uses `kind` discriminator with snake_case variants to\nkeep parity with the CLI JSON output produced by `uniclip upgrade\nstatus --json`.\n\n防御性补丁(issue #606 followup):同时声明 `rename_all_fields`,\n避免未来新增多词字段(如 `target_version`)时 wire 字段名漂回\nsnake_case 与上层契约不一致。当前字段都是单词,加这个对 wire 无影响,\n但锁定未来添加字段的默认风格。详见 `docs/agent/rust-tauri-rules.md`\n的 \"Enum Wire Serialization\" 一节。",
@@ -4772,6 +5202,457 @@
         ]
       }
     },
+    "/mobile-sync/devices": {
+      "get": {
+        "operationId": "listMobileDevices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileDeviceListEnvelope"
+                }
+              }
+            },
+            "description": "Registered devices"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Mobile sync facade unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /mobile-sync/devices",
+        "tags": [
+          "mobile-sync"
+        ]
+      },
+      "post": {
+        "operationId": "registerMobileDevice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterMobileDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterMobileDeviceEnvelope"
+                }
+              }
+            },
+            "description": "Device registered (one-time password echo)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Username taken / LAN listener disabled"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid label / username / password"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Mobile sync facade unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /mobile-sync/devices",
+        "tags": [
+          "mobile-sync"
+        ]
+      }
+    },
+    "/mobile-sync/devices/{device_id}": {
+      "delete": {
+        "operationId": "revokeMobileDevice",
+        "parameters": [
+          {
+            "description": "Mobile device id",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileSyncActionEnvelope"
+                }
+              }
+            },
+            "description": "Device revoked"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Device not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Mobile sync facade unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "DELETE /mobile-sync/devices/{device_id}",
+        "tags": [
+          "mobile-sync"
+        ]
+      }
+    },
+    "/mobile-sync/devices/{device_id}/rotate-password": {
+      "post": {
+        "operationId": "rotateMobilePassword",
+        "parameters": [
+          {
+            "description": "Mobile device id",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateMobilePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateMobilePasswordEnvelope"
+                }
+              }
+            },
+            "description": "Password rotated (one-time echo)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Device not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid password"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Mobile sync facade unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /mobile-sync/devices/{device_id}/rotate-password",
+        "tags": [
+          "mobile-sync"
+        ]
+      }
+    },
+    "/mobile-sync/lan-interfaces": {
+      "get": {
+        "operationId": "listMobileLanInterfaces",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LanInterfaceListEnvelope"
+                }
+              }
+            },
+            "description": "Usable IPv4 LAN interfaces"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Mobile sync facade unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /mobile-sync/lan-interfaces",
+        "tags": [
+          "mobile-sync"
+        ]
+      }
+    },
+    "/mobile-sync/settings": {
+      "get": {
+        "operationId": "getMobileSyncSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileSyncSettingsEnvelope"
+                }
+              }
+            },
+            "description": "Mobile sync settings view"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Mobile sync facade unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /mobile-sync/settings",
+        "tags": [
+          "mobile-sync"
+        ]
+      },
+      "patch": {
+        "operationId": "updateMobileSyncSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMobileSyncSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateMobileSyncSettingsEnvelope"
+                }
+              }
+            },
+            "description": "Settings updated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid LAN parameter"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Mobile sync facade unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "PATCH /mobile-sync/settings",
+        "tags": [
+          "mobile-sync"
+        ]
+      }
+    },
     "/paired-devices": {
       "get": {
         "description": "List paired space members with presence. Wrapped in the canonical\n`{ data, ts }` envelope (ADR-008 §0.2); the previous bare top-level array\nis retired.",
@@ -6124,6 +7005,10 @@
     {
       "description": "Per-space-member sync preferences",
       "name": "member"
+    },
+    {
+      "description": "iPhone Shortcut device registration, credentials, and LAN settings",
+      "name": "mobile-sync"
     },
     {
       "description": "Space-member unpair lifecycle",

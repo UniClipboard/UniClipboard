@@ -79,14 +79,6 @@ pub fn build() -> Builder<tauri::Wry> {
             // ── settings ────────────────────────────────────────────────────────
             crate::commands::settings::update_keyboard_shortcuts,
             crate::commands::settings::probe_relay_url,
-            // ── mobile sync ─────────────────────────────────────────────────────
-            crate::commands::mobile_sync::register_mobile_device,
-            crate::commands::mobile_sync::revoke_mobile_device,
-            crate::commands::mobile_sync::list_mobile_devices,
-            crate::commands::mobile_sync::rotate_mobile_password,
-            crate::commands::mobile_sync::get_mobile_sync_settings,
-            crate::commands::mobile_sync::update_mobile_sync_settings,
-            crate::commands::mobile_sync::list_mobile_lan_interfaces,
             // ── window chrome (macOS traffic lights) ────────────────────────────
             crate::commands::window_chrome::set_traffic_light_position,
         ])

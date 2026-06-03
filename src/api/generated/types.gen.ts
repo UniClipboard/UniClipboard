@@ -790,6 +790,37 @@ export type KeychainAccessResponse = {
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
+export type LanInterfaceListEnvelope = {
+    data: Array<LanInterfaceViewDto>;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * One usable IPv4 LAN interface candidate for the QR URL.
+ */
+export type LanInterfaceViewDto = {
+    ipv4: string;
+    name: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
 export type LifecycleStatusEnvelope = {
     data: LifecycleStatusResponse;
     /**
@@ -958,6 +989,115 @@ export type MigrationPhaseDto = 'prepared' | 'handshake_done' | 'swapped';
 export type MigrationProgressResponse = {
     backupRecordCount: number;
     phase?: MigrationPhaseDto | null;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type MobileDeviceListEnvelope = {
+    data: Array<MobileDeviceViewDto>;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * One registered device (no password hash; `username` is an identifier aid).
+ */
+export type MobileDeviceViewDto = {
+    clientType: string;
+    createdAtMs: number;
+    deviceId: string;
+    label: string;
+    lastSeenAtMs?: number | null;
+    lastSeenIp?: string | null;
+    reportedName?: string | null;
+    reportedOs?: string | null;
+    username: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type MobileSyncActionEnvelope = {
+    data: MobileSyncActionResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Result of revoking a device. Enveloped `{ success: true }` so every 200
+ * carries a `{ data, ts }` body per §0.1; the FE wrapper discards it.
+ */
+export type MobileSyncActionResultDto = {
+    success: boolean;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type MobileSyncSettingsEnvelope = {
+    data: MobileSyncSettingsViewDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Synthesized mobile-sync settings view (settings + current LAN URL parts +
+ * available install methods).
+ */
+export type MobileSyncSettingsViewDto = {
+    enabled: boolean;
+    lanAdvertiseIp?: string | null;
+    lanListenEnabled: boolean;
+    /**
+     * Why the daemon's LAN listener failed to bind (port in use / IP absent /
+     * permission). `Some` means a bind was actually attempted and failed.
+     */
+    lanListenerError?: string | null;
+    lanPort?: number | null;
+    shortcutInstallMethods: Array<ShortcutInstallMethodViewDto>;
 };
 
 /**
@@ -1154,6 +1294,70 @@ export type RedeemResponse = {
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
+export type RegisterMobileDeviceEnvelope = {
+    data: RegisterMobileDeviceResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /mobile-sync/devices`.
+ *
+ * `username` / `password` absent (missing field or explicit null) routes
+ * through the auto-mint path; a value is strictly validated.
+ */
+export type RegisterMobileDeviceRequest = {
+    label: string;
+    password?: string | null;
+    username?: string | null;
+};
+
+/**
+ * Result of registering an iPhone Shortcut device. `password` is the **one
+ * and only** plaintext echo to the frontend — afterwards it exists solely as
+ * a PHC hash server-side. The two QR PNGs arrive base64-encoded (encoded
+ * daemon-side) ready for `<img src="data:image/png;base64,...">`.
+ */
+export type RegisterMobileDeviceResultDto = {
+    baseUrl: string;
+    clientType: string;
+    /**
+     * `uniclipboard://connect?...` deep link (the main QR content).
+     */
+    connectUri: string;
+    createdAtMs: number;
+    deviceId: string;
+    /**
+     * Base64 PNG of the iCloud shortcut-install URL.
+     */
+    installQrCodePngBase64: string;
+    installUrl: string;
+    label: string;
+    password: string;
+    /**
+     * Base64 PNG encoding `connectUri`.
+     */
+    qrCodePngBase64: string;
+    username: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
 export type ResendEnvelope = {
     data: ResendResponse;
     /**
@@ -1270,6 +1474,47 @@ export type RetentionRuleDto = {
     sensitive: {
         max_age: number;
     };
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type RotateMobilePasswordEnvelope = {
+    data: RotateMobilePasswordResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /mobile-sync/devices/{device_id}/rotate-password`.
+ * `password` absent → auto-mint a new plaintext; a value is validated.
+ */
+export type RotateMobilePasswordRequest = {
+    password?: string | null;
+};
+
+/**
+ * Result of rotating a device password. `password` is the one-time plaintext
+ * echo; the old password is immediately invalidated.
+ */
+export type RotateMobilePasswordResultDto = {
+    deviceId: string;
+    password: string;
+    username: string;
 };
 
 export type RuleEvaluationDto = 'anyMatch' | 'allMatch';
@@ -1721,6 +1966,15 @@ export type SetupSwitchSpaceEnvelope = {
 };
 
 /**
+ * One shortcut-install method option (`tokenInjected` / `icloudGeneric`).
+ */
+export type ShortcutInstallMethodViewDto = {
+    available: boolean;
+    disabledReason?: string | null;
+    method: string;
+};
+
+/**
  * A keyboard shortcut value that can be either a single key combo or multiple alternatives.
  *
  * Serialised with `#[serde(untagged)]` so that `"Ctrl+C"` and `["Ctrl+C","Meta+C"]` are both
@@ -1961,6 +2215,69 @@ export type UnpairDeviceRequest = {
 };
 
 export type UpdateChannelDto = 'stable' | 'alpha' | 'beta' | 'rc';
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type UpdateMobileSyncSettingsEnvelope = {
+    data: UpdateMobileSyncSettingsResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body (patch) for `PATCH /mobile-sync/settings`.
+ *
+ * `lanAdvertiseIp` / `lanPort` are three-state: field absent = leave
+ * untouched; explicit `null` = clear; value = set. The frontend's
+ * `JSON.stringify` drops `undefined` (absent) and serializes `null`
+ * explicitly. The `Option<Option<T>>` Rust type preserves the distinction;
+ * the wire type is just `T | null` optional (declared via `schema(value_type)`).
+ */
+export type UpdateMobileSyncSettingsRequest = {
+    enabled?: boolean | null;
+    lanAdvertiseIp?: string | null;
+    lanListenEnabled?: boolean | null;
+    lanPort?: number | null;
+};
+
+/**
+ * Result of updating mobile-sync settings.
+ */
+export type UpdateMobileSyncSettingsResultDto = {
+    enabled: boolean;
+    lanAdvertiseIp?: string | null;
+    lanListenEnabled: boolean;
+    /**
+     * Reason the LAN listener failed to bind under the immediate-apply path
+     * (port in use, permission, unassignable IP). `None` in the CLI fallback /
+     * no-lifecycle assembly.
+     */
+    lanListenerBindError?: string | null;
+    lanPort?: number | null;
+    /**
+     * Wire-compat historical flag. In the GUI/daemon path settings take effect
+     * immediately so this is always false; the CLI fallback assembly still
+     * returns "any field actually changed → true" to express the old
+     * "next daemon restart" semantics. The frontend shows a restart banner
+     * only when true.
+     */
+    restartRequired: boolean;
+};
 
 /**
  * Discriminated union mirroring `uc_application::facade::UpgradeStatus`.
@@ -2886,6 +3203,243 @@ export type UpdateMemberSyncPreferencesResponses = {
 };
 
 export type UpdateMemberSyncPreferencesResponse = UpdateMemberSyncPreferencesResponses[keyof UpdateMemberSyncPreferencesResponses];
+
+export type ListMobileDevicesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/mobile-sync/devices';
+};
+
+export type ListMobileDevicesErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Mobile sync facade unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type ListMobileDevicesError = ListMobileDevicesErrors[keyof ListMobileDevicesErrors];
+
+export type ListMobileDevicesResponses = {
+    /**
+     * Registered devices
+     */
+    200: MobileDeviceListEnvelope;
+};
+
+export type ListMobileDevicesResponse = ListMobileDevicesResponses[keyof ListMobileDevicesResponses];
+
+export type RegisterMobileDeviceData = {
+    body: RegisterMobileDeviceRequest;
+    path?: never;
+    query?: never;
+    url: '/mobile-sync/devices';
+};
+
+export type RegisterMobileDeviceErrors = {
+    /**
+     * Username taken / LAN listener disabled
+     */
+    409: ApiErrorResponse;
+    /**
+     * Invalid label / username / password
+     */
+    422: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Mobile sync facade unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type RegisterMobileDeviceError = RegisterMobileDeviceErrors[keyof RegisterMobileDeviceErrors];
+
+export type RegisterMobileDeviceResponses = {
+    /**
+     * Device registered (one-time password echo)
+     */
+    200: RegisterMobileDeviceEnvelope;
+};
+
+export type RegisterMobileDeviceResponse = RegisterMobileDeviceResponses[keyof RegisterMobileDeviceResponses];
+
+export type RevokeMobileDeviceData = {
+    body?: never;
+    path: {
+        /**
+         * Mobile device id
+         */
+        device_id: string;
+    };
+    query?: never;
+    url: '/mobile-sync/devices/{device_id}';
+};
+
+export type RevokeMobileDeviceErrors = {
+    /**
+     * Device not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Mobile sync facade unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type RevokeMobileDeviceError = RevokeMobileDeviceErrors[keyof RevokeMobileDeviceErrors];
+
+export type RevokeMobileDeviceResponses = {
+    /**
+     * Device revoked
+     */
+    200: MobileSyncActionEnvelope;
+};
+
+export type RevokeMobileDeviceResponse = RevokeMobileDeviceResponses[keyof RevokeMobileDeviceResponses];
+
+export type RotateMobilePasswordData = {
+    body: RotateMobilePasswordRequest;
+    path: {
+        /**
+         * Mobile device id
+         */
+        device_id: string;
+    };
+    query?: never;
+    url: '/mobile-sync/devices/{device_id}/rotate-password';
+};
+
+export type RotateMobilePasswordErrors = {
+    /**
+     * Device not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Invalid password
+     */
+    422: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Mobile sync facade unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type RotateMobilePasswordError = RotateMobilePasswordErrors[keyof RotateMobilePasswordErrors];
+
+export type RotateMobilePasswordResponses = {
+    /**
+     * Password rotated (one-time echo)
+     */
+    200: RotateMobilePasswordEnvelope;
+};
+
+export type RotateMobilePasswordResponse = RotateMobilePasswordResponses[keyof RotateMobilePasswordResponses];
+
+export type ListMobileLanInterfacesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/mobile-sync/lan-interfaces';
+};
+
+export type ListMobileLanInterfacesErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Mobile sync facade unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type ListMobileLanInterfacesError = ListMobileLanInterfacesErrors[keyof ListMobileLanInterfacesErrors];
+
+export type ListMobileLanInterfacesResponses = {
+    /**
+     * Usable IPv4 LAN interfaces
+     */
+    200: LanInterfaceListEnvelope;
+};
+
+export type ListMobileLanInterfacesResponse = ListMobileLanInterfacesResponses[keyof ListMobileLanInterfacesResponses];
+
+export type GetMobileSyncSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/mobile-sync/settings';
+};
+
+export type GetMobileSyncSettingsErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Mobile sync facade unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetMobileSyncSettingsError = GetMobileSyncSettingsErrors[keyof GetMobileSyncSettingsErrors];
+
+export type GetMobileSyncSettingsResponses = {
+    /**
+     * Mobile sync settings view
+     */
+    200: MobileSyncSettingsEnvelope;
+};
+
+export type GetMobileSyncSettingsResponse = GetMobileSyncSettingsResponses[keyof GetMobileSyncSettingsResponses];
+
+export type UpdateMobileSyncSettingsData = {
+    body: UpdateMobileSyncSettingsRequest;
+    path?: never;
+    query?: never;
+    url: '/mobile-sync/settings';
+};
+
+export type UpdateMobileSyncSettingsErrors = {
+    /**
+     * Invalid LAN parameter
+     */
+    422: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Mobile sync facade unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type UpdateMobileSyncSettingsError = UpdateMobileSyncSettingsErrors[keyof UpdateMobileSyncSettingsErrors];
+
+export type UpdateMobileSyncSettingsResponses = {
+    /**
+     * Settings updated
+     */
+    200: UpdateMobileSyncSettingsEnvelope;
+};
+
+export type UpdateMobileSyncSettingsResponse = UpdateMobileSyncSettingsResponses[keyof UpdateMobileSyncSettingsResponses];
 
 export type ListPairedDevicesData = {
     body?: never;

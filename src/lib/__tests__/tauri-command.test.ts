@@ -88,15 +88,17 @@ describe('invokeWithTrace', () => {
 
   it('does NOT report expected user/validation errors to Sentry', async () => {
     const trace = { traceId: 'trace-3', startTime: 1, operation: 'command' }
-    // A typed-error envelope whose `code` is a known user error — the user
-    // picked a username that's already taken. This is normal product flow, not
-    // an alert. (`USERNAME_TAKEN` is classified UserError in `severity.rs`.)
-    const userError = { code: 'USERNAME_TAKEN', username: 'alice' }
+    // A typed-error envelope whose `code` is a known user error — normal
+    // product flow, not an alert. (`ValidationError` is classified UserError in
+    // `severity.rs` / `USER_FACING_ERROR_CODES`. Mobile-sync's USERNAME_TAKEN
+    // moved to the daemon HTTP API in ADR-008 P3-b and no longer flows through
+    // this Tauri-command severity path.)
+    const userError = { code: 'ValidationError', message: 'bad input' }
 
     vi.mocked(traceManager.startTrace).mockReturnValue(trace)
     vi.mocked(invoke).mockRejectedValueOnce(userError)
 
-    await expect(invokeWithTrace('register_mobile_device')).rejects.toEqual(userError)
+    await expect(invokeWithTrace('update_keyboard_shortcuts')).rejects.toEqual(userError)
 
     // Still rethrows for the caller to handle, and still leaves a breadcrumb…
     expect(Sentry.addBreadcrumb).toHaveBeenCalled()

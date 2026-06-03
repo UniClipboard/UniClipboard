@@ -310,63 +310,6 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<RelayProbeOutcome, CommandError>(__TAURI_INVOKE("probe_relay_url", { url, trace })),
 	/**
-	 *  登记一台 iPhone Shortcut 设备：颁发 (username, password) Basic Auth 凭据 +
-	 *  渲染 SyncClipboard install URL 的二维码。`password` 在返回值里是**唯一一次**
-	 *  面向用户的明文回显——前端必须立即展示 + 强制用户勾选"已保存"才允许关闭。
-	 */
-	registerMobileDevice: (args: RegisterMobileDeviceArgs, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<RegisterMobileDeviceResult, MobileSyncError>(__TAURI_INVOKE("register_mobile_device", { args, trace })),
-	/**
-	 *  撤销一台已登记设备。`Ok(())` 表示成功；`DeviceNotFound` 表示设备已不在
-	 *  仓储里（UI 列表过期），前端据此提示刷新。
-	 */
-	revokeMobileDevice: (deviceId: string, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<null, MobileSyncError>(__TAURI_INVOKE("revoke_mobile_device", { deviceId, trace })),
-	/**
-	 *  列出已登记设备。结果按"最近活跃 desc → 创建时间 desc"排序。不含
-	 *  password_hash；username 作为辅助识别字段透传给前端。
-	 */
-	listMobileDevices: (trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<MobileDeviceView[], MobileSyncError>(__TAURI_INVOKE("list_mobile_devices", { trace })),
-	/**
-	 *  给一台已登记设备换一份新密码。`password = None`(字段缺失 / null)走
-	 *  minter 自动颁发;给值则按 8–256 字符校验。返回值 `password` 是**唯一一次**
-	 *  明文回显 —— 之后只以 PHC 存在,UI 必须立即展示并告知用户同步更新 iPhone
-	 *  shortcut 里的 password 字段(旧密码已立即失效)。
-	 */
-	rotateMobilePassword: (args: RotateMobilePasswordArgs, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<RotateMobilePasswordResult, MobileSyncError>(__TAURI_INVOKE("rotate_mobile_password", { args, trace })),
-	/**  读移动端同步设置 + 当前 LAN URL + 可用 install methods 的合成视图。 */
-	getMobileSyncSettings: (trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<MobileSyncSettingsViewDto, MobileSyncError>(__TAURI_INVOKE("get_mobile_sync_settings", { trace })),
-	/**
-	 *  更新移动端同步设置。GUI daemon 装配下 LAN listener 由
-	 *  `MobileLanLifecyclePort` 即时切换,无需重启;`restart_required` 字段
-	 *  的具体语义见 [`UpdateMobileSyncSettingsResult::restart_required`] 文档。
-	 */
-	updateMobileSyncSettings: (args: UpdateMobileSyncSettingsArgs_Deserialize, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<UpdateMobileSyncSettingsResult, MobileSyncError>(__TAURI_INVOKE("update_mobile_sync_settings", { args, trace })),
-	/**
-	 *  列出可作为二维码 URL 候选的本机 IPv4 LAN 接口。仅返回 RFC1918 私有地址，
-	 *  按 10/8 → 172.16/12 → 192.168/16 排序。
-	 */
-	listMobileLanInterfaces: (trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<LanInterfaceView[], MobileSyncError>(__TAURI_INVOKE("list_mobile_lan_interfaces", { trace })),
-	/**
 	 *  调整 macOS 主窗口三色交通灯（close/min/zoom）按钮位置。
 	 * 
 	 *  `offset_x` / `offset_y` 相对系统给的标准位置偏移，**屏幕坐标系**：
@@ -502,103 +445,6 @@ export type InstallKind = "macos" | "windows" |
  */
 "windowsportable" | "appimage" | "deb" | "rpm" | "unknown";
 
-/**  `list_mobile_lan_interfaces` 单条结果。 */
-export type LanInterfaceView = {
-	name: string,
-	ipv4: string,
-};
-
-/**
- *  `list_mobile_devices` 单条结果。来自 `MobileDeviceSummary`，不含
- *  password_hash；username 透传给前端作为辅助识别字段。
- */
-export type MobileDeviceView = {
-	deviceId: string,
-	label: string,
-	clientType: string,
-	username: string,
-	createdAtMs: number,
-	lastSeenAtMs: number | null,
-	lastSeenIp: string | null,
-	reportedName: string | null,
-	reportedOs: string | null,
-};
-
-/**
- *  前端直接 `error.code` switch 的 typed 错误。
- * 
- *  序列化形态：`{"code": "USERNAME_TAKEN", "username": "..."}`。
- *  不复用 `commands::error::CommandError`（那个用了 `tag = "code", content =
- *  "message"` 只能带单一字符串负载），mobile_sync 校验错误需要 `min` /
- *  `max` / `username` / `reason` 等结构化字段。
- */
-export type MobileSyncError = { code: "FACADE_UNAVAILABLE" } | { code: "LABEL_EMPTY" } | { code: "LABEL_TOO_LONG"; max: number } | { code: "LAN_LISTENER_DISABLED" } | { code: "USERNAME_TAKEN"; username: string } | { code: "USERNAME_TOO_SHORT"; min: number; got: number } | { code: "USERNAME_TOO_LONG"; max: number; got: number } | { code: "USERNAME_MUST_START_WITH_LETTER" } | { code: "USERNAME_CONTAINS_FORBIDDEN_CHARS" } | { code: "PASSWORD_TOO_SHORT"; min: number } | { code: "PASSWORD_TOO_LONG"; max: number } | { code: "PASSWORD_HASH_FAILED"; message: string } | { code: "DEVICE_NOT_FOUND"; deviceId: string } | { code: "INVALID_LAN_PARAMETER"; reason: string } | { code: "SETTINGS_LOAD_FAILED"; message: string } | { code: "SETTINGS_SAVE_FAILED"; message: string } | { code: "ENDPOINT_INFO_FAILED"; message: string } | { code: "LAN_PROBE_FAILED"; message: string } | { code: "NO_LAN_INTERFACE_AVAILABLE" } | { code: "PERSISTENCE_FAILED"; message: string } | { code: "QR_RENDER_FAILED"; message: string };
-
-/**  `get_mobile_sync_settings` 返回值。 */
-export type MobileSyncSettingsViewDto = {
-	enabled: boolean,
-	lanListenEnabled: boolean,
-	lanAdvertiseIp: string | null,
-	lanPort: number | null,
-	/**
-	 *  daemon 端 LAN listener 的 bind 失败原因(端口占用 / IP 不存在 / 权限)。
-	 *  `Some` 表示 daemon 真的尝试过 bind 但失败,前端据此显示具体错误。
-	 *  监听 URL 不再透出 —— 前端从 `lanAdvertiseIp` + `lanPort` 自行拼接。
-	 */
-	lanListenerError: string | null,
-	shortcutInstallMethods: ShortcutInstallMethodView[],
-};
-
-/**  `register_mobile_device` 入参。 */
-export type RegisterMobileDeviceArgs = {
-	label: string,
-	/**  留空（缺字段或显式 null）走 minter 自动颁发；给值则按规则严格校验。 */
-	username?: string | null,
-	password?: string | null,
-};
-
-/**
- *  `register_mobile_device` 返回值。
- * 
- *  `password` 是**唯一一次**面向前端的明文回显——之后只以 PHC 形式存在于
- *  服务端 sqlite。前端拿到后必须立即在 modal 里展示 + 强制用户勾选"已保存"
- *  才让关闭。
- */
-export type RegisterMobileDeviceResult = {
-	deviceId: string,
-	label: string,
-	clientType: string,
-	createdAtMs: number,
-	baseUrl: string,
-	username: string,
-	password: string,
-	/**
-	 *  SyncClipboard "Clipboard EX" iCloud 共享链接(常量)。前端把它放在
-	 *  "安装快捷指令"次要 tab 里, 不再作为 connect-URI tab 的主 QR 内容。
-	 */
-	installUrl: string,
-	/**
-	 *  `installUrl` 的二维码 PNG, Base64 编码后由前端 `<img src="data:...">`
-	 *  直接渲染。让 iPhone 相机直接扫码安装快捷指令, 替代用户在桌面上
-	 *  肉眼抄长长的 iCloud 链接到 Safari 的旧体验。与 `qrCodePngBase64`
-	 *  (编 `connectUri`) 字节不同, 用途也不同 — 前者一次性安装, 后者
-	 *  每次添加设备扫一次。
-	 */
-	installQrCodePngBase64: string,
-	/**
-	 *  `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url-json>`。
-	 *  QR 主内容: iOS Shortcut 扫描后一次性解出 base_url / username /
-	 *  password 直接填三栏, 替代旧版"用户肉眼抄写"。协议详见
-	 *  `docs/architecture/mobile-sync-connect-uri.md`。
-	 */
-	connectUri: string,
-	/**
-	 *  Base64-encoded PNG bytes; 前端 `<img src="data:image/png;base64,...">`
-	 *  直接渲染。当前编码的是 `connectUri`(阶段 2 起), 不再是 `installUrl`。
-	 */
-	qrCodePngBase64: string,
-};
-
 /**
  *  一次 `probe_relay_url` 调用的细分结果。
  * 
@@ -608,34 +454,6 @@ export type RegisterMobileDeviceResult = {
  *  仍然走 [`CommandError`]。
  */
 export type RelayProbeOutcome = { kind: "success"; latencyMs: number } | { kind: "invalidUrl"; message: string } | { kind: "dns"; message: string } | { kind: "tls"; message: string } | { kind: "handshake"; message: string } | { kind: "timeout" } | { kind: "other"; message: string };
-
-/**
- *  `rotate_mobile_password` 入参。`password = None` (字段缺失或 null) 走
- *  minter 自动颁发新明文;给值则按规则严格校验。
- */
-export type RotateMobilePasswordArgs = {
-	deviceId: string,
-	password?: string | null,
-};
-
-/**
- *  `rotate_mobile_password` 返回值。`password` 是**唯一一次**面向用户的
- *  明文回显 —— 之后只以 PHC 形式存在。前端必须立即在 modal 里展示, 并
- *  提示用户同步更新 iPhone shortcut 里的 password 字段(旧密码已立即
- *  失效)。
- */
-export type RotateMobilePasswordResult = {
-	deviceId: string,
-	username: string,
-	password: string,
-};
-
-export type ShortcutInstallMethodView = {
-	/**  `tokenInjected` / `icloudGeneric`（v1 仅前者可用）。 */
-	method: string,
-	available: boolean,
-	disabledReason: string | null,
-};
 
 export type ShortcutKeyDto = string | string[];
 
@@ -675,68 +493,6 @@ export type UpdateMetadata = {
 	currentVersion: string,
 	body: string | null,
 	date: string | null,
-};
-
-/**
- *  `update_mobile_sync_settings` 入参 patch。
- * 
- *  `lanAdvertiseIp` / `lanPort` 是三态：字段缺失=不动；显式 null=清空；给值=写入。
- *  前端用 `JSON.stringify` 时 `undefined` 字段被 drop（缺失），`null` 显式
- *  序列化（→ `Some(None)`），有值（→ `Some(Some(value))`）。
- */
-export type UpdateMobileSyncSettingsArgs = UpdateMobileSyncSettingsArgs_Serialize | UpdateMobileSyncSettingsArgs_Deserialize;
-
-/**
- *  `update_mobile_sync_settings` 入参 patch。
- * 
- *  `lanAdvertiseIp` / `lanPort` 是三态：字段缺失=不动；显式 null=清空；给值=写入。
- *  前端用 `JSON.stringify` 时 `undefined` 字段被 drop（缺失），`null` 显式
- *  序列化（→ `Some(None)`），有值（→ `Some(Some(value))`）。
- */
-export type UpdateMobileSyncSettingsArgs_Deserialize = {
-	enabled?: boolean | null,
-	lanListenEnabled?: boolean | null,
-	lanAdvertiseIp?: string | null,
-	lanPort?: number | null,
-};
-
-/**
- *  `update_mobile_sync_settings` 入参 patch。
- * 
- *  `lanAdvertiseIp` / `lanPort` 是三态：字段缺失=不动；显式 null=清空；给值=写入。
- *  前端用 `JSON.stringify` 时 `undefined` 字段被 drop（缺失），`null` 显式
- *  序列化（→ `Some(None)`），有值（→ `Some(Some(value))`）。
- */
-export type UpdateMobileSyncSettingsArgs_Serialize = {
-	enabled: boolean | null,
-	lanListenEnabled: boolean | null,
-	lanAdvertiseIp: string | null,
-	lanPort: number | null,
-};
-
-export type UpdateMobileSyncSettingsResult = {
-	enabled: boolean,
-	lanListenEnabled: boolean,
-	lanAdvertiseIp: string | null,
-	lanPort: number | null,
-	/**
-	 *  Wire-兼容历史字段。daemon 装入 LAN lifecycle controller 时
-	 *  (GUI 路径) settings 改动即时生效, 本字段永远为 false; CLI fallback
-	 *  装配仍按"任一字段实际变化 → true / 同值 → false"返回, 表达
-	 *  "下一次 daemon 重启才生效"的旧语义。前端按本字段决定是否弹
-	 *  restart 横幅, true → 弹, false → 即时反馈即可。
-	 */
-	restartRequired: boolean,
-	/**
-	 *  即时生效路径下 LAN listener bind 失败的原因。
-	 * 
-	 *  写盘成功但 adapter `apply(target)` 后端口没起来时(端口占用、权限
-	 *  不足、IP 不可分配等),facade 从 `MobileSyncEndpointInfoPort` 读出
-	 *  `BindFailed{reason}` 并透传到此字段。前端引导对话框据此在 happy
-	 *  path 流程中提前 toast.error 并阻断下一步, 避免用户填完 label 才
-	 *  发现 iPhone 连不上。CLI fallback / 无 lifecycle 装配下永远为 None。
-	 */
-	lanListenerBindError: string | null,
 };
 
 /**

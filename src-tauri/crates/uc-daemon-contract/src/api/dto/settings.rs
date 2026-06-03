@@ -335,7 +335,7 @@ pub struct SettingsDto {
 // =========================
 
 /// All fields are optional — only provided fields are updated.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneralSettingsPatchDto {
     pub auto_start: Option<bool>,

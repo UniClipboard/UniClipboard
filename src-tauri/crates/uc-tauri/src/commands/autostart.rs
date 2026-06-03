@@ -10,15 +10,13 @@
 //! OS 级别的启动项注册在同一命令内通过 [`AutostartPort`] 应用，确保存储值
 //! 与实际 OS 状态不会分裂。
 
-use std::sync::Arc;
-
 use tauri::{AppHandle, State};
 use tracing::{info_span, Instrument};
-use uc_application::facade::settings::{GeneralSettingsPatch, SettingsPatch};
+use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
+use uc_daemon_contract::api::dto::settings::{GeneralSettingsPatchDto, SettingsPatchDto};
 use uc_platform::ports::observability::TraceMetadata;
 
 use crate::adapters::autostart::{reconcile_autostart, TauriAutostart};
-use crate::bootstrap::TauriAppRuntime;
 use crate::commands::{record_trace_fields, CommandError};
 
 /// Update the "launch at login" preference and apply it to the OS.
@@ -35,7 +33,7 @@ use crate::commands::{record_trace_fields, CommandError};
 #[specta::specta]
 pub async fn update_autostart(
     app: AppHandle,
-    runtime: State<'_, Arc<TauriAppRuntime>>,
+    connection_state: State<'_, DaemonConnectionState>,
     enabled: bool,
     _trace: Option<TraceMetadata>,
 ) -> Result<(), CommandError> {
@@ -48,10 +46,12 @@ pub async fn update_autostart(
     record_trace_fields(&span, &_trace);
 
     async move {
-        let facade = runtime.app_facade();
-        let previous = facade
-            .settings
-            .get()
+        // ADR-008 P3-3 B2': persist the `auto_start` preference through the
+        // daemon over loopback HTTP instead of the in-process facade. The OS
+        // launch registration + rollback below stay native.
+        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let previous = client
+            .get_settings()
             .await
             .map_err(CommandError::internal)?
             .general
@@ -60,9 +60,8 @@ pub async fn update_autostart(
         // Persist first, mirroring `update_keyboard_shortcuts`: the stored
         // preference is the source of truth and the OS registration is the
         // side effect that must follow it.
-        facade
-            .settings
-            .update(general_auto_start_patch(enabled))
+        client
+            .update_settings(general_auto_start_patch(enabled))
             .await
             .map_err(CommandError::internal)?;
 
@@ -71,9 +70,8 @@ pub async fn update_autostart(
         if let Err(os_err) = reconcile_autostart(&port, enabled) {
             // Roll back so the persisted preference never diverges from the
             // OS state we failed to reach.
-            if let Err(rollback_err) = facade
-                .settings
-                .update(general_auto_start_patch(previous))
+            if let Err(rollback_err) = client
+                .update_settings(general_auto_start_patch(previous))
                 .await
             {
                 tracing::error!(
@@ -93,9 +91,9 @@ pub async fn update_autostart(
 }
 
 /// Build a settings patch that touches only the `auto_start` general field.
-fn general_auto_start_patch(enabled: bool) -> SettingsPatch {
-    SettingsPatch {
-        general: Some(GeneralSettingsPatch {
+fn general_auto_start_patch(enabled: bool) -> SettingsPatchDto {
+    SettingsPatchDto {
+        general: Some(GeneralSettingsPatchDto {
             auto_start: Some(enabled),
             ..Default::default()
         }),

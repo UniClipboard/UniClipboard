@@ -2,19 +2,20 @@
 //! 设置相关的 Tauri 命令
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{error, info_span, Instrument};
-use uc_application::facade::settings::{SettingsPatch, ShortcutKeyView};
+use uc_application::facade::settings::ShortcutKeyView;
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
-use uc_daemon_contract::api::dto::settings::RelayProbeOutcomeDto;
+use uc_daemon_contract::api::dto::settings::{
+    KeyboardShortcutsPatchDto, RelayProbeOutcomeDto, SettingsPatchDto,
+    ShortcutKeyDto as ContractShortcutKeyDto,
+};
 use uc_desktop::shortcuts::{self, CurrentShortcuts, QUICK_PANEL_SHORTCUT_SETTINGS_KEY};
 use uc_platform::ports::observability::TraceMetadata;
 
-use crate::bootstrap::TauriAppRuntime;
 use crate::commands::{record_trace_fields, CommandError};
 use crate::quick_panel;
 
@@ -43,7 +44,7 @@ pub struct UpdateKeyboardShortcutsResult {
 #[specta::specta]
 pub async fn update_keyboard_shortcuts(
     app: tauri::AppHandle,
-    runtime: State<'_, Arc<TauriAppRuntime>>,
+    connection_state: State<'_, DaemonConnectionState>,
     shortcut_registry: State<'_, CurrentShortcuts>,
     update_lock: State<'_, KeyboardShortcutsUpdateLock>,
     shortcuts: HashMap<String, Option<ShortcutKeyDto>>,
@@ -60,11 +61,19 @@ pub async fn update_keyboard_shortcuts(
     async {
         // 独占整段协调，避免并发调用让 OS / registry / facade 三者错位。
         let _guard = update_lock.0.lock().await;
-        let facade = runtime.app_facade();
-        let current = facade.settings.get().await.map_err(CommandError::internal)?;
+        // ADR-008 P3-3 B2': read-modify-write the settings domain through the
+        // daemon over loopback HTTP instead of the in-process facade. The OS
+        // global-shortcut register/rollback below stays native.
+        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let current = client.get_settings().await.map_err(CommandError::internal)?;
         let quick_panel_enabled = current.quick_panel.enabled;
+        let current_shortcuts = current
+            .keyboard_shortcuts
+            .into_iter()
+            .map(|(id, key)| (id, shortcut_view_from_contract(key)))
+            .collect();
         let next_keyboard_shortcuts =
-            apply_keyboard_shortcut_patch_to_map(current.keyboard_shortcuts, &shortcuts);
+            apply_keyboard_shortcut_patch_to_map(current_shortcuts, &shortcuts);
 
         let old_registered_shortcuts = shortcut_registry.current();
         // 快捷面板关闭时,即使快捷键被修改也不向 OS 注册——OS 视角应保持空,
@@ -85,21 +94,24 @@ pub async fn update_keyboard_shortcuts(
             .await?;
         }
 
-        let patch = SettingsPatch {
-            keyboard_shortcuts: Some(
-                shortcuts
+        let patch = SettingsPatchDto {
+            keyboard_shortcuts: Some(KeyboardShortcutsPatchDto {
+                shortcuts: shortcuts
                     .into_iter()
-                    .map(|(id, value)| (id, value.map(ShortcutKeyView::from)))
+                    .map(|(id, value)| (id, value.map(contract_shortcut_from_local)))
                     .collect(),
-            ),
+            }),
             ..Default::default()
         };
 
-        match facade.settings.update(patch).await {
-            Ok(updated) => {
+        match client.update_settings(patch).await {
+            // The daemon merges the same patch onto the same `current`, so the
+            // persisted keyboard_shortcuts equal the `next_keyboard_shortcuts`
+            // we computed locally; the wire result only carries success/restart.
+            Ok(_) => {
                 shortcut_registry.replace(new_registered_shortcuts);
                 Ok(UpdateKeyboardShortcutsResult {
-                    keyboard_shortcuts: keyboard_shortcuts_to_dto(&updated.keyboard_shortcuts),
+                    keyboard_shortcuts: keyboard_shortcuts_to_dto(&next_keyboard_shortcuts),
                 })
             }
             Err(err) => {
@@ -192,6 +204,26 @@ fn keyboard_shortcuts_to_dto(
         .iter()
         .map(|(id, shortcut)| (id.clone(), ShortcutKeyDto::from(shortcut.clone())))
         .collect()
+}
+
+/// Convert a daemon-contract `ShortcutKeyDto` (read off the wire `SettingsDto`)
+/// into the application `ShortcutKeyView` used by the local shortcut-merge
+/// helpers. The orphan rule forbids a `From` impl across both foreign types, so
+/// this is a free function.
+fn shortcut_view_from_contract(value: ContractShortcutKeyDto) -> ShortcutKeyView {
+    match value {
+        ContractShortcutKeyDto::Single(v) => ShortcutKeyView::Single(v),
+        ContractShortcutKeyDto::Multiple(v) => ShortcutKeyView::Multiple(v),
+    }
+}
+
+/// Convert the inbound Tauri `ShortcutKeyDto` into the daemon-contract wire
+/// `ShortcutKeyDto` for the `PUT /settings` patch body.
+fn contract_shortcut_from_local(value: ShortcutKeyDto) -> ContractShortcutKeyDto {
+    match value {
+        ShortcutKeyDto::Single(v) => ContractShortcutKeyDto::Single(v),
+        ShortcutKeyDto::Multiple(v) => ContractShortcutKeyDto::Multiple(v),
+    }
 }
 
 /// 一次 `probe_relay_url` 调用的细分结果。

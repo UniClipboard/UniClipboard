@@ -1,15 +1,13 @@
 //! Quick-panel Tauri commands
 //! 快捷面板相关的 Tauri 命令
 
-use std::sync::Arc;
-
 use tauri::State;
 use tracing::{error, info_span, Instrument};
-use uc_application::facade::settings::{QuickPanelSettingsPatch, SettingsPatch};
+use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
+use uc_daemon_contract::api::dto::settings::{QuickPanelSettingsPatchDto, SettingsPatchDto};
 use uc_desktop::shortcuts::{self, CurrentShortcuts};
 use uc_platform::ports::observability::TraceMetadata;
 
-use crate::bootstrap::TauriAppRuntime;
 use crate::commands::settings::KeyboardShortcutsUpdateLock;
 use crate::commands::{record_trace_fields, CommandError};
 use crate::quick_panel;
@@ -105,7 +103,7 @@ pub async fn finalize_quick_panel_show(
 ///
 /// 与 `update_keyboard_shortcuts` 走同一把 [`KeyboardShortcutsUpdateLock`],
 /// 因为两者都会改 OS 全局快捷键的注册状态——并发执行会让 OS 状态、
-/// [`CurrentShortcuts`] 内存视图、和 facade 持久化值互相错位。
+/// [`CurrentShortcuts`] 内存视图、和 daemon 持久化值互相错位。
 ///
 /// 流程:
 ///   1. 拿锁,读当前 settings。
@@ -115,7 +113,7 @@ pub async fn finalize_quick_panel_show(
 ///   4. 在 main thread 上一次性完成:开启 → `pre_create` + `register`,
 ///      关闭 → 只 `unregister`,**不**销毁面板窗口。`tauri-plugin-global-shortcut`
 ///      与 webview 创建都要求 main thread。
-///   5. 调 facade 持久化 patch。失败时反向回滚 OS 副作用,避免出现
+///   5. 经 daemon loopback HTTP 持久化 patch。失败时反向回滚 OS 副作用,避免出现
 ///      "OS 已生效但磁盘没存"或反过来的撕裂状态。
 ///   6. 成功后 `shortcut_registry.replace(...)`,让后续 `update_keyboard_shortcuts`
 ///      能算对 old/new diff。
@@ -129,7 +127,7 @@ pub async fn finalize_quick_panel_show(
 #[specta::specta]
 pub async fn set_quick_panel_enabled(
     app: tauri::AppHandle,
-    runtime: State<'_, Arc<TauriAppRuntime>>,
+    connection_state: State<'_, DaemonConnectionState>,
     shortcut_registry: State<'_, CurrentShortcuts>,
     update_lock: State<'_, KeyboardShortcutsUpdateLock>,
     enabled: bool,
@@ -145,10 +143,12 @@ pub async fn set_quick_panel_enabled(
 
     async {
         let _guard = update_lock.0.lock().await;
-        let facade = runtime.app_facade();
-        let current = facade
-            .settings
-            .get()
+        // ADR-008 P3-3 B2': read-modify-write the settings domain through the
+        // daemon over loopback HTTP instead of the in-process facade. The OS
+        // global-shortcut register/rollback below stays native.
+        let client = DaemonSettingsClient::new(connection_state.inner().clone());
+        let current = client
+            .get_settings()
             .await
             .map_err(CommandError::internal)?;
 
@@ -160,12 +160,14 @@ pub async fn set_quick_panel_enabled(
         // shortcuts so we can reuse `resolve_quick_panel_shortcuts`. We only
         // need the `keyboard_shortcuts` field for that helper.
         let target_shortcuts = if enabled {
-            let mut tmp = uc_core::settings::model::Settings::default();
-            tmp.keyboard_shortcuts = current
-                .keyboard_shortcuts
-                .iter()
-                .map(|(id, key)| (id.clone(), key.clone().into()))
-                .collect();
+            let tmp = uc_core::settings::model::Settings {
+                keyboard_shortcuts: current
+                    .keyboard_shortcuts
+                    .iter()
+                    .map(|(id, key)| (id.clone(), key.clone().into()))
+                    .collect(),
+                ..Default::default()
+            };
             shortcuts::resolve_quick_panel_shortcuts(&tmp)
         } else {
             Vec::new()
@@ -175,14 +177,14 @@ pub async fn set_quick_panel_enabled(
         apply_quick_panel_state_on_main_thread(&app, enabled, &old_shortcuts, &target_shortcuts)
             .await?;
 
-        let patch = SettingsPatch {
-            quick_panel: Some(QuickPanelSettingsPatch {
+        let patch = SettingsPatchDto {
+            quick_panel: Some(QuickPanelSettingsPatchDto {
                 enabled: Some(enabled),
             }),
             ..Default::default()
         };
 
-        match facade.settings.update(patch).await {
+        match client.update_settings(patch).await {
             Ok(_) => {
                 shortcut_registry.replace(target_shortcuts);
                 Ok(())

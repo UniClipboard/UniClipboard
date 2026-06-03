@@ -102,6 +102,7 @@ async fn clear_cache_handler(
                 status: StatusCode::BAD_REQUEST,
                 code: "confirmation_required".to_string(),
                 message: "confirmed field must be set to true".to_string(),
+                details: None,
             });
         }
     };

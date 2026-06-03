@@ -724,6 +724,7 @@ fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "unsupported_content".to_string(),
                 message: "entry is not text content".to_string(),
+                details: None,
             },
         ),
         E::Internal(message) => ("internal", ApiError::internal(message)),

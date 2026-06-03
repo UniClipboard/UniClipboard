@@ -111,6 +111,7 @@ async fn require_encryption_ready(state: &DaemonApiState) -> Result<(), ApiError
             status: StatusCode::LOCKED,
             code: "session_locked".to_string(),
             message: "encryption session is locked".to_string(),
+            details: None,
         });
     }
     Ok(())
@@ -295,6 +296,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 status: StatusCode::BAD_REQUEST,
                 code: "invalid_query".to_string(),
                 message,
+                details: None,
             },
         ),
         E::BadRequest(message) => (
@@ -303,6 +305,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 status: StatusCode::BAD_REQUEST,
                 code: "bad_request".to_string(),
                 message,
+                details: None,
             },
         ),
         E::SessionLocked => (
@@ -311,6 +314,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 status: StatusCode::LOCKED,
                 code: "session_locked".to_string(),
                 message: "encryption session is locked".to_string(),
+                details: None,
             },
         ),
         E::IndexNotReady => (
@@ -319,6 +323,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 status: StatusCode::SERVICE_UNAVAILABLE,
                 code: "index_not_ready".to_string(),
                 message: "search index not ready".to_string(),
+                details: None,
             },
         ),
         E::IndexUnavailable => (
@@ -327,6 +332,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 status: StatusCode::SERVICE_UNAVAILABLE,
                 code: "index_unavailable".to_string(),
                 message: "search index unavailable".to_string(),
+                details: None,
             },
         ),
         E::ServiceUnavailable(message) => (
@@ -341,6 +347,7 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                     status: StatusCode::CONFLICT,
                     code: "rebuild_already_running".to_string(),
                     message: "a rebuild is already in progress".to_string(),
+                    details: None,
                 },
             )
         }

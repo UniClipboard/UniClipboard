@@ -64,6 +64,7 @@ fn map_factory_reset_err(err: FactoryResetError) -> ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         code: code.to_string(),
         message,
+        details: None,
     };
     log_facade_failure(
         "space_setup",
@@ -89,6 +90,7 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 status: StatusCode::CONFLICT,
                 code: "SETUP_NOT_COMPLETED".to_string(),
                 message: "setup has not been completed".to_string(),
+                details: None,
             },
         ),
         E::SpaceNotInitialized => (
@@ -97,6 +99,7 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 status: StatusCode::CONFLICT,
                 code: "SPACE_NOT_INITIALIZED".to_string(),
                 message: "space is not initialized on this device".to_string(),
+                details: None,
             },
         ),
         E::WrongPassphrase => (
@@ -105,6 +108,7 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 status: StatusCode::FORBIDDEN,
                 code: "WRONG_PASSPHRASE".to_string(),
                 message: "wrong passphrase".to_string(),
+                details: None,
             },
         ),
         E::CorruptedKeyMaterial => (
@@ -113,6 +117,7 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 code: "CORRUPTED_KEY_MATERIAL".to_string(),
                 message: "space key material is corrupted".to_string(),
+                details: None,
             },
         ),
         // `msg` is an infra/migration string (never the passphrase) — safe to
@@ -123,6 +128,7 @@ fn map_unlock_err(err: UnlockSpaceError) -> ApiError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
                 code: "INTERNAL".to_string(),
                 message: msg,
+                details: None,
             },
         ),
     };

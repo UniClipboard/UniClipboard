@@ -71,55 +71,65 @@ pub struct ApiError {
     pub status: StatusCode,
     pub code: String,
     pub message: String,
+    /// Optional structured payload echoed into [`ApiErrorResponse::details`].
+    ///
+    /// Carries the typed facade error's extra fields (e.g. mobile-sync's
+    /// `{ max }` / `{ username }` / `{ min, got }`) across the wire so the FE
+    /// error translators can reconstruct their discriminated unions from
+    /// `code` + these fields — the same `{ code, ...details }` shape the
+    /// `clipboard_resend` / `restore` handlers already emit. The named
+    /// constructors leave this `None`; attach via [`ApiError::with_details`].
+    pub details: Option<serde_json::Value>,
 }
 
 impl ApiError {
     pub fn internal(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            code: "internal_error".to_string(),
-            message: message.into(),
-        }
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
     }
 
     pub fn service_unavailable(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::SERVICE_UNAVAILABLE,
-            code: "runtime_unavailable".to_string(),
-            message: message.into(),
-        }
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "runtime_unavailable",
+            message,
+        )
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::BAD_REQUEST,
-            code: "bad_request".to_string(),
-            message: message.into(),
-        }
+        Self::new(StatusCode::BAD_REQUEST, "bad_request", message)
     }
 
     pub fn conflict(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::CONFLICT,
-            code: "conflict".to_string(),
-            message: message.into(),
-        }
+        Self::new(StatusCode::CONFLICT, "conflict", message)
     }
 
     pub fn unauthorized(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::UNAUTHORIZED,
-            code: "unauthorized".to_string(),
-            message: message.into(),
-        }
+        Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
     }
 
     pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, "not_found", message)
+    }
+
+    /// Shared constructor: status + stable snake_case `code` token + message,
+    /// no structured details. Public callers go through the named constructors
+    /// or build the struct literally (e.g. `map_*_err` with a semantic code).
+    fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
         Self {
-            status: StatusCode::NOT_FOUND,
-            code: "not_found".to_string(),
+            status,
+            code: code.to_string(),
             message: message.into(),
+            details: None,
         }
+    }
+
+    /// Attach a structured `details` JSON payload, consumed by the FE error
+    /// translators. Chainable: `ApiError::conflict(msg).with_details(json!({...}))`.
+    /// Independent of [`log_facade_failure`] (which keys off status, not body).
+    #[must_use]
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
 }
 
@@ -128,7 +138,7 @@ impl IntoResponse for ApiError {
         let body = ApiErrorResponse {
             code: self.code,
             message: self.message,
-            details: None,
+            details: self.details,
         };
         (self.status, Json(body)).into_response()
     }
@@ -162,5 +172,41 @@ pub fn log_facade_failure(
             variant,
             message,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use serde_json::json;
+
+    /// `with_details` must survive `IntoResponse` so FE translators can read the
+    /// structured fields off `DaemonApiError.details` (e.g. mobile-sync's
+    /// `{ max }` / `{ username }`). Without the thread-through the body would
+    /// drop them and the FE would lose the i18n interpolation values.
+    #[tokio::test]
+    async fn into_response_threads_structured_details() {
+        let err = ApiError::conflict("username already taken: alice")
+            .with_details(json!({ "username": "alice" }));
+        assert_eq!(err.status, StatusCode::CONFLICT);
+
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: ApiErrorResponse = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body.code, "conflict");
+        assert_eq!(body.message, "username already taken: alice");
+        assert_eq!(body.details.unwrap()["username"], "alice");
+    }
+
+    /// The named constructors leave `details` absent so existing endpoints emit
+    /// the same bare `{ code, message }` body as before this field was added.
+    #[tokio::test]
+    async fn named_constructors_emit_no_details() {
+        let resp = ApiError::not_found("entry not found").into_response();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: ApiErrorResponse = serde_json::from_slice(&bytes).unwrap();
+        assert!(body.details.is_none());
     }
 }

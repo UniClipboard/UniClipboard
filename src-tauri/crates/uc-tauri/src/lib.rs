@@ -9,6 +9,7 @@ pub mod activity_hud;
 pub mod adapters;
 pub mod bootstrap;
 pub mod commands;
+pub mod lightweight;
 pub mod quick_panel;
 pub mod run;
 pub mod specta_builder;

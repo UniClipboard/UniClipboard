@@ -185,6 +185,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(DaemonConnectionState::clone(&daemon_connection_state))
         .manage(DaemonOwnership::clone(&daemon_ownership))
         .manage(TrayState::default())
+        .manage(crate::lightweight::QuitIntent::default())
         .manage(task_registry.clone())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -658,29 +659,37 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .invoke_handler(specta_builder.invoke_handler())
         .build(tauri_ctx)
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?
-        .run(move |_app_handle, event| {
+        .run(move |app_handle, event| {
             match event {
                 tauri::RunEvent::ExitRequested { .. } => {
                     info!("App exit requested, cancelling all tracked tasks");
                     task_registry_for_run.token().cancel();
-                    // ADR-008 P3-3 (B2'-3): the daemon is always a separate
-                    // process the GUI does not own — quitting the GUI leaves it
-                    // running (D3 orphan-on-quit interim, ownership redesign in
-                    // P4). Nothing to shut down here; let the exit proceed.
+                    // ADR-008 D3 (P4-3): three-state quit. The daemon is always a
+                    // separate process. Only an explicit "彻底退出" (tray Quit)
+                    // sets QuitIntent → stop the daemon, and only if a GUI spawned
+                    // it (a user's `uniclip start` daemon is left alone). Window
+                    // close (hide), lightweight mode, Cmd-Q and restart all leave
+                    // the daemon running. The daemon's own SIGTERM handler (D21)
+                    // drains in-flight work; the GUI does not block.
+                    if app_handle
+                        .state::<crate::lightweight::QuitIntent>()
+                        .should_stop_daemon()
+                    {
+                        let stopped = uc_desktop::daemon_probe::stop_gui_spawned_daemon();
+                        info!(stopped, "full quit: GUI-spawned daemon stop attempt complete");
+                    }
                 }
                 tauri::RunEvent::Exit => {
                     info!("Application exiting");
                 }
+                // macOS: 点击 Dock 图标时，若没有可见窗口则恢复主窗口。
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen {
-                    has_visible_windows,
+                    has_visible_windows: false,
                     ..
                 } => {
-                    // macOS: 点击 Dock 图标时，若没有可见窗口则恢复主窗口
-                    if !has_visible_windows {
-                        info!("Dock reopen with no visible windows, showing main window");
-                        crate::tray::show_main_window(_app_handle);
-                    }
+                    info!("Dock reopen with no visible windows, showing main window");
+                    crate::tray::show_main_window(app_handle);
                 }
                 _ => {}
             }

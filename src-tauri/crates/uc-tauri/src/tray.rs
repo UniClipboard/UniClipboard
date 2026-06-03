@@ -31,6 +31,7 @@ struct TrayHandles {
     settings: MenuItem<tauri::Wry>,
     check_update: MenuItem<tauri::Wry>,
     restart: MenuItem<tauri::Wry>,
+    lightweight: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
     language: String,
     lan_only_active: bool,
@@ -82,6 +83,14 @@ impl TrayState {
             None::<&str>,
         )?;
         let restart = MenuItem::with_id(app, "tray.restart", labels.restart, true, None::<&str>)?;
+        // ADR-008 D3 (P4-3): 轻量模式 — exit the GUI, keep `uniclipd` running.
+        let lightweight = MenuItem::with_id(
+            app,
+            "tray.lightweight",
+            labels.lightweight,
+            true,
+            None::<&str>,
+        )?;
         let quit = MenuItem::with_id(app, "tray.quit", labels.quit, true, None::<&str>)?;
 
         // Debug-only: open the updater window straight from the tray (with dev
@@ -116,6 +125,7 @@ impl TrayState {
         let menu = menu_builder
             .separator()
             .item(&restart)
+            .item(&lightweight)
             .item(&quit)
             .build()?;
 
@@ -165,8 +175,16 @@ impl TrayState {
                         crate::commands::restart::perform_restart(&app).await;
                     });
                 }
+                "tray.lightweight" => {
+                    // ADR-008 D3: GUI process exits, the external daemon keeps
+                    // running. One-time discoverability notification fires first.
+                    crate::lightweight::enter_lightweight_mode(app);
+                }
                 "tray.quit" => {
-                    app.exit(0);
+                    // ADR-008 D3 彻底退出: stop the daemon too (if GUI-spawned).
+                    // The ExitRequested handler reads the QuitIntent and runs the
+                    // graceful stop.
+                    crate::lightweight::request_full_quit(app);
                 }
                 _ => {}
             })
@@ -250,6 +268,7 @@ impl TrayState {
             settings,
             check_update,
             restart,
+            lightweight,
             quit,
             language: language.to_string(),
             lan_only_active,
@@ -296,6 +315,7 @@ impl TrayState {
         handles.settings.set_text(labels.settings)?;
         handles.check_update.set_text(labels.check_update)?;
         handles.restart.set_text(labels.restart)?;
+        handles.lightweight.set_text(labels.lightweight)?;
         handles.quit.set_text(labels.quit)?;
         handles.status.set_text(status_label)?;
         // Tray icon tooltip 也要随语言切换刷新。
@@ -428,6 +448,7 @@ struct MenuLabels {
     settings: &'static str,
     check_update: &'static str,
     restart: &'static str,
+    lightweight: &'static str,
     quit: &'static str,
 }
 
@@ -439,6 +460,7 @@ impl MenuLabels {
                 settings: "设置",
                 check_update: "检查更新…",
                 restart: "重启",
+                lightweight: "轻量模式",
                 quit: "退出",
             },
             _ => Self {
@@ -446,6 +468,7 @@ impl MenuLabels {
                 settings: "Settings",
                 check_update: "Check for Updates…",
                 restart: "Restart",
+                lightweight: "Lightweight Mode",
                 quit: "Quit",
             },
         }

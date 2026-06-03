@@ -3,15 +3,17 @@
 //! Provides two interfaces:
 //!
 //! - [`run`]: Synchronous blocking entry for the standalone daemon binary
-//!   (`uniclipd`) — creates its own tokio runtime, listens for OS signals
-//!   until the main loop exits.
-//! - [`start_in_process`]: Async entry for GUI shells running on their own
-//!   tokio runtime — spawns the daemon main loop as a task and returns a
-//!   [`DaemonHandle`] for explicit shutdown.
+//!   (`uniclipd`) — creates its own tokio runtime, internally calls
+//!   [`start_in_process`] and blocks on the returned handle until the main
+//!   loop exits (driven by OS signals).
+//! - [`start_in_process`]: Async assembly core — assembles the process runtime,
+//!   spawns the daemon main loop as a task and returns a [`DaemonHandle`].
+//!   `run` wraps it for the binary; it is the daemon's own assembly body, not a
+//!   GUI entry point (ADR-008 P3-3: the GUI is a pure external-daemon client and
+//!   never hosts a daemon in-process).
 //!
-//! Both entry points share the same assembly + main loop implementation
-//! ([`build_daemon_bootstrap_assembly`] / [`run_daemon_main`]) and differ
-//! only in which runtime they run on and who triggers shutdown.
+//! Both share the same assembly + main loop implementation
+//! ([`build_daemon_bootstrap_assembly`] / [`run_daemon_main`]).
 //!
 //! Migrated from `uc-desktop/src/daemon/host.rs` (ADR-008 P2, Slice 2b).
 
@@ -56,10 +58,7 @@ pub struct ProcessRuntimeHandles {
 }
 
 /// Standalone daemon binary entry: creates its own tokio runtime, starts the
-/// daemon, and blocks until exit.
-///
-/// GUI shells should not use this — use [`start_in_process`] instead for
-/// in-process daemon hosting.
+/// daemon via [`start_in_process`], and blocks until exit.
 pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     let rt = build_daemon_tokio_runtime()?;
     rt.block_on(async move {

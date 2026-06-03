@@ -76,18 +76,18 @@ export const commands = {
 	 *  流程:
 	 *  1. emit `app://shutting-down` → 前端 disconnect WebSocket
 	 *  2. wait `SHUTDOWN_FRONTEND_GRACE_MS` 让 WS close frame 飞过 loopback
-	 *  3. graceful shutdown owned daemon (释放 HTTP / LAN 端口),最长
-	 *     [`DAEMON_SHUTDOWN_TIMEOUT`] 兜底
-	 *  4. `app.restart()` —— Tauri spawn 新进程 + exit 当前进程
+	 *  3. `app.restart()` —— Tauri spawn 新进程 + exit 当前进程
 	 * 
-	 *  不走 Tauri 的 `RunEvent::ExitRequested` 路径 —— `app.restart()` 是 raw
-	 *  exit,不触发 RunEvent。所以这里**必须**自己重做一次 graceful shutdown,
-	 *  否则新进程启动时旧 daemon 还在持端口 → bind 失败 → daemon 起不来。
+	 *  ADR-008 P3-3 (B2'-3): GUI 是外部 daemon 的纯客户端,重启**只重启 GUI 进程**,
+	 *  daemon 作为独立进程留守——新 GUI 起来后 probe→reconnect 即可,不存在旧的
+	 *  in-process daemon 占着端口的问题(那是 in-process 模型的历史约束)。所以这里
+	 *  不再 graceful-shutdown daemon;只通知前端断 WS 让 daemon 端尽快释放旧连接。
 	 * 
-	 *  用户的"需要重启"设置(LAN-only Mode / mobile_sync 端口等)都走这条
-	 *  路径。iroh `IrohNodeBuilder::bind` 是进程级单次约束(Pitfall 3),
-	 *  任何涉及 iroh_config 变更的 settings 必须新进程重新 bind,所以
-	 *  `app.restart()` 是合适的、唯一的入口。
+	 *  注意(ADR-008 P3-3 遗留,P4 处理):部分"需要重启"设置(LAN-only Mode /
+	 *  mobile_sync 端口等)实际改的是 **daemon 侧** iroh/网络 bind,而本命令只重启
+	 *  GUI 进程、不再重启 daemon——所以这些设置不会因 GUI 重启而在 daemon 侧重新
+	 *  生效。daemon 侧的 re-bind / 重启编排属于 ADR-008 D16(setup→operational =
+	 *  重启 daemon)与 P4 的范畴,本命令不承担。
 	 */
 	restartApp: (trace: {
 	trace_id: string,

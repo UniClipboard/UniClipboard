@@ -1,23 +1,24 @@
-//! In-process daemon 控制句柄。
+//! Daemon main-loop 控制句柄。
 //!
-//! [`DaemonHandle`] 是 GUI 进程内启动 daemon（uc-desktop 的 `start_in_process`）的产物。
-//! 它持有 daemon main loop 的 `JoinHandle` 和一个外部触发的 `CancellationToken`：
-//! caller 调用 [`DaemonHandle::shutdown`] 即可优雅关闭整个 daemon 子系统并等待
-//! 资源回收完成。
+//! [`DaemonHandle`] 是 `start_in_process`（同模块 `host`）的产物:持有 daemon
+//! main loop 的 `JoinHandle` 和一个 `CancellationToken`。daemon 二进制的 `run`
+//! 拿到它后调 [`DaemonHandle::wait`] block 到 main loop 因 OS 信号自然退出。
 //!
-//! 独立 daemon 进程入口（uc-desktop 的 `run`）不使用此句柄
-//! ——它在自己的 tokio runtime 里 block 到 main loop 自然退出。
+//! ADR-008 P3-3 (B2'-3): GUI 已是外部 daemon 的纯客户端,不再持有此句柄。
+//! [`DaemonHandle::shutdown`]（cancel cascade → graceful）目前只剩单测覆盖;
+//! 生产关停走 `wait` + daemon 自身的 OS 信号 handler。
 
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-/// In-process daemon 实例的控制句柄。
+/// Daemon main-loop 实例的控制句柄。
 ///
-/// 由 uc-desktop 的 `start_in_process` 返回，由 GUI shell 持有；GUI 关闭时
-/// 调用 [`DaemonHandle::shutdown`] 触发 daemon 的优雅退出（cancel cascade →
-/// HTTP graceful shutdown → service stop 顺序，与独立进程模式行为一致）。
+/// 由 `start_in_process` 返回。daemon 二进制的 `run` 持有它并 [`DaemonHandle::wait`]
+/// 到 main loop 退出;[`DaemonHandle::shutdown`]（cancel cascade → HTTP graceful
+/// shutdown → service stop）保留作显式优雅关停 API（当前生产路径走 OS 信号,
+/// shutdown 仅单测覆盖)。
 pub struct DaemonHandle {
     cancel: CancellationToken,
     join: JoinHandle<anyhow::Result<()>>,

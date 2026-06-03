@@ -127,11 +127,11 @@ pub struct AppFacade {
 
 /// 一次性把 daemon-lifecycle 资源装进 [`AppFacade`] 的 6 个 OnceLock 字段。
 ///
-/// 由 daemon-lifecycle 装配 (`uc-desktop::daemon::start_in_process`)
-/// 在 daemon 启动时调用 [`AppFacade::install_daemon_lifecycle`] 触发。
-/// 方案 C 后 daemon 是进程级单例 (没有 in-process reload), 整个进程生命
-/// 周期里 install 只会被调一次; GUI 与 standalone CLI 共用这条 path —
-/// 进程内只有一份 `AppFacade`。
+/// 由 daemon 启动装配在 daemon 启动时调用 [`AppFacade::install_daemon_lifecycle`]
+/// 触发。daemon 是进程级单例 (没有 in-process reload), 整个进程生命周期里
+/// install 只会被调一次。ADR-008 P3-3 (B2'-3) 后 `AppFacade` 只存在于 daemon
+/// 进程 (GUI 已是纯客户端,不再持有进程内 facade);CLI 的 in-process 置备
+/// 同样走这条 path。
 pub struct DaemonLifecycleFacades {
     pub space_setup: Arc<SpaceSetupFacade>,
     pub member_roster: Arc<MemberRosterFacade>,

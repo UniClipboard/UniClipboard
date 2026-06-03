@@ -16,31 +16,30 @@
 
 use std::time::Duration;
 
-use tauri::{Emitter, Manager};
-use tracing::{error, info, info_span, warn, Instrument};
-use uc_desktop::DaemonOwnership;
+use tauri::Emitter;
+use tracing::{info, info_span, warn, Instrument};
 use uc_platform::ports::observability::TraceMetadata;
 
 use crate::commands::record_trace_fields;
-use crate::run::{DAEMON_SHUTDOWN_TIMEOUT, FRONTEND_SHUTDOWN_EVENT, SHUTDOWN_FRONTEND_GRACE_MS};
+use crate::run::{FRONTEND_SHUTDOWN_EVENT, SHUTDOWN_FRONTEND_GRACE_MS};
 
 /// Restarts the running Tauri application to apply settings changes.
 ///
 /// 流程:
 /// 1. emit `app://shutting-down` → 前端 disconnect WebSocket
 /// 2. wait `SHUTDOWN_FRONTEND_GRACE_MS` 让 WS close frame 飞过 loopback
-/// 3. graceful shutdown owned daemon (释放 HTTP / LAN 端口),最长
-///    [`DAEMON_SHUTDOWN_TIMEOUT`] 兜底
-/// 4. `app.restart()` —— Tauri spawn 新进程 + exit 当前进程
+/// 3. `app.restart()` —— Tauri spawn 新进程 + exit 当前进程
 ///
-/// 不走 Tauri 的 `RunEvent::ExitRequested` 路径 —— `app.restart()` 是 raw
-/// exit,不触发 RunEvent。所以这里**必须**自己重做一次 graceful shutdown,
-/// 否则新进程启动时旧 daemon 还在持端口 → bind 失败 → daemon 起不来。
+/// ADR-008 P3-3 (B2'-3): GUI 是外部 daemon 的纯客户端,重启**只重启 GUI 进程**,
+/// daemon 作为独立进程留守——新 GUI 起来后 probe→reconnect 即可,不存在旧的
+/// in-process daemon 占着端口的问题(那是 in-process 模型的历史约束)。所以这里
+/// 不再 graceful-shutdown daemon;只通知前端断 WS 让 daemon 端尽快释放旧连接。
 ///
-/// 用户的"需要重启"设置(LAN-only Mode / mobile_sync 端口等)都走这条
-/// 路径。iroh `IrohNodeBuilder::bind` 是进程级单次约束(Pitfall 3),
-/// 任何涉及 iroh_config 变更的 settings 必须新进程重新 bind,所以
-/// `app.restart()` 是合适的、唯一的入口。
+/// 注意(ADR-008 P3-3 遗留,P4 处理):部分"需要重启"设置(LAN-only Mode /
+/// mobile_sync 端口等)实际改的是 **daemon 侧** iroh/网络 bind,而本命令只重启
+/// GUI 进程、不再重启 daemon——所以这些设置不会因 GUI 重启而在 daemon 侧重新
+/// 生效。daemon 侧的 re-bind / 重启编排属于 ADR-008 D16(setup→operational =
+/// 重启 daemon)与 P4 的范畴,本命令不承担。
 #[tauri::command]
 #[specta::specta]
 pub async fn restart_app(
@@ -83,22 +82,9 @@ pub(crate) async fn perform_restart(app: &tauri::AppHandle) {
         );
     }
 
-    // 给前端 close frame 飞过 loopback 的时间。
+    // 给前端 close frame 飞过 loopback 的时间。daemon 是独立进程,这里不再
+    // 停它(ADR-008 P3-3 B2'-3:GUI 纯客户端,重启只重启 GUI 进程)。
     tokio::time::sleep(Duration::from_millis(SHUTDOWN_FRONTEND_GRACE_MS)).await;
-
-    // 主动 graceful shutdown owned daemon,等到 HTTP / LAN 端口完全
-    // 释放再 spawn 新进程 —— 否则新进程 daemon bind 撞 WSAEADDRINUSE,
-    // 即便 Phase 1 已修了连带 panic,daemon 仍然起不来。
-    let ownership = app.state::<DaemonOwnership>().inner().clone();
-    if let Some(handle) = ownership.take_owned() {
-        match handle.shutdown(DAEMON_SHUTDOWN_TIMEOUT).await {
-            Ok(()) => info!("daemon stopped before restart"),
-            Err(err) => error!(
-                error = %err,
-                "daemon shutdown failed before restart; new process may fail to bind"
-            ),
-        }
-    }
 
     // 新进程 spawn + 当前进程 exit。app.restart() 内部调用
     // std::process::exit,后续代码不可达。

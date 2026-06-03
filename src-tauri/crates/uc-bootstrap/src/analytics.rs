@@ -50,12 +50,12 @@ use uc_observability::analytics::{
 /// ## 幂等
 ///
 /// 已经有 context 注册时本函数直接返回 `Ok(())`，**不**触发第二次
-/// `load_or_create_ids` / member_repo / setup_status 调用。理由：GUI
-/// 进程内拉起 daemon 的场景（`uc-desktop::start_in_process`）会让本函数
-/// 经两条路径触达——一次从 `build_gui_app` 调过来，一次从 in-process
-/// daemon 的 `build_core` 调过来。如果不去重，第二次会拿到"IDs 已存在"
-/// 的状态、把 `is_first_run` 翻转成 `false`，覆盖 GUI 首次启动时正确
-/// 标了 `true` 的 context，丢失"首次激活"信号。
+/// `load_or_create_ids` / member_repo / setup_status 调用。ADR-008 P3-3 (B2'-3)
+/// 后 GUI 已是纯客户端、不再进程内拉起 daemon,也不调本函数
+/// （`build_gui_client_context` 不 compose EventContext）——每进程只剩一条触达
+/// 路径（daemon 进程的 `build_process_runtime` 调一次）。幂等 guard 保留作防御:
+/// 避免任何未来重复调用拿到"IDs 已存在"状态、把 `is_first_run` 翻成 `false`
+/// 而丢失"首次激活"信号。
 ///
 /// 用户重置 telemetry IDs 等显式重建场景应直接调
 /// `uc_observability::analytics::set_global_event_context`，绕开本函数的

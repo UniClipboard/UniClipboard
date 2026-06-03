@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tracing::{error, info, warn};
 
@@ -34,23 +34,18 @@ use crate::commands::updater::PendingUpdate;
 use crate::quick_panel;
 use crate::tray::TrayState;
 
-/// daemon shutdown 等待上限。
-///
-/// daemon 内部 `DaemonApp::run` 的 cleanup 序列自带兜底超时（5s
-/// service_tasks join + 5s http_handle graceful join + services.stop()
-/// 串行），最长 wallclock ~10s。前端会在 [`SHUTDOWN_FRONTEND_GRACE_MS`]
-/// 内主动关掉 WebSocket，正常 case 整体 <1s；这里给 15s 兜底覆盖最坏路径。
-pub(crate) const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// 前端事件名——告诉 webview "马上关 daemon 了，请主动 close 你那条
+/// 前端事件名——告诉 webview "本 GUI 进程马上重启了，请主动 close 你那条
 /// WebSocket"。前端 `daemon-ws-bootstrap.ts` 的 listener 收到后调用
-/// `daemonWs.disconnect()` 发送 close frame，让 daemon 端的 axum
-/// `with_graceful_shutdown` 立即返回，不等 30s heartbeat 超时。
+/// `daemonWs.disconnect()` 发送 close frame，让 daemon 端尽快释放这条旧
+/// 连接(daemon 是独立进程,重启的是 GUI;新 GUI 起来后会重新连)。
+///
+/// ADR-008 P3-3 (B2'-3) 起仅 `restart` 路径使用——GUI 正常退出不再需要它
+/// (daemon 不随 GUI 关停,见 RunEvent::ExitRequested)。
 pub(crate) const FRONTEND_SHUTDOWN_EVENT: &str = "app://shutting-down";
 
 /// 给前端响应 `app://shutting-down` 事件、发出 WebSocket close frame
-/// 的时间。100ms 对单进程内 IPC + 浏览器 WebSocket close frame 飞过
-/// loopback 来说极宽裕——用户感知不到这点延迟。
+/// 的时间。100ms 对浏览器 WebSocket close frame 飞过 loopback 来说极宽裕——
+/// 用户感知不到这点延迟。
 pub(crate) const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
 
 /// 这个 GUI shell 期望 daemon 上报的 `packageVersion`——`probe_daemon_health`
@@ -142,9 +137,9 @@ fn realtime_to_host_event(
     }
 }
 
-/// Builds the process runtime, starts background tasks and the in-process daemon as needed, and runs the Tauri event loop.
+/// Builds the pure-client GUI runtime context, spawns/connects the external daemon, and runs the Tauri event loop.
 ///
-/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the process-level runtime context via `uc_desktop::bootstrap::build_process_runtime()`; if assembly fails it returns an `Err`. On success the function enters the Tauri event loop and does not return until the application exits.
+/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the GUI client context via `uc_bootstrap::build_gui_client_context()` (file-backed ports only — no sqlite); if assembly fails it returns an `Err`. The daemon is reached as a separate process (probe → connect, or detached spawn). On success the function enters the Tauri event loop and does not return until the application exits.
 ///
 /// # Parameters
 ///
@@ -242,7 +237,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     };
 
     let task_registry_for_run = task_registry.clone();
-    let daemon_ownership_for_run = daemon_ownership.clone();
 
     // tauri-specta builder —— 命令清单的单一真相源（见 `specta_builder.rs`）。
     // 这里只用 `invoke_handler` 接进 Tauri runtime；`builder.export(...)`
@@ -664,55 +658,15 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .invoke_handler(specta_builder.invoke_handler())
         .build(tauri_ctx)
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?
-        .run(move |app_handle, event| {
+        .run(move |_app_handle, event| {
             match event {
-                tauri::RunEvent::ExitRequested { api, .. } => {
+                tauri::RunEvent::ExitRequested { .. } => {
                     info!("App exit requested, cancelling all tracked tasks");
                     task_registry_for_run.token().cancel();
-
-                    let Some(handle) = daemon_ownership_for_run.take_owned() else {
-                        // External daemon (CLI start) 或还没拉起；GUI 直接退出，不动 daemon。
-                        return;
-                    };
-
-                    api.prevent_exit();
-                    let app_handle = app_handle.clone();
-
-                    // Tell the webview to close its WebSocket *before* we ask
-                    // the daemon to shut down. axum's `with_graceful_shutdown`
-                    // waits for in-flight handlers — including the long-lived
-                    // `/ws` upgrade — to finish. Browser WebSocket clients
-                    // don't send close frames automatically when the webview
-                    // is destroyed, so without this hint the daemon would
-                    // wait for the 30s heartbeat timeout.
-                    if let Err(error) = app_handle.emit(FRONTEND_SHUTDOWN_EVENT, ()) {
-                        warn!(
-                            error = %error,
-                            event = FRONTEND_SHUTDOWN_EVENT,
-                            "Failed to emit shutdown hint to frontend; daemon shutdown \
-                             will fall back to heartbeat-driven WS disconnect"
-                        );
-                    }
-
-                    tauri::async_runtime::spawn(async move {
-                        // Give the webview a moment to actually send the WS
-                        // close frame before we cancel the daemon.
-                        tokio::time::sleep(Duration::from_millis(SHUTDOWN_FRONTEND_GRACE_MS))
-                            .await;
-
-                        match handle.shutdown(DAEMON_SHUTDOWN_TIMEOUT).await {
-                            Ok(()) => {
-                                info!("In-process daemon stopped before application exit");
-                            }
-                            Err(error) => {
-                                error!(
-                                    error = %error,
-                                    "In-process daemon shutdown failed during application exit"
-                                );
-                            }
-                        }
-                        app_handle.exit(0);
-                    });
+                    // ADR-008 P3-3 (B2'-3): the daemon is always a separate
+                    // process the GUI does not own — quitting the GUI leaves it
+                    // running (D3 orphan-on-quit interim, ownership redesign in
+                    // P4). Nothing to shut down here; let the exit proceed.
                 }
                 tauri::RunEvent::Exit => {
                     info!("Application exiting");
@@ -725,7 +679,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     // macOS: 点击 Dock 图标时，若没有可见窗口则恢复主窗口
                     if !has_visible_windows {
                         info!("Dock reopen with no visible windows, showing main window");
-                        crate::tray::show_main_window(app_handle);
+                        crate::tray::show_main_window(_app_handle);
                     }
                 }
                 _ => {}

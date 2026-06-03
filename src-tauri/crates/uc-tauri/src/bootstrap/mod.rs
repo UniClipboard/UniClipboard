@@ -17,8 +17,3 @@ pub use uc_bootstrap::assembly::{
 pub use uc_bootstrap::ensure_default_device_name;
 pub use uc_bootstrap::load_config;
 pub use uc_bootstrap::BackgroundRuntimeDeps;
-
-// Re-export desktop background task starters under their historical
-// `uc_tauri::bootstrap::start_*` import paths. New code should target
-// `uc_desktop::background::*` directly.
-pub use uc_desktop::background::start_file_cache_cleanup as start_background_tasks;

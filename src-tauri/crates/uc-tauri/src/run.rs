@@ -29,7 +29,7 @@ use uc_desktop::daemon_probe::{
 use uc_desktop::shortcuts::GlobalShortcutRegistry;
 use uc_desktop::DaemonOwnership;
 
-use crate::bootstrap::{ensure_default_device_name, start_background_tasks, TauriAppRuntime};
+use crate::bootstrap::{ensure_default_device_name, TauriAppRuntime};
 use crate::commands::updater::PendingUpdate;
 use crate::quick_panel;
 use crate::tray::TrayState;
@@ -508,17 +508,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // resume）误判「从没检查过」而在 scheduler 首次 check 之后立刻重复检查。
             app.manage(crate::update_scheduler::LastCheckAt::initialized_now());
 
-            // Start file cache cleanup task (runs once at startup).
-            // The starter is `async fn`; drive it on Tauri's managed tokio
-            // runtime — `setup` itself runs on the main thread without a
-            // tokio runtime context, so plain `tokio::spawn` here would
-            // panic with "no reactor running".
-            let history_facade_for_cleanup = runtime.app_facade().clipboard_history.clone();
-            let task_registry_for_cleanup = runtime.task_registry().clone();
-            tauri::async_runtime::spawn(async move {
-                start_background_tasks(history_facade_for_cleanup, &task_registry_for_cleanup)
-                    .await;
-            });
+            // ADR-008 P3-3 B2': startup file-cache hygiene (reconcile + TTL
+            // cleanup) now runs in the daemon (`DaemonApp::run`), which owns the
+            // sqlite pool and iroh-blobs actor. The GUI no longer drives it —
+            // see `run_startup_file_cache_hygiene` in uc-daemon.
 
             // Clone handles for async blocks
             let app_handle_for_startup = app.handle().clone();
@@ -546,44 +539,54 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     info!("[Startup] Silent start: skipping startup barrier window show");
                 }
 
-                // 1. Auto-unlock (non-blocking) via in-process facade if enabled in settings.
+                // 1. Auto-unlock (non-blocking) entirely over daemon loopback HTTP.
                 //
-                // 历史上这里走的是 `DaemonQueryClient::unlock_encryption()` HTTP RPC
-                // —— GUI 与 daemon 在 `DaemonRunMode::GuiInProcess` 下同进程,
-                // 共享同一份 `AppFacade`,经 HTTP 等于自己给自己发 TCP 报文。
-                // 改成 in-process 调 `EncryptionFacade::unlock()`(silent keyring
-                // resume,不接受 passphrase)——语义保持原 endpoint 一致, 但
-                // (a) 不再依赖 daemon connection_state ready, 启动延迟更短;
-                // (b) 故障面减少一层(无需经 axum router / auth middleware)。
-                //
-                // `lifecycle_retry` 仍走 HTTP——它真正是"通知 daemon-side 的
-                // service lifecycle 推进", 跨调用方/被调用方角色, 保留 RPC
-                // 边界更稳。这一步仍需等 daemon connection_state 填充。
-                let runtime_for_auto_unlock = runtime.clone();
+                // ADR-008 P3-3 B2': the GUI is becoming a pure client, so it can
+                // no longer reach an in-process `AppFacade`. All three steps now
+                // run as RPCs against the daemon, which owns the encryption
+                // session and settings: read `auto_unlock_enabled` via
+                // `GET /settings`, then `POST /encryption/unlock` (silent keyring
+                // resume — no passphrase; the daemon endpoint preserves the
+                // original semantics), then `POST /lifecycle/retry` to advance
+                // the daemon-side deferred services. Because every step is an
+                // RPC, we wait for `connection_state` to be populated up front
+                // instead of unlocking before the daemon is reachable.
                 let daemon_conn_for_unlock = daemon_connection_state.clone();
                 tauri::async_runtime::spawn(async move {
-                    let auto_unlock_enabled =
-                        match runtime_for_auto_unlock.settings_port().load().await {
-                            Ok(settings) => settings.security.auto_unlock_enabled,
-                            Err(e) => {
-                                warn!("[Startup] Failed to load settings for auto unlock: {}", e);
-                                false
-                            }
-                        };
+                    if !wait_for_daemon_connection(
+                        &daemon_conn_for_unlock,
+                        AUTO_UNLOCK_DAEMON_READY_TIMEOUT,
+                        AUTO_UNLOCK_DAEMON_READY_POLL,
+                    )
+                    .await
+                    {
+                        warn!(
+                            timeout_secs = AUTO_UNLOCK_DAEMON_READY_TIMEOUT.as_secs(),
+                            "[Startup] Daemon connection not ready in time; skipping auto-unlock + lifecycle retry"
+                        );
+                        return;
+                    }
+
+                    let settings_client = uc_daemon_client::DaemonSettingsClient::new(
+                        daemon_conn_for_unlock.clone(),
+                    );
+                    let auto_unlock_enabled = match settings_client.get_settings().await {
+                        Ok(settings) => settings.security.auto_unlock_enabled,
+                        Err(e) => {
+                            warn!(error = %e, "[Startup] Failed to load settings for auto unlock");
+                            false
+                        }
+                    };
 
                     if !auto_unlock_enabled {
                         info!("[Startup] Auto unlock disabled by settings");
                         return;
                     }
 
-                    match runtime_for_auto_unlock
-                        .app_facade()
-                        .encryption
-                        .unlock()
-                        .await
-                    {
+                    let client = uc_daemon_client::DaemonQueryClient::new(daemon_conn_for_unlock);
+                    match client.unlock_encryption().await {
                         Ok(true) => {
-                            info!("[Startup] Encryption auto-unlocked via in-process facade");
+                            info!("[Startup] Encryption auto-unlocked via daemon");
                         }
                         Ok(false) => {
                             info!(
@@ -594,31 +597,14 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         Err(e) => {
                             warn!(
                                 error = %e,
-                                "[Startup] In-process auto-unlock failed; user will need to enter passphrase via Unlock modal"
+                                "[Startup] Daemon auto-unlock failed; user will need to enter passphrase via Unlock modal"
                             );
                             return;
                         }
                     }
 
-                    // Daemon lifecycle retry 仍走 HTTP——它驱动 daemon-side 的
-                    // deferred services (clipboard watcher / sync) 启动, 跨
-                    // 调用方/被调用方角色, RPC 边界更稳。需要等 connection_state
-                    // 填充避免 401-no-connection-info。
-                    if !wait_for_daemon_connection(
-                        &daemon_conn_for_unlock,
-                        AUTO_UNLOCK_DAEMON_READY_TIMEOUT,
-                        AUTO_UNLOCK_DAEMON_READY_POLL,
-                    )
-                    .await
-                    {
-                        warn!(
-                            timeout_secs = AUTO_UNLOCK_DAEMON_READY_TIMEOUT.as_secs(),
-                            "[Startup] Daemon connection not ready in time; skipping lifecycle retry"
-                        );
-                        return;
-                    }
-
-                    let client = uc_daemon_client::DaemonQueryClient::new(daemon_conn_for_unlock);
+                    // Lifecycle retry drives the daemon-side deferred services
+                    // (clipboard watcher / sync) into their running state.
                     if let Err(e) = client.lifecycle_retry().await {
                         warn!("[Startup] Daemon lifecycle retry failed: {}", e);
                     } else {

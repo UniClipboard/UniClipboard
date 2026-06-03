@@ -12,7 +12,9 @@ use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
-use uc_application::facade::{AppFacade, AppPaths, HostEventBus, HostEventEmitterPort};
+use uc_application::facade::{
+    AppFacade, AppPaths, ClipboardHistoryFacade, HostEventBus, HostEventEmitterPort,
+};
 use uc_core::ports::MobileLanLifecyclePort;
 
 use crate::daemon::peers::presence_monitor::PresenceMonitor;
@@ -80,6 +82,57 @@ pub async fn recover_encryption_session(
                 "Cannot start daemon: encryption session recovery failed: {}",
                 e
             )
+        }
+    }
+}
+
+/// Startup file-cache hygiene: reconcile stale DB entries against disk, then
+/// TTL-clean expired cache files. Two passes back to back.
+///
+/// ADR-008 P3-3 B2': moved off the GUI (`uc_desktop::background::
+/// start_file_cache_cleanup`) into the daemon, which owns the sqlite pool and
+/// iroh-blobs actor. Both passes route through the entry-aware delete path
+/// (untag iroh-blobs reference + remove cache file + drop sqlite rows).
+///
+/// 1. **Reconcile** (`reconcile_missing_files`): drop any DB entry whose
+///    cache-managed `file://` path no longer exists on disk. Must run before
+///    any service observes a hash whose `External` path may have vanished;
+///    otherwise the iroh-blobs actor panics with "poisoned storage"
+///    (bao_file.rs:410).
+/// 2. **Cleanup** (`cleanup_expired_files`): walk the cache for files past
+///    `file_sync.file_retention_hours` and remove them.
+async fn run_startup_file_cache_hygiene(history_facade: Arc<ClipboardHistoryFacade>) {
+    match history_facade.reconcile_missing_files().await {
+        Ok(result) => {
+            if result.entries_deleted > 0 || result.errors > 0 {
+                info!(
+                    entries_scanned = result.entries_scanned,
+                    entries_deleted = result.entries_deleted,
+                    errors = result.errors,
+                    "Startup reconcile dropped stale entries with missing cache files"
+                );
+            }
+        }
+        Err(e) => {
+            warn!(error = %e, "Startup reconcile failed (non-fatal)");
+        }
+    }
+
+    match history_facade.cleanup_expired_files().await {
+        Ok(result) => {
+            if result.files_removed > 0 {
+                info!(
+                    files_removed = result.files_removed,
+                    entries_deleted = result.entries_deleted,
+                    orphans_removed = result.orphans_removed,
+                    bytes_reclaimed = result.bytes_reclaimed,
+                    errors = result.errors,
+                    "Startup file cache cleanup completed"
+                );
+            }
+        }
+        Err(e) => {
+            warn!(error = %e, "Startup file cache cleanup failed (non-fatal)");
         }
     }
 }
@@ -357,6 +410,19 @@ impl DaemonApp {
         let mut http_handle_consumed = false;
 
         let _cleanup_handle = cleanup_rate_limiter_task(security_for_cleanup, cleanup_cancel);
+
+        // ADR-008 P3-3 B2': startup file-cache hygiene runs in the daemon — the
+        // process that owns the sqlite pool and the iroh-blobs actor — instead
+        // of the GUI (which is becoming a pure client). Phase 1 reconcile must
+        // flush `Complete{External(missing_path)}` entries before any service
+        // observes their hash, else the iroh-blobs actor panics with "poisoned
+        // storage" (bao_file.rs:410). Detached `tokio::spawn` (NOT a
+        // `service_tasks` member) so its completion does not trip the
+        // "service task exited unexpectedly" shutdown arm; this matches the
+        // prior fire-and-forget GUI startup behavior.
+        let history_facade_for_hygiene = Arc::clone(&self.app_facade.clipboard_history);
+        let _hygiene_handle =
+            tokio::spawn(run_startup_file_cache_hygiene(history_facade_for_hygiene));
 
         // mobile_sync LAN listener:经 controller 走"对齐到期望状态"的路径,
         // 不再一次性 tokio::spawn。同一个 controller 也注入了 MobileSyncFacade,

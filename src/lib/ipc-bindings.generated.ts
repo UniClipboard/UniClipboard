@@ -268,7 +268,7 @@ export const commands = {
 	 * 
 	 *  与 `update_keyboard_shortcuts` 走同一把 [`KeyboardShortcutsUpdateLock`],
 	 *  因为两者都会改 OS 全局快捷键的注册状态——并发执行会让 OS 状态、
-	 *  [`CurrentShortcuts`] 内存视图、和 facade 持久化值互相错位。
+	 *  [`CurrentShortcuts`] 内存视图、和 daemon 持久化值互相错位。
 	 * 
 	 *  流程:
 	 *    1. 拿锁,读当前 settings。
@@ -278,7 +278,7 @@ export const commands = {
 	 *    4. 在 main thread 上一次性完成:开启 → `pre_create` + `register`,
 	 *       关闭 → 只 `unregister`,**不**销毁面板窗口。`tauri-plugin-global-shortcut`
 	 *       与 webview 创建都要求 main thread。
-	 *    5. 调 facade 持久化 patch。失败时反向回滚 OS 副作用,避免出现
+	 *    5. 经 daemon loopback HTTP 持久化 patch。失败时反向回滚 OS 副作用,避免出现
 	 *       "OS 已生效但磁盘没存"或反过来的撕裂状态。
 	 *    6. 成功后 `shortcut_registry.replace(...)`,让后续 `update_keyboard_shortcuts`
 	 *       能算对 old/new diff。

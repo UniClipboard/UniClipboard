@@ -137,6 +137,47 @@ fn realtime_to_host_event(
     }
 }
 
+/// Await the first process-level "terminate this app" signal.
+///
+/// Unix: SIGINT (terminal Ctrl-C) or SIGTERM (`kill`, logout). Other platforms:
+/// Ctrl-C. The detached `uniclipd` lives in its own session / process group
+/// (`setsid` / `CREATE_NEW_PROCESS_GROUP`), so a terminal signal never reaches
+/// it — without this handler it is orphaned when the GUI dies (the `bun
+/// tauri:dev` + Ctrl-C case). The caller turns this into a full quit so the
+/// daemon is torn down too, matching tray "Quit" / Cmd-Q.
+#[cfg(unix)]
+async fn wait_for_terminate_signal() {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut sigterm = match signal(SignalKind::terminate()) {
+        Ok(s) => s,
+        Err(error) => {
+            warn!(%error, "failed to install SIGTERM handler; daemon may orphan on kill");
+            return std::future::pending().await;
+        }
+    };
+    let mut sigint = match signal(SignalKind::interrupt()) {
+        Ok(s) => s,
+        Err(error) => {
+            warn!(%error, "failed to install SIGINT handler; daemon may orphan on Ctrl-C");
+            return std::future::pending().await;
+        }
+    };
+    tokio::select! {
+        _ = sigterm.recv() => info!("received SIGTERM"),
+        _ = sigint.recv() => info!("received SIGINT (Ctrl-C)"),
+    }
+}
+
+#[cfg(not(unix))]
+async fn wait_for_terminate_signal() {
+    if let Err(error) = tokio::signal::ctrl_c().await {
+        warn!(%error, "failed to listen for Ctrl-C; daemon may orphan on console close");
+        std::future::pending().await
+    } else {
+        info!("received Ctrl-C");
+    }
+}
+
 /// Builds the pure-client GUI runtime context, spawns/connects the external daemon, and runs the Tauri event loop.
 ///
 /// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the GUI client context via `uc_bootstrap::build_gui_client_context()` (file-backed ports only — no sqlite); if assembly fails it returns an `Err`. The daemon is reached as a separate process (probe → connect, or detached spawn). On success the function enters the Tauri event loop and does not return until the application exits.
@@ -354,6 +395,21 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         );
                     }
                 }
+            });
+
+            // ADR-008 D3: terminal/OS terminate signals == a deliberate full
+            // quit. The detached daemon ignores the terminal's Ctrl-C (own
+            // session/process group), so without this it outlives `bun
+            // tauri:dev` + Ctrl-C as an orphan. Route SIGINT/SIGTERM through the
+            // same `request_full_quit` path as tray "Quit" — flips QuitIntent and
+            // exits via Tauri so `ExitRequested` stops the daemon and cancels
+            // tracked tasks. Lightweight/restart use programmatic exits (no
+            // signal) and are unaffected.
+            let app_handle_for_signals = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                wait_for_terminate_signal().await;
+                info!("terminate signal received; requesting full quit (stops daemon too)");
+                crate::lightweight::request_full_quit(&app_handle_for_signals);
             });
 
             // Load startup settings for tray and silent start
@@ -687,20 +743,24 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?
         .run(move |app_handle, event| {
             match event {
-                tauri::RunEvent::ExitRequested { .. } => {
-                    info!("App exit requested, cancelling all tracked tasks");
+                tauri::RunEvent::ExitRequested { code, .. } => {
+                    info!(?code, "App exit requested, cancelling all tracked tasks");
                     task_registry_for_run.token().cancel();
-                    // ADR-008 D3 (P4-3): three-state quit. The daemon is always a
-                    // separate process. Only an explicit "彻底退出" (tray Quit)
-                    // sets QuitIntent → stop the daemon (regardless of who spawned
-                    // it; revised D3). Window close (hide), lightweight mode, Cmd-Q
-                    // and restart all leave the daemon running. The daemon's own
-                    // SIGTERM handler (D21) drains in-flight work; the GUI does not
-                    // block. Identity + legacy-in-process safety live in the helper.
-                    if app_handle
+                    // ADR-008 D3 (P4-3, revised): a deliberate "quit the whole app"
+                    // also stops the daemon (regardless of who spawned it). Two
+                    // triggers, unified in `exit_should_stop_daemon`: the tray
+                    // "彻底退出" flips QuitIntent, and an OS-level Cmd-Q / app-Quit
+                    // arrives as `code: None`. Lightweight mode (app.exit(0)) and
+                    // restart (app.restart() → Some(RESTART_EXIT_CODE)) exit with
+                    // `Some(_)` and never flip the intent, so they leave the daemon
+                    // running; window-close hides to tray and never reaches here.
+                    // The daemon's own SIGTERM handler (D21) drains in-flight work;
+                    // the GUI does not block. Identity + legacy-in-process safety
+                    // live in the helper.
+                    let quit_intent = app_handle
                         .state::<crate::lightweight::QuitIntent>()
-                        .should_stop_daemon()
-                    {
+                        .should_stop_daemon();
+                    if crate::lightweight::exit_should_stop_daemon(quit_intent, code) {
                         let stopped = uc_desktop::daemon_probe::stop_local_daemon_on_full_quit();
                         info!(stopped, "full quit: local daemon stop attempt complete");
                     }

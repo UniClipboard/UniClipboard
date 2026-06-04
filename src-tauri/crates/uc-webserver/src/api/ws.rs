@@ -34,6 +34,7 @@ use crate::api::types::{
     StatusResponse,
 };
 use crate::security::claims::SessionTokenClaims;
+use crate::security::rate_limiter::{RateLimitDecision, AUTHENTICATED_MAX_REQUESTS};
 
 type ClientTopics = Arc<RwLock<HashSet<String>>>;
 
@@ -160,25 +161,27 @@ async fn websocket_upgrade(
     }
 
     // Step 4: Apply rate limiting by PID (trusted — extracted from validated JWT).
-    if !state
+    // High backstop budget only; a trusted client must never hit this in practice.
+    if let RateLimitDecision::Limited { retry_after_secs } = state
         .security
         .rate_limiter
-        .check(&claims.pid.to_string())
+        .check(&claims.pid.to_string(), AUTHENTICATED_MAX_REQUESTS)
         .await
     {
-        return ws_rate_limited().into_response();
+        return ws_rate_limited(retry_after_secs).into_response();
     }
 
     // Step 5: Upgrade the WebSocket.
     ws.on_upgrade(move |socket| handle_connection(socket, state, claims))
 }
 
-fn ws_rate_limited() -> (StatusCode, Json<WsErrorResponse>) {
+fn ws_rate_limited(retry_after_secs: u64) -> (StatusCode, Json<WsErrorResponse>) {
     (
         StatusCode::TOO_MANY_REQUESTS,
         Json(WsErrorResponse {
             error: "rate_limit_exceeded".to_string(),
-            retry_after_secs: Some(60),
+            // retry_after_secs <= WINDOW_SECS (60), so the narrowing is lossless.
+            retry_after_secs: Some(retry_after_secs as u32),
         }),
     )
 }

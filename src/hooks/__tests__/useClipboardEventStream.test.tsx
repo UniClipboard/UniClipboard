@@ -140,5 +140,81 @@ describe('useClipboardEventStream', () => {
     vi.useRealTimers()
   })
 
+  it('coalesces rapid local items into a single trailing list fetch', async () => {
+    const { getClipboardEntries } = await import('@/api/daemon/clipboard')
+    const mockGetClipboardEntries = vi.mocked(getClipboardEntries)
+    const onLocalItem = vi.fn()
+
+    const mkEntry = (id: string) => ({
+      id,
+      preview: id,
+      hasDetail: false,
+      sizeBytes: 1,
+      capturedAt: 0,
+      contentType: 'text/plain',
+      thumbnailUrl: null,
+      isEncrypted: false,
+      isFavorited: false,
+      updatedAt: 0,
+      activeTime: 0,
+      fileTransferStatus: null,
+      fileTransferReason: null,
+      linkUrls: null,
+      linkDomains: null,
+      fileSizes: null,
+    })
+    mockGetClipboardEntries.mockResolvedValue({
+      status: 'ready',
+      entries: [mkEntry('e1'), mkEntry('e2'), mkEntry('e3')],
+    })
+
+    renderHook(() =>
+      useClipboardEventStream({
+        onLocalItem,
+        onRemoteInvalidate: vi.fn(),
+        onDeleted: vi.fn(),
+      })
+    )
+
+    await waitFor(() => expect(capturedHandler).not.toBeNull())
+    vi.useFakeTimers()
+
+    const fireLocal = (id: string) =>
+      capturedHandler?.({
+        topic: 'clipboard',
+        eventType: 'clipboard.new_content',
+        ts: 0,
+        sessionId: null,
+        payload: { entryId: id, preview: id, origin: 'local' },
+      })
+
+    // First copy: leading-edge fetch fires immediately.
+    await act(async () => {
+      fireLocal('e1')
+      await Promise.resolve()
+    })
+    expect(mockGetClipboardEntries).toHaveBeenCalledTimes(1)
+
+    // Two more copies within the throttle window: coalesced, no extra fetch yet.
+    act(() => {
+      fireLocal('e2')
+      fireLocal('e3')
+    })
+    expect(mockGetClipboardEntries).toHaveBeenCalledTimes(1)
+
+    // After the window, a single trailing fetch covers both pending ids.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(mockGetClipboardEntries).toHaveBeenCalledTimes(2)
+
+    // Every entry id was delivered to onLocalItem exactly once, none dropped.
+    expect(onLocalItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'e1' }))
+    expect(onLocalItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'e2' }))
+    expect(onLocalItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'e3' }))
+    expect(onLocalItem).toHaveBeenCalledTimes(3)
+    vi.useRealTimers()
+  })
+
   // Note: clipboard.deleted is never emitted by the daemon — test omitted.
 })

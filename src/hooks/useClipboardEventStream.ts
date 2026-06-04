@@ -81,6 +81,39 @@ export function useClipboardEventStream({
     // 在前一个 cleanup 里已经清掉。
     let pendingTimeoutId: number | null = null
 
+    // 本地 new_content 合并:快速连续复制时,每条事件原本各拉一次完整列表
+    // (getClipboardEntries(50,0)) —— 那是 daemon 限流的主要放大源。这里把窗口
+    // 内的多次拉取压成一次:窗口内累积的 entryId 进 set,trailing 一拍用同一次
+    // 列表请求一并取回(前 50 条已覆盖这段时间全部新增 entry),再逐个回调
+    // onLocalItem,不丢任何一条。
+    let localFlushTimer: number | null = null
+    let lastLocalFetch: number | undefined = undefined
+    const pendingLocalIds = new Set<string>()
+
+    const flushLocalFetch = () => {
+      lastLocalFetch = Date.now()
+      const ids = Array.from(pendingLocalIds)
+      pendingLocalIds.clear()
+      void getClipboardEntries(50, 0)
+        .then(response => {
+          log.info(
+            { status: response.status, requested: ids.length },
+            'local list reload (coalesced)'
+          )
+          if (response.status !== 'ready' || !response.entries) return
+          const entries = response.entries
+          for (const id of ids) {
+            const entry = entries.find(e => e.id === id)
+            if (!entry) {
+              log.warn({ entryId: id }, 'local entry not found in list reload')
+              continue
+            }
+            onLocalItemRef.current(transformDaemonDtoToItemResponse(entry))
+          }
+        })
+        .catch(err => log.error({ err }, 'Failed to fetch local clipboard entries'))
+    }
+
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
       log.info({ eventType: event.eventType }, 'received event')
       // 接收端 inbound 流程一开始就发的"占位事件":让列表立刻出现一行
@@ -127,24 +160,24 @@ export function useClipboardEventStream({
         // 列表 refresh 拿到的真实 ClipboardItemResponse 会接替它。
         dispatch(removePendingEntry(payload.entryId))
         if (payload.origin === 'local') {
-          // Fetch single entry from daemon list endpoint (matching clipboardSlice pattern)
-          void getClipboardEntries(50, 0)
-            .then(response => {
-              log.info(
-                { status: response.status, entriesCount: response.entries?.length ?? 0 },
-                'getClipboardEntries response'
-              )
-              if (response.status !== 'ready' || !response.entries) return null
-              const entry = response.entries.find(e => e.id === payload.entryId)
-              log.info({ entryId: payload.entryId, found: !!entry }, 'found entry for id')
-              if (!entry) return null
-              return transformDaemonDtoToItemResponse(entry)
-            })
-            .then(item => {
-              log.info({ hasItem: !!item }, 'onLocalItem called with item')
-              if (item) onLocalItemRef.current(item)
-            })
-            .catch(err => log.error({ err }, 'Failed to fetch local clipboard entry'))
+          // leading + trailing 合并:首条立即拉取(无可感延迟),窗口内后续 entryId
+          // 累积到 set,在 trailing 一拍用一次列表请求一并取回。
+          pendingLocalIds.add(payload.entryId)
+          const now = Date.now()
+          const sinceLast =
+            lastLocalFetch === undefined ? Number.POSITIVE_INFINITY : now - lastLocalFetch
+          if (sinceLast >= throttleMs) {
+            if (localFlushTimer !== null) {
+              clearTimeout(localFlushTimer)
+              localFlushTimer = null
+            }
+            flushLocalFetch()
+          } else if (localFlushTimer === null) {
+            localFlushTimer = window.setTimeout(() => {
+              localFlushTimer = null
+              flushLocalFetch()
+            }, throttleMs - sinceLast)
+          }
           return
         }
 
@@ -183,6 +216,10 @@ export function useClipboardEventStream({
       if (pendingTimeoutId !== null) {
         clearTimeout(pendingTimeoutId)
         pendingTimeoutId = null
+      }
+      if (localFlushTimer !== null) {
+        clearTimeout(localFlushTimer)
+        localFlushTimer = null
       }
       unsubscribe()
     }

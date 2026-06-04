@@ -19,6 +19,7 @@ use axum::{
 use url::form_urlencoded;
 
 use super::claims::SessionTokenClaims;
+use super::rate_limiter::{RateLimitDecision, AUTHENTICATED_MAX_REQUESTS};
 
 /// Marker type for storing the client_id (PID string) in request extensions.
 /// This allows both auth_extractor_middleware and rate_limit_middleware
@@ -47,12 +48,20 @@ pub async fn rate_limit_middleware(
         .map(|c| c.0.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
-    if !state.security.rate_limiter.check(&client_id).await {
+    // Authenticated routes: a high per-PID backstop, not a fine-grained throttle.
+    // Anything here has passed L2 (valid JWT + whitelisted PID), so it is a trusted
+    // same-host process; the budget exists only to contain a runaway loop.
+    if let RateLimitDecision::Limited { retry_after_secs } = state
+        .security
+        .rate_limiter
+        .check(&client_id, AUTHENTICATED_MAX_REQUESTS)
+        .await
+    {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             axum::Json(serde_json::json!({
                 "error": "rate_limit_exceeded",
-                "retry_after_secs": 60
+                "retry_after_secs": retry_after_secs
             })),
         )
             .into_response();

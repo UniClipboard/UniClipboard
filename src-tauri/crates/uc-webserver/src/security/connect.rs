@@ -34,6 +34,7 @@ use crate::api::auth::parse_bearer_token;
 use crate::api::dto::error::ApiErrorResponse;
 use crate::api::server::DaemonApiState;
 use crate::security::claims::{SessionTokenClaims, LEVEL_L2, REFRESH_AT_SECS, TTL_SECS};
+use crate::security::rate_limiter::{RateLimitDecision, PREAUTH_MAX_REQUESTS};
 
 struct ParsedConnectRequest {
     pid: u32,
@@ -107,11 +108,16 @@ async fn connect_handler(
     // In production (real TCP listener via into_make_service_with_connect_info), it is always Some.
     if let Some(ConnectInfo(client_ip)) = connect_info {
         let client_ip_str = client_ip.ip().to_string();
-        if !state.security.rate_limiter.check(&client_ip_str).await {
+        if let RateLimitDecision::Limited { retry_after_secs } = state
+            .security
+            .rate_limiter
+            .check(&client_ip_str, PREAUTH_MAX_REQUESTS)
+            .await
+        {
             return error_response(
                 StatusCode::TOO_MANY_REQUESTS,
                 "rate_limit_exceeded",
-                "too many connect requests; retry after 60 seconds",
+                &format!("too many connect requests; retry after {retry_after_secs} seconds"),
             );
         }
     }

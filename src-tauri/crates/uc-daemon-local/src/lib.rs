@@ -14,6 +14,7 @@
 
 pub mod auth;
 pub mod contract;
+pub mod crash_marker;
 pub mod health_wait;
 pub mod instance_lock;
 pub mod process_metadata;

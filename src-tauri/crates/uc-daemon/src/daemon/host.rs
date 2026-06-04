@@ -146,7 +146,8 @@ pub async fn start_in_process(
     // (autostart / service manager sets UC_DAEMON_UNATTENDED=1, P4-4) cannot
     // honor `auto_unlock_enabled = false`, so fail fast with a clear log + a
     // non-zero exit instead of coming up locked and silently doing nothing.
-    // (Machine-readable status file + GUI red banner land in P4-5.)
+    // P4-5: also record a machine-readable last-exit report so the next GUI
+    // startup surfaces a red banner instead of a silent refusal.
     if uc_daemon_local::spawn_contract::unattended_from_env() {
         let settings = handles.wired.deps.settings.load().await.unwrap_or_default();
         if let Err(violation) = uc_daemon_local::spawn_contract::validate_unattended_unlock(
@@ -154,6 +155,12 @@ pub async fn start_in_process(
             settings.security.auto_unlock_enabled,
         ) {
             tracing::error!(%violation, "daemon refusing to start (ADR-008 D9 unlock contract)");
+            let marker = uc_daemon_local::crash_marker::DaemonRunMarker::new(
+                handles.storage_paths.app_data_root_dir.clone(),
+            );
+            if let Err(error) = marker.record_startup_failure(violation.to_string()) {
+                tracing::warn!(error = %error, "failed to record daemon startup-failure marker");
+            }
             return Err(anyhow::anyhow!("{violation}"));
         }
     }

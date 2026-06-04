@@ -20,6 +20,7 @@ use uc_core::ports::MobileLanLifecyclePort;
 use crate::daemon::peers::presence_monitor::PresenceMonitor;
 use crate::daemon::service::DaemonService;
 use crate::daemon::state::RuntimeState;
+use uc_daemon_local::crash_marker::DaemonRunMarker;
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
 use uc_webserver::api::auth::load_or_create_auth_token;
 use uc_webserver::api::event_emitter::DaemonApiEventEmitter;
@@ -335,6 +336,21 @@ impl DaemonApp {
         let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager.clone(), self.process_mode)?;
         let pid = std::process::id();
 
+        // ADR-008 D17 / P4-5: reverse crash marker. Detect whether the previous
+        // run died without a clean shutdown (its start marker survived), record
+        // it for the GUI banner, then write this run's marker. Crash visibility
+        // is best-effort — never fail boot over it.
+        let run_marker = DaemonRunMarker::new(self.storage_paths.app_data_root_dir.clone());
+        match run_marker.begin_run(pid) {
+            Ok(Some(prev)) => warn!(
+                prev_pid = prev.pid,
+                prev_started_at_ms = prev.started_at_ms,
+                "previous daemon run exited abnormally (no clean shutdown) — recorded for GUI"
+            ),
+            Ok(None) => {}
+            Err(error) => warn!(error = %error, "failed to record daemon start marker"),
+        }
+
         let presence_monitor = Arc::new(PresenceMonitor::new(
             Arc::clone(&self.app_facade),
             self.event_tx.clone(),
@@ -566,6 +582,13 @@ impl DaemonApp {
             if let Err(e) = service.stop().await {
                 warn!(service = service.name(), "error stopping service: {}", e);
             }
+        }
+
+        // ADR-008 D17 / P4-5: reached only on the graceful path (SIGKILL / OOM /
+        // panic=abort never get here), so clearing the start marker here is what
+        // distinguishes a clean shutdown from an abnormal exit on the next boot.
+        if let Err(error) = run_marker.mark_clean_exit() {
+            warn!(error = %error, "failed to clear daemon start marker on graceful shutdown");
         }
 
         info!("uniclipboard-daemon stopped");

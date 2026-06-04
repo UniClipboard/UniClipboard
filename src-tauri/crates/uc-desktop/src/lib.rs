@@ -19,5 +19,5 @@ pub mod daemon_probe;
 pub mod runtime;
 pub mod shortcuts;
 
-pub use daemon::{DaemonHandle, DaemonOwnership};
+pub use daemon::DaemonOwnership;
 pub use runtime::DesktopRuntime;

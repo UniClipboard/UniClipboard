@@ -83,17 +83,21 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
   依赖应用层内部模块。
 - 涉及外部进程/UI 框架的扩展点（如 daemon spawn、托盘渲染、autostart 写入），
   desktop 提供 trait + 默认协调逻辑，shell 注入具体实现。
-- daemon runtime + host entry points 已全部迁至 `uc-daemon`（ADR-008 P1+P2）；
-  本 crate `src/daemon/` 仅保留 **re-export shim**，`src/bootstrap.rs` 同理。
-  `uc-daemon` 产出 `uniclipd` 独立二进制。
+- daemon runtime + host entry points 全部住在 `uc-daemon`（ADR-008 P1+P2），
+  产出 `uniclipd` 独立二进制。本 crate **不依赖 `uc-daemon`**：`src/daemon/`
+  只拥有 GUI 端的 `DaemonOwnership` 标记，不再 re-export daemon runtime。
 
 ## 当前落地边界
 
-- daemon runtime + host entry points + process bootstrap 已全部迁至 `uc-daemon`
-  （ADR-008 P1+P2）。本 crate `src/daemon/` 和 `src/bootstrap.rs` 现在是纯
-  re-export shim。`uc_desktop::daemon::*` / `uc_desktop::bootstrap::*` 公共面
-  经 re-export 保持不变；新增 runtime 构件请加到 `uc-daemon`，**不要** 回流本 crate。
-  `uc-cli` 已不再依赖本 crate（P2 Slice 2d）。
+- daemon runtime + host entry points + process bootstrap 全部住在 `uc-daemon`
+  （ADR-008 P1+P2），新增 runtime 构件请加到那里，**不要** 回流本 crate。
+  本 crate `src/daemon/` 不再是 `uc-daemon` 的 re-export shim：ADR-008 依赖边
+  清理已移除对 `uc-daemon` 的 path 依赖，`src/daemon/` 仅保留 GUI 内存状态类型
+  `DaemonOwnership`（`uc_desktop::daemon::DaemonOwnership` /
+  `uc_desktop::DaemonOwnership`，唯一消费者是 `daemon_probe` 与 `uc-tauri`
+  run loop）。此前为了 re-export 这个 ~40 行类型而 path-依赖整个 `uc-daemon`，
+  会迫使 GUI 构建编译整棵 daemon runtime 依赖树——断边后不再发生。`uc-cli`
+  也不依赖本 crate（P2 Slice 2d）。
 - `uc-webserver` 暂时保持独立 crate，由 `uc-desktop` 作为宿主调用；不要为了
   目录一致性直接把 HTTP/WS 物理迁入 `uc-desktop`。它不依赖 GUI 框架，符合
   "可被多 shell 共享" 的约束。

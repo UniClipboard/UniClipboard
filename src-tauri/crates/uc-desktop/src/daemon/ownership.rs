@@ -12,6 +12,11 @@
 //! "明确点退出就停连接的 daemon，不论谁拉起"，仅保留 identity 校验 + 拒杀
 //! legacy in-process 两个安全闸（见 `uc-desktop` 的
 //! `stop_local_daemon_on_full_quit`）。想留 daemon 的用户用关窗 / 轻量模式。
+//!
+//! ADR-008 后续 cleanup：本类型唯一消费者是 GUI（`uc-desktop` 的
+//! `daemon_probe` 与 `uc-tauri` 的 run loop），daemon runtime 自身从不引用它。
+//! 故它落在 `uc-desktop`，而**不**经由 `uc-daemon` re-export——避免仅为这个
+//! ~40 行类型把整棵 daemon runtime 依赖树链进 GUI 构建。
 
 use std::sync::{Arc, Mutex};
 

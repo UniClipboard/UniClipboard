@@ -9967,7 +9967,6 @@ dependencies = [
  "uc-application",
  "uc-bootstrap",
  "uc-core",
- "uc-daemon",
  "uc-daemon-client",
  "uc-daemon-contract",
  "uc-daemon-local",

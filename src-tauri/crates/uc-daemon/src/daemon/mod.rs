@@ -10,7 +10,6 @@ pub mod bootstrap;
 pub mod handle;
 pub mod host;
 pub mod mobile_lan_lifecycle;
-pub mod ownership;
 pub mod peers;
 pub mod process_bootstrap;
 pub mod process_runtime;
@@ -29,4 +28,3 @@ pub mod tokio_runtime;
 pub mod workers;
 
 pub use handle::DaemonHandle;
-pub use ownership::DaemonOwnership;

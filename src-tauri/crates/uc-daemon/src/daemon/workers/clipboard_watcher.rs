@@ -170,8 +170,11 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
             }
         };
 
-        // 4. Clone snapshot before capture consumes it.
-        let outbound_snapshot = snapshot.clone();
+        // 4. Clone snapshot before capture consumes it. Wrap the clone in an
+        //    `Arc` so live indexing (read-only) and outbound dispatch share the
+        //    same (potentially multi-megabyte image) bytes instead of each
+        //    deep-copying them. Dispatch reclaims sole ownership below.
+        let outbound_snapshot = Arc::new(snapshot.clone());
 
         // watcher 不预设 entry_id —— 本地 capture 让 use case 自己分配。
         // flow_id 仅用于 watcher 自己的 tracing 关联,不再传给 use case。
@@ -212,7 +215,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                     .clipboard_live_index
                     .index_capture(ClipboardLiveIndexInput {
                         entry_id: entry_id.to_string(),
-                        snapshot: outbound_snapshot.clone(),
+                        snapshot: Arc::clone(&outbound_snapshot),
                     })
                     .instrument(search_span)
                     .await
@@ -228,6 +231,12 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                     }
                 }
 
+                // Live indexing above has completed and dropped its `Arc` clone,
+                // so this reclaims sole ownership without copying. The fallback
+                // clone is unreachable in practice (refcount is 1 here) and only
+                // guards against a future caller holding another reference.
+                let dispatch_snapshot =
+                    Arc::try_unwrap(outbound_snapshot).unwrap_or_else(|shared| (*shared).clone());
                 let clipboard_outbound = Arc::clone(&self.clipboard_outbound);
                 let entry_id_for_outbound = entry_id.to_string();
                 tokio::spawn(
@@ -235,7 +244,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                         match clipboard_outbound
                             .dispatch_capture(ClipboardOutboundInput {
                                 entry_id: entry_id_for_outbound,
-                                snapshot: outbound_snapshot,
+                                snapshot: dispatch_snapshot,
                                 origin,
                             })
                             .await

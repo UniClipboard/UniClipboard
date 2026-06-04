@@ -16,7 +16,11 @@ use crate::facade::SearchProjectionBuilder;
 #[derive(Debug, Clone)]
 pub struct ClipboardLiveIndexInput {
     pub entry_id: String,
-    pub snapshot: SystemClipboardSnapshot,
+    /// Shared snapshot. Live indexing only reads the snapshot, so callers pass
+    /// an `Arc` clone instead of deep-copying the (potentially multi-megabyte
+    /// image) payload — see the daemon clipboard watcher, which shares one
+    /// snapshot between live indexing and outbound dispatch.
+    pub snapshot: Arc<SystemClipboardSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,12 +86,14 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
         let selection = self
             .deps
             .representation_policy
-            .select(&input.snapshot)
+            .select(input.snapshot.as_ref())
             .map_err(|err| ClipboardLiveIndexError::Internal(err.to_string()))?;
 
-        let Some(pipeline_input) =
-            SearchProjectionBuilder::build_from_capture(&entry, &input.snapshot, &selection)
-        else {
+        let Some(pipeline_input) = SearchProjectionBuilder::build_from_capture(
+            &entry,
+            input.snapshot.as_ref(),
+            &selection,
+        ) else {
             return Ok(ClipboardLiveIndexOutcome::Skipped {
                 reason: "no_searchable_content".to_string(),
             });
@@ -170,10 +176,10 @@ mod tests {
         let outcome = facade
             .index_capture(ClipboardLiveIndexInput {
                 entry_id: "entry-a".to_string(),
-                snapshot: SystemClipboardSnapshot {
+                snapshot: Arc::new(SystemClipboardSnapshot {
                     representations: Vec::new(),
                     ts_ms: 0,
-                },
+                }),
             })
             .await
             .unwrap();

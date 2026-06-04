@@ -1,23 +1,36 @@
-//! ADR-008 D3 (P4-3): lightweight mode + the three-state quit intent.
+//! ADR-008 D3 (P4-3): lightweight mode + the quit / daemon-teardown decision.
 //!
-//! Three exit behaviors, all distinguished here:
+//! The external `uniclipd` is always a separate process. Four exit behaviors,
+//! distinguished here and in `run.rs`'s `RunEvent` handlers:
 //!
-//! - **关窗** (window close) → hide to tray; handled in `run.rs`, never reaches here.
-//! - **轻量模式** (tray "Lightweight") → GUI process fully exits, the external
-//!   `uniclipd` keeps running. A one-time system notification tells the user it
-//!   is still alive and how to reopen it ([`enter_lightweight_mode`]).
-//! - **彻底退出** (tray "Quit" **or Cmd-Q**) → GUI exits AND stops the connected
-//!   daemon regardless of who spawned it. Two triggers feed the same decision in
-//!   `run.rs`'s `ExitRequested` handler via [`exit_should_stop_daemon`]: the tray
-//!   action flips [`QuitIntent`]; an OS-level Cmd-Q / app-Quit arrives as
-//!   `ExitRequested { code: None }`. Both mean "quit the whole app". Identity +
-//!   legacy-in-process safety carve-outs live in `stop_local_daemon_on_full_quit`.
+//! - **关窗** (window close) → hide to tray; intercepted in `run.rs`, never
+//!   reaches the exit handlers, daemon untouched.
+//! - **轻量模式** (tray "Lightweight") → GUI process exits, the daemon keeps
+//!   running. [`enter_lightweight_mode`] shows a one-time notification (so the
+//!   user knows it is still alive) then `app.exit(0)`.
+//! - **重启** (restart) → GUI process exits and respawns; daemon keeps running.
+//! - **彻底退出** → GUI exits AND stops the connected daemon regardless of who
+//!   spawned it. Triggers: tray "彻底退出", **macOS Cmd-Q / app-Quit menu**,
+//!   terminal Ctrl-C, and SIGTERM. Identity + legacy-in-process safety carve-outs
+//!   live in `stop_local_daemon_on_full_quit`.
 //!
-//! Window-close (hide to tray), lightweight mode, and restart leave the daemon
-//! running: window-close never reaches `ExitRequested`; lightweight and restart
-//! exit programmatically with `code: Some(_)` (`app.exit(0)` /
-//! `app.restart()`→`RESTART_EXIT_CODE`) and never flip the intent. Only a
-//! deliberate quit — tray "Quit" or Cmd-Q — stops the daemon.
+//! ## Why the decision lives in the `Exit` handler, not `ExitRequested`
+//!
+//! `RunEvent::ExitRequested` does NOT fire for every quit. In tao 0.35 / Tauri
+//! 2.11 on macOS, Cmd-Q and the app "Quit" menu go through
+//! `applicationWillTerminate` → `AppState::exit()`, which emits ONLY
+//! `RunEvent::Exit` — no `ExitRequested`. (`ExitRequested { code: None }` is
+//! reserved for the *last window being destroyed*, which never happens here
+//! because window-close is intercepted to hide-to-tray.) So a teardown decided
+//! solely in `ExitRequested` silently skips Cmd-Q and orphans the daemon — the
+//! bug this module now fixes.
+//!
+//! Instead, `RunEvent::Exit` — which fires for every clean termination — stops
+//! the daemon by DEFAULT. The only exits that keep it (lightweight / restart) are
+//! the programmatic `app.exit(0)` / `app.restart()` paths; those arrive first as
+//! `ExitRequested { code: Some(_) }` *without* a full-quit request and flag
+//! [`QuitIntent::note_exit_requested`] to keep the daemon. A GUI crash or SIGKILL
+//! never reaches `Exit` cleanly, so the daemon still survives those.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,44 +42,72 @@ use tracing::{info, warn};
 
 use crate::bootstrap::TauriAppRuntime;
 
-/// Whether the explicit tray "Quit (彻底退出)" action was chosen.
+/// Process-wide exit state, read by `run.rs`'s `RunEvent::ExitRequested` /
+/// `RunEvent::Exit` handlers to decide whether to also stop the connected daemon.
 ///
-/// Default `false`; only the tray "Quit" flips it. This is one of the two inputs
-/// to [`exit_should_stop_daemon`] — the other is the OS-level Cmd-Q, which Tauri
-/// signals as `ExitRequested { code: None }`. Window-close, lightweight mode, and
-/// restart neither flip this nor arrive with a `None` code, so they keep the
-/// daemon running.
+/// Two flags, both default `false`:
+/// - `full_quit`: flipped by [`request_full_quit`] (tray "彻底退出", Ctrl-C,
+///   SIGTERM).
+/// - `keep_daemon`: flipped by [`Self::note_exit_requested`] for programmatic
+///   keep-alive exits (lightweight `app.exit(0)` / restart). When set, the `Exit`
+///   handler leaves the daemon running.
+///
+/// The default (`keep_daemon == false`) means "stop the daemon", so the Cmd-Q
+/// path — which reaches `RunEvent::Exit` without any prior `ExitRequested` —
+/// correctly tears the daemon down.
 #[derive(Default)]
-pub struct QuitIntent(AtomicBool);
+pub struct QuitIntent {
+    full_quit: AtomicBool,
+    keep_daemon: AtomicBool,
+}
 
 impl QuitIntent {
     fn request_full_quit(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.full_quit.store(true, Ordering::SeqCst);
     }
 
-    /// Whether the tray "彻底退出" action was chosen. Read by `run.rs`'s
-    /// `ExitRequested` handler and fed into [`exit_should_stop_daemon`].
-    pub fn should_stop_daemon(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+    fn full_quit_requested(&self) -> bool {
+        self.full_quit.load(Ordering::SeqCst)
+    }
+
+    /// Record an `ExitRequested { code }` event. Programmatic keep-alive exits
+    /// (lightweight / restart) arrive as `Some(_)` without a full-quit request;
+    /// flag them so the later `Exit` handler keeps the daemon. Tray "彻底退出"
+    /// (full quit) and the last-window-destroyed `None` case leave the flag unset
+    /// → daemon stopped. See [`exit_keeps_daemon`].
+    pub fn note_exit_requested(&self, exit_code: Option<i32>) {
+        if exit_keeps_daemon(self.full_quit_requested(), exit_code) {
+            self.keep_daemon.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// Read by `run.rs`'s `RunEvent::Exit` handler. The daemon is stopped on every
+    /// clean quit EXCEPT the programmatic keep-alive exits recorded by
+    /// [`Self::note_exit_requested`]. macOS Cmd-Q / app-Quit reach `Exit` WITHOUT
+    /// a prior `ExitRequested`, so the flag stays unset and the daemon is stopped.
+    pub fn should_stop_daemon_on_exit(&self) -> bool {
+        !self.keep_daemon.load(Ordering::SeqCst)
     }
 }
 
-/// Decide whether a pending app exit should also stop the connected daemon.
+/// Whether a programmatic `ExitRequested { code }` should KEEP the external daemon
+/// running.
 ///
-/// `true` when the user deliberately quit the whole app, via either trigger:
-/// - the tray "彻底退出" flipped [`QuitIntent`] (`quit_intent == true`), or
-/// - an OS/user-initiated quit — macOS Cmd-Q or the app Quit menu — which Tauri
-///   reports as `ExitRequested { code: None }`.
+/// `app.exit(0)` (lightweight) and `app.restart()` (→ `RESTART_EXIT_CODE`) arrive
+/// as `Some(_)`; they keep the daemon UNLESS the user asked for a full quit
+/// (`request_full_quit` → tray "彻底退出" / Ctrl-C / SIGTERM). A `None` code means
+/// the last window was destroyed — a real quit — so it does NOT keep the daemon.
 ///
-/// A `Some(_)` exit code is reserved for programmatic exits that must NOT stop
-/// the daemon: `app.exit(0)` (lightweight mode) and `app.restart()` (carries
-/// `RESTART_EXIT_CODE`). Neither flips the intent, so both keep the daemon alive.
-pub fn exit_should_stop_daemon(quit_intent: bool, exit_code: Option<i32>) -> bool {
-    quit_intent || exit_code.is_none()
+/// NOTE: macOS Cmd-Q does NOT produce an `ExitRequested` at all (tao's
+/// `applicationWillTerminate` emits only `RunEvent::Exit`), so it never reaches
+/// this helper — it falls through to the default-stop behavior in the `Exit`
+/// handler ([`QuitIntent::should_stop_daemon_on_exit`]).
+pub fn exit_keeps_daemon(full_quit_requested: bool, exit_code: Option<i32>) -> bool {
+    exit_code.is_some() && !full_quit_requested
 }
 
 /// Mark the pending exit as a full quit (stop the connected daemon), then exit.
-/// The actual stop happens in `run.rs`'s `ExitRequested` handler. Triggered by
+/// The actual stop happens in `run.rs`'s `RunEvent::Exit` handler. Triggered by
 /// the tray "彻底退出" and by terminal/OS terminate signals (Ctrl-C / SIGTERM),
 /// which the GUI routes here so the detached daemon is not orphaned.
 pub fn request_full_quit(app: &AppHandle) {
@@ -140,36 +181,62 @@ mod tests {
     use super::*;
 
     #[test]
-    fn quit_intent_defaults_to_leaving_daemon() {
-        let intent = QuitIntent::default();
+    fn cmd_q_stops_daemon_no_exit_requested_fired() {
+        // macOS Cmd-Q reaches RunEvent::Exit WITHOUT any prior ExitRequested, so
+        // `note_exit_requested` is never called and the default (stop) holds.
+        let state = QuitIntent::default();
         assert!(
-            !intent.should_stop_daemon(),
-            "default intent must NOT stop the daemon — only explicit 彻底退出 flips it"
+            state.should_stop_daemon_on_exit(),
+            "Cmd-Q (no ExitRequested) must stop the daemon by default"
         );
-        intent.request_full_quit();
-        assert!(intent.should_stop_daemon());
     }
 
     #[test]
-    fn cmd_q_stops_daemon_even_without_tray_intent() {
-        // macOS Cmd-Q / app-Quit arrives as ExitRequested { code: None }. It is a
-        // deliberate "quit the app", so it stops the daemon just like tray Quit —
-        // even though no tray action flipped QuitIntent.
-        assert!(exit_should_stop_daemon(false, None));
+    fn tray_quit_stops_daemon_despite_some_code() {
+        // Tray "彻底退出" → request_full_quit() flips full_quit, then app.exit(0)
+        // → ExitRequested { code: Some(0) }. The full-quit request keeps the
+        // keep-daemon flag unset → Exit stops the daemon.
+        let state = QuitIntent::default();
+        state.request_full_quit();
+        state.note_exit_requested(Some(0));
+        assert!(state.should_stop_daemon_on_exit());
     }
 
     #[test]
-    fn tray_quit_stops_daemon_via_intent() {
-        // Tray "彻底退出" → app.exit(0) → code Some(0); the intent flag carries it.
-        assert!(exit_should_stop_daemon(true, Some(0)));
+    fn lightweight_keeps_daemon() {
+        // Lightweight: app.exit(0) WITHOUT a full-quit request → keep.
+        let state = QuitIntent::default();
+        state.note_exit_requested(Some(0));
+        assert!(!state.should_stop_daemon_on_exit());
     }
 
     #[test]
-    fn lightweight_and_restart_keep_daemon() {
-        // Lightweight: app.exit(0) without intent → Some(0) → keep.
-        assert!(!exit_should_stop_daemon(false, Some(0)));
-        // Restart: app.restart() → Some(RESTART_EXIT_CODE = i32::MAX) → keep.
-        assert!(!exit_should_stop_daemon(false, Some(i32::MAX)));
+    fn restart_keeps_daemon() {
+        // Restart via the event loop: app.restart() → ExitRequested
+        // { code: Some(RESTART_EXIT_CODE = i32::MAX) } without a full-quit request.
+        let state = QuitIntent::default();
+        state.note_exit_requested(Some(i32::MAX));
+        assert!(!state.should_stop_daemon_on_exit());
+    }
+
+    #[test]
+    fn last_window_destroyed_stops_daemon() {
+        // The last window being destroyed surfaces as ExitRequested { code: None }
+        // — a real quit, so the daemon is stopped.
+        let state = QuitIntent::default();
+        state.note_exit_requested(None);
+        assert!(state.should_stop_daemon_on_exit());
+    }
+
+    #[test]
+    fn exit_keeps_daemon_truth_table() {
+        // Programmatic Some(_) without full-quit → keep.
+        assert!(exit_keeps_daemon(false, Some(0)));
+        assert!(exit_keeps_daemon(false, Some(i32::MAX)));
+        // Full-quit request overrides → stop.
+        assert!(!exit_keeps_daemon(true, Some(0)));
+        // None code (last window destroyed) → stop.
+        assert!(!exit_keeps_daemon(false, None));
     }
 
     #[test]

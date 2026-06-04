@@ -401,9 +401,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // quit. The detached daemon ignores the terminal's Ctrl-C (own
             // session/process group), so without this it outlives `bun
             // tauri:dev` + Ctrl-C as an orphan. Route SIGINT/SIGTERM through the
-            // same `request_full_quit` path as tray "Quit" — flips QuitIntent and
-            // exits via Tauri so `ExitRequested` stops the daemon and cancels
-            // tracked tasks. Lightweight/restart use programmatic exits (no
+            // same `request_full_quit` path as tray "Quit" — flips the full-quit
+            // flag and exits via Tauri so the `Exit` handler stops the daemon and
+            // cancels tracked tasks. Lightweight/restart use programmatic exits (no
             // signal) and are unaffected.
             let app_handle_for_signals = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -746,27 +746,41 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 tauri::RunEvent::ExitRequested { code, .. } => {
                     info!(?code, "App exit requested, cancelling all tracked tasks");
                     task_registry_for_run.token().cancel();
-                    // ADR-008 D3 (P4-3, revised): a deliberate "quit the whole app"
-                    // also stops the daemon (regardless of who spawned it). Two
-                    // triggers, unified in `exit_should_stop_daemon`: the tray
-                    // "彻底退出" flips QuitIntent, and an OS-level Cmd-Q / app-Quit
-                    // arrives as `code: None`. Lightweight mode (app.exit(0)) and
-                    // restart (app.restart() → Some(RESTART_EXIT_CODE)) exit with
-                    // `Some(_)` and never flip the intent, so they leave the daemon
-                    // running; window-close hides to tray and never reaches here.
-                    // The daemon's own SIGTERM handler (D21) drains in-flight work;
-                    // the GUI does not block. Identity + legacy-in-process safety
-                    // live in the helper.
-                    let quit_intent = app_handle
+                    // ADR-008 D3 (P4-3, revised): the daemon-teardown decision is
+                    // made in `RunEvent::Exit` below, NOT here — because macOS Cmd-Q
+                    // / app-Quit never fire `ExitRequested` (tao's
+                    // `applicationWillTerminate` emits only `RunEvent::Exit`). Here
+                    // we only record the programmatic keep-alive exits: lightweight
+                    // (`app.exit(0)`) and restart (`app.restart()` →
+                    // `Some(RESTART_EXIT_CODE)`) arrive as `Some(_)` without a
+                    // full-quit request, so they flag the daemon to survive. Tray
+                    // "彻底退出" / Ctrl-C / SIGTERM go through `request_full_quit`
+                    // (full-quit flag set), and the last-window-destroyed `None`
+                    // case is a real quit — neither flags survival, so both stop the
+                    // daemon at `Exit`. See `lightweight::QuitIntent`.
+                    app_handle
                         .state::<crate::lightweight::QuitIntent>()
-                        .should_stop_daemon();
-                    if crate::lightweight::exit_should_stop_daemon(quit_intent, code) {
-                        let stopped = uc_desktop::daemon_probe::stop_local_daemon_on_full_quit();
-                        info!(stopped, "full quit: local daemon stop attempt complete");
-                    }
+                        .note_exit_requested(code);
                 }
                 tauri::RunEvent::Exit => {
                     info!("Application exiting");
+                    // Fires for every clean termination, including macOS Cmd-Q /
+                    // app-Quit (which skip `ExitRequested` entirely). Cancel again
+                    // — idempotent — so the Cmd-Q path also tears down tracked
+                    // tasks. Stop the connected daemon by default; only the
+                    // programmatic keep-alive exits recorded above keep it running.
+                    // A GUI crash / SIGKILL never reaches here cleanly, so the
+                    // daemon still survives those. The daemon's own SIGTERM handler
+                    // (D21) drains in-flight work; the GUI does not block. Identity +
+                    // legacy-in-process safety live in the stop helper.
+                    task_registry_for_run.token().cancel();
+                    if app_handle
+                        .state::<crate::lightweight::QuitIntent>()
+                        .should_stop_daemon_on_exit()
+                    {
+                        let stopped = uc_desktop::daemon_probe::stop_local_daemon_on_full_quit();
+                        info!(stopped, "full quit: local daemon stop attempt complete");
+                    }
                 }
                 // macOS: 点击 Dock 图标时，若没有可见窗口则恢复主窗口。
                 #[cfg(target_os = "macos")]

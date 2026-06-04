@@ -4,7 +4,7 @@
   "version": "0.14.0-alpha.4",
   "identifier": "app.uniclipboard.desktop",
   "build": {
-    "beforeDevCommand": "bun run dev:sweep && bun run dev",
+    "beforeDevCommand": "bun run dev:sweep && bun run daemon:dev && bun run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"

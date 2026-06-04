@@ -176,7 +176,8 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         match self.clipboard_capture.capture(snapshot, origin, None).await {
             Ok(Some(captured)) => {
                 let entry_id = EntryId::from(captured.entry_id.as_str());
-                debug!(entry_id = %entry_id, ?origin, "Daemon clipboard capture succeeded");
+                let deduplicated = captured.deduplicated;
+                debug!(entry_id = %entry_id, ?origin, deduplicated, "Daemon clipboard capture succeeded");
 
                 let payload = ClipboardNewContentPayload {
                     entry_id: captured.entry_id,
@@ -203,6 +204,17 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                 // that's expected when no WS clients are connected — log at debug.
                 if let Err(e) = self.event_tx.send(event) {
                     debug!(error = %e, "No WS subscribers for clipboard.new_content");
+                }
+
+                // Local dedup resurfaced an existing entry: the UI was just
+                // notified above, but the entry is already indexed and already
+                // synced, so skip re-indexing and re-dispatch.
+                if deduplicated {
+                    debug!(
+                        entry_id = %entry_id,
+                        "watcher: resurfaced existing entry; skipping re-index and re-dispatch"
+                    );
+                    return Ok(());
                 }
 
                 let search_span = tracing::info_span!("search.live_index", entry_id = %entry_id);

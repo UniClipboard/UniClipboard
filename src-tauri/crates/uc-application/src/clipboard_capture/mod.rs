@@ -12,4 +12,4 @@
 
 mod usecase;
 
-pub use usecase::CaptureClipboardUseCase;
+pub use usecase::{CaptureClipboardUseCase, CaptureOutcome};

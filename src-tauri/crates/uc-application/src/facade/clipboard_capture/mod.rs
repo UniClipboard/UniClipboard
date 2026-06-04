@@ -11,6 +11,10 @@ use crate::clipboard_capture::CaptureClipboardUseCase;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapturedClipboardEntryView {
     pub entry_id: String,
+    /// True when the snapshot matched existing content and the existing entry
+    /// was resurfaced instead of a new one being created. Callers should
+    /// refresh the UI but skip re-indexing / re-dispatching this entry.
+    pub deduplicated: bool,
 }
 
 #[derive(Debug, Error)]
@@ -37,12 +41,13 @@ impl ClipboardCapturePort for CaptureClipboardUseCase {
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
     ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
-        let entry_id = self
+        let outcome = self
             .execute_with_origin(snapshot, origin, preset_entry_id)
             .await
             .map_err(|err| ClipboardCaptureFacadeError::Internal(err.to_string()))?;
-        Ok(entry_id.map(|entry_id| CapturedClipboardEntryView {
-            entry_id: entry_id.to_string(),
+        Ok(outcome.map(|outcome| CapturedClipboardEntryView {
+            entry_id: outcome.entry_id.to_string(),
+            deduplicated: outcome.deduplicated,
         }))
     }
 }
@@ -86,6 +91,7 @@ mod tests {
         ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
             Ok(Some(CapturedClipboardEntryView {
                 entry_id: "entry-a".to_string(),
+                deduplicated: false,
             }))
         }
     }
@@ -108,7 +114,8 @@ mod tests {
         assert_eq!(
             outcome,
             Some(CapturedClipboardEntryView {
-                entry_id: "entry-a".to_string()
+                entry_id: "entry-a".to_string(),
+                deduplicated: false,
             })
         );
     }

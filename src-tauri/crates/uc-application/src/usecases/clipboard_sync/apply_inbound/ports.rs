@@ -56,6 +56,9 @@ impl InboundCapture for CaptureClipboardUseCase {
             Some(preset_entry_id),
         )
         .await
+        // RemotePush never takes the local dedup branch, so the outcome is
+        // always a fresh entry; the inbound contract only needs its id.
+        .map(|outcome| outcome.map(|o| o.entry_id))
     }
 }
 

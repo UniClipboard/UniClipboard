@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Result;
-use tracing::{debug, info, info_span, Instrument};
+use tracing::{debug, info, info_span, warn, Instrument};
 use uc_observability::analytics::{
     AnalyticsPort, CaptureOrigin, Event, PayloadSizeBucket, PayloadType,
 };
@@ -41,6 +41,18 @@ use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
     ObservedClipboardRepresentation, PayloadAvailability, SystemClipboardSnapshot,
 };
+
+/// Result of a capture attempt.
+///
+/// `deduplicated == true` means the snapshot matched an existing entry's
+/// content hash and that entry was resurfaced (its active time was bumped to
+/// the top of history) instead of persisting a duplicate row. Callers should
+/// refresh the UI for the entry but must NOT re-index or re-dispatch it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureOutcome {
+    pub entry_id: EntryId,
+    pub deduplicated: bool,
+}
 
 /// Capture clipboard content and create persistent entries.
 ///
@@ -98,6 +110,7 @@ impl CaptureClipboardUseCase {
     pub async fn execute(&self, snapshot: SystemClipboardSnapshot) -> Result<EntryId> {
         self.execute_with_origin(snapshot, ClipboardChangeOrigin::LocalCapture, None)
             .await?
+            .map(|outcome| outcome.entry_id)
             .ok_or_else(|| anyhow::anyhow!("local capture should always persist an entry"))
     }
 
@@ -111,7 +124,7 @@ impl CaptureClipboardUseCase {
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
-    ) -> Result<Option<EntryId>> {
+    ) -> Result<Option<CaptureOutcome>> {
         // Root span: all pipeline stages are children of clipboard.flow.
         // The origin field distinguishes local capture from remote push.
         //
@@ -168,6 +181,43 @@ impl CaptureClipboardUseCase {
                 .entered();
                 snapshot.snapshot_hash()
             };
+
+            // Local-capture dedup: if this exact content already exists,
+            // resurface the existing entry (bump it to the top of history)
+            // instead of persisting a duplicate row and re-dispatching it.
+            // Gated to `LocalCapture` — `RemotePush` runs its own dedup
+            // upstream, and `LocalRestore` already short-circuits above.
+            //
+            // Non-fatal: a lookup failure must not drop the capture, so on
+            // error we degrade to the prior no-dedup behavior (create a new
+            // entry) rather than propagating.
+            if origin == ClipboardChangeOrigin::LocalCapture {
+                let hash_str = snapshot_hash.to_string();
+                match self.entry_repo.find_entry_id_by_snapshot_hash(&hash_str).await {
+                    Ok(Some(existing)) => {
+                        if let Err(e) = self.entry_repo.touch_entry(&existing, captured_at_ms).await
+                        {
+                            warn!(
+                                entry_id = %existing,
+                                error = %e,
+                                "Failed to resurface existing entry; deduping without reorder"
+                            );
+                        }
+                        info!(
+                            entry_id = %existing,
+                            "Local capture matched existing content; resurfaced instead of duplicating"
+                        );
+                        return Ok(Some(CaptureOutcome {
+                            entry_id: existing,
+                            deduplicated: true,
+                        }));
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        warn!(error = %e, "Local-capture dedup lookup failed; proceeding to create entry");
+                    }
+                }
+            }
 
             // 1. 生成 event + snapshot representations
             let new_event = ClipboardEvent::new(
@@ -400,7 +450,10 @@ impl CaptureClipboardUseCase {
                 });
             }
 
-            Ok(Some(entry_id))
+            Ok(Some(CaptureOutcome {
+                entry_id,
+                deduplicated: false,
+            }))
         }
         .instrument(root)
         .await

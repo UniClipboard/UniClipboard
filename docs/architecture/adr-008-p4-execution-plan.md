@@ -16,7 +16,7 @@
 ```
 
 - ~~登录自启目标从 GUI 切为 `uniclipd`~~ **修订（2026-06-04）：自启目标保持 GUI，daemon 由 GUI 拉起**（见 ADR D10/D17 修订）；自启 = settings 派生投影到 `tauri-plugin-autostart` login item，不自建 OS 原生 daemon 载体。轻量模式仅在当前会话有效，下次登录 GUI 照常自启。
-- 多 profile = N 个独立 `uniclipd`（数据/端口/keychain/iroh 已隔离）；per-profile 自启单元，默认仅主 profile。
+- 多 profile = N 个独立 `uniclipd`（数据/端口/keychain/iroh 已隔离），**仅作开发期测试手段**；**产品对用户只暴露单一 profile**（决策 2026-06-04），故 per-profile 自启隔离 P4-7 显式延后（见 §P4-7 ①）。
 - 每进程独立日志文件 + daemon 为 product analytics 唯一权威发送方。
 - 崩溃可见性靠「启动写 start marker、graceful 清除、残留 = 上次异常退出」反向模式。
 
@@ -102,18 +102,24 @@
 > **遗留**：动作级事件 daemon 转发的真机端到端 UAT（两进程不双计设备级 / PostHog DAU 不翻倍）待用户验证。
 
 ### P4-7 · D19 收尾 + OQ 收口 `feat:`
-- per-profile 自启：默认仅主/默认 profile 注册 **GUI 自启项**（`tauri-plugin-autostart`，标识带 profile）；非主 profile 默认前台、显式开启才注册。
-- GUI 运行期切 profile 语义（评审遗留）：**采纳冷启动**（见 §3 OQ-gui-profile-switch），不做热切换（与 ADR 否决「运行中热迁移活跃 iroh node」一致）。
-- 卸载清理（OQ-uninstall-cleanup）+ 降级回滚收敛（OQ-downgrade-rollback）：落地 §3 收口结论。**简化（承 D10 修订）**：无自建 service unit，卸载残留收敛为"login item + crash marker"，由 `tauri-plugin-autostart` 卸载即清 + daemon 启动自愈，原"`uniclipd --uninstall-cleanup` 删 service unit"子命令降级为可选（仅清 marker）。
-- **gate**：`cargo check --workspace`；卸载后无残留 login item + marker；降级方向不误杀高版本活进程。
+
+> **范围决策（人确认 2026-06-04）：产品对用户只暴露单一 profile。** 多 profile /
+> 多 daemon 仅作开发期测试手段，不是面向用户的功能。这把 P4-7 的三个子项重新定标：
+> ①②基本归零（仅注释/文档收尾），③是唯一与 profile 无关的真实代码口子。
+
+- **① per-profile 自启 → 延后（不做）**：真实用户只有一个 profile，主 profile 自启用固定标识本就正确工作；「非主 profile 污染主 profile login item」只在开发者多开 daemon 测试时出现，非产品需求。仅把 `uc-tauri/src/run.rs` 那条「per-profile 留 P4-7」的注释改成「单 profile 产品，per-profile 自启延后」，并记下未来开放多 profile 时的接法（`Builder` + per-profile `app_name` + `--profile` 启动参数）。`tauri_plugin_autostart::init(..., Some(vec![]))` 保持不变。
+- **② GUI 运行期切 profile → moot（仅文档）**：代码库目前没有任何切 profile 的入口/UI，单 profile 产品下也不会有。冷启动决策（见 §3 OQ-gui-profile-switch）作为「未来若开放多 profile 时的方向」保留记录，本期无可接落点、无代码。
+- **③ 降级回滚收敛（OQ-downgrade-rollback）→ ✅ 安全核心已落地**（commit `67fe9bb4`）：GUI 冷启动唯一会终止 daemon 的路径（`bootstrap_daemon_in_process` 的 `Incompatible` 臂）原先把任何版本不匹配都 SIGTERM 后替换 → 低版本 client（手动降级 / 自动更新回滚）会静默杀掉正在跑的高版本 daemon。现加方向性 semver 闸（`running_daemon_is_strictly_newer`，纯函数）：**proven 更新** 的 daemon → 拒绝接管（incumbent 胜），返回 `DaemonBootstrapError::RefusedNewerDaemon`，连接不填充 → GUI 走现有「未连接」UX + error 日志，**绝不 SIGTERM**；版本缺失/无法解析 → 维持原 takeover 行为（爆炸半径仅 proven-newer）。**红条 UX 延后**（前端目前无 daemon 异常 banner 机制，净新增；人确认本期只做安全核心）。与 profile 无关，单 profile 用户同样受保护。
+- **卸载清理（OQ-uninstall-cleanup）**：承 D10 修订已简化 —— 无自建 service unit，残留收敛为「`tauri-plugin-autostart` login item + crash marker」，卸载 GUI 即清 login item + daemon 启动自愈 marker；`uniclipd --uninstall-cleanup` 降级为可选（仅清 marker）。单 profile 下无额外动作，沿用既有机制。
+- **gate**：`cargo check --workspace` ✅；`uc-daemon-local` contract + `uc-desktop` daemon_probe 单测 ✅（含 3 个方向性闸真值表测试）；changed crates clippy clean ✅。**真机 UAT（待用户）**：跑一个更高版本 daemon + 一个更低版本 GUI client → client 拒启不误杀、走「未连接」状态。
 
 ## 3. Open Question 收口（落地决策）
 
 | OQ | 状态 | 落地结论（推荐） |
 |---|---|---|
 | **OQ-uninstall-cleanup** | 开放 → 收口（**2026-06-04 简化**） | 自启回归 GUI 后无自建 service unit，残留收敛为「`tauri-plugin-autostart` login item + crash marker」：① 卸载 GUI 即清 login item（插件标准行为）；② crash marker 由 daemon 启动自愈/卸载脚本清；③ `uniclipd --uninstall-cleanup` 降级为可选（仅清 marker，无 service unit 可删）。原"删 service unit + 三平台卸载器 hook"整段不再需要。 |
-| **OQ-downgrade-rollback** | 开放 → 收口 | ① 收敛方向：**incumbent 运行中 daemon 默认胜**；磁盘低版本 client **不得杀** 更高版本运行 daemon——拒启 + 红条「运行中 daemon 更新，重启收敛或重新升级」。唯一 sanctioned takeover 仍是 incompatible-version 替换（graceful-first）。② `schema_version` 前向不兼容降级：daemon 读到更高 schema 直接拒启 + 写机器可读状态 + GUI 红条，不静默 corrupt。本期交付「安全拒绝 + 可见」，不保证自动数据降级。 |
-| **OQ-gui-profile-switch** | 开放 → 收口 | 采纳 **强制冷启动**：GUI 内切 profile = 重启 GUI 进程并以新 `UC_PROFILE` 起来（必要时拉起目标 profile 的 `uniclipd`）。理由：热切换需断当前 WS + 重走端口/token 发现/session/resync + 可能热迁移 iroh，复杂度高且与 ADR 反对的「运行中热迁移」同源。 |
+| **OQ-downgrade-rollback** | 开放 → **✅ 安全核心已落地（2026-06-04，commit `67fe9bb4`）** | ① 收敛方向：**incumbent 运行中 daemon 默认胜**；磁盘低版本 client **不得杀** 更高版本运行 daemon——已落地：`bootstrap_daemon_in_process` 终止前过方向性 semver 闸，proven-newer → `RefusedNewerDaemon`（拒接管、绝不 SIGTERM、走现有未连接 UX + error 日志）；版本缺失/不可解析维持既有 takeover。唯一 sanctioned takeover 仍是 older-or-equal 替换。**红条 UX 延后**（前端无 daemon 异常 banner，净新增；人确认只做安全核心）。② `schema_version` 前向不兼容降级（daemon 读到更高 schema 拒启 + 机器可读状态 + 红条）**未在本期范围**，留后续。 |
+| **OQ-gui-profile-switch** | 开放 → 收口（**2026-06-04：单 profile 产品下 moot**） | 方向已定 **强制冷启动**：GUI 内切 profile = 重启 GUI 进程并以新 `UC_PROFILE` 起来（必要时拉起目标 profile 的 `uniclipd`），不做热切换（与 ADR 反对的「运行中热迁移」同源）。但 **产品对用户只暴露单一 profile，目前无任何切 profile 入口/UI** → 本决策作为「未来若开放多 profile 时的方向」保留记录，P4-7 无可接落点、不落代码。 |
 | OQ-windows | 已收敛 → **2026-06-04 取消** | 原 Task Scheduler `schtasks` + `StartupIntegrationProvider` 方案随"自启=GUI"决策取消；Windows 自启回归 `tauri-plugin-autostart`（注册表 Run），无 daemon 原生载体、无保活降级问题。 |
 | OQ-lightweight-discoverability | 已收敛 | `tauri-plugin-notification` 一次性 + 自愈 JSON 标志（per-profile）。落地于 P4-3。 |
 | OQ-multiprofile-person | 开放 → 收口（**2026-06-04**） | **各 profile 独立 distinct_id**（人确认）。核实：`resolved_app_dir_name()` 给整个 `app_data_root` 套 `-<profile>` 后缀，`analytics/` 子目录天然 per-profile，各 profile 已有独立 `anonymous_user_id`/`space_person_id`。**无需代码改动**。后果：同一台机器多 profile 在 PostHog 计为多设备（接受）。收口于 P4-6。 |

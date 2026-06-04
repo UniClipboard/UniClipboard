@@ -261,9 +261,14 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         // ADR-008 D10（2026-06-04 修订）：登录自启目标 = GUI 自身（daemon 由 GUI
         // 冷启动经下方 setup 的 `bootstrap_daemon_in_process` 拉起）。沿用
         // tauri-plugin-autostart，不自建 OS 原生 daemon 投影 / StartupIntegrationProvider。
-        // 注意：launch args 暂为空 → 自启的 GUI 不带 `UC_PROFILE`，且 autolaunch 用
-        // 编译期固定 bundle id，故 per-profile 自启（非主 profile）尚未隔离。D19 默认
-        // 仅主 profile 注册自启，对主 profile 无害；非主 profile 的隔离留 P4-7。
+        //
+        // launch args 为空 + autolaunch 用编译期固定 bundle id：产品对用户只暴露
+        // **单一 profile**，主 profile 用固定标识注册 login item 正确工作。per-profile
+        // 自启隔离（非主 profile 带 `UC_PROFILE` 的独立 login item + profile 启动参数）
+        // 在单 profile 产品下无需求 —— P4-7 决策（2026-06-04）显式延后；多 profile /
+        // 多 daemon 仅作开发期测试手段，不经 OS 登录项保活。若未来产品开放多 profile，
+        // 这里需换成 `tauri_plugin_autostart::Builder`，按 `uc_platform` 解析到的活跃
+        // profile 设置 per-profile `app_name` + `--profile` 启动参数。
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec![]),

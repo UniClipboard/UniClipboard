@@ -146,6 +146,17 @@ export type CaptureUiEventRequest = {
     error_kind?: string | null;
     kind: 'action_invoked';
     outcome: UiUpdateActionOutcome;
+} | {
+    failure_kind?: UiUpdateFailureKind | null;
+    install_kind: UiInstallKind;
+    kind: 'check_performed';
+    outcome: UiUpdateCheckOutcome;
+    source: UiUpdateCheckSource;
+} | {
+    delivery_status: UiNotificationDeliveryStatus;
+    install_kind: UiInstallKind;
+    kind: 'notification_shown';
+    version: string;
 };
 
 /**
@@ -2309,6 +2320,12 @@ export type UiDismissSource = 'dialog_later' | 'dialog_closed' | 'package_manage
 export type UiInstallKind = 'macos' | 'windows' | 'windowsportable' | 'appimage' | 'deb' | 'rpm' | 'unknown';
 
 /**
+ * Mirrors `analytics::NotificationDeliveryStatus`. wire: `sent` |
+ * `permission_denied` | `send_failed`.
+ */
+export type UiNotificationDeliveryStatus = 'sent' | 'permission_denied' | 'send_failed';
+
+/**
  * Mirrors `analytics::UpdateAction`. wire: `download_bg` | `install`.
  */
 export type UiUpdateAction = 'download_bg' | 'install';
@@ -2318,6 +2335,29 @@ export type UiUpdateAction = 'download_bg' | 'install';
  * `failed` | `cancelled`.
  */
 export type UiUpdateActionOutcome = 'started' | 'succeeded' | 'failed' | 'cancelled';
+
+/**
+ * Mirrors `analytics::UpdateCheckOutcome`. wire: `available` | `up_to_date` |
+ * `failed`.
+ */
+export type UiUpdateCheckOutcome = 'available' | 'up_to_date' | 'failed';
+
+/**
+ * Mirrors `analytics::UpdateCheckSource`. wire: `startup` | `scheduled` |
+ * `manual` | `window_show`.
+ *
+ * Cross-process note (ADR-008 D20): the update *check* runs in the GUI process
+ * (its updater background task / tray / settings button), not the daemon. The
+ * GUI therefore forwards the check outcome here so the daemon — the single
+ * authoritative sender — dispatches it with its own `EventContext`.
+ */
+export type UiUpdateCheckSource = 'startup' | 'scheduled' | 'manual' | 'window_show';
+
+/**
+ * Mirrors `analytics::UpdateFailureKind`. wire: `network` | `http_error` |
+ * `parse_error` | `other`. Only present when the check outcome is `failed`.
+ */
+export type UiUpdateFailureKind = 'network' | 'http_error' | 'parse_error' | 'other';
 
 /**
  * Mirrors `analytics::UpdatePhase`. wire: `available` | `downloading` | `ready`.

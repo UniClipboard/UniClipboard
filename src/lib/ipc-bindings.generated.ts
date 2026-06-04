@@ -203,18 +203,6 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("dev_open_updater_window", { trace })),
 	/**
-	 *  把前端 UI 触发的 update lifecycle 事件回送到后端 PostHog facade。
-	 * 
-	 *  仅 `DialogOpened` 会触发 `install_kind` probe；其他 variant 走直通映射。
-	 *  `analytics::capture` 自身是 fire-and-forget，所以本 command 不返回 wire 错误
-	 *  （即使 sink 在异步路径上失败，前端也无可处置；同 `commands/updater.rs`
-	 *  内部 emission 一致）。
-	 */
-	captureUpdateUiEvent: (event: UpdateUiEvent_Deserialize, trace: {
-	trace_id: string,
-	timestamp: number,
-} | null) => typedError<null, CommandError>(__TAURI_INVOKE("capture_update_ui_event", { event, trace })),
-	/**
 	 *  Open the application data directory in the system file manager.
 	 *  在系统文件管理器中打开应用数据目录。
 	 */
@@ -439,27 +427,6 @@ export type TraceMetadata = {
 	timestamp: number,
 };
 
-/**  见 [`analytics::DialogOpenSource`]。wire form: `notification` | `sidebar_icon`。 */
-export type UiDialogOpenSource = "notification" | "sidebar_icon";
-
-/**
- *  见 [`analytics::DismissSource`]。wire form: `dialog_later` | `dialog_closed` |
- *  `package_manager_dialog_closed`。
- */
-export type UiDismissSource = "dialog_later" | "dialog_closed" | "package_manager_dialog_closed";
-
-/**  见 [`analytics::UpdateAction`]。wire form: `download_bg` | `install`。 */
-export type UiUpdateAction = "download_bg" | "install";
-
-/**
- *  见 [`analytics::UpdateActionOutcome`]。wire form: `started` | `succeeded` |
- *  `failed` | `cancelled`。
- */
-export type UiUpdateActionOutcome = "started" | "succeeded" | "failed" | "cancelled";
-
-/**  见 [`analytics::UpdatePhase`]。wire form: `available` | `downloading` | `ready`。 */
-export type UiUpdatePhase = "available" | "downloading" | "ready";
-
 export type UpdateKeyboardShortcutsResult = {
 	keyboardShortcuts: { [key in string]: ShortcutKeyDto },
 };
@@ -471,52 +438,6 @@ export type UpdateMetadata = {
 	body: string | null,
 	date: string | null,
 };
-
-/**
- *  前端送来的 UI 触发事件（discriminated union by `kind`）。
- * 
- *  `install_kind` 不出现在任何 variant 里 —— 由后端在 dispatch 时反查注入
- *  （schema doc §7.8 落地备注）。
- */
-export type UpdateUiEvent = UpdateUiEvent_Serialize | UpdateUiEvent_Deserialize;
-
-/**
- *  前端送来的 UI 触发事件（discriminated union by `kind`）。
- * 
- *  `install_kind` 不出现在任何 variant 里 —— 由后端在 dispatch 时反查注入
- *  （schema doc §7.8 落地备注）。
- */
-export type UpdateUiEvent_Deserialize = 
-/**  用户打开了 `UpdateDialog` / `PackageManagerUpdateDialog`。 */
-({ kind: "dialog_opened"; source: UiDialogOpenSource; phase: UiUpdatePhase }) & { action?: never; error_kind?: never; outcome?: never } | 
-/**  用户放弃了对话框（稍后 / 关闭 / 取消）。 */
-({ kind: "dismissed"; phase: UiUpdatePhase; source: UiDismissSource }) & { action?: never; error_kind?: never; outcome?: never } | 
-/**
- *  前端纯 UI 路径触发的 action（如 `Cancelled`）。
- * 
- *  `error_kind` 必须是短标识符（< 32 字符，形如 `user_cancelled`）；
- *  **绝不** 含路径 / URL / IP 等可还原用户标识的内容（schema doc §6.1）。
- */
-({ kind: "action_invoked"; action: UiUpdateAction; outcome: UiUpdateActionOutcome; error_kind?: string | null }) & { phase?: never; source?: never };
-
-/**
- *  前端送来的 UI 触发事件（discriminated union by `kind`）。
- * 
- *  `install_kind` 不出现在任何 variant 里 —— 由后端在 dispatch 时反查注入
- *  （schema doc §7.8 落地备注）。
- */
-export type UpdateUiEvent_Serialize = 
-/**  用户打开了 `UpdateDialog` / `PackageManagerUpdateDialog`。 */
-({ kind: "dialog_opened"; source: UiDialogOpenSource; phase: UiUpdatePhase }) & { action?: never; error_kind?: never; outcome?: never } | 
-/**  用户放弃了对话框（稍后 / 关闭 / 取消）。 */
-({ kind: "dismissed"; phase: UiUpdatePhase; source: UiDismissSource }) & { action?: never; error_kind?: never; outcome?: never } | 
-/**
- *  前端纯 UI 路径触发的 action（如 `Cancelled`）。
- * 
- *  `error_kind` 必须是短标识符（< 32 字符，形如 `user_cancelled`）；
- *  **绝不** 含路径 / URL / IP 等可还原用户标识的内容（schema doc §6.1）。
- */
-({ kind: "action_invoked"; action: UiUpdateAction; outcome: UiUpdateActionOutcome; error_kind?: string | null }) & { phase?: never; source?: never };
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

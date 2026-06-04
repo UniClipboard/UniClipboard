@@ -51,7 +51,8 @@ use crate::api::dto::settings::{
 };
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
-    UiInstallKind, UiUpdateAction, UiUpdateActionOutcome, UiUpdatePhase,
+    UiInstallKind, UiNotificationDeliveryStatus, UiUpdateAction, UiUpdateActionOutcome,
+    UiUpdateCheckOutcome, UiUpdateCheckSource, UiUpdateFailureKind, UiUpdatePhase,
 };
 use uc_daemon_contract::api::dto::auth::{ConnectRequest, SessionTokenResponse};
 use uc_daemon_contract::api::dto::clipboard_command::{
@@ -346,6 +347,10 @@ impl Modify for ContractMeta {
             UiUpdateAction,
             UiUpdateActionOutcome,
             UiInstallKind,
+            UiUpdateCheckSource,
+            UiUpdateCheckOutcome,
+            UiUpdateFailureKind,
+            UiNotificationDeliveryStatus,
             // ── system: diagnostics & topology ─────────────────────
             StatusEnvelope,
             PeerSnapshotListEnvelope,

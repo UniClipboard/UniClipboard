@@ -195,6 +195,68 @@
               "kind"
             ],
             "type": "object"
+          },
+          {
+            "description": "An update check completed (any source). Emitted by the GUI updater\nbackground task / tray / settings button — the daemon has no\nupdate-check code, so the GUI forwards the outcome here. `failure_kind`\nis present only when `outcome` is `failed` and disappears from the wire\notherwise (no `null`).",
+            "properties": {
+              "failure_kind": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UiUpdateFailureKind"
+                  }
+                ],
+                "nullable": true
+              },
+              "install_kind": {
+                "$ref": "#/components/schemas/UiInstallKind"
+              },
+              "kind": {
+                "enum": [
+                  "check_performed"
+                ],
+                "type": "string"
+              },
+              "outcome": {
+                "$ref": "#/components/schemas/UiUpdateCheckOutcome"
+              },
+              "source": {
+                "$ref": "#/components/schemas/UiUpdateCheckSource"
+              }
+            },
+            "required": [
+              "source",
+              "outcome",
+              "install_kind",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "An update prompt was delivered to the user (already same-version\ndeduplicated). Emitted by the GUI `update_scheduler` after opening the\nSparkle-style updater window. `version` is the raw manifest version\nstring (low cardinality — one new version per channel at a time).",
+            "properties": {
+              "delivery_status": {
+                "$ref": "#/components/schemas/UiNotificationDeliveryStatus"
+              },
+              "install_kind": {
+                "$ref": "#/components/schemas/UiInstallKind"
+              },
+              "kind": {
+                "enum": [
+                  "notification_shown"
+                ],
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version",
+              "delivery_status",
+              "install_kind",
+              "kind"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -3642,6 +3704,15 @@
         ],
         "type": "string"
       },
+      "UiNotificationDeliveryStatus": {
+        "description": "Mirrors `analytics::NotificationDeliveryStatus`. wire: `sent` |\n`permission_denied` | `send_failed`.",
+        "enum": [
+          "sent",
+          "permission_denied",
+          "send_failed"
+        ],
+        "type": "string"
+      },
       "UiUpdateAction": {
         "description": "Mirrors `analytics::UpdateAction`. wire: `download_bg` | `install`.",
         "enum": [
@@ -3657,6 +3728,35 @@
           "succeeded",
           "failed",
           "cancelled"
+        ],
+        "type": "string"
+      },
+      "UiUpdateCheckOutcome": {
+        "description": "Mirrors `analytics::UpdateCheckOutcome`. wire: `available` | `up_to_date` |\n`failed`.",
+        "enum": [
+          "available",
+          "up_to_date",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "UiUpdateCheckSource": {
+        "description": "Mirrors `analytics::UpdateCheckSource`. wire: `startup` | `scheduled` |\n`manual` | `window_show`.\n\nCross-process note (ADR-008 D20): the update *check* runs in the GUI process\n(its updater background task / tray / settings button), not the daemon. The\nGUI therefore forwards the check outcome here so the daemon — the single\nauthoritative sender — dispatches it with its own `EventContext`.",
+        "enum": [
+          "startup",
+          "scheduled",
+          "manual",
+          "window_show"
+        ],
+        "type": "string"
+      },
+      "UiUpdateFailureKind": {
+        "description": "Mirrors `analytics::UpdateFailureKind`. wire: `network` | `http_error` |\n`parse_error` | `other`. Only present when the check outcome is `failed`.",
+        "enum": [
+          "network",
+          "http_error",
+          "parse_error",
+          "other"
         ],
         "type": "string"
       },
@@ -5339,7 +5439,7 @@
     },
     "/lifecycle/ready": {
       "post": {
-        "description": "在 `GuiInProcess` 模式下，剪贴板采集被门控住，直到 GUI 在用户解锁\n应用之后显式发出\"就绪\"信号；本端点负责打开该门控。",
+        "description": "锁定期 daemon 把剪贴板采集门控住(deferred services);解锁后用本端点\n放行。ADR-008 P3-3 起 daemon 永远是独立进程,GUI 作为纯客户端经 loopback\nHTTP 调它(旧 `GuiInProcess` 同进程模式已删除)。",
         "operationId": "signalLifecycleReady",
         "responses": {
           "204": {
@@ -5354,7 +5454,7 @@
             "session_header": []
           }
         ],
-        "summary": "通知 daemon：GUI 已解锁，可以开始采集剪贴板。",
+        "summary": "通知 daemon：已解锁，可以开始采集剪贴板——打开 clipboard capture 门控。",
         "tags": [
           "lifecycle"
         ]

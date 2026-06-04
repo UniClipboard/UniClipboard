@@ -7,7 +7,6 @@ pub mod severity;
 pub mod startup;
 pub mod storage;
 pub mod tray;
-pub mod update_telemetry;
 pub mod updater;
 pub mod window_chrome;
 

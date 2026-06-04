@@ -90,11 +90,16 @@
 - 下次 GUI 起来读到 → 红条提示（GUI 必自启，下次登录即覆盖；无常驻通知组件）。持久重启计数器 + 清零策略 **降级为可选**（"仅提示近期异常、不报次数"即可，按需再补）。
 - **gate**：`cargo check --workspace`；模拟 SIGKILL 后下次启动检出残留 marker；graceful 退出后无残留；红条在重开 GUI 显示。
 
-### P4-6 · D20 analytics 单源收口 `refactor:` / `feat:`
-- 设备级信号（`active_device_count` / `is_first_run` / heartbeat）**只由 daemon 发**；oneshot 抑制设备级、只发动作级（否则每次 `uniclip send` 算一次设备活跃）。
-- 清 GUI 进程内 sink 残余：`uc-tauri` 的 update_telemetry / updater 动作事件（`run.rs:617`、`commands/update_telemetry.rs:258`、`commands/updater.rs`）改走 daemon `POST /analytics/capture`（session JWT），daemon 成唯一权威发送方。
-- 定义多 profile × 同设备的 PostHog person 聚合语义（各 profile 独立 distinct_id vs 合并）——收口 §3 OQ。
-- **gate**：`cargo check --workspace`；核实启两进程不双计设备级事件（PostHog DAU 不翻倍）；GUI 不再持进程内 PostHog sink。
+### P4-6 · D20 analytics 单源收口 `refactor:` / `feat:` ✅ 已落地（2026-06-04）
+> **核实结论（2026-06-04）**：核心链路 P3-c 已就绪——daemon `POST /analytics/capture` 端点 + 契约 + 前端 webview 直发（`src/api/daemon/analytics.ts`）。本切片补完 Rust 侧残余 + 收口两决策（人确认）：① **完整路由**——GUI 自身 Rust 后台任务（updater / scheduler / notify_context）发的 update 动作事件也走 daemon；② **各 profile 独立 distinct_id**。
+> **本切片实际改动**：
+> - 设备级信号（`active_device_count` / `is_first_run` / `app_opened`）核实 **只由 daemon 发**——GUI 纯客户端走 `build_gui_client_context`，不 compose `EventContext`、不 emit 设备级事件（`wire_gui_client_deps` 原先仍建真实 PostHog sink，本切片改为 `NoopAnalyticsSink`，杜绝进程内发送端）。oneshot/`cli start` 同理不 compose EventContext，天然只发动作级。
+> - 扩展契约 `CaptureUiEventRequest` +`CheckPerformed`/`NotificationShown` 两变体（+4 mirror 枚举），webserver `into_event` 映射 + `mirror_enums_share_wire_form` 锁 wire 等价。
+> - 新增 `DaemonForwardingAnalyticsSink`（`uc-tauri/src/analytics_forward.rs`，实现 `AnalyticsPort`）+ `DaemonAnalyticsClient`（`uc-daemon-client`）：把 update `Event` 映射成契约 POST 到 daemon（session JWT，`client_type=gui`），call-site 零改动。`run.rs` 在拿到 `DaemonConnectionState` 后用它覆盖 GUI 的 analytics 端口。
+> - 删死代码：前端已迁 HTTP 后，`capture_update_ui_event` Tauri command（含 mirror 枚举）整文件删除 + specta 注册移除；openapi/sdk/specta 三套产物重生成（操作数仍 60）。
+> **多 profile person 语义收口**：**各 profile 独立 distinct_id**——`resolved_app_dir_name()` 已给整个 `app_data_root` 套 `-<profile>` 后缀（`uc-platform/src/app_dirs.rs`），`analytics/` 子目录天然 per-profile，各 profile 独立 `anonymous_user_id`/`space_person_id`。**无需代码改动**；后果：同一台机器多 profile 在 PostHog 计为多设备（已确认接受）。原 Explore「各 profile 共享同一 analytics 目录」判断有误，已核实纠正。
+> **gate（已过）**：`cargo check --workspace` 绿；clippy 新增文件无 warning；webserver analytics 单测 10/10、forwarder 单测 3/3、specta_export、前端 `update-telemetry.test.ts` 5/5、`tsc --noEmit` 全过；GUI 不再持进程内 PostHog sink。
+> **遗留**：动作级事件 daemon 转发的真机端到端 UAT（两进程不双计设备级 / PostHog DAU 不翻倍）待用户验证。
 
 ### P4-7 · D19 收尾 + OQ 收口 `feat:`
 - per-profile 自启：默认仅主/默认 profile 注册 **GUI 自启项**（`tauri-plugin-autostart`，标识带 profile）；非主 profile 默认前台、显式开启才注册。
@@ -111,6 +116,7 @@
 | **OQ-gui-profile-switch** | 开放 → 收口 | 采纳 **强制冷启动**：GUI 内切 profile = 重启 GUI 进程并以新 `UC_PROFILE` 起来（必要时拉起目标 profile 的 `uniclipd`）。理由：热切换需断当前 WS + 重走端口/token 发现/session/resync + 可能热迁移 iroh，复杂度高且与 ADR 反对的「运行中热迁移」同源。 |
 | OQ-windows | 已收敛 → **2026-06-04 取消** | 原 Task Scheduler `schtasks` + `StartupIntegrationProvider` 方案随"自启=GUI"决策取消；Windows 自启回归 `tauri-plugin-autostart`（注册表 Run），无 daemon 原生载体、无保活降级问题。 |
 | OQ-lightweight-discoverability | 已收敛 | `tauri-plugin-notification` 一次性 + 自愈 JSON 标志（per-profile）。落地于 P4-3。 |
+| OQ-multiprofile-person | 开放 → 收口（**2026-06-04**） | **各 profile 独立 distinct_id**（人确认）。核实：`resolved_app_dir_name()` 给整个 `app_data_root` 套 `-<profile>` 后缀，`analytics/` 子目录天然 per-profile，各 profile 已有独立 `anonymous_user_id`/`space_person_id`。**无需代码改动**。后果：同一台机器多 profile 在 PostHog 计为多设备（接受）。收口于 P4-6。 |
 
 ## 4. 风险
 

@@ -20,9 +20,9 @@ use uc_daemon_local::socket::resolve_daemon_http_addr;
 
 pub use connection::DaemonConnectionState;
 pub use http::{
-    DaemonClipboardClient, DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient,
-    DaemonSearchClient, DaemonSearchRequestError, DaemonSettingsClient, DaemonSetupClient,
-    ExchangedSessionToken, SearchQueryRequest,
+    DaemonAnalyticsClient, DaemonClipboardClient, DaemonPairingClient, DaemonPairingRequestError,
+    DaemonQueryClient, DaemonSearchClient, DaemonSearchRequestError, DaemonSettingsClient,
+    DaemonSetupClient, ExchangedSessionToken, SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::DaemonService;

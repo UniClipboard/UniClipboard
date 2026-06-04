@@ -86,6 +86,53 @@ pub enum UiInstallKind {
     Unknown,
 }
 
+/// Mirrors `analytics::UpdateCheckSource`. wire: `startup` | `scheduled` |
+/// `manual` | `window_show`.
+///
+/// Cross-process note (ADR-008 D20): the update *check* runs in the GUI process
+/// (its updater background task / tray / settings button), not the daemon. The
+/// GUI therefore forwards the check outcome here so the daemon — the single
+/// authoritative sender — dispatches it with its own `EventContext`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UiUpdateCheckSource {
+    Startup,
+    Scheduled,
+    Manual,
+    WindowShow,
+}
+
+/// Mirrors `analytics::UpdateCheckOutcome`. wire: `available` | `up_to_date` |
+/// `failed`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UiUpdateCheckOutcome {
+    Available,
+    UpToDate,
+    Failed,
+}
+
+/// Mirrors `analytics::UpdateFailureKind`. wire: `network` | `http_error` |
+/// `parse_error` | `other`. Only present when the check outcome is `failed`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UiUpdateFailureKind {
+    Network,
+    HttpError,
+    ParseError,
+    Other,
+}
+
+/// Mirrors `analytics::NotificationDeliveryStatus`. wire: `sent` |
+/// `permission_denied` | `send_failed`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UiNotificationDeliveryStatus {
+    Sent,
+    PermissionDenied,
+    SendFailed,
+}
+
 /// Tagged union of GUI-originated UI analytics events (discriminated by `kind`).
 ///
 /// Wire-compatible with the retired `capture_update_ui_event` Tauri command's
@@ -113,6 +160,27 @@ pub enum CaptureUiEventRequest {
         outcome: UiUpdateActionOutcome,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error_kind: Option<String>,
+    },
+    /// An update check completed (any source). Emitted by the GUI updater
+    /// background task / tray / settings button — the daemon has no
+    /// update-check code, so the GUI forwards the outcome here. `failure_kind`
+    /// is present only when `outcome` is `failed` and disappears from the wire
+    /// otherwise (no `null`).
+    CheckPerformed {
+        source: UiUpdateCheckSource,
+        outcome: UiUpdateCheckOutcome,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        failure_kind: Option<UiUpdateFailureKind>,
+        install_kind: UiInstallKind,
+    },
+    /// An update prompt was delivered to the user (already same-version
+    /// deduplicated). Emitted by the GUI `update_scheduler` after opening the
+    /// Sparkle-style updater window. `version` is the raw manifest version
+    /// string (low cardinality — one new version per channel at a time).
+    NotificationShown {
+        version: String,
+        delivery_status: UiNotificationDeliveryStatus,
+        install_kind: UiInstallKind,
     },
 }
 

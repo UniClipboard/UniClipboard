@@ -727,7 +727,15 @@ pub fn wire_gui_client_deps(config: &AppConfig) -> WiringResult<GuiClientDeps> {
     let setup_status: Arc<dyn SetupStatusPort> = Arc::new(
         FileSetupStatusRepository::with_defaults(paths.vault_dir.clone()),
     );
-    let analytics = crate::analytics::build_analytics_sink();
+    // ADR-008 D20: a pure-client GUI is NOT an analytics sender — the daemon is
+    // the single authoritative PostHog sender. So the GUI client gets a Noop
+    // sink here (no in-process PostHog key, no device-level emission); the GUI
+    // shell replaces this with a daemon-forwarding sink once it has the daemon
+    // connection state (see `uc_tauri::run` / `analytics_forward`). Update events
+    // emitted by the GUI's Rust background tasks are forwarded to the daemon's
+    // `/analytics/capture`; the webview's UI events POST there directly.
+    let analytics: Arc<dyn uc_observability::analytics::AnalyticsPort> =
+        Arc::new(uc_observability::analytics::NoopAnalyticsSink);
 
     let device_identity: Arc<dyn DeviceIdentityPort> = Arc::new(
         LocalDeviceIdentity::load_or_create(app_data_root).map_err(|e| {

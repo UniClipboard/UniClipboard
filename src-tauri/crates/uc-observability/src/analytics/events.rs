@@ -210,9 +210,11 @@ pub enum Event {
     /// 用户打开了更新对话框（`UpdateDialog` 或 `PackageManagerUpdateDialog`）。
     /// schema doc §7.8。
     ///
-    /// 由前端 `setUpdateDialogOpen(true)` / `setPackageManagerDialogOpen(true)`
-    /// 之后通过 `capture_update_ui_event` Tauri command 转送到本事件。
-    /// `install_kind` 在 backend 接收时反查 scheduler 缓存注入，前端不需要知道。
+    /// ADR-008 D20：前端 `setUpdateDialogOpen(true)` /
+    /// `setPackageManagerDialogOpen(true)` 之后 POST 到 daemon
+    /// `/analytics/capture`（`src/api/daemon/analytics.ts`），daemon dispatch
+    /// 到本事件——不再走进程内 sink / Tauri command。进程拆分后 install 归属归
+    /// GUI shell，故 `install_kind` 由前端读 `get_install_kind`（原生、缓存）一并带上。
     UpdateDialogOpened {
         source: DialogOpenSource,
         phase: UpdatePhase,

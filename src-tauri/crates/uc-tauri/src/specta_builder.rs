@@ -60,8 +60,6 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::updater::install_update,
         crate::commands::updater::get_install_kind,
         crate::commands::updater::dev_open_updater_window,
-        // ── update telemetry (Phase 5A) ─────────────────────────────────────
-        crate::commands::update_telemetry::capture_update_ui_event,
         // ── storage ─────────────────────────────────────────────────────────
         crate::commands::storage::open_data_directory,
         crate::commands::storage::open_logs_directory,

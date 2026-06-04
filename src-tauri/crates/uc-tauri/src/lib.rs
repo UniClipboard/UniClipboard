@@ -7,6 +7,7 @@
 
 pub mod activity_hud;
 pub mod adapters;
+pub mod analytics_forward;
 pub mod bootstrap;
 pub mod commands;
 pub mod lightweight;

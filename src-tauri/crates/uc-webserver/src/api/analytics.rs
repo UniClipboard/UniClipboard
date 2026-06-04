@@ -20,12 +20,13 @@ use axum::{Json, Router};
 use tracing::info;
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
-    UiInstallKind, UiUpdateAction, UiUpdateActionOutcome, UiUpdatePhase,
+    UiInstallKind, UiNotificationDeliveryStatus, UiUpdateAction, UiUpdateActionOutcome,
+    UiUpdateCheckOutcome, UiUpdateCheckSource, UiUpdateFailureKind, UiUpdatePhase,
 };
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_observability::analytics::{
-    DialogOpenSource, DismissSource, Event, InstallKind, UpdateAction, UpdateActionOutcome,
-    UpdatePhase,
+    DialogOpenSource, DismissSource, Event, InstallKind, NotificationDeliveryStatus, UpdateAction,
+    UpdateActionOutcome, UpdateCheckOutcome, UpdateCheckSource, UpdateFailureKind, UpdatePhase,
 };
 
 use crate::api::dto::error::ApiError;
@@ -88,6 +89,42 @@ fn map_install_kind(value: UiInstallKind) -> InstallKind {
     }
 }
 
+fn map_check_source(value: UiUpdateCheckSource) -> UpdateCheckSource {
+    match value {
+        UiUpdateCheckSource::Startup => UpdateCheckSource::Startup,
+        UiUpdateCheckSource::Scheduled => UpdateCheckSource::Scheduled,
+        UiUpdateCheckSource::Manual => UpdateCheckSource::Manual,
+        UiUpdateCheckSource::WindowShow => UpdateCheckSource::WindowShow,
+    }
+}
+
+fn map_check_outcome(value: UiUpdateCheckOutcome) -> UpdateCheckOutcome {
+    match value {
+        UiUpdateCheckOutcome::Available => UpdateCheckOutcome::Available,
+        UiUpdateCheckOutcome::UpToDate => UpdateCheckOutcome::UpToDate,
+        UiUpdateCheckOutcome::Failed => UpdateCheckOutcome::Failed,
+    }
+}
+
+fn map_failure_kind(value: UiUpdateFailureKind) -> UpdateFailureKind {
+    match value {
+        UiUpdateFailureKind::Network => UpdateFailureKind::Network,
+        UiUpdateFailureKind::HttpError => UpdateFailureKind::HttpError,
+        UiUpdateFailureKind::ParseError => UpdateFailureKind::ParseError,
+        UiUpdateFailureKind::Other => UpdateFailureKind::Other,
+    }
+}
+
+fn map_delivery_status(value: UiNotificationDeliveryStatus) -> NotificationDeliveryStatus {
+    match value {
+        UiNotificationDeliveryStatus::Sent => NotificationDeliveryStatus::Sent,
+        UiNotificationDeliveryStatus::PermissionDenied => {
+            NotificationDeliveryStatus::PermissionDenied
+        }
+        UiNotificationDeliveryStatus::SendFailed => NotificationDeliveryStatus::SendFailed,
+    }
+}
+
 /// Convert a decoded request into the analytics `Event`. Total — the discriminant
 /// is validated at deserialization, so there is no error path here.
 fn into_event(req: CaptureUiEventRequest) -> Event {
@@ -114,6 +151,26 @@ fn into_event(req: CaptureUiEventRequest) -> Event {
             outcome: map_outcome(outcome),
             error_kind,
         },
+        CaptureUiEventRequest::CheckPerformed {
+            source,
+            outcome,
+            failure_kind,
+            install_kind,
+        } => Event::UpdateCheckPerformed {
+            source: map_check_source(source),
+            outcome: map_check_outcome(outcome),
+            failure_kind: failure_kind.map(map_failure_kind),
+            install_kind: map_install_kind(install_kind),
+        },
+        CaptureUiEventRequest::NotificationShown {
+            version,
+            delivery_status,
+            install_kind,
+        } => Event::UpdateNotificationShown {
+            version,
+            delivery_status: map_delivery_status(delivery_status),
+            install_kind: map_install_kind(install_kind),
+        },
     }
 }
 
@@ -123,6 +180,8 @@ fn event_kind_tag(req: &CaptureUiEventRequest) -> &'static str {
         CaptureUiEventRequest::DialogOpened { .. } => "dialog_opened",
         CaptureUiEventRequest::Dismissed { .. } => "dismissed",
         CaptureUiEventRequest::ActionInvoked { .. } => "action_invoked",
+        CaptureUiEventRequest::CheckPerformed { .. } => "check_performed",
+        CaptureUiEventRequest::NotificationShown { .. } => "notification_shown",
     }
 }
 
@@ -260,5 +319,107 @@ mod tests {
         same(UiInstallKind::Deb, InstallKind::Deb);
         same(UiInstallKind::Rpm, InstallKind::Rpm);
         same(UiInstallKind::Unknown, InstallKind::Unknown);
+
+        same(UiUpdateCheckSource::Startup, UpdateCheckSource::Startup);
+        same(UiUpdateCheckSource::Scheduled, UpdateCheckSource::Scheduled);
+        same(UiUpdateCheckSource::Manual, UpdateCheckSource::Manual);
+        same(
+            UiUpdateCheckSource::WindowShow,
+            UpdateCheckSource::WindowShow,
+        );
+
+        same(
+            UiUpdateCheckOutcome::Available,
+            UpdateCheckOutcome::Available,
+        );
+        same(UiUpdateCheckOutcome::UpToDate, UpdateCheckOutcome::UpToDate);
+        same(UiUpdateCheckOutcome::Failed, UpdateCheckOutcome::Failed);
+
+        same(UiUpdateFailureKind::Network, UpdateFailureKind::Network);
+        same(UiUpdateFailureKind::HttpError, UpdateFailureKind::HttpError);
+        same(
+            UiUpdateFailureKind::ParseError,
+            UpdateFailureKind::ParseError,
+        );
+        same(UiUpdateFailureKind::Other, UpdateFailureKind::Other);
+
+        same(
+            UiNotificationDeliveryStatus::Sent,
+            NotificationDeliveryStatus::Sent,
+        );
+        same(
+            UiNotificationDeliveryStatus::PermissionDenied,
+            NotificationDeliveryStatus::PermissionDenied,
+        );
+        same(
+            UiNotificationDeliveryStatus::SendFailed,
+            NotificationDeliveryStatus::SendFailed,
+        );
+    }
+
+    #[test]
+    fn check_performed_drops_failure_kind_when_succeeding() {
+        let req = CaptureUiEventRequest::CheckPerformed {
+            source: UiUpdateCheckSource::Scheduled,
+            outcome: UiUpdateCheckOutcome::UpToDate,
+            failure_kind: None,
+            install_kind: UiInstallKind::AppImage,
+        };
+        match into_event(req) {
+            Event::UpdateCheckPerformed {
+                source,
+                outcome,
+                failure_kind,
+                install_kind,
+            } => {
+                assert_eq!(source, UpdateCheckSource::Scheduled);
+                assert_eq!(outcome, UpdateCheckOutcome::UpToDate);
+                assert_eq!(failure_kind, None);
+                assert_eq!(install_kind, InstallKind::AppImage);
+            }
+            other => panic!("expected UpdateCheckPerformed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_performed_preserves_failure_kind() {
+        let req = CaptureUiEventRequest::CheckPerformed {
+            source: UiUpdateCheckSource::Manual,
+            outcome: UiUpdateCheckOutcome::Failed,
+            failure_kind: Some(UiUpdateFailureKind::Network),
+            install_kind: UiInstallKind::Macos,
+        };
+        match into_event(req) {
+            Event::UpdateCheckPerformed {
+                outcome,
+                failure_kind,
+                ..
+            } => {
+                assert_eq!(outcome, UpdateCheckOutcome::Failed);
+                assert_eq!(failure_kind, Some(UpdateFailureKind::Network));
+            }
+            other => panic!("expected UpdateCheckPerformed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn notification_shown_maps_version_and_status() {
+        let req = CaptureUiEventRequest::NotificationShown {
+            version: "0.13.0-alpha.1".to_string(),
+            delivery_status: UiNotificationDeliveryStatus::Sent,
+            install_kind: UiInstallKind::Rpm,
+        };
+        match into_event(req) {
+            Event::UpdateNotificationShown {
+                version,
+                delivery_status,
+                install_kind,
+            } => {
+                assert_eq!(version, "0.13.0-alpha.1");
+                assert_eq!(delivery_status, NotificationDeliveryStatus::Sent);
+                assert_eq!(install_kind, InstallKind::Rpm);
+            }
+            other => panic!("expected UpdateNotificationShown, got {other:?}"),
+        }
     }
 }

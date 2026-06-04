@@ -29,11 +29,35 @@ pub type PlatformEventSender = tokio::sync::mpsc::Sender<PlatformEvent>;
 /// where content bytes may differ slightly.
 const FILE_DEDUP_WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
 
+/// Time window to suppress a rapid burst of same-size image clipboard events.
+///
+/// On X11 a clipboard owner (or a desktop clipboard manager such as Klipper /
+/// CopyQ / GPaste) can re-assert selection ownership several times per second,
+/// and some sources serialize the *same* image with non-deterministic padding /
+/// alpha bytes on every read. The content hash — and therefore
+/// `meaningful_origin_key` (`image:<hash>`) — then differs on every read, so
+/// the key-based dedup above never fires and each read becomes a brand-new
+/// entry + blob + outbound sync. Observed in the wild as a ~400 ms self-feeding
+/// storm (see issue #957) that filled disk with hundreds of identical-looking
+/// images.
+///
+/// Byte size is a cheap, stable proxy for image identity here: the storm keeps
+/// identical dimensions while only the hash churns. A genuinely different image
+/// (different byte size) passes through immediately; only a same-size image
+/// arriving within this window of the previous image is suppressed. The window
+/// is refreshed on every suppressed event so a sustained burst stays muted as
+/// long as it keeps firing faster than the window.
+const IMAGE_DEDUP_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
+
 pub struct ClipboardWatcher {
     local_clipboard: Arc<dyn SystemClipboardPort>,
     sender: PlatformEventSender,
     last_meaningful_dedupe_key: Option<String>,
     last_file_emit_time: Option<Instant>,
+    /// `(observed_at, size_bytes)` of the most recent image-dominant snapshot,
+    /// updated on every image observation (emitted or suppressed). Drives the
+    /// [`IMAGE_DEDUP_WINDOW`] storm guard.
+    last_image_seen: Option<(Instant, i64)>,
 }
 
 impl ClipboardWatcher {
@@ -43,6 +67,7 @@ impl ClipboardWatcher {
             sender,
             last_meaningful_dedupe_key: None,
             last_file_emit_time: None,
+            last_image_seen: None,
         }
     }
 }
@@ -106,6 +131,30 @@ impl ClipboardWatcher {
             }
         }
 
+        // Image storm guard: an image-dominant snapshot whose byte size matches
+        // the previous image within `IMAGE_DEDUP_WINDOW` is treated as a re-read
+        // of the same image (the hash churns under us; see `IMAGE_DEDUP_WINDOW`).
+        // Computed before the value moves into `try_send`.
+        let image_size = current_dedupe_key
+            .as_ref()
+            .filter(|k| k.starts_with("image:"))
+            .map(|_| snapshot.total_size_bytes());
+        if let Some(size) = image_size {
+            let now = Instant::now();
+            if let Some((last, last_size)) = self.last_image_seen {
+                if last_size == size && now.duration_since(last) < IMAGE_DEDUP_WINDOW {
+                    // Refresh the window so a sustained burst stays suppressed.
+                    self.last_image_seen = Some((now, size));
+                    debug!(
+                        size_bytes = size,
+                        elapsed_ms = now.duration_since(last).as_millis(),
+                        "Suppressing rapid same-size image clipboard event (storm guard)"
+                    );
+                    return;
+                }
+            }
+        }
+
         // Time-window suppression for file snapshots: macOS fires
         // multiple clipboard events when copying files (APFS→resolved
         // path transition) where content bytes may differ slightly.
@@ -139,6 +188,9 @@ impl ClipboardWatcher {
             {
                 self.last_file_emit_time = Some(Instant::now());
             }
+            if let Some(size) = image_size {
+                self.last_image_seen = Some((Instant::now(), size));
+            }
             if let Some(key) = current_dedupe_key {
                 self.last_meaningful_dedupe_key = Some(key);
             }
@@ -155,5 +207,94 @@ impl ClipboardWatcher {
 impl ClipboardHandler for ClipboardWatcher {
     fn on_clipboard_change(&mut self) {
         self.notify_change();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation};
+    use uc_core::ids::{FormatId, RepresentationId};
+
+    /// `local_clipboard` is unused on the `notify_with_snapshot` path that
+    /// these tests exercise, so a do-nothing stub suffices.
+    struct StubClipboard;
+    impl SystemClipboardPort for StubClipboard {
+        fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
+            Ok(SystemClipboardSnapshot {
+                ts_ms: 0,
+                representations: vec![],
+            })
+        }
+        fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn watcher() -> (ClipboardWatcher, tokio::sync::mpsc::Receiver<PlatformEvent>) {
+        let (tx, rx) = tokio::sync::mpsc::channel(64);
+        (ClipboardWatcher::new(Arc::new(StubClipboard), tx), rx)
+    }
+
+    /// Image snapshot of exactly `size` bytes filled with `fill`. Varying
+    /// `fill` keeps the byte size constant while changing the blake3 hash —
+    /// exactly the #957 storm shape where the same image serializes to
+    /// different bytes on every read.
+    fn image(size: usize, fill: u8) -> SystemClipboardSnapshot {
+        let rep = ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("image"),
+            Some(MimeType("image/bmp".to_string())),
+            vec![fill; size],
+        );
+        SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![rep],
+        }
+    }
+
+    fn drain(rx: &mut tokio::sync::mpsc::Receiver<PlatformEvent>) -> usize {
+        let mut n = 0;
+        while rx.try_recv().is_ok() {
+            n += 1;
+        }
+        n
+    }
+
+    #[test]
+    fn same_size_image_with_churning_hash_is_storm_guarded() {
+        // Reproduces issue #957: an X11 source re-emits the *same* image with
+        // a different byte pattern (different hash) every few hundred ms, so
+        // the meaningful-key dedup never fires. The storm guard must collapse
+        // the burst to a single emit.
+        let (mut w, mut rx) = watcher();
+        for fill in 0u8..16 {
+            w.notify_with_snapshot(image(4096, fill));
+        }
+        assert_eq!(
+            drain(&mut rx),
+            1,
+            "same-size image burst with churning hash must collapse to one emit"
+        );
+    }
+
+    #[test]
+    fn differently_sized_images_all_pass() {
+        // Genuinely different images (different byte size) must not be dropped.
+        let (mut w, mut rx) = watcher();
+        w.notify_with_snapshot(image(1000, 1));
+        w.notify_with_snapshot(image(2000, 2));
+        w.notify_with_snapshot(image(3000, 3));
+        assert_eq!(drain(&mut rx), 3, "distinct-size images must all emit");
+    }
+
+    #[test]
+    fn identical_image_collapses_via_key_dedup() {
+        // Byte-identical images share a hash and collapse via the pre-existing
+        // meaningful-key dedup; the storm guard must not regress this.
+        let (mut w, mut rx) = watcher();
+        w.notify_with_snapshot(image(1000, 7));
+        w.notify_with_snapshot(image(1000, 7));
+        assert_eq!(drain(&mut rx), 1);
     }
 }

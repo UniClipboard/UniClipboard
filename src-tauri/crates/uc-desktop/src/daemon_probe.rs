@@ -11,6 +11,7 @@
 
 use std::time::Duration;
 
+use semver::Version;
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::HealthResponse;
@@ -158,6 +159,29 @@ pub fn classify_health_response(
     ProbeOutcome::Compatible(health)
 }
 
+/// Is the running daemon a *proven* strictly-newer version than this client?
+///
+/// ADR-008 P4-7 (OQ-downgrade-rollback): a lower-version client must never
+/// terminate a higher-version incumbent daemon — that would silently downgrade
+/// a running daemon to an older build. This guards the one place that kills an
+/// incompatible daemon ([`bootstrap_daemon_in_process`]) so the kill is only
+/// the sanctioned takeover of an *older-or-equal* daemon.
+///
+/// Conservative by design: returns `true` **only** when both versions parse as
+/// semver and `observed > expected`. A missing or unparseable observed version
+/// (corruption, a foreign process on our port, a daemon that never reported a
+/// version) is *not* proven-newer, so it keeps the existing terminate-and-replace
+/// behavior — we only ever protect a daemon we can prove is ahead of us.
+fn running_daemon_is_strictly_newer(observed: Option<&str>, expected: &str) -> bool {
+    let (Some(observed), Ok(expected)) = (observed, Version::parse(expected.trim())) else {
+        return false;
+    };
+    match Version::parse(observed.trim()) {
+        Ok(observed) => observed > expected,
+        Err(_) => false,
+    }
+}
+
 pub fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
     uc_daemon_client::resolve_connection_info_from_env()
         .map_err(DaemonBootstrapError::ConnectionInfo)
@@ -176,8 +200,14 @@ pub fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBoots
 ///    并返回连接信息；
 /// 3. **Absent** —— 没有 daemon，detached spawn `uniclipd` 外部进程，等到
 ///    daemon 健康再返回连接信息；
-/// 4. **Incompatible** —— 旧版 daemon（决策 B1：legacy "杀并替换"）：
-///    SIGTERM 旧 daemon → 等端点消失 → detached spawn → 等健康。
+/// 4. **Incompatible** —— 版本/契约不匹配的 daemon。分两种方向（ADR-008 P4-7
+///    OQ-downgrade-rollback）：
+///    - 运行中 daemon **更新**（semver 严格大于本 client）→ incumbent 胜，**拒绝
+///      接管**：绝不 SIGTERM（否则把运行中的高版本 daemon 静默降级成旧版），返回
+///      [`DaemonBootstrapError::RefusedNewerDaemon`]，连接信息不填充 → GUI 走现有
+///      "未连接" UX，日志记 error。
+///    - 否则（daemon 更旧 / 版本无法解析 / 不健康，决策 B1：legacy "杀并替换"）：
+///      SIGTERM 旧 daemon → 等端点消失 → detached spawn → 等健康。
 ///
 /// 所有拉起路径都把 `ownership` 标记为 `External`（拆分后 GUI 与 daemon 永远
 /// 两进程）。"彻底退出是否停 daemon" **不**由这个进程内标记决定——见 ADR-008
@@ -212,7 +242,31 @@ pub async fn bootstrap_daemon_in_process(
             )
             .await?;
         }
-        ProbeOutcome::Incompatible { details, .. } => {
+        ProbeOutcome::Incompatible {
+            details,
+            observed_package_version,
+            ..
+        } => {
+            // ADR-008 P4-7 (OQ-downgrade-rollback): never terminate a daemon we
+            // can prove is newer than us — the incumbent higher version wins.
+            // Refusing here leaves the connection unset, so the GUI surfaces the
+            // standard "not connected" state; the error is logged by the caller.
+            if running_daemon_is_strictly_newer(
+                observed_package_version.as_deref(),
+                expected_package_version,
+            ) {
+                let observed = observed_package_version.unwrap_or_default();
+                tracing::error!(
+                    observed_package_version = %observed,
+                    expected_package_version = %expected_package_version,
+                    %details,
+                    "running daemon is newer than this client; refusing to downgrade it"
+                );
+                return Err(DaemonBootstrapError::RefusedNewerDaemon {
+                    observed,
+                    expected: expected_package_version.to_string(),
+                });
+            }
             terminate_incompatible_daemon_from_pid_file()?;
             let mut probe_fn =
                 || async { probe_daemon_health(&client, expected_package_version).await };
@@ -536,6 +590,53 @@ mod tests {
             }
             other => panic!("expected Incompatible for revision mismatch, got {other:?}"),
         }
+    }
+
+    // ------- running_daemon_is_strictly_newer: downgrade-rollback guard -------
+
+    #[test]
+    fn newer_daemon_is_protected_from_downgrade() {
+        // The whole point: a lower client must recognise a higher daemon.
+        assert!(running_daemon_is_strictly_newer(Some("0.15.0"), "0.14.0"));
+        assert!(running_daemon_is_strictly_newer(Some("1.0.0"), "0.14.0"));
+        // Pre-release ordering: a later alpha / a stable release both count as
+        // newer than an earlier alpha.
+        assert!(running_daemon_is_strictly_newer(
+            Some("0.14.0-alpha.5"),
+            "0.14.0-alpha.4"
+        ));
+        assert!(running_daemon_is_strictly_newer(
+            Some("0.14.0"),
+            "0.14.0-alpha.4"
+        ));
+    }
+
+    #[test]
+    fn older_or_equal_daemon_is_not_protected() {
+        // Equal → sanctioned takeover path (not a downgrade).
+        assert!(!running_daemon_is_strictly_newer(Some("0.14.0"), "0.14.0"));
+        // Strictly older → the existing kill-and-replace behavior must stand.
+        assert!(!running_daemon_is_strictly_newer(Some("0.13.0"), "0.14.0"));
+        assert!(!running_daemon_is_strictly_newer(
+            Some("0.14.0-alpha.3"),
+            "0.14.0-alpha.4"
+        ));
+    }
+
+    #[test]
+    fn unprovable_versions_are_not_protected() {
+        // Missing, blank, or unparseable observed versions are NOT proven-newer,
+        // so they fall through to terminate-and-replace (foreign process on our
+        // port, corrupted health payload, legacy daemon without a version).
+        assert!(!running_daemon_is_strictly_newer(None, "0.14.0"));
+        assert!(!running_daemon_is_strictly_newer(Some("   "), "0.14.0"));
+        assert!(!running_daemon_is_strictly_newer(
+            Some("not-a-version"),
+            "0.14.0"
+        ));
+        // An unparseable *expected* version (should never happen for our own
+        // CARGO_PKG_VERSION) also stays conservative: don't protect.
+        assert!(!running_daemon_is_strictly_newer(Some("0.15.0"), "garbage"));
     }
 
     // ------- probe_daemon_health_at: mocked HTTP transport -------

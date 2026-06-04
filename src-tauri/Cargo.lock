@@ -9956,6 +9956,7 @@ dependencies = [
  "diesel",
  "mockall 0.13.1",
  "reqwest 0.12.28",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",

@@ -26,6 +26,15 @@ pub enum DaemonBootstrapError {
     Probe(anyhow::Error),
     #[error("incompatible daemon is already running: {details}")]
     IncompatibleDaemon { details: String },
+    /// ADR-008 P4-7 (OQ-downgrade-rollback): the running daemon is a strictly
+    /// newer version than this client. The incumbent (higher version) wins — a
+    /// lower-version client must NOT terminate it, as that would silently
+    /// downgrade the running daemon. We refuse to take over instead of killing.
+    #[error(
+        "refusing to downgrade: running daemon {observed} is newer than this client {expected} \
+         — restart to converge, or re-upgrade the client"
+    )]
+    RefusedNewerDaemon { observed: String, expected: String },
     #[error("failed to spawn uniclipboard-daemon: {0}")]
     Spawn(anyhow::Error),
     #[error("daemon startup timed out after {timeout_ms}ms")]
@@ -147,6 +156,18 @@ mod tests {
         assert!(
             err.to_string().contains("8000"),
             "timeout display must include the configured timeout in ms; got: {err}"
+        );
+
+        // RefusedNewerDaemon must name both versions so logs make the
+        // downgrade-refusal actionable (which side is newer, what to do).
+        let err = DaemonBootstrapError::RefusedNewerDaemon {
+            observed: "0.15.0".into(),
+            expected: "0.14.0".into(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("0.15.0") && msg.contains("0.14.0") && msg.contains("refusing"),
+            "refusal display must surface observed + expected versions; got: {err}"
         );
     }
 

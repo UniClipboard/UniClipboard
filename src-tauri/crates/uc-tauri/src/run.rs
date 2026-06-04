@@ -245,6 +245,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let specta_builder = crate::specta_builder::build();
 
     builder
+        // ADR-008 D10（2026-06-04 修订）：登录自启目标 = GUI 自身（daemon 由 GUI
+        // 冷启动经下方 setup 的 `bootstrap_daemon_in_process` 拉起）。沿用
+        // tauri-plugin-autostart，不自建 OS 原生 daemon 投影 / StartupIntegrationProvider。
+        // 注意：launch args 暂为空 → 自启的 GUI 不带 `UC_PROFILE`，且 autolaunch 用
+        // 编译期固定 bundle id，故 per-profile 自启（非主 profile）尚未隔离。D19 默认
+        // 仅主 profile 注册自启，对主 profile 无害；非主 profile 的隔离留 P4-7。
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec![]),
@@ -315,8 +321,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         daemon_connection_state_for_setup.set(connection_info);
                         // ADR-008 P3-3 (B2'-3): daemon 现在永远是外部独立进程
                         // (probe→connect 或 detached spawn)。GUI 不再 owns 它的
-                        // 生命周期 —— 崩溃恢复 / 退出由外部负责 (D3 orphan-on-quit
-                        // interim,留待 P4)。
+                        // 生命周期 —— 崩溃恢复由外部负责;退出语义见 D3 三态
+                        // (P4-3 已落地:仅显式「彻底退出」停 daemon,关窗/轻量保留)。
+                        // 自启=GUI (D10 2026-06-04 修订):登录起 GUI → 这里必拉起
+                        // daemon,即"自启 GUI 等于后台同步就绪"的闭环。
                     }
                     Err(error) => {
                         // Display 只暴露 thiserror 外层 message，会把 anyhow source chain

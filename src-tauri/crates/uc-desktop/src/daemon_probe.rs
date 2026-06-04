@@ -239,7 +239,8 @@ pub async fn bootstrap_daemon_in_process(
 
 /// Detached-spawn the external `uniclipd` binary, mark ownership `External`, then
 /// poll `/health` until the daemon is reachable. The GUI does not own the
-/// spawned process's lifecycle (it survives GUI quit — ADR-008 D3 interim).
+/// spawned process's lifecycle: it survives GUI quit; only an explicit
+/// "full quit" stops it (ADR-008 D3 three-state, landed in P4-3).
 async fn spawn_external_and_wait_health(
     ownership: &DaemonOwnership,
     client: &reqwest::Client,

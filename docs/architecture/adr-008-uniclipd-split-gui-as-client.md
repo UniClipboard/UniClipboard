@@ -80,7 +80,7 @@
 - 这点比 clash-verge 更激进（clash-verge 轻量保留托盘）——本产品选择"轻量 = 完全隐形"。**已知 UX 风险**：用户进轻量后屏幕零痕迹，可能忘了它在跑 / 不知如何唤回；缓解见 §5.2（首次进入轻量给一次性系统通知，不留守组件）。
 - **ownership 模型须重做（评审订正）**：原稿"映射既有 `DaemonOwnership(Owned/External)`，补全 detach 路径"方向错误——`Owned` 唯一生产者是 `daemon_probe set_owned → start_in_process(GuiInProcess)`，被 D2 整条删除；拆分后 GUI 与 daemon 永远两进程、结构上 **恒为 External**。后果：①"关窗→留"与"轻量→留 (detach)"在 daemon 层是 **相同的 no-op**（daemon 从未 attach 到 GUI 生命周期，"detach"动词误导），差异纯在 GUI 进程层；②"彻底退出→停"若照搬 `take_owned()` 则 External 永返 None、根本不成立；③两态无法区分"**本 GUI spawn 的可停 daemon**"vs"用户 `cli start` 的常驻 daemon"，无条件停会误杀后者。故须 **新增"由本 GUI spawn 的 standalone daemon（彻底退出时可优雅停止）"状态**（spawn 归属持久化到 `DaemonPidMetadata` 或 ownership 记录），"彻底退出→停"只停 **本 GUI 自己 spawn 的** daemon，对用户显式 `cli start` 的常驻 daemon 退化为"只退 GUI、不停 daemon"。与 D22 协同。
   - **修订（2026-06-03，产品决策，P4-3 落地）**：上面"只停本 GUI spawn 的"被 **推翻**。**明确点击托盘「退出」→ 停连接的 daemon，不论谁拉起**（含用户 `cli start` 的常驻 daemon）。理由：托盘三态本身已给"保留 daemon"的明确出口（**关窗** 隐藏 + **轻量模式** 退 GUI 留 daemon），故「退出」可取字面"彻底"语义——想留 daemon 的用户不会点它。`spawned_by`（持久化进 `DaemonPidMetadata`）不再参与退出决策，但仍服务 D9 attended 判定（`spawn_origin==Gui` 决定是否尊重 `auto_unlock`）。**两个安全闸保留**：① identity 校验（D22 铁律#11，绝不对 stale/复用 PID 发信号）；② 拒杀 legacy `DaemonProcessMode::InProcess`（那是旧版 GUI 的进程内 daemon，SIGTERM 会连旧 GUI 一起杀，与 `cli stop` 契约一致）。落地见 `uc-desktop` 的 `stop_local_daemon_on_full_quit`。
-- 登录自启目标改为 `uniclipd`（见 D10/D17），GUI 降级为可选前端。
+- 登录自启目标改为 `uniclipd`（见 D10/D17），GUI 降级为可选前端。**修订（2026-06-04，产品决策）：此条被推翻——登录自启目标回归 GUI，`uniclipd` 仅作被 GUI 拉起的内核，不独立登录自启。详见 D10 修订。**
 
 ### D4：复用现有 `127.0.0.1` HTTP+WS，不新开 IPC
 
@@ -130,6 +130,14 @@
 - **瓶颈完备性（评审补）**："唯一硬边界 = `--unattended` 自检"成立的前提是 **所有能拉起 operational daemon 的路径都必经该自检**。须枚举并逐条说明各路径如何携带并触发 `--unattended`：GUI spawn / `cli start` / service-manager 单元（D10：ExecStart **必须固定带 flag**）/ oneshot 升常驻 / D16 setup→operational 重启（**须透传 flag**）。D11"没跑→CLI 直写文件"写入触发自启单元变化的设置（`auto_unlock` 等）时 **必须经本节纯函数前置校验**，不得靠后续自检兜底。互斥校验的左操作数是 **"unattended 自启开关"**（随 D10 per-profile 单元投影新增的字段），而非现有驱动 GUI 登录项的 `general.auto_start`。
 
 ### D10：autostart = settings 的派生投影，投影目标 = OS 原生自启/保活载体
+
+> **修订（2026-06-04，产品决策，重定 P4-4/P4-5/P4-7）**：本节"投影目标 = `uniclipd` 的 OS 原生自启/保活载体（launchd / systemd-user / Task Scheduler）"被 **推翻**。**对用户而言"自启 = GUI 自启"；`uniclipd` 只是被 GUI 拉起的内核，不独立登录自启。** 新方向：
+> - **自启目标 = Tauri GUI**，沿用现有 `tauri-plugin-autostart`（macOS login item / Linux XDG autostart / Windows 注册表 Run）；GUI 启动时若本 profile 无活跃 daemon 即 detached 拉起一个（复用 `daemon_probe` spawn，P3 已就绪）。**不自建三平台原生 daemon 投影、不引入 `StartupIntegrationProvider`。**
+> - **轻量模式语义收窄**：轻量 = **当前登录会话内** 退掉 GUI 进程省内存、daemon 留守同步；**下次登录 / 重启 GUI 照常自启**。不再承诺"从不开 GUI 也开机后台同步"（那是下方原 daemon-自启方案的目标，本期不做）。纯后台守护场景留给 headless `uniclip start --server`（见 ADR-007），与桌面用户自启正交。
+> - settings 派生投影仍成立，只是投影载体回到 `tauri-plugin-autostart`；改 settings → 重写 / 删 login item，关自启即删，幽灵自启防线不变。per-profile 开关保留（见 D19 修订）。
+> - **连带影响**：① D9 的"service-manager 单元 ExecStart 固定带 `--unattended`"消费者消失——自启 GUI = attended，daemon 由 GUI 拉起尊重 `auto_unlock`；`--unattended` / strict-unattended 契约 **保留但仅由 headless server + `cli start` 触发**（P4-2 已落地，不白做）。② D17 的 OS service-manager 保活整段砍掉，崩溃可见性大幅缩水（见 D17 修订）。③ §5.3 铁律 #12"卸载残留可自启 service unit"退化为"残留 login item"，由 `tauri-plugin-autostart` 卸载即清。
+>
+> 下方原文（daemon 独立自启方案）保留作 **曾评估并否决** 的设计记录。
 
 - settings 是 single source of truth；autostart 开关是其 **派生写动作**：改 settings → 同步重写 / 删除投影；关自启 → 删除投影，杜绝"settings 说不自启、plist 还在"的幽灵自启。
 - **投影目标 = OS 原生自启/保活载体**（macOS launchd / Linux systemd-user 单元 / Windows Task Scheduler 任务，见 D17/OQ-windows；在 `uc-platform` 抽象为 `StartupIntegrationProvider`），而非"启动文件夹 / 注册表 Run 键"——这样"登录自启"与"崩溃保活"尽量用一份配置解决（Windows 保活弱，见 D17）。
@@ -183,6 +191,8 @@
 
 ### D17：保活——OS service manager + 崩溃可见性兜底，不自建 watchdog
 
+> **修订（2026-06-04，承 D10 修订）**：自启目标回归 GUI 后，daemon 不再独立登录自启，**OS service-manager 保活整段砍掉**（launchd `KeepAlive` / systemd `Restart=on-failure` / `OnFailure` 系统通知 / launchd-vs-systemd 节流语义区分全部不做）。保留并收窄为：daemon 启动写 start marker、graceful shutdown（D21）清除；**下次 GUI 自启** 检测到"PID 文件残留 + 无 clean-shutdown sentinel"= 上次异常退出 → 红条提示。因 GUI 必自启，下次登录即可见，**无需** systemd `OnFailure` 这类"长期不开 GUI 也要主动通知"的路径。持久重启计数器 / 清零策略降级为可选（"仅提示近期异常、不报次数"即可）。轻量模式中途崩溃的兜底简化为"下次 GUI 起来红条"，不再引入任何常驻通知组件。下方原文保留作设计记录。
+
 - 轻量模式下 `uniclipd` 无父进程监督（GUI 已退），其崩溃 / OOM kill 是 **今天不存在的新失效模式**。保活交给 **OS 原生自启/保活载体**：
   - macOS：`launchd` LaunchAgent（`KeepAlive`，用户级免 root）。
   - Linux：`systemd --user`（`Restart=on-failure`）；非 systemd 发行版 fallback 见 OQ。
@@ -201,7 +211,7 @@
 ### D19：多 profile × 轻量
 
 - **实例模型**：N profile = **N 个独立 `uniclipd` 进程**（数据目录 / 端口 / keychain / iroh identity 全隔离，`BIND_LOCK` 防同 identity 双绑——单进程多 profile 与现有隔离模型相悖，架构逼定）。
-- **自启 / 保活粒度**：per-profile service manager 单元（unit 名带 profile）+ per-profile 自启开关（D10）。**默认仅主 / 默认 profile 开启轻量自启**，非主 profile 默认前台、显式开启才注册单元（避免 Windows 服务注册 ×N）。
+- **自启 / 保活粒度**：per-profile service manager 单元（unit 名带 profile）+ per-profile 自启开关（D10）。**默认仅主 / 默认 profile 开启轻量自启**，非主 profile 默认前台、显式开启才注册单元（避免 Windows 服务注册 ×N）。**修订（2026-06-04，承 D10）**：per-profile service-manager 单元 → **per-profile GUI 自启项**（`tauri-plugin-autostart`，标识带 profile）；默认仅主 profile 注册、非主 profile 显式开启才注册，语义不变。
 - **托盘**：托盘归 GUI；轻量模式无托盘（D3）。
 - **GUI 运行期切 profile（评审补）**：D19 未定 GUI 内切 profile 的运行期连接语义——是热切换（断当前 `uniclipd` WS、按新 profile 重走端口+token 发现+session+resync、必要时拉起目标 profile 未运行的 `uniclipd`）还是切 profile 强制 GUI 冷启动。须在 D5/D19 落地时定（与 OQ-downgrade-rollback 同属运行期连接语义补全）。
 

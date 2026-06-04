@@ -6,7 +6,7 @@ use tracing::{debug, warn};
 // adapter that wraps `ClipboardWatcherContext`. The native Wayland and X11
 // (x11rb) adapters drive `notify_change` directly, so as of Phase 4 the
 // trait impl is gated to the platforms that still need `clipboard_rs`.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "desktop"))]
 use clipboard_rs::ClipboardHandler;
 
 use uc_core::clipboard::SystemClipboardSnapshot;
@@ -151,7 +151,7 @@ impl ClipboardWatcher {
 // Wayland and X11 (x11rb) implementations call
 // [`ClipboardWatcher::notify_change`] directly and do not go through this
 // trait.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "desktop"))]
 impl ClipboardHandler for ClipboardWatcher {
     fn on_clipboard_change(&mut self) {
         self.notify_change();

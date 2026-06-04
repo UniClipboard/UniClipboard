@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use tracing::{debug, info, warn};
 use url::Url;
 
+use uc_core::clipboard::image_mime_from_extension;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
@@ -501,7 +502,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         });
         if !already_has_image_rep {
             for path in &local_paths {
-                let Some(image_mime) = image_file_mime_from_path(path) else {
+                let Some(image_mime) = image_mime_from_extension(path) else {
                     continue;
                 };
                 let Ok(meta) = std::fs::metadata(path) else {
@@ -694,25 +695,6 @@ fn supported_for_capture(rep: &ObservedClipboardRepresentation) -> bool {
         || rep.format_id.eq_ignore_ascii_case("public.utf8-plain-text")
         || rep.format_id.eq_ignore_ascii_case("public.text")
         || rep.format_id.eq_ignore_ascii_case("NSStringPboardType")
-}
-
-/// 基于文件后缀推断常见图片 MIME。与 `uc-platform/clipboard/common.rs` 的同名 helper
-/// 表项保持一致(打开扩展时两边一起改);该函数刻意复制一份在 application 层,避免把
-/// 接收端的 image rep 合成逻辑硬连到 platform crate。
-fn image_file_mime_from_path(path: &std::path::Path) -> Option<&'static str> {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())?
-        .to_ascii_lowercase();
-    Some(match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        "tif" | "tiff" => "image/tiff",
-        _ => return None,
-    })
 }
 
 fn is_file_list_representation(rep: &ObservedClipboardRepresentation) -> bool {

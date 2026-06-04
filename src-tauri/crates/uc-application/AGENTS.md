@@ -52,7 +52,7 @@
 
 ### 2.2 非职责
 
-以下内容**不属于** `uc-app`：
+以下内容 **不属于** `uc-app`：
 
 | 类别      | 示例                                          |
 | ------- | ------------------------------------------- |
@@ -81,7 +81,7 @@ UI / CLI / Daemon API
 
 * `uc-app` **可以依赖** `uc-core`
 * `uc-app` **可以依赖** `uc-core` 中定义的 ports
-* `uc-app` **不可以依赖**具体 infra 实现类型
+* `uc-app` **不可以依赖** 具体 infra 实现类型
 * `uc-app` **不可以自己重新定义领域真相**
 * `uc-app` **不可以承担表示层职责**
 * 对外只暴露 `src/facade/` 目录下的 **Facade**（以及经 Facade 转发的 UseCase / Command / Query / Result / Error / 状态枚举）作为应用层入口；业务子模块（`pairing/`、`setup/`、`clipboard_capture/`、`usecases/*` 等）与 Orchestrator / StateMachine / SessionManager 等实现细节一律 `pub(crate)`，外部 crate 不得直接访问 —— 详见 §11.4
@@ -227,7 +227,7 @@ UI / CLI / daemon API 不应直接理解：
 
 面向上层应用调用的输入输出模型。
 
-注意：这里是**应用层模型**，不是 HTTP DTO，也不是数据库 model。
+注意：这里是 **应用层模型**，不是 HTTP DTO，也不是数据库 model。
 
 ---
 
@@ -239,7 +239,7 @@ UI / CLI / daemon API 不应直接理解：
 * `ClipboardCaptureError`
 * `SearchError`
 
-这些错误应表达**应用动作失败**，而不是底层库错误。
+这些错误应表达 **应用动作失败**，而不是底层库错误。
 
 ---
 
@@ -308,6 +308,43 @@ UI / CLI / daemon API 不应直接理解：
 * app 适配 core
 * 上层也适配 app
 * 不让 core 为某一层临时需求变形
+
+---
+
+## 6.5 禁止在应用层埋平台原生 MIME / 格式字面量
+
+引擎边界（`ObservedClipboardRepresentation::mime`、`MimeType`、`MimeClass`）
+在 **`uc-core` 内部统一为 RFC 形态**（`type/subtype` 或带参数的合法 RFC MIME，
+通过 `MimeType::is_rfc_shape()` 校验）。平台原生标识（macOS UTI 如 `public.utf8-plain-text`、
+Windows `CF_UNICODETEXT`、X11 selection target atom 等）只允许出现在
+`ObservedClipboardRepresentation.format_id` 字段——那是该字段的语义本意，
+也是上下行翻译表（`uc-platform/clipboard/format_id_mime.rs`）的输入。
+
+应用层在编排、materialize、ingest、wire encode/decode 任意路径上，禁止：
+
+* 写形如 `"public.utf8-plain-text"` / `"NSStringPboardType"` / `"CF_UNICODETEXT"` /
+  `"public.png"` 的 UTI / Windows 格式字面量并把它当作 `mime` 字段值塞回 rep
+* 给 mime 字段做"如果是 UTI 就拍脑袋猜一个 RFC mime"的兜底分支
+  （wire decoder 和 DB 读路径已经在边界用 `normalize_wire_mime` 统一兜过了，
+  应用层重复 normalize 等于把不变量分散到多处）
+* 在 application 里复刻 `format_id → mime` 的翻译表
+  （历史上 `image_file_mime_from_path` 出现过两份，已统一到
+  `uc_core::clipboard::image_mime_from_extension`）
+
+正确做法：
+
+* application 层可用的入口（uc-core，三 host 共享）：
+  * 收口可疑 wire mime → `uc_core::clipboard::normalize_wire_mime`
+  * 文件后缀 → 图片 mime → `uc_core::clipboard::image_mime_from_extension`
+* platform-native 标识（UTI / CF_* / X11 atom）→ RFC mime 的翻译表
+  住在 `uc-platform::clipboard::format_id_mime::format_id_default_mime`，**只在
+  桌面适配器内部使用**（属于 `desktop` feature）。application 不直接调用——
+  capture 路径在 platform 层就该把 mime 标好交给 application，wire/DB 边界又
+  各自有 `normalize_wire_mime` 兜底。若 application 真的需要这层翻译，说明
+  rep 的责任划分错位，应该回头把翻译挪回 platform / wire decoder。
+* 任何在 application 内部生成 / 改写 rep 的代码，必须保证最终写入
+  `mime: Option<MimeType>` 的值满足 RFC 形态——`ObservedClipboardRepresentation::new`
+  的 `debug_assert` 会兜底验证
 
 ---
 
@@ -638,26 +675,26 @@ External (daemon / tauri / CLI / bootstrap)
 
 * 所有 Facade 类型必须定义在 `src/facade/` 目录下
 * 顶层 `AppFacade` 聚合各域 Facade；每个域 Facade（`SpaceSetupFacade`、`ClipboardSyncFacade`、`PairingFacade` 等）暴露该域的应用动作
-* `src/facade/mod.rs` 的 `pub use` 是 crate 对外的**白名单**。只允许导出：
+* `src/facade/mod.rs` 的 `pub use` 是 crate 对外的 **白名单**。只允许导出：
   * Facade 类型本身（`AppFacade`、`<Domain>Facade`）
   * Facade 方法的输入输出类型：Command / Query / Result / Error / 显式状态枚举
   * Facade 构造所需的 Deps 结构（供 bootstrap 组装）
   * 外部需订阅的事件类型 / event port trait
-* **禁止**在 `src/facade/mod.rs` 里 `pub use` 任何 `*Orchestrator` / `*SessionManager` / `*StateMachine` / `*Handler` / 业务子模块内部类型
+* **禁止** 在 `src/facade/mod.rs` 里 `pub use` 任何 `*Orchestrator` / `*SessionManager` / `*StateMachine` / `*Handler` / 业务子模块内部类型
 * UseCase 类型若需要被外部以"无状态动作"形式直接调用，也必须通过 Facade 目录下某个 Facade 的方法转发；不鼓励把裸 UseCase 当作对外 API 暴露
 
 ### 11.4.3 Crate 根 `lib.rs` 的纪律
 
-* `lib.rs` 的顶层 `pub mod` / `pub use` **只允许**暴露 `facade` 模块（或从 `facade` 再导出的符号）
+* `lib.rs` 的顶层 `pub mod` / `pub use` **只允许** 暴露 `facade` 模块（或从 `facade` 再导出的符号）
 * 业务子模块在 `lib.rs` 中必须是 `pub(crate) mod <domain>;` 或完全不 `pub`
-* 如需为测试开放内部可见性，使用 `pub(crate)` + `#[cfg(test)]` 或独立的 `mod tests`，**绝不**为了测试把业务子模块整体升级为 `pub`
+* 如需为测试开放内部可见性，使用 `pub(crate)` + `#[cfg(test)]` 或独立的 `mod tests`，**绝不** 为了测试把业务子模块整体升级为 `pub`
 
 ### 11.4.4 构造与持有
 
 * Facade 内部持有 `Arc<Orchestrator>` / `Arc<UseCase>` / Ports 的方式由 Facade 自行决定
-* bootstrap 层只允许持有 `Arc<AppFacade>` 或 `Arc<<Domain>Facade>`；**不得**持有 `Arc<*Orchestrator>` / `Arc<*SessionManager>` 等内部类型
+* bootstrap 层只允许持有 `Arc<AppFacade>` 或 `Arc<<Domain>Facade>`；**不得** 持有 `Arc<*Orchestrator>` / `Arc<*SessionManager>` 等内部类型
 * 同一业务模块内部允许 UseCase 与 Orchestrator 以 `pub(crate)` 互相持有引用，这类依赖不穿越 crate 边界
-* 若某方法语义上只是"读一下 orchestrator 状态"，也必须在 Facade 上加一个 thin method 转发；**不得**通过 `pub(crate)` 或任何 trick 把 Orchestrator 引用泄露给外部
+* 若某方法语义上只是"读一下 orchestrator 状态"，也必须在 Facade 上加一个 thin method 转发；**不得** 通过 `pub(crate)` 或任何 trick 把 Orchestrator 引用泄露给外部
 
 ### 11.4.5 反模式
 
@@ -679,7 +716,7 @@ External (daemon / tauri / CLI / bootstrap)
 
 ### 11.4.7 迁移现状与新实现要求
 
-当前代码库**尚未完全符合本节规则**：部分外部消费者仍然直接从 `uc_application::<业务子模块>::...` 导入类型。这是历史欠账，会逐步迁移到 `src/facade/` 下。
+当前代码库 **尚未完全符合本节规则**：部分外部消费者仍然直接从 `uc_application::<业务子模块>::...` 导入类型。这是历史欠账，会逐步迁移到 `src/facade/` 下。
 
 但从本条规则写入本文件起：
 

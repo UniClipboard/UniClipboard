@@ -5,7 +5,8 @@ use tracing::{debug, info, warn};
 #[cfg(target_os = "macos")]
 use uc_core::clipboard::ImageKind;
 use uc_core::clipboard::{
-    MimeClass, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+    image_mime_from_extension, MimeClass, MimeType, ObservedClipboardRepresentation,
+    SystemClipboardSnapshot,
 };
 use uc_core::ids::RepresentationId;
 
@@ -78,24 +79,6 @@ pub(crate) fn compute_effective_mime(rep: &ObservedClipboardRepresentation) -> O
         (Some(m), _) => Some(m.clone()),
         (None, _) => format_default,
     }
-}
-
-/// 基于文件后缀推断常见图片 MIME。仅用于 `image-from-file` LocalFile rep 的 mime 标注;
-/// 与 `sniff_image_magic` 字节嗅探互补 —— 这里在抓取阶段不读字节,所以只能凭扩展名。
-fn image_file_mime_from_path(path: &std::path::Path) -> Option<&'static str> {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())?
-        .to_ascii_lowercase();
-    Some(match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        "tif" | "tiff" => "image/tiff",
-        _ => return None,
-    })
 }
 
 /// Known TIFF UTI aliases on macOS pasteboard.
@@ -485,7 +468,7 @@ impl CommonClipboardImpl {
         #[cfg(target_os = "macos")]
         let suppress_image_due_to_file_thumbnail = captured_file_paths
             .iter()
-            .any(|p| image_file_mime_from_path(p).is_some());
+            .any(|p| image_mime_from_extension(p).is_some());
         #[cfg(not(target_os = "macos"))]
         let suppress_image_due_to_file_thumbnail = false;
 
@@ -669,7 +652,7 @@ impl CommonClipboardImpl {
             const MAX_IMAGE_FILE_BYTES: u64 = 100 * 1024 * 1024;
 
             for path in &captured_file_paths {
-                let Some(mime) = image_file_mime_from_path(path) else {
+                let Some(mime) = image_mime_from_extension(path) else {
                     continue;
                 };
                 let meta = match std::fs::metadata(path) {

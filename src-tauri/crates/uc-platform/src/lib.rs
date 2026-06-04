@@ -44,7 +44,9 @@ pub const fn default_profile() -> Option<&'static str> {
 /// Resolve the active profile name (single source of truth for `app_dirs` + `system_secure_storage`).
 ///
 /// Runtime `UC_PROFILE` takes precedence over the compile-time `default_profile()` fallback.
-/// Returns `None` when neither is set.
+/// Returns `None` when neither is set. Only the desktop adapters consume this
+/// — portable builds drop it together with `app_dirs` / `system_secure_storage`.
+#[cfg(feature = "desktop")]
 pub(crate) fn resolve_profile() -> Option<String> {
     if let Ok(profile) = std::env::var("UC_PROFILE") {
         if !profile.is_empty() {
@@ -54,6 +56,12 @@ pub(crate) fn resolve_profile() -> Option<String> {
     default_profile().map(str::to_string)
 }
 
+// Desktop-only modules. They pull in `dirs` / `keyring` (and on Linux,
+// `secret-service` via libdbus), so they only exist when the `desktop` feature
+// is enabled. Mobile / portable hosts get the trait surface from `ports`
+// and provide their own adapters (iOS `NSFileManager`, Android `Context`,
+// platform secret APIs, …).
+#[cfg(feature = "desktop")]
 pub mod app_dirs;
 pub mod bootstrap;
 pub mod capability;
@@ -62,5 +70,7 @@ pub mod file_secure_storage;
 pub mod migrating_secure_storage;
 pub mod portable;
 pub mod ports;
+#[cfg(feature = "desktop")]
 pub mod secure_storage;
+#[cfg(feature = "desktop")]
 pub mod system_secure_storage;

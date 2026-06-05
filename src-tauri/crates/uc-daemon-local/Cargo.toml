@@ -19,15 +19,22 @@ uc-platform = { path = "../uc-platform" }
 anyhow = "1.0"
 fs2 = "0.4"
 which = "7"
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
+# Used unconditionally by contract / health_wait / process_metadata / auth /
+# instance_lock, all of which compile on every platform. Keeping them
+# cfg(unix)-only broke the Windows build of every crate that links this one
+# (uniclipd, the GUI via uc-desktop, the CLI): the modules `use` these crates
+# while the deps were absent on Windows. The genuinely unix-only syscalls
+# (setsid / kill / proc_pidpath / EAGAIN) are already `#[cfg(unix)]`-gated in
+# the source, so only `libc` stays target-scoped below.
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2.0"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

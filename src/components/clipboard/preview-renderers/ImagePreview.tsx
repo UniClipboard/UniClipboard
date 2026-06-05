@@ -1,5 +1,5 @@
 import { Image as ImageIcon, ImageDown, Loader2 } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ClipboardImageItem } from '@/api/clipboardItems'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
@@ -18,11 +18,14 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageD
 
   // D6 (ADR-008 P3-d): originals above the inline threshold are not auto-pulled.
   // Reveal the `<img>` (and its blob fetch) only after an explicit click, reset
-  // whenever the previewed entry changes.
+  // whenever the previewed entry changes. Adjust the state during render rather
+  // than in an effect, so the gate never flashes a stale frame on entry change.
   const [revealedLargeImage, setRevealedLargeImage] = useState(false)
-  useEffect(() => {
+  const [prevEntryId, setPrevEntryId] = useState(preview?.entryId)
+  if (preview?.entryId !== prevEntryId) {
+    setPrevEntryId(preview?.entryId)
     setRevealedLargeImage(false)
-  }, [preview?.entryId])
+  }
   const gateLargeImage = preview?.requiresExplicitLoad === true && !revealedLargeImage
 
   if (gateLargeImage) {

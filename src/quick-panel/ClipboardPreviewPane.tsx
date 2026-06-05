@@ -1,5 +1,5 @@
 import { File, ImageDown, Loader2 } from 'lucide-react'
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import EntryDeliveryBadge from '@/components/clipboard/EntryDeliveryBadge'
 import VirtualizedText from '@/components/clipboard/VirtualizedText'
@@ -22,11 +22,14 @@ const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) 
 
   // D6 (ADR-008 P3-d): originals above the inline threshold are not auto-pulled.
   // Reveal the `<img>` (and thus the blob fetch) only after an explicit click,
-  // resetting whenever the selected entry changes.
+  // resetting whenever the selected entry changes. Adjust the state during render
+  // rather than in an effect, so the gate never flashes a stale frame on change.
   const [revealedLargeImage, setRevealedLargeImage] = useState(false)
-  useEffect(() => {
+  const [prevEntryId, setPrevEntryId] = useState(entryId)
+  if (entryId !== prevEntryId) {
+    setPrevEntryId(entryId)
     setRevealedLargeImage(false)
-  }, [entryId])
+  }
   const gateLargeImage = preview?.requiresExplicitLoad === true && !revealedLargeImage
 
   const isLargeText =

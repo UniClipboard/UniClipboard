@@ -229,6 +229,18 @@ jobs:
           echo "app_env=$APP_ENV" >> "$GITHUB_OUTPUT"
           echo "Resolved APP_ENV=$APP_ENV (from channel=$CHANNEL)"
 
+      - name: prepare uniclipd sidecar
+        # ADR-008 D13: the standalone `uniclipd` daemon ships *inside* the GUI
+        # installer as a Tauri sidecar (externalBin), so the GUI can spawn it as
+        # a sibling of its own executable (uc-daemon-local spawn.rs). `tauri
+        # build` verifies `src-tauri/binaries/uniclipd-<triple>` exists, so this
+        # must run first. We forward the same `${{ matrix.args }}` (`--target
+        # <triple>` or empty) the GUI build uses, so the staged sidecar name is
+        # exactly what tauri-cli looks up. The daemon shares the GUI's
+        # dependency graph, so any target the GUI cross-builds here, it builds.
+        shell: bash
+        run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }}
+
       - name: build Tauri app (macOS signed)
         if: matrix.platform == 'macos-latest'
         uses: tauri-apps/tauri-action@v0

@@ -13,7 +13,7 @@ description: |
   on one device — text, images, or files — is automatically available
   on the others.
 
-  Currently distributed as alpha. Daemon runs in-process behind the GUI.
+  Currently distributed as alpha. A bundled background daemon handles sync.
 
 license: AGPL-3.0-only
 website: https://uniclipboard.app
@@ -137,12 +137,21 @@ parts:
       # 它,我们绕过 tauri-cli 所以必须手动加。
       cd src-tauri
       cargo build --release --locked --bin uniclipboard --features custom-protocol
+      # ADR-008 D13: also build the standalone `uniclipd` daemon, installed next
+      # to the GUI below so the GUI spawns it as a sibling ($SNAP/usr/bin/uniclipd).
+      # It needs no custom-protocol (no webview) and shares the GUI crate graph,
+      # so this build is mostly incremental. build-packages already has cmake +
+      # clang for aws-lc-sys, which uniclipd pulls via iroh just like the GUI.
+      cargo build --release --locked --bin uniclipd
       cd ..
 
       # 3) 安装到 snap install 目录。strict snap 启动时 mount 这个目录
       # 到 /usr,所以路径必须以 usr/ 开头。
       install -Dm755 src-tauri/target/release/uniclipboard \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipboard"
+      # ADR-008 D13: ship the daemon next to the GUI so it spawns as a sibling.
+      install -Dm755 src-tauri/target/release/uniclipd \
+        "${CRAFT_PART_INSTALL}/usr/bin/uniclipd"
       install -Dm644 snap/local/uniclipboard.desktop \
         "${CRAFT_PART_INSTALL}/usr/share/applications/uniclipboard.desktop"
       install -Dm644 src-tauri/icons/icon.png \

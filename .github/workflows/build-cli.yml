@@ -162,7 +162,14 @@ jobs:
           CFLAGS_aarch64_unknown_linux_musl: "-mno-outline-atomics"
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
-        run: cargo build --release -p uc-cli ${{ matrix.args }}
+        run: |
+          cargo build --release -p uc-cli ${{ matrix.args }}
+          # ADR-008 D13: ship the standalone `uniclipd` daemon in the same
+          # tarball so `uniclip start` spawns it as a sibling. uniclipd shares
+          # uc-cli's iroh / aws-lc-sys subgraph, so the musl static-link
+          # toolchain configured above (musl-gcc + cmake/clang in the bookworm
+          # container, -mno-outline-atomics on aarch64) builds it the same way.
+          cargo build --release -p uc-daemon --bin uniclipd ${{ matrix.args }}
 
       - name: import Apple certificate (macOS only)
         if: matrix.platform == 'macos-latest'
@@ -199,14 +206,17 @@ jobs:
           echo "Signing with: $IDENTITY"
 
           TARGET="${{ matrix.target }}"
-          BIN_NAME="uniclip"
-          BIN_PATH="src-tauri/target/${TARGET}/release/${BIN_NAME}"
-          if [ ! -f "$BIN_PATH" ]; then
-            BIN_PATH="src-tauri/target/release/${BIN_NAME}"
-          fi
 
-          codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$BIN_PATH"
-          codesign --verify --verbose "$BIN_PATH"
+          # Sign both bundled binaries: the CLI and the daemon it spawns.
+          for BIN_NAME in uniclip uniclipd; do
+            BIN_PATH="src-tauri/target/${TARGET}/release/${BIN_NAME}"
+            if [ ! -f "$BIN_PATH" ]; then
+              BIN_PATH="src-tauri/target/release/${BIN_NAME}"
+            fi
+            echo "Signing $BIN_PATH"
+            codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$BIN_PATH"
+            codesign --verify --verbose "$BIN_PATH"
+          done
 
       - name: notarize CLI binary (macOS only)
         if: matrix.platform == 'macos-latest'
@@ -216,15 +226,19 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           TARGET="${{ matrix.target }}"
-          BIN_NAME="uniclip"
-          BIN_PATH="src-tauri/target/${TARGET}/release/${BIN_NAME}"
-          if [ ! -f "$BIN_PATH" ]; then
-            BIN_PATH="src-tauri/target/release/${BIN_NAME}"
+          BIN_DIR="src-tauri/target/${TARGET}/release"
+          if [ ! -f "${BIN_DIR}/uniclip" ]; then
+            BIN_DIR="src-tauri/target/release"
           fi
 
-          # notarytool requires a zip archive
+          # notarytool requires a zip archive; stage both binaries so the CLI
+          # and the daemon it spawns are notarized together.
+          STAGE="$RUNNER_TEMP/cli-notarize-stage"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp "${BIN_DIR}/uniclip" "${BIN_DIR}/uniclipd" "$STAGE/"
           NOTARIZE_ZIP="$RUNNER_TEMP/cli-notarize.zip"
-          ditto -c -k --keepParent "$BIN_PATH" "$NOTARIZE_ZIP"
+          ditto -c -k "$STAGE" "$NOTARIZE_ZIP"
 
           xcrun notarytool submit "$NOTARIZE_ZIP" \
             --apple-id "$APPLE_ID" \
@@ -241,24 +255,26 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TARGET="${{ matrix.target }}"
-          BIN_NAME="uniclip"
 
+          # Ship `uniclipd` next to `uniclip` so `uniclip start` can spawn the
+          # daemon as a sibling binary (ADR-008 D13).
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            BIN_SRC="src-tauri/target/release/${BIN_NAME}.exe"
+            BIN_SRC="src-tauri/target/release/uniclip.exe"
             # Windows non-cross build puts binary in target/release/, not target/{target}/release/
             if [ ! -f "$BIN_SRC" ]; then
-              BIN_SRC="src-tauri/target/${TARGET}/release/${BIN_NAME}.exe"
+              BIN_SRC="src-tauri/target/${TARGET}/release/uniclip.exe"
             fi
+            DAEMON_SRC="$(dirname "$BIN_SRC")/uniclipd.exe"
             ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.zip"
-            7z a "$ARCHIVE" "$BIN_SRC"
+            7z a "$ARCHIVE" "$BIN_SRC" "$DAEMON_SRC"
           else
             BIN_DIR="src-tauri/target/${TARGET}/release"
             # Fallback for non-cross builds
-            if [ ! -f "${BIN_DIR}/${BIN_NAME}" ]; then
+            if [ ! -f "${BIN_DIR}/uniclip" ]; then
               BIN_DIR="src-tauri/target/release"
             fi
             ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.tar.gz"
-            tar -czf "$ARCHIVE" -C "$BIN_DIR" "$BIN_NAME"
+            tar -czf "$ARCHIVE" -C "$BIN_DIR" uniclip uniclipd
           fi
           echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
 

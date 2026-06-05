@@ -38,6 +38,7 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg", "deb", "rpm", "appimage", "nsis"],
+    "externalBin": ["binaries/uniclipd"],
     "category": "Utility",
     "icon": [
       "icons/32x32.png",

@@ -130,6 +130,15 @@ jobs:
       - name: install frontend dependencies
         run: bun install
 
+      - name: prepare uniclipd sidecar
+        # ADR-008 D13: bundle the standalone `uniclipd` daemon into the GUI
+        # installer as a Tauri sidecar (externalBin). `tauri build` verifies
+        # `src-tauri/binaries/uniclipd-<triple>` exists, so stage it first,
+        # forwarding the same `${{ matrix.args }}` the GUI build uses so the
+        # name matches what tauri-cli looks up. See build.yml for the full note.
+        shell: bash
+        run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }}
+
       - name: build alpha release
         uses: tauri-apps/tauri-action@v0
         env:

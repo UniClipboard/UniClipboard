@@ -206,35 +206,38 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                     debug!(error = %e, "No WS subscribers for clipboard.new_content");
                 }
 
-                // Local dedup resurfaced an existing entry: the UI was just
-                // notified above, but the entry is already indexed and already
-                // synced, so skip re-indexing and re-dispatch.
+                // Local dedup resurfaced an existing entry: it is already in
+                // the search index, so skip the live-index pass. We still
+                // dispatch below — a peer that was offline during the first
+                // copy never received this entry, and the outbound/inbound
+                // paths dedup byte-identical content, so re-dispatching on a
+                // re-copy is how an offline-then-rejoined peer catches up.
                 if deduplicated {
                     debug!(
                         entry_id = %entry_id,
-                        "watcher: resurfaced existing entry; skipping re-index and re-dispatch"
+                        "watcher: resurfaced existing entry; skipping re-index, still dispatching for offline-peer catch-up"
                     );
-                    return Ok(());
-                }
-
-                let search_span = tracing::info_span!("search.live_index", entry_id = %entry_id);
-                match self
-                    .clipboard_live_index
-                    .index_capture(ClipboardLiveIndexInput {
-                        entry_id: entry_id.to_string(),
-                        snapshot: outbound_snapshot.clone(),
-                    })
-                    .instrument(search_span)
-                    .await
-                {
-                    Ok(ClipboardLiveIndexOutcome::Indexed) => {
-                        debug!(entry_id = %entry_id, "search: indexed captured entry");
-                    }
-                    Ok(ClipboardLiveIndexOutcome::Skipped { reason }) => {
-                        debug!(entry_id = %entry_id, reason, "search: skipped live index");
-                    }
-                    Err(e) => {
-                        warn!(error = %e, entry_id = %entry_id, "search: live index failed");
+                } else {
+                    let search_span =
+                        tracing::info_span!("search.live_index", entry_id = %entry_id);
+                    match self
+                        .clipboard_live_index
+                        .index_capture(ClipboardLiveIndexInput {
+                            entry_id: entry_id.to_string(),
+                            snapshot: outbound_snapshot.clone(),
+                        })
+                        .instrument(search_span)
+                        .await
+                    {
+                        Ok(ClipboardLiveIndexOutcome::Indexed) => {
+                            debug!(entry_id = %entry_id, "search: indexed captured entry");
+                        }
+                        Ok(ClipboardLiveIndexOutcome::Skipped { reason }) => {
+                            debug!(entry_id = %entry_id, reason, "search: skipped live index");
+                        }
+                        Err(e) => {
+                            warn!(error = %e, entry_id = %entry_id, "search: live index failed");
+                        }
                     }
                 }
 

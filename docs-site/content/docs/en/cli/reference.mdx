@@ -200,8 +200,10 @@ The following commands exist but are deliberately hidden from
   `issue --addr <IP>` issues an invitation constrained to one local
   IP. Refuses to run while the daemon is up. Intended for triaging
   [pairing failures on virtual-NIC setups](../help/troubleshooting#pairing-failures).
-- `uniclip daemon` — internal entrypoint that `uniclip start` uses to
-  spawn the background daemon. Not intended for direct use.
+- `uniclipd` — the background daemon, shipped as a **separate binary**
+  (no longer a `uniclip daemon` subcommand). `uniclip start` and the
+  desktop app spawn it for you; you'll see it in `ps`, but don't launch
+  it directly.
 
 These won't show up in shell completion or `--help`, and may change
 without notice. They're documented here so you don't think you're

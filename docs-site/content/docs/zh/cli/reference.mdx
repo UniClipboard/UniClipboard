@@ -173,7 +173,7 @@ uniclip upgrade advance
 - `uniclip dev seed-clipboard --text <TEXT>` —— switch-space 数据完整性测试用的种子写入。
 - `uniclip dev dump-clipboard --limit <N>` —— 调试用，打印解密后的历史。
 - `uniclip dev pairing ...` —— 配对邀请的诊断子命令组：`addrs` 列出经过产品过滤后的候选地址，`issue --addr <IP>` 把邀请约束在某一个本机 IP 上。daemon 跑着时会被拒绝；仅供开发与排查 [配对在虚拟网卡环境下打不通](../help/troubleshooting#配对失败) 这类问题使用。
-- `uniclip daemon` —— `uniclip start` 拉起后台进程的内部入口，不作为用户命令使用。
+- `uniclipd` —— 后台 daemon，现在是**独立的二进制**（不再是 `uniclip daemon` 子命令）。`uniclip start` 和桌面应用会自动拉起它；你会在 `ps` 中看到它，但不要直接运行。
 
 这些不会出现在 shell 补全或 `--help` 中，并且可能在不发版本说明的情况下变化。
 这里列出来只是为了让你在 `ps` 或提交历史中看到时不会以为见鬼了。

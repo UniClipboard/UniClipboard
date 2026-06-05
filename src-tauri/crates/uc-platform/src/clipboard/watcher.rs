@@ -131,14 +131,18 @@ impl ClipboardWatcher {
             }
         }
 
-        // Image storm guard: an image-dominant snapshot whose byte size matches
-        // the previous image within `IMAGE_DEDUP_WINDOW` is treated as a re-read
-        // of the same image (the hash churns under us; see `IMAGE_DEDUP_WINDOW`).
-        // Computed before the value moves into `try_send`.
+        // Image storm guard: an image-dominant snapshot whose image byte size
+        // matches the previous image within `IMAGE_DEDUP_WINDOW` is treated as a
+        // re-read of the same image (the hash churns under us; see
+        // `IMAGE_DEDUP_WINDOW`). Keyed off the image representation's own size
+        // (not the whole-snapshot total) so co-resident metadata reps can't make
+        // two genuinely different images look identically sized, nor mask the
+        // storm's stable image size. Computed before the value moves into
+        // `try_send`.
         let image_size = current_dedupe_key
             .as_ref()
             .filter(|k| k.starts_with("image:"))
-            .map(|_| snapshot.total_size_bytes());
+            .and_then(|_| snapshot.primary_image_size_bytes());
         if let Some(size) = image_size {
             let now = Instant::now();
             if let Some((last, last_size)) = self.last_image_seen {
@@ -296,5 +300,66 @@ mod tests {
         w.notify_with_snapshot(image(1000, 7));
         w.notify_with_snapshot(image(1000, 7));
         assert_eq!(drain(&mut rx), 1);
+    }
+
+    /// Image-dominant snapshot carrying a primary image rep plus a second
+    /// (image) representation, so the whole-snapshot total differs from the
+    /// primary image's own size. `meaningful_origin_key` keys on the first
+    /// image rep, so the key stays `image:`.
+    fn image_with_secondary(
+        primary_size: usize,
+        primary_fill: u8,
+        secondary_size: usize,
+        secondary_fill: u8,
+    ) -> SystemClipboardSnapshot {
+        let primary = ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("image"),
+            Some(MimeType("image/bmp".to_string())),
+            vec![primary_fill; primary_size],
+        );
+        let secondary = ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("image"),
+            Some(MimeType("image/png".to_string())),
+            vec![secondary_fill; secondary_size],
+        );
+        SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![primary, secondary],
+        }
+    }
+
+    #[test]
+    fn different_images_with_equal_total_size_both_pass() {
+        // Two genuinely different images whose *primary image* sizes differ
+        // (100 vs 120) but whose whole-snapshot totals coincide (both 150).
+        // Keying the guard off the snapshot total would wrongly suppress the
+        // second; keying off the image's own size lets both through.
+        let (mut w, mut rx) = watcher();
+        w.notify_with_snapshot(image_with_secondary(100, 1, 50, 9)); // total 150, image 100
+        w.notify_with_snapshot(image_with_secondary(120, 2, 30, 8)); // total 150, image 120
+        assert_eq!(
+            drain(&mut rx),
+            2,
+            "different images must emit even when snapshot totals match"
+        );
+    }
+
+    #[test]
+    fn same_image_size_with_churning_secondary_is_storm_guarded() {
+        // The image's own size is stable across the burst (the #957 shape)
+        // while a co-resident rep's size + content churn. Keying off the stable
+        // image size still collapses the burst; keying off the (churning) total
+        // would let every event through.
+        let (mut w, mut rx) = watcher();
+        for fill in 0u8..8 {
+            w.notify_with_snapshot(image_with_secondary(4096, fill, 100 + fill as usize, fill));
+        }
+        assert_eq!(
+            drain(&mut rx),
+            1,
+            "stable image size must storm-guard despite a churning secondary rep"
+        );
     }
 }

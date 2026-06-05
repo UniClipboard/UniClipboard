@@ -464,6 +464,20 @@ impl SystemClipboardSnapshot {
         self.representations.iter().map(|r| r.size_bytes()).sum()
     }
 
+    /// Byte size of the dominant image representation — the first image
+    /// representation, the one [`Self::meaningful_origin_key`] keys an
+    /// `image:` snapshot on — or `None` when the snapshot carries no image
+    /// representation. Unlike [`Self::total_size_bytes`] this isolates the
+    /// image's own size from any co-resident metadata representations, so a
+    /// size comparison tracks the image identity rather than the whole
+    /// snapshot.
+    pub fn primary_image_size_bytes(&self) -> Option<i64> {
+        self.representations
+            .iter()
+            .find(|rep| is_image_representation(rep))
+            .map(|rep| rep.size_bytes())
+    }
+
     /// 是否为空快照（没有任何 representation）
     pub fn is_empty(&self) -> bool {
         self.representations.is_empty()

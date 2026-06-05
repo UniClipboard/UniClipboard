@@ -123,7 +123,19 @@ impl BackgroundBlobWorker {
                 "infra.background_blob_worker",
                 representation_id = %rep_id,
             );
-            let result = self.process_with_retry(rep_id).instrument(span).await;
+            let result = self
+                .process_with_retry(rep_id.clone())
+                .instrument(span)
+                .await;
+            // Return the in-memory cache copy regardless of terminal outcome.
+            // The cache is only an accelerator for the Staged/Processing window;
+            // once the worker is done (blob materialized, failed after retries,
+            // or bytes missing) the spool is the source of truth for any bytes
+            // still needed. Dropping it here keeps daemon memory flat under a
+            // stream of image copies instead of growing until the cache hits
+            // its byte ceiling. Retries inside `process_with_retry` still get a
+            // cache hit because removal only happens after the loop exits.
+            self.cache.remove(&rep_id).await;
             if let Err(err) = result {
                 error!(error = %err, "Failed to process representation");
             }
@@ -491,4 +503,132 @@ impl BackgroundBlobWorker {
 enum ProcessResult {
     Completed,
     MissingBytes,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clipboard::testing::{ScriptedRepRepo, ScriptedReturn};
+    use crate::security::Blake3Hasher;
+    use async_trait::async_trait;
+    use tempfile::TempDir;
+    use uc_core::clipboard::PersistedClipboardRepresentation;
+    use uc_core::ids::FormatId;
+    use uc_core::ports::clipboard::GeneratedThumbnail;
+    use uc_core::{BlobId, ContentHash};
+
+    struct FakeBlobWriter;
+    #[async_trait]
+    impl BlobWriterPort for FakeBlobWriter {
+        async fn write_if_absent(
+            &self,
+            _content_id: &ContentHash,
+            _bytes: &[u8],
+        ) -> anyhow::Result<BlobId> {
+            Ok(BlobId::from("blob-x"))
+        }
+
+        async fn write_path_if_absent(&self, _path: &std::path::Path) -> anyhow::Result<BlobId> {
+            unimplemented!("worker only uses write_if_absent")
+        }
+    }
+
+    // A text/plain representation never reaches thumbnail generation, so these
+    // fakes must stay unreachable. They panic if the worker ever calls them.
+    struct UnusedThumbnailRepo;
+    #[async_trait]
+    impl ThumbnailRepositoryPort for UnusedThumbnailRepo {
+        async fn get_by_representation_id(
+            &self,
+            _id: &RepresentationId,
+        ) -> anyhow::Result<Option<ThumbnailMetadata>> {
+            unimplemented!("thumbnail path is unreachable for text/plain")
+        }
+        async fn insert_thumbnail(&self, _m: &ThumbnailMetadata) -> anyhow::Result<()> {
+            unimplemented!("thumbnail path is unreachable for text/plain")
+        }
+    }
+
+    struct UnusedThumbnailGenerator;
+    #[async_trait]
+    impl ThumbnailGeneratorPort for UnusedThumbnailGenerator {
+        async fn generate_thumbnail(&self, _b: &[u8]) -> anyhow::Result<GeneratedThumbnail> {
+            unimplemented!("thumbnail path is unreachable for text/plain")
+        }
+        async fn generate_thumbnail_from_rgba(
+            &self,
+            _b: &[u8],
+            _w: u32,
+            _h: u32,
+        ) -> anyhow::Result<GeneratedThumbnail> {
+            unimplemented!("thumbnail path is unreachable for text/plain")
+        }
+    }
+
+    struct FixedClock;
+    impl ClockPort for FixedClock {
+        fn now_ms(&self) -> i64 {
+            0
+        }
+    }
+
+    fn text_rep(id: &RepresentationId) -> PersistedClipboardRepresentation {
+        PersistedClipboardRepresentation::new_staged(
+            id.clone(),
+            FormatId::from("public.utf8-plain-text"),
+            Some(MimeType("text/plain".to_string())),
+            10,
+        )
+    }
+
+    /// Regression: once the worker materializes a blob, the in-memory
+    /// `RepresentationCache` copy must be released. Otherwise every copied
+    /// image leaks a full byte buffer into the cache until it hits its size
+    /// ceiling, so daemon memory grows under a stream of copies and never
+    /// falls back down.
+    #[tokio::test]
+    async fn worker_releases_cache_after_processing() {
+        let dir = TempDir::new().expect("tempdir");
+        let cache = Arc::new(RepresentationCache::new(16, 1024 * 1024));
+        let spool = Arc::new(SpoolManager::new(dir.path(), 1024 * 1024).expect("spool"));
+        let (tx, rx) = mpsc::channel(8);
+
+        let rep_id = RepresentationId::from("rep-1");
+        // Seed the cache exactly like CaptureClipboardUseCase does on capture.
+        cache.put(&rep_id, b"clipboard-bytes".to_vec()).await;
+        assert!(cache.get(&rep_id).await.is_some());
+
+        let repo = Arc::new(ScriptedRepRepo::new());
+        // Staged -> Processing, then Processing -> BlobReady.
+        repo.push_update_outcome(ScriptedReturn::Ok(ProcessingUpdateOutcome::Updated(
+            text_rep(&rep_id),
+        )));
+        repo.push_update_outcome(ScriptedReturn::Ok(ProcessingUpdateOutcome::Updated(
+            text_rep(&rep_id),
+        )));
+        repo.set_representation(text_rep(&rep_id));
+
+        let worker = BackgroundBlobWorker::new(
+            rx,
+            cache.clone(),
+            spool.clone(),
+            repo,
+            Arc::new(FakeBlobWriter),
+            Arc::new(Blake3Hasher),
+            Arc::new(UnusedThumbnailRepo),
+            Arc::new(UnusedThumbnailGenerator),
+            Arc::new(FixedClock),
+            3,
+            Duration::from_millis(1),
+        );
+
+        tx.send(rep_id.clone()).await.expect("send");
+        drop(tx); // close channel so run() drains and returns
+        worker.run().await;
+
+        assert!(
+            cache.get(&rep_id).await.is_none(),
+            "cache bytes must be released after blob materialization"
+        );
+    }
 }

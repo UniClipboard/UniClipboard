@@ -47,6 +47,7 @@ pub struct ScriptedRepRepo {
     update_outcomes: Mutex<Vec<ScriptedReturn>>,
     update_calls: Mutex<Vec<UpdateProcessingCall>>,
     staged_ids: Mutex<Vec<RepresentationId>>,
+    rep_by_id: Mutex<Option<PersistedClipboardRepresentation>>,
 }
 
 impl ScriptedRepRepo {
@@ -55,7 +56,13 @@ impl ScriptedRepRepo {
             update_outcomes: Mutex::new(Vec::new()),
             update_calls: Mutex::new(Vec::new()),
             staged_ids: Mutex::new(Vec::new()),
+            rep_by_id: Mutex::new(None),
         }
+    }
+
+    /// Seed the representation returned by `get_representation_by_id`.
+    pub fn set_representation(&self, rep: PersistedClipboardRepresentation) {
+        *self.rep_by_id.lock().unwrap() = Some(rep);
     }
 
     pub fn push_update_outcome(&self, ret: ScriptedReturn) {
@@ -85,7 +92,12 @@ impl ClipboardRepresentationRepositoryPort for ScriptedRepRepo {
         &self,
         _representation_id: &RepresentationId,
     ) -> Result<Option<PersistedClipboardRepresentation>> {
-        unimplemented!("ScriptedRepRepo: get_representation_by_id not configured for this test")
+        match self.rep_by_id.lock().unwrap().clone() {
+            Some(rep) => Ok(Some(rep)),
+            None => {
+                unimplemented!("ScriptedRepRepo: set_representation() not called for this test")
+            }
+        }
     }
 
     async fn get_representation_by_blob_id(

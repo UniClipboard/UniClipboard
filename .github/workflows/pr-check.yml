@@ -155,6 +155,15 @@ jobs:
 
       - name: Check Rust workspace
         working-directory: src-tauri
+        env:
+          # ADR-008 D13 added `externalBin: ["binaries/uniclipd"]` to
+          # tauri.conf.json, so `tauri_build::build()` hard-fails unless
+          # `src-tauri/binaries/uniclipd-<triple>` exists. Real bundles stage it
+          # via prepare-daemon-sidecar.mjs (build.yml / alpha-build.yml); this
+          # `cargo check` neither bundles nor spawns the sidecar. Override the
+          # config to drop the sidecar for this build (tauri-build merges
+          # TAURI_CONFIG as a JSON Merge Patch; an empty array replaces the list).
+          TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: cargo check --workspace --locked
 
       # IPC schema drift check (issue #698) —— `cargo test --test specta_export`

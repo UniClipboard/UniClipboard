@@ -44,16 +44,20 @@ describe('toReportableError', () => {
 })
 
 describe('isExpectedCommandError', () => {
+  // The taxonomy now covers only `CommandError` — ADR-008 P3-1/P3-b moved the
+  // unlock and mobile-sync command errors onto the daemon loopback API, so codes
+  // like USERNAME_TAKEN / WRONG_PASSPHRASE are no longer in USER_FACING_ERROR_CODES
+  // (source of truth: `src-tauri/crates/uc-tauri/src/commands/severity.rs`).
   it('recognizes user/validation error codes as expected', () => {
-    expect(isExpectedCommandError({ code: 'USERNAME_MUST_START_WITH_LETTER' })).toBe(true)
-    expect(isExpectedCommandError({ code: 'WRONG_PASSPHRASE' })).toBe(true)
-    expect(isExpectedCommandError({ code: 'USERNAME_TAKEN', username: 'alice' })).toBe(true)
+    expect(isExpectedCommandError({ code: 'ValidationError' })).toBe(true)
+    expect(isExpectedCommandError({ code: 'Cancelled' })).toBe(true)
+    expect(isExpectedCommandError({ code: 'NotFound' })).toBe(true)
+    expect(isExpectedCommandError({ code: 'Conflict' })).toBe(true)
   })
 
   it('treats system error codes as unexpected (reportable)', () => {
-    expect(isExpectedCommandError({ code: 'PERSISTENCE_FAILED', message: 'x' })).toBe(false)
-    expect(isExpectedCommandError({ code: 'INTERNAL', message: 'x' })).toBe(false)
-    expect(isExpectedCommandError({ code: 'PASSWORD_HASH_FAILED', message: 'x' })).toBe(false)
+    expect(isExpectedCommandError({ code: 'InternalError', message: 'x' })).toBe(false)
+    expect(isExpectedCommandError({ code: 'Timeout', message: 'x' })).toBe(false)
   })
 
   it('treats unknown codes and non-envelopes as unexpected (fail-safe)', () => {

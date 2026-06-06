@@ -27,6 +27,15 @@ pub enum DaemonRunMode {
     /// [`Self::runs_system_clipboard`]。入站同步、mobile_lan 网关、iroh
     /// P2P 一切照常。
     ServerHeadless,
+    /// ADR-008 P5-L L0：一次性（oneshot）daemon 的惰性骨架。
+    ///
+    /// 目前在**每一个 predicate 上都与 [`Self::Standalone`] 完全一致**——
+    /// 接系统剪贴板、自监听 OS 信号、自驱 deferred services、进程模式为
+    /// [`DaemonProcessMode::Standalone`]（仍可被 `uniclip stop` SIGTERM）。
+    /// 它是后续 sub-step（lease / 自终止 / analytics 门控 / health 字段 /
+    /// handover）挂载的预留变体，**当前在生产路径里不可达**：没有任何 spawner
+    /// 会发出 [`crate::RUN_MODE_ONESHOT`]，仅 env 解码识别它，行为中立。
+    Oneshot,
 }
 
 impl DaemonRunMode {
@@ -53,14 +62,20 @@ impl DaemonRunMode {
     ///
     /// 两个剩余模式都没有同进程 GUI 介入，自己解锁后直接放行(恒 `true`)。
     pub fn auto_triggers_deferred_services(self) -> bool {
-        matches!(self, Self::Standalone | Self::ServerHeadless)
+        matches!(
+            self,
+            Self::Standalone | Self::ServerHeadless | Self::Oneshot
+        )
     }
 
     /// daemon 是否在自己的 main loop 里监听 OS 信号（SIGTERM/SIGINT/Ctrl-C）。
     ///
     /// 两个剩余模式都是独立进程,自己处理 OS 信号(恒 `true`)。
     pub fn listens_to_os_signals(self) -> bool {
-        matches!(self, Self::Standalone | Self::ServerHeadless)
+        matches!(
+            self,
+            Self::Standalone | Self::ServerHeadless | Self::Oneshot
+        )
     }
 
     /// 持久化进 PID 文件的进程模式标记——决定 `cli stop` 能不能 SIGTERM
@@ -71,7 +86,11 @@ impl DaemonRunMode {
     /// 旧版 GUI 写下的 legacy PID 文件(`cli stop` 据此拒绝 SIGTERM)。
     pub fn process_mode(self) -> DaemonProcessMode {
         match self {
-            Self::Standalone | Self::ServerHeadless => DaemonProcessMode::Standalone,
+            // P5-L L0: Oneshot mirrors Standalone — it must stay SIGTERM-able so
+            // `uniclip stop` keeps working until later sub-steps add self-terminate.
+            Self::Standalone | Self::ServerHeadless | Self::Oneshot => {
+                DaemonProcessMode::Standalone
+            }
         }
     }
 }
@@ -122,5 +141,49 @@ mod tests {
             !DaemonRunMode::ServerHeadless.runs_system_clipboard(),
             "headless server must not touch the OS clipboard (no display)"
         );
+    }
+
+    #[test]
+    fn oneshot_mirrors_standalone_in_every_predicate() {
+        // ADR-008 P5-L L0: Oneshot is an inert skeleton that, FOR NOW, must be
+        // behavior-identical to Standalone in every predicate. Later sub-steps
+        // (lease / self-terminate / analytics gating / health / handover) will
+        // diverge it; until then it stays unreachable and behavior-neutral.
+        let oneshot = DaemonRunMode::Oneshot;
+        let standalone = DaemonRunMode::Standalone;
+
+        assert_eq!(
+            oneshot.runs_system_clipboard(),
+            standalone.runs_system_clipboard()
+        );
+        assert!(
+            oneshot.runs_system_clipboard(),
+            "oneshot runs the OS clipboard exactly like standalone"
+        );
+
+        assert_eq!(
+            oneshot.auto_triggers_deferred_services(),
+            standalone.auto_triggers_deferred_services()
+        );
+        assert!(oneshot.auto_triggers_deferred_services());
+
+        assert_eq!(
+            oneshot.listens_to_os_signals(),
+            standalone.listens_to_os_signals()
+        );
+        assert!(oneshot.listens_to_os_signals());
+
+        assert_eq!(oneshot.process_mode(), standalone.process_mode());
+        assert_eq!(
+            oneshot.process_mode(),
+            DaemonProcessMode::Standalone,
+            "oneshot must stay SIGTERM-able for `uniclip stop`"
+        );
+
+        assert_eq!(
+            oneshot.waits_for_gui_ready(),
+            standalone.waits_for_gui_ready()
+        );
+        assert!(!oneshot.waits_for_gui_ready());
     }
 }

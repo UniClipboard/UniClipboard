@@ -17,7 +17,7 @@
 pub mod daemon;
 
 pub use daemon::host::{
-    run_standalone_from_env, ProcessRuntimeHandles, RUN_MODE_ENV, RUN_MODE_SERVER,
+    run_standalone_from_env, ProcessRuntimeHandles, RUN_MODE_ENV, RUN_MODE_ONESHOT, RUN_MODE_SERVER,
 };
 pub use daemon::process_bootstrap::{build_process_runtime, ProcessRuntimeContext};
 pub use daemon::run_mode;

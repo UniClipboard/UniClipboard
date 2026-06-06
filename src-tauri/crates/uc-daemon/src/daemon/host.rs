@@ -113,18 +113,26 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 }
 
 pub use uc_daemon_local::spawn_contract::RUN_MODE_ENV;
+pub use uc_daemon_local::spawn_contract::RUN_MODE_ONESHOT;
 pub use uc_daemon_local::spawn_contract::RUN_MODE_SERVER;
 
 /// Standalone daemon binary entry: parse run mode from environment, then start.
 ///
 /// Reads [`RUN_MODE_ENV`]: `"server"` → [`DaemonRunMode::ServerHeadless`]
-/// (headless node, no X11/Wayland); otherwise → [`DaemonRunMode::Standalone`].
+/// (headless node, no X11/Wayland); `"oneshot"` → [`DaemonRunMode::Oneshot`]
+/// (ADR-008 P5-L L0 inert skeleton, behavior-identical to standalone and not
+/// emitted by any spawner yet); otherwise → [`DaemonRunMode::Standalone`].
 pub fn run_standalone_from_env() -> anyhow::Result<()> {
-    let run_mode = if std::env::var(RUN_MODE_ENV).as_deref() == Ok(RUN_MODE_SERVER) {
-        std::env::set_var("UC_DISABLE_SYSTEM_CLIPBOARD", "1");
-        DaemonRunMode::ServerHeadless
-    } else {
-        DaemonRunMode::Standalone
+    let run_mode = match std::env::var(RUN_MODE_ENV).as_deref() {
+        Ok(RUN_MODE_SERVER) => {
+            std::env::set_var("UC_DISABLE_SYSTEM_CLIPBOARD", "1");
+            DaemonRunMode::ServerHeadless
+        }
+        // P5-L L0: Oneshot runs the system clipboard like Standalone, so it
+        // must NOT set UC_DISABLE_SYSTEM_CLIPBOARD. Unreachable in production
+        // (no spawner emits RUN_MODE_ONESHOT); decode only.
+        Ok(RUN_MODE_ONESHOT) => DaemonRunMode::Oneshot,
+        _ => DaemonRunMode::Standalone,
     };
     run(run_mode)
 }

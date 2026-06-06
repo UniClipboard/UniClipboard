@@ -159,7 +159,13 @@ parts:
       # It needs no custom-protocol (no webview) and shares the GUI crate graph,
       # so this build is mostly incremental. build-packages already has cmake +
       # clang for aws-lc-sys, which uniclipd pulls via iroh just like the GUI.
-      cargo build --release --locked --bin uniclipd
+      #
+      # `-p uc-daemon` is REQUIRED: the `uniclipd` bin lives in the uc-daemon
+      # workspace member, not in the `uniclipboard` package we cd'd into above.
+      # Without it cargo errors "no bin target named `uniclipd` in default-run
+      # packages". Matches scripts/prepare-daemon-sidecar.mjs (`cargo build -p
+      # uc-daemon --bin uniclipd`), the same invocation CI uses for the sidecar.
+      cargo build --release --locked -p uc-daemon --bin uniclipd
       cd ..
 
       # 3) 安装到 snap install 目录。strict snap 启动时 mount 这个目录

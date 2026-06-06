@@ -22,6 +22,10 @@ specta = ["dep:specta", "dep:specta-typescript"]
 [dependencies]
 # Workspace crates
 uc-core = { path = "../uc-core" }
+# Directory-layout authority: the single source of truth for app data/cache
+# directory resolution (profile suffix, portable redirect). uc-platform stays
+# the AppDirsPort impl and delegates the raw computation here (ADR-008 P5-0c).
+uc-app-paths = { path = "../uc-app-paths" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -50,9 +54,6 @@ subtle = "2.5"
 
 # Image handling
 image = "0.25"
-
-# File system
-dirs = "6.0"
 
 # UUID
 uuid = { version = "1", features = ["v4", "fast-rng"] }

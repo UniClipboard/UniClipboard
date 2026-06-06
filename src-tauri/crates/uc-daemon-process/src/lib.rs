@@ -7,8 +7,11 @@
 //! Extracted from `uc-daemon-local` (ADR-008 P5-0) so the daemon **client**
 //! stack (`uc-daemon-client`, `uc-cli`) can depend on these primitives without
 //! transitively pulling in `uc-application` → `uc-infra` → `iroh`/`diesel`.
-//! Every module here depends on **only** lightweight crates (`dirs`, `libc`,
-//! `which`, `serde`, `serde_json`, `anyhow`) plus `std`.
+//! Every module here depends on **only** lightweight crates (`uc-app-paths`,
+//! `libc`, `which`, `serde`, `serde_json`, `anyhow`) plus `std`. The app
+//! data-root resolution is delegated to `uc-app-paths`, the directory-layout
+//! authority `uc-platform` also consumes, so the PID/token paths stay
+//! byte-identical with no second copy (ADR-008 P5-0c).
 //!
 //! `uc-daemon-local` reverse-depends on this crate and re-exports these modules
 //! (`pub use uc_daemon_process::{process_metadata, socket, spawn, spawn_contract}`),
@@ -20,7 +23,6 @@
 //! - [`spawn`]: `uniclipd` detached spawn (`setsid` / `DETACHED_PROCESS`).
 //! - [`spawn_contract`]: CLI→daemon run-mode / unattended-unlock env contract.
 
-mod app_data_root;
 pub mod process_metadata;
 pub mod socket;
 pub mod spawn;

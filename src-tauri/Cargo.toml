@@ -123,6 +123,7 @@ members = [
   "crates/uc-core",
   "crates/uc-application",
   "crates/uc-platform",
+  "crates/uc-app-paths",
   "crates/uc-infra",
   "crates/uc-tauri",
   "crates/uc-observability",

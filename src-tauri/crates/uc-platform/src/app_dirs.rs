@@ -4,28 +4,15 @@ use crate::ports::AppDirsPort;
 use uc_core::app_dirs::AppDirs;
 use uc_core::ports::AppDirsError;
 
-const APP_DIR_NAME: &str = "app.uniclipboard.desktop";
-
 /// Constructs the application directory name, appending a profile suffix when a profile is resolved.
 ///
-/// # Returns
-///
-/// A `String` containing `APP_DIR_NAME` followed by `-<profile>` if a profile is available, otherwise just `APP_DIR_NAME`.
-///
-/// # Examples
-///
-/// ```
-/// use std::env;
-/// env::set_var("UC_PROFILE", "testing");
-/// let name = resolved_app_dir_name();
-/// assert_eq!(name, format!("{}-testing", APP_DIR_NAME));
-/// env::remove_var("UC_PROFILE");
-/// ```
+/// Delegates the raw computation to [`uc_app_paths::resolved_app_dir_name`],
+/// threading in `uc-platform`'s compile-time [`crate::default_profile`] (the
+/// `dev-profile` feature) as the fallback. The result is
+/// `app.uniclipboard.desktop` followed by `-<profile>` when a profile resolves,
+/// otherwise the bare app directory name.
 fn resolved_app_dir_name() -> String {
-    match crate::resolve_profile() {
-        Some(profile) => format!("{APP_DIR_NAME}-{profile}"),
-        None => APP_DIR_NAME.to_string(),
-    }
+    uc_app_paths::resolved_app_dir_name(crate::default_profile())
 }
 
 pub struct DirsAppDirsAdapter {
@@ -89,25 +76,17 @@ impl DirsAppDirsAdapter {
         if let Some(base) = &self.base_data_local_dir_override {
             return Some(base.clone());
         }
-        // Portable ("green") builds keep all data next to the executable so the
-        // app leaves no trace in the per-user system data directory. The
-        // redirect is resolved here (the lowest common platform layer) so every
-        // call site — daemon socket path, secure storage, process metadata —
-        // follows it without knowing portable mode exists.
-        if let Some(portable_root) = crate::portable::portable_data_root() {
-            return Some(portable_root);
-        }
-        dirs::data_local_dir()
+        // Non-override resolution (portable redirect > dirs::data_local_dir())
+        // is the directory-layout authority's job, so daemon/CLI and GUI follow
+        // one source. The test-only override short-circuits before it.
+        uc_app_paths::base_data_local_dir()
     }
 
     fn base_cache_dir(&self) -> Option<PathBuf> {
         if let Some(base) = &self.base_data_local_dir_override {
             return Some(base.clone());
         }
-        if let Some(portable_root) = crate::portable::portable_data_root() {
-            return Some(portable_root);
-        }
-        dirs::cache_dir()
+        uc_app_paths::base_cache_dir()
     }
 }
 

@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::app_data_root::{app_data_root, AppDataRootError};
+use uc_app_paths::app_data_root;
 
 /// 描述 daemon 进程是怎么被拉起的——决定它能不能由 `cli stop` SIGTERM 掉。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,18 +138,21 @@ fn default_manager() -> Result<&'static DaemonPidManager> {
         .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
-/// Resolve `<app_data_root>/.daemon-pid` using the self-contained resolver,
-/// reproducing `AppPaths::daemon_pid_path()` byte-for-byte.
-fn resolve_pid_path_from_root() -> Result<PathBuf, AppDataRootError> {
-    Ok(app_data_root()?.join(DAEMON_PID_FILE_NAME))
+/// Resolve `<app_data_root>/.daemon-pid` via the directory-layout authority
+/// (`uc_app_paths::app_data_root`), reproducing `AppPaths::daemon_pid_path()`
+/// byte-for-byte. Data-root only — daemon-process does not require the cache dir
+/// (the benign P5-0 divergence, preserved).
+fn resolve_pid_path_from_root() -> Result<PathBuf> {
+    let root = app_data_root().context("the system data-local directory is unavailable")?;
+    Ok(root.join(DAEMON_PID_FILE_NAME))
 }
 
 /// Manages the daemon PID metadata file lifecycle.
 #[derive(Debug, Clone)]
 pub struct DaemonPidManager {
     /// Fully-resolved `<app_data_root>/.daemon-pid` path. Stored directly so
-    /// this module owns zero app-stack dependencies; path policy is reproduced
-    /// byte-for-byte by [`crate::app_data_root::app_data_root`].
+    /// this module owns zero app-stack dependencies; path policy is delegated
+    /// to [`uc_app_paths::app_data_root`].
     pid_path: PathBuf,
 }
 

@@ -9734,6 +9734,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
+name = "uc-app-paths"
+version = "0.14.0-alpha.5"
+dependencies = [
+ "dirs 6.0.0",
+]
+
+[[package]]
 name = "uc-application"
 version = "0.14.0-alpha.5"
 dependencies = [
@@ -9954,11 +9961,11 @@ name = "uc-daemon-process"
 version = "0.14.0-alpha.5"
 dependencies = [
  "anyhow",
- "dirs 6.0.0",
  "libc",
  "serde",
  "serde_json",
  "tempfile",
+ "uc-app-paths",
  "which",
 ]
 
@@ -10079,7 +10086,6 @@ dependencies = [
  "chrono",
  "clipboard-rs",
  "clipboard-win",
- "dirs 6.0.0",
  "futures",
  "image",
  "keyring",
@@ -10105,6 +10111,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uc-app-paths",
  "uc-core",
  "url",
  "uuid",

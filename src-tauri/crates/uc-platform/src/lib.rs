@@ -43,15 +43,18 @@ pub const fn default_profile() -> Option<&'static str> {
 
 /// Resolve the active profile name (single source of truth for `app_dirs` + `system_secure_storage`).
 ///
-/// Runtime `UC_PROFILE` takes precedence over the compile-time `default_profile()` fallback.
+/// Runtime `UC_PROFILE` takes precedence over the compile-time [`default_profile`] fallback.
 /// Returns `None` when neither is set.
+///
+/// Thin wrapper over [`uc_app_paths::resolve_profile`]: the env-then-default
+/// precedence (non-empty `UC_PROFILE` wins, empty treated as unset) lives in the
+/// directory-layout authority; `uc-platform` only supplies its compile-time
+/// `dev-profile` default. Keeping this wrapper means both in-crate consumers
+/// (`app_dirs::resolved_app_dir_name` and
+/// `system_secure_storage::resolve_service_name`) keep their keychain/dir
+/// suffixes byte-identical.
 pub(crate) fn resolve_profile() -> Option<String> {
-    if let Ok(profile) = std::env::var("UC_PROFILE") {
-        if !profile.is_empty() {
-            return Some(profile);
-        }
-    }
-    default_profile().map(str::to_string)
+    uc_app_paths::resolve_profile(default_profile())
 }
 
 pub mod app_dirs;

@@ -2,10 +2,10 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use crate::app_data_root::app_data_root;
+use uc_app_paths::app_data_root;
 
 pub const DEFAULT_HTTP_HOST: &str = "127.0.0.1";
 pub const DEFAULT_HTTP_PORT: u16 = 42715;
@@ -152,8 +152,10 @@ fn stable_profile_hash(profile: &str) -> u64 {
 /// ```
 pub fn resolve_daemon_token_path() -> Result<PathBuf> {
     // Reproduces `AppPaths::from_app_dirs(&dirs).daemon_token_path()` =
-    // `<app_data_root>/.daemon-token` without touching the app stack.
-    Ok(app_data_root()?.join(DAEMON_TOKEN_FILE_NAME))
+    // `<app_data_root>/.daemon-token` via the directory-layout authority
+    // (`uc_app_paths::app_data_root`) without touching the app stack.
+    let root = app_data_root().context("the system data-local directory is unavailable")?;
+    Ok(root.join(DAEMON_TOKEN_FILE_NAME))
 }
 
 /// Leaf filename of the daemon auth-token file, kept byte-identical to

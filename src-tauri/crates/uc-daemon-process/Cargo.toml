@@ -16,9 +16,11 @@ path = "src/lib.rs"
 anyhow = "1.0"
 # Resolves the application data root
 # (`<data_local_dir>/app.uniclipboard.desktop`) for the daemon PID/token paths
-# without dragging in the app stack (uc-application/uc-platform). Same version
-# uc-platform pins, so the resolved paths stay byte-identical (ADR-008 P5-0).
-dirs = "6.0"
+# without dragging in the app stack (uc-application/uc-platform). The directory-
+# layout authority is the single source uc-platform also consumes, so the
+# resolved paths stay byte-identical (ADR-008 P5-0c). `dirs` is pulled in
+# transitively through this crate.
+uc-app-paths = { path = "../uc-app-paths" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 which = "7"

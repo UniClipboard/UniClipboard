@@ -1,0 +1,15 @@
+[package]
+name = "uc-app-paths"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+description = "Directory-layout authority: the single source of truth for UniClipboard's app data/cache directory resolution (profile suffix, portable redirect). Depends on dirs + std only."
+
+[lib]
+name = "uc_app_paths"
+path = "src/lib.rs"
+
+[dependencies]
+# Cross-platform base data/cache directory resolution. Same version uc-platform
+# and uc-daemon-process previously pinned, so resolved paths stay byte-identical.
+dirs = "6.0"

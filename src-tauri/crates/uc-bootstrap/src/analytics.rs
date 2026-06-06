@@ -60,7 +60,20 @@ use uc_observability::analytics::{
 /// 用户重置 telemetry IDs 等显式重建场景应直接调
 /// `uc_observability::analytics::set_global_event_context`，绕开本函数的
 /// 幂等门控。
-pub async fn compose_event_context(deps: &AppDeps, paths: &AppPaths) -> anyhow::Result<()> {
+///
+/// ## `suppress_device_presence_events`（ADR-008 D20）
+///
+/// 设备级 presence 事件（`AppFirstOpen` / `AppOpened`）是否抑制。仅 Oneshot
+/// 这类一次性 daemon residency 传 `true`：它是为单条 CLI 命令拉起的临时进程，
+/// 把它算作一次设备"app open"会虚高 DAU / MAU。抑制只作用于这两条设备级事件，
+/// `set_global_event_context` 仍**无条件**注册，故临时进程发出的 action-level
+/// 事件依旧带完整 context。Standalone / ServerHeadless / 旧 CLI 进程内路径一律传
+/// `false`，行为与改动前完全一致。
+pub async fn compose_event_context(
+    deps: &AppDeps,
+    paths: &AppPaths,
+    suppress_device_presence_events: bool,
+) -> anyhow::Result<()> {
     if global_event_context().is_some() {
         tracing::debug!(
             "analytics: EventContext 已由更早的 entry 注册，本次 compose 跳过；\
@@ -110,32 +123,58 @@ pub async fn compose_event_context(deps: &AppDeps, paths: &AppPaths) -> anyhow::
         analytics_person_id,
     });
 
+    // EventContext 注册**无条件**：即便抑制了下面的设备级 presence 事件，
+    // 临时进程发出的 action-level 事件仍需带上完整 context（ADR-008 D20）。
     set_global_event_context(Arc::new(ctx));
 
-    // Slice 8a / Issue #549 — Activation 漏斗起点：仅当 IDs 都是本次新生成
-    // （`is_first_run = true`）时发一条 `app_first_open`。schema doc §7.1。
-    //
-    // 幂等门控由本函数顶部的 `global_event_context().is_some()` 守住——GUI
-    // 进程内拉起 daemon 时 compose 会触达两次，第二次直接 return，绝不会
-    // 重复 fire。也因此本事件捕获放在 `set_global_event_context` 之后是
-    // 安全的：注册一次就跳，不存在"两次注册各 fire 一次"。
-    //
-    // gate 守卫由 `deps.analytics`（包了 `GatedAnalyticsSink` 一层）统一
-    // 处理，本处不查 `is_analytics_enabled`——见 task_plan.md Decisions Made。
-    if ids.is_first_run {
-        deps.analytics.capture(Event::AppFirstOpen);
-    }
-
-    // PostHog `$pageview` / `$screen` 的桌面端等价：每次进程启动都发一次
-    // `app_opened`，让 PostHog 默认 dashboard 的 DAU / WAU / MAU / 留存曲线
-    // 有数据源。`AppFirstOpen` 仅首次安装触发，不足以做活跃度口径。
-    //
-    // 与 `AppFirstOpen` 同位置 emit，复用同一份幂等门控——每次进程启动有且
-    // 仅有一次 `app_opened`，不会因 GUI 内拉起 daemon 两次 compose 而重复
-    // 计数。schema doc §7.1。
-    deps.analytics.capture(Event::AppOpened);
+    // 设备级 presence 事件（`AppFirstOpen` / `AppOpened`）。ADR-008 D20:
+    // Oneshot 这类临时 residency 传 `suppress_device_presence_events = true`，
+    // 走抑制分支不发这两条事件，避免虚高设备级 DAU / MAU；其余路径照常发。
+    // 详细的首次激活 / 活跃度口径语义见 `emit_process_open_events` 文档。
+    emit_process_open_events(
+        deps.analytics.as_ref(),
+        ids.is_first_run,
+        suppress_device_presence_events,
+    );
 
     Ok(())
+}
+
+/// 发设备级进程"打开"事件（`AppFirstOpen` / `AppOpened`）。
+///
+/// 从 [`compose_event_context`] 抽出的纯函数，便于单测。
+///
+/// - `suppress_device_presence_events = true`（ADR-008 D20，仅 Oneshot 这类
+///   一次性 residency）→ 一条 `tracing::debug!` 后直接返回，**不**发任何事件，
+///   避免临时进程虚高设备级 DAU / MAU。
+/// - 否则按今天的语义 emit：
+///   - Slice 8a / Issue #549 — Activation 漏斗起点：仅当 IDs 都是本次新生成
+///     （`is_first_run = true`）时发一条 `app_first_open`（schema doc §7.1）。
+///   - PostHog `$pageview` / `$screen` 的桌面端等价：每次进程启动都发一次
+///     `app_opened`，让默认 dashboard 的 DAU / WAU / MAU / 留存曲线有数据源；
+///     `AppFirstOpen` 仅首次安装触发，不足以做活跃度口径。两条事件保持
+///     "先 first-open 后 opened"的顺序与 first-run 门控。
+///
+/// 调用点放在 `set_global_event_context` 之后是安全的：本函数被
+/// [`compose_event_context`] 顶部的 `global_event_context().is_some()` 幂等门控
+/// 守住，注册一次就跳，不存在"两次注册各 fire 一次"。gate 守卫由
+/// `deps.analytics`（包了 `GatedAnalyticsSink` 一层）统一处理。
+fn emit_process_open_events(
+    analytics: &dyn AnalyticsPort,
+    is_first_run: bool,
+    suppress_device_presence_events: bool,
+) {
+    if suppress_device_presence_events {
+        tracing::debug!(
+            "analytics: device-presence events suppressed for transient residency (ADR-008 D20)"
+        );
+        return;
+    }
+
+    if is_first_run {
+        analytics.capture(Event::AppFirstOpen);
+    }
+    analytics.capture(Event::AppOpened);
 }
 
 /// 读 `member_repo.list()` 的长度作为 `active_device_count`。
@@ -252,6 +291,67 @@ fn parse_app_channel(version: &str) -> AppChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Inline recording sink: captures every `Event` so tests can assert the
+    /// exact sequence `emit_process_open_events` produced.
+    struct RecordingSink {
+        captured: Mutex<Vec<Event>>,
+    }
+
+    impl RecordingSink {
+        fn new() -> Self {
+            Self {
+                captured: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn captured(&self) -> Vec<Event> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+
+    impl AnalyticsPort for RecordingSink {
+        fn capture(&self, event: Event) {
+            self.captured.lock().unwrap().push(event);
+        }
+    }
+
+    #[test]
+    fn emit_process_open_events_suppresses_everything_when_suppress_true() {
+        // ADR-008 D20: a transient residency records nothing, regardless of
+        // is_first_run — no device-presence events leak into DAU / MAU.
+        for is_first_run in [true, false] {
+            let sink = RecordingSink::new();
+            emit_process_open_events(&sink, is_first_run, true);
+            assert!(
+                sink.captured().is_empty(),
+                "suppress=true must record nothing (is_first_run={is_first_run})"
+            );
+        }
+    }
+
+    #[test]
+    fn emit_process_open_events_first_run_records_first_open_then_opened() {
+        let sink = RecordingSink::new();
+        emit_process_open_events(&sink, true, false);
+        assert_eq!(
+            sink.captured(),
+            vec![Event::AppFirstOpen, Event::AppOpened],
+            "first run must record AppFirstOpen then AppOpened, in that order"
+        );
+    }
+
+    #[test]
+    fn emit_process_open_events_returning_run_records_only_opened() {
+        let sink = RecordingSink::new();
+        emit_process_open_events(&sink, false, false);
+        assert_eq!(
+            sink.captured(),
+            vec![Event::AppOpened],
+            "a returning run records only AppOpened"
+        );
+    }
 
     #[test]
     fn parse_app_channel_recognises_alpha() {

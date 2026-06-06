@@ -67,7 +67,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
             background,
             storage_paths,
             config: _config,
-        } = super::process_bootstrap::build_process_runtime().await?;
+        } = super::process_bootstrap::build_process_runtime(run_mode).await?;
 
         // D22: acquire per-profile instance lock before any port binding.
         let _instance_lock = uc_daemon_local::instance_lock::DaemonInstanceLock::try_acquire(

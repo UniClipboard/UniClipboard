@@ -75,7 +75,11 @@ async fn build_core(
     // 败语义"）。`get_storage_paths` 重新解析了一次目录布局；它内部纯计算无
     // IO，开销可忽略。
     let storage_paths = get_storage_paths(&config)?;
-    if let Err(err) = crate::analytics::compose_event_context(&wired.deps, &storage_paths).await {
+    // 旧 CLI 进程内路径不是临时 daemon residency → 永不抑制设备级 presence 事件
+    // （ADR-008 D20），保持 pre-P5 行为；P5-1/P5-2 会整体退役这条路径。
+    if let Err(err) =
+        crate::analytics::compose_event_context(&wired.deps, &storage_paths, false).await
+    {
         tracing::warn!(
             error = %err,
             "analytics: compose_event_context 失败，本次进程内事件 sink 将拿不到 EventContext 快照"

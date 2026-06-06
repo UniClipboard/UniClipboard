@@ -79,6 +79,21 @@ impl DaemonRunMode {
         )
     }
 
+    /// 是否抑制设备级 presence analytics（`AppFirstOpen` / `AppOpened`）。
+    ///
+    /// ADR-008 D20: [`Self::Oneshot`] is a transient command-runner spun up for a
+    /// single CLI command, so counting it as a device "app open" would inflate
+    /// device-level DAU / MAU. We therefore suppress the two device-presence
+    /// events for Oneshot ONLY. The process-level `EventContext` registration
+    /// still happens unconditionally, so any action-level events the transient
+    /// process emits keep flowing with full context.
+    ///
+    /// [`Self::Standalone`] / [`Self::ServerHeadless`] are persistent residencies
+    /// whose process start IS a genuine app open — they keep emitting.
+    pub fn suppresses_device_presence_analytics(self) -> bool {
+        matches!(self, Self::Oneshot)
+    }
+
     /// 持久化进 PID 文件的进程模式标记——决定 `cli stop` 能不能 SIGTERM
     /// 这个 daemon。
     ///
@@ -202,6 +217,20 @@ mod tests {
             standalone.waits_for_gui_ready()
         );
         assert!(!oneshot.waits_for_gui_ready());
+    }
+
+    #[test]
+    fn only_oneshot_suppresses_device_presence_analytics() {
+        // ADR-008 D20: a transient Oneshot command-runner must not be counted as
+        // a device "app open" (it would inflate DAU / MAU), so it suppresses the
+        // device-level presence events. Persistent residencies keep emitting —
+        // their process start IS a real app open.
+        assert!(
+            DaemonRunMode::Oneshot.suppresses_device_presence_analytics(),
+            "oneshot must suppress device-presence analytics (D20)"
+        );
+        assert!(!DaemonRunMode::Standalone.suppresses_device_presence_analytics());
+        assert!(!DaemonRunMode::ServerHeadless.suppresses_device_presence_analytics());
     }
 
     #[test]

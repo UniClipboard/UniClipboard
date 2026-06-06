@@ -4,11 +4,11 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tracing::{error, info_span, Instrument};
+use uc_core::settings::model::QuickPanelPosition;
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{
     QuickPanelPositionDto, QuickPanelSettingsPatchDto, SettingsPatchDto,
 };
-use uc_core::settings::model::QuickPanelPosition;
 use uc_desktop::shortcuts::{self, CurrentShortcuts};
 use uc_platform::ports::observability::TraceMetadata;
 

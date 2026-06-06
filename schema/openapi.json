@@ -2119,12 +2119,28 @@
         ],
         "type": "object"
       },
+      "QuickPanelPositionDto": {
+        "description": "快捷面板出现位置 DTO。wire form: `center` | `follow_cursor`。",
+        "enum": [
+          "center",
+          "follow_cursor"
+        ],
+        "type": "string"
+      },
       "QuickPanelSettingsDto": {
-        "description": "快捷面板（Spotlight 风格）功能开关 DTO。\n\nwire 字段命名为 camelCase（`enabled`）。`#[serde(default)]` 让缺字段时\n回退到 `Default`（`enabled = true`），与 `core::QuickPanelSettings` 默认\n保持一致——新装/老 wire 缺字段都视为\"启用\"，避免出现 wire 与磁盘真相\n撕裂。",
+        "description": "快捷面板（Spotlight 风格）功能偏好 DTO。\n\nwire 字段命名为 camelCase（`enabled` / `position`）。`#[serde(default)]`\n让缺字段时回退到 `Default`（`enabled = true`、`position = center`），与\n`core::QuickPanelSettings` 默认保持一致——新装/老 wire 缺字段都视为\n\"启用 + 居中\"，避免出现 wire 与磁盘真相撕裂。",
         "properties": {
           "enabled": {
             "default": true,
             "type": "boolean"
+          },
+          "position": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuickPanelPositionDto"
+              }
+            ],
+            "default": "center"
           }
         },
         "type": "object"
@@ -2135,6 +2151,14 @@
           "enabled": {
             "nullable": true,
             "type": "boolean"
+          },
+          "position": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuickPanelPositionDto"
+              }
+            ],
+            "nullable": true
           }
         },
         "type": "object"

@@ -1306,15 +1306,21 @@ export type PresenceRefreshResponse = {
 };
 
 /**
- * 快捷面板（Spotlight 风格）功能开关 DTO。
+ * 快捷面板出现位置 DTO。wire form: `center` | `follow_cursor`。
+ */
+export type QuickPanelPositionDto = 'center' | 'follow_cursor';
+
+/**
+ * 快捷面板（Spotlight 风格）功能偏好 DTO。
  *
- * wire 字段命名为 camelCase（`enabled`）。`#[serde(default)]` 让缺字段时
- * 回退到 `Default`（`enabled = true`），与 `core::QuickPanelSettings` 默认
- * 保持一致——新装/老 wire 缺字段都视为"启用"，避免出现 wire 与磁盘真相
- * 撕裂。
+ * wire 字段命名为 camelCase（`enabled` / `position`）。`#[serde(default)]`
+ * 让缺字段时回退到 `Default`（`enabled = true`、`position = center`），与
+ * `core::QuickPanelSettings` 默认保持一致——新装/老 wire 缺字段都视为
+ * "启用 + 居中"，避免出现 wire 与磁盘真相撕裂。
  */
 export type QuickPanelSettingsDto = {
     enabled?: boolean;
+    position?: QuickPanelPositionDto;
 };
 
 /**
@@ -1322,6 +1328,7 @@ export type QuickPanelSettingsDto = {
  */
 export type QuickPanelSettingsPatchDto = {
     enabled?: boolean | null;
+    position?: QuickPanelPositionDto | null;
 };
 
 /**

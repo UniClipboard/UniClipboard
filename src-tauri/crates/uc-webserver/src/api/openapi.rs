@@ -42,12 +42,12 @@ use crate::api::dto::search::{
 use crate::api::dto::settings::{
     ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto, FileSyncSettingsPatchDto,
     GeneralSettingsDto, GeneralSettingsPatchDto, KeyboardShortcutsPatchDto, NetworkSettingsDto,
-    NetworkSettingsPatchDto, PairingSettingsDto, PairingSettingsPatchDto, QuickPanelSettingsDto,
-    QuickPanelSettingsPatchDto, RelayProbeOutcomeDto, RelayProbeRequestDto, RetentionPolicyDto,
-    RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto,
-    SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
-    ShortcutKeyDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto, ThemeDto,
-    UpdateChannelDto,
+    NetworkSettingsPatchDto, PairingSettingsDto, PairingSettingsPatchDto, QuickPanelPositionDto,
+    QuickPanelSettingsDto, QuickPanelSettingsPatchDto, RelayProbeOutcomeDto, RelayProbeRequestDto,
+    RetentionPolicyDto, RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto,
+    SecuritySettingsDto, SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto,
+    SettingsUpdateResultDto, ShortcutKeyDto, SyncFrequencyDto, SyncSettingsDto,
+    SyncSettingsPatchDto, ThemeDto, UpdateChannelDto,
 };
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
@@ -315,6 +315,7 @@ impl Modify for ContractMeta {
             FileSyncSettingsDto,
             NetworkSettingsDto,
             QuickPanelSettingsDto,
+            QuickPanelPositionDto,
             ShortcutKeyDto,
             ThemeDto,
             UpdateChannelDto,

@@ -13,7 +13,7 @@ import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
 import { cn } from '@/lib/utils'
 import ClipboardPreviewPane from './ClipboardPreviewPane'
 import HistoryPane from './components/HistoryPane'
-import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS } from './constants'
+import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS, QUICK_FILTER_ORDER } from './constants'
 import { useHistorySearch } from './hooks/useHistorySearch'
 import type { DisplayItem, PreviewAction, PreviewState, TimeRangePreset } from './types'
 
@@ -428,6 +428,24 @@ const ClipboardHistoryPanel: React.FC = () => {
         return
       }
 
+      // Tab / Shift+Tab cycle the content-type filter without moving focus off
+      // the search input (AdvancedSearch prevents the default tab + forwards the
+      // event here). Order mirrors the filter dropdown via QUICK_FILTER_ORDER.
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        dispatchPreview({ type: 'suppress', value: false })
+        dispatchPreview({ type: 'set-focus-source', source: 'selection' })
+        setHoveredIndex(null)
+        setActiveFilter(prev => {
+          const count = QUICK_FILTER_ORDER.length
+          // A filter outside the cycle (e.g. Favorited) maps to All as the base.
+          const base = Math.max(0, QUICK_FILTER_ORDER.indexOf(prev))
+          const next = e.shiftKey ? (base - 1 + count) % count : (base + 1) % count
+          return QUICK_FILTER_ORDER[next]
+        })
+        return
+      }
+
       switch (e.key) {
         case 'ArrowDown':
         case 'ArrowUp':
@@ -460,6 +478,14 @@ const ClipboardHistoryPanel: React.FC = () => {
   )
 
   const handleHistoryMouseMove = useCallback(() => setHasPointerMovedSinceShow(true), [])
+
+  // Keyboard navigation (arrows/Enter) is bound to the search input only, so it
+  // relies on the input keeping focus. The filter/time-range dropdowns steal
+  // focus to their trigger button on close — pulling it back here keeps arrow
+  // keys driving the list instead of re-opening the menu.
+  const focusSearchInput = useCallback(() => {
+    searchInputRef.current?.focus()
+  }, [])
 
   return (
     <div
@@ -514,6 +540,7 @@ const ClipboardHistoryPanel: React.FC = () => {
           tokens={tokens}
           setTokens={setTokens}
           onKeyDown={handleKeyDown}
+          focusSearchInput={focusSearchInput}
         />
       </div>
 

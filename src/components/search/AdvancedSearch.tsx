@@ -236,6 +236,10 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
           applySuggestionEvent(suggestions[suggestionIndex])
           return
         }
+      } else if (e.key === 'Tab') {
+        // Launcher 模型:焦点必须留在搜索框,所以阻止 Tab 移动焦点;但把事件
+        // 透传给父级,由它把 Tab / Shift+Tab 解释为切换内容类型筛选。
+        e.preventDefault()
       } else if (isAdvanced && e.key === 'Enter' && value.trim()) {
         e.preventDefault()
         addTokenEvent(value.trim())

@@ -1441,7 +1441,7 @@
         "close": "esc close",
         "loading": "Loading…",
         "searching": "Searching…",
-        "navigatePaste": "↑↓ navigate · ⏎ paste"
+        "navigatePaste": "↑↓ navigate · ⇥ type · ⏎ paste"
       },
       "empty": {
         "title": "No results found",

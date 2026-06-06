@@ -1432,7 +1432,7 @@
         "close": "esc 关闭",
         "loading": "加载中…",
         "searching": "搜索中…",
-        "navigatePaste": "↑↓ 移动 · ⏎ 粘贴"
+        "navigatePaste": "↑↓ 移动 · ⇥ 类型 · ⏎ 粘贴"
       },
       "empty": {
         "title": "没有找到结果",

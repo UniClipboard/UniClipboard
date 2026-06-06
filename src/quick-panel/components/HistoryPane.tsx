@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { quickCardClassName } from '../constants'
+import { quickCardClassName, QUICK_FILTER_ORDER } from '../constants'
 import type { DisplayItem, TimeRangePreset } from '../types'
 import PanelItem from './PanelItem'
 
@@ -58,6 +58,18 @@ interface HistoryPaneProps {
   tokens: string[]
   setTokens: (t: string[]) => void
   onKeyDown: (e: KeyboardEvent) => void
+  focusSearchInput: () => void
+}
+
+// Icon per content-type filter. Keyed by Filter; QUICK_FILTER_ORDER decides
+// which ones are shown and in what order.
+const FILTER_ICONS: Partial<Record<Filter, React.ElementType>> = {
+  [Filter.All]: Layers,
+  [Filter.Text]: FileText,
+  [Filter.Image]: ImageIcon,
+  [Filter.Link]: LinkIcon,
+  [Filter.File]: Folder,
+  [Filter.Code]: Code,
 }
 
 const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
@@ -91,18 +103,17 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     tokens,
     setTokens,
     onKeyDown,
+    focusSearchInput,
   }) => {
     const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel.history' })
 
     const filterTypes = useMemo(
-      () => [
-        { id: Filter.All, icon: Layers, label: t('filters.all') },
-        { id: Filter.Text, icon: FileText, label: t('filters.text') },
-        { id: Filter.Image, icon: ImageIcon, label: t('filters.image') },
-        { id: Filter.Link, icon: LinkIcon, label: t('filters.link') },
-        { id: Filter.File, icon: Folder, label: t('filters.file') },
-        { id: Filter.Code, icon: Code, label: t('filters.code') },
-      ],
+      () =>
+        QUICK_FILTER_ORDER.map(id => ({
+          id,
+          icon: FILTER_ICONS[id] ?? Search,
+          label: t(`filters.${id}`),
+        })),
       [t]
     )
 
@@ -190,7 +201,16 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                         <ChevronDown className="size-2.5 shrink-0 opacity-50" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-36">
+                    <DropdownMenuContent
+                      align="start"
+                      className="w-36"
+                      onCloseAutoFocus={e => {
+                        // Keep focus on the search input so arrow keys keep
+                        // driving the list instead of re-opening this menu.
+                        e.preventDefault()
+                        focusSearchInput()
+                      }}
+                    >
                       {filterTypes.map(f => (
                         <DropdownMenuItem
                           key={f.id}
@@ -279,7 +299,15 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                       <ChevronDown className="size-2.5 opacity-50" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="top" className="w-36">
+                  <DropdownMenuContent
+                    align="start"
+                    side="top"
+                    className="w-36"
+                    onCloseAutoFocus={e => {
+                      e.preventDefault()
+                      focusSearchInput()
+                    }}
+                  >
                     {timeRanges.map(range => (
                       <DropdownMenuItem
                         key={range.id}

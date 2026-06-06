@@ -25,7 +25,9 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
         ref={itemRef}
         role="option"
         aria-selected={isSelected}
-        tabIndex={isSelected ? 0 : -1}
+        // Launcher 模型:焦点锁在搜索框,方向键驱动列表。列表项不参与 Tab
+        // 顺序(恒定 -1),避免 Tab 把焦点移到这里导致键盘导航失效。
+        tabIndex={-1}
         className={[
           'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-4 py-2 text-[13px] leading-tight transition-colors',
           isSelected

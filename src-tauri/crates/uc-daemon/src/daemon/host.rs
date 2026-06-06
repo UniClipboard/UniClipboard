@@ -75,6 +75,12 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         )
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
+        // ADR-008 P5-L L7: now that we hold the instance lock, consume any pending
+        // cross-process handover by clearing it (claim under lock — R8-F1). A
+        // controlled restart (L8) leaves a {target_mode, generation} record in the
+        // lock dir; the new daemon clears it here. No-op in production (no writer yet).
+        uc_daemon_local::handover::clear(&storage_paths.app_data_root_dir);
+
         let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
         let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
         let file_transfer_facade = wired.file_transfer_facade.clone();

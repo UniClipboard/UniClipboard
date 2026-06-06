@@ -44,7 +44,7 @@ detached spawn 原语从 `uc-cli` 下沉到此处由 CLI 与 GUI shell 共用。
 | `health_wait.rs` | probe-only 的健康轮询（`wait_for_daemon_health`、`wait_for_endpoint_absent`） |
 
 进程管理原语已下沉到 thin crate **`uc-daemon-process`**（ADR-008 P5-0），本 crate 经
-`pub use uc_daemon_process::{process_metadata, socket, spawn, spawn_contract}` re-export，
+`pub use uc_daemon_process::{handover, process_metadata, socket, spawn, spawn_contract}` re-export，
 故既有 `uc_daemon_local::<module>::*` 路径保持不变：
 
 | 模块（re-export 自 `uc-daemon-process`） | 职责 |
@@ -53,10 +53,11 @@ detached spawn 原语从 `uc-cli` 下沉到此处由 CLI 与 GUI shell 共用。
 | `socket` | IPC/HTTP socket 路径解析（`try_resolve_daemon_http_addr`） |
 | `spawn` | `uniclipd` detached spawn + 二进制解析（`spawn_detached_daemon`、`resolve_daemon_exe_path`） |
 | `spawn_contract` | CLI→daemon run-mode / unattended-unlock 环境契约 |
+| `handover` | 跨进程受控重启交接存储（`HandoverRecord{target_mode,generation}` 落锁目录，read/write/clear；ADR-008 P5-L L7） |
 
 > **为什么下沉**：`uc-daemon-client` / `uc-cli` 只需进程管理原语，却因 `uc-daemon-local
-> → uc-application → uc-infra` 被迫编译 `iroh`/`diesel`。把这四个模块移进只依赖
-> `dirs`/`libc`/`which`/`serde`/`serde_json`/`anyhow` + `std` 的 `uc-daemon-process` 后，
+> → uc-application → uc-infra` 被迫编译 `iroh`/`diesel`。把这些模块移进只依赖
+> `dirs`/`libc`/`which`/`serde`/`serde_json`/`anyhow`/`tracing` + `std` 的 `uc-daemon-process` 后，
 > client 侧的污染边被切断（`cargo tree -p uc-daemon-client -i iroh` 现为空）。
 
 ## 不负责

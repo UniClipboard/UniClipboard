@@ -23,6 +23,10 @@ anyhow = "1.0"
 uc-app-paths = { path = "../uc-app-paths" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Best-effort warn-level logging in the handover store (corrupt/unclearable
+# record). `tracing` is a leaf facade — it pulls nothing heavy, so the
+# iroh/diesel-free invariant of this thin crate is preserved.
+tracing = "0.1"
 which = "7"
 
 [target.'cfg(unix)'.dependencies]

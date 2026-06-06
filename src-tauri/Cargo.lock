@@ -9966,6 +9966,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tracing",
  "uc-app-paths",
  "which",
 ]

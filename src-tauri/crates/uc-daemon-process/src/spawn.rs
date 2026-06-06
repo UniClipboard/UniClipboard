@@ -84,6 +84,22 @@ pub fn spawn_detached_daemon(origin: DaemonSpawnOrigin) -> Result<(), SpawnDaemo
 
     configure_detached(&mut command);
 
+    // ADR-008 P5-L L7: honour a pending cross-process handover. A controlled
+    // restart (L8) writes the target run mode to the lock dir while holding the
+    // OLD daemon's instance lock; the spawner reads it here as a HINT and launches
+    // the new daemon in that mode via RUN_MODE_ENV. Best-effort: in production
+    // nothing writes a record (read → None), so the spawn is unchanged.
+    if let Some(app_data_root) = uc_app_paths::app_data_root() {
+        if let Some(record) = crate::handover::read(&app_data_root) {
+            command.env(crate::spawn_contract::RUN_MODE_ENV, &record.target_mode);
+            tracing::info!(
+                target_mode = %record.target_mode,
+                generation = record.generation,
+                "spawning daemon to fulfil a pending handover",
+            );
+        }
+    }
+
     let child = command.spawn().map_err(|error| {
         SpawnDaemonError::Spawn(anyhow::Error::new(error).context(format!(
             "failed to spawn daemon via `{}`",

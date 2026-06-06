@@ -24,4 +24,4 @@ pub mod instance_lock;
 // pulling in uc-application → uc-infra → iroh/diesel. Re-export them here under
 // their original module paths so every existing `uc_daemon_local::<module>::*`
 // consumer (uc-daemon, uc-desktop, uc-webserver, …) keeps compiling unchanged.
-pub use uc_daemon_process::{process_metadata, socket, spawn, spawn_contract};
+pub use uc_daemon_process::{handover, process_metadata, socket, spawn, spawn_contract};

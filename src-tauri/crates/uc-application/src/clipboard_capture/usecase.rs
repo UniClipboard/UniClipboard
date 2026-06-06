@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Result;
-use tracing::{debug, info, info_span, Instrument};
+use tracing::{debug, info, info_span, warn, Instrument};
 use uc_observability::analytics::{
     AnalyticsPort, CaptureOrigin, Event, PayloadSizeBucket, PayloadType,
 };
@@ -41,6 +41,18 @@ use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
     ObservedClipboardRepresentation, PayloadAvailability, SystemClipboardSnapshot,
 };
+
+/// Result of a capture attempt.
+///
+/// `deduplicated == true` means the snapshot matched an existing entry's
+/// content hash and that entry was resurfaced (its active time was bumped to
+/// the top of history) instead of persisting a duplicate row. Callers should
+/// refresh the UI for the entry but must NOT re-index or re-dispatch it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureOutcome {
+    pub entry_id: EntryId,
+    pub deduplicated: bool,
+}
 
 /// Capture clipboard content and create persistent entries.
 ///
@@ -98,6 +110,7 @@ impl CaptureClipboardUseCase {
     pub async fn execute(&self, snapshot: SystemClipboardSnapshot) -> Result<EntryId> {
         self.execute_with_origin(snapshot, ClipboardChangeOrigin::LocalCapture, None)
             .await?
+            .map(|outcome| outcome.entry_id)
             .ok_or_else(|| anyhow::anyhow!("local capture should always persist an entry"))
     }
 
@@ -111,7 +124,7 @@ impl CaptureClipboardUseCase {
         snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
-    ) -> Result<Option<EntryId>> {
+    ) -> Result<Option<CaptureOutcome>> {
         // Root span: all pipeline stages are children of clipboard.flow.
         // The origin field distinguishes local capture from remote push.
         //
@@ -168,6 +181,32 @@ impl CaptureClipboardUseCase {
                 .entered();
                 snapshot.snapshot_hash()
             };
+
+            // Local-capture dedup: if this exact content already exists,
+            // resurface the existing entry (bump it to the top of history)
+            // instead of persisting a duplicate row and re-dispatching it.
+            // Gated to `LocalCapture` — `RemotePush` runs its own dedup
+            // upstream, and `LocalRestore` already short-circuits above.
+            //
+            // Non-fatal: a lookup failure must not drop the capture, so on
+            // error we degrade to the prior no-dedup behavior (create a new
+            // entry) rather than propagating.
+            if origin == ClipboardChangeOrigin::LocalCapture {
+                let hash_str = snapshot_hash.to_string();
+                if let Some(existing) =
+                    resurface_existing_entry(self.entry_repo.as_ref(), &hash_str, captured_at_ms)
+                        .await
+                {
+                    info!(
+                        entry_id = %existing,
+                        "Local capture matched existing content; resurfaced instead of duplicating"
+                    );
+                    return Ok(Some(CaptureOutcome {
+                        entry_id: existing,
+                        deduplicated: true,
+                    }));
+                }
+            }
 
             // 1. 生成 event + snapshot representations
             let new_event = ClipboardEvent::new(
@@ -400,7 +439,10 @@ impl CaptureClipboardUseCase {
                 });
             }
 
-            Ok(Some(entry_id))
+            Ok(Some(CaptureOutcome {
+                entry_id,
+                deduplicated: false,
+            }))
         }
         .instrument(root)
         .await
@@ -494,6 +536,57 @@ impl CaptureClipboardUseCase {
             || rep.format_id.eq_ignore_ascii_case("public.utf8-plain-text")
             || rep.format_id.eq_ignore_ascii_case("public.text")
             || rep.format_id.eq_ignore_ascii_case("NSStringPboardType")
+    }
+}
+
+/// Resolve a local-capture dedup hit into the entry that should be
+/// resurfaced, or `None` when the capture must be persisted as a new entry.
+///
+/// Returns `Some(entry_id)` only when an entry carrying this `snapshot_hash`
+/// exists AND its active time was successfully bumped (`touch_entry` updated a
+/// row). Three cases yield `None` so the caller degrades to creating a fresh
+/// entry instead of returning a stale id:
+///   - no entry matches the hash (`Ok(None)`),
+///   - the lookup itself failed (`Err`), and
+///   - `touch_entry` updated no rows (`Ok(false)`) — the entry was deleted
+///     between the lookup and the touch (e.g. a concurrent cleanup), so the
+///     id would dangle if returned as `deduplicated: true`.
+///
+/// All failure paths are non-fatal: a dedup miss must never drop the capture.
+async fn resurface_existing_entry(
+    entry_repo: &dyn ClipboardEntryRepositoryPort,
+    snapshot_hash: &str,
+    captured_at_ms: i64,
+) -> Option<EntryId> {
+    let existing = match entry_repo
+        .find_entry_id_by_snapshot_hash(snapshot_hash)
+        .await
+    {
+        Ok(Some(existing)) => existing,
+        Ok(None) => return None,
+        Err(e) => {
+            warn!(error = %e, "Local-capture dedup lookup failed; proceeding to create entry");
+            return None;
+        }
+    };
+
+    match entry_repo.touch_entry(&existing, captured_at_ms).await {
+        Ok(true) => Some(existing),
+        Ok(false) => {
+            warn!(
+                entry_id = %existing,
+                "Dedup target vanished before resurface (0 rows touched); creating new entry"
+            );
+            None
+        }
+        Err(e) => {
+            warn!(
+                entry_id = %existing,
+                error = %e,
+                "Failed to resurface existing entry; creating new entry"
+            );
+            None
+        }
     }
 }
 
@@ -715,5 +808,129 @@ mod tests {
             &[0xff, 0xfe, 0xfd],
         )]);
         assert_eq!(CaptureClipboardUseCase::generate_title(&snap), None);
+    }
+
+    // --- resurface_existing_entry: local-capture dedup decision ---------
+
+    /// What the fake repo's `touch_entry` should simulate.
+    enum Touch {
+        /// A row was updated — the entry still exists.
+        Updated,
+        /// 0 rows updated — the entry was deleted between find and touch.
+        NoRows,
+        /// The update itself failed.
+        Err,
+    }
+
+    /// Minimal `ClipboardEntryRepositoryPort` exercising only the two methods
+    /// `resurface_existing_entry` calls; everything else is unreachable here.
+    struct DedupFakeRepo {
+        /// `Ok(_)` value returned by `find_entry_id_by_snapshot_hash`.
+        found: Option<EntryId>,
+        /// When true, the lookup returns `Err` instead of `Ok(found)`.
+        find_err: bool,
+        touch: Touch,
+    }
+
+    #[async_trait::async_trait]
+    impl ClipboardEntryRepositoryPort for DedupFakeRepo {
+        async fn save_entry_and_selection(
+            &self,
+            _entry: &ClipboardEntry,
+            _selection: &ClipboardSelectionDecision,
+        ) -> Result<()> {
+            unreachable!("not exercised by resurface_existing_entry tests")
+        }
+        async fn get_entry(&self, _entry_id: &EntryId) -> Result<Option<ClipboardEntry>> {
+            unreachable!("not exercised by resurface_existing_entry tests")
+        }
+        async fn list_entries(&self, _limit: usize, _offset: usize) -> Result<Vec<ClipboardEntry>> {
+            unreachable!("not exercised by resurface_existing_entry tests")
+        }
+        async fn delete_entry(&self, _entry_id: &EntryId) -> Result<()> {
+            unreachable!("not exercised by resurface_existing_entry tests")
+        }
+        async fn find_entry_id_by_snapshot_hash(
+            &self,
+            _snapshot_hash: &str,
+        ) -> Result<Option<EntryId>> {
+            if self.find_err {
+                anyhow::bail!("simulated dedup lookup failure");
+            }
+            Ok(self.found.clone())
+        }
+        async fn touch_entry(&self, _entry_id: &EntryId, _active_time_ms: i64) -> Result<bool> {
+            match self.touch {
+                Touch::Updated => Ok(true),
+                Touch::NoRows => Ok(false),
+                Touch::Err => anyhow::bail!("simulated touch failure"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn resurface_returns_entry_when_found_and_touched() {
+        let repo = DedupFakeRepo {
+            found: Some(EntryId::from("e1")),
+            find_err: false,
+            touch: Touch::Updated,
+        };
+        let out = resurface_existing_entry(&repo, "blake3v1:abc", 123).await;
+        assert_eq!(out, Some(EntryId::from("e1")));
+    }
+
+    #[tokio::test]
+    async fn resurface_degrades_when_touch_updates_no_rows() {
+        // Entry was deleted between find and touch (concurrent cleanup):
+        // returning a stale id would broadcast a non-existent entry, so the
+        // capture must degrade to creating a fresh entry instead.
+        let repo = DedupFakeRepo {
+            found: Some(EntryId::from("e1")),
+            find_err: false,
+            touch: Touch::NoRows,
+        };
+        assert_eq!(
+            resurface_existing_entry(&repo, "blake3v1:abc", 123).await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn resurface_degrades_when_touch_errors() {
+        let repo = DedupFakeRepo {
+            found: Some(EntryId::from("e1")),
+            find_err: false,
+            touch: Touch::Err,
+        };
+        assert_eq!(
+            resurface_existing_entry(&repo, "blake3v1:abc", 123).await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn resurface_returns_none_when_no_match() {
+        let repo = DedupFakeRepo {
+            found: None,
+            find_err: false,
+            touch: Touch::Updated,
+        };
+        assert_eq!(
+            resurface_existing_entry(&repo, "blake3v1:abc", 123).await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn resurface_returns_none_when_lookup_errors() {
+        let repo = DedupFakeRepo {
+            found: None,
+            find_err: true,
+            touch: Touch::Updated,
+        };
+        assert_eq!(
+            resurface_existing_entry(&repo, "blake3v1:abc", 123).await,
+            None
+        );
     }
 }

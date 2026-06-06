@@ -181,7 +181,8 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         match self.clipboard_capture.capture(snapshot, origin, None).await {
             Ok(Some(captured)) => {
                 let entry_id = EntryId::from(captured.entry_id.as_str());
-                debug!(entry_id = %entry_id, ?origin, "Daemon clipboard capture succeeded");
+                let deduplicated = captured.deduplicated;
+                debug!(entry_id = %entry_id, ?origin, deduplicated, "Daemon clipboard capture succeeded");
 
                 let payload = ClipboardNewContentPayload {
                     entry_id: captured.entry_id,
@@ -210,24 +211,38 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                     debug!(error = %e, "No WS subscribers for clipboard.new_content");
                 }
 
-                let search_span = tracing::info_span!("search.live_index", entry_id = %entry_id);
-                match self
-                    .clipboard_live_index
-                    .index_capture(ClipboardLiveIndexInput {
-                        entry_id: entry_id.to_string(),
-                        snapshot: Arc::clone(&outbound_snapshot),
-                    })
-                    .instrument(search_span)
-                    .await
-                {
-                    Ok(ClipboardLiveIndexOutcome::Indexed) => {
-                        debug!(entry_id = %entry_id, "search: indexed captured entry");
-                    }
-                    Ok(ClipboardLiveIndexOutcome::Skipped { reason }) => {
-                        debug!(entry_id = %entry_id, reason, "search: skipped live index");
-                    }
-                    Err(e) => {
-                        warn!(error = %e, entry_id = %entry_id, "search: live index failed");
+                // Local dedup resurfaced an existing entry: it is already in
+                // the search index, so skip the live-index pass. We still
+                // dispatch below — a peer that was offline during the first
+                // copy never received this entry, and the outbound/inbound
+                // paths dedup byte-identical content, so re-dispatching on a
+                // re-copy is how an offline-then-rejoined peer catches up.
+                if deduplicated {
+                    debug!(
+                        entry_id = %entry_id,
+                        "watcher: resurfaced existing entry; skipping re-index, still dispatching for offline-peer catch-up"
+                    );
+                } else {
+                    let search_span =
+                        tracing::info_span!("search.live_index", entry_id = %entry_id);
+                    match self
+                        .clipboard_live_index
+                        .index_capture(ClipboardLiveIndexInput {
+                            entry_id: entry_id.to_string(),
+                            snapshot: Arc::clone(&outbound_snapshot),
+                        })
+                        .instrument(search_span)
+                        .await
+                    {
+                        Ok(ClipboardLiveIndexOutcome::Indexed) => {
+                            debug!(entry_id = %entry_id, "search: indexed captured entry");
+                        }
+                        Ok(ClipboardLiveIndexOutcome::Skipped { reason }) => {
+                            debug!(entry_id = %entry_id, reason, "search: skipped live index");
+                        }
+                        Err(e) => {
+                            warn!(error = %e, entry_id = %entry_id, "search: live index failed");
+                        }
                     }
                 }
 

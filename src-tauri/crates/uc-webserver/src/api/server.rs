@@ -25,6 +25,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::auth::{build_connection_info, DaemonAuthToken, DaemonConnectionInfo};
+use crate::api::control_lease::ControlLeaseRegistry;
 use crate::api::dto::error::ApiError;
 use crate::api::openapi::ApiDoc;
 use crate::api::routes;
@@ -73,6 +74,13 @@ pub struct DaemonApiState {
     /// [`DaemonResidency::Standalone`] so assembly paths / tests that don't wire
     /// it construct cleanly (same defaulting strategy as the analytics no-op).
     pub residency: DaemonResidency,
+    /// Control-WS lease registry (ADR-008 P5-L L3). Each authenticated WS
+    /// connection holds one connection-bound lease for its lifetime; the active
+    /// count is the daemon-side liveness signal that L4 consumes to decide when
+    /// an `Oneshot` daemon may self-terminate. The registry is `Arc`-backed, so
+    /// every `DaemonApiState` clone shares the same counter. In L3 the count is
+    /// observed/logged only — no consumer reads it to drive behaviour yet.
+    pub lease_registry: ControlLeaseRegistry,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -99,6 +107,7 @@ impl DaemonApiState {
             analytics: Arc::new(NoopAnalyticsSink),
             large_blob_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_PULLS)),
             residency: DaemonResidency::Standalone,
+            lease_registry: ControlLeaseRegistry::new(),
         }
     }
 

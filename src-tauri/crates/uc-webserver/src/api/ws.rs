@@ -205,6 +205,13 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
             "websocket connection authenticated",
         );
 
+        // Connection-bound control-WS lease (ADR-008 P5-L L3). Held for the whole
+        // connection lifetime and released when this `_control_lease` drops at the
+        // cleanup tail below — covering clean close, abrupt TCP reset / kill -9,
+        // and heartbeat-stale eviction. No consumer reads the count yet (L4 does);
+        // tracked in all run modes.
+        let _control_lease = state.lease_registry.acquire();
+
         let (outbound_tx, mut outbound_rx) = mpsc::channel::<DaemonWsEvent>(32);
         let mut broadcast_rx = state.event_tx.subscribe();
         let fanout_topics = Arc::clone(&topics);

@@ -34,6 +34,12 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
+# macOS: the headless daemon loads AppKit (for `NSPasteboard`) and must then
+# demote its activation policy so it never shows a (forever-bouncing) Dock tile.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder"] }
+
 [dev-dependencies]
 uc-daemon-local = { path = "../uc-daemon-local", features = ["test-helpers"] }
 tempfile = "3"

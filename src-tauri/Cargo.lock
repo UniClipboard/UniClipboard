@@ -9876,6 +9876,8 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "mockall 0.13.1",
+ "objc2",
+ "objc2-app-kit",
  "rustls",
  "serde",
  "serde_json",

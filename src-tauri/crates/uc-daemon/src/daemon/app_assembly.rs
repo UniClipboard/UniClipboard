@@ -7,7 +7,7 @@ use tokio::sync::{broadcast, Notify};
 use tokio_util::sync::CancellationToken;
 use uc_application::facade::{AppFacade, AppPaths, HostEventBus};
 use uc_daemon_local::process_metadata::DaemonProcessMode;
-use uc_webserver::api::types::DaemonWsEvent;
+use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 
 use crate::daemon::app::DaemonApp;
 use crate::daemon::service::DaemonService;
@@ -32,6 +32,10 @@ pub struct DaemonAppAssemblyInput {
     /// 写进 PID 文件的进程模式标记。现存 run-mode 恒为 `Standalone`;
     /// `InProcess` 仅作 legacy PID 文件读取保留。
     pub process_mode: DaemonProcessMode,
+    /// 在 health/status 握手里上报的 daemon 驻留模式（ADR-008 P5-L L1）。
+    /// 由调用方从 `DaemonRunMode` 映射而来,透传进 `DaemonApiState`,持久客户端
+    /// 后续据此识别 `Oneshot` 并接管(R8-F2)。L1 阶段 CLI/GUI 还不消费此字段。
+    pub residency: DaemonResidency,
     /// Mobile sync LAN endpoint adapter — daemon listener 启停时通过 inherent
     /// `set` / `clear` 写入,facade 端只读。
     pub mobile_sync_endpoint_info:
@@ -62,6 +66,7 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
         local_device_id,
         listens_to_os_signals,
         process_mode,
+        residency,
         mobile_sync_endpoint_info,
         mobile_lan_lifecycle,
         analytics,
@@ -91,4 +96,5 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
     .with_mobile_lan_endpoint_info(mobile_sync_endpoint_info)
     .with_mobile_lan_lifecycle(mobile_lan_lifecycle)
     .with_analytics(analytics)
+    .with_residency(residency)
 }

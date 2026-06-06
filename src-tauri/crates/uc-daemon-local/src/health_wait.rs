@@ -83,13 +83,14 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-    use uc_daemon_contract::api::types::HealthResponse;
+    use uc_daemon_contract::api::types::{DaemonResidency, HealthResponse};
 
     fn ok_health() -> HealthResponse {
         HealthResponse {
             status: "ok".into(),
             package_version: "0.6.0".into(),
             api_revision: "rev-1".into(),
+            residency: DaemonResidency::Standalone,
         }
     }
 

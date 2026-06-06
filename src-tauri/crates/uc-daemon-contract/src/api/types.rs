@@ -5,12 +5,50 @@ use serde_json::Value;
 use uc_core::file_transfer::FileTransferDirection;
 use utoipa::ToSchema;
 
+/// Daemon residency mode reported in the health/status handshake (ADR-008 P5-L L1).
+///
+/// Wire values (camelCase, to match the `HealthResponse`/`StatusResponse` field
+/// naming these enums travel inside): `"standalone" | "serverHeadless" |
+/// "oneshot"`. The wire enum is defined HERE in the contract — it deliberately
+/// does NOT depend on `uc-daemon`'s internal `DaemonRunMode`; the producer maps
+/// `DaemonRunMode -> DaemonResidency` at the daemon/webserver boundary.
+///
+/// Consumers (CLI L2 version-check, future R8-F2 takeover) read this to learn
+/// whether the daemon they are talking to is a persistent member node
+/// (`Standalone`/`ServerHeadless`) or a transient `Oneshot` that a persistent
+/// client may later take over. As of L1 the CLI/GUI do NOT act on this field.
+///
+/// Backward-tolerant: the field carries `#[serde(default)]`, so an OLDER
+/// daemon body that omits `residency` decodes to [`Self::Standalone`], and a
+/// NEWER body's `residency` is simply ignored by an older client. New variants
+/// must be added at the END so existing clients keep deserializing known values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum DaemonResidency {
+    /// Persistent member node — the safe, most-common production mode and the
+    /// only one reachable today. Chosen as the `#[default]` so a missing field
+    /// (older daemon) decodes to a non-null, takeover-safe value.
+    #[default]
+    Standalone,
+    /// Persistent headless server node (no system clipboard); still a member
+    /// node from a takeover standpoint, never an `Oneshot`.
+    ServerHeadless,
+    /// Transient one-shot daemon (ADR-008 P5-L). A persistent client detecting
+    /// this may later take it over (R8-F2). Inert/unreachable as of L1.
+    Oneshot,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthResponse {
     pub status: String,
     pub package_version: String,
     pub api_revision: String,
+    /// Daemon residency mode (ADR-008 P5-L L1). Backward-tolerant via
+    /// `#[serde(default)]` — absent on older daemons, decodes to
+    /// [`DaemonResidency::Standalone`].
+    #[serde(default)]
+    pub residency: DaemonResidency,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -20,6 +58,11 @@ pub struct StatusResponse {
     pub api_revision: String,
     pub uptime_seconds: u64,
     pub workers: Vec<WorkerStatusDto>,
+    /// Daemon residency mode (ADR-008 P5-L L1). Backward-tolerant via
+    /// `#[serde(default)]` — absent on older daemons, decodes to
+    /// [`DaemonResidency::Standalone`].
+    #[serde(default)]
+    pub residency: DaemonResidency,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -193,3 +236,94 @@ pub use crate::api::dto::setup::{
     GetSetupStateResponse, SetupActionResponse, SetupResetResponse, SetupSelectPeerRequest,
     SetupStateResponse, SetupStateResponseDto, SetupSubmitPassphraseRequest,
 };
+
+#[cfg(test)]
+mod residency_backward_tolerance_tests {
+    use super::*;
+
+    /// (a) OLD body -> NEW struct: a `HealthResponse` JSON emitted by a daemon
+    /// that predates ADR-008 P5-L L1 carries NO `residency` field. The new
+    /// struct must still deserialize, defaulting to
+    /// [`DaemonResidency::Standalone`] via `#[serde(default)]`.
+    #[test]
+    fn health_body_without_residency_deserializes_to_standalone_default() {
+        let old_body = serde_json::json!({
+            "status": "ok",
+            "packageVersion": "0.14.0",
+            "apiRevision": "some-older-revision",
+        });
+        let parsed: HealthResponse = serde_json::from_value(old_body).unwrap();
+        assert_eq!(parsed.residency, DaemonResidency::Standalone);
+        assert_eq!(parsed.status, "ok");
+    }
+
+    /// Same backward-tolerance for `StatusResponse`.
+    #[test]
+    fn status_body_without_residency_deserializes_to_standalone_default() {
+        let old_body = serde_json::json!({
+            "packageVersion": "0.14.0",
+            "apiRevision": "some-older-revision",
+            "uptimeSeconds": 42,
+            "workers": [],
+        });
+        let parsed: StatusResponse = serde_json::from_value(old_body).unwrap();
+        assert_eq!(parsed.residency, DaemonResidency::Standalone);
+        assert_eq!(parsed.uptime_seconds, 42);
+    }
+
+    /// (b) NEW body -> OLD decoder: the new struct serializes a `residency`
+    /// field that an OLDER decoder (a struct shape that predates the field)
+    /// simply ignores. serde drops unknown fields by default, so decoding a
+    /// fresh `HealthResponse` body into the legacy shape must still succeed.
+    #[test]
+    fn new_health_body_residency_is_ignored_by_older_decoder() {
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LegacyHealthResponse {
+            status: String,
+            package_version: String,
+            api_revision: String,
+        }
+
+        let new_body = serde_json::to_value(HealthResponse {
+            status: "ok".to_string(),
+            package_version: "0.14.0".to_string(),
+            api_revision: "residency-revision".to_string(),
+            residency: DaemonResidency::Oneshot,
+        })
+        .unwrap();
+        // The new wire body MUST carry the camelCase residency value so newer
+        // clients can read it.
+        assert_eq!(new_body["residency"], "oneshot");
+
+        // The older decoder ignores the unknown `residency` field and still
+        // decodes every field it knows about.
+        let legacy: LegacyHealthResponse = serde_json::from_value(new_body).unwrap();
+        assert_eq!(legacy.status, "ok");
+        assert_eq!(legacy.package_version, "0.14.0");
+        assert_eq!(legacy.api_revision, "residency-revision");
+    }
+
+    /// Residency wire values are camelCase and round-trip stably for every
+    /// variant — pins the externally-observable strings consumers match on.
+    #[test]
+    fn residency_variants_round_trip_camel_case() {
+        for (variant, wire) in [
+            (DaemonResidency::Standalone, "standalone"),
+            (DaemonResidency::ServerHeadless, "serverHeadless"),
+            (DaemonResidency::Oneshot, "oneshot"),
+        ] {
+            let json = serde_json::to_value(variant).unwrap();
+            assert_eq!(json, serde_json::Value::String(wire.to_string()));
+            let back: DaemonResidency = serde_json::from_value(json).unwrap();
+            assert_eq!(back, variant);
+        }
+    }
+
+    /// The `#[default]` is `Standalone` — the takeover-safe, most-common
+    /// production value a missing field decodes to.
+    #[test]
+    fn residency_default_is_standalone() {
+        assert_eq!(DaemonResidency::default(), DaemonResidency::Standalone);
+    }
+}

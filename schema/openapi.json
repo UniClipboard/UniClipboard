@@ -498,6 +498,15 @@
         ],
         "type": "object"
       },
+      "DaemonResidency": {
+        "description": "Daemon residency mode reported in the health/status handshake (ADR-008 P5-L L1).\n\nWire values (camelCase, to match the `HealthResponse`/`StatusResponse` field\nnaming these enums travel inside): `\"standalone\" | \"serverHeadless\" |\n\"oneshot\"`. The wire enum is defined HERE in the contract — it deliberately\ndoes NOT depend on `uc-daemon`'s internal `DaemonRunMode`; the producer maps\n`DaemonRunMode -> DaemonResidency` at the daemon/webserver boundary.\n\nConsumers (CLI L2 version-check, future R8-F2 takeover) read this to learn\nwhether the daemon they are talking to is a persistent member node\n(`Standalone`/`ServerHeadless`) or a transient `Oneshot` that a persistent\nclient may later take over. As of L1 the CLI/GUI do NOT act on this field.\n\nBackward-tolerant: the field carries `#[serde(default)]`, so an OLDER\ndaemon body that omits `residency` decodes to [`Self::Standalone`], and a\nNEWER body's `residency` is simply ignored by an older client. New variants\nmust be added at the END so existing clients keep deserializing known values.",
+        "enum": [
+          "standalone",
+          "serverHeadless",
+          "oneshot"
+        ],
+        "type": "string"
+      },
       "DaemonWsEvent": {
         "properties": {
           "payload": {
@@ -1355,6 +1364,9 @@
           },
           "packageVersion": {
             "type": "string"
+          },
+          "residency": {
+            "$ref": "#/components/schemas/DaemonResidency"
           },
           "status": {
             "type": "string"
@@ -3470,6 +3482,9 @@
           },
           "packageVersion": {
             "type": "string"
+          },
+          "residency": {
+            "$ref": "#/components/schemas/DaemonResidency"
           },
           "uptimeSeconds": {
             "format": "int64",

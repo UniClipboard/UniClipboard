@@ -92,8 +92,8 @@ use uc_daemon_contract::api::dto::v2::setup::{
 use uc_daemon_contract::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
 use uc_daemon_contract::api::types::DaemonWsEvent;
 use uc_daemon_contract::api::types::{
-    HealthResponse, LifecycleStatusResponse, PeerSnapshotDto, PresenceRefreshResponse,
-    SpaceMemberDto, StatusResponse, WorkerStatusDto,
+    DaemonResidency, HealthResponse, LifecycleStatusResponse, PeerSnapshotDto,
+    PresenceRefreshResponse, SpaceMemberDto, StatusResponse, WorkerStatusDto,
 };
 
 /// Applies the contract-owned cross-cutting OpenAPI metadata (info-adjacent
@@ -359,6 +359,7 @@ impl Modify for ContractMeta {
             PresenceRefreshEnvelope,
             HealthResponse,
             StatusResponse,
+            DaemonResidency,
             WorkerStatusDto,
             PeerSnapshotDto,
             SpaceMemberDto,

@@ -1,5 +1,6 @@
 //! daemon 运行模式。
 
+use uc_daemon_contract::api::types::DaemonResidency;
 use uc_daemon_local::process_metadata::DaemonProcessMode;
 
 /// 桌面 daemon 的运行模式。
@@ -95,6 +96,22 @@ impl DaemonRunMode {
     }
 }
 
+/// Map the daemon's internal run mode onto the wire-stable residency enum
+/// surfaced in the health/status handshake (ADR-008 P5-L L1).
+///
+/// The mapping lives HERE (uc-daemon side) rather than in the contract so
+/// `uc-daemon-contract` stays free of any `DaemonRunMode` dependency — the
+/// contract owns only the closed wire enum, the daemon owns the translation.
+impl From<DaemonRunMode> for DaemonResidency {
+    fn from(mode: DaemonRunMode) -> Self {
+        match mode {
+            DaemonRunMode::Standalone => DaemonResidency::Standalone,
+            DaemonRunMode::ServerHeadless => DaemonResidency::ServerHeadless,
+            DaemonRunMode::Oneshot => DaemonResidency::Oneshot,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,5 +202,70 @@ mod tests {
             standalone.waits_for_gui_ready()
         );
         assert!(!oneshot.waits_for_gui_ready());
+    }
+
+    #[test]
+    fn run_mode_maps_to_wire_residency() {
+        // ADR-008 P5-L L1: the health/status handshake reports residency. Each
+        // run mode must map to its own distinct wire variant so a persistent
+        // client can later detect an Oneshot (R8-F2) and a CLI version-check
+        // (L2) can read it.
+        assert_eq!(
+            DaemonResidency::from(DaemonRunMode::Standalone),
+            DaemonResidency::Standalone
+        );
+        assert_eq!(
+            DaemonResidency::from(DaemonRunMode::ServerHeadless),
+            DaemonResidency::ServerHeadless
+        );
+        assert_eq!(
+            DaemonResidency::from(DaemonRunMode::Oneshot),
+            DaemonResidency::Oneshot
+        );
+    }
+
+    #[test]
+    fn each_run_mode_surfaces_matching_residency_in_health_and_status() {
+        // ADR-008 P5-L L1 GATE: a `DaemonApiState` built from each
+        // `DaemonRunMode` must surface that mode's residency in BOTH the
+        // health and the status handshake bodies. Building a full
+        // `DaemonApiState` here is infeasible (it needs a real `AppFacade`
+        // composed from ~18 sub-facades + ports), so we drive the same
+        // assembly seam the runtime uses — `DaemonApiState::with_residency`
+        // is fed `run_mode.into()` at `build_daemon_app_instance` /
+        // `DaemonApp::build_api_state`, and `health_response()` /
+        // `status_response()` are verbatim copies of `self.residency`. We
+        // therefore exercise that exact handler-emission logic per run mode.
+        use uc_webserver::api::server::DaemonApiState;
+
+        for (mode, expected) in [
+            (DaemonRunMode::Standalone, DaemonResidency::Standalone),
+            (
+                DaemonRunMode::ServerHeadless,
+                DaemonResidency::ServerHeadless,
+            ),
+            (DaemonRunMode::Oneshot, DaemonResidency::Oneshot),
+        ] {
+            // Same value the assembly boundary injects via `.with_residency`.
+            let residency_for_state: DaemonResidency = mode.into();
+            assert_eq!(
+                residency_for_state, expected,
+                "run mode {mode:?} must map to {expected:?} before it reaches DaemonApiState"
+            );
+
+            // `health_response()` / `status_response()` copy `self.residency`
+            // verbatim, so assert the bodies a state with this residency emits.
+            let health = DaemonApiState::health_response_for(residency_for_state);
+            assert_eq!(
+                health.residency, expected,
+                "GET /health must report {expected:?} for run mode {mode:?}"
+            );
+
+            let status = DaemonApiState::status_response_for(residency_for_state);
+            assert_eq!(
+                status.residency, expected,
+                "GET /status must report {expected:?} for run mode {mode:?}"
+            );
+        }
     }
 }

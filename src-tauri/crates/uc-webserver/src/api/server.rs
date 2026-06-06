@@ -29,8 +29,8 @@ use crate::api::dto::error::ApiError;
 use crate::api::openapi::ApiDoc;
 use crate::api::routes;
 use crate::api::types::{
-    DaemonWsEvent, HealthResponse, PeerSnapshotDto, PresenceRefreshResponse, SpaceMemberDto,
-    StatusResponse,
+    DaemonResidency, DaemonWsEvent, HealthResponse, PeerSnapshotDto, PresenceRefreshResponse,
+    SpaceMemberDto, StatusResponse,
 };
 use crate::api::ws;
 use crate::security::SecurityState;
@@ -67,6 +67,12 @@ pub struct DaemonApiState {
     /// payload` until the streaming reader supersedes it. Thumbnails are
     /// exempt (small, served via the separate `/clipboard/thumbnails` route).
     pub large_blob_semaphore: Arc<Semaphore>,
+    /// Daemon residency mode surfaced in the health/status handshake
+    /// (ADR-008 P5-L L1). Mapped from the daemon's `DaemonRunMode` at the
+    /// assembly boundary and injected via [`Self::with_residency`]. Defaults to
+    /// [`DaemonResidency::Standalone`] so assembly paths / tests that don't wire
+    /// it construct cleanly (same defaulting strategy as the analytics no-op).
+    pub residency: DaemonResidency,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -92,11 +98,21 @@ impl DaemonApiState {
             security,
             analytics: Arc::new(NoopAnalyticsSink),
             large_blob_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_PULLS)),
+            residency: DaemonResidency::Standalone,
         }
     }
 
     pub fn with_security(mut self, security: Arc<SecurityState>) -> Self {
         self.security = security;
+        self
+    }
+
+    /// Inject the daemon's residency mode (ADR-008 P5-L L1) so the
+    /// health/status handshake reports whether this daemon is a persistent
+    /// member node or a transient `Oneshot`. Mapped from `DaemonRunMode` at the
+    /// daemon assembly boundary.
+    pub fn with_residency(mut self, residency: DaemonResidency) -> Self {
+        self.residency = residency;
         self
     }
 
@@ -112,19 +128,41 @@ impl DaemonApiState {
     }
 
     pub fn health_response(&self) -> HealthResponse {
+        Self::health_response_for(self.residency)
+    }
+
+    /// Build the `GET /health` body for a given residency. Split out from
+    /// [`Self::health_response`] (which just forwards `self.residency`) so the
+    /// residency-emission contract — every `DaemonRunMode` surfaces its own
+    /// residency in the handshake (ADR-008 P5-L L1) — is unit-testable without
+    /// composing a full `DaemonApiState` (and thus a full `AppFacade`).
+    pub fn health_response_for(residency: DaemonResidency) -> HealthResponse {
         HealthResponse {
             status: "ok".to_string(),
             package_version: env!("CARGO_PKG_VERSION").to_string(),
             api_revision: uc_daemon_contract::DAEMON_API_REVISION.to_string(),
+            residency,
         }
     }
 
     pub fn status_response(&self) -> StatusResponse {
         StatusResponse {
+            uptime_seconds: self.started_at.elapsed().as_secs(),
+            ..Self::status_response_for(self.residency)
+        }
+    }
+
+    /// Build the `GET /status` body for a given residency (uptime defaults to
+    /// `0`; the live method overrides it from `started_at`). Mirrors
+    /// [`Self::health_response_for`] so the residency-emission contract is
+    /// unit-testable without a full `DaemonApiState`.
+    pub fn status_response_for(residency: DaemonResidency) -> StatusResponse {
+        StatusResponse {
             package_version: env!("CARGO_PKG_VERSION").to_string(),
             api_revision: uc_daemon_contract::DAEMON_API_REVISION.to_string(),
-            uptime_seconds: self.started_at.elapsed().as_secs(),
+            uptime_seconds: 0,
             workers: Vec::new(),
+            residency,
         }
     }
 
@@ -440,4 +478,30 @@ pub async fn run_http_server(
         .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod residency_handshake_tests {
+    use super::*;
+
+    /// ADR-008 P5-L L1: `GET /health` and `GET /status` must report whichever
+    /// residency the daemon was assembled with. `DaemonApiState` is fed
+    /// `DaemonRunMode -> DaemonResidency` at the assembly boundary (uc-daemon),
+    /// and the handler bodies copy `self.residency` verbatim — exercised here
+    /// per variant without composing a full `AppFacade`.
+    #[test]
+    fn health_and_status_report_each_residency() {
+        for residency in [
+            DaemonResidency::Standalone,
+            DaemonResidency::ServerHeadless,
+            DaemonResidency::Oneshot,
+        ] {
+            let health = DaemonApiState::health_response_for(residency);
+            assert_eq!(health.residency, residency);
+            assert_eq!(health.status, "ok");
+
+            let status = DaemonApiState::status_response_for(residency);
+            assert_eq!(status.residency, residency);
+        }
+    }
 }

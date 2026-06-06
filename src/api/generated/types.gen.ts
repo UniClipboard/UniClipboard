@@ -309,6 +309,27 @@ export type CurrentInvitation = {
     expiresAtMs: number;
 };
 
+/**
+ * Daemon residency mode reported in the health/status handshake (ADR-008 P5-L L1).
+ *
+ * Wire values (camelCase, to match the `HealthResponse`/`StatusResponse` field
+ * naming these enums travel inside): `"standalone" | "serverHeadless" |
+ * "oneshot"`. The wire enum is defined HERE in the contract — it deliberately
+ * does NOT depend on `uc-daemon`'s internal `DaemonRunMode`; the producer maps
+ * `DaemonRunMode -> DaemonResidency` at the daemon/webserver boundary.
+ *
+ * Consumers (CLI L2 version-check, future R8-F2 takeover) read this to learn
+ * whether the daemon they are talking to is a persistent member node
+ * (`Standalone`/`ServerHeadless`) or a transient `Oneshot` that a persistent
+ * client may later take over. As of L1 the CLI/GUI do NOT act on this field.
+ *
+ * Backward-tolerant: the field carries `#[serde(default)]`, so an OLDER
+ * daemon body that omits `residency` decodes to [`Self::Standalone`], and a
+ * NEWER body's `residency` is simply ignored by an older client. New variants
+ * must be added at the END so existing clients keep deserializing known values.
+ */
+export type DaemonResidency = 'standalone' | 'serverHeadless' | 'oneshot';
+
 export type DaemonWsEvent = {
     payload: {
         [key: string]: unknown;
@@ -769,6 +790,7 @@ export type HealthEnvelope = {
 export type HealthResponse = {
     apiRevision: string;
     packageVersion: string;
+    residency?: DaemonResidency;
     status: string;
 };
 
@@ -2186,6 +2208,7 @@ export type StatusEnvelope = {
 export type StatusResponse = {
     apiRevision: string;
     packageVersion: string;
+    residency?: DaemonResidency;
     uptimeSeconds: number;
     workers: Array<WorkerStatusDto>;
 };

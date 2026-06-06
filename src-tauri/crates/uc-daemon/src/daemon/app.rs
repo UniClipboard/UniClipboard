@@ -26,7 +26,7 @@ use uc_webserver::api::auth::load_or_create_auth_token;
 use uc_webserver::api::event_emitter::DaemonApiEventEmitter;
 use uc_webserver::api::server::{run_http_server, DaemonApiState};
 use uc_webserver::api::setup_events::spawn_pairing_completion_forwarder;
-use uc_webserver::api::types::DaemonWsEvent;
+use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
 
 /// Recover encryption session from disk/keyring if encryption has been initialized.
@@ -177,6 +177,10 @@ pub struct DaemonApp {
     /// daemon。现存 run-mode 恒为 `Standalone`(可 SIGTERM);`InProcess` 仅作
     /// legacy PID 文件读取保留(ADR-008 P3-3)。
     process_mode: DaemonProcessMode,
+    /// 在 health/status 握手里上报的 daemon 驻留模式（ADR-008 P5-L L1）。
+    /// 从 `DaemonRunMode` 映射而来,透传进 `DaemonApiState`。默认
+    /// `Standalone`,持久客户端后续据此识别 `Oneshot` 并接管(R8-F2)。
+    residency: DaemonResidency,
     /// Mobile sync LAN endpoint adapter 的具体类型,daemon 启动时用它 spawn
     /// `mobile_lan` listener,起来后 `set` 当前 URL,关闭后 `clear`。
     /// `None` 表示该装配场景不接 mobile listener(测试或未来 GUI-only 模式)。
@@ -222,6 +226,7 @@ impl DaemonApp {
             local_device_id: None,
             listens_to_os_signals: true,
             process_mode: DaemonProcessMode::Standalone,
+            residency: DaemonResidency::Standalone,
             mobile_lan_endpoint_info: None,
             mobile_lan_lifecycle: None,
             analytics: None,
@@ -274,6 +279,7 @@ impl DaemonApp {
             local_device_id,
             listens_to_os_signals,
             process_mode,
+            residency: DaemonResidency::Standalone,
             mobile_lan_endpoint_info: None,
             mobile_lan_lifecycle: None,
             analytics: None,
@@ -315,6 +321,15 @@ impl DaemonApp {
         analytics: Arc<dyn uc_observability::analytics::AnalyticsPort>,
     ) -> Self {
         self.analytics = Some(analytics);
+        self
+    }
+
+    /// Set the daemon residency mode reported in the health/status handshake
+    /// (ADR-008 P5-L L1). Mapped from `DaemonRunMode` at the assembly boundary
+    /// and forwarded into `DaemonApiState` so `GET /health` / `GET /status`
+    /// surface it. Defaults to [`DaemonResidency::Standalone`] when not set.
+    pub fn with_residency(mut self, residency: DaemonResidency) -> Self {
+        self.residency = residency;
         self
     }
 
@@ -366,7 +381,8 @@ impl DaemonApp {
         security.register_pid(pid).await;
 
         // 3. Build API state using the shared event_tx (same channel used by all services)
-        let mut api_state = DaemonApiState::new(Arc::clone(&self.app_facade), auth_token, security);
+        let mut api_state = DaemonApiState::new(Arc::clone(&self.app_facade), auth_token, security)
+            .with_residency(self.residency);
         api_state.event_tx = self.event_tx.clone();
         let api_state = match &self.clipboard_capture_gate {
             Some(gate) => api_state.with_clipboard_gate(Arc::clone(gate)),

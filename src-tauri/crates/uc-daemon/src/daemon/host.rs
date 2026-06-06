@@ -263,6 +263,7 @@ pub async fn start_in_process(
         local_device_id,
         listens_to_os_signals: run_mode.listens_to_os_signals(),
         process_mode: run_mode.process_mode(),
+        residency: run_mode.into(),
         mobile_sync_endpoint_info,
         mobile_lan_lifecycle: Arc::clone(&mobile_lan_lifecycle),
         analytics: Arc::clone(&deps.analytics),

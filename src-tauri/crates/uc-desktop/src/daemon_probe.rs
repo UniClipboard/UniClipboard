@@ -484,6 +484,7 @@ mod tests {
             status: "ok".into(),
             package_version: TEST_PACKAGE_VERSION.into(),
             api_revision: DAEMON_API_REVISION.into(),
+            residency: uc_daemon_contract::api::types::DaemonResidency::Standalone,
         }
     }
 

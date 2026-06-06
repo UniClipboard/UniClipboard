@@ -104,13 +104,14 @@ pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uc_daemon_contract::api::types::HealthResponse;
+    use uc_daemon_contract::api::types::{DaemonResidency, HealthResponse};
 
     fn sample_health() -> HealthResponse {
         HealthResponse {
             status: "ok".to_string(),
             package_version: "0.6.0".to_string(),
             api_revision: "rev-1".to_string(),
+            residency: DaemonResidency::Standalone,
         }
     }
 

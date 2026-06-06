@@ -16,3 +16,7 @@ serde_json = "1"
 serde_with = "3.18.0"
 chrono = { version = "0.4", features = ["serde"] }
 utoipa = { version = "4", features = ["uuid", "chrono", "url"] }
+# Pure semver comparison for the daemon health classifier's strictly-newer
+# downgrade guard (ADR-008 P5-L L2). semver is a leaf pure-Rust dep — it does
+# NOT pull iroh/diesel, so it keeps this contract crate client-safe.
+semver = "1"

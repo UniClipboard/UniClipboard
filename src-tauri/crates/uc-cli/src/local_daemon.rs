@@ -5,6 +5,9 @@ use std::time::Duration;
 use reqwest::Client;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::HealthResponse;
+use uc_daemon_contract::probe::{
+    classify_health_response, running_daemon_is_strictly_newer, ProbeOutcome,
+};
 use uc_daemon_process::process_metadata::DaemonSpawnOrigin;
 use uc_daemon_process::socket::try_resolve_daemon_http_addr;
 use uc_daemon_process::spawn::{spawn_detached_daemon, SpawnDaemonError};
@@ -13,6 +16,11 @@ const HEALTH_PATH: &str = "/health";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+/// The package version this CLI build expects the daemon to report. Mirrors the
+/// GUI host, which passes its own shell `CARGO_PKG_VERSION` to the classifier
+/// (ADR-008 P5-L L2). A daemon reporting any other version is Incompatible.
+const EXPECTED_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalDaemonSession {
@@ -31,6 +39,21 @@ pub enum LocalDaemonError {
         timeout_ms: u64,
         profile: Option<String>,
         base_url: String,
+    },
+    /// ADR-008 P5-L L2: a daemon is running for this profile but reports a
+    /// version/contract that does not match this CLI build. We surface a clear
+    /// error instead of silently attaching (or silently spawning a competitor).
+    ///
+    /// `newer` distinguishes the two directions, mirroring the GUI's
+    /// downgrade-rollback guard: a strictly-newer incumbent must NOT be acted
+    /// against (this CLI is the stale one), whereas an older/unprovable daemon
+    /// is the side that needs upgrading/restarting. L2 only reports — restart /
+    /// takeover orchestration is L8.
+    IncompatibleDaemon {
+        details: String,
+        observed_package_version: Option<String>,
+        expected_package_version: String,
+        newer: bool,
     },
 }
 
@@ -68,6 +91,29 @@ impl fmt::Display for LocalDaemonError {
                     "local daemon did not become healthy within {timeout_ms}ms for profile {profile} at {base_url}"
                 )
             }
+            Self::IncompatibleDaemon {
+                details,
+                observed_package_version,
+                expected_package_version,
+                newer,
+            } => {
+                let observed = observed_package_version.as_deref().unwrap_or("unknown");
+                if *newer {
+                    write!(
+                        f,
+                        "a newer daemon (version {observed}) is already running for this profile; \
+                         this CLI is {expected_package_version} — refusing to act against a newer \
+                         daemon. Re-upgrade the CLI, or restart the daemon to converge ({details})"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "an incompatible daemon (version {observed}) is already running for this \
+                         profile; this CLI expects {expected_package_version}. Stop it with \
+                         `uniclip stop` and restart, or upgrade the daemon to match ({details})"
+                    )
+                }
+            }
         }
     }
 }
@@ -83,9 +129,15 @@ impl From<SpawnDaemonError> for LocalDaemonError {
     }
 }
 
-/// Probe-only check: returns Ok(true) if the daemon is already healthy, Ok(false) otherwise.
-/// Does NOT spawn a daemon process.
-pub async fn probe_running() -> Result<bool, LocalDaemonError> {
+/// Probe-only check: classifies the daemon currently bound to this profile's
+/// HTTP endpoint. Does NOT spawn a daemon process.
+///
+/// ADR-008 P5-L L2: this used to return a bare `bool` keyed only on
+/// `status == "ok"`, which silently attached to a mismatched-version daemon.
+/// It now mirrors the GUI host and returns a [`ProbeOutcome`] so callers can
+/// distinguish `Compatible` / `Absent` / `Incompatible` and surface a clear
+/// error on a version/contract mismatch.
+pub async fn probe_running() -> Result<ProbeOutcome, LocalDaemonError> {
     let client = Client::builder()
         .timeout(PROBE_TIMEOUT)
         .build()
@@ -101,12 +153,24 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
     let base_url = resolve_base_url()?;
 
-    // Fast path: daemon is already running.
-    if probe_daemon_health(&client, &base_url).await? {
-        return Ok(LocalDaemonSession {
-            base_url,
-            spawned: false,
-        });
+    // Classify the daemon (if any) already bound to this profile (ADR-008 P5-L
+    // L2). Compatible → reuse it; Incompatible → clear error (do NOT spawn a
+    // competitor or kill it — restart/takeover is L8); Absent → spawn below.
+    match probe_daemon_health(&client, &base_url).await? {
+        ProbeOutcome::Compatible(_) => {
+            return Ok(LocalDaemonSession {
+                base_url,
+                spawned: false,
+            });
+        }
+        ProbeOutcome::Incompatible {
+            details,
+            observed_package_version,
+            ..
+        } => {
+            return Err(incompatible_daemon_error(details, observed_package_version));
+        }
+        ProbeOutcome::Absent => {}
     }
 
     // Slow path: spawn + wait for health. Show a spinner so the user sees
@@ -147,12 +211,23 @@ async fn wait_for_daemon_health<Probe, ProbeFuture>(
 ) -> Result<(), LocalDaemonError>
 where
     Probe: FnMut() -> ProbeFuture,
-    ProbeFuture: Future<Output = Result<bool, LocalDaemonError>>,
+    ProbeFuture: Future<Output = Result<ProbeOutcome, LocalDaemonError>>,
 {
     let deadline = tokio::time::Instant::now() + startup_timeout;
     loop {
-        if probe().await? {
-            return Ok(());
+        // ADR-008 P5-L L2: Compatible → healthy (done); Absent → daemon still
+        // coming up, keep polling; Incompatible → a mismatched daemon raced onto
+        // our port, surface a clear error instead of spinning until timeout.
+        match probe().await? {
+            ProbeOutcome::Compatible(_) => return Ok(()),
+            ProbeOutcome::Incompatible {
+                details,
+                observed_package_version,
+                ..
+            } => {
+                return Err(incompatible_daemon_error(details, observed_package_version));
+            }
+            ProbeOutcome::Absent => {}
         }
 
         if tokio::time::Instant::now() >= deadline {
@@ -167,11 +242,62 @@ where
     }
 }
 
-async fn probe_daemon_health(client: &Client, base_url: &str) -> Result<bool, LocalDaemonError> {
+/// Build the [`LocalDaemonError::IncompatibleDaemon`] for an `Incompatible`
+/// outcome, applying the GUI's strictly-newer downgrade guard to phrase the
+/// error in the right direction (ADR-008 P5-L L2).
+fn incompatible_daemon_error(
+    details: String,
+    observed_package_version: Option<String>,
+) -> LocalDaemonError {
+    let newer = running_daemon_is_strictly_newer(
+        observed_package_version.as_deref(),
+        EXPECTED_PACKAGE_VERSION,
+    );
+    LocalDaemonError::IncompatibleDaemon {
+        details,
+        observed_package_version,
+        expected_package_version: EXPECTED_PACKAGE_VERSION.to_string(),
+        newer,
+    }
+}
+
+/// Convert an `Incompatible` [`ProbeOutcome`] into the matching
+/// [`LocalDaemonError::IncompatibleDaemon`] so probe-only consumers
+/// (`refuse_if_daemon_running`, `resolve_execution_mode`) can render one
+/// consistent, direction-aware message (ADR-008 P5-L L2).
+///
+/// # Panics
+/// Panics if called with a non-`Incompatible` outcome — callers must only reach
+/// this on the `Incompatible` arm.
+pub(crate) fn incompatible_outcome_error(outcome: ProbeOutcome) -> LocalDaemonError {
+    match outcome {
+        ProbeOutcome::Incompatible {
+            details,
+            observed_package_version,
+            ..
+        } => incompatible_daemon_error(details, observed_package_version),
+        other => {
+            unreachable!("incompatible_outcome_error called on non-Incompatible outcome: {other:?}")
+        }
+    }
+}
+
+/// Probe `/health` and classify the running daemon (ADR-008 P5-L L2).
+///
+/// Connect/timeout errors map to [`ProbeOutcome::Absent`] (no daemon to talk
+/// to); a non-2xx response or an undecodable / version-mismatched body maps to
+/// [`ProbeOutcome::Incompatible`]; a healthy, version-matched daemon maps to
+/// [`ProbeOutcome::Compatible`]. The version/contract decision is delegated to
+/// the shared `uc-daemon-contract::probe::classify_health_response` so the CLI
+/// and GUI host classify byte-identically.
+async fn probe_daemon_health(
+    client: &Client,
+    base_url: &str,
+) -> Result<ProbeOutcome, LocalDaemonError> {
     let url = format!("{base_url}{HEALTH_PATH}");
     let response = match client.get(url).send().await {
         Ok(response) => response,
-        Err(error) if error.is_connect() || error.is_timeout() => return Ok(false),
+        Err(error) if error.is_connect() || error.is_timeout() => return Ok(ProbeOutcome::Absent),
         Err(error) => {
             return Err(LocalDaemonError::Probe(
                 anyhow::Error::new(error).context("daemon health probe request failed"),
@@ -180,21 +306,38 @@ async fn probe_daemon_health(client: &Client, base_url: &str) -> Result<bool, Lo
     };
 
     if !response.status().is_success() {
-        return Ok(false);
+        return Ok(ProbeOutcome::Incompatible {
+            details: format!("daemon health probe returned HTTP {}", response.status()),
+            observed_package_version: None,
+            observed_api_revision: None,
+        });
     }
 
-    // Wire shape (ADR-008 §H): `/health` is now enveloped as
-    // `{ data: HealthResponse, ts }`. Decode the envelope and read `data.status`.
-    let envelope = response
-        .json::<ApiEnvelope<HealthResponse>>()
-        .await
-        .map_err(|error| {
-            LocalDaemonError::Probe(
-                anyhow::Error::new(error).context("failed to decode daemon health response"),
-            )
-        })?;
+    // Wire shape (ADR-008 §H): `/health` is enveloped as
+    // `{ data: HealthResponse, ts }`. Decode the envelope, take `.data`, then
+    // hand it to the shared classifier. A body we cannot decode is a daemon on
+    // an incompatible contract, not a transport failure → Incompatible.
+    let body = match response.text().await {
+        Ok(body) => body,
+        Err(error) => {
+            return Err(LocalDaemonError::Probe(
+                anyhow::Error::new(error).context("failed to read daemon health response body"),
+            ))
+        }
+    };
 
-    Ok(envelope.data.status == "ok")
+    let health = match serde_json::from_str::<ApiEnvelope<HealthResponse>>(&body) {
+        Ok(envelope) => envelope.data,
+        Err(error) => {
+            return Ok(ProbeOutcome::Incompatible {
+                details: format!("failed to decode daemon health response: {error}"),
+                observed_package_version: None,
+                observed_api_revision: None,
+            });
+        }
+    };
+
+    Ok(classify_health_response(health, EXPECTED_PACKAGE_VERSION))
 }
 
 fn resolve_base_url() -> Result<String, LocalDaemonError> {
@@ -216,6 +359,18 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use uc_daemon_contract::api::types::DaemonResidency;
+
+    /// A `Compatible` outcome carrying a minimal healthy payload — the probe
+    /// loop only cares about the variant, not the payload contents.
+    fn compatible() -> ProbeOutcome {
+        ProbeOutcome::Compatible(HealthResponse {
+            status: "ok".into(),
+            package_version: EXPECTED_PACKAGE_VERSION.into(),
+            api_revision: uc_daemon_contract::DAEMON_API_REVISION.into(),
+            residency: DaemonResidency::Standalone,
+        })
+    }
 
     // ---------- Display impl ----------
 
@@ -282,7 +437,7 @@ mod tests {
             let calls = calls_for_closure.clone();
             async move {
                 calls.fetch_add(1, Ordering::SeqCst);
-                Ok::<bool, LocalDaemonError>(true)
+                Ok::<ProbeOutcome, LocalDaemonError>(compatible())
             }
         };
 
@@ -293,7 +448,7 @@ mod tests {
             "http://test",
         )
         .await
-        .expect("first probe true must resolve as Ok");
+        .expect("first Compatible probe must resolve as Ok");
 
         assert_eq!(
             calls.load(Ordering::SeqCst),
@@ -304,15 +459,19 @@ mod tests {
 
     #[tokio::test]
     async fn wait_polls_until_probe_turns_healthy() {
-        // Simulate cold start: first 2 probes false (daemon still spawning),
-        // then true.
+        // Simulate cold start: first 2 probes Absent (daemon still spawning),
+        // then Compatible.
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_for_closure = calls.clone();
         let mut probe = move || {
             let calls = calls_for_closure.clone();
             async move {
                 let n = calls.fetch_add(1, Ordering::SeqCst);
-                Ok::<bool, LocalDaemonError>(n >= 2)
+                Ok::<ProbeOutcome, LocalDaemonError>(if n >= 2 {
+                    compatible()
+                } else {
+                    ProbeOutcome::Absent
+                })
             }
         };
 
@@ -327,6 +486,42 @@ mod tests {
         assert!(calls.load(Ordering::SeqCst) >= 3);
     }
 
+    #[tokio::test]
+    async fn wait_errors_immediately_on_incompatible_probe() {
+        // ADR-008 P5-L L2: if an incompatible daemon races onto our port while
+        // we are waiting for our spawn to come up, surface a clear error rather
+        // than spinning until the startup timeout.
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_closure = calls.clone();
+        let mut probe = move || {
+            let calls = calls_for_closure.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<ProbeOutcome, LocalDaemonError>(ProbeOutcome::Incompatible {
+                    details: "version mismatch".into(),
+                    observed_package_version: Some("9.9.9".into()),
+                    observed_api_revision: None,
+                })
+            }
+        };
+
+        let err = wait_for_daemon_health(
+            &mut probe,
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+            "http://test",
+        )
+        .await
+        .expect_err("Incompatible must short-circuit to an error");
+
+        assert!(matches!(err, LocalDaemonError::IncompatibleDaemon { .. }));
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "Incompatible is terminal — must not keep polling"
+        );
+    }
+
     #[tokio::test(start_paused = true)]
     async fn wait_times_out_with_full_diagnostic_context() {
         // start_paused freezes wall clock so the test doesn't actually wait.
@@ -335,7 +530,7 @@ mod tests {
         // SAFETY: tests run with `--test-threads=1` for `set_var`/`remove_var` to be safe.
         // In Rust 2024 edition, std::env::set_var is unsafe; this crate is on edition 2021.
         std::env::set_var("UC_PROFILE", "ci-profile");
-        let mut probe = || async { Ok::<bool, LocalDaemonError>(false) };
+        let mut probe = || async { Ok::<ProbeOutcome, LocalDaemonError>(ProbeOutcome::Absent) };
 
         let err = wait_for_daemon_health(
             &mut probe,
@@ -370,7 +565,7 @@ mod tests {
             let calls = calls_for_closure.clone();
             async move {
                 calls.fetch_add(1, Ordering::SeqCst);
-                Err::<bool, _>(LocalDaemonError::Probe(anyhow::anyhow!("network down")))
+                Err::<ProbeOutcome, _>(LocalDaemonError::Probe(anyhow::anyhow!("network down")))
             }
         };
 

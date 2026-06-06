@@ -11,13 +11,16 @@
 
 use std::time::Duration;
 
-use semver::Version;
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::HealthResponse;
-use uc_daemon_contract::DAEMON_API_REVISION;
+// ADR-008 P5-L L2: the pure health classifier now lives in the iroh/diesel-free
+// `uc-daemon-contract` so both the GUI host and the CLI share it byte-for-byte.
+use uc_daemon_contract::probe::{
+    classify_health_response, running_daemon_is_strictly_newer, ProbeOutcome,
+};
 use uc_daemon_local::contract::{
-    terminate_local_daemon_pid, DaemonBootstrapError, ProbeOutcome, TerminateDaemonError,
+    terminate_local_daemon_pid, DaemonBootstrapError, TerminateDaemonError,
 };
 use uc_daemon_local::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
 use uc_daemon_local::process_metadata::{
@@ -100,86 +103,6 @@ pub async fn probe_daemon_health_at(
     };
 
     Ok(classify_health_response(health, expected_package_version))
-}
-
-/// 把 daemon 上报的健康响应分类成 [`ProbeOutcome`]。
-pub fn classify_health_response(
-    health: HealthResponse,
-    expected_package_version: &str,
-) -> ProbeOutcome {
-    let observed_package_version = Some(health.package_version.clone());
-    let observed_api_revision = Some(health.api_revision.clone());
-
-    if health.status != "ok" {
-        return ProbeOutcome::Incompatible {
-            details: format!("daemon reported unhealthy status {}", health.status),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    if health.package_version.trim().is_empty() {
-        return ProbeOutcome::Incompatible {
-            details: "daemon health response missing packageVersion".to_string(),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    if health.api_revision.trim().is_empty() {
-        return ProbeOutcome::Incompatible {
-            details: "daemon health response missing apiRevision".to_string(),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    if health.package_version != expected_package_version {
-        return ProbeOutcome::Incompatible {
-            details: format!(
-                "daemon packageVersion {} does not match shell packageVersion {}",
-                health.package_version, expected_package_version
-            ),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    if health.api_revision != DAEMON_API_REVISION {
-        return ProbeOutcome::Incompatible {
-            details: format!(
-                "daemon apiRevision {} does not match required {}",
-                health.api_revision, DAEMON_API_REVISION
-            ),
-            observed_package_version,
-            observed_api_revision,
-        };
-    }
-
-    ProbeOutcome::Compatible(health)
-}
-
-/// Is the running daemon a *proven* strictly-newer version than this client?
-///
-/// ADR-008 P4-7 (OQ-downgrade-rollback): a lower-version client must never
-/// terminate a higher-version incumbent daemon — that would silently downgrade
-/// a running daemon to an older build. This guards the one place that kills an
-/// incompatible daemon ([`bootstrap_daemon_in_process`]) so the kill is only
-/// the sanctioned takeover of an *older-or-equal* daemon.
-///
-/// Conservative by design: returns `true` **only** when both versions parse as
-/// semver and `observed > expected`. A missing or unparseable observed version
-/// (corruption, a foreign process on our port, a daemon that never reported a
-/// version) is *not* proven-newer, so it keeps the existing terminate-and-replace
-/// behavior — we only ever protect a daemon we can prove is ahead of us.
-fn running_daemon_is_strictly_newer(observed: Option<&str>, expected: &str) -> bool {
-    let (Some(observed), Ok(expected)) = (observed, Version::parse(expected.trim())) else {
-        return false;
-    };
-    match Version::parse(observed.trim()) {
-        Ok(observed) => observed > expected,
-        Err(_) => false,
-    }
 }
 
 pub fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
@@ -474,6 +397,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `DAEMON_API_REVISION` is no longer used by non-test code here (the pure
+    // classifier that consumed it moved to `uc-daemon-contract::probe`), so it
+    // is imported test-locally to keep the HTTP transport tests asserting the
+    // exact api-revision the healthy mock daemon must report.
+    use uc_daemon_contract::DAEMON_API_REVISION;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -488,157 +416,11 @@ mod tests {
         }
     }
 
-    // ------- classify_health_response: pure decision table -------
-
-    #[test]
-    fn classify_compatible_when_all_fields_match() {
-        let outcome = classify_health_response(ok_health(), TEST_PACKAGE_VERSION);
-        assert_eq!(outcome, ProbeOutcome::Compatible(ok_health()));
-    }
-
-    #[test]
-    fn classify_incompatible_when_status_not_ok() {
-        let mut health = ok_health();
-        health.status = "degraded".into();
-        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
-        match outcome {
-            ProbeOutcome::Incompatible {
-                details,
-                observed_package_version,
-                observed_api_revision,
-            } => {
-                assert!(details.contains("degraded"));
-                assert_eq!(
-                    observed_package_version.as_deref(),
-                    Some(TEST_PACKAGE_VERSION)
-                );
-                assert_eq!(observed_api_revision.as_deref(), Some(DAEMON_API_REVISION));
-            }
-            other => panic!("expected Incompatible, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn classify_incompatible_when_package_version_empty() {
-        let mut health = ok_health();
-        health.package_version = "   ".into();
-        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
-        match outcome {
-            ProbeOutcome::Incompatible { details, .. } => {
-                assert!(
-                    details.contains("packageVersion"),
-                    "details must point at the missing field, got: {details}"
-                );
-            }
-            other => panic!("expected Incompatible for empty packageVersion, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn classify_incompatible_when_api_revision_empty() {
-        let mut health = ok_health();
-        health.api_revision = "".into();
-        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
-        match outcome {
-            ProbeOutcome::Incompatible { details, .. } => {
-                assert!(
-                    details.contains("apiRevision"),
-                    "details must point at the missing field, got: {details}"
-                );
-            }
-            other => panic!("expected Incompatible for empty apiRevision, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn classify_incompatible_when_package_version_mismatches_shell() {
-        let mut health = ok_health();
-        health.package_version = "0.5.99".into();
-        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
-        match outcome {
-            ProbeOutcome::Incompatible {
-                details,
-                observed_package_version,
-                ..
-            } => {
-                assert_eq!(observed_package_version.as_deref(), Some("0.5.99"));
-                assert!(
-                    details.contains("0.5.99") && details.contains(TEST_PACKAGE_VERSION),
-                    "details must surface both observed and expected versions: {details}"
-                );
-            }
-            other => panic!("expected Incompatible for version mismatch, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn classify_incompatible_when_api_revision_mismatches_constant() {
-        let mut health = ok_health();
-        health.api_revision = "rev-from-the-future".into();
-        let outcome = classify_health_response(health, TEST_PACKAGE_VERSION);
-        match outcome {
-            ProbeOutcome::Incompatible {
-                details,
-                observed_api_revision,
-                ..
-            } => {
-                assert_eq!(
-                    observed_api_revision.as_deref(),
-                    Some("rev-from-the-future")
-                );
-                assert!(details.contains("rev-from-the-future"));
-                assert!(details.contains(DAEMON_API_REVISION));
-            }
-            other => panic!("expected Incompatible for revision mismatch, got {other:?}"),
-        }
-    }
-
-    // ------- running_daemon_is_strictly_newer: downgrade-rollback guard -------
-
-    #[test]
-    fn newer_daemon_is_protected_from_downgrade() {
-        // The whole point: a lower client must recognise a higher daemon.
-        assert!(running_daemon_is_strictly_newer(Some("0.15.0"), "0.14.0"));
-        assert!(running_daemon_is_strictly_newer(Some("1.0.0"), "0.14.0"));
-        // Pre-release ordering: a later alpha / a stable release both count as
-        // newer than an earlier alpha.
-        assert!(running_daemon_is_strictly_newer(
-            Some("0.14.0-alpha.5"),
-            "0.14.0-alpha.4"
-        ));
-        assert!(running_daemon_is_strictly_newer(
-            Some("0.14.0"),
-            "0.14.0-alpha.4"
-        ));
-    }
-
-    #[test]
-    fn older_or_equal_daemon_is_not_protected() {
-        // Equal → sanctioned takeover path (not a downgrade).
-        assert!(!running_daemon_is_strictly_newer(Some("0.14.0"), "0.14.0"));
-        // Strictly older → the existing kill-and-replace behavior must stand.
-        assert!(!running_daemon_is_strictly_newer(Some("0.13.0"), "0.14.0"));
-        assert!(!running_daemon_is_strictly_newer(
-            Some("0.14.0-alpha.3"),
-            "0.14.0-alpha.4"
-        ));
-    }
-
-    #[test]
-    fn unprovable_versions_are_not_protected() {
-        // Missing, blank, or unparseable observed versions are NOT proven-newer,
-        // so they fall through to terminate-and-replace (foreign process on our
-        // port, corrupted health payload, legacy daemon without a version).
-        assert!(!running_daemon_is_strictly_newer(None, "0.14.0"));
-        assert!(!running_daemon_is_strictly_newer(Some("   "), "0.14.0"));
-        assert!(!running_daemon_is_strictly_newer(
-            Some("not-a-version"),
-            "0.14.0"
-        ));
-        // An unparseable *expected* version (should never happen for our own
-        // CARGO_PKG_VERSION) also stays conservative: don't protect.
-        assert!(!running_daemon_is_strictly_newer(Some("0.15.0"), "garbage"));
-    }
+    // ADR-008 P5-L L2: the pure `classify_health_response` and
+    // `running_daemon_is_strictly_newer` decision tables now live in
+    // `uc-daemon-contract::probe`; their unit tests moved there too to avoid
+    // duplication. The HTTP transport tests below stay because they exercise
+    // `probe_daemon_health_at`'s reqwest plumbing, which is desktop-side.
 
     // ------- probe_daemon_health_at: mocked HTTP transport -------
 

@@ -8,6 +8,7 @@ use crate::local_daemon::probe_running;
 use crate::ui;
 
 use uc_daemon_client::{DaemonClientContext, DaemonService, HttpWsDaemonService};
+use uc_daemon_contract::probe::ProbeOutcome;
 
 /// [`build_app_session`] 返回的 CLI 会话。
 pub struct CliAppSession {
@@ -31,14 +32,22 @@ impl CliAppSession {
 /// 因此独立 CLI 业务命令要求用户先 `stop` daemon。
 pub async fn refuse_if_daemon_running() -> Result<(), i32> {
     match probe_running().await {
-        Ok(true) => {
+        Ok(ProbeOutcome::Compatible(_)) => {
             ui::error(
                 "A daemon is already running for this profile. Stop it first with \
                  `uniclip stop`, or rerun under a different --profile.",
             );
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
-        Ok(false) => Ok(()),
+        // ADR-008 P5-L L2: an incompatible-version daemon used to be invisible
+        // here (it failed status!="ok" and was treated as "no daemon"), so the
+        // CLI would silently spin up a competing in-process session against a
+        // mismatched daemon. Surface a clear error naming the version gap.
+        Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
+            ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
+            Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
+        }
+        Ok(ProbeOutcome::Absent) => Ok(()),
         // 探测网络错误按“没有可冲突 daemon”处理。
         Err(err) => {
             tracing::debug!(error = %err, "daemon probe failed; assuming no daemon");
@@ -86,7 +95,7 @@ pub enum CliExecutionMode {
 /// falls back to the in-process `CliAppSession`.
 pub async fn resolve_execution_mode(verbose: bool) -> Result<CliExecutionMode, i32> {
     match probe_running().await {
-        Ok(true) => {
+        Ok(ProbeOutcome::Compatible(_)) => {
             let ctx = match DaemonClientContext::from_env() {
                 Ok(ctx) => ctx,
                 Err(err) => {
@@ -97,7 +106,14 @@ pub async fn resolve_execution_mode(verbose: bool) -> Result<CliExecutionMode, i
             let service = HttpWsDaemonService::new(ctx);
             Ok(CliExecutionMode::DaemonClient(Box::new(service)))
         }
-        Ok(false) => {
+        // ADR-008 P5-L L2: do NOT silently fall back to an in-process session
+        // when an incompatible daemon is on this profile's port — that would
+        // run two competing nodes on one identity. Refuse with a clear error.
+        Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
+            ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
+            Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
+        }
+        Ok(ProbeOutcome::Absent) => {
             let session = build_app_session(verbose).await?;
             Ok(CliExecutionMode::InProcess(session))
         }

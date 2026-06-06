@@ -112,20 +112,35 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
     // Check if daemon is already running using probe-only (no spawn).
     // We must NOT use ensure_local_daemon_running() here because it would
     // spawn a background daemon, conflicting with the foreground spawn below.
-    if let Ok(true) = local_daemon::probe_running().await {
-        let pid = uc_daemon_process::process_metadata::read_pid_metadata()
-            .ok()
-            .flatten()
-            .map(|m| m.pid);
-        let out = StartOutput {
-            status: "already_running",
-            pid,
-        };
-        if let Err(e) = output::print_result(&out, json) {
-            eprintln!("Error: {}", e);
+    //
+    // ADR-008 P5-L L2: classify the probe. Compatible → report already_running;
+    // Incompatible → surface a clear error and refuse to spawn a competitor
+    // (restart/takeover is L8); Absent → fall through to the foreground spawn.
+    match local_daemon::probe_running().await {
+        Ok(uc_daemon_contract::probe::ProbeOutcome::Compatible(_)) => {
+            let pid = uc_daemon_process::process_metadata::read_pid_metadata()
+                .ok()
+                .flatten()
+                .map(|m| m.pid);
+            let out = StartOutput {
+                status: "already_running",
+                pid,
+            };
+            if let Err(e) = output::print_result(&out, json) {
+                eprintln!("Error: {}", e);
+                return exit_codes::EXIT_ERROR;
+            }
+            return exit_codes::EXIT_SUCCESS;
+        }
+        Ok(outcome @ uc_daemon_contract::probe::ProbeOutcome::Incompatible { .. }) => {
+            eprintln!(
+                "Error: {}",
+                local_daemon::incompatible_outcome_error(outcome)
+            );
             return exit_codes::EXIT_ERROR;
         }
-        return exit_codes::EXIT_SUCCESS;
+        // Absent or probe error → proceed to spawn the foreground daemon.
+        Ok(uc_daemon_contract::probe::ProbeOutcome::Absent) | Err(_) => {}
     }
 
     let daemon_exe = match uc_daemon_process::spawn::resolve_daemon_exe_path() {

@@ -3,19 +3,16 @@
 use std::process::Command;
 
 use thiserror::Error;
-use uc_daemon_contract::api::types::HealthResponse;
 
 /// 一次健康探测的分类结果。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProbeOutcome {
-    Absent,
-    Compatible(HealthResponse),
-    Incompatible {
-        details: String,
-        observed_package_version: Option<String>,
-        observed_api_revision: Option<String>,
-    },
-}
+///
+/// ADR-008 P5-L L2: the pure classifier (`ProbeOutcome` +
+/// `classify_health_response` + `running_daemon_is_strictly_newer`) was lifted
+/// into the iroh/diesel-free `uc-daemon-contract::probe` so `uc-cli` can depend
+/// on it without welding the iroh edge into the CLI build. Re-exported here so
+/// existing `uc_daemon_local::contract::ProbeOutcome` consumers (uc-desktop)
+/// keep compiling unchanged.
+pub use uc_daemon_contract::probe::ProbeOutcome;
 
 /// 桌面侧 daemon 拉起 / 监督流程中可能产生的错误。
 #[derive(Debug, Error)]

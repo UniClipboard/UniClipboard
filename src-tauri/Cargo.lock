@@ -9929,6 +9929,7 @@ name = "uc-daemon-contract"
 version = "0.14.0-alpha.5"
 dependencies = [
  "chrono",
+ "semver",
  "serde",
  "serde_json",
  "serde_with",
@@ -9979,7 +9980,6 @@ dependencies = [
  "diesel",
  "mockall 0.13.1",
  "reqwest 0.12.28",
- "semver",
  "serde",
  "serde_json",
  "tempfile",

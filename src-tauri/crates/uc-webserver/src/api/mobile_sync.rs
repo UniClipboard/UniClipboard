@@ -405,11 +405,11 @@ pub fn router() -> Router<DaemonApiState> {
             get(list_mobile_devices_handler).post(register_mobile_device_handler),
         )
         .route(
-            "/mobile-sync/devices/{device_id}",
+            "/mobile-sync/devices/:device_id",
             delete(revoke_mobile_device_handler),
         )
         .route(
-            "/mobile-sync/devices/{device_id}/rotate-password",
+            "/mobile-sync/devices/:device_id/rotate-password",
             post(rotate_mobile_password_handler),
         )
         .route(

@@ -65,9 +65,17 @@ impl ControlLeaseRegistry {
     /// [`ControlLease`]). Each acquire mints a fresh monotonic lease id used only
     /// to correlate the acquire/release log lines for one connection.
     pub fn acquire(&self) -> ControlLease {
-        let lease_id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        // Increment `active` BEFORE `next_id` (both SeqCst). This order is
+        // load-bearing for the L4 self-terminate predicate: the supervisor reads
+        // `total_acquired()` (next_id) BEFORE `active_leases()` (active), so by the
+        // SeqCst total order any lease counted in `total_acquired` has necessarily
+        // already incremented `active`. That makes "armed && active==0" an
+        // impossible observation for a still-live connection — closing the TOCTOU
+        // window where a half-applied acquire could read as (active=0, armed=1) and
+        // spuriously self-terminate the just-connected first client.
         // fetch_add returns the PREVIOUS value, so the new active count is +1.
         let active_leases = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        let lease_id = self.next_id.fetch_add(1, Ordering::SeqCst);
         tracing::debug!(lease_id, active_leases, "control-WS lease acquired");
         ControlLease {
             lease_id,
@@ -83,6 +91,20 @@ impl ControlLeaseRegistry {
     /// consumer reads it to drive behaviour yet.
     pub fn active_leases(&self) -> usize {
         self.active.load(Ordering::SeqCst)
+    }
+
+    /// Total leases EVER acquired since creation (monotonic; never decreases).
+    /// ADR-008 P5-L L4 uses `> 0` as an "a client connected at least once" latch
+    /// — distinguishing "never armed" (hard reclaim) from "armed then drained"
+    /// (self-terminate). Same monotonic source as lease-id minting.
+    ///
+    /// Ordering contract: the L4 supervisor MUST read this BEFORE
+    /// [`Self::active_leases`]. Paired with [`Self::acquire`] incrementing
+    /// `active` before `next_id` (both SeqCst), this guarantees a lease counted
+    /// here has already bumped `active`, so the supervisor can never observe
+    /// `armed && active==0` for a live connection (see [`Self::acquire`]).
+    pub fn total_acquired(&self) -> u64 {
+        self.next_id.load(Ordering::SeqCst)
     }
 }
 
@@ -195,5 +217,35 @@ mod tests {
         drop(c);
         let d = registry.acquire();
         assert_eq!(d.lease_id, 3);
+    }
+
+    #[test]
+    fn total_acquired_increments_on_acquire_and_never_decreases_on_drop() {
+        // ADR-008 P5-L L4: `total_acquired` is the monotonic "ever armed" latch.
+        // It must climb on every acquire and stay put across drops, so a
+        // 0→1→0 blip within one poll still reads as "armed".
+        let registry = ControlLeaseRegistry::new();
+        assert_eq!(registry.total_acquired(), 0);
+
+        let a = registry.acquire();
+        assert_eq!(registry.total_acquired(), 1);
+
+        let b = registry.acquire();
+        assert_eq!(registry.total_acquired(), 2);
+
+        // Dropping leases drains the ACTIVE count but must NOT touch the
+        // monotonic ever-acquired total.
+        drop(a);
+        drop(b);
+        assert_eq!(registry.active_leases(), 0);
+        assert_eq!(
+            registry.total_acquired(),
+            2,
+            "total_acquired must never decrease when a lease is released"
+        );
+
+        // A subsequent acquire keeps climbing from the prior total.
+        let _c = registry.acquire();
+        assert_eq!(registry.total_acquired(), 3);
     }
 }

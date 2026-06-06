@@ -439,6 +439,30 @@ impl DaemonApp {
             );
         }
 
+        // ADR-008 P5-L L4: Oneshot self-termination. For the Oneshot residency
+        // ONLY, spawn the lease-draining supervisor and arm a terminate token;
+        // for Standalone / ServerHeadless `oneshot_terminate` stays `None`, so
+        // no supervisor is spawned and the run-loop arm below is wired to
+        // `pending` — byte-for-byte unchanged behaviour. The registry clone is
+        // captured AFTER `api_state` is fully built so it shares the SAME atomic
+        // counter the WS handler increments, and BEFORE `api_state` is moved into
+        // the HTTP server task below.
+        let oneshot_terminate =
+            (self.residency == DaemonResidency::Oneshot).then(CancellationToken::new);
+        if let Some(token) = oneshot_terminate.clone() {
+            let registry = api_state.lease_registry.clone();
+            let supervisor_shutdown = self.cancel.child_token();
+            tokio::spawn(
+                crate::daemon::oneshot::run_oneshot_self_terminate_supervisor(
+                    registry,
+                    token,
+                    supervisor_shutdown,
+                    crate::daemon::oneshot::ONESHOT_NO_CLIENT_GRACE,
+                    crate::daemon::oneshot::LEASE_POLL_INTERVAL,
+                ),
+            );
+        }
+
         // 6. Spawn HTTP server and rate limiter cleanup task
         let security_for_cleanup = api_state.security.clone();
         let cleanup_cancel = self.cancel.child_token();
@@ -531,6 +555,22 @@ impl DaemonApp {
                     }
                 } => {
                     info!("external shutdown signal received (parent process gone)");
+                    break;
+                }
+                // ADR-008 P5-L L4: Oneshot self-termination. `oneshot_terminate`
+                // is `Some` ONLY in the Oneshot residency; for every other
+                // residency it is `None`, so this arm awaits `pending` forever
+                // and can never fire — preserving Standalone / ServerHeadless
+                // behaviour byte-for-byte. When it does fire, the supervisor has
+                // observed the control leases drain; break into the EXISTING
+                // shutdown sequence below unchanged.
+                _ = async {
+                    match &oneshot_terminate {
+                        Some(token) => token.cancelled().await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {
+                    info!("oneshot residency: control leases drained — self-terminating");
                     break;
                 }
                 result = &mut http_handle => {

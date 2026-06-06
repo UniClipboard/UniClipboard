@@ -10,6 +10,7 @@ pub mod bootstrap;
 pub mod handle;
 pub mod host;
 pub mod mobile_lan_lifecycle;
+pub mod oneshot;
 pub mod peers;
 pub mod process_bootstrap;
 pub mod process_runtime;

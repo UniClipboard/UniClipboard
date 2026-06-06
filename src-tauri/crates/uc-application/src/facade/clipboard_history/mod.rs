@@ -259,6 +259,8 @@ impl ClipboardHistoryFacade {
         // 共享同一组底层 ports，所以这里把 Arc clone 一份给 cleanup，原始
         // ownership 留给 reconcile（后写入字段）。
         let cleanup_uc = file_cache_dir.clone().map(|dir| {
+            // Clone cache_fs here since reconcile (built below) takes ownership
+            // of the original. All of cleanup's on-disk work routes through it.
             let mut uc = CleanupExpiredFilesUseCase::new(
                 settings,
                 dir,
@@ -266,6 +268,7 @@ impl ClipboardHistoryFacade {
                 selection_repo.clone(),
                 event_writer.clone(),
                 representation_repo.clone(),
+                cache_fs.clone(),
             );
             if let Some(idx) = search_index.clone() {
                 uc = uc.with_search_index(idx);

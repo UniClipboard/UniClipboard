@@ -5,7 +5,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use uc_core::ports::cache_fs::{CacheFsPort, DirEntry};
+use uc_core::ports::cache_fs::{CacheFsPort, DirEntry, FileMetadata};
 
 /// Tokio filesystem adapter for cache operations.
 /// 用于缓存操作的 Tokio 文件系统适配器。
@@ -59,6 +59,42 @@ impl CacheFsPort for TokioCacheFsAdapter {
 
     async fn dir_size(&self, path: &Path) -> Result<u64> {
         compute_dir_size(path).await
+    }
+
+    async fn read_file(&self, path: &Path) -> Result<Option<Vec<u8>>> {
+        match tokio::fs::read(path).await {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::anyhow!("Failed to read file: {}", e)),
+        }
+    }
+
+    async fn write_file(&self, path: &Path, contents: &[u8]) -> Result<()> {
+        tokio::fs::write(path, contents)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write file: {}", e))
+    }
+
+    async fn metadata(&self, path: &Path) -> Result<Option<FileMetadata>> {
+        match tokio::fs::metadata(path).await {
+            Ok(m) => Ok(Some(FileMetadata {
+                size_bytes: m.len(),
+                is_dir: m.is_dir(),
+                modified_unix_ms: m
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_millis() as i64),
+            })),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::anyhow!("Failed to read metadata: {}", e)),
+        }
+    }
+
+    async fn remove_dir(&self, path: &Path) -> Result<()> {
+        tokio::fs::remove_dir(path)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to remove directory: {}", e))
     }
 }
 

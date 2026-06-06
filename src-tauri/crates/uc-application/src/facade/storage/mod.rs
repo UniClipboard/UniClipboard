@@ -195,6 +195,43 @@ mod tests {
             }
             Ok(total)
         }
+
+        async fn read_file(&self, path: &std::path::Path) -> Result<Option<Vec<u8>>> {
+            match fs::read(path).await {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(e.into()),
+            }
+        }
+
+        async fn write_file(&self, path: &std::path::Path, contents: &[u8]) -> Result<()> {
+            fs::write(path, contents).await?;
+            Ok(())
+        }
+
+        async fn metadata(
+            &self,
+            path: &std::path::Path,
+        ) -> Result<Option<uc_core::ports::cache_fs::FileMetadata>> {
+            match fs::metadata(path).await {
+                Ok(m) => Ok(Some(uc_core::ports::cache_fs::FileMetadata {
+                    size_bytes: m.len(),
+                    is_dir: m.is_dir(),
+                    modified_unix_ms: m
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as i64),
+                })),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(e.into()),
+            }
+        }
+
+        async fn remove_dir(&self, path: &std::path::Path) -> Result<()> {
+            fs::remove_dir(path).await?;
+            Ok(())
+        }
     }
 
     async fn write_bytes(path: &std::path::Path, len: usize) {

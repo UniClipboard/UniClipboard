@@ -23,6 +23,10 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
     return (
       <div
         ref={itemRef}
+        // role="option"(而非原生 <option>):本行要放图标、截断文本、时间和
+        // <kbd> 快捷键提示,原生 <option> 只能装纯文本。配 HistoryPane 的
+        // role="listbox" 容器使用。react-doctor 的 prefer-tag-over-role
+        // 自动修复不适用于这类富内容列表项。
         role="option"
         aria-selected={isSelected}
         // Launcher 模型:焦点锁在搜索框,方向键驱动列表。列表项不参与 Tab

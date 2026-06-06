@@ -232,7 +232,12 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
             </div>
 
             {/* --- SCROLLABLE LIST --- */}
+            {/* role="listbox" 给下面 PanelItem 的 role="option" 提供合法父级。
+                未接 aria-activedescendant 的完整 combobox 链路:焦点恒在搜索框,
+                选中态由 isSelected/aria-selected 表达,够当前键盘导航用。 */}
             <div
+              role="listbox"
+              aria-label={t('listAriaLabel')}
               className="scrollbar-thin flex-1 overflow-y-auto px-1.5 py-1"
               onMouseMove={() => {
                 if (!hasPointerMovedSinceShow) onHistoryMouseMove()

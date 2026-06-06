@@ -302,6 +302,13 @@ const ClipboardHistoryPanel: React.FC = () => {
         void (async () => {
           // Resolve the open side and reverse the layout BEFORE moving the
           // window, so the pinned history pane never jumps when opening left.
+          //
+          // The await stays ABOVE the token guard on purpose. `token` equals
+          // the ref here (set just above), so the guard can only diverge WHILE
+          // we're awaiting — it's a post-await staleness/cancellation check,
+          // not a skippable early return. react-doctor's async-defer-await
+          // wants the await moved below the guard, but that would drop the
+          // cancellation window and apply a stale side. Keep this order.
           const side = await resolveExpandSide(uiScale)
           if (previewLayoutTokenRef.current !== token) return
           setPreviewSide(side)

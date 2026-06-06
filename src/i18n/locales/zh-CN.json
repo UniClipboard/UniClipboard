@@ -1405,6 +1405,7 @@
       "advancedPlaceholder": "筛选条件…",
       "searchAriaLabel": "搜索剪贴板历史",
       "filterMenuLabel": "打开筛选菜单",
+      "listAriaLabel": "剪贴板历史项",
       "filters": {
         "all": "全部",
         "text": "文本",

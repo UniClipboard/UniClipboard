@@ -1414,6 +1414,7 @@
       "advancedPlaceholder": "Filter…",
       "searchAriaLabel": "Search clipboard history",
       "filterMenuLabel": "Open filter menu",
+      "listAriaLabel": "Clipboard history items",
       "filters": {
         "all": "All",
         "text": "Text",

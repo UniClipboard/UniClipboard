@@ -103,6 +103,14 @@ parts:
       # 字符串注入,$HOME 不会展开。PATH 在 override-build 内用 export 设。
       - CARGO_TERM_COLOR: never
       - SNAP_BUILD: '1'
+      # ADR-008 D13 给 tauri.conf.json 加了 externalBin: ["binaries/uniclipd"],
+      # build.rs 里的 tauri_build::build() 会在编 GUI 时强制要求
+      # src-tauri/binaries/uniclipd-<triple> 存在并把它拷进 bundle。但 snap 用
+      # 纯 cargo build(不走 tauri-cli bundling),且下面是把 uniclipd 从
+      # target/release 直接 install 到 usr/bin —— 根本不依赖 Tauri 的 sidecar
+      # 暂存机制。用 JSON Merge Patch 把 externalBin 清空(空数组替换整个列表),
+      # 让 build script 既不要求也不拷贝它。与 coverage.yml / pr-check.yml 同款。
+      - TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
     override-pull: |
       craftctl default
       # snap 版本号 = package.json.version + "-snap" 后缀,snap store

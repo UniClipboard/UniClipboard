@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use uc_application::facade::AppPaths;
+
+use crate::app_data_root::app_data_root;
 
 pub const DEFAULT_HTTP_HOST: &str = "127.0.0.1";
 pub const DEFAULT_HTTP_PORT: u16 = 42715;
@@ -150,6 +151,11 @@ fn stable_profile_hash(profile: &str) -> u64 {
 /// println!("daemon token path: {}", path.display());
 /// ```
 pub fn resolve_daemon_token_path() -> Result<PathBuf> {
-    let dirs = uc_platform::app_dirs::default_app_dirs()?;
-    Ok(AppPaths::from_app_dirs(&dirs).daemon_token_path())
+    // Reproduces `AppPaths::from_app_dirs(&dirs).daemon_token_path()` =
+    // `<app_data_root>/.daemon-token` without touching the app stack.
+    Ok(app_data_root()?.join(DAEMON_TOKEN_FILE_NAME))
 }
+
+/// Leaf filename of the daemon auth-token file, kept byte-identical to
+/// `AppPaths::daemon_token_path()` (`<app_data_root>/.daemon-token`).
+const DAEMON_TOKEN_FILE_NAME: &str = ".daemon-token";

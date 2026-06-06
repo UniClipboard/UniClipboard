@@ -17,7 +17,11 @@ pub mod contract;
 pub mod crash_marker;
 pub mod health_wait;
 pub mod instance_lock;
-pub mod process_metadata;
-pub mod socket;
-pub mod spawn;
-pub mod spawn_contract;
+
+// ADR-008 P5-0: the process-management primitives (`process_metadata`,
+// `socket`, `spawn`, `spawn_contract`) were extracted into the thin
+// `uc-daemon-process` crate so the daemon-client stack can use them without
+// pulling in uc-application → uc-infra → iroh/diesel. Re-export them here under
+// their original module paths so every existing `uc_daemon_local::<module>::*`
+// consumer (uc-daemon, uc-desktop, uc-webserver, …) keeps compiling unchanged.
+pub use uc_daemon_process::{process_metadata, socket, spawn, spawn_contract};

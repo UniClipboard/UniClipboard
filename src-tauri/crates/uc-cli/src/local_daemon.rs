@@ -5,9 +5,9 @@ use std::time::Duration;
 use reqwest::Client;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::types::HealthResponse;
-use uc_daemon_local::process_metadata::DaemonSpawnOrigin;
-use uc_daemon_local::socket::try_resolve_daemon_http_addr;
-use uc_daemon_local::spawn::{spawn_detached_daemon, SpawnDaemonError};
+use uc_daemon_process::process_metadata::DaemonSpawnOrigin;
+use uc_daemon_process::socket::try_resolve_daemon_http_addr;
+use uc_daemon_process::spawn::{spawn_detached_daemon, SpawnDaemonError};
 
 const HEALTH_PATH: &str = "/health";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -207,7 +207,7 @@ fn resolve_base_url() -> Result<String, LocalDaemonError> {
 }
 
 /// Detached daemon spawn + binary resolution now live in the shared
-/// [`uc_daemon_local::spawn`] module so GUI shells (ADR-008 P3) reuse the exact
+/// [`uc_daemon_process::spawn`] module so GUI shells (ADR-008 P3) reuse the exact
 /// same `setsid` / `DETACHED_PROCESS` detach semantics. The CLI keeps only the
 /// probe→spawn→wait-health orchestration above.
 
@@ -391,6 +391,6 @@ mod tests {
         );
     }
 
-    // `resolve_daemon_exe_path` moved to `uc_daemon_local::spawn`; its
+    // `resolve_daemon_exe_path` moved to `uc_daemon_process::spawn`; its
     // no-panic test lives there now.
 }

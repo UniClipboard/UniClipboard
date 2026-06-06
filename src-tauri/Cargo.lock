@@ -9826,6 +9826,7 @@ dependencies = [
  "uc-daemon-client",
  "uc-daemon-contract",
  "uc-daemon-local",
+ "uc-daemon-process",
  "uc-observability",
  "uc-platform",
  "uuid",
@@ -9912,7 +9913,7 @@ dependencies = [
  "tracing",
  "uc-core",
  "uc-daemon-contract",
- "uc-daemon-local",
+ "uc-daemon-process",
  "url",
 ]
 
@@ -9944,7 +9945,20 @@ dependencies = [
  "tracing",
  "uc-application",
  "uc-daemon-contract",
+ "uc-daemon-process",
  "uc-platform",
+]
+
+[[package]]
+name = "uc-daemon-process"
+version = "0.14.0-alpha.5"
+dependencies = [
+ "anyhow",
+ "dirs 6.0.0",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
  "which",
 ]
 

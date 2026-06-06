@@ -16,6 +16,10 @@ uc-core = { path = "../uc-core" }
 uc-daemon-client = { path = "../uc-daemon-client" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
+# ADR-008 P5-0: the process-management primitives (process_metadata / socket /
+# spawn / spawn_contract) the CLI uses now live in this thin crate. uc-cli still
+# keeps its other heavy deps for now — they are removed in later P5 slices.
+uc-daemon-process = { path = "../uc-daemon-process" }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly
 # (replaces the standalone `clipboard-probe` binary). Diagnostic only.
 # Goes through `uc_platform::clipboard::build_event_loop`, so it inherits

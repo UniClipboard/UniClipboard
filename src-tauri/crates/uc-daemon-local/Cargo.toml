@@ -15,17 +15,20 @@ path = "src/lib.rs"
 [dependencies]
 uc-application = { path = "../uc-application" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
+# ADR-008 P5-0: thin process-management primitives (process_metadata / socket /
+# spawn / spawn_contract) live here and are re-exported from this crate's
+# lib.rs under their original module paths.
+uc-daemon-process = { path = "../uc-daemon-process" }
 uc-platform = { path = "../uc-platform" }
 anyhow = "1.0"
 fs2 = "0.4"
-which = "7"
-# Used unconditionally by contract / health_wait / process_metadata / auth /
+# Used unconditionally by contract / health_wait / auth /
 # instance_lock, all of which compile on every platform. Keeping them
 # cfg(unix)-only broke the Windows build of every crate that links this one
 # (uniclipd, the GUI via uc-desktop, the CLI): the modules `use` these crates
 # while the deps were absent on Windows. The genuinely unix-only syscalls
-# (setsid / kill / proc_pidpath / EAGAIN) are already `#[cfg(unix)]`-gated in
-# the source, so only `libc` stays target-scoped below.
+# (EAGAIN in instance_lock) are already `#[cfg(unix)]`-gated in the source, so
+# only `libc` stays target-scoped below.
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

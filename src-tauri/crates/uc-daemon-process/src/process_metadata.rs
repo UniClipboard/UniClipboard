@@ -6,9 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use uc_application::facade::AppPaths;
-use uc_platform::app_dirs::DirsAppDirsAdapter;
-use uc_platform::ports::AppDirsPort;
+use crate::app_data_root::{app_data_root, AppDataRootError};
 
 /// 描述 daemon 进程是怎么被拉起的——决定它能不能由 `cli stop` SIGTERM 掉。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,37 +120,49 @@ impl DaemonPidMetadata {
     }
 }
 
+/// Leaf filename of the daemon PID file, kept byte-identical to
+/// `AppPaths::daemon_pid_path()` (`<app_data_root>/.daemon-pid`).
+const DAEMON_PID_FILE_NAME: &str = ".daemon-pid";
+
 /// Provides the process-wide singleton `DaemonPidManager` used by standalone helpers.
 fn default_manager() -> Result<&'static DaemonPidManager> {
     static DEFAULT_MANAGER: OnceLock<Result<DaemonPidManager, String>> = OnceLock::new();
     DEFAULT_MANAGER
         .get_or_init(|| {
-            let adapter = DirsAppDirsAdapter::new();
-            adapter
-                .get_app_dirs()
+            resolve_pid_path_from_root()
                 .context("failed to resolve application directories")
-                .map(|app_dirs| DaemonPidManager::new(AppPaths::from_app_dirs(&app_dirs)))
+                .map(DaemonPidManager::new)
                 .map_err(|e| format!("{e:#}"))
         })
         .as_ref()
         .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
+/// Resolve `<app_data_root>/.daemon-pid` using the self-contained resolver,
+/// reproducing `AppPaths::daemon_pid_path()` byte-for-byte.
+fn resolve_pid_path_from_root() -> Result<PathBuf, AppDataRootError> {
+    Ok(app_data_root()?.join(DAEMON_PID_FILE_NAME))
+}
+
 /// Manages the daemon PID metadata file lifecycle.
 #[derive(Debug, Clone)]
 pub struct DaemonPidManager {
-    app_paths: AppPaths,
+    /// Fully-resolved `<app_data_root>/.daemon-pid` path. Stored directly so
+    /// this module owns zero app-stack dependencies; path policy is reproduced
+    /// byte-for-byte by [`crate::app_data_root::app_data_root`].
+    pid_path: PathBuf,
 }
 
 impl DaemonPidManager {
-    /// Creates a new DaemonPidManager from the provided `AppPaths`.
-    pub fn new(app_paths: AppPaths) -> Self {
-        Self { app_paths }
+    /// Creates a new DaemonPidManager that reads/writes the daemon PID file at
+    /// `pid_path`.
+    pub fn new(pid_path: PathBuf) -> Self {
+        Self { pid_path }
     }
 
     /// Returns the filesystem path where the daemon PID file for the current app/profile is stored.
     fn pid_path(&self) -> PathBuf {
-        self.app_paths.daemon_pid_path()
+        self.pid_path.clone()
     }
 
     /// 写入当前进程的 PID + `mode` 到 PID 文件（JSON 格式）。
@@ -452,21 +462,12 @@ mod tests {
     use tempfile::TempDir;
 
     /// Build a `DaemonPidManager` whose `pid_path()` lives inside `temp`.
-    /// `AppPaths` has public fields, so we don't need to drag in `uc-core`'s
-    /// `AppDirs` machinery just for unit tests.
+    /// The manager now stores a resolved PID-file path directly, so tests
+    /// construct it from a temp `<root>/.daemon-pid` instead of dragging in the
+    /// app-stack `AppDirs` / `AppPaths` machinery.
     fn manager_in(temp: &TempDir) -> DaemonPidManager {
-        let root = temp.path().to_path_buf();
-        let app_paths = AppPaths {
-            db_path: root.join("db.sqlite"),
-            vault_dir: root.join("vault"),
-            settings_path: root.join("settings.json"),
-            logs_dir: root.join("logs"),
-            cache_dir: root.join("cache"),
-            file_cache_dir: root.join("file-cache"),
-            spool_dir: root.join("spool"),
-            app_data_root_dir: root,
-        };
-        DaemonPidManager::new(app_paths)
+        let pid_path = temp.path().join(DAEMON_PID_FILE_NAME);
+        DaemonPidManager::new(pid_path)
     }
 
     #[test]

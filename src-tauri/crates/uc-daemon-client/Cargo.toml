@@ -13,7 +13,12 @@ path = "src/lib.rs"
 # Workspace crates
 uc-core = { path = "../uc-core" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
-uc-daemon-local = { path = "../uc-daemon-local" }
+# ADR-008 P5-0: depend on the thin process-management crate instead of
+# uc-daemon-local. This severs the uc-application → uc-infra → iroh/diesel edge
+# from the daemon-client stack — the only symbols this crate used from
+# uc-daemon-local were socket::{resolve_daemon_http_addr, resolve_daemon_token_path},
+# both of which now live in uc-daemon-process.
+uc-daemon-process = { path = "../uc-daemon-process" }
 
 # HTTP + WebSocket
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }

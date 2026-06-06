@@ -4,7 +4,7 @@ use std::fmt;
 use std::time::Duration;
 
 use serde::Serialize;
-use uc_daemon_local::process_metadata::{DaemonPidMetadata, DaemonProcessMode};
+use uc_daemon_process::process_metadata::{DaemonPidMetadata, DaemonProcessMode};
 
 use crate::exit_codes;
 use crate::output;
@@ -47,7 +47,7 @@ impl fmt::Display for StopOutput {
 /// Run the stop command.
 pub async fn run(json: bool, _verbose: bool) -> i32 {
     run_stop_with(
-        || uc_daemon_local::process_metadata::read_pid_metadata(),
+        || uc_daemon_process::process_metadata::read_pid_metadata(),
         |meta| verify_identity(meta),
         |pid| send_sigterm(pid),
         json,
@@ -58,7 +58,7 @@ pub async fn run(json: bool, _verbose: bool) -> i32 {
 /// D22 identity-aware liveness check: verify the PID is alive AND belongs
 /// to a daemon binary. Returns `true` only if both conditions hold.
 fn verify_identity(metadata: &DaemonPidMetadata) -> bool {
-    use uc_daemon_local::process_metadata::{verify_pid_identity, PidVerification};
+    use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
     matches!(verify_pid_identity(metadata), PidVerification::Active)
 }
 
@@ -201,7 +201,7 @@ mod tests {
             pid,
             mode,
             started_at_ms: 0,
-            spawned_by: uc_daemon_local::process_metadata::DaemonSpawnOrigin::Unknown,
+            spawned_by: uc_daemon_process::process_metadata::DaemonSpawnOrigin::Unknown,
         }
     }
 

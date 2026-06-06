@@ -23,10 +23,8 @@ use crate::process_metadata::{DaemonSpawnOrigin, SPAWN_ORIGIN_ENV};
 
 /// Failure modes of [`spawn_detached_daemon`] / [`resolve_daemon_exe_path`].
 ///
-/// Deliberately uses a hand-rolled `Display` (no `thiserror`) so the module
-/// stays buildable on every target — several of this crate's convenience deps
-/// (`thiserror`, `tracing`) are gated `cfg(unix)`, and the spawn primitive must
-/// compile on Windows too.
+/// Deliberately uses a hand-rolled `Display` (no `thiserror`) to keep this thin
+/// crate dependency-light and buildable on every target, including Windows.
 #[derive(Debug)]
 pub enum SpawnDaemonError {
     /// The `uniclipd` binary could not be located (neither as a sibling of the

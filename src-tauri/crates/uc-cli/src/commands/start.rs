@@ -38,11 +38,11 @@ pub async fn run(foreground: bool, server: bool, json: bool, verbose: bool) -> i
         // does NOT resolve the run mode or touch clipboard switches here —
         // that knowledge lives in the daemon binary (ADR-007 §2.2).
         std::env::set_var(
-            uc_daemon_local::spawn_contract::RUN_MODE_ENV,
-            uc_daemon_local::spawn_contract::RUN_MODE_SERVER,
+            uc_daemon_process::spawn_contract::RUN_MODE_ENV,
+            uc_daemon_process::spawn_contract::RUN_MODE_SERVER,
         );
     } else {
-        std::env::remove_var(uc_daemon_local::spawn_contract::RUN_MODE_ENV);
+        std::env::remove_var(uc_daemon_process::spawn_contract::RUN_MODE_ENV);
     }
 
     if let Some(code) = check_setup_complete(json, verbose).await {
@@ -90,7 +90,7 @@ async fn check_setup_complete(json: bool, _verbose: bool) -> Option<i32> {
 async fn run_background(json: bool) -> i32 {
     run_start_background_with(
         || local_daemon::ensure_local_daemon_running(),
-        || uc_daemon_local::process_metadata::read_pid_metadata().map(|opt| opt.map(|m| m.pid)),
+        || uc_daemon_process::process_metadata::read_pid_metadata().map(|opt| opt.map(|m| m.pid)),
     )
     .await
     .map_or_else(
@@ -113,7 +113,7 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
     // We must NOT use ensure_local_daemon_running() here because it would
     // spawn a background daemon, conflicting with the foreground spawn below.
     if let Ok(true) = local_daemon::probe_running().await {
-        let pid = uc_daemon_local::process_metadata::read_pid_metadata()
+        let pid = uc_daemon_process::process_metadata::read_pid_metadata()
             .ok()
             .flatten()
             .map(|m| m.pid);
@@ -128,7 +128,7 @@ async fn run_foreground(json: bool, _verbose: bool) -> i32 {
         return exit_codes::EXIT_SUCCESS;
     }
 
-    let daemon_exe = match uc_daemon_local::spawn::resolve_daemon_exe_path() {
+    let daemon_exe = match uc_daemon_process::spawn::resolve_daemon_exe_path() {
         Ok(path) => path,
         Err(e) => {
             eprintln!("Error: {}", e);

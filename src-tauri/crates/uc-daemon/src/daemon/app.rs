@@ -332,7 +332,12 @@ impl DaemonApp {
             "loading daemon auth token"
         );
         let auth_token = load_or_create_auth_token(&token_path)?;
-        let pid_manager = DaemonPidManager::new(self.storage_paths.clone());
+        // ADR-008 P5-0: DaemonPidManager now stores the resolved PID-file path
+        // directly (the thin uc-daemon-process crate owns no app-stack deps).
+        // `AppPaths::daemon_pid_path()` is `<app_data_root>/.daemon-pid`, the
+        // exact path the manager used to compute internally from `AppPaths` —
+        // byte-identical behavior.
+        let pid_manager = DaemonPidManager::new(self.storage_paths.daemon_pid_path());
         let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager.clone(), self.process_mode)?;
         let pid = std::process::id();
 

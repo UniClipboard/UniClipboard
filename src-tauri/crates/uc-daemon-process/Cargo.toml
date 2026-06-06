@@ -1,0 +1,30 @@
+[package]
+name = "uc-daemon-process"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+description = "Thin daemon process-management primitives (PID file, socket path, detached spawn, spawn contract) with no app-stack or iroh/diesel dependencies"
+
+[features]
+test-helpers = []
+
+[lib]
+name = "uc_daemon_process"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+# Resolves the application data root
+# (`<data_local_dir>/app.uniclipboard.desktop`) for the daemon PID/token paths
+# without dragging in the app stack (uc-application/uc-platform). Same version
+# uc-platform pins, so the resolved paths stay byte-identical (ADR-008 P5-0).
+dirs = "6.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+which = "7"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

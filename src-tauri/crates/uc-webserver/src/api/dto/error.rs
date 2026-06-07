@@ -144,6 +144,15 @@ impl ApiError {
         self.details = Some(details);
         self
     }
+
+    /// Override the stable `code` token (ADR-008 P5-L L8d-1). Used where one HTTP
+    /// status carries several distinct, client-matchable refusal reasons (e.g. the
+    /// controlled-restart 409 reasons) so callers can branch on `code`, not message.
+    #[must_use]
+    pub fn with_code(mut self, code: impl Into<String>) -> Self {
+        self.code = code.into();
+        self
+    }
 }
 
 impl IntoResponse for ApiError {

@@ -20,9 +20,9 @@ use uc_daemon_process::socket::resolve_daemon_http_addr;
 
 pub use connection::DaemonConnectionState;
 pub use http::{
-    DaemonAnalyticsClient, DaemonClipboardClient, DaemonPairingClient, DaemonPairingRequestError,
-    DaemonQueryClient, DaemonSearchClient, DaemonSearchRequestError, DaemonSettingsClient,
-    DaemonSetupClient, ExchangedSessionToken, SearchQueryRequest,
+    DaemonAnalyticsClient, DaemonClipboardClient, DaemonLifecycleClient, DaemonPairingClient,
+    DaemonPairingRequestError, DaemonQueryClient, DaemonSearchClient, DaemonSearchRequestError,
+    DaemonSettingsClient, DaemonSetupClient, ExchangedSessionToken, SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::DaemonService;
@@ -230,6 +230,15 @@ impl DaemonClientContext {
     /// Spawn a [`DaemonSearchClient`] that shares this context's connection state and HTTP client.
     pub fn search_client(&self) -> DaemonSearchClient {
         DaemonSearchClient::with_http_conn_state_and_type(
+            self.http.clone(),
+            self.connection_state.clone(),
+            self.client_type.clone(),
+        )
+    }
+
+    /// Spawn a [`DaemonLifecycleClient`] that shares this context's connection state and HTTP client.
+    pub fn lifecycle_client(&self) -> DaemonLifecycleClient {
+        DaemonLifecycleClient::with_http_conn_state_and_type(
             self.http.clone(),
             self.connection_state.clone(),
             self.client_type.clone(),

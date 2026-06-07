@@ -209,6 +209,24 @@ pub struct LifecycleStatusResponse {
     pub state: String,
 }
 
+/// POST /lifecycle/restart request body (ADR-008 P5-L L8d-1). `targetMode` is the
+/// residency the successor daemon should launch in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RestartRequest {
+    pub target_mode: DaemonResidency,
+}
+
+/// POST /lifecycle/restart 202 ACCEPTED body (ADR-008 P5-L L8d-1). Echoes the
+/// locked-in `generation` + `targetMode` so the requester can correlate the
+/// accepted restart with the eventual handover record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RestartAccepted {
+    pub generation: u64,
+    pub target_mode: DaemonResidency,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DaemonWsSubscribeRequest {

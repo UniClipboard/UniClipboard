@@ -133,6 +133,8 @@ pub mod http_route {
     pub const CLIPBOARD_RESEND: &str = "/clipboard/resend";
     /// POST /clipboard/cancel-transfer/:transfer_id — cancel an in-flight inbound transfer
     pub const CLIPBOARD_CANCEL_TRANSFER: &str = "/clipboard/cancel-transfer";
+    /// POST /lifecycle/restart — request a controlled restart/promotion (ADR-008 P5-L L8d-1)
+    pub const LIFECYCLE_RESTART: &str = "/lifecycle/restart";
 }
 
 /// HTTP route paths for the v2 daemon REST endpoints (Slice4 P3 T3.2).

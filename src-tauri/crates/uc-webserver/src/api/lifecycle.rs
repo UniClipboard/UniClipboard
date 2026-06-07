@@ -8,13 +8,12 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::Ordering;
 use tracing::{info, Instrument};
 
 use uc_daemon_contract::api::dto::envelope::{ApiEnvelope, LifecycleStatusEnvelope};
-use uc_daemon_contract::api::types::DaemonResidency;
+use uc_daemon_contract::api::types::{DaemonResidency, RestartAccepted, RestartRequest};
 
 use super::types::LifecycleStatusResponse;
 use crate::api::dto::error::ApiError;
@@ -27,10 +26,8 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/lifecycle/status", get(get_lifecycle_status_handler))
         .route("/lifecycle/retry", post(retry_lifecycle_handler))
         .route("/lifecycle/ready", post(lifecycle_ready_handler))
-        // ADR-008 P5-L L8c: controlled restart. Intentionally NOT decorated with
-        // `#[utoipa::path]` — it is excluded from the OpenAPI doc + generated TS
-        // SDK until L8d wires the spawner that emits Oneshot. The route works at
-        // runtime and is Rust-tested; it just isn't surfaced in the schema yet.
+        // ADR-008 P5-L L8d-1: controlled restart, surfaced as a typed client
+        // contract (OpenAPI + generated TS SDK + native uc-daemon-client method).
         .route("/lifecycle/restart", post(restart_handler))
 }
 
@@ -140,28 +137,6 @@ async fn retry_lifecycle_handler(State(state): State<DaemonApiState>) -> impl In
     .await
 }
 
-/// POST /lifecycle/restart request body (ADR-008 P5-L L8c).
-///
-/// `targetMode` (camelCase on the wire) is the residency the successor daemon
-/// should launch in. Decoded with the `DaemonResidency` enum's own serde so the
-/// accepted values are exactly the wire variants ("standalone"/"serverHeadless").
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RestartRequest {
-    target_mode: DaemonResidency,
-}
-
-/// POST /lifecycle/restart 202 ACCEPTED body (ADR-008 P5-L L8c).
-///
-/// Echoes the locked-in `generation` + `targetMode` (camelCase) so the requester
-/// can correlate the accepted restart with the eventual handover record.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RestartAccepted {
-    generation: u64,
-    target_mode: DaemonResidency,
-}
-
 /// Pure arbitration decision for a controlled-restart request (ADR-008 P5-L L8c).
 ///
 /// HTTP-agnostic so it can be unit-tested without composing a `DaemonApiState`.
@@ -220,7 +195,8 @@ fn evaluate_restart_request(
     }
 }
 
-/// POST /lifecycle/restart — request a controlled restart (ADR-008 P5-L L8c).
+/// POST /lifecycle/restart — request a controlled restart/promotion of a
+/// transient (Oneshot) daemon (ADR-008 P5-L).
 ///
 /// REFUSES unless this daemon is an Oneshot residency AND the single-instance
 /// lock is enabled AND the target is not itself Oneshot. The accepted path raises
@@ -228,6 +204,18 @@ fn evaluate_restart_request(
 /// in-flight work; the Oneshot supervisor then self-terminates and `app.rs`
 /// persists the handover record. Production-neutral: no Oneshot daemon exists
 /// until L8d, so the accept path is unreachable in production.
+#[utoipa::path(
+    post,
+    path = "/lifecycle/restart",
+    tag = "lifecycle",
+    operation_id = "requestLifecycleRestart",
+    request_body = RestartRequest,
+    responses(
+        (status = 202, description = "Controlled restart accepted; quiescing/drain started", body = RestartAcceptedEnvelope),
+        (status = 400, description = "Invalid target mode (cannot promote to a transient target)", body = ApiErrorResponse),
+        (status = 409, description = "Restart unavailable (already in progress / not a transient daemon / single-instance disabled)", body = ApiErrorResponse),
+    )
+)]
 async fn restart_handler(
     State(state): State<DaemonApiState>,
     body: Result<Json<RestartRequest>, axum::extract::rejection::JsonRejection>,
@@ -268,6 +256,7 @@ async fn restart_handler(
             current_target,
             generation,
         } => ApiError::conflict("controlled restart already in progress")
+            .with_code("restart_in_progress")
             .with_details(json!({
                 "currentTargetMode": current_target,
                 "generation": generation,
@@ -275,14 +264,18 @@ async fn restart_handler(
             .into_response(),
         RestartDecision::NotPromotable => {
             ApiError::conflict("daemon is not a transient (oneshot) daemon; nothing to promote")
+                .with_code("not_promotable")
                 .into_response()
         }
         RestartDecision::Disabled => {
             ApiError::conflict("controlled restart unavailable: single-instance lock is disabled")
+                .with_code("restart_disabled")
                 .into_response()
         }
         RestartDecision::InvalidTarget => {
-            ApiError::bad_request("cannot promote to a transient (oneshot) target").into_response()
+            ApiError::bad_request("cannot promote to a transient (oneshot) target")
+                .with_code("invalid_target")
+                .into_response()
         }
     }
 }

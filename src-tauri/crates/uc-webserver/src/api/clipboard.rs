@@ -340,6 +340,7 @@ fn require_app_facade(state: &DaemonApiState) -> Result<Arc<AppFacade>, ApiError
         (status = 200, description = "Dispatch fan-out outcome", body = DispatchOutcomeEnvelope),
         (status = 400, description = "Empty or malformed request", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 503, description = "Daemon is draining a controlled restart; retry against the successor", body = ApiErrorResponse),
     )
 )]
 async fn dispatch_text(
@@ -402,6 +403,7 @@ async fn dispatch_text(
         (status = 404, description = "Entry not found", body = ApiErrorResponse),
         (status = 409, description = "Entry not resendable / target not trusted / no eligible targets", body = ApiErrorResponse),
         (status = 500, description = "Storage or dispatch failure", body = ApiErrorResponse),
+        (status = 503, description = "Daemon is draining a controlled restart; retry against the successor", body = ApiErrorResponse),
     )
 )]
 async fn resend_entry(

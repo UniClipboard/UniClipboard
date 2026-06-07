@@ -42,7 +42,7 @@ use crate::api::dto::v2::setup::{
 };
 use crate::api::types::{
     HealthResponse, LifecycleStatusResponse, PeerSnapshotDto, PresenceRefreshResponse,
-    SpaceMemberDto, StatusResponse,
+    RestartAccepted, SpaceMemberDto, StatusResponse,
 };
 
 /// Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
@@ -111,6 +111,8 @@ use crate::api::types::{
     HealthEnvelope = ApiEnvelope<HealthResponse>,
     StatusEnvelope = ApiEnvelope<StatusResponse>,
     LifecycleStatusEnvelope = ApiEnvelope<LifecycleStatusResponse>,
+    // ── controlled restart (ADR-008 P5-L L8d-1) ────────────────────
+    RestartAcceptedEnvelope = ApiEnvelope<RestartAccepted>,
     PeerSnapshotListEnvelope = ApiEnvelope<Vec<PeerSnapshotDto>>,
     SpaceMemberListEnvelope = ApiEnvelope<Vec<SpaceMemberDto>>,
     PresenceRefreshEnvelope = ApiEnvelope<PresenceRefreshResponse>,

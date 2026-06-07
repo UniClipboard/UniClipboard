@@ -72,13 +72,13 @@ use uc_daemon_contract::api::dto::envelope::{
     MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
     MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope,
     PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope,
-    ResendEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope,
-    SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope, SettingsEnvelope,
-    SettingsUpdateResultEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
-    SetupMigrationProgressEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
-    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope, StorageStatsEnvelope,
-    ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateMobileSyncSettingsEnvelope,
-    UpgradeStatusEnvelope,
+    ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
+    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope,
+    SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
+    SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
+    SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
+    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope,
+    UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -93,7 +93,8 @@ use uc_daemon_contract::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
 use uc_daemon_contract::api::types::DaemonWsEvent;
 use uc_daemon_contract::api::types::{
     DaemonResidency, HealthResponse, LifecycleStatusResponse, PeerSnapshotDto,
-    PresenceRefreshResponse, SpaceMemberDto, StatusResponse, WorkerStatusDto,
+    PresenceRefreshResponse, RestartAccepted, RestartRequest, SpaceMemberDto, StatusResponse,
+    WorkerStatusDto,
 };
 
 /// Applies the contract-owned cross-cutting OpenAPI metadata (info-adjacent
@@ -177,6 +178,7 @@ impl Modify for ContractMeta {
         crate::api::lifecycle::get_lifecycle_status_handler,
         crate::api::lifecycle::retry_lifecycle_handler,
         crate::api::lifecycle::lifecycle_ready_handler,
+        crate::api::lifecycle::restart_handler,
         // ── upgrade ────────────────────────────────────────────────
         crate::api::upgrade::get_upgrade_status_handler,
         crate::api::upgrade::ack_upgrade_handler,
@@ -333,6 +335,10 @@ impl Modify for ContractMeta {
             // ── lifecycle ──────────────────────────────────────────
             LifecycleStatusEnvelope,
             LifecycleStatusResponse,
+            // ── lifecycle: controlled restart (ADR-008 P5-L L8d-1) ──
+            RestartAcceptedEnvelope,
+            RestartRequest,
+            RestartAccepted,
             // ── upgrade ────────────────────────────────────────────
             UpgradeStatusEnvelope,
             AckUpgradeEnvelope,
@@ -495,7 +501,9 @@ mod assembly_smoke_tests {
         // and `GET /clipboard/entries/{id}/delivery`; ADR-008 P3-b added the 7
         // `/mobile-sync/*` operations: +5 paths, +7 operations; ADR-008 P3-c D20
         // added `POST /analytics/capture`: +1 path, +1 operation; ADR-008 P3-3 B2'-1
-        // added `POST /settings/relay-probe`: +1 path, +1 operation → 55 / 60.)
+        // added `POST /settings/relay-probe`: +1 path, +1 operation → 55 / 60;
+        // ADR-008 P5-L L8d-1 surfaced `POST /lifecycle/restart`: +1 path,
+        // +1 operation → 56 / 61.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -504,8 +512,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            55,
-            "expected exactly 55 path templates, found {}: {:?}",
+            56,
+            "expected exactly 56 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -519,8 +527,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 60,
-            "expected exactly 60 operations across all paths, found {operation_count}"
+            operation_count, 61,
+            "expected exactly 61 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

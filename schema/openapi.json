@@ -2554,6 +2554,54 @@
         ],
         "type": "object"
       },
+      "RestartAccepted": {
+        "description": "POST /lifecycle/restart 202 ACCEPTED body (ADR-008 P5-L L8d-1). Echoes the\nlocked-in `generation` + `targetMode` so the requester can correlate the\naccepted restart with the eventual handover record.",
+        "properties": {
+          "generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "targetMode": {
+            "$ref": "#/components/schemas/DaemonResidency"
+          }
+        },
+        "required": [
+          "generation",
+          "targetMode"
+        ],
+        "type": "object"
+      },
+      "RestartAcceptedEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RestartAccepted"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "RestartRequest": {
+        "description": "POST /lifecycle/restart request body (ADR-008 P5-L L8d-1). `targetMode` is the\nresidency the successor daemon should launch in.",
+        "properties": {
+          "targetMode": {
+            "$ref": "#/components/schemas/DaemonResidency"
+          }
+        },
+        "required": [
+          "targetMode"
+        ],
+        "type": "object"
+      },
       "RestoreEntryEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -4424,6 +4472,16 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Daemon is draining a controlled restart; retry against the successor"
           }
         },
         "security": [
@@ -4932,6 +4990,16 @@
               }
             },
             "description": "Storage or dispatch failure"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Daemon is draining a controlled restart; retry against the successor"
           }
         },
         "security": [
@@ -5494,6 +5562,66 @@
           }
         ],
         "summary": "通知 daemon：已解锁，可以开始采集剪贴板——打开 clipboard capture 门控。",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/lifecycle/restart": {
+      "post": {
+        "description": "transient (Oneshot) daemon (ADR-008 P5-L).\n\nREFUSES unless this daemon is an Oneshot residency AND the single-instance\nlock is enabled AND the target is not itself Oneshot. The accepted path raises\nthe L8b `quiescing` flag (via the coordinator) so admission gates drain\nin-flight work; the Oneshot supervisor then self-terminates and `app.rs`\npersists the handover record. Production-neutral: no Oneshot daemon exists\nuntil L8d, so the accept path is unreachable in production.",
+        "operationId": "requestLifecycleRestart",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestartAcceptedEnvelope"
+                }
+              }
+            },
+            "description": "Controlled restart accepted; quiescing/drain started"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid target mode (cannot promote to a transient target)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Restart unavailable (already in progress / not a transient daemon / single-instance disabled)"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /lifecycle/restart — request a controlled restart/promotion of a",
         "tags": [
           "lifecycle"
         ]

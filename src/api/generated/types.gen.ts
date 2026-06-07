@@ -1551,6 +1551,47 @@ export type ResendResponse = {
 };
 
 /**
+ * POST /lifecycle/restart 202 ACCEPTED body (ADR-008 P5-L L8d-1). Echoes the
+ * locked-in `generation` + `targetMode` so the requester can correlate the
+ * accepted restart with the eventual handover record.
+ */
+export type RestartAccepted = {
+    generation: number;
+    targetMode: DaemonResidency;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type RestartAcceptedEnvelope = {
+    data: RestartAccepted;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * POST /lifecycle/restart request body (ADR-008 P5-L L8d-1). `targetMode` is the
+ * residency the successor daemon should launch in.
+ */
+export type RestartRequest = {
+    targetMode: DaemonResidency;
+};
+
+/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -2721,6 +2762,10 @@ export type DispatchClipboardTextErrors = {
      * Internal server error
      */
     500: ApiErrorResponse;
+    /**
+     * Daemon is draining a controlled restart; retry against the successor
+     */
+    503: ApiErrorResponse;
 };
 
 export type DispatchClipboardTextError = DispatchClipboardTextErrors[keyof DispatchClipboardTextErrors];
@@ -2995,6 +3040,10 @@ export type ResendClipboardEntryErrors = {
      * Storage or dispatch failure
      */
     500: ApiErrorResponse;
+    /**
+     * Daemon is draining a controlled restart; retry against the successor
+     */
+    503: ApiErrorResponse;
 };
 
 export type ResendClipboardEntryError = ResendClipboardEntryErrors[keyof ResendClipboardEntryErrors];
@@ -3328,6 +3377,35 @@ export type SignalLifecycleReadyResponses = {
 };
 
 export type SignalLifecycleReadyResponse = SignalLifecycleReadyResponses[keyof SignalLifecycleReadyResponses];
+
+export type RequestLifecycleRestartData = {
+    body: RestartRequest;
+    path?: never;
+    query?: never;
+    url: '/lifecycle/restart';
+};
+
+export type RequestLifecycleRestartErrors = {
+    /**
+     * Invalid target mode (cannot promote to a transient target)
+     */
+    400: ApiErrorResponse;
+    /**
+     * Restart unavailable (already in progress / not a transient daemon / single-instance disabled)
+     */
+    409: ApiErrorResponse;
+};
+
+export type RequestLifecycleRestartError = RequestLifecycleRestartErrors[keyof RequestLifecycleRestartErrors];
+
+export type RequestLifecycleRestartResponses = {
+    /**
+     * Controlled restart accepted; quiescing/drain started
+     */
+    202: RestartAcceptedEnvelope;
+};
+
+export type RequestLifecycleRestartResponse = RequestLifecycleRestartResponses[keyof RequestLifecycleRestartResponses];
 
 export type RetryLifecycleData = {
     body?: never;

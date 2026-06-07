@@ -58,10 +58,13 @@ use uc_core::FileTransferCancellationReason;
 use uc_daemon_client::DaemonService;
 
 use crate::commands::app_session::{
-    build_app_session, connect_or_spawn_oneshot_daemon, refuse_if_daemon_running, CliAppSession,
+    build_app_session, connect_or_spawn_oneshot_daemon, refuse_if_daemon_running,
+    wait_and_reconnect_daemon, CliAppSession,
 };
 use crate::exit_codes;
 use crate::ui;
+
+const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
     if !json {
@@ -84,12 +87,14 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
     run_recv_via_daemon(&*service, out_dir, json).await
 }
 
+#[allow(unused_variables, unused_assignments)]
 async fn run_recv_via_daemon(service: &dyn DaemonService, out_dir: PathBuf, json: bool) -> i32 {
     // Hold a control-WS lease for the whole receive window. Free-file
     // materialization on the daemon can take a while for large files, so a
     // transient Oneshot daemon must not self-terminate while we wait. Bind to a
     // named var (NOT `_`) so it lives to scope end; `_` would drop it at once.
-    let _lease = match service.hold_control_lease().await {
+    // Reassigned on reconnect to keep the new lease alive.
+    let mut lease = match service.hold_control_lease().await {
         Ok(guard) => guard,
         Err(err) => {
             ui::error(&format!("Failed to hold daemon session lease: {err}"));
@@ -111,7 +116,17 @@ async fn run_recv_via_daemon(service: &dyn DaemonService, out_dir: PathBuf, json
         ui::bar();
     }
 
+    // Track the active service for export calls after a potential reconnect.
+    // The initial `service` arg is borrowed; after reconnect we own the new one.
+    let mut owned_service: Option<Box<dyn DaemonService>> = None;
+    let mut reconnected = false;
+
     loop {
+        let active_service: &dyn DaemonService = match &owned_service {
+            Some(s) => &**s,
+            None => service,
+        };
+
         tokio::select! {
             biased;
             _ = tokio::signal::ctrl_c() => {
@@ -120,7 +135,7 @@ async fn run_recv_via_daemon(service: &dyn DaemonService, out_dir: PathBuf, json
             }
             recv = rx.recv() => match recv {
                 Some(entry) => {
-                    match service.export_entry_file(&entry.entry_id).await {
+                    match active_service.export_entry_file(&entry.entry_id).await {
                         Ok(Some(export)) => {
                             return finish_export(
                                 &out_dir,
@@ -131,7 +146,6 @@ async fn run_recv_via_daemon(service: &dyn DaemonService, out_dir: PathBuf, json
                             );
                         }
                         Ok(None) => {
-                            // 404: text-only entry / no materialized file — keep waiting.
                             if !json {
                                 ui::info("·", &format!(
                                     "entry {} carried no file — waiting for next",
@@ -147,8 +161,38 @@ async fn run_recv_via_daemon(service: &dyn DaemonService, out_dir: PathBuf, json
                     }
                 }
                 None => {
-                    ui::error("Inbound channel closed before any file arrived.");
-                    return exit_codes::EXIT_ERROR;
+                    if reconnected {
+                        ui::error("Inbound channel closed again; exiting.");
+                        return exit_codes::EXIT_ERROR;
+                    }
+                    if !json {
+                        ui::warn("Daemon connection lost — reconnecting...");
+                    }
+                    let new_service = match wait_and_reconnect_daemon(RECONNECT_TIMEOUT).await {
+                        Ok(s) => s,
+                        Err(code) => return code,
+                    };
+                    lease = match new_service.hold_control_lease().await {
+                        Ok(guard) => guard,
+                        Err(err) => {
+                            ui::error(&format!("Failed to re-acquire lease after reconnect: {err}"));
+                            return exit_codes::EXIT_ERROR;
+                        }
+                    };
+                    rx = match new_service.subscribe_inbound_entries().await {
+                        Ok(new_rx) => new_rx,
+                        Err(err) => {
+                            ui::error(&format!("Failed to re-subscribe after reconnect: {err}"));
+                            return exit_codes::EXIT_ERROR;
+                        }
+                    };
+                    owned_service = Some(new_service);
+                    reconnected = true;
+                    if !json {
+                        ui::warn(
+                            "Reconnected — events during daemon restart may have been missed",
+                        );
+                    }
                 }
             }
         }

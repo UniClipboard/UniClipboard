@@ -180,6 +180,27 @@ fn build_daemon_client_service() -> Result<Box<dyn DaemonService>, i32> {
     }
 }
 
+/// ADR-008 P5-1c: wait for the daemon to come back after a controlled restart,
+/// then build a fresh `DaemonService` client. Used by `watch`/`recv` to
+/// reconnect after the WS drops during promotion.
+pub async fn wait_and_reconnect_daemon(
+    timeout: std::time::Duration,
+) -> Result<Box<dyn DaemonService>, i32> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    let poll_interval = std::time::Duration::from_millis(200);
+    loop {
+        match probe_running().await {
+            Ok(ProbeOutcome::Compatible(_)) => return build_daemon_client_service(),
+            Ok(ProbeOutcome::Incompatible { .. }) | Ok(ProbeOutcome::Absent) | Err(_) => {}
+        }
+        if tokio::time::Instant::now() >= deadline {
+            ui::error("Timed out waiting for daemon to restart.");
+            return Err(exit_codes::EXIT_DAEMON_UNREACHABLE);
+        }
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
 /// 从系统 hostname 推导默认设备名。
 ///
 /// 设置了 `UC_PROFILE` 时追加 profile 后缀,方便单机双实例时区分设备。

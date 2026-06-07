@@ -24,9 +24,11 @@ use base64::Engine as _;
 use uc_daemon_client::DaemonService;
 use uc_daemon_contract::api::dto::clipboard_command::InboundNoticeEvent;
 
-use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+use crate::commands::app_session::{connect_or_spawn_oneshot_daemon, wait_and_reconnect_daemon};
 use crate::exit_codes;
 use crate::ui;
+
+const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
     if !json {
@@ -59,6 +61,7 @@ async fn run_watch_via_daemon(service: &dyn DaemonService, json: bool) -> i32 {
     }
     emit_watch_ready();
 
+    let mut reconnected = false;
     loop {
         tokio::select! {
             biased;
@@ -69,8 +72,30 @@ async fn run_watch_via_daemon(service: &dyn DaemonService, json: bool) -> i32 {
             recv = rx.recv() => match recv {
                 Some(event) => render_daemon_notice(&event, json),
                 None => {
-                    if !json { ui::warn("Daemon WS channel closed; exiting."); }
-                    return exit_codes::EXIT_ERROR;
+                    if reconnected {
+                        if !json { ui::warn("Daemon WS channel closed again; exiting."); }
+                        return exit_codes::EXIT_ERROR;
+                    }
+                    if !json {
+                        ui::warn("Daemon connection lost — reconnecting...");
+                    }
+                    let new_service = match wait_and_reconnect_daemon(RECONNECT_TIMEOUT).await {
+                        Ok(s) => s,
+                        Err(code) => return code,
+                    };
+                    rx = match new_service.subscribe_inbound_notices().await {
+                        Ok(new_rx) => new_rx,
+                        Err(err) => {
+                            ui::error(&format!("Failed to re-subscribe after reconnect: {err}"));
+                            return exit_codes::EXIT_ERROR;
+                        }
+                    };
+                    reconnected = true;
+                    if !json {
+                        ui::warn(
+                            "Reconnected — events during daemon restart may have been missed",
+                        );
+                    }
                 }
             }
         }

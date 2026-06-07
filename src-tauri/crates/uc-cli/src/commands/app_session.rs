@@ -82,6 +82,8 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
 }
 
 /// Execution mode determined by daemon probe.
+// ADR-008 P5-1a: in-process path retired for send/watch; kept as dead code until P5-4.
+#[allow(dead_code)]
 pub enum CliExecutionMode {
     /// No daemon running — use in-process AppFacade.
     InProcess(CliAppSession),
@@ -93,6 +95,8 @@ pub enum CliExecutionMode {
 ///
 /// If a daemon is running, builds a `DaemonService` client. Otherwise
 /// falls back to the in-process `CliAppSession`.
+// ADR-008 P5-1a: in-process path retired for send/watch; kept as dead code until P5-4.
+#[allow(dead_code)]
 pub async fn resolve_execution_mode(verbose: bool) -> Result<CliExecutionMode, i32> {
     match probe_running().await {
         Ok(ProbeOutcome::Compatible(_)) => {
@@ -121,6 +125,57 @@ pub async fn resolve_execution_mode(verbose: bool) -> Result<CliExecutionMode, i
             tracing::debug!(error = %err, "daemon probe failed; assuming no daemon");
             let session = build_app_session(verbose).await?;
             Ok(CliExecutionMode::InProcess(session))
+        }
+    }
+}
+
+/// ADR-008 P5-1a: connect to a running compatible daemon, or spawn a transient
+/// Oneshot daemon when none is present, and return a `DaemonService` client.
+/// Business commands (send/watch) use this instead of `resolve_execution_mode`
+/// — they NEVER fall back to an in-process session.
+///
+/// * Compatible(any residency) → reuse it.
+/// * Incompatible              → clear error (no silent attach).
+/// * Absent                    → setup gate, then spawn a Oneshot daemon.
+pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn DaemonService>, i32> {
+    let _ = verbose; // reserved; the daemon path builds no in-process session.
+    match probe_running().await {
+        Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(),
+        Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
+            ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
+            Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
+        }
+        Ok(ProbeOutcome::Absent) => {
+            // Don't spawn a useless Oneshot for an unprovisioned profile.
+            // Mirror start.rs's lenient unwrap_or(true): if setup state is
+            // unreadable, attempt the spawn and let the real error surface.
+            if !uc_bootstrap::is_setup_complete().await.unwrap_or(true) {
+                ui::error("No space on this profile — run `uniclip init` or `uniclip join` first.");
+                return Err(exit_codes::EXIT_ERROR);
+            }
+            match crate::local_daemon::spawn_oneshot_and_wait().await {
+                Ok(_session) => build_daemon_client_service(),
+                Err(err) => {
+                    ui::error(&err.to_string());
+                    Err(exit_codes::EXIT_ERROR)
+                }
+            }
+        }
+        // No in-process fallback in P5-1a. connect/timeout already map to
+        // Absent upstream, so a probe Err is a genuine failure → hard error.
+        Err(err) => {
+            ui::error(&format!("Failed to probe local daemon: {err}"));
+            Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
+        }
+    }
+}
+
+fn build_daemon_client_service() -> Result<Box<dyn DaemonService>, i32> {
+    match DaemonClientContext::from_env() {
+        Ok(ctx) => Ok(Box::new(HttpWsDaemonService::new(ctx))),
+        Err(err) => {
+            ui::error(&format!("Daemon is running but failed to connect: {err}"));
+            Err(exit_codes::EXIT_ERROR)
         }
     }
 }

@@ -43,8 +43,7 @@ use uc_daemon_client::DaemonService;
 use uc_daemon_contract::api::dto::clipboard_command::DispatchOutcomeResponse;
 
 use crate::commands::app_session::{
-    build_app_session, refuse_if_daemon_running, resolve_execution_mode, CliAppSession,
-    CliExecutionMode,
+    build_app_session, connect_or_spawn_oneshot_daemon, refuse_if_daemon_running, CliAppSession,
 };
 use crate::exit_codes;
 use crate::ui;
@@ -119,19 +118,11 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         Some(args.peers.clone())
     };
 
-    let exec_mode = match resolve_execution_mode(verbose).await {
-        Ok(m) => m,
+    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
+        Ok(s) => s,
         Err(code) => return code,
     };
-
-    match exec_mode {
-        CliExecutionMode::DaemonClient(service) => {
-            run_send_via_daemon(&*service, mode, plaintext, args.resend, peers_str, json).await
-        }
-        CliExecutionMode::InProcess(cli) => {
-            run_send_in_process(cli, mode, plaintext, args.resend, &args.peers, json).await
-        }
-    }
+    run_send_via_daemon(&*service, mode, plaintext, args.resend, peers_str, json).await
 }
 
 async fn run_send_via_daemon(
@@ -142,6 +133,19 @@ async fn run_send_via_daemon(
     peers: Option<Vec<String>>,
     json: bool,
 ) -> i32 {
+    // ADR-008 P5-1a: hold a control-WS lease across the dispatch call so a
+    // transient Oneshot daemon does not self-terminate mid-fan-out. The HTTP
+    // dispatch blocks until the daemon's bounded fan-out deadline, so holding
+    // the lease to the end of this fn covers the in-flight send. Bind to a named
+    // var (NOT `_`) so it lives to scope end; `_` would drop it immediately.
+    let _lease = match service.hold_control_lease().await {
+        Ok(guard) => guard,
+        Err(err) => {
+            ui::error(&format!("Failed to hold daemon session lease: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+
     match mode {
         SendMode::New => {
             let text = plaintext.expect("plaintext populated in new-entry mode");
@@ -242,6 +246,8 @@ fn render_daemon_dispatch(resp: &DispatchOutcomeResponse) {
     ui::bar();
 }
 
+// ADR-008 P5-1a: retired for send; kept as dead code until P5-4.
+#[allow(dead_code)]
 async fn run_send_in_process(
     cli: CliAppSession,
     mode: SendMode,

@@ -24,7 +24,7 @@ use base64::Engine as _;
 use uc_daemon_client::DaemonService;
 use uc_daemon_contract::api::dto::clipboard_command::InboundNoticeEvent;
 
-use crate::commands::app_session::{resolve_execution_mode, CliExecutionMode};
+use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
 use crate::exit_codes;
 use crate::ui;
 
@@ -33,15 +33,11 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         ui::header("Watch inbound clipboard");
     }
 
-    let exec_mode = match resolve_execution_mode(verbose).await {
-        Ok(m) => m,
+    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
+        Ok(s) => s,
         Err(code) => return code,
     };
-
-    match exec_mode {
-        CliExecutionMode::DaemonClient(service) => run_watch_via_daemon(&*service, json).await,
-        CliExecutionMode::InProcess(cli) => run_watch_in_process(cli, json).await,
-    }
+    run_watch_via_daemon(&*service, json).await
 }
 
 async fn run_watch_via_daemon(service: &dyn DaemonService, json: bool) -> i32 {
@@ -125,6 +121,8 @@ fn render_daemon_notice(event: &InboundNoticeEvent, json: bool) {
     );
 }
 
+// ADR-008 P5-1a: retired for watch; kept as dead code until P5-4.
+#[allow(dead_code)]
 async fn run_watch_in_process(cli: crate::commands::app_session::CliAppSession, json: bool) -> i32 {
     let resume_spinner = ui::spinner("Resuming space session...");
     match cli.app_facade().try_resume_session().await {

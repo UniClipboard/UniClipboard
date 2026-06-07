@@ -300,6 +300,26 @@ pub async fn ensure_or_promote_local_daemon(
     }
 }
 
+/// ADR-008 P5-1a: spawn a transient **Oneshot** daemon and wait for it to
+/// become healthy. Sets RUN_MODE_ONESHOT before spawning so the child boots
+/// as a self-terminating Oneshot (the child inherits this env var, exactly
+/// like `start.rs` does for --server). Used by business commands when no
+/// daemon is running; does NOT probe/reuse/promote (the caller already
+/// classified the daemon as Absent) and does NOT touch the start-only
+/// promote path.
+pub async fn spawn_oneshot_and_wait() -> Result<LocalDaemonSession, LocalDaemonError> {
+    let client = Client::builder()
+        .timeout(PROBE_TIMEOUT)
+        .build()
+        .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
+    let base_url = resolve_base_url()?;
+    std::env::set_var(
+        uc_daemon_process::spawn_contract::RUN_MODE_ENV,
+        uc_daemon_process::spawn_contract::RUN_MODE_ONESHOT,
+    );
+    spawn_and_wait_healthy(&client, &base_url).await
+}
+
 /// Promote a transient `Oneshot` daemon to a persistent `target` residency via a
 /// controlled restart (ADR-008 P5-L L8d-2).
 ///

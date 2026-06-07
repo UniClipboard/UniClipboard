@@ -12,7 +12,7 @@ use uc_daemon_contract::api::dto::clipboard_command::{
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
 use crate::http::exchange_session_token;
-use crate::service::DaemonService;
+use crate::service::{ControlLeaseGuard, DaemonService};
 use crate::DaemonClientContext;
 
 pub struct HttpWsDaemonService {
@@ -158,5 +158,85 @@ impl DaemonService for HttpWsDaemonService {
         });
 
         Ok(rx)
+    }
+
+    async fn hold_control_lease(&self) -> Result<ControlLeaseGuard> {
+        // Reuse the exact connection setup from `subscribe_inbound_notices`:
+        // resolve the connection state, exchange a session token, build the
+        // authenticated WS request, and connect. The daemon's
+        // `handle_connection` acquires a lease the moment the authenticated WS
+        // connects (BEFORE any subscribe), so a bare connection already holds
+        // the lease — we deliberately do NOT send a subscribe message here.
+        let conn = self
+            .ctx
+            .connection_state()
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("daemon connection info not available"))?;
+
+        let session_token = exchange_session_token(
+            &self.ctx.http(),
+            &self.ctx.connection_state(),
+            conn.pid,
+            self.ctx.client_type(),
+        )
+        .await
+        .context("failed to exchange session token for WS")?;
+
+        let ws_parsed = url::Url::parse(&conn.ws_url).context("invalid daemon WS URL")?;
+        let host = ws_parsed.host_str().context("daemon WS URL missing host")?;
+        let port = ws_parsed
+            .port_or_known_default()
+            .context("daemon WS URL missing port")?;
+
+        let mut request = conn
+            .ws_url
+            .as_str()
+            .into_client_request()
+            .map_err(|e| anyhow::anyhow!("invalid WS request: {e}"))?;
+        request.headers_mut().insert(
+            "Authorization",
+            format!("Session {}", session_token)
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid auth header: {e}"))?,
+        );
+
+        let tcp = tokio::net::TcpStream::connect((host, port))
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to connect to daemon WS at {host}:{port}: {e}"))?;
+
+        let (ws_stream, _) = tokio_tungstenite::client_async(request, tcp)
+            .await
+            .map_err(|e| anyhow::anyhow!("WS handshake failed: {e}"))?;
+
+        let (mut write, mut read) = ws_stream.split();
+
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+        // The keep-alive task owns BOTH halves. Draining `read` drives
+        // tungstenite's automatic Ping→Pong, which keeps the lease alive; the
+        // shutdown signal makes it send a best-effort clean Close and return.
+        let handle = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = &mut shutdown_rx => {
+                        let _ = write.send(Message::Close(None)).await;
+                        return;
+                    }
+                    next = read.next() => match next {
+                        Some(Ok(Message::Close(_))) | None => {
+                            debug!("control-lease WS closed by server");
+                            return;
+                        }
+                        Some(Ok(_)) => continue,
+                        Some(Err(e)) => {
+                            warn!(error = %e, "control-lease WS read error");
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(ControlLeaseGuard::new(shutdown_tx, handle))
     }
 }

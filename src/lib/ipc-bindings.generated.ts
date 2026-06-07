@@ -71,6 +71,24 @@ export const commands = {
 	refreshAtSecs: number,
 } | null, CommandError>(__TAURI_INVOKE("get_daemon_session", { trace })),
 	/**
+	 *  Read the recorded daemon-bootstrap failure, if the native bootstrap gave up.
+	 * 
+	 *  Returns `None` while bootstrap is still in flight or after it succeeded; the
+	 *  frontend poll treats `Some(_)` as a terminal signal to stop waiting for a
+	 *  connection and surface the error.
+	 * 
+	 *  Pure status read from managed state; no usecase orchestration is required.
+	 */
+	getDaemonBootstrapFailure: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<{
+	kind: DaemonBootstrapFailureKind,
+	detail: string,
+	observedVersion: string | null,
+	expectedVersion: string | null,
+} | null, CommandError>(__TAURI_INVOKE("get_daemon_bootstrap_failure", { trace })),
+	/**
 	 *  Restarts the running Tauri application to apply settings changes.
 	 * 
 	 *  流程:
@@ -202,6 +220,19 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("dev_open_updater_window", { trace })),
+	/**
+	 *  Open (or focus) the Sparkle-style updater window on demand.
+	 * 
+	 *  Frontend entry for surfacing the updater without waiting for the scheduler —
+	 *  used by the daemon-bootstrap error screen when the running daemon is newer
+	 *  than this GUI (`versionTooOld`), so the user can jump straight to updating.
+	 *  `open_or_focus_updater_window` is idempotent: if the scheduler already
+	 *  popped the window, this just brings it to the front.
+	 */
+	openUpdaterWindow: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("open_updater_window", { trace })),
 	/**
 	 *  Open the application data directory in the system file manager.
 	 *  在系统文件管理器中打开应用数据目录。
@@ -348,6 +379,42 @@ export const commands = {
  *  Serializes to {"code": "...", "message": "..."} for frontend discriminated union handling.
  */
 export type CommandError = { code: "NotFound"; message: string } | { code: "InternalError"; message: string } | { code: "Timeout"; message: string } | { code: "Cancelled"; message: string } | { code: "ValidationError"; message: string } | { code: "Conflict"; message: string };
+
+/**
+ *  Frontend-facing daemon-bootstrap failure payload. `detail` carries the
+ *  original error message (English, already user-safe) for diagnostics; the
+ *  version fields are populated only for
+ *  [`DaemonBootstrapFailureKind::VersionTooOld`].
+ */
+export type DaemonBootstrapFailure = {
+	kind: DaemonBootstrapFailureKind,
+	detail: string,
+	observedVersion: string | null,
+	expectedVersion: string | null,
+};
+
+/**
+ *  Machine-readable classification of a daemon-bootstrap failure, surfaced to
+ *  the frontend so it can show an actionable message instead of an endless
+ *  loading screen. `bootstrap_daemon_in_process` only populates the daemon
+ *  connection state on success; on failure the connection stays unset, so
+ *  without this signal the frontend's `get_daemon_connection_info` poll would
+ *  just spin until its own timeout.
+ */
+export type DaemonBootstrapFailureKind = 
+/**
+ *  The running daemon is a strictly-newer version than this GUI client.
+ *  ADR-008 P4-7 downgrade protection refuses to take it over, so the fix is
+ *  to update the app — a distinct kind so the UI can say "update" rather
+ *  than "restart".
+ */
+"versionTooOld" | 
+/**
+ *  Any other terminal bootstrap failure (spawn failure, health-check
+ *  timeout, probe error, or an older-or-equal daemon that couldn't be
+ *  replaced).
+ */
+"unavailable";
 
 export type DaemonConnectionPayload = {
 	baseUrl: string,

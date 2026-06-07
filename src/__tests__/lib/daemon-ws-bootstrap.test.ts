@@ -49,6 +49,10 @@ let refreshSessionCallCount = 0
 vi.mock('@/lib/ipc', () => ({
   commands: {
     getDaemonConnectionInfo: (...args: unknown[]) => mockGetDaemonConnectionInfo(...args),
+    // The connection-info poll now also probes for a recorded bootstrap failure
+    // each round; these tests exercise the success/auth paths, so a constant
+    // "no failure" keeps the poll on its happy path.
+    getDaemonBootstrapFailure: async () => null,
   },
 }))
 

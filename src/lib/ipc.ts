@@ -202,6 +202,7 @@ export const commands: TypedCommands = buildProxy()
 // P3-b when those commands became daemon HTTP endpoints.)
 export type {
   CommandError,
+  DaemonBootstrapFailure,
   DaemonConnectionPayload,
   DeviceMeta,
   DownloadEvent,

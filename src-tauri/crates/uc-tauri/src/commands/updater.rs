@@ -1054,6 +1054,24 @@ pub async fn dev_open_updater_window(
     }
 }
 
+/// Open (or focus) the Sparkle-style updater window on demand.
+///
+/// Frontend entry for surfacing the updater without waiting for the scheduler —
+/// used by the daemon-bootstrap error screen when the running daemon is newer
+/// than this GUI (`versionTooOld`), so the user can jump straight to updating.
+/// `open_or_focus_updater_window` is idempotent: if the scheduler already
+/// popped the window, this just brings it to the front.
+#[tauri::command]
+#[specta::specta]
+pub async fn open_updater_window(
+    app: AppHandle,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let _ = _trace;
+    crate::update_scheduler::open_or_focus_updater_window(&app, false)
+        .map_err(|err| format!("failed to open updater window: {err}"))
+}
+
 /// Detect how the current binary was installed.
 ///
 /// Cached after the first call. On Linux the detection asks dpkg/rpm whether

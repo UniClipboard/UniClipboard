@@ -20,7 +20,7 @@
 //!
 //! 所有命令在所有 OS 上都 collect，保证任何 runner 跑 `cargo test
 //! --test specta_export` 得到同一份 binding（CI 可以用单一 Linux runner
-//! 做 schema drift check）。当前 27 条命令都不依赖平台特定 mod 编译。
+//! 做 schema drift check）。当前 29 条命令都不依赖平台特定 mod 编译。
 
 use tauri_specta::{collect_commands, Builder};
 
@@ -48,6 +48,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::get_device_meta,
         crate::commands::startup::get_daemon_connection_info,
         crate::commands::startup::get_daemon_session,
+        crate::commands::startup::get_daemon_bootstrap_failure,
         // ── restart (Phase 95) ──────────────────────────────────────────────
         crate::commands::restart::restart_app,
         // ── autostart ───────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::updater::install_update,
         crate::commands::updater::get_install_kind,
         crate::commands::updater::dev_open_updater_window,
+        crate::commands::updater::open_updater_window,
         // ── storage ─────────────────────────────────────────────────────────
         crate::commands::storage::open_data_directory,
         crate::commands::storage::open_logs_directory,

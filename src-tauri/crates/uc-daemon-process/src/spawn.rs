@@ -72,7 +72,14 @@ impl std::error::Error for SpawnDaemonError {}
 /// the child via [`SPAWN_ORIGIN_ENV`]; the daemon reads it back when writing its
 /// PID file ([`DaemonSpawnOrigin::from_env`]), so a GUI can later tell whether
 /// the daemon it attached to is one a GUI spawned (stoppable on full quit).
-pub fn spawn_detached_daemon(origin: DaemonSpawnOrigin) -> Result<(), SpawnDaemonError> {
+///
+/// `handover_dir_override` is a test/override hook so the handover read aligns
+/// with a redirected data dir; production passes `None` (resolves the system
+/// `app_data_root`, byte-identical).
+pub fn spawn_detached_daemon(
+    origin: DaemonSpawnOrigin,
+    handover_dir_override: Option<std::path::PathBuf>,
+) -> Result<(), SpawnDaemonError> {
     let daemon_exe = resolve_daemon_exe_path()?;
 
     let mut command = Command::new(&daemon_exe);
@@ -89,7 +96,13 @@ pub fn spawn_detached_daemon(origin: DaemonSpawnOrigin) -> Result<(), SpawnDaemo
     // OLD daemon's instance lock; the spawner reads it here as a HINT and launches
     // the new daemon in that mode via RUN_MODE_ENV. Best-effort: in production
     // nothing writes a record (read → None), so the spawn is unchanged.
-    if let Some(app_data_root) = uc_app_paths::app_data_root() {
+    //
+    // ADR-008 P5-L L8a: resolve the handover dir via the override when present
+    // (so a redirected-data-dir test reads the same dir the daemon resolves),
+    // else fall back to the system app_data_root — production passes None, so
+    // the resolved path is byte-identical to before.
+    let handover_root = resolve_handover_dir(handover_dir_override);
+    if let Some(app_data_root) = handover_root {
         if let Some(record) = crate::handover::read(&app_data_root) {
             command.env(crate::spawn_contract::RUN_MODE_ENV, &record.target_mode);
             tracing::info!(
@@ -111,6 +124,19 @@ pub fn spawn_detached_daemon(origin: DaemonSpawnOrigin) -> Result<(), SpawnDaemo
     // own; the spawner's responsibility ends here.
     drop(child);
     Ok(())
+}
+
+/// Resolve the directory to read the pending handover record from.
+///
+/// The override wins when present (ADR-008 P5-L L8a: a redirected-data-dir test
+/// passes the dir the daemon resolves, so the spawner's read targets the same
+/// place the daemon writes/clears it). Otherwise fall back to the system
+/// `app_data_root`. Production passes `None`, so this is byte-identical to
+/// resolving `uc_app_paths::app_data_root()` directly.
+fn resolve_handover_dir(
+    handover_dir_override: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    handover_dir_override.or_else(uc_app_paths::app_data_root)
 }
 
 #[cfg(unix)]
@@ -207,5 +233,21 @@ mod tests {
         // only assert the resolver doesn't panic — the actual resolution
         // depends on the build layout.
         let _result = resolve_daemon_exe_path();
+    }
+
+    #[test]
+    fn resolve_handover_dir_prefers_the_override() {
+        // ADR-008 P5-L L8a: an explicit override dir wins over the system path,
+        // so a redirected-data-dir test (L8d) reads the handover from the same
+        // dir the daemon writes/clears it.
+        let dir = std::path::PathBuf::from("/tmp/uc-l8a-handover-override-probe");
+        assert_eq!(resolve_handover_dir(Some(dir.clone())), Some(dir));
+    }
+
+    #[test]
+    fn resolve_handover_dir_falls_back_to_system_when_none() {
+        // Production passes None → byte-identical to the pre-L8a behaviour of
+        // resolving `uc_app_paths::app_data_root()` directly.
+        assert_eq!(resolve_handover_dir(None), uc_app_paths::app_data_root());
     }
 }

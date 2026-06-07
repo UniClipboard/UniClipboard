@@ -99,10 +99,36 @@ pub fn read(app_data_root: &Path) -> Option<HandoverRecord> {
 /// Called by the controlled-restart requester (L8) while holding the OLD
 /// daemon's instance lock. Defined here in L7 so the store primitive is
 /// complete and testable; L7 itself only calls this from tests.
+///
+/// ADR-008 P5-L L8a: the write is **atomic** — the JSON is written to a
+/// temp file in the SAME directory (so `rename` stays on one filesystem) and
+/// then `rename`d into place. A spawner's [`read`] therefore never observes a
+/// half-written record. On any error the temp file is best-effort removed and
+/// the `Err` is returned.
+///
+/// This is **visibility**-atomicity (a reader never sees a torn file), NOT
+/// crash-durability: there is no `fsync`, so a crash mid-write may lose the
+/// record. That is acceptable for a best-effort hint — a missing record reads
+/// back as `None` (see [`read`]) and the spawn falls back to the default mode.
 pub fn write(app_data_root: &Path, record: &HandoverRecord) -> std::io::Result<()> {
     let path = handover_path(app_data_root);
     let json = serde_json::to_vec(record).map_err(std::io::Error::other)?;
-    std::fs::write(&path, json)
+
+    // Temp file beside the final path (same dir → rename is atomic on one fs).
+    // Include the pid so concurrent writers cannot stomp each other's temp file.
+    let temp_path = app_data_root.join(format!("{HANDOVER_FILE_NAME}.{}.tmp", std::process::id()));
+
+    if let Err(error) = std::fs::write(&temp_path, &json) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(error);
+    }
+
+    if let Err(error) = std::fs::rename(&temp_path, &path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 /// Clear (consume) the pending handover record.
@@ -144,6 +170,29 @@ mod tests {
             generation: 42,
         };
         write(dir.path(), &record).unwrap();
+        assert_eq!(read(dir.path()), Some(record));
+    }
+
+    #[test]
+    fn atomic_write_leaves_no_temp_file_behind() {
+        // ADR-008 P5-L L8a: the atomic write (temp + rename) must not leave the
+        // intermediate temp file in the lock dir once it succeeds.
+        let dir = tempfile::tempdir().unwrap();
+        let record = HandoverRecord {
+            target_mode: "server".to_string(),
+            generation: 1,
+        };
+        write(dir.path(), &record).unwrap();
+
+        assert!(handover_path(dir.path()).exists());
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "stray temp files: {leftovers:?}");
+
+        // The record still round-trips via `read`.
         assert_eq!(read(dir.path()), Some(record));
     }
 

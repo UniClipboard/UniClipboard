@@ -22,7 +22,12 @@ use fs2::FileExt;
 /// daemons against the same data dir.
 const DISABLE_ENV: &str = "UC_DISABLE_DAEMON_SINGLE_INSTANCE";
 
-fn single_instance_disabled() -> bool {
+/// Whether the per-profile single-instance lock is disabled via [`DISABLE_ENV`].
+///
+/// Exposed for ADR-008 P5-L L8c: the controlled-restart path refuses to operate
+/// when the single-instance lock is disabled (the handover safety model relies
+/// on lock mutual exclusion).
+pub fn single_instance_disabled() -> bool {
     std::env::var(DISABLE_ENV).as_deref() == Ok("1")
 }
 
@@ -175,6 +180,44 @@ mod tests {
         let lock = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
         drop(lock);
         let _lock2 = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
+    }
+
+    /// ADR-008 P5-L L8a: prove the lock-reuse ordering the controlled-restart
+    /// path relies on — modelled on `uc-webserver`'s port-reuse proxy
+    /// (`tests/graceful_shutdown_port_reuse.rs`). Sync test: the fs2 lock is
+    /// synchronous, so no tokio runtime is needed.
+    ///
+    /// 1. Acquire succeeds on a fresh profile dir.
+    /// 2. While the first guard is HELD, a second acquire returns
+    ///    `AlreadyRunning` (mutual exclusion — a new daemon cannot grab the
+    ///    lock before the old one releases it).
+    /// 3. Dropping the guard releases the lock; an acquire IMMEDIATELY after
+    ///    drop succeeds (release-on-drop, no lingering OS lock).
+    #[test]
+    fn lock_releases_on_drop_and_is_immediately_reacquirable() {
+        let _env = ENV_LOCK.lock().unwrap();
+        // Guard against the disabled escape valve leaking from another test: the
+        // mutual-exclusion assertion below only holds when the lock is live.
+        assert!(
+            !single_instance_disabled(),
+            "{DISABLE_ENV} must NOT be set for this test"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+
+        // (1) Fresh acquire succeeds.
+        let lock = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
+
+        // (2) While HELD, a second acquire is rejected with AlreadyRunning.
+        match DaemonInstanceLock::try_acquire(dir.path()) {
+            Err(InstanceLockError::AlreadyRunning { .. }) => {}
+            other => panic!("expected AlreadyRunning while held, got {other:?}"),
+        }
+
+        // (3) Drop releases the lock; the very next acquire succeeds.
+        drop(lock);
+        let _lock2 = DaemonInstanceLock::try_acquire(dir.path())
+            .expect("lock must be re-acquirable immediately after the prior guard drops");
     }
 
     #[test]

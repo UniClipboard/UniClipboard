@@ -178,7 +178,7 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
     let spinner = crate::ui::spinner("Starting local daemon…");
 
     if let Err(error) =
-        spawn_detached_daemon(DaemonSpawnOrigin::Cli).map_err(LocalDaemonError::from)
+        spawn_detached_daemon(DaemonSpawnOrigin::Cli, None).map_err(LocalDaemonError::from)
     {
         crate::ui::spinner_finish_error(&spinner, "Failed to spawn local daemon");
         return Err(error);

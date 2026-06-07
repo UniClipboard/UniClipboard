@@ -70,6 +70,16 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         } = super::process_bootstrap::build_process_runtime(run_mode).await?;
 
         // D22: acquire per-profile instance lock before any port binding.
+        //
+        // ORDERING (ADR-008 P5-L L8a) — load-bearing for P5-L L8 controlled
+        // restart: this guard is held to the END of the `block_on` closure,
+        // i.e. until AFTER `handle.wait()` below returns. `handle.wait()`
+        // encloses the full iroh `endpoint.close()` teardown (via
+        // `run_loop.rs`'s sequential `daemon.run().await` → `…shutdown().await`),
+        // so the lock drops strictly AFTER iroh fully unbinds its socket. A new
+        // daemon must not acquire the lock until the old daemon's iroh socket is
+        // released, otherwise the replacement races `AddrInUse`. Do NOT move
+        // this guard's scope earlier (e.g. into a sub-block).
         let _instance_lock = uc_daemon_local::instance_lock::DaemonInstanceLock::try_acquire(
             &storage_paths.app_data_root_dir,
         )

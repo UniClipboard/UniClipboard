@@ -227,7 +227,7 @@ async fn spawn_external_and_wait_health(
 ) -> Result<(), DaemonBootstrapError> {
     // ADR-008 D3: tag the spawn as GUI-owned so its PID file records
     // `spawned_by = gui` — this (or another) GUI may stop it on full quit.
-    spawn_detached_daemon(DaemonSpawnOrigin::Gui).map_err(|error| {
+    spawn_detached_daemon(DaemonSpawnOrigin::Gui, None).map_err(|error| {
         DaemonBootstrapError::Spawn(
             anyhow::Error::new(error).context("detached daemon spawn failed"),
         )

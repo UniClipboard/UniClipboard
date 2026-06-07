@@ -5,8 +5,11 @@ use reqwest::{Method, RequestBuilder};
 
 use crate::http::authorized_daemon_request_with_type;
 use crate::DaemonConnectionState;
+use uc_daemon_contract::api::dto::device::LocalDeviceInfoDto;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
-use uc_daemon_contract::api::types::{PeerSnapshotDto, SpaceMemberDto, StatusResponse};
+use uc_daemon_contract::api::types::{
+    PeerSnapshotDto, PresenceRefreshResponse, SpaceMemberDto, StatusResponse,
+};
 
 #[derive(Clone)]
 pub struct DaemonQueryClient {
@@ -46,6 +49,14 @@ impl DaemonQueryClient {
 
     pub async fn get_status(&self) -> Result<StatusResponse> {
         self.get_json(Method::GET, "/status").await
+    }
+
+    pub async fn get_local_device_info(&self) -> Result<LocalDeviceInfoDto> {
+        self.get_json(Method::GET, "/device/me").await
+    }
+
+    pub async fn refresh_presence(&self) -> Result<PresenceRefreshResponse> {
+        self.get_json(Method::POST, "/presence/refresh").await
     }
 
     /// Unlock the encryption session via the daemon keyring (auto-unlock).

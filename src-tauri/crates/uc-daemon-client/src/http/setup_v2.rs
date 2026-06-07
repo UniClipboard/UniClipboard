@@ -8,7 +8,7 @@ use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
     InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse, RedeemRequest,
-    RedeemResponse,
+    RedeemResponse, SwitchSpaceRequest, SwitchSpaceResponse,
 };
 
 #[derive(Clone)]
@@ -98,6 +98,31 @@ impl DaemonSetupV2Client {
                 .json::<ApiEnvelope<RedeemResponse>>()
                 .await
                 .with_context(|| "failed to decode redeem response")?;
+            return Ok(envelope.data);
+        }
+
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".to_string());
+        Err(anyhow!("{}", extract_error_message(status, &body)))
+    }
+
+    pub async fn switch_space(&self, req: &SwitchSpaceRequest) -> Result<SwitchSpaceResponse> {
+        let response = self
+            .authorized_request(Method::POST, "/v2/setup/switch-space")
+            .await?
+            .json(req)
+            .send()
+            .await
+            .with_context(|| "failed to call POST /v2/setup/switch-space")?;
+
+        let status = response.status();
+        if status.is_success() {
+            let envelope = response
+                .json::<ApiEnvelope<SwitchSpaceResponse>>()
+                .await
+                .with_context(|| "failed to decode switch-space response")?;
             return Ok(envelope.data);
         }
 

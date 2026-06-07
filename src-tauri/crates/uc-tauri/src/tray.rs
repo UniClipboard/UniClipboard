@@ -202,8 +202,7 @@ impl TrayState {
         // Use a dedicated monochrome tray icon; on macOS it is marked as a
         // template image so the system auto-tints it for light/dark menu bar.
         let tray_icon =
-            tauri::image::Image::from_bytes(include_bytes!("../../../icons/tray-icon@2x.png"))
-                .expect("embedded tray icon must be valid");
+            tauri::image::Image::from_bytes(include_bytes!("../../../icons/tray-icon@2x.png"))?;
         builder = builder.icon(tray_icon);
         #[cfg(target_os = "macos")]
         {

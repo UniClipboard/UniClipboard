@@ -4,6 +4,7 @@ use std::fmt;
 use std::process::Stdio;
 
 use serde::Serialize;
+use uc_daemon_contract::api::types::DaemonResidency;
 
 use crate::exit_codes;
 use crate::local_daemon;
@@ -52,7 +53,21 @@ pub async fn run(foreground: bool, server: bool, json: bool, verbose: bool) -> i
     if foreground {
         run_foreground(json, verbose).await
     } else {
-        run_background(json).await
+        run_background(json, server).await
+    }
+}
+
+/// Map the user's `--server` flag to the daemon residency a controlled-restart
+/// promotion should converge on (ADR-008 P5-L L8d-2): `--server` →
+/// [`DaemonResidency::ServerHeadless`], otherwise [`DaemonResidency::Standalone`].
+///
+/// Promotion is background-only; foreground does its own spawn (see
+/// [`run_foreground`]), so this mapping is only consulted by [`run_background`].
+fn promote_target_residency(server: bool) -> DaemonResidency {
+    if server {
+        DaemonResidency::ServerHeadless
+    } else {
+        DaemonResidency::Standalone
     }
 }
 
@@ -87,9 +102,15 @@ async fn check_setup_complete(json: bool, _verbose: bool) -> Option<i32> {
     Some(exit_codes::EXIT_ERROR)
 }
 
-async fn run_background(json: bool) -> i32 {
+async fn run_background(json: bool, server: bool) -> i32 {
+    // ADR-008 P5-L L8d-2: background `start` is promote-aware. If a transient
+    // Oneshot daemon is running it requests a controlled restart to converge on
+    // the persistent `target` residency; otherwise it behaves exactly as before
+    // (reuse a compatible daemon, error on incompatible, spawn when absent).
+    // In production no Oneshot daemon exists, so the promote branch is dead code.
+    let target = promote_target_residency(server);
     run_start_background_with(
-        || local_daemon::ensure_local_daemon_running(),
+        || local_daemon::ensure_or_promote_local_daemon(target),
         || uc_daemon_process::process_metadata::read_pid_metadata().map(|opt| opt.map(|m| m.pid)),
     )
     .await
@@ -109,6 +130,10 @@ async fn run_background(json: bool) -> i32 {
 }
 
 async fn run_foreground(json: bool, _verbose: bool) -> i32 {
+    // ADR-008 P5-L L8d-2: controlled-restart promotion is background-only —
+    // foreground is probe-only + its own foreground spawn (below), so the
+    // `--server` → residency mapping does not apply here.
+    //
     // Check if daemon is already running using probe-only (no spawn).
     // We must NOT use ensure_local_daemon_running() here because it would
     // spawn a background daemon, conflicting with the foreground spawn below.
@@ -203,4 +228,27 @@ where
     };
 
     Ok(StartOutput { status, pid })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_flag_maps_to_server_headless_residency() {
+        assert_eq!(
+            promote_target_residency(true),
+            DaemonResidency::ServerHeadless,
+            "--server must promote toward a headless server node"
+        );
+    }
+
+    #[test]
+    fn no_server_flag_maps_to_standalone_residency() {
+        assert_eq!(
+            promote_target_residency(false),
+            DaemonResidency::Standalone,
+            "the default `start` must promote toward a standalone node"
+        );
+    }
 }

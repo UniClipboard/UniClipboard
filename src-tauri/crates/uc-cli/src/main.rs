@@ -233,12 +233,14 @@ enum Commands {
     },
     /// Hidden clipboard-diagnostic subcommand group (replaces the standalone
     /// `clipboard-probe` binary). Development and E2E debugging only.
+    #[cfg(debug_assertions)]
     #[command(hide = true)]
     Probe {
         #[command(subcommand)]
         subcommand: commands::probe::ProbeCommands,
     },
     /// Hidden development tools.
+    #[cfg(debug_assertions)]
     #[command(hide = true)]
     Dev {
         #[command(subcommand)]
@@ -369,7 +371,9 @@ fn main() -> anyhow::Result<()> {
             Commands::Upgrade { subcommand } => {
                 commands::upgrade::run(subcommand, cli.json, cli.verbose).await
             }
+            #[cfg(debug_assertions)]
             Commands::Probe { subcommand } => commands::probe::run(subcommand, cli.verbose).await,
+            #[cfg(debug_assertions)]
             Commands::Dev { subcommand } => {
                 commands::dev::run(subcommand, cli.json, cli.verbose).await
             }
@@ -562,6 +566,7 @@ mod tests {
         assert!(r.is_ok(), "expected `status` to parse");
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn mobile_sync_debug_subcommands_parse() {
         // P5a.9 引入的 4 个 debug 子命令解析契约。
@@ -576,6 +581,7 @@ mod tests {
         }
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn mobile_sync_debug_put_text_requires_text() {
         // put-text 必须带 TEXT 位置参数,否则 facade 拿不到内容。
@@ -583,6 +589,7 @@ mod tests {
         assert!(result.is_err(), "expected `put-text` to require <TEXT>");
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn mobile_sync_debug_put_file_requires_path() {
         // put-file 必须带 PATH;mime 是可选的。
@@ -590,6 +597,7 @@ mod tests {
         assert!(result.is_err(), "expected `put-file` to require <PATH>");
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn mobile_sync_debug_get_file_requires_data_name() {
         // get-file 必须带 DATANAME 位置参数。
@@ -628,6 +636,7 @@ mod tests {
         assert!(r.is_ok(), "expected full-flag setup to parse");
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn dev_pairing_manual_address_commands_parse() {
         // 隐藏开发入口用于手动选择配对地址,不进入公开 help 契约。
@@ -647,6 +656,7 @@ mod tests {
         }
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn dev_clipboard_seed_and_dump_commands_parse() {
         // seed/dump 是调试 / E2E 入口,已从顶层搬进隐藏的 `dev` 组。
@@ -662,6 +672,7 @@ mod tests {
         }
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     fn top_level_clipboard_seed_and_dump_are_removed() {
         // 迁移到 `dev` 组后,顶层路径必须消失,避免两套入口并存,

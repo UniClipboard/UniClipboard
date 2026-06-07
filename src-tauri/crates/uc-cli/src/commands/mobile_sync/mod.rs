@@ -20,6 +20,7 @@
 
 use clap::Subcommand;
 
+#[cfg(debug_assertions)]
 pub mod debug;
 pub mod devices;
 pub mod disable;
@@ -63,6 +64,7 @@ pub enum MobileSyncCommands {
     /// `#[command(hide=true)]` keeps these out of the public `--help`
     /// surface — they are dev / E2E only(`scripts/test_mobile_sync_debug_e2e.sh`),
     /// not user-facing. Still callable explicitly.
+    #[cfg(debug_assertions)]
     #[command(hide = true)]
     Debug {
         #[command(subcommand)]
@@ -78,6 +80,7 @@ pub async fn run(command: MobileSyncCommands, json: bool, verbose: bool) -> i32 
         MobileSyncCommands::Status => status::run(json, verbose).await,
         MobileSyncCommands::Disable => disable::run(json, verbose).await,
         MobileSyncCommands::Network { subcommand } => network::run(subcommand, json, verbose).await,
+        #[cfg(debug_assertions)]
         MobileSyncCommands::Debug { subcommand } => debug::run(subcommand, json, verbose).await,
     }
 }

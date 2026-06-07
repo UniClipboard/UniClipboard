@@ -1,41 +1,39 @@
 //! `mobile_sync` 子命令共享的小工具:命令骨架、错误渲染、重启提示、JSON 包装。
 //!
-//! ## Dual lifecycle
-//!
 //! Non-debug commands use the daemon-client path (P5-2b ADR):
 //! [`MobileSyncDaemonCtx`] + [`enter`] / [`finish_daemon_json`] / [`finish_daemon`].
 //!
-//! The hidden `debug` subcommand (P5-3 scope) still needs in-process facade
-//! access, so the legacy [`MobileSyncCmdCtx`] + [`enter_write`] / [`finish`] /
-//! [`finish_json`] remain alongside.
+//! The hidden `debug` subcommand (debug builds only) still needs in-process
+//! facade access — its legacy lifecycle types are `#[cfg(debug_assertions)]`.
 
+#[cfg(debug_assertions)]
 use std::sync::Arc;
 
 use serde::Serialize;
 
+#[cfg(debug_assertions)]
 use uc_application::facade::{
     ApplyIncomingMobileClipError, GetLatestMobileSyncDocError, GetMobileSyncFileError,
-    GetMobileSyncSettingsError, ListMobileDevicesError, MobileSyncFacade,
-    MobileSyncListLanInterfacesError, RegisterMobileShortcutDeviceError, RevokeMobileDeviceError,
-    UpdateMobileSyncSettingsError,
+    MobileSyncFacade,
 };
 
-use crate::commands::app_session::{
-    build_app_session, connect_or_spawn_oneshot_daemon, refuse_if_daemon_running, CliAppSession,
-};
+use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+#[cfg(debug_assertions)]
+use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
 use crate::exit_codes;
 use crate::ui;
 
 // ── Legacy in-process lifecycle (debug subcommand only) ────────────────
 
+#[cfg(debug_assertions)]
 /// Wired CLI session + a clone of the mobile-sync facade. Built by
 /// [`enter_write`]; consumed by [`finish_json`] / [`finish`].
-/// Retained for the hidden `debug` subcommand (P5-3).
 pub struct MobileSyncCmdCtx {
     pub cli: CliAppSession,
     pub facade: Arc<MobileSyncFacade>,
 }
 
+#[cfg(debug_assertions)]
 /// Boilerplate for **write commands** that need in-process facade access
 /// (debug subcommand only). Refuses if daemon is running, then builds a
 /// CLI app session and takes the mobile-sync facade.
@@ -47,6 +45,7 @@ pub async fn enter_write(header: &str, json: bool, verbose: bool) -> Result<Mobi
     enter_inner(verbose).await
 }
 
+#[cfg(debug_assertions)]
 async fn enter_inner(verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
     let cli = build_app_session(verbose).await?;
     let Some(facade) = cli.app_facade().mobile_sync.get().cloned() else {
@@ -57,9 +56,9 @@ async fn enter_inner(verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
     Ok(MobileSyncCmdCtx { cli, facade })
 }
 
+#[cfg(debug_assertions)]
 /// Pretty-print `dto` as JSON to stdout, then shut the ctx down. Returns
 /// SUCCESS on serialize ok, ERROR otherwise (shutdown still happens).
-/// Retained for the hidden `debug` subcommand (P5-3).
 pub async fn finish_json<T: Serialize>(ctx: MobileSyncCmdCtx, dto: &T) -> i32 {
     let exit = match serde_json::to_string_pretty(dto) {
         Ok(s) => {
@@ -75,9 +74,9 @@ pub async fn finish_json<T: Serialize>(ctx: MobileSyncCmdCtx, dto: &T) -> i32 {
     exit
 }
 
+#[cfg(debug_assertions)]
 /// Shut the ctx down, return the given exit code. Use for the
 /// human-readable branch where rendering happened inline.
-/// Retained for the hidden `debug` subcommand (P5-3).
 pub async fn finish(ctx: MobileSyncCmdCtx, exit: i32) -> i32 {
     ctx.cli.shutdown().await;
     exit
@@ -154,121 +153,9 @@ pub fn restart_hint() -> &'static str {
     "Restart the daemon to apply: `uniclip stop && uniclip start`."
 }
 
-// ── Legacy error renderers (used by debug.rs, retained for P5-3) ───────
-
-#[allow(dead_code)]
-pub fn render_get_settings_error(err: &GetMobileSyncSettingsError) -> String {
-    match err {
-        GetMobileSyncSettingsError::SettingsLoadFailed(msg) => {
-            format!("Failed to load mobile-sync settings: {msg}")
-        }
-        GetMobileSyncSettingsError::EndpointInfoFailed(msg) => {
-            format!("Failed to probe LAN endpoint info: {msg}")
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub fn render_update_settings_error(err: &UpdateMobileSyncSettingsError) -> String {
-    match err {
-        UpdateMobileSyncSettingsError::SettingsLoadFailed(msg) => {
-            format!("Failed to load settings: {msg}")
-        }
-        UpdateMobileSyncSettingsError::SettingsSaveFailed(msg) => {
-            format!("Failed to save settings: {msg}")
-        }
-        UpdateMobileSyncSettingsError::InvalidLanParameter(msg) => {
-            format!("Invalid LAN parameter: {msg}")
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub fn render_list_devices_error(err: &ListMobileDevicesError) -> String {
-    match err {
-        ListMobileDevicesError::PersistenceFailed(msg) => {
-            format!("Failed to list mobile devices: {msg}")
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub fn render_revoke_error(err: &RevokeMobileDeviceError) -> String {
-    match err {
-        RevokeMobileDeviceError::NotFound(id) => {
-            format!("Device not found (already revoked?): {id}")
-        }
-        RevokeMobileDeviceError::PersistenceFailed(msg) => {
-            format!("Failed to revoke device: {msg}")
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String {
-    match err {
-        RegisterMobileShortcutDeviceError::LabelEmpty => "Device label must not be empty.".into(),
-        RegisterMobileShortcutDeviceError::LabelTooLong => {
-            "Device label is too long (max 64 chars).".into()
-        }
-        RegisterMobileShortcutDeviceError::LanListenerDisabled => {
-            "LAN listener is not enabled — run `uniclip mobile-sync setup` or `network set --ip <IP>` first."
-                .into()
-        }
-        RegisterMobileShortcutDeviceError::UsernameTaken(name) => {
-            format!("Username `{name}` is already taken — pick another.")
-        }
-        RegisterMobileShortcutDeviceError::UsernameTooShort { min, got } => {
-            format!("Username is too short: must be at least {min} characters (got {got}).")
-        }
-        RegisterMobileShortcutDeviceError::UsernameTooLong { max, got } => {
-            format!("Username is too long: must be at most {max} characters (got {got}).")
-        }
-        RegisterMobileShortcutDeviceError::UsernameMustStartWithLetter => {
-            "Username must start with an ASCII letter.".into()
-        }
-        RegisterMobileShortcutDeviceError::UsernameContainsForbiddenChars => {
-            "Username contains forbidden characters — only letters, digits, and underscore are allowed.".into()
-        }
-        RegisterMobileShortcutDeviceError::PasswordTooShort { min } => {
-            format!("Password is too short (minimum {min} characters).")
-        }
-        RegisterMobileShortcutDeviceError::PasswordTooLong { max } => {
-            format!("Password is too long (maximum {max} characters).")
-        }
-        RegisterMobileShortcutDeviceError::PasswordHashFailed(msg) => {
-            format!("Password hashing failed: {msg}")
-        }
-        RegisterMobileShortcutDeviceError::PersistenceFailed(msg) => {
-            format!("Persistence failed: {msg}")
-        }
-        RegisterMobileShortcutDeviceError::QrRenderFailed(msg) => {
-            format!("QR rendering failed: {msg}")
-        }
-        RegisterMobileShortcutDeviceError::SettingsLoadFailed(msg) => {
-            format!("Settings load failed: {msg}")
-        }
-        RegisterMobileShortcutDeviceError::NoLanInterfaceAvailable => {
-            "No usable LAN interface found for auto-pick — connect to a LAN or set `lan_advertise_ip` explicitly via `mobile-sync network set --ip <IP>`."
-                .into()
-        }
-        RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed(msg) => {
-            format!("LAN interface probe failed: {msg}")
-        }
-    }
-}
-
-#[allow(dead_code)]
-pub fn render_list_lan_interfaces_error(err: &MobileSyncListLanInterfacesError) -> String {
-    match err {
-        MobileSyncListLanInterfacesError::ProbeFailed(msg) => {
-            format!("Failed to probe LAN interfaces: {msg}")
-        }
-    }
-}
-
 // ── P5a.9 debug subcommand error renderers ──────────────────────────────
 
+#[cfg(debug_assertions)]
 pub fn render_apply_incoming_error(err: &ApplyIncomingMobileClipError) -> String {
     match err {
         ApplyIncomingMobileClipError::Inbound(inner) => {
@@ -283,6 +170,7 @@ pub fn render_apply_incoming_error(err: &ApplyIncomingMobileClipError) -> String
     }
 }
 
+#[cfg(debug_assertions)]
 pub fn render_get_latest_doc_error(err: &GetLatestMobileSyncDocError) -> String {
     match err {
         GetLatestMobileSyncDocError::NotFound => {
@@ -294,6 +182,7 @@ pub fn render_get_latest_doc_error(err: &GetLatestMobileSyncDocError) -> String 
     }
 }
 
+#[cfg(debug_assertions)]
 pub fn render_get_file_error(err: &GetMobileSyncFileError) -> String {
     match err {
         GetMobileSyncFileError::NotFound => "No matching file for this dataName (404).".into(),

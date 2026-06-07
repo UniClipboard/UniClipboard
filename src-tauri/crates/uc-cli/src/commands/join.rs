@@ -1,21 +1,19 @@
-//! `uniclip join` — joiner side of Slice 1 pairing.
+//! `uniclip join` — joiner side of Slice 1 pairing via daemon HTTP API.
 //!
-//! Takes an invitation code and passphrase, then drives
-//! [`SpaceSetupFacade::redeem_pairing_invitation`] to completion.
-//! Unlike [`invite`](super::invite), this command is a single blocking
-//! RPC — B2 owns its own dial/wait loop internally, so we simply await
-//! the result (with Ctrl+C handling to guarantee clean iroh teardown).
+//! Takes an invitation code and passphrase, then calls
+//! `POST /v2/setup/redeem` on the daemon. Unlike [`invite`](super::invite),
+//! this command is a single blocking RPC — the daemon drives the
+//! dial/wait loop internally, so we simply await the result (with
+//! Ctrl+C handling for clean cancellation).
 
 use tokio::select;
 use tokio::signal;
 
-use uc_application::facade::space_setup::{
-    RedeemPairingInvitationError, RedeemPairingInvitationInput,
-};
+use uc_daemon_client::DaemonClientContext;
+use uc_daemon_contract::api::dto::settings::{GeneralSettingsPatchDto, SettingsPatchDto};
+use uc_daemon_contract::api::dto::v2::setup::RedeemRequest;
 
-use crate::commands::app_session::{
-    build_app_session, default_device_name, refuse_if_daemon_running,
-};
+use crate::commands::app_session::{default_device_name, ensure_daemon_for_setup};
 use crate::exit_codes;
 use crate::ui;
 
@@ -58,69 +56,47 @@ pub struct JoinArgs {
 pub async fn run(args: JoinArgs, verbose: bool) -> i32 {
     ui::header("Join a space");
 
-    if let Err(code) = refuse_if_daemon_running().await {
-        return code;
-    }
-
-    let bundle = match build_app_session(verbose).await {
-        Ok(b) => b,
-        Err(code) => return code,
-    };
-
-    // Invitation codes are minted from an all-uppercase Crockford base32
-    // alphabet and matched by an exact string compare (rendezvous lookup
-    // key + handshake). Fold typed input to the canonical `XXXX-XXXX`
-    // form here so a lowercased or hyphen-less code still pairs.
+    // Collect invitation code: --code wins; otherwise prompt.
     let code_str = match args.code {
         Some(c) if !c.trim().is_empty() => normalize_invitation_code(&c),
         Some(_) => {
             ui::error("--code is empty");
-            bundle.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
         None => match ui::password("Invitation code") {
             Ok(c) if !c.trim().is_empty() => normalize_invitation_code(&c),
             Ok(_) => {
                 ui::error("Invitation code cannot be empty");
-                bundle.shutdown().await;
                 return exit_codes::EXIT_ERROR;
             }
             Err(e) => {
                 ui::error(&e);
-                bundle.shutdown().await;
                 return exit_codes::EXIT_ERROR;
             }
         },
     };
 
+    // Collect passphrase (single entry, no confirmation).
     let passphrase_str = match args.passphrase {
         Some(p) if !p.trim().is_empty() => p,
         Some(_) => {
             ui::error("--passphrase is empty");
-            bundle.shutdown().await;
             return exit_codes::EXIT_ERROR;
         }
         None => match ui::password("Space passphrase") {
             Ok(p) if !p.trim().is_empty() => p,
             Ok(_) => {
                 ui::error("Passphrase cannot be empty");
-                bundle.shutdown().await;
                 return exit_codes::EXIT_ERROR;
             }
             Err(e) => {
                 ui::error(&e);
-                bundle.shutdown().await;
                 return exit_codes::EXIT_ERROR;
             }
         },
     };
 
-    // B2's use case reads `Settings.general.device_name` from disk rather
-    // than taking it in the command, so if this is a brand-new profile
-    // the setting will be absent and `redeem` fails with
-    // `DeviceNameRequired`. Mirror the init command's behaviour:
-    // `--device-name` overrides, otherwise default to the OS hostname.
-    // Persist to settings before dialing.
+    // Determine device name.
     let device_name = args
         .device_name
         .as_deref()
@@ -131,70 +107,70 @@ pub async fn run(args: JoinArgs, verbose: bool) -> i32 {
     let device_name = match device_name {
         Some(n) => n,
         None => {
-            ui::error("device name is required (pass --device-name or set a system hostname)");
-            bundle.shutdown().await;
+            ui::error("Device name is required (pass --device-name or set a system hostname)");
             return exit_codes::EXIT_ERROR;
         }
     };
-    if let Err(err) = bundle
-        .app_facade()
-        .set_device_name(device_name.clone())
-        .await
-    {
-        ui::error(&format!("failed to persist device_name: {err}"));
-        bundle.shutdown().await;
-        return exit_codes::EXIT_ERROR;
+
+    // Ensure daemon is running (no setup gate — we ARE the setup command).
+    let service = match ensure_daemon_for_setup(verbose).await {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    let _lease = match service.hold_control_lease().await {
+        Ok(g) => g,
+        Err(err) => {
+            ui::error(&format!("Failed to acquire control lease: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+
+    let ctx = match DaemonClientContext::from_env() {
+        Ok(c) => c,
+        Err(err) => {
+            ui::error(&format!("Failed to build daemon client context: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+
+    // Set device name via settings BEFORE redeem — RedeemRequest has no
+    // device_name field; the daemon reads it from persisted settings.
+    let patch = SettingsPatchDto {
+        general: Some(GeneralSettingsPatchDto {
+            device_name: Some(Some(device_name.clone())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    if let Err(err) = ctx.settings_client().update_settings(patch).await {
+        ui::warn(&format!("Failed to set device name: {err}"));
+        // non-fatal — redeem might still work with hostname default
     }
 
-    let input = RedeemPairingInvitationInput {
+    let spinner = ui::spinner("Dialing sponsor and running handshake...");
+    let req = RedeemRequest {
         code: code_str,
         passphrase: passphrase_str,
     };
 
-    let spinner = ui::spinner("Dialing sponsor and running handshake...");
+    let setup_client = ctx.setup_v2_client();
+    let redeem_fut = setup_client.redeem_invitation(&req);
+    tokio::pin!(redeem_fut);
 
-    // Clone the Arc so the in-flight future does not borrow `bundle`
-    // — otherwise `bundle.shutdown().await` below can't take
-    // ownership.
-    let facade = std::sync::Arc::clone(bundle.app_facade());
-    let redeem = async move { facade.redeem_pairing_invitation(input).await };
-    tokio::pin!(redeem);
-
-    let exit = select! {
-        result = &mut redeem => match result {
-            Ok(out) => {
+    select! {
+        result = &mut redeem_fut => match result {
+            Ok(resp) => {
                 ui::spinner_finish_success(&spinner, "Joined space");
-                ui::info("space_id", out.space_id.as_str());
-                ui::info("self_device_id", out.self_device_id.as_str());
+                ui::info("space_id", &resp.space_id);
+                ui::info("self_device_id", &resp.self_device_id);
                 ui::info("self_device_name", &device_name);
-                ui::info("self_fingerprint", &out.self_identity_fingerprint.to_string());
-                ui::info("sponsor_device_id", out.sponsor_device_id.as_str());
-                ui::info("sponsor_fingerprint", &out.sponsor_identity_fingerprint.to_string());
+                ui::info("self_fingerprint", &resp.self_identity_fingerprint);
+                ui::info("sponsor_device_id", &resp.sponsor_device_id);
+                ui::info("sponsor_fingerprint", &resp.sponsor_identity_fingerprint);
                 exit_codes::EXIT_SUCCESS
             }
             Err(err) => {
-                let hint = match &err {
-                    RedeemPairingInvitationError::InvitationNotFound => {
-                        "Double-check the code — sponsor may have let it expire or reissued."
-                    }
-                    RedeemPairingInvitationError::InvitationExpired => {
-                        "Ask the sponsor to run `invite` again to issue a fresh code."
-                    }
-                    RedeemPairingInvitationError::PassphraseMismatch => {
-                        "Passphrase did not match the sponsor's. Retry `join`."
-                    }
-                    RedeemPairingInvitationError::SponsorUnreachable => {
-                        "Sponsor is online in rendezvous but could not be reached. Check NAT / relay."
-                    }
-                    RedeemPairingInvitationError::ServiceUnavailable => {
-                        "Rendezvous service is unreachable."
-                    }
-                    _ => "",
-                };
                 ui::spinner_finish_error(&spinner, &format!("Join failed: {err}"));
-                if !hint.is_empty() {
-                    ui::info("hint", hint);
-                }
                 exit_codes::EXIT_ERROR
             }
         },
@@ -202,10 +178,7 @@ pub async fn run(args: JoinArgs, verbose: bool) -> i32 {
             ui::spinner_finish_error(&spinner, "Interrupted by user");
             EXIT_SIGINT
         }
-    };
-
-    bundle.shutdown().await;
-    exit
+    }
 }
 
 #[cfg(test)]

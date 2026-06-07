@@ -180,6 +180,37 @@ fn build_daemon_client_service() -> Result<Box<dyn DaemonService>, i32> {
     }
 }
 
+/// Like [`connect_or_spawn_oneshot_daemon`] but skips the `is_setup_complete` gate.
+///
+/// Used by `init` and `join` which ARE the commands that complete setup — they
+/// need a running daemon to call `POST /v2/setup/initialize` or
+/// `POST /v2/setup/redeem`, but the profile has no space yet so the setup gate
+/// would reject them.
+pub async fn ensure_daemon_for_setup(verbose: bool) -> Result<Box<dyn DaemonService>, i32> {
+    let _ = verbose; // reserved; the daemon path builds no in-process session.
+    match probe_running().await {
+        Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(),
+        Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
+            ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
+            Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
+        }
+        Ok(ProbeOutcome::Absent) => {
+            // No setup gate — we ARE the setup command.
+            match crate::local_daemon::spawn_oneshot_and_wait().await {
+                Ok(_session) => build_daemon_client_service(),
+                Err(err) => {
+                    ui::error(&err.to_string());
+                    Err(exit_codes::EXIT_ERROR)
+                }
+            }
+        }
+        Err(err) => {
+            ui::error(&format!("Failed to probe local daemon: {err}"));
+            Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
+        }
+    }
+}
+
 /// ADR-008 P5-1c: wait for the daemon to come back after a controlled restart,
 /// then build a fresh `DaemonService` client. Used by `watch`/`recv` to
 /// reconnect after the WS drops during promotion.

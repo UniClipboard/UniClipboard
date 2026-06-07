@@ -451,14 +451,15 @@ impl DaemonApp {
             (self.residency == DaemonResidency::Oneshot).then(CancellationToken::new);
         if let Some(token) = oneshot_terminate.clone() {
             let registry = api_state.lease_registry.clone();
+            let quiescing = api_state.quiescing.clone();
             let supervisor_shutdown = self.cancel.child_token();
             tokio::spawn(
                 crate::daemon::oneshot::run_oneshot_self_terminate_supervisor(
                     registry,
+                    quiescing,
                     token,
                     supervisor_shutdown,
-                    crate::daemon::oneshot::ONESHOT_NO_CLIENT_GRACE,
-                    crate::daemon::oneshot::LEASE_POLL_INTERVAL,
+                    crate::daemon::oneshot::SupervisorTimings::production(),
                 ),
             );
         }

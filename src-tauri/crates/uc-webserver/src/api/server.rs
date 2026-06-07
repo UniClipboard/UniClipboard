@@ -1,7 +1,7 @@
 //! HTTP server bootstrap for the daemon API.
 
 use std::net::SocketAddr;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -81,6 +81,14 @@ pub struct DaemonApiState {
     /// every `DaemonApiState` clone shares the same counter. In L3 the count is
     /// observed/logged only — no consumer reads it to drive behaviour yet.
     pub lease_registry: ControlLeaseRegistry,
+    /// Controlled-restart quiescing flag (ADR-008 P5-L L8b). While set, admission
+    /// gates reject NEW work (new control-WS upgrades + new clipboard dispatch/resend)
+    /// with 503 `daemon_restarting` so in-flight leases can drain before a controlled
+    /// restart. `Arc`-backed so every `DaemonApiState` clone — and the Oneshot
+    /// supervisor that drains on it — shares the same flag. L8b adds NO setter: the
+    /// flag is always false in production (the restart control plane that flips it is
+    /// a later slice L8c), so this is production-behaviour-neutral.
+    pub quiescing: Arc<AtomicBool>,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -108,6 +116,7 @@ impl DaemonApiState {
             large_blob_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_PULLS)),
             residency: DaemonResidency::Standalone,
             lease_registry: ControlLeaseRegistry::new(),
+            quiescing: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -253,6 +262,18 @@ impl DaemonApiState {
             &self.auth_token,
             client_pid,
         )
+    }
+}
+
+/// Admission gate for new daemon work during a controlled-restart drain
+/// (ADR-008 P5-L L8b). Returns `Err(ApiError::restarting)` (503 `daemon_restarting`)
+/// while `quiescing` is set, else `Ok(())`. Shared by the control-WS upgrade handler
+/// and the clipboard dispatch/resend handlers so the rejection is uniform.
+pub(crate) fn ensure_not_quiescing(quiescing: &AtomicBool) -> Result<(), ApiError> {
+    if quiescing.load(Ordering::SeqCst) {
+        Err(ApiError::restarting("daemon is restarting"))
+    } else {
+        Ok(())
     }
 }
 
@@ -512,5 +533,32 @@ mod residency_handshake_tests {
             let status = DaemonApiState::status_response_for(residency);
             assert_eq!(status.residency, residency);
         }
+    }
+}
+
+#[cfg(test)]
+mod quiescing_gate_tests {
+    use super::*;
+
+    /// ADR-008 P5-L L8b: while `quiescing` is clear (the production-default — no
+    /// setter wired in this slice) the admission gate must admit. Constructed off
+    /// a bare `AtomicBool`, no full `DaemonApiState`, so the gate's contract is
+    /// unit-testable in isolation.
+    #[test]
+    fn ensure_not_quiescing_admits_when_clear() {
+        let quiescing = AtomicBool::new(false);
+        assert!(ensure_not_quiescing(&quiescing).is_ok());
+    }
+
+    /// ADR-008 P5-L L8b: while `quiescing` is set the gate must reject with the
+    /// distinct 503 `daemon_restarting` surface (not the generic
+    /// `runtime_unavailable`) so clients can tell a controlled restart apart from
+    /// a generic outage and retry against the successor.
+    #[test]
+    fn ensure_not_quiescing_rejects_when_set() {
+        let quiescing = AtomicBool::new(true);
+        let err = ensure_not_quiescing(&quiescing).expect_err("must reject while quiescing");
+        assert_eq!(err.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(err.code, "daemon_restarting");
     }
 }

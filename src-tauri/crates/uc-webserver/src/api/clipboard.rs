@@ -346,6 +346,8 @@ async fn dispatch_text(
     State(state): State<DaemonApiState>,
     body: Result<Json<DispatchTextRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<DispatchOutcomeResponse>>, ApiError> {
+    // ADR-008 P5-L L8b: refuse new clipboard dispatch while a controlled restart drains.
+    crate::api::server::ensure_not_quiescing(&state.quiescing)?;
     let app = require_app_facade(&state)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(&e.to_string()))?;
 
@@ -406,6 +408,9 @@ async fn resend_entry(
     State(state): State<DaemonApiState>,
     body: Result<Json<ResendRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<ApiEnvelope<ResendResponse>>, Response> {
+    // ADR-008 P5-L L8b: refuse new clipboard resend while a controlled restart drains.
+    crate::api::server::ensure_not_quiescing(&state.quiescing)
+        .map_err(IntoResponse::into_response)?;
     let app = require_app_facade(&state).map_err(IntoResponse::into_response)?;
     let Json(req) = body.map_err(|e| ApiError::bad_request(e.to_string()).into_response())?;
 

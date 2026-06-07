@@ -171,7 +171,16 @@ async fn websocket_upgrade(
         return ws_rate_limited(retry_after_secs).into_response();
     }
 
-    // Step 5: Upgrade the WebSocket.
+    // Step 5: ADR-008 P5-L L8b: refuse NEW control-WS leases while a controlled
+    // restart is draining, so existing leases can quiesce. This runs BEFORE the WS
+    // handshake (the lease is acquired inside `handle_connection`, after upgrade),
+    // so we never even complete the handshake while restarting. Production-neutral
+    // until L8c flips the flag.
+    if let Err(err) = crate::api::server::ensure_not_quiescing(&state.quiescing) {
+        return err.into_response();
+    }
+
+    // Step 6: Upgrade the WebSocket.
     ws.on_upgrade(move |socket| handle_connection(socket, state, claims))
 }
 

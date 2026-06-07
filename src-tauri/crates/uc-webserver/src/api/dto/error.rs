@@ -95,6 +95,19 @@ impl ApiError {
         )
     }
 
+    /// 503 returned by admission gates while a controlled restart is draining
+    /// (ADR-008 P5-L L8b). Emits the distinct `code` `daemon_restarting` (vs the
+    /// generic 503 `runtime_unavailable` from [`Self::service_unavailable`]) so
+    /// clients can tell "daemon is restarting, retry against the successor" apart
+    /// from a generic runtime outage.
+    pub fn restarting(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "daemon_restarting",
+            message,
+        )
+    }
+
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, "bad_request", message)
     }

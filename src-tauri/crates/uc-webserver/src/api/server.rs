@@ -89,6 +89,16 @@ pub struct DaemonApiState {
     /// flag is always false in production (the restart control plane that flips it is
     /// a later slice L8c), so this is production-behaviour-neutral.
     pub quiescing: Arc<AtomicBool>,
+    /// Controlled-restart coordinator (ADR-008 P5-L L8c) — the SOLE mutator of
+    /// [`Self::quiescing`]. It holds the SAME `Arc` as `quiescing` (constructed
+    /// together in [`Self::new`]), so its `request()` / `abort()` transitions are
+    /// observed by the L8b admission gates that read `quiescing`. The
+    /// `/lifecycle/restart` handler drives `request()`; the Oneshot supervisor
+    /// drives `abort()` on a drain timeout. `Arc`-backed, so every
+    /// `DaemonApiState` clone shares the same arbitration state. Production-neutral
+    /// in this slice: only an Oneshot daemon's restart endpoint calls `request()`,
+    /// and no Oneshot daemon exists until L8d.
+    pub restart: crate::api::restart::RestartCoordinator,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -104,6 +114,11 @@ impl DaemonApiState {
         security: Arc<SecurityState>,
     ) -> Self {
         let (event_tx, _) = broadcast::channel(64);
+        // ADR-008 P5-L L8c: the quiescing flag and the restart coordinator must
+        // share ONE `Arc` — the coordinator is the sole mutator, the L8b gates
+        // read `quiescing`. Construct the flag once and hand the SAME `Arc` to
+        // both so a coordinator `request()`/`abort()` is observed by every gate.
+        let quiescing = Arc::new(AtomicBool::new(false));
         Self {
             auth_token,
             app_facade,
@@ -116,7 +131,8 @@ impl DaemonApiState {
             large_blob_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_PULLS)),
             residency: DaemonResidency::Standalone,
             lease_registry: ControlLeaseRegistry::new(),
-            quiescing: Arc::new(AtomicBool::new(false)),
+            quiescing: quiescing.clone(),
+            restart: crate::api::restart::RestartCoordinator::new(quiescing),
         }
     }
 

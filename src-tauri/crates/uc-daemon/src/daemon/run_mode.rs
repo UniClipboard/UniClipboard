@@ -127,6 +127,24 @@ impl From<DaemonRunMode> for DaemonResidency {
     }
 }
 
+/// Map a controlled-restart target residency to its [`RUN_MODE_ENV`] string for
+/// the handover record (ADR-008 P5-L L8c).
+///
+/// Standalone is the absent-env default, so it maps to an empty string (the
+/// spawner sets `RUN_MODE_ENV=""` which decodes back to Standalone). Oneshot is
+/// never a valid promotion target — the `/lifecycle/restart` handler rejects it
+/// with `InvalidTarget` — so it is unreachable here; defensively map it to `""`
+/// too rather than panic.
+///
+/// [`RUN_MODE_ENV`]: uc_daemon_local::spawn_contract::RUN_MODE_ENV
+pub fn residency_to_run_mode_env(target: DaemonResidency) -> String {
+    use uc_daemon_local::spawn_contract::RUN_MODE_SERVER;
+    match target {
+        DaemonResidency::ServerHeadless => RUN_MODE_SERVER.to_string(),
+        DaemonResidency::Standalone | DaemonResidency::Oneshot => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,5 +314,26 @@ mod tests {
                 "GET /status must report {expected:?} for run mode {mode:?}"
             );
         }
+    }
+
+    #[test]
+    fn residency_maps_to_run_mode_env_for_handover() {
+        // ADR-008 P5-L L8c: the handover record carries the RUN_MODE_ENV string
+        // the spawner will set on the successor daemon. ServerHeadless → "server";
+        // Standalone → "" (the absent-env default decodes back to Standalone).
+        use uc_daemon_local::spawn_contract::RUN_MODE_SERVER;
+
+        assert_eq!(
+            residency_to_run_mode_env(DaemonResidency::ServerHeadless),
+            RUN_MODE_SERVER
+        );
+        assert_eq!(
+            residency_to_run_mode_env(DaemonResidency::Standalone),
+            "",
+            "Standalone is the absent-env default — empty string round-trips to Standalone"
+        );
+        // Oneshot is never a valid promotion target (the restart handler rejects
+        // it); it is defensively mapped to "" rather than panicking.
+        assert_eq!(residency_to_run_mode_env(DaemonResidency::Oneshot), "");
     }
 }

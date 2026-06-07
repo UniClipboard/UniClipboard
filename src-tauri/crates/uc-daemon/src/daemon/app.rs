@@ -451,12 +451,16 @@ impl DaemonApp {
             (self.residency == DaemonResidency::Oneshot).then(CancellationToken::new);
         if let Some(token) = oneshot_terminate.clone() {
             let registry = api_state.lease_registry.clone();
-            let quiescing = api_state.quiescing.clone();
+            // ADR-008 P5-L L8c: hand the supervisor the restart coordinator (which
+            // owns the L8b quiescing flag) so it reads quiescing through it and
+            // aborts a timed-out drain via `coordinator.abort()` — clearing the
+            // in-flight restart state + lowering quiescing atomically.
+            let restart = api_state.restart.clone();
             let supervisor_shutdown = self.cancel.child_token();
             tokio::spawn(
                 crate::daemon::oneshot::run_oneshot_self_terminate_supervisor(
                     registry,
-                    quiescing,
+                    restart,
                     token,
                     supervisor_shutdown,
                     crate::daemon::oneshot::SupervisorTimings::production(),
@@ -466,6 +470,12 @@ impl DaemonApp {
 
         // 6. Spawn HTTP server and rate limiter cleanup task
         let security_for_cleanup = api_state.security.clone();
+        // ADR-008 P5-L L8c: capture the restart coordinator (Arc-backed) BEFORE
+        // `api_state` is moved into the HTTP server task — it is read at
+        // terminate time to decide whether to persist a handover record. Captured
+        // UNCONDITIONALLY (not only for Oneshot): in every other residency
+        // `pending()` is always `None`, so the handover-write block is a no-op.
+        let restart_coordinator = api_state.restart.clone();
         let cleanup_cancel = self.cancel.child_token();
         let http_cancel = self.cancel.child_token();
         let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
@@ -535,6 +545,10 @@ impl DaemonApp {
 
         // 7. Wait for shutdown signal, infrastructure crash, service crash, or deferred start
         let listens_to_os_signals = self.listens_to_os_signals;
+        // ADR-008 P5-L L8c: set only when the loop breaks via the Oneshot
+        // self-terminate arm — the sole path on which a controlled-restart
+        // handover record may be persisted (a signal/crash break leaves it false).
+        let mut oneshot_self_terminated = false;
         loop {
             tokio::select! {
                 _ = async {
@@ -572,6 +586,10 @@ impl DaemonApp {
                     }
                 } => {
                     info!("oneshot residency: control leases drained — self-terminating");
+                    // ADR-008 P5-L L8c: mark the supervisor-driven terminate so the
+                    // post-loop handover-write block runs (only this path persists a
+                    // record, and only when a restart is actually pending).
+                    oneshot_self_terminated = true;
                     break;
                 }
                 result = &mut http_handle => {
@@ -615,6 +633,35 @@ impl DaemonApp {
 
         // 8. Shutdown sequence
         info!("shutting down...");
+
+        // ADR-008 P5-L L8c: a controlled restart drains via the Oneshot supervisor
+        // and then self-terminates. Only on that supervisor-driven terminate AND
+        // with a pending restart do we persist the handover so the requester's
+        // spawn launches the target mode. Written here — inside the instance-lock
+        // window (host.rs holds it until after iroh unbinds) and before cancel — so
+        // a successor never acquires the lock before the record exists. A normal
+        // Oneshot self-terminate (no restart) has pending()==None -> no record; a
+        // signal/crash break leaves the flag false.
+        if oneshot_self_terminated {
+            if let Some(req) = restart_coordinator.pending() {
+                let record = uc_daemon_local::handover::HandoverRecord {
+                    target_mode: crate::daemon::run_mode::residency_to_run_mode_env(req.target),
+                    generation: req.generation,
+                };
+                if let Err(error) =
+                    uc_daemon_local::handover::write(&self.storage_paths.app_data_root_dir, &record)
+                {
+                    warn!(error = %error, "failed to write controlled-restart handover record");
+                } else {
+                    info!(
+                        target_mode = %record.target_mode,
+                        generation = record.generation,
+                        "wrote controlled-restart handover"
+                    );
+                }
+            }
+        }
+
         self.cancel.cancel();
 
         // mobile_sync LAN listener 不挂在主 cancel token 上(它有自己的子

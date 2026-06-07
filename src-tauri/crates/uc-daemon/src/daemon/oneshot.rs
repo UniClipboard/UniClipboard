@@ -32,27 +32,30 @@
 //!   - Grace expires still never-armed → terminate (hard reclaim: the spawning
 //!     CLI died before opening its control WS).
 //!
-//! # Controlled-restart drain (ADR-008 P5-L L8b)
+//! # Controlled-restart drain (ADR-008 P5-L L8b / L8c)
 //!
-//! The same supervisor ALSO drives the controlled-restart drain. When the shared
-//! `quiescing` flag is set (false→true edge), the supervisor arms a bounded
-//! [`CONTROLLED_RESTART_DRAIN_TIMEOUT`] deadline and waits for in-flight leases to
-//! drain (`active → 0`), then fires `terminate` so the successor daemon can take
-//! over. `quiescing` makes terminate fire even on a never-armed / in-grace daemon
-//! (an explicit restart overrides grace). If leases do NOT drain within the
-//! timeout the supervisor ABORTS the restart — it clears `quiescing` and keeps
-//! running rather than force-killing in-flight work (R8-F3), falling back to the
-//! ordinary L4 self-terminate behaviour. L8b adds NO setter for `quiescing` (the
-//! restart control plane that flips it is a later slice L8c), so this drain path
-//! is unreachable in production — and the whole supervisor is still Oneshot-only,
-//! so it is doubly production-behaviour-neutral.
+//! The same supervisor ALSO drives the controlled-restart drain. It reads the
+//! quiescing state through the L8c [`RestartCoordinator`] (which owns the L8b
+//! `quiescing` flag as its sole mutator): when quiescing goes false→true the
+//! supervisor arms a bounded [`CONTROLLED_RESTART_DRAIN_TIMEOUT`] deadline and
+//! waits for in-flight leases to drain (`active → 0`), then fires `terminate` so
+//! the successor daemon can take over. Quiescing makes terminate fire even on a
+//! never-armed / in-grace daemon (an explicit restart overrides grace). If leases
+//! do NOT drain within the timeout the supervisor ABORTS the restart via
+//! [`RestartCoordinator::abort`] — which atomically clears the in-flight restart
+//! state AND lowers `quiescing` under the coordinator mutex — keeping the daemon
+//! running rather than force-killing in-flight work (R8-F3) and falling back to
+//! ordinary L4 self-terminate behaviour. The restart control plane that raises
+//! quiescing is the L8c `/lifecycle/restart` endpoint, reachable only on an
+//! Oneshot daemon — and no Oneshot daemon exists in production until L8d, so this
+//! drain path is still production-behaviour-neutral.
 
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 use uc_webserver::api::control_lease::ControlLeaseRegistry;
+use uc_webserver::api::restart::RestartCoordinator;
 
 /// Startup grace window for a never-armed Oneshot daemon (ADR-008 P5-L L4).
 ///
@@ -102,18 +105,21 @@ impl SupervisorTimings {
 /// `terminate` if `shutdown` is cancelled first (the daemon is already shutting
 /// down for another reason — OS signal, crash — so there is nothing to trigger).
 ///
-/// `quiescing` is the shared controlled-restart flag (L8b): on the false→true
-/// edge the supervisor arms a bounded drain deadline ([`SupervisorTimings::drain_timeout`])
-/// and terminates once leases drain — even on a never-armed / in-grace daemon. If
-/// the deadline fires while leases are still held it ABORTS the restart: clears
-/// `quiescing`, keeps running, and falls back to ordinary L4 behaviour (R8-F3).
+/// `restart` is the L8c controlled-restart coordinator (owner of the L8b
+/// `quiescing` flag): the supervisor reads quiescing through
+/// [`RestartCoordinator::is_quiescing`], and on the false→true edge arms a bounded
+/// drain deadline ([`SupervisorTimings::drain_timeout`]) and terminates once leases
+/// drain — even on a never-armed / in-grace daemon. If the deadline fires while
+/// leases are still held it ABORTS the restart via [`RestartCoordinator::abort`]
+/// (atomically clears the in-flight restart state + lowers `quiescing`), keeps
+/// running, and falls back to ordinary L4 behaviour (R8-F3).
 ///
 /// `timings` are parameters (not the consts directly) purely so the unit tests can
 /// drive a deterministic paused clock; production passes
 /// [`SupervisorTimings::production`].
 pub(crate) async fn run_oneshot_self_terminate_supervisor(
     lease_registry: ControlLeaseRegistry,
-    quiescing: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    restart: RestartCoordinator,
     terminate: CancellationToken,
     shutdown: CancellationToken,
     timings: SupervisorTimings,
@@ -125,14 +131,19 @@ pub(crate) async fn run_oneshot_self_terminate_supervisor(
     tokio::pin!(grace_deadline);
     let mut grace_expired = false;
 
-    // Controlled-restart drain deadline (ADR-008 P5-L L8b). `reset` to
-    // `now + drain_timeout` on the quiescing false→true edge; the `draining` flag
-    // arms/disarms it (set on false→true, cleared on true→false), so the
-    // `select!` arm below only fires while a drain is actually in progress.
+    // Controlled-restart drain deadline (ADR-008 P5-L L8b / L8c). `reset` to
+    // `now + drain_timeout` when quiescing is observed while NOT already draining;
+    // the `draining` flag is the SOLE edge state (set when arming, cleared when
+    // quiescing drops or the deadline fires), so the `select!` arm below only fires
+    // while a drain is actually in progress. Keying the re-arm off `draining`
+    // (rather than a separate `prev_quiescing` mirror) closes a latent race: after
+    // an abort lowers quiescing, if a fresh L8c restart re-raises it within one
+    // poll, a `prev_quiescing`-based edge detector could miss the re-arm (it never
+    // observed the intervening false); `draining` was cleared by the abort, so the
+    // next `quiescing && !draining` correctly re-arms the drain.
     let drain_deadline = tokio::time::sleep(timings.drain_timeout);
     tokio::pin!(drain_deadline);
     let mut draining = false;
-    let mut prev_quiescing = false;
 
     loop {
         // Read `armed` (total_acquired) BEFORE `active`. This pairs with
@@ -143,22 +154,25 @@ pub(crate) async fn run_oneshot_self_terminate_supervisor(
         let armed = lease_registry.total_acquired() > 0;
         let active = lease_registry.active_leases();
         // Independent of the armed/active read order (L8b): the quiescing flag is
-        // a separate atomic, not part of the L4 TOCTOU pairing.
-        let quiescing_now = quiescing.load(Ordering::SeqCst);
+        // a separate atomic (owned by the L8c coordinator), not part of the L4
+        // TOCTOU pairing.
+        let quiescing_now = restart.is_quiescing();
 
-        // Arm / disarm the drain deadline on the quiescing edge.
-        if quiescing_now && !prev_quiescing {
-            // false→true: a controlled restart began — arm the bounded drain.
+        // Arm / disarm the drain deadline, keying off `draining` as the edge state.
+        if quiescing_now && !draining {
+            // Quiescing observed while not yet draining — a controlled restart
+            // began (or re-began after an abort cleared `draining`). Arm the
+            // bounded drain. Re-arming off `draining` (not a `prev_quiescing`
+            // mirror) catches an abort→re-quiesce that flips within a single poll.
             drain_deadline
                 .as_mut()
                 .reset(tokio::time::Instant::now() + timings.drain_timeout);
             draining = true;
             debug!("controlled-restart drain armed — waiting for leases to quiesce");
-        } else if !quiescing_now && prev_quiescing {
-            // true→false: restart aborted/cleared externally — disarm.
+        } else if !quiescing_now && draining {
+            // Quiescing dropped while draining — restart aborted/cleared — disarm.
             draining = false;
         }
-        prev_quiescing = quiescing_now;
 
         if active == 0 && (quiescing_now || armed || grace_expired) {
             debug!(
@@ -197,7 +211,9 @@ pub(crate) async fn run_oneshot_self_terminate_supervisor(
                     warn!(
                         "controlled-restart drain timed out — aborting restart, daemon stays up"
                     );
-                    quiescing.store(false, Ordering::SeqCst);
+                    // L8c: abort through the coordinator so the in-flight restart
+                    // state and `quiescing` are cleared together under one mutex.
+                    restart.abort();
                 }
             }
             // Grace boundary: flip the latch, re-evaluate on the next loop turn.
@@ -213,8 +229,7 @@ pub(crate) async fn run_oneshot_self_terminate_supervisor(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::Arc;
+    use uc_daemon_contract::api::types::DaemonResidency;
 
     // Short, distinct test durations so the paused-clock advances below are
     // unambiguous. `start_paused = true` means time only moves on explicit
@@ -222,27 +237,28 @@ mod tests {
     const TEST_GRACE: Duration = Duration::from_secs(5);
     const TEST_POLL: Duration = Duration::from_millis(250);
     // Distinct from grace so a drain-timeout advance can never be confused with a
-    // grace-expiry advance in the L8b tests.
+    // grace-expiry advance in the L8b/L8c tests.
     const TEST_DRAIN: Duration = Duration::from_secs(10);
 
     /// Spawn the supervisor against a fresh registry, returning the registry, the
-    /// shared quiescing flag, the terminate token, the shutdown token, and the
-    /// join handle so each test can drive leases + the quiescing flag + clock and
+    /// L8c restart coordinator (owns the quiescing flag — tests drive it via
+    /// `request()` / `abort()`), the terminate token, the shutdown token, and the
+    /// join handle so each test can drive leases + the restart state + clock and
     /// then assert on `terminate.is_cancelled()`.
     fn spawn_supervisor() -> (
         ControlLeaseRegistry,
-        Arc<AtomicBool>,
+        RestartCoordinator,
         CancellationToken,
         CancellationToken,
         tokio::task::JoinHandle<()>,
     ) {
         let registry = ControlLeaseRegistry::new();
-        let quiescing = Arc::new(AtomicBool::new(false));
+        let restart = RestartCoordinator::default();
         let terminate = CancellationToken::new();
         let shutdown = CancellationToken::new();
         let handle = tokio::spawn(run_oneshot_self_terminate_supervisor(
             registry.clone(),
-            quiescing.clone(),
+            restart.clone(),
             terminate.clone(),
             shutdown.clone(),
             SupervisorTimings {
@@ -251,7 +267,7 @@ mod tests {
                 poll_interval: TEST_POLL,
             },
         ));
-        (registry, quiescing, terminate, shutdown, handle)
+        (registry, restart, terminate, shutdown, handle)
     }
 
     /// Yield to the runtime so the spawned supervisor task makes progress past
@@ -421,7 +437,7 @@ mod tests {
         // complete): the supervisor must terminate on the next poll. quiescing
         // forces terminate even though the daemon was never armed and is still in
         // grace.
-        let (_registry, quiescing, terminate, _shutdown, handle) = spawn_supervisor();
+        let (_registry, restart, terminate, _shutdown, handle) = spawn_supervisor();
 
         settle().await;
         assert!(
@@ -429,7 +445,7 @@ mod tests {
             "must not terminate before quiescing is set"
         );
 
-        quiescing.store(true, Ordering::SeqCst);
+        restart.request(DaemonResidency::Standalone);
         // Advance one poll so the supervisor re-evaluates with quiescing set.
         tokio::time::advance(TEST_POLL).await;
         settle().await;
@@ -446,12 +462,12 @@ mod tests {
         // A controlled restart begins while a lease is held; the lease is dropped
         // well within the drain timeout. The supervisor must wait for the drain
         // and then terminate.
-        let (registry, quiescing, terminate, _shutdown, handle) = spawn_supervisor();
+        let (registry, restart, terminate, _shutdown, handle) = spawn_supervisor();
 
         let lease = registry.acquire();
         settle().await;
 
-        quiescing.store(true, Ordering::SeqCst);
+        restart.request(DaemonResidency::Standalone);
         // One poll: quiescing is set but the lease is still held → no terminate.
         tokio::time::advance(TEST_POLL).await;
         settle().await;
@@ -474,20 +490,20 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn quiescing_drain_timeout_aborts_restart_then_falls_back_to_l4() {
         // A controlled restart begins while a lease is held and the lease is kept
-        // PAST the drain timeout. The supervisor must ABORT: terminate not fired,
-        // quiescing cleared back to false, supervisor still live. Then dropping
-        // the (now-armed) lease must still self-terminate via the ordinary L4
-        // path — proving the fallback.
-        let (registry, quiescing, terminate, _shutdown, handle) = spawn_supervisor();
+        // PAST the drain timeout. The supervisor must ABORT through the coordinator:
+        // terminate not fired, quiescing cleared AND the in-flight restart state
+        // reset, supervisor still live. Then dropping the (now-armed) lease must
+        // still self-terminate via the ordinary L4 path — proving the fallback.
+        let (registry, restart, terminate, _shutdown, handle) = spawn_supervisor();
 
         let lease = registry.acquire();
         settle().await;
 
-        quiescing.store(true, Ordering::SeqCst);
+        restart.request(DaemonResidency::Standalone);
         // Let the supervisor observe the false→true edge and arm the drain.
         tokio::time::advance(TEST_POLL).await;
         settle().await;
-        assert!(quiescing.load(Ordering::SeqCst), "quiescing should be set");
+        assert!(restart.is_quiescing(), "quiescing should be set");
 
         // Hold the lease past the drain timeout: the drain deadline fires → abort.
         tokio::time::advance(TEST_DRAIN).await;
@@ -497,8 +513,12 @@ mod tests {
             "drain timeout with a held lease must NOT force-terminate"
         );
         assert!(
-            !quiescing.load(Ordering::SeqCst),
+            !restart.is_quiescing(),
             "drain timeout must clear quiescing (restart aborted)"
+        );
+        assert!(
+            restart.pending().is_none(),
+            "abort must also reset the in-flight restart state, not just quiescing"
         );
 
         // Fallback: the daemon stays up under ordinary L4 behaviour. The lease is
@@ -514,11 +534,63 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn restart_re_requested_after_abort_re_arms_drain_and_terminates() {
+        // ADR-008 P5-L L8c: after a drain-timeout abort, a fresh restart request
+        // must re-raise quiescing AND re-arm the drain (the `draining`-keyed edge
+        // re-arms even though `prev_quiescing` would have missed it). Drive a
+        // second quiesce, drop the held lease within the timeout, and confirm the
+        // supervisor terminates — proving the coordinator round-trips and the
+        // re-arm fires.
+        let (registry, restart, terminate, _shutdown, handle) = spawn_supervisor();
+
+        let lease = registry.acquire();
+        settle().await;
+
+        // First restart: held past the drain timeout → abort.
+        restart.request(DaemonResidency::Standalone);
+        tokio::time::advance(TEST_POLL).await;
+        settle().await;
+        tokio::time::advance(TEST_DRAIN).await;
+        settle().await;
+        assert!(!restart.is_quiescing(), "first restart must be aborted");
+        assert!(restart.pending().is_none());
+        assert!(
+            !terminate.is_cancelled(),
+            "abort must not fire terminate while the lease is still held"
+        );
+
+        // Second restart: re-arms the drain (generation 2). Now drop the lease
+        // comfortably within the (re-armed) drain timeout → terminate must fire.
+        let outcome = restart.request(DaemonResidency::ServerHeadless);
+        assert_eq!(
+            outcome,
+            uc_webserver::api::restart::RestartOutcome::Accepted { generation: 2 },
+            "a re-request after abort must be accepted with a bumped generation"
+        );
+        // Let the supervisor observe the re-quiesce edge and re-arm the drain.
+        tokio::time::advance(TEST_POLL).await;
+        settle().await;
+        assert!(
+            !terminate.is_cancelled(),
+            "must not terminate while the lease is still held under the re-armed drain"
+        );
+
+        drop(lease);
+        tokio::time::advance(TEST_POLL).await;
+        settle().await;
+        assert!(
+            terminate.is_cancelled(),
+            "after re-request, draining the lease within the re-armed timeout must terminate"
+        );
+        handle.await.expect("supervisor task must complete cleanly");
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn quiescing_overrides_grace_on_never_armed_daemon() {
         // A controlled restart is requested on a never-armed daemon that is still
         // inside the grace window with 0 active leases. An explicit restart must
         // override grace and terminate on the next poll.
-        let (_registry, quiescing, terminate, _shutdown, handle) = spawn_supervisor();
+        let (_registry, restart, terminate, _shutdown, handle) = spawn_supervisor();
 
         // Stay well inside grace.
         tokio::time::advance(TEST_GRACE - Duration::from_millis(1)).await;
@@ -528,7 +600,7 @@ mod tests {
             "never-armed in-grace daemon must not terminate before quiescing"
         );
 
-        quiescing.store(true, Ordering::SeqCst);
+        restart.request(DaemonResidency::Standalone);
         tokio::time::advance(TEST_POLL).await;
         settle().await;
         assert!(

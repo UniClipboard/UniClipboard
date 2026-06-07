@@ -22,7 +22,8 @@ pub use connection::DaemonConnectionState;
 pub use http::{
     DaemonAnalyticsClient, DaemonClipboardClient, DaemonLifecycleClient, DaemonPairingClient,
     DaemonPairingRequestError, DaemonQueryClient, DaemonSearchClient, DaemonSearchRequestError,
-    DaemonSettingsClient, DaemonSetupClient, ExchangedSessionToken, SearchQueryRequest,
+    DaemonSettingsClient, DaemonSetupClient, DaemonSetupV2Client, ExchangedSessionToken,
+    SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::{DaemonService, FileExport};
@@ -185,6 +186,15 @@ impl DaemonClientContext {
     /// Spawn a [`DaemonSetupClient`] that shares this context's connection state and HTTP client.
     pub fn setup_client(&self) -> DaemonSetupClient {
         DaemonSetupClient::with_http_conn_state_and_type(
+            self.http.clone(),
+            self.connection_state.clone(),
+            self.client_type.clone(),
+        )
+    }
+
+    /// Spawn a [`DaemonSetupV2Client`] that shares this context's connection state and HTTP client.
+    pub fn setup_v2_client(&self) -> DaemonSetupV2Client {
+        DaemonSetupV2Client::with_http_conn_state_and_type(
             self.http.clone(),
             self.connection_state.clone(),
             self.client_type.clone(),

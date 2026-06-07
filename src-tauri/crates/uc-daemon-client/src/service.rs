@@ -12,6 +12,7 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
     ResendResponse,
 };
+use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
 
 /// A free-file exported from the daemon (ADR-008 P5-1b).
 ///
@@ -62,6 +63,15 @@ pub trait DaemonService: Send + Sync {
     /// should keep waiting), and `Err` for any other status or transport
     /// failure.
     async fn export_entry_file(&self, entry_id: &str) -> Result<Option<FileExport>>;
+
+    /// Subscribe to `setup.pairingCompleted` events (ADR-008 P5-2b).
+    ///
+    /// Returns a receiver that yields [`SetupPairingCompletedEvent`] payloads
+    /// when the daemon's setup topic broadcasts a pairing completion (success
+    /// or failure). The WS connection doubles as a control-WS lease.
+    async fn subscribe_setup_pairing_completion(
+        &self,
+    ) -> Result<mpsc::Receiver<SetupPairingCompletedEvent>>;
 
     /// Open a bare control WebSocket that the daemon counts as an active
     /// lease (ADR-008 P5-1a). The connection does NOT subscribe to any topic —

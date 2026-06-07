@@ -6,6 +6,7 @@ pub mod query;
 pub mod search;
 pub mod settings;
 pub mod setup;
+pub mod setup_v2;
 
 pub use analytics::DaemonAnalyticsClient;
 pub use clipboard::DaemonClipboardClient;
@@ -15,6 +16,7 @@ pub use query::DaemonQueryClient;
 pub use search::{DaemonSearchClient, DaemonSearchRequestError, SearchQueryRequest};
 pub use settings::DaemonSettingsClient;
 pub use setup::DaemonSetupClient;
+pub use setup_v2::DaemonSetupV2Client;
 
 use crate::DaemonConnectionState;
 use anyhow::{anyhow, Context, Result};

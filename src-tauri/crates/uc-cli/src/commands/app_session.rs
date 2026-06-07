@@ -10,11 +10,15 @@ use crate::ui;
 use uc_daemon_client::{DaemonClientContext, DaemonService, HttpWsDaemonService};
 use uc_daemon_contract::probe::ProbeOutcome;
 
+// ── In-process session (dev-tools only) ────────────────────────────────
+
 /// [`build_app_session`] 返回的 CLI 会话。
+#[cfg(feature = "dev-tools")]
 pub struct CliAppSession {
     pub runtime: uc_bootstrap::CliAppRuntime,
 }
 
+#[cfg(feature = "dev-tools")]
 impl CliAppSession {
     pub fn app_facade(&self) -> &std::sync::Arc<uc_application::facade::AppFacade> {
         self.runtime.app_facade()
@@ -30,6 +34,7 @@ impl CliAppSession {
 /// 在 IPC 转发落地前,同一个 profile 的两个进程会用同一个 Ed25519
 /// secret 绑定两个 iroh endpoint,并且 daemon 自己的流程会和 CLI 竞争。
 /// 因此独立 CLI 业务命令要求用户先 `stop` daemon。
+#[cfg(feature = "dev-tools")]
 pub async fn refuse_if_daemon_running() -> Result<(), i32> {
     match probe_running().await {
         Ok(ProbeOutcome::Compatible(_)) => {
@@ -48,7 +53,7 @@ pub async fn refuse_if_daemon_running() -> Result<(), i32> {
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
         Ok(ProbeOutcome::Absent) => Ok(()),
-        // 探测网络错误按“没有可冲突 daemon”处理。
+        // 探测网络错误按"没有可冲突 daemon"处理。
         Err(err) => {
             tracing::debug!(error = %err, "daemon probe failed; assuming no daemon");
             Ok(())
@@ -63,6 +68,7 @@ pub async fn refuse_if_daemon_running() -> Result<(), i32> {
 ///
 /// wiring 前设置 `UC_DISABLE_SYSTEM_CLIPBOARD=1`,避免独立 CLI 命令提前触碰
 /// 系统剪贴板适配器。
+#[cfg(feature = "dev-tools")]
 pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
     // 必须在 bootstrap wiring 前设置,避免 CLI 进程触碰系统剪贴板适配器。
     std::env::set_var("UC_DISABLE_SYSTEM_CLIPBOARD", "1");
@@ -81,53 +87,7 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
     }
 }
 
-/// Execution mode determined by daemon probe.
-// ADR-008 P5-1a: in-process path retired for send/watch; kept as dead code until P5-4.
-#[allow(dead_code)]
-pub enum CliExecutionMode {
-    /// No daemon running — use in-process AppFacade.
-    InProcess(CliAppSession),
-    /// Daemon running — delegate via transport-agnostic DaemonService.
-    DaemonClient(Box<dyn DaemonService>),
-}
-
-/// Probe for a running daemon and return the appropriate execution mode.
-///
-/// If a daemon is running, builds a `DaemonService` client. Otherwise
-/// falls back to the in-process `CliAppSession`.
-// ADR-008 P5-1a: in-process path retired for send/watch; kept as dead code until P5-4.
-#[allow(dead_code)]
-pub async fn resolve_execution_mode(verbose: bool) -> Result<CliExecutionMode, i32> {
-    match probe_running().await {
-        Ok(ProbeOutcome::Compatible(_)) => {
-            let ctx = match DaemonClientContext::from_env() {
-                Ok(ctx) => ctx,
-                Err(err) => {
-                    ui::error(&format!("Daemon is running but failed to connect: {err}"));
-                    return Err(exit_codes::EXIT_ERROR);
-                }
-            };
-            let service = HttpWsDaemonService::new(ctx);
-            Ok(CliExecutionMode::DaemonClient(Box::new(service)))
-        }
-        // ADR-008 P5-L L2: do NOT silently fall back to an in-process session
-        // when an incompatible daemon is on this profile's port — that would
-        // run two competing nodes on one identity. Refuse with a clear error.
-        Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
-            ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
-            Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
-        }
-        Ok(ProbeOutcome::Absent) => {
-            let session = build_app_session(verbose).await?;
-            Ok(CliExecutionMode::InProcess(session))
-        }
-        Err(err) => {
-            tracing::debug!(error = %err, "daemon probe failed; assuming no daemon");
-            let session = build_app_session(verbose).await?;
-            Ok(CliExecutionMode::InProcess(session))
-        }
-    }
-}
+// ── Daemon-client session (always available) ──────────────────────────
 
 /// ADR-008 P5-1a: connect to a running compatible daemon, or spawn a transient
 /// Oneshot daemon when none is present, and return a `DaemonService` client.
@@ -149,7 +109,7 @@ pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn Da
             // Don't spawn a useless Oneshot for an unprovisioned profile.
             // Mirror start.rs's lenient unwrap_or(true): if setup state is
             // unreadable, attempt the spawn and let the real error surface.
-            if !uc_bootstrap::is_setup_complete().await.unwrap_or(true) {
+            if !crate::setup_check::is_setup_complete().unwrap_or(true) {
                 ui::error("No space on this profile — run `uniclip init` or `uniclip join` first.");
                 return Err(exit_codes::EXIT_ERROR);
             }

@@ -16,7 +16,7 @@
 use tokio::select;
 use tokio::signal;
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 use std::net::IpAddr;
 
 // --- daemon path imports (P5-2b) -------------------------------------------
@@ -24,12 +24,12 @@ use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
 use uc_daemon_client::DaemonClientContext;
 
 // --- in-process path imports (debug builds only) -----------------------------
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 use uc_application::facade::space_setup::{
     IssuePairingInvitationError, PairingOutcome, TryResumeSessionError,
 };
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
 use crate::exit_codes;
 use crate::ui;
@@ -137,12 +137,12 @@ pub async fn run(verbose: bool) -> i32 {
 // Dev-only entry: in-process path (debug builds only)
 // ---------------------------------------------------------------------------
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 pub(crate) async fn run_for_address(selected_ip: IpAddr, verbose: bool) -> i32 {
     run_for_address_inner(selected_ip, verbose).await
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 async fn run_for_address_inner(selected_ip: IpAddr, verbose: bool) -> i32 {
     ui::header(&format!("Invite a device via {selected_ip}"));
 

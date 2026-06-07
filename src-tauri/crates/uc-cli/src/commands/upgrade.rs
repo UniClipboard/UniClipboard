@@ -1,45 +1,37 @@
-//! `uniclip upgrade` —— manual verification entry for the P1 thin upgrade
-//! detection module.
+//! `uniclip upgrade` — manual verification entry for the P1 thin upgrade
+//! detection module, routed through daemon HTTP endpoints.
 //!
 //! Subcommands:
 //!
-//! * `status` —— calls [`UpgradeFacade::detect_on_startup`] with the CLI's
-//!   own build version and prints the structured outcome (FreshInstall /
-//!   NoChange / Upgraded / Downgraded). Read-only; safe to run alongside
-//!   the daemon.
-//! * `ack` —— calls [`UpgradeFacade::acknowledge`] to advance the cursor
-//!   to the current build version. Subsequent `status` runs report
+//! * `status` — calls `GET /upgrade/status` on the daemon and prints the
+//!   structured outcome (FreshInstall / NoChange / Upgraded / Downgraded).
+//! * `ack` — calls `POST /upgrade/ack` to advance the cursor to the
+//!   daemon's current build version. Subsequent `status` runs report
 //!   `NoChange` until the binary version moves.
 //!
-//! Both subcommands use `build_cli_app_facade` (no iroh / network), so
-//! they work even when no space has been initialised on this profile.
-//!
-//! The version string fed to the facade is `env!("CARGO_PKG_VERSION")` of
-//! `uc-cli` itself, which matches the workspace version inherited by
-//! `uc-desktop` (the daemon's source of truth). Profile selection happens
-//! through the global `--profile` flag in `main.rs`, identical to other
-//! standalone CLI commands.
+//! Both subcommands connect to an existing daemon or spawn a transient
+//! Oneshot daemon, then hold a control lease for the duration of the call.
+//! The version compared is the *daemon's* build version (the daemon uses
+//! its own `CARGO_PKG_VERSION` when calling the facade).
 
 use clap::Subcommand;
 use serde::Serialize;
 use std::fmt;
 
-use uc_application::facade::{AcknowledgeUpgradeError, DetectUpgradeError, UpgradeStatus};
+use uc_daemon_client::DaemonClientContext;
+use uc_daemon_contract::api::dto::upgrade::UpgradeStatusDto;
 
+use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
 use crate::exit_codes;
 use crate::output;
 use crate::ui;
 
-/// CLI build version. Compared against the persisted cursor by the
-/// `status` subcommand and written back by `ack`.
-const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
-
 #[derive(Subcommand)]
 pub enum UpgradeCommands {
     /// Print the upgrade status detected by comparing the persisted
-    /// version cursor against the current CLI build version.
+    /// version cursor against the current daemon build version.
     Status,
-    /// Advance the version cursor to the current CLI build, marking
+    /// Advance the version cursor to the current daemon build, marking
     /// the upgrade as acknowledged. Idempotent.
     Ack,
 }
@@ -53,23 +45,13 @@ enum StatusOutput {
     Downgraded { from: String, to: String },
 }
 
-impl From<UpgradeStatus> for StatusOutput {
-    fn from(value: UpgradeStatus) -> Self {
+impl From<UpgradeStatusDto> for StatusOutput {
+    fn from(value: UpgradeStatusDto) -> Self {
         match value {
-            UpgradeStatus::FreshInstall => Self::FreshInstall {
-                current: CLI_VERSION.to_string(),
-            },
-            UpgradeStatus::NoChange => Self::NoChange {
-                current: CLI_VERSION.to_string(),
-            },
-            UpgradeStatus::Upgraded { from, to } => Self::Upgraded {
-                from: from.map(|v| v.to_string()),
-                to: to.to_string(),
-            },
-            UpgradeStatus::Downgraded { from, to } => Self::Downgraded {
-                from: from.to_string(),
-                to: to.to_string(),
-            },
+            UpgradeStatusDto::FreshInstall { current } => Self::FreshInstall { current },
+            UpgradeStatusDto::NoChange { current } => Self::NoChange { current },
+            UpgradeStatusDto::Upgraded { from, to } => Self::Upgraded { from, to },
+            UpgradeStatusDto::Downgraded { from, to } => Self::Downgraded { from, to },
         }
     }
 }
@@ -111,24 +93,32 @@ impl fmt::Display for AckOutput {
 }
 
 pub async fn run(subcommand: UpgradeCommands, json: bool, verbose: bool) -> i32 {
-    let log_profile = if verbose {
-        Some(uc_observability::LogProfile::Dev)
-    } else {
-        Some(uc_observability::LogProfile::Cli)
+    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
+        Ok(s) => s,
+        Err(code) => return code,
     };
 
-    let app_facade = match uc_bootstrap::build_cli_app_facade(log_profile).await {
-        Ok(facade) => facade,
+    let _lease = match service.hold_control_lease().await {
+        Ok(guard) => guard,
         Err(err) => {
-            ui::error(&format!("failed to build CLI runtime: {err}"));
+            ui::error(&format!("Failed to hold daemon session lease: {err}"));
             return exit_codes::EXIT_ERROR;
         }
     };
 
+    let ctx = match DaemonClientContext::from_env() {
+        Ok(ctx) => ctx,
+        Err(err) => {
+            ui::error(&format!("Failed to connect to daemon: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+    let upgrade = ctx.upgrade_client();
+
     match subcommand {
-        UpgradeCommands::Status => match app_facade.upgrade.detect_on_startup(CLI_VERSION).await {
-            Ok(status) => {
-                let payload: StatusOutput = status.into();
+        UpgradeCommands::Status => match upgrade.status().await {
+            Ok(dto) => {
+                let payload: StatusOutput = dto.into();
                 if let Err(err) = output::print_result(&payload, json) {
                     ui::error(&err);
                     return exit_codes::EXIT_ERROR;
@@ -136,14 +126,14 @@ pub async fn run(subcommand: UpgradeCommands, json: bool, verbose: bool) -> i32 
                 exit_codes::EXIT_SUCCESS
             }
             Err(err) => {
-                ui::error(&format_detect_error(&err));
+                ui::error(&format!("Failed to detect upgrade status: {err}"));
                 exit_codes::EXIT_ERROR
             }
         },
-        UpgradeCommands::Ack => match app_facade.upgrade.acknowledge(CLI_VERSION).await {
-            Ok(()) => {
+        UpgradeCommands::Ack => match upgrade.acknowledge().await {
+            Ok(ack) => {
                 let payload = AckOutput {
-                    acknowledged: CLI_VERSION.to_string(),
+                    acknowledged: ack.acknowledged,
                 };
                 if let Err(err) = output::print_result(&payload, json) {
                     ui::error(&err);
@@ -152,28 +142,9 @@ pub async fn run(subcommand: UpgradeCommands, json: bool, verbose: bool) -> i32 
                 exit_codes::EXIT_SUCCESS
             }
             Err(err) => {
-                ui::error(&format_ack_error(&err));
+                ui::error(&format!("Failed to acknowledge upgrade: {err}"));
                 exit_codes::EXIT_ERROR
             }
         },
-    }
-}
-
-fn format_detect_error(err: &DetectUpgradeError) -> String {
-    match err {
-        DetectUpgradeError::CurrentVersionMalformed(s) => {
-            format!("current build version is malformed: {s}")
-        }
-        DetectUpgradeError::ReadCursor(s) => format!("read upgrade cursor failed: {s}"),
-        DetectUpgradeError::ReadSetupStatus(s) => format!("read setup status failed: {s}"),
-    }
-}
-
-fn format_ack_error(err: &AcknowledgeUpgradeError) -> String {
-    match err {
-        AcknowledgeUpgradeError::CurrentVersionMalformed(s) => {
-            format!("current build version is malformed: {s}")
-        }
-        AcknowledgeUpgradeError::WriteCursor(s) => format!("write upgrade cursor failed: {s}"),
     }
 }

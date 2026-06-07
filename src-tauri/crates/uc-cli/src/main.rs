@@ -2,18 +2,18 @@ mod commands;
 mod exit_codes;
 mod local_daemon;
 mod output;
+mod setup_check;
 mod ui;
 
 use clap::{CommandFactory, Parser, Subcommand};
 
 /// Initialise AppKit enough for headless macOS CLI invocations.
 ///
-/// `clipboard-rs` eagerly calls `+[NSPasteboard generalPasteboard]` during
-/// `wire_dependencies`, which returns NULL and panics when the process
-/// has not loaded AppKit (typical for a CLI launched from a shell that
-/// does not carry a proper Cocoa context). `NSApplicationLoad` is the
-/// documented way to bootstrap AppKit in non-`.app` processes.
-#[cfg(target_os = "macos")]
+/// Only needed when the `dev-tools` feature is enabled — in that mode the
+/// CLI may build an in-process `CliAppSession` which calls
+/// `clipboard-rs`'s `+[NSPasteboard generalPasteboard]`. Without dev-tools
+/// the CLI is a pure daemon client and never touches AppKit.
+#[cfg(all(target_os = "macos", feature = "dev-tools"))]
 fn init_macos_appkit() {
     extern "C" {
         fn NSApplicationLoad() -> bool;
@@ -22,7 +22,7 @@ fn init_macos_appkit() {
         let _ = NSApplicationLoad();
     }
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(all(target_os = "macos", feature = "dev-tools")))]
 fn init_macos_appkit() {}
 
 #[derive(Parser)]
@@ -215,7 +215,7 @@ enum Commands {
         out: Option<std::path::PathBuf>,
     },
     /// Publish or fetch encrypted large payload blobs
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     Blob {
         #[command(subcommand)]
         subcommand: commands::blob::BlobCommands,
@@ -233,14 +233,14 @@ enum Commands {
     },
     /// Hidden clipboard-diagnostic subcommand group (replaces the standalone
     /// `clipboard-probe` binary). Development and E2E debugging only.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[command(hide = true)]
     Probe {
         #[command(subcommand)]
         subcommand: commands::probe::ProbeCommands,
     },
     /// Hidden development tools.
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[command(hide = true)]
     Dev {
         #[command(subcommand)]
@@ -361,7 +361,7 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::Watch => commands::watch::run(cli.json, cli.verbose).await,
             Commands::Recv { out } => commands::recv::run(out, cli.json, cli.verbose).await,
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "dev-tools")]
             Commands::Blob { subcommand } => {
                 commands::blob::run(subcommand, cli.json, cli.verbose).await
             }
@@ -371,9 +371,9 @@ fn main() -> anyhow::Result<()> {
             Commands::Upgrade { subcommand } => {
                 commands::upgrade::run(subcommand, cli.json, cli.verbose).await
             }
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "dev-tools")]
             Commands::Probe { subcommand } => commands::probe::run(subcommand, cli.verbose).await,
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "dev-tools")]
             Commands::Dev { subcommand } => {
                 commands::dev::run(subcommand, cli.json, cli.verbose).await
             }
@@ -566,7 +566,7 @@ mod tests {
         assert!(r.is_ok(), "expected `status` to parse");
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[test]
     fn mobile_sync_debug_subcommands_parse() {
         // P5a.9 引入的 4 个 debug 子命令解析契约。
@@ -581,7 +581,7 @@ mod tests {
         }
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[test]
     fn mobile_sync_debug_put_text_requires_text() {
         // put-text 必须带 TEXT 位置参数,否则 facade 拿不到内容。
@@ -589,7 +589,7 @@ mod tests {
         assert!(result.is_err(), "expected `put-text` to require <TEXT>");
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[test]
     fn mobile_sync_debug_put_file_requires_path() {
         // put-file 必须带 PATH;mime 是可选的。
@@ -597,7 +597,7 @@ mod tests {
         assert!(result.is_err(), "expected `put-file` to require <PATH>");
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[test]
     fn mobile_sync_debug_get_file_requires_data_name() {
         // get-file 必须带 DATANAME 位置参数。
@@ -636,7 +636,7 @@ mod tests {
         assert!(r.is_ok(), "expected full-flag setup to parse");
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[test]
     fn dev_pairing_manual_address_commands_parse() {
         // 隐藏开发入口用于手动选择配对地址,不进入公开 help 契约。
@@ -656,7 +656,7 @@ mod tests {
         }
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[test]
     fn dev_clipboard_seed_and_dump_commands_parse() {
         // seed/dump 是调试 / E2E 入口,已从顶层搬进隐藏的 `dev` 组。
@@ -672,7 +672,7 @@ mod tests {
         }
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "dev-tools")]
     #[test]
     fn top_level_clipboard_seed_and_dump_are_removed() {
         // 迁移到 `dev` 组后,顶层路径必须消失,避免两套入口并存,

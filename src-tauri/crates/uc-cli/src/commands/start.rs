@@ -72,16 +72,15 @@ fn promote_target_residency(server: bool) -> DaemonResidency {
 }
 
 /// Block `start` if Space setup hasn't completed for the active
-/// profile. Delegates the actual check to
-/// [`uc_bootstrap::is_setup_complete`] so the file paths + JSON schema
-/// stay encoded in `uc-infra::FileSetupStatusRepository`, not duplicated
-/// here.
+/// profile. Uses a thin filesystem check ([`crate::setup_check::is_setup_complete`])
+/// that reads the `.setup_status` JSON file (and legacy marker) directly,
+/// avoiding the heavy `uc-bootstrap` assembly stack.
 ///
 /// Returns `Some(exit_code)` to block, `None` to proceed.
 async fn check_setup_complete(json: bool, _verbose: bool) -> Option<i32> {
     // Resolution failure (e.g. missing app dirs) → let daemon surface
     // the underlying error rather than masking it here.
-    if uc_bootstrap::is_setup_complete().await.unwrap_or(true) {
+    if crate::setup_check::is_setup_complete().unwrap_or(true) {
         return None;
     }
 

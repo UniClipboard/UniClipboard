@@ -1,40 +1,34 @@
-//! `uniclip send` — one-shot clipboard dispatch with optional resend.
+//! `uniclip send` — clipboard dispatch via daemon (text/resend) or in-process
+//! (file-send, dev-tools only).
 //!
-//! Self-contained direct-mode command (no daemon), mirroring the `init` /
-//! `invite` / `join` / `members` pattern. Builds a `SpaceSetupAssembly`,
-//! resumes the cached session, refreshes presence so dispatch can route to
-//! online peers, then either:
+//! ## Text / resend mode (always available)
 //!
-//! * **New entry** — wraps the user-supplied text as a single-text-rep
-//!   `SystemClipboardSnapshot` and fans it out via
-//!   `AppFacade::dispatch_clipboard_snapshot`.
-//! * **Resend** — looks up a previously captured entry and re-fans it out
-//!   via `AppFacade::resend_entry`. Reconstructed snapshots travel the
-//!   same publish + V3 envelope + dispatch path; failure modes are
-//!   surfaced as discrete CLI errors.
+//! Routes through `connect_or_spawn_oneshot_daemon` → HTTP dispatch.
 //!
-//! `--peer <DEVICE-ID>` (repeatable) restricts fan-out to listed devices
-//! in either mode. Without it, new-entry mode targets all online peers
-//! and resend targets the `trusted_peer \ (Delivered ∪ Duplicate)` diff.
+//! ## File-send mode (`--features dev-tools` only)
 //!
-//! Still doesn't read the system clipboard — bootstrap sets
-//! `UC_DISABLE_SYSTEM_CLIPBOARD=1` so non-bundled CLI runs don't panic
-//! in `+[NSPasteboard generalPasteboard]`. The daemon owns the OS
-//! clipboard in production.
+//! Builds an in-process `CliAppSession`, publishes the blob to the local
+//! iroh-blobs store, dispatches a V3 envelope with a blob-ref extension,
+//! then keeps the iroh router alive (passive provider) until Ctrl-C so
+//! the receiver has time to fetch. Requires the heavy application +
+//! bootstrap stack.
 
 use std::io::Read;
 use std::path::PathBuf;
 
+#[cfg(feature = "dev-tools")]
 use serde::Serialize;
 
-use uc_application::facade::space_setup::TryResumeSessionError;
+#[cfg(feature = "dev-tools")]
 use uc_application::facade::{
-    BlobTransferError, ClipboardSyncError, DispatchEntryOutcome, DispatchEntryPerTarget,
-    NotResendableReason, PublishBlobPathCommand, ResendEntryCommand, ResendEntryError,
-    ResendReport, V3BlobRef,
+    BlobTransferError, ClipboardSyncError, DispatchEntryPerTarget, PublishBlobPathCommand,
+    V3BlobRef,
 };
-use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
+#[cfg(feature = "dev-tools")]
+use uc_core::ids::{EntryId, FormatId, RepresentationId};
+#[cfg(feature = "dev-tools")]
 use uc_core::ports::DispatchAck;
+#[cfg(feature = "dev-tools")]
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
@@ -42,9 +36,9 @@ use uc_core::{
 use uc_daemon_client::DaemonService;
 use uc_daemon_contract::api::dto::clipboard_command::DispatchOutcomeResponse;
 
-use crate::commands::app_session::{
-    build_app_session, connect_or_spawn_oneshot_daemon, refuse_if_daemon_running, CliAppSession,
-};
+use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+#[cfg(feature = "dev-tools")]
+use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
 use crate::exit_codes;
 use crate::ui;
 
@@ -79,7 +73,18 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
             ui::error("`--peer` is not supported with `--file` yet.");
             return exit_codes::EXIT_ERROR;
         }
-        return run_send_file(file, json, verbose).await;
+        #[cfg(feature = "dev-tools")]
+        {
+            return run_send_file(file, json, verbose).await;
+        }
+        #[cfg(not(feature = "dev-tools"))]
+        {
+            let _ = file;
+            ui::error(
+                "`send --file` requires the in-process blob stack (build with --features dev-tools).",
+            );
+            return exit_codes::EXIT_ERROR;
+        }
     }
 
     let mode = if args.resend.is_some() {
@@ -246,183 +251,6 @@ fn render_daemon_dispatch(resp: &DispatchOutcomeResponse) {
     ui::bar();
 }
 
-// ADR-008 P5-1a: retired for send; kept as dead code until P5-4.
-#[allow(dead_code)]
-async fn run_send_in_process(
-    cli: CliAppSession,
-    mode: SendMode,
-    plaintext: Option<String>,
-    resend_id: Option<String>,
-    peers: &[String],
-    json: bool,
-) -> i32 {
-    let target_filter: Option<Vec<DeviceId>> = if peers.is_empty() {
-        None
-    } else {
-        Some(peers.iter().map(DeviceId::new).collect())
-    };
-
-    let resume_spinner = ui::spinner("Resuming space session...");
-    match cli.app_facade().try_resume_session().await {
-        Ok(true) => ui::spinner_finish_success(&resume_spinner, "Session resumed"),
-        Ok(false) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "No space on this profile — run `init` or `join` first.",
-            );
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "Key material is corrupted — consider resetting this profile.",
-            );
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "Keychain cannot silently unlock this space.",
-            );
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::Internal(msg)) => {
-            ui::spinner_finish_error(&resume_spinner, &format!("Resume failed: {msg}"));
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-    }
-
-    let probe_spinner = ui::spinner("Probing paired peers...");
-    match cli.app_facade().refresh_presence().await {
-        Ok(report) => ui::spinner_finish_success(
-            &probe_spinner,
-            &format!(
-                "Probed {} peer(s): {} online, {} offline, {} error(s)",
-                report.total,
-                report.online,
-                report.offline,
-                report.errors.len()
-            ),
-        ),
-        Err(err) => ui::spinner_finish_error(
-            &probe_spinner,
-            &format!("Probe round failed: {err} (proceeding with last-known state)"),
-        ),
-    }
-
-    let view = match mode {
-        SendMode::New => {
-            let plaintext = plaintext.expect("plaintext populated in new-entry mode");
-            let snapshot = SystemClipboardSnapshot {
-                ts_ms: chrono::Utc::now().timestamp_millis(),
-                representations: vec![ObservedClipboardRepresentation::new(
-                    RepresentationId::new(),
-                    FormatId::from("text"),
-                    Some(MimeType("text/plain".to_string())),
-                    plaintext.into_bytes(),
-                )],
-            };
-
-            let dispatch_spinner = ui::spinner("Dispatching to online peers...");
-            let outcome = cli
-                .app_facade()
-                .dispatch_clipboard_snapshot(
-                    snapshot,
-                    ClipboardChangeOrigin::LocalCapture,
-                    target_filter.clone(),
-                )
-                .await;
-
-            match outcome {
-                Ok(o) => {
-                    ui::spinner_finish_success(
-                        &dispatch_spinner,
-                        &format!(
-                            "{} accepted, {} duplicate, {} offline, {} error(s)",
-                            o.total_accepted, o.total_duplicate, o.total_offline, o.total_errored
-                        ),
-                    );
-                    SendOutcomeView::New(o)
-                }
-                Err(err) => {
-                    ui::spinner_finish_error(&dispatch_spinner, &render_dispatch_error(&err));
-                    cli.shutdown().await;
-                    return exit_codes::EXIT_ERROR;
-                }
-            }
-        }
-        SendMode::Resend => {
-            let entry_id_str = resend_id.expect("resend id present");
-            let cmd = ResendEntryCommand {
-                entry_id: EntryId::from(entry_id_str.as_str()),
-                target_filter: target_filter.clone(),
-            };
-
-            let resend_spinner = ui::spinner("Resending entry to eligible peers...");
-            match cli.app_facade().resend_entry(cmd).await {
-                Ok(report) => {
-                    ui::spinner_finish_success(
-                        &resend_spinner,
-                        &format!(
-                            "{} accepted, {} duplicate, {} offline, {} error(s), {} pending",
-                            report.accepted,
-                            report.duplicate,
-                            report.offline,
-                            report.errored,
-                            report.pending,
-                        ),
-                    );
-                    SendOutcomeView::Resend {
-                        entry_id: entry_id_str,
-                        report,
-                    }
-                }
-                Err(err) => {
-                    ui::spinner_finish_error(&resend_spinner, &render_resend_error(&err));
-                    cli.shutdown().await;
-                    return exit_codes::EXIT_ERROR;
-                }
-            }
-        }
-    };
-
-    if json {
-        let dto = SendOutcomeDto::from_view(&view);
-        match serde_json::to_string_pretty(&dto) {
-            Ok(s) => println!("{s}"),
-            Err(err) => {
-                ui::error(&format!("Failed to serialize outcome: {err}"));
-                cli.shutdown().await;
-                return exit_codes::EXIT_ERROR;
-            }
-        }
-    } else {
-        render_human(&view);
-    }
-
-    cli.shutdown().await;
-    match &view {
-        SendOutcomeView::New(o) => {
-            if o.total_accepted == 0 && o.total_duplicate == 0 {
-                exit_codes::EXIT_ERROR
-            } else {
-                exit_codes::EXIT_SUCCESS
-            }
-        }
-        SendOutcomeView::Resend { report, .. } => {
-            if report.accepted == 0 && report.duplicate == 0 && report.pending == 0 {
-                exit_codes::EXIT_ERROR
-            } else {
-                exit_codes::EXIT_SUCCESS
-            }
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 enum SendMode {
     New,
@@ -456,6 +284,17 @@ fn read_plaintext(arg: Option<String>) -> Result<String, String> {
     Ok(buf)
 }
 
+fn short_hash(hash: &str) -> &str {
+    if hash.len() > 16 {
+        &hash[..16]
+    } else {
+        hash
+    }
+}
+
+// ── File-send (dev-tools only) ────────────────────────────────────────
+
+#[cfg(feature = "dev-tools")]
 fn render_dispatch_error(err: &ClipboardSyncError) -> String {
     match err {
         ClipboardSyncError::LockedSpace => {
@@ -466,76 +305,7 @@ fn render_dispatch_error(err: &ClipboardSyncError) -> String {
     }
 }
 
-fn render_resend_error(err: &ResendEntryError) -> String {
-    match err {
-        ResendEntryError::EntryNotFound(id) => {
-            format!("Entry {id} not found in local storage.")
-        }
-        ResendEntryError::EntryNotResendable { entry_id, reason } => match reason {
-            NotResendableReason::RemoteOrigin => format!(
-                "Entry {entry_id} originated on a remote peer — resend is only supported for locally captured entries."
-            ),
-            NotResendableReason::PayloadLost => format!(
-                "Entry {entry_id} payload is no longer cached locally — cannot reconstruct snapshot."
-            ),
-        },
-        ResendEntryError::TargetNotTrusted(d) => format!(
-            "Device {d} is not a trusted peer for this space.",
-        ),
-        ResendEntryError::NoEligibleTargets => {
-            "All trusted peers have already received this entry.".to_string()
-        }
-        ResendEntryError::Storage(msg) => format!("Storage failure: {msg}"),
-        ResendEntryError::Dispatch(msg) => format!("Dispatch failure: {msg}"),
-    }
-}
-
-enum SendOutcomeView {
-    New(DispatchEntryOutcome),
-    Resend {
-        entry_id: String,
-        report: ResendReport,
-    },
-}
-
-fn render_human(view: &SendOutcomeView) {
-    match view {
-        SendOutcomeView::New(outcome) => {
-            ui::bar();
-            ui::info("hash", short_hash(&outcome.content_hash));
-            if outcome.per_target.is_empty() {
-                ui::info("targets", "(none — no online peers)");
-            } else {
-                for entry in &outcome.per_target {
-                    let line = format!(
-                        "{} → {}",
-                        entry.device_id.as_str(),
-                        render_per_target(entry),
-                    );
-                    ui::info("·", &line);
-                }
-            }
-            ui::bar();
-        }
-        SendOutcomeView::Resend { entry_id, report } => {
-            ui::bar();
-            ui::info("entry", entry_id);
-            ui::info(
-                "summary",
-                &format!(
-                    "{} accepted, {} duplicate, {} offline, {} error(s), {} pending",
-                    report.accepted,
-                    report.duplicate,
-                    report.offline,
-                    report.errored,
-                    report.pending,
-                ),
-            );
-            ui::bar();
-        }
-    }
-}
-
+#[cfg(feature = "dev-tools")]
 fn render_per_target(entry: &DispatchEntryPerTarget) -> String {
     match &entry.outcome {
         Ok(DispatchAck::Accepted) => "accepted".to_string(),
@@ -544,115 +314,19 @@ fn render_per_target(entry: &DispatchEntryPerTarget) -> String {
     }
 }
 
-fn short_hash(hash: &str) -> &str {
-    if hash.len() > 16 {
-        &hash[..16]
-    } else {
-        hash
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SendOutcomeDto<'a> {
-    /// `"new"` (positional text / stdin) or `"resend"` (`--resend`).
-    mode: &'static str,
-    /// Populated only when `mode == "new"`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    content_hash: Option<&'a str>,
-    /// Populated only when `mode == "resend"`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    entry_id: Option<&'a str>,
-    total_accepted: usize,
-    total_duplicate: usize,
-    total_offline: usize,
-    total_errored: usize,
-    /// Resend-only: targets accepted into background continuation.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    total_pending: Option<usize>,
-    /// Populated only when `mode == "new"`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    at_ms: Option<i64>,
-    /// Populated only when `mode == "new"`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    per_target: Option<Vec<PerTargetDto<'a>>>,
-}
-
-#[derive(Serialize)]
-struct PerTargetDto<'a> {
-    device_id: &'a str,
-    /// `accepted` | `duplicate` | `error`.
-    outcome: &'static str,
-    /// Populated only when `outcome == "error"`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<&'a str>,
-}
-
-impl<'a> SendOutcomeDto<'a> {
-    fn from_view(view: &'a SendOutcomeView) -> Self {
-        match view {
-            SendOutcomeView::New(o) => Self {
-                mode: "new",
-                content_hash: Some(&o.content_hash),
-                entry_id: None,
-                total_accepted: o.total_accepted,
-                total_duplicate: o.total_duplicate,
-                total_offline: o.total_offline,
-                total_errored: o.total_errored,
-                total_pending: None,
-                at_ms: Some(o.at_ms),
-                per_target: Some(
-                    o.per_target
-                        .iter()
-                        .map(|p| match &p.outcome {
-                            Ok(DispatchAck::Accepted) => PerTargetDto {
-                                device_id: p.device_id.as_str(),
-                                outcome: "accepted",
-                                error: None,
-                            },
-                            Ok(DispatchAck::DuplicateIgnored) => PerTargetDto {
-                                device_id: p.device_id.as_str(),
-                                outcome: "duplicate",
-                                error: None,
-                            },
-                            Err(msg) => PerTargetDto {
-                                device_id: p.device_id.as_str(),
-                                outcome: "error",
-                                error: Some(msg.as_str()),
-                            },
-                        })
-                        .collect(),
-                ),
-            },
-            SendOutcomeView::Resend { entry_id, report } => Self {
-                mode: "resend",
-                content_hash: None,
-                entry_id: Some(entry_id.as_str()),
-                total_accepted: report.accepted,
-                total_duplicate: report.duplicate,
-                total_offline: report.offline,
-                total_errored: report.errored,
-                total_pending: Some(report.pending),
-                at_ms: None,
-                per_target: None,
-            },
-        }
-    }
-}
-
-/// `send -f <path>` 路径。
+/// `send -f <path>` path (requires dev-tools feature).
 ///
-/// 与文本路径不同:dispatch 返回后必须**保持进程驻留**。`publish_blob_path`
-/// 只是把文件加进本地 iroh-blobs store + 把 ticket 编进 V3 envelope;真正
-/// 把字节"传"出去的是 receiver 端的 fetch task 反向拉取。这里 CLI 进程作
-/// 为 passive provider,直到收到 Ctrl-C 才能 shutdown(否则 iroh router
-/// drop 就会把 connection 撕掉,receiver 拿到的就是 partial file)。
+/// Unlike the text path, dispatch returns but the process must stay alive.
+/// `publish_blob_path` adds the file to the local iroh-blobs store + encodes
+/// the ticket into a V3 envelope; the actual bytes transfer happens when the
+/// receiver's fetch task pulls from this CLI acting as passive provider.
+#[cfg(feature = "dev-tools")]
 async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
     if !json {
         ui::header("Send file");
     }
 
-    // metadata 在 daemon 检测前先看 —— 路径明显错的话不要白启 session。
+    // metadata before daemon check — bail early on obviously wrong paths.
     let abs_path = match path.canonicalize() {
         Ok(p) => p,
         Err(err) => {
@@ -692,10 +366,6 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
         return code;
     }
 
-    // publish_blob_path:流式入库,内存峰值与文件大小无关。EntryId 是 sender
-    // 端 entry 归属;CLI 这次发送不与本地 entry 绑定 (CLI 不写本地剪贴板),
-    // 但 V3 envelope 仍然需要一个稳定的 entry_id 让 receiver 端可以 dedup
-    // / 索引,所以这里 mint 一个新的。
     let entry_id = EntryId::new();
     let publish_spinner = ui::spinner(&format!("Publishing '{filename}' to local blob store..."));
     let publish_result = match cli
@@ -721,10 +391,6 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
         }
     };
 
-    // V3 envelope 主体:一个 file-uri-list rep 指向 abs_path —— receiver 端
-    // 的 V3 decoder 会看到这个 rep 配合尾部 blob_ref。free-file 形态:
-    // `representation_index = None`,blob 是独立文件,receiver 用 filename
-    // 落地到 cache;不是把 bytes 回填到某个 rep。
     let uri_bytes = format!("file://{}\n", abs_path.display()).into_bytes();
     let snapshot = SystemClipboardSnapshot {
         ts_ms: chrono::Utc::now().timestamp_millis(),
@@ -814,9 +480,7 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
         ui::info("status", "Serving file — press Ctrl-C to stop");
     }
 
-    // 关键:**保持进程**直到 Ctrl-C。dispatch 已经返回,但 receiver 的 fetch
-    // 任务可能还没开始 (presence 慢) 或正在中段 —— 一旦本进程 shutdown,
-    // iroh-blobs Router 跟着 drop,connection 撕掉,receiver 拿到 partial file。
+    // Keep the process alive until Ctrl-C so the receiver can fetch.
     let _ = tokio::signal::ctrl_c().await;
     if !json {
         ui::end("Stopped");
@@ -825,6 +489,7 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
     exit_codes::EXIT_SUCCESS
 }
 
+#[cfg(feature = "dev-tools")]
 async fn resume_and_probe(cli: &CliAppSession) -> Result<(), i32> {
     let resume_spinner = ui::spinner("Resuming space session...");
     match cli.app_facade().try_resume_session().await {
@@ -863,6 +528,7 @@ async fn resume_and_probe(cli: &CliAppSession) -> Result<(), i32> {
     Ok(())
 }
 
+#[cfg(feature = "dev-tools")]
 fn human_size(bytes: u64) -> String {
     const KIB: u64 = 1024;
     const MIB: u64 = 1024 * KIB;
@@ -878,6 +544,7 @@ fn human_size(bytes: u64) -> String {
     }
 }
 
+#[cfg(feature = "dev-tools")]
 #[derive(Serialize)]
 struct SendFileOutcomeDto {
     content_hash: String,

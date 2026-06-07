@@ -4,28 +4,28 @@
 //! [`MobileSyncDaemonCtx`] + [`enter`] / [`finish_daemon_json`] / [`finish_daemon`].
 //!
 //! The hidden `debug` subcommand (debug builds only) still needs in-process
-//! facade access — its legacy lifecycle types are `#[cfg(debug_assertions)]`.
+//! facade access — its legacy lifecycle types are `#[cfg(feature = "dev-tools")]`.
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 use std::sync::Arc;
 
 use serde::Serialize;
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 use uc_application::facade::{
     ApplyIncomingMobileClipError, GetLatestMobileSyncDocError, GetMobileSyncFileError,
     MobileSyncFacade,
 };
 
 use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
 use crate::exit_codes;
 use crate::ui;
 
 // ── Legacy in-process lifecycle (debug subcommand only) ────────────────
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 /// Wired CLI session + a clone of the mobile-sync facade. Built by
 /// [`enter_write`]; consumed by [`finish_json`] / [`finish`].
 pub struct MobileSyncCmdCtx {
@@ -33,7 +33,7 @@ pub struct MobileSyncCmdCtx {
     pub facade: Arc<MobileSyncFacade>,
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 /// Boilerplate for **write commands** that need in-process facade access
 /// (debug subcommand only). Refuses if daemon is running, then builds a
 /// CLI app session and takes the mobile-sync facade.
@@ -45,7 +45,7 @@ pub async fn enter_write(header: &str, json: bool, verbose: bool) -> Result<Mobi
     enter_inner(verbose).await
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 async fn enter_inner(verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
     let cli = build_app_session(verbose).await?;
     let Some(facade) = cli.app_facade().mobile_sync.get().cloned() else {
@@ -56,7 +56,7 @@ async fn enter_inner(verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
     Ok(MobileSyncCmdCtx { cli, facade })
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 /// Pretty-print `dto` as JSON to stdout, then shut the ctx down. Returns
 /// SUCCESS on serialize ok, ERROR otherwise (shutdown still happens).
 pub async fn finish_json<T: Serialize>(ctx: MobileSyncCmdCtx, dto: &T) -> i32 {
@@ -74,7 +74,7 @@ pub async fn finish_json<T: Serialize>(ctx: MobileSyncCmdCtx, dto: &T) -> i32 {
     exit
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 /// Shut the ctx down, return the given exit code. Use for the
 /// human-readable branch where rendering happened inline.
 pub async fn finish(ctx: MobileSyncCmdCtx, exit: i32) -> i32 {
@@ -155,7 +155,7 @@ pub fn restart_hint() -> &'static str {
 
 // ── P5a.9 debug subcommand error renderers ──────────────────────────────
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 pub fn render_apply_incoming_error(err: &ApplyIncomingMobileClipError) -> String {
     match err {
         ApplyIncomingMobileClipError::Inbound(inner) => {
@@ -170,7 +170,7 @@ pub fn render_apply_incoming_error(err: &ApplyIncomingMobileClipError) -> String
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 pub fn render_get_latest_doc_error(err: &GetLatestMobileSyncDocError) -> String {
     match err {
         GetLatestMobileSyncDocError::NotFound => {
@@ -182,7 +182,7 @@ pub fn render_get_latest_doc_error(err: &GetLatestMobileSyncDocError) -> String 
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "dev-tools")]
 pub fn render_get_file_error(err: &GetMobileSyncFileError) -> String {
     match err {
         GetMobileSyncFileError::NotFound => "No matching file for this dataName (404).".into(),

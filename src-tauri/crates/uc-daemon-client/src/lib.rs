@@ -23,7 +23,7 @@ pub use http::{
     DaemonAnalyticsClient, DaemonClipboardClient, DaemonLifecycleClient, DaemonMobileSyncClient,
     DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient, DaemonSearchClient,
     DaemonSearchRequestError, DaemonSettingsClient, DaemonSetupClient, DaemonSetupV2Client,
-    ExchangedSessionToken, SearchQueryRequest,
+    DaemonUpgradeClient, ExchangedSessionToken, SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
 pub use service::{DaemonService, FileExport};
@@ -258,6 +258,15 @@ impl DaemonClientContext {
     /// Spawn a [`DaemonLifecycleClient`] that shares this context's connection state and HTTP client.
     pub fn lifecycle_client(&self) -> DaemonLifecycleClient {
         DaemonLifecycleClient::with_http_conn_state_and_type(
+            self.http.clone(),
+            self.connection_state.clone(),
+            self.client_type.clone(),
+        )
+    }
+
+    /// Spawn a [`DaemonUpgradeClient`] that shares this context's connection state and HTTP client.
+    pub fn upgrade_client(&self) -> DaemonUpgradeClient {
+        DaemonUpgradeClient::with_http_conn_state_and_type(
             self.http.clone(),
             self.connection_state.clone(),
             self.client_type.clone(),

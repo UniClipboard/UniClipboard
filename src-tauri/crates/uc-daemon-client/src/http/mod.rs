@@ -8,6 +8,7 @@ pub mod search;
 pub mod settings;
 pub mod setup;
 pub mod setup_v2;
+pub mod upgrade;
 
 pub use analytics::DaemonAnalyticsClient;
 pub use clipboard::DaemonClipboardClient;
@@ -19,6 +20,7 @@ pub use search::{DaemonSearchClient, DaemonSearchRequestError, SearchQueryReques
 pub use settings::DaemonSettingsClient;
 pub use setup::DaemonSetupClient;
 pub use setup_v2::DaemonSetupV2Client;
+pub use upgrade::DaemonUpgradeClient;
 
 use crate::DaemonConnectionState;
 use anyhow::{anyhow, Context, Result};

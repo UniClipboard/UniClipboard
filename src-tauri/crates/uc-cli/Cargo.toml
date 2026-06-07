@@ -9,23 +9,41 @@ description = "Command-line interface for UniClipboard"
 name = "uniclip"
 path = "src/main.rs"
 
+[features]
+# Enables in-process diagnostic commands (blob, dev, probe, seed-clipboard,
+# dump-clipboard, mobile-sync debug, file-send) that pull in the full
+# application + bootstrap + platform stack. Not needed for the thin
+# daemon-client CLI; release builds omit this feature to shed iroh/diesel/
+# libsqlite3-sys from the binary.
+dev-tools = [
+    "dep:uc-bootstrap",
+    "dep:uc-application",
+    "dep:uc-platform",
+    "dep:uuid",
+]
+
 [dependencies]
-uc-bootstrap = { path = "../uc-bootstrap" }
 uc-observability = { path = "../uc-observability" }
 uc-core = { path = "../uc-core" }
 uc-daemon-client = { path = "../uc-daemon-client" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
-uc-daemon-local = { path = "../uc-daemon-local" }
 # ADR-008 P5-0: the process-management primitives (process_metadata / socket /
-# spawn / spawn_contract) the CLI uses now live in this thin crate. uc-cli still
-# keeps its other heavy deps for now — they are removed in later P5 slices.
+# spawn / spawn_contract) the CLI uses now live in this thin crate.
 uc-daemon-process = { path = "../uc-daemon-process" }
+# Thin path-resolution policy (app_data_root, profile suffix, portable mode).
+# Used by the lightweight setup-status check that avoids pulling uc-bootstrap's
+# full assembly stack just to read a single JSON file.
+uc-app-paths = { path = "../uc-app-paths" }
+
+# --- Heavy optional deps (only pulled by `dev-tools` feature) ---------------
+uc-bootstrap = { path = "../uc-bootstrap", optional = true }
+uc-application = { path = "../uc-application", optional = true }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly
 # (replaces the standalone `clipboard-probe` binary). Diagnostic only.
-# Goes through `uc_platform::clipboard::build_event_loop`, so it inherits
-# whichever native backend the daemon picks (Wayland data-control / x11rb /
-# clipboard_rs on macOS/Windows) without a direct `clipboard-rs` dep.
-uc-platform = { path = "../uc-platform" }
+uc-platform = { path = "../uc-platform", optional = true }
+uuid = { version = "1.10.0", features = ["v4"], optional = true }
+
+# --- Always-on deps ---------------------------------------------------------
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
@@ -45,23 +63,13 @@ indicatif = "0.17"
 dialoguer = { version = "0.11", default-features = false }
 libc = "0.2"
 hostname = "0.4"
-uc-application = { path = "../uc-application" }
-# Slice 2 Phase 3 · T9 — `send` constructs a single-text-representation
-# `SystemClipboardSnapshot` and dispatches via `dispatch_snapshot`. V3
-# envelope encoding + snapshot_hash derivation happen inside
-# `ClipboardSyncFacade`, so `bytes` + `sha2` are no longer needed by CLI
-# directly. `watch` reads `InboundNotice.plaintext: Bytes` which is
-# re-exported from `uc-core`'s dependency chain.
 # Installs the default `rustls` crypto provider process-wide at `main()`
-# start — iroh-quinn and reqwest both consume rustls 0.23+, which now
-# requires an explicit `CryptoProvider` before the first TLS handshake.
-# Without this the first party to set up a `ClientConfig` (today iroh)
-# leaves later consumers (reqwest → rendezvous) with a provider that
-# surfaces certs as `CertificateError::BadEncoding`.
+# start — reqwest consumes rustls 0.23+, which now requires an explicit
+# `CryptoProvider` before the first TLS handshake.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }
 tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }

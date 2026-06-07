@@ -13,11 +13,11 @@
 //! integration arrives in Phase 3 / Slice 4.
 
 use serde::Serialize;
-use tokio::sync::broadcast;
 
-use uc_application::facade::space_setup::TryResumeSessionError;
-use uc_application::facade::{decode_v3_bytes_to_snapshot, InboundAction, InboundNotice};
-use uc_core::SystemClipboardSnapshot;
+use uc_core::clipboard::normalize_wire_mime;
+use uc_core::ids::{FormatId, RepresentationId};
+use uc_core::network::protocol::ClipboardBinaryPayload;
+use uc_core::{ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
@@ -106,7 +106,7 @@ fn render_daemon_notice(event: &InboundNoticeEvent, json: bool) {
     let plaintext_bytes = STANDARD.decode(&event.plaintext_base64).ok();
     let snapshot = plaintext_bytes
         .as_deref()
-        .and_then(|b| decode_v3_bytes_to_snapshot(b).ok());
+        .and_then(|b| decode_v3_envelope(b).ok());
     let text_preview = snapshot.as_ref().and_then(first_text_preview);
     let rep_summary = snapshot.as_ref().map(rep_summary_line);
 
@@ -146,146 +146,11 @@ fn render_daemon_notice(event: &InboundNoticeEvent, json: bool) {
     );
 }
 
-// ADR-008 P5-1a: retired for watch; kept as dead code until P5-4.
-#[allow(dead_code)]
-async fn run_watch_in_process(cli: crate::commands::app_session::CliAppSession, json: bool) -> i32 {
-    let resume_spinner = ui::spinner("Resuming space session...");
-    match cli.app_facade().try_resume_session().await {
-        Ok(true) => ui::spinner_finish_success(&resume_spinner, "Session resumed"),
-        Ok(false) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "No space on this profile — run `init` or `join` first.",
-            );
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "Key material is corrupted — consider resetting this profile.",
-            );
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::spinner_finish_error(
-                &resume_spinner,
-                "Keychain cannot silently unlock this space.",
-            );
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::Internal(msg)) => {
-            ui::spinner_finish_error(&resume_spinner, &format!("Resume failed: {msg}"));
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-    }
-
-    let probe_spinner = ui::spinner("Probing paired peers...");
-    match cli.app_facade().refresh_presence().await {
-        Ok(report) => ui::spinner_finish_success(
-            &probe_spinner,
-            &format!(
-                "Probed {} peer(s): {} online, {} offline, {} error(s)",
-                report.total,
-                report.online,
-                report.offline,
-                report.errors.len()
-            ),
-        ),
-        Err(err) => ui::spinner_finish_error(
-            &probe_spinner,
-            &format!("Probe round failed: {err} (proceeding)"),
-        ),
-    }
-
-    let mut rx = match cli.app_facade().subscribe_inbound_clipboard_notices() {
-        Ok(rx) => rx,
-        Err(err) => {
-            ui::error(&format!(
-                "Failed to subscribe inbound clipboard notices: {err}"
-            ));
-            cli.shutdown().await;
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-    if !json {
-        ui::info("status", "Listening — press Ctrl-C to stop");
-        ui::bar();
-    }
-    emit_watch_ready();
-
-    let exit_code = loop {
-        tokio::select! {
-            biased;
-            _ = tokio::signal::ctrl_c() => {
-                if !json {
-                    ui::end("Stopped");
-                }
-                break exit_codes::EXIT_SUCCESS;
-            }
-            recv = rx.recv() => {
-                match recv {
-                    Ok(notice) => render_notice(&notice, json),
-                    Err(broadcast::error::RecvError::Lagged(missed)) => {
-                        if !json {
-                            ui::warn(&format!(
-                                "Lagged: dropped {missed} notice(s); next frame catches up"
-                            ));
-                        }
-                    }
-                    Err(broadcast::error::RecvError::Closed) => {
-                        if !json {
-                            ui::warn("Inbound channel closed; exiting.");
-                        }
-                        break exit_codes::EXIT_ERROR;
-                    }
-                }
-            }
-        }
-    };
-
-    cli.shutdown().await;
-    exit_code
-}
-
 fn emit_watch_ready() {
     use std::io::Write;
     let mut err = std::io::stderr().lock();
     let _ = writeln!(err, "WATCH_READY");
     let _ = err.flush();
-}
-
-fn render_notice(notice: &InboundNotice, json: bool) {
-    // Phase 3 · T10:`notice.plaintext` is a V3 envelope, not raw text.
-    // Decode and show the first text representation (falls back to a
-    // per-rep summary if no text rep is present — e.g. image-only).
-    let snapshot = decode_v3_bytes_to_snapshot(&notice.plaintext).ok();
-    let text_preview = snapshot.as_ref().and_then(first_text_preview);
-    let rep_summary = snapshot.as_ref().map(rep_summary_line);
-
-    if json {
-        let dto = NoticeDto::from_notice(notice, text_preview.clone(), rep_summary.clone());
-        match serde_json::to_string(&dto) {
-            Ok(line) => println!("{line}"),
-            Err(err) => ui::error(&format!("Failed to serialize notice: {err}")),
-        }
-        return;
-    }
-
-    let body = match text_preview {
-        Some(t) => truncate_preview(&t),
-        None => rep_summary.unwrap_or_else(|| "(undecodable envelope)".to_string()),
-    };
-    let line = format!(
-        "[{}] {} ({})",
-        notice.from_device.as_str(),
-        body,
-        format_action(notice.action),
-    );
-    ui::info("·", &line);
 }
 
 /// Return the first `text/*`-mime representation's UTF-8 string (if any).
@@ -340,43 +205,29 @@ fn truncate_preview(text: &str) -> String {
     }
 }
 
-fn format_action(action: InboundAction) -> &'static str {
-    match action {
-        InboundAction::NewEntry => "new",
-        InboundAction::DuplicateIgnored => "duplicate",
-    }
-}
+/// Minimal V3 envelope decoder using only `uc-core` types. Avoids pulling
+/// the heavy `uc-application` crate (and its transitive iroh dependency)
+/// just for client-side display rendering.
+fn decode_v3_envelope(bytes: &[u8]) -> anyhow::Result<SystemClipboardSnapshot> {
+    let mut cursor = bytes;
+    let payload = ClipboardBinaryPayload::decode_from(&mut cursor)
+        .map_err(|e| anyhow::anyhow!("decode V3 envelope: {e}"))?;
 
-#[derive(Serialize)]
-struct NoticeDto<'a> {
-    from_device: &'a str,
-    content_hash: &'a str,
-    /// First `text/*` representation's UTF-8 content, if any. Absent for
-    /// image-only / binary-only envelopes.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    text: Option<String>,
-    /// Per-representation summary `[envelope:N reps mime/Nbytes, ...]`
-    /// for human / script eyeballing when the envelope has non-text
-    /// reps. Present only when decode succeeded.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rep_summary: Option<String>,
-    action: &'static str,
-    at_ms: i64,
-}
+    let representations = payload
+        .representations
+        .into_iter()
+        .map(|rep| {
+            ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from(rep.format_id),
+                normalize_wire_mime(rep.mime),
+                rep.data,
+            )
+        })
+        .collect();
 
-impl<'a> NoticeDto<'a> {
-    fn from_notice(
-        n: &'a InboundNotice,
-        text: Option<String>,
-        rep_summary: Option<String>,
-    ) -> Self {
-        Self {
-            from_device: n.from_device.as_str(),
-            content_hash: &n.content_hash,
-            text,
-            rep_summary,
-            action: format_action(n.action),
-            at_ms: n.at_ms,
-        }
-    }
+    Ok(SystemClipboardSnapshot {
+        ts_ms: payload.ts_ms,
+        representations,
+    })
 }

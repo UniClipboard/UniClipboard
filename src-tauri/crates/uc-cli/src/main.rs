@@ -215,6 +215,7 @@ enum Commands {
         out: Option<std::path::PathBuf>,
     },
     /// Publish or fetch encrypted large payload blobs
+    #[cfg(debug_assertions)]
     Blob {
         #[command(subcommand)]
         subcommand: commands::blob::BlobCommands,
@@ -358,6 +359,7 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::Watch => commands::watch::run(cli.json, cli.verbose).await,
             Commands::Recv { out } => commands::recv::run(out, cli.json, cli.verbose).await,
+            #[cfg(debug_assertions)]
             Commands::Blob { subcommand } => {
                 commands::blob::run(subcommand, cli.json, cli.verbose).await
             }

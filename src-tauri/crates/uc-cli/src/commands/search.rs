@@ -1,13 +1,16 @@
-//! Search 命令:直连应用层查询、查看状态、同步重建本地索引。
+//! Search 命令:通过 daemon 查询、查看状态、触发重建本地索引。
 
 use clap::Subcommand;
 use serde::Serialize;
 
-use uc_application::facade::{
-    SearchFacadeError, SearchPageView, SearchQueryInput, SearchResultView, SearchStatusView,
-};
-
+use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
 use crate::exit_codes;
+use crate::ui;
+
+use uc_daemon_client::{DaemonClientContext, DaemonSearchRequestError, SearchQueryRequest};
+use uc_daemon_contract::api::dto::search::{
+    SearchQueryResultDto, SearchResultDto, SearchStatusData,
+};
 
 #[derive(Subcommand, Debug)]
 pub enum SearchCommands {
@@ -45,15 +48,32 @@ pub enum SearchCommands {
     },
     /// Show search index status
     Status,
-    /// Rebuild the search index synchronously in this CLI process
+    /// Trigger a search index rebuild on the daemon
     Rebuild,
 }
 
 pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
-    let app_facade = match build_search_facade(verbose).await {
-        Ok(facade) => facade,
+    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
+        Ok(s) => s,
         Err(code) => return code,
     };
+
+    let _lease = match service.hold_control_lease().await {
+        Ok(guard) => guard,
+        Err(err) => {
+            ui::error(&format!("Failed to hold daemon session lease: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+
+    let ctx = match DaemonClientContext::from_env() {
+        Ok(ctx) => ctx,
+        Err(err) => {
+            ui::error(&format!("Failed to connect to daemon: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+    let search = ctx.search_client();
 
     match subcommand {
         SearchCommands::Query {
@@ -69,33 +89,33 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
             detailed,
         } => {
             if from_ms.is_some() != to_ms.is_some() {
-                eprintln!("Error: --from-ms and --to-ms must be provided together");
+                ui::error("--from-ms and --to-ms must be provided together");
                 return exit_codes::EXIT_ERROR;
             }
 
-            let input = SearchQueryInput {
+            let req = SearchQueryRequest {
                 query,
                 operator,
                 time_preset,
                 from_ms,
                 to_ms,
-                content_types: join_repeated(content_types),
-                extensions: join_repeated(extensions),
+                content_types,
+                extensions,
                 limit,
                 offset,
             };
 
-            let page = match app_facade.search_query(input).await {
+            let page = match search.query(req).await {
                 Ok(page) => page,
                 Err(err) => return render_search_error("query search index", err, json),
             };
 
             if json {
-                let dto = SearchPageDto::from(&page);
+                let dto = SearchPageJsonDto::from(&page);
                 match serde_json::to_string_pretty(&dto) {
                     Ok(value) => println!("{value}"),
                     Err(err) => {
-                        eprintln!("Error: failed to serialize search query response: {err}");
+                        ui::error(&format!("Failed to serialize search query response: {err}"));
                         return exit_codes::EXIT_ERROR;
                     }
                 }
@@ -106,17 +126,19 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
             exit_codes::EXIT_SUCCESS
         }
         SearchCommands::Status => {
-            let status = match app_facade.search_status().await {
+            let status = match search.status().await {
                 Ok(status) => status,
                 Err(err) => return render_search_error("get search status", err, json),
             };
 
             if json {
-                let dto = SearchStatusDto::from(&status);
+                let dto = SearchStatusJsonDto::from(&status);
                 match serde_json::to_string_pretty(&dto) {
                     Ok(value) => println!("{value}"),
                     Err(err) => {
-                        eprintln!("Error: failed to serialize search status response: {err}");
+                        ui::error(&format!(
+                            "Failed to serialize search status response: {err}"
+                        ));
                         return exit_codes::EXIT_ERROR;
                     }
                 }
@@ -127,30 +149,32 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
             exit_codes::EXIT_SUCCESS
         }
         SearchCommands::Rebuild => {
-            match app_facade.rebuild_search_now().await {
+            match search.rebuild().await {
                 Ok(_) => {}
                 Err(err) => return render_search_error("rebuild search index", err, json),
             }
 
-            let status = match app_facade.search_status().await {
+            let status = match search.status().await {
                 Ok(status) => status,
                 Err(err) => return render_search_error("get search status", err, json),
             };
 
             if json {
-                let dto = SearchRebuildDto {
+                let dto = SearchRebuildJsonDto {
                     accepted: true,
-                    status: SearchStatusDto::from(&status),
+                    status: SearchStatusJsonDto::from(&status),
                 };
                 match serde_json::to_string_pretty(&dto) {
                     Ok(value) => println!("{value}"),
                     Err(err) => {
-                        eprintln!("Error: failed to serialize search rebuild response: {err}");
+                        ui::error(&format!(
+                            "Failed to serialize search rebuild response: {err}"
+                        ));
                         return exit_codes::EXIT_ERROR;
                     }
                 }
             } else {
-                println!("Search rebuild complete.");
+                println!("Search rebuild accepted (runs in background).");
                 println!("{}", render_status_output(&status));
             }
 
@@ -159,58 +183,37 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
     }
 }
 
-async fn build_search_facade(
-    verbose: bool,
-) -> Result<std::sync::Arc<uc_application::facade::AppFacade>, i32> {
-    let profile = if verbose {
-        Some(uc_observability::LogProfile::Dev)
-    } else {
-        Some(uc_observability::LogProfile::Cli)
-    };
-    uc_bootstrap::build_cli_app_facade(profile)
-        .await
-        .map_err(|err| {
-            eprintln!("Error: failed to build CLI runtime: {err}");
-            exit_codes::EXIT_ERROR
-        })
-}
-
-fn join_repeated(values: Vec<String>) -> Option<String> {
-    if values.is_empty() {
-        None
-    } else {
-        Some(values.join(","))
-    }
-}
-
-fn render_search_error(action: &str, err: SearchFacadeError, json: bool) -> i32 {
+fn render_search_error(action: &str, err: anyhow::Error, json: bool) -> i32 {
     if json {
+        let (code, message) = match err.downcast_ref::<DaemonSearchRequestError>() {
+            Some(search_err) => (
+                search_err.code.as_deref().unwrap_or("unknown"),
+                search_err.message.clone(),
+            ),
+            None => ("unknown", err.to_string()),
+        };
         let dto = ErrorDto {
-            code: search_error_code(&err),
-            message: err.to_string(),
+            code: code.to_string(),
+            message,
         };
         if let Ok(value) = serde_json::to_string(&dto) {
             eprintln!("{value}");
         }
-    } else if matches!(err, SearchFacadeError::SessionLocked) {
-        eprintln!("{}", render_rebuild_locked_message());
     } else {
-        eprintln!("Error: failed to {action}: {err}");
+        // Check for session_locked code in the structured error.
+        let is_locked = err
+            .downcast_ref::<DaemonSearchRequestError>()
+            .and_then(|e| e.code.as_deref())
+            .map(|c| c == "session_locked")
+            .unwrap_or(false);
+
+        if is_locked {
+            ui::error(render_rebuild_locked_message());
+        } else {
+            ui::error(&format!("Failed to {action}: {err}"));
+        }
     }
     exit_codes::EXIT_ERROR
-}
-
-fn search_error_code(err: &SearchFacadeError) -> &'static str {
-    match err {
-        SearchFacadeError::InvalidQuery(_) => "invalid_query",
-        SearchFacadeError::BadRequest(_) => "bad_request",
-        SearchFacadeError::SessionLocked => "session_locked",
-        SearchFacadeError::IndexNotReady => "index_not_ready",
-        SearchFacadeError::IndexUnavailable => "index_unavailable",
-        SearchFacadeError::ServiceUnavailable(_) => "service_unavailable",
-        SearchFacadeError::RebuildAlreadyRunning => "rebuild_already_running",
-        SearchFacadeError::Internal(_) => "internal",
-    }
 }
 
 fn render_rebuild_locked_message() -> &'static str {
@@ -225,7 +228,7 @@ fn format_search_timestamp(ts_ms: i64) -> String {
     }
 }
 
-fn render_query_output(response: &SearchPageView, detailed: bool) -> String {
+fn render_query_output(response: &SearchQueryResultDto, detailed: bool) -> String {
     let total = response.total;
     let showing_from = response.items.len().min(1);
     let showing_to = response.items.len();
@@ -264,7 +267,7 @@ fn render_query_output(response: &SearchPageView, detailed: bool) -> String {
     lines.join("\n")
 }
 
-fn render_status_output(response: &SearchStatusView) -> String {
+fn render_status_output(response: &SearchStatusData) -> String {
     let reason = response.reason.as_deref().unwrap_or("none");
     let last_started = response
         .last_rebuild_started_at_ms
@@ -284,59 +287,64 @@ fn render_status_output(response: &SearchStatusView) -> String {
     .join("\n")
 }
 
+/// JSON output DTO for query results — preserves field names for backwards compatibility.
 #[derive(Serialize)]
-struct SearchPageDto<'a> {
+struct SearchPageJsonDto {
     total: u32,
     has_more: bool,
-    data: Vec<SearchResultDto<'a>>,
+    data: Vec<SearchResultItemJsonDto>,
 }
 
-impl<'a> From<&'a SearchPageView> for SearchPageDto<'a> {
-    fn from(value: &'a SearchPageView) -> Self {
+impl From<&SearchQueryResultDto> for SearchPageJsonDto {
+    fn from(value: &SearchQueryResultDto) -> Self {
         Self {
             total: value.total,
             has_more: value.has_more,
-            data: value.items.iter().map(SearchResultDto::from).collect(),
+            data: value
+                .items
+                .iter()
+                .map(SearchResultItemJsonDto::from)
+                .collect(),
         }
     }
 }
 
 #[derive(Serialize)]
-struct SearchResultDto<'a> {
-    entry_id: &'a str,
-    content_type: &'a str,
+struct SearchResultItemJsonDto {
+    entry_id: String,
+    content_type: String,
     active_time_ms: i64,
-    text_preview: Option<&'a str>,
-    mime_type: &'a str,
-    file_extensions: &'a [String],
+    text_preview: Option<String>,
+    mime_type: String,
+    file_extensions: Vec<String>,
 }
 
-impl<'a> From<&'a SearchResultView> for SearchResultDto<'a> {
-    fn from(value: &'a SearchResultView) -> Self {
+impl From<&SearchResultDto> for SearchResultItemJsonDto {
+    fn from(value: &SearchResultDto) -> Self {
         Self {
-            entry_id: &value.entry_id,
-            content_type: &value.content_type,
+            entry_id: value.entry_id.clone(),
+            content_type: value.content_type.clone(),
             active_time_ms: value.active_time_ms,
-            text_preview: value.text_preview.as_deref(),
-            mime_type: &value.mime_type,
-            file_extensions: &value.file_extensions,
+            text_preview: value.text_preview.clone(),
+            mime_type: value.mime_type.clone(),
+            file_extensions: value.file_extensions.clone(),
         }
     }
 }
 
 #[derive(Serialize)]
-struct SearchStatusDto<'a> {
-    state: &'a str,
-    reason: Option<&'a str>,
+struct SearchStatusJsonDto {
+    state: String,
+    reason: Option<String>,
     last_rebuild_started_at_ms: Option<i64>,
     last_rebuild_completed_at_ms: Option<i64>,
 }
 
-impl<'a> From<&'a SearchStatusView> for SearchStatusDto<'a> {
-    fn from(value: &'a SearchStatusView) -> Self {
+impl From<&SearchStatusData> for SearchStatusJsonDto {
+    fn from(value: &SearchStatusData) -> Self {
         Self {
-            state: &value.state,
-            reason: value.reason.as_deref(),
+            state: value.state.clone(),
+            reason: value.reason.clone(),
             last_rebuild_started_at_ms: value.last_rebuild_started_at_ms,
             last_rebuild_completed_at_ms: value.last_rebuild_completed_at_ms,
         }
@@ -344,13 +352,13 @@ impl<'a> From<&'a SearchStatusView> for SearchStatusDto<'a> {
 }
 
 #[derive(Serialize)]
-struct SearchRebuildDto<'a> {
+struct SearchRebuildJsonDto {
     accepted: bool,
-    status: SearchStatusDto<'a>,
+    status: SearchStatusJsonDto,
 }
 
 #[derive(Serialize)]
 struct ErrorDto {
-    code: &'static str,
+    code: String,
     message: String,
 }

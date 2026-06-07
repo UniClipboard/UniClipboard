@@ -1,4 +1,5 @@
 pub mod app_session;
+#[cfg(debug_assertions)]
 pub mod blob;
 pub mod dev;
 pub mod devices;

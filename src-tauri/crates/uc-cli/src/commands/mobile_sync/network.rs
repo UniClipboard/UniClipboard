@@ -1,24 +1,13 @@
-//! `uniclip mobile-sync network ...` —— LAN listener 高级配置。
+//! `uniclip mobile-sync network ...` — LAN listener advanced configuration.
 //!
-//! `setup` 已覆盖常用场景;本组面向需要手动调地址/端口或反代部署的进阶用户。
-//!
-//! 子命令:
-//! * `interfaces` —— 读命令,显示 RFC1918 LAN 候选(daemon 跑时也允许)。
-//! * `set (--ip <IP> | --url <URL>) [--port <P>] [--accept-network-risk]`
-//!   —— 写命令。二选一:
-//!   - `--ip <IP>` 写进 install URL 的 LAN IP,得到 `http://<IP>:<port>`;
-//!   - `--url <URL>` 写进 install URL 的完整 base URL(如
-//!     `https://clip.example.com`),用于 TLS 反向代理前置的公网部署。
-//!
-//!   两者互斥且必须给其一。daemon socket 始终绑 `0.0.0.0:<port>`。不带
-//!   `--accept-network-risk` 时打印安全告警 + 交互确认(SPEC §3.4)。
-//! * `off` —— 写命令;只关 LAN listener,总开关与已配对设备不动。要让
-//!   mobile-sync 完整下线用顶层 `disable`。
+//! Routes through daemon HTTP endpoints (P5-2b ADR).
 
 use clap::Subcommand;
 use serde::Serialize;
 
-use uc_application::facade::{MobileSyncLanInterfaceOption, UpdateMobileSyncSettingsInput};
+use uc_daemon_contract::api::dto::mobile_sync::{
+    LanInterfaceViewDto, UpdateMobileSyncSettingsRequest,
+};
 
 use crate::commands::mobile_sync::shared;
 use crate::exit_codes;
@@ -46,7 +35,7 @@ pub enum NetworkCommands {
         ip: Option<String>,
         /// Full base URL (scheme + host + optional port) to embed in the
         /// install URL / QR, e.g. `https://clip.example.com`. Use when a
-        /// TLS reverse proxy (Caddy, nginx, …) fronts the plain-HTTP LAN
+        /// TLS reverse proxy (Caddy, nginx, ...) fronts the plain-HTTP LAN
         /// listener for public access. Mutually exclusive with --ip.
         #[arg(long, value_name = "URL")]
         url: Option<String>,
@@ -82,8 +71,8 @@ struct InterfaceDto {
     ipv4: String,
 }
 
-impl From<&MobileSyncLanInterfaceOption> for InterfaceDto {
-    fn from(v: &MobileSyncLanInterfaceOption) -> Self {
+impl From<&LanInterfaceViewDto> for InterfaceDto {
+    fn from(v: &LanInterfaceViewDto) -> Self {
         Self {
             name: v.name.clone(),
             ipv4: v.ipv4.clone(),
@@ -92,15 +81,15 @@ impl From<&MobileSyncLanInterfaceOption> for InterfaceDto {
 }
 
 async fn interfaces(json: bool, verbose: bool) -> i32 {
-    let ctx = match shared::enter_read("LAN interfaces", json, verbose).await {
+    let ctx = match shared::enter("LAN interfaces", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };
-    match ctx.facade.list_lan_interfaces().await {
+    match ctx.client.list_lan_interfaces().await {
         Ok(opts) => {
             if json {
                 let dtos: Vec<InterfaceDto> = opts.iter().map(InterfaceDto::from).collect();
-                shared::finish_json(ctx, &dtos).await
+                shared::finish_daemon_json(ctx, &dtos).await
             } else {
                 if opts.is_empty() {
                     ui::warn(
@@ -111,12 +100,12 @@ async fn interfaces(json: bool, verbose: bool) -> i32 {
                         ui::info(&o.name, &o.ipv4);
                     }
                 }
-                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+                shared::finish_daemon(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
-            ui::error(&shared::render_list_lan_interfaces_error(&err));
-            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+            ui::error(&err.to_string());
+            shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await
         }
     }
 }
@@ -143,12 +132,7 @@ async fn set(
         ui::header("Mobile-sync network set");
     }
 
-    // Translate the advertise choice into the two persisted fields. The
-    // `advertise_target` ArgGroup (required, mutually exclusive) already
-    // guarantees exactly one of the flags at the clap level — the other two
-    // arms are defensive and only reachable if that contract regresses. The
-    // two fields are kept mutually exclusive in storage too: setting one
-    // clears the other, so base_url-vs-ip precedence is never ambiguous.
+    // Translate the advertise choice into the two persisted fields.
     let (advertise_ip_patch, advertise_url_patch) = match (ip, url) {
         (Some(ip), None) => (Some(Some(ip)), Some(None)),
         (None, Some(url)) => (Some(None), Some(Some(url))),
@@ -162,9 +146,7 @@ async fn set(
         }
     };
 
-    // Run interactive risk confirmation BEFORE facade wiring, so we can
-    // short-circuit cheaply if the user aborts (or the JSON-mode missing-flag
-    // check fires).
+    // Run interactive risk confirmation BEFORE daemon wiring.
     if !accept_network_risk {
         if json {
             ui::error("--accept-network-risk is required in JSON mode (no interactive prompt).");
@@ -178,18 +160,16 @@ async fn set(
         }
     }
 
-    // Header already printed; pass json=true to enter_write to suppress a
+    // Header already printed; pass json=true to enter to suppress a
     // second header from the helper.
-    let ctx = match shared::enter_write("", true, verbose).await {
+    let ctx = match shared::enter("", true, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };
 
     let result = ctx
-        .facade
-        .update_settings(UpdateMobileSyncSettingsInput {
-            // 同时把总开关也置 true:用户开 LAN 时大概率也想要 enable=true,
-            // 否则 daemon 启动时仍因 enabled=false 跳过 listener。
+        .client
+        .update_settings(&UpdateMobileSyncSettingsRequest {
             enabled: Some(true),
             lan_listen_enabled: Some(true),
             lan_advertise_ip: advertise_ip_patch,
@@ -209,7 +189,7 @@ async fn set(
                     lan_port: out.lan_port,
                     restart_required: out.restart_required,
                 };
-                shared::finish_json(ctx, &dto).await
+                shared::finish_daemon_json(ctx, &dto).await
             } else {
                 ui::success("LAN listener enabled in settings.");
                 ui::info(
@@ -229,12 +209,12 @@ async fn set(
                 if out.restart_required {
                     ui::warn(shared::restart_hint());
                 }
-                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+                shared::finish_daemon(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
-            ui::error(&shared::render_update_settings_error(&err));
-            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+            ui::error(&err.to_string());
+            shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await
         }
     }
 }
@@ -246,13 +226,13 @@ struct DisableResult {
 }
 
 async fn off(json: bool, verbose: bool) -> i32 {
-    let ctx = match shared::enter_write("Mobile-sync network off", json, verbose).await {
+    let ctx = match shared::enter("Mobile-sync network off", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };
     let result = ctx
-        .facade
-        .update_settings(UpdateMobileSyncSettingsInput {
+        .client
+        .update_settings(&UpdateMobileSyncSettingsRequest {
             lan_listen_enabled: Some(false),
             ..Default::default()
         })
@@ -264,18 +244,18 @@ async fn off(json: bool, verbose: bool) -> i32 {
                     lan_listen_enabled: out.lan_listen_enabled,
                     restart_required: out.restart_required,
                 };
-                shared::finish_json(ctx, &dto).await
+                shared::finish_daemon_json(ctx, &dto).await
             } else {
                 ui::success("LAN listener disabled in settings.");
                 if out.restart_required {
                     ui::warn(shared::restart_hint());
                 }
-                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+                shared::finish_daemon(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
-            ui::error(&shared::render_update_settings_error(&err));
-            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+            ui::error(&err.to_string());
+            shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await
         }
     }
 }

@@ -1,9 +1,13 @@
 //! `mobile_sync` 子命令共享的小工具:命令骨架、错误渲染、重启提示、JSON 包装。
 //!
-//! 命令骨架(boilerplate)由 [`enter_write`] / [`enter_read`] / [`finish_json`] /
-//! [`finish`] 提供 —— 见 module-level 注释顶部小段。所有 mobile-sync 子命令
-//! 都遵守同一个生命周期:`enter_*` 拿 [`MobileSyncCmdCtx`] → 调 facade →
-//! 渲染 → `finish_*`。
+//! ## Dual lifecycle
+//!
+//! Non-debug commands use the daemon-client path (P5-2b ADR):
+//! [`MobileSyncDaemonCtx`] + [`enter`] / [`finish_daemon_json`] / [`finish_daemon`].
+//!
+//! The hidden `debug` subcommand (P5-3 scope) still needs in-process facade
+//! access, so the legacy [`MobileSyncCmdCtx`] + [`enter_write`] / [`finish`] /
+//! [`finish_json`] remain alongside.
 
 use std::sync::Arc;
 
@@ -16,38 +20,30 @@ use uc_application::facade::{
     UpdateMobileSyncSettingsError,
 };
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
+use crate::commands::app_session::{
+    build_app_session, connect_or_spawn_oneshot_daemon, refuse_if_daemon_running, CliAppSession,
+};
 use crate::exit_codes;
 use crate::ui;
 
-// ── Command lifecycle helpers ────────────────────────────────────────────
+// ── Legacy in-process lifecycle (debug subcommand only) ────────────────
 
 /// Wired CLI session + a clone of the mobile-sync facade. Built by
-/// [`enter_write`] / [`enter_read`]; consumed by [`finish_json`] / [`finish`].
+/// [`enter_write`]; consumed by [`finish_json`] / [`finish`].
+/// Retained for the hidden `debug` subcommand (P5-3).
 pub struct MobileSyncCmdCtx {
     pub cli: CliAppSession,
     pub facade: Arc<MobileSyncFacade>,
 }
 
-/// Boilerplate for **write commands**: print header (unless json), refuse
-/// if daemon is running, build the CLI app session, take the mobile-sync
-/// facade. Returns an exit code if any step fails (the inner shutdown is
-/// handled before returning, so callers just propagate the code).
+/// Boilerplate for **write commands** that need in-process facade access
+/// (debug subcommand only). Refuses if daemon is running, then builds a
+/// CLI app session and takes the mobile-sync facade.
 pub async fn enter_write(header: &str, json: bool, verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
     if !json {
         ui::header(header);
     }
     refuse_if_daemon_running().await?;
-    enter_inner(verbose).await
-}
-
-/// Boilerplate for **read commands**: print header (unless json), build
-/// the CLI app session, take the mobile-sync facade. Daemon may be running
-/// — sqlite tolerates concurrent read-only opens.
-pub async fn enter_read(header: &str, json: bool, verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
-    if !json {
-        ui::header(header);
-    }
     enter_inner(verbose).await
 }
 
@@ -63,6 +59,7 @@ async fn enter_inner(verbose: bool) -> Result<MobileSyncCmdCtx, i32> {
 
 /// Pretty-print `dto` as JSON to stdout, then shut the ctx down. Returns
 /// SUCCESS on serialize ok, ERROR otherwise (shutdown still happens).
+/// Retained for the hidden `debug` subcommand (P5-3).
 pub async fn finish_json<T: Serialize>(ctx: MobileSyncCmdCtx, dto: &T) -> i32 {
     let exit = match serde_json::to_string_pretty(dto) {
         Ok(s) => {
@@ -80,8 +77,59 @@ pub async fn finish_json<T: Serialize>(ctx: MobileSyncCmdCtx, dto: &T) -> i32 {
 
 /// Shut the ctx down, return the given exit code. Use for the
 /// human-readable branch where rendering happened inline.
+/// Retained for the hidden `debug` subcommand (P5-3).
 pub async fn finish(ctx: MobileSyncCmdCtx, exit: i32) -> i32 {
     ctx.cli.shutdown().await;
+    exit
+}
+
+// ── Daemon-client lifecycle (P5-2b ADR) ────────────────────────────────
+
+/// Daemon-client context for non-debug mobile-sync commands. Holds an HTTP
+/// client for daemon API calls and a control-lease guard that keeps a
+/// transient Oneshot daemon alive.
+pub struct MobileSyncDaemonCtx {
+    pub client: uc_daemon_client::http::DaemonMobileSyncClient,
+    _lease: uc_daemon_client::service::ControlLeaseGuard,
+}
+
+/// Connect to (or spawn) a daemon, hold a control lease, build a
+/// mobile-sync HTTP client. Used by all non-debug mobile-sync commands.
+pub async fn enter(header: &str, json: bool, verbose: bool) -> Result<MobileSyncDaemonCtx, i32> {
+    if !json && !header.is_empty() {
+        ui::header(header);
+    }
+    let service = connect_or_spawn_oneshot_daemon(verbose).await?;
+    let lease = service.hold_control_lease().await.map_err(|err| {
+        ui::error(&format!("Failed to hold daemon session lease: {err}"));
+        exit_codes::EXIT_ERROR
+    })?;
+    let ctx = uc_daemon_client::DaemonClientContext::from_env().map_err(|err| {
+        ui::error(&format!("Failed to connect to daemon: {err}"));
+        exit_codes::EXIT_ERROR
+    })?;
+    Ok(MobileSyncDaemonCtx {
+        client: ctx.mobile_sync_client(),
+        _lease: lease,
+    })
+}
+
+/// Pretty-print `dto` as JSON to stdout, then drop the daemon ctx.
+pub async fn finish_daemon_json<T: Serialize>(_ctx: MobileSyncDaemonCtx, dto: &T) -> i32 {
+    match serde_json::to_string_pretty(dto) {
+        Ok(s) => {
+            println!("{s}");
+            exit_codes::EXIT_SUCCESS
+        }
+        Err(err) => {
+            ui::error(&format!("Failed to serialize: {err}"));
+            exit_codes::EXIT_ERROR
+        }
+    }
+}
+
+/// Drop the daemon ctx, return the given exit code.
+pub async fn finish_daemon(_ctx: MobileSyncDaemonCtx, exit: i32) -> i32 {
     exit
 }
 
@@ -99,13 +147,16 @@ pub fn read_password_stdin() -> Result<String, String> {
     Ok(buf.trim_end_matches(['\n', '\r']).to_string())
 }
 
-// ── Error renderers + restart hint (kept as-is) ──────────────────────────
+// ── Error renderers + restart hint ──────────────────────────────────────
 
 /// 把 `restart_required=true` 转化为面向用户的提示字符串(英文,人类可读)。
 pub fn restart_hint() -> &'static str {
     "Restart the daemon to apply: `uniclip stop && uniclip start`."
 }
 
+// ── Legacy error renderers (used by debug.rs, retained for P5-3) ───────
+
+#[allow(dead_code)]
 pub fn render_get_settings_error(err: &GetMobileSyncSettingsError) -> String {
     match err {
         GetMobileSyncSettingsError::SettingsLoadFailed(msg) => {
@@ -117,6 +168,7 @@ pub fn render_get_settings_error(err: &GetMobileSyncSettingsError) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn render_update_settings_error(err: &UpdateMobileSyncSettingsError) -> String {
     match err {
         UpdateMobileSyncSettingsError::SettingsLoadFailed(msg) => {
@@ -131,6 +183,7 @@ pub fn render_update_settings_error(err: &UpdateMobileSyncSettingsError) -> Stri
     }
 }
 
+#[allow(dead_code)]
 pub fn render_list_devices_error(err: &ListMobileDevicesError) -> String {
     match err {
         ListMobileDevicesError::PersistenceFailed(msg) => {
@@ -139,6 +192,7 @@ pub fn render_list_devices_error(err: &ListMobileDevicesError) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn render_revoke_error(err: &RevokeMobileDeviceError) -> String {
     match err {
         RevokeMobileDeviceError::NotFound(id) => {
@@ -150,6 +204,7 @@ pub fn render_revoke_error(err: &RevokeMobileDeviceError) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String {
     match err {
         RegisterMobileShortcutDeviceError::LabelEmpty => "Device label must not be empty.".into(),
@@ -203,6 +258,7 @@ pub fn render_register_error(err: &RegisterMobileShortcutDeviceError) -> String 
     }
 }
 
+#[allow(dead_code)]
 pub fn render_list_lan_interfaces_error(err: &MobileSyncListLanInterfacesError) -> String {
     match err {
         MobileSyncListLanInterfacesError::ProbeFailed(msg) => {

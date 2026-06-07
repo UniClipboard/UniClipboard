@@ -1857,6 +1857,10 @@
           "enabled": {
             "type": "boolean"
           },
+          "lanAdvertiseBaseUrl": {
+            "nullable": true,
+            "type": "string"
+          },
           "lanAdvertiseIp": {
             "nullable": true,
             "type": "string"
@@ -2290,6 +2294,10 @@
           "password": {
             "type": "string"
           },
+          "qrCodeAscii": {
+            "description": "ASCII-art QR encoding `connectUri` (for terminal rendering).",
+            "type": "string"
+          },
           "qrCodePngBase64": {
             "description": "Base64 PNG encoding `connectUri`.",
             "type": "string"
@@ -2309,7 +2317,8 @@
           "installUrl",
           "installQrCodePngBase64",
           "connectUri",
-          "qrCodePngBase64"
+          "qrCodePngBase64",
+          "qrCodeAscii"
         ],
         "type": "object"
       },
@@ -3943,6 +3952,10 @@
             "nullable": true,
             "type": "boolean"
           },
+          "lanAdvertiseBaseUrl": {
+            "nullable": true,
+            "type": "string"
+          },
           "lanAdvertiseIp": {
             "nullable": true,
             "type": "string"
@@ -3965,6 +3978,10 @@
         "properties": {
           "enabled": {
             "type": "boolean"
+          },
+          "lanAdvertiseBaseUrl": {
+            "nullable": true,
+            "type": "string"
           },
           "lanAdvertiseIp": {
             "nullable": true,

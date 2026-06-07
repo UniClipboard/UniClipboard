@@ -1,40 +1,13 @@
-//! `uniclip mobile-sync setup` —— 一键向导命令。
+//! `uniclip mobile-sync setup` — one-shot setup wizard.
 //!
-//! 把首次启用的 4 步老路径(`enable` → `lan list-interfaces` → `lan enable
-//! --advertise` → `shortcut add --label`)合并为一条命令:
-//!
-//!   1. 安全告警 + 确认(可被 `--accept-network-risk` 跳过)
-//!   2. 选 LAN advertise IP(传 `--ip` 跳过;否则交互式从
-//!      `list_lan_interfaces` 结果里挑)
-//!   3. 选 port(`--port` 显式给, 否则用 SPEC 默认 42720, 不交互)
-//!   4. 选 label(`--label` 给, 否则 prompt;`--non-interactive` 必须给)
-//!   5. 选 username(`--username` 预填;非 non-interactive 模式下 prompt
-//!      `[Enter for auto]`;留空走 minter 自动颁发)
-//!   6. 选 password(`--password-stdin` 从一行 stdin 读;非 non-interactive
-//!      模式下走隐藏 prompt + `[Enter for auto]`;留空走 minter)
-//!   7. enter_write 拿 facade(锁定同 profile daemon)
-//!   8. update_settings(enabled=true + lan_listen_enabled=true +
-//!      advertise + port)
-//!   9. register_device(label, username, password)
-//!  10. 渲染 QR + 一次性凭据 + 重启提示
-//!
-//! ## 与其他命令的关系
-//!
-//! `setup` 是首次一键入口;之后再加手机用顶层 `add`,改监听地址用
-//! `network set`。三者底层都是同一批 facade 调用(update_settings /
-//! register_device)的编排。
-//!
-//! ## JSON 模式
-//!
-//! `--json` 隐含 non-interactive(无交互式 prompt 出口);仍须显式
-//! `--accept-network-risk` 与 `--label`, `--ip` 必填。
-//! `--username` / `--password-stdin` 可选, 缺省走自动生成。
+//! Routes through daemon HTTP endpoints (P5-2b ADR) instead of in-process
+//! facade calls.
 
 use clap::Args;
 use serde::Serialize;
 
-use uc_application::facade::{
-    MobileSyncLanInterfaceOption, RegisterMobileShortcutDeviceInput, UpdateMobileSyncSettingsInput,
+use uc_daemon_contract::api::dto::mobile_sync::{
+    LanInterfaceViewDto, RegisterMobileDeviceRequest, UpdateMobileSyncSettingsRequest,
 };
 
 use crate::commands::mobile_sync::shared;
@@ -140,7 +113,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
     };
 
     // 3. Validate non-interactive required flags up front (before we touch
-    // the facade, so misuse fails cheaply).
+    // the daemon, so misuse fails cheaply).
     if non_interactive {
         if args.label.is_none() {
             ui::error("--label is required in --non-interactive / --json mode.");
@@ -152,12 +125,9 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
         }
     }
 
-    // 4. enter_write: refuse if daemon running, build session, take facade.
-    // We hold the session for the rest of the setup — interactive prompts
-    // run while the session is alive. That is correct: the user is
-    // configuring the daemon's state, the daemon must remain stopped.
+    // 4. Connect to daemon, hold lease.
     // Pass json=true to suppress a duplicate header (we printed our own).
-    let ctx = match shared::enter_write("", true, verbose).await {
+    let ctx = match shared::enter("", true, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };
@@ -169,7 +139,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
             // non_interactive case is already rejected above.
             match resolve_advertise_interactively(&ctx).await {
                 Ok(ip) => ip,
-                Err(code) => return shared::finish(ctx, code).await,
+                Err(code) => return shared::finish_daemon(ctx, code).await,
             }
         }
     };
@@ -186,7 +156,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
                 Ok(s) => s.trim().to_string(),
                 Err(e) => {
                     ui::error(&format!("Failed to read label: {e}"));
-                    return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+                    return shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await;
                 }
             }
         }
@@ -205,7 +175,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
             Ok(s) => Some(s.trim().to_string()),
             Err(e) => {
                 ui::error(&format!("Failed to read username: {e}"));
-                return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+                return shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await;
             }
         },
     };
@@ -220,37 +190,37 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
             Ok(s) => Some(s),
             Err(e) => {
                 ui::error(&format!("Failed to read password: {e}"));
-                return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+                return shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await;
             }
         },
     };
 
     // 10. Apply settings: enable feature + LAN listener + advertise + port.
     let upd = match ctx
-        .facade
-        .update_settings(UpdateMobileSyncSettingsInput {
+        .client
+        .update_settings(&UpdateMobileSyncSettingsRequest {
             enabled: Some(true),
             lan_listen_enabled: Some(true),
             lan_advertise_ip: Some(Some(advertise_ip.clone())),
+            lan_port: Some(Some(port)),
             // `setup` provisions the LAN ip:port form; clear any prior full
             // base-URL override so the two never coexist (the reverse-proxy
             // path is `network set --url`, see that command).
             lan_advertise_base_url: Some(None),
-            lan_port: Some(Some(port)),
         })
         .await
     {
         Ok(out) => out,
         Err(err) => {
-            ui::error(&shared::render_update_settings_error(&err));
-            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+            ui::error(&err.to_string());
+            return shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await;
         }
     };
 
     // 11. Register the device.
     let reg = match ctx
-        .facade
-        .register_device(RegisterMobileShortcutDeviceInput {
+        .client
+        .register_device(&RegisterMobileDeviceRequest {
             label: label.clone(),
             username: custom_username,
             password: custom_password,
@@ -259,16 +229,16 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
     {
         Ok(out) => out,
         Err(err) => {
-            ui::error(&shared::render_register_error(&err));
-            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+            ui::error(&err.to_string());
+            return shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await;
         }
     };
 
     // 12. Render.
     if json {
         let dto = SetupResult {
-            device_id: reg.device.device_id.as_str().to_string(),
-            label: reg.device.label.clone(),
+            device_id: reg.device_id.clone(),
+            label: reg.label.clone(),
             base_url: reg.base_url.clone(),
             username: reg.username.clone(),
             password: reg.password.clone(),
@@ -278,10 +248,10 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
             port,
             restart_required: upd.restart_required,
         };
-        shared::finish_json(ctx, &dto).await
+        shared::finish_daemon_json(ctx, &dto).await
     } else {
-        ui::success(&format!("Registered device: {}", reg.device.label));
-        ui::info("deviceId", reg.device.device_id.as_str());
+        ui::success(&format!("Registered device: {}", reg.label));
+        ui::info("deviceId", &reg.device_id);
         ui::info("baseUrl", &reg.base_url);
         ui::info("username", &reg.username);
         ui::info("password (one-time)", &reg.password);
@@ -301,7 +271,7 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
         } else {
             ui::info("note", "Daemon restart not needed (settings unchanged).");
         }
-        shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+        shared::finish_daemon(ctx, exit_codes::EXIT_SUCCESS).await
     }
 }
 
@@ -322,11 +292,11 @@ fn print_network_risk_banner() {
 
 /// Interactive picker for the LAN advertise IP. Single-IP case auto-picks
 /// silently. Empty list returns an error code — `setup` cannot proceed.
-async fn resolve_advertise_interactively(ctx: &shared::MobileSyncCmdCtx) -> Result<String, i32> {
-    let opts = match ctx.facade.list_lan_interfaces().await {
+async fn resolve_advertise_interactively(ctx: &shared::MobileSyncDaemonCtx) -> Result<String, i32> {
+    let opts = match ctx.client.list_lan_interfaces().await {
         Ok(opts) => opts,
         Err(err) => {
-            ui::error(&shared::render_list_lan_interfaces_error(&err));
+            ui::error(&err.to_string());
             return Err(exit_codes::EXIT_ERROR);
         }
     };
@@ -345,7 +315,7 @@ async fn resolve_advertise_interactively(ctx: &shared::MobileSyncCmdCtx) -> Resu
     })
 }
 
-fn pick_from_list(opts: &[MobileSyncLanInterfaceOption]) -> Result<String, i32> {
+fn pick_from_list(opts: &[LanInterfaceViewDto]) -> Result<String, i32> {
     ui::info("LAN interfaces", "");
     for (i, o) in opts.iter().enumerate() {
         ui::info(

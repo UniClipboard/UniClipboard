@@ -1,17 +1,12 @@
-//! 已配对 iPhone 设备的注册 / 吊销 handler —— 顶层 `mobile-sync add` /
-//! `mobile-sync revoke` 的实现(见 `mod.rs` 的命令编排)。设备列表由
-//! `status` 综合视图呈现,本文件不再单独提供 `list`。
+//! Paired iPhone device registration / revocation — `mobile-sync add` /
+//! `mobile-sync revoke` implementations.
 //!
-//! * `add --label <LABEL> [...]` —— 写命令;铸凭据 + 渲染安装 QR,
-//!   支持 `--username` / `--password-stdin` 凭据 flag(同 `setup`)。
-//! * `revoke [<device-id>]` —— 写命令;不传 device_id 时交互式从已配对
-//!   设备列表里挑(JSON 模式仍要求显式 `<device-id>`)。
+//! Routes through daemon HTTP endpoints (P5-2b ADR).
 
 use clap::Args;
 use serde::Serialize;
 
-use uc_application::facade::{RegisterMobileShortcutDeviceInput, RevokeMobileDeviceInput};
-use uc_core::mobile_sync::MobileDeviceId;
+use uc_daemon_contract::api::dto::mobile_sync::RegisterMobileDeviceRequest;
 
 use crate::commands::mobile_sync::shared;
 use crate::exit_codes;
@@ -71,16 +66,15 @@ pub(crate) async fn add(args: AddArgs, json: bool, verbose: bool) -> i32 {
         None
     };
 
-    // enter_write with json=true to suppress a duplicate header (we already
-    // printed ours).
-    let ctx = match shared::enter_write("", true, verbose).await {
+    // Connect to daemon with json=true to suppress a duplicate header.
+    let ctx = match shared::enter("", true, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };
 
     let result = ctx
-        .facade
-        .register_device(RegisterMobileShortcutDeviceInput {
+        .client
+        .register_device(&RegisterMobileDeviceRequest {
             label: label.clone(),
             username,
             password: cli_password,
@@ -91,18 +85,18 @@ pub(crate) async fn add(args: AddArgs, json: bool, verbose: bool) -> i32 {
         Ok(out) => {
             if json {
                 let dto = AddDeviceDto {
-                    device_id: out.device.device_id.as_str().to_string(),
-                    label: out.device.label.clone(),
+                    device_id: out.device_id.clone(),
+                    label: out.label.clone(),
                     base_url: out.base_url.clone(),
                     username: out.username.clone(),
                     password: out.password.clone(),
                     install_url: out.install_url.clone(),
                     qr_code_ascii: out.qr_code_ascii.clone(),
                 };
-                shared::finish_json(ctx, &dto).await
+                shared::finish_daemon_json(ctx, &dto).await
             } else {
-                ui::success(&format!("Registered device: {}", out.device.label));
-                ui::info("deviceId", out.device.device_id.as_str());
+                ui::success(&format!("Registered device: {}", out.label));
+                ui::info("deviceId", &out.device_id);
                 ui::info("baseUrl", &out.base_url);
                 ui::info("username", &out.username);
                 ui::info("password (one-time)", &out.password);
@@ -121,12 +115,12 @@ pub(crate) async fn add(args: AddArgs, json: bool, verbose: bool) -> i32 {
                     "Run `uniclip start` so the LAN listener accepts requests \
                      from this device.",
                 );
-                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+                shared::finish_daemon(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
-            ui::error(&shared::render_register_error(&err));
-            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+            ui::error(&err.to_string());
+            shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await
         }
     }
 }
@@ -140,7 +134,7 @@ struct RevokeResult {
 }
 
 pub(crate) async fn revoke(device_id: Option<String>, json: bool, verbose: bool) -> i32 {
-    let ctx = match shared::enter_write("Revoke iPhone device", json, verbose).await {
+    let ctx = match shared::enter("Revoke iPhone device", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };
@@ -152,39 +146,34 @@ pub(crate) async fn revoke(device_id: Option<String>, json: bool, verbose: bool)
         None => {
             if json {
                 ui::error("`<device-id>` is required in --json mode.");
-                return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+                return shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await;
             }
             match resolve_device_interactively(&ctx).await {
                 Ok(id) => id,
-                Err(code) => return shared::finish(ctx, code).await,
+                Err(code) => return shared::finish_daemon(ctx, code).await,
             }
         }
     };
 
-    let result = ctx
-        .facade
-        .revoke_device(RevokeMobileDeviceInput {
-            device_id: MobileDeviceId::new(target.clone()),
-        })
-        .await;
+    let result = ctx.client.revoke_device(&target).await;
 
     match result {
-        Ok(()) => {
+        Ok(_) => {
             if json {
                 let dto = RevokeResult {
                     device_id: target.clone(),
                     revoked: true,
                 };
-                shared::finish_json(ctx, &dto).await
+                shared::finish_daemon_json(ctx, &dto).await
             } else {
                 ui::success(&format!("Revoked device {target}."));
                 ui::info("note", "Next request from that device returns 401.");
-                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+                shared::finish_daemon(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
-            ui::error(&shared::render_revoke_error(&err));
-            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+            ui::error(&err.to_string());
+            shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await
         }
     }
 }
@@ -192,11 +181,11 @@ pub(crate) async fn revoke(device_id: Option<String>, json: bool, verbose: bool)
 /// Interactive picker for `revoke` without an explicit id. Lists paired
 /// devices on stderr, asks the user to pick by number, returns the
 /// selected device id. Empty list / aborted prompt → exit-code error.
-async fn resolve_device_interactively(ctx: &shared::MobileSyncCmdCtx) -> Result<String, i32> {
-    let devs = match ctx.facade.list_devices().await {
+async fn resolve_device_interactively(ctx: &shared::MobileSyncDaemonCtx) -> Result<String, i32> {
+    let devs = match ctx.client.list_devices().await {
         Ok(d) => d,
         Err(err) => {
-            ui::error(&shared::render_list_devices_error(&err));
+            ui::error(&err.to_string());
             return Err(exit_codes::EXIT_ERROR);
         }
     };
@@ -208,7 +197,7 @@ async fn resolve_device_interactively(ctx: &shared::MobileSyncCmdCtx) -> Result<
     for (i, d) in devs.iter().enumerate() {
         ui::info(
             &format!("    {}", i + 1),
-            &format!("{} (id={})", d.label, d.device_id.as_str()),
+            &format!("{} (id={})", d.label, d.device_id),
         );
     }
     loop {
@@ -223,7 +212,7 @@ async fn resolve_device_interactively(ctx: &shared::MobileSyncCmdCtx) -> Result<
         }
         match trimmed.parse::<usize>() {
             Ok(n) if (1..=devs.len()).contains(&n) => {
-                return Ok(devs[n - 1].device_id.as_str().to_string());
+                return Ok(devs[n - 1].device_id.clone());
             }
             _ => {
                 ui::warn(&format!("Invalid choice; expected 1..{}", devs.len()));

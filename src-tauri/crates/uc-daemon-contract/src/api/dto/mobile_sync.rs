@@ -52,12 +52,27 @@ pub struct UpdateMobileSyncSettingsRequest {
     pub enabled: Option<bool>,
     #[serde(default)]
     pub lan_listen_enabled: Option<bool>,
-    #[serde(default, deserialize_with = "deserialize_optional_optional_string")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_optional_string",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[schema(value_type = Option<String>)]
     pub lan_advertise_ip: Option<Option<String>>,
-    #[serde(default, deserialize_with = "deserialize_optional_optional_u16")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_optional_u16",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[schema(value_type = Option<u16>)]
     pub lan_port: Option<Option<u16>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_optional_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schema(value_type = Option<String>)]
+    pub lan_advertise_base_url: Option<Option<String>>,
 }
 
 // ── Responses ───────────────────────────────────────────────────────────────
@@ -83,6 +98,8 @@ pub struct RegisterMobileDeviceResultDto {
     pub connect_uri: String,
     /// Base64 PNG encoding `connectUri`.
     pub qr_code_png_base64: String,
+    /// ASCII-art QR encoding `connectUri` (for terminal rendering).
+    pub qr_code_ascii: String,
 }
 
 /// Result of rotating a device password. `password` is the one-time plaintext
@@ -127,6 +144,7 @@ pub struct MobileSyncSettingsViewDto {
     pub lan_listen_enabled: bool,
     pub lan_advertise_ip: Option<String>,
     pub lan_port: Option<u16>,
+    pub lan_advertise_base_url: Option<String>,
     /// Why the daemon's LAN listener failed to bind (port in use / IP absent /
     /// permission). `Some` means a bind was actually attempted and failed.
     pub lan_listener_error: Option<String>,
@@ -150,6 +168,7 @@ pub struct UpdateMobileSyncSettingsResultDto {
     pub lan_listen_enabled: bool,
     pub lan_advertise_ip: Option<String>,
     pub lan_port: Option<u16>,
+    pub lan_advertise_base_url: Option<String>,
     /// Wire-compat historical flag. In the GUI/daemon path settings take effect
     /// immediately so this is always false; the CLI fallback assembly still
     /// returns "any field actually changed → true" to express the old

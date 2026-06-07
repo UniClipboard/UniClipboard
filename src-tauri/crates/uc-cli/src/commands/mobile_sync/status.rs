@@ -1,16 +1,10 @@
-//! `uniclip mobile-sync status` —— 综合视图(读命令)。
+//! `uniclip mobile-sync status` — combined settings + devices view.
 //!
-//! 一条命令拼出 settings 总开关 + LAN advertise IP / port + 已配对设备
-//! 数量 + install methods 状态,是查看 mobile-sync 配置快照的唯一入口
-//! (旧 `settings show` 已删,字段全部并入这里)。
-//!
-//! 这是只读命令。展示给用户的 listen URL 由持久化设置直接拼接(daemon
-//! 永远 bind 在 `0.0.0.0:<lan_port>`),无需运行时探测。bind 失败原因
-//! 通过 `lan_listener_error` 上抛。
+//! Routes through daemon HTTP endpoints (P5-2b ADR).
 
 use serde::Serialize;
 
-use uc_application::facade::{MobileDeviceSummary, MobileSyncSettingsView};
+use uc_daemon_contract::api::dto::mobile_sync::{MobileDeviceViewDto, MobileSyncSettingsViewDto};
 
 use crate::commands::mobile_sync::shared;
 use crate::exit_codes;
@@ -25,7 +19,7 @@ struct StatusDto {
     lan_port: Option<u16>,
     /// daemon 端 LAN listener 的 bind 失败原因(`Some` 时表示真的尝试过 bind 但失败)。
     lan_listener_error: Option<String>,
-    /// 给用户展示的监听 URL —— 由持久化设置拼接,daemon 永远 bind 在 `0.0.0.0`。
+    /// 给用户展示的监听 URL — 由持久化设置拼接,daemon 永远 bind 在 `0.0.0.0`。
     listen_url: String,
     device_count: usize,
     devices: Vec<DeviceLineDto>,
@@ -39,10 +33,10 @@ struct DeviceLineDto {
     last_seen_at_ms: Option<i64>,
 }
 
-impl From<&MobileDeviceSummary> for DeviceLineDto {
-    fn from(s: &MobileDeviceSummary) -> Self {
+impl From<&MobileDeviceViewDto> for DeviceLineDto {
+    fn from(s: &MobileDeviceViewDto) -> Self {
         Self {
-            device_id: s.device_id.as_str().to_string(),
+            device_id: s.device_id.clone(),
             label: s.label.clone(),
             last_seen_at_ms: s.last_seen_at_ms,
         }
@@ -56,13 +50,10 @@ struct InstallMethodDto {
     disabled_reason: Option<String>,
 }
 
-/// 用户视角的"监听 URL"(即写进 install URL / 二维码的对外地址):
-/// - `lan_advertise_base_url=Some(url)` → 直接用该完整地址(优先级最高);
-/// - 否则回退 LAN 形态 `lan_advertise_ip ?? "0.0.0.0"` + `lan_port ?? 42720`。
-///
-/// daemon 永远 bind `0.0.0.0:<lan_port>`,这里展示的是对外公布地址,不是
-/// 实际 bind 地址。
-pub(crate) fn derive_listen_url(v: &MobileSyncSettingsView) -> String {
+/// User-facing "listen URL": the externally advertised address.
+/// - `lan_advertise_base_url=Some(url)` → use that full address (highest priority);
+/// - otherwise fall back to LAN form `lan_advertise_ip ?? "0.0.0.0"` + `lan_port ?? 42720`.
+pub(crate) fn derive_listen_url(v: &MobileSyncSettingsViewDto) -> String {
     if let Some(base) = v.lan_advertise_base_url.as_deref() {
         return base.to_string();
     }
@@ -71,8 +62,8 @@ pub(crate) fn derive_listen_url(v: &MobileSyncSettingsView) -> String {
     format!("http://{host}:{port}")
 }
 
-impl From<&MobileSyncSettingsView> for StatusDto {
-    fn from(v: &MobileSyncSettingsView) -> Self {
+impl From<&MobileSyncSettingsViewDto> for StatusDto {
+    fn from(v: &MobileSyncSettingsViewDto) -> Self {
         Self {
             enabled: v.enabled,
             lan_listen_enabled: v.lan_listen_enabled,
@@ -87,7 +78,7 @@ impl From<&MobileSyncSettingsView> for StatusDto {
                 .shortcut_install_methods
                 .iter()
                 .map(|m| InstallMethodDto {
-                    method: format!("{:?}", m.method),
+                    method: m.method.clone(),
                     available: m.available,
                     disabled_reason: m.disabled_reason.clone(),
                 })
@@ -97,23 +88,23 @@ impl From<&MobileSyncSettingsView> for StatusDto {
 }
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
-    let ctx = match shared::enter_read("Mobile-sync status", json, verbose).await {
+    let ctx = match shared::enter("Mobile-sync status", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };
 
-    let view = match ctx.facade.get_settings().await {
+    let view = match ctx.client.get_settings().await {
         Ok(v) => v,
         Err(err) => {
-            ui::error(&shared::render_get_settings_error(&err));
-            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+            ui::error(&err.to_string());
+            return shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await;
         }
     };
-    let devices = match ctx.facade.list_devices().await {
+    let devices = match ctx.client.list_devices().await {
         Ok(d) => d,
         Err(err) => {
-            ui::error(&shared::render_list_devices_error(&err));
-            return shared::finish(ctx, exit_codes::EXIT_ERROR).await;
+            ui::error(&err.to_string());
+            return shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await;
         }
     };
 
@@ -121,7 +112,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         let mut dto = StatusDto::from(&view);
         dto.device_count = devices.len();
         dto.devices = devices.iter().map(DeviceLineDto::from).collect();
-        shared::finish_json(ctx, &dto).await
+        shared::finish_daemon_json(ctx, &dto).await
     } else {
         ui::info("enabled", &view.enabled.to_string());
         ui::info("lanListenEnabled", &view.lan_listen_enabled.to_string());
@@ -161,7 +152,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
                     &format!("    {}", d.label),
                     &format!(
                         "id={} last_seen_ms={}",
-                        d.device_id.as_str(),
+                        d.device_id,
                         d.last_seen_at_ms
                             .map(|x| x.to_string())
                             .unwrap_or_else(|| "never".into()),
@@ -169,6 +160,6 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
                 );
             }
         }
-        shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+        shared::finish_daemon(ctx, exit_codes::EXIT_SUCCESS).await
     }
 }

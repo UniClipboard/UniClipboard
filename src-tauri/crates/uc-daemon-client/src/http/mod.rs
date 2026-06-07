@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod clipboard;
 pub mod lifecycle;
+pub mod mobile_sync;
 pub mod pairing;
 pub mod query;
 pub mod search;
@@ -11,6 +12,7 @@ pub mod setup_v2;
 pub use analytics::DaemonAnalyticsClient;
 pub use clipboard::DaemonClipboardClient;
 pub use lifecycle::DaemonLifecycleClient;
+pub use mobile_sync::DaemonMobileSyncClient;
 pub use pairing::{DaemonPairingClient, DaemonPairingRequestError};
 pub use query::DaemonQueryClient;
 pub use search::{DaemonSearchClient, DaemonSearchRequestError, SearchQueryRequest};

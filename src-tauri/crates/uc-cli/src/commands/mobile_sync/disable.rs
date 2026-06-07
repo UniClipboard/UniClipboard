@@ -1,13 +1,10 @@
-//! `uniclip mobile-sync disable` —— 一键停用:同时关总开关 + 关 LAN 监听。
+//! `uniclip mobile-sync disable` — one-shot disable: master switch off + LAN off.
 //!
-//! 老版只关总开关,留 LAN listener 仍处于 `lan_listen_enabled=true` 的不一致
-//! 状态(daemon 重启后又会再起)。本步骤(Step 4/5)收窄行为:disable 应当
-//! 让 mobile sync 完整下线 —— 总开关关 + LAN 关。已配对设备保留(撤销有
-//! `devices revoke`),只是 LAN listener 不会再启。
+//! Routes through daemon HTTP endpoints (P5-2b ADR).
 
 use serde::Serialize;
 
-use uc_application::facade::UpdateMobileSyncSettingsInput;
+use uc_daemon_contract::api::dto::mobile_sync::UpdateMobileSyncSettingsRequest;
 
 use crate::commands::mobile_sync::shared;
 use crate::exit_codes;
@@ -21,14 +18,14 @@ struct DisableResult {
 }
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
-    let ctx = match shared::enter_write("Mobile-sync disable", json, verbose).await {
+    let ctx = match shared::enter("Mobile-sync disable", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };
 
     let result = ctx
-        .facade
-        .update_settings(UpdateMobileSyncSettingsInput {
+        .client
+        .update_settings(&UpdateMobileSyncSettingsRequest {
             enabled: Some(false),
             lan_listen_enabled: Some(false),
             ..Default::default()
@@ -43,7 +40,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
                     lan_listen_enabled: out.lan_listen_enabled,
                     restart_required: out.restart_required,
                 };
-                shared::finish_json(ctx, &dto).await
+                shared::finish_daemon_json(ctx, &dto).await
             } else {
                 ui::success("Mobile-sync disabled (master switch + LAN listener).");
                 ui::info(
@@ -56,12 +53,12 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
                 } else {
                     ui::info("note", "Already disabled — no daemon restart needed.");
                 }
-                shared::finish(ctx, exit_codes::EXIT_SUCCESS).await
+                shared::finish_daemon(ctx, exit_codes::EXIT_SUCCESS).await
             }
         }
         Err(err) => {
-            ui::error(&shared::render_update_settings_error(&err));
-            shared::finish(ctx, exit_codes::EXIT_ERROR).await
+            ui::error(&err.to_string());
+            shared::finish_daemon(ctx, exit_codes::EXIT_ERROR).await
         }
     }
 }

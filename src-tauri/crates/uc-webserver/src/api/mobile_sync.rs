@@ -324,6 +324,7 @@ fn to_register_dto(out: RegisterMobileShortcutDeviceOutput) -> RegisterMobileDev
         install_qr_code_png_base64: BASE64.encode(out.install_qr_code_png_bytes),
         connect_uri: out.connect_uri,
         qr_code_png_base64: BASE64.encode(out.qr_code_png_bytes),
+        qr_code_ascii: out.qr_code_ascii,
     }
 }
 
@@ -367,6 +368,7 @@ fn to_settings_view(v: MobileSyncSettingsView) -> MobileSyncSettingsViewDto {
         lan_listen_enabled: v.lan_listen_enabled,
         lan_advertise_ip: v.lan_advertise_ip,
         lan_port: v.lan_port,
+        lan_advertise_base_url: v.lan_advertise_base_url,
         lan_listener_error: v.lan_listener_error,
         shortcut_install_methods: v
             .shortcut_install_methods
@@ -382,6 +384,7 @@ fn to_update_result(o: UpdateMobileSyncSettingsOutput) -> UpdateMobileSyncSettin
         lan_listen_enabled: o.lan_listen_enabled,
         lan_advertise_ip: o.lan_advertise_ip,
         lan_port: o.lan_port,
+        lan_advertise_base_url: o.lan_advertise_base_url,
         restart_required: o.restart_required,
         lan_listener_bind_error: o.lan_listener_bind_error,
     }
@@ -621,10 +624,7 @@ async fn update_mobile_sync_settings_handler(
                 enabled: req.enabled,
                 lan_listen_enabled: req.lan_listen_enabled,
                 lan_advertise_ip: req.lan_advertise_ip,
-                // Full base-URL override stays a CLI-only provisioning option
-                // (`mobile-sync network set --url`); the GUI never touches it,
-                // so `None` leaves a CLI-set override untouched.
-                lan_advertise_base_url: None,
+                lan_advertise_base_url: req.lan_advertise_base_url,
                 lan_port: req.lan_port,
             })
             .await

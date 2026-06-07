@@ -1177,6 +1177,7 @@ export type MobileSyncSettingsEnvelope = {
  */
 export type MobileSyncSettingsViewDto = {
     enabled: boolean;
+    lanAdvertiseBaseUrl?: string | null;
     lanAdvertiseIp?: string | null;
     lanListenEnabled: boolean;
     /**
@@ -1431,6 +1432,10 @@ export type RegisterMobileDeviceResultDto = {
     installUrl: string;
     label: string;
     password: string;
+    /**
+     * ASCII-art QR encoding `connectUri` (for terminal rendering).
+     */
+    qrCodeAscii: string;
     /**
      * Base64 PNG encoding `connectUri`.
      */
@@ -2520,6 +2525,7 @@ export type UpdateMobileSyncSettingsEnvelope = {
  */
 export type UpdateMobileSyncSettingsRequest = {
     enabled?: boolean | null;
+    lanAdvertiseBaseUrl?: string | null;
     lanAdvertiseIp?: string | null;
     lanListenEnabled?: boolean | null;
     lanPort?: number | null;
@@ -2530,6 +2536,7 @@ export type UpdateMobileSyncSettingsRequest = {
  */
 export type UpdateMobileSyncSettingsResultDto = {
     enabled: boolean;
+    lanAdvertiseBaseUrl?: string | null;
     lanAdvertiseIp?: string | null;
     lanListenEnabled: boolean;
     /**

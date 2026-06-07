@@ -119,6 +119,30 @@ pub struct InboundNoticeEvent {
     pub at_ms: i64,
 }
 
+// ── WS clipboard.new_content payload ─────────────────────────────
+
+/// Payload for the `clipboard.new_content` WebSocket event (ADR-008 P5-1b).
+///
+/// Emitted after an inbound clipboard entry has been fully applied —
+/// including free-file materialization — so the `entry_id` is the
+/// **receiver-side** id and the materialized file (if any) is ready to be
+/// fetched via `GET /clipboard/entries/{id}/file`. The same event also fires
+/// for local clipboard captures; consumers that only want remote arrivals
+/// must filter on `origin == "remote"`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InboundEntryEvent {
+    pub entry_id: String,
+    pub preview: String,
+    /// `"remote"` for inbound peer pushes, otherwise a local-capture origin.
+    pub origin: String,
+    /// Sending device id for remote pushes; empty for local-capture events.
+    /// `#[serde(default)]` keeps deserialization resilient if a future
+    /// `new_content` emitter omits the field.
+    #[serde(default)]
+    pub from_device: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +190,16 @@ mod tests {
         let req: ResendRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.entry_id, "e1");
         assert!(req.peers.is_none());
+    }
+
+    #[test]
+    fn inbound_entry_event_camel_case() {
+        let json = r#"{"entryId":"e1","preview":"p","origin":"remote"}"#;
+        let evt: InboundEntryEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(evt.entry_id, "e1");
+        assert_eq!(evt.origin, "remote");
+        let value = serde_json::to_value(&evt).unwrap();
+        assert!(value.get("entryId").is_some());
     }
 
     #[test]

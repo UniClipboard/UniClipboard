@@ -1,40 +1,43 @@
-//! `uniclip recv` — single-shot inbound file receiver.
+//! `uniclip recv` — single-shot inbound file receiver (daemon-client).
 //!
-//! Self-contained direct-mode command (no daemon). Brings up the same
-//! application session as `watch` / `send` — `SpaceSetupAssembly` already
-//! auto-spawns the inbound ingest loop at construction time — subscribes
-//! to the inbound clipboard notice broadcast, waits for the first
-//! envelope carrying a file blob ref, and streams that blob to a local
-//! file via `BlobTransferFacade::fetch_blob_to_path`.
+//! ADR-008 P5-1b: `recv` is a pure daemon client. It connects to a running
+//! compatible daemon (or spawns a transient Oneshot one), holds a control
+//! lease so a transient daemon stays alive while a large free-file
+//! materializes, waits for the first inbound clipboard entry that carries a
+//! materialized free-file, exports its bytes from the daemon, and writes them
+//! into the user-chosen output directory. It NEVER fetches blobs in-process
+//! (no iroh / diesel edge) and never touches the system clipboard.
+//!
+//! ## Readiness signal
+//!
+//! The daemon emits `clipboard.inbound_notice` BEFORE the inbound free-file is
+//! materialized (the file is not on disk yet), then emits
+//! `clipboard.new_content` AFTER `apply_notice` — including materialization —
+//! completes. `recv` therefore waits for `new_content` (the reliable readiness
+//! signal) carrying the **receiver-side** `entry_id`, and exports against that
+//! id. No polling is required.
+//!
+//! ## Origin filter
+//!
+//! `clipboard.new_content` also fires for the daemon's own local clipboard
+//! captures. The daemon-client subscription only forwards events with
+//! `origin == "remote"`, so a local copy on the daemon host never triggers a
+//! spurious receive here.
 //!
 //! ## Difference from `start`
 //!
-//! `start` runs the daemon, which writes received clipboard content
-//! straight into the OS clipboard. `recv` deliberately does NOT touch
-//! the system clipboard. It is a one-shot file sink for CLI users who
-//! want to receive a file from another paired device into a known
-//! filesystem location, without the daemon's "make this the active
-//! clipboard payload" behaviour.
+//! `start` runs the daemon, which writes received clipboard content straight
+//! into the OS clipboard. `recv` deliberately does NOT touch the system
+//! clipboard. It is a one-shot file sink for CLI users who want to receive a
+//! file from another paired device into a known filesystem location.
 //!
-//! ## Cancellation
+//! ## Known behaviour difference
 //!
-//! While `fetch_blob_to_path` is running, the receiver-side iroh-blobs
-//! fetch task is registered in the inflight registry via the supplied
-//! `FetchTransferContext`. Pressing Ctrl-C calls
-//! `AppFacade::cancel_inbound_transfer(transfer_id, LocalUser)` — the
-//! exact same code path the Tauri command + GUI cancel button use —
-//! which tears down the fetch token, shuts the QUIC endpoint, and
-//! appends a `Cancelled` domain event. The partial output file is
-//! removed before exit.
-//!
-//! ## Scope (P1)
-//!
-//! Picks **one** free-file blob (i.e. `blob_ref.representation_index ==
-//! None && filename.is_some()`) from the first usable envelope and
-//! exits. Multi-file envelopes get the first file only; the rest are
-//! ignored (sender can re-send if needed). Inline image blobs
-//! (`representation_index = Some(_)`) are skipped — they belong to the
-//! clipboard pipeline, not a file sink.
+//! An inbound entry that is an exact duplicate of an existing local entry is
+//! dropped by the daemon as `DuplicateSkipped` and does NOT emit
+//! `clipboard.new_content` — so `recv` will not observe it. This is rare; the
+//! remedy is to re-send the same file. (Pre-P5-1b in-process `recv` keyed off
+//! `inbound_notice` and so could observe duplicates; that path is retired.)
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -52,7 +55,11 @@ use uc_application::facade::{
 };
 use uc_core::FileTransferCancellationReason;
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
+use uc_daemon_client::DaemonService;
+
+use crate::commands::app_session::{
+    build_app_session, connect_or_spawn_oneshot_daemon, refuse_if_daemon_running, CliAppSession,
+};
 use crate::exit_codes;
 use crate::ui;
 
@@ -69,6 +76,183 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
         }
     };
 
+    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+
+    run_recv_via_daemon(&*service, out_dir, json).await
+}
+
+async fn run_recv_via_daemon(service: &dyn DaemonService, out_dir: PathBuf, json: bool) -> i32 {
+    // Hold a control-WS lease for the whole receive window. Free-file
+    // materialization on the daemon can take a while for large files, so a
+    // transient Oneshot daemon must not self-terminate while we wait. Bind to a
+    // named var (NOT `_`) so it lives to scope end; `_` would drop it at once.
+    let _lease = match service.hold_control_lease().await {
+        Ok(guard) => guard,
+        Err(err) => {
+            ui::error(&format!("Failed to hold daemon session lease: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+
+    let mut rx = match service.subscribe_inbound_entries().await {
+        Ok(rx) => rx,
+        Err(err) => {
+            ui::error(&format!("Failed to subscribe inbound entries: {err}"));
+            return exit_codes::EXIT_ERROR;
+        }
+    };
+
+    if !json {
+        ui::info("out", &out_dir.display().to_string());
+        ui::info("status", "Waiting for incoming file — press Ctrl-C to stop");
+        ui::bar();
+    }
+
+    loop {
+        tokio::select! {
+            biased;
+            _ = tokio::signal::ctrl_c() => {
+                if !json { ui::end("Stopped"); }
+                return exit_codes::EXIT_SUCCESS;
+            }
+            recv = rx.recv() => match recv {
+                Some(entry) => {
+                    match service.export_entry_file(&entry.entry_id).await {
+                        Ok(Some(export)) => {
+                            return finish_export(
+                                &out_dir,
+                                &entry.entry_id,
+                                &entry.from_device,
+                                export,
+                                json,
+                            );
+                        }
+                        Ok(None) => {
+                            // 404: text-only entry / no materialized file — keep waiting.
+                            if !json {
+                                ui::info("·", &format!(
+                                    "entry {} carried no file — waiting for next",
+                                    short_hash(&entry.entry_id),
+                                ));
+                            }
+                            continue;
+                        }
+                        Err(err) => {
+                            ui::error(&format!("Failed to export file: {err}"));
+                            return exit_codes::EXIT_ERROR;
+                        }
+                    }
+                }
+                None => {
+                    ui::error("Inbound channel closed before any file arrived.");
+                    return exit_codes::EXIT_ERROR;
+                }
+            }
+        }
+    }
+}
+
+fn finish_export(
+    out_dir: &Path,
+    entry_id: &str,
+    from_device: &str,
+    export: uc_daemon_client::FileExport,
+    json: bool,
+) -> i32 {
+    let filename = sanitize_filename(&export.filename);
+    let target_path = out_dir.join(&filename);
+    let bytes_written = export.bytes.len() as u64;
+
+    if let Err(err) = std::fs::write(&target_path, &export.bytes) {
+        ui::error(&format!("Failed to write file: {err}"));
+        return exit_codes::EXIT_ERROR;
+    }
+
+    if json {
+        let dto = RecvOutcomeDto {
+            from_device,
+            path: &target_path.display().to_string(),
+            bytes_written,
+            entry_id,
+            outcome: "received",
+        };
+        if let Ok(s) = serde_json::to_string_pretty(&dto) {
+            println!("{s}");
+        }
+    } else {
+        ui::info("file", &filename);
+        ui::info("→", &target_path.display().to_string());
+        ui::bar();
+        ui::info("bytes", &bytes_written.to_string());
+        ui::end("Done");
+    }
+
+    exit_codes::EXIT_SUCCESS
+}
+
+async fn resolve_out_dir(out: Option<PathBuf>) -> Result<PathBuf, String> {
+    let dir = match out {
+        Some(p) => p,
+        None => std::env::current_dir()
+            .map_err(|err| format!("Failed to resolve current directory: {err}"))?,
+    };
+    if !dir.exists() {
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(|err| format!("Failed to create output directory: {err}"))?;
+    } else if !dir.is_dir() {
+        return Err(format!("Output path is not a directory: {}", dir.display()));
+    }
+    dir.canonicalize()
+        .map_err(|err| format!("Failed to canonicalize output directory: {err}"))
+}
+
+/// Strip any path separators a malicious sender might inject into the
+/// filename. We never trust the remote-supplied filename verbatim.
+fn sanitize_filename(name: &str) -> String {
+    let stripped: String = name
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | '\0'))
+        .collect();
+    if stripped.is_empty() || stripped == "." || stripped == ".." {
+        "uniclip-recv.bin".to_string()
+    } else {
+        stripped
+    }
+}
+
+fn short_hash(s: &str) -> &str {
+    if s.len() > 8 {
+        &s[..8]
+    } else {
+        s
+    }
+}
+
+#[derive(Serialize)]
+struct RecvOutcomeDto<'a> {
+    /// Sending device id; empty when the source device is not available.
+    from_device: &'a str,
+    path: &'a str,
+    bytes_written: u64,
+    entry_id: &'a str,
+    /// `received` | `cancelled` | `failed`.
+    outcome: &'static str,
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Retired in-process path (ADR-008 P5-1b). Kept as dead code until the
+// dependency edge is deleted in P5-4; preserving it keeps this slice's diff
+// small and revert-safe. None of this runs in the daemon-client path above.
+// ─────────────────────────────────────────────────────────────────
+
+// Retired in-process body; clippy lints are silenced here because this whole
+// path is removed in P5-4 along with the iroh dependency edge.
+#[allow(dead_code, clippy::unnecessary_to_owned)]
+async fn run_recv_in_process(out_dir: PathBuf, json: bool, verbose: bool) -> i32 {
     if let Err(code) = refuse_if_daemon_running().await {
         return code;
     }
@@ -100,11 +284,6 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
         ui::bar();
     }
 
-    // Find the first inbound notice that actually contains a free-file
-    // blob ref. Notices arrive as soon as the sender's envelope decodes
-    // on our side; we may see text-only envelopes first while another
-    // peer is mid-send. Skip those (with a tracing breadcrumb) until a
-    // file shows up.
     let (notice, blob_ref) = loop {
         tokio::select! {
             biased;
@@ -162,16 +341,9 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
         filename: filename.clone(),
         outbound_transfer_id: None,
         outbound_target: None,
-        // CLI `uniclip recv` 一次只 fetch 一个 blob, batch 唯一一帧 ——
-        // facade 既 seed 也 complete lifecycle, 行为与改造前等价。
         batch_position: Default::default(),
     };
 
-    // Ctrl-C → cancel. We arm a background task that watches both
-    // signals: a fresh ctrl_c() future and a `done` token tripped when
-    // fetch returns. Whichever fires first wins. Without the `done`
-    // token, the spawned task would linger after a successful fetch and
-    // swallow a subsequent unrelated ctrl_c.
     let app_facade = Arc::clone(cli.app_facade());
     let (done_tx, done_rx) = oneshot::channel::<()>();
     let cancel_arm = {
@@ -206,12 +378,7 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
         })
         .await;
 
-    // Tell the cancel-arm task to stand down (success path) — if Ctrl-C
-    // already fired this is a no-op (the spawned task already
-    // progressed past the select! arm).
     let _ = done_tx.send(());
-    // Best-effort: give the cancel-arm a moment to wind down so its
-    // tracing line lands before our final summary.
     let _ = tokio::time::timeout(Duration::from_millis(50), cancel_arm).await;
 
     let exit_code = match result {
@@ -223,7 +390,6 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
                     path: &target_path.display().to_string(),
                     bytes_written: r.bytes_written,
                     entry_id: &blob_ref.entry_id.to_string(),
-                    transfer_id: &transfer_id,
                     outcome: "received",
                 };
                 if let Ok(s) = serde_json::to_string_pretty(&dto) {
@@ -238,9 +404,6 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
         }
         Err(BlobTransferError::Cancelled) => {
             ui::spinner_finish_error(&fetch_spinner, "Cancelled");
-            // The fetch may have left a partial file on disk.
-            // `fetch_blob_to_path` doesn't auto-clean; do it here so
-            // recv's contract — "successful path or nothing" — holds.
             cleanup_partial(&target_path).await;
             if json {
                 let dto = RecvOutcomeDto {
@@ -248,7 +411,6 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
                     path: &target_path.display().to_string(),
                     bytes_written: 0,
                     entry_id: &blob_ref.entry_id.to_string(),
-                    transfer_id: &transfer_id,
                     outcome: "cancelled",
                 };
                 if let Ok(s) = serde_json::to_string_pretty(&dto) {
@@ -274,26 +436,10 @@ pub async fn run(out: Option<PathBuf>, json: bool, verbose: bool) -> i32 {
     exit_code
 }
 
-async fn resolve_out_dir(out: Option<PathBuf>) -> Result<PathBuf, String> {
-    let dir = match out {
-        Some(p) => p,
-        None => std::env::current_dir()
-            .map_err(|err| format!("Failed to resolve current directory: {err}"))?,
-    };
-    if !dir.exists() {
-        tokio::fs::create_dir_all(&dir)
-            .await
-            .map_err(|err| format!("Failed to create output directory: {err}"))?;
-    } else if !dir.is_dir() {
-        return Err(format!("Output path is not a directory: {}", dir.display()));
-    }
-    dir.canonicalize()
-        .map_err(|err| format!("Failed to canonicalize output directory: {err}"))
-}
-
 /// Pick the first **free-file** blob from a notice — i.e. one with a
 /// real filename and no `representation_index` (the latter means the
 /// blob's bytes belong inside a snapshot rep, not as a standalone file).
+#[allow(dead_code)]
 fn pick_first_file_blob_ref(notice: &InboundNotice) -> Option<V3BlobRef> {
     let (_snapshot, blob_refs) =
         decode_v3_bytes_to_snapshot_and_blob_refs(&notice.plaintext).ok()?;
@@ -302,20 +448,7 @@ fn pick_first_file_blob_ref(notice: &InboundNotice) -> Option<V3BlobRef> {
     })
 }
 
-/// Strip any path separators a malicious sender might inject into the
-/// filename. We never trust the remote-supplied filename verbatim.
-fn sanitize_filename(name: &str) -> String {
-    let stripped: String = name
-        .chars()
-        .filter(|c| !matches!(c, '/' | '\\' | '\0'))
-        .collect();
-    if stripped.is_empty() || stripped == "." || stripped == ".." {
-        "uniclip-recv.bin".to_string()
-    } else {
-        stripped
-    }
-}
-
+#[allow(dead_code)]
 async fn cleanup_partial(path: &Path) {
     if let Err(err) = tokio::fs::remove_file(path).await {
         if err.kind() != std::io::ErrorKind::NotFound {
@@ -324,6 +457,7 @@ async fn cleanup_partial(path: &Path) {
     }
 }
 
+#[allow(dead_code)]
 fn human_size(bytes: u64) -> String {
     const KIB: u64 = 1024;
     const MIB: u64 = 1024 * KIB;
@@ -339,14 +473,7 @@ fn human_size(bytes: u64) -> String {
     }
 }
 
-fn short_hash(s: &str) -> &str {
-    if s.len() > 8 {
-        &s[..8]
-    } else {
-        s
-    }
-}
-
+#[allow(dead_code)]
 async fn resume_and_probe(cli: &CliAppSession) -> Result<(), i32> {
     let resume_spinner = ui::spinner("Resuming space session...");
     match cli.app_facade().try_resume_session().await {
@@ -387,15 +514,4 @@ async fn resume_and_probe(cli: &CliAppSession) -> Result<(), i32> {
     }
 
     Ok(())
-}
-
-#[derive(Serialize)]
-struct RecvOutcomeDto<'a> {
-    from_device: &'a str,
-    path: &'a str,
-    bytes_written: u64,
-    entry_id: &'a str,
-    transfer_id: &'a str,
-    /// `received` | `cancelled` | `failed`.
-    outcome: &'static str,
 }

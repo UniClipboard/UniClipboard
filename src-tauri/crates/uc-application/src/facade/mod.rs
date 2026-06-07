@@ -113,7 +113,9 @@ pub use mobile_sync::{
     UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
     SYNC_CLIPBOARD_EX_INSTALL_URL,
 };
-pub use resource::{BinaryResourceView, ResourceFacade, ResourceFacadeDeps, ResourceFacadeError};
+pub use resource::{
+    BinaryResourceView, FileResourceView, ResourceFacade, ResourceFacadeDeps, ResourceFacadeError,
+};
 pub use roster::{
     connection_channel_to_wire, ConnectionChannel, ContentTypesPatch, ContentTypesView,
     MemberRosterDeps, MemberRosterFacade, MemberSummary, MemberSyncPreferencesPatch,

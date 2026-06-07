@@ -9,8 +9,20 @@ use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use uc_daemon_contract::api::dto::clipboard_command::{
-    CancelTransferResponse, DispatchOutcomeResponse, InboundNoticeEvent, ResendResponse,
+    CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
+    ResendResponse,
 };
+
+/// A free-file exported from the daemon (ADR-008 P5-1b).
+///
+/// The bytes are the materialized file's contents; `filename` is the basename
+/// the daemon advertised via `Content-Disposition` (sanitized on the daemon
+/// side), suitable for writing into a caller-chosen output directory.
+#[derive(Debug, Clone)]
+pub struct FileExport {
+    pub filename: String,
+    pub bytes: Vec<u8>,
+}
 
 #[async_trait]
 pub trait DaemonService: Send + Sync {
@@ -33,6 +45,23 @@ pub trait DaemonService: Send + Sync {
     ) -> Result<CancelTransferResponse>;
 
     async fn subscribe_inbound_notices(&self) -> Result<mpsc::Receiver<InboundNoticeEvent>>;
+
+    /// Subscribe to `clipboard.new_content` events (ADR-008 P5-1b).
+    ///
+    /// Each delivered event signals that an inbound clipboard entry has been
+    /// fully applied (including free-file materialization) and carries the
+    /// **receiver-side** `entry_id`. The implementation filters to
+    /// `origin == "remote"` so local clipboard captures do not leak through.
+    async fn subscribe_inbound_entries(&self) -> Result<mpsc::Receiver<InboundEntryEvent>>;
+
+    /// Export the bytes of an entry's first materialized free-file
+    /// (ADR-008 P5-1b) by calling `GET /clipboard/entries/{id}/file`.
+    ///
+    /// Returns `Ok(Some(_))` on HTTP 200, `Ok(None)` on HTTP 404 (the entry
+    /// is text-only / has no materialized file — callers waiting for a file
+    /// should keep waiting), and `Err` for any other status or transport
+    /// failure.
+    async fn export_entry_file(&self, entry_id: &str) -> Result<Option<FileExport>>;
 
     /// Open a bare control WebSocket that the daemon counts as an active
     /// lease (ADR-008 P5-1a). The connection does NOT subscribe to any topic —

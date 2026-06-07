@@ -3,19 +3,35 @@ use std::sync::Arc;
 use tracing::instrument;
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::MimeType;
-use uc_core::ids::{BlobId, RepresentationId};
-use uc_core::ports::{ClipboardRepresentationRepositoryPort, ThumbnailRepositoryPort};
+use uc_core::ids::{BlobId, EntryId, RepresentationId};
+use uc_core::ports::{
+    ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort, ThumbnailRepositoryPort,
+};
 
 #[derive(Clone)]
 pub struct ResourceFacadeDeps {
     pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
+    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BinaryResourceView {
     pub mime_type: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
+/// A materialized free-file payload belonging to a clipboard entry.
+///
+/// `entry_file` resolves an entry's file-list representation to a single
+/// on-disk file (the daemon already materialized inbound free-files into a
+/// controlled cache directory) and reads its bytes. MVP buffers the whole
+/// file in memory; the shape leaves room to switch `bytes` to a stream later.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileResourceView {
+    pub filename: String,
+    pub mime: Option<String>,
     pub bytes: Vec<u8>,
 }
 
@@ -96,10 +112,128 @@ impl ResourceFacade {
 
         Ok(BinaryResourceView { mime_type, bytes })
     }
+
+    /// Resolve a clipboard entry's first materialized free-file and read its
+    /// bytes.
+    ///
+    /// The daemon materializes an inbound free-file into a controlled cache
+    /// directory and rewrites the entry's file-list representation
+    /// (`FormatId` `files` / mime `text/uri-list`) so its inline bytes hold a
+    /// `file://` uri-list pointing at the cached path(s). This method finds
+    /// that representation, takes the **first** `file://` URI, converts it to a
+    /// local path, and reads the file.
+    ///
+    /// Security: only paths embedded in the entry's own file-list
+    /// representation are honoured — those paths are written by the daemon's
+    /// sanitized materializer, never by an external caller. The returned
+    /// `filename` is the URI's last path segment with any path separators
+    /// stripped, so callers can safely use it as a basename.
+    ///
+    /// Errors:
+    /// - `NotFound` — no such entry, no file-list representation, or the
+    ///   representation carries no usable `file://` URI.
+    /// - `Internal` — the cached file could not be read.
+    #[instrument(skip_all, fields(entry_id = %entry_id))]
+    pub async fn entry_file(
+        &self,
+        entry_id: &str,
+    ) -> Result<FileResourceView, ResourceFacadeError> {
+        let entry_id = EntryId::from(entry_id);
+        let entry = self
+            .deps
+            .entry_repo
+            .get_entry(&entry_id)
+            .await
+            .map_err(|err| ResourceFacadeError::Internal(err.to_string()))?
+            .ok_or(ResourceFacadeError::NotFound)?;
+
+        let representations = self
+            .deps
+            .representation_repo
+            .get_representations_for_event(&entry.event_id)
+            .await
+            .map_err(|err| ResourceFacadeError::Internal(err.to_string()))?;
+
+        let file_rep = representations
+            .iter()
+            .find(|rep| is_file_list_representation(rep))
+            .ok_or(ResourceFacadeError::NotFound)?;
+
+        let uri_list = file_rep
+            .inline_data
+            .as_deref()
+            .ok_or(ResourceFacadeError::NotFound)?;
+        let uri_list = std::str::from_utf8(uri_list)
+            .map_err(|err| ResourceFacadeError::Internal(format!("uri-list not utf-8: {err}")))?;
+
+        let path = first_local_file_path(uri_list).ok_or(ResourceFacadeError::NotFound)?;
+
+        let filename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(sanitize_basename)
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "uniclip-recv.bin".to_string());
+
+        let mime = file_rep.mime_type.as_ref().map(mime_to_string);
+
+        let bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|err| ResourceFacadeError::Internal(format!("failed to read file: {err}")))?;
+
+        Ok(FileResourceView {
+            filename,
+            mime,
+            bytes,
+        })
+    }
 }
 
 fn mime_to_string(mime: &MimeType) -> String {
     mime.as_str().to_string()
+}
+
+/// A representation carries a file list when its mime is `*/uri-list` or its
+/// format id is one of the well-known file-list format ids. Mirrors the
+/// materializer's classification so resolution agrees with what was written.
+fn is_file_list_representation(rep: &uc_core::PersistedClipboardRepresentation) -> bool {
+    rep.mime_type
+        .as_ref()
+        .map(|mime| {
+            mime.as_str().eq_ignore_ascii_case("text/uri-list")
+                || mime.as_str().eq_ignore_ascii_case("file/uri-list")
+        })
+        .unwrap_or(false)
+        || rep.format_id.as_str().eq_ignore_ascii_case("files")
+        || rep
+            .format_id
+            .as_str()
+            .eq_ignore_ascii_case("public.file-url")
+}
+
+/// Parse the first `file://` URI from a uri-list and convert it to a local
+/// path. The daemon writes percent-encoded `file://` URLs via
+/// `Url::from_file_path`, so we round-trip through `url::Url` to decode them.
+fn first_local_file_path(uri_list: &str) -> Option<std::path::PathBuf> {
+    uri_list
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .find_map(|line| {
+            let url = url::Url::parse(line).ok()?;
+            if url.scheme() != "file" {
+                return None;
+            }
+            url.to_file_path().ok()
+        })
+}
+
+/// Strip path separators / NUL from a filename so it is safe to use as a
+/// response-header basename and never escapes a target directory.
+fn sanitize_basename(name: &str) -> String {
+    name.chars()
+        .filter(|c| !matches!(c, '/' | '\\' | '\0'))
+        .collect()
 }
 
 #[cfg(test)]
@@ -115,10 +249,12 @@ mod tests {
     };
     use uc_core::ids::{EventId, FormatId};
     use uc_core::ports::ProcessingUpdateOutcome;
+    use uc_core::ClipboardEntry;
 
     #[derive(Default)]
     struct FakeRepresentationRepo {
         by_blob_id: Mutex<HashMap<BlobId, PersistedClipboardRepresentation>>,
+        by_event_id: Mutex<HashMap<EventId, Vec<PersistedClipboardRepresentation>>>,
     }
 
     #[async_trait]
@@ -175,6 +311,52 @@ mod tests {
             _last_error: Option<&str>,
         ) -> Result<ProcessingUpdateOutcome> {
             Ok(ProcessingUpdateOutcome::NotFound)
+        }
+
+        async fn get_representations_for_event(
+            &self,
+            event_id: &EventId,
+        ) -> Result<Vec<PersistedClipboardRepresentation>> {
+            Ok(self
+                .by_event_id
+                .lock()
+                .expect("event lock")
+                .get(event_id)
+                .cloned()
+                .unwrap_or_default())
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeEntryRepo {
+        by_entry_id: Mutex<HashMap<EntryId, ClipboardEntry>>,
+    }
+
+    #[async_trait]
+    impl ClipboardEntryRepositoryPort for FakeEntryRepo {
+        async fn save_entry_and_selection(
+            &self,
+            _entry: &ClipboardEntry,
+            _selection: &uc_core::ClipboardSelectionDecision,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        async fn get_entry(&self, entry_id: &EntryId) -> Result<Option<ClipboardEntry>> {
+            Ok(self
+                .by_entry_id
+                .lock()
+                .expect("entry lock")
+                .get(entry_id)
+                .cloned())
+        }
+
+        async fn list_entries(&self, _limit: usize, _offset: usize) -> Result<Vec<ClipboardEntry>> {
+            Ok(vec![])
+        }
+
+        async fn delete_entry(&self, _entry_id: &EntryId) -> Result<()> {
+            Ok(())
         }
     }
 
@@ -238,22 +420,26 @@ mod tests {
         representation_repo: Arc<FakeRepresentationRepo>,
         thumbnail_repo: Arc<FakeThumbnailRepo>,
         blob_store: Arc<FakeBlobStore>,
+        entry_repo: Arc<FakeEntryRepo>,
     }
 
     fn test_deps() -> TestDeps {
         let representation_repo = Arc::new(FakeRepresentationRepo::default());
         let thumbnail_repo = Arc::new(FakeThumbnailRepo::default());
         let blob_store = Arc::new(FakeBlobStore::default());
+        let entry_repo = Arc::new(FakeEntryRepo::default());
         let facade = ResourceFacade::new(ResourceFacadeDeps {
             representation_repo: representation_repo.clone(),
             thumbnail_repo: thumbnail_repo.clone(),
             blob_store: blob_store.clone(),
+            entry_repo: entry_repo.clone(),
         });
         TestDeps {
             facade,
             representation_repo,
             thumbnail_repo,
             blob_store,
+            entry_repo,
         }
     }
 
@@ -322,5 +508,82 @@ mod tests {
 
         assert_eq!(view.mime_type, Some("image/webp".to_string()));
         assert_eq!(view.bytes, vec![4, 5, 6]);
+    }
+
+    fn seed_entry_with_file_rep(deps: &TestDeps, entry_id: &str, file_path: &std::path::Path) {
+        let event_id = EventId::from("event-1");
+        let entry = ClipboardEntry::new(EntryId::from(entry_id), event_id.clone(), 0, None, 0);
+        deps.entry_repo
+            .by_entry_id
+            .lock()
+            .expect("entry lock")
+            .insert(EntryId::from(entry_id), entry);
+
+        let uri = url::Url::from_file_path(file_path).expect("file url");
+        let uri_list = format!("{uri}\n");
+        let rep = PersistedClipboardRepresentation::new(
+            RepresentationId::from("rep-files"),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            uri_list.len() as i64,
+            Some(uri_list.into_bytes()),
+            None,
+        );
+        deps.representation_repo
+            .by_event_id
+            .lock()
+            .expect("event lock")
+            .insert(event_id, vec![rep]);
+    }
+
+    #[tokio::test]
+    async fn entry_file_reads_first_local_file() {
+        let deps = test_deps();
+        let dir = std::env::temp_dir().join(format!("uc-entry-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let file_path = dir.join("hello.txt");
+        std::fs::write(&file_path, b"payload-bytes").expect("write");
+
+        seed_entry_with_file_rep(&deps, "entry-1", &file_path);
+
+        let view = deps.facade.entry_file("entry-1").await.expect("entry file");
+
+        assert_eq!(view.filename, "hello.txt");
+        assert_eq!(view.mime, Some("text/uri-list".to_string()));
+        assert_eq!(view.bytes, b"payload-bytes".to_vec());
+
+        let _ = std::fs::remove_file(&file_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[tokio::test]
+    async fn entry_file_not_found_when_entry_missing() {
+        let deps = test_deps();
+        let error = deps
+            .facade
+            .entry_file("missing")
+            .await
+            .expect_err("missing");
+        assert!(matches!(error, ResourceFacadeError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn entry_file_not_found_when_no_file_representation() {
+        let deps = test_deps();
+        let event_id = EventId::from("event-text");
+        let entry = ClipboardEntry::new(EntryId::from("entry-text"), event_id.clone(), 0, None, 0);
+        deps.entry_repo
+            .by_entry_id
+            .lock()
+            .expect("entry lock")
+            .insert(EntryId::from("entry-text"), entry);
+        // No representations registered for this event.
+
+        let error = deps
+            .facade
+            .entry_file("entry-text")
+            .await
+            .expect_err("no file rep");
+        assert!(matches!(error, ResourceFacadeError::NotFound));
     }
 }

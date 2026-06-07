@@ -2982,6 +2982,40 @@ export type ToggleClipboardEntryFavoriteResponses = {
 
 export type ToggleClipboardEntryFavoriteResponse = ToggleClipboardEntryFavoriteResponses[keyof ToggleClipboardEntryFavoriteResponses];
 
+export type GetClipboardEntryFileData = {
+    body?: never;
+    path: {
+        /**
+         * Entry identifier
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/clipboard/entries/{id}/file';
+};
+
+export type GetClipboardEntryFileErrors = {
+    /**
+     * Entry or file not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type GetClipboardEntryFileError = GetClipboardEntryFileErrors[keyof GetClipboardEntryFileErrors];
+
+export type GetClipboardEntryFileResponses = {
+    /**
+     * Raw bytes of the entry's first materialized file
+     */
+    200: Blob | File;
+};
+
+export type GetClipboardEntryFileResponse = GetClipboardEntryFileResponses[keyof GetClipboardEntryFileResponses];
+
 export type GetClipboardEntryResourceData = {
     body?: never;
     path: {

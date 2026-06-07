@@ -10,6 +10,7 @@ use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::http_route;
 
 use crate::http::authorized_daemon_request_with_type;
+use crate::service::FileExport;
 use crate::DaemonConnectionState;
 
 #[derive(Clone)]
@@ -218,5 +219,104 @@ impl DaemonClipboardClient {
             .await
             .context("failed to decode cancel transfer response")?;
         Ok(envelope.data)
+    }
+
+    /// Export an entry's first materialized free-file (ADR-008 P5-1b).
+    ///
+    /// Calls the binary endpoint `GET /clipboard/entries/{id}/file`, which is
+    /// exempt from the JSON envelope (raw bytes + `Content-Disposition`).
+    /// Returns `Ok(Some(_))` on 200, `Ok(None)` on 404 (no materialized file),
+    /// and `Err` on any other status / transport failure. The filename comes
+    /// from `Content-Disposition`; it falls back to `entry_id` when the header
+    /// is absent or unparseable.
+    pub async fn export_entry_file(&self, entry_id: &str) -> Result<Option<FileExport>> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        // The entry-file endpoint is `GET /clipboard/entries/:id/file`; build it
+        // off the shared entries base so the route lives in one place.
+        let path = format!("{}/{entry_id}/file", http_route::CLIPBOARD_ENTRIES);
+        let request = authorized_daemon_request_with_type(
+            &self.http,
+            &self.connection_state,
+            Method::GET,
+            &path,
+            connection.pid,
+            &self.client_type,
+        )
+        .await?;
+
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("failed to call daemon entry-file route {path}"))?;
+        let status = response.status();
+
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("entry-file export failed ({}): {}", status, body);
+        }
+
+        let filename = response
+            .headers()
+            .get(reqwest::header::CONTENT_DISPOSITION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(filename_from_content_disposition)
+            .unwrap_or_else(|| entry_id.to_string());
+
+        let bytes = response
+            .bytes()
+            .await
+            .context("failed to read entry-file bytes")?
+            .to_vec();
+
+        Ok(Some(FileExport { filename, bytes }))
+    }
+}
+
+/// Extract the `filename="..."` (or bare `filename=...`) value from a
+/// `Content-Disposition` header. Returns `None` when no usable filename token
+/// is present. The basename is already sanitized on the daemon side; callers
+/// still sanitize again before touching the filesystem.
+fn filename_from_content_disposition(header: &str) -> Option<String> {
+    for part in header.split(';') {
+        let part = part.trim();
+        if let Some(rest) = part.strip_prefix("filename=") {
+            let value = rest.trim().trim_matches('"').to_string();
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_quoted_filename() {
+        assert_eq!(
+            filename_from_content_disposition("attachment; filename=\"report.pdf\""),
+            Some("report.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_bare_filename() {
+        assert_eq!(
+            filename_from_content_disposition("attachment; filename=data.bin"),
+            Some("data.bin".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_without_filename() {
+        assert_eq!(filename_from_content_disposition("attachment"), None);
     }
 }

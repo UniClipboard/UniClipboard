@@ -201,13 +201,13 @@ enum Commands {
     /// daemon's job; the CLI watch is purely a diagnostic observer.
     Watch,
     /// Receive a single inbound file from a paired peer and save it to
-    /// disk. Exits after the first transfer completes (or is cancelled).
+    /// disk. Exits after the first file arrives (or on Ctrl-C).
     ///
-    /// Self-contained direct mode. Subscribes to inbound clipboard
-    /// envelopes, picks the first one that carries a file blob ref, and
-    /// streams the bytes via `fetch_blob_to_path`. Press Ctrl-C during
-    /// transfer to cancel; the partial file is removed. Does NOT write
-    /// the system clipboard — recv is strictly an in-bound file sink.
+    /// Daemon-client mode: connects to a running daemon (or spawns a
+    /// transient one), waits for the first inbound clipboard entry that
+    /// carries a materialized file, exports its bytes from the daemon, and
+    /// writes them into the output directory. Press Ctrl-C to stop waiting.
+    /// Does NOT write the system clipboard — recv is strictly a file sink.
     Recv {
         /// Output directory. Created if missing. Defaults to current
         /// working directory.

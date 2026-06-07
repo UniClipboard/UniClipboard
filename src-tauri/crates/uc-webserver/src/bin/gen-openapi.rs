@@ -41,8 +41,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// ADR-008 P3-c (D20) added `POST /analytics/capture`.
 /// ADR-008 P3-3 (B2'-1) added `POST /settings/relay-probe`.
 /// ADR-008 P5-L (L8d-1) surfaced `POST /lifecycle/restart`: +1 path, +1 operation.
-const EXPECTED_PATHS: usize = 56;
-const EXPECTED_OPERATIONS: usize = 61;
+/// ADR-008 P5-1b added the binary endpoint `GET /clipboard/entries/{id}/file`
+/// (doc-only, octet-stream): +1 path, +1 operation.
+const EXPECTED_PATHS: usize = 57;
+const EXPECTED_OPERATIONS: usize = 62;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

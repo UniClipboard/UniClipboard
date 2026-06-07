@@ -43,6 +43,7 @@ struct ClipboardNewContentPayload {
     entry_id: String,
     preview: String,
     origin: String,
+    from_device: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +189,9 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                     entry_id: captured.entry_id,
                     preview: "New clipboard content".to_string(),
                     origin: origin_str.to_string(),
+                    // Local captures have no sending device; recv filters these
+                    // out via `origin != "remote"` anyway.
+                    from_device: String::new(),
                 };
                 let payload_value = match serde_json::to_value(payload) {
                     Ok(v) => v,

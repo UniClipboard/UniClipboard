@@ -25,7 +25,7 @@ pub use http::{
     DaemonSettingsClient, DaemonSetupClient, ExchangedSessionToken, SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
-pub use service::DaemonService;
+pub use service::{DaemonService, FileExport};
 pub use ws_bridge::{BridgeState, DaemonWsBridge, DaemonWsBridgeConfig, DaemonWsBridgeError};
 
 const ENV_BASE_URL: &str = "UNICLIPBOARD_DAEMON_BASE_URL";

@@ -141,6 +141,7 @@ impl Modify for ContractMeta {
         // ── clipboard binary (octet-stream, doc-only) ──────────────
         crate::api::blob::get_blob,
         crate::api::blob::get_thumbnail,
+        crate::api::blob::get_entry_file,
         // ── search ─────────────────────────────────────────────────
         crate::api::search::search_query_handler,
         crate::api::search::search_status_handler,
@@ -503,7 +504,8 @@ mod assembly_smoke_tests {
         // added `POST /analytics/capture`: +1 path, +1 operation; ADR-008 P3-3 B2'-1
         // added `POST /settings/relay-probe`: +1 path, +1 operation → 55 / 60;
         // ADR-008 P5-L L8d-1 surfaced `POST /lifecycle/restart`: +1 path,
-        // +1 operation → 56 / 61.)
+        // +1 operation → 56 / 61; ADR-008 P5-1b added the binary endpoint
+        // `GET /clipboard/entries/{id}/file`: +1 path, +1 operation → 57 / 62.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -512,8 +514,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            56,
-            "expected exactly 56 path templates, found {}: {:?}",
+            57,
+            "expected exactly 57 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -527,8 +529,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 61,
-            "expected exactly 61 operations across all paths, found {operation_count}"
+            operation_count, 62,
+            "expected exactly 62 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

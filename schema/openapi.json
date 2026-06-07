@@ -4865,6 +4865,68 @@
         ]
       }
     },
+    "/clipboard/entries/{id}/file": {
+      "get": {
+        "description": "Serves the bytes of an entry's first materialized free-file (ADR-008\nP5-1b). The daemon materializes inbound free-files into a controlled cache\nand rewrites the entry's file-list representation; this endpoint reads that\ncached file and streams it back. Binary endpoint: the response is\n`application/octet-stream` (the representation MIME when known), NOT the\n`{ data, ts }` JSON envelope (ADR-008 §0.2 keeps binary endpoints exempt).\nA `Content-Disposition: attachment` header carries the cached filename so\nCLI `recv` can name the local copy. Returns 404 when the entry is unknown\nor carries no materialized free-file, 500 on a read failure.",
+        "operationId": "getClipboardEntryFile",
+        "parameters": [
+          {
+            "description": "Entry identifier",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Raw bytes of the entry's first materialized file"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Entry or file not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /clipboard/entries/:id/file",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
     "/clipboard/entries/{id}/resource": {
       "get": {
         "description": "Returns resource metadata (blob URL or inline content).",

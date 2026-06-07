@@ -416,6 +416,7 @@ pub fn build_app_facade_from_deps(
             representation_repo: deps.clipboard.representation_repo.clone(),
             thumbnail_repo: deps.storage.thumbnail_repo.clone(),
             blob_store: deps.storage.blob_store.clone(),
+            entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
         })),
         clipboard_history: Arc::new(ClipboardHistoryFacade::new(ClipboardHistoryFacadeDeps {
             entry_repo: deps.clipboard.clipboard_entry_repo.clone(),

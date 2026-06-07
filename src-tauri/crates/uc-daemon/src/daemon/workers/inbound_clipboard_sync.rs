@@ -55,6 +55,7 @@ struct ClipboardNewContentPayload {
     entry_id: String,
     preview: String,
     origin: String,
+    from_device: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -85,8 +86,9 @@ impl InboundClipboardSyncWorker {
     async fn handle_one(&self, notice: InboundNotice) {
         Self::emit_inbound_notice_event(&self.event_tx, &notice);
 
+        let from_device = notice.from_device.as_str().to_string();
         let input = InboundClipboardNoticeInput {
-            from_device: notice.from_device.as_str().to_string(),
+            from_device: from_device.clone(),
             content_hash: notice.content_hash,
             plaintext: notice.plaintext,
             flow_id: notice.flow_id,
@@ -94,7 +96,7 @@ impl InboundClipboardSyncWorker {
         match self.inbound_clipboard.apply_notice(input).await {
             Ok(InboundClipboardApplyOutcome::Applied { entry_id }) => {
                 info!(entry_id = %entry_id, "inbound clipboard applied; broadcasting WS event");
-                Self::emit_ws_event(&self.event_tx, entry_id);
+                Self::emit_ws_event(&self.event_tx, entry_id, from_device);
             }
             Ok(InboundClipboardApplyOutcome::DuplicateSkipped {
                 content_hash,
@@ -115,11 +117,16 @@ impl InboundClipboardSyncWorker {
         }
     }
 
-    fn emit_ws_event(event_tx: &broadcast::Sender<DaemonWsEvent>, entry_id: String) {
+    fn emit_ws_event(
+        event_tx: &broadcast::Sender<DaemonWsEvent>,
+        entry_id: String,
+        from_device: String,
+    ) {
         let payload = ClipboardNewContentPayload {
             entry_id,
             preview: "Remote clipboard content".to_string(),
             origin: "remote".to_string(),
+            from_device,
         };
         let payload_value = match serde_json::to_value(payload) {
             Ok(v) => v,

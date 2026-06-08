@@ -7,20 +7,24 @@ use crate::profile::TestProfile;
 /// Builder for running `uniclip` commands against a specific test profile.
 pub struct TestCli {
     binary: String,
-    profile_name: String,
+    pub profile_name: String,
 }
 
 impl TestCli {
     /// Create a CLI helper bound to the given profile.
     pub fn new(profile: &TestProfile) -> Self {
         Self {
-            binary: Self::binary_path(),
+            binary: Self::resolve_binary_path(),
             profile_name: profile.name.clone(),
         }
     }
 
-    /// Locate the `uniclip` binary.
-    fn binary_path() -> String {
+    /// Path to the `uniclip` binary.
+    pub fn binary_path(&self) -> &str {
+        &self.binary
+    }
+
+    fn resolve_binary_path() -> String {
         let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| {
             let manifest = env!("CARGO_MANIFEST_DIR");
             format!("{}/../../target", manifest)

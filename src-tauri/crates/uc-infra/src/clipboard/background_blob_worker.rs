@@ -184,14 +184,14 @@ impl BackgroundBlobWorker {
         {
             Ok(ProcessingUpdateOutcome::Updated(_)) => {}
             Ok(ProcessingUpdateOutcome::StateMismatch) => {
-                warn!(
+                debug!(
                     representation_id = %rep_id,
                     "Skipping processing due to state mismatch"
                 );
                 return Ok(ProcessResult::Completed);
             }
             Ok(ProcessingUpdateOutcome::NotFound) => {
-                warn!(representation_id = %rep_id, "Representation missing");
+                debug!(representation_id = %rep_id, "Representation missing");
                 return Ok(ProcessResult::Completed);
             }
             Err(err) => {
@@ -344,14 +344,14 @@ impl BackgroundBlobWorker {
                 Ok(ProcessResult::Completed)
             }
             Ok(ProcessingUpdateOutcome::StateMismatch) => {
-                warn!(
+                debug!(
                     representation_id = %rep_id,
                     "Skipping update due to state mismatch"
                 );
                 Ok(ProcessResult::Completed)
             }
             Ok(ProcessingUpdateOutcome::NotFound) => {
-                warn!(representation_id = %rep_id, "Representation missing");
+                debug!(representation_id = %rep_id, "Representation missing");
                 Ok(ProcessResult::Completed)
             }
             Err(err) => {
@@ -381,13 +381,13 @@ impl BackgroundBlobWorker {
         {
             Ok(ProcessingUpdateOutcome::Updated(_)) => {}
             Ok(ProcessingUpdateOutcome::StateMismatch) => {
-                warn!(
+                debug!(
                     representation_id = %rep_id,
                     "Skipping mark_failed due to state mismatch"
                 );
             }
             Ok(ProcessingUpdateOutcome::NotFound) => {
-                warn!(representation_id = %rep_id, "Representation missing");
+                debug!(representation_id = %rep_id, "Representation missing");
             }
             Err(err) => {
                 error!(

@@ -136,7 +136,7 @@ pub fn spawn_pairing_completion_forwarder(
                         );
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!(
+                        debug!(
                             skipped = n,
                             "pairing-completion forwarder lagged — some events dropped"
                         );

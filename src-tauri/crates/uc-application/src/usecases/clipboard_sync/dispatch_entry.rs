@@ -923,7 +923,7 @@ fn classify_dispatch_result(
             }
         }
         Ok((device_id, Err(ClipboardDispatchError::Offline))) => {
-            warn!(device_id = %device_id.as_str(), "dispatch → Offline");
+            debug!(device_id = %device_id.as_str(), "dispatch → Offline");
             let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
                 entry_id: eid.clone(),
                 target_device_id: device_id.clone(),

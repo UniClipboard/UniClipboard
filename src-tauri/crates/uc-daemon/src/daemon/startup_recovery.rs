@@ -99,7 +99,7 @@ pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
             match input.space_setup.try_resume_session().await {
                 Ok(true) => {
                     if let Err(error) = input.space_setup.refresh_presence().await {
-                        tracing::warn!(error = %error, "background unlock: presence probe failed");
+                        tracing::debug!(error = %error, "background unlock: presence probe failed");
                     }
                 }
                 Ok(false) => {

@@ -17,7 +17,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tracing::warn;
+use tracing::{info, warn};
 
 use uc_application::deps::{
     AppDeps, ClipboardPorts, DevicePorts, MobileSyncPorts, SearchPorts, SecurityPorts,
@@ -1167,7 +1167,7 @@ pub async fn resolve_pairing_device_name(settings: Arc<dyn SettingsPort>) -> Str
             }
         }
         Err(err) => {
-            warn!(error = %err, "Failed to load settings for pairing device name");
+            info!(error = %err, "Failed to load settings for pairing device name");
             DEFAULT_PAIRING_DEVICE_NAME.to_string()
         }
     }

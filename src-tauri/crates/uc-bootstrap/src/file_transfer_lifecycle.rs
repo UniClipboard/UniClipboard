@@ -137,7 +137,7 @@ impl FileTransferLifecycle {
                         continue;
                     }
 
-                    warn!(
+                    info!(
                         count = expired.len(),
                         "Timeout sweep found expired in-flight transfers"
                     );
@@ -229,7 +229,7 @@ impl FileTransferLifecycle {
             return;
         }
 
-        warn!(
+        info!(
             count = cleanup_targets.len(),
             "Reconciled orphaned in-flight transfers at startup"
         );

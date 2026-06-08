@@ -109,7 +109,7 @@ impl InboundClipboardSyncWorker {
                 );
             }
             Ok(InboundClipboardApplyOutcome::DecodeFailed { reason }) => {
-                warn!(reason, "inbound dropped: V3 envelope decode failed");
+                debug!(reason, "inbound dropped: V3 envelope decode failed");
             }
             Err(e) => {
                 warn!(error = %e, "inbound apply failed");
@@ -210,7 +210,7 @@ impl DaemonService for InboundClipboardSyncWorker {
                     match recv {
                         Ok(notice) => self.handle_one(notice).await,
                         Err(broadcast::error::RecvError::Lagged(missed)) => {
-                            warn!(
+                            debug!(
                                 missed,
                                 "inbound clipboard sync lagged; dropped frames. \
                                  Next frame catches up."

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use tokio::fs;
 use tokio::sync::mpsc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::ids::RepresentationId;
 use uc_core::ports::ClipboardRepresentationRepositoryPort;
@@ -56,12 +56,12 @@ impl SpoolScanner {
 
             let file_name = entry.file_name();
             let Some(file_name_str) = file_name.to_str() else {
-                warn!("Skipping spool entry with non-utf8 filename");
+                debug!("Skipping spool entry with non-utf8 filename");
                 continue;
             };
 
             if file_name_str.is_empty() {
-                warn!("Skipping spool entry with empty filename");
+                debug!("Skipping spool entry with empty filename");
                 continue;
             }
 
@@ -96,7 +96,7 @@ impl SpoolScanner {
                 },
                 None => {
                     let path = entry.path();
-                    warn!(
+                    debug!(
                         representation_id = %rep_id,
                         "Representation missing for spool entry; deleting stale file"
                     );

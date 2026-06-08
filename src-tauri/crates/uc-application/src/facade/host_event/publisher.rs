@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// 显式恢复 poisoned mutex 守卫,并 log 警告。
 ///
@@ -153,7 +153,7 @@ impl FileTransferEventPublisherPort for FileTransferHostEventPublisher {
                         .lock()
                         .unwrap_or_else(|p| recover_poisoned(p, "progress_no_entry_warned"));
                     if warned.insert(transfer_id.clone()) {
-                        warn!(
+                        debug!(
                             transfer_id = %transfer_id,
                             "buffered-phase progress: no real entry_id; front-end indexes via transferId only"
                         );

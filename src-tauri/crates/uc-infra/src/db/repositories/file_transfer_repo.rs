@@ -127,7 +127,7 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
                         .optional()?;
                     if let Some(status) = existing_status.as_deref() {
                         if status != TrackedFileTransferStatus::Pending.as_str() {
-                            tracing::warn!(
+                            tracing::debug!(
                                 transfer_id = %row.transfer_id,
                                 existing_status = status,
                                 "upsert_pending_transfer: skipping — existing row is not pending"

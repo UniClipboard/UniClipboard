@@ -158,7 +158,7 @@ impl ProofPort for HmacProofAdapter {
                     (Some(master_key_bytes), "space_access")
                 }
                 Ok(None) => {
-                    tracing::warn!(
+                    tracing::info!(
                         session_id = %proof.pairing_session_id,
                         "proof verification failed: space session is locked"
                     );

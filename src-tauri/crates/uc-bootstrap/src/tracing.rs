@@ -137,7 +137,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     let scope_ctx =
         uc_observability::ScopeContext::resolve(device_id.clone(), env!("CARGO_PKG_VERSION"));
     if !uc_observability::set_global_scope(scope_ctx.clone()) {
-        ::tracing::warn!("ScopeContext already initialized; keeping existing global scope");
+        ::tracing::debug!("ScopeContext already initialized; keeping existing global scope");
     }
 
     // Step 2: Select log profile
@@ -464,7 +464,7 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
             // [Codex Review R1+R2] Only swallow on genuine re-entry (TRACING_INITIALIZED already set).
             // If this is the first call and try_init() fails, propagate the error.
             if TRACING_INITIALIZED.get().is_some() {
-                ::tracing::warn!("Tracing subscriber already set ({}), skipping re-init", e);
+                ::tracing::debug!("Tracing subscriber already set ({}), skipping re-init", e);
                 return Ok(());
             } else {
                 return Err(anyhow::anyhow!(

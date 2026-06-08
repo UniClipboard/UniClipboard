@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use tokio::sync::broadcast::error::SendError;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uc_application::facade::space_setup::UnlockSpaceError;
 use uc_application::facade::{FactoryResetError, UnlockSpaceInput};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
@@ -212,7 +212,9 @@ async fn unlock_handler(
                 payload: serde_json::to_value(&event_payload).unwrap_or(serde_json::Value::Null),
             };
             if let Err(SendError(_)) = state.event_tx.send(event) {
-                warn!("failed to broadcast encryption.session_ready event — no active subscribers");
+                debug!(
+                    "failed to broadcast encryption.session_ready event — no active subscribers"
+                );
             }
 
             Ok(Json(ApiEnvelope::now(EncryptionActionResponse {

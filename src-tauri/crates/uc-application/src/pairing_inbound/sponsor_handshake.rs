@@ -304,7 +304,7 @@ impl SponsorHandshakeCoordinator {
         if !removed {
             return;
         }
-        warn!(
+        info!(
             session = %session,
             ttl_ms = %self.handshake_ttl.as_millis(),
             "handshake TTL expired; rejecting joiner with Timeout"
@@ -365,7 +365,7 @@ impl SponsorHandshakeCoordinator {
             );
             Verdict::Verified(facts)
         } else {
-            warn!(
+            info!(
                 session = %session,
                 joiner_device_id = %facts.device_id.as_str(),
                 "joiner proof rejected"

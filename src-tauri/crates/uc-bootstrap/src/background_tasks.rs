@@ -139,7 +139,7 @@ pub async fn spawn_blob_processing_tasks(
     task_registry
         .spawn("blob_worker", |_token| async move {
             worker.run().await;
-            warn!("BackgroundBlobWorker stopped");
+            info!("BackgroundBlobWorker stopped");
         })
         .await;
 

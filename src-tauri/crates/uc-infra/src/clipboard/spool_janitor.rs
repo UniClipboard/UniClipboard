@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::fs;
-use tracing::warn;
+use tracing::{debug, warn};
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::ports::clipboard::ProcessingUpdateOutcome;
 use uc_core::ports::{ClipboardRepresentationRepositoryPort, ClockPort};
@@ -64,14 +64,14 @@ impl SpoolJanitor {
             {
                 Ok(ProcessingUpdateOutcome::Updated(_)) => true,
                 Ok(ProcessingUpdateOutcome::StateMismatch) => {
-                    warn!(
+                    debug!(
                         representation_id = %entry.representation_id,
                         "Skipping spool file delete: state mismatch (rep moved past Staged/Processing)"
                     );
                     false
                 }
                 Ok(ProcessingUpdateOutcome::NotFound) => {
-                    warn!(
+                    debug!(
                         representation_id = %entry.representation_id,
                         "Skipping spool file delete: representation missing from DB"
                     );

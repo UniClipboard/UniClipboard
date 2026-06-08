@@ -256,7 +256,7 @@ fn restore_error_to_response(
     use ClipboardRestoreError as E;
     match error {
         E::NotFound => {
-            tracing::warn!(entry_id = %entry_id, "daemon restore: entry not found");
+            tracing::info!(entry_id = %entry_id, "daemon restore: entry not found");
             (
                 StatusCode::NOT_FOUND,
                 Json(ApiErrorResponse::new(
@@ -273,7 +273,7 @@ fn restore_error_to_response(
             // Known business outcome — content has logically vanished.
             // Use 410 Gone (resource is no longer available) and log at
             // warn level so this does NOT escalate to a Sentry error.
-            tracing::warn!(
+            tracing::info!(
                 entry_id = %e_id,
                 rep_id = %rep_id,
                 payload_state = %state,

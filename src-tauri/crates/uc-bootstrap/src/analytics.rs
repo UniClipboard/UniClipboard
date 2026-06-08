@@ -97,7 +97,7 @@ pub async fn compose_event_context(
         Ok(Some(id)) => AnalyticsPersonId::SpaceShared(id),
         Ok(None) => AnalyticsPersonId::Solo(ids.anonymous_user_id),
         Err(err) => {
-            tracing::warn!(
+            tracing::info!(
                 error = %err,
                 "analytics: 读取 space_person_id 失败，退化为 Solo"
             );
@@ -185,7 +185,7 @@ async fn read_active_device_count(deps: &AppDeps) -> u32 {
     match deps.device.member_repo.list().await {
         Ok(members) => members.len() as u32,
         Err(err) => {
-            tracing::warn!(
+            tracing::info!(
                 error = %err,
                 "analytics: 读取 member_repo 失败，active_device_count 退化为 0"
             );
@@ -206,7 +206,7 @@ async fn read_space_id_hash(deps: &AppDeps) -> Option<String> {
             .as_ref()
             .map(|sid| hash_space_id_for_telemetry(sid.as_str())),
         Err(err) => {
-            tracing::warn!(
+            tracing::info!(
                 error = %err,
                 "analytics: 读取 setup_status 失败，space_id_hash 退化为 None"
             );

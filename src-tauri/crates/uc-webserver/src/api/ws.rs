@@ -255,7 +255,7 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                        warn!(
+                        debug!(
                             skipped,
                             "websocket client lagged behind daemon event stream"
                         );
@@ -385,7 +385,7 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
                 sig = heartbeat_rx.recv() => {
                     match sig {
                         Some(HeartbeatSignal::Stale) => {
-                            warn!("heartbeat: client missed pong, closing stale connection");
+                            debug!("heartbeat: client missed pong, closing stale connection");
                             let _ = send_tx.send(SendMsg::Close).await;
                             break;
                         }

@@ -438,14 +438,14 @@ async fn next_presence_event(rx: &mut Option<AppPresenceSubscription>) -> Option
     match r.recv().await {
         Ok(event) => Some(event),
         Err(AppPresenceSubscriptionError::Lagged(skipped)) => {
-            warn!(
+            debug!(
                 skipped,
                 "presence subscription lagged; backoff state may briefly mis-bookkeep",
             );
             None
         }
         Err(AppPresenceSubscriptionError::Closed) => {
-            warn!("presence subscription closed; keepalive falling back to time-only mode");
+            info!("presence subscription closed; keepalive falling back to time-only mode");
             *rx = None;
             None
         }
@@ -477,7 +477,7 @@ impl DaemonService for PeerKeepAliveWorker {
             match self.app_facade.subscribe_peer_presence_events() {
                 Ok(rx) => Some(rx),
                 Err(err) => {
-                    warn!(
+                    info!(
                         error = %err,
                         "presence subscription unavailable; keepalive degraded to time-only mode",
                     );

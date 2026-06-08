@@ -32,7 +32,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::ports::clipboard::ProcessingUpdateOutcome;
@@ -114,13 +114,13 @@ impl StagedReconciler {
                     );
                 }
                 Ok(ProcessingUpdateOutcome::StateMismatch) => {
-                    warn!(
+                    debug!(
                         representation_id = %rep_id,
                         "Staged reconciler: skipped demotion due to state mismatch"
                     );
                 }
                 Ok(ProcessingUpdateOutcome::NotFound) => {
-                    warn!(
+                    debug!(
                         representation_id = %rep_id,
                         "Staged reconciler: representation vanished mid-sweep"
                     );

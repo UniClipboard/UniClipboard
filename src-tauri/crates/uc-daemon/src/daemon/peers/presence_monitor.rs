@@ -201,13 +201,13 @@ impl DaemonService for PresenceMonitor {
                             self.publish_snapshot().await;
                         }
                         Err(AppPresenceSubscriptionError::Lagged(skipped)) => {
-                            warn!(
+                            debug!(
                                 skipped,
                                 "presence monitor: dropped events (lagged); next event will re-publish snapshot"
                             );
                         }
                         Err(AppPresenceSubscriptionError::Closed) => {
-                            warn!("presence monitor: subscription closed; exiting loop");
+                            info!("presence monitor: subscription closed; exiting loop");
                             return Ok(());
                         }
                     }

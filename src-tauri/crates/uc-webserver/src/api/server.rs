@@ -374,7 +374,7 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
             elapsed_ms,
             "daemon http response 5xx"
         ),
-        "client_error" => tracing::warn!(
+        "client_error" => tracing::info!(
             request_id = %request_id,
             method = %method,
             path = %path,

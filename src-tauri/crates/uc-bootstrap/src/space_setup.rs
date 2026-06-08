@@ -26,7 +26,7 @@ use tracing::{info, instrument};
 
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
-use tracing::warn;
+use tracing::debug;
 
 /// 反向 progress 翻译器对前端 emit 的硬上限(<=5/sec per transfer)。
 ///
@@ -231,7 +231,7 @@ fn spawn_outbound_progress_translator(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    warn!(
+                    debug!(
                         skipped = n,
                         "outbound progress translator: lagged; some frames skipped"
                     );

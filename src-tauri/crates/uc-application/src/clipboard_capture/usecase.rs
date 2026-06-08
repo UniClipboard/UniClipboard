@@ -573,7 +573,7 @@ async fn resurface_existing_entry(
     match entry_repo.touch_entry(&existing, captured_at_ms).await {
         Ok(true) => Some(existing),
         Ok(false) => {
-            warn!(
+            debug!(
                 entry_id = %existing,
                 "Dedup target vanished before resurface (0 rows touched); creating new entry"
             );

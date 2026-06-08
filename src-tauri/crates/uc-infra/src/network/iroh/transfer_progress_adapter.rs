@@ -159,7 +159,7 @@ impl ProtocolHandler for IrohTransferProgressHandler {
         let from_device = match self.state.resolve_device(&remote_bytes).await {
             Some(d) => d,
             None => {
-                warn!(remote = %remote, "transfer progress: unknown peer fingerprint; dropping");
+                debug!(remote = %remote, "transfer progress: unknown peer fingerprint; dropping");
                 return Ok(());
             }
         };

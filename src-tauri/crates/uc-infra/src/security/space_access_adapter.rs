@@ -223,7 +223,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                 error!(path = PATH, error = %e, "keyslot_exists probe failed");
                 SpaceAccessError::Internal(e.to_string())
             })? {
-                warn!(
+                info!(
                     path = PATH,
                     "initialize rejected: keyslot already exists on disk"
                 );
@@ -260,7 +260,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                 error!(path = PATH, error = %e, "keyslot_exists probe failed");
                 SpaceAccessError::Internal(e.to_string())
             })? {
-                warn!(
+                info!(
                     path = PATH,
                     "unlock rejected: no keyslot on disk (not initialized)"
                 );
@@ -425,7 +425,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
             // keyring 被清 / 跨设备 profile 迁移——属于业务正常路径,
             // 上层会回退到要求用户重新输入口令走 unlock。warn 级别即可。
             let kek = self.key_material.load_kek(&scope).await.map_err(|e| {
-                warn!(
+                info!(
                     path = PATH,
                     error = %e,
                     "load_kek from keyring failed; caller will fall back to passphrase unlock"
@@ -482,7 +482,7 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
                     Ok(true)
                 }
                 Err(EncryptionError::PermissionDenied) => {
-                    warn!(path = PATH, "keychain access denied (Always Allow not granted)");
+                    info!(path = PATH, "keychain access denied (Always Allow not granted)");
                     Ok(false)
                 }
                 Err(EncryptionError::KeyringError(msg)) => {

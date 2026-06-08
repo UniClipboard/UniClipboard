@@ -33,7 +33,7 @@
 
 use std::sync::Arc;
 
-use tracing::{instrument, warn};
+use tracing::{debug, instrument};
 
 use uc_core::mobile_sync::{MintedCredentials, MobileDeviceError, MobileDeviceId};
 use uc_core::ports::{
@@ -149,7 +149,7 @@ impl RotateMobilePasswordUseCase {
             .await
             .map_err(translate_device_error)?;
         if !updated {
-            warn!(
+            debug!(
                 device_id = %device.device_id,
                 "device disappeared between find and update_password_hash (concurrent revoke)"
             );

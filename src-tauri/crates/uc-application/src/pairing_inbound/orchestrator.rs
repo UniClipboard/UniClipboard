@@ -319,7 +319,7 @@ impl PairingInboundOrchestrator {
                 Some(invitation.code().clone())
             }
             Err(TakeMatchingError::NotFound) => {
-                warn!(
+                info!(
                     session = %session,
                     code = %request.invitation_code.as_str(),
                     "inbound pairing request for unknown code; rejecting"
@@ -330,7 +330,7 @@ impl PairingInboundOrchestrator {
                 None
             }
             Err(TakeMatchingError::Expired) => {
-                warn!(
+                info!(
                     session = %session,
                     code = %request.invitation_code.as_str(),
                     "inbound pairing request after invitation expired; rejecting"
@@ -370,7 +370,7 @@ impl PairingInboundOrchestrator {
             // protocol violation. Log without closing — the session
             // naturally resolves via a later Close or the joiner's own
             // Reject.
-            warn!(
+            info!(
                 session = %session,
                 variant = variant_name(&message),
                 "unexpected mid-handshake message from joiner"
@@ -379,7 +379,7 @@ impl PairingInboundOrchestrator {
         };
 
         let Some(verdict) = self.handshake.verify_challenge(&session, response).await else {
-            warn!(
+            debug!(
                 session = %session,
                 "ChallengeResponse arrived with no parked handshake ctx; ignoring"
             );

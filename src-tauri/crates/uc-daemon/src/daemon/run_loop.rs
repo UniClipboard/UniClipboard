@@ -125,7 +125,7 @@ async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {
             );
         }
         UpgradeStatus::Downgraded { from, to } => {
-            tracing::warn!(
+            tracing::info!(
                 target: "upgrade",
                 from = %from,
                 to = %to,

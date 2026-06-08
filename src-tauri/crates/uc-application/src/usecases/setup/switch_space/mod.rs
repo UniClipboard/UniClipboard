@@ -311,7 +311,7 @@ impl SwitchSpaceUseCase {
         };
         match phase {
             MigrationPhase::Prepared { run_id } => {
-                warn!(
+                info!(
                     run_id = %run_id,
                     "found stranded Prepared migration; aborting and cleaning up"
                 );

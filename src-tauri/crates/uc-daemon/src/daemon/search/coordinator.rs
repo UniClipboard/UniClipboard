@@ -48,7 +48,7 @@ impl DaemonService for SearchCoordinatorService {
                         match event {
                             Ok(event) => forward_search_event(&event_tx, event),
                             Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                                warn!(skipped, "search coordinator service dropped application events");
+                                debug!(skipped, "search coordinator service dropped application events");
                             }
                             Err(broadcast::error::RecvError::Closed) => return,
                         }

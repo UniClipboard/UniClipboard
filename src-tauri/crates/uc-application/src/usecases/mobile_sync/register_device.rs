@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tracing::{instrument, warn};
+use tracing::{info, instrument, warn};
 
 use uc_core::mobile_sync::{
     LanInterface, MintedCredentials, MobileClientType, MobileDevice, MobileDeviceError,
@@ -584,7 +584,7 @@ fn translate_device_error(err: MobileDeviceError) -> RegisterMobileShortcutDevic
             // 自动模式下 minter 8 hex 碰撞概率极低;custom 模式下我们已
             // 在 save 之前 check 过 find_by_username,这里只可能是 race
             // (并发 register)—— 翻译为 UsernameTaken 让 UI 提示用户换名。
-            warn!("username collision at save time (likely concurrent register race)");
+            info!("username collision at save time (likely concurrent register race)");
             RegisterMobileShortcutDeviceError::UsernameTaken(
                 "username taken at save time (concurrent registration)".to_string(),
             )

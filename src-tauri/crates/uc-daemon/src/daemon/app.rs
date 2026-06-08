@@ -533,7 +533,7 @@ impl DaemonApp {
                     );
                 }
                 (None, uc_core::ports::MobileLanTarget::Disabled) => {
-                    warn!("mobile_sync settings unreadable at daemon boot; LAN listener stays Disabled until next update_settings");
+                    info!("mobile_sync settings unreadable at daemon boot; LAN listener stays Disabled until next update_settings");
                 }
             }
             controller.apply(target).await;

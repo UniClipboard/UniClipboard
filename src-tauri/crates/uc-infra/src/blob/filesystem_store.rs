@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-use tracing::{debug, warn};
+use tracing::debug;
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::BlobId;
 
@@ -82,7 +82,7 @@ impl BlobStorePort for FilesystemBlobStore {
                 return Ok((dest, None));
             }
             Err(err) => {
-                warn!(
+                debug!(
                     blob_id = %blob_id,
                     source = %source.display(),
                     dest = %dest.display(),

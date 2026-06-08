@@ -367,6 +367,21 @@ iOS 侧 **UniClipboard iOS App 已开启 TestFlight beta 公测**：在 App Stor
 - [Tailwind CSS](https://tailwindcss.com) - 整套 UI 使用的 utility-first 样式方案
 - [SQLite](https://www.sqlite.org) - 本地存储剪贴板历史的嵌入式数据库
 
+## 交流群
+
+扫描下方二维码加入交流群，和其他用户及开发者交流：
+
+<table align="center">
+  <tr>
+    <td align="center"><strong>QQ 群</strong></td>
+    <td align="center"><strong>微信群</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./assets/qq-group-qrcode.jpg" alt="QQ 群二维码" width="250" /></td>
+    <td align="center"><img src="./assets/wechat-group-qrcode.jpg" alt="微信群二维码" width="250" /></td>
+  </tr>
+</table>
+
 ---
 
 💡 **有问题或建议？** [创建 Issue](https://github.com/UniClipboard/UniClipboard/issues/new) 或联系我们讨论！

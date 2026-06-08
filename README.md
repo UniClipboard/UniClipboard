@@ -367,6 +367,21 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](./LICENS
 - [Tailwind CSS](https://tailwindcss.com) - Utility-first styling for the entire UI
 - [SQLite](https://www.sqlite.org) - Embedded database that stores clipboard history locally
 
+## Community
+
+Join us to chat with other users and the dev team:
+
+<table align="center">
+  <tr>
+    <td align="center"><strong>QQ Group</strong></td>
+    <td align="center"><strong>WeChat Group</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./assets/qq-group-qrcode.jpg" alt="QQ Group QR Code" width="250" /></td>
+    <td align="center"><img src="./assets/wechat-group-qrcode.jpg" alt="WeChat Group QR Code" width="250" /></td>
+  </tr>
+</table>
+
 ---
 
 **Have questions or suggestions?** [Create an Issue](https://github.com/UniClipboard/UniClipboard/issues/new) or contact us to discuss!

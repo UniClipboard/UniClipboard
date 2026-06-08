@@ -29,6 +29,7 @@ interface UpdateState {
   info: UpdateMetadata | null
   downloaded: number
   total: number | null
+  autoUpdate: boolean
 }
 
 const initialState: UpdateState = {
@@ -36,6 +37,7 @@ const initialState: UpdateState = {
   info: null,
   downloaded: 0,
   total: null,
+  autoUpdate: true,
 }
 
 const DEV_MOCK: UpdateState = {
@@ -48,6 +50,7 @@ const DEV_MOCK: UpdateState = {
   },
   downloaded: 0,
   total: null,
+  autoUpdate: true,
 }
 
 const isDevPreview = (): boolean => {
@@ -56,14 +59,9 @@ const isDevPreview = (): boolean => {
   return params.get('dev') === '1'
 }
 
-const UpdaterWindow: React.FC = () => {
-  useThemeSync()
-
-  const { t } = useTranslation()
+function useUpdaterState(devPreview: boolean) {
   const [state, setState] = useState<UpdateState>(initialState)
   const [cancelling, setCancelling] = useState(false)
-  const [autoUpdate, setAutoUpdate] = useState(true)
-  const devPreview = isDevPreview()
 
   useEffect(() => {
     if (devPreview) {
@@ -71,33 +69,33 @@ const UpdaterWindow: React.FC = () => {
       return
     }
     let cancelled = false
-    void getDownloadProgress()
-      .then(snapshot => {
+    void Promise.allSettled([getDownloadProgress(), getAutoDownloadUpdate()]).then(
+      ([progressResult, autoUpdateResult]) => {
         if (cancelled) return
-        setState({
-          phase: snapshot.phase,
-          info: snapshot.version
-            ? {
-                version: snapshot.version,
-                currentVersion: snapshot.currentVersion,
-                body: snapshot.body,
-                date: snapshot.date,
-              }
-            : null,
-          downloaded: snapshot.downloaded,
-          total: snapshot.total,
+        setState(prev => {
+          const next = { ...prev }
+          if (progressResult.status === 'fulfilled') {
+            const s = progressResult.value
+            next.phase = s.phase
+            next.info = s.version
+              ? { version: s.version, currentVersion: s.currentVersion, body: s.body, date: s.date }
+              : null
+            next.downloaded = s.downloaded
+            next.total = s.total
+          }
+          if (autoUpdateResult.status === 'fulfilled') {
+            next.autoUpdate = autoUpdateResult.value
+          }
+          return next
         })
-      })
-      .catch(err => {
-        if (!cancelled) log.error({ err }, '获取下载状态失败')
-      })
-    void getAutoDownloadUpdate()
-      .then(enabled => {
-        if (!cancelled) setAutoUpdate(enabled)
-      })
-      .catch(err => {
-        if (!cancelled) log.error({ err }, '获取自动下载设置失败')
-      })
+        if (progressResult.status === 'rejected') {
+          log.error({ err: progressResult.reason }, '获取下载状态失败')
+        }
+        if (autoUpdateResult.status === 'rejected') {
+          log.error({ err: autoUpdateResult.reason }, '获取自动下载设置失败')
+        }
+      }
+    )
     return () => {
       cancelled = true
     }
@@ -176,10 +174,10 @@ const UpdaterWindow: React.FC = () => {
 
   const handleAutoUpdateToggle = useCallback(
     (checked: boolean) => {
-      setAutoUpdate(checked)
+      setState(prev => ({ ...prev, autoUpdate: checked }))
       if (!devPreview) {
         void setAutoDownloadUpdate(checked).catch(err => {
-          setAutoUpdate(!checked)
+          setState(prev => ({ ...prev, autoUpdate: !checked }))
           log.error({ err }, '设置自动下载失败')
         })
       }
@@ -228,7 +226,142 @@ const UpdaterWindow: React.FC = () => {
     }
   }, [devPreview, cancelling])
 
-  const { phase, info, downloaded, total } = state
+  return {
+    state,
+    cancelling,
+    closeWindow,
+    handleSkip,
+    handleAutoUpdateToggle,
+    handleInstall,
+    handleCancel,
+  }
+}
+
+const ActionButtons: React.FC<{
+  isDownloading: boolean
+  isInstalling: boolean
+  isReady: boolean
+  upToDate: boolean
+  cancelling: boolean
+  canInstall: boolean
+  onCancel: () => void
+  onSkip: () => void
+  onClose: () => void
+  onInstall: () => void
+}> = ({
+  isDownloading,
+  isInstalling,
+  isReady,
+  upToDate,
+  cancelling,
+  canInstall,
+  onCancel,
+  onSkip,
+  onClose,
+  onInstall,
+}) => {
+  const { t } = useTranslation()
+
+  if (isDownloading) {
+    return (
+      <>
+        <div className="flex-1" />
+        <button
+          type="button"
+          className="mr-2 rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
+          onClick={onCancel}
+          disabled={cancelling}
+        >
+          {cancelling ? t('update.cancelling') : t('update.cancelDownload')}
+        </button>
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground opacity-60"
+          disabled
+        >
+          <Loader2 className="size-4 animate-spin" />
+          {t('update.downloading')}
+        </button>
+      </>
+    )
+  }
+
+  if (isInstalling) {
+    return (
+      <>
+        <div className="flex-1" />
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground opacity-60"
+          disabled
+        >
+          <Loader2 className="size-4 animate-spin" />
+          {t('update.installing')}
+        </button>
+      </>
+    )
+  }
+
+  if (upToDate) {
+    return (
+      <>
+        <div className="flex-1" />
+        <button
+          type="button"
+          className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          onClick={onClose}
+        >
+          {t('updater.window.close')}
+        </button>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+        onClick={onSkip}
+      >
+        {t('updater.window.skipThisVersion')}
+      </button>
+      <div className="flex-1" />
+      <button
+        type="button"
+        className="mr-2 rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+        onClick={onClose}
+      >
+        {t('updater.window.remindMeLater')}
+      </button>
+      <button
+        type="button"
+        className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        onClick={onInstall}
+        disabled={!canInstall}
+      >
+        {isReady ? t('update.installNow') : t('updater.window.installUpdate')}
+      </button>
+    </>
+  )
+}
+
+const UpdaterWindow: React.FC = () => {
+  useThemeSync()
+
+  const { t } = useTranslation()
+  const devPreview = isDevPreview()
+  const {
+    state,
+    cancelling,
+    closeWindow,
+    handleSkip,
+    handleAutoUpdateToggle,
+    handleInstall,
+    handleCancel,
+  } = useUpdaterState(devPreview)
+
+  const { phase, info, downloaded, total, autoUpdate } = state
   const percent = total !== null && total > 0 ? Math.round((downloaded / total) * 100) : null
   const isDownloading = phase === 'downloading'
   const isInstalling = phase === 'installing'
@@ -252,7 +385,6 @@ const UpdaterWindow: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      {/* Header: app icon + title/subtitle */}
       <div className="flex gap-4 px-6 pt-5">
         <img src={appIcon} alt="" className="size-12 shrink-0 rounded-xl" draggable={false} />
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -261,7 +393,6 @@ const UpdaterWindow: React.FC = () => {
         </div>
       </div>
 
-      {/* Progress bar (downloading / installing) */}
       {busy && (
         <div className="mx-6 mt-4 space-y-1.5">
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -275,7 +406,6 @@ const UpdaterWindow: React.FC = () => {
         </div>
       )}
 
-      {/* Auto-update toggle (visible when not busy and update is available) */}
       {!busy && !upToDate && (
         <label className="mx-6 mt-4 flex cursor-pointer items-center gap-2.5">
           <Switch size="sm" checked={autoUpdate} onCheckedChange={handleAutoUpdateToggle} />
@@ -285,78 +415,19 @@ const UpdaterWindow: React.FC = () => {
         </label>
       )}
 
-      {/* Action buttons */}
       <div className="mt-auto flex items-center px-6 py-4">
-        {isDownloading ? (
-          <>
-            <div className="flex-1" />
-            <button
-              type="button"
-              className="mr-2 rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
-              onClick={() => void handleCancel()}
-              disabled={cancelling}
-            >
-              {cancelling ? t('update.cancelling') : t('update.cancelDownload')}
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground opacity-60"
-              disabled
-            >
-              <Loader2 className="size-4 animate-spin" />
-              {t('update.downloading')}
-            </button>
-          </>
-        ) : isInstalling ? (
-          <>
-            <div className="flex-1" />
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground opacity-60"
-              disabled
-            >
-              <Loader2 className="size-4 animate-spin" />
-              {t('update.installing')}
-            </button>
-          </>
-        ) : upToDate ? (
-          <>
-            <div className="flex-1" />
-            <button
-              type="button"
-              className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              onClick={closeWindow}
-            >
-              {t('updater.window.close')}
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
-              onClick={handleSkip}
-            >
-              {t('updater.window.skipThisVersion')}
-            </button>
-            <div className="flex-1" />
-            <button
-              type="button"
-              className="mr-2 rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
-              onClick={closeWindow}
-            >
-              {t('updater.window.remindMeLater')}
-            </button>
-            <button
-              type="button"
-              className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              onClick={() => void handleInstall()}
-              disabled={!devPreview && !info}
-            >
-              {isReady ? t('update.installNow') : t('updater.window.installUpdate')}
-            </button>
-          </>
-        )}
+        <ActionButtons
+          isDownloading={isDownloading}
+          isInstalling={isInstalling}
+          isReady={isReady}
+          upToDate={upToDate}
+          cancelling={cancelling}
+          canInstall={devPreview || !!info}
+          onCancel={() => void handleCancel()}
+          onSkip={handleSkip}
+          onClose={closeWindow}
+          onInstall={() => void handleInstall()}
+        />
       </div>
     </div>
   )

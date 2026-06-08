@@ -10082,6 +10082,7 @@ version = "0.14.0-alpha.6"
 dependencies = [
  "assert_cmd",
  "dirs-next",
+ "libc",
  "predicates",
  "reqwest 0.12.28",
  "serde",

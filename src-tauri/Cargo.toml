@@ -138,13 +138,16 @@ members = [
   "crates/uc-cli-macros",
   "crates/uc-daemon-client",
   "crates/p2p-bench",
-  "crates/uc-e2e-tests",
 ]
 # Submodule `vendor/iroh-blobs` is our fork of n0-computer/iroh-blobs
 # (branch `uniclipboard/0.100.0-patched`). It is consumed via
 # `[patch.crates-io]` below, NOT as a workspace member — exclude it so
 # cargo doesn't try to fold it into this workspace's resolver.
-exclude = ["vendor/iroh-blobs"]
+#
+# `tests/e2e` is the CLI E2E test crate. It's excluded from the workspace
+# so `cargo check --workspace` doesn't pull reqwest/libc/assert_cmd into
+# every PR check. Build it explicitly: `cargo test --manifest-path tests/e2e/Cargo.toml`
+exclude = ["vendor/iroh-blobs", "tests/e2e"]
 resolver = "2"
 
 [workspace.package]

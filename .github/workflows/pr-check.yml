@@ -235,4 +235,4 @@ jobs:
 
       - name: Run E2E tests
         working-directory: src-tauri
-        run: cargo test -p uc-e2e-tests -- --ignored
+        run: cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored

@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-06-08 (auto; 19 workspace crates)
+**Last refreshed:** 2026-06-08 (auto; 18 workspace crates)
 
 ## OVERVIEW
 
@@ -11,7 +11,7 @@ Tauri v2 desktop backend with strict hexagonal boundaries. The bin entry (`src/m
 ```text
 src-tauri/
 |- src/                  # Thin bin: hands off to uc_tauri::run(generate_context!())
-|- crates/               # Hexagonal workspace (19 crates)
+|- crates/               # Hexagonal workspace (18 crates)
 |  # -- Hex core (ADR-005) --
 |  |- uc-core/          # Domain models + Port traits only (no external deps)
 |  |- uc-application/   # Use cases / orchestrators (depends on uc-core ports only)
@@ -32,9 +32,7 @@ src-tauri/
 |  |- uc-desktop/       # Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)
 |  |- uc-cli/           # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- uc-cli-macros/    # Proc-macros for uc-cli (internal)
-|  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
-|  # -- Other --
-|  |- uc-e2e-tests/     # Black-box CLI end-to-end tests for uniclip + uniclipd
+|  `- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
 `- crates/uc-infra/migrations/ # Active infra (diesel) migrations
 ```
 

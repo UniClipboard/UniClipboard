@@ -206,3 +206,33 @@ jobs:
             diff -u /tmp/openapi.committed.json schema/openapi.json || true
             exit 1
           fi
+
+  e2e:
+    name: CLI E2E Tests
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          shared-key: e2e-macos
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build daemon and CLI binaries
+        working-directory: src-tauri
+        run: cargo build -p uc-daemon -p uc-cli
+
+      - name: Run E2E tests
+        working-directory: src-tauri
+        run: cargo test -p uc-e2e-tests -- --ignored

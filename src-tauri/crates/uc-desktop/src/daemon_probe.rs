@@ -361,19 +361,46 @@ where
 
 /// Stop the local daemon before an in-place update.
 ///
-/// Reuses the same PID-identity + InProcess safety checks as
-/// [`stop_local_daemon_on_full_quit`], but swaps the fire-and-forget
-/// `terminate_local_daemon_pid` for [`terminate_and_wait`] so the daemon
-/// process is fully dead before the installer overwrites the binary.
-/// On Windows this releases the file lock on `uniclipd.exe`; on Unix the
-/// wait is a no-op (kernel allows overwriting a running binary).
-pub fn stop_daemon_before_update() -> bool {
+/// Applies the same PID-identity + InProcess safety checks as
+/// [`stop_local_daemon_on_full_quit`], but returns `Err` when the daemon was
+/// identified as running yet could not be terminated (timeout / signal
+/// failure).  This lets the caller abort the install on Windows where the
+/// NSIS installer cannot overwrite a locked `uniclipd.exe`.
+///
+/// Safe no-ops (no PID file, stale PID, InProcess legacy, unreadable
+/// metadata) return `Ok(false)`.  Successful termination returns `Ok(true)`.
+pub fn stop_daemon_before_update() -> Result<bool, String> {
     use uc_daemon_process::contract::terminate_and_wait;
-    use uc_daemon_process::process_metadata::verify_pid_identity;
+    use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
 
-    stop_local_daemon_on_full_quit_with(read_pid_metadata, verify_pid_identity, |pid| {
-        terminate_and_wait(pid, std::time::Duration::from_secs(10))
-    })
+    let metadata = match read_pid_metadata() {
+        Ok(Some(m)) => m,
+        Ok(None) => return Ok(false),
+        Err(e) => {
+            tracing::warn!(%e, "pre-update: failed to read daemon pid metadata");
+            return Ok(false);
+        }
+    };
+
+    if let PidVerification::Stale(reason) = verify_pid_identity(&metadata) {
+        tracing::info!(pid = metadata.pid, %reason, "pre-update: daemon PID stale");
+        return Ok(false);
+    }
+
+    if matches!(metadata.mode, DaemonProcessMode::InProcess) {
+        tracing::info!(
+            pid = metadata.pid,
+            "pre-update: in-process daemon — skipping"
+        );
+        return Ok(false);
+    }
+
+    let pid = metadata.pid;
+    terminate_and_wait(pid, std::time::Duration::from_secs(10))
+        .map_err(|e| format!("pre-update: failed to stop daemon pid {pid}: {e}"))?;
+
+    tracing::info!(pid, "pre-update: daemon stopped");
+    Ok(true)
 }
 
 /// Inner implementation that takes injected reader/terminator closures so the

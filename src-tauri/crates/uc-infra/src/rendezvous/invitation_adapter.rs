@@ -307,15 +307,103 @@ impl RendezvousPairingInvitationAdapter {
 }
 
 /// Re-encode the cloud-channel JSON ticket as `hex(postcard(EndpointAddr))`
-/// for mDNS publishing. Compact enough to fit in a single TXT attribute
-/// (under 254 bytes total including the `tk=` key) for realistic
-/// EndpointAddrs (up to ~4 IPs + relay URL).
+/// for mDNS publishing, trimming addresses if necessary to fit the
+/// swarm-discovery TXT attribute limit (key + value ≤ 254 bytes; the key
+/// `"tk"` is 2 bytes → value budget is 252 hex chars = 126 postcard bytes).
+///
+/// When the full address set overflows, addresses are dropped in
+/// lowest-priority-first order so the joiner (who is on the same LAN by
+/// definition for mDNS) keeps the most useful candidates:
+///
+/// 1. **Private LAN IPs** — highest priority (same subnet)
+/// 2. **Overlay IPs** (Tailscale CGNAT 100.64/10) — useful when both
+///    sides have Tailscale
+/// 3. **Public IPs** — lowest priority (hairpin / unlikely in LAN-only)
+/// 4. **Relay hints** — dropped first (LAN-only strips them anyway)
 fn encode_mdns_ticket(ticket_json: &str) -> Result<String, String> {
+    /// TXT key is "tk" (2 bytes); swarm-discovery limit is 254 total.
+    const TXT_VALUE_BUDGET: usize = 252;
+
     let addr: EndpointAddr = serde_json::from_str(ticket_json)
         .map_err(|err| format!("ticket JSON decode for mDNS re-encode: {err}"))?;
-    let bytes = postcard::to_allocvec(&addr)
+
+    let encoded = try_postcard_hex(&addr)?;
+    if encoded.len() <= TXT_VALUE_BUDGET {
+        return Ok(encoded);
+    }
+
+    let original_count = addr.addrs.len();
+    let trimmed = trim_addrs_for_mdns(addr, TXT_VALUE_BUDGET)?;
+    let trimmed_count = trimmed.addrs.len();
+    let encoded = try_postcard_hex(&trimmed)?;
+
+    warn!(
+        target: "mdns.ticket",
+        original_count,
+        trimmed_count,
+        dropped = original_count - trimmed_count,
+        hex_len = encoded.len(),
+        budget = TXT_VALUE_BUDGET,
+        "trimmed endpoint addresses to fit mDNS TXT limit",
+    );
+    Ok(encoded)
+}
+
+fn try_postcard_hex(addr: &EndpointAddr) -> Result<String, String> {
+    let bytes = postcard::to_allocvec(addr)
         .map_err(|err| format!("ticket postcard encode for mDNS: {err}"))?;
     Ok(hex::encode(bytes))
+}
+
+/// Assign a priority score to a transport address for mDNS ticket trimming.
+/// Lower score = dropped first.
+fn addr_priority(addr: &TransportAddr) -> u8 {
+    match addr {
+        TransportAddr::Relay(_) => 0,
+        TransportAddr::Ip(socket) => match socket.ip() {
+            IpAddr::V4(v4) => {
+                if v4.is_private() {
+                    3 // private LAN — highest
+                } else {
+                    let o = v4.octets();
+                    if o[0] == 100 && (o[1] & 0xc0) == 64 {
+                        2 // CGNAT / Tailscale overlay
+                    } else {
+                        1 // public routable
+                    }
+                }
+            }
+            IpAddr::V6(v6) => {
+                let segs = v6.segments();
+                if segs[0] == 0xfe80 {
+                    3 // link-local v6 — same LAN
+                } else {
+                    1 // global v6
+                }
+            }
+        },
+        _ => 0, // Custom or unknown — lowest priority
+    }
+}
+
+/// Drop addresses from lowest priority until the ticket fits the budget.
+fn trim_addrs_for_mdns(addr: EndpointAddr, budget: usize) -> Result<EndpointAddr, String> {
+    let EndpointAddr { id, addrs } = addr;
+
+    // BTreeSet → Vec so we can sort by priority and pop from the tail.
+    let mut sorted: Vec<TransportAddr> = addrs.into_iter().collect();
+    sorted.sort_by(|a, b| addr_priority(b).cmp(&addr_priority(a)));
+
+    while sorted.len() > 1 {
+        let candidate = EndpointAddr::from_parts(id.clone(), sorted.iter().cloned());
+        let hex = try_postcard_hex(&candidate)?;
+        if hex.len() <= budget {
+            return Ok(candidate);
+        }
+        sorted.pop();
+    }
+
+    Ok(EndpointAddr::from_parts(id, sorted))
 }
 
 /// Cloud-side errors we treat as "try LAN-only instead." Transport

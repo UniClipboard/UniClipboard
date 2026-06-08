@@ -37,7 +37,7 @@ serde_json = "1"
 # record). `tracing` is a leaf facade — it pulls nothing heavy, so the
 # iroh/diesel-free invariant of this thin crate is preserved.
 tracing = "0.1"
-which = "7"
+which = "8"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

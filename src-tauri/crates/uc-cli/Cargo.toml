@@ -41,7 +41,7 @@ uc-application = { path = "../uc-application", optional = true }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly
 # (replaces the standalone `clipboard-probe` binary). Diagnostic only.
 uc-platform = { path = "../uc-platform", optional = true }
-uuid = { version = "1.10.0", features = ["v4"], optional = true }
+uuid = { version = "1.23.2", features = ["v4"], optional = true }
 
 # --- Always-on deps ---------------------------------------------------------
 tokio = { version = "1", features = ["full"] }
@@ -54,13 +54,13 @@ bytes = "1.7"
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
-console = "0.15"
-indicatif = "0.17"
+console = "0.16"
+indicatif = "0.18"
 # Themed Confirm / Input prompts. `default-features = false` drops the
 # `editor` and `password` extras — we keep `ui::password` (hand-rolled
 # masked-feedback renderer) so the LAN-risk and label/username prompts
 # are the only consumers.
-dialoguer = { version = "0.11", default-features = false }
+dialoguer = { version = "0.12", default-features = false }
 libc = "0.2"
 hostname = "0.4"
 # Installs the default `rustls` crypto provider process-wide at `main()`
@@ -69,7 +69,7 @@ hostname = "0.4"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
 [dev-dependencies]
-axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2"] }
+axum = { version = "0.8", features = ["ws", "tokio", "http1", "http2"] }
 tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
 tokio = { version = "1", features = ["test-util"] }

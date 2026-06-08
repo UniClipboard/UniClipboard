@@ -209,6 +209,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
     let daemon_connection_state = DaemonConnectionState::default();
     let daemon_ownership = DaemonOwnership::default();
+    // Records a terminal daemon-bootstrap failure so the frontend poll can fail
+    // fast with an actionable reason instead of spinning until its timeout (the
+    // connection state is only ever set on success). See
+    // `commands::startup::get_daemon_bootstrap_failure`.
+    let daemon_bootstrap_status = crate::commands::startup::DaemonBootstrapStatus::default();
 
     // ADR-008 D20: the daemon is the single authoritative analytics sender.
     // `wire_gui_client_deps` leaves the GUI client with a Noop sink (no
@@ -238,6 +243,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(runtime.clone())
         .manage(DaemonConnectionState::clone(&daemon_connection_state))
         .manage(DaemonOwnership::clone(&daemon_ownership))
+        .manage(daemon_bootstrap_status.clone())
         .manage(TrayState::default())
         .manage(crate::lightweight::QuitIntent::default())
         .manage(task_registry.clone())
@@ -366,6 +372,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
             let daemon_connection_state_for_setup = daemon_connection_state.clone();
             let daemon_ownership_for_setup = daemon_ownership.clone();
+            let daemon_bootstrap_status_for_setup = daemon_bootstrap_status.clone();
             tauri::async_runtime::spawn(async move {
                 match bootstrap_daemon_in_process(
                     &daemon_ownership_for_setup,
@@ -392,6 +399,14 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                             error = %error,
                             error_chain = ?error,
                             "Daemon startup/probe failed during Tauri bootstrap"
+                        );
+                        // Surface the failure to the frontend so it stops polling
+                        // and shows an actionable error (RefusedNewerDaemon →
+                        // "update the app"; everything else → "restart"). Without
+                        // this the connection state stays unset and the main
+                        // window hangs on a blank loading screen until timeout.
+                        daemon_bootstrap_status_for_setup.record_failure(
+                            crate::commands::startup::classify_bootstrap_failure(&error),
                         );
                     }
                 }

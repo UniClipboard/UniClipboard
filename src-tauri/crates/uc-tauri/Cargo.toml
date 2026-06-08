@@ -22,6 +22,7 @@ uc-desktop = { path = "../uc-desktop" }
 uc-observability = { path = "../uc-observability" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-client = { path = "../uc-daemon-client" }
+uc-daemon-process = { path = "../uc-daemon-process" }
 # Portable-build detection (updater install-kind routing on Windows).
 uc-app-paths = { path = "../uc-app-paths" }
 

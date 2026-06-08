@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
+import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
 import { TitleBar } from '@/components'
 import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import StartupModals from '@/components/StartupModals'
+import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
 import { useSearch } from '@/contexts/search-context'
 import { SearchProvider } from '@/contexts/SearchContext'
@@ -16,11 +18,13 @@ import { useEncryptionState } from '@/hooks/useDaemonEvents'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useUINavigateListener } from '@/hooks/useUINavigateListener'
 import { MainLayout, SettingsFullLayout, WindowShell } from '@/layouts'
+import { DaemonBootstrapFailedError } from '@/lib/daemon-connection-info'
 import {
   shouldSignalDaemonLifecycleReady,
   type EncryptionStatusView,
 } from '@/lib/daemon-lifecycle-ready'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import type { DaemonBootstrapFailure } from '@/lib/ipc'
 import { SentryRoutes } from '@/observability/sentry'
 import DashboardPage from '@/pages/DashboardPage'
 import DevicesPage from '@/pages/DevicesPage'
@@ -83,6 +87,10 @@ const AppContent = ({
   // derived (see below) from this + the query error so we don't have to
   // chain a clear-on-success setEncryptionError(null) behind setEncryptionStatus.
   const [bootEncryptionError, setBootEncryptionError] = useState<string | null>(null)
+  // Typed daemon-bootstrap failure (when the native side gave up reaching the
+  // daemon), so the error screen can branch on `kind` — e.g. tell the user to
+  // update the app on a version mismatch rather than just "restart".
+  const [bootstrapFailure, setBootstrapFailure] = useState<DaemonBootstrapFailure | null>(null)
   const [daemonBootstrapReady, setDaemonBootstrapReady] = useState(false)
   const daemonLifecycleReadySignaledRef = useRef(false)
   // Post-setup auto-unlock is handled by onSetupComplete callback (in AppContentWithBar),
@@ -103,13 +111,16 @@ const AppContent = ({
         if (!cancelled) {
           setDaemonBootstrapReady(true)
           setBootEncryptionError(null)
+          setBootstrapFailure(null)
         }
       })
       .catch(error => {
-        if (!cancelled) {
-          const message = error instanceof Error ? error.message : String(error)
-          setBootEncryptionError(message)
-        }
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : String(error)
+        setBootEncryptionError(message)
+        // Capture the typed failure so the error screen can give an
+        // action-specific message (update vs restart).
+        setBootstrapFailure(error instanceof DaemonBootstrapFailedError ? error.failure : null)
       })
 
     return () => {
@@ -208,10 +219,34 @@ const AppContent = ({
   }
 
   if (encryptionError) {
+    const versionTooOld = bootstrapFailure?.kind === 'versionTooOld'
     return (
       <div className="flex h-full w-full items-center justify-center p-4 text-sm text-foreground">
-        <div className="max-w-sm rounded-md border border-border/20 bg-muted p-4 text-center">
-          Failed to verify encryption status. Please restart the app.
+        <div className="max-w-sm space-y-3 rounded-md border border-border/20 bg-muted p-4 text-center">
+          <p>
+            {versionTooOld
+              ? 'A newer version is already running in the background. Please update this app to continue.'
+              : "Couldn't reach the background service. Please restart the app."}
+          </p>
+          <p className="break-words text-xs text-muted-foreground">{encryptionError}</p>
+          {versionTooOld && (
+            <Button
+              size="sm"
+              onClick={() => {
+                // Best-effort: kick a fresh check so the updater window has data
+                // even if the scheduler hasn't run yet, then surface the window
+                // (idempotent — focuses it if the scheduler already opened it).
+                void checkForUpdate(null).catch(error =>
+                  console.error('Update check from bootstrap error screen failed:', error)
+                )
+                void openUpdaterWindow().catch(error =>
+                  console.error('Failed to open updater window:', error)
+                )
+              }}
+            >
+              Open updater
+            </Button>
+          )}
         </div>
       </div>
     )

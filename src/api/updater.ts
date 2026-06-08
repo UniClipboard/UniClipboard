@@ -86,6 +86,21 @@ export async function cancelDownload(): Promise<void> {
 }
 
 /**
+ * Open (or focus) the standalone updater window on demand. Used by the
+ * daemon-bootstrap error screen to route a "version too old" user straight to
+ * the updater. Idempotent on the native side — focuses the window if it is
+ * already open (e.g. the scheduler already popped it).
+ */
+export async function openUpdaterWindow(): Promise<void> {
+  try {
+    await commands.openUpdaterWindow()
+  } catch (error) {
+    log.error({ err: error }, 'failed to open updater window')
+    throw error
+  }
+}
+
+/**
  * Read the current backend update state. Used on Context mount to sync up
  * before attaching the broadcast listener — avoids races where the user
  * navigated away and back during an in-flight download.

@@ -73,6 +73,10 @@ src-tauri/
 - For iroh/event-loop changes, preserve non-blocking progress; do not block the iroh endpoint while awaiting business stream operations.
 - 做产品/架构方向判断前先读根目录 `VISION.md`。
 
+- Daemon HTTP port is deterministic from `UC_PROFILE` via FNV-1a hash (see `uc-daemon-process/src/socket.rs`); no port file exists.
+- Daemon auth flow: Bearer file-token → `POST /auth/connect` `{"pid":N,"clientType":"cli"}` → Session JWT; use `Session <jwt>` header afterward.
+- `POST /clipboard/dispatch` sends to peers only; dispatched content does NOT appear in sender's `/clipboard/entries` (entries come from OS clipboard captures).
+
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - Mixing boundary layers in one change set (`uc-core` + `uc-infra` etc.).
@@ -80,6 +84,7 @@ src-tauri/
 - Reintroducing code under any `src-legacy/` path.
 - Introducing `unwrap()/expect()` in production paths.
 - Emitting snake_case payload fields to frontend events.
+- Putting test-only crates in `crates/` as workspace members — use `tests/e2e/` + `[workspace.exclude]` to avoid polluting `cargo check --workspace`.
 
 ## COMPLEXITY HOTSPOTS
 
@@ -98,6 +103,10 @@ cargo test --workspace
 # Targeted package quick loop
 make check
 make build
+
+# E2E tests (from src-tauri/; requires pre-built binaries)
+cargo build -p uc-daemon -p uc-cli
+cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored
 
 # Coverage wrapper (from repo root)
 bun run test:coverage

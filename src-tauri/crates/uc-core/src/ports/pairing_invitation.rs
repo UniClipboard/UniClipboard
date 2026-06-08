@@ -66,6 +66,11 @@ pub struct IssuedInvitation {
     /// only resolvable on the local network; callers may surface that
     /// distinction (e.g. "this code only works on your LAN").
     pub code_origin: CodeOrigin,
+    /// Opaque serialized endpoint ticket for connection-string fallback.
+    /// Base64url-encoded (no padding) postcard bytes of the transport
+    /// address. Present when the adapter can provide it; absent when not
+    /// applicable.
+    pub ticket_base64url: Option<String>,
 }
 
 /// A local address the sponsor could publish in a pairing ticket.

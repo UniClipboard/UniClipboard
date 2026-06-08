@@ -124,7 +124,10 @@ impl RedeemPairingInvitationUseCase {
         });
         let started_at = Instant::now();
         let result = async {
-            let outcome = self.handshake.handshake(&cmd.code, &cmd.passphrase).await?;
+            let outcome = self
+                .handshake
+                .handshake(&cmd.code, &cmd.passphrase, cmd.connection_string.as_deref())
+                .await?;
             // `DiscoveryChannel` is `Copy`; capture it before `persist`
             // consumes the outcome so `pairing_succeeded` can record which
             // channel resolved this first pair.
@@ -687,6 +690,7 @@ mod tests {
         RedeemPairingInvitationCommand {
             code: InvitationCode::new(code),
             passphrase: Passphrase::new("hunter22hunter22"),
+            connection_string: None,
         }
     }
 

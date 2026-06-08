@@ -37,7 +37,7 @@ export type SetupScreen =
   /** S1 — sponsor: device name + passphrase + confirm. */
   | { kind: 'initialize_space' }
   /** S3 — sponsor: showing invitation code with countdown. */
-  | { kind: 'show_invitation'; code: string; expiresAtMs: number }
+  | { kind: 'show_invitation'; code: string; expiresAtMs: number; connectionString?: string }
   /** S4 — joiner: paste invitation code + passphrase. */
   | { kind: 'redeem_invitation' }
   /** S5 — both: post-handshake summary. `redeem` is set on the joiner side. */
@@ -62,6 +62,7 @@ export interface UseSetupFlowReturn {
   redeemInvitation: (input: {
     code: string
     passphrase: string
+    connectionString?: string
   }) => Promise<
     | { ok: true; redeem: RedeemResponse }
     | { ok: false; kind: RedeemInvitationErrorKind; raw: string }
@@ -157,6 +158,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
         kind: 'show_invitation',
         code: out.code,
         expiresAtMs: out.expiresAtMs,
+        connectionString: out.connectionString,
       })
       return { ok: true } as const
     } catch (err) {
@@ -193,10 +195,14 @@ export function useSetupFlow(): UseSetupFlowReturn {
   }, [t])
 
   const handleRedeem = useCallback(
-    async (input: { code: string; passphrase: string }) => {
+    async (input: { code: string; passphrase: string; connectionString?: string }) => {
       setLoading(true)
       try {
-        const redeem = await redeemInvitation({ code: input.code, passphrase: input.passphrase })
+        const redeem = await redeemInvitation({
+          code: input.code,
+          passphrase: input.passphrase,
+          connectionString: input.connectionString,
+        })
         const next = await getSetupState()
         applyServerSetupState(next)
         setPageScreen({ kind: 'pairing_complete', role: 'joiner', redeem })

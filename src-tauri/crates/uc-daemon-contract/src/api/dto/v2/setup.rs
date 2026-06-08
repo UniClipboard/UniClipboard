@@ -43,6 +43,11 @@ pub struct InitializeSpaceResponse {
 pub struct IssueInvitationResponse {
     pub code: String,
     pub expires_at_ms: i64,
+    /// Full connection string for manual fallback when mDNS/cloud
+    /// discovery is unavailable. Format: `uc://p/<CODE>/<BASE64URL_TICKET>`.
+    /// Present only when the sponsor can provide one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_string: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +61,10 @@ pub struct IssueInvitationResponse {
 pub struct RedeemRequest {
     pub code: String,
     pub passphrase: String,
+    /// Optional connection string for direct-dial fallback. When provided,
+    /// the joiner skips discovery and dials the sponsor directly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_string: Option<String>,
 }
 
 /// Response body for `POST /v2/setup/redeem`. Mirrors
@@ -108,6 +117,9 @@ pub struct CurrentInvitation {
 pub struct SwitchSpaceRequest {
     pub code: String,
     pub new_passphrase: String,
+    /// Optional connection string for direct-dial fallback.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_string: Option<String>,
 }
 
 /// Response body for `POST /v2/setup/switch-space`. Mirrors
@@ -188,10 +200,13 @@ mod tests {
         let resp = IssueInvitationResponse {
             code: "ABCD-1234".to_string(),
             expires_at_ms: 1_745_577_600_000,
+            connection_string: None,
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["code"], "ABCD-1234");
         assert_eq!(json["expiresAtMs"], 1_745_577_600_000_i64);
+        // connection_string is None → field should be absent (skip_serializing_if)
+        assert!(json.get("connectionString").is_none());
     }
 
     #[test]
@@ -199,6 +214,7 @@ mod tests {
         let req = RedeemRequest {
             code: "WXYZ-5678".to_string(),
             passphrase: "hunter22hunter22".to_string(),
+            connection_string: None,
         };
         let json = serde_json::to_string(&req).unwrap();
         let decoded: RedeemRequest = serde_json::from_str(&json).unwrap();
@@ -247,6 +263,7 @@ mod tests {
         let req = SwitchSpaceRequest {
             code: "ABCD-1234".to_string(),
             new_passphrase: "newpass22newpass".to_string(),
+            connection_string: None,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["code"], "ABCD-1234");

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Copy,
   Eye,
   EyeOff,
   Loader2,
@@ -356,16 +357,19 @@ function formatRemaining(ms: number): string {
 export function ShowInvitationScreen({
   code,
   expiresAtMs,
+  connectionString,
   onCancel,
   loading,
 }: {
   code: string
   expiresAtMs: number
+  connectionString?: string
   onCancel: () => void
   loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.showInvitation' })
   const [now, setNow] = useState(() => Date.now())
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -375,6 +379,13 @@ export function ShowInvitationScreen({
   const remaining = expiresAtMs - now
   const expired = remaining <= 0
   const display = useMemo(() => formatInvitationCode(code), [code])
+
+  const handleCopyConnectionString = async () => {
+    if (!connectionString) return
+    await navigator.clipboard.writeText(connectionString)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   return (
     <ScreenShell
@@ -405,6 +416,20 @@ export function ShowInvitationScreen({
         >
           {expired ? t('expired') : t('expiresIn', { remaining: formatRemaining(remaining) })}
         </div>
+        {connectionString && (
+          <div className="w-full max-w-md space-y-2">
+            <p className="text-sm text-muted-foreground">{t('connectionStringHint')}</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded bg-muted p-2 text-xs">
+                {connectionString}
+              </code>
+              <Button variant="outline" size="sm" onClick={handleCopyConnectionString}>
+                <Copy className="mr-1.5 size-3.5" />
+                {copied ? t('connectionStringCopied') : t('copyConnectionString')}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </ScreenShell>
   )
@@ -453,6 +478,7 @@ export function RedeemInvitationScreen({
   onSubmit: (input: {
     code: string
     passphrase: string
+    connectionString?: string
   }) => Promise<
     | { ok: true; redeem: RedeemResponse }
     | { ok: false; kind: RedeemInvitationErrorKind; raw: string }
@@ -465,6 +491,7 @@ export function RedeemInvitationScreen({
   const [pass, setPass] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [errorKind, setErrorKind] = useState<RedeemInvitationErrorKind | null>(null)
+  const [connectionString, setConnectionString] = useState<string | undefined>()
   const passInputRef = useRef<HTMLInputElement>(null)
 
   const errorMessage = redeemErrorMessage(t, errorKind)
@@ -478,10 +505,26 @@ export function RedeemInvitationScreen({
     if (codeComplete) passInputRef.current?.focus()
   }, [codeComplete])
 
+  /** Intercept pastes that look like connection strings (`uc://p/...`). */
+  const handleCodeChange = (value: string) => {
+    if (value.startsWith('uc://p/')) {
+      setConnectionString(value)
+      const rest = value.replace('uc://p/', '')
+      const parts = rest.split('/')
+      if (parts.length >= 2) {
+        // Strip the hyphen from the code part so InvitationCodeInput shows it
+        setCode(parts[0].replace(/-/g, ''))
+      }
+      return
+    }
+    setCode(value)
+    setConnectionString(undefined)
+  }
+
   const handleSubmit = async () => {
     setErrorKind(null)
     if (!canSubmit) return
-    const res = await onSubmit({ code, passphrase: pass })
+    const res = await onSubmit({ code, passphrase: pass, connectionString })
     if (!res.ok) {
       setErrorKind(res.kind)
       // 邀请码已废类——原 code 必然 404,清掉让用户必须输入新邀请码。
@@ -493,6 +536,7 @@ export function RedeemInvitationScreen({
       ) {
         setCode('')
         setPass('')
+        setConnectionString(undefined)
       } else if (res.kind === 'passphrase_mismatch') {
         setPass('')
         passInputRef.current?.focus()
@@ -543,7 +587,7 @@ export function RedeemInvitationScreen({
           <InvitationCodeInput
             id="join-code"
             value={code}
-            onChange={setCode}
+            onChange={handleCodeChange}
             disabled={loading}
             invalid={codeInvalid}
             autoFocus

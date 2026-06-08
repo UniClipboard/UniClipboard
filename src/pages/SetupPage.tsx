@@ -63,6 +63,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
         <ShowInvitationScreen
           code={screen.code}
           expiresAtMs={screen.expiresAtMs}
+          connectionString={screen.connectionString}
           onCancel={cancelInvitation}
           loading={loading}
         />

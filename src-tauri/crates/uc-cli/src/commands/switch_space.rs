@@ -104,6 +104,7 @@ pub async fn run(args: SwitchSpaceArgs, verbose: bool) -> i32 {
     let req = SwitchSpaceRequest {
         code: code_str,
         new_passphrase,
+        connection_string: None,
     };
 
     let setup_client = ctx.setup_v2_client();

@@ -1048,6 +1048,7 @@ mod tests {
                     .unwrap()
                     .with_timezone(&Utc),
                 code_origin: CodeOrigin::DirectoryIssued,
+                ticket_base64url: None,
             })
         }
 
@@ -1954,6 +1955,7 @@ mod tests {
             .switch_space(SwitchSpaceInput {
                 code: "CODE-1".into(),
                 new_passphrase: "hunter22hunter22".into(),
+                connection_string: None,
             })
             .await
             .unwrap_err();

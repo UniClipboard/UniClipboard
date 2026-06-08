@@ -22,6 +22,8 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 use chrono::{DateTime, Duration as ChronoDuration, TimeZone, Utc};
 use iroh::{Endpoint, EndpointAddr, TransportAddr};
 use tokio::runtime::Handle as RuntimeHandle;
@@ -163,10 +165,12 @@ impl RendezvousPairingInvitationAdapter {
                     "mDNS publisher start failed in LAN-only mode: {err}"
                 )));
             }
+            let ticket_base64url = encode_ticket_base64url(&ticket);
             return Ok(IssuedInvitation {
                 code,
                 expires_at,
                 code_origin: CodeOrigin::LocallyMintedLanOnly,
+                ticket_base64url,
             });
         }
 
@@ -232,10 +236,17 @@ impl RendezvousPairingInvitationAdapter {
         } else {
             CodeOrigin::LocallyMintedDirectoryUnreachable
         };
+        // Connection string fallback is only useful when discovery may fail
+        // (LAN-only or directory unreachable). When the cloud channel
+        // succeeded the joiner can resolve via the directory, so we still
+        // generate the ticket in case the joiner is on the same LAN but
+        // mDNS is broken.
+        let ticket_base64url = encode_ticket_base64url(&ticket);
         Ok(IssuedInvitation {
             code,
             expires_at,
             code_origin,
+            ticket_base64url,
         })
     }
 
@@ -353,6 +364,27 @@ fn try_postcard_hex(addr: &EndpointAddr) -> Result<String, String> {
     let bytes = postcard::to_allocvec(addr)
         .map_err(|err| format!("ticket postcard encode for mDNS: {err}"))?;
     Ok(hex::encode(bytes))
+}
+
+/// Encode the cloud-channel JSON ticket as `base64url(postcard(EndpointAddr))`
+/// for inclusion in a connection string. Returns `None` on any encoding
+/// failure (logged as a warning; the connection string is best-effort).
+fn encode_ticket_base64url(ticket_json: &str) -> Option<String> {
+    let addr: EndpointAddr = match serde_json::from_str(ticket_json) {
+        Ok(a) => a,
+        Err(err) => {
+            warn!(error = %err, "connection string: ticket JSON decode failed");
+            return None;
+        }
+    };
+    let bytes = match postcard::to_allocvec(&addr) {
+        Ok(b) => b,
+        Err(err) => {
+            warn!(error = %err, "connection string: ticket postcard encode failed");
+            return None;
+        }
+    };
+    Some(URL_SAFE_NO_PAD.encode(bytes))
 }
 
 /// Assign a priority score to a transport address for mDNS ticket trimming.

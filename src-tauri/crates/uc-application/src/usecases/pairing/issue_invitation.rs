@@ -153,9 +153,15 @@ impl IssuePairingInvitationUseCase {
         self.holder.insert(invitation).await;
         info!(code = %issued.code.as_str(), "pairing invitation parked in holder");
 
+        let connection_string = issued
+            .ticket_base64url
+            .as_ref()
+            .map(|ticket| format!("uc://p/{}/{}", issued.code.as_str(), ticket));
+
         Ok(IssuePairingInvitationResult {
             code: issued.code,
             expires_at: issued.expires_at,
+            connection_string,
         })
     }
 
@@ -235,6 +241,7 @@ mod tests {
                     code: InvitationCode::new(code),
                     expires_at,
                     code_origin: CodeOrigin::DirectoryIssued,
+                    ticket_base64url: None,
                 })),
                 calls: StdMutex::new(0),
                 selected_calls: StdMutex::new(Vec::new()),
@@ -534,6 +541,7 @@ mod tests {
             code: InvitationCode::new("SAME"),
             expires_at: second_expiry,
             code_origin: CodeOrigin::DirectoryIssued,
+            ticket_base64url: None,
         });
         h.uc.execute().await.unwrap();
 

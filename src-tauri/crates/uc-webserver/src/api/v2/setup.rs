@@ -196,6 +196,7 @@ fn issue_to_dto(out: IssuePairingInvitationResult) -> IssueInvitationResponse {
     IssueInvitationResponse {
         code: out.code.as_str().to_string(),
         expires_at_ms: out.expires_at.timestamp_millis(),
+        connection_string: out.connection_string,
     }
 }
 
@@ -225,6 +226,7 @@ pub(crate) async fn redeem(
     let input = RedeemPairingInvitationInput {
         code: req.code,
         passphrase: req.passphrase,
+        connection_string: req.connection_string,
     };
     let out = facade
         .redeem_pairing_invitation(input)
@@ -462,6 +464,7 @@ pub(crate) async fn switch_space(
     let input = SwitchSpaceInput {
         code: req.code,
         new_passphrase: req.new_passphrase,
+        connection_string: req.connection_string,
     };
     let out = facade
         .switch_space(input)
@@ -665,9 +668,11 @@ mod tests {
         let dto = issue_to_dto(IssuePairingInvitationResult {
             code: InvitationCode::new("ABCD-1234"),
             expires_at: expires,
+            connection_string: None,
         });
         assert_eq!(dto.code, "ABCD-1234");
         assert_eq!(dto.expires_at_ms, expires.timestamp_millis());
+        assert!(dto.connection_string.is_none());
     }
 
     #[test]

@@ -133,6 +133,7 @@ mockall::mock! {
             &self,
             code: &InvitationCode,
             passphrase: &Passphrase,
+            connection_string: Option<String>,
         ) -> Result<JoinerHandshakeOutcome, RedeemPairingInvitationError>;
     }
 }
@@ -262,6 +263,7 @@ fn cmd_default() -> SwitchSpaceCommand {
     SwitchSpaceCommand {
         code: InvitationCode::new("CODE-1"),
         new_passphrase: Passphrase::new("hunter22hunter22"),
+        connection_string: None,
     }
 }
 
@@ -399,7 +401,7 @@ async fn happy_path_executes_all_4_phases() {
     // Phase 2 — handshake + admit + trust
     env.handshake
         .expect_run()
-        .return_once(|_, _| Ok(outcome_default()));
+        .return_once(|_, _, _| Ok(outcome_default()));
     // AdmitMemberUseCase / TrustPeerUseCase 都先 get 后 save——需返回 None
     // 否则会被误判为 AlreadyAdmitted/AlreadyTrusted。
     env.member_repo.expect_get().return_once(|_| Ok(None));
@@ -532,7 +534,7 @@ async fn phase2_handshake_failure_aborts_and_full_cleanup() {
     // Phase 2 fails on handshake
     env.handshake
         .expect_run()
-        .return_once(|_, _| Err(RedeemPairingInvitationError::SponsorUnreachable));
+        .return_once(|_, _, _| Err(RedeemPairingInvitationError::SponsorUnreachable));
 
     // Cleanup：discard_all_records + discard_migration_key + set_current(None)
     env.blob_migration_repo
@@ -699,7 +701,7 @@ async fn admit_failure_aborts_phase2_and_cleans_up() {
 
     env.handshake
         .expect_run()
-        .return_once(|_, _| Ok(outcome_default()));
+        .return_once(|_, _, _| Ok(outcome_default()));
     // admit 流程会先 get 再 save——get 返 None 后 save 才报 db 错。
     env.member_repo.expect_get().return_once(|_| Ok(None));
     env.member_repo
@@ -776,7 +778,7 @@ async fn happy_path_persists_identity_intent_and_invokes_adopt() {
     // Phase 2 — sponsor delivers a `space_person_id`.
     env.handshake
         .expect_run()
-        .return_once(|_, _| Ok(outcome_with_sponsor_person()));
+        .return_once(|_, _, _| Ok(outcome_with_sponsor_person()));
     env.member_repo.expect_get().return_once(|_| Ok(None));
     env.member_repo.expect_save().return_once(|_| Ok(()));
     env.trust_repo.expect_get().return_once(|_| Ok(None));

@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-06-05 (manual; crate inventory + entry points re-synced after the ADR-005/007/008 daemon split)
+**Last refreshed:** 2026-06-08 (auto; 18 workspace crates)
 
 ## OVERVIEW
 
@@ -11,28 +11,31 @@ Tauri v2 desktop backend with strict hexagonal boundaries. The bin entry (`src/m
 ```text
 src-tauri/
 |- src/                  # Thin bin: hands off to uc_tauri::run(generate_context!())
-|- crates/               # Hexagonal workspace (16 crates)
+|- crates/               # Hexagonal workspace (18 crates)
 |  # -- Hex core (ADR-005) --
-|  |- uc-core/           # Domain models + Port traits only (no external deps)
-|  |- uc-application/    # Use cases / orchestrators (depends on uc-core ports only)
-|  |- uc-infra/          # Infra adapters: Diesel repos, encryption, fs, timers
-|  |- uc-platform/       # OS/network adapters: libp2p, clipboard, secure storage
-|  |- uc-observability/  # Dual-output tracing, profile filtering, Sentry/analytics scope
-|  |- uc-bootstrap/      # Composition root -- the ONLY crate that may depend on core+app+infra+platform at once
+|  |- uc-core/          # Domain models + Port traits only (no external deps)
+|  |- uc-application/   # Use cases / orchestrators (depends on uc-core ports only)
+|  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
+|  |- uc-app-paths/     # Lightweight directory-layout authority (data/cache/tmp)
+|  |- uc-infra/         # Infra adapters: Diesel repos, iroh P2P, encryption, fs, timers
+|  |- uc-observability/ # Dual-output tracing, profile filtering, Sentry/analytics scope
+|  |- uc-bootstrap/     # Composition root -- the ONLY crate that may depend on core+app+infra+platform at once
 |  # -- Daemon split (ADR-007/008) --
-|  |- uc-webserver/      # Daemon's 127.0.0.1 HTTP + WebSocket API (OpenAPI / ApiEnvelope)
-|  |- uc-daemon-contract/# Transport DTOs/contracts shared by client + server
-|  |- uc-daemon/         # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
-|  |- uc-daemon-local/   # Local process coordination: PID metadata, instance lock, spawn contract, crash marker
-|  |- uc-daemon-client/  # Daemon HTTP + WS client (used by GUI + CLI)
-|  |- uc-desktop/        # Desktop host: runtime, daemon spawn/probe ownership, local API, desktop event sources
+|  |- uc-daemon-contract/ # Transport DTOs/contracts shared by client + server
+|  |- uc-daemon-process/ # Thin process primitives: PID file, socket path, spawn, health-wait
+|  |- uc-daemon-local/  # Local process coordination: auth token, socket discovery, health polling
+|  |- uc-webserver/     # Daemon's 127.0.0.1 HTTP + WebSocket API (OpenAPI / ApiEnvelope)
+|  |- uc-daemon/        # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
+|  |- uc-daemon-client/ # Daemon HTTP + WS client (used by GUI + CLI)
 |  # -- Shells / entrypoints --
-|  |- uc-tauri/          # Tauri adapter: commands (via tauri-specta), plugins, builder/setup, run loop
-|  |- uc-cli/            # `uniclip` CLI
-|  |- uc-cli-macros/     # Proc-macros for uc-cli (internal)
-|  `- p2p-bench/         # Throwaway perf-spike bins (not shipped; publish = false)
+|  |- uc-tauri/         # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop
+|  |- uc-desktop/       # Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)
+|  |- uc-cli/           # `uniclip` CLI (daemon client; heavy deps feature-gated)
+|  |- uc-cli-macros/    # Proc-macros for uc-cli (internal)
+|  `- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
 `- crates/uc-infra/migrations/ # Active infra (diesel) migrations
 ```
+
 
 ## WHERE TO LOOK
 

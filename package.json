@@ -34,6 +34,9 @@
     "doctor": "npx react-doctor@latest"
   },
   "lint-staged": {
+    "src-tauri/Cargo.toml": [
+      "node scripts/refresh-agents-structure.mjs"
+    ],
     "*.{js,jsx,ts,tsx}": [
       "eslint --fix",
       "prettier --write"

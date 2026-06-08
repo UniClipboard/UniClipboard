@@ -138,6 +138,7 @@ members = [
   "crates/uc-cli-macros",
   "crates/uc-daemon-client",
   "crates/p2p-bench",
+  "crates/uc-e2e-tests",
 ]
 # Submodule `vendor/iroh-blobs` is our fork of n0-computer/iroh-blobs
 # (branch `uniclipboard/0.100.0-patched`). It is consumed via

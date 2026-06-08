@@ -1197,7 +1197,9 @@ pub async fn skip_version(
         Err(_) => detect_channel(&app_version),
     };
 
-    let ctx = app.state::<Arc<crate::update_scheduler::NotifyContext>>();
+    let Some(ctx) = app.try_state::<Arc<crate::update_scheduler::NotifyContext>>() else {
+        return Err("notify context is not initialized".to_string());
+    };
     let mut store = ctx.skipped_version.lock().await;
     store
         .skip(channel, version, &ctx.skipped_version_path)

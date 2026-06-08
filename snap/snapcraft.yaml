@@ -99,18 +99,15 @@ parts:
       - libayatana-appindicator3-1
       - librsvg2-2
     build-environment:
-      # NOTE: 不在这里 set PATH —— snapcraft 的 build-environment 是字面
-      # 字符串注入,$HOME 不会展开。PATH 在 override-build 内用 export 设。
+      # NOTE: build-environment 的值会被 craft-parts 用双引号包裹后注入构建
+      # 脚本(export KEY="VALUE"),且不转义值里的内层字符。所以两类值都不能
+      # 放这里,必须改在 override-build 内用 export 设:
+      #   1) 含 $VAR 的(如 PATH 的 $HOME)—— 会被 shell 提前展开成错误的值;
+      #   2) 含双引号的(如 TAURI_CONFIG 的 JSON)—— 内层 " 会被 shell 吃掉,
+      #      {"bundle":{"externalBin":[]}} 塌成 {bundle:{externalBin:[]}},
+      #      tauri build.rs 解析报 "key must be a string at line 1 column 2"。
       - CARGO_TERM_COLOR: never
       - SNAP_BUILD: '1'
-      # ADR-008 D13 给 tauri.conf.json 加了 externalBin: ["binaries/uniclipd"],
-      # build.rs 里的 tauri_build::build() 会在编 GUI 时强制要求
-      # src-tauri/binaries/uniclipd-<triple> 存在并把它拷进 bundle。但 snap 用
-      # 纯 cargo build(不走 tauri-cli bundling),且下面是把 uniclipd 从
-      # target/release 直接 install 到 usr/bin —— 根本不依赖 Tauri 的 sidecar
-      # 暂存机制。用 JSON Merge Patch 把 externalBin 清空(空数组替换整个列表),
-      # 让 build script 既不要求也不拷贝它。与 coverage.yml / pr-check.yml 同款。
-      - TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
     override-pull: |
       craftctl default
       # snap 版本号 = package.json.version + "-snap" 后缀,snap store
@@ -143,6 +140,18 @@ parts:
       # 尝试 devUrl (http://localhost:1420) → 用户看到 "Could not connect
       # to localhost: Connection refused"。`bun run tauri build` 默认会开
       # 它,我们绕过 tauri-cli 所以必须手动加。
+      #
+      # ADR-008 D13 给 tauri.conf.json 加了 externalBin: ["binaries/uniclipd"],
+      # build.rs 里的 tauri_build::build() 会在编 GUI 时强制要求
+      # src-tauri/binaries/uniclipd-<triple> 存在并把它拷进 bundle。但 snap 用
+      # 纯 cargo build(不走 tauri-cli bundling),且下面把 uniclipd 从
+      # target/release 直接 install 到 usr/bin —— 根本不依赖 Tauri 的 sidecar
+      # 暂存机制。用 TAURI_CONFIG 作 JSON Merge Patch 把 externalBin 清空(空数组
+      # 替换整个列表),让 build script 既不要求也不拷贝它。与 coverage.yml /
+      # pr-check.yml 同款,但**必须**在这里用单引号 export —— 放进
+      # build-environment 会被 craft-parts 的双引号注入吞掉内层引号(详见上面
+      # build-environment 的 NOTE)。
+      export TAURI_CONFIG='{"bundle":{"externalBin":[]}}'
       cd src-tauri
       cargo build --release --locked --bin uniclipboard --features custom-protocol
       # ADR-008 D13: also build the standalone `uniclipd` daemon, installed next
@@ -150,7 +159,13 @@ parts:
       # It needs no custom-protocol (no webview) and shares the GUI crate graph,
       # so this build is mostly incremental. build-packages already has cmake +
       # clang for aws-lc-sys, which uniclipd pulls via iroh just like the GUI.
-      cargo build --release --locked --bin uniclipd
+      #
+      # `-p uc-daemon` is REQUIRED: the `uniclipd` bin lives in the uc-daemon
+      # workspace member, not in the `uniclipboard` package we cd'd into above.
+      # Without it cargo errors "no bin target named `uniclipd` in default-run
+      # packages". Matches scripts/prepare-daemon-sidecar.mjs (`cargo build -p
+      # uc-daemon --bin uniclipd`), the same invocation CI uses for the sidecar.
+      cargo build --release --locked -p uc-daemon --bin uniclipd
       cd ..
 
       # 3) 安装到 snap install 目录。strict snap 启动时 mount 这个目录

@@ -62,7 +62,7 @@
       "skipThisVersion": "Skip This Version",
       "remindMeLater": "Remind Me Later",
       "installUpdate": "Install Update",
-      "autoUpdate": "Automatically download and install updates in the future",
+      "autoUpdate": "Automatically download updates in the future",
       "upToDateTitle": "You're up to date!",
       "upToDateBody": "You're already running the latest version of UniClipboard.",
       "close": "Close"

@@ -362,12 +362,12 @@ fn is_daemon_binary_name(name: &str) -> bool {
 }
 
 #[cfg(unix)]
-fn is_pid_alive(pid: u32) -> bool {
+pub fn is_pid_alive(pid: u32) -> bool {
     unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }
 
 #[cfg(windows)]
-fn is_pid_alive(pid: u32) -> bool {
+pub fn is_pid_alive(pid: u32) -> bool {
     use std::process::Command;
     Command::new("tasklist")
         .args(["/FI", &format!("PID eq {pid}"), "/NH"])
@@ -377,7 +377,7 @@ fn is_pid_alive(pid: u32) -> bool {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn is_pid_alive(_pid: u32) -> bool {
+pub fn is_pid_alive(_pid: u32) -> bool {
     false
 }
 

@@ -212,13 +212,12 @@ const NetworkSection: React.FC = () => {
     setRestartLoading(true)
     setRestartError(null)
     try {
-      // 走进程级重启 —— iroh `IrohNodeBuilder::bind` 是进程级单次约束
-      // (Pitfall 3),LAN-only Mode 切换改 iroh_config 必须新进程重新 bind。
-      // app.restart() 不返回(进程会 exit),所以后续代码理论上不可达。
-      await commands.restartApp()
+      await commands.restartDaemon()
+      setPending(false)
     } catch (err) {
-      log.error({ err }, 'restart_app 失败')
-      setRestartError(t('settings.restartBanner.errorMessage'))
+      log.error({ err }, 'restart_daemon 失败')
+      setRestartError(t('settings.sections.network.restartBanner.errorMessage'))
+    } finally {
       setRestartLoading(false)
     }
   }

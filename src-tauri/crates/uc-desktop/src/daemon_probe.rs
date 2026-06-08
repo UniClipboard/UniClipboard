@@ -511,6 +511,100 @@ where
     Ok(())
 }
 
+/// Restart the local daemon process: SIGTERM → wait exit → spawn → wait healthy
+/// → return new connection info.
+///
+/// 用于 network 等 bind-time 设置变更后：daemon 侧的 iroh endpoint 在进程
+/// 启动时绑定一次，运行时无法热更新。GUI 保持在线不受影响。
+pub async fn restart_local_daemon(
+    expected_package_version: &str,
+) -> Result<DaemonConnectionInfo, DaemonBootstrapError> {
+    use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
+
+    let client = reqwest::Client::builder()
+        .timeout(PROBE_TIMEOUT)
+        .build()
+        .map_err(|e| {
+            DaemonBootstrapError::Client(
+                anyhow::Error::new(e).context("failed to build probe client for daemon restart"),
+            )
+        })?;
+
+    // ── 1. 读 PID 文件，校验身份 ──────────────────────────────────
+    let metadata = read_pid_metadata()
+        .map_err(|e| DaemonBootstrapError::Probe(e.context("failed to read daemon PID metadata")))?
+        .ok_or_else(|| {
+            DaemonBootstrapError::Probe(anyhow::anyhow!(
+                "daemon PID file not found — daemon may not be running"
+            ))
+        })?;
+
+    if matches!(metadata.mode, DaemonProcessMode::InProcess) {
+        return Err(DaemonBootstrapError::IncompatibleDaemon {
+            details: format!(
+                "cannot restart in-process daemon (pid {}); quit the hosting GUI first",
+                metadata.pid
+            ),
+        });
+    }
+
+    let need_terminate = matches!(verify_pid_identity(&metadata), PidVerification::Active);
+
+    if need_terminate {
+        // ── 2. SIGTERM 旧 daemon ──────────────────────────────────
+        tracing::info!(pid = metadata.pid, "restart_local_daemon: sending SIGTERM");
+        if let Err(e) = terminate_local_daemon_pid(metadata.pid) {
+            tracing::warn!(pid = metadata.pid, error = %e, "SIGTERM failed, proceeding to spawn");
+        }
+
+        // ── 3. 等待旧 daemon 进程真正退出 ────────────────────────
+        // HTTP 端点消失 ≠ 进程退出。daemon graceful shutdown 先停
+        // HTTP server，再关 iroh/释放 instance lock。必须等进程死
+        // 透，否则新 daemon 拿不到锁或端口。
+        let exit_timeout = Duration::from_secs(10);
+        let deadline = tokio::time::Instant::now() + exit_timeout;
+        loop {
+            if !uc_daemon_process::process_metadata::is_pid_alive(metadata.pid) {
+                tracing::info!(
+                    pid = metadata.pid,
+                    "restart_local_daemon: old daemon process exited"
+                );
+                break;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                tracing::warn!(
+                    pid = metadata.pid,
+                    "restart_local_daemon: old daemon did not exit within timeout; spawning anyway"
+                );
+                break;
+            }
+            tokio::time::sleep(HEALTH_POLL_INTERVAL).await;
+        }
+    } else {
+        tracing::info!(
+            pid = metadata.pid,
+            "restart_local_daemon: PID is stale, spawning fresh daemon"
+        );
+    }
+
+    // ── 4. spawn 新 daemon ────────────────────────────────────────
+    tracing::info!("restart_local_daemon: spawning new daemon");
+    spawn_detached_daemon(DaemonSpawnOrigin::Gui, None).map_err(|e| {
+        DaemonBootstrapError::Spawn(
+            anyhow::Error::new(e).context("restart_local_daemon: failed to spawn new daemon"),
+        )
+    })?;
+
+    // ── 5. 等待新 daemon 就绪 ────────────────────────────────────
+    let mut probe_fn = || async { probe_daemon_health(&client, expected_package_version).await };
+    wait_for_daemon_health(&mut probe_fn, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL).await?;
+
+    // ── 6. 返回新连接信息 ────────────────────────────────────────
+    let info = load_daemon_connection_info()?;
+    tracing::info!("restart_local_daemon: daemon restarted successfully");
+    Ok(info)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -82,6 +82,7 @@
     "restartBanner": {
       "restartButton": "立即重启",
       "restartingButton": "正在重启…",
+      "successMessage": "重启完成",
       "dismissAriaLabel": "收起重启提示",
       "errorMessage": "自动重启失败，请手动退出并重新打开应用以使更改生效。",
       "retryButton": "重试"
@@ -355,12 +356,8 @@
           }
         },
         "restartBanner": {
-          "message": "需要重启应用以使网络设置更改生效。",
-          "restartButton": "立即重启",
-          "restartingButton": "正在重启…",
-          "dismissAriaLabel": "收起重启提示",
-          "errorMessage": "自动重启失败，请手动退出并重新打开应用以使更改生效。",
-          "retryButton": "重试"
+          "message": "网络设置已更改，需要重启后台服务才能生效。",
+          "errorMessage": "后台服务重启失败，请重试或手动重启应用。"
         }
       },
       "storage": {

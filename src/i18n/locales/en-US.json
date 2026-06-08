@@ -82,6 +82,7 @@
     "restartBanner": {
       "restartButton": "Restart now",
       "restartingButton": "Restarting…",
+      "successMessage": "Restart complete",
       "dismissAriaLabel": "Dismiss restart notice",
       "errorMessage": "Automatic restart failed. Please quit the app manually and reopen it to apply the change.",
       "retryButton": "Retry"
@@ -364,12 +365,8 @@
           }
         },
         "restartBanner": {
-          "message": "Restart the app to apply network changes.",
-          "restartButton": "Restart now",
-          "restartingButton": "Restarting…",
-          "dismissAriaLabel": "Dismiss restart notice",
-          "errorMessage": "Automatic restart failed. Please quit the app manually and reopen it to apply the change.",
-          "retryButton": "Retry"
+          "message": "Network settings changed. A background service restart is needed to apply.",
+          "errorMessage": "Background service restart failed. Please retry or restart the app manually."
         }
       },
       "storage": {

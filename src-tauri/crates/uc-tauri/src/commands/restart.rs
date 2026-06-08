@@ -1,24 +1,21 @@
 //! Restart-related Tauri commands.
 //! 重启相关的 Tauri 命令。
 //!
-//! 所有"需要重启"设置 (LAN-only Mode / mobile_sync 端口等) 走进程级
-//! `app.restart()`。决策背景见
-//! `.planning/quick/260510-phase4-deps-share/findings.md` §0 (方案 C)。
+//! 两个入口：
 //!
-//! Phase 95 边界 fence:
+//! - [`restart_app`]：重启 GUI 进程（历史命令，QuickPanel 资源清理等仍用）。
+//! - [`restart_daemon`]：仅重启 daemon 进程（network 等 bind-time 设置变更后
+//!   调用，GUI 保持不动）。
 //!
-//! 1. D-B1: 仅 cover GUI mode。本文件 NOT 暴露任何 daemon HTTP admin/restart
-//!    端点。CLI daemon (`uniclip daemon`) 用户走 systemctl/launchd
-//!    (PROJECT.md §Out of Scope)。
-//! 2. Pitfall 5 防御: 本文件 NOT 引用 telemetry / OTLP / pkarr / auto-update
-//!    任何字段;`restart_app` 只是 `app.restart()` 的包装(加 graceful
-//!    shutdown),没有副作用越界(不 disable 遥测、不 reset state)。
+//! D-B1: 仅 cover GUI mode。CLI daemon (`uniclip daemon`) 用户走
+//! systemctl/launchd (PROJECT.md §Out of Scope)。
 
 use std::time::Duration;
 
 use tauri::Emitter;
 use tracing::{info, info_span, warn, Instrument};
 use uc_core::ports::observability::TraceMetadata;
+use uc_daemon_client::DaemonConnectionState;
 
 use crate::commands::record_trace_fields;
 use crate::run::{FRONTEND_SHUTDOWN_EVENT, SHUTDOWN_FRONTEND_GRACE_MS};
@@ -34,12 +31,6 @@ use crate::run::{FRONTEND_SHUTDOWN_EVENT, SHUTDOWN_FRONTEND_GRACE_MS};
 /// daemon 作为独立进程留守——新 GUI 起来后 probe→reconnect 即可,不存在旧的
 /// in-process daemon 占着端口的问题(那是 in-process 模型的历史约束)。所以这里
 /// 不再 graceful-shutdown daemon;只通知前端断 WS 让 daemon 端尽快释放旧连接。
-///
-/// 注意(ADR-008 P3-3 遗留,P4 处理):部分"需要重启"设置(LAN-only Mode /
-/// mobile_sync 端口等)实际改的是 **daemon 侧** iroh/网络 bind,而本命令只重启
-/// GUI 进程、不再重启 daemon——所以这些设置不会因 GUI 重启而在 daemon 侧重新
-/// 生效。daemon 侧的 re-bind / 重启编排属于 ADR-008 D16(setup→operational =
-/// 重启 daemon)与 P4 的范畴,本命令不承担。
 #[tauri::command]
 #[specta::specta]
 pub async fn restart_app(
@@ -71,8 +62,6 @@ pub async fn restart_app(
 pub(crate) async fn perform_restart(app: &tauri::AppHandle) {
     info!("restarting app for settings change");
 
-    // graceful shutdown daemon 前先通知前端断 WS,让 axum
-    // `with_graceful_shutdown` 立即返回不等 30s heartbeat。
     if let Err(error) = app.emit(FRONTEND_SHUTDOWN_EVENT, ()) {
         warn!(
             error = %error,
@@ -82,11 +71,44 @@ pub(crate) async fn perform_restart(app: &tauri::AppHandle) {
         );
     }
 
-    // 给前端 close frame 飞过 loopback 的时间。daemon 是独立进程,这里不再
-    // 停它(ADR-008 P3-3 B2'-3:GUI 纯客户端,重启只重启 GUI 进程)。
     tokio::time::sleep(Duration::from_millis(SHUTDOWN_FRONTEND_GRACE_MS)).await;
 
-    // 新进程 spawn + 当前进程 exit。app.restart() 内部调用
-    // std::process::exit,后续代码不可达。
     app.restart();
+}
+
+// ── restart_daemon ─────────────────────────────────────────────────────
+
+/// Restart only the `uniclipd` daemon process without touching the GUI.
+///
+/// 用于 network 等 bind-time 设置变更后：daemon 侧的 iroh endpoint 在进程
+/// 启动时绑定一次，运行时无法热更新，所以需要重启 daemon 进程让新配置生效。
+/// GUI 保持在线，WS bridge 自动重连到新 daemon。
+#[tauri::command]
+#[specta::specta]
+pub async fn restart_daemon(
+    connection_state: tauri::State<'_, DaemonConnectionState>,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), crate::commands::error::CommandError> {
+    let span = info_span!(
+        "command.restart.restart_daemon",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let new_info = uc_desktop::daemon_probe::restart_local_daemon(env!("CARGO_PKG_VERSION"))
+            .await
+            .map_err(|e| {
+                crate::commands::CommandError::internal(
+                    anyhow::Error::new(e).context("daemon restart failed"),
+                )
+            })?;
+
+        connection_state.set(new_info);
+        info!("daemon restarted, connection state refreshed");
+        Ok(())
+    }
+    .instrument(span)
+    .await
 }

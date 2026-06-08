@@ -49,8 +49,9 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::startup::get_daemon_connection_info,
         crate::commands::startup::get_daemon_session,
         crate::commands::startup::get_daemon_bootstrap_failure,
-        // ── restart (Phase 95) ──────────────────────────────────────────────
+        // ── restart ──────────────────────────────────────────────────────────
         crate::commands::restart::restart_app,
+        crate::commands::restart::restart_daemon,
         // ── autostart ───────────────────────────────────────────────────────
         crate::commands::autostart::update_autostart,
         // ── updater ─────────────────────────────────────────────────────────

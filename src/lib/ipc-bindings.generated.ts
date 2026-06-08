@@ -100,17 +100,22 @@ export const commands = {
 	 *  daemon 作为独立进程留守——新 GUI 起来后 probe→reconnect 即可,不存在旧的
 	 *  in-process daemon 占着端口的问题(那是 in-process 模型的历史约束)。所以这里
 	 *  不再 graceful-shutdown daemon;只通知前端断 WS 让 daemon 端尽快释放旧连接。
-	 * 
-	 *  注意(ADR-008 P3-3 遗留,P4 处理):部分"需要重启"设置(LAN-only Mode /
-	 *  mobile_sync 端口等)实际改的是 **daemon 侧** iroh/网络 bind,而本命令只重启
-	 *  GUI 进程、不再重启 daemon——所以这些设置不会因 GUI 重启而在 daemon 侧重新
-	 *  生效。daemon 侧的 re-bind / 重启编排属于 ADR-008 D16(setup→operational =
-	 *  重启 daemon)与 P4 的范畴,本命令不承担。
 	 */
 	restartApp: (trace: {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("restart_app", { trace })),
+	/**
+	 *  Restart only the `uniclipd` daemon process without touching the GUI.
+	 * 
+	 *  用于 network 等 bind-time 设置变更后：daemon 侧的 iroh endpoint 在进程
+	 *  启动时绑定一次，运行时无法热更新，所以需要重启 daemon 进程让新配置生效。
+	 *  GUI 保持在线，WS bridge 自动重连到新 daemon。
+	 */
+	restartDaemon: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, CommandError>(__TAURI_INVOKE("restart_daemon", { trace })),
 	/**
 	 *  Update the "launch at login" preference and apply it to the OS.
 	 * 

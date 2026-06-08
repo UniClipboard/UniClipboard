@@ -29,6 +29,31 @@ const PASSPHRASE: &str = "clipboard-sync-e2e-passphrase";
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+/// RAII guard that kills a process by PID on drop.
+/// Prevents orphaned child processes when tests panic or time out.
+#[cfg(unix)]
+struct PidGuard(u32, bool);
+
+#[cfg(unix)]
+impl PidGuard {
+    fn new(pid: u32) -> Self {
+        Self(pid, false)
+    }
+
+    fn disarm(&mut self) {
+        self.1 = true;
+    }
+}
+
+#[cfg(unix)]
+impl Drop for PidGuard {
+    fn drop(&mut self) {
+        if !self.1 {
+            unsafe { libc::kill(self.0 as libc::pid_t, libc::SIGKILL) };
+        }
+    }
+}
+
 /// Auth helper: read daemon file token, exchange for JWT session token.
 async fn get_session_token(daemon: &TestDaemon, client: &reqwest::Client) -> String {
     let file_token = read_daemon_file_token(daemon);
@@ -123,6 +148,8 @@ async fn pair_two_nodes(test_prefix: &str) -> (TestDaemon, TestCli, TestDaemon, 
         .stderr(Stdio::piped())
         .spawn()
         .expect("alice invite spawn");
+    #[cfg(unix)]
+    let mut invite_guard = PidGuard::new(invite_child.id());
 
     // Read stdout lines to find INVITATION_CODE=
     let invite_stdout = invite_child.stdout.take().expect("invite stdout");
@@ -171,14 +198,22 @@ async fn pair_two_nodes(test_prefix: &str) -> (TestDaemon, TestCli, TestDaemon, 
         join_out.stderr,
     );
 
-    // Wait for invite process to complete (it unblocks after joiner connects)
-    let _ = tokio::time::timeout(Duration::from_secs(15), async {
+    // Wait for invite process to complete (it unblocks after joiner connects).
+    // If it finishes in time, disarm the guard. Otherwise the guard kills the
+    // process on drop (covers both timeout AND early panic paths).
+    let finished = tokio::time::timeout(Duration::from_secs(15), async {
         tokio::task::spawn_blocking(move || {
             let _ = invite_child.wait();
         })
         .await
     })
-    .await;
+    .await
+    .is_ok();
+
+    #[cfg(unix)]
+    if finished {
+        invite_guard.disarm();
+    }
 
     // Brief settle time for both daemons to update their member/device lists
     tokio::time::sleep(Duration::from_secs(2)).await;

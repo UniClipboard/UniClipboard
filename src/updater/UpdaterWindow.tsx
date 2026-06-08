@@ -60,14 +60,11 @@ const isDevPreview = (): boolean => {
 }
 
 function useUpdaterState(devPreview: boolean) {
-  const [state, setState] = useState<UpdateState>(initialState)
+  const [state, setState] = useState<UpdateState>(() => (devPreview ? DEV_MOCK : initialState))
   const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
-    if (devPreview) {
-      setState(DEV_MOCK)
-      return
-    }
+    if (devPreview) return
     let cancelled = false
     void Promise.allSettled([getDownloadProgress(), getAutoDownloadUpdate()]).then(
       ([progressResult, autoUpdateResult]) => {
@@ -238,29 +235,19 @@ function useUpdaterState(devPreview: boolean) {
 }
 
 const ActionButtons: React.FC<{
-  isDownloading: boolean
-  isInstalling: boolean
-  isReady: boolean
-  upToDate: boolean
+  phase: DownloadPhase
+  hasInfo: boolean
   cancelling: boolean
-  canInstall: boolean
   onCancel: () => void
   onSkip: () => void
   onClose: () => void
   onInstall: () => void
-}> = ({
-  isDownloading,
-  isInstalling,
-  isReady,
-  upToDate,
-  cancelling,
-  canInstall,
-  onCancel,
-  onSkip,
-  onClose,
-  onInstall,
-}) => {
+}> = ({ phase, hasInfo, cancelling, onCancel, onSkip, onClose, onInstall }) => {
   const { t } = useTranslation()
+  const isDownloading = phase === 'downloading'
+  const isInstalling = phase === 'installing'
+  const isReady = phase === 'ready'
+  const upToDate = phase === 'idle' && !hasInfo
 
   if (isDownloading) {
     return (
@@ -338,7 +325,7 @@ const ActionButtons: React.FC<{
         type="button"
         className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         onClick={onInstall}
-        disabled={!canInstall}
+        disabled={!hasInfo}
       >
         {isReady ? t('update.installNow') : t('updater.window.installUpdate')}
       </button>
@@ -363,17 +350,14 @@ const UpdaterWindow: React.FC = () => {
 
   const { phase, info, downloaded, total, autoUpdate } = state
   const percent = total !== null && total > 0 ? Math.round((downloaded / total) * 100) : null
-  const isDownloading = phase === 'downloading'
-  const isInstalling = phase === 'installing'
-  const isReady = phase === 'ready'
-  const busy = isDownloading || isInstalling
+  const busy = phase === 'downloading' || phase === 'installing'
   const upToDate = phase === 'idle' && !info
 
   const headline = upToDate ? t('updater.window.upToDateTitle') : t('updater.window.title')
 
   const subtitle = upToDate
     ? t('updater.window.upToDateBody')
-    : isReady && info
+    : phase === 'ready' && info
       ? t('updater.window.readySubtitle', { app: 'UniClipboard', version: info.version })
       : info
         ? t('updater.window.subtitle', {
@@ -396,7 +380,7 @@ const UpdaterWindow: React.FC = () => {
       {busy && (
         <div className="mx-6 mt-4 space-y-1.5">
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{isInstalling ? t('update.installing') : t('update.downloading')}</span>
+            <span>{phase === 'installing' ? t('update.installing') : t('update.downloading')}</span>
             {percent !== null && <span>{percent}%</span>}
           </div>
           <Progress
@@ -417,12 +401,9 @@ const UpdaterWindow: React.FC = () => {
 
       <div className="mt-auto flex items-center px-6 py-4">
         <ActionButtons
-          isDownloading={isDownloading}
-          isInstalling={isInstalling}
-          isReady={isReady}
-          upToDate={upToDate}
+          phase={phase}
+          hasInfo={!!info}
           cancelling={cancelling}
-          canInstall={devPreview || !!info}
           onCancel={() => void handleCancel()}
           onSkip={handleSkip}
           onClose={closeWindow}

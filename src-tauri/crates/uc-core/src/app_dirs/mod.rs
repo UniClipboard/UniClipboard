@@ -43,6 +43,10 @@ impl AppPaths {
         self.app_data_root_dir.join("last_notified_update.json")
     }
 
+    pub fn skipped_version_path(&self) -> PathBuf {
+        self.app_data_root_dir.join("skipped_version.json")
+    }
+
     pub fn from_app_dirs(dirs: &AppDirs) -> Self {
         // Windows: `dirs::cache_dir()` returns `dirs::data_local_dir()`,
         // so `app_cache_root` and `app_data_root` collide. If we used

@@ -711,6 +711,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     &last_notified_path,
                 )
                 .await;
+                let skipped_version_path =
+                    runtime.storage_paths().skipped_version_path();
+                let skipped_store = crate::update_scheduler::SkippedVersionStore::load(
+                    &skipped_version_path,
+                )
+                .await;
                 // 同一个 Arc<NotifyContext> 同时给 scheduler 和托盘手动检查
                 // 用：app.manage 一份，SchedulerDeps 收一份。
                 // 共享意味着去重 mutex / 落盘路径 / analytics 出口完全一致。
@@ -719,6 +725,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     analytics: runtime.analytics(),
                     last_notified: Arc::new(tokio::sync::Mutex::new(store)),
                     last_notified_path,
+                    skipped_version: Arc::new(tokio::sync::Mutex::new(skipped_store)),
+                    skipped_version_path,
                 });
                 app_handle_for_startup.manage(notify_ctx.clone());
                 let scheduler_deps = crate::update_scheduler::SchedulerDeps {

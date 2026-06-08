@@ -56,12 +56,14 @@
   },
   "updater": {
     "window": {
-      "title": "UniClipboard 有新版本可用",
-      "subtitle": "{{app}} {{version}} 已可下载",
-      "currentVersion": "当前版本",
-      "latestVersion": "最新版本",
-      "releaseNotes": "更新内容",
-      "upToDateTitle": "已是最新版本",
+      "title": "UniClipboard 有新版本可用！",
+      "subtitle": "{{app}} {{version}} 现已可用——你当前使用的是 {{currentVersion}}。是否要立即下载？",
+      "readySubtitle": "{{app}} {{version}} 已下载完成，随时可以安装。",
+      "skipThisVersion": "跳过此版本",
+      "remindMeLater": "稍后提醒",
+      "installUpdate": "安装更新",
+      "autoUpdate": "今后自动下载并安装更新",
+      "upToDateTitle": "已是最新版本！",
       "upToDateBody": "你已经在使用最新的 UniClipboard。",
       "close": "关闭"
     }

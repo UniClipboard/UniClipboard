@@ -234,6 +234,37 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, string>(__TAURI_INVOKE("open_updater_window", { trace })),
 	/**
+	 *  Skip the specified version so the updater window won't pop up for it again.
+	 * 
+	 *  Called by the updater window's "Skip This Version" button. Persists the
+	 *  skipped (channel, version) pair — `notify_if_new_version` checks this
+	 *  store before opening the window.
+	 */
+	skipVersion: (version: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("skip_version", { version, trace })),
+	/**
+	 *  Read the current `auto_download_update` setting.
+	 * 
+	 *  Used by the updater window's auto-update toggle to show the current state.
+	 */
+	getAutoDownloadUpdate: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<boolean, string>(__TAURI_INVOKE("get_auto_download_update", { trace })),
+	/**
+	 *  Toggle the `auto_download_update` setting.
+	 * 
+	 *  Used by the updater window's auto-update toggle. Writes directly to the
+	 *  shared settings file; the scheduler picks up the change on its next
+	 *  iteration.
+	 */
+	setAutoDownloadUpdate: (enabled: boolean, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("set_auto_download_update", { enabled, trace })),
+	/**
 	 *  Open the application data directory in the system file manager.
 	 *  在系统文件管理器中打开应用数据目录。
 	 */

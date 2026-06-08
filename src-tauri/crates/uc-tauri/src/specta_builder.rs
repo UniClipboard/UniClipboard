@@ -62,6 +62,9 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::updater::get_install_kind,
         crate::commands::updater::dev_open_updater_window,
         crate::commands::updater::open_updater_window,
+        crate::commands::updater::skip_version,
+        crate::commands::updater::get_auto_download_update,
+        crate::commands::updater::set_auto_download_update,
         // ── storage ─────────────────────────────────────────────────────────
         crate::commands::storage::open_data_directory,
         crate::commands::storage::open_logs_directory,

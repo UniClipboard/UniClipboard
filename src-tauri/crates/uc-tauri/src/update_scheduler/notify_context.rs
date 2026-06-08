@@ -16,6 +16,7 @@ use uc_observability::analytics::{
 };
 
 use super::last_notified::LastNotifiedUpdateStore;
+use super::skipped_version::SkippedVersionStore;
 use super::window::open_or_focus_updater_window;
 
 /// 所有走"通知 + 弹窗 + 持久化"路径的调用方共享的依赖集合。
@@ -27,16 +28,20 @@ pub struct NotifyContext {
     pub last_notified: Arc<Mutex<LastNotifiedUpdateStore>>,
     /// `last_notified` 持久化目标路径。
     pub last_notified_path: PathBuf,
+    /// 用户主动跳过的版本 store。
+    pub skipped_version: Arc<Mutex<SkippedVersionStore>>,
+    /// `skipped_version` 持久化目标路径。
+    pub skipped_version_path: PathBuf,
 }
 
 impl NotifyContext {
-    /// Available 分支：若 (channel, version) 未通知过，弹出 Sparkle 风格更新
-    /// 窗口，emit `update_notification_shown`，仅在窗口成功创建后 `record`
-    /// 持久化。
+    /// Available 分支：若 (channel, version) 未通知过且未被用户跳过，弹出
+    /// Sparkle 风格更新窗口，emit `update_notification_shown`，仅在窗口
+    /// 成功创建后 `record` 持久化。
     ///
     /// 返回 `true` 表示这次确实打开（或聚焦了）窗口，`false` 表示被去重
-    /// store short-circuit 或 builder 失败。Scheduler 用这个布尔值判断
-    /// 是否需要在 auto-download Ready 阶段兜底再开一次窗口。
+    /// store / skipped store short-circuit 或 builder 失败。Scheduler
+    /// 用这个布尔值判断是否需要在 auto-download Ready 阶段兜底再开一次窗口。
     ///
     /// `delivery_status` 字段语义：`Sent` 表示窗口已打开，`SendFailed`
     /// 表示 `WebviewWindowBuilder::build` 失败（OS 资源耗尽 / 平台异常）。
@@ -46,6 +51,20 @@ impl NotifyContext {
         version: &str,
         install_kind: AnalyticsInstallKind,
     ) -> bool {
+        let is_skipped = {
+            let store = self.skipped_version.lock().await;
+            store.is_skipped(channel, version)
+        };
+        if is_skipped {
+            debug!(
+                target: "update_scheduler",
+                channel = ?channel,
+                version,
+                "version skipped by user; not showing updater window"
+            );
+            return false;
+        }
+
         let already_notified = {
             let store = self.last_notified.lock().await;
             store.contains(channel, version)

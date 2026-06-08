@@ -198,3 +198,30 @@ export async function getInstallKind(): Promise<InstallKind> {
     throw error
   }
 }
+
+export async function skipVersion(version: string): Promise<void> {
+  try {
+    await commands.skipVersion(version)
+  } catch (error) {
+    log.error({ err: error }, '跳过版本失败')
+    throw error
+  }
+}
+
+export async function getAutoDownloadUpdate(): Promise<boolean> {
+  try {
+    return await commands.getAutoDownloadUpdate()
+  } catch (error) {
+    log.error({ err: error }, '获取自动下载设置失败')
+    throw error
+  }
+}
+
+export async function setAutoDownloadUpdate(enabled: boolean): Promise<void> {
+  try {
+    await commands.setAutoDownloadUpdate(enabled)
+  } catch (error) {
+    log.error({ err: error }, '设置自动下载失败')
+    throw error
+  }
+}

@@ -56,12 +56,14 @@
   },
   "updater": {
     "window": {
-      "title": "A new version of UniClipboard is available",
-      "subtitle": "{{app}} {{version}} is ready to download",
-      "currentVersion": "Current version",
-      "latestVersion": "Latest version",
-      "releaseNotes": "What's new",
-      "upToDateTitle": "You're up to date",
+      "title": "A new version of UniClipboard is available!",
+      "subtitle": "{{app}} {{version}} is now available—you have {{currentVersion}}. Would you like to download it now?",
+      "readySubtitle": "{{app}} {{version}} has been downloaded and is ready to install.",
+      "skipThisVersion": "Skip This Version",
+      "remindMeLater": "Remind Me Later",
+      "installUpdate": "Install Update",
+      "autoUpdate": "Automatically download and install updates in the future",
+      "upToDateTitle": "You're up to date!",
       "upToDateBody": "You're already running the latest version of UniClipboard.",
       "close": "Close"
     }

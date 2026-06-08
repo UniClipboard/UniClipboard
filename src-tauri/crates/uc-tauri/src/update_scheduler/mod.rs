@@ -12,6 +12,7 @@ pub mod last_check_at;
 pub mod last_notified;
 pub mod notify_context;
 pub mod scheduler;
+pub mod skipped_version;
 pub mod wake_source;
 pub mod window;
 
@@ -25,5 +26,6 @@ pub use last_check_at::LastCheckAt;
 pub use last_notified::LastNotifiedUpdateStore;
 pub use notify_context::NotifyContext;
 pub use scheduler::{run, SchedulerDeps};
+pub use skipped_version::SkippedVersionStore;
 pub use wake_source::start as start_wake_source;
 pub use window::{open_or_focus_updater_window, UPDATER_WINDOW_LABEL};

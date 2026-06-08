@@ -1174,6 +1174,79 @@ fn detect_install_kind_linux() -> InstallKind {
     InstallKind::Unknown
 }
 
+/// Skip the specified version so the updater window won't pop up for it again.
+///
+/// Called by the updater window's "Skip This Version" button. Persists the
+/// skipped (channel, version) pair — `notify_if_new_version` checks this
+/// store before opening the window.
+#[tauri::command]
+#[specta::specta]
+pub async fn skip_version(
+    app: AppHandle,
+    version: String,
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let _ = _trace;
+    let app_version = app.package_info().version.to_string();
+    let channel = match runtime.settings_port().load().await {
+        Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
+            settings.general.update_channel.clone(),
+            &app_version,
+        ),
+        Err(_) => detect_channel(&app_version),
+    };
+
+    let ctx = app.state::<Arc<crate::update_scheduler::NotifyContext>>();
+    let mut store = ctx.skipped_version.lock().await;
+    store
+        .skip(channel, version, &ctx.skipped_version_path)
+        .await
+        .map_err(|e| format!("failed to persist skipped version: {e}"))
+}
+
+/// Read the current `auto_download_update` setting.
+///
+/// Used by the updater window's auto-update toggle to show the current state.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_auto_download_update(
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<bool, String> {
+    let _ = _trace;
+    let settings = runtime
+        .settings_port()
+        .load()
+        .await
+        .map_err(|e| format!("failed to load settings: {e}"))?;
+    Ok(settings.general.auto_download_update)
+}
+
+/// Toggle the `auto_download_update` setting.
+///
+/// Used by the updater window's auto-update toggle. Writes directly to the
+/// shared settings file; the scheduler picks up the change on its next
+/// iteration.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_auto_download_update(
+    enabled: bool,
+    runtime: State<'_, Arc<TauriAppRuntime>>,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let _ = _trace;
+    let port = runtime.settings_port();
+    let mut settings = port
+        .load()
+        .await
+        .map_err(|e| format!("failed to load settings: {e}"))?;
+    settings.general.auto_download_update = enabled;
+    port.save(&settings)
+        .await
+        .map_err(|e| format!("failed to save settings: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

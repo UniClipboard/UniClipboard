@@ -17,7 +17,7 @@ pub const UPDATER_WINDOW_LABEL: &str = "updater";
 
 const WINDOW_TITLE: &str = "Software Update";
 const WINDOW_WIDTH: f64 = 520.0;
-const WINDOW_HEIGHT: f64 = 460.0;
+const WINDOW_HEIGHT: f64 = 240.0;
 
 /// 打开 updater 窗口；已存在则把它 unminimize + set_focus 提到前台。
 ///

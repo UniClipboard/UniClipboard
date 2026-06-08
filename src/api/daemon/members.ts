@@ -23,6 +23,7 @@ import {
   listPairedDevices as listPairedDevicesSdk,
   unpairDevice as unpairDeviceSdk,
 } from '@/api/generated/sdk.gen'
+import type { RequestOptions } from './client'
 import { daemonClient } from './client'
 
 export interface LocalDeviceInfo {
@@ -103,4 +104,34 @@ export async function unpairDevice(peerId: string): Promise<void> {
   // POST /pairing/unpair — 204 No Content, so do NOT read `.data`. The
   // `peerId` goes in the request body (`UnpairDeviceRequest`).
   await daemonClient.callSdk(() => unpairDeviceSdk({ body: { peerId }, throwOnError: true }))
+}
+
+/**
+ * Reconnect result — matches the backend `ReconnectPeerResponse`.
+ */
+export interface ReconnectPeerResult {
+  connected: boolean
+  channel: string
+  connectionAddress?: string | null
+}
+
+/**
+ * Attempt to reconnect to an offline/unreachable peer.
+ *
+ * POST /member/{deviceId}/reconnect — the backend probes the peer's
+ * reachability and returns the new connection state. The endpoint wraps the
+ * result in the canonical `ApiEnvelope { data, ts }`.
+ *
+ * Uses `daemonClient.request()` directly because the generated SDK does not
+ * yet include this endpoint (codegen will be run after the Rust handler lands).
+ */
+export async function reconnectPeer(
+  deviceId: string,
+  options?: Pick<RequestOptions, 'signal'>
+): Promise<ReconnectPeerResult> {
+  const envelope = await daemonClient.request<{ data: ReconnectPeerResult }>(
+    `/member/${encodeURIComponent(deviceId)}/reconnect`,
+    { method: 'POST', signal: options?.signal }
+  )
+  return envelope.data
 }

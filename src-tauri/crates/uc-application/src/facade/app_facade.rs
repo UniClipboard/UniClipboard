@@ -278,6 +278,20 @@ impl AppFacade {
             .await
     }
 
+    /// 用户触发的手动重连:强制重拨指定 peer,绕过 presence 缓存。
+    /// Thin wrapper over [`SpaceSetupFacade::reconnect_peer`].
+    pub async fn reconnect_peer(
+        &self,
+        device: &DeviceId,
+    ) -> Result<ReachabilityState, PresenceError> {
+        self.space_setup
+            .get()
+            .cloned()
+            .ok_or_else(|| PresenceError::Internal("space setup facade unavailable".to_string()))?
+            .reconnect_peer(device)
+            .await
+    }
+
     /// B1:签发配对邀请。
     pub async fn issue_pairing_invitation(
         &self,

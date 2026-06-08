@@ -1107,6 +1107,11 @@
       }
     },
     "settings": {
+      "retryConnection": "Retry Connection",
+      "reconnecting": "Connecting...",
+      "reconnectSuccess": "Connection established",
+      "reconnectFailed": "Connection failed, please check network",
+      "reconnectCooldown": "Please wait before retrying",
       "readOnly": "Locked",
       "badges": {
         "mvp": "MVP",

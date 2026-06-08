@@ -762,6 +762,20 @@ impl SpaceSetupFacade {
         self.presence.ensure_reachable(device).await
     }
 
+    /// Force-redial a specific peer, bypassing the presence cache.
+    ///
+    /// Exposed via `POST /member/:device_id/reconnect` for user-triggered
+    /// retry. Unlike [`Self::ensure_reachable_one`] which returns early when
+    /// the outbound peers map already holds an alive connection,
+    /// `verify_reachable` forces a fresh dial so stale "Online" assumptions
+    /// are replaced with ground truth.
+    pub async fn reconnect_peer(
+        &self,
+        device: &DeviceId,
+    ) -> Result<ReachabilityState, PresenceError> {
+        self.presence.verify_reachable(device).await
+    }
+
     /// F2 · Tear down facade-owned background work cleanly on app exit.
     ///
     /// Slice 4 P5c: 历史上还会调 `network_control.stop_network()`,libp2p 走

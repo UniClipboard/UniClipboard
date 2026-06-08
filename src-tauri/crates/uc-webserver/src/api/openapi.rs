@@ -71,10 +71,10 @@ use uc_daemon_contract::api::dto::envelope::{
     LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope,
     MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
     MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope,
-    PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope,
-    ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
-    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope,
-    SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
+    PresenceRefreshEnvelope, ReconnectResultEnvelope, RegisterMobileDeviceEnvelope,
+    RelayProbeOutcomeEnvelope, ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope,
+    RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
+    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
     SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
     SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
     StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope,
@@ -93,8 +93,8 @@ use uc_daemon_contract::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
 use uc_daemon_contract::api::types::DaemonWsEvent;
 use uc_daemon_contract::api::types::{
     DaemonResidency, HealthResponse, LifecycleStatusResponse, PeerSnapshotDto,
-    PresenceRefreshResponse, RestartAccepted, RestartRequest, SpaceMemberDto, StatusResponse,
-    WorkerStatusDto,
+    PresenceRefreshResponse, ReconnectResultDto, RestartAccepted, RestartRequest, SpaceMemberDto,
+    StatusResponse, WorkerStatusDto,
 };
 
 /// Applies the contract-owned cross-cutting OpenAPI metadata (info-adjacent
@@ -154,6 +154,7 @@ impl Modify for ContractMeta {
         // ── member ─────────────────────────────────────────────────
         crate::api::member::get_member_sync_preferences_handler,
         crate::api::member::update_member_sync_preferences_handler,
+        crate::api::member::reconnect_member_handler,
         // ── mobile-sync ────────────────────────────────────────────
         crate::api::mobile_sync::register_mobile_device_handler,
         crate::api::mobile_sync::list_mobile_devices_handler,
@@ -262,9 +263,11 @@ impl Modify for ContractMeta {
             // ── member ─────────────────────────────────────────────
             MemberSyncPreferencesEnvelope,
             MemberSyncResultEnvelope,
+            ReconnectResultEnvelope,
             MemberSyncPreferencesDto,
             MemberSyncResultDto,
             MemberSyncPreferencesPatchDto,
+            ReconnectResultDto,
             ContentTypesDto,
             ContentTypesPatchDto,
             // ── mobile-sync ────────────────────────────────────────
@@ -505,7 +508,9 @@ mod assembly_smoke_tests {
         // added `POST /settings/relay-probe`: +1 path, +1 operation → 55 / 60;
         // ADR-008 P5-L L8d-1 surfaced `POST /lifecycle/restart`: +1 path,
         // +1 operation → 56 / 61; ADR-008 P5-1b added the binary endpoint
-        // `GET /clipboard/entries/{id}/file`: +1 path, +1 operation → 57 / 62.)
+        // `GET /clipboard/entries/{id}/file`: +1 path, +1 operation → 57 / 62;
+        // reconnect-peer added `POST /member/{device_id}/reconnect`:
+        // +1 path, +1 operation → 58 / 63.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -514,8 +519,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            57,
-            "expected exactly 57 path templates, found {}: {:?}",
+            58,
+            "expected exactly 58 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -529,8 +534,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 62,
-            "expected exactly 62 operations across all paths, found {operation_count}"
+            operation_count, 63,
+            "expected exactly 63 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

@@ -367,8 +367,10 @@ where
 /// failure).  This lets the caller abort the install on Windows where the
 /// NSIS installer cannot overwrite a locked `uniclipd.exe`.
 ///
-/// Safe no-ops (no PID file, stale PID, InProcess legacy, unreadable
-/// metadata) return `Ok(false)`.  Successful termination returns `Ok(true)`.
+/// Safe no-ops (no PID file, stale PID, InProcess legacy) return
+/// `Ok(false)`.  Successful termination returns `Ok(true)`.  Unreadable
+/// PID metadata (file exists but corrupt/inaccessible) returns `Err` — the
+/// daemon may still be running and we cannot identify its PID to kill it.
 pub fn stop_daemon_before_update() -> Result<bool, String> {
     use uc_daemon_process::contract::terminate_and_wait;
     use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
@@ -377,8 +379,9 @@ pub fn stop_daemon_before_update() -> Result<bool, String> {
         Ok(Some(m)) => m,
         Ok(None) => return Ok(false),
         Err(e) => {
-            tracing::warn!(%e, "pre-update: failed to read daemon pid metadata");
-            return Ok(false);
+            return Err(format!(
+                "pre-update: failed to read daemon pid metadata: {e}"
+            ));
         }
     };
 

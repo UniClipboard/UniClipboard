@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Eye,
+  Copy,
   EyeOff,
   Loader2,
   Shield,
@@ -21,6 +22,7 @@ import type {
 } from '@/api/daemon/setupV2'
 import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/components/invitation-code-utils'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
+import { IpAddressInput } from '@/components/IpAddressInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -412,12 +414,15 @@ export function ShowInvitationScreen({
             <div className="mb-1.5 text-xs text-muted-foreground">{t('lanAddressesHint')}</div>
             <div className="flex flex-wrap gap-2">
               {lanAddresses.map(ip => (
-                <span
+                <button
                   key={ip}
-                  className="inline-flex items-center rounded-md bg-muted px-2.5 py-0.5 font-mono text-sm font-medium text-foreground"
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-0.5 font-mono text-sm font-medium text-foreground transition-colors hover:bg-muted/80"
+                  onClick={() => navigator.clipboard.writeText(ip)}
                 >
                   {ip}
-                </span>
+                  <Copy className="size-3 text-muted-foreground" />
+                </button>
               ))}
             </div>
           </div>
@@ -610,18 +615,13 @@ export function RedeemInvitationScreen({
                 </div>
               </div>
               <div className="pt-4">
-                <Label htmlFor="sponsor-ip" className="text-xs text-muted-foreground">
-                  {t('sponsorIpHint')}
-                </Label>
-                <Input
-                  id="sponsor-ip"
-                  type="text"
+                <Label className="text-xs text-muted-foreground">{t('sponsorIpHint')}</Label>
+                <IpAddressInput
                   value={sponsorIp}
-                  onChange={e => setSponsorIp(e.target.value)}
+                  onChange={setSponsorIp}
                   disabled={loading}
-                  className="mt-1 h-9 border-0 border-b border-border/40 bg-transparent px-0 text-center text-sm shadow-none focus-visible:border-primary focus-visible:ring-0"
-                  placeholder={t('sponsorIpPlaceholder')}
-                  onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                  className="mt-1"
+                  onSubmit={handleSubmit}
                 />
               </div>
             </m.div>

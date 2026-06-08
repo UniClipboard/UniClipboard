@@ -366,10 +366,18 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
                   key={ip}
                   type="button"
                   className="inline-flex items-center gap-1 rounded bg-background px-2 py-0.5 font-mono text-foreground transition-colors hover:bg-muted"
-                  onClick={() => navigator.clipboard.writeText(ip)}
+                  onClick={() => {
+                    navigator.clipboard.writeText(ip)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1500)
+                  }}
                 >
                   {ip}
-                  <Copy className="size-3 text-muted-foreground" />
+                  {copied ? (
+                    <Check className="size-3 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-3 text-muted-foreground" />
+                  )}
                 </button>
               ))}
             </div>

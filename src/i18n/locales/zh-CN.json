@@ -1616,9 +1616,6 @@
       "expired": "邀请码已过期",
       "hint": "配对完成前请保持两台设备都在线。",
       "hintExpired": "邀请码已失效，请取消后重新生成。",
-      "connectionStringHint": "无法自动发现对方设备？复制连接串手动发送：",
-      "copyConnectionString": "复制",
-      "connectionStringCopied": "已复制！",
       "actions": {
         "cancel": "取消邀请"
       }

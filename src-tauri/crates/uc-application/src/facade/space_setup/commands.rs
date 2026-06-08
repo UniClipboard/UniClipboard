@@ -99,10 +99,6 @@ pub struct IssuePairingInvitationResult {
     /// Server-authoritative expiry; UI should display a countdown from
     /// this value rather than computing its own.
     pub expires_at: DateTime<Utc>,
-    /// Full connection string for manual fallback when mDNS/cloud discovery
-    /// is unavailable. Contains the code + base64url-encoded endpoint ticket.
-    /// Format: `uc://p/<CODE>/<BASE64URL_TICKET>`
-    pub connection_string: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -114,10 +110,6 @@ pub struct IssuePairingInvitationResult {
 pub struct RedeemPairingInvitationInput {
     pub code: String,
     pub passphrase: String,
-    /// Optional pre-resolved ticket from a connection string. When present
-    /// the joiner skips discovery and dials the sponsor directly using the
-    /// embedded transport address.
-    pub connection_string: Option<String>,
 }
 
 /// Internal command for [`crate::usecases::pairing::redeem_invitation::RedeemPairingInvitationUseCase`].
@@ -132,9 +124,6 @@ pub(crate) struct RedeemPairingInvitationCommand {
     pub code: InvitationCode,
     /// Same passphrase the sponsor used in A1 `InitializeSpace`.
     pub passphrase: Passphrase,
-    /// Optional pre-resolved ticket from a connection string. When present
-    /// the joiner skips discovery and dials the sponsor directly.
-    pub connection_string: Option<String>,
 }
 
 impl From<RedeemPairingInvitationInput> for RedeemPairingInvitationCommand {
@@ -142,7 +131,6 @@ impl From<RedeemPairingInvitationInput> for RedeemPairingInvitationCommand {
         Self {
             code: InvitationCode::new(input.code),
             passphrase: Passphrase::new(input.passphrase),
-            connection_string: input.connection_string,
         }
     }
 }
@@ -215,8 +203,6 @@ pub struct RedeemPairingInvitationResult {
 pub struct SwitchSpaceInput {
     pub code: String,
     pub new_passphrase: String,
-    /// Optional pre-resolved ticket from a connection string.
-    pub connection_string: Option<String>,
 }
 
 /// Internal command for [`crate::usecases::setup::switch_space::SwitchSpaceUseCase`].
@@ -224,7 +210,6 @@ pub struct SwitchSpaceInput {
 pub(crate) struct SwitchSpaceCommand {
     pub code: InvitationCode,
     pub new_passphrase: Passphrase,
-    pub connection_string: Option<String>,
 }
 
 impl From<SwitchSpaceInput> for SwitchSpaceCommand {
@@ -232,7 +217,6 @@ impl From<SwitchSpaceInput> for SwitchSpaceCommand {
         Self {
             code: InvitationCode::new(input.code),
             new_passphrase: Passphrase::new(input.new_passphrase),
-            connection_string: input.connection_string,
         }
     }
 }

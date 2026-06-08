@@ -504,7 +504,6 @@ async fn sponsor_joiner_end_to_end_pairing_persists_both_sides() {
         .redeem_pairing_invitation(RedeemPairingInvitationInput {
             code: invitation.code.as_str().to_string(),
             passphrase: passphrase.to_string(),
-            connection_string: None,
         })
         .await
         .expect("joiner B2");

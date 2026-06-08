@@ -1532,9 +1532,6 @@
       "expired": "Invitation expired",
       "hint": "Both devices must remain online while pairing.",
       "hintExpired": "The code is no longer valid. Cancel and start a new invitation.",
-      "connectionStringHint": "Can't discover the other device? Copy this and send it manually:",
-      "copyConnectionString": "Copy",
-      "connectionStringCopied": "Copied!",
       "actions": {
         "cancel": "Cancel invitation"
       }

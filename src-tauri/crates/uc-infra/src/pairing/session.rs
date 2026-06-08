@@ -277,67 +277,6 @@ impl IrohPairingSessionAdapter {
         id
     }
 
-    /// Shared dial logic: given a resolved address and channel, connect to the
-    /// sponsor, open a bi-stream, and register the session.
-    async fn dial_resolved(
-        &self,
-        _code: &InvitationCode,
-        sponsor_addr: EndpointAddr,
-        channel: DiscoveryChannel,
-    ) -> Result<DialOutcome, DialError> {
-        let sponsor_id = sponsor_addr.id.fmt_short().to_string();
-        let transport_addr_count = sponsor_addr.addrs.len();
-        info!(
-            sponsor = %sponsor_id,
-            transport_addr_count,
-            "pairing sponsor address resolved; dialing"
-        );
-
-        let connection = connect_with_staggered_retry(
-            Arc::clone(&self.endpoint),
-            sponsor_addr,
-            PAIRING_ALPN,
-            "pairing",
-        )
-        .await
-        .map_err(|err| {
-            warn!(
-                error = %err,
-                sponsor = %sponsor_id,
-                "pairing sponsor connect failed"
-            );
-            DialError::SponsorUnreachable
-        })?;
-        info!(
-            sponsor = %sponsor_id,
-            "pairing sponsor connection established; opening bi stream"
-        );
-
-        let (send, recv) = connection.open_bi().await.map_err(|err| {
-            warn!(
-                error = %err,
-                sponsor = %sponsor_id,
-                "pairing open_bi failed"
-            );
-            DialError::Internal(format!("open_bi failed: {err}"))
-        })?;
-        info!(
-            sponsor = %sponsor_id,
-            "pairing bi stream opened"
-        );
-
-        let session = self.register_session(connection, send, recv).await;
-        info!(
-            session = %session,
-            sponsor = %sponsor_id,
-            "pairing outbound session registered"
-        );
-        Ok(DialOutcome {
-            session_id: session,
-            channel,
-        })
-    }
-
     async fn session(&self, id: &PairingSessionId) -> Result<Arc<SessionSlot>, SessionError> {
         self.sessions
             .lock()
@@ -666,30 +605,57 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
     #[instrument(skip_all, fields(code = %code.as_str()))]
     async fn dial_by_invitation(&self, code: &InvitationCode) -> Result<DialOutcome, DialError> {
         let (sponsor_addr, channel) = self.resolve_invitation(code).await?;
-        self.dial_resolved(code, sponsor_addr, channel).await
-    }
+        let sponsor_id = sponsor_addr.id.fmt_short().to_string();
+        let transport_addr_count = sponsor_addr.addrs.len();
+        info!(
+            sponsor = %sponsor_id,
+            transport_addr_count,
+            "pairing sponsor address resolved; dialing"
+        );
 
-    #[instrument(skip_all, fields(code = %code.as_str()))]
-    async fn dial_by_pre_resolved_addr(
-        &self,
-        code: &InvitationCode,
-        addr_bytes: &[u8],
-    ) -> Result<DialOutcome, DialError> {
-        let addr: EndpointAddr = postcard::from_bytes(addr_bytes).map_err(|err| {
+        let connection = connect_with_staggered_retry(
+            Arc::clone(&self.endpoint),
+            sponsor_addr,
+            PAIRING_ALPN,
+            "pairing",
+        )
+        .await
+        .map_err(|err| {
             warn!(
                 error = %err,
-                code = %code.as_str(),
-                "connection string: postcard decode of pre-resolved addr failed"
+                sponsor = %sponsor_id,
+                "pairing sponsor connect failed"
             );
-            DialError::InvitationNotFound
+            DialError::SponsorUnreachable
         })?;
         info!(
-            code = %code.as_str(),
-            sponsor = %addr.id.fmt_short(),
-            transport_addr_count = addr.addrs.len(),
-            "resolved via connection string (manual fallback)"
+            sponsor = %sponsor_id,
+            "pairing sponsor connection established; opening bi stream"
         );
-        self.dial_resolved(code, addr, DiscoveryChannel::Lan).await
+
+        let (send, recv) = connection.open_bi().await.map_err(|err| {
+            warn!(
+                error = %err,
+                sponsor = %sponsor_id,
+                "pairing open_bi failed"
+            );
+            DialError::Internal(format!("open_bi failed: {err}"))
+        })?;
+        info!(
+            sponsor = %sponsor_id,
+            "pairing bi stream opened"
+        );
+
+        let session = self.register_session(connection, send, recv).await;
+        info!(
+            session = %session,
+            sponsor = %sponsor_id,
+            "pairing outbound session registered"
+        );
+        Ok(DialOutcome {
+            session_id: session,
+            channel,
+        })
     }
 
     #[instrument(skip_all, fields(session = %session))]

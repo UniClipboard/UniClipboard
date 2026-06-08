@@ -481,7 +481,6 @@ async fn mdns_only_first_pair_succeeds_when_cloud_unreachable() {
             .redeem_pairing_invitation(RedeemPairingInvitationInput {
                 code: invitation.code.as_str().to_string(),
                 passphrase: passphrase.to_string(),
-                connection_string: None,
             }),
     )
     .await

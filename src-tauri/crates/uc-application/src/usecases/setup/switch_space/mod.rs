@@ -118,7 +118,6 @@ pub(crate) trait JoinerHandshakeRunner: Send + Sync {
         &self,
         code: &InvitationCode,
         passphrase: &Passphrase,
-        connection_string: Option<String>,
     ) -> Result<JoinerHandshakeOutcome, RedeemPairingInvitationError>;
 }
 
@@ -128,10 +127,8 @@ impl JoinerHandshakeRunner for JoinerHandshakeCoordinator {
         &self,
         code: &InvitationCode,
         passphrase: &Passphrase,
-        connection_string: Option<String>,
     ) -> Result<JoinerHandshakeOutcome, RedeemPairingInvitationError> {
-        self.handshake(code, passphrase, connection_string.as_deref())
-            .await
+        self.handshake(code, passphrase).await
     }
 }
 
@@ -232,11 +229,7 @@ impl SwitchSpaceUseCase {
 
         // ── Phase 2 — handshake + admit + trust + peer-addr ──────────────
         let outcome = match self
-            .phase_2_handshake_and_persist(
-                &cmd.code,
-                &cmd.new_passphrase,
-                cmd.connection_string.as_deref(),
-            )
+            .phase_2_handshake_and_persist(&cmd.code, &cmd.new_passphrase)
             .await
         {
             Ok(o) => o,
@@ -425,11 +418,10 @@ impl SwitchSpaceUseCase {
         &self,
         code: &InvitationCode,
         new_passphrase: &Passphrase,
-        connection_string: Option<&str>,
     ) -> Result<JoinerHandshakeOutcome, SwitchSpaceError> {
         let outcome = self
             .handshake
-            .run(code, new_passphrase, connection_string.map(String::from))
+            .run(code, new_passphrase)
             .await
             .map_err(map_redeem_err)?;
         let now = self.now_utc()?;

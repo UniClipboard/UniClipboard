@@ -131,16 +131,11 @@ impl JoinerHandshakeCoordinator {
     /// been closed cleanly and the outcome is ready for the outer use
     /// case to persist. On failure the session is also closed (so the
     /// adapter releases its slot) and the error is surfaced.
-    ///
-    /// When `connection_string` is `Some`, the coordinator parses the
-    /// `uc://p/<CODE>/<TICKET>` URI, base64url-decodes the ticket, and
-    /// dials the sponsor directly — bypassing all discovery channels.
     #[instrument(skip_all, fields(code = %code.as_str()))]
     pub(crate) async fn handshake(
         &self,
         code: &InvitationCode,
         passphrase: &Passphrase,
-        connection_string: Option<&str>,
     ) -> Result<JoinerHandshakeOutcome, RedeemPairingInvitationError> {
         // Dial first so NotFound / Expired / Unreachable short-circuits
         // without spending any crypto work. A successful dial creates
@@ -149,20 +144,11 @@ impl JoinerHandshakeCoordinator {
         let DialOutcome {
             session_id: session,
             channel,
-        } = match connection_string {
-            Some(cs) => {
-                let ticket_bytes = parse_connection_string(cs)?;
-                self.pairing_session
-                    .dial_by_pre_resolved_addr(code, &ticket_bytes)
-                    .await
-                    .map_err(map_dial_err)?
-            }
-            None => self
-                .pairing_session
-                .dial_by_invitation(code)
-                .await
-                .map_err(map_dial_err)?,
-        };
+        } = self
+            .pairing_session
+            .dial_by_invitation(code)
+            .await
+            .map_err(map_dial_err)?;
         info!(session = %session, ?channel, "pairing session dialled");
 
         match self.drive(&session, channel, code, passphrase).await {
@@ -383,29 +369,6 @@ fn challenge_to_array(bytes: &[u8]) -> Result<[u8; 32], RedeemPairingInvitationE
         RedeemPairingInvitationError::Internal(format!(
             "challenge nonce wire length invalid: expected 32 bytes, got {}",
             bytes.len()
-        ))
-    })
-}
-
-/// Parse a `uc://p/<CODE>/<BASE64URL_TICKET>` connection string and return
-/// the decoded ticket bytes. The code part is validated against the
-/// invitation code the caller already has; the ticket is base64url-decoded
-/// (no padding).
-fn parse_connection_string(cs: &str) -> Result<Vec<u8>, RedeemPairingInvitationError> {
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    use base64::Engine as _;
-
-    let rest = cs.strip_prefix("uc://p/").ok_or_else(|| {
-        RedeemPairingInvitationError::Internal(
-            "connection string does not start with uc://p/".into(),
-        )
-    })?;
-    let (_code, ticket_b64) = rest.split_once('/').ok_or_else(|| {
-        RedeemPairingInvitationError::Internal("connection string missing ticket after code".into())
-    })?;
-    URL_SAFE_NO_PAD.decode(ticket_b64).map_err(|err| {
-        RedeemPairingInvitationError::Internal(format!(
-            "connection string base64url decode failed: {err}"
         ))
     })
 }
@@ -823,7 +786,7 @@ mod tests {
         let coord = b.build();
 
         let out = coord
-            .handshake(&code("CODE-1"), &passphrase(), None)
+            .handshake(&code("CODE-1"), &passphrase())
             .await
             .unwrap();
 
@@ -859,7 +822,7 @@ mod tests {
         let b = Bundle::with_dial_err(DialError::InvitationNotFound);
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -875,7 +838,7 @@ mod tests {
         let b = Bundle::with_dial_err(DialError::InvitationExpired);
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -889,7 +852,7 @@ mod tests {
         let b = Bundle::with_dial_err(DialError::SponsorUnreachable);
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -903,7 +866,7 @@ mod tests {
         let b = Bundle::with_dial_err(DialError::ServiceUnavailable);
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -925,7 +888,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -951,7 +914,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -972,7 +935,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(err, RedeemPairingInvitationError::SponsorTimedOut));
@@ -989,7 +952,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(err, RedeemPairingInvitationError::SponsorDeclined));
@@ -1006,7 +969,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         match err {
@@ -1022,8 +985,7 @@ mod tests {
         let b = Bundle::happy();
         b.session.push_recv(RecvStep::Hang);
         let coord = b.build();
-        let handle =
-            tokio::spawn(async move { coord.handshake(&code("X"), &passphrase(), None).await });
+        let handle = tokio::spawn(async move { coord.handshake(&code("X"), &passphrase()).await });
         tokio::time::sleep(TEST_TTL + ChronoDuration::seconds(1).to_std().unwrap()).await;
         let err = handle.await.unwrap().unwrap_err();
         assert!(matches!(err, RedeemPairingInvitationError::Timeout));
@@ -1040,8 +1002,7 @@ mod tests {
         let sent_probe = b.session.clone();
         let closed_probe = b.session.clone();
         let coord = b.build();
-        let handle =
-            tokio::spawn(async move { coord.handshake(&code("X"), &passphrase(), None).await });
+        let handle = tokio::spawn(async move { coord.handshake(&code("X"), &passphrase()).await });
         tokio::time::sleep(TEST_TTL + ChronoDuration::seconds(1).to_std().unwrap()).await;
         let err = handle.await.unwrap().unwrap_err();
         assert!(matches!(err, RedeemPairingInvitationError::Timeout));
@@ -1063,7 +1024,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -1086,7 +1047,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -1103,7 +1064,7 @@ mod tests {
         b.session.push_recv(RecvStep::CleanClose);
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(err, RedeemPairingInvitationError::ConnectionLost));
@@ -1115,7 +1076,7 @@ mod tests {
         b.session.push_recv(RecvStep::Err(SessionError::Closed));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(err, RedeemPairingInvitationError::ConnectionLost));
@@ -1130,7 +1091,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         match err {
@@ -1161,7 +1122,7 @@ mod tests {
             )));
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         match err {
@@ -1180,7 +1141,7 @@ mod tests {
         b.settings = Arc::new(StubSettings::blank());
         let err = b
             .build()
-            .handshake(&code("X"), &passphrase(), None)
+            .handshake(&code("X"), &passphrase())
             .await
             .unwrap_err();
         assert!(matches!(

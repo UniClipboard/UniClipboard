@@ -464,7 +464,6 @@ async fn pair_sponsor_and_joiner(sponsor: &Side, joiner: &Side, passphrase: &str
         .redeem_pairing_invitation(RedeemPairingInvitationInput {
             code: invitation.code.as_str().to_string(),
             passphrase: passphrase.to_string(),
-            connection_string: None,
         })
         .await
         .expect("joiner B2");

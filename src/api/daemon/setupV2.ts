@@ -41,15 +41,18 @@ export interface InitializeSpaceResponse {
 export interface IssueInvitationResponse {
   code: string
   expiresAtMs: number
-  /** Full connection string for manual fallback (`uc://p/<CODE>/<TICKET>`). */
-  connectionString?: string
+  // Future extension point (Phase 5 product-side decision): per-channel
+  // publish status — e.g. `{ lan: 'live', cloud: 'unreachable' }` — so
+  // the issue UI can show "✓ LAN / ✗ Cloud" indicators when only some
+  // channels accepted the announce. Backend support pending a separate
+  // facade query API; until then, callers should not depend on this
+  // field being present.
+  // publishChannels?: { lan?: ChannelStatus; cloud?: ChannelStatus }
 }
 
 export interface RedeemRequest {
   code: string
   passphrase: string
-  /** Optional connection string for direct-dial fallback. */
-  connectionString?: string
 }
 
 export interface RedeemResponse {
@@ -74,8 +77,6 @@ export interface SetupStateResponse {
 export interface SwitchSpaceRequest {
   code: string
   newPassphrase: string
-  /** Optional connection string for direct-dial fallback. */
-  connectionString?: string
 }
 
 export interface SwitchSpaceResponse {
@@ -401,10 +402,7 @@ export async function redeemInvitation(body: RedeemRequest): Promise<RedeemRespo
   try {
     const envelope = await daemonClient.callSdk(() =>
       setupV2Redeem({
-        body: {
-          ...body,
-          code: normalizeInvitationCode(body.code),
-        } as unknown as RedeemRequestDto,
+        body: { ...body, code: normalizeInvitationCode(body.code) } as unknown as RedeemRequestDto,
         throwOnError: true,
       })
     )

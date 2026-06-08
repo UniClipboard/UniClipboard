@@ -129,26 +129,6 @@ pub trait PairingSessionPort: Send + Sync {
     /// [`send`](Self::send).
     async fn dial_by_invitation(&self, code: &InvitationCode) -> Result<DialOutcome, DialError>;
 
-    /// Joiner entry point for the connection-string fallback path.
-    ///
-    /// Skips all discovery channels and dials the sponsor directly using
-    /// a pre-resolved transport address encoded as opaque bytes (postcard
-    /// serialization of the adapter's address type, base64url-decoded by
-    /// the caller). Returns the same [`DialOutcome`] as
-    /// [`dial_by_invitation`](Self::dial_by_invitation).
-    ///
-    /// Default implementation returns [`DialError::Internal`]; adapters
-    /// that support the fallback override this.
-    async fn dial_by_pre_resolved_addr(
-        &self,
-        _code: &InvitationCode,
-        _addr_bytes: &[u8],
-    ) -> Result<DialOutcome, DialError> {
-        Err(DialError::Internal(
-            "dial_by_pre_resolved_addr not supported by this adapter".into(),
-        ))
-    }
-
     /// Send a pairing message on an existing session. Used by both sides
     /// throughout the handshake.
     async fn send(

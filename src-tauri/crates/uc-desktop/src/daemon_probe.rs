@@ -359,6 +359,23 @@ where
     }
 }
 
+/// Stop the local daemon before an in-place update.
+///
+/// Reuses the same PID-identity + InProcess safety checks as
+/// [`stop_local_daemon_on_full_quit`], but swaps the fire-and-forget
+/// `terminate_local_daemon_pid` for [`terminate_and_wait`] so the daemon
+/// process is fully dead before the installer overwrites the binary.
+/// On Windows this releases the file lock on `uniclipd.exe`; on Unix the
+/// wait is a no-op (kernel allows overwriting a running binary).
+pub fn stop_daemon_before_update() -> bool {
+    use uc_daemon_process::contract::terminate_and_wait;
+    use uc_daemon_process::process_metadata::verify_pid_identity;
+
+    stop_local_daemon_on_full_quit_with(read_pid_metadata, verify_pid_identity, |pid| {
+        terminate_and_wait(pid, std::time::Duration::from_secs(10))
+    })
+}
+
 /// Inner implementation that takes injected reader/terminator closures so the
 /// `InProcess` refusal can be unit-tested without touching the real PID file
 /// or sending real signals.

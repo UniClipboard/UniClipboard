@@ -917,6 +917,12 @@ pub async fn install_update(
             }
         };
 
+        // Stop the old daemon before install so the new GUI bootstraps the
+        // new version. On Windows this also releases the file lock on
+        // uniclipd.exe that would block the NSIS installer.
+        let stopped = uc_desktop::daemon_probe::stop_daemon_before_update();
+        info!(stopped, "pre-update: daemon stop attempt complete");
+
         match state {
             PendingUpdateState::None | PendingUpdateState::Downloading { .. } => {
                 unreachable!("filtered above while holding the lock")

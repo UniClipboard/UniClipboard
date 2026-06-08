@@ -98,6 +98,65 @@ pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> 
     )))
 }
 
+/// Terminate a daemon PID and block until the process has fully exited.
+///
+/// On Windows, `taskkill /F` sends `TerminateProcess` which is immediate, but
+/// the OS may keep the process object (and its file locks) alive briefly while
+/// reclaiming resources. This function polls until the PID is no longer present,
+/// so callers can safely overwrite the daemon binary afterwards.
+///
+/// On Unix this is a no-op after sending SIGTERM — the kernel allows overwriting
+/// a running binary (the old inode stays alive until the process exits).
+pub fn terminate_and_wait(
+    pid: u32,
+    timeout: std::time::Duration,
+) -> Result<(), TerminateDaemonError> {
+    terminate_local_daemon_pid(pid)?;
+
+    #[cfg(windows)]
+    {
+        use std::time::Instant;
+
+        let deadline = Instant::now() + timeout;
+        let poll_interval = std::time::Duration::from_millis(100);
+
+        loop {
+            if !is_pid_running_win(pid) {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(TerminateDaemonError(format!(
+                    "daemon pid {pid} did not exit within {}ms after taskkill",
+                    timeout.as_millis()
+                )));
+            }
+            std::thread::sleep(poll_interval);
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = timeout;
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn is_pid_running_win(pid: u32) -> bool {
+    let output = Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+        .output();
+    match output {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // When PID is absent, tasklist prints a line containing "INFO:".
+            // When PID is present, it prints the process row (no "INFO:").
+            !stdout.contains("INFO:")
+        }
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

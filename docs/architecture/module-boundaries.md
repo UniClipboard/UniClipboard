@@ -4,13 +4,24 @@ This document defines the **responsibilities and boundaries** for each crate in 
 
 ## Quick Reference
 
-| Crate         | Core Responsibility              | May Depend On    | Must NOT Depend On           |
-| ------------- | -------------------------------- | ---------------- | ---------------------------- |
-| `uc-core`     | Domain models + Port definitions | Nothing external | ❌ Database, OS, Frameworks  |
-| `uc-app`      | Use cases, orchestration         | `uc-core` only   | ❌ `uc-infra`, `uc-platform` |
-| `uc-infra`    | Infrastructure adapters          | `uc-core`        | ❌ `uc-app`, business logic  |
-| `uc-platform` | Platform adapters                | `uc-core`        | ❌ `uc-app`, business logic  |
-| `uc-tauri`    | Bootstrap, Tauri integration     | All crates       | ❌ Business decisions        |
+| Crate              | Core Responsibility                     | May Depend On                         | Must NOT Depend On                |
+| ------------------ | --------------------------------------- | ------------------------------------- | --------------------------------- |
+| `uc-core`          | Domain models + Port trait definitions  | Nothing external                      | ❌ Database, OS, Frameworks        |
+| `uc-application`   | Use cases, facades, orchestration       | `uc-core` + `uc-observability`        | ❌ `uc-infra`, `uc-platform`       |
+| `uc-infra`         | Infrastructure adapters (DB, P2P, crypto)| `uc-core`                            | ❌ `uc-application`, business logic |
+| `uc-platform`      | Platform adapters (clipboard, OS, keychain)| `uc-core` + `uc-app-paths`          | ❌ `uc-application`, business logic |
+| `uc-bootstrap`     | **唯一组合根** (DI wiring)              | All core/app/infra/platform/observability | ❌ Business decisions           |
+| `uc-observability` | Tracing, analytics, redaction           | Nothing external (leaf)               | ❌ Domain logic                    |
+| `uc-app-paths`     | Directory layout resolution             | Nothing external (leaf)               | ❌ App-stack logic                 |
+| `uc-daemon-contract`| HTTP API transport types (serde)       | `uc-core`                             | ❌ Infrastructure, GUI frameworks  |
+| `uc-daemon-process`| Process management (PID, socket, spawn) | `uc-daemon-contract` + `uc-app-paths` | ❌ iroh, diesel, GUI frameworks    |
+| `uc-daemon-local`  | Local daemon metadata (auth, health)    | `uc-daemon-contract` + `uc-daemon-process` | ❌ GUI frameworks             |
+| `uc-webserver`     | Daemon HTTP + WebSocket API (axum)      | `uc-application` + `uc-core` + contract | ❌ GUI frameworks               |
+| `uc-daemon`        | Daemon runtime + `uniclipd` binary      | `uc-bootstrap` + webserver + all      | ❌ GUI frameworks (Tauri/AppKit)   |
+| `uc-daemon-client` | HTTP/WS client to daemon                | contract + process                    | ❌ iroh, diesel, sqlite            |
+| `uc-desktop`       | Desktop host logic (GUI-framework-agnostic) | daemon-client + contract + process | ❌ Tauri, AppKit, egui             |
+| `uc-tauri`         | Tauri shell adapter (commands, tray)    | `uc-desktop` + daemon-client + contract | ❌ `uc-application` directly     |
+| `uc-cli`           | CLI `uniclip` binary                    | daemon-client + contract + process    | ❌ iroh, diesel (release builds)   |
 
 ## uc-core (Domain Layer)
 
@@ -112,11 +123,11 @@ When reviewing `uc-core` code:
 - ☐ Are all trait definitions pure interfaces (no implementation)?
 - ☐ Are DTOs pure data structures (no validation, no defaults)?
 
-## uc-app (Application Layer)
+## uc-application (Application Layer)
 
 ### Purpose
 
-Orchestrate business logic using **only Port interfaces**. Contains use cases and application state management.
+Orchestrate business logic using **only Port interfaces**. Contains use cases, facades, and application state management. External crates access this layer only through `src/facade/`; internal modules are `pub(crate)`.
 
 ### Responsibilities
 
@@ -355,16 +366,15 @@ impl ClipboardPort for MacOSClipboard {
 }
 ```
 
-✅ **Network Adapters** - Network layer implementations
+✅ **Network Adapters** - Network layer implementations (note: iroh P2P lives in `uc-infra`, not `uc-platform`)
 
 ```rust
-pub struct Libp2pNetwork {
-    swarm: Swarm<Libp2pBehaviour>,
-}
+// uc-platform handles OS-level capabilities like secure storage, autostart, clipboard access
+pub struct SystemSecureStorage { /* OS keychain/keyring */ }
 
-impl NetworkPort for Libp2pNetwork {
-    fn broadcast(&self, content: ClipboardContent) -> Result<(), NetworkError> {
-        // Broadcast via libp2p
+impl SecureStoragePort for SystemSecureStorage {
+    fn store(&self, key: &str, value: &[u8]) -> Result<(), SecureStorageError> {
+        // Store in macOS Keychain / Windows Credential Manager / Linux Secret Service
     }
 }
 ```
@@ -398,11 +408,13 @@ When reviewing `uc-platform` code:
 - ☐ Is this platform-specific? (should be yes)
 - ☐ Does this implement a Port trait? (should be yes)
 
-## uc-tauri (Integration Layer)
+## uc-tauri (GUI Shell Layer)
 
 ### Purpose
 
-**Bootstrap** the application by wiring all dependencies together. Also handles Tauri command registration.
+Tauri 框架适配壳——Tauri command 注册、tray 图标、Quick Panel 窗口管理。自 ADR-008 后，大部分命令委托给 daemon HTTP API，只有系统级操作（窗口、tray、autostart）保留为直接 Tauri command。
+
+Bootstrap/DI wiring 已迁移到 `uc-bootstrap` crate。
 
 ### Responsibilities
 
@@ -484,13 +496,13 @@ When reviewing `uc-tauri` code:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    uc-tauri (Bootstrap)                     │
-│  May depend on: uc-core, uc-app, uc-infra, uc-platform      │
+│                 uc-bootstrap (Composition Root)              │
+│  唯一允许依赖: uc-core + uc-application + uc-infra + uc-platform │
 └─────────────────────────────────────────────────────────────┘
-                            ↓
+                            ↓ wires
 ┌─────────────────────────────────────────────────────────────┐
-│                      uc-app                                 │
-│  May depend on: uc-core (Ports)                              │
+│                   uc-application                             │
+│  May depend on: uc-core (Ports) + uc-observability           │
 │  Must NOT: uc-infra, uc-platform                             │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -498,16 +510,24 @@ When reviewing `uc-tauri` code:
 │                      uc-core                                │
 │  May depend on: Nothing external                             │
 └─────────────────────────────────────────────────────────────┘
-                            ↑
+                            ↑ implements
         ┌───────────────────┴───────────────────┐
         │                                       │
 ┌──────────────────┐                  ┌──────────────────┐
 │   uc-infra       │                  │  uc-platform     │
 │  May depend on:  │                  │  May depend on:  │
 │  - uc-core       │                  │  - uc-core       │
-│  Must NOT:       │                  │  Must NOT:       │
-│  - uc-app        │                  │  - uc-app        │
-└──────────────────┘                  └──────────────────┘
+│  Must NOT:       │                  │  - uc-app-paths  │
+│  - uc-application│                  │  Must NOT:       │
+└──────────────────┘                  │  - uc-application│
+                                      └──────────────────┘
+
+                ↑ consumed by
+┌───────────────┼──────────────────┬──────────────────────┐
+│               │                  │                      │
+│  uc-daemon    │    uc-tauri      │      uc-cli          │
+│  (uniclipd)  │  (GUI shell)     │  (uniclip CLI)       │
+└───────────────┘──────────────────┘──────────────────────┘
 ```
 
 ## Common Boundary Violations
@@ -579,25 +599,25 @@ pub fn load_config() -> Result<AppConfig, ConfigError> {
 
 ### Adding a New Use Case
 
-1. Create in `uc-app/src/use_cases/`
+1. Create in `uc-application/src/` (通过 facade 暴露)
 2. Depend only on `uc-core` Ports
-3. Add to `AppDeps` in `uc-app`
-4. Wire in `uc-tauri/src/bootstrap/wiring.rs`
-5. Expose via Tauri command if needed by UI
+3. Add to `AppDeps`
+4. Wire in `uc-bootstrap/src/assembly.rs`
+5. Expose via daemon HTTP route (`uc-webserver`) 或 Tauri command（仅系统级操作）
 
 ### Adding a New Repository
 
 1. Define Port in `uc-core/src/ports/`
-2. Implement in `uc-infra/src/db/repositories/`
-3. Add to `AppDeps` in `uc-app`
-4. Wire in `uc-tauri/src/bootstrap/wiring.rs`
+2. Implement in `uc-infra/src/`
+3. Add to `AppDeps`
+4. Wire in `uc-bootstrap/src/assembly.rs`
 
 ### Adding a New Platform Adapter
 
 1. Define Port in `uc-core/src/ports/`
-2. Implement in `uc-platform/src/adapters/`
-3. Add to `AppDeps` in `uc-app`
-4. Wire in `uc-tauri/src/bootstrap/wiring.rs`
+2. Implement in `uc-platform/src/`
+3. Add to `AppDeps`
+4. Wire in `uc-bootstrap/src/assembly.rs`
 
 ## Further Reading
 

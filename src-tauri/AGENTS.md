@@ -63,11 +63,12 @@ src-tauri/
 
 - Rust commands run from `src-tauri/` only; stop if `Cargo.toml` absent.
 - Keep `uc-core` pure; no infra/platform dependencies in core.
-- New external capability flow: `uc-core/ports` trait -> adapter in `uc-infra` or `uc-platform` -> wire in `uc-tauri/bootstrap/wiring.rs`.
+- New external capability flow: `uc-core/ports` trait -> adapter in `uc-infra` or `uc-platform` -> wire in `uc-bootstrap/src/assembly.rs`.
 - Tauri command pattern: command -> `runtime.usecases().x()`; avoid direct `deps` access from command layer.
 - Event payloads emitted via `app.emit()` must use `#[serde(rename_all = "camelCase")]`.
 - Use `tracing` structured logs; avoid `println!/eprintln!/log` macros in production.
-- For libp2p/event-loop changes, preserve non-blocking poll loop progress; do not block swarm progression while awaiting business stream operations.
+- For iroh/event-loop changes, preserve non-blocking progress; do not block the iroh endpoint while awaiting business stream operations.
+- 做产品/架构方向判断前先读根目录 `VISION.md`。
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
@@ -79,11 +80,10 @@ src-tauri/
 
 ## COMPLEXITY HOTSPOTS
 
-- `crates/uc-tauri/src/bootstrap/wiring.rs`: global wiring and emit loops; smallest safe edits only.
-- `crates/uc-app/src/usecases/setup/orchestrator.rs`: high-state async setup transitions.
-- `crates/uc-core/src/network/pairing_state_machine.rs`: protocol-critical state machine.
-- `crates/uc-app/src/usecases/pairing/orchestrator.rs`: side-effect orchestration around pairing FSM.
-- `crates/uc-platform/src/adapters/libp2p_network.rs`: transport internals; keep business rules out.
+- `crates/uc-bootstrap/src/assembly.rs`: global wiring; smallest safe edits only.
+- `crates/uc-application/src/`: setup/pairing orchestrators, high-state async transitions.
+- `crates/uc-core/src/network/`: protocol-critical state machines.
+- `crates/uc-infra/src/network/`: iroh transport internals; keep business rules out.
 
 ## COMMANDS
 

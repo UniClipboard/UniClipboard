@@ -6,13 +6,14 @@
 
 | Layer                | Technology                    | Purpose                              |
 | -------------------- | ----------------------------- | ------------------------------------ |
-| **Frontend**         | React 18 + TypeScript + Vite  | UI and user interaction              |
+| **Frontend**         | React 19 + TypeScript + Vite  | UI and user interaction              |
 | **State Management** | Redux Toolkit + RTK Query     | Client state and API caching         |
 | **UI Components**    | Tailwind CSS + Shadcn/ui      | Responsive, accessible components    |
-| **Backend**          | Rust + Tauri 2                | Native integration and system access |
+| **Desktop Shell**    | Rust + Tauri 2                | GUI 壳适配（commands, tray, panel）  |
+| **Daemon**           | Rust (axum + tokio)           | 后台常驻服务，承载全部业务逻辑       |
 | **Database**         | SQLite + Diesel ORM           | Local clipboard history storage      |
-| **Realtime / IPC**   | Daemon WS/API bridge          | Background sync and frontend updates |
-| **P2P Network**      | libp2p (Rust)                 | Device discovery, pairing, sync      |
+| **Realtime / IPC**   | Daemon HTTP + WebSocket       | GUI/CLI 通过 127.0.0.1 与 daemon 通信 |
+| **P2P Network**      | iroh (QUIC + Ed25519)         | NAT 穿越、设备发现、加密传输         |
 | **Encryption**       | XChaCha20-Poly1305 + Argon2id | End-to-end content encryption        |
 
 ## What It Does
@@ -28,58 +29,69 @@ UniClipboard solves the problem of **clipboard fragmentation across devices**:
 
 ## System Architecture
 
-UniClipboard is organized around **Hexagonal Architecture (Ports and Adapters)**, while still carrying some integration-heavy code in the Tauri entrypoint during the migration.
+UniClipboard 采用 **六边形架构（Ports & Adapters）**，运行时分为三个独立进程：daemon（业务核心）、GUI（纯客户端壳）、CLI（轻量命令行客户端）。
 
-### High-Level Flow
+### 运行时拓扑
 
 ```
+┌─────────────────────────────────────┐     ┌────────────────────┐
+│         GUI (Tauri + React)         │     │   CLI (uniclip)    │
+│  - Quick Panel / Tray / Settings    │     │  - copy/paste/list │
+│  - 不打开 SQLite、不运行 iroh       │     │  - search/status   │
+└──────────────────┬──────────────────┘     └─────────┬──────────┘
+                   │ HTTP + WebSocket (127.0.0.1)      │
+                   └──────────────────┬────────────────┘
+                                      ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                    User Interface / GUI                      │
-│       (React UI, route gating, panels, Tauri commands)      │
+│                    Daemon (uniclipd)                          │
+│  uc-bootstrap 组装 → uc-application 编排 → uc-core 领域      │
+│  uc-infra (SQLite/iroh/crypto) + uc-platform (OS adapters)   │
+│  uc-webserver (axum HTTP/WS API)                             │
 └──────────────────────────────────────────────────────────────┘
-                              ↓
-┌──────────────────────────────────────────────────────────────┐
-│                   Application / Orchestration                │
-│ (setup, pairing, clipboard flows, security, space access)   │
-└──────────────────────────────────────────────────────────────┘
-                              ↓
-┌──────────────────────────────────────────────────────────────┐
-│                         Core Domain                          │
-│    (clipboard, device, security, network, settings, IDs)    │
-└──────────────────────────────────────────────────────────────┘
-                              ↑
-              ┌───────────────┼───────────────┐
-              │               │               │
-┌──────────────────────────┐ ┌──────────────────────────┐ ┌──────────────────────────┐
-│   Infrastructure         │ │   Platform Adapters      │ │   Background Runtime     │
-│  - Database (SQLite)     │ │  - Clipboard (OS API)    │ │  - uc-daemon             │
-│  - File System / Blobs   │ │  - Network (libp2p)      │ │  - WS/API bridge         │
-│  - Keyring / Crypto      │ │  - Notifications         │ │  - sync workers          │
-│  - Settings              │ │  - App lifecycle hooks   │ │  - event fan-out         │
-└──────────────────────────┘ └──────────────────────────┘ └──────────────────────────┘
+                   │ iroh QUIC (P2P encrypted)
+                   ▼
+            ┌──────────────┐
+            │  Peer Devices │
+            └──────────────┘
 ```
 
-### Key Architectural Principles
+### 关键架构原则
 
-1. **Dependency Inversion**: Use cases depend on ports, not concrete infrastructure
-2. **External Isolation**: OS, DB, crypto, and networking sit behind adapters
-3. **Daemon-Aware Design**: The GUI and background runtime coordinate through explicit APIs/events
-4. **Testability**: Core and application logic can be tested without real infrastructure
+1. **依赖反转**：用例仅依赖 Port trait，不依赖具体基础设施
+2. **GUI/Daemon 严格分离**：GUI 进程不内嵌 SQLite/iroh/AppFacade；daemon 不依赖任何 GUI 框架
+3. **唯一组合根**：`uc-bootstrap` 是唯一允许同时依赖 core + app + infra + platform 的 crate
+4. **可测试性**：76+ async Port trait 通过 `Arc<dyn Port>` 注入，测试使用 mock/fake
 
 ## Crate Structure
 
 ```
 src-tauri/crates/
-├── uc-core/              # Domain models, IDs, protocols, ports
-├── uc-app/               # Use cases and orchestration
-├── uc-infra/             # DB, file system, crypto, settings implementations
-├── uc-platform/          # Clipboard, OS, network/runtime adapters
-├── uc-tauri/             # Tauri commands, adapters, bootstrap glue
-├── uc-bootstrap/         # Shared bootstrap context/builders
-├── uc-daemon/            # Background daemon runtime and APIs
-├── uc-daemon-client/     # GUI-side daemon client and realtime bridge
-├── uc-observability/     # Logging/tracing helpers
-└── uc-cli/               # CLI utilities (includes hidden `probe` subcommands for clipboard diagnostics)
+# ── 领域核心层（零外部依赖）──
+├── uc-core/              # 纯领域模型 + Port trait 定义
+├── uc-observability/     # 双输出 tracing、profile 过滤、分析门控
+├── uc-app-paths/         # 轻量目录布局权威（数据/缓存/临时目录解析）
+# ── 应用编排层 ──
+├── uc-application/       # 用例 / Facade / 状态机编排
+# ── 基础设施 & 平台层 ──
+├── uc-infra/             # Port 实现：Diesel repos, iroh P2P, 加密, 存储
+├── uc-platform/          # OS 适配：剪贴板监听, Keychain, 自启动
+# ── 组合根 ──
+├── uc-bootstrap/         # 唯一允许依赖全部层的 crate（DI 装配）
+# ── Daemon 子系统 ──
+├── uc-daemon-contract/   # 纯 serde 传输契约（HTTP API 类型）
+├── uc-daemon-process/    # 薄进程原语（PID, socket, spawn）
+├── uc-daemon-local/      # 本地 daemon 元数据（auth token, 健康轮询）
+├── uc-webserver/         # axum HTTP + WebSocket 服务端
+├── uc-daemon/            # Daemon 运行时库 + uniclipd 二进制
+├── uc-daemon-client/     # Daemon HTTP/WS 客户端（GUI + CLI 共用）
+# ── GUI 桌面层 ──
+├── uc-desktop/           # 桌面宿主逻辑（GUI 框架无关）
+├── uc-tauri/             # Tauri 壳适配（commands, tray, panel）
+# ── CLI ──
+├── uc-cli/               # uniclip 命令行工具
+├── uc-cli-macros/        # CLI proc-macro 辅助
+# ── 测试/Spike ──
+└── p2p-bench/            # P2P 吞吐量基准（不发布）
 ```
 
 ## How Clipboard Sync Works
@@ -126,12 +138,10 @@ Remote-origin events avoid re-capture loops via origin tracking
 
 ## Current State
 
-The project is in an active architecture migration. The important current reality is:
-
-- The modular crate layout is real and already used in production code
-- The GUI process and daemon process are both important runtime pieces
-- Some documentation still describes older migration phases, removed directories, or obsolete implementation details
-- Prefer describing boundaries and runtime responsibilities over quoting stale completion percentages
+- 16 crate 的六边形模块化架构已完成，生产代码运行在此之上
+- GUI 进程与 daemon 进程完全分离（ADR-008），GUI 是纯 HTTP/WS 客户端
+- CLI (`uniclip`) 同样通过 daemon client 与后台通信，不直接链接 iroh/diesel
+- 若文档与代码冲突，以代码为准并更新文档
 
 ## Development Setup
 
@@ -210,16 +220,16 @@ uniclipboard-desktop/
 - **Better performance**: Native Rust code for heavy operations
 - **System access**: Rust crates for clipboard, file system, networking
 
-### Why libp2p for P2P?
+### Why iroh for P2P?
 
 **Problem**: Building reliable P2P networking from scratch is complex.
 
-**Solution**: libp2p provides:
+**Solution**: iroh provides:
 
-- NAT traversal (hole punching)
-- Peer discovery (mDNS)
-- Multiple transport protocols
-- Battle-tested by IPFS, Polkadot, etc.
+- QUIC-based NAT traversal (hole punching + relay fallback)
+- Ed25519 身份认证（NodeId = public key）
+- mDNS LAN 发现
+- 内置 relay 用于无法直连时的加密中继
 
 ### Why XChaCha20-Poly1305 for Encryption?
 
@@ -260,9 +270,10 @@ Store ciphertext + metadata
 
 ### Network Security
 
-- **Pairing / peer transport**: libp2p-based networking for device discovery and pairing flows
-- **Frontend realtime updates**: daemon WS/API bridge for GUI synchronization
-- **Device Authentication**: Peer ID fingerprint verification
+- **P2P 传输**：iroh QUIC 通道加密（Ed25519 身份验证）+ 应用层 AEAD 双重加密
+- **前端实时更新**：daemon WebSocket 事件订阅（仅限 127.0.0.1）
+- **设备认证**：iroh NodeId 指纹 + HMAC 挑战 - 应答配对协议
+- **LAN-only 模式**：可配置禁用 relay，完全局域网内运行
 
 ## Performance Considerations
 

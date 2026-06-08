@@ -125,19 +125,19 @@ impl ClipboardRepositoryPort for SqliteClipboardRepository {
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    uc-tauri (Bootstrap)                     │
-│  The ONLY place that can depend on all layers simultaneously │
+│                   uc-bootstrap (Composition Root)            │
+│  唯一允许同时依赖 core + app + infra + platform 的 crate     │
 └─────────────────────────────────────────────────────────────┘
-                            ↓ creates
+                            ↓ creates & wires
 ┌─────────────────────────────────────────────────────────────┐
-│                      uc-app                                 │
-│  Depends on: uc-core (Ports)                                 │
+│                   uc-application                             │
+│  Depends on: uc-core (Ports) + uc-observability             │
 │  Must NOT depend on: uc-infra, uc-platform                  │
 └─────────────────────────────────────────────────────────────┘
                             ↓ defines
 ┌─────────────────────────────────────────────────────────────┐
 │                      uc-core                                │
-│  Defines: Ports (interfaces)                                 │
+│  Defines: Ports (interfaces), domain models                  │
 │  Depends on: Nothing external                                │
 └─────────────────────────────────────────────────────────────┘
                             ↑ implements
@@ -148,14 +148,16 @@ impl ClipboardRepositoryPort for SqliteClipboardRepository {
 │  Implements:     │                  │  Implements:     │
 │  - Repo Ports    │                  │  - OS Ports      │
 │  - Crypto Ports  │                  │  - Network Ports │
+│  - iroh P2P      │                  │  - Clipboard     │
 └──────────────────┘                  └──────────────────┘
 ```
 
-**Iron Rule**: `uc-app` → `uc-core` ← `uc-infra` / `uc-platform`
+**Iron Rule**: `uc-application` → `uc-core` ← `uc-infra` / `uc-platform`
 
 - Application layer depends on Core (interfaces)
 - Infrastructure and Platform implement Core interfaces
 - No circular dependencies
+- Only `uc-bootstrap` may depend on all layers simultaneously
 
 ## Key Principles
 
@@ -202,8 +204,8 @@ All external dependencies are hidden behind Ports:
 | SQLite Database  | `ClipboardRepositoryPort` | `SqliteClipboardRepository`          |
 | File System      | `BlobStoragePort`         | `FileSystemBlobStorage`              |
 | OS Clipboard     | `ClipboardPort`           | `MacOSClipboard`, `WindowsClipboard` |
-| Network (libp2p) | `NetworkPort`             | `Libp2pNetworkAdapter`               |
-| Encryption       | `EncryptionPort`          | `AesGcmEncryption`                   |
+| P2P Network (iroh) | `NetworkPort`          | `IrohNetworkAdapter`                 |
+| Encryption       | `EncryptionPort`          | `XChaCha20Poly1305Encryption`        |
 | Keyring          | `KeyringPort`             | `SystemKeyringAdapter`               |
 
 **Benefit**: Swap any implementation without changing use cases.
@@ -244,13 +246,18 @@ mod tests {
 
 Each crate has a specific responsibility:
 
-| Crate         | Responsibility           | May Depend On    | Must NOT Depend On           |
-| ------------- | ------------------------ | ---------------- | ---------------------------- |
-| `uc-core`     | Domain models + Ports    | Nothing external | ❌ Database, OS, Frameworks  |
-| `uc-app`      | Use cases, orchestration | `uc-core` only   | ❌ `uc-infra`, `uc-platform` |
-| `uc-infra`    | Infrastructure adapters  | `uc-core`        | ❌ `uc-app`, business logic  |
-| `uc-platform` | Platform adapters        | `uc-core`        | ❌ `uc-app`, business logic  |
-| `uc-tauri`    | Bootstrap, wiring        | All crates       | ❌ Business decisions        |
+| Crate              | Responsibility                     | May Depend On                  | Must NOT Depend On              |
+| ------------------ | ---------------------------------- | ------------------------------ | ------------------------------- |
+| `uc-core`          | Domain models + Port traits        | Nothing external               | ❌ Database, OS, Frameworks     |
+| `uc-application`   | Use cases, orchestration           | `uc-core` + `uc-observability` | ❌ `uc-infra`, `uc-platform`    |
+| `uc-infra`         | Infrastructure adapters            | `uc-core`                      | ❌ `uc-application`, biz logic  |
+| `uc-platform`      | Platform adapters                  | `uc-core`                      | ❌ `uc-application`, biz logic  |
+| `uc-bootstrap`     | Composition root (DI wiring)       | All core/app/infra/platform    | ❌ Business decisions           |
+| `uc-daemon`        | Daemon runtime + `uniclipd` binary | `uc-bootstrap` + webserver     | ❌ GUI frameworks               |
+| `uc-desktop`       | Desktop host logic                 | daemon-client/contract/process | ❌ Tauri/AppKit/egui            |
+| `uc-tauri`         | Tauri shell adapter                | `uc-desktop` + daemon-client   | ❌ `uc-application` directly    |
+| `uc-daemon-client` | HTTP/WS client to daemon           | contract + process             | ❌ iroh, diesel, sqlite         |
+| `uc-cli`           | CLI (`uniclip`)                    | daemon-client + contract       | ❌ iroh, diesel (in release)    |
 
 See [Module Boundaries](module-boundaries.md) for detailed rules.
 
@@ -258,14 +265,18 @@ See [Module Boundaries](module-boundaries.md) for detailed rules.
 
 The **Commands Layer** (`uc-tauri/src/commands/`) is a **Driving Adapter** that translates external requests into use case executions.
 
+Since ADR-008, most commands delegate to the daemon via HTTP (`uc-daemon-client`). Only a small set of system-level operations (window management, tray, autostart) remain as direct Tauri commands.
+
 ### Architecture Position
 
 ```
 Frontend (React)
     ↓ Tauri IPC
 Commands Layer (Driving Adapter)
-    ↓ runtime.usecases().xxx()
-UseCases Layer (Application)
+    ↓ daemon_client.xxx() 或 runtime.usecases().xxx()
+Daemon HTTP API (uc-webserver)
+    ↓
+UseCases Layer (uc-application)
     ↓ execute()
 Ports (Interface Layer)
     ↓
@@ -313,10 +324,10 @@ pub async fn initialize_encryption(
 
 ## How Bootstrap Works
 
-**Bootstrap** is the "wiring operator" that assembles everything:
+**Bootstrap** is the "wiring operator" that assembles everything. It lives in `uc-bootstrap` (not `uc-tauri`):
 
 ```rust
-// uc-tauri/src/bootstrap/wiring.rs
+// uc-bootstrap/src/assembly.rs
 pub fn wire_dependencies() -> Result<AppDeps, WiringError> {
     // Create infrastructure implementations
     let db_pool = create_db_pool()?;
@@ -324,7 +335,7 @@ pub fn wire_dependencies() -> Result<AppDeps, WiringError> {
 
     // Create platform implementations
     let clipboard_adapter = Arc::new(MacOSClipboard::new()?);
-    let network = Arc::new(Libp2pNetwork::new()?);
+    let network = Arc::new(IrohNetwork::new()?);
 
     // Inject into application
     Ok(AppDeps {
@@ -336,7 +347,7 @@ pub fn wire_dependencies() -> Result<AppDeps, WiringError> {
 }
 ```
 
-**Key Point**: Only `uc-tauri::bootstrap` knows about concrete implementations. `uc-app` only sees trait objects.
+**Key Point**: Only `uc-bootstrap` knows about concrete implementations. `uc-application` only sees trait objects. Both the daemon (`uc-daemon`) and GUI client context use `uc-bootstrap` for wiring.
 
 See [Bootstrap System](bootstrap.md) for complete details.
 
@@ -437,10 +448,10 @@ uc-app → uc-core ← uc-infra
 ### Adding a New Feature
 
 1. **Define Port in uc-core** (if needed)
-2. **Implement Use Case in uc-app** (using only Ports)
+2. **Implement Use Case in uc-application** (using only Ports)
 3. **Implement Adapter in uc-infra/uc-platform** (implementing Port)
-4. **Wire in Bootstrap** (inject adapter into use case)
-5. **Expose via Tauri Command** (if needed by UI)
+4. **Wire in uc-bootstrap** (inject adapter into use case)
+5. **Expose via daemon API** (uc-webserver route) or **Tauri Command** (system-level ops only)
 
 ### Example: Adding "Export to File" Feature
 
@@ -481,7 +492,7 @@ impl ExportPort for JsonFileExporter {
 }
 ```
 
-**Step 4: Wire in Bootstrap** (uc-tauri/src/bootstrap/wiring.rs)
+**Step 4: Wire in Bootstrap** (uc-bootstrap/src/assembly.rs)
 
 ```rust
 let exporter = Arc::new(JsonFileExporter::new());
@@ -498,7 +509,7 @@ Ok(AppDeps {
 
 - ✅ Test use cases without real database/network
 - ✅ Swap SQLite → PostgreSQL without changing use cases
-- ✅ Replace libp2p with different P2P library
+- ✅ Replace iroh with different P2P library without changing use cases
 - ✅ Run business logic in CLI, GUI, or server
 - ✅ Mock external dependencies for fast tests
 

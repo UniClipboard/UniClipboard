@@ -44,47 +44,31 @@ When documentation conflicts with code, treat the code as the source of truth an
 ## Architecture at a Glance
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    React + Tauri GUI                      │
-│  ┌──────────────────────────────────────────────────────┐ │
-│  │                    uc-tauri                          │ │
-│  │  - command wiring                                    │ │
-│  │  - tray / quick panel                                │ │
-│  │  - GUI ↔ daemon integration                           │ │
-│  └──────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-                            ↓ bootstrap / invoke / events
-┌─────────────────────────────────────────────────────────────┐
-│                      uc-app                                  │
-│  (Use Cases, orchestration, port-only dependencies)          │
-└─────────────────────────────────────────────────────────────┘
-                            ↓ domain + ports
-┌─────────────────────────────────────────────────────────────┐
-│                      uc-core                                 │
-│           (Domain models, IDs, protocols, port definitions)  │
-└─────────────────────────────────────────────────────────────┘
-                            ↑ implemented by
-        ┌───────────────────┴───────────────────┐
-        │                                       │
-┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│   uc-infra       │      │  uc-platform     │      │    uc-daemon      │
-│ (DB, FS, crypto, │      │ (clipboard, OS,  │      │ background sync,  │
-│ settings, blobs) │      │ network runtime) │      │ WS/API bridge)    │
-└──────────────────┘      └──────────────────┘      └──────────────────┘
+┌───────────────────────────────────────┐   ┌──────────────────┐
+│       GUI (uc-tauri + React)          │   │  CLI (uc-cli)    │
+│  Quick Panel / Tray / Settings        │   │  uniclip 命令行  │
+└──────────────────┬────────────────────┘   └────────┬─────────┘
+                   │  HTTP + WebSocket (127.0.0.1)    │
+                   └──────────────────┬───────────────┘
+                                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│                     Daemon (uniclipd)                         │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ uc-webserver (axum API)                                │  │
+│  └────────────────────────┬───────────────────────────────┘  │
+│  ┌────────────────────────▼───────────────────────────────┐  │
+│  │ uc-bootstrap（唯一组合根）                              │  │
+│  │   ↓ wires                                              │  │
+│  │ uc-application (use cases / facades)                   │  │
+│  │   ↓ depends on                                         │  │
+│  │ uc-core (domain models + port traits)                  │  │
+│  │   ↑ implemented by                                     │  │
+│  │ uc-infra (SQLite/iroh/crypto) + uc-platform (OS)       │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**Key Principle**: `uc-app` depends on `uc-core` abstractions. Implementations are wired by bootstrap code and consumed by both the GUI process and the daemon process.
-
-## Crate Structure
-
-```
-src-tauri/crates/
-├── uc-core/         # Pure domain layer (Port definitions)
-├── uc-infra/        # Infrastructure implementations (DB, FS, crypto)
-├── uc-platform/     # Platform adapters (Clipboard, Network, OS)
-├── uc-app/          # Application layer (Use cases, business logic)
-└── uc-tauri/        # Tauri integration (Commands, Bootstrap)
-```
+**核心原则**：GUI 和 CLI 是 daemon 的纯客户端，不内嵌业务栈。所有业务逻辑在 daemon 内通过 `uc-bootstrap` 装配运行。
 
 ## Current State
 

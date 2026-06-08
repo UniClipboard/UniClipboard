@@ -7,24 +7,14 @@ Use this document as the map for project memory sources. Read only what matches 
 When sources disagree, use this order:
 
 1. Current code
-2. Root `AGENTS.md` navigation rules
-3. Focused docs referenced by `AGENTS.md`
-4. `docs/` current-state guides
-5. `.gsd/KNOWLEDGE.md` lessons and historical patterns
-6. `.gsd/DECISIONS.md` recorded architectural choices
+2. `VISION.md` — 产品方向与底线（长期稳定，极少改动）
+3. Root `AGENTS.md` navigation rules
+4. Focused docs referenced by `AGENTS.md`
+5. `docs/` current-state guides
+6. `.planning/` roadmap and spike notes
 7. DeepWiki / external references
 
 ## Project Memory Files
-
-### Current project memory
-
-- `.gsd/KNOWLEDGE.md`
-  - Append-only lessons, recurring pitfalls, and non-obvious project rules.
-  - Read when working in an unfamiliar area or after seeing a similar failure pattern.
-
-- `.gsd/DECISIONS.md`
-  - Architectural and pattern decisions.
-  - Read when changing boundaries, adding a new pattern, or questioning why a design exists.
 
 ### Planning state
 

@@ -23,6 +23,19 @@ Do not treat this file as a full memory dump. Read only the documents needed for
 
 ## Read-on-Demand Map
 
+### 0. Product direction / architecture decisions
+
+Read: `VISION.md`
+
+Use when:
+- making product decisions (add/remove features, change UX paradigm)
+- evaluating whether a proposal violates project principles
+- judging issue priority or scope
+- changing architecture direction or locked decisions
+- reviewing whether a PR aligns with project goals
+
+**This is the first document to consult before any non-trivial decision.**
+
 ### 1. General code change / bug fix / review
 Read: `docs/agent/workflow-rules.md`
 
@@ -76,9 +89,8 @@ Use when:
 Read: `docs/agent/project-memory.md`
 
 Then selectively read:
-- `.gsd/KNOWLEDGE.md` for lessons and recurring pitfalls
-- `.gsd/DECISIONS.md` for architectural decisions
 - `docs/README.md` and linked docs for current-state guidance
+- `.planning/` for roadmap, milestones, and spike research notes
 - `src/AGENTS.md` for frontend-local navigation
 - `src-tauri/AGENTS.md` for Rust/Tauri-local navigation
 
@@ -113,10 +125,11 @@ Use when:
 1. `AGENTS.md`
 2. `docs/agent/workflow-rules.md`
 3. `docs/agent/project-memory.md`
-4. selective reads from `.gsd/KNOWLEDGE.md`, `.gsd/DECISIONS.md`, local `AGENTS.md`, and targeted docs
+4. selective reads from `.planning/`, local `AGENTS.md`, and targeted docs
 
 ## Files Managed by This Index
 
+- `VISION.md` — 产品方向、架构原则、锁定决策、绝对禁区
 - `docs/agent/workflow-rules.md`
 - `docs/agent/architecture-rules.md`
 - `docs/architecture/ports.md`

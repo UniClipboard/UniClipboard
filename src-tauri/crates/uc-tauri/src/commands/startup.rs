@@ -6,9 +6,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::Serialize;
 use tauri::AppHandle;
 use tracing::{info, info_span, Instrument};
+use uc_core::ports::observability::TraceMetadata;
 use uc_daemon_client::{DaemonClientContext, DaemonConnectionState};
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
-use uc_platform::ports::observability::TraceMetadata;
 
 use crate::commands::record_trace_fields;
 use crate::tray::show_main_window;

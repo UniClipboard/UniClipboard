@@ -8,8 +8,8 @@
 //! ADR-008 P3-3 (B2'-3): GUI 已是外部 `uniclipd` 的纯客户端,不再持有
 //! 进程内 `AppFacade`。所有业务调用走 daemon HTTP/WS (`uc-daemon-client`);
 //! 此 runtime 只保留 file-backed / in-memory 的进程基础设施 (settings /
-//! setup-status / analytics / device-id),全部由 [`uc_bootstrap::GuiClientDeps`]
-//! 装配,**不打开 sqlite**。
+//! setup-status / analytics / device-id),全部由
+//! [`crate::gui_wiring::GuiClientDeps`] 装配,**不打开 sqlite**。
 //!
 //! 它**不持有**任何 GUI 框架特定的句柄(如 Tauri `AppHandle`、AppKit
 //! `NSApplication`)。各 shell crate 可以包一层加上自己的句柄,例如
@@ -17,10 +17,12 @@
 
 use std::sync::Arc;
 
-use uc_application::facade::AppPaths;
-use uc_bootstrap::{GuiClientDeps, TaskRegistry};
 use uc_core::ports::{SettingsPort, SetupStatusPort};
+use uc_core::AppPaths;
+use uc_core::TaskRegistry;
 use uc_observability::analytics::AnalyticsPort;
+
+use crate::gui_wiring::GuiClientDeps;
 
 /// 桌面端 app runtime(GUI-framework agnostic,纯客户端)。
 ///

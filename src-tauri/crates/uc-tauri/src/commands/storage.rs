@@ -5,7 +5,7 @@ use crate::commands::error::CommandError;
 use crate::commands::record_trace_fields;
 use tauri_plugin_opener::OpenerExt;
 use tracing::{info_span, Instrument};
-use uc_platform::ports::observability::TraceMetadata;
+use uc_core::ports::observability::TraceMetadata;
 
 /// Open the application data directory in the system file manager.
 /// 在系统文件管理器中打开应用数据目录。

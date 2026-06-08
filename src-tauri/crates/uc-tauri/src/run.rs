@@ -19,17 +19,17 @@ use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tracing::{error, info, warn};
 
-use uc_bootstrap::build_gui_client_context;
 use uc_daemon_client::realtime::RealtimeTopic;
 use uc_daemon_client::{DaemonConnectionState, DaemonWsBridge, DaemonWsBridgeConfig};
 use uc_desktop::daemon_probe::{
     bootstrap_daemon_in_process, HEALTH_CHECK_TIMEOUT, HEALTH_POLL_INTERVAL,
     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
 };
+use uc_desktop::gui_wiring::{build_gui_client_context, ensure_default_device_name};
 use uc_desktop::shortcuts::GlobalShortcutRegistry;
 use uc_desktop::DaemonOwnership;
 
-use crate::bootstrap::{ensure_default_device_name, TauriAppRuntime};
+use crate::bootstrap::TauriAppRuntime;
 use crate::commands::updater::PendingUpdate;
 use crate::quick_panel;
 use crate::tray::TrayState;
@@ -104,8 +104,8 @@ fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
 /// `DaemonApiEventEmitter` (which serialises `HostEvent` → WS).
 fn realtime_to_host_event(
     event: uc_daemon_client::realtime::RealtimeEvent,
-) -> Option<uc_application::facade::HostEvent> {
-    use uc_application::facade::{ClipboardHostEvent, HostEvent, TransferHostEvent};
+) -> Option<uc_core::ports::host_event::HostEvent> {
+    use uc_core::ports::host_event::{ClipboardHostEvent, HostEvent, TransferHostEvent};
     use uc_daemon_client::realtime::RealtimeEvent as Re;
 
     match event {
@@ -180,7 +180,7 @@ async fn wait_for_terminate_signal() {
 
 /// Builds the pure-client GUI runtime context, spawns/connects the external daemon, and runs the Tauri event loop.
 ///
-/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the GUI client context via `uc_bootstrap::build_gui_client_context()` (file-backed ports only — no sqlite); if assembly fails it returns an `Err`. The daemon is reached as a separate process (probe → connect, or detached spawn). On success the function enters the Tauri event loop and does not return until the application exits.
+/// The provided `tauri_ctx` must be created in the binary crate using `tauri::generate_context!()` (that macro reads the bin crate's tauri.conf.json). This function assembles the GUI client context via `uc_desktop::gui_wiring::build_gui_client_context()` (file-backed ports only — no sqlite); if assembly fails it returns an `Err`. The daemon is reached as a separate process (probe → connect, or detached spawn). On success the function enters the Tauri event loop and does not return until the application exits.
 ///
 /// # Parameters
 ///
@@ -358,7 +358,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 tauri::async_runtime::spawn(hud_bridge_for_run.run(hud_bridge_token));
                 while let Some(event) = rx.recv().await {
                     if let Some(host_event) = realtime_to_host_event(event) {
-                        use uc_application::facade::HostEventEmitterPort;
+                        use uc_core::ports::host_event::HostEventEmitterPort;
                         let _ = hud_emitter.emit(host_event);
                     }
                 }

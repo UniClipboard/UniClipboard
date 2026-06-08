@@ -19,15 +19,15 @@ use uc_daemon_contract::api::types::HealthResponse;
 use uc_daemon_contract::probe::{
     classify_health_response, running_daemon_is_strictly_newer, ProbeOutcome,
 };
-use uc_daemon_local::contract::{
+use uc_daemon_process::contract::{
     terminate_local_daemon_pid, DaemonBootstrapError, TerminateDaemonError,
 };
-use uc_daemon_local::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
-use uc_daemon_local::process_metadata::{
+use uc_daemon_process::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
+use uc_daemon_process::process_metadata::{
     read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
 };
-use uc_daemon_local::socket::try_resolve_daemon_http_addr;
-use uc_daemon_local::spawn::spawn_detached_daemon;
+use uc_daemon_process::socket::try_resolve_daemon_http_addr;
+use uc_daemon_process::spawn::spawn_detached_daemon;
 
 use crate::daemon::DaemonOwnership;
 
@@ -247,7 +247,7 @@ async fn spawn_external_and_wait_health(
 ///
 /// D22: verifies PID identity (liveness + exe match) before signaling.
 pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstrapError> {
-    use uc_daemon_local::process_metadata::{verify_pid_identity, PidVerification};
+    use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
 
     let metadata = read_pid_metadata()
         .map_err(|error| DaemonBootstrapError::IncompatibleDaemon {
@@ -289,7 +289,7 @@ pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstr
 /// daemon's own graceful-shutdown handler (D21) drains in-flight transfer/sync;
 /// the GUI does not block — it is exiting anyway.
 pub fn stop_local_daemon_on_full_quit() -> bool {
-    use uc_daemon_local::process_metadata::verify_pid_identity;
+    use uc_daemon_process::process_metadata::verify_pid_identity;
     stop_local_daemon_on_full_quit_with(
         read_pid_metadata,
         verify_pid_identity,
@@ -307,10 +307,10 @@ pub(crate) fn stop_local_daemon_on_full_quit_with<R, V, T>(
 ) -> bool
 where
     R: FnOnce() -> anyhow::Result<Option<DaemonPidMetadata>>,
-    V: FnOnce(&DaemonPidMetadata) -> uc_daemon_local::process_metadata::PidVerification,
+    V: FnOnce(&DaemonPidMetadata) -> uc_daemon_process::process_metadata::PidVerification,
     T: FnOnce(u32) -> Result<(), TerminateDaemonError>,
 {
-    use uc_daemon_local::process_metadata::PidVerification;
+    use uc_daemon_process::process_metadata::PidVerification;
 
     let metadata = match read_metadata() {
         Ok(Some(metadata)) => metadata,
@@ -724,7 +724,7 @@ mod tests {
     fn full_quit_stops_any_live_standalone_daemon_regardless_of_origin() {
         // Revised D3: explicit Quit kills the daemon no matter who spawned it —
         // GUI-spawned, `uniclip start`, or a manually-run uniclipd.
-        use uc_daemon_local::process_metadata::PidVerification;
+        use uc_daemon_process::process_metadata::PidVerification;
         for origin in [
             DaemonSpawnOrigin::Gui,
             DaemonSpawnOrigin::Cli,
@@ -751,7 +751,7 @@ mod tests {
     fn full_quit_refuses_live_in_process_daemon() {
         // A live InProcess PID is an OLD GUI hosting its daemon — SIGTERM would
         // kill that GUI, not a standalone daemon. Refuse even on explicit quit.
-        use uc_daemon_local::process_metadata::PidVerification;
+        use uc_daemon_process::process_metadata::PidVerification;
         let signaled = Cell::new(false);
 
         let stopped = stop_local_daemon_on_full_quit_with(
@@ -772,7 +772,7 @@ mod tests {
 
     #[test]
     fn full_quit_skips_stale_pid() {
-        use uc_daemon_local::process_metadata::{PidVerification, StaleReason};
+        use uc_daemon_process::process_metadata::{PidVerification, StaleReason};
         let signaled = Cell::new(false);
 
         let stopped = stop_local_daemon_on_full_quit_with(
@@ -793,7 +793,7 @@ mod tests {
 
     #[test]
     fn full_quit_with_no_pid_file_is_a_noop() {
-        use uc_daemon_local::process_metadata::PidVerification;
+        use uc_daemon_process::process_metadata::PidVerification;
         let stopped = stop_local_daemon_on_full_quit_with(
             || Ok(None),
             |_m| PidVerification::Active,

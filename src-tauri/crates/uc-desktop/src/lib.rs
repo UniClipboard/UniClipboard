@@ -16,6 +16,8 @@ pub use uc_daemon_contract::DAEMON_API_REVISION;
 pub mod background;
 pub mod daemon;
 pub mod daemon_probe;
+pub mod file_ports;
+pub mod gui_wiring;
 pub mod runtime;
 pub mod shortcuts;
 

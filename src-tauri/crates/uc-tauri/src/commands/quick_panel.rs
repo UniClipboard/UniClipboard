@@ -4,13 +4,13 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tracing::{error, info_span, Instrument};
+use uc_core::ports::observability::TraceMetadata;
 use uc_core::settings::model::QuickPanelPosition;
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{
     QuickPanelPositionDto, QuickPanelSettingsPatchDto, SettingsPatchDto,
 };
 use uc_desktop::shortcuts::{self, CurrentShortcuts};
-use uc_platform::ports::observability::TraceMetadata;
 
 use crate::commands::settings::KeyboardShortcutsUpdateLock;
 use crate::commands::{record_trace_fields, CommandError};

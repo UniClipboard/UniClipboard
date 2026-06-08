@@ -29,7 +29,7 @@ use crate::commands::record_trace_fields;
 use tauri::Manager;
 use tauri::WebviewWindow;
 use tracing::{info_span, Instrument};
-use uc_platform::ports::observability::TraceMetadata;
+use uc_core::ports::observability::TraceMetadata;
 
 #[cfg(target_os = "macos")]
 mod imp {

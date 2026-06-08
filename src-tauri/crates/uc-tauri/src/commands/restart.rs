@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use tauri::Emitter;
 use tracing::{info, info_span, warn, Instrument};
-use uc_platform::ports::observability::TraceMetadata;
+use uc_core::ports::observability::TraceMetadata;
 
 use crate::commands::record_trace_fields;
 use crate::run::{FRONTEND_SHUTDOWN_EVENT, SHUTDOWN_FRONTEND_GRACE_MS};

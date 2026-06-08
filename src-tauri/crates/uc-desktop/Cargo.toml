@@ -10,16 +10,14 @@ name = "uc_desktop"
 path = "src/lib.rs"
 
 [dependencies]
-uc-bootstrap = { path = "../uc-bootstrap" }
-uc-application = { path = "../uc-application" }
-uc-core = { path = "../uc-core" }
-uc-infra = { path = "../uc-infra" }
-uc-platform = { path = "../uc-platform", features = ["test-helpers"] }
+uc-core = { path = "../uc-core", features = ["task-registry"] }
 uc-observability = { path = "../uc-observability" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
-uc-daemon-local = { path = "../uc-daemon-local" }
+uc-daemon-process = { path = "../uc-daemon-process" }
 uc-daemon-client = { path = "../uc-daemon-client" }
-uc-webserver = { path = "../uc-webserver" }
+# Lightweight directory-layout authority — resolves app data/cache roots without
+# pulling in the heavyweight uc-platform or uc-bootstrap dependency trees.
+uc-app-paths = { path = "../uc-app-paths" }
 tokio = { version = "1", features = ["full", "test-util"] }
 tokio-util = "0.7"
 serde = { version = "1", features = ["derive"] }
@@ -29,11 +27,13 @@ async-trait = "0.1"
 thiserror = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
+gethostname = "1.1"
 url = "2"
+uuid = { version = "1", features = ["v4", "fast-rng"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
-uc-daemon-local = { path = "../uc-daemon-local", features = ["test-helpers"] }
+uc-daemon-process = { path = "../uc-daemon-process", features = ["test-helpers"] }
 tempfile = "3"
 chrono = { version = "0.4", default-features = true }
 diesel = { version = "2.3.5", features = ["sqlite"] }

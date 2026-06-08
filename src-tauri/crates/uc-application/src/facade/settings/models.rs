@@ -18,11 +18,9 @@ pub enum UpdateChannelView {
     Rc,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShortcutKeyView {
-    Single(String),
-    Multiple(Vec<String>),
-}
+/// Type alias — `ShortcutKeyView` is now `uc_core::settings::model::ShortcutKey`.
+/// Kept as a alias for backward-compatible re-export.
+pub type ShortcutKeyView = core::ShortcutKey;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContentTypesView {
@@ -353,23 +351,9 @@ impl From<UpdateChannelView> for core::UpdateChannel {
     }
 }
 
-impl From<core::ShortcutKey> for ShortcutKeyView {
-    fn from(value: core::ShortcutKey) -> Self {
-        match value {
-            core::ShortcutKey::Single(v) => Self::Single(v),
-            core::ShortcutKey::Multiple(v) => Self::Multiple(v),
-        }
-    }
-}
-
-impl From<ShortcutKeyView> for core::ShortcutKey {
-    fn from(value: ShortcutKeyView) -> Self {
-        match value {
-            ShortcutKeyView::Single(v) => Self::Single(v),
-            ShortcutKeyView::Multiple(v) => Self::Multiple(v),
-        }
-    }
-}
+// From<ShortcutKey> for ShortcutKeyView and vice versa removed —
+// ShortcutKeyView is now a type alias for core::ShortcutKey, so the
+// blanket From<T> for T handles identity conversion.
 
 impl From<core::ContentTypes> for ContentTypesView {
     fn from(value: core::ContentTypes) -> Self {

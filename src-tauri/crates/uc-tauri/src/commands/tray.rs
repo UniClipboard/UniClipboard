@@ -4,7 +4,7 @@ use crate::commands::record_trace_fields;
 use crate::tray::TrayState;
 use tauri::State;
 use tracing::info_span;
-use uc_platform::ports::observability::TraceMetadata;
+use uc_core::ports::observability::TraceMetadata;
 
 /// Update tray menu labels to match the UI language.
 ///

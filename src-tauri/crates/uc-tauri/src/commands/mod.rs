@@ -11,7 +11,7 @@ pub mod updater;
 pub mod window_chrome;
 
 use tracing::Span;
-use uc_platform::ports::observability::TraceMetadata;
+use uc_core::ports::observability::TraceMetadata;
 
 /// Get the OS process ID of the Tauri application.
 ///

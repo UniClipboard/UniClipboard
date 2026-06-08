@@ -1,7 +1,2 @@
-use anyhow::Result;
-
-pub trait AutostartPort: Send + Sync {
-    fn is_enabled(&self) -> Result<bool>;
-    fn enable(&self) -> Result<()>;
-    fn disable(&self) -> Result<()>;
-}
+// Re-export from uc-core — canonical definition now lives there (ADR-008 P5).
+pub use uc_core::ports::autostart::AutostartPort;

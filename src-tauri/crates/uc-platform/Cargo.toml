@@ -17,7 +17,7 @@ dev-profile = []
 # 顺带引入 `specta-typescript`，用其 `Number<T>` 包装类型把 u64/i64 时间戳
 # 显式标记为 TS `number`（默认 specta 对 u64/i64 直接 panic，要求开发者
 # 主动声明精度策略）。不开启时不引入任何 specta 依赖，保持默认零成本。
-specta = ["dep:specta", "dep:specta-typescript"]
+specta = ["dep:specta", "dep:specta-typescript", "uc-core/specta-derive"]
 
 [dependencies]
 # Workspace crates

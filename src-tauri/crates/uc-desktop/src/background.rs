@@ -10,20 +10,20 @@
 //! 这个隐式假设——这正是 Tauri 的 `setup` 闭包不满足的假设。
 //!
 //! 这种"async fn + caller 决定 spawn"的形态与
-//! [`uc_bootstrap::spawn_blob_processing_tasks`] 一致。
+//! `uc_bootstrap::spawn_blob_processing_tasks` 一致。
 
 use std::sync::Arc;
 
 use tracing::{info, warn};
 
-use uc_application::facade::ClipboardHistoryFacade;
-use uc_bootstrap::TaskRegistry;
+use uc_core::ports::file_cache_hygiene::FileCacheHygienePort;
+use uc_core::TaskRegistry;
 
 /// Register the startup file-cache hygiene task with `TaskRegistry`.
 ///
 /// Runs two passes back to back inside a single registry task:
 ///
-/// 1. **Reconcile** (`ClipboardHistoryFacade::reconcile_missing_files`):
+/// 1. **Reconcile** (`FileCacheHygienePort::reconcile_missing_files`):
 ///    drops any DB entry whose cache-managed `file://` path no longer
 ///    exists on disk. This catches drift left over from older releases
 ///    (pre-Phase-C raw `tokio::fs::remove_file` cleanup) and from any
@@ -35,7 +35,7 @@ use uc_bootstrap::TaskRegistry;
 ///    those entries through the entry-aware delete path before the rest
 ///    of the daemon starts servicing observe requests.
 ///
-/// 2. **Cleanup** (`ClipboardHistoryFacade::cleanup_expired_files`):
+/// 2. **Cleanup** (`FileCacheHygienePort::cleanup_expired_files`):
 ///    walks the cache directory for files past their retention TTL and
 ///    routes each one through the same entry-aware delete path (untag
 ///    iroh-blobs reference + remove cache file + drop sqlite rows in one
@@ -48,7 +48,7 @@ use uc_bootstrap::TaskRegistry;
 /// Caller must drive this future inside a tokio runtime context (e.g.
 /// `tauri::async_runtime::spawn(async move { start_file_cache_cleanup(...).await })`).
 pub async fn start_file_cache_cleanup(
-    history_facade: Arc<ClipboardHistoryFacade>,
+    hygiene: Arc<dyn FileCacheHygienePort>,
     task_registry: &Arc<TaskRegistry>,
 ) {
     task_registry
@@ -57,7 +57,7 @@ pub async fn start_file_cache_cleanup(
             // happen *before* anything in the daemon observes a hash
             // whose External path may have vanished; otherwise the
             // iroh-blobs actor panics with poisoned storage.
-            match history_facade.reconcile_missing_files().await {
+            match hygiene.reconcile_missing_files().await {
                 Ok(result) => {
                     if result.entries_deleted > 0 || result.errors > 0 {
                         info!(
@@ -75,7 +75,7 @@ pub async fn start_file_cache_cleanup(
 
             // Phase 2: TTL-based cleanup of cache files that have
             // outlived `file_sync.file_retention_hours`.
-            match history_facade.cleanup_expired_files().await {
+            match hygiene.cleanup_expired_files().await {
                 Ok(result) => {
                     if result.files_removed > 0 {
                         info!(

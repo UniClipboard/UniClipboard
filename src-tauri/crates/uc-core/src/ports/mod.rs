@@ -17,6 +17,7 @@
 //! Otherwise, place it in the relevant `domain` submodule.
 
 pub mod app_version;
+pub mod autostart;
 pub mod blob;
 pub mod cache_fs;
 pub mod clipboard;
@@ -26,11 +27,14 @@ mod clock;
 pub mod connection_channel;
 pub mod device_identity;
 pub mod errors;
+pub mod file_cache_hygiene;
 pub mod file_transfer_repository;
 pub mod first_sync_state;
 mod hash;
+pub mod host_event;
 pub mod local_identity;
 pub mod mobile_sync;
+pub mod observability;
 pub mod pairing;
 pub mod pairing_invitation;
 pub mod peer_address;
@@ -46,10 +50,15 @@ pub use app_version::{AppVersionStateError, AppVersionStatePort};
 pub use cache_fs::{CacheFsPort, DirEntry as CacheFsDirEntry};
 pub use clipboard_event::*;
 pub use clock::*;
+pub use file_cache_hygiene::{
+    CleanupResult as FileCacheCleanupResult, FileCacheHygieneError, FileCacheHygienePort,
+    ReconcileResult as FileCacheReconcileResult,
+};
 pub use first_sync_state::{FirstSyncStateError, FirstSyncStatePort};
 pub use hash::*;
 pub use timer::TimerPort;
 
+pub use autostart::AutostartPort;
 pub use clipboard::*;
 pub use clipboard_change_handler::ClipboardChangeHandler;
 pub use connection_channel::{ConnectionChannel, ConnectionChannelPort, ConnectionPath};
@@ -60,6 +69,10 @@ pub use file_transfer_repository::{
     FileTransferRepositoryPort, NoopFileTransferRepositoryPort, PendingInboundTransfer,
     TrackedFileTransfer, TrackedFileTransferStatus,
 };
+pub use host_event::{
+    ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, EmitError, HostEvent,
+    HostEventEmitterPort, TransferHostEvent,
+};
 pub use local_identity::{LocalIdentityError, LocalIdentityPort};
 pub use mobile_sync::{
     EndpointInfoError, LanInterfaceProbeError, LanInterfaceProbePort, MobileCredentialsMinterPort,
@@ -67,6 +80,7 @@ pub use mobile_sync::{
     MobileLanLifecyclePort, MobileLanTarget, MobileSyncEndpointInfoPort, PasswordHasherError,
     PasswordHasherPort,
 };
+pub use observability::{extract_trace, OptionalTrace, TraceMetadata, TraceParseError};
 pub use pairing::{
     DialError, DialOutcome, DiscoveryChannel, PairingEventPort, PairingSessionEvent,
     PairingSessionId, PairingSessionPort, SessionError,

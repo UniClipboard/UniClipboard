@@ -6,7 +6,7 @@ edition = "2021"
 description = "Composition root — sole crate allowed to depend on uc-core + uc-application + uc-infra + uc-platform simultaneously"
 
 [dependencies]
-uc-core = { path = "../uc-core" }
+uc-core = { path = "../uc-core", features = ["task-registry"] }
 uc-application = { path = "../uc-application" }
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
@@ -44,6 +44,10 @@ async-trait = "0.1"
 # is the cheapest stdlib-friendly choice that keeps `space_id` un-recoverable
 # from the published hash (schema doc §6.3).
 sha2 = "0.10"
+
+[features]
+# Forward to uc-platform; activated by uc-tauri/dev-profile for `bun tauri:build:dev`.
+dev-profile = ["uc-platform/dev-profile"]
 
 [dev-dependencies]
 tempfile = "3"

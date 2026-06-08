@@ -37,9 +37,10 @@
 
 use std::sync::{Arc, RwLock};
 
-use uc_application::facade::AppPaths;
-use uc_bootstrap::{GuiClientDeps, TaskRegistry};
 use uc_core::ports::{SettingsPort, SetupStatusPort};
+use uc_core::AppPaths;
+use uc_core::TaskRegistry;
+use uc_desktop::gui_wiring::GuiClientDeps;
 use uc_desktop::DesktopRuntime;
 use uc_observability::analytics::AnalyticsPort;
 

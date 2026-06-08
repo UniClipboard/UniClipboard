@@ -12,9 +12,9 @@
 
 use tauri::{AppHandle, State};
 use tracing::{info_span, Instrument};
+use uc_core::ports::observability::TraceMetadata;
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{GeneralSettingsPatchDto, SettingsPatchDto};
-use uc_platform::ports::observability::TraceMetadata;
 
 use crate::adapters::autostart::{reconcile_autostart, TauriAutostart};
 use crate::commands::{record_trace_fields, CommandError};

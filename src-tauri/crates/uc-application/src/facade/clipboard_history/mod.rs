@@ -597,3 +597,37 @@ fn map_history_error(err: anyhow::Error) -> ClipboardHistoryError {
 fn map_list_error(err: ListProjectionsError) -> ClipboardHistoryError {
     ClipboardHistoryError::Internal(err.to_string())
 }
+
+// --- FileCacheHygienePort implementation ---
+
+use uc_core::ports::file_cache_hygiene::{
+    CleanupResult as CoreCleanupResult, FileCacheHygieneError, FileCacheHygienePort,
+    ReconcileResult as CoreReconcileResult,
+};
+
+#[async_trait::async_trait]
+impl FileCacheHygienePort for ClipboardHistoryFacade {
+    async fn reconcile_missing_files(&self) -> Result<CoreReconcileResult, FileCacheHygieneError> {
+        self.reconcile_missing_files()
+            .await
+            .map(|v| CoreReconcileResult {
+                entries_scanned: v.entries_scanned,
+                entries_deleted: v.entries_deleted,
+                errors: v.errors,
+            })
+            .map_err(|e| FileCacheHygieneError(e.to_string()))
+    }
+
+    async fn cleanup_expired_files(&self) -> Result<CoreCleanupResult, FileCacheHygieneError> {
+        self.cleanup_expired_files()
+            .await
+            .map(|v| CoreCleanupResult {
+                files_removed: v.files_removed,
+                bytes_reclaimed: v.bytes_reclaimed,
+                entries_deleted: v.entries_deleted,
+                orphans_removed: v.orphans_removed,
+                errors: v.errors,
+            })
+            .map_err(|e| FileCacheHygieneError(e.to_string()))
+    }
+}

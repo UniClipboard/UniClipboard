@@ -23,13 +23,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::UpdaterExt as _;
 use tokio::sync::Notify;
 use tracing::{error, info, info_span, warn, Instrument};
+use uc_core::ports::observability::TraceMetadata;
 use uc_core::settings::channel::detect_channel;
 use uc_core::settings::model::UpdateChannel;
 use uc_observability::analytics::{
     Event, InstallKind as AnalyticsInstallKind, UpdateAction, UpdateActionOutcome,
     UpdateCheckOutcome, UpdateCheckSource, UpdateFailureKind,
 };
-use uc_platform::ports::observability::TraceMetadata;
 
 /// Tauri event channel name for broadcast download progress.
 /// Subscribed by the frontend `UpdateContext` so any window/component can
@@ -1078,7 +1078,7 @@ pub(crate) fn detect_install_kind() -> InstallKind {
 pub(crate) fn detect_install_kind() -> InstallKind {
     // Portable ("green") builds ship a marker next to the exe; they must not
     // self-install via NSIS. Route them to the manual-download dialog instead.
-    if uc_platform::portable::is_portable() {
+    if uc_app_paths::is_portable() {
         InstallKind::WindowsPortable
     } else {
         InstallKind::Windows

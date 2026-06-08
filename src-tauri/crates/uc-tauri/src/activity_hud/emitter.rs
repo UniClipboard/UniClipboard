@@ -20,7 +20,7 @@
 use std::sync::{Arc, Mutex};
 
 use tracing::warn;
-use uc_application::facade::{
+use uc_core::ports::host_event::{
     ClipboardHostEvent, EmitError, HostEvent, HostEventEmitterPort, TransferHostEvent,
 };
 
@@ -190,10 +190,10 @@ impl HostEventEmitterPort for ActivityHudEmitter {
 mod tests {
     use std::sync::Mutex as StdMutex;
 
-    use uc_application::facade::{
+    use uc_core::file_transfer::FileTransferDirection;
+    use uc_core::ports::host_event::{
         ClipboardHostEvent, HostEvent, HostEventEmitterPort, TransferHostEvent,
     };
-    use uc_core::file_transfer::FileTransferDirection;
 
     use super::super::clock::ManualClock;
     use super::*;

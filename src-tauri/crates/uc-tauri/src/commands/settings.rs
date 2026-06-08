@@ -7,14 +7,14 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{error, info_span, Instrument};
-use uc_application::facade::settings::ShortcutKeyView;
+use uc_core::ports::observability::TraceMetadata;
+use uc_core::settings::model::ShortcutKey as ShortcutKeyView;
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
 use uc_daemon_contract::api::dto::settings::{
     KeyboardShortcutsPatchDto, RelayProbeOutcomeDto, SettingsPatchDto,
     ShortcutKeyDto as ContractShortcutKeyDto,
 };
 use uc_desktop::shortcuts::{self, CurrentShortcuts, QUICK_PANEL_SHORTCUT_SETTINGS_KEY};
-use uc_platform::ports::observability::TraceMetadata;
 
 use crate::commands::{record_trace_fields, CommandError};
 use crate::quick_panel;
@@ -323,7 +323,7 @@ impl From<ShortcutKeyView> for ShortcutKeyDto {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use uc_application::facade::settings::ShortcutKeyView;
+    use uc_core::settings::model::ShortcutKey as ShortcutKeyView;
 
     #[test]
     fn keyboard_shortcuts_patch_null_removes_existing_override() {

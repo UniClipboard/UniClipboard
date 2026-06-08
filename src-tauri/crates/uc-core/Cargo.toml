@@ -31,6 +31,8 @@ bytes = "1.7"
 
 # Async runtime (for mpsc channels in ports)
 tokio = { version = "1", features = ["sync"] }
+# Task registry needs rt + time; activated only via `task-registry` feature.
+tokio-util = { version = "0.7", optional = true }
 thiserror = "2.0.17"
 serde_with = { version = "3.16.1", features = ["base64"] }
 rand = "0.9.2"
@@ -48,6 +50,12 @@ arrayvec = { version = "0.7", features = ["serde"] }
 tracing = { version = "0.1", optional = true }
 zeroize = "1.8.2"
 
+# Cross-language schema codegen — only enabled by `uc-tauri` for tauri-specta
+# binding generation. TraceMetadata uses `specta::Type` + `specta_typescript::Number<u64>`
+# to declare that u64 timestamps map to TS `number` (not `bigint`).
+specta = { version = "=2.0.0-rc.25", features = ["derive", "uuid"], optional = true }
+specta-typescript = { version = "=0.0.12", optional = true }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 mockall = "0.14.0"
@@ -55,3 +63,7 @@ mockall = "0.14.0"
 [features]
 default = ["tracing"]
 logging = ["tracing"]
+specta-derive = ["dep:specta", "dep:specta-typescript"]
+# Enables the `task_registry` module (adds tokio rt+time + tokio-util).
+# Consumers that need TaskRegistry opt in; keeps the default dep footprint slim.
+task-registry = ["dep:tokio-util", "tokio/rt", "tokio/time", "tokio/macros"]

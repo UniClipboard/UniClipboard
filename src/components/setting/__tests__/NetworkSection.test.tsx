@@ -13,11 +13,11 @@ import type { Settings, NetworkSettings } from '@/types/setting'
 // ============================================================================
 // 实现已切到 typed `commands` proxy（`@/lib/ipc`，背后是 tauri-specta
 // 生成的 `ipc-bindings.generated.ts`）。这里只 mock 我们关心的命令
-// `restartApp`，其它命令未 mock 时调用会抛 TypeError，等于 fail-fast
+// `restartDaemon`，其它命令未 mock 时调用会抛 TypeError，等于 fail-fast
 // 防止误调用未 stub 的命令。
 vi.mock('@/lib/ipc', () => ({
   commands: {
-    restartApp: vi.fn(),
+    restartDaemon: vi.fn(),
   },
 }))
 
@@ -25,7 +25,7 @@ vi.mock('@/hooks/useSetting', () => ({
   useSetting: vi.fn(),
 }))
 
-const mockRestartApp = vi.mocked(commands.restartApp)
+const mockRestartDaemon = vi.mocked(commands.restartDaemon)
 const mockUseSetting = vi.mocked(useSetting)
 
 // ============================================================================
@@ -255,7 +255,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
   })
 
-  it('Test 6: 点击「立即重启」调 commands.restartApp()', async () => {
+  it('Test 6: 点击「立即重启」调 commands.restartDaemon()', async () => {
     const user = userEvent.setup()
     renderWithOverrides({ allowRelayFallback: true })
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
@@ -267,12 +267,12 @@ describe('NetworkSection — Phase 95 集成', () => {
     const restartBtn = screen.getByRole('button', { name: /立即重启|Restart now/ })
     await user.click(restartBtn)
 
-    expect(mockRestartApp).toHaveBeenCalled()
+    expect(mockRestartDaemon).toHaveBeenCalled()
   })
 
   it('Test 7: restart_app 失败 → RestartBanner.error 渲染（重试 + dismiss）', async () => {
     const user = userEvent.setup()
-    mockRestartApp.mockRejectedValueOnce(new Error('restart app failed'))
+    mockRestartDaemon.mockRejectedValueOnce(new Error('restart app failed'))
     renderWithOverrides({ allowRelayFallback: true })
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
     await user.click(sw)

@@ -165,20 +165,15 @@ impl SqliteSearchIndex {
     ///
     /// If the row is missing, inserts a fresh seed row via `NewSearchIndexMetaRow::seed`.
     fn ensure_meta_row(conn: &mut SqliteConnection, profile_id: &str) -> Result<(), SearchError> {
-        use crate::db::schema::search_index_meta::dsl;
+        let seed = NewSearchIndexMetaRow::seed(profile_id);
+        let inserted = diesel::insert_into(search_index_meta::table)
+            .values(&seed)
+            .on_conflict(search_index_meta::profile_id)
+            .do_nothing()
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("meta row seed failed: {e}")))?;
 
-        let existing: Option<SearchIndexMetaRow> = dsl::search_index_meta
-            .filter(dsl::profile_id.eq(profile_id))
-            .first::<SearchIndexMetaRow>(conn)
-            .optional()
-            .map_err(|e| SearchError::Internal(format!("meta row query failed: {e}")))?;
-
-        if existing.is_none() {
-            let seed = NewSearchIndexMetaRow::seed(profile_id);
-            diesel::insert_into(search_index_meta::table)
-                .values(&seed)
-                .execute(conn)
-                .map_err(|e| SearchError::Internal(format!("meta row seed failed: {e}")))?;
+        if inserted > 0 {
             debug!(profile_id, "search_index_meta row seeded");
         }
 

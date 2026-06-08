@@ -199,14 +199,19 @@ impl TrayState {
                 }
             });
 
-        // Use a dedicated monochrome tray icon; on macOS it is marked as a
-        // template image so the system auto-tints it for light/dark menu bar.
-        let tray_icon =
-            tauri::image::Image::from_bytes(include_bytes!("../../../icons/tray-icon@2x.png"))?;
-        builder = builder.icon(tray_icon);
         #[cfg(target_os = "macos")]
         {
-            builder = builder.icon_as_template(true);
+            let tray_icon =
+                tauri::image::Image::from_bytes(include_bytes!("../../../icons/tray-icon@2x.png"))?;
+            builder = builder.icon(tray_icon).icon_as_template(true);
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            if let Some(icon) = app.default_window_icon() {
+                builder = builder.icon(icon.clone());
+            } else {
+                warn!("No default window icon available for tray icon");
+            }
         }
 
         // Linux 上 tauri 的 tray-icon → libappindicator-rs 在 dlopen 失败时

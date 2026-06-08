@@ -12,7 +12,7 @@ use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, warn};
+use tracing::debug;
 use uc_application::facade::PairingOutcome;
 use uc_daemon_contract::api::dto::setup_events::{
     SetupInvitationIssuedEvent, SetupInvitationRevokedEvent, SetupPairingCompletedEvent,

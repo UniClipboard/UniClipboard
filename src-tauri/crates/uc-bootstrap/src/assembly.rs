@@ -17,7 +17,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use uc_application::deps::{
     AppDeps, ClipboardPorts, DevicePorts, MobileSyncPorts, SearchPorts, SecurityPorts,

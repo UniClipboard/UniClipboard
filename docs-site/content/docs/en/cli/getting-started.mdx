@@ -6,9 +6,10 @@ description: Install uniclip, start the daemon, and create or join a space — a
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 
 The `uniclip` binary is the terminal-side equivalent of the desktop
-app. It runs the daemon in-process, so anything the GUI can do — pair,
-sync, send, search — works headlessly over SSH, in tmux, on a server,
-or from a script.
+app. It talks to the background daemon over HTTP, so anything the GUI
+can do — pair, sync, send, search — works headlessly over SSH, in
+tmux, on a server, or from a script. If no daemon is running, `uniclip`
+starts one automatically.
 
 Install via the [Install](../getting-started/install) page (Homebrew
 on macOS, the headless `uniclip` artefact on Linux servers, etc.).

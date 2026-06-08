@@ -43,25 +43,17 @@ uniclip watch
 ### 发送和接收文件
 
 ```bash
-# 发送端：把文件 publish 到本地 blob 存储，dispatch 一个引用该 blob
-# 的剪贴板 envelope，然后保持进程驻留作为 passive provider，直到
-# Ctrl-C —— 接收端的 fetch 任务从本进程拉取字节，提前退出会让对端
-# 拿到 partial file。
+# 发送端：通过守护进程的 blob 管线把文件分发给已配对 peer。
+# 守护进程负责 blob 存储和传输 —— dispatch 确认后 CLI 即可退出。
 uniclip send -f ./big-file.bin
 
-# 接收端：订阅入站 envelope，挑第一个带文件 blob ref 的，把字节
-# 流式写到磁盘（默认 cwd，--out 指定其他目录）。传输中按 Ctrl-C
-# 会取消并清掉 partial file。
+# 接收端：等待首个入站文件，从守护进程的缓存中导出字节，
+# 写入磁盘（默认 cwd，--out 指定其他目录）。Ctrl-C 停止等待。
 uniclip recv --out ./inbox
 ```
 
 `send -f` 与 positional text 和 `--resend` 互斥。
-CLI 进程 **必须保持运行**：dispatch 返回不代表传输完成，
-接收端通过 iroh-blobs 从本进程反向拉取字节。
-
-`send -f` / `recv` 是 [`uniclip blob`](#blob大负载诊断) 系列的高层封装 ——
-自动处理 V3 envelope、dispatch、传输 lifecycle。需要单独验证一次 publish 或
-fetch 时再用 `blob` 子命令。
+守护进程负责 blob 存储和 peer 间传输，CLI 在 dispatch 确认后即可退出。
 
 ## 搜索
 
@@ -81,6 +73,8 @@ uniclip search query "报告" \
 `rebuild` 是同步命令，重建完成才返回；脚本里抓诊断快照很有用。
 
 ## Blob（大负载）诊断
+
+> **注意：**`blob`、`probe`、`dev` 子命令仅在开发构建（`dev-tools` feature）中可用，release 二进制不包含。
 
 `uniclip blob` 是分块 blob 管线的命令行入口，参见
 [同步内容 — 大负载（文件与大图）](../core-features/sync#大负载文件与大图)。

@@ -48,28 +48,20 @@ does **not** write the system clipboard — that's the daemon's job.
 ### Sending and receiving files
 
 ```bash
-# Sender: publish a file to the local blob store, dispatch a clipboard
-# envelope referencing it, then stay alive as a passive provider until
-# Ctrl-C so peers have time to fetch the bytes.
+# Sender: dispatch a file to paired peers via the daemon's blob
+# pipeline. The daemon handles blob storage and transfer — the CLI
+# exits once the dispatch is acknowledged.
 uniclip send -f ./big-file.bin
 
-# Receiver: subscribe to inbound envelopes, pick the first one that
-# carries a file blob, and stream it to disk (defaults to cwd; pass
-# --out for a different directory). Ctrl-C during transfer cancels
-# the fetch and removes the partial file.
+# Receiver: wait for the first inbound file, export it from the
+# daemon's cache, and write it to disk (defaults to cwd; pass --out
+# for a different directory). Ctrl-C to stop waiting.
 uniclip recv --out ./inbox
 ```
 
 `send -f` is mutually exclusive with positional text and `--resend`.
-The CLI process **must stay running** after dispatch — receivers fetch
-the bytes from this process via iroh-blobs; stopping early leaves the
-peer with a partial file.
-
-`send -f` / `recv` are the high-level counterparts of the lower-level
-[`uniclip blob`](#blob-large-payload-diagnostics) commands below —
-they handle the V3 envelope, dispatch, and transfer lifecycle for you.
-Reach for `blob` when you need to inspect a single publish or fetch in
-isolation.
+The daemon handles blob storage and peer-to-peer transfer, so the CLI
+can exit as soon as the dispatch is confirmed.
 
 ## Search
 
@@ -91,6 +83,9 @@ uniclip search query "report" \
 diagnostic snapshot.
 
 ## Blob (large-payload) diagnostics
+
+> **Note:** `blob`, `probe`, and `dev` subcommands are only available in
+> development builds (`dev-tools` feature). Release binaries do not include them.
 
 `uniclip blob` is the headless interface to the chunked-blob pipeline
 described in [Sync content](../core-features/sync#large-payloads-files--big-images).

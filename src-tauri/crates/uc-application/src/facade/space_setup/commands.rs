@@ -213,6 +213,7 @@ pub struct RedeemPairingInvitationResult {
 pub struct SwitchSpaceInput {
     pub code: String,
     pub new_passphrase: String,
+    pub sponsor_addr_hint: Option<String>,
 }
 
 /// Internal command for [`crate::usecases::setup::switch_space::SwitchSpaceUseCase`].
@@ -220,6 +221,7 @@ pub struct SwitchSpaceInput {
 pub(crate) struct SwitchSpaceCommand {
     pub code: InvitationCode,
     pub new_passphrase: Passphrase,
+    pub sponsor_addr_hint: Option<String>,
 }
 
 impl From<SwitchSpaceInput> for SwitchSpaceCommand {
@@ -227,6 +229,7 @@ impl From<SwitchSpaceInput> for SwitchSpaceCommand {
         Self {
             code: InvitationCode::new(input.code),
             new_passphrase: Passphrase::new(input.new_passphrase),
+            sponsor_addr_hint: input.sponsor_addr_hint,
         }
     }
 }

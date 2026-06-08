@@ -117,6 +117,8 @@ pub struct CurrentInvitation {
 pub struct SwitchSpaceRequest {
     pub code: String,
     pub new_passphrase: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sponsor_addr_hint: Option<String>,
 }
 
 /// Response body for `POST /v2/setup/switch-space`. Mirrors

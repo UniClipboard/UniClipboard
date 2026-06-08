@@ -74,6 +74,8 @@ export interface SetupStateResponse {
 export interface SwitchSpaceRequest {
   code: string
   newPassphrase: string
+  /** Optional sponsor IP address for manual LAN fallback pairing. */
+  sponsorAddrHint?: string
 }
 
 export interface SwitchSpaceResponse {

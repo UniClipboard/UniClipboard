@@ -235,7 +235,11 @@ impl SwitchSpaceUseCase {
 
         // ── Phase 2 — handshake + admit + trust + peer-addr ──────────────
         let outcome = match self
-            .phase_2_handshake_and_persist(&cmd.code, &cmd.new_passphrase)
+            .phase_2_handshake_and_persist(
+                &cmd.code,
+                &cmd.new_passphrase,
+                cmd.sponsor_addr_hint.as_deref(),
+            )
             .await
         {
             Ok(o) => o,
@@ -424,13 +428,11 @@ impl SwitchSpaceUseCase {
         &self,
         code: &InvitationCode,
         new_passphrase: &Passphrase,
+        sponsor_addr_hint: Option<&str>,
     ) -> Result<JoinerHandshakeOutcome, SwitchSpaceError> {
-        // Switch-space does not support sponsor_addr_hint (it's an
-        // already-setup device re-joining; manual IP fallback is a
-        // first-pair UX concern). Pass None.
         let outcome = self
             .handshake
-            .run(code, new_passphrase, None)
+            .run(code, new_passphrase, sponsor_addr_hint.map(String::from))
             .await
             .map_err(map_redeem_err)?;
         let now = self.now_utc()?;

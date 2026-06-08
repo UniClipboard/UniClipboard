@@ -464,6 +464,7 @@ pub(crate) async fn switch_space(
     let input = SwitchSpaceInput {
         code: req.code,
         new_passphrase: req.new_passphrase,
+        sponsor_addr_hint: req.sponsor_addr_hint,
     };
     let out = facade
         .switch_space(input)

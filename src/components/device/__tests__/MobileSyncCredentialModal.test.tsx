@@ -49,6 +49,7 @@ const mockPayload: RegisterMobileDeviceResult = {
   installQrCodePngBase64: 'aW5zdGFsbFFy',
   connectUri:
     'uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjEwOjQyNzIwIn0',
+  qrCodeAscii: '██████████',
   qrCodePngBase64: 'iVBORw0KGgo=',
 }
 

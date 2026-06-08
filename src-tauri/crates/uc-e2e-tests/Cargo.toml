@@ -9,7 +9,7 @@ description = "Black-box CLI end-to-end tests for uniclip + uniclipd"
 [dependencies]
 # Harness utilities (re-exported for integration tests)
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"

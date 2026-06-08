@@ -21,8 +21,8 @@ use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
     ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort, DispatchAck,
-    EntryDeliveryRepositoryPort, FirstSyncStatePort, LocalIdentityPort, PeerAddressRepositoryPort,
-    PresencePort, SettingsPort,
+    EntryDeliveryRepositoryPort, FirstSyncStatePort, LocalIdentityPort, MobileDeviceRepositoryPort,
+    PeerAddressRepositoryPort, PresencePort, SettingsPort,
 };
 use uc_core::MemberRepositoryPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
@@ -77,6 +77,9 @@ pub struct ClipboardSyncDeps {
     pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
+    /// 移动设备仓库,`GetEntryDeliveryViewUseCase` 用于把 `mobile_sync:` 前缀
+    /// 的伪 DeviceId 解析为移动设备的人类可读 label。
+    pub mobile_device_repo: Arc<dyn MobileDeviceRepositoryPort>,
     /// 共享 host-event bus。dispatch fan-out 完成、delivery 状态写入后追发
     /// 一条 `HostEvent::Delivery::StatusChanged`,GUI 前端凭此实时刷新 badge。
     /// 测试 / CLI 装配传一根空 bus(`Arc::new(HostEventBus::new())`)即可
@@ -218,6 +221,7 @@ impl ClipboardSyncFacade {
             Arc::clone(&deps.entry_delivery_repo),
             Arc::clone(&deps.device_identity),
             Arc::clone(&deps.member_repo),
+            Arc::clone(&deps.mobile_device_repo),
         ));
         Self {
             dispatch_uc,
@@ -671,6 +675,51 @@ mod tests {
         }
     }
 
+    mockall::mock! {
+        pub MobileDeviceRepo {}
+        #[async_trait]
+        impl MobileDeviceRepositoryPort for MobileDeviceRepo {
+            async fn save(
+                &self,
+                device: &uc_core::mobile_sync::MobileDevice,
+            ) -> Result<(), uc_core::mobile_sync::MobileDeviceError>;
+            async fn find_by_username(
+                &self,
+                username: &str,
+            ) -> Result<Option<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>;
+            async fn find_by_device_id(
+                &self,
+                device_id: &uc_core::mobile_sync::MobileDeviceId,
+            ) -> Result<Option<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>;
+            async fn list_all(
+                &self,
+            ) -> Result<Vec<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>;
+            async fn delete(
+                &self,
+                device_id: &uc_core::mobile_sync::MobileDeviceId,
+            ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError>;
+            async fn record_activity(
+                &self,
+                device_id: &uc_core::mobile_sync::MobileDeviceId,
+                last_seen_at_ms: i64,
+                last_seen_ip: Option<String>,
+                reported_name: Option<String>,
+                reported_os: Option<String>,
+            ) -> Result<(), uc_core::mobile_sync::MobileDeviceError>;
+            async fn update_password_hash(
+                &self,
+                device_id: &uc_core::mobile_sync::MobileDeviceId,
+                new_password_hash: String,
+            ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError>;
+        }
+    }
+
+    fn make_noop_mobile_device_repo() -> MockMobileDeviceRepo {
+        let mut m = MockMobileDeviceRepo::new();
+        m.expect_find_by_device_id().returning(|_| Ok(None));
+        m
+    }
+
     /// `MemberRepo` mock that returns a default-allowed `SpaceMember` for
     /// every device. The two pre-existing facade verdicts (dispatch +
     /// ingest) predate per-device gating; this keeps them green.
@@ -830,6 +879,7 @@ mod tests {
             entry_repo: Arc::new(make_noop_entry_repo()),
             event_repo: Arc::new(make_noop_event_repo()),
             trusted_peer_repo: Arc::new(make_noop_trusted_peer_repo()),
+            mobile_device_repo: Arc::new(make_noop_mobile_device_repo()),
             host_event_bus: Arc::new(crate::facade::host_event::HostEventBus::new()),
         });
         (facade, receiver)

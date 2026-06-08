@@ -14,9 +14,10 @@ use uc_core::clipboard::{
     DeliveryFailureReason, EntryDeliveryRecord, EntryDeliveryStatus as DomainDeliveryStatus,
 };
 use uc_core::ids::{DeviceId, EntryId};
+use uc_core::mobile_sync::MobileDeviceId;
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardEventRepositoryPort, DeviceIdentityPort,
-    EntryDeliveryRepositoryPort,
+    EntryDeliveryRepositoryPort, MobileDeviceRepositoryPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::MemberRepositoryPort;
@@ -74,6 +75,12 @@ pub enum GetEntryDeliveryViewError {
     Storage(String),
 }
 
+/// `mobile_sync:` 前缀——移动端入站在 `apply_incoming.rs` 里
+/// 用 `DeviceId::new(format!("mobile_sync:{}", source_device_id))` 生成伪
+/// DeviceId。本 use case 需要识别该前缀以从 `MobileDeviceRepositoryPort`
+/// 查出设备 label。
+const MOBILE_SYNC_DEVICE_PREFIX: &str = "mobile_sync:";
+
 pub(crate) struct GetEntryDeliveryViewUseCase {
     entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     event_repo: Arc<dyn ClipboardEventRepositoryPort>,
@@ -81,6 +88,7 @@ pub(crate) struct GetEntryDeliveryViewUseCase {
     entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     member_repo: Arc<dyn MemberRepositoryPort>,
+    mobile_device_repo: Arc<dyn MobileDeviceRepositoryPort>,
 }
 
 impl GetEntryDeliveryViewUseCase {
@@ -91,6 +99,7 @@ impl GetEntryDeliveryViewUseCase {
         entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
         member_repo: Arc<dyn MemberRepositoryPort>,
+        mobile_device_repo: Arc<dyn MobileDeviceRepositoryPort>,
     ) -> Self {
         Self {
             entry_repo,
@@ -99,6 +108,7 @@ impl GetEntryDeliveryViewUseCase {
             entry_delivery_repo,
             device_identity,
             member_repo,
+            mobile_device_repo,
         }
     }
 
@@ -166,7 +176,10 @@ impl GetEntryDeliveryViewUseCase {
         let source = if is_local {
             EntrySource::Local
         } else {
-            let device_name = name_index.get(&source_device).cloned();
+            let device_name = match name_index.get(&source_device).cloned() {
+                Some(name) => Some(name),
+                None => self.resolve_mobile_device_label(&source_device).await,
+            };
             EntrySource::Remote {
                 device_id: source_device,
                 device_name,
@@ -241,6 +254,25 @@ impl GetEntryDeliveryViewUseCase {
             deliveries: target_views,
         })
     }
+
+    /// 若 `device_id` 带 `mobile_sync:` 前缀,从移动设备仓库查出
+    /// `MobileDevice.label` 作为展示名。仓库故障静默降级为 `None`。
+    async fn resolve_mobile_device_label(&self, device_id: &DeviceId) -> Option<String> {
+        let suffix = device_id.as_str().strip_prefix(MOBILE_SYNC_DEVICE_PREFIX)?;
+        let mobile_id = MobileDeviceId::new(suffix);
+        match self.mobile_device_repo.find_by_device_id(&mobile_id).await {
+            Ok(Some(device)) if !device.label.trim().is_empty() => Some(device.label),
+            Ok(_) => None,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    mobile_device_id = %mobile_id,
+                    "delivery view: mobile_device_repo lookup failed; falling back to id-only name",
+                );
+                None
+            }
+        }
+    }
 }
 
 fn map_status(status: &DomainDeliveryStatus) -> EntryDeliveryStatusView {
@@ -262,6 +294,7 @@ mod tests {
     use std::sync::Mutex;
     use uc_core::clipboard::ClipboardEntry;
     use uc_core::ids::EventId;
+    use uc_core::mobile_sync::{MobileClientType, MobileDevice, MobileDeviceError};
     use uc_core::security::IdentityFingerprint;
     use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
     use uc_core::ClipboardSelectionDecision;
@@ -490,6 +523,43 @@ mod tests {
         }
     }
 
+    mockall::mock! {
+        MobileDeviceRepo {}
+        #[async_trait]
+        impl MobileDeviceRepositoryPort for MobileDeviceRepo {
+            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
+            async fn find_by_username(
+                &self,
+                username: &str,
+            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+            async fn find_by_device_id(
+                &self,
+                device_id: &MobileDeviceId,
+            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
+            async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
+            async fn record_activity(
+                &self,
+                device_id: &MobileDeviceId,
+                last_seen_at_ms: i64,
+                last_seen_ip: Option<String>,
+                reported_name: Option<String>,
+                reported_os: Option<String>,
+            ) -> Result<(), MobileDeviceError>;
+            async fn update_password_hash(
+                &self,
+                device_id: &MobileDeviceId,
+                new_password_hash: String,
+            ) -> Result<bool, MobileDeviceError>;
+        }
+    }
+
+    fn make_empty_mobile_device_repo() -> MockMobileDeviceRepo {
+        let mut m = MockMobileDeviceRepo::new();
+        m.expect_find_by_device_id().returning(|_| Ok(None));
+        m
+    }
+
     // ── helpers ────────────────────────────────────────────────────────
 
     fn local_id() -> DeviceId {
@@ -553,6 +623,24 @@ mod tests {
         delivery_repo: Arc<FakeDeliveryRepo>,
         member_repo: Arc<FakeMemberRepo>,
     ) -> GetEntryDeliveryViewUseCase {
+        build_uc_full(
+            entry_repo,
+            event_repo,
+            trusted_peer_repo,
+            delivery_repo,
+            member_repo,
+            Arc::new(make_empty_mobile_device_repo()),
+        )
+    }
+
+    fn build_uc_full(
+        entry_repo: Arc<FakeEntryRepo>,
+        event_repo: Arc<FakeEventRepo>,
+        trusted_peer_repo: Arc<FakeTrustedPeerRepo>,
+        delivery_repo: Arc<FakeDeliveryRepo>,
+        member_repo: Arc<FakeMemberRepo>,
+        mobile_device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    ) -> GetEntryDeliveryViewUseCase {
         GetEntryDeliveryViewUseCase::new(
             entry_repo,
             event_repo,
@@ -560,6 +648,7 @@ mod tests {
             delivery_repo,
             Arc::new(FixedIdentity(local_id())),
             member_repo,
+            mobile_device_repo,
         )
     }
 
@@ -800,6 +889,81 @@ mod tests {
                 device_id: peer("origin-peer"),
                 device_name: Some("Sender Desktop".to_string()),
             }
+        );
+    }
+
+    // ── 分支 9b: 移动端来源 · device_name 从 mobile_device_repo 解析 ────
+    //
+    // 移动端入站写的 from_device 是 `mobile_sync:<mobile_device_id>` 伪
+    // DeviceId,不在 SpaceMember 表里。视图层应剥离前缀后从
+    // MobileDeviceRepositoryPort 查出 label 作为展示名。
+
+    #[tokio::test]
+    async fn mobile_source_device_name_resolves_from_mobile_device_repo() {
+        let entries = Arc::new(FakeEntryRepo::new());
+        entries.insert(make_entry("e1", "ev1", true));
+        let events = Arc::new(FakeEventRepo::new());
+        events.set_source(&event_id("ev1"), Some(peer("mobile_sync:did_iphone15")));
+
+        let mut mobile_repo = MockMobileDeviceRepo::new();
+        mobile_repo
+            .expect_find_by_device_id()
+            .withf(|id| id.as_str() == "did_iphone15")
+            .times(1)
+            .returning(|_| {
+                Ok(Some(MobileDevice {
+                    device_id: MobileDeviceId::new("did_iphone15"),
+                    label: "我的 iPhone 15".to_string(),
+                    client_type: MobileClientType::IosShortcut,
+                    username: "mobile_abc".to_string(),
+                    password_hash: String::new(),
+                    created_at_ms: 0,
+                    last_seen_at_ms: None,
+                    last_seen_ip: None,
+                    reported_name: None,
+                    reported_os: None,
+                }))
+            });
+
+        let uc = build_uc_full(
+            entries,
+            events,
+            Arc::new(FakeTrustedPeerRepo::new(vec![])),
+            Arc::new(FakeDeliveryRepo::new(vec![])),
+            Arc::new(FakeMemberRepo::new(vec![])),
+            Arc::new(mobile_repo),
+        );
+        let view = uc.execute(&entry_id("e1")).await.unwrap();
+        assert_eq!(
+            view.source,
+            EntrySource::Remote {
+                device_id: peer("mobile_sync:did_iphone15"),
+                device_name: Some("我的 iPhone 15".to_string()),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn mobile_source_without_registered_device_falls_back_to_none() {
+        let entries = Arc::new(FakeEntryRepo::new());
+        entries.insert(make_entry("e1", "ev1", true));
+        let events = Arc::new(FakeEventRepo::new());
+        events.set_source(&event_id("ev1"), Some(peer("mobile_sync:did_unknown")));
+
+        let uc = build_uc(
+            entries,
+            events,
+            Arc::new(FakeTrustedPeerRepo::new(vec![])),
+            Arc::new(FakeDeliveryRepo::new(vec![])),
+        );
+        let view = uc.execute(&entry_id("e1")).await.unwrap();
+        assert_eq!(
+            view.source,
+            EntrySource::Remote {
+                device_id: peer("mobile_sync:did_unknown"),
+                device_name: None,
+            },
+            "未注册的移动设备应 fallback 到 None,前端截断 device_id 展示"
         );
     }
 

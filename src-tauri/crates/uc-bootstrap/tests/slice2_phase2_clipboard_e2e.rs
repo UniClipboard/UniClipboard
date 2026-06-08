@@ -331,6 +331,61 @@ impl uc_core::ports::ClipboardEventRepositoryPort for NoopClipboardEventRepo {
     }
 }
 
+#[derive(Default)]
+struct NoopMobileDeviceRepo;
+#[async_trait]
+impl uc_core::ports::MobileDeviceRepositoryPort for NoopMobileDeviceRepo {
+    async fn save(
+        &self,
+        _device: &uc_core::mobile_sync::MobileDevice,
+    ) -> Result<(), uc_core::mobile_sync::MobileDeviceError> {
+        Ok(())
+    }
+    async fn find_by_username(
+        &self,
+        _username: &str,
+    ) -> Result<Option<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>
+    {
+        Ok(None)
+    }
+    async fn find_by_device_id(
+        &self,
+        _device_id: &uc_core::mobile_sync::MobileDeviceId,
+    ) -> Result<Option<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>
+    {
+        Ok(None)
+    }
+    async fn list_all(
+        &self,
+    ) -> Result<Vec<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>
+    {
+        Ok(Vec::new())
+    }
+    async fn delete(
+        &self,
+        _device_id: &uc_core::mobile_sync::MobileDeviceId,
+    ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError> {
+        Ok(false)
+    }
+    async fn record_activity(
+        &self,
+        _device_id: &uc_core::mobile_sync::MobileDeviceId,
+        _last_seen_at_ms: i64,
+        _last_seen_ip: Option<String>,
+        _reported_name: Option<String>,
+        _reported_os: Option<String>,
+    ) -> Result<(), uc_core::mobile_sync::MobileDeviceError> {
+        Ok(())
+    }
+    async fn update_password_hash(
+        &self,
+        _device_id: &uc_core::mobile_sync::MobileDeviceId,
+        _new_password_hash: String,
+    ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError> {
+        Ok(false)
+    }
+}
+
 struct FixedDeviceIdentity(DeviceId);
 impl DeviceIdentityPort for FixedDeviceIdentity {
     fn current_device_id(&self) -> DeviceId {
@@ -566,6 +621,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
         entry_repo: Arc::new(NoopClipboardEntryRepo),
         event_repo: Arc::new(NoopClipboardEventRepo),
         trusted_peer_repo: Arc::clone(&trusted_peer_repo) as Arc<dyn TrustedPeerRepositoryPort>,
+        mobile_device_repo: Arc::new(NoopMobileDeviceRepo),
         // e2e 路径不需要前端事件 —— 装一根空 host_event_bus,无下游 emitter
         // 注册,emit_or_warn 直接走完空 fan-out,行为与改动前完全一致。
         host_event_bus: Arc::new(uc_application::facade::HostEventBus::new()),

@@ -24,7 +24,7 @@ use uc_daemon_process::contract::{
 };
 use uc_daemon_process::health_wait::{wait_for_daemon_health, wait_for_endpoint_absent};
 use uc_daemon_process::process_metadata::{
-    read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
+    find_pid_by_port, read_pid_metadata, DaemonPidMetadata, DaemonProcessMode, DaemonSpawnOrigin,
 };
 use uc_daemon_process::socket::try_resolve_daemon_http_addr;
 use uc_daemon_process::spawn::spawn_detached_daemon;
@@ -190,7 +190,7 @@ pub async fn bootstrap_daemon_in_process(
                     expected: expected_package_version.to_string(),
                 });
             }
-            terminate_incompatible_daemon_from_pid_file()?;
+            terminate_incompatible_daemon()?;
             let mut probe_fn =
                 || async { probe_daemon_health(&client, expected_package_version).await };
             wait_for_endpoint_absent(
@@ -268,6 +268,76 @@ pub fn terminate_incompatible_daemon_from_pid_file() -> Result<(), DaemonBootstr
     }
 
     terminate_incompatible_daemon_with(|| Ok(Some(metadata)), terminate_local_daemon_pid)
+}
+
+/// Terminate an incompatible daemon: PID file first, port-based PID lookup as fallback.
+///
+/// The PID-file path preserves all safety checks (InProcess refusal, D22
+/// identity verification). The port-based fallback fires only when the PID
+/// file is missing or unreadable — a scenario observed in the wild when a
+/// daemon from an older/different installation runs without leaving a PID
+/// file, blocking the current GUI from starting.
+fn terminate_incompatible_daemon() -> Result<(), DaemonBootstrapError> {
+    match read_pid_metadata() {
+        Ok(Some(_)) => terminate_incompatible_daemon_from_pid_file(),
+        Ok(None) => {
+            tracing::warn!("daemon PID file missing; trying port-based PID lookup");
+            terminate_incompatible_daemon_by_port()
+        }
+        Err(error) => {
+            tracing::warn!(%error, "daemon PID file unreadable; trying port-based PID lookup");
+            terminate_incompatible_daemon_by_port()
+        }
+    }
+}
+
+/// Port-based fallback: resolve the daemon's configured port, find the
+/// listening PID via OS tools (`netstat` / `lsof`), verify identity (D22),
+/// and terminate.
+fn terminate_incompatible_daemon_by_port() -> Result<(), DaemonBootstrapError> {
+    use uc_daemon_process::process_metadata::{verify_pid_identity, PidVerification};
+
+    let addr = try_resolve_daemon_http_addr().map_err(|error| {
+        DaemonBootstrapError::IncompatibleDaemon {
+            details: format!("port fallback: failed to resolve daemon address: {error}"),
+        }
+    })?;
+    let port = addr.port();
+
+    let pid = find_pid_by_port(port).ok_or_else(|| DaemonBootstrapError::IncompatibleDaemon {
+        details: format!(
+            "incompatible daemon has no PID file and no process found listening on port {port}"
+        ),
+    })?;
+
+    tracing::info!(
+        pid,
+        port,
+        "found incompatible daemon PID via port lookup (PID file missing)"
+    );
+
+    // D22: verify PID identity before signaling. Construct synthetic metadata
+    // assuming Standalone mode — an InProcess daemon would have a PID file
+    // from the hosting GUI, so reaching this fallback implies Standalone.
+    let synthetic = DaemonPidMetadata {
+        pid,
+        mode: DaemonProcessMode::Standalone,
+        started_at_ms: 0,
+        spawned_by: DaemonSpawnOrigin::Unknown,
+    };
+
+    if let PidVerification::Stale(reason) = verify_pid_identity(&synthetic) {
+        tracing::info!(
+            pid,
+            %reason,
+            "port-based daemon PID is stale — skipping terminate"
+        );
+        return Ok(());
+    }
+
+    terminate_local_daemon_pid(pid).map_err(|e| DaemonBootstrapError::IncompatibleDaemon {
+        details: format!("failed to terminate daemon (pid {pid}, found via port {port}): {e}"),
+    })
 }
 
 /// ADR-008 D3 (P4-3, revised 2026-06-03): on an explicit full GUI quit

@@ -426,6 +426,60 @@ fn read_process_exe_platform(_pid: u32) -> Option<String> {
     None
 }
 
+// ── Port-based PID lookup (fallback when PID file is missing) ────────
+
+/// Find the PID of a process listening on the given TCP port.
+///
+/// Best-effort fallback for when the daemon PID file is missing but a
+/// health probe confirms something is listening on the daemon's port.
+/// Uses platform-native tools (`netstat` on Windows, `lsof` on macOS/Linux).
+///
+/// Returns `None` if no listener is found or the platform tool is unavailable.
+pub fn find_pid_by_port(port: u16) -> Option<u32> {
+    find_pid_by_port_platform(port)
+}
+
+#[cfg(windows)]
+fn find_pid_by_port_platform(port: u16) -> Option<u32> {
+    let output = std::process::Command::new("netstat")
+        .args(["-ano"])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let line = line.trim();
+        if !line.contains("LISTENING") {
+            continue;
+        }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 5 {
+            continue;
+        }
+        // Local address format: "127.0.0.1:PORT" or "[::1]:PORT"
+        if let Some(colon_idx) = parts[1].rfind(':') {
+            if parts[1][colon_idx + 1..].parse::<u16>().ok() == Some(port) {
+                return parts[4].parse::<u32>().ok().filter(|&p| p != 0);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(unix)]
+fn find_pid_by_port_platform(port: u16) -> Option<u32> {
+    let output = std::process::Command::new("lsof")
+        .args(["-ti", &format!("tcp:{port}"), "-sTCP:LISTEN"])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.trim().lines().next()?.parse::<u32>().ok()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn find_pid_by_port_platform(_port: u16) -> Option<u32> {
+    None
+}
+
 // Backward-compatible standalone functions for external callers.
 
 /// Read the full daemon PID metadata (pid + mode + started_at_ms) from disk.
@@ -561,5 +615,29 @@ mod tests {
         assert_eq!(DaemonSpawnOrigin::from_env(), DaemonSpawnOrigin::Unknown);
         std::env::remove_var(SPAWN_ORIGIN_ENV);
         assert_eq!(DaemonSpawnOrigin::from_env(), DaemonSpawnOrigin::Unknown);
+    }
+
+    #[test]
+    fn find_pid_by_port_finds_own_listener() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let found = find_pid_by_port(port);
+        assert_eq!(
+            found,
+            Some(std::process::id()),
+            "must find the current process as the listener on port {port}"
+        );
+    }
+
+    #[test]
+    fn find_pid_by_port_returns_none_for_closed_port() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(
+            find_pid_by_port(port).is_none(),
+            "must return None when no process is listening on port {port}"
+        );
     }
 }

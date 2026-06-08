@@ -196,6 +196,7 @@ fn issue_to_dto(out: IssuePairingInvitationResult) -> IssueInvitationResponse {
     IssueInvitationResponse {
         code: out.code.as_str().to_string(),
         expires_at_ms: out.expires_at.timestamp_millis(),
+        lan_addresses: out.lan_addresses,
     }
 }
 
@@ -225,6 +226,7 @@ pub(crate) async fn redeem(
     let input = RedeemPairingInvitationInput {
         code: req.code,
         passphrase: req.passphrase,
+        sponsor_addr_hint: req.sponsor_addr_hint,
     };
     let out = facade
         .redeem_pairing_invitation(input)
@@ -665,9 +667,11 @@ mod tests {
         let dto = issue_to_dto(IssuePairingInvitationResult {
             code: InvitationCode::new("ABCD-1234"),
             expires_at: expires,
+            lan_addresses: vec!["192.168.1.100".to_string()],
         });
         assert_eq!(dto.code, "ABCD-1234");
         assert_eq!(dto.expires_at_ms, expires.timestamp_millis());
+        assert_eq!(dto.lan_addresses, vec!["192.168.1.100"]);
     }
 
     #[test]

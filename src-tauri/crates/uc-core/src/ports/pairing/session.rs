@@ -127,7 +127,19 @@ pub trait PairingSessionPort: Send + Sync {
     /// channel that resolved the invitation. No bytes are sent by this
     /// call — the caller writes the first [`PairingSessionMessage`] via
     /// [`send`](Self::send).
-    async fn dial_by_invitation(&self, code: &InvitationCode) -> Result<DialOutcome, DialError>;
+    async fn dial_by_invitation(&self, code: &InvitationCode) -> Result<DialOutcome, DialError> {
+        self.dial_by_invitation_with_hint(code, None).await
+    }
+
+    /// Like [`dial_by_invitation`](Self::dial_by_invitation) but accepts an
+    /// optional sponsor address hint (an IP address string). When provided,
+    /// the adapter tries a direct HTTP ticket fetch from that IP before
+    /// falling back to the standard discovery channels.
+    async fn dial_by_invitation_with_hint(
+        &self,
+        code: &InvitationCode,
+        sponsor_addr_hint: Option<&str>,
+    ) -> Result<DialOutcome, DialError>;
 
     /// Send a pairing message on an existing session. Used by both sides
     /// throughout the handshake.

@@ -112,12 +112,16 @@ pub(crate) type TrustPeerUc = TrustPeerUseCase<dyn TrustedPeerRepositoryPort>;
 /// 把 `JoinerHandshakeCoordinator::handshake` 抽象为单方法 trait——只有
 /// switch-space use case 需要这一层间接，让单元测试能用 `mockall` 隔离
 /// handshake 的 wire+crypto 子图。
+///
+/// `sponsor_addr_hint` uses `Option<String>` instead of `Option<&str>`
+/// to keep the trait `mockall`-friendly (no lifetime parameter needed).
 #[async_trait]
 pub(crate) trait JoinerHandshakeRunner: Send + Sync {
     async fn run(
         &self,
         code: &InvitationCode,
         passphrase: &Passphrase,
+        sponsor_addr_hint: Option<String>,
     ) -> Result<JoinerHandshakeOutcome, RedeemPairingInvitationError>;
 }
 
@@ -127,8 +131,10 @@ impl JoinerHandshakeRunner for JoinerHandshakeCoordinator {
         &self,
         code: &InvitationCode,
         passphrase: &Passphrase,
+        sponsor_addr_hint: Option<String>,
     ) -> Result<JoinerHandshakeOutcome, RedeemPairingInvitationError> {
-        self.handshake(code, passphrase).await
+        self.handshake(code, passphrase, sponsor_addr_hint.as_deref())
+            .await
     }
 }
 
@@ -419,9 +425,12 @@ impl SwitchSpaceUseCase {
         code: &InvitationCode,
         new_passphrase: &Passphrase,
     ) -> Result<JoinerHandshakeOutcome, SwitchSpaceError> {
+        // Switch-space does not support sponsor_addr_hint (it's an
+        // already-setup device re-joining; manual IP fallback is a
+        // first-pair UX concern). Pass None.
         let outcome = self
             .handshake
-            .run(code, new_passphrase)
+            .run(code, new_passphrase, None)
             .await
             .map_err(map_redeem_err)?;
         let now = self.now_utc()?;

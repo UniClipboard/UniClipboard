@@ -124,7 +124,10 @@ impl RedeemPairingInvitationUseCase {
         });
         let started_at = Instant::now();
         let result = async {
-            let outcome = self.handshake.handshake(&cmd.code, &cmd.passphrase).await?;
+            let outcome = self
+                .handshake
+                .handshake(&cmd.code, &cmd.passphrase, cmd.sponsor_addr_hint.as_deref())
+                .await?;
             // `DiscoveryChannel` is `Copy`; capture it before `persist`
             // consumes the outcome so `pairing_succeeded` can record which
             // channel resolved this first pair.
@@ -411,7 +414,11 @@ mod tests {
     }
     #[async_trait]
     impl PairingSessionPort for HappySession {
-        async fn dial_by_invitation(&self, _: &InvitationCode) -> Result<DialOutcome, DialError> {
+        async fn dial_by_invitation_with_hint(
+            &self,
+            _: &InvitationCode,
+            _: Option<&str>,
+        ) -> Result<DialOutcome, DialError> {
             Ok(DialOutcome {
                 session_id: PairingSessionId::new("session-1"),
                 channel: DiscoveryChannel::Cloud,
@@ -439,7 +446,11 @@ mod tests {
     struct UnreachableSession;
     #[async_trait]
     impl PairingSessionPort for UnreachableSession {
-        async fn dial_by_invitation(&self, _: &InvitationCode) -> Result<DialOutcome, DialError> {
+        async fn dial_by_invitation_with_hint(
+            &self,
+            _: &InvitationCode,
+            _: Option<&str>,
+        ) -> Result<DialOutcome, DialError> {
             Err(DialError::InvitationNotFound)
         }
         async fn send(
@@ -687,6 +698,7 @@ mod tests {
         RedeemPairingInvitationCommand {
             code: InvitationCode::new(code),
             passphrase: Passphrase::new("hunter22hunter22"),
+            sponsor_addr_hint: None,
         }
     }
 

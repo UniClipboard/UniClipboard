@@ -1532,6 +1532,7 @@
       "expired": "Invitation expired",
       "hint": "Both devices must remain online while pairing.",
       "hintExpired": "The code is no longer valid. Cancel and start a new invitation.",
+      "lanAddressesHint": "Your IP address (tell the other side if needed):",
       "actions": {
         "cancel": "Cancel invitation"
       }
@@ -1560,6 +1561,8 @@
         "generic": "Could not join the space. Please try again."
       },
       "hint": "The code is short-lived — ask the host to keep it on screen until pairing completes.",
+      "sponsorIpHint": "If the other device is not found automatically, enter their IP:",
+      "sponsorIpPlaceholder": "e.g. 192.168.1.100",
       "actions": {
         "back": "Back",
         "joining": "Joining...",

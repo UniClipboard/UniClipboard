@@ -153,9 +153,21 @@ impl IssuePairingInvitationUseCase {
         self.holder.insert(invitation).await;
         info!(code = %issued.code.as_str(), "pairing invitation parked in holder");
 
+        // Collect LAN addresses for manual IP fallback (best-effort).
+        let lan_addresses = self
+            .pairing_invitation_addresses
+            .list_invitation_addresses()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|c| c.ip.is_ipv4() && !c.ip.is_loopback())
+            .map(|c| c.ip.to_string())
+            .collect();
+
         Ok(IssuePairingInvitationResult {
             code: issued.code,
             expires_at: issued.expires_at,
+            lan_addresses,
         })
     }
 

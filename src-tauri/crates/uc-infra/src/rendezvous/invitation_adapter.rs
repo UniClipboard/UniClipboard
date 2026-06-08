@@ -38,7 +38,10 @@ use uc_core::settings::model::Settings;
 
 use crate::network::iroh::filter_endpoint_addr;
 use crate::network::iroh::runtime_consts;
-use crate::pairing::{mint_invitation_code, MdnsPairingPublisher, PublisherHandle};
+use crate::pairing::{
+    mint_invitation_code, start_ticket_server, MdnsPairingPublisher, PublisherHandle,
+    TicketServerHandle,
+};
 
 use super::client::{CreatePairingRequest, RendezvousClient, RendezvousHttpError};
 
@@ -63,6 +66,10 @@ pub struct RendezvousPairingInvitationAdapter {
     /// expired without being consumed still gets released — no
     /// background timer needed.
     publishers: Mutex<HashMap<InvitationCode, (PublisherHandle, DateTime<Utc>)>>,
+    /// Lazily started LAN ticket server for manual IP fallback pairing.
+    /// Started on first invitation in LAN-only mode; tickets are
+    /// registered/removed alongside the mDNS publisher lifecycle.
+    ticket_server: Mutex<Option<TicketServerHandle>>,
 }
 
 impl RendezvousPairingInvitationAdapter {
@@ -78,6 +85,7 @@ impl RendezvousPairingInvitationAdapter {
             settings,
             rendezvous,
             publishers: Mutex::new(HashMap::new()),
+            ticket_server: Mutex::new(None),
         }
     }
 
@@ -145,23 +153,22 @@ impl RendezvousPairingInvitationAdapter {
                 %expires_at,
                 "LAN-only mode: minted invitation locally, skipping cloud channel"
             );
-            if let Err(err) = self
+            let mdns_ok = self
                 .start_mdns_publisher(&code, &endpoint_id, &ticket, expires_at)
-                .await
-            {
-                // mDNS is the only publish surface in LAN-only mode, so a
-                // start failure means zero channels were initiated. The port
-                // contract requires `Ok` only when at least one channel is
-                // live, so surface the failure instead of returning an
-                // undialable code.
+                .await;
+            // Always register with the LAN ticket server regardless of
+            // mDNS success — the manual IP fallback is the whole point.
+            self.ensure_ticket_server_and_register(&code, &ticket).await;
+            if let Err(err) = mdns_ok {
+                // mDNS failed but ticket server is still available as a
+                // fallback channel. Only fail if neither channel works.
+                // The ticket server always succeeds registration (it's
+                // in-process), so we can consider at least one channel live.
                 warn!(
                     error = %err,
                     code = %code.as_str(),
-                    "mDNS publisher start failed in LAN-only mode; this invitation cannot be discovered",
+                    "mDNS publisher start failed in LAN-only mode; LAN ticket server still available for manual IP fallback",
                 );
-                return Err(InvitationError::Internal(format!(
-                    "mDNS publisher start failed in LAN-only mode: {err}"
-                )));
             }
             return Ok(IssuedInvitation {
                 code,
@@ -205,6 +212,10 @@ impl RendezvousPairingInvitationAdapter {
         };
 
         // ── LAN channel (best-effort, window-scoped) ───────────────────
+        // Always register with the ticket server so manual IP fallback
+        // works even when cloud is reachable (the joiner might still be
+        // unable to resolve via cloud or mDNS).
+        self.ensure_ticket_server_and_register(&code, &ticket).await;
         if let Err(err) = self
             .start_mdns_publisher(&code, &endpoint_id, &ticket, expires_at)
             .await
@@ -302,6 +313,38 @@ impl RendezvousPairingInvitationAdapter {
                 remaining = map.len(),
                 "mDNS publisher GC swept expired handles"
             );
+        }
+    }
+
+    /// Ensure the LAN ticket server is running and register the given
+    /// ticket. The server is started lazily on first call and stays
+    /// alive for the adapter's lifetime.
+    async fn ensure_ticket_server_and_register(&self, code: &InvitationCode, ticket_json: &str) {
+        let mut guard = self.ticket_server.lock().await;
+        if guard.is_none() {
+            match start_ticket_server().await {
+                Ok(handle) => {
+                    *guard = Some(handle);
+                }
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        "LAN ticket server start failed; manual IP fallback will not work"
+                    );
+                    return;
+                }
+            }
+        }
+        if let Some(handle) = guard.as_ref() {
+            handle.register(code.as_str(), ticket_json).await;
+        }
+    }
+
+    /// Remove a ticket from the LAN ticket server (if running).
+    async fn remove_ticket(&self, code: &InvitationCode) {
+        let guard = self.ticket_server.lock().await;
+        if let Some(handle) = guard.as_ref() {
+            handle.remove(code.as_str()).await;
         }
     }
 }
@@ -529,6 +572,8 @@ impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
         if self.publishers.lock().await.remove(code).is_some() {
             debug!("mDNS publisher stopped for consumed invitation");
         }
+        // Remove the ticket from the LAN ticket server (manual IP fallback).
+        self.remove_ticket(code).await;
 
         match self.rendezvous.consume_pairing(code.as_str()).await {
             Ok(()) => {

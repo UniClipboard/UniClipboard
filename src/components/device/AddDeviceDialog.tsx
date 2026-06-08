@@ -65,6 +65,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [copied, setCopied] = useState(false)
+  const [copiedIp, setCopiedIp] = useState<string | null>(null)
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
 
@@ -368,12 +369,12 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
                   className="inline-flex items-center gap-1 rounded bg-background px-2 py-0.5 font-mono text-foreground transition-colors hover:bg-muted"
                   onClick={() => {
                     navigator.clipboard.writeText(ip)
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 1500)
+                    setCopiedIp(ip)
+                    setTimeout(() => setCopiedIp(null), 1500)
                   }}
                 >
                   {ip}
-                  {copied ? (
+                  {copiedIp === ip ? (
                     <Check className="size-3 text-emerald-500" />
                   ) : (
                     <Copy className="size-3 text-muted-foreground" />

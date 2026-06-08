@@ -185,8 +185,8 @@ for changelogs.
 
 | Setting                        | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auto-check for updates         | Check for a new version on startup, then periodically (every 6 hours ± jitter) via a background scheduler that keeps running even when the main window is closed and the app is idle in the background. A new version opens a dedicated update window with release notes (deduplicated per version, so you only see it once). On by default. Disable to only ever update via the `Check for updates` button — disabling also suppresses the auto-popup. |
-| Download updates in background | After a check finds a new version, silently fetch the installer so click-to-install is instant. On by default; depends on auto-check being on. Automatically skipped on `.deb` / `.rpm` installs — those upgrade via the system package manager, so downloading the installer wouldn't help.                                                                                                                                                            |
+| Auto-check for updates         | Check for a new version on startup, then periodically (every 6 hours ± jitter) via a background scheduler that keeps running even when the main window is closed and the app is idle in the background. A new version opens a compact update dialog showing the available version and three options: **Skip This Version**, **Remind Me Later**, or **Install Update** (deduplicated per version, so you only see it once). On by default. Disable to only ever update via the `Check for updates` button — disabling also suppresses the auto-popup. |
+| Download updates in background | After a check finds a new version, silently fetch the installer so click-to-install is instant. On by default; depends on auto-check being on. The update dialog also includes a toggle to flip this setting on the spot. Automatically skipped on `.deb` / `.rpm` installs — those upgrade via the system package manager, so downloading the installer wouldn't help. |
 | Update channel                 | `Auto` / `Stable` / `Alpha`. Alpha rolls fast; switching prompts a confirmation.                                                                                                                                                                                                                                                                                                                                                                        |
 
 The sidebar update icon (bottom-right) reflects the current state:
@@ -195,11 +195,10 @@ The sidebar update icon (bottom-right) reflects the current state:
 - **Amber with a progress ring** — the installer is downloading in the background; the dialog lets you cancel.
 - **Green with a check** — the installer is ready; click to install and restart.
 
-When you upgrade across several releases (e.g. skipping a few alphas), the
-update dialog shows the cumulative release notes for every intermediate
-version between your current install and the latest one — capped at the most
-recent 5 versions. Older skipped versions are summarized as "N earlier versions
-omitted" with a pointer to the full changelog.
+The update dialog lets you **Skip This Version** to permanently dismiss a
+specific release — the scheduler will not pop the dialog again for that
+version. Choosing **Remind Me Later** simply closes the dialog; you will be
+reminded on the next check cycle.
 
 ## Toggles that **don't** exist (yet)
 

@@ -161,11 +161,17 @@ const UpdaterWindow: React.FC = () => {
       .catch(err => log.error({ err }, '关闭 updater 窗口失败'))
   }, [])
 
-  const handleSkip = useCallback(() => {
-    if (state.info) {
-      void skipVersion(state.info.version).catch(err => log.error({ err }, '跳过版本失败'))
+  const handleSkip = useCallback(async () => {
+    if (!state.info) {
+      closeWindow()
+      return
     }
-    closeWindow()
+    try {
+      await skipVersion(state.info.version)
+      closeWindow()
+    } catch (err) {
+      log.error({ err }, '跳过版本失败')
+    }
   }, [state.info, closeWindow])
 
   const handleAutoUpdateToggle = useCallback(

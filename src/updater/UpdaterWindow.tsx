@@ -178,7 +178,10 @@ const UpdaterWindow: React.FC = () => {
     (checked: boolean) => {
       setAutoUpdate(checked)
       if (!devPreview) {
-        void setAutoDownloadUpdate(checked).catch(err => log.error({ err }, '设置自动下载失败'))
+        void setAutoDownloadUpdate(checked).catch(err => {
+          setAutoUpdate(!checked)
+          log.error({ err }, '设置自动下载失败')
+        })
       }
     },
     [devPreview]

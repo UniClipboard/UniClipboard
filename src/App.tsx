@@ -1,6 +1,7 @@
 import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
+import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { unlockEncryptionSession } from '@/api/security'
 import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
@@ -34,6 +35,10 @@ import UnlockPage from '@/pages/UnlockPage'
 import { useGetEncryptionSessionStatusQuery } from '@/store/api'
 import { type SetupFlow, useSetupRealtimeStore } from '@/store/setupRealtimeStore'
 import './App.css'
+
+/** How long the initial encryption-status load may stay blank before the UI
+ *  falls through to the actionable error screen instead of hanging (#995). */
+const LOADING_WATCHDOG_MS = 12_000
 
 // 认证布局包装器 - 保持 Sidebar 持久化
 const AuthenticatedLayout = () => {
@@ -132,9 +137,27 @@ const AppContent = ({
     data: encryptionData,
     isLoading: encryptionLoading,
     error: encryptionQueryError,
+    refetch: refetchEncryption,
   } = useGetEncryptionSessionStatusQuery(undefined, {
     skip: isSetupActive || !daemonBootstrapReady,
   })
+
+  // Watchdog: the daemon session token can expire while the keep-alive timer is
+  // frozen across a sleep; if the initial encryption-status request then stalls
+  // (e.g. a refresh that never resolves), the blank loading gate below would
+  // trap the UI forever — the user had to restart the app to recover (#995).
+  // After LOADING_WATCHDOG_MS without a status or error, surface the actionable
+  // error screen (with Retry) instead of an indefinite blank screen.
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false)
+  const isInitialLoading = encryptionLoading && encryptionStatus === null
+  useEffect(() => {
+    if (!isInitialLoading) {
+      setLoadingTimedOut(false)
+      return
+    }
+    const id = setTimeout(() => setLoadingTimedOut(true), LOADING_WATCHDOG_MS)
+    return () => clearTimeout(id)
+  }, [isInitialLoading])
 
   // Listen for encryption session ready/failed via daemon WebSocket.
   useEncryptionState(
@@ -178,9 +201,34 @@ const AppContent = ({
     : null
   const encryptionError = encryptionData
     ? null
-    : (bootEncryptionError ?? encryptionQueryErrorMessage)
+    : (bootEncryptionError ??
+      encryptionQueryErrorMessage ??
+      (loadingTimedOut ? 'Timed out waiting for the background service.' : null))
 
   const resolvedEncryptionStatus = encryptionStatus ?? encryptionData ?? null
+
+  // Retry without restarting the app: re-run the WS bootstrap (idempotent —
+  // resolves immediately if already connected), force a fresh session token,
+  // then re-pull the encryption status. This recovers the common #995 case
+  // where only the session token had gone stale.
+  const handleBootstrapRetry = useCallback(() => {
+    setLoadingTimedOut(false)
+    setBootEncryptionError(null)
+    setBootstrapFailure(null)
+    connectDaemonWs()
+      .then(() => {
+        setDaemonBootstrapReady(true)
+        return daemonClient.refreshSession()
+      })
+      .then(() => {
+        void refetchEncryption()
+      })
+      .catch(error => {
+        const message = error instanceof Error ? error.message : String(error)
+        setBootEncryptionError(message)
+        setBootstrapFailure(error instanceof DaemonBootstrapFailedError ? error.failure : null)
+      })
+  }, [refetchEncryption])
 
   useEffect(() => {
     if (
@@ -214,7 +262,10 @@ const AppContent = ({
   // Once encryptionStatus is known (from a previous query or SessionReady event), we continue
   // rendering even if RTK Query is re-fetching — this prevents a blank screen flash when
   // isSetupActive transitions from true→false and RTK Query starts a new request.
-  if (encryptionLoading && encryptionStatus === null) {
+  // Stay blank only while genuinely still loading with no error. Once the
+  // watchdog (or the query) produces an error, fall through to the error
+  // screen below instead of short-circuiting to an indefinite blank (#995).
+  if (encryptionLoading && encryptionStatus === null && !encryptionError) {
     return null
   }
 
@@ -229,7 +280,7 @@ const AppContent = ({
               : "Couldn't reach the background service. Please restart the app."}
           </p>
           <p className="break-words text-xs text-muted-foreground">{encryptionError}</p>
-          {versionTooOld && (
+          {versionTooOld ? (
             <Button
               size="sm"
               onClick={() => {
@@ -245,6 +296,10 @@ const AppContent = ({
               }}
             >
               Open updater
+            </Button>
+          ) : (
+            <Button size="sm" onClick={handleBootstrapRetry}>
+              Retry
             </Button>
           )}
         </div>

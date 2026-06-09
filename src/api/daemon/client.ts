@@ -27,6 +27,26 @@ const log = createLogger('daemon-client')
 const REFRESH_INTERVAL_MS = 240_000
 
 /**
+ * Re-mint the session on resume when it is within this window of expiry.
+ *
+ * The keep-alive `setInterval` is frozen while the OS suspends the process
+ * (sleep / app backgrounded), so a token can silently expire across a sleep.
+ * On the next wake (`visibilitychange` / `focus` / `online`) we proactively
+ * refresh if the token is gone or about to expire, so the first post-resume
+ * request never fires with a stale token (the daemon would reject it with
+ * `ExpiredSignature`). See issue #995.
+ */
+const WAKE_REFRESH_BUFFER_MS = 30_000
+
+/**
+ * Max time to wait for the native session IPC before treating the refresh as
+ * failed. Without this, a stalled `getDaemonSession()` on resume leaves the
+ * pre-emptive/401-retry refresh hanging forever, which freezes the UI on the
+ * loading screen until the user restarts the app (issue #995).
+ */
+const REFRESH_TIMEOUT_MS = 10_000
+
+/**
  * Options for `request<T>()`.
  *
  * 请求选项，允许调用方自定义 HTTP 方法、请求体和请求头。
@@ -46,6 +66,8 @@ class DaemonClient {
   private session: SessionToken | null = null
   private refreshTimer: ReturnType<typeof setInterval> | null = null
   private refreshPromise: Promise<SessionToken> | null = null
+  /** Bound wake handler, registered while initialized (see {@link WAKE_REFRESH_BUFFER_MS}). */
+  private wakeHandler: (() => void) | null = null
 
   /**
    * Whether the client has been initialized with daemon connection config.
@@ -85,6 +107,7 @@ class DaemonClient {
   initialize(config: DaemonConfig): void {
     this.config = config
     this.startKeepAlive()
+    this.setupWakeListeners()
     // Wire the @hey-api generated fetch client to this session lifecycle
     // (baseUrl + ?auth= query token + 401 observability). Makes the typed SDK
     // AVAILABLE; nothing routes through it yet (ADR-008 P5; consumers in P6).
@@ -281,6 +304,7 @@ class DaemonClient {
    */
   destroy(): void {
     this.stopKeepAlive()
+    this.teardownWakeListeners()
     this.session = null
     this.config = null
     this.refreshPromise = null
@@ -289,7 +313,7 @@ class DaemonClient {
   // ── Private helpers ──────────────────────────────────────────
 
   private async doRefreshSession(): Promise<SessionToken> {
-    const data = await commands.getDaemonSession()
+    const data = await this.fetchDaemonSession()
     if (!data) {
       throw new DaemonApiError(DaemonErrorCode.UNAUTHORIZED, 'Daemon session is not available yet')
     }
@@ -352,6 +376,70 @@ class DaemonClient {
     }
 
     return JSON.parse(body) as T
+  }
+
+  /**
+   * Ask native Tauri for a session, racing the IPC against a timeout so a
+   * stalled native side can't hang the refresh forever. On timeout we reject
+   * with a {@link DaemonApiError}; the caller surfaces it (loading-screen
+   * watchdog / 401 retry) instead of waiting indefinitely.
+   */
+  private async fetchDaemonSession(): Promise<
+    Awaited<ReturnType<typeof commands.getDaemonSession>>
+  > {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new DaemonApiError(
+            DaemonErrorCode.INTERNAL_ERROR,
+            `Daemon session request timed out after ${REFRESH_TIMEOUT_MS}ms`
+          )
+        )
+      }, REFRESH_TIMEOUT_MS)
+    })
+    try {
+      return await Promise.race([commands.getDaemonSession(), timeout])
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }
+
+  /**
+   * Re-mint the session when the app resumes (tab visible / window focused /
+   * network back) and the current token is gone or near expiry. The keep-alive
+   * timer is frozen while suspended, so this is the path that recovers a token
+   * that expired across a sleep before any request fires (issue #995).
+   */
+  private setupWakeListeners(): void {
+    if (typeof window === 'undefined' || this.wakeHandler) return
+    const handler = () => {
+      // Ignore the "hidden" half of a visibilitychange — only act on resume.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      if (!isSessionExpired(this.session, WAKE_REFRESH_BUFFER_MS)) return
+      // refreshSession() coalesces concurrent calls, so this is cheap.
+      this.refreshSession().catch(err => {
+        log.error({ err }, 'wake refresh failed')
+      })
+    }
+    this.wakeHandler = handler
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handler)
+    }
+    window.addEventListener('focus', handler)
+    window.addEventListener('online', handler)
+  }
+
+  private teardownWakeListeners(): void {
+    if (!this.wakeHandler) return
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.wakeHandler)
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', this.wakeHandler)
+      window.removeEventListener('online', this.wakeHandler)
+    }
+    this.wakeHandler = null
   }
 
   private startKeepAlive(): void {

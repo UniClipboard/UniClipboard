@@ -297,6 +297,7 @@ pub async fn start_in_process(
             clipboard_outbound: runtime_workers.clipboard_outbound.clone(),
             lan_lifecycle: Arc::clone(&mobile_lan_lifecycle)
                 as Arc<dyn uc_core::ports::MobileLanLifecyclePort>,
+            clipboard_restore: app_facade.clipboard_restore.clone(),
         });
 
     app_facade.install_daemon_lifecycle(lifecycle_facades);

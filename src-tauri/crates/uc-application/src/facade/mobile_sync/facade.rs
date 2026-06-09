@@ -53,10 +53,14 @@ use uc_core::ports::{
 use uc_observability::analytics::AnalyticsPort;
 
 use crate::facade::clipboard_outbound::ClipboardOutboundFacade;
+use crate::facade::clipboard_restore::ClipboardRestoreFacade;
 use crate::facade::file_transfer::FileTransferFacade;
 use crate::facade::mobile_sync::outbound_adapter::ClipboardOutboundFanOutAdapter;
+use crate::facade::mobile_sync::restore_adapter::ClipboardRestoreOnDuplicateAdapter;
 use crate::usecases::clipboard_sync::apply_inbound::ApplyInboundClipboardUseCase;
-use crate::usecases::mobile_sync::apply_incoming::MobileInboundFanOutPort;
+use crate::usecases::mobile_sync::apply_incoming::{
+    MobileDuplicateRestorePort, MobileInboundFanOutPort,
+};
 use crate::usecases::mobile_sync::{
     apply_incoming::ApplyIncomingMobileClipUseCase,
     authenticate_basic::AuthenticateBasicAuthUseCase, get_file::GetMobileSyncFileUseCase,
@@ -207,6 +211,13 @@ pub struct MobileSyncFacadeDeps {
     /// `GatedAnalyticsSink`，运行时按用户 `usage_analytics_enabled` 切换
     /// noop / 真实 sink）。测试装配传 `NoopAnalyticsSink`。
     pub analytics: Arc<dyn AnalyticsPort>,
+    /// 可选剪贴板 restore facade。装配处提供时, 移动端 PUT 触发的
+    /// `DuplicateSkipped` 分支会把已有 entry 恢复到系统剪贴板 ——
+    /// 用户从手机推送已有内容的语义是"我想粘贴", 而不是"仅同步"。
+    ///
+    /// daemon 装配传 `Some(clipboard_restore_facade)`;CLI fallback /
+    /// 单测传 `None`, 行为与本字段引入前一致。
+    pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
@@ -263,6 +274,7 @@ impl MobileSyncFacade {
             clipboard_outbound,
             lan_lifecycle,
             analytics,
+            clipboard_restore,
         } = deps;
 
         let snapshot_port: Arc<dyn LatestClipboardSnapshotPort> =
@@ -313,6 +325,10 @@ impl MobileSyncFacade {
                         as Arc<dyn MobileInboundFanOutPort>
                 }),
                 analytics,
+                clipboard_restore.map(|facade| {
+                    Arc::new(ClipboardRestoreOnDuplicateAdapter::new(facade))
+                        as Arc<dyn MobileDuplicateRestorePort>
+                }),
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
             get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging.clone()),
@@ -983,6 +999,7 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            clipboard_restore: None,
         })
     }
 
@@ -1139,6 +1156,7 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            clipboard_restore: None,
         });
 
         // happy path
@@ -1219,6 +1237,7 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            clipboard_restore: None,
         });
 
         // 1. 旧密码可用
@@ -1328,6 +1347,7 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            clipboard_restore: None,
         })
     }
 
@@ -1474,6 +1494,7 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+            clipboard_restore: None,
         });
 
         // enable 两开关 → lifecycle.apply(Enabled) → endpoint = BindFailed

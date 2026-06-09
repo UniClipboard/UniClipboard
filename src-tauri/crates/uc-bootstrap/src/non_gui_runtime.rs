@@ -257,6 +257,7 @@ pub fn build_mobile_sync_facade(
     // CLI fallback / 不接 P2P 出站的入口传 `None`, mobile 上传仅落地本机,
     // 不传播。
     clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,
+    clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
 ) -> Arc<MobileSyncFacade> {
     Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
         clock: deps.system.clock.clone(),
@@ -286,6 +287,7 @@ pub fn build_mobile_sync_facade(
         // sink。bootstrap 已把 GatedAnalyticsSink 包好，runtime 切换 noop / 真
         // 实 sink 是 sink 自身职责，不在此装配。
         analytics: deps.analytics.clone(),
+        clipboard_restore,
     }))
 }
 
@@ -385,6 +387,8 @@ pub fn build_app_facade_from_deps(
                 // `build_daemon_lifecycle_facades` 那条路径, 在那里以
                 // `Some(clipboard_outbound)` 装入完整 fan-out 能力(含文件 blob
                 // 发布)。
+                None,
+                // CLI fallback 不接 restore (无 OS clipboard 写能力)。
                 None,
             )
         });

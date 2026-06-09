@@ -10,6 +10,7 @@
 
 mod facade;
 mod outbound_adapter;
+mod restore_adapter;
 
 pub use facade::streaming_scope_nonce as mobile_sync_streaming_scope_nonce;
 pub use facade::{

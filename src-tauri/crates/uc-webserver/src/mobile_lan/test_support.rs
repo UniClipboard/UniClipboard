@@ -246,6 +246,7 @@ pub(crate) async fn build_facade_with_seeded_device(
         lan_lifecycle: None,
         // schema doc §7.6 / §12.2 P1：测试装配走 noop sink，不污染 capture。
         analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
+        clipboard_restore: None,
     }))
 }
 

@@ -99,6 +99,33 @@ pub(crate) trait MobileInboundFanOutPort: Send + Sync {
     );
 }
 
+/// 移动端入站去重命中时, 把已有 entry 恢复到系统剪贴板的能力抽象。
+///
+/// ## 为什么需要
+///
+/// 用户从手机推送一条"本机已存在"的内容, 语义是"我现在想在桌面粘贴
+/// 这条内容"。`ApplyInboundClipboardUseCase` 的 `DuplicateSkipped` 只
+/// 意味着"不需要再持久化", 但不等于"不需要写系统剪贴板"。如果静默
+/// 跳过, 用户 Cmd-V 粘出来的仍是上一次复制的内容, 与预期不符。
+///
+/// ## 设计 (与 `MobileInboundFanOutPort` 同模式)
+///
+/// - use case 持 trait 而非具体 facade, 测试可注入 fake;
+/// - 生产 adapter 在 `facade/mobile_sync/restore_adapter.rs`, 委托
+///   `ClipboardRestoreFacade::restore_entry`;
+/// - 失败仅 `warn!`, 不回灌成 HTTP 错误 —— mobile 上传是否"成功"
+///   只取决于本机入站管线的 outcome, restore 是 best-effort 增强。
+///
+/// ## 仅 `DuplicateSkipped` 分支调用
+///
+/// - `Applied`: 入站管线已经写了系统剪贴板, 不需要再 restore;
+/// - `DecodeFailed` / `Err(...)`: 本机入站没成功, 没有 entry 可恢复;
+/// - `Buffered`: 两步 PUT 中间态, 还没有 entry。
+#[async_trait::async_trait]
+pub(crate) trait MobileDuplicateRestorePort: Send + Sync {
+    async fn restore_to_clipboard(&self, entry_id: &EntryId);
+}
+
 // ─── Public types (pub(crate) per AGENTS.md §11.4) ──────────────────────
 
 /// Input to [`ApplyIncomingMobileClipUseCase::execute`].
@@ -341,6 +368,13 @@ pub(crate) struct ApplyIncomingMobileClipUseCase {
     /// `Buffered` / `DuplicateSkipped` / `DecodeFailed` / `Err` 都不上报，
     /// 沿用 `ClipboardEntryCaptured` 防 RemotePush 双计的红线哲学。
     analytics: Arc<dyn AnalyticsPort>,
+    /// 可选 restore port。装配处提供实现时, `DuplicateSkipped` 分支在
+    /// 确认本机已有该记录后, 把它恢复到系统剪贴板 —— 用户从手机推送已
+    /// 有内容的语义是"我想在桌面粘贴这个", 不能静默跳过。
+    ///
+    /// `None` 时静默降级(测试装配 / CLI fallback): 行为与本字段引入前
+    /// 完全一致(DuplicateSkipped 不写 OS 剪贴板)。
+    restore: Option<Arc<dyn MobileDuplicateRestorePort>>,
 }
 
 impl ApplyIncomingMobileClipUseCase {
@@ -352,6 +386,7 @@ impl ApplyIncomingMobileClipUseCase {
         file_transfer: Option<Arc<FileTransferFacade>>,
         fan_out: Option<Arc<dyn MobileInboundFanOutPort>>,
         analytics: Arc<dyn AnalyticsPort>,
+        restore: Option<Arc<dyn MobileDuplicateRestorePort>>,
     ) -> Self {
         Self {
             inbound,
@@ -361,6 +396,7 @@ impl ApplyIncomingMobileClipUseCase {
             file_transfer,
             fan_out,
             analytics,
+            restore,
         }
     }
 
@@ -456,6 +492,7 @@ impl ApplyIncomingMobileClipUseCase {
                     &dispatch_outcome,
                     snapshot_for_fanout,
                 );
+                self.maybe_restore_duplicate(&dispatch_outcome).await;
                 self.finalize_transfer_lifecycle(transfer_id, source_device_id, &dispatch_outcome)
                     .await;
                 dispatch_outcome
@@ -520,6 +557,31 @@ impl ApplyIncomingMobileClipUseCase {
             return;
         };
         fan_out.fan_out(entry_id.clone(), snapshot, source_device_id.clone());
+    }
+
+    /// `DuplicateSkipped` 分支: 把已存在的 entry 恢复到系统剪贴板。
+    ///
+    /// 用户从手机推送的语义是"我想在桌面粘贴这条内容", 即使本机已经
+    /// 持久化过相同的 entry, 系统剪贴板可能早已被后续复制操作覆盖,
+    /// 需要显式 restore 才能让 Cmd-V 粘出正确内容。
+    async fn maybe_restore_duplicate(
+        &self,
+        outcome: &Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError>,
+    ) {
+        let Some(restore) = self.restore.as_ref() else {
+            return;
+        };
+        let Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped {
+            existing_entry_id, ..
+        }) = outcome
+        else {
+            return;
+        };
+        info!(
+            entry_id = %existing_entry_id,
+            "mobile_sync apply_incoming: duplicate detected, restoring existing entry to system clipboard"
+        );
+        restore.restore_to_clipboard(existing_entry_id).await;
     }
 
     /// SyncDoc apply 完成后把 mobile_lan 路径预先打开的 transfer 关闭。
@@ -951,6 +1013,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         )
     }
 
@@ -971,6 +1034,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         )
     }
 
@@ -1007,6 +1071,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         );
         (uc, buffer)
     }
@@ -1042,6 +1107,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         );
         (uc, buffer)
     }
@@ -1066,6 +1132,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         )
     }
 
@@ -1156,6 +1223,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         );
         assert_eq!(buffer.len(), 0);
 
@@ -1387,6 +1455,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         );
 
         // BufferFile event 注入 Windows-shape URI
@@ -1451,6 +1520,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         );
 
         let outcome = uc
@@ -1532,6 +1602,7 @@ mod tests {
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
             noop_analytics(),
+            None,
         );
 
         let outcome = uc
@@ -1581,6 +1652,7 @@ mod tests {
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
             noop_analytics(),
+            None,
         );
 
         let outcome = uc
@@ -1621,6 +1693,7 @@ mod tests {
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
             noop_analytics(),
+            None,
         );
 
         let outcome = uc
@@ -1661,6 +1734,7 @@ mod tests {
             None,
             Some(Arc::clone(&recorder) as Arc<dyn MobileInboundFanOutPort>),
             noop_analytics(),
+            None,
         );
 
         let outcome = uc
@@ -1711,6 +1785,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
+            None,
         );
 
         let outcome = uc
@@ -1753,6 +1828,7 @@ mod tests {
             None,
             None,
             analytics,
+            None,
         )
     }
 
@@ -1779,6 +1855,7 @@ mod tests {
             None,
             None,
             analytics,
+            None,
         )
     }
 
@@ -1799,6 +1876,7 @@ mod tests {
             None,
             None,
             analytics,
+            None,
         )
     }
 
@@ -1877,5 +1955,153 @@ mod tests {
             .expect("buffer file returns Ok");
         assert!(matches!(outcome, ApplyIncomingMobileClipOutcome::Buffered));
         assert!(analytics.events().is_empty(), "{:?}", analytics.events());
+    }
+
+    // ── restore-on-duplicate trait wire-up ────────────────────────────────
+    //
+    // 验证 `ApplyIncomingMobileClipUseCase` 与 `MobileDuplicateRestorePort`
+    // 之间的接线契约。use case 只该保证"DuplicateSkipped 分支以正确的
+    // entry_id 调一次 trait, 其它分支不调"。
+
+    #[derive(Default)]
+    struct RecordingRestore {
+        calls: std::sync::Mutex<Vec<EntryId>>,
+    }
+
+    impl RecordingRestore {
+        fn calls(&self) -> Vec<EntryId> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MobileDuplicateRestorePort for RecordingRestore {
+        async fn restore_to_clipboard(&self, entry_id: &EntryId) {
+            self.calls.lock().unwrap().push(entry_id.clone());
+        }
+    }
+
+    /// `DuplicateSkipped` 命中 → 必须以 `existing_entry_id` 调一次 restore。
+    #[tokio::test]
+    async fn duplicate_skipped_invokes_restore_with_existing_entry_id() {
+        let mut repo = MockEntryRepo::new();
+        let existing = EntryId::from("entry-existing");
+        let existing_clone = existing.clone();
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(move |_| Ok(Some(existing_clone.clone())));
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+
+        let recorder = Arc::new(RecordingRestore::default());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            noop_analytics(),
+            Some(Arc::clone(&recorder) as Arc<dyn MobileDuplicateRestorePort>),
+        );
+
+        let outcome = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::Text,
+                "already-here",
+                None,
+            ))
+            .await
+            .expect("dedup hit ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }
+        ));
+
+        let calls = recorder.calls();
+        assert_eq!(calls.len(), 1, "DuplicateSkipped 必须触发 restore 一次");
+        assert_eq!(calls[0], existing);
+    }
+
+    /// `Applied` 分支不调 restore —— 入站管线已经写了系统剪贴板。
+    #[tokio::test]
+    async fn applied_does_not_invoke_restore() {
+        let mut repo = MockEntryRepo::new();
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(|_| Ok(None));
+        let mut capture = MockCapture::new();
+        capture
+            .expect_capture()
+            .times(1)
+            .returning(|_, _, _| Ok(Some(EntryId::from("entry-new"))));
+        let mut write = MockWrite::new();
+        write.expect_write().times(1).returning(|_| Ok(()));
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+
+        let recorder = Arc::new(RecordingRestore::default());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            noop_analytics(),
+            Some(Arc::clone(&recorder) as Arc<dyn MobileDuplicateRestorePort>),
+        );
+
+        let outcome = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::Text,
+                "new content",
+                None,
+            ))
+            .await
+            .expect("applied ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Applied { .. }
+        ));
+        assert_eq!(recorder.calls().len(), 0, "Applied 分支不得触发 restore");
+    }
+
+    /// `DecodeFailed` 分支不调 restore —— 本机入站没成功, 没有 entry 可恢复。
+    #[tokio::test]
+    async fn decode_failed_does_not_invoke_restore() {
+        let repo = MockEntryRepo::new();
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+
+        let recorder = Arc::new(RecordingRestore::default());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            noop_analytics(),
+            Some(Arc::clone(&recorder) as Arc<dyn MobileDuplicateRestorePort>),
+        );
+
+        let outcome = uc
+            .execute(input_sync_doc(SyncClipboardItemType::Text, "", None))
+            .await
+            .expect("decode failure surfaces as outcome");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::DecodeFailed { .. }
+        ));
+        assert_eq!(
+            recorder.calls().len(),
+            0,
+            "DecodeFailed 分支不得触发 restore"
+        );
     }
 }

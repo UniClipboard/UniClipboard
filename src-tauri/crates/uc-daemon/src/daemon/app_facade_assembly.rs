@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
-    AppPaths, BlobTransferFacade, ClipboardOutboundFacade, ClipboardSyncFacade,
-    DaemonLifecycleFacades, FileTransferFacade,
+    AppPaths, BlobTransferFacade, ClipboardOutboundFacade, ClipboardRestoreFacade,
+    ClipboardSyncFacade, DaemonLifecycleFacades, FileTransferFacade,
 };
 use uc_application::ApplyInboundClipboardUseCase;
 use uc_bootstrap::{build_mobile_sync_facade, SpaceSetupAssembly};
@@ -49,6 +49,9 @@ pub struct DaemonLifecycleFacadesInput<'a> {
     /// 喂给 `MobileSyncFacade`(本字段) 与 daemon `run()`(`DaemonApp`),
     /// 两条链路共用单点状态机。
     pub lan_lifecycle: Arc<dyn MobileLanLifecyclePort>,
+    /// 进程级 `ClipboardRestoreFacade`。移动端 PUT 去重命中时恢复已有
+    /// entry 到系统剪贴板。
+    pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
 }
 
 /// 构造 5 个 daemon-lifecycle 子 facade。返回的 [`DaemonLifecycleFacades`]
@@ -67,6 +70,7 @@ pub fn build_daemon_lifecycle_facades(
         mobile_sync_apply_inbound,
         clipboard_outbound,
         lan_lifecycle,
+        clipboard_restore,
     } = input;
 
     let mobile_sync = build_mobile_sync_facade(
@@ -82,6 +86,7 @@ pub fn build_daemon_lifecycle_facades(
         // 写 file-list rep。daemon 这条装配路径必装,CLI fallback 与其他
         // 无 outbound dispatcher 的入口走 `None`。
         Some(Arc::clone(&clipboard_outbound)),
+        clipboard_restore,
     );
 
     let local_device_id = deps.device.device_identity.current_device_id().to_string();

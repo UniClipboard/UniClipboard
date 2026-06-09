@@ -54,9 +54,12 @@ gh pr view --json statusCheckRollup --jq '.statusCheckRollup[] | {context: .cont
 ```
 
 Classify:
-- **All checks passed (and no new unprocessed review comments)** → go to **Cleanup (success)**
 - **Some checks still PENDING** → schedule wakeup (180s), do NOT increment round
 - **Some checks FAILED** → proceed to Step 2
+- **All checks passed** → proceed to Step 2 anyway to collect review comments.
+  Only go to **Cleanup (success)** if Step 2b also finds zero unprocessed
+  actionable comments. Never short-circuit before checking comments — bots
+  like CodeRabbit post asynchronously and may finish after CI passes.
 
 ### Step 2 — Gather failures and review comments
 
@@ -69,19 +72,36 @@ From the checks output in Step 1, collect all checks with `conclusion == "failur
   gh run view <run_id> --log-failed 2>/dev/null | tail -100
   ```
 
-#### 2b — Review comments from coderabbitai and github-actions
+#### 2b — Review comments from bots
+
+GitHub bots post comments in **three** different locations. You must check all three
+to avoid missing feedback. Bot usernames always end with `[bot]` — use `contains`
+matching, never exact equality.
 
 ```bash
-# Inline review comments
-gh api repos/UniClipboard/UniClipboard/pulls/<PR_NUMBER>/comments \
-  --jq '[.[] | select(.user.login == "coderabbitai" or .user.login == "github-actions[bot]" or .user.login == "github-actions") | {id, user: .user.login, body, path, line, diff_hunk, created_at}]'
+BOT_FILTER='select(.user.login | test("coderabbitai|github-actions|codecov"))'
 
-# Top-level review bodies
+# 1. Inline review comments (attached to specific diff lines)
+gh api repos/UniClipboard/UniClipboard/pulls/<PR_NUMBER>/comments \
+  --jq "[.[] | ${BOT_FILTER} | {id, user: .user.login, body, path, line, diff_hunk, created_at}]"
+
+# 2. Review bodies (the top-level text of a review submission)
 gh api repos/UniClipboard/UniClipboard/pulls/<PR_NUMBER>/reviews \
-  --jq '[.[] | select(.user.login == "coderabbitai" or .user.login == "github-actions[bot]" or .user.login == "github-actions") | {id, user: .user.login, body, state}]'
+  --jq "[.[] | ${BOT_FILTER} | {id, user: .user.login, body, state}]"
+
+# 3. Issue comments (general PR comments — where CodeRabbit posts its
+#    walkthrough summary; also used by codecov, react-doctor, vercel, etc.)
+gh api repos/UniClipboard/UniClipboard/issues/<PR_NUMBER>/comments \
+  --jq "[.[] | ${BOT_FILTER} | {id, user: .user.login, body: (.body | .[0:2000]), created_at}]"
 ```
 
 Filter out IDs already in `processed_comment_ids`.
+
+> **Why all three?** CodeRabbit posts its walkthrough + actionable findings as
+> an *issue* comment, not a review comment. If you only check `pulls/comments`
+> and `pulls/reviews`, you will miss it entirely. The `[bot]` suffix on
+> usernames is added by GitHub for app-installed bots — filtering on the bare
+> name (e.g. `"coderabbitai"`) silently drops every match.
 
 ### Step 3 — Analyze and fix
 
@@ -190,3 +210,6 @@ This helps the user understand what was deliberately not addressed.
 - Running indefinitely when CI is stuck on an infrastructure issue (not a code problem)
 - Modifying files unrelated to the review feedback
 - Ignoring CI failures and only processing review comments (or vice versa)
+- Only checking `pulls/comments` + `pulls/reviews` and skipping `issues/comments` — CodeRabbit's main comment lives there
+- Filtering bot usernames with exact match (`== "coderabbitai"`) instead of substring/regex (`test("coderabbitai")`) — GitHub appends `[bot]` to app-installed bot names
+- Declaring success when CI passes without first scanning all three comment endpoints for unprocessed actionable feedback

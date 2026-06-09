@@ -111,31 +111,9 @@ pub async fn restart_daemon(
         uc_daemon_client::http::clear_session_token_cache().await;
         info!("daemon restarted, connection state refreshed, session cache cleared");
 
-        // Unconditionally re-unlock via keyring + lifecycle retry.
-        // Unlike cold-boot auto-unlock (which respects `auto_unlock_enabled`),
-        // a settings-triggered restart must preserve the encryption session
-        // the user already had — locking them out after their own settings
-        // change is a UX bug.
         let conn: DaemonConnectionState = (*connection_state).clone();
         tauri::async_runtime::spawn(async move {
-            let client = uc_daemon_client::DaemonQueryClient::new(conn);
-            match client.unlock_encryption().await {
-                Ok(true) => info!("encryption re-unlocked after daemon restart"),
-                Ok(false) => {
-                    info!("encryption not initialized or keyring miss after restart");
-                    return;
-                }
-                Err(e) => {
-                    warn!(error = %e, "post-restart keyring unlock failed");
-                    return;
-                }
-            }
-
-            if let Err(e) = client.lifecycle_retry().await {
-                warn!("post-restart lifecycle retry failed: {e}");
-            } else {
-                info!("post-restart lifecycle boot completed");
-            }
+            uc_desktop::daemon_recovery::recover_after_restart(conn).await;
         });
 
         Ok(())

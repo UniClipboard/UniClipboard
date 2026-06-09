@@ -842,12 +842,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 /// Silently no-ops if a subscriber is already registered (idempotent).
 fn init_gui_tracing() {
     let Some(app_data_root) = uc_app_paths::app_data_root() else {
-        eprintln!("[GUI] unable to resolve app data root; tracing disabled");
         return;
     };
     let logs_dir = app_data_root.join("logs");
     let profile = uc_observability::LogProfile::from_env();
-    if let Err(e) = uc_observability::init_tracing_subscriber(&logs_dir, profile) {
-        eprintln!("[GUI] tracing init failed: {e}");
-    }
+    let _ = uc_observability::init_tracing_subscriber(&logs_dir, profile);
 }

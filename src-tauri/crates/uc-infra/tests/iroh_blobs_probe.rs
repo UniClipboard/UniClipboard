@@ -124,13 +124,13 @@ fn blob_ticket_bytes_round_trip_preserves_addr_hash_and_format() -> anyhow::Resu
     let hash = Hash::new(b"ticket-payload");
     let ticket = BlobTicket::new(addr.clone(), hash, BlobFormat::Raw);
 
-    let bytes = ticket.to_bytes();
-    let decoded = BlobTicket::from_bytes(&bytes)?;
+    let bytes = ticket.encode_bytes();
+    let decoded = BlobTicket::decode_bytes(&bytes)?;
 
     assert_eq!(decoded.addr(), &addr);
     assert_eq!(decoded.hash(), hash);
     assert_eq!(decoded.format(), BlobFormat::Raw);
-    assert_eq!(decoded.to_bytes(), bytes);
+    assert_eq!(decoded.encode_bytes(), bytes);
 
     Ok(())
 }

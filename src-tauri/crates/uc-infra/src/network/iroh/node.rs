@@ -22,12 +22,12 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::OnceLock;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use iroh::address_lookup::mdns::MdnsAddressLookup;
 use iroh::address_lookup::AddrFilter;
 use iroh::endpoint::{presets, QuicTransportConfig, VarInt};
 use iroh::protocol::{Router, RouterBuilder};
 use iroh::{Endpoint, RelayMode, RelayUrl, TransportAddr};
-use noq_proto::congestion::BbrConfig;
+use iroh_mdns_address_lookup::MdnsAddressLookup;
+use noq_proto::congestion::Bbr3Config;
 use tracing::{debug, info, instrument, warn};
 
 use uc_core::file_transfer::OutboundProgressReporterPort;
@@ -294,7 +294,7 @@ fn build_transport_config() -> QuicTransportConfig {
         // earned. The trade-off is BBR can be unfair to CUBIC flows on a
         // shared bottleneck; that's a non-issue for our P2P single-flow
         // direct UDP path.
-        .congestion_controller_factory(Arc::new(BbrConfig::default()))
+        .congestion_controller_factory(Arc::new(Bbr3Config::default()))
         // QUIC flow-control sized for hole-punched cross-WAN BDP. iroh-blobs
         // opens a single bidi stream per blob fetch (`open_bi`), so the
         // stream window — not the connection window — is the per-transfer

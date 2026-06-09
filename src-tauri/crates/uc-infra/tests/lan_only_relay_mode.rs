@@ -25,8 +25,8 @@
 
 use std::time::Duration;
 
-use iroh::address_lookup::mdns::MdnsAddressLookup;
 use iroh::{Endpoint, RelayMode, TransportAddr};
+use iroh_mdns_address_lookup::MdnsAddressLookup;
 
 const TEST_ALPN: &[u8] = b"uniclipboard/lan-only-test/0";
 

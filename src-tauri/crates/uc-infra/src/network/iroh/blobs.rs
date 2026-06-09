@@ -110,7 +110,7 @@ impl IrohBlobTransferAdapter {
     }
 
     fn parse_ticket(ticket: &BlobTicket) -> Result<NativeBlobTicket, BlobError> {
-        NativeBlobTicket::from_bytes(ticket.as_bytes()).map_err(|_| BlobError::InvalidTicket)
+        NativeBlobTicket::decode_bytes(ticket.as_bytes()).map_err(|_| BlobError::InvalidTicket)
     }
 
     fn tag_name(reason: &TagReason) -> String {
@@ -287,7 +287,7 @@ impl BlobTransferPort for IrohBlobTransferAdapter {
             Self::native_hash(digest),
             BlobFormat::Raw,
         );
-        Ok(BlobTicket::from_bytes(ticket.to_bytes()))
+        Ok(BlobTicket::from_bytes(ticket.encode_bytes()))
     }
 
     #[instrument(skip_all)]

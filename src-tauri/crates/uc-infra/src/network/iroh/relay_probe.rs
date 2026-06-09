@@ -13,9 +13,9 @@
 
 use std::time::{Duration, Instant};
 
+use iroh::dns::DnsResolver;
 use iroh::{RelayUrl, SecretKey};
 use iroh_relay::client::{ClientBuilder, ConnectError, DialError};
-use iroh_relay::dns::DnsResolver;
 use iroh_relay::tls::{self, CaRootsConfig};
 use tokio::time::error::Elapsed;
 use tracing::{debug, instrument, warn};

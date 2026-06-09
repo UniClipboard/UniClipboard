@@ -31,9 +31,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # iroh P2P bench deps (optional, gated behind the `iroh` feature)
-iroh = { version = "0.98", features = ["address-lookup-mdns"], optional = true }
-iroh-blobs = { version = "0.100", optional = true }
-noq-proto = { version = "0.17", optional = true }
+iroh = { version = "1.0.0-rc.1", optional = true }
+iroh-blobs = { version = "0.102", optional = true }
+noq-proto = { version = "1.0.0-rc.1", optional = true }
 futures-lite = { version = "2", optional = true }
 time = { version = "0.3", features = ["formatting", "macros"], optional = true }
 

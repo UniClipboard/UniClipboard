@@ -45,7 +45,7 @@ use iroh_blobs::store::fs::FsStore;
 use iroh_blobs::store::mem::MemStore;
 use iroh_blobs::ticket::BlobTicket;
 use iroh_blobs::BlobsProtocol;
-use noq_proto::congestion::{BbrConfig, CubicConfig};
+use noq_proto::congestion::{Bbr3Config, CubicConfig};
 use tokio::task::JoinSet;
 
 #[derive(Parser)]
@@ -300,7 +300,7 @@ fn build_transport(cli: &Cli) -> QuicTransportConfig {
 
     eprintln!("[bench] congestion controller: {:?}", cli.cc);
     builder = match cli.cc {
-        Cc::Bbr => builder.congestion_controller_factory(Arc::new(BbrConfig::default())),
+        Cc::Bbr => builder.congestion_controller_factory(Arc::new(Bbr3Config::default())),
         Cc::Cubic => builder.congestion_controller_factory(Arc::new(CubicConfig::default())),
     };
 

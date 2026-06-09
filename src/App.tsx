@@ -25,7 +25,8 @@ import {
   type EncryptionStatusView,
 } from '@/lib/daemon-lifecycle-ready'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
-import type { DaemonBootstrapFailure } from '@/lib/ipc'
+import { commands, type DaemonBootstrapFailure } from '@/lib/ipc'
+import { reportError } from '@/observability/errors'
 import { SentryRoutes } from '@/observability/sentry'
 import DashboardPage from '@/pages/DashboardPage'
 import DevicesPage from '@/pages/DevicesPage'
@@ -97,6 +98,7 @@ const AppContent = ({
   // update the app on a version mismatch rather than just "restart".
   const [bootstrapFailure, setBootstrapFailure] = useState<DaemonBootstrapFailure | null>(null)
   const [daemonBootstrapReady, setDaemonBootstrapReady] = useState(false)
+  const bootstrapRetryingRef = useRef(false)
   const daemonLifecycleReadySignaledRef = useRef(false)
   // Post-setup auto-unlock is handled by onSetupComplete callback (in AppContentWithBar),
   // NOT by detecting isSetupActive transitions. Detecting transitions here would false-trigger
@@ -214,6 +216,7 @@ const AppContent = ({
   // then re-pull the encryption status. This recovers the common #995 case
   // where only the session token had gone stale.
   const handleBootstrapRetry = useCallback(() => {
+    bootstrapRetryingRef.current = true
     setLoadingTimedOut(false)
     setBootEncryptionError(null)
     setBootstrapFailure(null)
@@ -230,7 +233,46 @@ const AppContent = ({
         setBootEncryptionError(message)
         setBootstrapFailure(error instanceof DaemonBootstrapFailedError ? error.failure : null)
       })
+      .finally(() => {
+        bootstrapRetryingRef.current = false
+      })
   }, [refetchEncryption])
+
+  // Poll the native bootstrap status independently of isSetupActive. When the
+  // daemon fails to start (e.g. iroh-blobs crash, port conflict), the native
+  // side records a terminal failure after ~8s. Without this effect the failure
+  // is invisible when the setup gate is still active — setupRealtimeStore
+  // can't hydrate without a daemon, so isSetupActive stays true and the error
+  // screen (gated behind !isSetupActive) never renders. This effect surfaces
+  // the failure so we can show it above the setup gate.
+  useEffect(() => {
+    if (daemonBootstrapReady || bootstrapFailure) return
+
+    let cancelled = false
+    const id = setInterval(async () => {
+      if (cancelled || bootstrapRetryingRef.current) return
+      try {
+        const failure = await commands.getDaemonBootstrapFailure()
+        if (failure && !cancelled && !bootstrapRetryingRef.current) {
+          setBootstrapFailure(failure)
+          setBootEncryptionError(failure.detail || 'The background service failed to start.')
+          reportError(new Error(`Daemon bootstrap failed: ${failure.kind}`), {
+            kind: failure.kind,
+            detail: failure.detail,
+            observedVersion: failure.observedVersion,
+            expectedVersion: failure.expectedVersion,
+          })
+        }
+      } catch {
+        // Best-effort; the Tauri command itself failing is non-fatal.
+      }
+    }, 1_000)
+
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [daemonBootstrapReady, bootstrapFailure])
 
   useEffect(() => {
     if (
@@ -250,6 +292,48 @@ const AppContent = ({
       console.error('Failed to signal daemon lifecycle ready:', error)
     })
   }, [daemonBootstrapReady, isSetupActive, resolvedEncryptionStatus])
+
+  // Daemon bootstrap failure takes precedence over every other gate — if the
+  // daemon can't start, neither setup nor encryption can proceed. Show the
+  // error screen regardless of isSetupActive so the user isn't stuck on a
+  // perpetual setup-loading spinner when the daemon is broken.
+  if (bootstrapFailure) {
+    const versionTooOld = bootstrapFailure.kind === 'versionTooOld'
+    return (
+      <div className="flex h-full w-full items-center justify-center p-4 text-sm text-foreground">
+        <div className="max-w-sm space-y-3 text-center">
+          <p>
+            {versionTooOld
+              ? 'A newer version is already running in the background. Please update this app to continue.'
+              : "Couldn't reach the background service. Please restart the app."}
+          </p>
+          <p className="break-words text-xs text-muted-foreground">
+            {bootEncryptionError ?? bootstrapFailure.detail}
+          </p>
+          {versionTooOld ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                void checkForUpdate(null).catch(error =>
+                  console.error('Update check from bootstrap error screen failed:', error)
+                )
+                void openUpdaterWindow().catch(error =>
+                  console.error('Failed to open updater window:', error)
+                )
+              }}
+            >
+              Open updater
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={handleBootstrapRetry}>
+              Retry
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   if (isSetupActive) {
     return (
@@ -272,38 +356,14 @@ const AppContent = ({
   }
 
   if (encryptionError) {
-    const versionTooOld = bootstrapFailure?.kind === 'versionTooOld'
     return (
       <div className="flex h-full w-full items-center justify-center p-4 text-sm text-foreground">
-        <div className="max-w-sm space-y-3 rounded-md border border-border/20 bg-muted p-4 text-center">
-          <p>
-            {versionTooOld
-              ? 'A newer version is already running in the background. Please update this app to continue.'
-              : "Couldn't reach the background service. Please restart the app."}
-          </p>
+        <div className="max-w-sm space-y-3 text-center">
+          <p>Couldn&apos;t reach the background service. Please restart the app.</p>
           <p className="break-words text-xs text-muted-foreground">{encryptionError}</p>
-          {versionTooOld ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                // Best-effort: kick a fresh check so the updater window has data
-                // even if the scheduler hasn't run yet, then surface the window
-                // (idempotent — focuses it if the scheduler already opened it).
-                void checkForUpdate(null).catch(error =>
-                  console.error('Update check from bootstrap error screen failed:', error)
-                )
-                void openUpdaterWindow().catch(error =>
-                  console.error('Failed to open updater window:', error)
-                )
-              }}
-            >
-              Open updater
-            </Button>
-          ) : (
-            <Button size="sm" onClick={handleBootstrapRetry}>
-              Retry
-            </Button>
-          )}
+          <Button size="sm" variant="outline" onClick={handleBootstrapRetry}>
+            Retry
+          </Button>
         </div>
       </div>
     )

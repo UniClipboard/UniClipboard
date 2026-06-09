@@ -198,6 +198,13 @@ async fn wait_for_terminate_signal() {
 /// crate::run(ctx).expect("failed to start tauri application");
 /// ```
 pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
+    // Tracing must be initialized before anything else so all subsequent
+    // log calls (including build_gui_client_context) are captured.
+    // ADR-008 P3-3 severed the uc-bootstrap dependency that previously
+    // handled this; the GUI now initializes its own lightweight subscriber
+    // (console + JSON file, no Sentry — daemon owns telemetry export).
+    init_gui_tracing();
+
     // ADR-008 P3-3 (B2'-3): the GUI is a pure client of an external `uniclipd`.
     // It assembles ONLY the file-backed ports it needs (settings / setup-status /
     // analytics / device-id / storage paths) via `build_gui_client_context` —
@@ -823,4 +830,24 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         });
 
     Ok(())
+}
+
+/// Lightweight tracing init for the GUI process.
+///
+/// Sets up console (stdout) + JSON file (`uniclipboard-gui.json.<date>`)
+/// output, matching the daemon's dual-output approach. No Sentry layer —
+/// the daemon is the single authoritative telemetry exporter.
+///
+/// Must be called before any `tracing::info!` / `warn!` / `error!`.
+/// Silently no-ops if a subscriber is already registered (idempotent).
+fn init_gui_tracing() {
+    let Some(app_data_root) = uc_app_paths::app_data_root() else {
+        eprintln!("[GUI] unable to resolve app data root; tracing disabled");
+        return;
+    };
+    let logs_dir = app_data_root.join("logs");
+    let profile = uc_observability::LogProfile::from_env();
+    if let Err(e) = uc_observability::init_tracing_subscriber(&logs_dir, profile) {
+        eprintln!("[GUI] tracing init failed: {e}");
+    }
 }

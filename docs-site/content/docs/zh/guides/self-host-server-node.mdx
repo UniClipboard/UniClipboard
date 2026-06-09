@@ -1,5 +1,5 @@
 ---
-title: 自建无头 server 节点
+title: 部署一个常驻在线的同步节点
 description: 在 VPS 上把 UniClipboard 以无头方式跑成常驻在线的空间成员，并给手机提供网关。
 ---
 
@@ -35,6 +35,36 @@ server 节点就是一个**普通 iroh 成员**，只是常驻在线、没有显
 
 节点永远不会写系统剪贴板（VPS 上没有显示器）；它该做的只是把入站内容
 落库并 fan-out，对一个常驻后台的成员来说，这样就够了。
+
+## 跨网络同步是怎么走的
+
+手机不加入 iroh 信任网络，走的是一条更简单的 HTTP 路径：永远只跟 server
+节点的网关说话，由这个常驻在线的节点替它和桌面端做 iroh P2P 同步。所以哪怕
+手机在蜂窝网络、桌面端在家里、节点在机房，三方各在各的网络里也能打通。
+
+```mermaid
+flowchart LR
+  subgraph net1[手机所在网络 · 蜂窝 / 异地 Wi-Fi]
+    P[📱 手机客户端]
+  end
+  subgraph vps[VPS · 公网 · 常驻在线]
+    C[Caddy<br/>TLS 终结 :443]
+    A[app 守护进程<br/>mobile-sync 网关 + iroh 成员]
+    C -->|反代明文 HTTP :42720| A
+  end
+  subgraph net2[桌面端所在网络 · 家 / 公司]
+    D[💻 桌面端对端]
+  end
+  P -->|HTTPS · GET 拉 / PUT 推| C
+  A <-->|iroh QUIC · P2P 直连或中继回落| D
+```
+
+- **手机拉取**：`GET /SyncClipboard.json` 经 HTTPS 到 Caddy，反代到网关，读
+  节点已落库的最新剪贴板。
+- **手机推送**：`PUT` 同路进来，网关收下后经 iroh **fan-out** 回你的桌面端。
+- **桌面端推来的内容**：经 iroh 同步到节点并落库，手机下次拉取就能拿到。
+
+节点只持久化**它在线时收到的**内容（见上一节）——它是同步枢纽，不是离线信箱。
 
 ## 前置条件
 

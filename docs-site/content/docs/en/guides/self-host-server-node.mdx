@@ -1,5 +1,5 @@
 ---
-title: Self-hosting a headless server node
+title: Deploy an always-online sync node
 description: Run UniClipboard headless on a VPS as an always-online Space member with a phone gateway.
 ---
 
@@ -41,6 +41,41 @@ failures, that's a different thing — see
 The node never writes a system clipboard (there's no display on a VPS);
 inbound items are persisted and fanned out, which is all a background
 member needs to do.
+
+## How cross-network sync flows
+
+The phone never joins the iroh trust mesh — it takes a simpler HTTP path,
+only ever talking to the server node's gateway. That always-online node
+does the iroh P2P sync with your desktops on its behalf. So even with the
+phone on cellular, your desktops at home, and the node in a datacenter,
+all three on separate networks still reach each other.
+
+```mermaid
+flowchart LR
+  subgraph net1[Phone's network · cellular / remote Wi-Fi]
+    P[📱 Phone client]
+  end
+  subgraph vps[VPS · public · always online]
+    C[Caddy<br/>TLS termination :443]
+    A[app daemon<br/>mobile-sync gateway + iroh member]
+    C -->|reverse-proxy plaintext HTTP :42720| A
+  end
+  subgraph net2[Desktops' network · home / office]
+    D[💻 Desktop peer]
+  end
+  P -->|HTTPS · GET pull / PUT push| C
+  A <-->|iroh QUIC · P2P direct or relay fallback| D
+```
+
+- **Phone pulls**: `GET /SyncClipboard.json` over HTTPS to Caddy, proxied
+  to the gateway, reading the latest clipboard the node has persisted.
+- **Phone pushes**: `PUT` comes in the same way; the gateway accepts it and
+  **fans it out** back to your desktops over iroh.
+- **Desktop-pushed items**: sync to the node over iroh and get persisted, so
+  the phone's next pull picks them up.
+
+The node only persists what it received **while online** (see the previous
+section) — it's a sync hub, not an offline inbox.
 
 ## Prerequisites
 

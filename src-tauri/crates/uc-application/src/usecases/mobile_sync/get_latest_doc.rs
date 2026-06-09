@@ -262,13 +262,9 @@ mod tests {
         // Filename uses first 8 chars of entry_id + .png
         assert_eq!(meta.text, "clipboard_entry-im.png");
         assert_eq!(meta.data_name.as_deref(), Some("clipboard_entry-im.png"));
-        // SyncClipboard 的 Image/File profile hash = sha256("filename|SHA256(bytes)")。
-        let content_hash = hex::encode(Sha256::digest(&bytes)).to_ascii_uppercase();
-        let expected_profile_hash = hex::encode(Sha256::digest(format!(
-            "clipboard_entry-im.png|{content_hash}"
-        )))
-        .to_ascii_uppercase();
-        assert_eq!(meta.hash.as_deref(), Some(expected_profile_hash.as_str()));
+        // Hash = SHA-256(bytes) — content-only, no filename component.
+        let expected_hash = hex::encode(Sha256::digest(&bytes)).to_ascii_uppercase();
+        assert_eq!(meta.hash.as_deref(), Some(expected_hash.as_str()));
     }
 
     #[tokio::test]

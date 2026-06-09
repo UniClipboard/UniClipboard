@@ -79,26 +79,18 @@ pub(super) fn derive_data_name(
     }
 }
 
-/// 按 SyncClipboard profile hash 规则计算 hash。
+/// 按内容字节计算 SHA-256 hash，不混入 dataName。
 ///
-/// Text 直接对 UTF-8 字节算 SHA-256；Image/File 先算内容 SHA-256，再用
-/// `dataName|CONTENT_HASH` 拼接后二次 SHA-256。返回大写十六进制。
+/// 旧实现对 Image/File 用 `dataName|CONTENT_HASH` 二次哈希，导致不同
+/// 客户端为同一份内容派生不同文件名时 hash 不一致（iOS 用 `image.png`，
+/// 本端 GET 用 `clipboard_<id>.png`），造成 iPhone 每次 pull 都认为是
+/// 新内容。改为统一对原始字节算 SHA-256，hash 仅反映内容本身。
 pub(super) fn profile_hash_for_sync(
-    item_type: SyncClipboardItemType,
-    data_name: Option<&str>,
+    _item_type: SyncClipboardItemType,
+    _data_name: Option<&str>,
     bytes: &[u8],
 ) -> String {
-    let content_hash = sha256_hex_upper(bytes);
-    match item_type {
-        SyncClipboardItemType::Image | SyncClipboardItemType::File => {
-            if let Some(name) = data_name.filter(|s| !s.is_empty()) {
-                sha256_hex_upper(format!("{name}|{content_hash}").as_bytes())
-            } else {
-                content_hash
-            }
-        }
-        SyncClipboardItemType::Text | SyncClipboardItemType::Group => content_hash,
-    }
+    sha256_hex_upper(bytes)
 }
 
 // ─── internal filename helpers ──────────────────────────────────────────

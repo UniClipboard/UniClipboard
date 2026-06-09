@@ -150,16 +150,11 @@ const AppContent = ({
   // error screen (with Retry) instead of an indefinite blank screen.
   const [loadingTimedOut, setLoadingTimedOut] = useState(false)
   const isInitialLoading = encryptionLoading && encryptionStatus === null
-  // Reset the watchdog at every loading-cycle boundary *during render* (React's
-  // "adjusting state when a prop changes" pattern) so the UI never commits a
-  // stale timed-out state between the change and an effect catching up.
-  const [prevInitialLoading, setPrevInitialLoading] = useState(isInitialLoading)
-  if (prevInitialLoading !== isInitialLoading) {
-    setPrevInitialLoading(isInitialLoading)
-    setLoadingTimedOut(false)
-  }
-  // The effect only *arms* the timer (a real side effect); it no longer adjusts
-  // state in response to the loading flag changing.
+  // Arm the watchdog while the initial load is in flight; disarm (clearTimeout)
+  // when it ends. No state is adjusted here on the flag change — a stale
+  // timed-out `true` once loading ends is harmless (any data/error overrides it
+  // in the gates below), and the only way back into a loading cycle is the
+  // Retry handler, which resets the flag explicitly.
   useEffect(() => {
     if (!isInitialLoading) return
     const id = setTimeout(() => setLoadingTimedOut(true), LOADING_WATCHDOG_MS)

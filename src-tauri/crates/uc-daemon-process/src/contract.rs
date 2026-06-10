@@ -52,10 +52,13 @@ impl std::fmt::Display for TerminateDaemonError {
 
 impl std::error::Error for TerminateDaemonError {}
 
-/// 通过平台原生命令向指定 PID 发送 SIGTERM（或 Windows 上 taskkill /F）。
+/// 向指定 PID 发送终止信号：Unix 上 `kill -TERM`，Windows 上 Win32
+/// `TerminateProcess`（经 [`crate::win_process`]）。
 ///
-/// 使用 `std::process::Command`——不依赖任何 GUI 框架或 sidecar 体系，
-/// 可以被 daemon 二进制、GUI shell、CLI 工具任意一方消费。
+/// 不依赖任何 GUI 框架或 sidecar 体系，可以被 daemon 二进制、GUI shell、
+/// CLI 工具任意一方消费。Windows 侧曾经 shell-out 到 `taskkill`——从无
+/// console 的 GUI 进程发起会闪黑框，且 daemon 没有子进程，`/T` 树杀从未
+/// 必要；原生调用两个问题都不存在。
 pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> {
     // Unix `kill -TERM 0` broadcasts to the caller's entire process group,
     // which would take down the GUI/CLI host. A corrupted PID file reading
@@ -67,115 +70,76 @@ pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> 
     }
 
     #[cfg(unix)]
-    let mut command = {
-        let mut command = Command::new("kill");
-        command.arg("-TERM").arg(pid.to_string());
-        command
-    };
+    {
+        let output = Command::new("kill")
+            .arg("-TERM")
+            .arg(pid.to_string())
+            .output()
+            .map_err(|e| TerminateDaemonError(format!("failed to launch terminator: {e}")))?;
 
-    #[cfg(windows)]
-    let mut command = {
-        let mut command = Command::new("taskkill");
-        command.arg("/PID").arg(pid.to_string()).arg("/T").arg("/F");
-        command
-    };
+        if output.status.success() {
+            return Ok(());
+        }
 
-    let output = command
-        .output()
-        .map_err(|e| TerminateDaemonError(format!("failed to launch terminator: {e}")))?;
-
-    if output.status.success() {
-        return Ok(());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Err(TerminateDaemonError(format!(
+            "failed to terminate pid {pid}: status={} stdout={} stderr={}",
+            output.status,
+            stdout.trim(),
+            stderr.trim()
+        )))
     }
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Err(TerminateDaemonError(format!(
-        "failed to terminate pid {pid}: status={} stdout={} stderr={}",
-        output.status,
-        stdout.trim(),
-        stderr.trim()
-    )))
+    #[cfg(windows)]
+    {
+        crate::win_process::terminate_pid(pid).map_err(TerminateDaemonError)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        Err(TerminateDaemonError(format!(
+            "process termination unsupported on this platform (pid {pid})"
+        )))
+    }
 }
 
 /// Terminate a daemon PID and block until the process has fully exited.
 ///
-/// On Windows, `taskkill /F` sends `TerminateProcess` which is immediate, but
-/// the OS may keep the process object (and its file locks) alive briefly while
-/// reclaiming resources. This function polls until the PID is no longer present,
-/// so callers can safely overwrite the daemon binary afterwards.
+/// On Windows this terminates via Win32 and then waits on the **process
+/// handle** (`WaitForSingleObject`), which signals at true kernel teardown —
+/// after that the executable's file lock is released and an installer can
+/// safely overwrite the daemon binary. Two generations of shell-out
+/// implementations got this wrong: polling `tasklist` flashed a console
+/// window per 100ms poll from the no-console GUI host, and parsing its
+/// locale-dependent no-match banner misread dead PIDs as alive on non-English
+/// Windows, aborting every update install.
 ///
-/// On Unix this is a no-op after sending SIGTERM — the kernel allows overwriting
-/// a running binary (the old inode stays alive until the process exits).
+/// On Unix this is a no-op after sending SIGTERM — the kernel allows
+/// overwriting a running binary (the old inode stays alive until the process
+/// exits).
 pub fn terminate_and_wait(
     pid: u32,
     timeout: std::time::Duration,
 ) -> Result<(), TerminateDaemonError> {
-    terminate_local_daemon_pid(pid)?;
-
     #[cfg(windows)]
     {
-        use std::time::Instant;
-
-        let deadline = Instant::now() + timeout;
-        let poll_interval = std::time::Duration::from_millis(100);
-
-        loop {
-            if !is_pid_running_win(pid) {
-                return Ok(());
-            }
-            if Instant::now() >= deadline {
-                return Err(TerminateDaemonError(format!(
-                    "daemon pid {pid} did not exit within {}ms after taskkill",
-                    timeout.as_millis()
-                )));
-            }
-            std::thread::sleep(poll_interval);
+        // Combined terminate+wait over one handle: no TOCTOU between signal
+        // and wait, and "already exited" is Ok (the goal state) rather than
+        // the `Err` the signal-only path reports for an unknown PID.
+        if pid == 0 {
+            return Err(TerminateDaemonError(
+                "refusing to terminate pid 0".to_string(),
+            ));
         }
+        crate::win_process::terminate_and_wait_pid(pid, timeout).map_err(TerminateDaemonError)
     }
 
     #[cfg(not(windows))]
     {
         let _ = timeout;
-        Ok(())
+        terminate_local_daemon_pid(pid)
     }
-}
-
-#[cfg(windows)]
-fn is_pid_running_win(pid: u32) -> bool {
-    // /FO CSV so presence can be detected locale-independently. The previous
-    // implementation looked for the English "INFO:" no-match banner — on a
-    // localized Windows (e.g. zh-CN prints "信息: 没有运行的任务匹配指定标准。")
-    // that banner never matches, so a dead PID read as alive forever and
-    // `terminate_and_wait` timed out on every update install (field-confirmed:
-    // taskkill had already killed the daemon; only this check was wrong).
-    let output = Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
-        .output();
-    match output {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            tasklist_csv_lists_pid(&stdout, pid)
-        }
-        Err(_) => false,
-    }
-}
-
-/// Locale-independent presence check over `tasklist /FO CSV` output.
-///
-/// When the PID exists, tasklist emits a CSV row whose second column is the
-/// PID in quotes: `"uniclipd.exe","36224","Console",...`. When it does not,
-/// tasklist emits a localized info banner ("INFO: ..." / "信息: ..."), which is
-/// not CSV and never contains the quoted PID. Matching on `"<pid>"` therefore
-/// works on every system locale. Split out for unit testing on all platforms.
-#[cfg_attr(not(windows), allow(dead_code))] // only called from the windows-cfg fn above
-fn tasklist_csv_lists_pid(stdout: &str, pid: u32) -> bool {
-    let quoted = format!("\"{pid}\"");
-    stdout.lines().any(|line| {
-        // A real CSV process row starts with a quoted image name; the
-        // localized no-match banner never starts with a quote.
-        line.trim_start().starts_with('"') && line.contains(&quoted)
-    })
 }
 
 #[cfg(test)]
@@ -320,46 +284,5 @@ mod tests {
                 None => thread::sleep(Duration::from_millis(20)),
             }
         }
-    }
-
-    #[test]
-    fn tasklist_csv_detects_running_pid() {
-        let row = "\"uniclipd.exe\",\"36224\",\"Console\",\"1\",\"28,460 K\"\r\n";
-        assert!(tasklist_csv_lists_pid(row, 36224));
-    }
-
-    #[test]
-    fn tasklist_csv_quoting_rejects_partial_pid_match() {
-        // PID 3622 must not match the row for PID 36224 — the quoted form
-        // anchors the full number.
-        let row = "\"uniclipd.exe\",\"36224\",\"Console\",\"1\",\"28,460 K\"\r\n";
-        assert!(!tasklist_csv_lists_pid(row, 3622));
-    }
-
-    #[test]
-    fn tasklist_localized_no_match_banners_read_as_absent() {
-        // The exact field failure: zh-CN tasklist prints a localized banner
-        // with no "INFO:" substring, which the old check misread as "still
-        // running" — every update install then timed out waiting on a PID
-        // that taskkill had already killed.
-        for banner in [
-            "INFO: No tasks are running which match the specified criteria.\r\n",
-            "信息: 没有运行的任务匹配指定标准。\r\n",
-            "INFORMATION: Es werden keine Aufgaben mit den angegebenen Kriterien ausgeführt.\r\n",
-            "",
-        ] {
-            assert!(
-                !tasklist_csv_lists_pid(banner, 36224),
-                "banner misread as running: {banner:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn tasklist_banner_containing_digits_is_not_a_false_positive() {
-        // Hypothetical localized banner that happens to mention a number —
-        // only quoted CSV rows may count as presence.
-        let banner = format!("INFO: nothing for 36224 (\"36224\")\r\n");
-        assert!(!tasklist_csv_lists_pid(&banner, 36224));
     }
 }

@@ -42,6 +42,17 @@ which = "7"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+# Win32-native process liveness/termination (win_process.rs). Replaces shelling
+# out to `taskkill`/`tasklist`, which (a) flashed a console window per
+# invocation from the GUI-subsystem host — terminate_and_wait polled tasklist
+# every 100ms, so a 10s timeout flashed ~100 black boxes — and (b) required
+# parsing locale-dependent output (the zh-CN no-match banner broke the English
+# "INFO:" check and made every update install abort). windows-sys is pure FFI
+# declarations gated per-module, already in the dependency tree via tokio —
+# the thin-crate invariant (ADR-008 P5-0) is preserved.
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "test-util"] }

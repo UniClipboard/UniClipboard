@@ -36,3 +36,7 @@ pub mod process_metadata;
 pub mod socket;
 pub mod spawn;
 pub mod spawn_contract;
+#[cfg(windows)]
+pub(crate) mod win_console;
+#[cfg(windows)]
+pub(crate) mod win_process;

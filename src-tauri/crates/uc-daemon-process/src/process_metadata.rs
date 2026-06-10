@@ -368,12 +368,11 @@ pub fn is_pid_alive(pid: u32) -> bool {
 
 #[cfg(windows)]
 pub fn is_pid_alive(pid: u32) -> bool {
-    use std::process::Command;
-    Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
-        .unwrap_or(false)
+    // Win32-native (no `tasklist` shell-out): the old text check flashed a
+    // console window from the no-console GUI host on every PID verification
+    // (i.e. every GUI startup), and its bare substring match could false-
+    // positive on any numeric column that happened to contain the digits.
+    crate::win_process::is_pid_alive(pid)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -441,10 +440,15 @@ pub fn find_pid_by_port(port: u16) -> Option<u32> {
 
 #[cfg(windows)]
 fn find_pid_by_port_platform(port: u16) -> Option<u32> {
-    let output = std::process::Command::new("netstat")
-        .args(["-ano"])
-        .output()
-        .ok()?;
+    let mut command = std::process::Command::new("netstat");
+    command.args(["-ano"]);
+    // The GUI-subsystem host has no console; without CREATE_NO_WINDOW this
+    // fallback flashes a console window. (Numeric `netstat -ano` output is
+    // locale-stable, unlike the tasklist banners — parsing it stays safe.
+    // A Win32 GetExtendedTcpTable port would drop the shell-out entirely;
+    // not worth the FFI surface for this rarely-hit fallback.)
+    crate::win_console::configure_no_window(&mut command);
+    let output = command.output().ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
         let line = line.trim();

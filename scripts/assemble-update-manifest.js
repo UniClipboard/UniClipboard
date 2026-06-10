@@ -18,6 +18,13 @@
  *   --test                    Dry-run with mock data, output to stdout
  *   --notes-file <path>       Changelog file to include as release notes
  *   --zh-notes-file <path>    Chinese changelog file to include as release notes
+ *
+ * Pinned announcement:
+ *   If `announcement.md` / `announcement.zh.md` exist next to the notes files,
+ *   their content is prepended to the corresponding release notes. Use this to
+ *   pin an important notice (e.g. "auto-update is broken on your version,
+ *   download manually") at the top of the update dialog for every release.
+ *   Delete the files to stop pinning.
  */
 
 import fs from 'node:fs'
@@ -253,18 +260,37 @@ function createMockArtifacts() {
   return tmpDir
 }
 
+/**
+ * Read release notes from a changelog file, prepending the pinned
+ * announcement (`announcement.md` / `announcement.zh.md` in the same
+ * directory) when one exists.
+ */
+function readNotesWithAnnouncement(notesFile, announcementName, silent) {
+  let notes = ''
+  if (notesFile && fs.existsSync(notesFile)) {
+    notes = fs.readFileSync(notesFile, 'utf8').trim()
+  }
+
+  if (!notesFile) return notes
+
+  const announcementPath = path.join(path.dirname(notesFile), announcementName)
+  if (!fs.existsSync(announcementPath)) return notes
+
+  const announcement = fs.readFileSync(announcementPath, 'utf8').trim()
+  if (!announcement) return notes
+
+  if (!silent) {
+    process.stderr.write(`Prepending pinned announcement from ${announcementPath}\n`)
+  }
+  return notes ? announcement + '\n\n' + notes : announcement
+}
+
 function main() {
   const options = parseArgs()
 
   // Read notes files if provided
-  let notes = ''
-  if (options.notesFile && fs.existsSync(options.notesFile)) {
-    notes = fs.readFileSync(options.notesFile, 'utf8').trim()
-  }
-  let zhNotes = ''
-  if (options.zhNotesFile && fs.existsSync(options.zhNotesFile)) {
-    zhNotes = fs.readFileSync(options.zhNotesFile, 'utf8').trim()
-  }
+  const notes = readNotesWithAnnouncement(options.notesFile, 'announcement.md', options.test)
+  const zhNotes = readNotesWithAnnouncement(options.zhNotesFile, 'announcement.zh.md', options.test)
 
   if (options.test) {
     // --test mode: create mock data and output valid JSON to stdout only.

@@ -221,12 +221,24 @@ function buildCliInstallerTable({ artifactsDir, baseUrl }) {
   return '| Platform | Architecture | Download |\n| --- | --- | --- |\n' + rows.join('\n')
 }
 
-function readChangelogSection(filePath, fallbackTitle = "## What's Changed") {
-  if (!fs.existsSync(filePath)) {
-    return `${fallbackTitle}\n\nRelease notes are not available yet.`
+export function readChangelogSection(filePath, fallbackTitle = "## What's Changed") {
+  const changelog = fs.existsSync(filePath)
+    ? fs.readFileSync(filePath, 'utf8').trim()
+    : `${fallbackTitle}\n\nRelease notes are not available yet.`
+
+  // A pinned announcement next to the changelog files is prepended to every
+  // release until the file is deleted (kept in sync with
+  // scripts/assemble-update-manifest.js, which pins it in the updater notes).
+  const announcementPath = path.join(path.dirname(filePath), 'announcement.md')
+  if (fs.existsSync(announcementPath)) {
+    const announcement = fs.readFileSync(announcementPath, 'utf8').trim()
+    if (announcement) {
+      appendSummary(`- Pinned announcement: ${announcementPath}`)
+      return announcement + '\n\n' + changelog
+    }
   }
 
-  return fs.readFileSync(filePath, 'utf8').trim()
+  return changelog
 }
 
 function buildChangelogLinks({ version, docsBaseUrl, englishExists, chineseExists }) {

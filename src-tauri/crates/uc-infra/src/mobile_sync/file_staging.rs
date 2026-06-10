@@ -827,4 +827,118 @@ mod tests {
         // 二次 abort 同一 token：不 panic、不报错
         adapter.abort_stage(copy).await;
     }
+
+    // ── sanitize_basename direct path-traversal tests ───────────────────────
+    //
+    // `stage_file` 已有一条间接穿越用例(`../../etc/passwd`),这里直接打
+    // `sanitize_basename` 本体,补全跨平台的穿越 / 危险字符向量。涉及分隔符的
+    // 断言以"安全不变量"为主(输出绝不含分隔符 / 冒号 / 控制符),不依赖具体
+    // 平台的 `Path::file_name` 行为——`\` 在 Unix 不是分隔符、在 Windows 是,
+    // 若断言精确字面值会在 Windows CI 漂移。
+
+    /// 不变量:sanitize 输出必须是一个无法跳出单层目录的、非空的文件名段。
+    fn assert_safe_segment(out: &str) {
+        assert!(!out.is_empty(), "sanitized name must never be empty");
+        assert!(!out.contains('/'), "must not contain '/': {out:?}");
+        assert!(!out.contains('\\'), "must not contain backslash: {out:?}");
+        assert!(!out.contains(':'), "must not contain ':': {out:?}");
+        assert!(!out.contains('\0'), "must not contain NUL: {out:?}");
+        assert!(
+            !out.chars().any(|c| c.is_control()),
+            "must not contain control chars: {out:?}"
+        );
+    }
+
+    #[test]
+    fn sanitize_basename_keeps_plain_filename() {
+        assert_eq!(sanitize_basename("doc.pdf"), "doc.pdf");
+        assert_eq!(
+            sanitize_basename("my report 2026.txt"),
+            "my report 2026.txt"
+        );
+    }
+
+    #[test]
+    fn sanitize_basename_strips_unix_traversal_to_basename() {
+        // `/` 在所有平台都是分隔符 → file_name 取最后一段
+        assert_eq!(sanitize_basename("../../etc/passwd"), "passwd");
+        assert_eq!(sanitize_basename("/etc/shadow"), "shadow");
+        assert_eq!(sanitize_basename("a/b/c/secret.key"), "secret.key");
+    }
+
+    #[test]
+    fn sanitize_basename_neutralizes_windows_backslash_traversal() {
+        // Unix 下 `\` 靠字符替换兜底,Windows 下 file_name 直接取尾段;两个平台
+        // 输出不同,但安全不变量一致:绝不残留分隔符。
+        for input in [
+            "..\\..\\windows\\system32\\drivers\\etc\\hosts",
+            "..\\secret.txt",
+            "C:\\Users\\victim\\.ssh\\id_rsa",
+        ] {
+            assert_safe_segment(&sanitize_basename(input));
+        }
+    }
+
+    #[test]
+    fn sanitize_basename_strips_colon_drive_and_ads() {
+        // `:` 既是 Windows 盘符也是 NTFS ADS 分隔符 → 必须被打平
+        for input in ["file:name.txt", "secret.txt:$DATA", "C:\\x\\f.txt"] {
+            let out = sanitize_basename(input);
+            assert_safe_segment(&out);
+            assert!(!out.contains(':'), "colon must be stripped: {out:?}");
+        }
+    }
+
+    #[test]
+    fn sanitize_basename_replaces_nul_and_control_chars() {
+        // 这些输入不含路径分隔符,跨平台结果一致,可断言精确字面值。
+        assert_eq!(sanitize_basename("evil\0.txt"), "evil_.txt");
+        assert_eq!(sanitize_basename("tab\tname.bin"), "tab_name.bin");
+        assert_eq!(sanitize_basename("nl\nfile"), "nl_file");
+    }
+
+    #[test]
+    fn sanitize_basename_strips_leading_and_trailing_dots() {
+        // basename 语义而非 dotfile 语义:前后点被裁掉。
+        assert_eq!(sanitize_basename(".gitignore"), "gitignore");
+        assert_eq!(sanitize_basename("archive.tar.gz."), "archive.tar.gz");
+        assert_eq!(sanitize_basename("...weird..."), "weird");
+    }
+
+    #[test]
+    fn sanitize_basename_falls_back_when_nothing_safe_remains() {
+        // 任何输入都不能产出不安全段,即便整体非法。
+        for input in ["", "   ", "...", "..", ".", "/", "////", "\0\0\0"] {
+            assert_safe_segment(&sanitize_basename(input));
+        }
+        // 明确锁定几个会走兜底的输入
+        assert_eq!(sanitize_basename("..."), FALLBACK_FILENAME);
+        assert_eq!(sanitize_basename(""), FALLBACK_FILENAME);
+        assert_eq!(sanitize_basename("   "), FALLBACK_FILENAME);
+        assert_eq!(sanitize_basename(".."), FALLBACK_FILENAME);
+    }
+
+    // ── sanitize_scope tests ────────────────────────────────────────────────
+    //
+    // scope_id 由调用方生成,但仍须一次 path-safety sanitize,防止它带 `/`
+    // 跳出 staging_root。sanitize_scope 是纯字符映射(不走 Path::file_name),
+    // 故输出跨平台确定,可断言精确字面值。
+
+    #[test]
+    fn sanitize_scope_neutralizes_separators_dots_and_controls() {
+        assert_eq!(sanitize_scope("scope01"), "scope01");
+        assert_eq!(sanitize_scope("a/b"), "a_b");
+        assert_eq!(sanitize_scope("a\\b"), "a_b");
+        // 穿越向量整体被打平,绝不残留分隔符或点
+        let out = sanitize_scope("../../evil");
+        assert!(!out.contains('/'), "no slash: {out:?}");
+        assert!(!out.contains('\\'), "no backslash: {out:?}");
+        assert!(!out.contains('.'), "no dot: {out:?}");
+    }
+
+    #[test]
+    fn sanitize_scope_falls_back_to_unscoped_when_empty() {
+        assert_eq!(sanitize_scope(""), "unscoped");
+        assert_eq!(sanitize_scope("   "), "unscoped");
+    }
 }

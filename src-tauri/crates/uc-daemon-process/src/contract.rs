@@ -1,7 +1,5 @@
 //! GUI-framework agnostic contract types for daemon process coordination.
 
-use std::process::Command;
-
 use thiserror::Error;
 
 /// 一次健康探测的分类结果。
@@ -52,17 +50,17 @@ impl std::fmt::Display for TerminateDaemonError {
 
 impl std::error::Error for TerminateDaemonError {}
 
-/// 向指定 PID 发送终止信号：Unix 上 `kill -TERM`，Windows 上 Win32
-/// `TerminateProcess`（经 [`crate::win_process`]）。
+/// 向指定 PID 发送终止信号：Unix 上 `kill(2)` 系统调用发 SIGTERM，Windows
+/// 上 Win32 `TerminateProcess`（经 [`crate::win_process`]）。
 ///
 /// 不依赖任何 GUI 框架或 sidecar 体系，可以被 daemon 二进制、GUI shell、
-/// CLI 工具任意一方消费。Windows 侧曾经 shell-out 到 `taskkill`——从无
-/// console 的 GUI 进程发起会闪黑框，且 daemon 没有子进程，`/T` 树杀从未
-/// 必要；原生调用两个问题都不存在。
+/// CLI 工具任意一方消费。两侧都曾 shell-out 到平台命令行工具
+/// (`kill`/`taskkill`)——除了多一次 fork+exec 和对 PATH 的依赖，shell-out
+/// 把 errno 折叠成了 locale 相关的 stderr 文本；直接系统调用没有这些问题。
 pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> {
-    // Unix `kill -TERM 0` broadcasts to the caller's entire process group,
-    // which would take down the GUI/CLI host. A corrupted PID file reading
-    // as 0 must never reach `kill`.
+    // Unix `kill(0, SIGTERM)` broadcasts to the caller's entire process
+    // group, which would take down the GUI/CLI host. A corrupted PID file
+    // reading as 0 must never reach the syscall.
     if pid == 0 {
         return Err(TerminateDaemonError(
             "refusing to terminate pid 0".to_string(),
@@ -71,24 +69,8 @@ pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> 
 
     #[cfg(unix)]
     {
-        let output = Command::new("kill")
-            .arg("-TERM")
-            .arg(pid.to_string())
-            .output()
-            .map_err(|e| TerminateDaemonError(format!("failed to launch terminator: {e}")))?;
-
-        if output.status.success() {
-            return Ok(());
-        }
-
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Err(TerminateDaemonError(format!(
-            "failed to terminate pid {pid}: status={} stdout={} stderr={}",
-            output.status,
-            stdout.trim(),
-            stderr.trim()
-        )))
+        send_sigterm(pid)
+            .map_err(|e| TerminateDaemonError(format!("failed to terminate pid {pid}: {e}")))
     }
 
     #[cfg(windows)]
@@ -104,6 +86,23 @@ pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> 
     }
 }
 
+/// Send SIGTERM to `pid` via the raw `kill(2)` syscall. `Err` carries the OS
+/// error (`ESRCH` = no such process, `EPERM` = exists but unsignalable).
+#[cfg(unix)]
+fn send_sigterm(pid: u32) -> Result<(), std::io::Error> {
+    // A pid above pid_t::MAX can only come from a corrupted PID file; the
+    // `as` cast would wrap it negative, and kill(2) on a negative pid
+    // signals the process *group* |pid| — reject before the cast.
+    let pid = libc::pid_t::try_from(pid)
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "pid exceeds pid_t"))?;
+    // SAFETY: kill(2) has no preconditions; callers guard pid != 0.
+    if unsafe { libc::kill(pid, libc::SIGTERM) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
 /// Terminate a daemon PID and block until the process has fully exited.
 ///
 /// On Windows this terminates via Win32 and then waits on the **process
@@ -115,27 +114,44 @@ pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> 
 /// locale-dependent no-match banner misread dead PIDs as alive on non-English
 /// Windows, aborting every update install.
 ///
-/// On Unix this is a no-op after sending SIGTERM — the kernel allows
+/// On Unix this does not wait after sending SIGTERM — the kernel allows
 /// overwriting a running binary (the old inode stays alive until the process
-/// exits).
+/// exits). On both platforms an already-exited PID is `Ok` (the goal state),
+/// unlike the signal-only [`terminate_local_daemon_pid`], which reports `Err`
+/// for an unknown PID.
 pub fn terminate_and_wait(
     pid: u32,
     timeout: std::time::Duration,
 ) -> Result<(), TerminateDaemonError> {
+    if pid == 0 {
+        return Err(TerminateDaemonError(
+            "refusing to terminate pid 0".to_string(),
+        ));
+    }
+
     #[cfg(windows)]
     {
         // Combined terminate+wait over one handle: no TOCTOU between signal
-        // and wait, and "already exited" is Ok (the goal state) rather than
-        // the `Err` the signal-only path reports for an unknown PID.
-        if pid == 0 {
-            return Err(TerminateDaemonError(
-                "refusing to terminate pid 0".to_string(),
-            ));
-        }
+        // and wait.
         crate::win_process::terminate_and_wait_pid(pid, timeout).map_err(TerminateDaemonError)
     }
 
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    {
+        let _ = timeout;
+        match send_sigterm(pid) {
+            Ok(()) => Ok(()),
+            // ESRCH: the process is already gone — the goal state of a
+            // kill-and-wait, matching the Windows arm's Ok when OpenProcess
+            // finds no such PID.
+            Err(e) if e.raw_os_error() == Some(libc::ESRCH) => Ok(()),
+            Err(e) => Err(TerminateDaemonError(format!(
+                "failed to terminate pid {pid}: {e}"
+            ))),
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = timeout;
         terminate_local_daemon_pid(pid)
@@ -247,6 +263,30 @@ mod tests {
         assert!(
             msg.contains("999999999"),
             "error must name the pid we tried to terminate; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn terminate_and_wait_treats_missing_pid_as_already_exited() {
+        // Kill-and-wait's goal state is "the process is gone" — a PID that
+        // never existed already satisfies it. Unix maps ESRCH to Ok; Windows
+        // maps a failed OpenProcess to Ok. The signal-only function keeps
+        // reporting Err for the same input (covered above).
+        terminate_and_wait(999_999_999, std::time::Duration::from_millis(100))
+            .expect("a non-existent pid must read as already exited");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminate_local_daemon_pid_rejects_pid_beyond_pid_t() {
+        // u32::MAX would wrap negative through an `as pid_t` cast, turning
+        // kill(2) into a process-*group* signal. The guard must reject it
+        // before the syscall.
+        let err = terminate_local_daemon_pid(u32::MAX)
+            .expect_err("a pid beyond pid_t::MAX must be rejected");
+        assert!(
+            err.to_string().contains("pid_t"),
+            "error must explain the overflow rejection; got: {err}"
         );
     }
 

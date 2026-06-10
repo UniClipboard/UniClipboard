@@ -85,6 +85,7 @@ src-tauri/
 - Introducing `unwrap()/expect()` in production paths.
 - Emitting snake_case payload fields to frontend events.
 - Putting test-only crates in `crates/` as workspace members — use `tests/e2e/` + `[workspace.exclude]` to avoid polluting `cargo check --workspace`.
+- Parking RAII guards (e.g. `WorkerGuard`) in library statics + adding host-specific flush/shutdown APIs — init returns the guard; the host shell owns the drop (`process::exit` skips static destructors, losing the buffered tail).
 
 ## COMPLEXITY HOTSPOTS
 

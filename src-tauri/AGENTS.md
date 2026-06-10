@@ -86,6 +86,8 @@ src-tauri/
 - Emitting snake_case payload fields to frontend events.
 - Putting test-only crates in `crates/` as workspace members — use `tests/e2e/` + `[workspace.exclude]` to avoid polluting `cargo check --workspace`.
 - Parking RAII guards (e.g. `WorkerGuard`) in library statics + adding host-specific flush/shutdown APIs — init returns the guard; the host shell owns the drop (`process::exit` skips static destructors, losing the buffered tail).
+- Shelling out to OS console tools (`kill`/`taskkill`/`tasklist`) for process liveness/termination — use native calls (`libc::kill`, `win_process`); shell-out means fork+exec, locale-dependent output parsing, and console-window flashes from the no-console GUI host. (Existing `lsof`/`netstat` port-lookup fallbacks are the documented exception: locale-stable numeric output, rare path.)
+- "Fixing" unix `is_pid_alive` to treat EPERM as alive — `verify_pid_identity` needs EPERM→dead so foreign-user PID reuse reads `Stale`, not `Active` (exe check can't read a foreign process and falls back to Active).
 
 ## COMPLEXITY HOTSPOTS
 

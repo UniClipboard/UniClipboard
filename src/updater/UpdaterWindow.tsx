@@ -27,7 +27,7 @@ import appIcon from '@/updater/app-icon.png'
 const log = createLogger('updater-window')
 
 /** Same target as PackageManagerUpdateDialog's manual-download routing. */
-const RELEASE_PAGE_URL = 'https://github.com/UniClipboard/UniClipboard/releases/latest'
+const RELEASE_PAGE_URL = 'https://uniclipboard.app/download'
 
 interface UpdateState {
   phase: DownloadPhase

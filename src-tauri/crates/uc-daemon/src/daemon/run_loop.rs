@@ -123,6 +123,31 @@ async fn record_upgrade_status_at_startup(app_facade: &AppFacade) {
                 to = %to,
                 "upgrade detected"
             );
+            // Seal the cursor for a *known* upgrade (`from = Some`).
+            //
+            // 这条路径没有任何需要用户交互的提示：前端 StartupModals 只在
+            // `Upgraded { from: None }`（跨未知旧版本）时弹"重新配对"提示，并在
+            // 用户确认后回调 `POST /upgrade/ack` 推进游标；`from = Some` 时前端
+            // 直接跳过，于是没有任何人 ack —— 游标永远停在旧版本，每次启动都被
+            // 重新判定为 "upgrade"（线上实测 from=0.11.1 反复出现，且 headless /
+            // server-node 场景根本没有 GUI 来调 ack）。由 daemon 在这里自行推进，
+            // 既修掉重复判定，也让无 GUI 的部署能正常收敛。
+            //
+            // 故意 **不** 处理 `from = None`：那条路径必须先让前端把"重新配对"
+            // 提示展示给用户，daemon 若抢先 ack 会让随后的 detect 立即返回
+            // NoChange、提示永远不弹。`None` 的游标推进留给前端 UpgradeNotice 的
+            // dismiss 回调。失败仅警告，不阻塞启动；下次启动会重试。
+            if from.is_some() {
+                if let Err(error) = app_facade.upgrade.acknowledge(DAEMON_VERSION).await {
+                    tracing::warn!(
+                        target: "upgrade",
+                        error = %error,
+                        to = %to,
+                        "known upgrade detected but failed to seal version cursor; \
+                         upgrade will be re-detected next boot"
+                    );
+                }
+            }
         }
         UpgradeStatus::Downgraded { from, to } => {
             tracing::info!(

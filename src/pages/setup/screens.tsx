@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Eye,
+  Copy,
   EyeOff,
   Loader2,
   Shield,
@@ -21,6 +22,7 @@ import type {
 } from '@/api/daemon/setupV2'
 import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/components/invitation-code-utils'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
+import { IpAddressInput } from '@/components/IpAddressInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -356,11 +358,13 @@ function formatRemaining(ms: number): string {
 export function ShowInvitationScreen({
   code,
   expiresAtMs,
+  lanAddresses,
   onCancel,
   loading,
 }: {
   code: string
   expiresAtMs: number
+  lanAddresses?: string[]
   onCancel: () => void
   loading?: boolean
 }) {
@@ -405,6 +409,24 @@ export function ShowInvitationScreen({
         >
           {expired ? t('expired') : t('expiresIn', { remaining: formatRemaining(remaining) })}
         </div>
+        {lanAddresses && lanAddresses.length > 0 && (
+          <div className="mt-4 rounded-lg border border-border/40 bg-muted/20 px-4 py-3 text-left text-sm">
+            <div className="mb-1.5 text-xs text-muted-foreground">{t('lanAddressesHint')}</div>
+            <div className="flex flex-wrap gap-2">
+              {lanAddresses.map(ip => (
+                <button
+                  key={ip}
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-0.5 font-mono text-sm font-medium text-foreground transition-colors hover:bg-muted/80"
+                  onClick={() => navigator.clipboard.writeText(ip)}
+                >
+                  {ip}
+                  <Copy className="size-3 text-muted-foreground" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </ScreenShell>
   )
@@ -453,6 +475,7 @@ export function RedeemInvitationScreen({
   onSubmit: (input: {
     code: string
     passphrase: string
+    sponsorAddrHint?: string
   }) => Promise<
     | { ok: true; redeem: RedeemResponse }
     | { ok: false; kind: RedeemInvitationErrorKind; raw: string }
@@ -463,6 +486,7 @@ export function RedeemInvitationScreen({
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.redeemInvitation' })
   const [code, setCode] = useState('')
   const [pass, setPass] = useState('')
+  const [sponsorIp, setSponsorIp] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [errorKind, setErrorKind] = useState<RedeemInvitationErrorKind | null>(null)
   const passInputRef = useRef<HTMLInputElement>(null)
@@ -481,7 +505,11 @@ export function RedeemInvitationScreen({
   const handleSubmit = async () => {
     setErrorKind(null)
     if (!canSubmit) return
-    const res = await onSubmit({ code, passphrase: pass })
+    const res = await onSubmit({
+      code,
+      passphrase: pass,
+      sponsorAddrHint: sponsorIp.trim() || undefined,
+    })
     if (!res.ok) {
       setErrorKind(res.kind)
       // 邀请码已废类——原 code 必然 404,清掉让用户必须输入新邀请码。
@@ -585,6 +613,16 @@ export function RedeemInvitationScreen({
                     {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
+              </div>
+              <div className="pt-4">
+                <Label className="text-xs text-muted-foreground">{t('sponsorIpHint')}</Label>
+                <IpAddressInput
+                  value={sponsorIp}
+                  onChange={setSponsorIp}
+                  disabled={loading}
+                  className="mt-1"
+                  onSubmit={handleSubmit}
+                />
               </div>
             </m.div>
           )}

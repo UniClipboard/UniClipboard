@@ -43,6 +43,10 @@ pub struct InitializeSpaceResponse {
 pub struct IssueInvitationResponse {
     pub code: String,
     pub expires_at_ms: i64,
+    /// LAN IP addresses of this device for manual IP fallback pairing.
+    /// Empty when no LAN addresses are available.
+    #[serde(default)]
+    pub lan_addresses: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +60,11 @@ pub struct IssueInvitationResponse {
 pub struct RedeemRequest {
     pub code: String,
     pub passphrase: String,
+    /// Optional sponsor IP address for manual LAN fallback pairing.
+    /// When provided, the joiner tries a direct HTTP ticket fetch from
+    /// this address before falling back to mDNS / cloud discovery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sponsor_addr_hint: Option<String>,
 }
 
 /// Response body for `POST /v2/setup/redeem`. Mirrors
@@ -108,6 +117,8 @@ pub struct CurrentInvitation {
 pub struct SwitchSpaceRequest {
     pub code: String,
     pub new_passphrase: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sponsor_addr_hint: Option<String>,
 }
 
 /// Response body for `POST /v2/setup/switch-space`. Mirrors
@@ -188,10 +199,12 @@ mod tests {
         let resp = IssueInvitationResponse {
             code: "ABCD-1234".to_string(),
             expires_at_ms: 1_745_577_600_000,
+            lan_addresses: vec!["192.168.1.100".to_string()],
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["code"], "ABCD-1234");
         assert_eq!(json["expiresAtMs"], 1_745_577_600_000_i64);
+        assert_eq!(json["lanAddresses"][0], "192.168.1.100");
     }
 
     #[test]
@@ -199,6 +212,7 @@ mod tests {
         let req = RedeemRequest {
             code: "WXYZ-5678".to_string(),
             passphrase: "hunter22hunter22".to_string(),
+            sponsor_addr_hint: None,
         };
         let json = serde_json::to_string(&req).unwrap();
         let decoded: RedeemRequest = serde_json::from_str(&json).unwrap();

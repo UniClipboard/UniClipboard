@@ -33,11 +33,20 @@
  * 加 API 时把第三个 DialogSection 接上 controlled Input + 提交即可。
  */
 
-import { AlignLeft, FileIcon, ImageIcon, Link2, Type, type LucideIcon } from 'lucide-react'
-import React, { useCallback, useEffect } from 'react'
+import {
+  AlignLeft,
+  FileIcon,
+  ImageIcon,
+  Link2,
+  RefreshCw,
+  Type,
+  type LucideIcon,
+} from 'lucide-react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ContentTypes } from '@/api/daemon/member'
 import { DEFAULT_SEND_CONTENT_TYPES } from '@/api/daemon/member'
+import { reconnectPeer } from '@/api/daemon/members'
 import type { SpaceMember } from '@/api/daemon/members'
 import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
 import { contentTypeEntries, getDeviceIcon } from '@/components/device/device-utils'
@@ -52,10 +61,12 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { toast } from '@/components/ui/toast'
 import { cn, formatPeerIdForDisplay } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   fetchMemberSyncPreferences,
+  fetchSpaceMembers,
   updateMemberSyncPreferences,
 } from '@/store/slices/devicesSlice'
 
@@ -142,6 +153,48 @@ const DeviceSettingsDialog: React.FC<DeviceSettingsDialogProps> = ({
     dispatch(fetchMemberSyncPreferences(deviceId))
   }, [dispatch, deviceId])
 
+  // ── Reconnect state ──────────────────────────────────────────
+  const [reconnecting, setReconnecting] = useState(false)
+  const [cooldown, setCooldown] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
+
+  // Cleanup: abort in-flight reconnect when the dialog unmounts / closes.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [])
+
+  const handleReconnect = useCallback(async () => {
+    if (reconnecting || cooldown) return
+    setReconnecting(true)
+    abortRef.current = new AbortController()
+
+    const timeoutId = setTimeout(() => abortRef.current?.abort(), 15_000)
+
+    try {
+      const result = await reconnectPeer(deviceId, { signal: abortRef.current.signal })
+      clearTimeout(timeoutId)
+
+      if (result.connected) {
+        toast.success(t('devices.settings.reconnectSuccess'))
+      } else {
+        toast.error(t('devices.settings.reconnectFailed'))
+      }
+      // Refresh the member list so PeerCard reflects updated state.
+      dispatch(fetchSpaceMembers())
+    } catch (e) {
+      clearTimeout(timeoutId)
+      if ((e as Error).name !== 'AbortError') {
+        toast.error(t('devices.settings.reconnectFailed'))
+      }
+    } finally {
+      setReconnecting(false)
+      setCooldown(true)
+      setTimeout(() => setCooldown(false), 10_000)
+    }
+  }, [reconnecting, cooldown, deviceId, dispatch, t])
+
   if (!device && !deviceId) return null
 
   const deviceName = device?.deviceName || t('devices.list.labels.unknownDevice')
@@ -151,6 +204,8 @@ const DeviceSettingsDialog: React.FC<DeviceSettingsDialogProps> = ({
   const sendEnabled = preferences?.sendEnabled ?? true
   const sendDisabled = !sendEnabled || globalAutoSyncOff || isLoading
   const showSkeleton = isLoading && !preferences
+  const showReconnect =
+    channelKind === 'offline' || channelKind === 'unknown' || channelKind === 'relay'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -207,6 +262,22 @@ const DeviceSettingsDialog: React.FC<DeviceSettingsDialogProps> = ({
                 value={device.connectionAddress}
                 mono
               />
+            )}
+            {showReconnect && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={reconnecting || cooldown}
+                onClick={handleReconnect}
+              >
+                <RefreshCw className={cn('mr-2 h-3.5 w-3.5', reconnecting && 'animate-spin')} />
+                {reconnecting
+                  ? t('devices.settings.reconnecting')
+                  : cooldown
+                    ? t('devices.settings.reconnectCooldown')
+                    : t('devices.settings.retryConnection')}
+              </Button>
             )}
           </DialogSection>
 

@@ -20,10 +20,12 @@ pub mod discovery_constants;
 pub mod mdns_publisher;
 pub mod mdns_resolver;
 pub mod session;
+pub mod ticket_server;
 pub mod wire;
 
 pub use code_mint::mint_invitation_code;
 pub use mdns_publisher::{MdnsPairingPublisher, MdnsPublisherError, PublisherHandle};
 pub use mdns_resolver::{MdnsPairingResolver, MdnsResolverError};
 pub use session::{IrohPairingSessionAdapter, PAIRING_ALPN};
+pub use ticket_server::{start_ticket_server, TicketServerHandle, TICKET_SERVER_PORT};
 pub use wire::{decode, encode, WireDecodeError, WireEncodeError};

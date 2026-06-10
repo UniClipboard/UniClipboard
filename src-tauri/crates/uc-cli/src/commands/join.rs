@@ -151,6 +151,7 @@ pub async fn run(args: JoinArgs, verbose: bool) -> i32 {
     let req = RedeemRequest {
         code: code_str,
         passphrase: passphrase_str,
+        sponsor_addr_hint: None,
     };
 
     let setup_client = ctx.setup_v2_client();

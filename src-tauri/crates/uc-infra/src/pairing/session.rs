@@ -51,6 +51,8 @@ use uc_core::ports::pairing::{
     PairingSessionId, PairingSessionPort, SessionError,
 };
 
+use super::discovery_constants::compute_code_hash;
+use super::ticket_server::TICKET_SERVER_PORT;
 use super::wire::{self, WireDecodeError};
 use crate::network::iroh::connect_with_staggered_retry;
 use crate::rendezvous::{RendezvousClient, RendezvousHttpError};
@@ -131,12 +133,32 @@ impl IrohPairingSessionAdapter {
     ///
     /// In LAN-only mode the cloud branch is skipped entirely (no HTTP
     /// request) and only the LAN branch is awaited.
+    ///
+    /// When `sponsor_addr_hint` is provided, a direct HTTP fetch to the
+    /// sponsor's LAN ticket server is attempted first. If it succeeds,
+    /// the result is used immediately; otherwise the standard discovery
+    /// channels run as fallback.
     async fn resolve_invitation(
         &self,
         code: &InvitationCode,
+        sponsor_addr_hint: Option<&str>,
     ) -> Result<(EndpointAddr, DiscoveryChannel), DialError> {
         use futures_util::future::{select, Either};
         use std::pin::pin;
+
+        // If the joiner provided a sponsor IP, try direct HTTP first.
+        if let Some(sponsor_ip) = sponsor_addr_hint {
+            match self.resolve_via_direct_http(code, sponsor_ip).await {
+                Ok(addr) => return Ok((addr, DiscoveryChannel::Lan)),
+                Err(e) => {
+                    warn!(
+                        code = %code.as_str(),
+                        error = ?e,
+                        "direct HTTP resolve failed, falling back to standard channels"
+                    );
+                }
+            }
+        }
 
         if crate::network::iroh::runtime_consts::lan_only() {
             debug!(code = %code.as_str(), "LAN-only mode: skipping cloud channel");
@@ -256,6 +278,67 @@ impl IrohPairingSessionAdapter {
             .map_err(|err| DialError::Internal(format!("LAN ticket hex decode: {err}")))?;
         postcard::from_bytes::<EndpointAddr>(&ticket_bytes)
             .map_err(|err| DialError::Internal(format!("LAN ticket postcard decode: {err}")))
+    }
+
+    /// Resolve the sponsor's ticket via direct HTTP to their LAN ticket
+    /// server (manual IP fallback). The sponsor runs a minimal HTTP
+    /// server on [`TICKET_SERVER_PORT`]; the joiner sends
+    /// `GET /<code_hash>` and receives the ticket JSON.
+    async fn resolve_via_direct_http(
+        &self,
+        code: &InvitationCode,
+        sponsor_ip: &str,
+    ) -> Result<EndpointAddr, DialError> {
+        let code_hash = compute_code_hash(code.as_str());
+        let url = format!("http://{}:{}/{}", sponsor_ip, TICKET_SERVER_PORT, code_hash);
+
+        debug!(
+            code = %code.as_str(),
+            %sponsor_ip,
+            "resolving ticket via direct HTTP (manual IP fallback)"
+        );
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|e| DialError::Internal(format!("HTTP client build: {e}")))?;
+
+        let resp = client.get(&url).send().await.map_err(|e| {
+            warn!(
+                code = %code.as_str(),
+                %sponsor_ip,
+                error = %e,
+                "direct HTTP ticket fetch failed"
+            );
+            DialError::SponsorUnreachable
+        })?;
+
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(DialError::InvitationNotFound);
+        }
+
+        if !resp.status().is_success() {
+            return Err(DialError::Internal(format!(
+                "direct HTTP ticket fetch: unexpected status {}",
+                resp.status()
+            )));
+        }
+
+        let ticket_json = resp
+            .text()
+            .await
+            .map_err(|e| DialError::Internal(format!("direct HTTP ticket body: {e}")))?;
+
+        let addr: EndpointAddr = serde_json::from_str(&ticket_json)
+            .map_err(|e| DialError::Internal(format!("direct HTTP ticket parse: {e}")))?;
+
+        info!(
+            code = %code.as_str(),
+            sponsor = %addr.id.fmt_short(),
+            "resolved via direct HTTP (manual IP fallback)"
+        );
+
+        Ok(addr)
     }
 
     /// Install a ready-built session into the map and return the minted id.
@@ -603,8 +686,12 @@ impl PairingEventPort for IrohPairingSessionAdapter {
 #[async_trait]
 impl PairingSessionPort for IrohPairingSessionAdapter {
     #[instrument(skip_all, fields(code = %code.as_str()))]
-    async fn dial_by_invitation(&self, code: &InvitationCode) -> Result<DialOutcome, DialError> {
-        let (sponsor_addr, channel) = self.resolve_invitation(code).await?;
+    async fn dial_by_invitation_with_hint(
+        &self,
+        code: &InvitationCode,
+        sponsor_addr_hint: Option<&str>,
+    ) -> Result<DialOutcome, DialError> {
+        let (sponsor_addr, channel) = self.resolve_invitation(code, sponsor_addr_hint).await?;
         let sponsor_id = sponsor_addr.id.fmt_short().to_string();
         let transport_addr_count = sponsor_addr.addrs.len();
         info!(

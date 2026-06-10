@@ -123,6 +123,22 @@ pub struct PresenceRefreshResponse {
     pub errors: u32,
 }
 
+/// Result of a `POST /member/:device_id/reconnect` manual reconnect attempt.
+///
+/// The handler force-redials the specified peer bypassing any cached "alive
+/// connection" fast-path, then snapshots the resulting connectivity state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconnectResultDto {
+    /// Whether the reconnection attempt succeeded (peer is now online).
+    pub connected: bool,
+    /// Current connection channel after the attempt (`"direct"` / `"relay"` / `"offline"` / `"unknown"`).
+    pub channel: String,
+    /// Connection address if available (e.g. `"192.168.1.5:12345"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection_address: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileTransferProgressPayload {

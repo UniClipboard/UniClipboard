@@ -60,10 +60,12 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
   const dispatch = useAppDispatch()
   const [invitation, setInvitation] = useState<CurrentInvitation | null>(null)
   const [issuedAtMs, setIssuedAtMs] = useState<number | null>(null)
+  const [lanAddresses, setLanAddresses] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [copied, setCopied] = useState(false)
+  const [copiedIp, setCopiedIp] = useState<string | null>(null)
   const [step, setStep] = useState<Step>('invitation')
   const [failureReason, setFailureReason] = useState<string | null>(null)
 
@@ -113,6 +115,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
           if (cancelled) return
           setInvitation(issued)
           setIssuedAtMs(Date.now())
+          setLanAddresses(issued.lanAddresses ?? [])
         }
       } catch (err) {
         if (cancelled) return
@@ -241,6 +244,7 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
       const issued = await issuePairingInvitation()
       setInvitation(issued)
       setIssuedAtMs(Date.now())
+      setLanAddresses(issued.lanAddresses ?? [])
     } catch (err) {
       log.error({ err }, 'Regenerate invitation failed')
       setError(t('devices.addDevice.errors.issueFailed'))
@@ -353,6 +357,33 @@ export default function AddDeviceDialog({ open, onOpenChange }: AddDeviceDialogP
           <Info className="mt-0.5 size-3.5 shrink-0" />
           <span className="leading-relaxed">{t('devices.addDevice.passphraseHint')}</span>
         </div>
+
+        {lanAddresses.length > 0 && (
+          <div className="rounded-lg bg-muted/50 px-3.5 py-2.5 text-xs text-muted-foreground">
+            <div className="mb-1">{t('lanAddressesHint')}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {lanAddresses.map(ip => (
+                <button
+                  key={ip}
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded bg-background px-2 py-0.5 font-mono text-foreground transition-colors hover:bg-muted"
+                  onClick={() => {
+                    navigator.clipboard.writeText(ip)
+                    setCopiedIp(ip)
+                    setTimeout(() => setCopiedIp(null), 1500)
+                  }}
+                >
+                  {ip}
+                  {copiedIp === ip ? (
+                    <Check className="size-3 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-3 text-muted-foreground" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   }

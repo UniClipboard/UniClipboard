@@ -3,15 +3,24 @@
 //! 读写 `SpaceMember.sync_preferences`（`MemberRepositoryPort`）；旧
 //! `api::device::{get,update}_device_sync_settings_handler` 已在 PR-4 移除。
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
 use axum::extract::{Path, State};
-use axum::routing::{get, patch};
+use axum::http::StatusCode;
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use tracing::{info, instrument};
 
 use uc_application::facade::{
-    ContentTypesPatch, MemberSyncPreferencesPatch, MemberSyncPreferencesView, RosterError,
+    connection_channel_to_wire, ContentTypesPatch, MemberSyncPreferencesPatch,
+    MemberSyncPreferencesView, RosterError,
 };
+use uc_core::ids::DeviceId;
+use uc_core::ports::{PresenceError, ReachabilityState};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
+use uc_daemon_contract::api::types::ReconnectResultDto;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{MemberSyncPreferencesPatchDto, MemberSyncResultDto};
@@ -26,6 +35,10 @@ pub fn router() -> Router<DaemonApiState> {
         .route(
             "/member/:device_id/sync-preferences",
             patch(update_member_sync_preferences_handler),
+        )
+        .route(
+            "/member/:device_id/reconnect",
+            post(reconnect_member_handler),
         )
 }
 
@@ -140,6 +153,109 @@ pub async fn update_member_sync_preferences_handler(
     Ok(Json(ApiEnvelope::now(MemberSyncResultDto {
         success: true,
     })))
+}
+
+/// POST /member/:device_id/reconnect
+/// Force-redial a specific peer, bypassing presence cache.
+#[utoipa::path(
+    post,
+    path = "/member/{device_id}/reconnect",
+    tag = "member",
+    operation_id = "reconnectMember",
+    params(
+        ("device_id" = String, Path, description = "Target device ID")
+    ),
+    responses(
+        (status = 200, description = "Reconnect attempt completed", body = ReconnectResultEnvelope),
+        (status = 404, description = "Device has no stored address", body = ApiErrorResponse),
+        (status = 429, description = "Rate limited — try again in 10s", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+#[instrument(
+    name = "api.member.reconnect",
+    level = "info",
+    skip(state),
+    fields(device_id = %device_id)
+)]
+pub async fn reconnect_member_handler(
+    State(state): State<DaemonApiState>,
+    Path(device_id): Path<String>,
+) -> Result<Json<ApiEnvelope<ReconnectResultDto>>, ApiError> {
+    // Per-device server-side rate limit: 1 attempt per 10 seconds.
+    static RATE_LIMIT: std::sync::OnceLock<Mutex<HashMap<String, Instant>>> =
+        std::sync::OnceLock::new();
+    let rate_map = RATE_LIMIT.get_or_init(|| Mutex::new(HashMap::new()));
+
+    {
+        let map = rate_map.lock().unwrap();
+        if let Some(last) = map.get(&device_id) {
+            if last.elapsed() < Duration::from_secs(10) {
+                return Err(ApiError {
+                    status: StatusCode::TOO_MANY_REQUESTS,
+                    code: "rate_limited".to_string(),
+                    message: "Rate limited — try again in 10s".to_string(),
+                    details: None,
+                });
+            }
+        }
+    }
+
+    // Record this attempt timestamp.
+    {
+        let mut map = rate_map.lock().unwrap();
+        map.insert(device_id.clone(), Instant::now());
+    }
+
+    info!("reconnect member request received");
+    let app = state.app_facade_or_error()?;
+    let device = DeviceId::new(&device_id);
+
+    let result = app.reconnect_peer(&device).await;
+
+    // Read connection channel info after reconnect attempt.
+    let (channel_str, connection_address) = match &app.member_roster.get() {
+        Some(roster) => {
+            let snapshots = roster.list_peer_snapshots().await.unwrap_or_default();
+            snapshots
+                .iter()
+                .find(|s| s.peer_id == device_id)
+                .map(|s| {
+                    (
+                        connection_channel_to_wire(s.channel).to_string(),
+                        s.connection_address.clone(),
+                    )
+                })
+                .unwrap_or_else(|| ("unknown".to_string(), None))
+        }
+        None => ("unknown".to_string(), None),
+    };
+
+    match result {
+        Ok(state) => {
+            let connected = matches!(state, ReachabilityState::Online);
+            info!(connected, channel = %channel_str, "reconnect attempt completed");
+            Ok(Json(ApiEnvelope::now(ReconnectResultDto {
+                connected,
+                channel: channel_str,
+                connection_address,
+            })))
+        }
+        Err(PresenceError::NoAddress(_)) => Err(ApiError::not_found(format!(
+            "device `{device_id}` has no stored address"
+        ))),
+        Err(e) => {
+            let api = ApiError::internal(format!("reconnect failed: {e}"));
+            log_facade_failure(
+                "space_setup",
+                "reconnect_peer",
+                "presence_error",
+                api.status,
+                &api.message,
+            );
+            Err(api)
+        }
+    }
 }
 
 fn member_sync_preferences_patch_from_dto(

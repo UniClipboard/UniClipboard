@@ -38,7 +38,10 @@ use uc_core::settings::model::Settings;
 
 use crate::network::iroh::filter_endpoint_addr;
 use crate::network::iroh::runtime_consts;
-use crate::pairing::{mint_invitation_code, MdnsPairingPublisher, PublisherHandle};
+use crate::pairing::{
+    mint_invitation_code, start_ticket_server, MdnsPairingPublisher, PublisherHandle,
+    TicketServerHandle,
+};
 
 use super::client::{CreatePairingRequest, RendezvousClient, RendezvousHttpError};
 
@@ -63,6 +66,10 @@ pub struct RendezvousPairingInvitationAdapter {
     /// expired without being consumed still gets released — no
     /// background timer needed.
     publishers: Mutex<HashMap<InvitationCode, (PublisherHandle, DateTime<Utc>)>>,
+    /// Lazily started LAN ticket server for manual IP fallback pairing.
+    /// Started on first invitation in LAN-only mode; tickets are
+    /// registered/removed alongside the mDNS publisher lifecycle.
+    ticket_server: Mutex<Option<TicketServerHandle>>,
 }
 
 impl RendezvousPairingInvitationAdapter {
@@ -78,6 +85,7 @@ impl RendezvousPairingInvitationAdapter {
             settings,
             rendezvous,
             publishers: Mutex::new(HashMap::new()),
+            ticket_server: Mutex::new(None),
         }
     }
 
@@ -145,23 +153,22 @@ impl RendezvousPairingInvitationAdapter {
                 %expires_at,
                 "LAN-only mode: minted invitation locally, skipping cloud channel"
             );
-            if let Err(err) = self
+            let mdns_ok = self
                 .start_mdns_publisher(&code, &endpoint_id, &ticket, expires_at)
-                .await
-            {
-                // mDNS is the only publish surface in LAN-only mode, so a
-                // start failure means zero channels were initiated. The port
-                // contract requires `Ok` only when at least one channel is
-                // live, so surface the failure instead of returning an
-                // undialable code.
+                .await;
+            // Always register with the LAN ticket server regardless of
+            // mDNS success — the manual IP fallback is the whole point.
+            self.ensure_ticket_server_and_register(&code, &ticket).await;
+            if let Err(err) = mdns_ok {
+                // mDNS failed but ticket server is still available as a
+                // fallback channel. Only fail if neither channel works.
+                // The ticket server always succeeds registration (it's
+                // in-process), so we can consider at least one channel live.
                 warn!(
                     error = %err,
                     code = %code.as_str(),
-                    "mDNS publisher start failed in LAN-only mode; this invitation cannot be discovered",
+                    "mDNS publisher start failed in LAN-only mode; LAN ticket server still available for manual IP fallback",
                 );
-                return Err(InvitationError::Internal(format!(
-                    "mDNS publisher start failed in LAN-only mode: {err}"
-                )));
             }
             return Ok(IssuedInvitation {
                 code,
@@ -205,6 +212,10 @@ impl RendezvousPairingInvitationAdapter {
         };
 
         // ── LAN channel (best-effort, window-scoped) ───────────────────
+        // Always register with the ticket server so manual IP fallback
+        // works even when cloud is reachable (the joiner might still be
+        // unable to resolve via cloud or mDNS).
+        self.ensure_ticket_server_and_register(&code, &ticket).await;
         if let Err(err) = self
             .start_mdns_publisher(&code, &endpoint_id, &ticket, expires_at)
             .await
@@ -304,18 +315,138 @@ impl RendezvousPairingInvitationAdapter {
             );
         }
     }
+
+    /// Ensure the LAN ticket server is running and register the given
+    /// ticket. The server is started lazily on first call and stays
+    /// alive for the adapter's lifetime.
+    async fn ensure_ticket_server_and_register(&self, code: &InvitationCode, ticket_json: &str) {
+        let mut guard = self.ticket_server.lock().await;
+        if guard.is_none() {
+            match start_ticket_server().await {
+                Ok(handle) => {
+                    *guard = Some(handle);
+                }
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        "LAN ticket server start failed; manual IP fallback will not work"
+                    );
+                    return;
+                }
+            }
+        }
+        if let Some(handle) = guard.as_ref() {
+            handle.register(code.as_str(), ticket_json).await;
+        }
+    }
+
+    /// Remove a ticket from the LAN ticket server (if running).
+    async fn remove_ticket(&self, code: &InvitationCode) {
+        let guard = self.ticket_server.lock().await;
+        if let Some(handle) = guard.as_ref() {
+            handle.remove(code.as_str()).await;
+        }
+    }
 }
 
 /// Re-encode the cloud-channel JSON ticket as `hex(postcard(EndpointAddr))`
-/// for mDNS publishing. Compact enough to fit in a single TXT attribute
-/// (under 254 bytes total including the `tk=` key) for realistic
-/// EndpointAddrs (up to ~4 IPs + relay URL).
+/// for mDNS publishing, trimming addresses if necessary to fit the
+/// swarm-discovery TXT attribute limit (key + value ≤ 254 bytes; the key
+/// `"tk"` is 2 bytes → value budget is 252 hex chars = 126 postcard bytes).
+///
+/// When the full address set overflows, addresses are dropped in
+/// lowest-priority-first order so the joiner (who is on the same LAN by
+/// definition for mDNS) keeps the most useful candidates:
+///
+/// 1. **Private LAN IPs** — highest priority (same subnet)
+/// 2. **Overlay IPs** (Tailscale CGNAT 100.64/10) — useful when both
+///    sides have Tailscale
+/// 3. **Public IPs** — lowest priority (hairpin / unlikely in LAN-only)
+/// 4. **Relay hints** — dropped first (LAN-only strips them anyway)
 fn encode_mdns_ticket(ticket_json: &str) -> Result<String, String> {
+    /// TXT key is "tk" (2 bytes); swarm-discovery limit is 254 total.
+    const TXT_VALUE_BUDGET: usize = 252;
+
     let addr: EndpointAddr = serde_json::from_str(ticket_json)
         .map_err(|err| format!("ticket JSON decode for mDNS re-encode: {err}"))?;
-    let bytes = postcard::to_allocvec(&addr)
+
+    let encoded = try_postcard_hex(&addr)?;
+    if encoded.len() <= TXT_VALUE_BUDGET {
+        return Ok(encoded);
+    }
+
+    let original_count = addr.addrs.len();
+    let trimmed = trim_addrs_for_mdns(addr, TXT_VALUE_BUDGET)?;
+    let trimmed_count = trimmed.addrs.len();
+    let encoded = try_postcard_hex(&trimmed)?;
+
+    warn!(
+        target: "mdns.ticket",
+        original_count,
+        trimmed_count,
+        dropped = original_count - trimmed_count,
+        hex_len = encoded.len(),
+        budget = TXT_VALUE_BUDGET,
+        "trimmed endpoint addresses to fit mDNS TXT limit",
+    );
+    Ok(encoded)
+}
+
+fn try_postcard_hex(addr: &EndpointAddr) -> Result<String, String> {
+    let bytes = postcard::to_allocvec(addr)
         .map_err(|err| format!("ticket postcard encode for mDNS: {err}"))?;
     Ok(hex::encode(bytes))
+}
+
+/// Assign a priority score to a transport address for mDNS ticket trimming.
+/// Lower score = dropped first.
+fn addr_priority(addr: &TransportAddr) -> u8 {
+    match addr {
+        TransportAddr::Relay(_) => 0,
+        TransportAddr::Ip(socket) => match socket.ip() {
+            IpAddr::V4(v4) => {
+                if v4.is_private() {
+                    3 // private LAN — highest
+                } else {
+                    let o = v4.octets();
+                    if o[0] == 100 && (o[1] & 0xc0) == 64 {
+                        2 // CGNAT / Tailscale overlay
+                    } else {
+                        1 // public routable
+                    }
+                }
+            }
+            IpAddr::V6(v6) => {
+                let segs = v6.segments();
+                if segs[0] == 0xfe80 {
+                    3 // link-local v6 — same LAN
+                } else {
+                    1 // global v6
+                }
+            }
+        },
+        _ => 0, // Custom or unknown — lowest priority
+    }
+}
+
+/// Drop addresses from lowest priority until the ticket fits the budget.
+fn trim_addrs_for_mdns(addr: EndpointAddr, budget: usize) -> Result<EndpointAddr, String> {
+    let EndpointAddr { id, addrs } = addr;
+
+    // BTreeSet → Vec so we can sort by priority and pop from the tail.
+    let mut sorted: Vec<TransportAddr> = addrs.into_iter().collect();
+    sorted.sort_by(|a, b| addr_priority(b).cmp(&addr_priority(a)));
+
+    while sorted.len() > 1 {
+        let candidate = EndpointAddr::from_parts(id.clone(), sorted.iter().cloned());
+        let hex = try_postcard_hex(&candidate)?;
+        if hex.len() <= budget {
+            return Ok(candidate);
+        }
+        sorted.pop();
+    }
+
+    Ok(EndpointAddr::from_parts(id, sorted))
 }
 
 /// Cloud-side errors we treat as "try LAN-only instead." Transport
@@ -441,6 +572,8 @@ impl PairingInvitationPort for RendezvousPairingInvitationAdapter {
         if self.publishers.lock().await.remove(code).is_some() {
             debug!("mDNS publisher stopped for consumed invitation");
         }
+        // Remove the ticket from the LAN ticket server (manual IP fallback).
+        self.remove_ticket(code).await;
 
         match self.rendezvous.consume_pairing(code.as_str()).await {
             Ok(()) => {

@@ -11,6 +11,7 @@ import {
 } from '@/api/daemon/setupV2'
 import { INVITATION_CODE_LENGTH } from '@/components/invitation-code-utils'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
+import { IpAddressInput } from '@/components/IpAddressInput'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -69,6 +70,7 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
   const [step, setStep] = useState<Step>('input')
   const [code, setCode] = useState('')
   const [pass, setPass] = useState('')
+  const [sponsorIp, setSponsorIp] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [errorKind, setErrorKind] = useState<SwitchSpaceErrorKind | null>(null)
   const [errorRaw, setErrorRaw] = useState<string | null>(null)
@@ -129,7 +131,11 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
     setErrorRaw(null)
     setStep('migrating')
     try {
-      const res = await switchSpace({ code, newPassphrase: pass })
+      const res = await switchSpace({
+        code,
+        newPassphrase: pass,
+        sponsorAddrHint: sponsorIp.trim() || undefined,
+      })
       setResult(res)
       setStep('success')
     } catch (err) {
@@ -231,6 +237,20 @@ function SwitchSpaceDialogInner({ open, onOpenChange }: SwitchSpaceDialogProps) 
             </div>
           </div>
         )}
+
+        <details className="group rounded-lg border border-border/40 px-3.5 py-2.5 text-xs">
+          <summary className="cursor-pointer select-none text-muted-foreground transition-colors hover:text-foreground">
+            {t('sponsorIpHint', { defaultValue: '无法自动发现对方设备？手动输入IP' })}
+          </summary>
+          <div className="pt-2">
+            <IpAddressInput
+              value={sponsorIp}
+              onChange={setSponsorIp}
+              disabled={step !== 'input'}
+              onSubmit={() => void handleSubmit()}
+            />
+          </div>
+        </details>
 
         <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5 text-xs text-muted-foreground">
           <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />

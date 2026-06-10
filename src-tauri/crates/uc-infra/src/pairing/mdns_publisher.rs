@@ -33,6 +33,7 @@ use tracing::{debug, info, warn};
 use super::discovery_constants::{
     compute_code_hash, PAIR_SERVICE_NAME, TXT_CODE_HASH, TXT_EXPIRES_AT_MS, TXT_NODE_ID, TXT_TICKET,
 };
+use crate::network::iroh::is_virtual_bridge_interface;
 
 /// Default mDNS query/announce cadence for pairing. Tighter than the
 /// 10s default `swarm-discovery` ships because pairing is a UX-critical
@@ -186,8 +187,9 @@ fn enumerate_publish_addrs() -> Vec<IpAddr> {
     match if_addrs::get_if_addrs() {
         Ok(ifs) => ifs
             .into_iter()
+            .filter(|i| !i.is_loopback())
+            .filter(|i| !is_virtual_bridge_interface(&i.name))
             .map(|i| i.addr.ip())
-            .filter(|ip| !ip.is_loopback())
             .collect(),
         Err(err) => {
             warn!(error = %err, "if-addrs enumerate failed; mDNS publisher will run without local addresses");

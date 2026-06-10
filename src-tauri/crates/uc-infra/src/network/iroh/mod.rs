@@ -21,6 +21,7 @@ pub mod transfer_progress_adapter;
 pub mod transfer_progress_wire;
 
 pub(crate) use addr_filter::filter_endpoint_addr;
+pub(crate) use addr_filter::is_virtual_bridge_interface;
 pub use blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 pub use clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 pub use clipboard_receiver_adapter::{IrohClipboardReceiverAdapter, IrohClipboardReceiverHandler};

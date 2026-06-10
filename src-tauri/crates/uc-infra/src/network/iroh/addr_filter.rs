@@ -19,14 +19,16 @@ use std::net::{IpAddr, Ipv4Addr};
 use iroh::{EndpointAddr, TransportAddr};
 use tracing::{debug, info, warn};
 
-/// A snapshot of one local LAN interface — IP + netmask — captured at
-/// endpoint-bind time so the hairpin filter (`apply_addr_filter`) can decide
-/// whether a peer candidate IP falls inside one of *our* RFC1918 subnets and
-/// is therefore reachable via direct LAN.
+/// A snapshot of one local LAN interface — IP + netmask — so the hairpin
+/// filter (`apply_addr_filter`) can decide whether a peer candidate IP falls
+/// inside one of *our* RFC1918 subnets and is therefore reachable via direct
+/// LAN.
 ///
-/// Captured once because [`iroh::address_lookup::AddrFilter`] is fixed at
-/// endpoint bind; the user must restart the daemon if they switch wifi /
-/// LAN. That matches the existing constraint on `allow_overlay`.
+/// Initially captured at endpoint-bind time. A background task in
+/// `node.rs::addr_filter_refresh_loop` re-enumerates every 45 seconds and
+/// replaces the `AddrFilter` via `set_addr_filter` when the snapshot changes,
+/// so network interface changes (wifi switch, USB ethernet plug-in) are picked
+/// up without a daemon restart.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LocalLanV4 {
     pub ip: Ipv4Addr,
@@ -54,6 +56,23 @@ pub(crate) fn is_virtual_nic_ip(ip: IpAddr, allow_overlay: bool) -> bool {
             false
         }
     }
+}
+
+/// Returns true if the network interface name matches a known virtual bridge/container
+/// pattern. Used to exclude these interfaces from the hairpin LAN subnet snapshot
+/// and from mDNS/sponsor-ticket address publishing.
+///
+/// macOS: Docker Desktop uses a VM (no kernel bridge); bridge100/vmnet* deferred until reported.
+pub(crate) fn is_virtual_bridge_interface(name: &str) -> bool {
+    // Exact matches
+    if matches!(name, "docker0" | "podman0") {
+        return true;
+    }
+    // Prefix matches for container/VM bridge families
+    let prefixes = [
+        "br-", "veth", "virbr", "lxcbr", "cni", "flannel", "cali", "weave",
+    ];
+    prefixes.iter().any(|p| name.starts_with(p))
 }
 
 fn should_filter_transport_addr(addr: &TransportAddr, allow_overlay: bool) -> bool {
@@ -120,9 +139,10 @@ fn peer_reachable_in_local_lan(addrs: &[TransportAddr], local_lan_v4: &[LocalLan
 /// netmasks) so the hairpin filter can decide whether a peer candidate
 /// falls inside one of our LAN subnets.
 ///
-/// Run once at endpoint-bind time; the result is captured into the
-/// `AddrFilter` closure and is not refreshed afterwards. Switching wifi /
-/// LAN requires a daemon restart (same constraint as `allow_overlay`).
+/// Called at endpoint-bind time for the initial `AddrFilter`, and then
+/// periodically (every 45 s) by the background refresh task in
+/// `node.rs::addr_filter_refresh_loop`. The refresh task runs this via
+/// `spawn_blocking` since `if_addrs::get_if_addrs()` is a blocking syscall.
 ///
 /// Returns an empty vec — and logs a warn — if interface enumeration fails;
 /// the hairpin filter then degrades to "never drop public IPs", i.e. the
@@ -140,9 +160,15 @@ pub(crate) fn enumerate_local_lan_v4() -> Vec<LocalLanV4> {
         }
     };
 
+    let bridge_count = ifaces
+        .iter()
+        .filter(|iface| is_virtual_bridge_interface(&iface.name))
+        .count();
+
     let out: Vec<LocalLanV4> = ifaces
         .into_iter()
         .filter(|iface| !iface.is_loopback())
+        .filter(|iface| !is_virtual_bridge_interface(&iface.name))
         .filter_map(|iface| match iface.addr {
             if_addrs::IfAddr::V4(v4) if v4.ip.is_private() => Some(LocalLanV4 {
                 ip: v4.ip,
@@ -156,9 +182,25 @@ pub(crate) fn enumerate_local_lan_v4() -> Vec<LocalLanV4> {
         target: "iroh.addr_filter",
         count = out.len(),
         subnets = ?out,
+        skipped_bridges = bridge_count,
         "enumerated local LAN v4 subnets for hairpin filter"
     );
     out
+}
+
+/// Collect IPv4 addresses belonging to virtual bridge interfaces.
+/// Called by `filter_endpoint_addr` to also exclude bridge IPs from sponsor tickets.
+/// Not a hot path — only runs during invitation issuance.
+pub(crate) fn enumerate_virtual_bridge_ips() -> std::collections::HashSet<std::net::IpAddr> {
+    let ifaces = match if_addrs::get_if_addrs() {
+        Ok(ifaces) => ifaces,
+        Err(_) => return std::collections::HashSet::new(),
+    };
+    ifaces
+        .into_iter()
+        .filter(|iface| is_virtual_bridge_interface(&iface.name))
+        .map(|iface| iface.addr.ip())
+        .collect()
 }
 
 fn log_dropped_addrs(dropped: &[String], allow_overlay: bool) {
@@ -256,14 +298,20 @@ pub(crate) fn apply_addr_filter<'a>(
 
 /// 过滤完整的 `EndpointAddr`，用于把本端地址写进可交给远端拨号的 ticket。
 pub(crate) fn filter_endpoint_addr(addr: EndpointAddr, allow_overlay: bool) -> EndpointAddr {
+    let bridge_ips = enumerate_virtual_bridge_ips();
     let EndpointAddr { id, addrs } = addr;
     let mut kept = Vec::new();
     let mut dropped = Vec::new();
 
     for addr in addrs {
-        if should_filter_transport_addr(&addr, allow_overlay) {
+        let is_bridge = match &addr {
+            TransportAddr::Ip(socket) => bridge_ips.contains(&socket.ip()),
+            _ => false,
+        };
+        if should_filter_transport_addr(&addr, allow_overlay) || is_bridge {
             if let TransportAddr::Ip(socket) = &addr {
-                dropped.push(socket.to_string());
+                let reason = if is_bridge { "bridge" } else { "virtual" };
+                dropped.push(format!("{}:{}", reason, socket));
             }
         } else {
             kept.push(addr);
@@ -272,4 +320,35 @@ pub(crate) fn filter_endpoint_addr(addr: EndpointAddr, allow_overlay: bool) -> E
 
     log_dropped_addrs(&dropped, allow_overlay);
     EndpointAddr::from_parts(id, kept)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn virtual_bridge_interface_detection() {
+        // Should match
+        assert!(is_virtual_bridge_interface("docker0"));
+        assert!(is_virtual_bridge_interface("podman0"));
+        assert!(is_virtual_bridge_interface("br-abc123def"));
+        assert!(is_virtual_bridge_interface("veth1234567"));
+        assert!(is_virtual_bridge_interface("virbr0"));
+        assert!(is_virtual_bridge_interface("virbr1"));
+        assert!(is_virtual_bridge_interface("lxcbr0"));
+        assert!(is_virtual_bridge_interface("cni0"));
+        assert!(is_virtual_bridge_interface("flannel.1"));
+        assert!(is_virtual_bridge_interface("cali1234"));
+        assert!(is_virtual_bridge_interface("weave"));
+
+        // Should NOT match
+        assert!(!is_virtual_bridge_interface("en0"));
+        assert!(!is_virtual_bridge_interface("eth0"));
+        assert!(!is_virtual_bridge_interface("wlan0"));
+        assert!(!is_virtual_bridge_interface("wlp3s0"));
+        assert!(!is_virtual_bridge_interface("ens33"));
+        assert!(!is_virtual_bridge_interface("lo"));
+        assert!(!is_virtual_bridge_interface("utun3"));
+        assert!(!is_virtual_bridge_interface("bridge0")); // macOS system bridge, NOT a container bridge
+    }
 }

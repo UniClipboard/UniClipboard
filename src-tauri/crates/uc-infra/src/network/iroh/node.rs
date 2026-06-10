@@ -46,7 +46,7 @@ use uc_core::ports::{
 use crate::pairing::{IrohPairingSessionAdapter, PAIRING_ALPN};
 use crate::rendezvous::{RendezvousClient, RendezvousPairingInvitationAdapter};
 
-use super::addr_filter::{apply_addr_filter, enumerate_local_lan_v4};
+use super::addr_filter::{apply_addr_filter, enumerate_local_lan_v4, LocalLanV4};
 use super::blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 use super::clipboard_receiver_adapter::IrohClipboardReceiverAdapter;
@@ -112,6 +112,11 @@ pub struct TransferProgressHandlers {
 pub struct IrohNode {
     endpoint: Arc<Endpoint>,
     router: Router,
+    /// Background task that periodically re-enumerates local LAN interfaces
+    /// and replaces the `AddrFilter` on the endpoint's `AddressLookupServices`
+    /// when the snapshot changes. `None` when the endpoint has no address
+    /// lookup (e.g. test builds that skip mDNS).
+    addr_filter_refresh_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl IrohNode {
@@ -137,6 +142,14 @@ impl IrohNode {
     /// 需要也不应该用激进的硬截断。
     #[instrument(skip_all)]
     pub async fn shutdown(self) {
+        // Step 0: cancel the periodic AddrFilter refresh task so it stops
+        // touching the endpoint before we close it.
+        if let Some(handle) = self.addr_filter_refresh_handle {
+            handle.abort();
+            let _ = handle.await; // wait for clean abort
+            debug!("addr_filter refresh task stopped");
+        }
+
         // Step 1:跑完 iroh 自带的事件驱动关闭。无外层 timeout —— iroh 内部
         // 已经层层有界(详见上面 doc)。
         self.endpoint.close().await;
@@ -364,6 +377,22 @@ fn build_transport_config() -> QuicTransportConfig {
         .build()
 }
 
+/// Build a fresh [`AddrFilter`] from current network state.
+///
+/// Enumerates local LAN interfaces via [`enumerate_local_lan_v4`], captures
+/// the snapshot into the closure, and returns an `AddrFilter` ready to hand
+/// to `Endpoint::builder().addr_filter(...)` or
+/// `AddressLookupServices::set_addr_filter(...)`.
+///
+/// Used both at initial bind (via [`build_addr_filter`]) and for periodic
+/// runtime refresh (the 45-second polling task spawned in
+/// [`IrohNodeBuilder::spawn`]).
+fn build_fresh_addr_filter(allow_overlay: bool, local_lan_v4: Vec<LocalLanV4>) -> AddrFilter {
+    AddrFilter::new(move |addrs: &Vec<TransportAddr>| {
+        apply_addr_filter(addrs, allow_overlay, &local_lan_v4)
+    })
+}
+
 /// Build the `AddrFilter` we hand to `Endpoint::builder().addr_filter(...)`.
 /// The filter is applied at the `AddressLookupServices` layer (see
 /// iroh#3960 / #4010), upstream of every individual lookup service, so a
@@ -372,19 +401,107 @@ fn build_transport_config() -> QuicTransportConfig {
 /// patch magicsock" (issue #486 §三 A).
 ///
 /// `allow_overlay` is captured by the closure so the predicate behaviour is
-/// fixed at endpoint bind time — the iroh `Endpoint` does not support
-/// runtime mutation of address filters; toggling
-/// `Settings.network.allow_overlay_network_addrs` requires a daemon restart
-/// (the same constraint as `disable_relays`).
+/// fixed at endpoint bind time. The LAN subnet snapshot is now periodically
+/// refreshed by the background task in [`IrohNodeBuilder::spawn`] — the
+/// user no longer needs to restart the daemon when switching wifi / LAN.
+/// Toggling `Settings.network.allow_overlay_network_addrs` still requires a
+/// daemon restart (same constraint as `disable_relays`).
 fn build_addr_filter(allow_overlay: bool) -> AddrFilter {
-    // Snapshot local LAN subnets ONCE at endpoint-bind time. The closure
-    // captures the result for the lifetime of the endpoint; switching
-    // wifi/LAN at runtime won't be picked up (same constraint as
-    // `allow_overlay`). See `enumerate_local_lan_v4` doc for rationale.
     let local_lan_v4 = enumerate_local_lan_v4();
-    AddrFilter::new(move |addrs: &Vec<TransportAddr>| {
-        apply_addr_filter(addrs, allow_overlay, &local_lan_v4)
-    })
+    build_fresh_addr_filter(allow_overlay, local_lan_v4)
+}
+
+/// Background loop that periodically re-enumerates local LAN interfaces and
+/// replaces the [`AddrFilter`] on the endpoint when the snapshot changes.
+///
+/// The polling interval (45 s) is a compromise: fast enough to pick up a wifi
+/// switch within a minute, slow enough that the blocking `get_if_addrs` syscall
+/// is negligible overhead. Each tick runs `enumerate_local_lan_v4` on a blocking
+/// thread via [`tokio::task::spawn_blocking`] so the async runtime is never
+/// stalled.
+///
+/// The task logs at `info` when it detects a change and at `debug` on routine
+/// no-change ticks, per `AGENTS.md` §13.3 (background tasks must be observable
+/// and cancellable).
+async fn addr_filter_refresh_loop(endpoint: Arc<Endpoint>, allow_overlay: bool) {
+    /// How often we re-check local LAN interfaces.
+    const POLL_INTERVAL: Duration = Duration::from_secs(45);
+
+    let mut interval = tokio::time::interval(POLL_INTERVAL);
+    interval.tick().await; // skip the first immediate tick
+
+    // Capture the initial snapshot so we can diff on the next tick.
+    let mut prev_snapshot: Vec<(std::net::Ipv4Addr, std::net::Ipv4Addr)> =
+        tokio::task::spawn_blocking(enumerate_local_lan_v4)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .map(|l| (l.ip, l.netmask))
+            .collect();
+    prev_snapshot.sort();
+
+    loop {
+        interval.tick().await;
+
+        let fresh = match tokio::task::spawn_blocking(enumerate_local_lan_v4).await {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(
+                    target: "iroh.addr_filter",
+                    error = %e,
+                    "spawn_blocking for enumerate_local_lan_v4 failed; skipping this tick"
+                );
+                continue;
+            }
+        };
+
+        let mut current: Vec<(std::net::Ipv4Addr, std::net::Ipv4Addr)> =
+            fresh.iter().map(|l| (l.ip, l.netmask)).collect();
+        current.sort();
+
+        if current == prev_snapshot {
+            debug!(
+                target: "iroh.addr_filter",
+                iface_count = current.len(),
+                "periodic LAN interface check — no change"
+            );
+            continue;
+        }
+
+        info!(
+            target: "iroh.addr_filter",
+            old_count = prev_snapshot.len(),
+            new_count = current.len(),
+            "LAN interfaces changed — refreshing AddrFilter"
+        );
+
+        match endpoint.address_lookup() {
+            Ok(lookup) => {
+                let new_filter = build_fresh_addr_filter(allow_overlay, fresh);
+                lookup.set_addr_filter(new_filter);
+                info!(
+                    target: "iroh.addr_filter",
+                    "AddrFilter refreshed successfully"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    target: "iroh.addr_filter",
+                    error = %e,
+                    "failed to access address_lookup for filter refresh — endpoint may be closing"
+                );
+                // If the endpoint is closed, there's no point continuing.
+                break;
+            }
+        }
+
+        prev_snapshot = current;
+    }
+
+    debug!(
+        target: "iroh.addr_filter",
+        "addr_filter refresh loop exiting"
+    );
 }
 
 fn relay_mode_from_config(config: &IrohNodeConfig) -> Result<RelayMode, IrohNodeError> {
@@ -919,15 +1036,32 @@ impl IrohNodeBuilder {
 
     /// Finalize the builder: spawn the [`Router`]. After this point no more
     /// `install_*` calls are allowed.
+    ///
+    /// Also spawns a background task that re-enumerates local LAN interfaces
+    /// every 45 seconds and replaces the `AddrFilter` via
+    /// `AddressLookupServices::set_addr_filter` when the snapshot changes.
+    /// This means users no longer need to restart the daemon after switching
+    /// wifi networks or plugging in USB ethernet — the hairpin filter adapts
+    /// automatically. The task is cancelled in [`IrohNode::shutdown`].
     pub fn spawn(self) -> IrohNode {
         let router = self
             .router_builder
             .expect("router_builder missing — spawn called twice")
             .spawn();
         log_publish_addrs(&self.endpoint, "post-spawn");
+
+        // Spawn the periodic AddrFilter refresh task.
+        let allow_overlay = self.config.allow_overlay_network_addrs;
+        let endpoint_for_refresh = Arc::clone(&self.endpoint);
+        let refresh_handle = tokio::spawn(addr_filter_refresh_loop(
+            endpoint_for_refresh,
+            allow_overlay,
+        ));
+
         IrohNode {
             endpoint: self.endpoint,
             router,
+            addr_filter_refresh_handle: Some(refresh_handle),
         }
     }
 }

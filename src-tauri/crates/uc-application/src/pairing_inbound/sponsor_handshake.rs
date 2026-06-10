@@ -534,9 +534,10 @@ mod tests {
 
     #[async_trait]
     impl PairingSessionPort for RecordingSessionPort {
-        async fn dial_by_invitation(
+        async fn dial_by_invitation_with_hint(
             &self,
             _code: &InvitationCode,
+            _sponsor_addr_hint: Option<&str>,
         ) -> Result<DialOutcome, DialError> {
             unimplemented!()
         }

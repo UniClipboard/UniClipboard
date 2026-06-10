@@ -99,6 +99,9 @@ pub struct IssuePairingInvitationResult {
     /// Server-authoritative expiry; UI should display a countdown from
     /// this value rather than computing its own.
     pub expires_at: DateTime<Utc>,
+    /// LAN IP addresses of this device that the joiner can use for
+    /// manual IP fallback pairing when mDNS discovery fails.
+    pub lan_addresses: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +113,10 @@ pub struct IssuePairingInvitationResult {
 pub struct RedeemPairingInvitationInput {
     pub code: String,
     pub passphrase: String,
+    /// Optional sponsor IP address for manual LAN fallback pairing.
+    /// When mDNS discovery fails, the joiner can enter the sponsor's
+    /// IP address to resolve the ticket via a direct HTTP fetch.
+    pub sponsor_addr_hint: Option<String>,
 }
 
 /// Internal command for [`crate::usecases::pairing::redeem_invitation::RedeemPairingInvitationUseCase`].
@@ -124,6 +131,8 @@ pub(crate) struct RedeemPairingInvitationCommand {
     pub code: InvitationCode,
     /// Same passphrase the sponsor used in A1 `InitializeSpace`.
     pub passphrase: Passphrase,
+    /// Optional sponsor IP address for manual LAN fallback.
+    pub sponsor_addr_hint: Option<String>,
 }
 
 impl From<RedeemPairingInvitationInput> for RedeemPairingInvitationCommand {
@@ -131,6 +140,7 @@ impl From<RedeemPairingInvitationInput> for RedeemPairingInvitationCommand {
         Self {
             code: InvitationCode::new(input.code),
             passphrase: Passphrase::new(input.passphrase),
+            sponsor_addr_hint: input.sponsor_addr_hint,
         }
     }
 }
@@ -203,6 +213,7 @@ pub struct RedeemPairingInvitationResult {
 pub struct SwitchSpaceInput {
     pub code: String,
     pub new_passphrase: String,
+    pub sponsor_addr_hint: Option<String>,
 }
 
 /// Internal command for [`crate::usecases::setup::switch_space::SwitchSpaceUseCase`].
@@ -210,6 +221,7 @@ pub struct SwitchSpaceInput {
 pub(crate) struct SwitchSpaceCommand {
     pub code: InvitationCode,
     pub new_passphrase: Passphrase,
+    pub sponsor_addr_hint: Option<String>,
 }
 
 impl From<SwitchSpaceInput> for SwitchSpaceCommand {
@@ -217,6 +229,7 @@ impl From<SwitchSpaceInput> for SwitchSpaceCommand {
         Self {
             code: InvitationCode::new(input.code),
             new_passphrase: Passphrase::new(input.new_passphrase),
+            sponsor_addr_hint: input.sponsor_addr_hint,
         }
     }
 }

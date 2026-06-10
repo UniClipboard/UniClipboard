@@ -203,7 +203,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // ADR-008 P3-3 severed the uc-bootstrap dependency that previously
     // handled this; the GUI now initializes its own lightweight subscriber
     // (console + JSON file, no Sentry — daemon owns telemetry export).
-    init_gui_tracing();
+    // The returned guard owns the JSON writer thread; it is moved into the
+    // run-loop closure below and dropped at `RunEvent::Exit` so buffered log
+    // lines reach disk before tao's destructor-skipping `process::exit`.
+    let mut json_log_guard = init_gui_tracing();
 
     // ADR-008 P3-3 (B2'-3): the GUI is a pure client of an external `uniclipd`.
     // It assembles ONLY the file-backed ports it needs (settings / setup-status /
@@ -815,6 +818,13 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         let stopped = uc_desktop::daemon_probe::stop_local_daemon_on_full_quit();
                         info!(stopped, "full quit: local daemon stop attempt complete");
                     }
+                    // LAST step before tao calls `process::exit` (which skips
+                    // destructors): drop the JSON writer guard, blocking until
+                    // buffered log lines are on disk. This preserves the tail of
+                    // the log across an updater `app.restart()` — and every other
+                    // clean exit — instead of losing the most diagnostically
+                    // valuable lines (e.g. the update install failure string).
+                    drop(json_log_guard.take());
                 }
                 // macOS: 点击 Dock 图标时，若没有可见窗口则恢复主窗口。
                 #[cfg(target_os = "macos")]
@@ -840,11 +850,16 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 ///
 /// Must be called before any `tracing::info!` / `warn!` / `error!`.
 /// Silently no-ops if a subscriber is already registered (idempotent).
-fn init_gui_tracing() {
-    let Some(app_data_root) = uc_app_paths::app_data_root() else {
-        return;
-    };
+///
+/// Returns the JSON writer's [`uc_observability::WorkerGuard`]. The caller must
+/// keep it alive for the process lifetime and drop it on clean shutdown
+/// (`RunEvent::Exit`) to drain buffered lines before tao's `process::exit`
+/// skips destructors — otherwise the tail of the log (e.g. an update install
+/// failure) is lost. `None` when the app-data root is unavailable or a
+/// subscriber was already registered.
+fn init_gui_tracing() -> Option<uc_observability::WorkerGuard> {
+    let app_data_root = uc_app_paths::app_data_root()?;
     let logs_dir = app_data_root.join("logs");
     let profile = uc_observability::LogProfile::from_env();
-    let _ = uc_observability::init_tracing_subscriber(&logs_dir, profile);
+    uc_observability::init_tracing_subscriber(&logs_dir, profile).ok()
 }

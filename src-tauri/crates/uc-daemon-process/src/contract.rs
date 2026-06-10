@@ -143,18 +143,39 @@ pub fn terminate_and_wait(
 
 #[cfg(windows)]
 fn is_pid_running_win(pid: u32) -> bool {
+    // /FO CSV so presence can be detected locale-independently. The previous
+    // implementation looked for the English "INFO:" no-match banner — on a
+    // localized Windows (e.g. zh-CN prints "信息: 没有运行的任务匹配指定标准。")
+    // that banner never matches, so a dead PID read as alive forever and
+    // `terminate_and_wait` timed out on every update install (field-confirmed:
+    // taskkill had already killed the daemon; only this check was wrong).
     let output = Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+        .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
         .output();
     match output {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            // When PID is absent, tasklist prints a line containing "INFO:".
-            // When PID is present, it prints the process row (no "INFO:").
-            !stdout.contains("INFO:")
+            tasklist_csv_lists_pid(&stdout, pid)
         }
         Err(_) => false,
     }
+}
+
+/// Locale-independent presence check over `tasklist /FO CSV` output.
+///
+/// When the PID exists, tasklist emits a CSV row whose second column is the
+/// PID in quotes: `"uniclipd.exe","36224","Console",...`. When it does not,
+/// tasklist emits a localized info banner ("INFO: ..." / "信息: ..."), which is
+/// not CSV and never contains the quoted PID. Matching on `"<pid>"` therefore
+/// works on every system locale. Split out for unit testing on all platforms.
+#[cfg_attr(not(windows), allow(dead_code))] // only called from the windows-cfg fn above
+fn tasklist_csv_lists_pid(stdout: &str, pid: u32) -> bool {
+    let quoted = format!("\"{pid}\"");
+    stdout.lines().any(|line| {
+        // A real CSV process row starts with a quoted image name; the
+        // localized no-match banner never starts with a quote.
+        line.trim_start().starts_with('"') && line.contains(&quoted)
+    })
 }
 
 #[cfg(test)]
@@ -299,5 +320,46 @@ mod tests {
                 None => thread::sleep(Duration::from_millis(20)),
             }
         }
+    }
+
+    #[test]
+    fn tasklist_csv_detects_running_pid() {
+        let row = "\"uniclipd.exe\",\"36224\",\"Console\",\"1\",\"28,460 K\"\r\n";
+        assert!(tasklist_csv_lists_pid(row, 36224));
+    }
+
+    #[test]
+    fn tasklist_csv_quoting_rejects_partial_pid_match() {
+        // PID 3622 must not match the row for PID 36224 — the quoted form
+        // anchors the full number.
+        let row = "\"uniclipd.exe\",\"36224\",\"Console\",\"1\",\"28,460 K\"\r\n";
+        assert!(!tasklist_csv_lists_pid(row, 3622));
+    }
+
+    #[test]
+    fn tasklist_localized_no_match_banners_read_as_absent() {
+        // The exact field failure: zh-CN tasklist prints a localized banner
+        // with no "INFO:" substring, which the old check misread as "still
+        // running" — every update install then timed out waiting on a PID
+        // that taskkill had already killed.
+        for banner in [
+            "INFO: No tasks are running which match the specified criteria.\r\n",
+            "信息: 没有运行的任务匹配指定标准。\r\n",
+            "INFORMATION: Es werden keine Aufgaben mit den angegebenen Kriterien ausgeführt.\r\n",
+            "",
+        ] {
+            assert!(
+                !tasklist_csv_lists_pid(banner, 36224),
+                "banner misread as running: {banner:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tasklist_banner_containing_digits_is_not_a_false_positive() {
+        // Hypothetical localized banner that happens to mention a number —
+        // only quoted CSV rows may count as presence.
+        let banner = format!("INFO: nothing for 36224 (\"36224\")\r\n");
+        assert!(!tasklist_csv_lists_pid(&banner, 36224));
     }
 }

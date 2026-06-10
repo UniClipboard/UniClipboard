@@ -185,6 +185,69 @@ fn event_kind_tag(req: &CaptureUiEventRequest) -> &'static str {
     }
 }
 
+/// Emit a structured, body-safe diagnostic line for update-lifecycle events.
+///
+/// The generic `analytics ui event captured` line above is intentionally
+/// body-free for privacy. But the update enums (`action` / `outcome` /
+/// `error_kind` / `failure_kind` / `phase` / `delivery_status`) carry **no**
+/// user data — `error_kind` is a bounded `<32`-char identifier (schema doc
+/// §6.1), the rest are fixed discriminants — so recording them is safe.
+///
+/// Why duplicate them into the daemon JSON log when they already flow to
+/// PostHog: when the user has telemetry **off** (the common case) nothing
+/// reaches PostHog, and the GUI's own local log can be lost when an updater
+/// `app.restart()` exits the process before its non-blocking writer flushes.
+/// The daemon log is a separate file that survives the GUI restart, so mirroring
+/// these fields here is the only durable on-device signal for diagnosing a
+/// failing auto-update (e.g. the loop observed in `uniclipboard-daemon.json`:
+/// repeated `check_performed=available` → `action_invoked` → daemon bounce).
+fn log_update_diag(req: &CaptureUiEventRequest) {
+    match req {
+        CaptureUiEventRequest::ActionInvoked {
+            action,
+            outcome,
+            error_kind,
+        } => info!(
+            target: "update_diag",
+            action = ?action,
+            outcome = ?outcome,
+            error_kind = error_kind.as_deref().unwrap_or("-"),
+            "update action invoked"
+        ),
+        CaptureUiEventRequest::CheckPerformed {
+            source,
+            outcome,
+            failure_kind,
+            ..
+        } => info!(
+            target: "update_diag",
+            source = ?source,
+            outcome = ?outcome,
+            failure_kind = ?failure_kind,
+            "update check performed"
+        ),
+        CaptureUiEventRequest::DialogOpened { source, phase, .. } => info!(
+            target: "update_diag",
+            source = ?source,
+            phase = ?phase,
+            "update dialog opened"
+        ),
+        CaptureUiEventRequest::Dismissed { phase, source } => info!(
+            target: "update_diag",
+            phase = ?phase,
+            source = ?source,
+            "update dialog dismissed"
+        ),
+        CaptureUiEventRequest::NotificationShown {
+            delivery_status, ..
+        } => info!(
+            target: "update_diag",
+            delivery_status = ?delivery_status,
+            "update notification shown"
+        ),
+    }
+}
+
 /// POST /analytics/capture
 ///
 /// Decode a GUI UI-interaction event and hand it to the daemon's analytics sink.
@@ -206,6 +269,10 @@ async fn capture_handler(
 ) -> Result<Json<ApiEnvelope<CaptureUiEventResponse>>, ApiError> {
     // Tag only — never log the event body.
     info!(kind = event_kind_tag(&req), "analytics ui event captured");
+    // Additionally mirror the body-safe update fields (outcome / error_kind /
+    // failure_kind / …) into the durable daemon log so a failing auto-update is
+    // diagnosable even with telemetry off and the GUI log lost on restart.
+    log_update_diag(&req);
     state.analytics.capture(into_event(req));
     Ok(Json(ApiEnvelope::now(CaptureUiEventResponse {
         accepted: true,

@@ -307,11 +307,18 @@ jobs:
           fi
 
       - name: package Windows portable zip
-        # Portable ("green") build: the standalone exe + a `portable.dat` marker
-        # that flips the binary into portable mode at runtime (data stored next
-        # to the exe, no install, no system traces). The NSIS installer does NOT
-        # ship the marker, so the same compiled exe serves both forms. Written
-        # under bundle/ so the existing artifact upload glob picks it up.
+        # Portable ("green") build: the standalone exe + the `uniclipd` daemon +
+        # a `portable.dat` marker that flips both binaries into portable mode at
+        # runtime (data stored next to the exe, no install, no system traces).
+        # The NSIS installer does NOT ship the marker, so the same compiled exe
+        # serves both forms. Written under bundle/ so the existing artifact
+        # upload glob picks it up.
+        #
+        # The daemon MUST ship in the zip: the GUI is a pure external-daemon
+        # client (ADR-008 P3-3) and resolves `uniclipd.exe` as a sibling of its
+        # own exe — the NSIS bundle gets it via tauri's externalBin, but this
+        # hand-rolled zip has to copy it explicitly (v0.14.0 shipped without it
+        # and the portable build could not start).
         if: matrix.platform == 'windows-latest'
         shell: bash
         run: |
@@ -342,11 +349,22 @@ jobs:
             exit 1
           fi
 
+          # Daemon sidecar: prepare-daemon-sidecar.mjs built it into the same
+          # release dir before `tauri build`. Hard-fail if missing — a portable
+          # zip without the daemon cannot start at all.
+          DAEMON="$RELEASE_DIR/uniclipd.exe"
+          if [ ! -f "$DAEMON" ]; then
+            echo "::error::uniclipd.exe not found under $RELEASE_DIR — portable zip would be unusable"
+            ls -la "$RELEASE_DIR" || true
+            exit 1
+          fi
+
           STAGE="portable-stage"
           OUT_DIR="$RELEASE_DIR/bundle/portable"
           rm -rf "$STAGE"
           mkdir -p "$STAGE" "$OUT_DIR"
           cp "$EXE" "$STAGE/UniClipboard.exe"
+          cp "$DAEMON" "$STAGE/uniclipd.exe"
           # Marker file: presence next to the exe enables portable mode.
           : > "$STAGE/portable.dat"
           cp packaging/windows/portable/README.txt "$STAGE/README.txt"

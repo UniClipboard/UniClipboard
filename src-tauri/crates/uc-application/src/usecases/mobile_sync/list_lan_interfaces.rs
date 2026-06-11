@@ -107,7 +107,10 @@ impl ListLanInterfacesUseCase {
 /// 链路本地 169.254/16、Clash fake-ip 198.18/15 等始终排除：它们要么本身
 /// 就是"看似可达实际不通"的常见陷阱来源，要么与本机 LAN 同步场景不相
 /// 关。
-fn is_lan_candidate(iface: &LanInterface) -> bool {
+/// `register_device.rs` 的多候选地址收集（`collect_advertise_urls`）复用本
+/// 判定 —— 下拉展示与进码候选共用同一口径，避免"列表里看得到、码里却
+/// 没有"的不一致。
+pub(crate) fn is_lan_candidate(iface: &LanInterface) -> bool {
     if iface.is_loopback {
         return false;
     }

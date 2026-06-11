@@ -31,9 +31,11 @@ use uc_core::ports::{
     ClockPort, LanInterfaceProbeError, LanInterfaceProbePort, MobileCredentialsMinterPort,
     MobileDeviceRepositoryPort, PasswordHasherError, PasswordHasherPort, SettingsPort,
 };
+use uc_core::settings::model::MobileSyncSettings;
 use uc_observability::analytics::{AnalyticsPort, Event};
 
 use super::connect_uri::{build_mobile_sync_connect_uri, ConnectUriError, ConnectUriOther};
+use super::list_lan_interfaces::is_lan_candidate;
 
 // ─── public-shaped (input / output / error) ─────────────────────────────
 
@@ -161,9 +163,9 @@ pub enum RegisterMobileShortcutDeviceError {
     #[error("settings load failed: {0}")]
     SettingsLoadFailed(String),
 
-    /// `lan_advertise_ip` 为 None(用户选了"自动"),但本机检测不到任何
-    /// 可用的 RFC1918 私有 LAN IPv4 地址 —— iPhone 没有可达的 base_url。
-    /// 用户需先连入 LAN 或在配置里手动指定 IP。
+    /// 没有任何可进码的候选地址:无公网入口、无钉死 IP,且本机检测不到
+    /// 任何合格网卡(RFC1918 / Tailscale CGNAT)—— iPhone 没有可达的
+    /// base_url。用户需先连入 LAN 或在配置里手动指定 IP / 公网地址。
     #[error("no usable LAN interface for auto-pick base_url")]
     NoLanInterfaceAvailable,
 
@@ -176,6 +178,11 @@ pub enum RegisterMobileShortcutDeviceError {
 
 /// 设备标签最大长度。
 const MAX_LABEL_LEN: usize = 64;
+
+/// `lan_port` 缺省值（SPEC §3.2）。
+const DEFAULT_LAN_PORT: u16 = 42720;
+/// `urls` 候选去重后的截断上限（`specs/mobile-sync-qr-multi-url.md` §5.4）。
+const MAX_ADVERTISE_URLS: usize = 20;
 
 /// 自定义 username 最小长度。
 pub const MIN_USERNAME_LEN: usize = 6;
@@ -231,51 +238,95 @@ impl RegisterMobileShortcutDeviceUseCase {
         }
     }
 
-    /// 在 `lan_advertise_ip = None`("自动")时,挑一个 RFC1918 LAN IPv4 地址
-    /// 用作 iPhone base_url。daemon 永远绑 `0.0.0.0`,所以不影响 bind;但
-    /// iPhone 必须看到一个真实可达的地址,否则 SyncClipboard 永远连不通。
+    /// 收集要写进二维码的全部候选地址（`specs/mobile-sync-qr-multi-url.md` §5），
+    /// 产出有序、去重、截断后的列表；`urls[0]` 即 v1 语义的主 `url`。
     ///
-    /// 排序口径与 [`ListLanInterfacesUseCase`] 保持一致:10/8 → 172.16/12
-    /// → 192.168/16,段内字典序;取第一个即可。
+    /// 收集顺序：
+    /// 1. 公网入口 `lan_advertise_base_url`（Some 时，原样，恒排首位）；
+    /// 2. 用户钉死的 `lan_advertise_ip`（Some 时）—— 无公网入口时它就是
+    ///    `urls[0]`，与 v1 的 `url` 取值保持一致；
+    /// 3. 全部合格网卡 IP：[`is_lan_candidate`] 宽口径（RFC1918 + Tailscale
+    ///    CGNAT 100.64/10），剔除容器虚拟网卡
+    ///    （[`is_virtual_container_iface`]），按 10/8 → 172.16/12 →
+    ///    192.168/16 → 100.64/10 桶序、段内 IPv4 数值序。
     ///
-    /// [`ListLanInterfacesUseCase`]: super::list_lan_interfaces::ListLanInterfacesUseCase
-    async fn auto_pick_advertise_ip(&self) -> Result<String, RegisterMobileShortcutDeviceError> {
-        let raw = self
-            .lan_interface_probe
-            .list_interfaces()
-            .await
-            .map_err(translate_probe_error)?;
+    /// 网卡探测失败时：若 1/2 已有候选则降级继续（v1 在这两条路径下根本
+    /// 不探测网卡，不能让探测失败反过来弄死老路径），否则照旧报
+    /// [`RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed`]。
+    async fn collect_advertise_urls(
+        &self,
+        mobile_sync: &MobileSyncSettings,
+    ) -> Result<Vec<String>, RegisterMobileShortcutDeviceError> {
+        let port = mobile_sync.lan_port.unwrap_or(DEFAULT_LAN_PORT);
+        let mut candidates: Vec<String> = Vec::new();
 
-        let mut candidates: Vec<LanInterface> =
-            raw.into_iter().filter(is_rfc1918_lan_candidate).collect();
-        candidates.sort_by(|a, b| {
-            rfc1918_bucket(&a.ipv4.octets())
-                .cmp(&rfc1918_bucket(&b.ipv4.octets()))
-                .then_with(|| a.ipv4.cmp(&b.ipv4))
-        });
+        if let Some(url) = mobile_sync.lan_advertise_base_url.clone() {
+            // 已在 update_settings 写入时校验 + 归一化（无尾斜杠）。
+            candidates.push(url);
+        }
+        if let Some(ip) = mobile_sync.lan_advertise_ip.as_deref() {
+            candidates.push(format!("http://{ip}:{port}"));
+        }
 
-        candidates
-            .into_iter()
-            .next()
-            .map(|iface| iface.ipv4.to_string())
-            .ok_or(RegisterMobileShortcutDeviceError::NoLanInterfaceAvailable)
+        match self.lan_interface_probe.list_interfaces().await {
+            Ok(raw) => {
+                let mut nics: Vec<LanInterface> = raw
+                    .into_iter()
+                    .filter(|iface| is_lan_candidate(iface) && !is_virtual_container_iface(iface))
+                    .collect();
+                nics.sort_by(|a, b| {
+                    advertise_bucket(&a.ipv4.octets())
+                        .cmp(&advertise_bucket(&b.ipv4.octets()))
+                        .then_with(|| a.ipv4.cmp(&b.ipv4))
+                });
+                candidates.extend(
+                    nics.into_iter()
+                        .map(|iface| format!("http://{}:{port}", iface.ipv4)),
+                );
+            }
+            Err(err) if !candidates.is_empty() => {
+                warn!(
+                    error = %err,
+                    "lan interface probe failed; QR will only carry configured advertise entries"
+                );
+            }
+            Err(err) => return Err(translate_probe_error(err)),
+        }
+
+        // 按最终字符串去重，保留靠前位置（公网入口/钉死 IP 撞上网卡 URL 时
+        // 只留一份且位置不变）。
+        let mut seen = std::collections::HashSet::new();
+        candidates.retain(|url| seen.insert(url.clone()));
+
+        if candidates.is_empty() {
+            return Err(RegisterMobileShortcutDeviceError::NoLanInterfaceAvailable);
+        }
+
+        // 截断不得静默（规格 §5.4）。
+        if candidates.len() > MAX_ADVERTISE_URLS {
+            warn!(
+                dropped = candidates.len() - MAX_ADVERTISE_URLS,
+                max = MAX_ADVERTISE_URLS,
+                "advertise url candidates exceed cap; truncating"
+            );
+            candidates.truncate(MAX_ADVERTISE_URLS);
+        }
+
+        Ok(candidates)
     }
 
     /// 登记一台新 iPhone Shortcut 设备。
     ///
-    /// base_url 由 settings 决定:
+    /// 候选地址由 settings 决定（[`collect_advertise_urls`]）:
     /// `lan_listen_enabled=false` → `LanListenerDisabled`(用户没开 LAN);
-    /// `lan_advertise_base_url=Some(url)` → 直接用该完整地址(优先级最高,
-    ///   不需要本机有 LAN 网卡);
-    /// 否则回退 LAN 形态:
-    /// `lan_advertise_ip=Some(ip)` → 用该 IP;
-    /// `lan_advertise_ip=None` → 自动挑一个 RFC1918 LAN IPv4
-    ///   ([`auto_pick_advertise_ip`]),没候选时 → `NoLanInterfaceAvailable`。
+    /// 否则 `urls = [公网入口?, 钉死 IP?, ...全部合格网卡 IP]`,
+    /// `base_url = urls[0]`(v1 主 `url` 语义不变);
+    /// 全空时 → `NoLanInterfaceAvailable`。
     ///
     /// 不依赖 `MobileSyncEndpointInfoPort`(那是 daemon 进程内运行时状
     /// 态, CLI 进程不可达)。
     ///
-    /// [`auto_pick_advertise_ip`]: Self::auto_pick_advertise_ip
+    /// [`collect_advertise_urls`]: Self::collect_advertise_urls
     ///
     /// happy path 不可中途部分提交:repository 写成功后, 后续二维码渲染
     /// 失败会留下"已登记但用户拿不到 install URL"的孤儿记录。v1 接受
@@ -321,28 +372,13 @@ impl RegisterMobileShortcutDeviceUseCase {
         if !settings.mobile_sync.lan_listen_enabled {
             return Err(RegisterMobileShortcutDeviceError::LanListenerDisabled);
         }
-        // base_url 的真相来源有两条,`lan_advertise_base_url` 优先:
-        //
-        // 1. `lan_advertise_base_url=Some(url)` —— 用户提供了完整广告地址
-        //    (scheme + host + 可选 port)。直接用它,不需要本机有 LAN 网卡 ——
-        //    典型场景:公网部署时 install URL / 二维码要指向前置的 TLS 反向
-        //    代理(如 Caddy 的 `https://域名`),内网仍是明文 mobile_lan
-        //    listener。该地址已在 update_settings 写入时校验 + 归一化。
-        // 2. `lan_advertise_base_url=None` —— 回退 LAN 形态。`lan_advertise_ip`
-        //    为 None("自动")时让 daemon 替他挑一个 RFC1918 LAN IP;daemon
-        //    永远 bind `0.0.0.0:lan_port`,但 iPhone 得到的 base_url 必须是
-        //    真实可达的 LAN 地址(0.0.0.0 / 127.0.0.1 在 iPhone 上都连不通)。
-        let base_url = match settings.mobile_sync.lan_advertise_base_url.clone() {
-            Some(url) => url,
-            None => {
-                let advertise_ip: String = match settings.mobile_sync.lan_advertise_ip.clone() {
-                    Some(ip) => ip,
-                    None => self.auto_pick_advertise_ip().await?,
-                };
-                let port = settings.mobile_sync.lan_port.unwrap_or(42720);
-                format!("http://{advertise_ip}:{port}")
-            }
-        };
+        // 候选地址全收集(specs/mobile-sync-qr-multi-url.md §5):公网入口 +
+        // 钉死 IP + 全部合格网卡,一并进码让扫码端逐个探活;`urls[0]` 即
+        // v1 语义的主 `url`,老客户端只读它。daemon 永远 bind
+        // `0.0.0.0:lan_port`,但 iPhone 得到的候选必须是真实可达的地址
+        // (0.0.0.0 / 127.0.0.1 在 iPhone 上都连不通)。
+        let advertise_urls = self.collect_advertise_urls(&settings.mobile_sync).await?;
+        let base_url = advertise_urls[0].clone();
 
         // 2. 颁发凭据 —— minter 一次性给 4 项 baseline;然后按 input
         //    选择性覆盖 username / (password + password_hash)。device_id
@@ -417,8 +453,9 @@ impl RegisterMobileShortcutDeviceUseCase {
             proto: Some("syncclipboard".to_string()),
             install: None,
         };
-        let connect_uri = build_mobile_sync_connect_uri(&base_url, &username, &password, other)
-            .map_err(translate_connect_uri_error)?;
+        let connect_uri =
+            build_mobile_sync_connect_uri(&advertise_urls, &username, &password, other)
+                .map_err(translate_connect_uri_error)?;
 
         let install_url = SYNC_CLIPBOARD_EX_INSTALL_URL.to_string();
         let (qr_code_png_bytes, qr_code_ascii) = render_qr_code(&connect_uri)?;
@@ -506,25 +543,35 @@ fn validate_password_length(password: &str) -> Result<(), RegisterMobileShortcut
     Ok(())
 }
 
-/// 自动挑选用的 RFC1918 过滤口径(与 `list_lan_interfaces` use case 一致)。
-fn is_rfc1918_lan_candidate(iface: &LanInterface) -> bool {
-    if iface.is_loopback {
-        return false;
+/// 容器虚拟网卡剔除（规格 §5.2，风险收敛见规格 §10）。
+///
+/// Docker 默认网桥落在 RFC1918 的 172.17/16 段内，仅按 IP 段过滤会被误纳
+/// 入进码 —— 手机永远连不上容器网桥地址。按接口名判定：
+/// - `docker0`（默认网桥）、`veth*`（容器对端）—— 名字即可断定，直接剔除；
+/// - `br-*` 既可能是 Docker 自定义网桥也可能是真实 LAN 网桥（如用户自建
+///   桥接），仅当其地址同时落在 Docker 默认地址池所在的 172.16/12 段时才
+///   剔除，避免误伤 `br-` 命名的真实网桥。
+fn is_virtual_container_iface(iface: &LanInterface) -> bool {
+    if iface.name == "docker0" || iface.name.starts_with("veth") {
+        return true;
     }
-    let octets = iface.ipv4.octets();
-    matches!(
-        octets,
-        [10, _, _, _] | [172, 16..=31, _, _] | [192, 168, _, _]
-    )
+    if iface.name.starts_with("br-") {
+        let octets = iface.ipv4.octets();
+        return matches!(octets, [172, 16..=31, _, _]);
+    }
+    false
 }
 
-/// 排序桶:10.x = 0,172.16.x = 1,192.168.x = 2,其它 = 3。
-fn rfc1918_bucket(octets: &[u8; 4]) -> u8 {
+/// 排序桶（规格 §5.3）:10/8 = 0,172.16/12 = 1,192.168/16 = 2,
+/// 100.64/10（Tailscale CGNAT）= 3,其它 = 4(经 `is_lan_candidate`
+/// 过滤后理论上不存在)。与 `list_lan_interfaces` 的下拉排序口径一致。
+fn advertise_bucket(octets: &[u8; 4]) -> u8 {
     match octets {
         [10, _, _, _] => 0,
         [172, 16..=31, _, _] => 1,
         [192, 168, _, _] => 2,
-        _ => 3,
+        [100, b, _, _] if (b & 0xc0) == 0x40 => 3,
+        _ => 4,
     }
 }
 
@@ -1304,8 +1351,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auto_skips_loopback_and_non_rfc1918() {
-        // 全是被剔除的接口 → 退化成"没有可用 LAN" → NoLanInterfaceAvailable。
+    async fn auto_accepts_cgnat_when_no_rfc1918_available() {
+        // 多候选口径(规格 §5.2)纳入 Tailscale CGNAT:loopback / 公网 /
+        // 链路本地仍被剔除,但 100.64/10 现在是合法候选 —— 只剩它时
+        // 不再报 NoLanInterfaceAvailable,而是用它当 base_url。
         let probe = probe_returning(vec![
             LanInterface {
                 name: "lo0".into(),
@@ -1314,6 +1363,23 @@ mod tests {
             },
             iface("en_pub", [8, 8, 8, 8]),
             iface("en_cgnat", [100, 64, 1, 5]),
+            iface("en_link", [169, 254, 1, 5]),
+        ]);
+        let uc = build_uc_auto(probe);
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        assert_eq!(out.base_url, "http://100.64.1.5:42720");
+    }
+
+    #[tokio::test]
+    async fn auto_fails_when_no_candidate_at_all() {
+        // 全是被剔除的接口 → 退化成"没有可用 LAN" → NoLanInterfaceAvailable。
+        let probe = probe_returning(vec![
+            LanInterface {
+                name: "lo0".into(),
+                ipv4: std::net::Ipv4Addr::new(127, 0, 0, 1),
+                is_loopback: true,
+            },
+            iface("en_pub", [8, 8, 8, 8]),
             iface("en_link", [169, 254, 1, 5]),
         ]);
         let uc = build_uc_auto(probe);
@@ -1332,6 +1398,154 @@ mod tests {
             err,
             RegisterMobileShortcutDeviceError::LanInterfaceProbeFailed(ref s) if s.contains("ifaddr crashed")
         ));
+    }
+
+    // ── tests: 多候选 urls(specs/mobile-sync-qr-multi-url.md §9) ──────
+
+    /// 任意 settings + probe 组合的装配,多候选测试专用。
+    fn build_uc_with(
+        settings: MockSettingsPortImpl,
+        probe: MockProbe,
+    ) -> RegisterMobileShortcutDeviceUseCase {
+        RegisterMobileShortcutDeviceUseCase::new(
+            Arc::new(deterministic_minter()),
+            Arc::new(recording_hasher()),
+            Arc::new(empty_device_repo()),
+            Arc::new(settings),
+            Arc::new(clock_at(1_000)),
+            Arc::new(probe),
+            Arc::new(CapturingAnalyticsSink::default()),
+        )
+    }
+
+    /// 从 execute 输出的 connect_uri 反解出 payload 的 urls 字段。
+    fn parsed_urls(out: &RegisterMobileShortcutDeviceOutput) -> (String, Vec<String>) {
+        let payload = parse_mobile_sync_connect_uri(&out.connect_uri).expect("parse ok");
+        (payload.url, payload.urls)
+    }
+
+    #[tokio::test]
+    async fn urls_carry_all_nics_in_bucket_order_and_url_is_first() {
+        // 故意打乱顺序;期望桶序 10/8 → 172.16/12 → 192.168/16 → 100.64/10,
+        // 且 payload.url == urls[0] == output.base_url。
+        let probe = probe_returning(vec![
+            iface("en1", [192, 168, 1, 5]),
+            iface("utun3", [100, 64, 0, 5]),
+            iface("en2", [10, 0, 0, 5]),
+            iface("en3", [172, 16, 0, 5]),
+        ]);
+        let uc = build_uc_with(settings_port_auto(), probe);
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        let (url, urls) = parsed_urls(&out);
+        assert_eq!(
+            urls,
+            vec![
+                "http://10.0.0.5:42720",
+                "http://172.16.0.5:42720",
+                "http://192.168.1.5:42720",
+                "http://100.64.0.5:42720",
+            ]
+        );
+        assert_eq!(url, urls[0]);
+        assert_eq!(out.base_url, urls[0]);
+    }
+
+    #[tokio::test]
+    async fn urls_exclude_docker_virtual_interfaces() {
+        // docker0 / veth* 按名剔除;br-* 仅在 172.16/12 段内剔除 ——
+        // br- 命名的真实 192.168 网桥必须保留(规格 §10 风险收敛)。
+        let probe = probe_returning(vec![
+            iface("docker0", [172, 17, 0, 1]),
+            iface("br-12af3c9d", [172, 18, 0, 1]),
+            iface("veth1a2b", [10, 99, 0, 1]),
+            iface("en0", [192, 168, 1, 5]),
+            iface("br-lan", [192, 168, 2, 1]),
+        ]);
+        let uc = build_uc_with(settings_port_auto(), probe);
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        let (_, urls) = parsed_urls(&out);
+        assert_eq!(
+            urls,
+            vec!["http://192.168.1.5:42720", "http://192.168.2.1:42720"]
+        );
+    }
+
+    #[tokio::test]
+    async fn urls_put_public_entry_first_then_pinned_ip_then_nics() {
+        // settings_port_base_url: 公网入口 + 钉死 IP 192.168.1.5 同时存在。
+        // 顺序必须是 公网入口 → 钉死 IP → 其余网卡(补充决策 2026-06-11)。
+        let probe = probe_returning(vec![iface("en2", [10, 0, 0, 5])]);
+        let uc = build_uc_with(settings_port_base_url(), probe);
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        assert_eq!(out.base_url, "https://clip.example.com");
+        let (url, urls) = parsed_urls(&out);
+        assert_eq!(
+            urls,
+            vec![
+                "https://clip.example.com",
+                "http://192.168.1.5:42720",
+                "http://10.0.0.5:42720",
+            ]
+        );
+        assert_eq!(url, urls[0]);
+    }
+
+    #[tokio::test]
+    async fn urls_keep_pinned_ip_first_and_dedupe_matching_nic() {
+        // 无公网入口时钉死 IP 即 urls[0](v1 url 语义不变);它与网卡列表
+        // 重复时只留靠前一份。
+        let probe = probe_returning(vec![
+            iface("en1", [192, 168, 1, 5]), // 与钉死 IP 相同 → 去重
+            iface("en2", [10, 0, 0, 5]),
+        ]);
+        let uc = build_uc_with(settings_port_lan_advertise(true), probe);
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        assert_eq!(out.base_url, "http://192.168.1.5:42720");
+        let (_, urls) = parsed_urls(&out);
+        assert_eq!(
+            urls,
+            vec!["http://192.168.1.5:42720", "http://10.0.0.5:42720"]
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_failure_degrades_to_configured_entries_only() {
+        // v1 在公网入口/钉死 IP 路径下根本不探测网卡 —— 探测失败不能把
+        // 这两条老路径弄死,降级为只带已配置候选。
+        let uc = build_uc_with(settings_port_base_url(), probe_failing());
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        assert_eq!(out.base_url, "https://clip.example.com");
+        let (_, urls) = parsed_urls(&out);
+        assert_eq!(
+            urls,
+            vec!["https://clip.example.com", "http://192.168.1.5:42720"]
+        );
+    }
+
+    #[tokio::test]
+    async fn urls_truncate_to_cap_20() {
+        // 25 个合格网卡 → 去重后截断到 20(规格 §5.4;tracing 告警不在
+        // 此断言范围)。
+        let nics: Vec<LanInterface> = (1..=25u8)
+            .map(|i| iface(&format!("en{i}"), [10, 0, 0, i]))
+            .collect();
+        let uc = build_uc_with(settings_port_auto(), probe_returning(nics));
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        let (_, urls) = parsed_urls(&out);
+        assert_eq!(urls.len(), 20);
+        assert_eq!(urls[0], "http://10.0.0.1:42720");
+        assert_eq!(urls[19], "http://10.0.0.20:42720");
+    }
+
+    #[tokio::test]
+    async fn single_candidate_emits_v1_byte_identical_payload() {
+        // 只有一个候选时 payload 不写 urls 字段 —— 与 v1 字节完全一致
+        // (向后兼容硬约束,规格 §4.3)。
+        let probe = probe_returning(vec![iface("en1", [192, 168, 1, 5])]);
+        let uc = build_uc_with(settings_port_auto(), probe);
+        let out = uc.execute(label_only("iPhone")).await.expect("ok");
+        let (_, urls) = parsed_urls(&out);
+        assert!(urls.is_empty(), "single candidate must not emit urls");
     }
 
     // ── tests: connect URI error translation ──────────────────────────

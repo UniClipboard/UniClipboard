@@ -435,7 +435,7 @@ const AboutSection: React.FC = () => {
                   <div className="text-sm font-medium text-foreground">
                     {t('update.releaseNotes')}
                   </div>
-                  <div className="max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  <div className="scrollbar-thin max-h-48 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                     <ReleaseNotes content={updateInfo?.body ?? ''} fallback={t('update.noNotes')} />
                   </div>
                 </div>

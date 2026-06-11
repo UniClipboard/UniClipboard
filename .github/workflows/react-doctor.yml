@@ -20,6 +20,6 @@ jobs:
       # "error: too many arguments. Expected 1 argument but got 2." Pin the action commit and
       # the CLI version to a compatible pre-consolidation pair (blocking defaults to advisory).
       # Revisit once upstream ships a release where the action and CLI flag interfaces agree.
-      - uses: millionco/react-doctor@486c68f65511 # interface-compatible with react-doctor@0.5.1
+      - uses: millionco/react-doctor@486c68f655117819dc268f2b0715ed5b5bebce84 # interface-compatible with react-doctor@0.5.1
         with:
           version: "0.5.1"

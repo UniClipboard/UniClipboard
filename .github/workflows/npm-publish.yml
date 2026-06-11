@@ -1,0 +1,186 @@
+name: 'npm Publish'
+run-name: >-
+  ${{ github.event_name == 'release'
+    && format('npm-publish-{0}', github.event.release.tag_name)
+    || format('npm-publish-manual-{0}', inputs.version) }}
+
+# Publish the CLI to npm only after a release transitions to `published`,
+# mirroring homebrew-tap.yml: the Release workflow leaves stable releases in
+# draft for human review, and npm publishes are irreversible — we must never
+# push a draft that might get discarded.
+#
+# Layout (esbuild/biome pattern): 5 platform packages
+# (@uniclipboard/cli-{platform}-{arch}, each shipping uniclip + uniclipd) and
+# one main package (uniclipboard) whose JS launcher picks the matching one via
+# optionalDependencies. Assembly lives in scripts/build-npm-packages.mjs.
+#
+# Channel mapping: the auto path publishes stable releases only (same policy
+# as homebrew-tap.yml — alpha releases are frequent and npm versions are
+# permanent). Prereleases can still be published via workflow_dispatch; their
+# version suffix maps to the npm dist-tag (X.Y.Z-alpha.N → `alpha`), and only
+# stable gets `latest`.
+#
+# `workflow_dispatch` is exposed for debugging / re-runs against an existing
+# published release. Already-published package versions are skipped, so the
+# whole job is idempotent.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (不带 v 前缀, e.g. 0.14.1)'
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish npm packages
+    # Skip prereleases on the auto path; manual dispatch always runs so any
+    # published release (including prereleases) can be pushed deliberately.
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for npm provenance attestation (--provenance).
+      id-token: write
+    steps:
+      - name: Resolve version and dist-tag
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${INPUT_VERSION#v}"
+          else
+            VERSION="${TAG#v}"
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "Could not derive version (event=$EVENT_NAME tag=$TAG input=$INPUT_VERSION)" >&2
+            exit 1
+          fi
+
+          # X.Y.Z-alpha.N → dist-tag "alpha"; plain X.Y.Z → "latest".
+          if [[ "$VERSION" =~ -([a-zA-Z]+) ]]; then
+            DIST_TAG="${BASH_REMATCH[1]}"
+          else
+            DIST_TAG="latest"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION (dist-tag: $DIST_TAG)"
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # Release path: pin to the release tag so the launcher / assembly
+          # script match the binaries being published. Dispatch path: use the
+          # ref the workflow was dispatched on — older tags predate
+          # scripts/build-npm-packages.mjs and npm/, so checking out the tag
+          # would break exactly the debugging runs dispatch exists for.
+          ref: ${{ github.event_name == 'release' && format('v{0}', steps.resolve.outputs.version) || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download CLI release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          gh release download "v${VERSION}" \
+            --repo "${{ github.repository }}" \
+            --pattern 'uniclipboard-cli-*' \
+            --pattern 'SHA256SUMS.txt' \
+            --dir release-assets
+          ls -la release-assets
+
+      - name: Verify checksums
+        run: |
+          cd release-assets
+          # SHA256SUMS.txt covers every release asset; we only downloaded the
+          # CLI archives, so ignore the rest.
+          sha256sum -c --ignore-missing SHA256SUMS.txt
+          # --ignore-missing exits 0 even when NOTHING matched; make sure the
+          # CLI archives were actually verified.
+          VERIFIED=$(sha256sum -c --ignore-missing SHA256SUMS.txt 2>/dev/null | grep -c ': OK$')
+          EXPECTED=$(ls uniclipboard-cli-* | wc -l)
+          if [ "$VERIFIED" -ne "$EXPECTED" ]; then
+            echo "Only $VERIFIED of $EXPECTED CLI archives are covered by SHA256SUMS.txt" >&2
+            exit 1
+          fi
+
+      - name: Assemble npm packages
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          node scripts/build-npm-packages.mjs \
+            --version "$VERSION" \
+            --artifacts-dir release-assets \
+            --out npm-dist
+          ls -R npm-dist
+
+      - name: Smoke test linux-x64 binary
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          # The linux-x64 binary is a static (non-PIE) musl ELF, so it runs on
+          # the glibc runner directly.
+          REPORTED=$(./npm-dist/cli-linux-x64/bin/uniclip --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?' | head -1)
+          echo "uniclip --version reports: $REPORTED (expected: $VERSION)"
+          if [ "$REPORTED" != "$VERSION" ]; then
+            echo "Binary version does not match release version" >&2
+            exit 1
+          fi
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ steps.resolve.outputs.dist_tag }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not configured" >&2
+            exit 1
+          fi
+
+          # Platform packages first, main package last (publish-order.txt),
+          # so `npm install uniclipboard` never sees missing optional deps.
+          while IFS= read -r dir; do
+            NAME=$(node -p "require('./npm-dist/${dir}/package.json').name")
+            if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+              echo "${NAME}@${VERSION} already published — skipping"
+              continue
+            fi
+            echo "Publishing ${NAME}@${VERSION} (dist-tag: ${DIST_TAG})"
+            npm publish "./npm-dist/${dir}" \
+              --provenance \
+              --access public \
+              --tag "$DIST_TAG"
+          done < npm-dist/publish-order.txt
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          DIST_TAG: ${{ steps.resolve.outputs.dist_tag }}
+        run: |
+          {
+            echo "## npm Publish :package:"
+            echo ""
+            echo "**Version:** ${VERSION}"
+            echo "**dist-tag:** ${DIST_TAG}"
+            echo ""
+            echo "\`\`\`sh"
+            echo "npm install -g uniclipboard@${VERSION}"
+            echo "\`\`\`"
+            echo ""
+            echo "https://www.npmjs.com/package/uniclipboard"
+          } >> "$GITHUB_STEP_SUMMARY"

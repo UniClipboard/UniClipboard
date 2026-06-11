@@ -91,6 +91,11 @@ jobs:
           node-version: lts/*
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Update npm for trusted publishing
+        # OIDC trusted publishing requires npm >= 11.5.1; pin to latest to be
+        # explicit rather than relying on whatever the runner image bundles.
+        run: npm install -g npm@latest && npm --version
+
       - name: Download CLI release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -142,16 +147,17 @@ jobs:
           fi
 
       - name: Publish to npm
+        # Auth is OIDC trusted publishing (id-token: write + npm >= 11.5.1) —
+        # no NPM_TOKEN. Tokens are a dead end here: npm requires 2FA/OTP for
+        # token publishes and the granular-token "bypass 2FA" flag is broken
+        # server-side (npm/cli#8869, npm/cli#9268). Each of the six packages
+        # must have this repo + workflow configured as a Trusted Publisher on
+        # npmjs.com (Settings → Trusted Publisher), which is only possible
+        # after the package's first (manual, local) publish.
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DIST_TAG: ${{ steps.resolve.outputs.dist_tag }}
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN secret is not configured" >&2
-            exit 1
-          fi
-
           # Platform packages first, main package last (publish-order.txt),
           # so `npm install uniclipboard` never sees missing optional deps.
           while IFS= read -r dir; do

@@ -9,12 +9,16 @@ Six packages per release, following the esbuild/biome pattern:
 
 | Package | Contents |
 | --- | --- |
-| `uniclipboard` | JS launcher only (`launcher.js`); selects the platform package via `optionalDependencies` |
+| `@uniclipboard/cli` | JS launcher only (`launcher.mjs`); selects the platform package via `optionalDependencies` |
 | `@uniclipboard/cli-darwin-arm64` | `bin/uniclip` + `bin/uniclipd` (aarch64-apple-darwin) |
 | `@uniclipboard/cli-darwin-x64` | same (x86_64-apple-darwin) |
 | `@uniclipboard/cli-linux-arm64` | same (aarch64-unknown-linux-musl, static) |
 | `@uniclipboard/cli-linux-x64` | same (x86_64-unknown-linux-musl, static) |
 | `@uniclipboard/cli-win32-x64` | `bin/uniclip.exe` + `bin/uniclipd.exe` (x86_64-pc-windows-msvc) |
+
+The main package is scoped because the unscoped name `uniclipboard` is
+permanently rejected by npm's typosquatting rule (E403: too similar to the
+existing `uni-clipboard` — names are compared with punctuation stripped).
 
 Only `npm/uniclipboard/` is checked in (with `0.0.0-dev` placeholders).
 Platform packages are generated at publish time by
@@ -40,16 +44,22 @@ manually for any published release, including prereleases. dist-tag is
 derived from the version suffix: `0.15.0-alpha.3` → `alpha`, stable →
 `latest`. Re-runs are idempotent (already-published versions are skipped).
 
-## One-time setup
+## Auth: OIDC trusted publishing (no token)
 
-1. Create the npm org `uniclipboard` (needed for the `@uniclipboard` scope):
-   https://www.npmjs.com/org/create
-2. Create a granular automation token with read/write access to the
-   `uniclipboard` package and the `@uniclipboard` scope.
-3. Add it as the `NPM_TOKEN` repository secret.
+CI auth is npm [trusted publishing](https://docs.npmjs.com/trusted-publishers/)
+via GitHub Actions OIDC — there is no NPM_TOKEN. Token-based publishing is a
+dead end: npm requires 2FA/OTP for token publishes and the granular-token
+"bypass 2FA" flag is broken server-side (npm/cli#8869, npm/cli#9268).
 
-The very first publish of each package must create it; after that, consider
-enabling npm "trusted publishing" (OIDC) per package and dropping the token.
+Each of the six packages must have a Trusted Publisher configured at
+`https://www.npmjs.com/package/<name>/access`:
+Organization `UniClipboard`, repository `UniClipboard`, workflow
+`npm-publish.yml`, environment empty.
+
+Trusted publishing cannot create a package (npm/cli#8544), so the first
+version of any NEW package must be published manually from a maintainer
+machine (interactive 2FA), after which its Trusted Publisher can be
+configured. This was done for all six packages with 0.15.0-alpha.1.
 
 ## Local testing
 

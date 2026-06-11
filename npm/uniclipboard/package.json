@@ -1,5 +1,5 @@
 {
-  "name": "uniclipboard",
+  "name": "@uniclipboard/cli",
   "version": "0.0.0-dev",
   "description": "Cross-platform clipboard sync CLI. Installs the `uniclip` command and the `uniclipd` daemon for your platform.",
   "keywords": [

@@ -46,7 +46,7 @@ function resolveBinary() {
         `This usually means optional dependencies were skipped ` +
         `(e.g. --no-optional / --omit=optional) or the package manager ` +
         `cache is stale.\n` +
-        `Try reinstalling: npm install uniclipboard`
+        `Try reinstalling: npm install @uniclipboard/cli`
     )
     process.exit(1)
   }

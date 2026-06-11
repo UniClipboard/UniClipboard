@@ -4,7 +4,7 @@ Cross-platform clipboard sync. This package installs the `uniclip` command
 and the `uniclipd` daemon for your platform via optional dependencies.
 
 ```sh
-npm install -g uniclipboard
+npm install -g @uniclipboard/cli
 uniclip --help
 uniclip start
 ```

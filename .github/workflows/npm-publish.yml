@@ -159,7 +159,7 @@ jobs:
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           # Platform packages first, main package last (publish-order.txt),
-          # so `npm install uniclipboard` never sees missing optional deps.
+          # so `npm install @uniclipboard/cli` never sees missing optional deps.
           while IFS= read -r dir; do
             NAME=$(node -p "require('./npm-dist/${dir}/package.json').name")
             if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
@@ -185,8 +185,8 @@ jobs:
             echo "**dist-tag:** ${DIST_TAG}"
             echo ""
             echo "\`\`\`sh"
-            echo "npm install -g uniclipboard@${VERSION}"
+            echo "npm install -g @uniclipboard/cli@${VERSION}"
             echo "\`\`\`"
             echo ""
-            echo "https://www.npmjs.com/package/uniclipboard"
+            echo "https://www.npmjs.com/package/@uniclipboard/cli"
           } >> "$GITHUB_STEP_SUMMARY"

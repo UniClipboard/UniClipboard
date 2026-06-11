@@ -324,6 +324,13 @@ App 默认走与桌面端的局域网同步（也可经 server 节点或 Tailsca
   内的桌面通信，不依赖代理。
 </Callout>
 
+## 验证下载（可选）
+
+注重安全的用户可以在安装前对下载的发布文件做密码学校验。每个签名版本都会附带
+`SHA256SUMS.txt` 及其 [minisign](https://jedisct1.github.io/minisign/) 签名
+（`SHA256SUMS.txt.minisig`），校验通过即可确认文件未被篡改、来源可信。签名公钥与
+逐步操作说明见[安全策略](https://github.com/UniClipboard/UniClipboard/blob/main/SECURITY.md#verifying-release-downloads)。
+
 ## 验证安装
 
 安装完成后，确认 CLI 已在 `PATH` 中：

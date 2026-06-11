@@ -352,6 +352,15 @@ pairing flow.
   The App itself only talks to your desktop over the local network and doesn't depend on the proxy.
 </Callout>
 
+## Verify your download (optional)
+
+Security-conscious users can cryptographically verify a release download
+before installing it. Each signed release publishes a `SHA256SUMS.txt` and a
+[minisign](https://jedisct1.github.io/minisign/) signature
+(`SHA256SUMS.txt.minisig`); checking them confirms the file is authentic and
+untampered. The signing public key and step-by-step instructions live in the
+[security policy](https://github.com/UniClipboard/UniClipboard/blob/main/SECURITY.md#verifying-release-downloads).
+
 ## Verify the install
 
 After installing, confirm the CLI is on your `PATH`:

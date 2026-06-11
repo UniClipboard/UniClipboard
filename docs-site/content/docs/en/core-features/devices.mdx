@@ -146,6 +146,10 @@ confirms twice). After unpairing:
 - Future traffic from that node ID is rejected by this device.
 - **Local history is untouched** — clips that already synced over stay.
 
+To bring the device back later, just run a fresh `invite` + `join`
+round — unpairing is one-sided, and any records the other side still
+holds are replaced by the new handshake instead of blocking it.
+
 To remove a **lost or stolen** device from the space cleanly:
 
 1. Run `Unpair` against it from another online, trusted device.

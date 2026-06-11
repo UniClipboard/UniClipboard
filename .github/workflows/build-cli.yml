@@ -264,9 +264,12 @@ jobs:
             if [ ! -f "$BIN_SRC" ]; then
               BIN_SRC="src-tauri/target/${TARGET}/release/uniclip.exe"
             fi
-            DAEMON_SRC="$(dirname "$BIN_SRC")/uniclipd.exe"
             ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.zip"
-            7z a "$ARCHIVE" "$BIN_SRC" "$DAEMON_SRC"
+            # 7z stores paths as given on the command line, so add the exes
+            # from inside their directory to keep the archive root flat
+            # (matching the tar.gz layout).
+            WORKDIR="$(pwd)"
+            (cd "$(dirname "$BIN_SRC")" && 7z a "${WORKDIR}/${ARCHIVE}" uniclip.exe uniclipd.exe)
           else
             BIN_DIR="src-tauri/target/${TARGET}/release"
             # Fallback for non-cross builds

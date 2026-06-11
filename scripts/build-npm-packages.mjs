@@ -85,7 +85,9 @@ for (const target of TARGETS) {
   fs.mkdirSync(binDir, { recursive: true })
 
   if (target.ext === 'zip') {
-    execFileSync('unzip', ['-o', '-q', archive, '-d', binDir])
+    // -j junks directory components: zips produced before build-cli.yml
+    // flattened them nest the exes under src-tauri/target/release/.
+    execFileSync('unzip', ['-j', '-o', '-q', archive, '-d', binDir])
   } else {
     execFileSync('tar', ['-xzf', archive, '-C', binDir])
   }

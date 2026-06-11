@@ -98,10 +98,10 @@ export interface MigrationProgressResponse {
 // ── Transport (ADR-008 P7) ──────────────────────────────────────────────────
 //
 // Each /v2/setup/* call routes through the @hey-api generated SDK via
-// `daemonClient.callSdk`, which drives the daemon session lifecycle and unwraps
-// the SDK's outer `{ data }` to the canonical `ApiEnvelope<T> { data, ts }`;
-// the wrappers below read `envelope.data` for the payload. Error bodies are NOT
-// enveloped (still `ApiErrorResponse { code, message, details? }`); `callSdk`
+// `daemonClient.callEnveloped`, which drives the daemon session lifecycle and
+// unwraps the SDK's outer `{ data }` plus the canonical `ApiEnvelope<T>
+// { data, ts }` down to the payload `T`. Error bodies are NOT enveloped (still
+// `ApiErrorResponse { code, message, details? }`); the underlying `callSdk`
 // normalizes thrown SDK errors back into the `DaemonApiError` shape — preserving
 // the `"<status> on <path>"` message and the body on `.details` — so the
 // `classify*Error` matchers below remain unchanged.
@@ -365,10 +365,10 @@ export async function initializeSpace(
   body: InitializeSpaceRequest
 ): Promise<InitializeSpaceResponse> {
   try {
-    const envelope = await daemonClient.callSdk(() =>
+    const data = await daemonClient.callEnveloped(() =>
       setupV2Initialize({ body: body as unknown as InitializeSpaceRequestDto, throwOnError: true })
     )
-    return envelope.data as unknown as InitializeSpaceResponse
+    return data as unknown as InitializeSpaceResponse
   } catch (err) {
     throw classifyInitializeError(err)
   }
@@ -376,10 +376,10 @@ export async function initializeSpace(
 
 export async function issuePairingInvitation(): Promise<IssueInvitationResponse> {
   try {
-    const envelope = await daemonClient.callSdk(() =>
+    const data = await daemonClient.callEnveloped(() =>
       setupV2IssueInvitation({ throwOnError: true })
     )
-    return envelope.data as unknown as IssueInvitationResponse
+    return data as unknown as IssueInvitationResponse
   } catch (err) {
     throw classifyIssueError(err)
   }
@@ -400,13 +400,13 @@ function normalizeInvitationCode(raw: string): string {
 
 export async function redeemInvitation(body: RedeemRequest): Promise<RedeemResponse> {
   try {
-    const envelope = await daemonClient.callSdk(() =>
+    const data = await daemonClient.callEnveloped(() =>
       setupV2Redeem({
         body: { ...body, code: normalizeInvitationCode(body.code) } as unknown as RedeemRequestDto,
         throwOnError: true,
       })
     )
-    return envelope.data as unknown as RedeemResponse
+    return data as unknown as RedeemResponse
   } catch (err) {
     throw classifyRedeemError(err)
   }
@@ -430,8 +430,8 @@ export async function resetSetup(): Promise<void> {
 
 export async function getSetupState(): Promise<SetupStateResponse> {
   try {
-    const envelope = await daemonClient.callSdk(() => setupV2GetState({ throwOnError: true }))
-    return envelope.data as unknown as SetupStateResponse
+    const data = await daemonClient.callEnveloped(() => setupV2GetState({ throwOnError: true }))
+    return data as unknown as SetupStateResponse
   } catch (err) {
     throw classifyQueryError(err)
   }
@@ -453,7 +453,7 @@ export async function getSetupState(): Promise<SetupStateResponse> {
  */
 export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpaceResponse> {
   try {
-    const envelope = await daemonClient.callSdk(() =>
+    const data = await daemonClient.callEnveloped(() =>
       setupV2SwitchSpace({
         body: {
           ...body,
@@ -462,7 +462,7 @@ export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpace
         throwOnError: true,
       })
     )
-    return envelope.data as unknown as SwitchSpaceResponse
+    return data as unknown as SwitchSpaceResponse
   } catch (err) {
     throw classifySwitchSpaceError(err)
   }
@@ -476,10 +476,10 @@ export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpace
  */
 export async function queryMigrationProgress(): Promise<MigrationProgressResponse> {
   try {
-    const envelope = await daemonClient.callSdk(() =>
+    const data = await daemonClient.callEnveloped(() =>
       setupV2GetMigrationProgress({ throwOnError: true })
     )
-    return envelope.data as unknown as MigrationProgressResponse
+    return data as unknown as MigrationProgressResponse
   } catch (err) {
     throw classifyMigrationProgressError(err)
   }

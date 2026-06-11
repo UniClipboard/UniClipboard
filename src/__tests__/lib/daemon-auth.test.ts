@@ -78,6 +78,12 @@ vi.mock('@/api/daemon/client', () => ({
       const { data } = await call()
       return data
     },
+    // Replay callEnveloped: unwrap the SDK `{ data }` AND the `{ data, ts }`
+    // envelope, mirroring the real implementation.
+    async callEnveloped<T>(call: () => Promise<{ data: { data: T; ts: number } }>): Promise<T> {
+      const { data } = await call()
+      return data.data
+    },
     destroy() {
       _session = null
       _fetchQueue = []

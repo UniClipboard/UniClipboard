@@ -232,6 +232,25 @@ class DaemonClient {
   }
 
   /**
+   * Run a generated SDK call against an ENVELOPED endpoint and return the
+   * unwrapped payload. The single place that knows the daemon's canonical
+   * success shape `ApiEnvelope<T> = { data: T, ts }` (ADR-008 §H): wrappers
+   * declare only the payload type instead of unwrapping `envelope.data` by
+   * hand. Session lifecycle and error normalization come from {@link callSdk}.
+   *
+   * 信封端点的唯一拆封入口:连拆 SDK 传输包装与 `{ data, ts }` 信封,
+   * wrapper 只声明 payload 类型。`ts` 无消费方,直接丢弃。
+   *
+   * @param call Thunk invoking a generated SDK fn for an enveloped endpoint.
+   * @returns The envelope's `data` payload.
+   * @throws {DaemonApiError} Same contract as {@link callSdk}.
+   */
+  async callEnveloped<T>(call: () => Promise<{ data: { data: T; ts: number } }>): Promise<T> {
+    const envelope = await this.callSdk(call)
+    return envelope.data
+  }
+
+  /**
    * Normalize a thrown SDK error into the same {@link DaemonApiError} shape that
    * {@link request} / {@link handleResponse} produce, so SDK-routed wrappers keep
    * the legacy error contract: `code` from the HTTP status, the full normalized

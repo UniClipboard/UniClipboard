@@ -7,12 +7,13 @@
  * - `POST /lifecycle/retry` → retry lifecycle initialization
  *
  * # Transport / 传输 (ADR-008 P7)
- * Routes through the @hey-api generated SDK via `daemonClient.callSdk`, which
+ * Routes through the @hey-api generated SDK via the daemon client, which
  * drives the daemon session lifecycle (pre-emptive refresh + one-shot 401
- * retry). `callSdk` unwraps the SDK's outer `{ data }` to the `ApiEnvelope`;
- * for value-returning endpoints the payload is `envelope.data`. The public
- * wrapper signatures and the hand-written `LifecycleStatusDto` domain type are
- * preserved verbatim for downstream consumers.
+ * retry). Value-returning endpoints use `daemonClient.callEnveloped`, which
+ * unwraps the `ApiEnvelope` down to the payload; 204 endpoints use
+ * `daemonClient.callSdk`. The public wrapper signatures and the hand-written
+ * `LifecycleStatusDto` domain type are preserved verbatim for downstream
+ * consumers.
  */
 
 import {
@@ -41,12 +42,12 @@ export async function signalLifecycleReady(): Promise<void> {
  */
 export async function getLifecycleStatus(): Promise<LifecycleStatusDto> {
   // `/lifecycle/status` returns the canonical `{ data, ts }` envelope
-  // (ADR-008 §H). `callSdk` unwraps the SDK's outer `{ data }` to the envelope;
-  // the payload lives at `envelope.data`. The generated `LifecycleStatusResponse`
-  // (`{ state: string }`) is bridged to the hand-written `LifecycleStatusDto`
-  // (union-typed `state`) so the public return type stays unchanged.
-  const envelope = await daemonClient.callSdk(() => getLifecycleStatusSdk({ throwOnError: true }))
-  return envelope.data as unknown as LifecycleStatusDto
+  // (ADR-008 §H). `callEnveloped` unwraps down to the payload. The generated
+  // `LifecycleStatusResponse` (`{ state: string }`) is bridged to the
+  // hand-written `LifecycleStatusDto` (union-typed `state`) so the public
+  // return type stays unchanged.
+  const data = await daemonClient.callEnveloped(() => getLifecycleStatusSdk({ throwOnError: true }))
+  return data as unknown as LifecycleStatusDto
 }
 
 /**

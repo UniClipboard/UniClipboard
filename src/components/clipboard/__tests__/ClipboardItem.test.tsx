@@ -8,6 +8,10 @@ vi.mock('@/api/daemon/client', () => ({
   daemonClient: {
     // Replay the happy path: callSdk unwraps the SDK's outer { data } to the envelope.
     callSdk: vi.fn((call: () => Promise<{ data: unknown }>) => call().then(r => r.data)),
+    // 复刻 callEnveloped 快乐路径：连拆 SDK { data } 与 { data, ts } 信封。
+    callEnveloped: vi.fn((call: () => Promise<{ data: { data: unknown } }>) =>
+      call().then(r => r.data.data)
+    ),
     blobUrl: vi.fn((path: string) => `http://127.0.0.1:12345${path}?auth=Session+test`),
   },
 }))

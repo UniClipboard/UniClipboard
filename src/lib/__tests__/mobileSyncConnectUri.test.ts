@@ -25,6 +25,19 @@ import {
 const GOLDEN_URI =
   'uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjU6NDI3MjAiLCJ1c2VyIjoibW9iaWxlX2FhYmJjY2RkIiwicHdkIjoiQWJDZEVmR2hJaktsTW5PcFFyU3QiLCJvIjp7ImRpZCI6ImRpZF8wMTIzYWJjZCIsImxhYmVsIjoiVGVzdCIsInByb3RvIjoic3luY2NsaXBib2FyZCJ9fQ'
 
+/**
+ * 多候选 golden vector — 与 Rust `connect_uri.rs::GOLDEN_MULTI_URL_URI`
+ * 字面量字节相同(规范 §7.3)。payload 含 `urls` 三项, `url === urls[0]`。
+ */
+const GOLDEN_MULTI_URL_URI =
+  'uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwczovLzIwMy0wLTExMy0xMC5zc2xpcC5pbyIsInVybHMiOlsiaHR0cHM6Ly8yMDMtMC0xMTMtMTAuc3NsaXAuaW8iLCJodHRwOi8vMTkyLjE2OC4xLjU6NDI3MjAiLCJodHRwOi8vMTAwLjY0LjAuNTo0MjcyMCJdLCJ1c2VyIjoibW9iaWxlX2FhYmJjY2RkIiwicHdkIjoiQWJDZEVmR2hJaktsTW5PcFFyU3QiLCJvIjp7ImRpZCI6ImRpZF8wMTIzYWJjZCIsImxhYmVsIjoiVGVzdCIsInByb3RvIjoic3luY2NsaXBib2FyZCJ9fQ'
+
+const GOLDEN_MULTI_URLS = [
+  'https://203-0-113-10.sslip.io',
+  'http://192.168.1.5:42720',
+  'http://100.64.0.5:42720',
+]
+
 function goldenOther(): ConnectUriOther {
   return {
     label: 'Test',
@@ -42,6 +55,39 @@ describe('mobileSyncConnectUri / build (happy + byte stability)', () => {
       goldenOther()
     )
     expect(uri).toBe(GOLDEN_URI)
+  })
+
+  it('emits the multi-url golden URI byte-for-byte (matches Rust)', () => {
+    const uri = buildConnectUri(
+      GOLDEN_MULTI_URLS,
+      'mobile_aabbccdd',
+      'AbCdEfGhIjKlMnOpQrSt',
+      goldenOther()
+    )
+    expect(uri).toBe(GOLDEN_MULTI_URL_URI)
+  })
+
+  it('single-element candidate array is byte-identical to the string form', () => {
+    // 单候选不写 urls 字段 —— 旧式码字节零漂移(规范 §3.1a 硬约束)。
+    const uri = buildConnectUri(
+      ['http://192.168.1.5:42720'],
+      'mobile_aabbccdd',
+      'AbCdEfGhIjKlMnOpQrSt',
+      goldenOther()
+    )
+    expect(uri).toBe(GOLDEN_URI)
+  })
+
+  it('places urls between url and user in the JSON (field order)', () => {
+    const uri = buildConnectUri(['http://a.b', 'http://c.d'], 'user', 'pwd')
+    const p = uri.split('p=')[1]
+    const json = new TextDecoder().decode(base64UrlToBytes(p))
+    const urlPos = json.indexOf('"url":')
+    const urlsPos = json.indexOf('"urls":')
+    const userPos = json.indexOf('"user":')
+    expect(urlPos).toBeGreaterThan(-1)
+    expect(urlsPos).toBeGreaterThan(urlPos)
+    expect(userPos).toBeGreaterThan(urlsPos)
   })
 
   it("drops empty other map so JSON has no 'o' field", () => {
@@ -108,10 +154,22 @@ describe('mobileSyncConnectUri / build (negative)', () => {
     )
   })
 
+  it('rejects empty candidate array with MISSING_FIELD(url)', () => {
+    expect(() => buildConnectUri([], 'user', 'pwd')).toThrowError(
+      expect.objectContaining({ code: 'MISSING_FIELD', field: 'url' }) as never
+    )
+  })
+
+  it('rejects non-http secondary candidate with INVALID_URL', () => {
+    expect(() => buildConnectUri(['http://a.b', 'ftp://c.d'], 'user', 'pwd')).toThrowError(
+      expect.objectContaining({ code: 'INVALID_URL' }) as never
+    )
+  })
+
   it('rejects too-long URI with URI_TOO_LONG (carries len/max)', () => {
     try {
       buildConnectUri('http://a.b', 'user', 'pwd', {
-        label: 'L'.repeat(1000),
+        label: 'L'.repeat(2000),
       })
       throw new Error('expected URI_TOO_LONG to throw')
     } catch (err) {
@@ -136,6 +194,19 @@ describe('mobileSyncConnectUri / parse (happy + trim)', () => {
       label: 'Test',
       proto: 'syncclipboard',
     })
+  })
+
+  it('parses v1 golden URI with empty urls (no field → default [])', () => {
+    const p = parseConnectUri(GOLDEN_URI)
+    expect(p.urls).toEqual([])
+  })
+
+  it('round-trips the multi-url golden URI (url === urls[0])', () => {
+    const p = parseConnectUri(GOLDEN_MULTI_URL_URI)
+    expect(p.url).toBe(GOLDEN_MULTI_URLS[0])
+    expect(p.urls).toEqual(GOLDEN_MULTI_URLS)
+    expect(p.user).toBe('mobile_aabbccdd')
+    expect(p.pwd).toBe('AbCdEfGhIjKlMnOpQrSt')
   })
 
   it('trims surrounding whitespace before parsing', () => {

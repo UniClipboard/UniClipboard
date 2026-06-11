@@ -19,8 +19,8 @@
  *
  * 必须严格执行才能让 build 出的字符串在两端字节相等:
  *
- * 1. JSON 字段顺序固定 `v / url / user / pwd / o` —— 手动构造对象, 不依赖
- *    `JSON.stringify` 的隐式键顺序。
+ * 1. JSON 字段顺序固定 `v / url / urls / user / pwd / o` —— 手动构造对象,
+ *    不依赖 `JSON.stringify` 的隐式键顺序。
  * 2. `o` 内部键字典序 —— `Object.keys(o).sort()` 后逐项插入。
  * 3. JSON 不带空白 —— `JSON.stringify` 默认即 minify。
  * 4. 空 `o` 不序列化 —— 跳过 `o` 字段, 避免 `"o":{}` 让 base64 漂移。
@@ -45,6 +45,11 @@
 export interface ConnectPayload {
   v: 1
   url: string
+  /**
+   * 有序候选地址列表(`specs/mobile-sync-qr-multi-url.md` §4)。多候选码下
+   * `url === urls[0]`;v1 单地址码无此字段 → 解析侧兜底为 `[]`。
+   */
+  urls: string[]
   user: string
   pwd: string
   o: Record<string, string>
@@ -142,30 +147,40 @@ const HOST = 'connect'
 const ENVELOPE_VERSION = '1'
 const SERVICE = 'mobile-sync'
 const PAYLOAD_VERSION = 1
-/** 规范 §2 URI 长度上限(易扫描 + 防 `o` 滥用)。与 Rust 端常量一致。 */
-export const URI_MAX_LEN = 800
+/**
+ * 规范 §2 URI 长度上限(易扫描 + 防 `o` 滥用)。与 Rust 端常量一致。
+ * 多候选地址(`urls` 上限 20 项)会超旧上限 800, 放宽到 2000。
+ */
+export const URI_MAX_LEN = 2000
 
 // ─── build ──────────────────────────────────────────────────────────────
 
 /**
- * 把凭据 + 元数据编码成 `uniclipboard://connect?v=1&svc=mobile-sync&p=<…>`。
+ * 把候选地址 + 凭据 + 元数据编码成
+ * `uniclipboard://connect?v=1&svc=mobile-sync&p=<…>`。
  *
  * 与 Rust [`build_mobile_sync_connect_uri`] 字节级镜像 —— 任何漂移会在
  * 跨语言 golden vector 测试中立刻失败。
  *
+ * `candidateUrls` 接受单个 base URL(向后兼容旧调用方)或有序候选列表:
+ * - 首项即 payload 主 `url`, 结构上强制 `url === urls[0]`;
+ * - **仅多于 1 项时**才写 `urls` 字段 —— 单候选码与 v1 字节完全一致。
+ *
  * 失败语义见 `ConnectUriError`:
- * - `MISSING_FIELD` 当 url/user/pwd 为空字符串
- * - `INVALID_URL` 当 url 不以 `http://` 或 `https://` 开头
+ * - `MISSING_FIELD` 当候选为空 / user/pwd 为空字符串
+ * - `INVALID_URL` 当任一候选不以 `http://` 或 `https://` 开头
  * - `URI_TOO_LONG` 当结果超过 `URI_MAX_LEN` 字符
  *
  * [`build_mobile_sync_connect_uri`]: ../../src-tauri/crates/uc-application/src/usecases/mobile_sync/connect_uri.rs
  */
 export function buildConnectUri(
-  baseUrl: string,
+  candidateUrls: string | readonly string[],
   username: string,
   password: string,
   other: ConnectUriOther = {}
 ): string {
+  const urls = typeof candidateUrls === 'string' ? [candidateUrls] : [...candidateUrls]
+  const baseUrl = urls[0] ?? ''
   if (baseUrl === '') {
     throw new ConnectUriError('MISSING_FIELD', { field: 'url' })
   }
@@ -175,18 +190,21 @@ export function buildConnectUri(
   if (password === '') {
     throw new ConnectUriError('MISSING_FIELD', { field: 'pwd' })
   }
-  if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+  if (!urls.every(u => u.startsWith('http://') || u.startsWith('https://'))) {
     throw new ConnectUriError('INVALID_URL')
   }
 
-  // 显式按 v/url/user/pwd/o 顺序构造对象, 不依赖 JSON.stringify 的隐式
-  // 键顺序。`o` 内部键再单独按字典序插入(规范 §3.1 字节稳定性约定)。
+  // 显式按 v/url/urls/user/pwd/o 顺序构造对象, 不依赖 JSON.stringify 的
+  // 隐式键顺序。`o` 内部键再单独按字典序插入(规范 §3.1 字节稳定性约定)。
   const payload: Record<string, unknown> = {
     v: PAYLOAD_VERSION,
     url: baseUrl,
-    user: username,
-    pwd: password,
   }
+  if (urls.length > 1) {
+    payload.urls = urls
+  }
+  payload.user = username
+  payload.pwd = password
 
   const o = buildOtherMap(other)
   if (Object.keys(o).length > 0) {
@@ -338,9 +356,17 @@ function coercePayload(raw: unknown): ConnectPayload {
     }
   }
 
+  // urls 宽松收敛: 仅当是纯 string 数组才保留, 否则兜底 [] —— 与 Rust 端
+  // `#[serde(default)]` 同语义(v1 单地址码无此字段)。
+  const urls =
+    Array.isArray(obj.urls) && obj.urls.every(u => typeof u === 'string')
+      ? (obj.urls as string[])
+      : []
+
   return {
     v: v as 1,
     url: typeof obj.url === 'string' ? obj.url : '',
+    urls,
     user: typeof obj.user === 'string' ? obj.user : '',
     pwd: typeof obj.pwd === 'string' ? obj.pwd : '',
     o,
@@ -372,7 +398,7 @@ function utf8Decode(bytes: Uint8Array): string {
  */
 function bytesToBase64Url(bytes: Uint8Array): string {
   // 大数组直接 String.fromCharCode(...bytes) 会触发栈溢出(参数个数有
-  // 平台上限), 用 chunked 拼接更稳健。connect URI 实际 ≤ 800 字符,
+  // 平台上限), 用 chunked 拼接更稳健。connect URI 实际 ≤ 2000 字符,
   // 远不到触发点, 但保留稳健性。
   let binary = ''
   const CHUNK = 0x8000

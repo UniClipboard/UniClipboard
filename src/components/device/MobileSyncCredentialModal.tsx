@@ -67,7 +67,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
-import { buildConnectUri } from '@/lib/mobileSyncConnectUri'
+import { buildConnectUri, parseConnectUri } from '@/lib/mobileSyncConnectUri'
 import { cn } from '@/lib/utils'
 
 const log = createLogger('mobile-sync-credential')
@@ -176,19 +176,35 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onComplete }) => 
     return `http://${selectedHost}:${payloadPort}`
   }, [payload, selectedHost, payloadPort])
 
+  // 后端原始码携带的多候选地址(specs/mobile-sync-qr-multi-url.md §4)。
+  // 切 host 重算时不能丢: 所选 host 提升为 urls[0], 其余候选保序跟随,
+  // 这样切换后的码在其它网络位置(公网入口 / 其它网段)仍然可用。
+  const payloadUrls = useMemo<string[]>(() => {
+    if (!payload) return []
+    try {
+      return parseConnectUri(payload.connectUri).urls
+    } catch (err) {
+      log.warn({ err }, 'failed to parse payload connect URI for urls')
+      return []
+    }
+  }, [payload])
+
   const effectiveConnectUri = useMemo(() => {
     if (!payload) return ''
-    // 与后端 register_device.rs 的 ConnectUriOther{label, did} 一致。
+    // o 字段与后端 register_device.rs 的 ConnectUriOther{label, did, proto}
+    // 保持一致, 否则切 host 后 payload 字节口径与后端码漂移。
     try {
-      return buildConnectUri(effectiveBaseUrl, payload.username, payload.password, {
+      const candidates = [effectiveBaseUrl, ...payloadUrls.filter(u => u !== effectiveBaseUrl)]
+      return buildConnectUri(candidates, payload.username, payload.password, {
         label: payload.label,
         did: payload.deviceId,
+        proto: 'syncclipboard',
       })
     } catch (err) {
       log.warn({ err }, 'failed to rebuild connect URI, falling back to payload')
       return payload.connectUri
     }
-  }, [payload, effectiveBaseUrl])
+  }, [payload, effectiveBaseUrl, payloadUrls])
 
   const handleComplete = useCallback(() => {
     setSelectedHost(null)

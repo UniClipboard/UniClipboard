@@ -201,18 +201,30 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
   }, [selectedHost, preferredHost, port])
 
   // connect URI 仅在 rotateResult 存在时可拼。device.label 保留用作 ConnectUriOther.label。
+  // 多候选(specs/mobile-sync-qr-multi-url.md §4): 所选 host 提升为 urls[0],
+  // 其后跟公网入口(若配置)与其余网卡候选, 去重保序 —— 改密后的码在其它
+  // 网络位置仍然可用。
   const connectUri = useMemo<string | null>(() => {
     if (!rotateResult || !device) return null
     try {
-      return buildConnectUri(effectiveBaseUrl, rotateResult.username, rotateResult.password, {
+      // Set 保插入序去重: 所选 host → 公网入口 → 其余网卡。
+      const candidates = new Set<string>([effectiveBaseUrl])
+      if (settings?.lanAdvertiseBaseUrl) {
+        candidates.add(settings.lanAdvertiseBaseUrl)
+      }
+      for (const iface of dropdownInterfaces) {
+        candidates.add(`http://${iface.ipv4}:${port}`)
+      }
+      return buildConnectUri([...candidates], rotateResult.username, rotateResult.password, {
         label: device.label,
         did: rotateResult.deviceId,
+        proto: 'syncclipboard',
       })
     } catch (err) {
       log.warn({ err }, 'failed to build connect URI in device dialog')
       return null
     }
-  }, [device, effectiveBaseUrl, rotateResult])
+  }, [device, effectiveBaseUrl, rotateResult, settings, dropdownInterfaces, port])
 
   // ── 改密提交 ──────────────────────────────────────────────────
   const handleSubmitRotate = useCallback(async () => {

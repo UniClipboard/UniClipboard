@@ -55,6 +55,29 @@ uniclip recv --out ./inbox
 `send -f` 与 positional text 和 `--resend` 互斥。
 守护进程负责 blob 存储和 peer 间传输，CLI 在 dispatch 确认后即可退出。
 
+### 读取已同步的条目
+
+`recv` 等待**下一个**入站文件。要读取守护进程历史里**已经存在**的内容
+（无头 / SSH 机器没有系统剪贴板可粘贴时的常见场景），用 `get`，它会立即返回。
+
+```bash
+# 最新一条可用条目（文本/链接打到 stdout）
+uniclip get
+
+# 最新一条指定类型：image | file | text | link
+uniclip get --type image
+
+# 按 id 取指定条目（id 来自 `uniclip search query`），落地到目录
+uniclip get --id <ENTRY_ID> --out ./inbox
+
+# 仅列出最近条目，不取回
+uniclip get --list -n 20
+```
+
+输出约定：**文本 / 链接**内容打到 stdout（可管道）；**图片 / 文件**字节写入
+`--out`（目录，默认 per-user 缓存目录）并把绝对路径打到 stdout，或用 `--out -`
+直接写到 stdout。状态行走 stderr，stdout 保持干净。与 `recv` 不同，`get` 不阻塞。
+
 ## 搜索
 
 `uniclip search` 是 GUI 仪表盘搜索框背后那个加密全文索引的命令行入口。
@@ -176,5 +199,7 @@ uniclip upgrade advance
 
 `uniclip` 使用稳定的退出码（在 `src/exit_codes.rs` 中定义）。`0` 表示成功，非零值对应不同的失败类别
 （配置、网络、配对等）且跨版本保持稳定。脚本应基于退出码判断成败，而不是解析人类可读输出。
+
+`uniclip get` 额外使用 `6`（没有条目匹配 selector）和 `7`（条目存在但 payload 不可用——`Lost` 或尚未下载，需在源设备重发）。
 
 最新的子命令列表请直接运行 `uniclip --help` —— 二进制自带的 help 是权威来源。

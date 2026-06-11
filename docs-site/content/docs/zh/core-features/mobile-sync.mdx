@@ -90,14 +90,16 @@ modal 顶部会出现红色 Alert，列出具体原因；监听不起来时 tab 
 **密码**，并在一个 **扫码优先（scan-first）** 的凭据弹窗中一次性
 展示：
 
-- **大二维码（顶部，常驻）** —— 把 base URL 与凭据编码进单一
-  `uniclipboard://connect` URI。用 **UniClipboard iOS App**
+- **大二维码（顶部，常驻）** —— 把 **全部可达候选地址**（已配置的
+  公网入口 + 所有合格网卡 IP，含 Tailscale CGNAT）连同凭据编码进
+  单一 `uniclipboard://connect` URI —— 同一个码在内网、外网都能用，
+  支持候选列表的客户端会逐个探活选路。用 **UniClipboard iOS App**
   （TestFlight beta 公测中，推荐路径，详见下文
   [配对一台 iPhone](#配对一台-iphone)）、
   [UniClipboard Android 客户端](https://github.com/UniClipboard/uc-android)
   或任何兼容 SyncClipboard 协议的客户端扫一下即可，所有字段自动
-  填好、无需手输。二维码旁边带一个 baseUrl 下拉，可以直接切换要
-  对外宣告的 IP（LAN 候选 + Tailscale CGNAT），不必回到「配置」
+  填好、无需手输。二维码旁边带一个 baseUrl 下拉，可以切换哪个地址
+  作为首选（第一）候选——其余候选仍保留在码里——不必回到「配置」
   modal。
 - **「还没装客户端？」折叠区（默认收起）** —— 手机端还没装客户端时
   再展开。里面分两个 tab：**iOS** tab 展示 TestFlight 邀请链接的

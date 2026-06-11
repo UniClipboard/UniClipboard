@@ -101,15 +101,21 @@ Pick a label (e.g. "My iPhone 15"). The desktop mints a one-time
 **username** and **password** and shows them inside a single
 scan-first credentials modal:
 
-- **Big QR (top, always on)** — encodes the base URL and credentials
-  as a single `uniclipboard://connect` URI. Scan it from the
-  **UniClipboard iOS App** (TestFlight public beta — recommended;
-  see [Pair an iPhone](#pair-an-iphone) below), the
+- **Big QR (top, always on)** — encodes **every reachable candidate
+  address** (the public entry if configured, plus all qualifying
+  interface IPs including Tailscale CGNAT) together with the
+  credentials as a single `uniclipboard://connect` URI, so one code
+  works whether the phone is on the LAN or coming in from outside;
+  clients that understand the candidate list probe them in order.
+  Scan it from the **UniClipboard iOS App** (TestFlight public
+  beta — recommended; see [Pair an iPhone](#pair-an-iphone) below),
+  the
   [UniClipboard Android client](https://github.com/UniClipboard/uc-android),
   or any other SyncClipboard-protocol client. All fields auto-fill;
   no typing. A baseUrl dropdown sits next to the QR so you can
-  switch the advertised IP (LAN candidates, plus Tailscale CGNAT
-  if you have it) without re-opening the Configure modal.
+  switch which address is the preferred (first) candidate — the
+  remaining candidates stay in the code — without re-opening the
+  Configure modal.
 - **"Haven't installed a client?" disclosure (collapsed by default)** —
   expand it when the phone has no client yet. Inside are two tabs:
   **iOS** shows a QR for the TestFlight invite (with a Shortcut

@@ -21,7 +21,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use serde_json::Value;
-use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
+use uc_e2e_tests::{get_session_token, TestCli, TestDaemon};
 
 const PASSPHRASE: &str = "clipboard-sync-e2e-passphrase";
 
@@ -29,196 +29,16 @@ const PASSPHRASE: &str = "clipboard-sync-e2e-passphrase";
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/// RAII guard that kills a process by PID on drop.
-/// Prevents orphaned child processes when tests panic or time out.
-#[cfg(unix)]
-struct PidGuard(u32, bool);
-
-#[cfg(unix)]
-impl PidGuard {
-    fn new(pid: u32) -> Self {
-        Self(pid, false)
-    }
-
-    fn disarm(&mut self) {
-        self.1 = true;
-    }
-}
-
-#[cfg(unix)]
-impl Drop for PidGuard {
-    fn drop(&mut self) {
-        if !self.1 {
-            unsafe { libc::kill(self.0 as libc::pid_t, libc::SIGKILL) };
-        }
-    }
-}
-
-/// Auth helper: read daemon file token, exchange for JWT session token.
-async fn get_session_token(daemon: &TestDaemon, client: &reqwest::Client) -> String {
-    let file_token = read_daemon_file_token(daemon);
-
-    let resp = client
-        .post(format!("{}/auth/connect", daemon.base_url()))
-        .header("Authorization", format!("Bearer {file_token}"))
-        .json(&serde_json::json!({
-            "pid": std::process::id(),
-            "clientType": "cli"
-        }))
-        .send()
-        .await
-        .expect("auth/connect request");
-
-    assert!(
-        resp.status().is_success(),
-        "auth/connect failed with {}",
-        resp.status()
-    );
-
-    let body: Value = resp.json().await.expect("auth/connect json");
-    let data = body.get("data").unwrap_or(&body);
-    data.get("sessionToken")
-        .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("auth/connect response missing sessionToken: {body}"))
-        .to_string()
-}
-
-fn read_daemon_file_token(daemon: &TestDaemon) -> String {
-    let token_path = daemon.profile.data_dir().join(".daemon-token");
-    for _ in 0..30 {
-        if let Ok(token) = std::fs::read_to_string(&token_path) {
-            let trimmed = token.trim().to_string();
-            if !trimmed.is_empty() {
-                return trimmed;
-            }
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
-    panic!("daemon token not found at {:?}", token_path);
-}
-
 /// Start a daemon, init a space, and return (daemon, cli).
 async fn setup_initialized_node(name: &str, device_name: &str) -> (TestDaemon, TestCli) {
-    let profile = TestProfile::new(name);
-    let daemon = TestDaemon::start(profile)
-        .await
-        .expect("daemon start failed");
-    let cli = TestCli::new(&daemon.profile);
-
-    let output = cli.run_capture(&[
-        "init",
-        "--passphrase",
-        PASSPHRASE,
-        "--device-name",
-        device_name,
-    ]);
-    assert!(
-        output.success(),
-        "init failed (exit={}): {}",
-        output.exit_code,
-        output.stderr
-    );
-
-    (daemon, cli)
+    uc_e2e_tests::setup_initialized_node(name, device_name, PASSPHRASE).await
 }
 
 /// Pair two nodes: Alice (already initialized) invites, Bob joins.
 ///
 /// Returns (alice_daemon, alice_cli, bob_daemon, bob_cli).
 async fn pair_two_nodes(test_prefix: &str) -> (TestDaemon, TestCli, TestDaemon, TestCli) {
-    // Alice: init space
-    let (alice_daemon, alice_cli) =
-        setup_initialized_node(&format!("{test_prefix}-alice"), "alice-node").await;
-
-    // Bob: start daemon (no init yet — join will set up the space)
-    let bob_profile = TestProfile::new(&format!("{test_prefix}-bob"));
-    let bob_daemon = TestDaemon::start(bob_profile)
-        .await
-        .expect("bob daemon start");
-    let bob_cli = TestCli::new(&bob_daemon.profile);
-
-    // Alice: invite with piped stdout so we can read the code line
-    let alice_binary = alice_cli.binary_path().to_owned();
-    let alice_profile_name = alice_cli.profile_name.clone();
-
-    let mut invite_child = Command::new(&alice_binary)
-        .env("UC_PROFILE", &alice_profile_name)
-        .args(["invite"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("alice invite spawn");
-    #[cfg(unix)]
-    let mut invite_guard = PidGuard::new(invite_child.id());
-
-    // Read stdout lines to find INVITATION_CODE=
-    let invite_stdout = invite_child.stdout.take().expect("invite stdout");
-    let code_handle = tokio::task::spawn_blocking(move || {
-        use std::io::BufRead;
-        let reader = std::io::BufReader::new(invite_stdout);
-        let deadline = std::time::Instant::now() + Duration::from_secs(30);
-        for line in reader.lines() {
-            if std::time::Instant::now() > deadline {
-                return None;
-            }
-            let line = match line {
-                Ok(l) => l,
-                Err(_) => continue,
-            };
-            if let Some(code) = line.strip_prefix("INVITATION_CODE=") {
-                return Some(code.trim().to_string());
-            }
-        }
-        None
-    });
-
-    let invitation_code = tokio::time::timeout(Duration::from_secs(30), code_handle)
-        .await
-        .expect("code extraction timed out")
-        .expect("code extraction task panicked")
-        .expect("INVITATION_CODE= line not found in invite stdout");
-
-    assert!(!invitation_code.is_empty(), "invitation code is empty");
-
-    // Bob: join with the extracted code
-    let join_out = bob_cli.run_capture(&[
-        "join",
-        "--code",
-        &invitation_code,
-        "--passphrase",
-        PASSPHRASE,
-        "--device-name",
-        "bob-node",
-    ]);
-    assert!(
-        join_out.success(),
-        "bob join failed (exit={}): stdout={}, stderr={}",
-        join_out.exit_code,
-        join_out.stdout,
-        join_out.stderr,
-    );
-
-    // Wait for invite process to complete (it unblocks after joiner connects).
-    // If it finishes in time, disarm the guard. Otherwise the guard kills the
-    // process on drop (covers both timeout AND early panic paths).
-    let finished = tokio::time::timeout(Duration::from_secs(15), async {
-        tokio::task::spawn_blocking(move || {
-            let _ = invite_child.wait();
-        })
-        .await
-    })
-    .await
-    .is_ok();
-
-    #[cfg(unix)]
-    if finished {
-        invite_guard.disarm();
-    }
-
-    // Brief settle time for both daemons to update their member/device lists
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    (alice_daemon, alice_cli, bob_daemon, bob_cli)
+    uc_e2e_tests::pair_two_nodes(test_prefix, PASSPHRASE).await
 }
 
 /// Spawn `watch --json` as a background child process. Returns the child

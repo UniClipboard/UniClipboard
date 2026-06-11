@@ -7,9 +7,10 @@ use super::member::SpaceMember;
 
 /// Persistence port for space members.
 ///
-/// The port stays intentionally thin: uniqueness and existence semantics
-/// (e.g. "cannot admit twice", "cannot update a missing member") are
-/// enforced by the use cases in the application layer, not here.
+/// The port stays intentionally thin: admission and existence semantics
+/// (e.g. how re-admitting a known device is handled, "cannot update a
+/// missing member") are enforced by the use cases in the application
+/// layer, not here.
 #[async_trait]
 pub trait MemberRepositoryPort: Send + Sync {
     /// Load a member by device id. Returns `None` when no record exists.

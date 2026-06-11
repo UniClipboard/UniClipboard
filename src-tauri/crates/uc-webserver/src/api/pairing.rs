@@ -55,7 +55,8 @@ pub(crate) async fn handle_unpair_device(
 
     // Slice 4 P5a-1: 取消配对 = 删除本机成员记录。libp2p 时代的
     // `PairingTransportPort::unpair_device` 通知对端的能力随 libp2p 一同下线；
-    // 本地自治模型下不再广播给对端（对端发现后会自行清理）。
+    // 本地自治模型下不再广播给对端。对端残留的 member/trust 记录不影响
+    // 重新配对——admit/trust use case 在重配时显式替换旧记录（#1023）。
     roster
         .revoke_member(peer_id.as_str())
         .await

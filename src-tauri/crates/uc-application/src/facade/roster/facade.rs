@@ -219,11 +219,11 @@ impl MemberRosterFacade {
     ///    `ensure_reachable_all` 仍把已撤销设备当目标(见
     ///    `dispatch_entry.rs` module doc 关于 "avoids iterating ghost entries
     ///    in `member_repo` that never completed pairing" 的不变量)。
-    /// 3. `trusted_peer_repo` —— 不删会让同设备**重新配对失败**:
-    ///    `TrustPeerUseCase::execute` 检查到行已存在直接返回
-    ///    `AlreadyTrusted`(见 `trust_peer.rs` 注释:"先 Distrust 再 Trust" 的
-    ///    显式流程)。`distrust_peer.rs` 注释里讲 "UI 的'解除配对'由 Facade
-    ///    级联调用",这里就是那个级联。
+    /// 3. `trusted_peer_repo` —— 维持 `trusted_peer ⊆ member` 不变量:
+    ///    残留的 trust 行会让本机继续把已撤销设备当可信对端。(#1023 之后
+    ///    `TrustPeerUseCase::execute` 改为重配时显式替换,残留行不再挡死
+    ///    重新配对,但级联清理仍是撤销语义的一部分。)`distrust_peer.rs`
+    ///    注释里讲 "UI 的'解除配对'由 Facade 级联调用",这里就是那个级联。
     ///
     /// 失败处理:`member_repo.remove` 已成功后没法回滚,后续两步任一失败
     /// 都把错误抛给调用方,启动期 `reconcile_*` 会在下次 boot 兜底。两个
@@ -835,7 +835,7 @@ mod tests {
     async fn revoke_member_clears_all_three_repos() {
         // 修复点验收:revoke_member 必须级联清三张表,否则:
         //   - peer_addr 残留 → dispatch / presence 仍把已撤销设备当目标
-        //   - trusted_peer 残留 → 同设备重新配对会被 AlreadyTrusted 阻塞
+        //   - trusted_peer 残留 → 本机继续把已撤销设备当可信对端
         let mut repo = MockMemberRepo::new();
         repo.expect_remove()
             .times(1)
@@ -923,7 +923,7 @@ mod tests {
     #[tokio::test]
     async fn revoke_member_propagates_trusted_peer_repo_failure() {
         // member + peer_addr 都成功后,trusted_peer 失败要冒泡 ——
-        // UI 才能感知"trust 没清,重新配对仍可能 AlreadyTrusted",
+        // UI 才能感知"trust 没清,已撤销设备仍被当可信对端",
         // 启动期 reconcile_trusted_peers 会在下次 boot 兜底。
         let mut repo = MockMemberRepo::new();
         repo.expect_remove().times(1).returning(|_| Ok(true));

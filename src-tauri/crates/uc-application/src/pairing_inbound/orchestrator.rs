@@ -10,8 +10,9 @@
 //!    keyslot offer, parks per-session state, verifies the joiner's
 //!    challenge response, and emits `Confirm` / `Reject` on the wire.
 //! 3. **Membership admit** — [`AdmitMemberUseCase`] persists the joiner
-//!    as a `SpaceMember` (application-level idempotency + error semantics
-//!    already encoded there).
+//!    as a `SpaceMember` (application-level re-pair/replace + error
+//!    semantics already encoded there; a stale record from a one-sided
+//!    unpair on the joiner does not block re-pairing, #1023).
 //! 4. **Trust peer** — [`TrustPeerUseCase`] persists the
 //!    `TrustedPeer` row symmetrically.
 //!
@@ -870,8 +871,18 @@ mod tests {
     }
     #[async_trait]
     impl MemberRepositoryPort for RecordingMemberRepo {
-        async fn get(&self, _: &DeviceId) -> Result<Option<SpaceMember>, MembershipError> {
-            Ok(None)
+        async fn get(&self, id: &DeviceId) -> Result<Option<SpaceMember>, MembershipError> {
+            // Last write wins, mirroring the port's upsert semantics — the
+            // re-pair regression test pre-seeds a stale row and expects the
+            // use case to observe it.
+            Ok(self
+                .saved
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|m| &m.device_id == id)
+                .cloned())
         }
         async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError> {
             Ok(self.saved.lock().unwrap().clone())
@@ -895,8 +906,17 @@ mod tests {
     }
     #[async_trait]
     impl TrustedPeerRepositoryPort for RecordingTrustedPeerRepo {
-        async fn get(&self, _: &DeviceId) -> Result<Option<TrustedPeer>, TrustedPeerError> {
-            Ok(None)
+        async fn get(&self, id: &DeviceId) -> Result<Option<TrustedPeer>, TrustedPeerError> {
+            // Last write wins, mirroring the port's upsert semantics (see
+            // `RecordingMemberRepo::get`).
+            Ok(self
+                .saved
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|p| &p.peer_device_id == id)
+                .cloned())
         }
         async fn list(&self) -> Result<Vec<TrustedPeer>, TrustedPeerError> {
             Ok(self.saved.lock().unwrap().clone())
@@ -1222,6 +1242,73 @@ mod tests {
             }
             other => panic!("expected Success, got {other:?}"),
         }
+    }
+
+    /// Issue #1023 regression: the joiner unpaired locally (one-sided), so
+    /// the sponsor still holds stale member + trust rows for it. A fresh
+    /// invite + verified handshake must replace those rows and Confirm —
+    /// previously `AlreadyAdmitted` aborted with `Reject(Internal)`.
+    #[tokio::test]
+    async fn re_pair_with_stale_records_replaces_and_confirms() {
+        let b = Bundle::happy();
+        b.holder.insert(pending("OK")).await;
+
+        let stale_fp = IdentityFingerprint::from_raw_string("CCCCCCCCCCCCCCCC").unwrap();
+        b.member_repo.saved.lock().unwrap().push(SpaceMember {
+            device_id: DeviceId::new("joiner-device"),
+            device_name: "joiner's old name".into(),
+            identity_fingerprint: stale_fp.clone(),
+            joined_at: fixed_now() - Duration::days(7),
+            sync_preferences: uc_core::MemberSyncPreferences::default(),
+        });
+        b.trusted_peer_repo.saved.lock().unwrap().push(TrustedPeer {
+            local_device_id: DeviceId::new("sponsor-device"),
+            peer_device_id: DeviceId::new("joiner-device"),
+            peer_fingerprint: stale_fp,
+            trusted_at: fixed_now() - Duration::days(7),
+        });
+
+        let sp = b.session_port.clone();
+        let member_repo = b.member_repo.clone();
+        let trusted_peer_repo = b.trusted_peer_repo.clone();
+        let (orch, mut outcomes) = b.build(drained_events());
+
+        let session = PairingSessionId::new("s-repair");
+        orch.handle_event(PairingSessionEvent::Incoming {
+            session: session.clone(),
+            message: PairingSessionMessage::Request(joiner_request("OK")),
+        })
+        .await;
+        orch.handle_event(PairingSessionEvent::MessageReceived {
+            session,
+            message: PairingSessionMessage::ChallengeResponse(JoinerChallengeResponse {
+                encrypted_challenge: vec![0x11],
+            }),
+        })
+        .await;
+
+        // Wire: KeyslotOffer + Confirm, no Reject — pairing succeeded.
+        let sent = sp.sent();
+        assert_eq!(sent.len(), 2);
+        assert!(matches!(sent[0].1, PairingSessionMessage::KeyslotOffer(_)));
+        assert!(matches!(sent[1].1, PairingSessionMessage::Confirm(_)));
+
+        // The replacement landed: latest rows carry the fresh handshake facts.
+        let members = member_repo.saved.lock().unwrap();
+        let latest_member = members.last().unwrap();
+        assert_eq!(latest_member.device_name, "joiner's laptop");
+        assert_eq!(latest_member.identity_fingerprint, joiner_fp());
+        drop(members);
+
+        let trusted = trusted_peer_repo.saved.lock().unwrap();
+        let latest_trust = trusted.last().unwrap();
+        assert_eq!(latest_trust.peer_fingerprint, joiner_fp());
+        drop(trusted);
+
+        assert!(matches!(
+            outcomes.try_recv(),
+            Ok(PairingOutcome::Success { .. })
+        ));
     }
 
     // ── T5: peer_addr_repo upsert behaviour ──────────────────────────────

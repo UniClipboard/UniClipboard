@@ -320,10 +320,10 @@ fn map_redeem_error_to_pairing_failure_reason(
 }
 
 fn map_admit_err(err: MembershipApplicationError) -> RedeemPairingInvitationError {
-    // `AlreadyAdmitted` / `AlreadyTrusted` also land here: we can't
-    // distinguish a retry-of-completed-run from a half-committed-state
-    // without a separate resume flag, so fail loudly. Recovery path is
-    // a factory_reset followed by a fresh redeem.
+    // Since #1023 the admit/trust use cases replace stale records instead
+    // of failing with `AlreadyAdmitted` / `AlreadyTrusted`, so only real
+    // persistence failures land here. Fail loudly; recovery path is a
+    // factory_reset followed by a fresh redeem.
     RedeemPairingInvitationError::Internal(format!("admit_member: {err}"))
 }
 
@@ -588,8 +588,18 @@ mod tests {
     }
     #[async_trait]
     impl MemberRepositoryPort for RecordingMemberRepo {
-        async fn get(&self, _: &DeviceId) -> Result<Option<SpaceMember>, MembershipError> {
-            Ok(None)
+        async fn get(&self, id: &DeviceId) -> Result<Option<SpaceMember>, MembershipError> {
+            // Last write wins, mirroring the port's upsert semantics — the
+            // re-pair regression test pre-seeds a stale row and expects the
+            // use case to observe it.
+            Ok(self
+                .saved
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|m| &m.device_id == id)
+                .cloned())
         }
         async fn list(&self) -> Result<Vec<SpaceMember>, MembershipError> {
             Ok(self.saved.lock().unwrap().clone())
@@ -613,8 +623,17 @@ mod tests {
     }
     #[async_trait]
     impl TrustedPeerRepositoryPort for RecordingTrustRepo {
-        async fn get(&self, _: &DeviceId) -> Result<Option<TrustedPeer>, TrustedPeerError> {
-            Ok(None)
+        async fn get(&self, id: &DeviceId) -> Result<Option<TrustedPeer>, TrustedPeerError> {
+            // Last write wins, mirroring the port's upsert semantics (see
+            // `RecordingMemberRepo::get`).
+            Ok(self
+                .saved
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|p| &p.peer_device_id == id)
+                .cloned())
         }
         async fn list(&self) -> Result<Vec<TrustedPeer>, TrustedPeerError> {
             Ok(self.saved.lock().unwrap().clone())
@@ -944,6 +963,47 @@ mod tests {
         // 是空 Vec，所以 upsert 应跳过。Harness::happy 的 mock 用
         // `.expect_upsert().times(0)`——若分支失误（对空 blob 也 upsert），
         // drop mock 时 mockall 会 panic。
+    }
+
+    /// Issue #1023 regression (joiner side): the sponsor was unpaired
+    /// locally on the other end, so this joiner still holds stale member +
+    /// trust rows for it. A fresh redeem must replace those rows instead of
+    /// failing with `AlreadyAdmitted` / `AlreadyTrusted`.
+    #[tokio::test]
+    async fn re_redeem_with_stale_sponsor_records_replaces_and_succeeds() {
+        let (uc, h) = Harness::happy();
+
+        let stale_fp = IdentityFingerprint::from_raw_string("CCCCCCCCCCCCCCCC").unwrap();
+        let stale_joined_at = chrono::Utc::now() - chrono::Duration::days(7);
+        h.member_repo.saved.lock().unwrap().push(SpaceMember {
+            device_id: DeviceId::new("sponsor-device"),
+            device_name: "sponsor's old name".into(),
+            identity_fingerprint: stale_fp.clone(),
+            joined_at: stale_joined_at,
+            sync_preferences: MemberSyncPreferences::default(),
+        });
+        h.trust_repo.saved.lock().unwrap().push(TrustedPeer {
+            local_device_id: DeviceId::new("joiner-device"),
+            peer_device_id: DeviceId::new("sponsor-device"),
+            peer_fingerprint: stale_fp,
+            trusted_at: stale_joined_at,
+        });
+
+        let out = uc.execute(cmd("CODE-1")).await.unwrap();
+        assert_eq!(out.sponsor_device_id.as_str(), "sponsor-device");
+
+        // Replacement landed: latest rows carry the fresh handshake facts.
+        let members = h.member_repo.saved.lock().unwrap();
+        let latest = members.last().unwrap();
+        assert_eq!(latest.device_name, "sponsor's laptop");
+        assert_eq!(latest.identity_fingerprint, sponsor_fp());
+        drop(members);
+
+        let trusted = h.trust_repo.saved.lock().unwrap();
+        assert_eq!(trusted.last().unwrap().peer_fingerprint, sponsor_fp());
+        drop(trusted);
+
+        assert_eq!(*h.setup_status.set_calls.lock().unwrap(), vec![true]);
     }
 
     /// Session variant that primes a `SponsorConfirm` with a specific

@@ -400,8 +400,8 @@ async fn happy_path_executes_all_4_phases() {
     env.handshake
         .expect_run()
         .return_once(|_, _| Ok(outcome_default()));
-    // AdmitMemberUseCase / TrustPeerUseCase 都先 get 后 save——需返回 None
-    // 否则会被误判为 AlreadyAdmitted/AlreadyTrusted。
+    // AdmitMemberUseCase / TrustPeerUseCase 都先 get 后 save——返回 None
+    // 走 fresh-admit 路径(Some 会走 #1023 的重配替换路径)。
     env.member_repo.expect_get().return_once(|_| Ok(None));
     env.member_repo.expect_save().return_once(|_| Ok(()));
     env.trust_repo.expect_get().return_once(|_| Ok(None));

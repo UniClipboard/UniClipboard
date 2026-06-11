@@ -184,10 +184,10 @@ pub async fn reconcile_peer_addresses(
 /// 条目。
 ///
 /// 配套 `MemberRosterFacade::revoke_member` 的级联清理:撤销成员时若 trust
-/// 删失败,或老版本 unpair 路径根本没碰过 trust 表,残留行会导致**同设备
-/// 重新配对**被 `TrustPeerUseCase::execute` 的 `AlreadyTrusted` 检查直接挡死
-/// (见 `trust_peer.rs:42`)。reconcile 把不变量 `trusted_peer ⊆ member_repo`
-/// 重新拉齐,让重新配对路径不再被历史遗留卡住。
+/// 删失败,或老版本 unpair 路径根本没碰过 trust 表,残留行会让本机继续把
+/// 已撤销设备当可信对端(#1023 之后 `TrustPeerUseCase::execute` 重配时显式
+/// 替换,残留行不再挡死重新配对,但孤儿 trust 行仍违反领域不变量)。
+/// reconcile 把不变量 `trusted_peer ⊆ member_repo` 重新拉齐。
 ///
 /// 跟 `reconcile_peer_addresses` 同样的失败策略:单条 / 整体失败都只 log,
 /// 不阻断 daemon 启动。

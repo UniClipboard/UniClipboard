@@ -6,6 +6,8 @@
 >
 > **Status**: v1 — accepted. Implemented across `uc-application`, Tauri DTOs, web UI, and
 > client integration templates.
+> **Revision 2026-06-11**: additive `urls` multi-candidate field (§3.1a, §7.3) — no
+> version bump; see `specs/mobile-sync-qr-multi-url.md` for the design rationale.
 >
 > **Tracking issue**: [#789](https://github.com/UniClipboard/UniClipboard/issues/789)
 
@@ -65,8 +67,11 @@ QR and creates an attack surface around percent-decoding edge cases. base64url k
 payload opaque to URL parsers and minimizes QR size for typical credentials.
 
 **Size budget**: Typical payload JSON is 150–350 bytes → URI 200–470 chars → QR Version
-~15–18. Encoders MUST refuse to produce a URI > 800 characters; the only realistic way to
-exceed this is by abusing `o` with large values, which violates §4.4.
+~15–18. Encoders MUST refuse to produce a URI > 2000 characters. The limit was raised
+from the original 800 when the multi-candidate `urls` field (§3.1a) landed: 20 candidates
+of `http://<ipv4>:<port>` base64-encode to ~1100+ chars. Common home machines rarely have
+more than 4 qualifying interfaces, so typical multi-candidate URIs stay well under the QR
+density where scanning degrades; 20 is an upper-bound protection, not an expectation.
 
 ---
 
@@ -100,6 +105,65 @@ After base64url-decoding `p`, the result is a UTF-8 JSON object:
 Clients construct request URLs as `{url}/SyncClipboard.json` and authenticate with
 `Authorization: Basic base64(user:pwd)`.
 
+### 3.1a Optional `urls` — ordered candidate endpoint list
+
+Added 2026-06-11 (design spec: `specs/mobile-sync-qr-multi-url.md`). A single `url` forces
+an either/or choice between one LAN IP (intranet-only) and a public domain (internet-only).
+`urls` carries **all** reachable candidates so one QR works from both network positions.
+
+| Field  | Type     | Semantics                                                                                   |
+| ------ | -------- | ------------------------------------------------------------------------------------------- |
+| `urls` | string[] | Ordered candidate base URLs (same shape rules as `url`: no trailing slash, `http`/`https`). |
+
+Example payload with `urls`:
+
+```json
+{
+  "v": 1,
+  "url": "https://203-0-113-10.sslip.io",
+  "urls": [
+    "https://203-0-113-10.sslip.io",
+    "http://192.168.1.5:42720",
+    "http://100.64.0.5:42720"
+  ],
+  "user": "mobile_aabbccdd",
+  "pwd": "AbCdEfGhIjKlMnOpQrSt",
+  "o": { "did": "did_0123abcd", "label": "My iPhone", "proto": "syncclipboard" }
+}
+```
+
+**Hard rules (encoder side):**
+
+- `url == urls[0]` always. Legacy clients keep reading `url` only; v1 semantics unchanged.
+- When there is **only one candidate**, encoders MUST omit `urls` entirely — the emitted
+  payload is then byte-identical to a pre-`urls` v1 code (§7.1 golden vector MUST keep
+  passing unchanged). `"urls":[]` MUST never be serialized.
+- No version bump: payload `v` and URI `v` both stay `1`. `urls` rides on the
+  ignore-unknown rule, so the payload schema MUST NOT reject unknown fields.
+- Deduplicate by final URL string (keep the earliest position), cap at **20 entries**, and
+  never truncate silently (log the dropped count).
+
+**Candidate collection order (desktop encoder, `register_device.rs::collect_advertise_urls`):**
+
+1. Public entry — `settings.mobile_sync.lan_advertise_base_url` (when set, verbatim).
+2. User-pinned interface IP — `settings.mobile_sync.lan_advertise_ip` (when set,
+   `http://<ip>:<lan_port>`). Without a public entry this is `urls[0]`, matching the v1
+   `url` choice exactly.
+3. All qualifying interface IPs: RFC1918 + Tailscale CGNAT `100.64.0.0/10` (the
+   `is_lan_candidate` filter shared with the interface dropdown), excluding container
+   virtual interfaces (`docker0`, `veth*` by name; `br-*` only when its address also falls
+   inside `172.16.0.0/12`), sorted `10/8 → 172.16/12 → 192.168/16 → 100.64/10`, numeric
+   IPv4 order within each bucket. All interface candidates share
+   `settings.mobile_sync.lan_port` (default `42720`).
+
+If interface probing fails but step 1/2 produced candidates, encoders degrade gracefully
+(emit the configured entries only) instead of failing registration.
+
+**Parser side**: lenient and optional. Clients that understand `urls` SHOULD probe
+candidates in order (`GET {candidate}/SyncClipboard.json` with Basic Auth) and use the
+first that responds. Clients that don't understand `urls` simply use `url` as before.
+Reachability of any specific candidate is NOT guaranteed by the encoder.
+
 ### 3.2 Optional `o` (other) — extensible metadata
 
 `o` is an object of string→string entries. **Clients MUST silently ignore unknown keys.**
@@ -124,9 +188,9 @@ failing.
 ### 3.3 Character encoding and JSON shape
 
 - JSON MUST be UTF-8, minified (no whitespace), no trailing newline.
-- Encoders MUST emit fields in this order: `v`, `url`, `user`, `pwd`, `o`. This keeps
-  golden-vector byte equality deterministic across Rust and TypeScript producers.
-  Decoders MUST NOT depend on order.
+- Encoders MUST emit fields in this order: `v`, `url`, `urls`, `user`, `pwd`, `o`
+  (`urls` only when present, see §3.1a). This keeps golden-vector byte equality
+  deterministic across Rust and TypeScript producers. Decoders MUST NOT depend on order.
 - Inside `o`, keys MUST be sorted lexicographically (ASCII order). Same reason: byte-stable
   golden vectors across languages.
 - `pwd` MAY contain any printable Unicode (it survives JSON escaping); however, in practice
@@ -303,6 +367,23 @@ uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE
 > above differs from what the encoder emits, the encoder is wrong — fix the encoder,
 > not the vector. The vector was generated with: spec field order, lexicographic `o`-key
 > order, base64url-no-pad, JSON minify (no whitespace).
+
+### 7.1a Multi-url vector (§3.1a)
+
+**Payload JSON (minified, fields in spec order):**
+
+```
+{"v":1,"url":"https://203-0-113-10.sslip.io","urls":["https://203-0-113-10.sslip.io","http://192.168.1.5:42720","http://100.64.0.5:42720"],"user":"mobile_aabbccdd","pwd":"AbCdEfGhIjKlMnOpQrSt","o":{"did":"did_0123abcd","label":"Test","proto":"syncclipboard"}}
+```
+
+**Encoded URI:**
+
+```
+uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwczovLzIwMy0wLTExMy0xMC5zc2xpcC5pbyIsInVybHMiOlsiaHR0cHM6Ly8yMDMtMC0xMTMtMTAuc3NsaXAuaW8iLCJodHRwOi8vMTkyLjE2OC4xLjU6NDI3MjAiLCJodHRwOi8vMTAwLjY0LjAuNTo0MjcyMCJdLCJ1c2VyIjoibW9iaWxlX2FhYmJjY2RkIiwicHdkIjoiQWJDZEVmR2hJaktsTW5PcFFyU3QiLCJvIjp7ImRpZCI6ImRpZF8wMTIzYWJjZCIsImxhYmVsIjoiVGVzdCIsInByb3RvIjoic3luY2NsaXBib2FyZCJ9fQ
+```
+
+The §7.1 vector (no `urls`) MUST keep passing unchanged — single-candidate payloads are
+byte-identical to pre-`urls` v1 codes.
 
 ### 7.2 Negative vectors
 

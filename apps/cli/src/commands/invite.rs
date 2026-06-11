@@ -73,7 +73,7 @@ pub async fn run(verbose: bool) -> i32 {
             inv
         }
         Err(err) => {
-            ui::spinner_finish_error(&spinner, &format!("{err}"));
+            ui::spinner_finish_error(&spinner, &crate::commands::daemon_error_message(&err));
             return exit_codes::EXIT_ERROR;
         }
     };

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
-use reqwest::{Method, RequestBuilder};
+use anyhow::Result;
+use reqwest::Method;
 
-use crate::http::authorized_daemon_request_with_type;
+use crate::http::enveloped::empty_request;
 use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::analytics::CaptureUiEventRequest;
 
@@ -38,42 +38,14 @@ impl DaemonAnalyticsClient {
     /// missing connection, transport failure, or non-2xx status — callers
     /// treat analytics as best-effort and should only `debug`-log the error.
     pub async fn capture(&self, event: CaptureUiEventRequest) -> Result<()> {
-        let response = self
-            .authorized_request(Method::POST, "/analytics/capture")
-            .await?
-            .json(&event)
-            .send()
-            .await
-            .with_context(|| "failed to call daemon /analytics/capture")?;
-
-        if response.status().is_success() {
-            return Ok(());
-        }
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<failed to read body>".to_string());
-        Err(anyhow!(
-            "daemon /analytics/capture failed with status {}: {}",
-            status,
-            body,
-        ))
-    }
-
-    async fn authorized_request(&self, method: Method, path: &str) -> Result<RequestBuilder> {
-        let connection = self
-            .connection_state
-            .get()
-            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
-        authorized_daemon_request_with_type(
+        Ok(empty_request(
             &self.http,
             &self.connection_state,
-            method,
-            path,
-            connection.pid,
             &self.client_type,
+            Method::POST,
+            "/analytics/capture",
+            |r| r.json(&event),
         )
-        .await
+        .await?)
     }
 }

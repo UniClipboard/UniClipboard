@@ -87,7 +87,7 @@ pub async fn run(args: InitArgs, verbose: bool) -> i32 {
             exit_codes::EXIT_SUCCESS
         }
         Err(err) => {
-            ui::spinner_finish_error(&spinner, &format!("{err}"));
+            ui::spinner_finish_error(&spinner, &crate::commands::daemon_error_message(&err));
             exit_codes::EXIT_ERROR
         }
     }

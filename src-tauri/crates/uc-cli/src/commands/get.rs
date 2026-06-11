@@ -314,24 +314,17 @@ fn write_bytes_outcome(
     let bytes_written = bytes.len() as u64;
 
     if args.out.as_deref() == Some("-") {
+        if json {
+            ui::error(
+                "--json cannot be combined with --out - because the JSON would corrupt the raw byte stream on stdout",
+            );
+            return exit_codes::EXIT_ERROR;
+        }
         if let Err(err) = std::io::stdout().write_all(&bytes) {
             ui::error(&format!("Failed to write bytes to stdout: {err}"));
             return exit_codes::EXIT_ERROR;
         }
         let _ = std::io::stdout().flush();
-        if json {
-            print_json(&GetOutcome {
-                entry_id: &target.id,
-                content_type: category.as_str(),
-                mime_type: &target.content_type,
-                path: None,
-                filename: Some(filename),
-                text: None,
-                bytes_written: Some(bytes_written),
-                captured_at: target.captured_at,
-                outcome: "exported",
-            });
-        }
         return exit_codes::EXIT_SUCCESS;
     }
 
@@ -505,7 +498,7 @@ fn default_out_dir() -> PathBuf {
 fn sanitize_filename(name: &str) -> String {
     let stripped: String = name
         .chars()
-        .filter(|c| !matches!(c, '/' | '\\' | '\0'))
+        .filter(|c| !matches!(c, '/' | '\\') && !c.is_control())
         .collect();
     if stripped.is_empty() || stripped == "." || stripped == ".." {
         "uniclip-get.bin".to_string()
@@ -515,10 +508,9 @@ fn sanitize_filename(name: &str) -> String {
 }
 
 fn short_hash(s: &str) -> &str {
-    if s.len() > 8 {
-        &s[..8]
-    } else {
-        s
+    match s.char_indices().nth(8) {
+        Some((byte_idx, _)) => &s[..byte_idx],
+        None => s,
     }
 }
 

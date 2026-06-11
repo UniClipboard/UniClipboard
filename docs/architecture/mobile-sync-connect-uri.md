@@ -7,7 +7,7 @@
 > **Status**: v1 — accepted. Implemented across `uc-application`, Tauri DTOs, web UI, and
 > client integration templates.
 > **Revision 2026-06-11**: additive `urls` multi-candidate field (§3.1a, §7.3) — no
-> version bump; see `specs/mobile-sync-qr-multi-url.md` for the design rationale.
+> version bump; see `docs/planning/mobile-sync-qr-multi-url.md` for the design rationale.
 >
 > **Tracking issue**: [#789](https://github.com/UniClipboard/UniClipboard/issues/789)
 
@@ -107,7 +107,7 @@ Clients construct request URLs as `{url}/SyncClipboard.json` and authenticate wi
 
 ### 3.1a Optional `urls` — ordered candidate endpoint list
 
-Added 2026-06-11 (design spec: `specs/mobile-sync-qr-multi-url.md`). A single `url` forces
+Added 2026-06-11 (design spec: `docs/planning/mobile-sync-qr-multi-url.md`). A single `url` forces
 an either/or choice between one LAN IP (intranet-only) and a public domain (internet-only).
 `urls` carries **all** reachable candidates so one QR works from both network positions.
 

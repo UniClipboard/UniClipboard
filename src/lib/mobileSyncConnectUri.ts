@@ -46,7 +46,7 @@ export interface ConnectPayload {
   v: 1
   url: string
   /**
-   * 有序候选地址列表(`specs/mobile-sync-qr-multi-url.md` §4)。多候选码下
+   * 有序候选地址列表(`docs/planning/mobile-sync-qr-multi-url.md` §4)。多候选码下
    * `url === urls[0]`;v1 单地址码无此字段 → 解析侧兜底为 `[]`。
    */
   urls: string[]

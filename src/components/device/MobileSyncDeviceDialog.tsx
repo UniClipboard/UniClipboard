@@ -201,7 +201,7 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
   }, [selectedHost, preferredHost, port])
 
   // connect URI 仅在 rotateResult 存在时可拼。device.label 保留用作 ConnectUriOther.label。
-  // 多候选(specs/mobile-sync-qr-multi-url.md §4): 所选 host 提升为 urls[0],
+  // 多候选(docs/planning/mobile-sync-qr-multi-url.md §4): 所选 host 提升为 urls[0],
   // 其后跟公网入口(若配置)与其余网卡候选, 去重保序 —— 改密后的码在其它
   // 网络位置仍然可用。
   const connectUri = useMemo<string | null>(() => {

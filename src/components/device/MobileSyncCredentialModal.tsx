@@ -176,7 +176,7 @@ const MobileSyncCredentialModal: React.FC<Props> = ({ payload, onComplete }) => 
     return `http://${selectedHost}:${payloadPort}`
   }, [payload, selectedHost, payloadPort])
 
-  // 后端原始码携带的多候选地址(specs/mobile-sync-qr-multi-url.md §4)。
+  // 后端原始码携带的多候选地址(docs/planning/mobile-sync-qr-multi-url.md §4)。
   // 切 host 重算时不能丢: 所选 host 提升为 urls[0], 其余候选保序跟随,
   // 这样切换后的码在其它网络位置(公网入口 / 其它网段)仍然可用。
   const payloadUrls = useMemo<string[]>(() => {

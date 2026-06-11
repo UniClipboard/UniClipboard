@@ -181,7 +181,7 @@ const MAX_LABEL_LEN: usize = 64;
 
 /// `lan_port` 缺省值（SPEC §3.2）。
 const DEFAULT_LAN_PORT: u16 = 42720;
-/// `urls` 候选去重后的截断上限（`specs/mobile-sync-qr-multi-url.md` §5.4）。
+/// `urls` 候选去重后的截断上限（`docs/planning/mobile-sync-qr-multi-url.md` §5.4）。
 const MAX_ADVERTISE_URLS: usize = 20;
 
 /// 自定义 username 最小长度。
@@ -238,7 +238,7 @@ impl RegisterMobileShortcutDeviceUseCase {
         }
     }
 
-    /// 收集要写进二维码的全部候选地址（`specs/mobile-sync-qr-multi-url.md` §5），
+    /// 收集要写进二维码的全部候选地址（`docs/planning/mobile-sync-qr-multi-url.md` §5），
     /// 产出有序、去重、截断后的列表；`urls[0]` 即 v1 语义的主 `url`。
     ///
     /// 收集顺序：
@@ -372,7 +372,7 @@ impl RegisterMobileShortcutDeviceUseCase {
         if !settings.mobile_sync.lan_listen_enabled {
             return Err(RegisterMobileShortcutDeviceError::LanListenerDisabled);
         }
-        // 候选地址全收集(specs/mobile-sync-qr-multi-url.md §5):公网入口 +
+        // 候选地址全收集(docs/planning/mobile-sync-qr-multi-url.md §5):公网入口 +
         // 钉死 IP + 全部合格网卡,一并进码让扫码端逐个探活;`urls[0]` 即
         // v1 语义的主 `url`,老客户端只读它。daemon 永远 bind
         // `0.0.0.0:lan_port`,但 iPhone 得到的候选必须是真实可达的地址
@@ -1400,7 +1400,7 @@ mod tests {
         ));
     }
 
-    // ── tests: 多候选 urls(specs/mobile-sync-qr-multi-url.md §9) ──────
+    // ── tests: 多候选 urls(docs/planning/mobile-sync-qr-multi-url.md §9) ──────
 
     /// 任意 settings + probe 组合的装配,多候选测试专用。
     fn build_uc_with(

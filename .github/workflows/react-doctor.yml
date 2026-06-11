@@ -13,7 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: millionco/react-doctor@main
+      # Pinned to stop CI breakage from upstream float. Both `millionco/react-doctor@main`
+      # and the npm package it runs drift independently; on 2026-06-11 the action switched
+      # to the consolidated `--scope` CLI flag (millionco/react-doctor#769) while the
+      # published `react-doctor@latest` (0.5.1) still spoke `--diff`, so every PR failed with
+      # "error: too many arguments. Expected 1 argument but got 2." Pin the action commit and
+      # the CLI version to a compatible pre-consolidation pair (blocking defaults to advisory).
+      # Revisit once upstream ships a release where the action and CLI flag interfaces agree.
+      - uses: millionco/react-doctor@486c68f65511 # interface-compatible with react-doctor@0.5.1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          diff: main
+          version: "0.5.1"

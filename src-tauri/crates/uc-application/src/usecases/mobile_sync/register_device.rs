@@ -35,7 +35,7 @@ use uc_core::settings::model::MobileSyncSettings;
 use uc_observability::analytics::{AnalyticsPort, Event};
 
 use super::connect_uri::{build_mobile_sync_connect_uri, ConnectUriError, ConnectUriOther};
-use super::list_lan_interfaces::is_lan_candidate;
+use super::list_lan_interfaces::may_advertise_interface;
 
 // ─── public-shaped (input / output / error) ─────────────────────────────
 
@@ -245,10 +245,11 @@ impl RegisterMobileShortcutDeviceUseCase {
     /// 1. 公网入口 `lan_advertise_base_url`（Some 时，原样，恒排首位）；
     /// 2. 用户钉死的 `lan_advertise_ip`（Some 时）—— 无公网入口时它就是
     ///    `urls[0]`，与 v1 的 `url` 取值保持一致；
-    /// 3. 全部合格网卡 IP：[`is_lan_candidate`] 宽口径（RFC1918 + Tailscale
-    ///    CGNAT 100.64/10），剔除容器虚拟网卡
-    ///    （[`is_virtual_container_iface`]），按 10/8 → 172.16/12 →
-    ///    192.168/16 → 100.64/10 桶序、段内 IPv4 数值序。
+    /// 3. 全部合格网卡 IP：[`may_advertise_interface`] 口径（RFC1918 +
+    ///    Tailscale CGNAT 100.64/10 的宽地址段，且剔除 docker0 / veth* /
+    ///    br-* 容器虚拟网卡），按 10/8 → 172.16/12 → 192.168/16 →
+    ///    100.64/10 桶序、段内 IPv4 数值序。下拉展示（`list_lan_interfaces`）
+    ///    与此处共用同一判定，保证两处口径不漂移。
     ///
     /// 网卡探测失败时：若 1/2 已有候选则降级继续（v1 在这两条路径下根本
     /// 不探测网卡，不能让探测失败反过来弄死老路径），否则照旧报
@@ -270,10 +271,8 @@ impl RegisterMobileShortcutDeviceUseCase {
 
         match self.lan_interface_probe.list_interfaces().await {
             Ok(raw) => {
-                let mut nics: Vec<LanInterface> = raw
-                    .into_iter()
-                    .filter(|iface| is_lan_candidate(iface) && !is_virtual_container_iface(iface))
-                    .collect();
+                let mut nics: Vec<LanInterface> =
+                    raw.into_iter().filter(may_advertise_interface).collect();
                 nics.sort_by(|a, b| {
                     advertise_bucket(&a.ipv4.octets())
                         .cmp(&advertise_bucket(&b.ipv4.octets()))
@@ -543,27 +542,8 @@ fn validate_password_length(password: &str) -> Result<(), RegisterMobileShortcut
     Ok(())
 }
 
-/// 容器虚拟网卡剔除（规格 §5.2，风险收敛见规格 §10）。
-///
-/// Docker 默认网桥落在 RFC1918 的 172.17/16 段内，仅按 IP 段过滤会被误纳
-/// 入进码 —— 手机永远连不上容器网桥地址。按接口名判定：
-/// - `docker0`（默认网桥）、`veth*`（容器对端）—— 名字即可断定，直接剔除；
-/// - `br-*` 既可能是 Docker 自定义网桥也可能是真实 LAN 网桥（如用户自建
-///   桥接），仅当其地址同时落在 Docker 默认地址池所在的 172.16/12 段时才
-///   剔除，避免误伤 `br-` 命名的真实网桥。
-fn is_virtual_container_iface(iface: &LanInterface) -> bool {
-    if iface.name == "docker0" || iface.name.starts_with("veth") {
-        return true;
-    }
-    if iface.name.starts_with("br-") {
-        let octets = iface.ipv4.octets();
-        return matches!(octets, [172, 16..=31, _, _]);
-    }
-    false
-}
-
 /// 排序桶（规格 §5.3）:10/8 = 0,172.16/12 = 1,192.168/16 = 2,
-/// 100.64/10（Tailscale CGNAT）= 3,其它 = 4(经 `is_lan_candidate`
+/// 100.64/10（Tailscale CGNAT）= 3,其它 = 4(经 `may_advertise_interface`
 /// 过滤后理论上不存在)。与 `list_lan_interfaces` 的下拉排序口径一致。
 fn advertise_bucket(octets: &[u8; 4]) -> u8 {
     match octets {

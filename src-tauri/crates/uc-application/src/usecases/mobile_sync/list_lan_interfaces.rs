@@ -70,7 +70,7 @@ impl ListLanInterfacesUseCase {
         // 对外只保留字符串形式。保留原始 `Ipv4Addr` 作为排序 key，排完再丢。
         let mut filtered: Vec<(LanInterfaceOption, std::net::Ipv4Addr)> = raw
             .into_iter()
-            .filter(is_lan_candidate)
+            .filter(may_advertise_interface)
             .map(|iface| {
                 let raw_ipv4 = iface.ipv4;
                 (
@@ -99,7 +99,7 @@ impl ListLanInterfacesUseCase {
 
 // ─── helpers ────────────────────────────────────────────────────────────
 
-/// "算 LAN 候选"判定。
+/// "算 LAN 候选"判定 —— **只**看地址段口径（RFC1918 + Tailscale CGNAT）。
 ///
 /// 接受 IPv4 RFC1918 私有地址（10/8 / 172.16/12 / 192.168/16）与 CGNAT 段
 /// 100.64.0.0/10（Tailscale 默认 IPv4 范围）。
@@ -107,9 +107,12 @@ impl ListLanInterfacesUseCase {
 /// 链路本地 169.254/16、Clash fake-ip 198.18/15 等始终排除：它们要么本身
 /// 就是"看似可达实际不通"的常见陷阱来源，要么与本机 LAN 同步场景不相
 /// 关。
-/// `register_device.rs` 的多候选地址收集（`collect_advertise_urls`）复用本
-/// 判定 —— 下拉展示与进码候选共用同一口径，避免"列表里看得到、码里却
-/// 没有"的不一致。
+///
+/// 注意：本判定不剔除容器虚拟网卡（docker0 / veth* / br-*）—— 它们的地址
+/// 可能落在合格段内但手机永远连不上。"能否进码给手机用"的完整口径是
+/// [`may_advertise_interface`]，下拉展示（本 use case）与进码候选
+/// （`register_device::collect_advertise_urls`）都走它，避免"列表里看得到、
+/// 码里却没有"的不一致。
 pub(crate) fn is_lan_candidate(iface: &LanInterface) -> bool {
     if iface.is_loopback {
         return false;
@@ -124,6 +127,35 @@ pub(crate) fn is_lan_candidate(iface: &LanInterface) -> bool {
         [100, b, _, _] if (b & 0xc0) == 0x40 => true,
         _ => false,
     }
+}
+
+/// 容器虚拟网卡剔除（规格 §5.2，风险收敛见规格 §10）。
+///
+/// Docker 默认网桥落在 RFC1918 的 172.17/16 段内，仅按 IP 段过滤会被误纳
+/// 入候选 —— 手机永远连不上容器网桥地址。按接口名判定：
+/// - `docker0`（默认网桥）、`veth*`（容器对端）—— 名字即可断定，直接剔除；
+/// - `br-*` 既可能是 Docker 自定义网桥也可能是真实 LAN 网桥（如用户自建
+///   桥接），仅当其地址同时落在 Docker 默认地址池所在的 172.16/12 段时才
+///   剔除，避免误伤 `br-` 命名的真实网桥。
+pub(crate) fn is_virtual_container_iface(iface: &LanInterface) -> bool {
+    if iface.name == "docker0" || iface.name.starts_with("veth") {
+        return true;
+    }
+    if iface.name.starts_with("br-") {
+        let octets = iface.ipv4.octets();
+        return matches!(octets, [172, 16..=31, _, _]);
+    }
+    false
+}
+
+/// "可进码给手机用"的完整口径 —— 单一真相来源。
+///
+/// = [`is_lan_candidate`]（地址段合格）且**非**容器虚拟网卡
+/// （[`is_virtual_container_iface`]）。下拉展示（本 use case）与 QR 候选收集
+/// （`register_device::collect_advertise_urls`）共用本判定，避免两处口径漂移
+/// 导致"列表里挑得到、扫码端却拿不到"的不一致。
+pub(crate) fn may_advertise_interface(iface: &LanInterface) -> bool {
+    is_lan_candidate(iface) && !is_virtual_container_iface(iface)
 }
 
 /// 排序桶：10.x = 0，172.16.x = 1，192.168.x = 2，100.64–127.x = 3，
@@ -205,6 +237,28 @@ mod tests {
         ])));
         let out = uc.execute().await.expect("ok");
         assert!(out.is_empty(), "non-candidate must be filtered: {out:?}");
+    }
+
+    #[tokio::test]
+    async fn drops_container_virtual_interfaces() {
+        // 回归:下拉口径必须与进码口径一致 —— docker0 / veth* / br-(172.16/12)
+        // 容器虚拟网卡即便落在合格地址段也不能出现在选择列表里,否则用户会
+        // 挑到一个手机永远连不上的地址。`register_device::collect_advertise_urls`
+        // 已剔除它们,二者共用 `may_advertise_interface`,本测试守住下拉这一侧。
+        let uc = ListLanInterfacesUseCase::new(Arc::new(FixedProbe(vec![
+            make("docker0", [172, 17, 0, 1], false),   // Docker 默认网桥
+            make("vethXYZ", [10, 99, 0, 1], false),    // 容器对端
+            make("br-ABC123", [172, 18, 0, 1], false), // Docker 自定义网桥(172.16/12)
+            make("en0", [192, 168, 1, 5], false),      // 真实 LAN —— 必须保留
+            make("br-lan", [192, 168, 2, 1], false),   // br- 命名的真实网桥(非 172)—— 保留
+        ])));
+        let out = uc.execute().await.expect("ok");
+        let ips: Vec<&str> = out.iter().map(|o| o.ipv4.as_str()).collect();
+        assert_eq!(
+            ips,
+            vec!["192.168.1.5", "192.168.2.1"],
+            "docker0/veth*/br-(172.16/12) must never be offered as QR targets: {out:?}"
+        );
     }
 
     #[tokio::test]

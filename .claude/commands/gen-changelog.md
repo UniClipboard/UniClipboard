@@ -39,3 +39,4 @@ Generate a user-facing changelog for the current release.
 - Write from the user's perspective: what was broken, what's new, what improved
 - Keep descriptions concise but informative
 - Chinese version should be natural Chinese, not a literal translation
+- Do NOT copy `docs/changelog/announcement.md` / `announcement.zh.md` into the version files — the release pipeline prepends that pinned announcement automatically

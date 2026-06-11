@@ -98,4 +98,105 @@ describe('assemble-update-manifest', () => {
       `${baseUrl}/UniClipboard_0.1.0-alpha.2_arm64-setup.exe`
     )
   })
+
+  it('prepends pinned announcement files to the release notes', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assemble-manifest-'))
+    tempDirs.push(tempDir)
+
+    const artifactsDir = path.join(tempDir, 'release-assets')
+    const outputPath = path.join(tempDir, 'updates', 'alpha.json')
+    const baseUrl = 'https://example.com/dl/v0.14.1'
+
+    writeSigFile(
+      path.join(artifactsDir, 'UniClipboard_aarch64-apple-darwin.app.tar.gz.sig'),
+      'sig-macos-arm64'
+    )
+
+    const changelogDir = path.join(tempDir, 'changelog')
+    fs.mkdirSync(changelogDir, { recursive: true })
+    fs.writeFileSync(path.join(changelogDir, '0.14.1.md'), '## 0.14.1\n\n- A fix\n', 'utf8')
+    fs.writeFileSync(path.join(changelogDir, '0.14.1.zh.md'), '## 0.14.1\n\n- 一个修复\n', 'utf8')
+    fs.writeFileSync(
+      path.join(changelogDir, 'announcement.md'),
+      '> **Notice**: reinstall.\n',
+      'utf8'
+    )
+    fs.writeFileSync(
+      path.join(changelogDir, 'announcement.zh.md'),
+      '> **公告**：请重装。\n',
+      'utf8'
+    )
+
+    execFileSync(
+      'node',
+      [
+        'scripts/assemble-update-manifest.js',
+        '--version',
+        '0.14.1',
+        '--artifacts-dir',
+        artifactsDir,
+        '--output',
+        outputPath,
+        '--base-url',
+        baseUrl,
+        '--notes-file',
+        path.join(changelogDir, '0.14.1.md'),
+        '--zh-notes-file',
+        path.join(changelogDir, '0.14.1.zh.md'),
+      ],
+      {
+        cwd: process.cwd(),
+        stdio: 'pipe',
+      }
+    )
+
+    const manifest = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as { notes: string }
+
+    expect(manifest.notes).toBe(
+      '> **Notice**: reinstall.\n\n## 0.14.1\n\n- A fix' +
+        '\n\n<!-- zh -->\n\n' +
+        '> **公告**：请重装。\n\n## 0.14.1\n\n- 一个修复'
+    )
+  })
+
+  it('leaves notes untouched when no announcement files exist', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assemble-manifest-'))
+    tempDirs.push(tempDir)
+
+    const artifactsDir = path.join(tempDir, 'release-assets')
+    const outputPath = path.join(tempDir, 'updates', 'alpha.json')
+
+    writeSigFile(
+      path.join(artifactsDir, 'UniClipboard_aarch64-apple-darwin.app.tar.gz.sig'),
+      'sig-macos-arm64'
+    )
+
+    const changelogDir = path.join(tempDir, 'changelog')
+    fs.mkdirSync(changelogDir, { recursive: true })
+    fs.writeFileSync(path.join(changelogDir, '0.14.1.md'), '## 0.14.1\n\n- A fix\n', 'utf8')
+
+    execFileSync(
+      'node',
+      [
+        'scripts/assemble-update-manifest.js',
+        '--version',
+        '0.14.1',
+        '--artifacts-dir',
+        artifactsDir,
+        '--output',
+        outputPath,
+        '--base-url',
+        'https://example.com/dl/v0.14.1',
+        '--notes-file',
+        path.join(changelogDir, '0.14.1.md'),
+      ],
+      {
+        cwd: process.cwd(),
+        stdio: 'pipe',
+      }
+    )
+
+    const manifest = JSON.parse(fs.readFileSync(outputPath, 'utf8')) as { notes: string }
+    expect(manifest.notes).toBe('## 0.14.1\n\n- A fix')
+  })
 })

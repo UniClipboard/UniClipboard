@@ -40,3 +40,4 @@ Generate the changelog for version {{VERSION}}.
 - Follow the exact Markdown structure from `docs/CHANGELOG_TEMPLATE.md`.
 - Only modify files under `docs/changelog/`.
 - If the existing draft contains items outside the allowed range, delete them.
+- Never modify or delete `docs/changelog/announcement.md` or `docs/changelog/announcement.zh.md`, and do not copy their content into the version changelog files: the release pipeline prepends them automatically.

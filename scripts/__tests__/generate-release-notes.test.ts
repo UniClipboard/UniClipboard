@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { buildInstallerTable } from '../generate-release-notes.js'
+import { buildInstallerTable, readChangelogSection } from '../generate-release-notes.js'
 
 const BASE_URL = 'https://example.com/dl'
 
@@ -64,5 +64,40 @@ describe('buildInstallerTable Windows rows', () => {
     )
     expect(table).not.toContain('ARM64')
     expect(table).not.toContain('Portable')
+  })
+})
+
+describe('readChangelogSection pinned announcement', () => {
+  it('prepends announcement.md from the changelog directory', () => {
+    const changelogPath = path.join(artifactsDir, '0.14.1.md')
+    fs.writeFileSync(changelogPath, '## 0.14.1\n\n- A fix\n', 'utf8')
+    fs.writeFileSync(
+      path.join(artifactsDir, 'announcement.md'),
+      '> **Notice**: reinstall.\n',
+      'utf8'
+    )
+
+    expect(readChangelogSection(changelogPath)).toBe(
+      '> **Notice**: reinstall.\n\n## 0.14.1\n\n- A fix'
+    )
+  })
+
+  it('prepends the announcement even when the changelog file is missing', () => {
+    fs.writeFileSync(
+      path.join(artifactsDir, 'announcement.md'),
+      '> **Notice**: reinstall.\n',
+      'utf8'
+    )
+
+    expect(readChangelogSection(path.join(artifactsDir, '0.14.1.md'))).toBe(
+      "> **Notice**: reinstall.\n\n## What's Changed\n\nRelease notes are not available yet."
+    )
+  })
+
+  it('returns the changelog unchanged when no announcement exists', () => {
+    const changelogPath = path.join(artifactsDir, '0.14.1.md')
+    fs.writeFileSync(changelogPath, '## 0.14.1\n\n- A fix\n', 'utf8')
+
+    expect(readChangelogSection(changelogPath)).toBe('## 0.14.1\n\n- A fix')
   })
 })

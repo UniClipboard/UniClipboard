@@ -1,12 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "updater",
-  "description": "Narrow capability for the native updater window. Grants only the updater plugin commands plus the IPC/event/window primitives the window actually uses (custom command invoke, event listen for update broadcasts, and close).",
+  "description": "Narrow capability for the native updater window. Grants only the updater plugin commands plus the IPC/event/window primitives the window actually uses (custom command invoke, event listen for update broadcasts, close, and opening external URLs in the system browser for manual-download flows and release-note links).",
   "windows": ["updater"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
     "core:event:allow-listen",
-    "updater:default"
+    "updater:default",
+    "opener:allow-open-url",
+    "opener:allow-default-urls"
   ]
 }

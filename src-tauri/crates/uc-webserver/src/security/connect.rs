@@ -145,7 +145,10 @@ async fn connect_handler(
         return unauthorized();
     };
 
-    if token != state.auth_token.as_str() {
+    // Constant-time comparison: a naive `!=` short-circuits on the first
+    // mismatching byte, leaking a timing side-channel that a local process on
+    // the loopback interface could use to probe the token byte-by-byte.
+    if !state.auth_token.verify(token) {
         return unauthorized();
     }
 

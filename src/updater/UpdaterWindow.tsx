@@ -1,4 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Loader2 } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +7,7 @@ import {
   cancelDownload,
   getAutoDownloadUpdate,
   getDownloadProgress,
+  getInstallKind,
   installUpdate,
   setAutoDownloadUpdate,
   skipVersion,
@@ -23,6 +25,9 @@ import { cn } from '@/lib/utils'
 import appIcon from '@/updater/app-icon.png'
 
 const log = createLogger('updater-window')
+
+/** Same target as PackageManagerUpdateDialog's manual-download routing. */
+const RELEASE_PAGE_URL = 'https://uniclipboard.app/download'
 
 interface UpdateState {
   phase: DownloadPhase
@@ -62,6 +67,26 @@ const isDevPreview = (): boolean => {
 function useUpdaterState(devPreview: boolean) {
   const [state, setState] = useState<UpdateState>(() => (devPreview ? DEV_MOCK : initialState))
   const [cancelling, setCancelling] = useState(false)
+  // Windows portable ("green") zip cannot self-install: the NSIS payload would
+  // install into Program Files instead of refreshing the portable folder. The
+  // scheduler already skips auto-download for it, but this window previously
+  // still offered "Install Update" — clicking it failed and read as "updates
+  // are broken" (observed in the field). Detect the kind and route portable
+  // users to a manual download instead.
+  const [isPortable, setIsPortable] = useState(false)
+
+  useEffect(() => {
+    if (devPreview) return
+    let cancelled = false
+    void getInstallKind()
+      .then(kind => {
+        if (!cancelled) setIsPortable(kind === 'windowsportable')
+      })
+      .catch(err => log.warn({ err }, '获取安装类型失败；按可自更新处理'))
+    return () => {
+      cancelled = true
+    }
+  }, [devPreview])
 
   useEffect(() => {
     if (devPreview) return
@@ -196,6 +221,13 @@ function useUpdaterState(devPreview: boolean) {
       }, 250)
       return
     }
+    // Defense in depth: the portable UI replaces this button with the
+    // release-page action, but never let a portable build reach the NSIS
+    // installer even if the kind probe raced the click.
+    if (isPortable) {
+      openUrl(RELEASE_PAGE_URL).catch(err => log.error({ err }, '打开发布页失败'))
+      return
+    }
     try {
       await installUpdate(progress => {
         setState(prev => ({
@@ -209,7 +241,7 @@ function useUpdaterState(devPreview: boolean) {
       log.error({ err: error }, '安装更新失败')
       setState(prev => ({ ...prev, phase: prev.info ? 'available' : 'idle' }))
     }
-  }, [devPreview])
+  }, [devPreview, isPortable])
 
   const handleCancel = useCallback(async () => {
     if (devPreview || cancelling) return
@@ -226,6 +258,7 @@ function useUpdaterState(devPreview: boolean) {
   return {
     state,
     cancelling,
+    isPortable,
     closeWindow,
     handleSkip,
     handleAutoUpdateToggle,
@@ -238,11 +271,13 @@ const ActionButtons: React.FC<{
   phase: DownloadPhase
   hasInfo: boolean
   cancelling: boolean
+  /** Portable build: primary action opens the release page instead of installing. */
+  isPortable: boolean
   onCancel: () => void
   onSkip: () => void
   onClose: () => void
   onInstall: () => void
-}> = ({ phase, hasInfo, cancelling, onCancel, onSkip, onClose, onInstall }) => {
+}> = ({ phase, hasInfo, cancelling, isPortable, onCancel, onSkip, onClose, onInstall }) => {
   const { t } = useTranslation()
   const isDownloading = phase === 'downloading'
   const isInstalling = phase === 'installing'
@@ -327,7 +362,11 @@ const ActionButtons: React.FC<{
         onClick={onInstall}
         disabled={!hasInfo}
       >
-        {isReady ? t('update.installNow') : t('updater.window.installUpdate')}
+        {isPortable
+          ? t('update.packageManager.openReleasePage')
+          : isReady
+            ? t('update.installNow')
+            : t('updater.window.installUpdate')}
       </button>
     </>
   )
@@ -341,6 +380,7 @@ const UpdaterWindow: React.FC = () => {
   const {
     state,
     cancelling,
+    isPortable,
     closeWindow,
     handleSkip,
     handleAutoUpdateToggle,
@@ -390,7 +430,16 @@ const UpdaterWindow: React.FC = () => {
         </div>
       )}
 
-      {!busy && !upToDate && (
+      {/* Portable build: explain the manual download+replace flow instead of
+          the auto-update toggle — in-place self-update does not apply, and a
+          silent install failure here previously read as "updates are broken". */}
+      {!busy && !upToDate && isPortable && (
+        <p className="mx-6 mt-4 text-[13px] leading-snug text-muted-foreground">
+          {t('update.packageManager.portableHint')}
+        </p>
+      )}
+
+      {!busy && !upToDate && !isPortable && (
         <label className="mx-6 mt-4 flex cursor-pointer items-center gap-2.5">
           <Switch size="sm" checked={autoUpdate} onCheckedChange={handleAutoUpdateToggle} />
           <span className="text-[13px] text-muted-foreground">
@@ -404,6 +453,7 @@ const UpdaterWindow: React.FC = () => {
           phase={phase}
           hasInfo={!!info}
           cancelling={cancelling}
+          isPortable={isPortable}
           onCancel={() => void handleCancel()}
           onSkip={handleSkip}
           onClose={closeWindow}

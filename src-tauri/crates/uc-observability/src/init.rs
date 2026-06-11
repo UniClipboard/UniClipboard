@@ -16,7 +16,6 @@
 //! builders and registers a global subscriber without any extra layers.
 
 use std::path::Path;
-use std::sync::OnceLock;
 
 use tracing::Subscriber;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -27,11 +26,6 @@ use tracing_subscriber::{fmt, registry};
 
 use crate::format::FlatJsonFormat;
 use crate::profile::LogProfile;
-
-/// Static storage for the JSON file writer guard.
-/// The guard must live for the application's lifetime to ensure the non-blocking
-/// writer flushes all pending log entries.
-static JSON_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 /// Build the console (pretty) layer with per-layer filtering.
 ///
@@ -113,8 +107,14 @@ where
 /// Both layers get independent `EnvFilter`s from the given profile.
 /// If `RUST_LOG` is set, it overrides the profile filters for both layers.
 ///
-/// The `WorkerGuard` for the JSON file writer is stored in a static `OnceLock`
-/// to prevent early drop.
+/// Returns the [`WorkerGuard`] for the JSON file writer. **Ownership is the
+/// caller's** — this is `tracing_appender`'s native RAII contract: keep the
+/// guard alive for the process lifetime, and drop it as the final step of a
+/// clean shutdown to drain buffered lines to disk. This matters for hosts that
+/// exit via `process::exit` (e.g. Tauri's `app.restart()` after an update
+/// install), which skips static destructors: a guard parked in a static would
+/// never drop, silently losing the most recent — and most diagnostically
+/// valuable — buffered lines.
 ///
 /// # Arguments
 ///
@@ -127,19 +127,18 @@ where
 /// Returns `Err` if:
 /// - The global subscriber is already registered
 /// - The logs directory cannot be created
-pub fn init_tracing_subscriber(logs_dir: &Path, profile: LogProfile) -> anyhow::Result<()> {
+#[must_use = "dropping the guard stops the JSON file writer; hold it for the process lifetime"]
+pub fn init_tracing_subscriber(
+    logs_dir: &Path,
+    profile: LogProfile,
+) -> anyhow::Result<WorkerGuard> {
     let console_layer = build_console_layer(&profile);
     let (json_layer, guard) = build_json_layer(logs_dir, &profile)?;
-
-    // Store guard to keep writer alive for app lifetime
-    if JSON_GUARD.set(guard).is_err() {
-        anyhow::bail!("JSON log guard already initialized (init_tracing_subscriber called twice?)");
-    }
 
     // Compose and register the global subscriber
     registry().with(console_layer).with(json_layer).try_init()?;
 
     tracing::info!(profile = %profile, "Tracing initialized with dual output");
 
-    Ok(())
+    Ok(guard)
 }

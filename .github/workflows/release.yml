@@ -274,6 +274,49 @@ jobs:
           echo "Release assets:"
           ls -lh release-assets
 
+      - name: Sign release assets (SHA256SUMS + minisign)
+        env:
+          MINISIGN_RELEASE_PRIVATE_KEY: ${{ secrets.MINISIGN_RELEASE_PRIVATE_KEY }}
+          MINISIGN_RELEASE_PASSWORD: ${{ secrets.MINISIGN_RELEASE_PASSWORD }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          cd release-assets
+
+          # Checksum every release artifact. Exclude the checksum files themselves
+          # (the .minisig won't exist yet, but guard against re-runs anyway).
+          : > SHA256SUMS.txt
+          while IFS= read -r f; do
+            sha256sum "$f" >> SHA256SUMS.txt
+          done < <(find . -maxdepth 1 -type f \
+            ! -name 'SHA256SUMS.txt' ! -name 'SHA256SUMS.txt.minisig' \
+            -printf '%P\n' | sort)
+
+          echo "=== SHA256SUMS.txt ==="
+          cat SHA256SUMS.txt
+
+          # Sign the checksum file with the dedicated release-artifact minisign key.
+          # Skipped (with a warning) when the secret isn't configured yet, so a
+          # release never hard-fails during rollout — SHA256SUMS.txt is still shipped.
+          if [ -z "${MINISIGN_RELEASE_PRIVATE_KEY}" ]; then
+            echo "::warning::MINISIGN_RELEASE_PRIVATE_KEY not set — publishing SHA256SUMS.txt without a signature."
+            exit 0
+          fi
+
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+          umask 077
+          printf '%s\n' "${MINISIGN_RELEASE_PRIVATE_KEY}" > minisign-release.key
+          # minisign reads the key password from stdin when stdin is not a TTY; a
+          # passwordless key simply ignores the piped line.
+          printf '%s\n' "${MINISIGN_RELEASE_PASSWORD:-}" | \
+            minisign -S -s minisign-release.key -m SHA256SUMS.txt \
+              -t "UniClipboard v${VERSION} release artifacts (SHA256SUMS)"
+          rm -f minisign-release.key
+
+          echo "=== SHA256SUMS.txt.minisig ==="
+          cat SHA256SUMS.txt.minisig
+
       - name: Create git tag
         if: github.event_name == 'workflow_dispatch'
         run: |

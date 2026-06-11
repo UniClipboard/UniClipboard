@@ -60,6 +60,13 @@ impl InviteSession {
             .expect("invite spawn");
 
         let invite_stdout = child.stdout.take().expect("invite stdout");
+        // Own the child via the session guard *before* awaiting the code
+        // extraction. If the timeout fires (or a later assert panics) the
+        // unwind drops `session`, whose `Drop` kills and reaps the process —
+        // a bare `Child` would otherwise leak the `invite` as an orphan,
+        // since `std::process::Child`'s own `Drop` neither kills nor waits.
+        let session = Self { child };
+
         let code_handle = tokio::task::spawn_blocking(move || {
             use std::io::BufRead;
             let reader = std::io::BufReader::new(invite_stdout);
@@ -86,7 +93,7 @@ impl InviteSession {
             .expect("INVITATION_CODE= line not found in invite stdout");
         assert!(!code.is_empty(), "invitation code is empty");
 
-        (Self { child }, code)
+        (session, code)
     }
 
     /// Wait for the invite process to exit (it unblocks once the joiner

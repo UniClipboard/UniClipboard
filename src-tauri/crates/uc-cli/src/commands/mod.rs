@@ -6,6 +6,7 @@ pub mod dev;
 pub mod devices;
 #[cfg(feature = "dev-tools")]
 pub mod dump_clipboard;
+pub mod get;
 pub mod init;
 pub mod invite;
 pub mod join;

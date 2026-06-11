@@ -214,6 +214,44 @@ enum Commands {
         #[arg(short = 'o', long = "out", value_name = "DIR")]
         out: Option<std::path::PathBuf>,
     },
+    /// Read an already-synced clipboard entry and return immediately.
+    ///
+    /// Unlike `recv` (which blocks waiting for the NEXT inbound file), `get`
+    /// reads what is already in the daemon's history — ideal for headless /
+    /// SSH boxes with no system clipboard, and for scripts / agents.
+    ///
+    /// Selection (default: the newest usable entry):
+    /// * `--type <image|file|text|link>` — newest entry of that kind.
+    /// * `--id <ENTRY-ID>` — a specific entry (see `uniclip search query`).
+    /// * `--list` — list recent entries instead of materializing one.
+    ///
+    /// Output: text/link content prints to stdout; image/file bytes are
+    /// written to `--out` (default cache dir) with the absolute path printed
+    /// to stdout, or streamed to stdout with `--out -`. Status lines go to
+    /// stderr, so stdout stays clean for piping.
+    ///
+    /// EXIT CODES: `0` materialized; `6` no entry matched the selector;
+    /// `7` matched but payload unavailable (Lost / not downloaded — re-send
+    /// from the source device).
+    Get {
+        /// Restrict selection to the newest entry of this kind.
+        #[arg(long = "type", value_name = "KIND", value_enum)]
+        kind: Option<commands::get::GetKind>,
+        /// Select a specific entry by id (from `uniclip search query`).
+        #[arg(long, value_name = "ENTRY-ID", conflicts_with = "kind")]
+        id: Option<String>,
+        /// List recent entries instead of materializing one.
+        #[arg(long, conflicts_with_all = ["kind", "id"])]
+        list: bool,
+        /// Number of recent entries to scan / list (default 50).
+        #[arg(short = 'n', long, value_name = "N")]
+        limit: Option<usize>,
+        /// Output for image/file bytes: a directory, or `-` for stdout.
+        /// Defaults to a per-user cache directory. Ignored for text/link
+        /// (those always print to stdout).
+        #[arg(short = 'o', long = "out", value_name = "DIR|-")]
+        out: Option<String>,
+    },
     /// Publish or fetch encrypted large payload blobs
     #[cfg(feature = "dev-tools")]
     Blob {
@@ -361,6 +399,26 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::Watch => commands::watch::run(cli.json, cli.verbose).await,
             Commands::Recv { out } => commands::recv::run(out, cli.json, cli.verbose).await,
+            Commands::Get {
+                kind,
+                id,
+                list,
+                limit,
+                out,
+            } => {
+                commands::get::run(
+                    commands::get::GetArgs {
+                        kind,
+                        id,
+                        list,
+                        limit,
+                        out,
+                    },
+                    cli.json,
+                    cli.verbose,
+                )
+                .await
+            }
             #[cfg(feature = "dev-tools")]
             Commands::Blob { subcommand } => {
                 commands::blob::run(subcommand, cli.json, cli.verbose).await
@@ -734,6 +792,52 @@ mod tests {
         );
         let r2 = Cli::try_parse_from(["uniclip", "send", "--resend", "ent-1", "--peer", "dev-a"]);
         assert!(r2.is_ok(), "expected resend mode with --peer to parse");
+    }
+
+    #[test]
+    fn get_parses_with_no_args() {
+        // `uniclip get` 默认取最新一条 —— 不带任何 selector 必须能解析。
+        let r = Cli::try_parse_from(["uniclip", "get"]);
+        assert!(r.is_ok(), "expected bare `get` to parse");
+    }
+
+    #[test]
+    fn get_accepts_type_selector() {
+        for kind in ["image", "file", "text", "link"] {
+            let r = Cli::try_parse_from(["uniclip", "get", "--type", kind]);
+            assert!(r.is_ok(), "expected `get --type {kind}` to parse");
+        }
+        // 非法 kind 必须被 value_enum 拒绝。
+        let bad = Cli::try_parse_from(["uniclip", "get", "--type", "video"]);
+        assert!(bad.is_err(), "expected `get --type video` to be rejected");
+    }
+
+    #[test]
+    fn get_type_and_id_are_mutually_exclusive() {
+        // 选最新某类型 与 选指定 id 互斥 —— 两者语义冲突。
+        let r = Cli::try_parse_from(["uniclip", "get", "--type", "image", "--id", "ent-1"]);
+        assert!(
+            r.is_err(),
+            "expected `get --type … --id …` to be rejected by clap"
+        );
+    }
+
+    #[test]
+    fn get_list_conflicts_with_selectors() {
+        // `--list` 只列出, 不能同时带 selector。
+        assert!(Cli::try_parse_from(["uniclip", "get", "--list", "--type", "image"]).is_err());
+        assert!(Cli::try_parse_from(["uniclip", "get", "--list", "--id", "ent-1"]).is_err());
+        assert!(
+            Cli::try_parse_from(["uniclip", "get", "--list"]).is_ok(),
+            "expected bare `get --list` to parse"
+        );
+    }
+
+    #[test]
+    fn get_accepts_out_dash_for_stdout() {
+        // `--out -` 是把二进制导到 stdout 的契约。
+        let r = Cli::try_parse_from(["uniclip", "get", "--type", "image", "--out", "-"]);
+        assert!(r.is_ok(), "expected `get --type image --out -` to parse");
     }
 
     #[test]

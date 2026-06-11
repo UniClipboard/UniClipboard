@@ -8,6 +8,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use uc_daemon_contract::api::dto::clipboard::{
+    EntryDetailDto, EntryProjectionResponseDto, EntryResourceDto,
+};
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
     ResendResponse,
@@ -63,6 +66,29 @@ pub trait DaemonService: Send + Sync {
     /// should keep waiting), and `Err` for any other status or transport
     /// failure.
     async fn export_entry_file(&self, entry_id: &str) -> Result<Option<FileExport>>;
+
+    /// List clipboard history entry projections, newest first, by calling
+    /// `GET /clipboard/entries?limit&offset`. This is the real-time list view
+    /// (NOT the search index), so it reliably reflects "the latest synced
+    /// entry" — the basis for `uniclip get` on a headless node.
+    async fn list_entries(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<EntryProjectionResponseDto>>;
+
+    /// Fetch an entry's full text detail via `GET /clipboard/entries/{id}`.
+    /// `Ok(None)` on 404; `Err` for other statuses (e.g. 422 non-text).
+    async fn entry_detail(&self, entry_id: &str) -> Result<Option<EntryDetailDto>>;
+
+    /// Fetch an entry's resource metadata via
+    /// `GET /clipboard/entries/{id}/resource` (used to materialize images,
+    /// which are not free-files). `Ok(None)` on 404.
+    async fn entry_resource(&self, entry_id: &str) -> Result<Option<EntryResourceDto>>;
+
+    /// Fetch raw blob bytes via `GET /clipboard/blobs/{blob_id}`.
+    /// `Ok(None)` on 404.
+    async fn fetch_blob(&self, blob_id: &str) -> Result<Option<Vec<u8>>>;
 
     /// Subscribe to `setup.pairingCompleted` events (ADR-008 P5-2b).
     ///

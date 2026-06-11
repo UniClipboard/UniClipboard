@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 
 /// Clipboard entry projection — lightweight summary for list views.
 /// Matches the frontend `ClipboardEntryDto` interface.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EntryProjectionResponseDto {
     pub id: String,
@@ -51,7 +51,7 @@ pub struct EntryProjectionResponseDto {
 
 /// Full entry detail (text content).
 /// Matches the frontend `EntryDetail` interface.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EntryDetailDto {
     pub id: String,
@@ -66,7 +66,7 @@ pub struct EntryDetailDto {
 
 /// Resource metadata (blob URL or inline data).
 /// Matches the frontend `ClipboardEntryResource` interface.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EntryResourceDto {
     pub blob_id: Option<String>,

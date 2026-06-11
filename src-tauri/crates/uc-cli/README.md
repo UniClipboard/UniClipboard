@@ -45,6 +45,37 @@ cargo build -p uc-cli
 | `uniclip members` | 列出空间成员和在线状态。 |
 | `uniclip send [TEXT]` | 向在线配对设备发送一段文本；省略 `TEXT` 时从 stdin 读取。 |
 | `uniclip watch` | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。 |
+| `uniclip recv` | 阻塞等待 **下一个** 入站文件并落盘；不会写入系统剪贴板。 |
+| `uniclip get` | 读取 **已同步** 的剪贴板条目并立即返回（headless / 脚本 / agent 友好）。 |
+
+## 取回已同步内容（`get`）
+
+无头 / SSH 机器没有系统剪贴板，`Ctrl+V` 无法粘贴已同步的图片或文件。`get`
+直接从 daemon 历史里取出已同步的条目并立即返回（区别于 `recv` 的「阻塞等下一个入站」）：
+
+```bash
+uniclip get                      # 取最新一条可用条目
+uniclip get --type image         # 取最新一张图片
+uniclip get --type file -o ~/in  # 取最新一个文件并落地到 ~/in
+uniclip get --id <ENTRY-ID>      # 取指定条目（id 来自 search query）
+uniclip get --list -n 20         # 仅列出最近 20 条，不取回
+```
+
+输出契约：
+
+- **文本 / 链接**：内容打到 **stdout**（可管道）；状态行走 stderr。
+- **图片 / 文件**：字节写入 `--out` 目录（默认 per-user cache 目录），并把**绝对
+  路径**打到 stdout；`--out -` 则把原始字节直接写到 stdout。
+
+退出码：`0` 成功；`6` 无条目匹配 selector；`7` 条目存在但 payload 不可用
+（`Lost` / 未下载——需在源设备重发）。
+
+典型的 agent 闭环（在 SSH 机器上把图片喂给工具）：
+
+```bash
+path=$(uniclip get --type image)   # 落地并拿到路径
+# 把 $path 交给读取文件的工具即可
+```
 
 ## 搜索命令
 

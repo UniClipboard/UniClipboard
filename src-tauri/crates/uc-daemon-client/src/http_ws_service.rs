@@ -6,6 +6,9 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
 use tracing::{debug, warn};
+use uc_daemon_contract::api::dto::clipboard::{
+    EntryDetailDto, EntryProjectionResponseDto, EntryResourceDto,
+};
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, InboundEntryEvent, InboundNoticeEvent,
     ResendResponse,
@@ -64,6 +67,29 @@ impl DaemonService for HttpWsDaemonService {
             .clipboard_client()
             .export_entry_file(entry_id)
             .await
+    }
+
+    async fn list_entries(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<EntryProjectionResponseDto>> {
+        self.ctx
+            .clipboard_client()
+            .list_entries(limit, offset)
+            .await
+    }
+
+    async fn entry_detail(&self, entry_id: &str) -> Result<Option<EntryDetailDto>> {
+        self.ctx.clipboard_client().entry_detail(entry_id).await
+    }
+
+    async fn entry_resource(&self, entry_id: &str) -> Result<Option<EntryResourceDto>> {
+        self.ctx.clipboard_client().entry_resource(entry_id).await
+    }
+
+    async fn fetch_blob(&self, blob_id: &str) -> Result<Option<Vec<u8>>> {
+        self.ctx.clipboard_client().fetch_blob(blob_id).await
     }
 
     async fn subscribe_inbound_notices(&self) -> Result<mpsc::Receiver<InboundNoticeEvent>> {

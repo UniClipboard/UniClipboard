@@ -2,6 +2,9 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use reqwest::Method;
+use uc_daemon_contract::api::dto::clipboard::{
+    EntryDetailDto, EntryProjectionResponseDto, EntryResourceDto,
+};
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
     ResendRequest, ResendResponse,
@@ -275,6 +278,179 @@ impl DaemonClipboardClient {
             .to_vec();
 
         Ok(Some(FileExport { filename, bytes }))
+    }
+
+    /// List clipboard history entry projections, newest first.
+    ///
+    /// Calls `GET /clipboard/entries?limit={limit}&offset={offset}`, which
+    /// returns the canonical `ApiEnvelope<Vec<EntryProjectionResponseDto>>`.
+    /// The daemon clamps `limit` to 1000. This is the real-time list view (not
+    /// the search index), so it is the reliable source for "the latest synced
+    /// entry" on a headless node.
+    pub async fn list_entries(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<EntryProjectionResponseDto>> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        let path = format!(
+            "{}?limit={limit}&offset={offset}",
+            http_route::CLIPBOARD_ENTRIES
+        );
+        let request = authorized_daemon_request_with_type(
+            &self.http,
+            &self.connection_state,
+            Method::GET,
+            &path,
+            connection.pid,
+            &self.client_type,
+        )
+        .await?;
+
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("failed to call daemon entries route {path}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("list entries failed ({}): {}", status, body);
+        }
+
+        let envelope = response
+            .json::<ApiEnvelope<Vec<EntryProjectionResponseDto>>>()
+            .await
+            .context("failed to decode entries response")?;
+        Ok(envelope.data)
+    }
+
+    /// Fetch an entry's full text detail (ADR-008 §H envelope).
+    ///
+    /// Calls `GET /clipboard/entries/{id}`. Returns `Ok(Some(_))` on 200,
+    /// `Ok(None)` on 404 (no such entry), and `Err` for any other status
+    /// (notably 422 when the entry is not text content) or transport failure.
+    pub async fn entry_detail(&self, entry_id: &str) -> Result<Option<EntryDetailDto>> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        let path = format!("{}/{entry_id}", http_route::CLIPBOARD_ENTRIES);
+        let request = authorized_daemon_request_with_type(
+            &self.http,
+            &self.connection_state,
+            Method::GET,
+            &path,
+            connection.pid,
+            &self.client_type,
+        )
+        .await?;
+
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("failed to call daemon entry-detail route {path}"))?;
+        let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("entry-detail fetch failed ({}): {}", status, body);
+        }
+
+        let envelope = response
+            .json::<ApiEnvelope<EntryDetailDto>>()
+            .await
+            .context("failed to decode entry-detail response")?;
+        Ok(Some(envelope.data))
+    }
+
+    /// Fetch an entry's resource metadata (blob pointer or inline data).
+    ///
+    /// Calls `GET /clipboard/entries/{id}/resource`. Used to materialize image
+    /// entries (which are NOT free-files): the returned DTO carries either
+    /// `inline_data` (base64) for small images stored inline, or a `blob_id`
+    /// to fetch the bytes with [`fetch_blob`](Self::fetch_blob). Returns
+    /// `Ok(None)` on 404.
+    pub async fn entry_resource(&self, entry_id: &str) -> Result<Option<EntryResourceDto>> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        let path = format!("{}/{entry_id}/resource", http_route::CLIPBOARD_ENTRIES);
+        let request = authorized_daemon_request_with_type(
+            &self.http,
+            &self.connection_state,
+            Method::GET,
+            &path,
+            connection.pid,
+            &self.client_type,
+        )
+        .await?;
+
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("failed to call daemon entry-resource route {path}"))?;
+        let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("entry-resource fetch failed ({}): {}", status, body);
+        }
+
+        let envelope = response
+            .json::<ApiEnvelope<EntryResourceDto>>()
+            .await
+            .context("failed to decode entry-resource response")?;
+        Ok(Some(envelope.data))
+    }
+
+    /// Fetch raw blob bytes by blob id.
+    ///
+    /// Calls the binary endpoint `GET /clipboard/blobs/{blob_id}` (raw bytes,
+    /// exempt from the JSON envelope). Returns `Ok(Some(_))` on 200,
+    /// `Ok(None)` on 404, and `Err` on any other status / transport failure.
+    pub async fn fetch_blob(&self, blob_id: &str) -> Result<Option<Vec<u8>>> {
+        let connection = self
+            .connection_state
+            .get()
+            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
+        let path = format!("{}/{blob_id}", http_route::CLIPBOARD_BLOBS);
+        let request = authorized_daemon_request_with_type(
+            &self.http,
+            &self.connection_state,
+            Method::GET,
+            &path,
+            connection.pid,
+            &self.client_type,
+        )
+        .await?;
+
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("failed to call daemon blob route {path}"))?;
+        let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("blob fetch failed ({}): {}", status, body);
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .context("failed to read blob bytes")?
+            .to_vec();
+        Ok(Some(bytes))
     }
 }
 

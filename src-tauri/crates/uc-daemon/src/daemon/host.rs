@@ -40,17 +40,21 @@ use super::search_assembly::build_daemon_search_assembly;
 use super::service_assembly::build_daemon_service_plan;
 use super::tokio_runtime::build_daemon_tokio_runtime;
 
-/// Backoff between instance-lock acquisition retries during a controlled-restart
-/// promotion (ADR-008 P5-L L8d-2). Only engaged when a handover record is
-/// present (see [`run`]); production never writes one, so this is unused there.
-const HANDOVER_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(200);
+/// Backoff between instance-lock acquisition retries while an exiting
+/// predecessor is still releasing the lock (ADR-008 P5-L L8d-2). Engaged on
+/// every daemon start — see the acquisition comment in [`run`] for why the
+/// retry must not be gated on a handover record.
+const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(200);
 
-/// Max instance-lock acquisition attempts while a controlled-restart predecessor
-/// is still releasing the lock (ADR-008 P5-L L8d-2). The retry sleeps only
-/// BETWEEN attempts, so 75 attempts incur 74 × 200ms ≈ 14.8s of waiting — a ~15s
-/// budget that comfortably covers the predecessor's two 5s shutdown joins plus
-/// the iroh `endpoint.close()` teardown.
-const HANDOVER_LOCK_MAX_ATTEMPTS: usize = 75;
+/// Max instance-lock acquisition attempts while a predecessor is still
+/// releasing the lock (ADR-008 P5-L L8d-2). DERIVED from the cross-process
+/// timing contract: enough attempts at [`LOCK_RETRY_INTERVAL`] to sleep
+/// through [`uc_daemon_local::timing::PREDECESSOR_RELEASE_BUDGET`] (the predecessor's
+/// worst-case graceful teardown), plus the initial attempt. The retry sleeps
+/// only BETWEEN attempts, so `n` attempts incur `n - 1` interval sleeps.
+const LOCK_MAX_ATTEMPTS: usize = (uc_daemon_local::timing::PREDECESSOR_RELEASE_BUDGET.as_millis()
+    / LOCK_RETRY_INTERVAL.as_millis()) as usize
+    + 1;
 
 /// Process-level persistent resource handles passed to the daemon on each spawn.
 ///
@@ -94,36 +98,49 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         // released, otherwise the replacement races `AddrInUse`. Do NOT move
         // this guard's scope earlier (e.g. into a sub-block).
         //
-        // When a handover record is present (a controlled-restart promotion
-        // spawn, ADR-008 P5-L L8d-2), acquisition retries with a bounded backoff
-        // to ride out the window where the predecessor still holds the lock
-        // during iroh teardown (its `/health` goes absent before lock-release).
-        //
-        // Peek (do NOT clear) the handover record before acquiring: a present
-        // record means we are a controlled-restart promotion spawn, so we must
-        // tolerate the predecessor still releasing the lock. In production no
-        // writer exists → `handover_present` is always false → single-shot
-        // `try_acquire`, byte-identical to before. The `clear` below still
-        // consumes the record AFTER the lock is held (claim under lock — R8-F1).
-        let handover_present =
-            uc_daemon_local::handover::read(&storage_paths.app_data_root_dir).is_some();
-        let _instance_lock = if handover_present {
-            uc_daemon_local::instance_lock::retry_while_already_running(
-                || {
-                    uc_daemon_local::instance_lock::DaemonInstanceLock::try_acquire(
-                        &storage_paths.app_data_root_dir,
-                    )
-                },
-                HANDOVER_LOCK_MAX_ATTEMPTS,
-                HANDOVER_LOCK_RETRY_INTERVAL,
-            )
-            .await
-        } else {
-            uc_daemon_local::instance_lock::DaemonInstanceLock::try_acquire(
-                &storage_paths.app_data_root_dir,
-            )
-        }
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        // Acquisition retries `AlreadyRunning` with a bounded backoff (the
+        // derived `timing::PREDECESSOR_RELEASE_BUDGET`, currently 15s) on
+        // EVERY start — not only controlled-restart promotions — to ride out
+        // the window where an exiting predecessor still holds the lock during
+        // iroh teardown (its `/health` goes absent before lock-release). Any
+        // health-probing spawner (CLI/GUI) can hit that window after a plain
+        // stop/start cycle: observed in production (2026-06-12), the spawner
+        // saw `/health` absent ~2s after the predecessor's shutdown signal and
+        // spawned a replacement that lost the single-shot `try_acquire` to a
+        // predecessor that needed ~5.4s to release. The cost of the retry when
+        // a HEALTHY daemon holds the lock is a ~15s delay before the same
+        // `AlreadyRunning` error — acceptable, since health-probing spawners
+        // never spawn against a healthy daemon (only a manual double-launch
+        // pays it). I/O errors are still terminal on the first attempt.
+        let _instance_lock = uc_daemon_local::instance_lock::retry_while_already_running(
+            || {
+                uc_daemon_local::instance_lock::DaemonInstanceLock::try_acquire(
+                    &storage_paths.app_data_root_dir,
+                )
+            },
+            LOCK_MAX_ATTEMPTS,
+            LOCK_RETRY_INTERVAL,
+        )
+        .await
+        .map_err(|e| {
+            // Surface the failure in the JSON log: this error otherwise only
+            // reaches stderr via anyhow's Termination in `main`, which is
+            // detached/nulled in production — the log would just stop dead
+            // after bootstrap with no trace of why the process exited.
+            let error_kind = match &e {
+                uc_daemon_local::instance_lock::InstanceLockError::AlreadyRunning { .. } => {
+                    "instance_lock_already_running"
+                }
+                uc_daemon_local::instance_lock::InstanceLockError::Io(_) => "instance_lock_io",
+            };
+            tracing::error!(
+                error_kind,
+                retryable = false,
+                error = %e,
+                "daemon instance lock acquisition failed — exiting"
+            );
+            anyhow::anyhow!("{e}")
+        })?;
 
         // ADR-008 P5-L L7: now that we hold the instance lock, consume any pending
         // cross-process handover by clearing it (claim under lock — R8-F1). A

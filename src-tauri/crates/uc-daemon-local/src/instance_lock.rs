@@ -123,12 +123,16 @@ impl DaemonInstanceLock {
 /// Retry an instance-lock acquisition while it keeps returning
 /// [`InstanceLockError::AlreadyRunning`].
 ///
-/// Used by the daemon host to ride out the gap where a controlled-restart
+/// Used by the daemon host on EVERY start to ride out the gap where an exiting
 /// predecessor still holds the lock during iroh teardown: the predecessor's
 /// `/health` endpoint goes absent (HTTP server cancelled) BEFORE the instance
 /// lock is released (iroh `endpoint.close()` then guard drop), so a freshly
-/// spawned promotion daemon can briefly observe `AlreadyRunning` even though the
-/// predecessor is already exiting. Only [`InstanceLockError::AlreadyRunning`] is
+/// spawned daemon can briefly observe `AlreadyRunning` even though the
+/// predecessor is already exiting. This race is not specific to controlled
+/// restarts — any health-probing spawner (CLI/GUI) can hit it after a plain
+/// stop/start cycle (observed in production, 2026-06-12: spawner saw `/health`
+/// absent at T+2s, predecessor released the lock at T+5.4s, replacement exited
+/// `AlreadyRunning`). Only [`InstanceLockError::AlreadyRunning`] is
 /// retried; any other error (e.g. [`InstanceLockError::Io`]) is returned
 /// immediately. If `max_attempts` is exhausted while still `AlreadyRunning`, the
 /// last `AlreadyRunning` is returned.
@@ -148,13 +152,32 @@ where
     F: FnMut() -> Result<T, InstanceLockError>,
 {
     let mut remaining = max_attempts;
+    let mut attempts_made: usize = 0;
     loop {
+        attempts_made += 1;
         match attempt() {
-            Ok(value) => return Ok(value),
+            Ok(value) => {
+                if attempts_made > 1 {
+                    tracing::info!(
+                        retry_count = attempts_made - 1,
+                        "daemon instance lock acquired after waiting for predecessor release"
+                    );
+                }
+                return Ok(value);
+            }
             Err(InstanceLockError::AlreadyRunning { lock_path }) => {
                 remaining = remaining.saturating_sub(1);
                 if remaining == 0 {
                     return Err(InstanceLockError::AlreadyRunning { lock_path });
+                }
+                if attempts_made == 1 {
+                    tracing::warn!(
+                        lock_path = %lock_path.display(),
+                        max_attempts,
+                        interval_ms = interval.as_millis() as u64,
+                        "daemon instance lock busy — predecessor likely still \
+                         releasing; retrying"
+                    );
                 }
                 tokio::time::sleep(interval).await;
             }

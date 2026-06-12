@@ -11,13 +11,13 @@ import {
 } from '@/components/ui/context-menu'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import { useResendAction } from '@/hooks/useResendAction'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { useAppSelector } from '@/store/hooks'
 import {
   resolveEntryTransferStatus,
   selectEntryTransferStatus,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
-import type { DisplayClipboardItem } from './ClipboardContent'
 
 export interface FileContextMenuTransferStatus {
   isStale?: boolean

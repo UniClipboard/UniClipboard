@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ClipboardItemResponse } from '@/api/clipboardItems'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
-import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
+import type { ClipboardEntry } from '@/lib/clipboard-entry'
+import { projectClipboardEntry } from '@/lib/clipboard-transform'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { useClipboardEventStream } from './useClipboardEventStream'
@@ -12,7 +12,7 @@ const log = createLogger('use-clipboard-collection')
 const PAGE_SIZE = 50
 
 export interface ClipboardCollectionResult {
-  items: ClipboardItemResponse[]
+  items: ClipboardEntry[]
   loading: boolean
   isLocked: boolean
   encryptionReady: boolean
@@ -21,7 +21,7 @@ export interface ClipboardCollectionResult {
 
 export function useClipboardCollection(): ClipboardCollectionResult {
   const { encryptionReady, isLocked } = useEncryptionSessionState()
-  const [items, setItems] = useState<ClipboardItemResponse[]>([])
+  const [items, setItems] = useState<ClipboardEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   const reload = useCallback(async () => {
@@ -38,8 +38,7 @@ export function useClipboardCollection(): ClipboardCollectionResult {
         setItems([])
         return
       }
-      const transformedItems = result.entries?.map(transformDaemonDtoToItemResponse) ?? []
-      setItems(transformedItems)
+      setItems(result.entries?.map(projectClipboardEntry) ?? [])
     } catch (err) {
       log.error({ err }, 'Failed to load clipboard items')
     } finally {

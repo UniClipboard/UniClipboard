@@ -1,4 +1,4 @@
-import type { ClipboardTextItem } from '@/api/clipboardItems'
+import type { ClipboardTextItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 
 export const LARGE_TEXT_THRESHOLD = 50_000

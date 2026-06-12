@@ -16,8 +16,8 @@
  * These replace the Tauri `invoke()` calls in `clipboardItems.ts`, enabling the
  * GUI to operate independently of the Tauri layer once the daemon is reachable.
  *
- * 注意：这些端点仅返回预览投影数据（EntryProjectionDto）。
- * 完整条目内容（`ClipboardItemResponse`）需要通过 Tauri 命令获取。
+ * 注意：列表端点仅返回预览投影数据（EntryProjectionDto）。
+ * 完整文本内容通过 `getEntryDetail`（`EntryDetail`）按需获取。
  * 此模块专注于与 daemon HTTP API 的交互。
  */
 

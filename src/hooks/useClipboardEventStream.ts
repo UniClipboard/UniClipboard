@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
-import type { ClipboardItemResponse } from '@/api/clipboardItems'
 import { getClipboardEntries } from '@/api/daemon/clipboard'
-import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
+import type { ClipboardEntry } from '@/lib/clipboard-entry'
+import { projectClipboardEntry } from '@/lib/clipboard-transform'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
@@ -17,7 +17,7 @@ const log = createLogger('use-clipboard-event-stream')
 export interface UseClipboardEventStreamOptions {
   enabled?: boolean
   throttleMs?: number
-  onLocalItem: (item: ClipboardItemResponse) => void
+  onLocalItem: (item: ClipboardEntry) => void
   onRemoteInvalidate: () => void
   onDeleted: (id: string) => void
 }
@@ -108,7 +108,7 @@ export function useClipboardEventStream({
               log.warn({ entryId: id }, 'local entry not found in list reload')
               continue
             }
-            onLocalItemRef.current(transformDaemonDtoToItemResponse(entry))
+            onLocalItemRef.current(projectClipboardEntry(entry))
           }
         })
         .catch(err => log.error({ err }, 'Failed to fetch local clipboard entries'))
@@ -157,7 +157,7 @@ export function useClipboardEventStream({
           'clipboard.new_content payload'
         )
         // 真实 entry 已经持久化了,占位卡片可以下线 ——
-        // 列表 refresh 拿到的真实 ClipboardItemResponse 会接替它。
+        // 列表 refresh 拿到的真实 ClipboardEntry 会接替它。
         dispatch(removePendingEntry(payload.entryId))
         if (payload.origin === 'local') {
           // leading + trailing 合并:首条立即拉取(无可感延迟),窗口内后续 entryId

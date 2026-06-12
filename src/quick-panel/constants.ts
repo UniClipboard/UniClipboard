@@ -1,14 +1,14 @@
 import { Code, ExternalLink, File, FileText, Image as ImageIcon } from 'lucide-react'
 import React from 'react'
 import { Filter } from '@/api/clipboardItems'
-import type { ItemType } from '@/lib/clipboard-utils'
+import type { ClipboardEntryType } from '@/lib/clipboard-entry'
 
 export const PREVIEW_OPEN_DELAY_MS = 500
 export const PREVIEW_SWITCH_DELAY_MS = 120
 
 export const isMac = navigator.platform.toUpperCase().includes('MAC')
 
-export const typeIcons: Record<ItemType, React.ElementType> = {
+export const typeIcons: Record<ClipboardEntryType, React.ElementType> = {
   text: FileText,
   image: ImageIcon,
   link: ExternalLink,

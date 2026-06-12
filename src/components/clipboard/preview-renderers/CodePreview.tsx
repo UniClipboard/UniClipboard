@@ -1,5 +1,5 @@
 import React from 'react'
-import type { ClipboardCodeItem } from '@/api/clipboardItems'
+import type { ClipboardCodeItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 
 interface CodePreviewProps {

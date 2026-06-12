@@ -6,7 +6,7 @@ import { unlockEncryptionSession } from '@/api/security'
 import { useClipboardCollection } from '@/hooks/useClipboardCollection'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useThemeSync } from '@/hooks/useThemeSync'
-import { getItemPreview, resolveItemType } from '@/lib/clipboard-utils'
+import { getItemPreview } from '@/lib/clipboard-utils'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
@@ -127,10 +127,10 @@ const ClipboardHistoryPanel: React.FC = () => {
     () =>
       items.map(item => ({
         id: item.id,
-        type: resolveItemType(item),
+        type: item.type,
         preview: getItemPreview(item),
-        activeTime: item.active_time,
-        isUnavailable: item.payload_state === 'Lost',
+        activeTime: item.activeTime,
+        isUnavailable: item.isUnavailable,
       })),
     [items]
   )

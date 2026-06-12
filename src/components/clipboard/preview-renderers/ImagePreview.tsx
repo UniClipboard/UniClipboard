@@ -1,7 +1,7 @@
 import { Image as ImageIcon, ImageDown, Loader2 } from 'lucide-react'
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ClipboardImageItem } from '@/api/clipboardItems'
+import type { ClipboardImageItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { formatFileSize } from '@/utils/formatters'
 

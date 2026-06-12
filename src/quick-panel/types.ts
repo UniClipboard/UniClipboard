@@ -1,4 +1,4 @@
-import type { ItemType } from '@/lib/clipboard-utils'
+import type { ClipboardEntryType } from '@/lib/clipboard-entry'
 
 export type TimeRangePreset =
   | 'all_time'
@@ -11,7 +11,7 @@ export type TimeRangePreset =
 
 export interface DisplayItem {
   id: string
-  type: ItemType
+  type: ClipboardEntryType
   preview: string
   activeTime: number
   /**

@@ -1,24 +1,19 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { describe, it, expect } from 'vitest'
-import type { ClipboardItemResponse, ClipboardItemsResult } from '@/api/clipboardItems'
+import type { ClipboardEntry } from '@/lib/clipboard-entry'
 import clipboardReducer, { prependItem, removeItem } from '../clipboardSlice'
 import fileTransferReducer from '../fileTransferSlice'
 
-function makeItem(id: string, overrides?: Partial<ClipboardItemResponse>): ClipboardItemResponse {
+function makeItem(id: string, overrides?: Partial<ClipboardEntry>): ClipboardEntry {
   return {
     id,
-    is_favorited: false,
-    created_at: Date.now(),
-    updated_at: Date.now(),
-    active_time: 0,
-    item: {
-      text: { display_text: `text-${id}`, has_detail: false, size: 10 },
-      image: null,
-      file: null,
-      link: null,
-      code: null,
-      unknown: null,
-    },
+    type: 'text',
+    content: { display_text: `text-${id}`, has_detail: false, size: 10 },
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    activeTime: 0,
+    isFavorited: false,
+    isUnavailable: false,
     ...overrides,
   }
 }
@@ -111,39 +106,33 @@ describe('clipboardSlice reducers', () => {
 })
 
 describe('fetchClipboardItems hydration', () => {
-  it('dispatches hydrateEntryTransferStatuses for items with file_transfer_status', async () => {
-    const itemWithStatus = makeItem('file-entry-1', {
-      file_transfer_status: 'failed',
-      file_transfer_reason: 'timeout',
-    })
-    const itemWithoutStatus = makeItem('text-entry-1', {
-      file_transfer_status: null,
-    })
+  // The thunk reads fileTransferStatus straight off the daemon DTOs and seeds
+  // fileTransferSlice (the single owner of transfer status) — ClipboardEntry
+  // deliberately carries none of it. These tests mirror that filter/map logic.
+  type DtoStatusFields = {
+    id: string
+    fileTransferStatus: string | null | undefined
+    fileTransferReason?: string | null
+  }
 
-    const result: ClipboardItemsResult = {
-      status: 'ready',
-      items: [itemWithStatus, itemWithoutStatus],
-    }
+  function buildStatusEntries(dtos: DtoStatusFields[]) {
+    return dtos
+      .filter(dto => dto.fileTransferStatus != null)
+      .map(dto => ({
+        entryId: dto.id,
+        status: dto.fileTransferStatus as 'pending' | 'transferring' | 'completed' | 'failed',
+        reason: dto.fileTransferReason ?? null,
+      }))
+  }
 
+  it('dispatches hydrateEntryTransferStatuses for DTOs with fileTransferStatus', async () => {
     const store = makeStore()
     const { hydrateEntryTransferStatuses } = await import('../fileTransferSlice')
 
-    // Simulate the hydration logic inside fetchClipboardItems thunk:
-    // filter items with file_transfer_status, collect payloads, and dispatch.
-    const statusEntries =
-      result.status === 'ready'
-        ? result.items
-            .filter(item => item.file_transfer_status != null)
-            .map(item => ({
-              entryId: item.id,
-              status: item.file_transfer_status as
-                | 'pending'
-                | 'transferring'
-                | 'completed'
-                | 'failed',
-              reason: item.file_transfer_reason ?? null,
-            }))
-        : []
+    const statusEntries = buildStatusEntries([
+      { id: 'file-entry-1', fileTransferStatus: 'failed', fileTransferReason: 'timeout' },
+      { id: 'text-entry-1', fileTransferStatus: null },
+    ])
 
     store.dispatch(hydrateEntryTransferStatuses(statusEntries))
 
@@ -152,26 +141,18 @@ describe('fetchClipboardItems hydration', () => {
       status: 'failed',
       reason: 'timeout',
     })
-    // Item without file_transfer_status should NOT appear in entryStatusById
+    // DTO without fileTransferStatus should NOT appear in entryStatusById
     expect(state.fileTransfer.entryStatusById['text-entry-1']).toBeUndefined()
   })
 
-  it('does not add items without file_transfer_status to entryStatusById', async () => {
+  it('does not add DTOs without fileTransferStatus to entryStatusById', async () => {
     const { hydrateEntryTransferStatuses } = await import('../fileTransferSlice')
     const store = makeStore()
 
-    const items: ClipboardItemResponse[] = [
-      makeItem('a', { file_transfer_status: null }),
-      makeItem('b', { file_transfer_status: undefined }),
-    ]
-
-    const statusEntries = items
-      .filter(item => item.file_transfer_status != null)
-      .map(item => ({
-        entryId: item.id,
-        status: item.file_transfer_status as 'pending' | 'transferring' | 'completed' | 'failed',
-        reason: item.file_transfer_reason ?? null,
-      }))
+    const statusEntries = buildStatusEntries([
+      { id: 'a', fileTransferStatus: null },
+      { id: 'b', fileTransferStatus: undefined },
+    ])
 
     // No entries should match the filter (both have null/undefined status)
     expect(statusEntries).toHaveLength(0)

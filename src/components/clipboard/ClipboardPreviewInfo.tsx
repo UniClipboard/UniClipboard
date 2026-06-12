@@ -1,17 +1,17 @@
 import { Database, Files, Globe, Hash, Layers, Maximize, Type } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
 import type {
   ClipboardCodeItem,
   ClipboardFileItem,
   ClipboardImageItem,
   ClipboardLinkItem,
   ClipboardTextItem,
-} from '@/api/clipboardItems'
-import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
+  DisplayClipboardItem,
+} from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { formatFileSize } from '@/utils'
-import type { DisplayClipboardItem } from './ClipboardContent'
 import EntryDeliveryBadge from './EntryDeliveryBadge'
 
 interface ClipboardPreviewInfoProps {

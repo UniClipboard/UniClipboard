@@ -1,11 +1,17 @@
 /**
- * Shared daemon DTO → frontend ClipboardItemResponse transformer.
+ * Daemon DTO → UI domain projection.
  *
- * Consolidates the transformation logic that was previously duplicated across
- * clipboardSlice, useClipboardCollection, and useClipboardEventStream.
+ * The single place where the daemon's `EntryProjectionDto` wire shape is
+ * mapped to the `ClipboardEntry` domain model. Every list/event path
+ * (`clipboardSlice`, `useClipboardCollection`, `useClipboardEventStream`)
+ * goes through this function, so daemon field changes only impact this file.
  */
-import type { ClipboardItemResponse } from '@/api/clipboardItems'
 import type { ClipboardEntryDto } from '@/api/daemon/clipboard'
+import type {
+  ClipboardEntry,
+  ClipboardEntryContent,
+  ClipboardEntryType,
+} from '@/lib/clipboard-entry'
 import {
   extractDomainFromUrl,
   isFileContentType,
@@ -13,54 +19,52 @@ import {
   parseFileItemsFromUriList,
 } from '@/lib/clipboard-utils'
 
-export function transformDaemonDtoToItemResponse(entry: ClipboardEntryDto): ClipboardItemResponse {
-  const isFile = isFileContentType(entry.contentType)
-  const isImage = !isFile && isImageContentType(entry.contentType)
-  const hasLinkData = !isImage && entry.linkUrls && entry.linkUrls.length > 0
+export function projectClipboardEntry(dto: ClipboardEntryDto): ClipboardEntry {
+  const isFile = isFileContentType(dto.contentType)
+  const isImage = !isFile && isImageContentType(dto.contentType)
+  const isLink = !isFile && !isImage && (dto.linkUrls?.length ?? 0) > 0
 
-  let linkItem: { urls: string[]; domains: string[] } | null = null
-  if (hasLinkData) {
-    linkItem = {
-      urls: entry.linkUrls!,
-      domains: entry.linkDomains ?? entry.linkUrls!.map(extractDomainFromUrl),
+  let type: ClipboardEntryType
+  let content: ClipboardEntryContent | null
+  if (isFile) {
+    const parsed = parseFileItemsFromUriList(dto.preview)
+    type = 'file'
+    content = {
+      file_names: parsed.map(p => p.name),
+      file_sizes: dto.fileSizes ?? [],
+      file_missing: parsed.map(p => p.missing),
+    }
+  } else if (isImage) {
+    type = 'image'
+    content = {
+      thumbnail: dto.thumbnailUrl ?? null,
+      size: dto.sizeBytes,
+      width: dto.imageWidth ?? 0,
+      height: dto.imageHeight ?? 0,
+    }
+  } else if (isLink) {
+    type = 'link'
+    content = {
+      urls: dto.linkUrls!,
+      domains: dto.linkDomains ?? dto.linkUrls!.map(extractDomainFromUrl),
+    }
+  } else {
+    type = 'text'
+    content = {
+      display_text: dto.preview,
+      has_detail: dto.hasDetail,
+      size: dto.sizeBytes,
     }
   }
 
   return {
-    id: entry.id,
-    is_favorited: entry.isFavorited,
-    created_at: entry.capturedAt,
-    updated_at: entry.updatedAt,
-    active_time: entry.activeTime,
-    item: {
-      text:
-        !isImage && !isFile && !hasLinkData
-          ? { display_text: entry.preview, has_detail: entry.hasDetail, size: entry.sizeBytes }
-          : null,
-      image: isImage
-        ? {
-            thumbnail: entry.thumbnailUrl ?? null,
-            size: entry.sizeBytes,
-            width: entry.imageWidth ?? 0,
-            height: entry.imageHeight ?? 0,
-          }
-        : null,
-      file: isFile
-        ? (() => {
-            const parsed = parseFileItemsFromUriList(entry.preview)
-            return {
-              file_names: parsed.map(p => p.name),
-              file_sizes: entry.fileSizes ?? [],
-              file_missing: parsed.map(p => p.missing),
-            }
-          })()
-        : null,
-      link: linkItem as unknown as ClipboardItemResponse['item']['link'],
-      code: null,
-      unknown: null,
-    },
-    file_transfer_status: entry.fileTransferStatus ?? null,
-    file_transfer_reason: entry.fileTransferReason ?? null,
-    payload_state: entry.payloadState ?? null,
+    id: dto.id,
+    type,
+    content,
+    createdAt: dto.capturedAt,
+    updatedAt: dto.updatedAt,
+    activeTime: dto.activeTime,
+    isFavorited: dto.isFavorited,
+    isUnavailable: dto.payloadState === 'Lost',
   }
 }

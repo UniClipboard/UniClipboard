@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 import {
   type EntryTransferStatus,
@@ -19,7 +20,6 @@ import {
   type TransferProgressInfo,
 } from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
-import type { DisplayClipboardItem } from '../ClipboardContent'
 
 /** 已知 cancel reason 子原因白名单。后端 wire 上送来的字符串与这里枚举
  * 一致时,UI 用 `clipboard.transfer.cancelReason.<reason>` 渲染中文文案;

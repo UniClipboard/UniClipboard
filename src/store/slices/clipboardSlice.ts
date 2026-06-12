@@ -1,5 +1,4 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
-import type { ClipboardItemResponse, ClipboardItemsResult } from '@/api/clipboardItems'
 import { OrderBy, Filter } from '@/api/clipboardItems'
 import {
   getClipboardEntries,
@@ -7,7 +6,8 @@ import {
   restoreClipboardEntry,
   toggleFavorite,
 } from '@/api/daemon'
-import { transformDaemonDtoToItemResponse } from '@/lib/clipboard-transform'
+import type { ClipboardEntry } from '@/lib/clipboard-entry'
+import { projectClipboardEntry } from '@/lib/clipboard-transform'
 import { hydrateEntryTransferStatuses } from './fileTransferSlice'
 
 // ── State ────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ export interface PendingClipboardEntry {
 }
 
 interface ClipboardState {
-  items: ClipboardItemResponse[]
+  items: ClipboardEntry[]
   pendingItems: PendingClipboardEntry[]
   loading: boolean
   notReady: boolean
@@ -62,16 +62,20 @@ interface FetchClipboardItemsParams {
   filter?: Filter
 }
 
-type ClipboardItemsResultWithOffset = ClipboardItemsResult & { offset: number }
+type FetchClipboardItemsResult = {
+  status: 'ready' | 'not_ready'
+  items: ClipboardEntry[]
+  offset: number
+}
 type FetchClipboardItemsAction = {
-  payload: ClipboardItemsResultWithOffset
+  payload: FetchClipboardItemsResult
   type: string
   meta: { arg?: FetchClipboardItemsParams }
 }
 
 // 异步 Thunk Actions
 export const fetchClipboardItems = createAsyncThunk<
-  ClipboardItemsResultWithOffset,
+  FetchClipboardItemsResult,
   FetchClipboardItemsParams | undefined
 >('clipboard/fetchItems', async (params = {}, { rejectWithValue, dispatch }) => {
   try {
@@ -84,6 +88,8 @@ export const fetchClipboardItems = createAsyncThunk<
     // Hydrate durable file transfer statuses from persisted API fields.
     // This ensures entryStatusById in fileTransferSlice is seeded on app load
     // so file entries show correct status badges immediately after restart.
+    // fileTransferSlice is the single owner of transfer status; ClipboardEntry
+    // deliberately does not carry it.
     if (result.status === 'ready' && result.entries) {
       const statusEntries = result.entries
         .filter(item => item.fileTransferStatus != null)
@@ -97,13 +103,11 @@ export const fetchClipboardItems = createAsyncThunk<
       }
     }
 
-    // Transform daemon ClipboardEntriesResponse to ClipboardItemsResult shape
     if (result.status === 'not_ready') {
-      return { status: 'not_ready', items: [], offset: params.offset ?? 0 }
+      return { status: 'not_ready' as const, items: [], offset: params.offset ?? 0 }
     }
-    const items: ClipboardItemResponse[] =
-      result.entries?.map(transformDaemonDtoToItemResponse) ?? []
-    return { ...result, items, status: 'ready' as const, offset: params.offset ?? 0 }
+    const items = result.entries?.map(projectClipboardEntry) ?? []
+    return { status: 'ready' as const, items, offset: params.offset ?? 0 }
   } catch {
     return rejectWithValue('获取剪贴板内容失败')
   }
@@ -190,7 +194,7 @@ const clipboardSlice = createSlice({
     clearError: state => {
       state.error = null
     },
-    prependItem: (state, action: PayloadAction<ClipboardItemResponse>) => {
+    prependItem: (state, action: PayloadAction<ClipboardEntry>) => {
       if (state.items.some(item => item.id === action.payload.id)) return
       state.items.unshift(action.payload)
     },
@@ -284,7 +288,7 @@ const clipboardSlice = createSlice({
       const { id, isFavorited } = action.payload
       const item = state.items.find(item => item.id === id)
       if (item) {
-        item.is_favorited = isFavorited
+        item.isFavorited = isFavorited
       }
     })
     builder.addCase(toggleFavoriteItem.rejected, (state, action) => {

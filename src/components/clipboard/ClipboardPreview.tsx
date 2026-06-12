@@ -1,18 +1,18 @@
 import { Clipboard } from 'lucide-react'
 import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  ClipboardCodeItem,
-  ClipboardImageItem,
-  ClipboardLinkItem,
-  ClipboardTextItem,
-} from '@/api/clipboardItems'
 import { cancelFileTransfer } from '@/api/file_transfer'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
+import type {
+  ClipboardCodeItem,
+  ClipboardImageItem,
+  ClipboardLinkItem,
+  ClipboardTextItem,
+  DisplayClipboardItem,
+} from '@/lib/clipboard-entry'
 import { reportError } from '@/observability/errors'
-import type { DisplayClipboardItem } from './ClipboardContent'
 import ClipboardPreviewInfo from './ClipboardPreviewInfo'
 import CodePreview from './preview-renderers/CodePreview'
 import FilePreview from './preview-renderers/FilePreview'

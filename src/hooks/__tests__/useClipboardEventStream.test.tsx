@@ -15,11 +15,6 @@ vi.mock('@/lib/daemon-ws', () => ({
   },
 }))
 
-// Mock clipboardItems (isImageType) — the hook imports isImageType from here
-vi.mock('@/api/clipboardItems', () => ({
-  isImageType: vi.fn(() => false),
-}))
-
 // Mock daemon clipboard module (getClipboardEntries) — the hook imports from here
 vi.mock('@/api/daemon/clipboard', () => ({
   getClipboardEntries: vi.fn(),

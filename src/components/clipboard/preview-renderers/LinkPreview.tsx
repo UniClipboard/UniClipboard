@@ -1,7 +1,7 @@
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { ExternalLink } from 'lucide-react'
 import React from 'react'
-import type { ClipboardLinkItem } from '@/api/clipboardItems'
+import type { ClipboardLinkItem } from '@/lib/clipboard-entry'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('clipboard-preview')

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ClipboardTextItem } from '@/api/clipboardItems'
-import type { DisplayClipboardItem } from '@/components/clipboard/ClipboardContent'
+import type { ClipboardTextItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { clipboardPreviewCache, type ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { createLogger } from '@/lib/logger'
 import { useAppSelector } from '@/store/hooks'

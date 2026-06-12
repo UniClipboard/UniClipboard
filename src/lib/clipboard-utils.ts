@@ -1,6 +1,11 @@
-import type { ClipboardItemResponse } from '@/api/clipboardItems'
-
-export type ItemType = 'text' | 'image' | 'link' | 'code' | 'file' | 'unknown'
+import type {
+  ClipboardCodeItem,
+  ClipboardEntry,
+  ClipboardFileItem,
+  ClipboardImageItem,
+  ClipboardLinkItem,
+  ClipboardTextItem,
+} from '@/lib/clipboard-entry'
 
 /**
  * Extract a human-readable filename from a file URI (e.g. `file:///path/to/file.txt` → `file.txt`).
@@ -109,19 +114,11 @@ export function isFileContentType(contentType: string): boolean {
   return contentType.includes('uri-list')
 }
 
-export function resolveItemType(item: ClipboardItemResponse): ItemType {
-  if (item.item.image) return 'image'
-  if (item.item.link) return 'link'
-  if (item.item.file) return 'file'
-  if (item.item.code) return 'code'
-  if (item.item.text) return 'text'
-  return 'unknown'
-}
-
-export function getItemPreview(item: ClipboardItemResponse): string {
-  switch (resolveItemType(item)) {
+export function getItemPreview(entry: ClipboardEntry): string {
+  if (!entry.content) return ''
+  switch (entry.type) {
     case 'image': {
-      const img = item.item.image!
+      const img = entry.content as ClipboardImageItem
       const parts: string[] = ['Image']
       if (img.width > 0 && img.height > 0) parts.push(`${img.width}×${img.height}`)
       if (img.size > 0) {
@@ -132,13 +129,13 @@ export function getItemPreview(item: ClipboardItemResponse): string {
       return parts.join(' | ')
     }
     case 'link':
-      return item.item.link?.urls[0] ?? ''
+      return (entry.content as ClipboardLinkItem).urls[0] ?? ''
     case 'file':
-      return item.item.file?.file_names[0] ?? ''
+      return (entry.content as ClipboardFileItem).file_names[0] ?? ''
     case 'code':
-      return item.item.code?.code ?? ''
+      return (entry.content as ClipboardCodeItem).code
     case 'text':
-      return item.item.text?.display_text ?? ''
+      return (entry.content as ClipboardTextItem).display_text
     default:
       return ''
   }

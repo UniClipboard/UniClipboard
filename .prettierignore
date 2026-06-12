@@ -25,6 +25,11 @@ schema/openapi.json
 # Generated @hey-api/openapi-ts TypeScript client — produced by `npm run gen:client` (P5).
 src/api/generated/
 
+# Mobile clients imported via git subtree — each keeps its own toolchain and
+# formatting config; the root prettier must not rewrite them.
+apps/ios/
+apps/android/
+
 # Agent and tooling infrastructure (not project source)
 # Rule: any dot-directory that is NOT project source code goes here.
 # When adding a new tool/planning directory, add it below before merging.

@@ -33,6 +33,11 @@ export default tseslint.config(
       // 与生成器输出逐字节一致（CI 用 git diff --exit-code 做 drift-check）。
       // 因此排除在 eslint 之外，避免 lint-staged 的 `eslint --fix` 改写它。
       'src/api/generated/',
+      // Mobile clients imported via git subtree keep their own toolchains
+      // (apps/android has its own eslint/prettier config); the root config
+      // must not lint or rewrite them.
+      'apps/ios/',
+      'apps/android/',
     ],
   },
   js.configs.recommended,

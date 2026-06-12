@@ -15,10 +15,11 @@
 //! Dependency chain (top feeds bottom):
 //!
 //! ```text
-//! exiting daemon teardown   = 2 × SHUTDOWN_JOIN_TIMEOUT + iroh close
-//! replacement's lock wait   = PREDECESSOR_RELEASE_BUDGET   (covers ↑)
-//! spawner's startup wait    = DAEMON_STARTUP_TIMEOUT       (covers ↑ + bootstrap)
-//! spawner's promote wait    = PROMOTE_DRAIN_TIMEOUT        (covers drain + teardown)
+//! exiting daemon teardown    = 2 × SHUTDOWN_JOIN_TIMEOUT + iroh close
+//! worst graceful teardown    = PREDECESSOR_RELEASE_BUDGET  (covers ↑)
+//! replacement's lock wait    = LOCK_ACQUIRE_DEADLINE       (covers ↑, hang protection)
+//! spawner's startup wait     = DAEMON_STARTUP_TIMEOUT      (covers ↑ + bootstrap)
+//! spawner's promote wait     = PROMOTE_DRAIN_TIMEOUT       (covers drain + teardown)
 //! ```
 
 use std::time::Duration;
@@ -54,6 +55,17 @@ pub const IROH_TEARDOWN_MARGIN: Duration = Duration::from_secs(5);
 pub const PREDECESSOR_RELEASE_BUDGET: Duration =
     sum(double(SHUTDOWN_JOIN_TIMEOUT), IROH_TEARDOWN_MARGIN);
 
+/// Replacement-daemon-side: hard deadline for the event-driven (blocking
+/// `flock`) wait on a predecessor's lock release.
+///
+/// The kernel wakes the waiter the instant the holder releases, so unlike a
+/// polling budget this deadline is NOT a tuned estimate of the predecessor's
+/// teardown — it is pure protection against a hung predecessor that never
+/// exits. Floor: it must exceed [`PREDECESSOR_RELEASE_BUDGET`] (the
+/// worst-case GRACEFUL teardown); doubled for slack, since a longer deadline
+/// costs nothing when the holder behaves.
+pub const LOCK_ACQUIRE_DEADLINE: Duration = double(PREDECESSOR_RELEASE_BUDGET);
+
 /// Spawner-side: how long a fresh daemon may take from process spawn to
 /// `/health` answering, EXCLUDING any wait on a predecessor's lock (DB
 /// migrations, secure storage, iroh bind, HTTP bind).
@@ -62,9 +74,8 @@ pub const DAEMON_BOOTSTRAP_ALLOWANCE: Duration = Duration::from_secs(15);
 /// Spawner-side: total budget to wait for a spawned daemon to become healthy.
 ///
 /// Must cover the replacement's worst case: waiting out a predecessor's lock
-/// release AND THEN bootstrapping from scratch.
-pub const DAEMON_STARTUP_TIMEOUT: Duration =
-    sum(PREDECESSOR_RELEASE_BUDGET, DAEMON_BOOTSTRAP_ALLOWANCE);
+/// release (up to its full deadline) AND THEN bootstrapping from scratch.
+pub const DAEMON_STARTUP_TIMEOUT: Duration = sum(LOCK_ACQUIRE_DEADLINE, DAEMON_BOOTSTRAP_ALLOWANCE);
 
 /// Exiting-daemon-side: bounded wait for control leases to drain during a
 /// controlled restart (ADR-008 P5-L L8b). If leases do not drain within this
@@ -92,12 +103,14 @@ mod tests {
     #[test]
     fn derived_budgets_cover_their_dependency() {
         assert_eq!(PREDECESSOR_RELEASE_BUDGET, Duration::from_secs(15));
-        assert_eq!(DAEMON_STARTUP_TIMEOUT, Duration::from_secs(30));
+        assert_eq!(LOCK_ACQUIRE_DEADLINE, Duration::from_secs(30));
+        assert_eq!(DAEMON_STARTUP_TIMEOUT, Duration::from_secs(45));
         assert_eq!(PROMOTE_DRAIN_TIMEOUT, Duration::from_secs(60));
 
         // The relations themselves, independent of the concrete numbers.
         assert!(PREDECESSOR_RELEASE_BUDGET >= double(SHUTDOWN_JOIN_TIMEOUT));
-        assert!(DAEMON_STARTUP_TIMEOUT > PREDECESSOR_RELEASE_BUDGET);
+        assert!(LOCK_ACQUIRE_DEADLINE > PREDECESSOR_RELEASE_BUDGET);
+        assert!(DAEMON_STARTUP_TIMEOUT > LOCK_ACQUIRE_DEADLINE);
         assert!(PROMOTE_DRAIN_TIMEOUT > CONTROLLED_RESTART_DRAIN_TIMEOUT);
     }
 }

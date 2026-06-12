@@ -11,6 +11,7 @@
 
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use fs2::FileExt;
 
@@ -118,72 +119,99 @@ impl DaemonInstanceLock {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    /// Blocking acquire — parks the calling thread in `flock(2)` until the
+    /// current holder releases. Only called from [`acquire_with_deadline`]'s
+    /// dedicated blocking thread; the `DISABLE_ENV` escape valve is handled
+    /// by the `try_acquire` fast path before this runs.
+    fn acquire_blocking(data_dir: &Path) -> Result<Self, InstanceLockError> {
+        let lock_path = data_dir.join(".uniclipd.lock");
+        let file = File::create(&lock_path).map_err(InstanceLockError::Io)?;
+
+        #[cfg(unix)]
+        repair_lock_permissions(&lock_path);
+
+        file.lock_exclusive().map_err(InstanceLockError::Io)?;
+        Ok(Self {
+            _file: Some(file),
+            path: lock_path,
+        })
+    }
 }
 
-/// Retry an instance-lock acquisition while it keeps returning
-/// [`InstanceLockError::AlreadyRunning`].
+/// Acquire the per-profile instance lock, blocking (event-driven) until an
+/// exiting holder releases it, bounded by `deadline`.
 ///
 /// Used by the daemon host on EVERY start to ride out the gap where an exiting
 /// predecessor still holds the lock during iroh teardown: the predecessor's
 /// `/health` endpoint goes absent (HTTP server cancelled) BEFORE the instance
 /// lock is released (iroh `endpoint.close()` then guard drop), so a freshly
-/// spawned daemon can briefly observe `AlreadyRunning` even though the
-/// predecessor is already exiting. This race is not specific to controlled
-/// restarts — any health-probing spawner (CLI/GUI) can hit it after a plain
-/// stop/start cycle (observed in production, 2026-06-12: spawner saw `/health`
-/// absent at T+2s, predecessor released the lock at T+5.4s, replacement exited
-/// `AlreadyRunning`). Only [`InstanceLockError::AlreadyRunning`] is
-/// retried; any other error (e.g. [`InstanceLockError::Io`]) is returned
-/// immediately. If `max_attempts` is exhausted while still `AlreadyRunning`, the
-/// last `AlreadyRunning` is returned.
+/// spawned daemon can observe the lock still held even though the predecessor
+/// is already exiting. This race is not specific to controlled restarts — any
+/// health-probing spawner (CLI/GUI) can hit it after a plain stop/start cycle
+/// (observed in production, 2026-06-12: spawner saw `/health` absent at T+2s,
+/// predecessor released the lock at T+5.4s, replacement exited
+/// `AlreadyRunning`).
 ///
-/// `max_attempts` caps attempts, not sleeps: the closure is always called at
-/// least once (even with `max_attempts == 0`), and a sleep happens only BETWEEN
-/// attempts, so `n` attempts incur at most `n - 1` sleeps.
+/// The wait is a blocking `flock(2)` on a dedicated DETACHED `std::thread`
+/// (NOT `spawn_blocking`: tokio joins its blocking pool on runtime drop, so a
+/// thread still parked in `flock` after a deadline expiry would deadlock the
+/// daemon's exit path): the kernel wakes the waiter the instant the holder
+/// releases — no polling, no budget tuned to the predecessor's internal
+/// teardown phases. `deadline` is therefore pure protection against a holder
+/// that never exits, not a timing estimate; expiring returns
+/// [`InstanceLockError::AlreadyRunning`].
 ///
-/// Generic over `T` so it is unit-testable with a fake closure (no real fs2
-/// lock needed).
-pub async fn retry_while_already_running<T, F>(
-    mut attempt: F,
-    max_attempts: usize,
-    interval: std::time::Duration,
-) -> Result<T, InstanceLockError>
-where
-    F: FnMut() -> Result<T, InstanceLockError>,
-{
-    let mut remaining = max_attempts;
-    let mut attempts_made: usize = 0;
-    loop {
-        attempts_made += 1;
-        match attempt() {
-            Ok(value) => {
-                if attempts_made > 1 {
-                    tracing::info!(
-                        retry_count = attempts_made - 1,
-                        "daemon instance lock acquired after waiting for predecessor release"
-                    );
-                }
-                return Ok(value);
-            }
-            Err(InstanceLockError::AlreadyRunning { lock_path }) => {
-                remaining = remaining.saturating_sub(1);
-                if remaining == 0 {
-                    return Err(InstanceLockError::AlreadyRunning { lock_path });
-                }
-                if attempts_made == 1 {
-                    tracing::warn!(
-                        lock_path = %lock_path.display(),
-                        max_attempts,
-                        interval_ms = interval.as_millis() as u64,
-                        "daemon instance lock busy — predecessor likely still \
-                         releasing; retrying"
-                    );
-                }
-                tokio::time::sleep(interval).await;
-            }
-            // Any non-AlreadyRunning error is terminal — do not retry.
-            Err(other) => return Err(other),
+/// Failure semantics: a fast-path I/O error is terminal immediately; a
+/// deadline expiry leaves the detached thread parked in `flock(2)` — if the
+/// holder later exits, the thread wins the lock, fails to send it (receiver
+/// dropped), and releases it immediately; process exit reclaims the thread
+/// and any held lock either way, so the orphan is harmless.
+pub async fn acquire_with_deadline(
+    data_dir: &Path,
+    deadline: Duration,
+) -> Result<DaemonInstanceLock, InstanceLockError> {
+    // Fast path — also covers the `DISABLE_ENV` escape valve and terminal
+    // I/O errors (bad permissions, disk full) without spawning a thread.
+    let lock_path = match DaemonInstanceLock::try_acquire(data_dir) {
+        Ok(lock) => return Ok(lock),
+        Err(InstanceLockError::AlreadyRunning { lock_path }) => lock_path,
+        Err(other) => return Err(other),
+    };
+
+    tracing::warn!(
+        lock_path = %lock_path.display(),
+        deadline_ms = deadline.as_millis() as u64,
+        "daemon instance lock busy — blocking until the holder releases it"
+    );
+
+    let started = Instant::now();
+    let dir = data_dir.to_path_buf();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::Builder::new()
+        .name("uniclipd-lock-wait".into())
+        .spawn(move || {
+            // If the receiver is gone (deadline expired), the sent lock is
+            // dropped right here, releasing it for the next contender.
+            let _ = tx.send(DaemonInstanceLock::acquire_blocking(&dir));
+        })
+        .map_err(InstanceLockError::Io)?;
+
+    match tokio::time::timeout(deadline, rx).await {
+        Ok(Ok(Ok(lock))) => {
+            tracing::info!(
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "daemon instance lock acquired after holder release"
+            );
+            Ok(lock)
         }
+        Ok(Ok(Err(error))) => Err(error),
+        // Sender dropped without sending — the wait thread panicked.
+        Ok(Err(_recv_error)) => Err(InstanceLockError::Io(std::io::Error::other(
+            "instance lock wait thread terminated unexpectedly",
+        ))),
+        // Deadline expired: the holder never released within the bound.
+        Err(_elapsed) => Err(InstanceLockError::AlreadyRunning { lock_path }),
     }
 }
 
@@ -287,83 +315,80 @@ mod tests {
             .expect("lock must be re-acquirable immediately after the prior guard drops");
     }
 
-    // ---------- retry_while_already_running ----------
+    // ---------- acquire_with_deadline ----------
+    //
+    // These tests use real `flock(2)` blocking and real time, so they build
+    // their own multi-thread runtime inside a sync `#[test]` body: the
+    // `ENV_LOCK` guard (a std MutexGuard, !Send) can then be held across the
+    // whole test without making the test future non-Send.
 
-    /// A fake lock path so `AlreadyRunning` can be constructed without touching
-    /// the filesystem — `retry_while_already_running` never inspects the path.
-    fn fake_lock_path() -> PathBuf {
-        PathBuf::from("/tmp/fake.uniclipd.lock")
+    fn blocking_test_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_time()
+            .build()
+            .unwrap()
     }
 
-    /// ADR-008 P5-L L8d-2: (a) N `AlreadyRunning` then `Ok` → succeeds after the
-    /// predecessor releases the lock, before exhausting the attempt budget.
-    #[tokio::test(start_paused = true)]
-    async fn retry_succeeds_after_some_already_running() {
-        let calls = std::cell::Cell::new(0usize);
-        let attempt = || {
-            let n = calls.get();
-            calls.set(n + 1);
-            if n < 3 {
-                Err(InstanceLockError::AlreadyRunning {
-                    lock_path: fake_lock_path(),
-                })
-            } else {
-                Ok::<u32, InstanceLockError>(42)
-            }
-        };
+    /// Free lock → the fast path acquires immediately, no blocking thread.
+    #[test]
+    fn acquire_with_deadline_succeeds_immediately_when_free() {
+        let _env = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
 
-        let value = retry_while_already_running(attempt, 10, std::time::Duration::from_millis(200))
-            .await
-            .expect("must succeed once the predecessor releases the lock");
-
-        assert_eq!(value, 42);
-        assert_eq!(calls.get(), 4, "3 AlreadyRunning + 1 Ok = 4 attempts total");
+        let lock = blocking_test_runtime()
+            .block_on(acquire_with_deadline(dir.path(), Duration::from_secs(1)))
+            .expect("free lock must be acquired on the fast path");
+        assert!(lock.path().exists());
     }
 
-    /// (b) Always `AlreadyRunning` → returns `AlreadyRunning` after exhausting
-    /// `max_attempts`; assert the attempt count is exactly the budget.
-    #[tokio::test(start_paused = true)]
-    async fn retry_exhausts_budget_then_returns_already_running() {
-        let calls = std::cell::Cell::new(0usize);
-        let attempt = || {
-            calls.set(calls.get() + 1);
-            Err::<u32, _>(InstanceLockError::AlreadyRunning {
-                lock_path: fake_lock_path(),
-            })
-        };
+    /// Held lock released mid-wait → the blocked waiter wakes and acquires
+    /// well before the deadline (event-driven, not deadline-driven).
+    #[test]
+    fn acquire_with_deadline_wakes_when_holder_releases() {
+        let _env = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
 
-        let err = retry_while_already_running(attempt, 5, std::time::Duration::from_millis(200))
-            .await
-            .expect_err("a predecessor that never releases must surface AlreadyRunning");
+        let holder = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
+        let release_after = Duration::from_millis(300);
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(release_after);
+            drop(holder);
+        });
 
+        let started = Instant::now();
+        let lock = blocking_test_runtime()
+            .block_on(acquire_with_deadline(dir.path(), Duration::from_secs(10)))
+            .expect("waiter must acquire once the holder releases");
+        let elapsed = started.elapsed();
+
+        assert!(lock.path().exists());
+        assert!(
+            elapsed >= Duration::from_millis(250),
+            "must actually have waited for the holder (elapsed {elapsed:?})"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "must wake on release, long before the deadline (elapsed {elapsed:?})"
+        );
+        releaser.join().unwrap();
+    }
+
+    /// Holder never releases → deadline expires with `AlreadyRunning`.
+    #[test]
+    fn acquire_with_deadline_times_out_when_holder_never_releases() {
+        let _env = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+
+        let _holder = DaemonInstanceLock::try_acquire(dir.path()).unwrap();
+
+        let err = blocking_test_runtime()
+            .block_on(acquire_with_deadline(
+                dir.path(),
+                Duration::from_millis(300),
+            ))
+            .expect_err("a holder that never releases must surface AlreadyRunning");
         assert!(matches!(err, InstanceLockError::AlreadyRunning { .. }));
-        assert_eq!(
-            calls.get(),
-            5,
-            "must attempt exactly max_attempts times before giving up"
-        );
-    }
-
-    /// (c) An `Io` error on the first call propagates immediately without retry —
-    /// only `AlreadyRunning` is transient.
-    #[tokio::test(start_paused = true)]
-    async fn retry_propagates_io_error_without_retry() {
-        let calls = std::cell::Cell::new(0usize);
-        let attempt = || {
-            calls.set(calls.get() + 1);
-            Err::<u32, _>(InstanceLockError::Io(std::io::Error::other("disk full")))
-        };
-
-        let err = retry_while_already_running(attempt, 10, std::time::Duration::from_millis(200))
-            .await
-            .expect_err("Io is terminal — must propagate");
-
-        assert!(matches!(err, InstanceLockError::Io(_)));
-        assert_eq!(
-            calls.get(),
-            1,
-            "non-AlreadyRunning errors must not be retried"
-        );
     }
 
     #[test]

@@ -18,7 +18,6 @@
 //! Migrated from `uc-desktop/src/daemon/host.rs` (ADR-008 P2, Slice 2b).
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 use uc_application::clipboard_write::ClipboardWriteCoordinator;
@@ -39,22 +38,6 @@ use super::runtime_controls::build_daemon_runtime_controls;
 use super::search_assembly::build_daemon_search_assembly;
 use super::service_assembly::build_daemon_service_plan;
 use super::tokio_runtime::build_daemon_tokio_runtime;
-
-/// Backoff between instance-lock acquisition retries while an exiting
-/// predecessor is still releasing the lock (ADR-008 P5-L L8d-2). Engaged on
-/// every daemon start — see the acquisition comment in [`run`] for why the
-/// retry must not be gated on a handover record.
-const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(200);
-
-/// Max instance-lock acquisition attempts while a predecessor is still
-/// releasing the lock (ADR-008 P5-L L8d-2). DERIVED from the cross-process
-/// timing contract: enough attempts at [`LOCK_RETRY_INTERVAL`] to sleep
-/// through [`uc_daemon_local::timing::PREDECESSOR_RELEASE_BUDGET`] (the predecessor's
-/// worst-case graceful teardown), plus the initial attempt. The retry sleeps
-/// only BETWEEN attempts, so `n` attempts incur `n - 1` interval sleeps.
-const LOCK_MAX_ATTEMPTS: usize = (uc_daemon_local::timing::PREDECESSOR_RELEASE_BUDGET.as_millis()
-    / LOCK_RETRY_INTERVAL.as_millis()) as usize
-    + 1;
 
 /// Process-level persistent resource handles passed to the daemon on each spawn.
 ///
@@ -98,28 +81,23 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         // released, otherwise the replacement races `AddrInUse`. Do NOT move
         // this guard's scope earlier (e.g. into a sub-block).
         //
-        // Acquisition retries `AlreadyRunning` with a bounded backoff (the
-        // derived `timing::PREDECESSOR_RELEASE_BUDGET`, currently 15s) on
-        // EVERY start — not only controlled-restart promotions — to ride out
-        // the window where an exiting predecessor still holds the lock during
-        // iroh teardown (its `/health` goes absent before lock-release). Any
+        // Acquisition waits for the lock EVENT-DRIVEN (blocking `flock` on a
+        // detached thread; the kernel wakes us the instant the holder
+        // releases) on EVERY start — not only controlled-restart promotions —
+        // because an exiting predecessor still holds the lock during iroh
+        // teardown (its `/health` goes absent before lock-release). Any
         // health-probing spawner (CLI/GUI) can hit that window after a plain
         // stop/start cycle: observed in production (2026-06-12), the spawner
         // saw `/health` absent ~2s after the predecessor's shutdown signal and
-        // spawned a replacement that lost the single-shot `try_acquire` to a
-        // predecessor that needed ~5.4s to release. The cost of the retry when
-        // a HEALTHY daemon holds the lock is a ~15s delay before the same
-        // `AlreadyRunning` error — acceptable, since health-probing spawners
-        // never spawn against a healthy daemon (only a manual double-launch
-        // pays it). I/O errors are still terminal on the first attempt.
-        let _instance_lock = uc_daemon_local::instance_lock::retry_while_already_running(
-            || {
-                uc_daemon_local::instance_lock::DaemonInstanceLock::try_acquire(
-                    &storage_paths.app_data_root_dir,
-                )
-            },
-            LOCK_MAX_ATTEMPTS,
-            LOCK_RETRY_INTERVAL,
+        // spawned a replacement that lost the then-single-shot `try_acquire`
+        // to a predecessor that needed ~5.4s to release. The deadline
+        // (`timing::LOCK_ACQUIRE_DEADLINE`) is pure hang protection, not a
+        // teardown estimate — a healthy holder costs the waiter nothing
+        // extra, since only a manual double-launch ever waits it out. I/O
+        // errors are still terminal on the first attempt.
+        let _instance_lock = uc_daemon_local::instance_lock::acquire_with_deadline(
+            &storage_paths.app_data_root_dir,
+            uc_daemon_local::timing::LOCK_ACQUIRE_DEADLINE,
         )
         .await
         .map_err(|e| {

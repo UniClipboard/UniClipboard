@@ -14,7 +14,7 @@ fi
 
 [ -n "$cmd" ] || exit 0
 
-if printf '%s' "$cmd" | grep -qE '(git mv|mv|rename).*src-tauri/crates/'; then
+if printf '%s' "$cmd" | grep -qE '(git mv|mv|rename).*(crates/|apps/)'; then
   echo '[hook] Crate file moved — consider running /refresh-agents to update WHERE TO LOOK'
 fi
 

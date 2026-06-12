@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Pre-commit hook script: refresh the ## STRUCTURE section in src-tauri/AGENTS.md
+ * Pre-commit hook script: refresh the ## STRUCTURE section in crates/AGENTS.md
  * when workspace crate membership changes.
  *
- * Triggered by lint-staged on src-tauri/Cargo.toml changes.
+ * Triggered by lint-staged on root Cargo.toml changes.
  * Only rewrites the STRUCTURE block; other sections are untouched.
  */
 
@@ -12,9 +12,8 @@ import { join, basename } from 'node:path'
 import { execSync } from 'node:child_process'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
-const SRC_TAURI = join(ROOT, 'src-tauri')
-const AGENTS_PATH = join(SRC_TAURI, 'AGENTS.md')
-const WORKSPACE_TOML = join(SRC_TAURI, 'Cargo.toml')
+const AGENTS_PATH = join(ROOT, 'crates', 'AGENTS.md')
+const WORKSPACE_TOML = join(ROOT, 'Cargo.toml')
 
 // -- 1. Parse workspace members from Cargo.toml --
 
@@ -53,14 +52,15 @@ const KNOWN_DESCRIPTIONS = {
   'uc-cli': '`uniclip` CLI (daemon client; heavy deps feature-gated)',
   'uc-cli-macros': 'Proc-macros for uc-cli (internal)',
   'p2p-bench': 'Throwaway perf-spike bins (not shipped; publish = false)',
+  uniclipboard: 'Tauri desktop bin package (packaging shell; hands off to uc-tauri)',
 }
 
 function getDescription(cratePath) {
-  const name = basename(cratePath)
+  const name = packageName(cratePath)
   if (KNOWN_DESCRIPTIONS[name]) return KNOWN_DESCRIPTIONS[name]
 
   // Fallback: try to read `description` from crate's Cargo.toml
-  const tomlPath = join(SRC_TAURI, cratePath, 'Cargo.toml')
+  const tomlPath = join(ROOT, cratePath, 'Cargo.toml')
   if (existsSync(tomlPath)) {
     const toml = readFileSync(tomlPath, 'utf8')
     const desc = toml.match(/^description\s*=\s*"([^"]+)"/m)
@@ -101,8 +101,18 @@ const LAYER_ORDER = [
   },
 ]
 
+// Resolve the cargo package name (dir basename != package name for apps/*).
+function packageName(cratePath) {
+  const tomlPath = join(ROOT, cratePath, 'Cargo.toml')
+  if (existsSync(tomlPath)) {
+    const m = readFileSync(tomlPath, 'utf8').match(/^name\s*=\s*"([^"]+)"/m)
+    if (m) return m[1]
+  }
+  return basename(cratePath)
+}
+
 function categorizeMember(cratePath) {
-  const name = basename(cratePath)
+  const name = packageName(cratePath)
   for (const layer of LAYER_ORDER) {
     if (layer.members.includes(name)) return layer
   }
@@ -112,19 +122,28 @@ function categorizeMember(cratePath) {
 // -- 4. Generate STRUCTURE block --
 
 function generateStructure(members) {
+  const apps = members.filter(m => m.startsWith('apps/'))
+  const libs = members.filter(m => m.startsWith('crates/'))
+  const tauri = members.filter(m => m === 'src-tauri' || m.startsWith('src-tauri/'))
   const crateCount = members.length
+
   const lines = [
     '```text',
-    'src-tauri/',
-    '|- src/                  # Thin bin: hands off to uc_tauri::run(generate_context!())',
-    `|- crates/               # Hexagonal workspace (${crateCount} crates)`,
+    '.                        # repo root = cargo workspace',
+    '|- apps/                 # Runnable binaries',
   ]
+  for (const m of apps) {
+    const dir = m.slice('apps/'.length)
+    const padding = Math.max(1, 20 - dir.length)
+    lines.push(`|  |- ${dir}/${' '.repeat(padding)}# ${getDescription(m)}`)
+  }
 
-  // Group members by layer
+  lines.push(`|- crates/               # Library crates (${libs.length})`)
+
+  // Group library members by layer
   const layered = new Map()
   const uncategorized = []
-
-  for (const m of members) {
+  for (const m of libs) {
     const layer = categorizeMember(m)
     if (layer) {
       if (!layered.has(layer.comment)) layered.set(layer.comment, [])
@@ -138,30 +157,30 @@ function generateStructure(members) {
     const crates = layered.get(layer.comment)
     if (!crates || crates.length === 0) continue
     lines.push(`|  # -- ${layer.comment} --`)
-    for (let i = 0; i < crates.length; i++) {
-      const cratePath = crates[i]
+    for (const cratePath of crates) {
       const name = basename(cratePath)
-      const desc = getDescription(cratePath)
-      const isLast =
-        i === crates.length - 1 &&
-        layer === LAYER_ORDER[LAYER_ORDER.length - 1] &&
-        uncategorized.length === 0
-      const prefix = isLast ? '|  `- ' : '|  |- '
       const padding = Math.max(1, 17 - name.length)
-      lines.push(`${prefix}${name}/${' '.repeat(padding)}# ${desc}`)
+      lines.push(`|  |- ${name}/${' '.repeat(padding)}# ${getDescription(cratePath)}`)
     }
   }
-
   if (uncategorized.length > 0) {
     lines.push('|  # -- Other --')
     for (const m of uncategorized) {
       const name = basename(m)
-      const desc = getDescription(m)
       const padding = Math.max(1, 17 - name.length)
-      lines.push(`|  |- ${name}/${' '.repeat(padding)}# ${desc}`)
+      lines.push(`|  |- ${name}/${' '.repeat(padding)}# ${getDescription(m)}`)
     }
   }
 
+  lines.push('|- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)')
+  for (const m of tauri) {
+    if (m === 'src-tauri') {
+      lines.push('|  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())')
+    } else {
+      const name = basename(m)
+      lines.push(`|  \`- crates/${name}/    # ${getDescription(m)}`)
+    }
+  }
   lines.push('`- crates/uc-infra/migrations/ # Active infra (diesel) migrations')
   lines.push('```')
 
@@ -219,7 +238,7 @@ function main() {
 
   // Stage the updated file so it's included in the commit
   try {
-    execSync('git add src-tauri/AGENTS.md', { cwd: ROOT, stdio: 'pipe' })
+    execSync('git add crates/AGENTS.md', { cwd: ROOT, stdio: 'pipe' })
   } catch {
     // If git add fails (e.g., not in a git context), just write the file
   }

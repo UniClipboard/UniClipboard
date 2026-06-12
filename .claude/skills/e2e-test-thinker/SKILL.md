@@ -16,7 +16,7 @@ Analyze the current branch's changes and determine whether — and how — they 
 
 ## Background: The E2E Harness
 
-The harness lives at `src-tauri/tests/e2e/` and provides three building blocks:
+The harness lives at `tests/e2e/` and provides three building blocks:
 
 | Component | Purpose |
 |-----------|---------|
@@ -79,7 +79,7 @@ For every changed file/module, classify it into one of these buckets:
 For each ✅/⚠️ item, grep existing test files to see if it's already covered:
 
 ```bash
-grep -r "relevant_command_or_keyword" src-tauri/tests/e2e/tests/
+grep -r "relevant_command_or_keyword" tests/e2e/tests/
 ```
 
 Report what's covered and what's not.

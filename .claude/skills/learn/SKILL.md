@@ -1,11 +1,11 @@
 ---
 name: learn
-description: "Record a lesson learned into src-tauri/AGENTS.md (CONVENTIONS or ANTI-PATTERNS section). Use after discovering a project-specific gotcha, resolving a tricky bug, or when the user says 'remember this' about a coding pattern. Append one concise rule that will prevent the same mistake in future sessions."
+description: "Record a lesson learned into crates/AGENTS.md (CONVENTIONS or ANTI-PATTERNS section). Use after discovering a project-specific gotcha, resolving a tricky bug, or when the user says 'remember this' about a coding pattern. Append one concise rule that will prevent the same mistake in future sessions."
 ---
 
 # Learn — Record a Lesson
 
-Append a project-specific lesson to `src-tauri/AGENTS.md` so future sessions avoid the same mistake.
+Append a project-specific lesson to `crates/AGENTS.md` so future sessions avoid the same mistake.
 
 ## When to Use
 
@@ -57,7 +57,7 @@ Rules for good entries:
 
 ### Step 4 — Append to the Right Section
 
-Read `src-tauri/AGENTS.md`, find the target section, and append the new entry at the end of the bullet list (before the next `##` heading).
+Read `crates/AGENTS.md`, find the target section, and append the new entry at the end of the bullet list (before the next `##` heading).
 
 ### Step 5 — Trim if Needed
 

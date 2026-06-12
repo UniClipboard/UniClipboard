@@ -122,7 +122,7 @@ cargo check -p <affected_crate> 2>&1 | tail -20
 
 If the fix touches TypeScript/frontend code:
 ```bash
-cd src-tauri && pnpm type-check 2>&1 | tail -20
+pnpm type-check 2>&1 | tail -20
 ```
 
 ### Step 4 — Commit and push

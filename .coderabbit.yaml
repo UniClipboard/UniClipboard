@@ -5,7 +5,7 @@ reviews:
     # 这些路径的语言/格式不要求与对外文档一致，bot 在这里发的几乎全是噪音。
     - '!.planning/**'
     - '!.claude/**'
-    - '!src-tauri/crates/p2p-bench/**'
+    - '!crates/p2p-bench/**'
   auto_review:
     enabled: true
     auto_incremental_review: true

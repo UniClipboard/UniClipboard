@@ -125,9 +125,9 @@ See `uc-daemon-contract::api::dto::settings::retention_rule_dto_tests` for the c
 
 ## Cargo Command Location
 
-- **All Rust-related commands** (`cargo build`, `cargo test`, `cargo check`, etc.) **must be executed from `src-tauri/`.**
-- **Never run Cargo commands from the project root.**
+- **All Rust-related commands** (`cargo build`, `cargo test`, `cargo check`, etc.) **must be executed from the repository root** (the cargo workspace root since the monorepo restructure).
 - If `Cargo.toml` is not present in the current directory, stop immediately and do not retry.
+- Build artifacts land in the root `target/` directory.
 
 ## Rustdoc Bilingual Documentation Guide
 

@@ -21,7 +21,7 @@ rel=${file_path#"$project_dir"/}
 
 # Note: in `case`, * also matches `/`, so these cover nested paths.
 case "$rel" in
-  src-tauri/*.rs)
+  crates/*.rs | apps/*.rs | src-tauri/*.rs)
     kind=rust
     msg='[hook] First Rust edit this session — read docs/agent/rust-tauri-rules.md if you have not (plus docs/agent/architecture-rules.md when crate boundaries, ports, or DTO conversions are involved).'
     ;;

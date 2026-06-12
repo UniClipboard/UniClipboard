@@ -1,11 +1,11 @@
 ---
 name: refresh-agents
-description: "Refresh fact-based sections of src-tauri/AGENTS.md (STRUCTURE, WHERE TO LOOK, COMPLEXITY HOTSPOTS, KNOWN BROKEN) from current codebase state. Use after refactoring, renaming files, adding crates, or when the agent notices AGENTS.md info is stale."
+description: "Refresh fact-based sections of crates/AGENTS.md (STRUCTURE, WHERE TO LOOK, COMPLEXITY HOTSPOTS, KNOWN BROKEN) from current codebase state. Use after refactoring, renaming files, adding crates, or when the agent notices AGENTS.md info is stale."
 ---
 
 # Refresh AGENTS.md
 
-Bring the fact-based sections of `src-tauri/AGENTS.md` up to date with the current codebase.
+Bring the fact-based sections of `crates/AGENTS.md` up to date with the current codebase.
 
 ## When to Use
 
@@ -30,7 +30,6 @@ node scripts/refresh-agents-structure.mjs
 Verify each entry in the `## WHERE TO LOOK` table still points to an existing file:
 
 ```bash
-cd src-tauri
 ```
 
 For each row in the table:
@@ -64,7 +63,7 @@ Update `## COMPLEXITY HOTSPOTS` with files that are BOTH large (>300 lines) AND 
 Only update this if you know of currently-broken tests on HEAD:
 
 ```bash
-cd src-tauri && cargo test --workspace --lib --no-fail-fast 2>&1 | grep "FAILED\|error\[" | head -10
+cargo test --workspace --lib --no-fail-fast 2>&1 | grep "FAILED\|error\[" | head -10
 ```
 
 If failures exist that are known/accepted (not regressions), list them:
@@ -90,7 +89,7 @@ Change the "Last refreshed" line at the top:
 Stage and commit the updated file:
 
 ```bash
-git add src-tauri/AGENTS.md
+git add crates/AGENTS.md
 git commit -m "docs(agents): refresh AGENTS.md fact sections"
 ```
 

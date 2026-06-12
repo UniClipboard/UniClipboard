@@ -25,7 +25,7 @@
 
 ## 视觉缩进与字符规范
 
-所有面向终端的人类可读输出（提示行、状态行、交互 prompt、错误、章节头）必须走 `src/ui.rs` 暴露的辅助函数；**不要**在命令实现里直接 `eprintln!` / `println!` / `Term::stderr().write_line(...)` 拼前缀。每一行都要遵循统一的视觉模板：
+所有面向终端的人类可读输出（提示行、状态行、交互 prompt、错误、章节头）必须走 `src/ui.rs` 暴露的辅助函数；**不要** 在命令实现里直接 `eprintln!` / `println!` / `Term::stderr().write_line(...)` 拼前缀。每一行都要遵循统一的视觉模板：
 
 ```text
  {glyph}  {content}
@@ -65,7 +65,7 @@ dialoguer 的 `Confirm` / `Input` / `Password` 必须用 `ui::confirm` / `ui::in
 
 ## 验证要求
 
-所有 Cargo 命令都从 `src-tauri/` 目录执行。
+所有 Cargo 命令都从仓库根目录（cargo workspace 根）执行。
 
 改动本 crate 后，至少运行：
 

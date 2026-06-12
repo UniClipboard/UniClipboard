@@ -165,7 +165,7 @@ For the merged view (script already injects `.side`):
 * Don't `cat` whole log files — they're hundreds of MB.
 * Don't infer "Windows is broken" without first checking the Windows log freshness; the SMB mount can lag, and a stale `mtime` may just mean the Windows app is paused.
 * Don't translate UTC ↔ local time in your head and silently. If you do convert, say so (e.g. "logs around 17:30 PDT = 00:30 UTC the next day").
-* Don't add or modify Mac log paths in this skill if the layout in `src-tauri/AGENTS.md` changes — fix `dual-logs.sh` first, then this doc.
+* Don't add or modify Mac log paths in this skill if the layout in `crates/AGENTS.md` changes — fix `dual-logs.sh` first, then this doc.
 
 ## When this skill does *not* apply
 

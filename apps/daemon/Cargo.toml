@@ -44,7 +44,7 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder"] }
 uc-daemon-local = { path = "../../crates/uc-daemon-local", features = ["test-helpers"] }
 tempfile = "3"
 chrono = { version = "0.4", default-features = true }
-mockall = "0.13"
+mockall = "0.14"
 
 [lints]
 workspace = true

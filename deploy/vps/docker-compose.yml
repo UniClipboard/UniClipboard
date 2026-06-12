@@ -20,7 +20,7 @@ services:
     # the build: block below tags the result under this same name.
     image: ${UC_IMAGE:-ghcr.io/uniclipboard/uniclipboard-server:latest}
     build:
-      # Context is the repo root so the Dockerfile can reach the src-tauri/
+      # Context is the repo root so the Dockerfile can reach the Rust
       # workspace and the vendored iroh-blobs submodule.
       context: ../..
       dockerfile: deploy/vps/Dockerfile

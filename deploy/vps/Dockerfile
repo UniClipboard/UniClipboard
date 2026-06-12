@@ -30,11 +30,17 @@ RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
 
 WORKDIR /build
 
-# The whole Rust workspace lives under src-tauri/. The vendored iroh-blobs fork
-# (src-tauri/vendor/iroh-blobs) is consumed via [patch.crates-io] and must be
-# present in the context — that is why submodules must be initialized first.
+# The Rust workspace lives at the repo root. The vendored iroh-blobs fork
+# (vendor/iroh-blobs) is consumed via [patch.crates-io] and must be present
+# in the context — that is why submodules must be initialized first.
+# src-tauri/ is still copied because the workspace member list includes the
+# Tauri packages; only manifests are parsed, the GUI is not compiled here.
+COPY Cargo.toml Cargo.lock rust-toolchain.toml clippy.toml ./
+COPY .cargo/ ./.cargo/
+COPY crates/ ./crates/
+COPY apps/ ./apps/
+COPY vendor/ ./vendor/
 COPY src-tauri/ ./src-tauri/
-WORKDIR /build/src-tauri
 
 # Pick the musl target matching the build host arch (native compile, no cross).
 # Build and copy the binary out within a single RUN: the target/ dir is a
@@ -46,7 +52,7 @@ WORKDIR /build/src-tauri
 # the atomics (-mno-outline-atomics) via the cc crate's CFLAGS env. This is a
 # no-op on x86_64 (the flag is aarch64-only and GCC there emits no such helpers).
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/build/src-tauri/target \
+    --mount=type=cache,target=/build/target \
     set -eux; \
     case "$(uname -m)" in \
       x86_64)  TARGET=x86_64-unknown-linux-musl ;; \

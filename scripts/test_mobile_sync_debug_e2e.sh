@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-CLI="${CLI:-./src-tauri/target/debug/uniclip}"
+CLI="${CLI:-./target/debug/uniclip}"
 PROFILE="${PROFILE:-p5a9-debug-e2e}"
 PASSPHRASE="${PASSPHRASE:-p5a9-debug-passphrase}"
 COMMON=("--dev" "--profile" "$PROFILE")

@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-CLI="${CLI:-./src-tauri/target/debug/uniclip}"
+CLI="${CLI:-./target/debug/uniclip}"
 PASSPHRASE_ALICE="${PASSPHRASE_ALICE:-hunter22hunter22}"
 PASSPHRASE_BOB="${PASSPHRASE_BOB:-bobsfirstpasspass}"
 SEED_TEXT="${SEED_TEXT:-secret-clipboard-message-from-bob}"

@@ -23,7 +23,7 @@
 #   - macOS (profile data dirs live under ~/Library/Application Support)
 #   - --dev mode to avoid Keychain collisions between the two profiles
 #   - python3 (used to patch settings.json)
-#   - Built CLI binary; default at src-tauri/target/debug/uniclipboard-cli
+#   - Built CLI binary; default at target/debug/uniclipboard-cli
 #
 # Notes:
 #   - Multicast on macOS loopback is restricted; swarm-discovery uses
@@ -32,7 +32,7 @@
 
 set -euo pipefail
 
-CLI="${CLI:-./src-tauri/target/debug/uniclipboard-cli}"
+CLI="${CLI:-./target/debug/uniclipboard-cli}"
 PASSPHRASE="${PASSPHRASE:-hunter22hunter22}"
 WAIT_SECS="${WAIT_SECS:-30}"
 COMMON_FLAGS="--dev"

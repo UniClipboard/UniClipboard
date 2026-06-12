@@ -6,11 +6,11 @@
   "type": "module",
   "scripts": {
     "dev": "cross-env UNICLIPBOARD_ENV=development vite",
-    "dev:sweep": "node -e \"try{require('child_process').execSync('cargo sweep --time 3 --target src-tauri/target',{stdio:'ignore'})}catch{}\"",
+    "dev:sweep": "node -e \"try{require('child_process').execSync('cargo sweep --time 3 --target target',{stdio:'ignore'})}catch{}\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "version:bump": "node scripts/bump-version.js",
-    "gen:openapi": "cd src-tauri && cargo run -p uc-webserver --bin gen-openapi",
+    "gen:openapi": "cargo run -p uc-webserver --bin gen-openapi",
     "gen:client": "openapi-ts",
     "gen:api": "bun run gen:openapi && bun run gen:client",
     "tauri": "tauri",
@@ -28,13 +28,13 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "prepare": "husky",
-    "test:coverage": "cd src-tauri && cargo llvm-cov --html --workspace",
+    "test:coverage": "cargo llvm-cov --html --workspace",
     "e2e:wdio": "wdio run e2e/wdio.conf.mjs",
     "e2e:card": "scripts/e2e/run-card.sh",
     "doctor": "npx react-doctor@latest"
   },
   "lint-staged": {
-    "src-tauri/Cargo.toml": [
+    "Cargo.toml": [
       "node scripts/refresh-agents-structure.mjs"
     ],
     "*.{js,jsx,ts,tsx}": [
@@ -49,8 +49,8 @@
     "*.{json,css,html}": [
       "prettier --write"
     ],
-    "src-tauri/**/*.rs": [
-      "cargo fmt --manifest-path=src-tauri/Cargo.toml --"
+    "{apps,crates,src-tauri}/**/*.rs": [
+      "cargo fmt --manifest-path=Cargo.toml --"
     ]
   },
   "dependencies": {

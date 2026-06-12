@@ -1,12 +1,12 @@
 # Build context hygiene for the VPS server image (deploy/vps/Dockerfile).
 #
-# The image only compiles the `uc-cli` crate from the `src-tauri/` Rust
+# The image only compiles the cli/daemon crates from the root Rust
 # workspace, so everything below is irrelevant to the build. Excluding it
 # keeps the context transfer small and avoids shipping huge artifact trees
 # (Rust `target/`, node_modules) into the daemon.
 #
-# IMPORTANT: do NOT exclude `src-tauri/` or `src-tauri/vendor/` — the build
-# needs the workspace and the vendored `iroh-blobs` submodule.
+# IMPORTANT: do NOT exclude `crates/`, `apps/`, `src-tauri/` or `vendor/` —
+# the build needs the workspace and the vendored `iroh-blobs` submodule.
 
 .git
 .github

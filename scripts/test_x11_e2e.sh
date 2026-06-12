@@ -31,7 +31,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC_TAURI="$REPO_ROOT/src-tauri"
+WORKSPACE_ROOT="$REPO_ROOT"
 TIMEOUT_SECS="${TIMEOUT_SECS:-10}"
 LOG_DIR="$(mktemp -d -t uniclip-x11-e2e.XXXXXX)"
 WATCH_LOG="$LOG_DIR/x11_watch.log"
@@ -99,7 +99,7 @@ fi
 
 info "build"
 (
-    cd "$SRC_TAURI"
+    cd "$WORKSPACE_ROOT"
     cargo build -p uc-platform --examples 2>&1 | tail -5
 )
 ok "examples built"
@@ -154,7 +154,7 @@ wait_for_count() {
 
 info "start x11_watch in background"
 (
-    cd "$SRC_TAURI"
+    cd "$WORKSPACE_ROOT"
     RUST_LOG="warn,uc_platform=info" cargo run -q -p uc-platform --example x11_watch
 ) >"$WATCH_LOG" 2>&1 &
 WATCH_PID=$!
@@ -237,7 +237,7 @@ WATCH_PID=""
 info "T2: x11_clipboard_test installs a snapshot and xclip reads it"
 
 (
-    cd "$SRC_TAURI"
+    cd "$WORKSPACE_ROOT"
     RUST_LOG="warn,uc_platform=info" cargo run -q -p uc-platform --example x11_clipboard_test
 ) >"$TEST_LOG" 2>&1 || true
 

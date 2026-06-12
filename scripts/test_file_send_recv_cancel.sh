@@ -16,7 +16,7 @@ set -eu
 # can take SIGPIPE when the reader closes early; we don't want that to
 # abort the script.
 
-CLI="${CLI:-./src-tauri/target/debug/uniclip}"
+CLI="${CLI:-./target/debug/uniclip}"
 PASSPHRASE="${PASSPHRASE:-hunter22hunter22}"
 PAIR_WAIT_SECS="${PAIR_WAIT_SECS:-30}"
 BIG_SIZE_MB="${BIG_SIZE_MB:-800}"

@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-CLI="${CLI:-./src-tauri/target/debug/uniclipboard-cli}"
+CLI="${CLI:-./target/debug/uniclipboard-cli}"
 PASSPHRASE="${PASSPHRASE:-hunter22hunter22}"
 WAIT_SECS="${WAIT_SECS:-30}"
 COMMON_FLAGS="--dev"

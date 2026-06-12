@@ -86,7 +86,7 @@ for (const target of TARGETS) {
 
   if (target.ext === 'zip') {
     // -j junks directory components: zips produced before build-cli.yml
-    // flattened them nest the exes under src-tauri/target/release/.
+    // flattened them nest the exes under target/release/.
     execFileSync('unzip', ['-j', '-o', '-q', archive, '-d', binDir])
   } else {
     execFileSync('tar', ['-xzf', archive, '-C', binDir])

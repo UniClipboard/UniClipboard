@@ -57,16 +57,16 @@ function parseArgs(argv) {
 
 function hostTriple() {
   // rustc 1.84+ prints the canonical host tuple directly; older toolchains
-  // need the verbose-version `host:` line parsed out. Run inside src-tauri so
-  // the pinned toolchain's rustc answers.
+  // need the verbose-version `host:` line parsed out. Run inside the repo
+  // root so the pinned toolchain's rustc answers.
   try {
     return execFileSync('rustc', ['--print', 'host-tuple'], {
-      cwd: srcTauri,
+      cwd: repoRoot,
       encoding: 'utf8',
     }).trim()
   } catch {
     const verbose = execFileSync('rustc', ['-Vv'], {
-      cwd: srcTauri,
+      cwd: repoRoot,
       encoding: 'utf8',
     })
     const match = verbose.match(/^host:\s*(.+)$/m)
@@ -88,13 +88,13 @@ const buildArgs = ['build', '-p', 'uc-daemon', '--bin', 'uniclipd']
 if (release) buildArgs.push('--release')
 if (target) buildArgs.push('--target', target)
 console.log(`[sidecar] cargo ${buildArgs.join(' ')}`)
-execFileSync('cargo', buildArgs, { cwd: srcTauri, stdio: 'inherit' })
+execFileSync('cargo', buildArgs, { cwd: repoRoot, stdio: 'inherit' })
 
 // 2) Locate the compiled binary. With `--target` cargo nests the output under
 //    the triple; a native build (no `--target`) lands in target/<profile>/.
 const builtPath = target
-  ? join(srcTauri, 'target', triple, profile, `uniclipd${exeSuffix}`)
-  : join(srcTauri, 'target', profile, `uniclipd${exeSuffix}`)
+  ? join(repoRoot, 'target', triple, profile, `uniclipd${exeSuffix}`)
+  : join(repoRoot, 'target', profile, `uniclipd${exeSuffix}`)
 
 // 3) Stage it under the Tauri sidecar name `uniclipd-<triple>`.
 const binariesDir = join(srcTauri, 'binaries')

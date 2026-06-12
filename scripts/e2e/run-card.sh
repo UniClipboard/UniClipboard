@@ -57,7 +57,7 @@ if [ "${E2E_SKIP_SYNC:-0}" != "1" ]; then
   rsync -a --delete \
     --exclude='.git' \
     --exclude='node_modules' \
-    --exclude='src-tauri/target' \
+    --exclude='target' \
     --exclude='dist' \
     --exclude='.vite' \
     --exclude='.idea' \

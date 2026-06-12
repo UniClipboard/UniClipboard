@@ -50,16 +50,26 @@ uniclip start --foreground -v
 
 常见原因是 keyslot 文件被另一份进程占着（典型场景：GUI 与 `uniclip` 用了同一个默认 profile 同时跑）。在 CLI 端加 `--profile dev` 让二者分家即可。
 
-### Snap 安装：日志里出现 "System secure storage probe failed; falling back to file-based KEK"
+### 守护进程日志里出现 "System secure storage probe failed; falling back to file-based KEK"
 
-这条 WARN 说明 snap 沙箱无法访问 freedesktop Secret Service（GNOME Keyring / KWallet）—— AppArmor 拒绝了 D-Bus 调用，原因是 `password-manager-service` plug 没接上。守护进程不会因此崩，只是 Key Encryption Key 落到了 snap 数据目录的文件里，而不是系统钥匙串。把它搬回系统钥匙串：
+这条 WARN 说明守护进程启动时够不到 freedesktop Secret Service（GNOME Keyring / KWallet）。守护进程不会因此崩，只是 Key Encryption Key 落到了应用数据目录的文件里，而不是系统钥匙串。常见两种触发场景：
+
+**Snap 沙箱** —— AppArmor 拒绝了 D-Bus 调用，原因是 `password-manager-service` plug 没接上。接上它就能把 KEK 搬回系统钥匙串：
 
 ```bash
 sudo snap connect uniclipboard:password-manager-service
 # 接好之后重启应用
 ```
 
-更早的版本（r118 之前）遇到同样情况会直接 `Daemon startup/probe failed during Tauri bootstrap` 崩溃。`sudo snap refresh uniclipboard` 升到最新版就好；这种情况下 plug 只决定 KEK _存在哪里_，不再决定守护进程能不能起。
+**极简 Wayland 会话（hyprland / sway 等）** —— 会话看起来像桌面（`DISPLAY` 和 `DBUS_SESSION_BUS_ADDRESS` 都有），守护进程于是尝试系统钥匙串，但实际没有运行 secret service —— 或者跑着却处于锁定状态、又没有解锁 prompter。探测有一个短超时兜底，所以守护进程会在几秒后降级到文件式 KEK，而不是卡死。想继续用系统钥匙串，就在会话里跑一个已解锁的 secret service，例如：
+
+```bash
+gnome-keyring-daemon --start --components=secrets
+# 更好的做法：用 pam_gnome_keyring 在登录时自动解锁，
+# 或在 KeePassXC 里开启 "Secret Service Integration"
+```
+
+更早的版本遇到同样情况会卡住或直接 `Daemon startup/probe failed during Tauri bootstrap` 崩溃。当前版本会改为降级到文件式 KEK；这时无论接 snap plug 还是起 secret service，都只决定 KEK _存在哪里_，不再决定守护进程能不能起。
 
 ## 配对失败
 

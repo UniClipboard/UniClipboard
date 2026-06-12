@@ -5,7 +5,6 @@
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::time::Duration;
 
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
@@ -674,14 +673,17 @@ impl DaemonApp {
                 .await;
         }
 
-        tokio::time::timeout(Duration::from_secs(5), async {
+        // These two joins are the dominant terms of the replacement daemon's
+        // lock-wait budget (`timing::PREDECESSOR_RELEASE_BUDGET`); changing
+        // the shared constant moves that budget with it.
+        tokio::time::timeout(uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT, async {
             while service_tasks.join_next().await.is_some() {}
         })
         .await
         .ok();
 
         if !http_handle_consumed {
-            tokio::time::timeout(Duration::from_secs(5), http_handle)
+            tokio::time::timeout(uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT, http_handle)
                 .await
                 .ok();
         }

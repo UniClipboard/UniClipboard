@@ -76,7 +76,12 @@ pub(crate) const LEASE_POLL_INTERVAL: Duration = Duration::from_millis(250);
 /// (ADR-008 P5-L L8b). If leases do not drain within this window the supervisor
 /// ABORTS the restart (clears quiescing, keeps running) rather than force-killing
 /// in-flight work (R8-F3). Tunable; L8d end-to-end will validate the value.
-pub(crate) const CONTROLLED_RESTART_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
+///
+/// Aliased from the cross-process timing contract: the CLI's promote wait
+/// (`timing::PROMOTE_DRAIN_TIMEOUT`) is derived from this value, so it must
+/// not drift in a local literal.
+pub(crate) const CONTROLLED_RESTART_DRAIN_TIMEOUT: Duration =
+    uc_daemon_local::timing::CONTROLLED_RESTART_DRAIN_TIMEOUT;
 
 /// Tunable timings for the Oneshot lifecycle supervisor (grace / drain / poll).
 /// Bundled so the supervisor signature stays small; production uses

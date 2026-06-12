@@ -14,20 +14,25 @@ use uc_daemon_process::spawn::{spawn_detached_daemon, SpawnDaemonError};
 
 const HEALTH_PATH: &str = "/health";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Total budget to wait for a spawned daemon to become healthy. Derived in the
+/// cross-process timing contract: covers a replacement waiting out an exiting
+/// predecessor's instance-lock release AND THEN bootstrapping from scratch.
+const STARTUP_TIMEOUT: Duration = uc_daemon_process::timing::DAEMON_STARTUP_TIMEOUT;
+
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 /// ADR-008 P5-L L8d-2: how long to wait for a controlled-restart predecessor's
 /// endpoint to go absent before spawning the promoted replacement.
 ///
-/// Must exceed the daemon-side drain window: `POST /lifecycle/restart` returns
-/// immediately, but the predecessor keeps `/health` UP for the entire bounded
-/// drain (`uc-daemon`'s `CONTROLLED_RESTART_DRAIN_TIMEOUT`, 30s) and only then
-/// cancels — followed by two 5s shutdown joins and the iroh `endpoint.close()`
-/// teardown. So the endpoint can stay reachable for ~40s+; 60s leaves headroom
-/// so a legitimately slow drain does not hard-fail the promotion before the old
+/// Derived in the cross-process timing contract from the daemon-side drain
+/// window (`timing::CONTROLLED_RESTART_DRAIN_TIMEOUT`): `POST
+/// /lifecycle/restart` returns immediately, but the predecessor keeps
+/// `/health` UP for the entire bounded drain and only then cancels — followed
+/// by its normal teardown. The doubled window leaves headroom so a
+/// legitimately slow drain does not hard-fail the promotion before the old
 /// daemon exits.
-const PROMOTE_DRAIN_TIMEOUT: Duration = Duration::from_secs(60);
+const PROMOTE_DRAIN_TIMEOUT: Duration = uc_daemon_process::timing::PROMOTE_DRAIN_TIMEOUT;
 
 /// The package version this CLI build expects the daemon to report. Mirrors the
 /// GUI host, which passes its own shell `CARGO_PKG_VERSION` to the classifier

@@ -28,6 +28,8 @@
 //! - [`socket`]: loopback HTTP address + daemon token path resolution.
 //! - [`spawn`]: `uniclipd` detached spawn (`setsid` / `DETACHED_PROCESS`).
 //! - [`spawn_contract`]: CLI→daemon run-mode / unattended-unlock env contract.
+//! - [`timing`]: cross-process timing contract for the daemon stop → start
+//!   handoff (base durations + derived wait budgets in one place).
 
 pub mod contract;
 pub mod handover;
@@ -36,6 +38,7 @@ pub mod process_metadata;
 pub mod socket;
 pub mod spawn;
 pub mod spawn_contract;
+pub mod timing;
 #[cfg(windows)]
 pub(crate) mod win_console;
 #[cfg(windows)]

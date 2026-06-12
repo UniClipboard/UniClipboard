@@ -29,5 +29,5 @@ pub mod instance_lock;
 // contract types + health-wait helpers without the `uc-daemon-local →
 // uc-application → uc-infra` edge.
 pub use uc_daemon_process::{
-    contract, handover, health_wait, process_metadata, socket, spawn, spawn_contract,
+    contract, handover, health_wait, process_metadata, socket, spawn, spawn_contract, timing,
 };

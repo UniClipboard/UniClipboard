@@ -2,3 +2,9 @@
 	path = vendor/iroh-blobs
 	url = https://github.com/UniClipboard/iroh-blobs.git
 	branch = uniclipboard/0.100.0-patched
+[submodule "apps/ios"]
+	path = apps/ios
+	url = https://github.com/UniClipboard/uc-ios.git
+[submodule "apps/android"]
+	path = apps/android
+	url = https://github.com/UniClipboard/uc-android.git

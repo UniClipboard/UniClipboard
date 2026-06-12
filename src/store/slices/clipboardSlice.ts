@@ -95,7 +95,12 @@ export const fetchClipboardItems = createAsyncThunk<
         .filter(item => item.fileTransferStatus != null)
         .map(item => ({
           entryId: item.id,
-          status: item.fileTransferStatus as 'pending' | 'transferring' | 'completed' | 'failed',
+          status: item.fileTransferStatus as
+            | 'pending'
+            | 'transferring'
+            | 'completed'
+            | 'failed'
+            | 'cancelled',
           reason: item.fileTransferReason ?? null,
         }))
       if (statusEntries.length > 0) {

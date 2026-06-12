@@ -120,7 +120,12 @@ describe('fetchClipboardItems hydration', () => {
       .filter(dto => dto.fileTransferStatus != null)
       .map(dto => ({
         entryId: dto.id,
-        status: dto.fileTransferStatus as 'pending' | 'transferring' | 'completed' | 'failed',
+        status: dto.fileTransferStatus as
+          | 'pending'
+          | 'transferring'
+          | 'completed'
+          | 'failed'
+          | 'cancelled',
         reason: dto.fileTransferReason ?? null,
       }))
   }

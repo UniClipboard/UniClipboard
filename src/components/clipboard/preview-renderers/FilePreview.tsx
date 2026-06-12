@@ -246,7 +246,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-foreground/80">{name}</div>
-                {fileSizes[index] != null && (
+                {fileSizes[index] != null && fileSizes[index] >= 0 && (
                   <div className="mt-0.5 text-[11px] font-medium tabular-nums text-muted-foreground/60">
                     {formatFileSize(fileSizes[index])}
                   </div>

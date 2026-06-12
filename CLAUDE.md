@@ -2,6 +2,10 @@
 
 This file is a compatibility entrypoint for Claude Code.
 
+The root instruction source is imported below so the navigation index is always in context:
+
+@AGENTS.md
+
 ## 加载顺序
 
 1. **产品方向与底线** → [`VISION.md`](./VISION.md)

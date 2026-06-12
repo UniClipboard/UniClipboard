@@ -239,6 +239,10 @@ jobs:
         # exactly what tauri-cli looks up. The daemon shares the GUI's
         # dependency graph, so any target the GUI cross-builds here, it builds.
         shell: bash
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
         run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }}
 
       - name: build Tauri app (macOS signed)

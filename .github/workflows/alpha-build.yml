@@ -137,6 +137,10 @@ jobs:
         # forwarding the same `${{ matrix.args }}` the GUI build uses so the
         # name matches what tauri-cli looks up. See build.yml for the full note.
         shell: bash
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          APP_ENV: alpha
         run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }}
 
       - name: build alpha release

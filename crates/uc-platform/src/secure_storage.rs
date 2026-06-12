@@ -104,6 +104,70 @@ fn probe_system_storage_integrity(storage: &dyn SecureStoragePort) -> Result<(),
     }
 }
 
+/// Upper bound for the Linux Secret-Service probe.
+///
+/// Must stay comfortably below the GUI's 8s daemon-startup window (the bootstrap
+/// `StartupTimeout`) so that a *blocked* probe still leaves enough time for the
+/// rest of daemon wiring + HTTP listen after we degrade to file-based KEK. A
+/// healthy, already-unlocked gnome-keyring round-trips set/get/delete in well
+/// under a second, so 3s only ever trips on genuinely stuck backends.
+#[cfg(target_os = "linux")]
+const SYSTEM_STORAGE_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Run a secure-storage `probe` on a detached worker thread, bounded by
+/// `timeout`. Returns the probe's own `Result` if it finishes in time, or an
+/// `Err` describing the timeout otherwise.
+///
+/// Why bound it at all: on Linux the probe issues *synchronous* D-Bus
+/// Secret-Service calls. In a minimal Wayland session (hyprland / sway) the
+/// environment looks like a desktop — `DISPLAY` + `DBUS_SESSION_BUS_ADDRESS`
+/// are both present — so capability detection picks `SystemKeyring`, yet there
+/// may be no running secret service and no unlock prompter. The D-Bus call then
+/// *blocks* (waiting on service activation or an unlock agent) instead of
+/// failing fast, so the graceful file-based fallback in
+/// `create_default_secure_storage_in_app_data_root` never fires and daemon
+/// bootstrap hangs past the GUI's startup window. Bounding the probe lets us
+/// treat "blocks too long" the same as "failed fast": degrade to file-based.
+///
+/// The worker thread is intentionally detached. A blocked D-Bus call cannot be
+/// cancelled from outside; the thread unwinds on its own once the underlying
+/// call returns or hits the D-Bus layer's own timeout (~25s default). It owns
+/// only a cloned `SystemSecureStorage` (a `String`), so letting it linger is
+/// cheap.
+///
+/// Compiled on every platform so its unit tests run on every host; only the
+/// Linux production path actually calls it (macOS / Windows keep the cheap
+/// reachability probe inline).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn run_probe_with_timeout<F>(timeout: std::time::Duration, probe: F) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), String> + Send + 'static,
+{
+    use std::sync::mpsc;
+
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("uc-keyring-probe".into())
+        .spawn(move || {
+            // Receiver may already be gone if we timed out; ignore the send error.
+            let _ = tx.send(probe());
+        })
+        .map_err(|e| format!("failed to spawn keyring probe thread: {e}"))?;
+
+    match rx.recv_timeout(timeout) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "system secret service did not respond within {timeout:?}; \
+             treating as unavailable. Common on minimal Wayland sessions \
+             (hyprland/sway) with no running or unlocked secret service."
+        )),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            // Worker panicked before sending — treat as a probe failure.
+            Err("keyring probe thread terminated unexpectedly".to_string())
+        }
+    }
+}
+
 fn secure_storage_from_capability(
     capability: SecureStorageCapability,
 ) -> Result<Arc<dyn SecureStoragePort>, SecureStorageFactoryError> {
@@ -280,8 +344,19 @@ pub fn create_default_secure_storage_in_app_data_root(
             // risk a fresh Keychain authorization prompt every launch, and
             // Windows Credential Manager has no equivalent text-mangling
             // pathology that would be worth the extra write for.
+            //
+            // The Linux probe is bounded by a timeout: its synchronous D-Bus
+            // Secret-Service calls can *block* (not just fail) when the session
+            // looks like a desktop but has no running/unlocked secret service —
+            // see `run_probe_with_timeout`. A blocked probe degrades to
+            // file-based KEK just like an outright failure.
             #[cfg(target_os = "linux")]
-            let probe_result = probe_system_storage_integrity(&system_storage);
+            let probe_result = {
+                let storage_for_probe = system_storage.clone();
+                run_probe_with_timeout(SYSTEM_STORAGE_PROBE_TIMEOUT, move || {
+                    probe_system_storage_integrity(&storage_for_probe)
+                })
+            };
             #[cfg(not(target_os = "linux"))]
             let probe_result = probe_system_storage_reachable(&system_storage);
 
@@ -443,6 +518,39 @@ mod tests {
         assert!(
             err.contains("integrity probe write failed"),
             "error must explain the write failed, got: {err}"
+        );
+    }
+
+    #[test]
+    fn probe_timeout_trips_on_blocking_probe() {
+        // A probe that outlives the timeout must read as a failure so the
+        // caller degrades to file-based KEK instead of hanging bootstrap.
+        let result = run_probe_with_timeout(std::time::Duration::from_millis(50), || {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            Ok(())
+        });
+        let err = result.expect_err("a probe slower than the timeout must be Err");
+        assert!(
+            err.contains("did not respond"),
+            "timeout error must explain non-response, got: {err}"
+        );
+    }
+
+    #[test]
+    fn probe_timeout_passes_through_fast_ok() {
+        let result = run_probe_with_timeout(std::time::Duration::from_secs(5), || Ok(()));
+        assert!(result.is_ok(), "a fast Ok must pass through: {result:?}");
+    }
+
+    #[test]
+    fn probe_timeout_passes_through_fast_err() {
+        let result = run_probe_with_timeout(std::time::Duration::from_secs(5), || {
+            Err("backend rejected the call".to_string())
+        });
+        let err = result.expect_err("a fast Err must pass through unchanged");
+        assert!(
+            err.contains("backend rejected the call"),
+            "original probe error must be preserved, got: {err}"
         );
     }
 }

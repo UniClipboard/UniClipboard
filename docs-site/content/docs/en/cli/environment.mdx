@@ -17,11 +17,11 @@ a single machine. Values are read once at startup, so set them before launching
 
 ## Headless / server node
 
-| Variable                      | Effect                                                                                                                                                                                                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Variable                      | Effect                                                                                                                                                                                                                                                                                                               |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `UC_DISABLE_SYSTEM_CLIPBOARD` | When set, the daemon never reads or writes the OS clipboard; it still syncs over iroh as a normal member. Linux hosts without a graphical session (neither `DISPLAY` nor `WAYLAND_DISPLAY` set) disable the clipboard automatically and start as usual, so this variable is mainly for force-disabling on a desktop. |
-| `UC_DAEMON_RUN_MODE`          | Spawn contract for the background daemon: `server` selects the headless server-node mode (which also disables the system clipboard). From the terminal prefer [`uniclip start --server`](../cli/getting-started#daemon-lifecycle), which sets it for you. |
-| `UC_HOST_ROLE`                | Diagnostics role label for this process — `gui-host`, `daemon`, or `cli` — used in error/telemetry attribution. Normally set automatically; override only to relabel events.                                                                              |
+| `UC_DAEMON_RUN_MODE`          | Spawn contract for the background daemon: `server` selects the headless server-node mode (which also disables the system clipboard). From the terminal prefer [`uniclip start --server`](../cli/getting-started#daemon-lifecycle), which sets it for you.                                                            |
+| `UC_HOST_ROLE`                | Diagnostics role label for this process — `gui-host`, `daemon`, or `cli` — used in error/telemetry attribution. Normally set automatically; override only to relabel events.                                                                                                                                         |
 
 ## Network
 

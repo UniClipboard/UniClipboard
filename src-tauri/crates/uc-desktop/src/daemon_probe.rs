@@ -32,7 +32,15 @@ use uc_daemon_process::spawn::spawn_detached_daemon;
 use crate::daemon::DaemonOwnership;
 
 pub const HEALTH_PATH: &str = "/health";
-pub const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Budget for a freshly spawned daemon to become healthy. Aliased from the
+/// cross-process timing contract: a replacement daemon may legitimately spend
+/// up to `timing::LOCK_ACQUIRE_DEADLINE` waiting for an exiting predecessor's
+/// instance lock BEFORE it even binds `/health`, so this must cover lock wait
+/// + bootstrap — same budget the CLI spawner uses (`STARTUP_TIMEOUT` in
+/// `uc-cli`). A local literal here (the old 8s) silently went stale when the
+/// lock-wait deadline was introduced.
+pub const HEALTH_CHECK_TIMEOUT: Duration = uc_daemon_process::timing::DAEMON_STARTUP_TIMEOUT;
 pub const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(200);
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 pub const INCOMPATIBLE_DAEMON_EXIT_TIMEOUT: Duration = Duration::from_millis(1500);

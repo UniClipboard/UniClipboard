@@ -53,11 +53,25 @@ pub(crate) const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
 /// workspace 共享版本号所以与 `uniclipboard` bin 一致。
 const EXPECTED_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// GUI-local slack on top of the daemon's own startup budget: covers the
+/// probe round-trip, the incompatible-daemon replacement wait
+/// (`INCOMPATIBLE_DAEMON_EXIT_TIMEOUT`), and `connection_state` population
+/// after the daemon turns healthy.
+const AUTO_UNLOCK_LOCAL_MARGIN: Duration = Duration::from_secs(15);
+
 /// auto-unlock 等待 daemon connection_state 被填充的总上限。
-/// `bootstrap_daemon_in_process` 内部 `wait_for_daemon_health` 默认上限 8s
-/// （`HEALTH_CHECK_TIMEOUT`）+ legacy daemon 替换路径再加 `INCOMPATIBLE_DAEMON_EXIT_TIMEOUT`，
-/// 给 30s 足够覆盖最坏路径。超时只是放弃 auto-unlock，用户改用手动解锁。
-const AUTO_UNLOCK_DAEMON_READY_TIMEOUT: Duration = Duration::from_secs(30);
+///
+/// Derived from the cross-process timing contract instead of a local literal:
+/// the dominant term is the daemon's own startup budget
+/// (`timing::DAEMON_STARTUP_TIMEOUT`, which already covers a replacement
+/// waiting out a predecessor's instance lock and then bootstrapping), plus
+/// the GUI-local margin above. The wait runs in a detached background task,
+/// so a longer bound costs nothing; expiry only skips auto-unlock and the
+/// user unlocks manually.
+const AUTO_UNLOCK_DAEMON_READY_TIMEOUT: Duration = Duration::from_millis(
+    uc_daemon_process::timing::DAEMON_STARTUP_TIMEOUT.as_millis() as u64
+        + AUTO_UNLOCK_LOCAL_MARGIN.as_millis() as u64,
+);
 /// 轮询 connection_state 的间隔。
 const AUTO_UNLOCK_DAEMON_READY_POLL: Duration = Duration::from_millis(200);
 

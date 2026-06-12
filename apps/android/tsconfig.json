@@ -1,0 +1,30 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@components/*": ["src/components/*"],
+      "@screens/*": ["src/screens/*"],
+      "@services/*": ["src/services/*"],
+      "@stores/*": ["src/stores/*"],
+      "@types/*": ["src/types/*"],
+      "@utils/*": ["src/utils/*"],
+      "@constants/*": ["src/constants/*"],
+      "@navigation/*": ["src/navigation/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@assets/*": ["src/assets/*"],
+      "native-util": ["modules/native-util/src"],
+      "shortcut": ["modules/shortcut/src"],
+      "signalr-client": ["modules/signalr-client/src"],
+      "native-timer": ["modules/native-timer/src"],
+      "clipboard-overlay": ["modules/clipboard-overlay/src"],
+      "shizuku-clipboard": ["modules/shizuku-clipboard/src"],
+      "sms-forwarder": ["modules/sms-forwarder/src"],
+      "foreground-service": ["modules/foreground-service/src"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
+}

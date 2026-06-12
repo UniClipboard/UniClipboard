@@ -1,0 +1,29 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.jericx.syncclipboardmobile'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.shizukuclipboard"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+  buildFeatures {
+    aidl true
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-native:0.83.2'
+  implementation 'androidx.core:core-ktx:1.13.1'
+  implementation project(':native-util')
+
+  // Shizuku API
+  def shizuku_version = "13.1.5"
+  implementation "dev.rikka.shizuku:api:$shizuku_version"
+  implementation "dev.rikka.shizuku:provider:$shizuku_version"
+}

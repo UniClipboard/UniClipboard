@@ -1,0 +1,7 @@
+{
+  "platforms": ["android"],
+  "name": "clipboard-overlay",
+  "android": {
+    "modules": ["expo.modules.clipboardoverlay.ClipboardOverlayModule"]
+  }
+}

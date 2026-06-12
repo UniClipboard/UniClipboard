@@ -1,0 +1,19 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.jericx.syncclipboardmobile'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.shortcut"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-native:0.83.2'
+}

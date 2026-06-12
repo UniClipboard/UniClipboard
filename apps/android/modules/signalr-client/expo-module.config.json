@@ -1,0 +1,7 @@
+{
+  "platforms": ["android"],
+  "name": "signalr-client",
+  "android": {
+    "modules": ["expo.modules.signalrclient.SignalRClientModule"]
+  }
+}

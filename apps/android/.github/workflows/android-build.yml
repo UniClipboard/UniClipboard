@@ -1,0 +1,86 @@
+name: android-build
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: "App version from package.json"
+        value: ${{ jobs.build.outputs.version }}
+
+jobs:
+  build:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo prebuild
+        run: npx expo prebuild --no-install
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: Build Release APK
+        run: cd android && ./gradlew assembleRelease
+
+      - name: Get version name
+        id: version
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Rename APKs
+        run: |
+          cd android/app/build/outputs/apk/release
+          VERSION=${{ steps.version.outputs.version }}
+          for ABI in arm64-v8a armeabi-v7a x86_64 universal; do
+            SRC="app-${ABI}-release.apk"
+            if [ -f "$SRC" ]; then
+              mv "$SRC" "UniClip-${VERSION}-${ABI}.apk"
+            fi
+          done
+
+      - name: Upload arm64-v8a APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk-arm64-v8a
+          path: android/app/build/outputs/apk/release/UniClip-${{ steps.version.outputs.version }}-arm64-v8a.apk
+
+      - name: Upload armeabi-v7a APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk-armeabi-v7a
+          path: android/app/build/outputs/apk/release/UniClip-${{ steps.version.outputs.version }}-armeabi-v7a.apk
+
+      - name: Upload x86_64 APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk-x86_64
+          path: android/app/build/outputs/apk/release/UniClip-${{ steps.version.outputs.version }}-x86_64.apk
+
+      - name: Upload universal APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk-universal
+          path: android/app/build/outputs/apk/release/UniClip-${{ steps.version.outputs.version }}-universal.apk

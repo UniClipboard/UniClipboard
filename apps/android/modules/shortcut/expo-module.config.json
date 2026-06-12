@@ -1,0 +1,7 @@
+{
+  "platforms": ["android"],
+  "name": "shortcut",
+  "android": {
+    "modules": ["expo.modules.shortcut.ShortcutModule"]
+  }
+}

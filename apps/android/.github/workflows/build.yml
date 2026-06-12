@@ -1,0 +1,183 @@
+name: build
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+
+jobs:
+  code-style:
+    uses: ./.github/workflows/code-style.yml
+
+  android-build:
+    uses: ./.github/workflows/android-build.yml
+
+  unit-tests:
+    uses: ./.github/workflows/test.yml
+
+  publish-release:
+    name: Publish GitHub Release
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [android-build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Extract changelog from CHANGES.md
+        run: |
+          awk 'NR==1{next} /^$/{exit} {print}' CHANGES.md > feature.txt
+          cat feature.txt
+
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: apk-*
+          path: apk/
+          merge-multiple: true
+
+      - name: Publish Release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          prerelease: ${{ contains(github.ref_name, 'beta') }}
+          bodyFile: feature.txt
+          artifacts: apk/*.apk
+
+  sync-to-gitee:
+    name: Sync to Gitee
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [code-style, android-build, unit-tests]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH for Gitee
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.GITEE_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
+
+      - name: Bare clone from GitHub
+        run: |
+          git clone --bare https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git bare-repo
+
+      - name: Mirror push to Gitee
+        run: |
+          cd bare-repo
+          git push git@gitee.com:${{ vars.GITEE_OWNER }}/${{ vars.GITEE_REPO }}.git \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*' \
+            --prune
+
+  publish-gitee-release-create:
+    name: Create Gitee Release
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [sync-to-gitee]
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.release_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Extract changelog from CHANGES.md
+        run: |
+          awk 'NR==1{next} /^$/{exit} {print}' CHANGES.md > feature.txt
+
+      - name: Delete existing releases in same channel
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+          GITEE_OWNER: ${{ vars.GITEE_OWNER }}
+          GITEE_REPO: ${{ vars.GITEE_REPO }}
+          IS_PRERELEASE: ${{ contains(github.ref_name, 'beta') }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, urllib.request
+
+          token = os.environ["GITEE_TOKEN"]
+          owner = os.environ["GITEE_OWNER"]
+          repo = os.environ["GITEE_REPO"]
+          is_prerelease = os.environ["IS_PRERELEASE"] == "true"
+
+          url = f"https://gitee.com/api/v5/repos/{owner}/{repo}/releases?access_token={token}&page=1&per_page=20"
+          with urllib.request.urlopen(url) as response:
+              releases = json.loads(response.read())
+
+          to_delete = [r for r in releases if r.get("prerelease") == is_prerelease]
+          for release in to_delete:
+              rid = release["id"]
+              del_url = f"https://gitee.com/api/v5/repos/{owner}/{repo}/releases/{rid}?access_token={token}"
+              req = urllib.request.Request(del_url, method="DELETE")
+              with urllib.request.urlopen(req) as resp:
+                  print(f"Deleted release {rid}: {release.get('name')}, status: {resp.status}")
+          PYEOF
+
+      - name: Create Gitee Release
+        id: create_release
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+          GITEE_OWNER: ${{ vars.GITEE_OWNER }}
+          GITEE_REPO: ${{ vars.GITEE_REPO }}
+          TAG_NAME: ${{ github.ref_name }}
+          IS_PRERELEASE: ${{ contains(github.ref_name, 'beta') }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os
+          data = {
+              "access_token": os.environ["GITEE_TOKEN"],
+              "tag_name": os.environ["TAG_NAME"],
+              "name": os.environ["TAG_NAME"],
+              "body": open("feature.txt").read(),
+              "prerelease": os.environ["IS_PRERELEASE"] == "true",
+              "target_commitish": "main"
+          }
+          with open("release.json", "w") as f:
+              json.dump(data, f)
+          PYEOF
+
+          RESPONSE=$(curl -s -X POST \
+            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
+            -H "Content-Type: application/json" \
+            -d @release.json)
+          echo "Gitee API response: $RESPONSE"
+
+          RELEASE_ID=$(echo "$RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+
+  publish-gitee-release-upload:
+    name: Upload APK to Gitee Release (${{ matrix.abi }})
+    needs: [publish-gitee-release-create]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86_64, universal]
+
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: apk-${{ matrix.abi }}
+          path: apk/
+
+      - name: Upload APK to Gitee Release
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+          GITEE_OWNER: ${{ vars.GITEE_OWNER }}
+          GITEE_REPO: ${{ vars.GITEE_REPO }}
+          RELEASE_ID: ${{ needs.publish-gitee-release-create.outputs.release_id }}
+        run: |
+          APK=$(ls apk/*.apk | head -1)
+          echo "Uploading $APK..."
+          curl -s -X POST \
+            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files" \
+            -F "access_token=${GITEE_TOKEN}" \
+            -F "file=@${APK}"
+          echo ""

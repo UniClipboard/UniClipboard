@@ -1,0 +1,114 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+yarn.lock
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Native
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Metro
+.metro-health-check*
+
+# Debug
+*.log
+*.hprof
+
+# macOS
+.DS_Store
+*.pem
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Local env files
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Android
+*.apk
+*.aab
+android/app/build/
+android/.gradle/
+android/captures/
+android/local.properties
+android/.idea/
+android/.cxx/
+
+# iOS
+ios/Pods/
+ios/build/
+ios/.xcode.generated/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# AI Context (可选，如果不想提交)
+# .ai/
+
+# VS Code
+syncclipboard-mobile.code-workspace
+tmpclaude-*-cwd
+
+# Planning files (planning-with-files skill)
+task_plan.md
+findings.md
+progress.md
+
+# build output
+/android/
+/ios/
+modules/*/android/build/
+modules/*/build/

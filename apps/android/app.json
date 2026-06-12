@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "UniClip",
+    "slug": "uniclip",
+    "scheme": "uniclipboard",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.uniclipboard.ios"
+    },
+    "android": {
+      "versionCode": 153,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/adaptive-icon-bg.png",
+        "monochromeImage": "./assets/adaptive-icon-mono.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "app.uniclipboard.android",
+      "permissions": ["android.permission.REQUEST_INSTALL_PACKAGES", "android.permission.CAMERA"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "./plugins/build/withNativeLogger.js",
+      "./plugins/build/withNetworkSecurityConfig.js",
+      "./plugins/build/withQuickSettingsTileManifest.js",
+      "./plugins/build/withProcessTextManifest.js",
+      "./plugins/build/withQuickActionActivity.js",
+      "./plugins/build/withServiceRestartActivity.js",
+      "./plugins/build/withAndroidNativeCode.js",
+      "./plugins/build/withClipboardOverlayPermission.js",
+      "./plugins/build/withNativeUtilPermission.js",
+      "./plugins/build/withSmsPermission.js",
+      "./plugins/build/withStaticSmsReceiver.js",
+      "./plugins/build/withForegroundService.js",
+      "./plugins/build/withShizukuProvider.js",
+      "./plugins/build/withDarkSplashScreen.js",
+      "./plugins/build/withAbiSplits.js",
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["*/*"]
+          }
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "授权 UniClip 使用相机以扫描二维码接入服务器"
+        }
+      ]
+    ]
+  }
+}

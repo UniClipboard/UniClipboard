@@ -1,0 +1,7 @@
+{
+  "platforms": ["android"],
+  "name": "shizuku-clipboard",
+  "android": {
+    "modules": ["expo.modules.shizukuclipboard.ShizukuClipboardModule"]
+  }
+}

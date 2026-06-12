@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tile_download_label">下载剪贴板</string>
+    <string name="tile_upload_label">上传剪贴板</string>
+</resources>

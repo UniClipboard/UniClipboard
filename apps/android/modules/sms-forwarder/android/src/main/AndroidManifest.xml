@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <!-- shortService: Android 14+ 引入，无累计配额限制，最长 3 分钟，适合短暂后台任务 -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE" />
+  <application>
+    <service
+      android:name=".SmsHeadlessTaskService"
+      android:enabled="true"
+      android:exported="false"
+      android:foregroundServiceType="shortService" />
+  </application>
+</manifest>

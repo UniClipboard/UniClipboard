@@ -23,24 +23,24 @@ dev-tools = [
 ]
 
 [dependencies]
-uc-observability = { path = "../uc-observability" }
-uc-core = { path = "../uc-core" }
-uc-daemon-client = { path = "../uc-daemon-client" }
-uc-daemon-contract = { path = "../uc-daemon-contract" }
+uc-observability = { path = "../../crates/uc-observability" }
+uc-core = { path = "../../crates/uc-core" }
+uc-daemon-client = { path = "../../crates/uc-daemon-client" }
+uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
 # ADR-008 P5-0: the process-management primitives (process_metadata / socket /
 # spawn / spawn_contract) the CLI uses now live in this thin crate.
-uc-daemon-process = { path = "../uc-daemon-process" }
+uc-daemon-process = { path = "../../crates/uc-daemon-process" }
 # Thin path-resolution policy (app_data_root, profile suffix, portable mode).
 # Used by the lightweight setup-status check that avoids pulling uc-bootstrap's
 # full assembly stack just to read a single JSON file.
-uc-app-paths = { path = "../uc-app-paths" }
+uc-app-paths = { path = "../../crates/uc-app-paths" }
 
 # --- Heavy optional deps (only pulled by `dev-tools` feature) ---------------
-uc-bootstrap = { path = "../uc-bootstrap", optional = true }
-uc-application = { path = "../uc-application", optional = true }
+uc-bootstrap = { path = "../../crates/uc-bootstrap", optional = true }
+uc-application = { path = "../../crates/uc-application", optional = true }
 # Hidden `probe` subcommand group reads/writes the OS clipboard directly
 # (replaces the standalone `clipboard-probe` binary). Diagnostic only.
-uc-platform = { path = "../uc-platform", optional = true }
+uc-platform = { path = "../../crates/uc-platform", optional = true }
 uuid = { version = "1.10.0", features = ["v4"], optional = true }
 
 # --- Always-on deps ---------------------------------------------------------

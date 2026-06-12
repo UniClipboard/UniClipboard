@@ -165,13 +165,13 @@ fn main() -> io::Result<()> {
         .map(|m| m.len())
         .unwrap_or(0);
 
-    // CARGO_MANIFEST_DIR = .../src-tauri/crates/uc-webserver
-    // repo root = manifest_dir/../../.. (3 ancestors up); schema dir = root/schema
+    // CARGO_MANIFEST_DIR = .../crates/uc-webserver
+    // repo root = manifest_dir/../.. (2 ancestors up); schema dir = root/schema
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let repo_root = manifest_dir
         .ancestors()
-        .nth(3)
-        .expect("manifest dir has 3 ancestors up to repo root");
+        .nth(2)
+        .expect("manifest dir has 2 ancestors up to repo root");
     let schema_dir = repo_root.join("schema");
     let out_path = schema_dir.join("openapi.json");
 

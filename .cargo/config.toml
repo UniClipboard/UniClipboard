@@ -1,5 +1,8 @@
 [build]
-target-dir = "src-tauri/target"
+# Merged from the former src-tauri/.cargo/config.toml when the workspace root
+# moved to the repo root. target-dir is no longer overridden: artifacts go to
+# the default ./target at the workspace root.
+rustflags = ["--cfg", "tokio_unstable"]
 
 [target.x86_64-pc-windows-gnu]
 linker = "x86_64-w64-mingw32-gcc"

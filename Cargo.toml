@@ -1,0 +1,132 @@
+# Root cargo workspace for the UniClipboard monorepo.
+#
+# Layout:
+# - apps/    runnable binaries (cli => uniclip, daemon => uniclipd; future
+#            ios/android core crates)
+# - crates/  library crates (hexagonal core/app/infra/platform + daemon split)
+# - src-tauri/  Tauri packaging only: the `uniclipboard` desktop bin package
+#               plus its adapter crate src-tauri/crates/uc-tauri
+
+[workspace]
+members = [
+  "crates/uc-core",
+  "crates/uc-application",
+  "crates/uc-platform",
+  "crates/uc-app-paths",
+  "crates/uc-infra",
+  "crates/uc-observability",
+  "crates/uc-bootstrap",
+  "crates/uc-daemon-contract",
+  "crates/uc-daemon-process",
+  "crates/uc-daemon-local",
+  "crates/uc-webserver",
+  "crates/uc-desktop",
+  "crates/uc-cli-macros",
+  "crates/uc-daemon-client",
+  "crates/p2p-bench",
+  "apps/cli",
+  "apps/daemon",
+  "src-tauri",
+  "src-tauri/crates/uc-tauri",
+]
+# Submodule `vendor/iroh-blobs` is our fork of n0-computer/iroh-blobs
+# (branch `uniclipboard/0.100.0-patched`). It is consumed via
+# `[patch.crates-io]` below, NOT as a workspace member — exclude it so
+# cargo doesn't try to fold it into this workspace's resolver.
+#
+# `tests/e2e` is the CLI E2E test crate. It's excluded from the workspace
+# so `cargo check --workspace` doesn't pull reqwest/libc/assert_cmd into
+# every PR check. Build it explicitly: `cargo test --manifest-path tests/e2e/Cargo.toml`
+exclude = ["vendor/iroh-blobs", "tests/e2e"]
+resolver = "2"
+
+[workspace.package]
+version = "0.15.0-alpha.3"
+license = "AGPL-3.0-only"
+
+# Machine-checked subset of docs/agent/rust-tauri-rules.md ("no unwrap/expect
+# in production", "use tracing, not println/eprintln"). Tests are exempted via
+# clippy.toml (allow-*-in-tests). Member crates opt in with [lints] workspace
+# = true; p2p-bench (throwaway diagnostics) stays out, uc-cli allows print at
+# crate level because stdout is its user-facing output.
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+dbg_macro = "warn"
+
+# Dependencies for workspace crates, mainly for tauri plugins
+[workspace.dependencies]
+# tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
+# `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
+# 容器级 rename，rc.25 已移除该属性会编译失败。tauri-specta rc.25 通过
+# Cargo unification 强制把 specta 升到 rc.25，所以 tauri 也必须 ≥ 2.11。
+tauri = { version = "2.11", features = ["tray-icon", "macos-private-api", "image-png"] }
+tauri-plugin-autostart = "2"
+
+# Vendor 替换 iroh-blobs 0.100.0：上游 HashContext::persist() 在非 Partial
+# 状态下会把 BaoFileStorage 永久污染为 Poisoned，下次 observe(hash) 触发
+# BaoFileStorage::bitfield() 的 panic 分支。修复见
+# vendor/iroh-blobs/src/store/fs.rs::HashContext::persist 与
+# vendor/iroh-blobs/src/store/fs/bao_file.rs::persist_regression 单元测试。
+[patch.crates-io]
+iroh-blobs = { path = "vendor/iroh-blobs" }
+
+# dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
+# 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。
+# 保留行号信息,panic backtrace / 断点 by line / #[track_caller] 全部正常;
+# 牺牲的是 lldb 里看变量值时的类型详细信息(平时调试一般不依赖)。
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+# dev profile package overrides:让 Argon2 / Blake3 / chacha20 等密码学 crate
+# 在 debug 构建下也走 opt-level=3。背景:mobile_lan basic auth 每次 PUT 都要
+# 跑一次 Argon2id verify(m=64MB t=3 p=4),release 下 ~74ms,debug 下 ~1.26s。
+# 不开优化时单次请求被推迟 1.2 秒,前端 entry 出现也跟着推迟 1.2 秒。
+# 业务代码本身保持 debug(便于调试),只对密码学库做局部 release 编译。
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.blake3]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+
+# Codec crates carrying clipboard image captures: same pattern as the
+# Argon2id override above. PNG encoding of a 2.4 MB screenshot took ~3.3s
+# in dev profile because the deflate (`miniz_oxide` / `fdeflate`) and the
+# `png` Adaptive-filter loop ran under opt-level=0; release builds do the
+# same encode in ~150-300ms. The watcher path is `clipboard-rs::get_image`
+# (BMP → DynamicImage) followed by `image::DynamicImage::write_to(_, Png)`
+# (DynamicImage → PNG), so the heat lives entirely in these five crates.
+# Keeping business code in debug, optimizing only the codec dependencies.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.flate2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.release]
+panic = "abort"                # Strip expensive panic clean-up logic
+codegen-units = 1              # Compile crates one after another so the compiler can optimize better
+lto = true                     # Enables link to optimizations
+opt-level = "z"                # Optimize for binary size
+# 关键:Sentry symbolication 需要 debug info。`line-tables-only` 只保留地址→
+# 文件/行号映射,不带变量名等更重的信息,体积成本最小;配合 split-debuginfo
+# 和 strip = "symbols",最终 binary 仍然干净,debug info 单独打包成
+# .dSYM/.dwp/.pdb,由 CI 上传给 Sentry 用作 stack trace 解析。
+debug = "line-tables-only"
+split-debuginfo = "packed"     # macOS → .dSYM bundle, Linux → .dwp;Windows MSVC 自带 .pdb
+strip = "symbols"              # binary 内嵌符号 strip 干净,独立 debug 文件保留

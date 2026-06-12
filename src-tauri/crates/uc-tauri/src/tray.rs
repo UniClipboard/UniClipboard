@@ -223,7 +223,7 @@ impl TrayState {
         //      undefined symbol → 加载链断在 ido3 上。
         //
         // 这个 panic 沿 FFI/C 调用栈直接撂倒进程。原本想用 `catch_unwind`
-        // 兜底,但 release profile = "abort"(src-tauri/Cargo.toml),
+        // 兜底,但 release profile = "abort"(root Cargo.toml),
         // Rust 编译器在 abort 模式下根本不生成 unwind 表,catch_unwind 无法
         // 接住任何 panic —— Sentry UNICLIPBOARD-RUST-G/-10 持续刷,0.10.1-alpha.2
         // AppImage 在 Arch 上 `Aborted (core dumped)` 验证了这一点。

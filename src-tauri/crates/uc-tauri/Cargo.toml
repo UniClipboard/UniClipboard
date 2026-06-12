@@ -17,14 +17,14 @@ dev-profile = []
 # Workspace crates
 # `specta-derive` 让 `TraceMetadata`（出现在每个 Tauri command 的 `_trace`
 # 入参里）派生 `specta::Type`，从而能进 tauri-specta 的 binding 生成。
-uc-core = { path = "../uc-core", features = ["specta-derive"] }
-uc-desktop = { path = "../uc-desktop" }
-uc-observability = { path = "../uc-observability" }
-uc-daemon-contract = { path = "../uc-daemon-contract" }
-uc-daemon-client = { path = "../uc-daemon-client" }
-uc-daemon-process = { path = "../uc-daemon-process" }
+uc-core = { path = "../../../crates/uc-core", features = ["specta-derive"] }
+uc-desktop = { path = "../../../crates/uc-desktop" }
+uc-observability = { path = "../../../crates/uc-observability" }
+uc-daemon-contract = { path = "../../../crates/uc-daemon-contract" }
+uc-daemon-client = { path = "../../../crates/uc-daemon-client" }
+uc-daemon-process = { path = "../../../crates/uc-daemon-process" }
 # Portable-build detection (updater install-kind routing on Windows).
-uc-app-paths = { path = "../uc-app-paths" }
+uc-app-paths = { path = "../../../crates/uc-app-paths" }
 
 # Tauri
 tauri = { workspace = true }

@@ -1,6 +1,7 @@
-//! Platform capability detection for secure storage.
+//! Platform capability detection.
 //!
-//! Detects whether the platform supports system keyring or requires file-based fallback.
+//! Detects whether the platform supports system keyring or requires file-based
+//! fallback, and whether the current session exposes a system clipboard at all.
 
 /// Represents the secure storage capability of the current platform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +67,61 @@ pub fn detect_storage_capability() -> SecureStorageCapability {
     }
 }
 
+/// Represents the system clipboard capability of the current session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemClipboardCapability {
+    /// A graphical session is present; the real clipboard adapter is expected to work.
+    Available,
+    /// No graphical session (headless server, container, SSH without display
+    /// forwarding) — the OS exposes no clipboard to talk to.
+    NoDisplaySession,
+}
+
+/// Detect whether the current session exposes a system clipboard.
+///
+/// # Detection Logic
+///
+/// - **macOS / Windows**: always `Available` — the pasteboard / clipboard API
+///   exists in every session. (The non-bundled-CLI AppKit caveat is handled by
+///   callers via `UC_DISABLE_SYSTEM_CLIPBOARD`, not by this probe.)
+/// - **Linux**: `Available` when a display-server session is announced via a
+///   non-empty `DISPLAY` (X11) or `WAYLAND_DISPLAY` (Wayland); otherwise
+///   `NoDisplaySession` — clipboard backends can only fail to connect.
+///
+/// This only reports capability; whether to substitute a no-op adapter is the
+/// composition root's decision.
+pub fn detect_system_clipboard_capability() -> SystemClipboardCapability {
+    #[cfg(target_os = "linux")]
+    {
+        classify_display_session(
+            std::env::var_os("DISPLAY"),
+            std::env::var_os("WAYLAND_DISPLAY"),
+        )
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        SystemClipboardCapability::Available
+    }
+}
+
+/// Pure classifier behind [`detect_system_clipboard_capability`] on Linux.
+///
+/// Empty values are treated as unset — an empty `DISPLAY` cannot address a
+/// display server.
+#[cfg(any(target_os = "linux", test))]
+fn classify_display_session(
+    display: Option<std::ffi::OsString>,
+    wayland_display: Option<std::ffi::OsString>,
+) -> SystemClipboardCapability {
+    let is_set =
+        |value: &Option<std::ffi::OsString>| value.as_deref().is_some_and(|v| !v.is_empty());
+    if is_set(&display) || is_set(&wayland_display) {
+        SystemClipboardCapability::Available
+    } else {
+        SystemClipboardCapability::NoDisplaySession
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn dev_env_forces_file_storage() -> bool {
     std::env::var("UNICLIPBOARD_ENV")
@@ -106,4 +162,47 @@ fn is_wsl() -> bool {
 #[cfg(target_os = "linux")]
 fn has_desktop_environment() -> bool {
     std::env::var("DISPLAY").is_ok() && std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    fn env(value: &str) -> Option<OsString> {
+        Some(OsString::from(value))
+    }
+
+    #[test]
+    fn headless_session_has_no_clipboard() {
+        // issue #1021: Ubuntu Server — neither DISPLAY nor WAYLAND_DISPLAY.
+        assert_eq!(
+            classify_display_session(None, None),
+            SystemClipboardCapability::NoDisplaySession
+        );
+    }
+
+    #[test]
+    fn x11_session_has_clipboard() {
+        assert_eq!(
+            classify_display_session(env(":0"), None),
+            SystemClipboardCapability::Available
+        );
+    }
+
+    #[test]
+    fn pure_wayland_session_has_clipboard() {
+        assert_eq!(
+            classify_display_session(None, env("wayland-0")),
+            SystemClipboardCapability::Available
+        );
+    }
+
+    #[test]
+    fn empty_display_values_count_as_unset() {
+        assert_eq!(
+            classify_display_session(env(""), env("")),
+            SystemClipboardCapability::NoDisplaySession
+        );
+    }
 }

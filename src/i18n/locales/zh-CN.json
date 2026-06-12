@@ -712,6 +712,7 @@
     },
     "contextMenu": {
       "copy": "复制",
+      "fileDeleted": "文件已删除",
       "openFileLocation": "打开文件位置",
       "resend": "重发",
       "resending": "正在重发...",

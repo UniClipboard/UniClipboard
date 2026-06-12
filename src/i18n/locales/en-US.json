@@ -721,6 +721,7 @@
     },
     "contextMenu": {
       "copy": "Copy",
+      "fileDeleted": "File deleted",
       "openFileLocation": "Open File Location",
       "resend": "Resend",
       "resending": "Resending...",

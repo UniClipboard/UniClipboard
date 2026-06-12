@@ -5,9 +5,10 @@ import FileContextMenu from '@/components/clipboard/FileContextMenu'
 import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
 
-// Redux store hooks 与 file transfer 选择器: FileContextMenu 在内部用 redux
-// 决定 copy 是否 disable;本测专注 Resend 菜单项的可达性 + 点击行为,
-// 因此 selector 全 stub 成"传输已完成"的稳定快照。
+// Redux store hooks and file transfer selectors: FileContextMenu uses redux
+// internally to decide whether copy is disabled; these tests focus on the
+// Resend item's reachability + click behavior, so every selector is stubbed
+// to a stable "transfer completed" snapshot.
 vi.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({}),
 }))

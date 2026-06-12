@@ -136,7 +136,7 @@ impl MobileSyncClient {
 ## 6. 风险与待决
 
 - **假 oracle 警告（留给目标 B，现在记下）**：daemon 的 history query/PATCH 是 **兼容壳**（patch 不读 body、version 硬编码 0、无 409、无 modifiedAfter，见 `routes.rs:15-16`）——未来全量迁移 `HistoryRecord`/version/isDelete 时，**真实 daemon 不是可靠字节对照物**。本 spike 不碰这些，但目标 B 必须另找 oracle（抓 iOS 真实字节 fixture）。
-- **🟡 P2P 形态待用户拍板**：未来移动端 P2P 是完整 iroh node 还是轻量 client？与 VISION §63「移动端不跑 iroh」冲突。本 spike 删掉 Transport 抽象、不依赖此答案；但目标 B 启动前需此决策 + VISION §63 改写。
+- **✅ 已决（用户拍板 2026-06-12）：移动端只做 mobile-sync，不做真正的 P2P**。与 VISION §63「Mobile 走独立 LAN HTTP 协议」完全一致，VISION 无需改写；Transport 抽象继续不引入。`uc-mobile` 的定位从「P2P 铺轨」收敛为「mobile-sync 的共享 Rust 实现载体」——spike 证明的 FFI 管道照常是目标 B 的地基，P2P 论述仅作历史背景保留。
 - **iOS demo 载体**：B1/B2 用一个最小 iOS demo target（非接入正式 uc-ios app），避免污染产品代码；管道证明后再谈接入。
 
 ---

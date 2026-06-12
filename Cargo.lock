@@ -10315,9 +10315,12 @@ name = "uc-mobile-proto"
 version = "0.15.0-alpha.3"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.18",
+ "unicode-segmentation",
  "url",
 ]
 

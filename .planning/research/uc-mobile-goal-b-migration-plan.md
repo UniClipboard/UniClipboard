@@ -3,7 +3,8 @@
 > 前置：spike B0–B2 已完成（FFI 管道证明成立，见 `uc-mobile-spike-plan.md`）。
 > 输入：`uc-ios-feature-inventory.md`（行为基线）+ `uc-ios-regression-checklist.md`（验收闸门）。
 > 范围拍板（2026-06-12）：**只做 mobile-sync，不做 P2P**——本方案不含任何 Transport/iroh/加密栈内容。
-> 状态：提案，待审。语言审查豁免路径（`.planning/`）。
+> 状态：M0+M1 已完成（2026-06-12），M2 起待续。语言审查豁免路径（`.planning/`）。
+> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿、clippy/fmt 干净、4 区均经独立对抗 agent 核查；回归清单 A1–A5 + B 区编解码项已勾选）· M2–M6 ⏳
 
 ## 0. 一句话定位
 
@@ -38,13 +39,15 @@ crates/
 
 ## 3. 里程碑（每个独立可验收、可暂停）
 
-### M0 · 契约先行：golden vector 全量移植（小，先做）
-把 checklist A 区的跨语言向量移植成 Rust 测试（红的允许存在，作为后续里程碑的驱动）：connect-uri（已有 ✅）、Clipboard JSON nil 省略、composite/split id、sha256 大写、10240 字素溢出、multipart CRLF/quoted、ISO-8601 四种组合、Basic Auth。
-**验收**：A 区每条 🧬 都有对应 Rust 测试（可暂 `#[ignore]`），fixture 来源注明。
+### M0 · 契约先行：golden vector 全量移植（小，先做）— ✅ 完成
+把 checklist A 区的跨语言向量移植成 Rust 测试：connect-uri（已有 ✅）、Clipboard JSON nil 省略、composite/split id、sha256 大写、10240 字素溢出、multipart CRLF/quoted、ISO-8601 四种组合、Basic Auth。
+**验收**：A 区每条 🧬 都有对应 Rust 测试，fixture 来源注明。
+**结果**：向量直接嵌入各模块测试（不走 `#[ignore]`，一次到位），fixture const 与 `/tmp/uc-ios/docs/examples/` 程序化逐字节比对。
 
-### M1 · uc-mobile-proto 扩容：纯编解码全集（中）
-A2/A3/A4/A5 + B 区纯逻辑：wire 模型、hash、长文本溢出（**字素计数用 unicode-segmentation，非字节非 code point**）、multipart builder、TypeMask、ISO-8601、URL 分类（LAN/TS/WAN 网段表）、SSID 归一、Layer-1 形态排序、try-order、`isDelete`/`isDeleted` 封装 helper（裸字符串不准出现在调用点）。
-**验收**：M0 测试全绿（去 `#[ignore]`）；daemon `sync_doc.rs` 改依赖 proto 类型且桌面测试无回归。
+### M1 · uc-mobile-proto 扩容：纯编解码全集（中）— ✅ 完成
+A2/A3/A4/A5 + B 区纯逻辑：wire 模型、hash、长文本溢出（字素计数用 unicode-segmentation）、multipart builder、TypeMask、ISO-8601、URL 分类、SSID 归一、Layer-1 形态排序、try-order、`isDelete`/`isDeleted` 封装 helper。
+**验收**：M0 测试全绿；~~daemon `sync_doc.rs` 改依赖 proto 类型~~。
+**结果**：5 模块落地，140 测试绿。`ClipboardKind`/ISO-8601 跨模块重复已收敛到单一真相。**遗留单列**：daemon `sync_doc.rs` + uc-mobile `WireDoc` 改依赖 proto 规范类型（§1「单一真相收敛」）——拆到独立 commit，不阻塞 M2。核查另发现 `ServerConfig` Codable 持久化迁移属 M4，本里程碑只做形态分类纯函数（见回归清单 B 末项）。
 
 ### M2 · uc-mobile HTTP 客户端补全（中）
 在 B2 `client.rs` 基础上补 A6 全集：history query（multipart POST）/history data 端点、base-url 归一、文件名前置校验、状态映射表（200/201/204、401、404、5xx、其余 4xx）、重试语义（仅首遇 connection-lost/timeout，300ms 一次，401/404 不重试）、`cancel_in_flight` 后续请求立抛 cancelled。

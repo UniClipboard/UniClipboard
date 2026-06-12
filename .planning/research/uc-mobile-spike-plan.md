@@ -2,8 +2,9 @@
 
 > 配套 `uc-ios-feature-inventory.md`（基线）+ `uc-ios-regression-checklist.md`（全量迁移的验收闸门）。
 > 本版按对抗审查 `wkkg9l3cg`（34 条确认）收窄重写，取代旧版「全量迁移」框架。
-> 状态：spike / 进行中。语言审查豁免路径（`.planning/`）。
-> 进度：B0 ✅（`uc-mobile-proto` 抽出，commit c1576bd05）· B1 ✅（`uc-mobile` UniFFI crate + xcframework + Swift binding，iOS 模拟器 demo 三探针全过：golden vector 解析 / 错误映射 / `with_foreign` bridge 构造 + 回调往返；脚本见 `crates/uc-mobile/scripts/`）· B2 ⏳
+> 状态：spike / B0–B2 完成（管道证明成立）。语言审查豁免路径（`.planning/`）。
+> 进度：B0 ✅（`uc-mobile-proto` 抽出，commit c1576bd05）· B1 ✅（`uc-mobile` UniFFI crate + xcframework + Swift binding，iOS 模拟器 demo 三探针全过：golden vector 解析 / 错误映射 / `with_foreign` bridge 构造 + 回调往返）· B2 ✅（`uc_mobile_init` ring provider + async `get_latest`/`put_clipboard`/`tls_probe`，模拟器 demo 对真实 daemon 完成 put+get 往返、401 映射、真实 TLS 握手；缝 3 由 detached-task 执行模型落实并有 drop/cancel 单测；编排脚本 `crates/uc-mobile/scripts/run-b2-daemon-demo.sh`）
+> ⚠️ B2 验收中「App / 键盘扩展 / 分享扩展三进程上下文各自 TLS 握手」**未在 spike 内验证**——demo 载体是单进程 CLI 二进制，三进程验收需等接入真实 uc-ios app（目标 B 启动时补）。其余 DoD 全部达成。
 
 ## 0. 一句话定位
 

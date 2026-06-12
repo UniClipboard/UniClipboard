@@ -1,14 +1,12 @@
 //! `uc-mobile` — UniFFI boundary crate for the mobile spike.
 //!
-//! B1 scope (see `.planning/research/uc-mobile-spike-plan.md`):
-//! - expose the synchronous pure function [`parse_connect_uri`] backed by
-//!   `uc-mobile-proto`, proving the Rust → Swift/Kotlin codegen pipeline;
-//! - prove the `#[uniffi::export(with_foreign)]` trait can be used as an
-//!   `Arc<dyn PlatformBridge>` constructor argument (spike plan seam 2,
-//!   uniffi-rs #2797 workaround) — [`MobileSyncClient::new`] is that probe.
-//!
-//! B2 will add `uc_mobile_init()` (rustls provider install, seam 1) and the
-//! async reqwest/tokio client methods. Nothing here does I/O yet.
+//! Scope (see `.planning/research/uc-mobile-spike-plan.md`):
+//! - B1: synchronous pure function [`parse_connect_uri`] backed by
+//!   `uc-mobile-proto`, proving the Rust → Swift/Kotlin codegen pipeline,
+//!   plus the `with_foreign` constructor-argument probe (seam 2).
+//! - B2 ([`client`]): [`uc_mobile_init`] (rustls ring provider, seam 1) and
+//!   the async [`MobileSyncClient`] (reqwest + dedicated current_thread
+//!   tokio runtime; seam-3 drop semantics documented there).
 //!
 //! ## FFI mirror types
 //!
@@ -20,7 +18,13 @@
 //! mapping.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+
+pub mod client;
+
+pub use client::{
+    uc_mobile_init, ClipboardKind, ClipboardMeta, MobileSyncClient, PlatformBridge, ServerConfig,
+    SyncError,
+};
 
 uniffi::setup_scaffolding!();
 
@@ -112,42 +116,6 @@ pub fn parse_connect_uri(uri: String) -> Result<ConnectPayload, ConnectUriError>
         .map_err(Into::into)
 }
 
-/// Host-side services the native app provides to Rust.
-///
-/// `with_foreign` (NOT `callback_interface`) is load-bearing: only
-/// `with_foreign` traits can appear as `Arc<dyn …>` constructor arguments
-/// (uniffi-rs #2797). B1 carries a single snapshot-style method; B2 keeps the
-/// same shape — natives read bytes BEFORE entering async Rust, so foreign
-/// calls never block a tokio worker from inside a future (spike plan §4).
-#[uniffi::export(with_foreign)]
-pub trait PlatformBridge: Send + Sync {
-    /// Absolute path of the app-group container directory (shared between
-    /// the iOS app and its keyboard/share extensions).
-    fn app_group_dir(&self) -> String;
-}
-
-/// Mobile-sync client object. In B1 it only proves the constructor seam and
-/// the Rust→foreign round trip; B2 adds the async reqwest methods.
-#[derive(uniffi::Object)]
-pub struct MobileSyncClient {
-    bridge: Arc<dyn PlatformBridge>,
-}
-
-#[uniffi::export]
-impl MobileSyncClient {
-    /// Seam-2 probe: a foreign-implemented trait object as constructor input.
-    #[uniffi::constructor]
-    pub fn new(bridge: Arc<dyn PlatformBridge>) -> Arc<Self> {
-        Arc::new(Self { bridge })
-    }
-
-    /// Round-trip probe: Rust calling back into the foreign bridge. The demo
-    /// asserts the returned string is what the Swift side handed in.
-    pub fn bridge_probe(&self) -> String {
-        self.bridge.app_group_dir()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,7 +176,9 @@ mod tests {
                 "/tmp/test-app-group".into()
             }
         }
-        let client = MobileSyncClient::new(Arc::new(TestBridge));
+        uc_mobile_init();
+        let client = MobileSyncClient::new(std::sync::Arc::new(TestBridge))
+            .expect("constructor succeeds after init");
         assert_eq!(client.bridge_probe(), "/tmp/test-app-group");
     }
 }

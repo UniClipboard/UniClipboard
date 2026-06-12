@@ -34,6 +34,24 @@ bindgen-cli = ["uniffi/cli"]
 uc-mobile-proto = { path = "../uc-mobile-proto" }
 uniffi = "=0.31.1"
 thiserror = "2.0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Same ring-pinned rustls stack as apps/cli (spike plan seam 1): reqwest
+# brings rustls with NO provider feature, so the provider must be installed
+# process-wide via uc_mobile_init(); pinning `ring` here keeps aws-lc-rs (and
+# its cmake/clang native build) out of the mobile dependency tree — the
+# build-ios-xcframework.sh script asserts `cargo tree -i aws-lc-rs` is empty.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+# current_thread runtime hosted on a dedicated thread (iOS extension jetsam
+# budget rules out the multi-thread runtime; spike plan §4).
+tokio = { version = "1", features = ["rt", "time", "sync"] }
+url = "2"
+
+[dev-dependencies]
+axum = { version = "0.7", features = ["tokio", "http1", "json"] }
+base64 = "0.22"
+tokio = { version = "1", features = ["rt", "macros", "net", "time", "sync"] }
 
 [lints]
 workspace = true

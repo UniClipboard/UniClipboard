@@ -41,6 +41,15 @@ cp "$BINDINGS_DIR/uc_mobileFFI.modulemap" "$BINDINGS_DIR/include/module.modulema
 echo "==> [2/4] device static lib (aarch64-apple-ios, release)"
 cargo build -p uc-mobile --release --target aarch64-apple-ios
 
+# Seam 1: the mobile tree must use the ring rustls provider exclusively.
+# aws-lc-rs would drag a cmake/clang native build into iOS cross-compilation
+# and double the crypto footprint (spike plan §5 hard assertion).
+if cargo tree -p uc-mobile --target aarch64-apple-ios -i aws-lc-rs 2>/dev/null | grep -q aws-lc-rs; then
+  echo "FAIL: aws-lc-rs leaked into the uc-mobile dependency tree" >&2
+  exit 1
+fi
+echo "    aws-lc-rs absent from mobile tree: OK"
+
 echo "==> [3/4] simulator static lib (aarch64-apple-ios-sim, release)"
 cargo build -p uc-mobile --release --target aarch64-apple-ios-sim
 

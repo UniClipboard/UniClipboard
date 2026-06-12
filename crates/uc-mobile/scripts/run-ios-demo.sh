@@ -47,8 +47,10 @@ else
 fi
 
 echo "==> run on simulator $UDID"
+# Extra arguments (e.g. a connect URI for the B2 daemon probes) are passed
+# through to the demo binary.
 set +e
-xcrun simctl spawn "$UDID" "$REPO_ROOT/$DEMO_BIN"
+xcrun simctl spawn "$UDID" "$REPO_ROOT/$DEMO_BIN" "$@"
 STATUS=$?
 set -e
 

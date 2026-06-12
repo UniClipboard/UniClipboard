@@ -10297,9 +10297,17 @@ dependencies = [
 name = "uc-mobile"
 version = "0.15.0-alpha.3"
 dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "reqwest 0.12.28",
+ "rustls",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "uc-mobile-proto",
  "uniffi",
+ "url",
 ]
 
 [[package]]

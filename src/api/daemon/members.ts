@@ -10,8 +10,9 @@
  * # Transport / 传输 (ADR-008 P7)
  * The three wrappers route through the @hey-api generated SDK
  * (`getLocalDeviceInfo` / `listPairedDevices` / `unpairDevice`) via
- * `daemonClient.callSdk`, which drives the daemon session lifecycle and
- * normalizes thrown SDK errors back into the shared `DaemonApiError` shape.
+ * `daemonClient.callEnveloped` / `callSdk`, which drive the daemon session
+ * lifecycle and normalize thrown SDK errors back into the shared
+ * `DaemonApiError` shape.
  * Every endpoint returns the canonical `ApiEnvelope { data, ts }`; the public
  * wrapper signatures and the hand-written domain types below are preserved
  * verbatim for downstream consumers, with the generated DTOs bridged at the
@@ -65,12 +66,12 @@ export interface SpaceMember {
  * 获取本地设备信息（peer ID + 解析后的设备名称）。
  */
 export async function getLocalDeviceInfo(): Promise<LocalDeviceInfo> {
-  // `callSdk` unwraps the SDK's `{ data }` to the `LocalDeviceInfoEnvelope`,
-  // then we unwrap `.data` to the payload. The generated `LocalDeviceInfoDto`
-  // is structurally equivalent to the hand-written `LocalDeviceInfo`, bridged
-  // here to keep the public return type stable for consumers.
-  const envelope = await daemonClient.callSdk(() => getLocalDeviceInfoSdk({ throwOnError: true }))
-  return envelope.data as unknown as LocalDeviceInfo
+  // `callEnveloped` unwraps the SDK's `{ data }` envelope down to the payload.
+  // The generated `LocalDeviceInfoDto` is structurally equivalent to the
+  // hand-written `LocalDeviceInfo`, bridged here to keep the public return
+  // type stable for consumers.
+  const data = await daemonClient.callEnveloped(() => getLocalDeviceInfoSdk({ throwOnError: true }))
+  return data as unknown as LocalDeviceInfo
 }
 
 /**
@@ -79,11 +80,11 @@ export async function getLocalDeviceInfo(): Promise<LocalDeviceInfo> {
  * 获取已配对的设备列表。
  */
 export async function getPairedPeers(): Promise<SpaceMember[]> {
-  // Backed by the `listPairedDevices` SDK fn (GET /paired-devices). `callSdk`
-  // unwraps the SDK's `{ data }` to the `SpaceMemberListEnvelope`, then `.data`
-  // is the `SpaceMemberDto[]` payload, bridged to the hand-written `SpaceMember[]`.
-  const envelope = await daemonClient.callSdk(() => listPairedDevicesSdk({ throwOnError: true }))
-  return envelope.data as unknown as SpaceMember[]
+  // Backed by the `listPairedDevices` SDK fn (GET /paired-devices).
+  // `callEnveloped` unwraps the SDK's `{ data }` envelope down to the
+  // `SpaceMemberDto[]` payload, bridged to the hand-written `SpaceMember[]`.
+  const data = await daemonClient.callEnveloped(() => listPairedDevicesSdk({ throwOnError: true }))
+  return data as unknown as SpaceMember[]
 }
 
 /**

@@ -15,11 +15,12 @@
  * # Transport / 传输 (ADR-008 P6)
  * This module is the SDK exemplar: `getSettings` / `updateSettings` route through
  * the @hey-api generated SDK (`getSettingsSdk` / `updateSettingsSdk`) via
- * `daemonClient.callSdk`, which drives the daemon session lifecycle (pre-emptive
- * refresh + one-shot 401 retry). Both endpoints now return the canonical
- * `ApiEnvelope { data, ts }`; PUT folds `success` + `restartRequired` INTO `data`
- * (`SettingsUpdateResultDto`). The public wrapper signatures and the hand-written
- * `Settings` domain types below are preserved verbatim for downstream consumers.
+ * `daemonClient.callEnveloped`, which drives the daemon session lifecycle
+ * (pre-emptive refresh + one-shot 401 retry) and unwraps the canonical
+ * `ApiEnvelope { data, ts }` down to the payload. PUT folds `success` +
+ * `restartRequired` INTO that payload (`SettingsUpdateResultDto`). The public
+ * wrapper signatures and the hand-written `Settings` domain types below are
+ * preserved verbatim for downstream consumers.
  */
 
 import {
@@ -245,13 +246,12 @@ interface SettingsPatchRequest {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function getSettings(): Promise<Settings> {
-  // Route through the generated SDK; `callSdk` unwraps the SDK's `{ data }` to
-  // the `SettingsEnvelope`, then we unwrap `.data` to the Settings payload. The
-  // generated `SettingsDto` is structurally equivalent to the hand-written
-  // `Settings` (camelCase wire fields), bridged here to keep the public return
-  // type stable for downstream consumers.
-  const envelope = await daemonClient.callSdk(() => getSettingsSdk({ throwOnError: true }))
-  return envelope.data as unknown as Settings
+  // Route through the generated SDK; `callEnveloped` unwraps down to the
+  // Settings payload. The generated `SettingsDto` is structurally equivalent
+  // to the hand-written `Settings` (camelCase wire fields), bridged here to
+  // keep the public return type stable for downstream consumers.
+  const data = await daemonClient.callEnveloped(() => getSettingsSdk({ throwOnError: true }))
+  return data as unknown as Settings
 }
 
 /**
@@ -270,9 +270,9 @@ export async function updateSettings(
 ): Promise<{ success: boolean; restartRequired: boolean }> {
   const patch = toSettingsPatchRequest(settings)
   // Route through the generated SDK. `success` + `restartRequired` are now folded
-  // INTO the envelope payload (`SettingsUpdateResultDto`) per ADR-008 §0.1, so we
-  // read them from `envelope.data` rather than top-level siblings.
-  const envelope = await daemonClient.callSdk(() =>
+  // INTO the envelope payload (`SettingsUpdateResultDto`) per ADR-008 §0.1;
+  // `callEnveloped` unwraps down to that payload.
+  const data = await daemonClient.callEnveloped(() =>
     updateSettingsSdk({
       // `toSettingsPatchRequest` returns a structurally-equivalent camelCase patch;
       // bridge to the generated `SettingsPatchDto` shape for the SDK body param.
@@ -280,7 +280,7 @@ export async function updateSettings(
       throwOnError: true,
     })
   )
-  return { success: envelope.data.success, restartRequired: envelope.data.restartRequired }
+  return { success: data.success, restartRequired: data.restartRequired }
 }
 
 /**

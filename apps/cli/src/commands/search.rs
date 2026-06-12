@@ -7,7 +7,7 @@ use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
 use crate::exit_codes;
 use crate::ui;
 
-use uc_daemon_client::{DaemonClientContext, DaemonSearchRequestError, SearchQueryRequest};
+use uc_daemon_client::{DaemonClientContext, DaemonRequestError, SearchQueryRequest};
 use uc_daemon_contract::api::dto::search::{
     SearchQueryResultDto, SearchResultDto, SearchStatusData,
 };
@@ -185,10 +185,13 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
 
 fn render_search_error(action: &str, err: anyhow::Error, json: bool) -> i32 {
     if json {
-        let (code, message) = match err.downcast_ref::<DaemonSearchRequestError>() {
-            Some(search_err) => (
-                search_err.code.as_deref().unwrap_or("unknown"),
-                search_err.message.clone(),
+        let (code, message) = match err.downcast_ref::<DaemonRequestError>() {
+            Some(req_err) => (
+                req_err.code().unwrap_or("unknown"),
+                req_err
+                    .message()
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| err.to_string()),
             ),
             None => ("unknown", err.to_string()),
         };
@@ -202,8 +205,8 @@ fn render_search_error(action: &str, err: anyhow::Error, json: bool) -> i32 {
     } else {
         // Check for session_locked code in the structured error.
         let is_locked = err
-            .downcast_ref::<DaemonSearchRequestError>()
-            .and_then(|e| e.code.as_deref())
+            .downcast_ref::<DaemonRequestError>()
+            .and_then(|e| e.code())
             .map(|c| c == "session_locked")
             .unwrap_or(false);
 

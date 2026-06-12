@@ -67,15 +67,15 @@ export interface MemberSyncPreferencesPatch {
 // ── Public API ──────────────────────────────────────────────────
 
 export async function getMemberSyncPreferences(deviceId: string): Promise<MemberSyncPreferences> {
-  // Route through the generated SDK; `callSdk` unwraps the SDK's `{ data }` to the
-  // `MemberSyncPreferencesEnvelope`, then we unwrap `.data` to the preferences
-  // payload. The generated `MemberSyncPreferencesDto` is structurally equivalent to
-  // the hand-written `MemberSyncPreferences` (camelCase wire fields), bridged here to
-  // keep the public return type stable for downstream consumers.
-  const envelope = await daemonClient.callSdk(() =>
+  // Route through the generated SDK; `callEnveloped` unwraps the SDK's `{ data }`
+  // envelope down to the preferences payload. The generated
+  // `MemberSyncPreferencesDto` is structurally equivalent to the hand-written
+  // `MemberSyncPreferences` (camelCase wire fields), bridged here to keep the
+  // public return type stable for downstream consumers.
+  const data = await daemonClient.callEnveloped(() =>
     getMemberSyncPreferencesSdk({ path: { device_id: deviceId }, throwOnError: true })
   )
-  return envelope.data as unknown as MemberSyncPreferences
+  return data as unknown as MemberSyncPreferences
 }
 
 export async function updateMemberSyncPreferences(

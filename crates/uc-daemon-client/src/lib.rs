@@ -21,8 +21,8 @@ use uc_daemon_process::socket::resolve_daemon_http_addr;
 pub use connection::DaemonConnectionState;
 pub use http::{
     DaemonAnalyticsClient, DaemonClipboardClient, DaemonLifecycleClient, DaemonMobileSyncClient,
-    DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient, DaemonSearchClient,
-    DaemonSearchRequestError, DaemonSettingsClient, DaemonSetupClient, DaemonSetupV2Client,
+    DaemonPairingClient, DaemonPairingRequestError, DaemonQueryClient, DaemonRequestError,
+    DaemonSearchClient, DaemonSettingsClient, DaemonSetupClient, DaemonSetupV2Client,
     DaemonUpgradeClient, ExchangedSessionToken, SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;

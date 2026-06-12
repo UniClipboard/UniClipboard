@@ -29,12 +29,18 @@ const mockRefreshSession = vi.fn()
 // resolve to `{ data: <envelope> }` flow straight through. Tests that don't use
 // callSdk are unaffected.
 const mockCallSdk = vi.fn((call: () => Promise<{ data: unknown }>) => call().then(r => r.data))
+// Enveloped endpoints route through callEnveloped, which additionally unwraps
+// the canonical `{ data, ts }` envelope down to the payload.
+const mockCallEnveloped = vi.fn((call: () => Promise<{ data: { data: unknown } }>) =>
+  call().then(r => r.data.data)
+)
 
 export const mockDaemonClient = {
   initialize: vi.fn(),
   destroy: vi.fn(),
   request: mockRequest,
   callSdk: mockCallSdk,
+  callEnveloped: mockCallEnveloped,
   refreshSession: mockRefreshSession,
   session: null as { token: string; expiresAt: number; encryptionReady: boolean } | null,
   get initialized() {

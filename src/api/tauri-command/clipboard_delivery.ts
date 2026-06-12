@@ -87,13 +87,13 @@ export async function getEntryDeliveryView(entryId: string): Promise<EntryDelive
   // is wire-identical (field names + discriminated-union tag literals) to the
   // hand-written `EntryDeliveryView` kept here as the stable API name for upper
   // layers (useEntryDelivery / EntryDeliveryBadge / tests); bridged at the
-  // `as unknown as` boundary. `callSdk` unwraps to the `EntryDeliveryViewEnvelope`,
-  // then `.data` is the payload. EntryNotFound surfaces as a `DaemonApiError`
-  // (404) which consumers already degrade-render.
-  const envelope = await daemonClient.callSdk(() =>
+  // `as unknown as` boundary. `callEnveloped` unwraps down to the payload.
+  // EntryNotFound surfaces as a `DaemonApiError` (404) which consumers already
+  // degrade-render.
+  const data = await daemonClient.callEnveloped(() =>
     getClipboardEntryDeliverySdk({ path: { id: entryId }, throwOnError: true })
   )
-  return envelope.data as unknown as EntryDeliveryView
+  return data as unknown as EntryDeliveryView
 }
 
 // ============================================================================
@@ -186,13 +186,13 @@ export async function resendEntry(args: ResendEntryArgs): Promise<ResendEntryRep
   // typed `ResendEntryCommandError` is rebuilt from the normalized error body so
   // the consumers' `error.code` switch + i18n placeholders are unchanged.
   try {
-    const envelope = await daemonClient.callSdk(() =>
+    const data = await daemonClient.callEnveloped(() =>
       resendClipboardEntrySdk({
         body: { entryId: args.entryId, peers: args.targetDeviceIds ?? null },
         throwOnError: true,
       })
     )
-    return envelope.data as unknown as ResendEntryReportDto
+    return data as unknown as ResendEntryReportDto
   } catch (error) {
     throw toResendEntryError(error)
   }

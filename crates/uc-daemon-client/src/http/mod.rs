@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod clipboard;
+pub mod enveloped;
 pub mod lifecycle;
 pub mod mobile_sync;
 pub mod pairing;
@@ -12,11 +13,12 @@ pub mod upgrade;
 
 pub use analytics::DaemonAnalyticsClient;
 pub use clipboard::DaemonClipboardClient;
+pub use enveloped::DaemonRequestError;
 pub use lifecycle::DaemonLifecycleClient;
 pub use mobile_sync::DaemonMobileSyncClient;
 pub use pairing::{DaemonPairingClient, DaemonPairingRequestError};
 pub use query::DaemonQueryClient;
-pub use search::{DaemonSearchClient, DaemonSearchRequestError, SearchQueryRequest};
+pub use search::{DaemonSearchClient, SearchQueryRequest};
 pub use settings::DaemonSettingsClient;
 pub use setup::DaemonSetupClient;
 pub use setup_v2::DaemonSetupV2Client;

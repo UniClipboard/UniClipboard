@@ -39,6 +39,7 @@ url = "2"
 
 # Error handling + logging
 anyhow = "1.0"
+thiserror = "2.0"
 tracing = "0.1"
 
 [dev-dependencies]

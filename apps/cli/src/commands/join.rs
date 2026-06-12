@@ -170,7 +170,10 @@ pub async fn run(args: JoinArgs, verbose: bool) -> i32 {
                 exit_codes::EXIT_SUCCESS
             }
             Err(err) => {
-                ui::spinner_finish_error(&spinner, &format!("Join failed: {err}"));
+                ui::spinner_finish_error(
+                    &spinner,
+                    &format!("Join failed: {}", crate::commands::daemon_error_message(&err)),
+                );
                 exit_codes::EXIT_ERROR
             }
         },

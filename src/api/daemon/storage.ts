@@ -9,10 +9,12 @@
  *
  * # Transport / 传输 (ADR-008 P7)
  * `getStorageStats` / `clearCache` route through the @hey-api generated SDK
- * (`getStorageStatsSdk` / `clearStorageCacheSdk`) via `daemonClient.callSdk`,
- * which drives the daemon session lifecycle. The public wrapper signatures and
- * the hand-written `StorageStats` domain type below are preserved verbatim for
- * downstream consumers.
+ * (`getStorageStatsSdk` / `clearStorageCacheSdk`) through the daemon client,
+ * which drives the daemon session lifecycle: `getStorageStats` uses
+ * `daemonClient.callEnveloped` (unwraps down to the payload), `clearCache`
+ * stays on `daemonClient.callSdk` (its result is ignored). The public wrapper
+ * signatures and the hand-written `StorageStats` domain type below are
+ * preserved verbatim for downstream consumers.
  */
 
 import {
@@ -47,12 +49,12 @@ export interface StorageStats {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function getStorageStats(): Promise<StorageStats> {
-  // Route through the generated SDK; `callSdk` unwraps the SDK's `{ data }` to the
-  // `StorageStatsEnvelope`, then we unwrap `.data` to the payload. The generated
-  // `StorageStatsDto` is structurally equivalent to the hand-written `StorageStats`,
-  // bridged here to keep the public return type stable for downstream consumers.
-  const envelope = await daemonClient.callSdk(() => getStorageStatsSdk({ throwOnError: true }))
-  return envelope.data as unknown as StorageStats
+  // Route through the generated SDK; `callEnveloped` unwraps down to the payload.
+  // The generated `StorageStatsDto` is structurally equivalent to the hand-written
+  // `StorageStats`, bridged here to keep the public return type stable for
+  // downstream consumers.
+  const data = await daemonClient.callEnveloped(() => getStorageStatsSdk({ throwOnError: true }))
+  return data as unknown as StorageStats
 }
 
 /**

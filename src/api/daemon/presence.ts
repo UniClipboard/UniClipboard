@@ -28,14 +28,13 @@ export interface PresenceRefreshResult {
  *
  * # Transport / 传输 (ADR-008 P7)
  * Routes through the @hey-api generated SDK (`refreshPresence`) via
- * `daemonClient.callSdk`, which unwraps the SDK's `{ data }` to the
- * `PresenceRefreshEnvelope` and drives the daemon session lifecycle. The
- * probe counters live under `envelope.data`; the generated
+ * `daemonClient.callEnveloped`, which drives the daemon session lifecycle and
+ * unwraps down to the probe-counter payload. The generated
  * `PresenceRefreshResponse` is structurally equivalent to the hand-written
  * `PresenceRefreshResult`, bridged at the boundary to keep the public return
  * type stable for downstream consumers.
  */
 export async function refreshPresence(): Promise<PresenceRefreshResult> {
-  const envelope = await daemonClient.callSdk(() => refreshPresenceSdk({ throwOnError: true }))
-  return envelope.data as unknown as PresenceRefreshResult
+  const data = await daemonClient.callEnveloped(() => refreshPresenceSdk({ throwOnError: true }))
+  return data as unknown as PresenceRefreshResult
 }

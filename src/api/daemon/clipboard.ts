@@ -150,10 +150,10 @@ export async function getClipboardEntries(
   limit: number = 50,
   offset: number = 0
 ): Promise<ClipboardEntriesResponse> {
-  const envelope = await daemonClient.callSdk(() =>
+  const data = await daemonClient.callEnveloped(() =>
     listClipboardEntriesSdk({ query: { limit, offset }, throwOnError: true })
   )
-  return { status: 'ready', entries: envelope.data as unknown as ClipboardEntryDto[] }
+  return { status: 'ready', entries: data as unknown as ClipboardEntryDto[] }
 }
 
 /**
@@ -170,13 +170,13 @@ export async function getClipboardEntry(id: string): Promise<ClipboardEntryDto |
   // path-param GET, which returns full text detail). The generated
   // `ListClipboardEntriesData.query` type only declares `limit`/`offset`, so the
   // `id` filter is cast at the boundary — the daemon still honors it on the wire.
-  const envelope = await daemonClient.callSdk(() =>
+  const data = await daemonClient.callEnveloped(() =>
     listClipboardEntriesSdk({
       query: { id } as unknown as NonNullable<ListClipboardEntriesData['query']>,
       throwOnError: true,
     })
   )
-  return (envelope.data as unknown as ClipboardEntryDto[])?.[0] ?? null
+  return (data as unknown as ClipboardEntryDto[])?.[0] ?? null
 }
 
 /**
@@ -260,10 +260,10 @@ export async function toggleFavorite(id: string, favorited: boolean): Promise<vo
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function clearClipboardHistory(): Promise<ClearHistoryResult> {
-  const envelope = await daemonClient.callSdk(() =>
+  const data = await daemonClient.callEnveloped(() =>
     clearClipboardHistorySdk({ throwOnError: true })
   )
-  return envelope.data as unknown as ClearHistoryResult
+  return data as unknown as ClearHistoryResult
 }
 
 /**
@@ -279,10 +279,10 @@ export async function clearClipboardHistory(): Promise<ClearHistoryResult> {
  */
 export async function getEntryDetail(id: string): Promise<EntryDetail | null> {
   try {
-    const envelope = await daemonClient.callSdk(() =>
+    const data = await daemonClient.callEnveloped(() =>
       getClipboardEntrySdk({ path: { id }, throwOnError: true })
     )
-    return envelope.data as unknown as EntryDetail
+    return data as unknown as EntryDetail
   } catch (error) {
     if (
       error instanceof Error &&
@@ -304,8 +304,8 @@ export async function getEntryDetail(id: string): Promise<EntryDetail | null> {
  * @throws {DaemonApiError} On HTTP errors or session failures.
  */
 export async function getClipboardStats(): Promise<ClipboardStats> {
-  const envelope = await daemonClient.callSdk(() => getClipboardStatsSdk({ throwOnError: true }))
-  return envelope.data as unknown as ClipboardStats
+  const data = await daemonClient.callEnveloped(() => getClipboardStatsSdk({ throwOnError: true }))
+  return data as unknown as ClipboardStats
 }
 
 /**
@@ -324,10 +324,10 @@ export async function getClipboardEntryResource(
   id: string
 ): Promise<ClipboardEntryResource | null> {
   try {
-    const envelope = await daemonClient.callSdk(() =>
+    const data = await daemonClient.callEnveloped(() =>
       getClipboardEntryResourceSdk({ path: { id }, throwOnError: true })
     )
-    return envelope.data as unknown as ClipboardEntryResource
+    return data as unknown as ClipboardEntryResource
   } catch (error) {
     // Return null for not-found rather than throwing
     if (

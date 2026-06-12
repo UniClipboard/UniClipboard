@@ -49,12 +49,12 @@ export interface EncryptionStateResponse {
  * @throws {DaemonApiError} On HTTP or session errors.
  */
 export async function getEncryptionState(): Promise<EncryptionStateResponse> {
-  // Route through the generated SDK; `callSdk` unwraps the SDK's outer `{ data }`
-  // to the `EncryptionStateEnvelope`, and we unwrap `.data` to the payload. The
-  // generated `EncryptionStateResponse` DTO is structurally equivalent to the
+  // Route through the generated SDK; `callEnveloped` unwraps the canonical
+  // `{ data, ts }` envelope down to the payload. The generated
+  // `EncryptionStateResponse` DTO is structurally equivalent to the
   // hand-written interface, bridged here to keep the public return type stable.
-  const envelope = await daemonClient.callSdk(() => getEncryptionStateSdk({ throwOnError: true }))
-  return envelope.data as unknown as EncryptionStateResponse
+  const data = await daemonClient.callEnveloped(() => getEncryptionStateSdk({ throwOnError: true }))
+  return data as unknown as EncryptionStateResponse
 }
 
 /**
@@ -95,10 +95,12 @@ export async function lockEncryption(): Promise<void> {
  * @throws {DaemonApiError} On HTTP or permission check errors.
  */
 export async function verifyKeychainAccess(): Promise<boolean> {
-  // Route through the generated SDK; `callSdk` unwraps to the
-  // `KeychainAccessEnvelope`, then `.data.granted` is the boolean payload.
-  const envelope = await daemonClient.callSdk(() => verifyKeychainAccessSdk({ throwOnError: true }))
-  return envelope.data.granted
+  // Route through the generated SDK; `callEnveloped` unwraps down to the
+  // payload, whose `.granted` is the boolean we surface.
+  const data = await daemonClient.callEnveloped(() =>
+    verifyKeychainAccessSdk({ throwOnError: true })
+  )
+  return data.granted
 }
 
 /**
@@ -112,10 +114,10 @@ export async function verifyKeychainAccess(): Promise<boolean> {
  *          so the caller can fall back to prompting for the passphrase.
  */
 export async function trySilentUnlock(): Promise<boolean> {
-  const envelope = await daemonClient.callSdk(() =>
+  const data = await daemonClient.callEnveloped(() =>
     unlockEncryptionSessionSdk({ throwOnError: true })
   )
-  return envelope.data.success
+  return data.success
 }
 
 /**
@@ -130,10 +132,10 @@ export async function trySilentUnlock(): Promise<boolean> {
  *          `security.ts` classifier to translate.
  */
 export async function unlockSpaceWithPassphrase(passphrase: string): Promise<{ spaceId: string }> {
-  const envelope = await daemonClient.callSdk(() =>
+  const data = await daemonClient.callEnveloped(() =>
     unlockSpaceWithPassphraseSdk({ body: { passphrase }, throwOnError: true })
   )
-  return { spaceId: envelope.data.spaceId }
+  return { spaceId: data.spaceId }
 }
 
 /**

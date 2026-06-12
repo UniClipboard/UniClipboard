@@ -17,6 +17,10 @@ vi.mock('../client', () => ({
   daemonClient: {
     request: vi.fn(),
     callSdk: vi.fn((call: () => Promise<{ data: unknown }>) => call().then(r => r.data)),
+    // 复刻 callEnveloped 快乐路径：连拆 SDK { data } 与 { data, ts } 信封。
+    callEnveloped: vi.fn((call: () => Promise<{ data: { data: unknown } }>) =>
+      call().then(r => r.data.data)
+    ),
     initialized: true,
   },
 }))

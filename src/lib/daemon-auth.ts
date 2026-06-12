@@ -102,12 +102,12 @@ export async function verifyAuthState(): Promise<AuthStateResult> {
   }
 
   // Step 2: Encryption state (L2, requires session token). Route through
-  // `callSdk` so it drives the session lifecycle; `callSdk` unwraps the SDK's
-  // outer `{ data }` to the EncryptionStateEnvelope, whose `.data` is the payload.
+  // `callEnveloped` so it drives the session lifecycle and unwraps down to the
+  // `EncryptionStateResponse` payload.
   try {
-    const envelope = await daemonClient.callSdk(() => getEncryptionState({ throwOnError: true }))
-    result.encryptionInitialized = envelope.data.initialized
-    result.encryptionSessionReady = envelope.data.sessionReady
+    const data = await daemonClient.callEnveloped(() => getEncryptionState({ throwOnError: true }))
+    result.encryptionInitialized = data.initialized
+    result.encryptionSessionReady = data.sessionReady
   } catch (err) {
     // If encryption state check fails (e.g. 401), daemon is reachable but
     // encryption info is unavailable. daemonReady stays true.
@@ -132,9 +132,11 @@ export async function waitForEncryptionReady(timeoutMs = 30_000): Promise<boolea
 
   while (Date.now() < deadline) {
     try {
-      const envelope = await daemonClient.callSdk(() => getEncryptionState({ throwOnError: true }))
+      const data = await daemonClient.callEnveloped(() =>
+        getEncryptionState({ throwOnError: true })
+      )
 
-      if (envelope.data.sessionReady) {
+      if (data.sessionReady) {
         return true
       }
     } catch {

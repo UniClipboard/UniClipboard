@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::Result;
 use reqwest::Method;
-use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::settings::{
     RelayProbeOutcomeDto, RelayProbeRequestDto, SettingsDto, SettingsPatchDto,
     SettingsUpdateResultDto,
 };
 use uc_daemon_contract::constants::http_route;
 
-use crate::http::authorized_daemon_request_with_type;
+use crate::http::enveloped::enveloped_request;
 use crate::DaemonConnectionState;
 
 /// Loopback HTTP client for the daemon's `/settings` endpoints.
@@ -48,37 +47,15 @@ impl DaemonSettingsClient {
 
     /// `GET /settings` — read the current persisted settings.
     pub async fn get_settings(&self) -> Result<SettingsDto> {
-        let connection = self
-            .connection_state
-            .get()
-            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
-        let request = authorized_daemon_request_with_type(
+        Ok(enveloped_request(
             &self.http,
             &self.connection_state,
+            &self.client_type,
             Method::GET,
             http_route::SETTINGS,
-            connection.pid,
-            &self.client_type,
+            |r| r,
         )
-        .await?;
-
-        let response = request
-            .send()
-            .await
-            .context("failed to call daemon get settings")?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("get settings failed ({}): {}", status, body);
-        }
-
-        // Wire shape (ADR-008 §H): `{ data: SettingsDto, ts }`.
-        let envelope = response
-            .json::<ApiEnvelope<SettingsDto>>()
-            .await
-            .context("failed to decode settings response")?;
-        Ok(envelope.data)
+        .await?)
     }
 
     /// `PUT /settings` — persist a settings patch. Unlike the Tauri command this
@@ -87,38 +64,15 @@ impl DaemonSettingsClient {
         &self,
         patch: SettingsPatchDto,
     ) -> Result<SettingsUpdateResultDto> {
-        let connection = self
-            .connection_state
-            .get()
-            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
-        let request = authorized_daemon_request_with_type(
+        Ok(enveloped_request(
             &self.http,
             &self.connection_state,
+            &self.client_type,
             Method::PUT,
             http_route::SETTINGS,
-            connection.pid,
-            &self.client_type,
+            |r| r.json(&patch),
         )
-        .await?;
-
-        let response = request
-            .json(&patch)
-            .send()
-            .await
-            .context("failed to call daemon update settings")?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("update settings failed ({}): {}", status, body);
-        }
-
-        // Wire shape (ADR-008 §H): `{ data: SettingsUpdateResultDto, ts }`.
-        let envelope = response
-            .json::<ApiEnvelope<SettingsUpdateResultDto>>()
-            .await
-            .context("failed to decode update settings response")?;
-        Ok(envelope.data)
+        .await?)
     }
 
     /// `POST /settings/relay-probe` — probe a candidate relay URL. A probe that
@@ -126,40 +80,17 @@ impl DaemonSettingsClient {
     /// `RelayProbeOutcomeDto`), not an error; only adapter-missing / transport
     /// faults surface as `Err`.
     pub async fn probe_relay_url(&self, url: &str) -> Result<RelayProbeOutcomeDto> {
-        let connection = self
-            .connection_state
-            .get()
-            .ok_or_else(|| anyhow!("daemon connection info is not available"))?;
         let req_body = RelayProbeRequestDto {
             url: url.to_string(),
         };
-        let request = authorized_daemon_request_with_type(
+        Ok(enveloped_request(
             &self.http,
             &self.connection_state,
+            &self.client_type,
             Method::POST,
             http_route::SETTINGS_RELAY_PROBE,
-            connection.pid,
-            &self.client_type,
+            |r| r.json(&req_body),
         )
-        .await?;
-
-        let response = request
-            .json(&req_body)
-            .send()
-            .await
-            .context("failed to call daemon relay probe")?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("relay probe failed ({}): {}", status, body);
-        }
-
-        // Wire shape (ADR-008 §H): `{ data: RelayProbeOutcomeDto, ts }`.
-        let envelope = response
-            .json::<ApiEnvelope<RelayProbeOutcomeDto>>()
-            .await
-            .context("failed to decode relay probe response")?;
-        Ok(envelope.data)
+        .await?)
     }
 }

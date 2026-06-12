@@ -11,11 +11,11 @@
 //! 不组装完整 axum Router + AppFacade（后者需 14+ sub-facades 远超 settings smoke
 //! 范围）；改为：
 //!   - **PUT 模拟**：`serde_json::from_str::<SettingsPatchDto>` →
-//!     `settings_patch_from_dto` → `SettingsFacade::update` → 含 handler 内联
+//!     `SettingsPatchDto::into_domain` → `SettingsFacade::update` → 含 handler 内联
 //!     计算的 `restart_required` 的 `ApiEnvelope<SettingsUpdateResultDto>`
 //!     （ADR-008 §0.1：PUT 响应只回 `{ data: { success, restartRequired }, ts }`，
 //!     不再回显整份 SettingsDto；写盘后的值由 `simulate_get` 单独读回验证）
-//!   - **GET 模拟**：`SettingsFacade::get` → `settings_view_to_dto`
+//!   - **GET 模拟**：`SettingsFacade::get` → `SettingsView::into_api_dto`
 //!   - **持久化**：用 tempdir-backed `Mutex<Settings>` 的 in-memory `SettingsPort`
 //!     保证写盘 → 读取一致（与 `FileSettingsRepository` 等价行为，但成本更低）
 //!
@@ -34,7 +34,7 @@ use uc_daemon_contract::api::dto::settings::{
     GeneralSettingsPatchDto, NetworkSettingsPatchDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
 use uc_webserver::api::dto::settings::SettingsDto;
-use uc_webserver::api::settings::{settings_patch_from_dto, settings_view_to_dto};
+use uc_webserver::api::projection::{IntoApiDto, IntoDomain};
 
 // ============================================================
 // Fixture：tempdir-backed in-memory SettingsPort + SettingsFacade
@@ -91,7 +91,7 @@ async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
     //    不再回显更新后的 SettingsView —— 它只把 success + restart_required 折进
     //    payload。写盘后的实际值改由 `simulate_get` 单独读回验证。
     facade
-        .update(settings_patch_from_dto(payload))
+        .update(payload.into_domain())
         .await
         .expect("settings update");
 
@@ -115,7 +115,7 @@ async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
 
 async fn simulate_get(facade: &SettingsFacade) -> Value {
     let view = facade.get().await.expect("settings get");
-    let dto: SettingsDto = settings_view_to_dto(view);
+    let dto: SettingsDto = view.into_api_dto();
     serde_json::to_value(&dto).expect("serialize get")
 }
 

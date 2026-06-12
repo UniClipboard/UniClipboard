@@ -12,9 +12,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use tracing::{debug, info, instrument};
-use uc_application::facade::{
-    SearchFacadeError, SearchPageView, SearchQueryInput, SearchStatusView,
-};
+use uc_application::facade::{SearchFacadeError, SearchQueryInput};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::http_route;
 use utoipa::IntoParams;
@@ -27,6 +25,7 @@ use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::search::{
     SearchQueryResultDto, SearchRebuildAcceptedData, SearchResultDto, SearchStatusData,
 };
+use crate::api::projection::IntoApiDto;
 use crate::api::server::DaemonApiState;
 
 // ---------------------------------------------------------------------------
@@ -181,7 +180,7 @@ async fn search_query_handler(
     let result_count = page.items.len();
     let total = page.total;
     let has_more = page.has_more;
-    let items = search_page_to_dto(page);
+    let items: Vec<SearchResultDto> = page.into_api_dto();
 
     info!(
         total,
@@ -237,7 +236,7 @@ async fn search_status_handler(
         "search status queried"
     );
 
-    Ok(Json(ApiEnvelope::now(search_status_to_dto(view))))
+    Ok(Json(ApiEnvelope::now(view.into_api_dto())))
 }
 
 /// POST /search/rebuild
@@ -355,29 +354,6 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
     };
     log_facade_failure("search", op, variant, api.status, &api.message);
     api
-}
-
-fn search_status_to_dto(view: SearchStatusView) -> SearchStatusData {
-    SearchStatusData {
-        state: view.state,
-        reason: view.reason,
-        last_rebuild_started_at_ms: view.last_rebuild_started_at_ms,
-        last_rebuild_completed_at_ms: view.last_rebuild_completed_at_ms,
-    }
-}
-
-fn search_page_to_dto(page: SearchPageView) -> Vec<SearchResultDto> {
-    page.items
-        .into_iter()
-        .map(|result| SearchResultDto {
-            entry_id: result.entry_id,
-            content_type: result.content_type,
-            active_time_ms: result.active_time_ms,
-            text_preview: result.text_preview,
-            mime_type: result.mime_type,
-            file_extensions: result.file_extensions,
-        })
-        .collect()
 }
 
 // ---------------------------------------------------------------------------

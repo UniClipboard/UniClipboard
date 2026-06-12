@@ -19,8 +19,8 @@
 //!
 //! 不组装完整 axum Router + AppFacade，改为：
 //!   - PUT 模拟：`serde_json::from_str::<SettingsPatchDto>` →
-//!     `settings_patch_from_dto` → `SettingsFacade::update` → `settings_view_to_dto`
-//!   - GET 模拟：`SettingsFacade::get` → `settings_view_to_dto`
+//!     `SettingsPatchDto::into_domain` → `SettingsFacade::update` → `SettingsView::into_api_dto`
+//!   - GET 模拟：`SettingsFacade::get` → `SettingsView::into_api_dto`
 //!   - 持久化：`Mutex<Settings>` in-memory `SettingsPort`
 
 use std::sync::{Arc, Mutex};
@@ -35,7 +35,7 @@ use uc_daemon_contract::api::dto::settings::{
     RetentionRuleDto, SettingsPatchDto, SettingsUpdateResultDto,
 };
 use uc_webserver::api::dto::settings::SettingsDto;
-use uc_webserver::api::settings::{settings_patch_from_dto, settings_view_to_dto};
+use uc_webserver::api::projection::{IntoApiDto, IntoDomain};
 
 // ============================================================
 // Fixture
@@ -71,7 +71,7 @@ async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
     // `{ data: { success, restartRequired }, ts }` — the updated SettingsView is
     // no longer echoed on the wire. Written values are verified via `simulate_get`.
     facade
-        .update(settings_patch_from_dto(payload))
+        .update(payload.into_domain())
         .await
         .expect("settings update");
     let resp = ApiEnvelope::with_ts(
@@ -86,7 +86,7 @@ async fn simulate_put(facade: &SettingsFacade, body_json: &str) -> Value {
 
 async fn simulate_get(facade: &SettingsFacade) -> Value {
     let view = facade.get().await.expect("settings get");
-    let dto: SettingsDto = settings_view_to_dto(view);
+    let dto: SettingsDto = view.into_api_dto();
     serde_json::to_value(&dto).expect("serialize get")
 }
 

@@ -11,26 +11,23 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 
 use uc_application::facade::space_setup::{
-    MigrationPhaseKind, MigrationProgress, QueryMigrationProgressError, SwitchSpaceError,
-    SwitchSpaceInput, SwitchSpaceResult,
+    QueryMigrationProgressError, SwitchSpaceError, SwitchSpaceInput,
 };
 use uc_application::facade::{
-    CancelInvitationError, InitializeSpaceError, IssuePairingInvitationResult,
-    QuerySetupStateError, RedeemPairingInvitationError, RedeemPairingInvitationResult,
-    ResetSpaceError, SetupStateView, SpaceSetupFacade,
+    CancelInvitationError, InitializeSpaceError, QuerySetupStateError,
+    RedeemPairingInvitationError, ResetSpaceError, SpaceSetupFacade,
 };
-use uc_application::facade::{
-    InitializeSpaceInput, InitializeSpaceResult, RedeemPairingInvitationInput,
-};
+use uc_application::facade::{InitializeSpaceInput, RedeemPairingInvitationInput};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
-    CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
-    MigrationPhaseDto, MigrationProgressResponse, RedeemRequest, RedeemResponse,
-    SetupStateResponse, SwitchSpaceRequest, SwitchSpaceResponse,
+    InitializeSpaceRequest, InitializeSpaceResponse, IssueInvitationResponse,
+    MigrationProgressResponse, RedeemRequest, RedeemResponse, SetupStateResponse,
+    SwitchSpaceRequest, SwitchSpaceResponse,
 };
 use uc_daemon_contract::constants::http_route_v2;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
+use crate::api::projection::IntoApiDto;
 use crate::api::server::DaemonApiState;
 
 pub fn router() -> Router<DaemonApiState> {
@@ -89,7 +86,7 @@ pub(crate) async fn initialize(
         device_name: req.device_name,
     };
     let out = facade.initialize_space(input).await.map_err(map_init_err)?;
-    Ok(Json(ApiEnvelope::now(initialize_to_dto(out))))
+    Ok(Json(ApiEnvelope::now(out.into_api_dto())))
 }
 
 fn map_init_err(err: InitializeSpaceError) -> ApiError {
@@ -124,14 +121,6 @@ fn map_init_err(err: InitializeSpaceError) -> ApiError {
     api
 }
 
-fn initialize_to_dto(out: InitializeSpaceResult) -> InitializeSpaceResponse {
-    InitializeSpaceResponse {
-        space_id: out.space_id.to_string(),
-        self_device_id: out.self_device_id.to_string(),
-        fingerprint: out.fingerprint.as_display().to_string(),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // POST /v2/setup/issue-invitation
 // ---------------------------------------------------------------------------
@@ -155,7 +144,7 @@ pub(crate) async fn issue_invitation(
         .issue_pairing_invitation()
         .await
         .map_err(map_issue_err)?;
-    Ok(Json(ApiEnvelope::now(issue_to_dto(out))))
+    Ok(Json(ApiEnvelope::now(out.into_api_dto())))
 }
 
 fn map_issue_err(err: uc_application::facade::IssuePairingInvitationError) -> ApiError {
@@ -192,13 +181,6 @@ fn map_issue_err(err: uc_application::facade::IssuePairingInvitationError) -> Ap
     api
 }
 
-fn issue_to_dto(out: IssuePairingInvitationResult) -> IssueInvitationResponse {
-    IssueInvitationResponse {
-        code: out.code.as_str().to_string(),
-        expires_at_ms: out.expires_at.timestamp_millis(),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // POST /v2/setup/redeem
 // ---------------------------------------------------------------------------
@@ -230,7 +212,7 @@ pub(crate) async fn redeem(
         .redeem_pairing_invitation(input)
         .await
         .map_err(map_redeem_err)?;
-    Ok(Json(ApiEnvelope::now(redeem_to_dto(out))))
+    Ok(Json(ApiEnvelope::now(out.into_api_dto())))
 }
 
 fn map_redeem_err(err: RedeemPairingInvitationError) -> ApiError {
@@ -298,16 +280,6 @@ fn map_redeem_err(err: RedeemPairingInvitationError) -> ApiError {
         &api.message,
     );
     api
-}
-
-fn redeem_to_dto(out: RedeemPairingInvitationResult) -> RedeemResponse {
-    RedeemResponse {
-        sponsor_device_id: out.sponsor_device_id.to_string(),
-        sponsor_identity_fingerprint: out.sponsor_identity_fingerprint.as_display().to_string(),
-        space_id: out.space_id.to_string(),
-        self_device_id: out.self_device_id.to_string(),
-        self_identity_fingerprint: out.self_identity_fingerprint.as_display().to_string(),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -405,7 +377,7 @@ pub(crate) async fn get_state(
         .query_setup_state()
         .await
         .map_err(map_query_setup_state_err)?;
-    Ok(Json(ApiEnvelope::now(state_to_dto(view))))
+    Ok(Json(ApiEnvelope::now(view.into_api_dto())))
 }
 
 fn map_query_setup_state_err(err: QuerySetupStateError) -> ApiError {
@@ -422,17 +394,6 @@ fn map_query_setup_state_err(err: QuerySetupStateError) -> ApiError {
         &api.message,
     );
     api
-}
-
-fn state_to_dto(view: SetupStateView) -> SetupStateResponse {
-    SetupStateResponse {
-        has_completed: view.has_completed,
-        current_invitation: view.current_invitation.map(|inv| CurrentInvitation {
-            code: inv.code.as_str().to_string(),
-            expires_at_ms: inv.expires_at.timestamp_millis(),
-        }),
-        device_name: view.device_name,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +428,7 @@ pub(crate) async fn switch_space(
         .switch_space(input)
         .await
         .map_err(map_switch_space_err)?;
-    Ok(Json(ApiEnvelope::now(switch_space_to_dto(out))))
+    Ok(Json(ApiEnvelope::now(out.into_api_dto())))
 }
 
 fn map_switch_space_err(err: SwitchSpaceError) -> ApiError {
@@ -557,17 +518,6 @@ fn map_switch_space_err(err: SwitchSpaceError) -> ApiError {
     api
 }
 
-fn switch_space_to_dto(out: SwitchSpaceResult) -> SwitchSpaceResponse {
-    SwitchSpaceResponse {
-        sponsor_device_id: out.sponsor_device_id.to_string(),
-        sponsor_identity_fingerprint: out.sponsor_identity_fingerprint.as_display().to_string(),
-        space_id: out.space_id.to_string(),
-        self_device_id: out.self_device_id.to_string(),
-        self_identity_fingerprint: out.self_identity_fingerprint.as_display().to_string(),
-        migrated_records: out.migrated_records,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // GET /v2/setup/migration-progress
 // ---------------------------------------------------------------------------
@@ -591,7 +541,7 @@ pub(crate) async fn query_migration_progress(
         .query_migration_progress()
         .await
         .map_err(map_query_migration_progress_err)?;
-    Ok(Json(ApiEnvelope::now(migration_progress_to_dto(progress))))
+    Ok(Json(ApiEnvelope::now(progress.into_api_dto())))
 }
 
 fn map_query_migration_progress_err(err: QueryMigrationProgressError) -> ApiError {
@@ -610,21 +560,6 @@ fn map_query_migration_progress_err(err: QueryMigrationProgressError) -> ApiErro
     api
 }
 
-fn migration_progress_to_dto(progress: MigrationProgress) -> MigrationProgressResponse {
-    MigrationProgressResponse {
-        phase: progress.phase.map(phase_kind_to_dto),
-        backup_record_count: progress.backup_record_count,
-    }
-}
-
-fn phase_kind_to_dto(kind: MigrationPhaseKind) -> MigrationPhaseDto {
-    match kind {
-        MigrationPhaseKind::Prepared => MigrationPhaseDto::Prepared,
-        MigrationPhaseKind::HandshakeDone => MigrationPhaseDto::HandshakeDone,
-        MigrationPhaseKind::Swapped => MigrationPhaseDto::Swapped,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     //! Handler-internal pure-function tests. End-to-end router /
@@ -634,89 +569,6 @@ mod tests {
     //! out of scope for T3.2.
 
     use super::*;
-
-    use chrono::{DateTime, Utc};
-    use uc_application::facade::CurrentInvitation as FacadeCurrentInvitation;
-    use uc_core::ids::{DeviceId, SpaceId};
-    use uc_core::pairing::invitation::InvitationCode;
-    use uc_core::security::IdentityFingerprint;
-
-    fn fixed_fp() -> IdentityFingerprint {
-        IdentityFingerprint::from_raw_string("ABCDEFGHIJKLMNOP").unwrap()
-    }
-
-    #[test]
-    fn initialize_to_dto_flattens_domain_types_to_strings() {
-        let dto = initialize_to_dto(InitializeSpaceResult {
-            space_id: SpaceId::from_str("space-1"),
-            self_device_id: DeviceId::new("device-1"),
-            fingerprint: fixed_fp(),
-        });
-        assert_eq!(dto.space_id, "space-1");
-        assert_eq!(dto.self_device_id, "device-1");
-        assert_eq!(dto.fingerprint, "ABCD-EFGH-IJKL-MNOP");
-    }
-
-    #[test]
-    fn issue_to_dto_serialises_expiry_as_epoch_millis() {
-        let expires = DateTime::parse_from_rfc3339("2026-04-25T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let dto = issue_to_dto(IssuePairingInvitationResult {
-            code: InvitationCode::new("ABCD-1234"),
-            expires_at: expires,
-        });
-        assert_eq!(dto.code, "ABCD-1234");
-        assert_eq!(dto.expires_at_ms, expires.timestamp_millis());
-    }
-
-    #[test]
-    fn redeem_to_dto_carries_both_sides() {
-        let dto = redeem_to_dto(RedeemPairingInvitationResult {
-            sponsor_device_id: DeviceId::new("sponsor-1"),
-            sponsor_identity_fingerprint: fixed_fp(),
-            space_id: SpaceId::from_str("space-1"),
-            self_device_id: DeviceId::new("joiner-2"),
-            self_identity_fingerprint: fixed_fp(),
-        });
-        assert_eq!(dto.sponsor_device_id, "sponsor-1");
-        assert_eq!(dto.self_device_id, "joiner-2");
-        assert_eq!(dto.space_id, "space-1");
-        assert_eq!(dto.sponsor_identity_fingerprint, "ABCD-EFGH-IJKL-MNOP");
-        assert_eq!(dto.self_identity_fingerprint, "ABCD-EFGH-IJKL-MNOP");
-    }
-
-    #[test]
-    fn state_to_dto_with_pending_invitation() {
-        let expires = DateTime::parse_from_rfc3339("2026-04-25T13:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let dto = state_to_dto(SetupStateView {
-            has_completed: true,
-            current_invitation: Some(FacadeCurrentInvitation {
-                code: InvitationCode::new("WXYZ"),
-                expires_at: expires,
-            }),
-            device_name: Some("MacBook".to_string()),
-        });
-        assert!(dto.has_completed);
-        let inv = dto.current_invitation.expect("invitation present");
-        assert_eq!(inv.code, "WXYZ");
-        assert_eq!(inv.expires_at_ms, expires.timestamp_millis());
-        assert_eq!(dto.device_name.as_deref(), Some("MacBook"));
-    }
-
-    #[test]
-    fn state_to_dto_fresh_install_returns_none_branches() {
-        let dto = state_to_dto(SetupStateView {
-            has_completed: false,
-            current_invitation: None,
-            device_name: None,
-        });
-        assert!(!dto.has_completed);
-        assert!(dto.current_invitation.is_none());
-        assert!(dto.device_name.is_none());
-    }
 
     #[test]
     fn map_init_err_branches() {
@@ -770,25 +622,6 @@ mod tests {
                 .as_u16(),
             500
         );
-    }
-
-    // ── switch-space + migration-progress (commit 7) ─────────────────────
-
-    #[test]
-    fn switch_space_to_dto_carries_all_fields_including_migrated_records() {
-        let dto = switch_space_to_dto(SwitchSpaceResult {
-            sponsor_device_id: DeviceId::new("sponsor-1"),
-            sponsor_identity_fingerprint: fixed_fp(),
-            space_id: SpaceId::from_str("space-new"),
-            self_device_id: DeviceId::new("joiner-2"),
-            self_identity_fingerprint: fixed_fp(),
-            migrated_records: 7,
-        });
-        assert_eq!(dto.sponsor_device_id, "sponsor-1");
-        assert_eq!(dto.self_device_id, "joiner-2");
-        assert_eq!(dto.space_id, "space-new");
-        assert_eq!(dto.migrated_records, 7);
-        assert_eq!(dto.sponsor_identity_fingerprint, "ABCD-EFGH-IJKL-MNOP");
     }
 
     #[test]
@@ -904,34 +737,5 @@ mod tests {
                 .as_u16(),
             500
         );
-    }
-
-    #[test]
-    fn migration_progress_to_dto_idle_returns_phase_none() {
-        let dto = migration_progress_to_dto(MigrationProgress {
-            phase: None,
-            backup_record_count: 0,
-        });
-        assert!(dto.phase.is_none());
-        assert_eq!(dto.backup_record_count, 0);
-    }
-
-    #[test]
-    fn migration_progress_to_dto_maps_each_phase_kind() {
-        for (kind, expected) in [
-            (MigrationPhaseKind::Prepared, MigrationPhaseDto::Prepared),
-            (
-                MigrationPhaseKind::HandshakeDone,
-                MigrationPhaseDto::HandshakeDone,
-            ),
-            (MigrationPhaseKind::Swapped, MigrationPhaseDto::Swapped),
-        ] {
-            let dto = migration_progress_to_dto(MigrationProgress {
-                phase: Some(kind),
-                backup_record_count: 3,
-            });
-            assert_eq!(dto.phase, Some(expected));
-            assert_eq!(dto.backup_record_count, 3);
-        }
     }
 }

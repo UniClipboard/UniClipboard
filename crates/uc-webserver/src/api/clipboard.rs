@@ -10,25 +10,15 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
 use serde::Deserialize;
 use serde_json::json;
 use uc_application::facade::{
     AppFacade, NotResendableReason, ResendEntryCommand, ResendEntryError,
 };
 use uc_application::facade::{
-    ClipboardClearHistoryResultView, ClipboardHistoryError, ClipboardHistoryFacade,
-    ClipboardListInput, ClipboardStatsView, EntryDetailView, EntryProjectionView,
-    EntryResourceView,
+    ClipboardHistoryError, ClipboardHistoryFacade, ClipboardListInput, GetEntryDeliveryViewError,
 };
-use uc_application::facade::{
-    EntryDeliveryStatusView, EntryDeliveryTargetView, EntryDeliveryView, EntrySource,
-    GetEntryDeliveryViewError,
-};
-use uc_core::clipboard::DeliveryFailureReason;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
-use uc_core::ports::DispatchAck;
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
@@ -36,12 +26,9 @@ use utoipa::IntoParams;
 
 use uc_daemon_contract::api::dto::clipboard_command::{
     CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
-    PerTargetOutcomeDto, ResendRequest, ResendResponse,
+    ResendRequest, ResendResponse,
 };
-use uc_daemon_contract::api::dto::clipboard_delivery::{
-    DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
-    EntrySourceDto,
-};
+use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
 use crate::api::dto::clipboard::{
@@ -49,6 +36,7 @@ use crate::api::dto::clipboard::{
     EntryResourceDto, ToggleFavoriteRequest, ToggleFavoriteResultDto,
 };
 use crate::api::dto::error::{log_facade_failure, ApiError, ApiErrorResponse};
+use crate::api::projection::IntoApiDto;
 use crate::api::server::DaemonApiState;
 
 /// Query parameters for `GET /clipboard/entries`.
@@ -130,7 +118,7 @@ async fn list_entries(
         .map_err(|e| map_clipboard_err("list_entries", e))?;
 
     let response_entries: Vec<EntryProjectionResponseDto> =
-        entries.into_iter().map(entry_projection_to_dto).collect();
+        entries.into_iter().map(IntoApiDto::into_api_dto).collect();
 
     Ok(Json(ApiEnvelope::now(response_entries)))
 }
@@ -164,7 +152,7 @@ async fn get_entry(
         .await
         .map_err(|e| map_clipboard_err("get_entry", e))?;
 
-    Ok(Json(ApiEnvelope::now(entry_detail_to_dto(detail))))
+    Ok(Json(ApiEnvelope::now(detail.into_api_dto())))
 }
 
 /// DELETE /clipboard/entries/:id
@@ -261,7 +249,7 @@ async fn get_stats(
         .await
         .map_err(|e| map_clipboard_err("get_stats", e))?;
 
-    Ok(Json(ApiEnvelope::now(clipboard_stats_to_dto(stats))))
+    Ok(Json(ApiEnvelope::now(stats.into_api_dto())))
 }
 
 /// GET /clipboard/entries/:id/resource
@@ -291,7 +279,7 @@ async fn get_entry_resource(
         .await
         .map_err(|e| map_clipboard_err("get_entry_resource", e))?;
 
-    Ok(Json(ApiEnvelope::now(entry_resource_to_dto(resource))))
+    Ok(Json(ApiEnvelope::now(resource.into_api_dto())))
 }
 
 /// POST /clipboard/entries/clear
@@ -317,7 +305,7 @@ async fn clear_history(
         .await
         .map_err(|e| map_clipboard_err("clear_history", e))?;
 
-    Ok(Json(ApiEnvelope::now(clear_history_to_dto(result))))
+    Ok(Json(ApiEnvelope::now(result.into_api_dto())))
 }
 
 // ── Command endpoints (ADR-008 P2.5 / D7) ───────────────────────
@@ -385,7 +373,7 @@ async fn dispatch_text(
             ApiError::internal(e.to_string())
         })?;
 
-    Ok(Json(ApiEnvelope::now(dispatch_outcome_to_dto(outcome))))
+    Ok(Json(ApiEnvelope::now(outcome.into_api_dto())))
 }
 
 /// POST /clipboard/resend
@@ -431,13 +419,7 @@ async fn resend_entry(
         .await
         .map_err(|e| resend_error_to_response(e).into_response())?;
 
-    Ok(Json(ApiEnvelope::now(ResendResponse {
-        accepted: report.accepted,
-        duplicate: report.duplicate,
-        offline: report.offline,
-        errored: report.errored,
-        pending: report.pending,
-    })))
+    Ok(Json(ApiEnvelope::now(report.into_api_dto())))
 }
 
 /// Map the typed [`ResendEntryError`] to (status, canonical `ApiErrorResponse`).
@@ -549,7 +531,7 @@ async fn get_entry_delivery_view_handler(
         .get_entry_delivery_view(&entry)
         .await
         .map_err(map_delivery_view_err)?;
-    Ok(Json(ApiEnvelope::now(entry_delivery_view_to_dto(view))))
+    Ok(Json(ApiEnvelope::now(view.into_api_dto())))
 }
 
 fn map_delivery_view_err(err: GetEntryDeliveryViewError) -> ApiError {
@@ -569,63 +551,6 @@ fn map_delivery_view_err(err: GetEntryDeliveryViewError) -> ApiError {
         &api.message,
     );
     api
-}
-
-fn entry_delivery_view_to_dto(view: EntryDeliveryView) -> EntryDeliveryViewDto {
-    EntryDeliveryViewDto {
-        entry_id: view.entry_id.as_str().to_string(),
-        source: entry_source_to_dto(view.source),
-        deliveries: view
-            .deliveries
-            .into_iter()
-            .map(entry_delivery_target_to_dto)
-            .collect(),
-    }
-}
-
-fn entry_source_to_dto(source: EntrySource) -> EntrySourceDto {
-    match source {
-        EntrySource::Local => EntrySourceDto::Local,
-        EntrySource::Remote {
-            device_id,
-            device_name,
-        } => EntrySourceDto::Remote {
-            device_id: device_id.as_str().to_string(),
-            device_name,
-        },
-        EntrySource::Historical => EntrySourceDto::Historical,
-    }
-}
-
-fn entry_delivery_target_to_dto(target: EntryDeliveryTargetView) -> EntryDeliveryTargetDto {
-    EntryDeliveryTargetDto {
-        target_device_id: target.target_device_id.as_str().to_string(),
-        target_device_name: target.target_device_name,
-        status: entry_delivery_status_to_dto(target.status),
-        reason_detail: target.reason_detail,
-        updated_at_ms: target.updated_at_ms,
-    }
-}
-
-fn entry_delivery_status_to_dto(status: EntryDeliveryStatusView) -> EntryDeliveryStatusDto {
-    match status {
-        EntryDeliveryStatusView::Pending => EntryDeliveryStatusDto::Pending,
-        EntryDeliveryStatusView::Delivered => EntryDeliveryStatusDto::Delivered,
-        EntryDeliveryStatusView::Duplicate => EntryDeliveryStatusDto::Duplicate,
-        EntryDeliveryStatusView::Failed { reason } => EntryDeliveryStatusDto::Failed {
-            reason: delivery_failure_reason_to_dto(reason),
-        },
-    }
-}
-
-fn delivery_failure_reason_to_dto(reason: DeliveryFailureReason) -> DeliveryFailureReasonDto {
-    match reason {
-        DeliveryFailureReason::Offline => DeliveryFailureReasonDto::Offline,
-        DeliveryFailureReason::LocalPolicy => DeliveryFailureReasonDto::LocalPolicy,
-        DeliveryFailureReason::PeerRejected => DeliveryFailureReasonDto::PeerRejected,
-        DeliveryFailureReason::Io => DeliveryFailureReasonDto::Io,
-        DeliveryFailureReason::Internal => DeliveryFailureReasonDto::Internal,
-    }
 }
 
 /// POST /clipboard/cancel-transfer/:transfer_id
@@ -688,37 +613,6 @@ async fn cancel_transfer(
     })))
 }
 
-fn dispatch_outcome_to_dto(
-    o: uc_application::facade::DispatchEntryOutcome,
-) -> DispatchOutcomeResponse {
-    let per_target = o
-        .per_target
-        .iter()
-        .map(|t| {
-            let (outcome, error) = match &t.outcome {
-                Ok(DispatchAck::Accepted) => ("accepted", None),
-                Ok(DispatchAck::DuplicateIgnored) => ("duplicate", None),
-                Err(msg) => ("error", Some(msg.clone())),
-            };
-            PerTargetOutcomeDto {
-                device_id: t.device_id.as_str().to_string(),
-                outcome: outcome.to_string(),
-                error,
-            }
-        })
-        .collect();
-
-    DispatchOutcomeResponse {
-        content_hash: o.content_hash,
-        at_ms: o.at_ms,
-        total_accepted: o.total_accepted,
-        total_duplicate: o.total_duplicate,
-        total_offline: o.total_offline,
-        total_errored: o.total_errored,
-        per_target,
-    }
-}
-
 // ── Clipboard history helpers ────────────────────────────────────
 
 fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
@@ -738,65 +632,6 @@ fn map_clipboard_err(op: &'static str, err: ClipboardHistoryError) -> ApiError {
     };
     log_facade_failure("clipboard_history", op, variant, api.status, &api.message);
     api
-}
-
-fn entry_projection_to_dto(view: EntryProjectionView) -> EntryProjectionResponseDto {
-    EntryProjectionResponseDto {
-        id: view.id,
-        preview: view.preview,
-        has_detail: view.has_detail,
-        size_bytes: view.size_bytes,
-        captured_at: view.captured_at,
-        content_type: view.content_type,
-        thumbnail_url: view.thumbnail_url,
-        is_encrypted: view.is_encrypted,
-        is_favorited: view.is_favorited,
-        updated_at: view.updated_at,
-        active_time: view.active_time,
-        file_transfer_status: view.file_transfer_status,
-        file_transfer_reason: view.file_transfer_reason,
-        link_urls: view.link_urls,
-        link_domains: view.link_domains,
-        file_sizes: view.file_sizes,
-        image_width: view.image_width,
-        image_height: view.image_height,
-        payload_state: view.payload_state,
-    }
-}
-
-fn entry_detail_to_dto(view: EntryDetailView) -> EntryDetailDto {
-    EntryDetailDto {
-        id: view.id,
-        content: view.content,
-        size_bytes: view.size_bytes,
-        created_at_ms: view.created_at_ms,
-        active_time_ms: view.active_time_ms,
-        mime_type: view.mime_type,
-    }
-}
-
-fn entry_resource_to_dto(view: EntryResourceView) -> EntryResourceDto {
-    EntryResourceDto {
-        blob_id: view.blob_id,
-        mime_type: view.mime_type,
-        size_bytes: view.size_bytes,
-        url: view.url,
-        inline_data: view.inline_data.map(|bytes| STANDARD.encode(bytes)),
-    }
-}
-
-fn clipboard_stats_to_dto(view: ClipboardStatsView) -> ClipboardStatsDto {
-    ClipboardStatsDto {
-        total_items: view.total_items,
-        total_size: view.total_size,
-    }
-}
-
-fn clear_history_to_dto(view: ClipboardClearHistoryResultView) -> ClearHistoryResultDto {
-    ClearHistoryResultDto {
-        deleted_count: view.deleted_count,
-        failed_entries: view.failed_entries,
-    }
 }
 
 #[cfg(test)]

@@ -22,11 +22,12 @@
 use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use uc_application::facade::{AcknowledgeUpgradeError, DetectUpgradeError, UpgradeStatus};
+use uc_application::facade::{AcknowledgeUpgradeError, DetectUpgradeError};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
+use crate::api::projection::upgrade::upgrade_status_to_dto;
 use crate::api::server::DaemonApiState;
 
 /// Build version reported to the upgrade facade. Workspace-versioned and
@@ -62,7 +63,10 @@ async fn get_upgrade_status_handler(
         .await
         .map_err(detect_error_to_api)?;
 
-    Ok(Json(ApiEnvelope::now(status_to_dto(status))))
+    Ok(Json(ApiEnvelope::now(upgrade_status_to_dto(
+        status,
+        SERVER_VERSION,
+    ))))
 }
 
 /// POST /upgrade/ack
@@ -90,25 +94,6 @@ async fn ack_upgrade_handler(
     Ok(Json(ApiEnvelope::now(AckUpgradePayload {
         acknowledged: SERVER_VERSION.to_string(),
     })))
-}
-
-fn status_to_dto(status: UpgradeStatus) -> UpgradeStatusDto {
-    match status {
-        UpgradeStatus::FreshInstall => UpgradeStatusDto::FreshInstall {
-            current: SERVER_VERSION.to_string(),
-        },
-        UpgradeStatus::NoChange => UpgradeStatusDto::NoChange {
-            current: SERVER_VERSION.to_string(),
-        },
-        UpgradeStatus::Upgraded { from, to } => UpgradeStatusDto::Upgraded {
-            from: from.map(|v| v.to_string()),
-            to: to.to_string(),
-        },
-        UpgradeStatus::Downgraded { from, to } => UpgradeStatusDto::Downgraded {
-            from: from.to_string(),
-            to: to.to_string(),
-        },
-    }
 }
 
 fn detect_error_to_api(err: DetectUpgradeError) -> ApiError {

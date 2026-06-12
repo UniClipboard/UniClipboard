@@ -8,13 +8,12 @@ use axum::routing::{get, patch};
 use axum::{Json, Router};
 use tracing::{info, instrument};
 
-use uc_application::facade::{
-    ContentTypesPatch, MemberSyncPreferencesPatch, MemberSyncPreferencesView, RosterError,
-};
+use uc_application::facade::RosterError;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::member::{MemberSyncPreferencesPatchDto, MemberSyncResultDto};
+use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
 
 pub fn router() -> Router<DaemonApiState> {
@@ -74,9 +73,7 @@ pub async fn get_member_sync_preferences_handler(
     );
     // Canonical `{ data, ts }` envelope (ADR-008 §0.1). Identical wire shape to
     // the legacy `GetMemberSyncPreferencesResponse` wrapper — not a wire change.
-    Ok(Json(ApiEnvelope::now(member_sync_preferences_to_dto(
-        prefs,
-    ))))
+    Ok(Json(ApiEnvelope::now(prefs.into_api_dto())))
 }
 
 /// PATCH /member/:device_id/sync-preferences
@@ -124,7 +121,7 @@ pub async fn update_member_sync_preferences_handler(
         .cloned()
         .ok_or_else(|| ApiError::service_unavailable("member roster facade unavailable"))?;
     let updated = roster
-        .update_sync_preferences(&device_id, member_sync_preferences_patch_from_dto(payload))
+        .update_sync_preferences(&device_id, payload.into_domain())
         .await
         .map_err(|e| map_member_error(&device_id, "update_member_sync_preferences", e))?;
 
@@ -140,57 +137,6 @@ pub async fn update_member_sync_preferences_handler(
     Ok(Json(ApiEnvelope::now(MemberSyncResultDto {
         success: true,
     })))
-}
-
-fn member_sync_preferences_patch_from_dto(
-    patch: MemberSyncPreferencesPatchDto,
-) -> MemberSyncPreferencesPatch {
-    MemberSyncPreferencesPatch {
-        send_enabled: patch.send_enabled,
-        receive_enabled: patch.receive_enabled,
-        send_content_types: patch.send_content_types.map(content_types_patch_from_dto),
-        receive_content_types: patch
-            .receive_content_types
-            .map(content_types_patch_from_dto),
-    }
-}
-
-fn content_types_patch_from_dto(
-    patch: crate::api::dto::settings::ContentTypesPatchDto,
-) -> ContentTypesPatch {
-    ContentTypesPatch {
-        text: patch.text,
-        image: patch.image,
-        link: patch.link,
-        file: patch.file,
-        code_snippet: patch.code_snippet,
-        rich_text: patch.rich_text,
-    }
-}
-
-fn member_sync_preferences_to_dto(
-    value: MemberSyncPreferencesView,
-) -> crate::api::dto::member::MemberSyncPreferencesDto {
-    crate::api::dto::member::MemberSyncPreferencesDto {
-        send_enabled: value.send_enabled,
-        receive_enabled: value.receive_enabled,
-        send_content_types: crate::api::dto::settings::ContentTypesDto {
-            text: value.send_content_types.text,
-            image: value.send_content_types.image,
-            link: value.send_content_types.link,
-            file: value.send_content_types.file,
-            code_snippet: value.send_content_types.code_snippet,
-            rich_text: value.send_content_types.rich_text,
-        },
-        receive_content_types: crate::api::dto::settings::ContentTypesDto {
-            text: value.receive_content_types.text,
-            image: value.receive_content_types.image,
-            link: value.receive_content_types.link,
-            file: value.receive_content_types.file,
-            code_snippet: value.receive_content_types.code_snippet,
-            rich_text: value.receive_content_types.rich_text,
-        },
-    }
 }
 
 /// 把 `RosterError` 映射为 HTTP `ApiError`，并在 5xx 路径打根因日志。
@@ -228,46 +174,4 @@ fn map_member_error(device_id: &str, op: &'static str, err: RosterError) -> ApiE
     };
     log_facade_failure("roster", op, variant, api.status, &api.message);
     api
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn patch_mapping_preserves_omitted_fields_as_none() {
-        let patch = MemberSyncPreferencesPatchDto {
-            send_enabled: Some(false),
-            receive_enabled: None,
-            send_content_types: None,
-            receive_content_types: None,
-        };
-        let mapped = member_sync_preferences_patch_from_dto(patch);
-
-        assert_eq!(mapped.send_enabled, Some(false));
-        assert_eq!(mapped.receive_enabled, None);
-        assert!(mapped.send_content_types.is_none());
-        assert!(mapped.receive_content_types.is_none());
-    }
-
-    #[test]
-    fn patch_mapping_keeps_partial_content_type_shape() {
-        let patch = MemberSyncPreferencesPatchDto {
-            send_enabled: None,
-            receive_enabled: None,
-            send_content_types: Some(crate::api::dto::settings::ContentTypesPatchDto {
-                text: Some(true),
-                image: None,
-                link: None,
-                file: None,
-                code_snippet: None,
-                rich_text: None,
-            }),
-            receive_content_types: None,
-        };
-        let mapped = member_sync_preferences_patch_from_dto(patch);
-        let send = mapped.send_content_types.expect("send patch");
-        assert_eq!(send.text, Some(true));
-        assert_eq!(send.image, None);
-    }
 }

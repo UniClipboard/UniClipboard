@@ -109,14 +109,14 @@ jobs:
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
       - name: ensure rust target installed on pinned toolchain
-        # src-tauri/rust-toolchain.toml 把 cargo 锁到一个具体 channel,
-        # 跟 dtolnay 装的 stable 是两个独立 toolchain。CLI build 也在
-        # src-tauri/ 下跑 cargo,必须把 target 装到 pinned channel,否则
+        # rust-toolchain.toml (repo root) 把 cargo 锁到一个具体 channel,
+        # 跟 dtolnay 装的 stable 是两个独立 toolchain。CLI build 跑 cargo
+        # 时,必须把 target 装到 pinned channel,否则
         # 与 build.yml 一样会报 `Target ... is not installed`。
         # 见 dtolnay/rust-toolchain#75。Windows host=msvc 不用装。
         shell: bash
         run: |
-          TC=$(cd src-tauri && rustup show active-toolchain | awk '{print $1}')
+          TC=$(rustup show active-toolchain | awk '{print $1}')
           echo "pinned toolchain: $TC"
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
             rustup target add --toolchain "$TC" aarch64-apple-darwin x86_64-apple-darwin
@@ -127,13 +127,12 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: ". -> target"
           shared-key: cli-${{ matrix.target }}
           # 只在 main 写缓存,tag/PR 只读。详见 build.yml 同名 step 的注释。
           save-if: ${{ inputs.save_cache || github.ref == 'refs/heads/main' }}
 
       - name: build CLI binary
-        working-directory: src-tauri
         # musl 链接器 + ring/cc-rs 的 C 编译器都指到 musl-gcc,产物完全静态,
         # 不再链 host glibc。其他 platform 这两个 env 是 noop。
         #
@@ -209,9 +208,9 @@ jobs:
 
           # Sign both bundled binaries: the CLI and the daemon it spawns.
           for BIN_NAME in uniclip uniclipd; do
-            BIN_PATH="src-tauri/target/${TARGET}/release/${BIN_NAME}"
+            BIN_PATH="target/${TARGET}/release/${BIN_NAME}"
             if [ ! -f "$BIN_PATH" ]; then
-              BIN_PATH="src-tauri/target/release/${BIN_NAME}"
+              BIN_PATH="target/release/${BIN_NAME}"
             fi
             echo "Signing $BIN_PATH"
             codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$BIN_PATH"
@@ -226,9 +225,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           TARGET="${{ matrix.target }}"
-          BIN_DIR="src-tauri/target/${TARGET}/release"
+          BIN_DIR="target/${TARGET}/release"
           if [ ! -f "${BIN_DIR}/uniclip" ]; then
-            BIN_DIR="src-tauri/target/release"
+            BIN_DIR="target/release"
           fi
 
           # notarytool requires a zip archive; stage both binaries so the CLI
@@ -259,10 +258,10 @@ jobs:
           # Ship `uniclipd` next to `uniclip` so `uniclip start` can spawn the
           # daemon as a sibling binary (ADR-008 D13).
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            BIN_SRC="src-tauri/target/release/uniclip.exe"
+            BIN_SRC="target/release/uniclip.exe"
             # Windows non-cross build puts binary in target/release/, not target/{target}/release/
             if [ ! -f "$BIN_SRC" ]; then
-              BIN_SRC="src-tauri/target/${TARGET}/release/uniclip.exe"
+              BIN_SRC="target/${TARGET}/release/uniclip.exe"
             fi
             ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.zip"
             # 7z stores paths as given on the command line, so add the exes
@@ -271,10 +270,10 @@ jobs:
             WORKDIR="$(pwd)"
             (cd "$(dirname "$BIN_SRC")" && 7z a "${WORKDIR}/${ARCHIVE}" uniclip.exe uniclipd.exe)
           else
-            BIN_DIR="src-tauri/target/${TARGET}/release"
+            BIN_DIR="target/${TARGET}/release"
             # Fallback for non-cross builds
             if [ ! -f "${BIN_DIR}/uniclip" ]; then
-              BIN_DIR="src-tauri/target/release"
+              BIN_DIR="target/release"
             fi
             ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.tar.gz"
             tar -czf "$ARCHIVE" -C "$BIN_DIR" uniclip uniclipd

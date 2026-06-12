@@ -8,7 +8,15 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'src/**'
+      - 'crates/**'
+      - 'apps/**'
       - 'src-tauri/**'
+      - 'tests/e2e/**'
+      - 'vendor/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'clippy.toml'
       - 'package.json'
       - 'bun.lock'
       - 'tsconfig*.json'
@@ -48,7 +56,15 @@ jobs:
         with:
           filters: |
             rust:
+              - 'crates/**'
+              - 'apps/**'
               - 'src-tauri/**'
+              - 'tests/e2e/**'
+              - 'vendor/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'clippy.toml'
               - '.github/docker/build-bookworm.Dockerfile'
               - '.github/workflows/pr-check.yml'
 
@@ -148,13 +164,12 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: ". -> target"
           shared-key: pr-check
           # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check Rust workspace
-        working-directory: src-tauri
         env:
           # ADR-008 D13 added `externalBin: ["binaries/uniclipd"]` to
           # tauri.conf.json, so `tauri_build::build()` hard-fails unless
@@ -179,7 +194,6 @@ jobs:
       - name: Snapshot committed IPC bindings
         run: cp src/lib/ipc-bindings.generated.ts /tmp/ipc-bindings.committed.ts
       - name: Generate IPC bindings
-        working-directory: src-tauri
         run: cargo test -p uc-tauri --test specta_export --locked
       - name: Verify IPC bindings are up to date
         run: |
@@ -197,7 +211,6 @@ jobs:
       - name: Snapshot committed OpenAPI schema
         run: cp schema/openapi.json /tmp/openapi.committed.json
       - name: Generate OpenAPI schema
-        working-directory: src-tauri
         run: cargo run -p uc-webserver --bin gen-openapi --locked
       - name: Verify OpenAPI schema is up to date
         run: |
@@ -225,14 +238,12 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: ". -> target"
           shared-key: e2e-macos
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build daemon and CLI binaries
-        working-directory: src-tauri
         run: cargo build -p uc-daemon -p uc-cli
 
       - name: Run E2E tests
-        working-directory: src-tauri
         run: cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored

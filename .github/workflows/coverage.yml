@@ -3,7 +3,15 @@ name: Coverage
 on:
   pull_request:
     paths:
+      - 'crates/**'
+      - 'apps/**'
       - 'src-tauri/**'
+      - 'tests/e2e/**'
+      - 'vendor/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'clippy.toml'
       - '.github/workflows/coverage.yml'
 
 jobs:
@@ -26,7 +34,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: ". -> target"
           shared-key: coverage
           # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -50,14 +58,13 @@ jobs:
           # so the build script neither requires nor copies it.
           TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: |
-          cd src-tauri
           xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5.5.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./src-tauri/lcov.info
+          files: ./lcov.info
           flags: rust-backend
           name: rust-coverage
           fail_ci_if_error: false

@@ -43,13 +43,13 @@ updates:
         patterns:
           - "*"
 
-  # Rust workspace (Tauri backend)
+  # Rust workspace (repo-root Cargo.toml)
   - package-ecosystem: cargo
-    directory: /src-tauri
+    directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      cargo-src-tauri:
+      cargo-workspace:
         patterns:
           - "*"

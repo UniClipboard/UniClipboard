@@ -89,7 +89,7 @@ jobs:
 
       - name: Refresh Cargo.lock for workspace members
         if: github.event_name == 'workflow_dispatch'
-        run: cd src-tauri && cargo update -p uc-cli
+        run: cargo update -p uc-cli
 
       - name: Set outputs
         id: set-outputs
@@ -117,7 +117,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml Cargo.toml Cargo.lock
           git commit -m "chore: bump version to ${{ steps.set-outputs.outputs.version }}"
           git push origin ${{ inputs.branch }}
 

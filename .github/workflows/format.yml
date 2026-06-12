@@ -7,7 +7,15 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'src/**'
+      - 'crates/**'
+      - 'apps/**'
       - 'src-tauri/**'
+      - 'tests/e2e/**'
+      - 'vendor/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'clippy.toml'
       - 'package.json'
       - 'bun.lock'
       - 'tsconfig*.json'
@@ -68,7 +76,6 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run cargo fmt
-        working-directory: src-tauri
         run: cargo fmt --all
 
       - name: Run prettier
@@ -120,7 +127,7 @@ jobs:
             echo "::notice::已自动提交格式化 commit 到 $PR_HEAD_REF。请 git pull 同步本地分支,然后重新 push 一次 / 或在 PR 页点 Re-run failed checks 让 CI 变绿。"
           else
             echo "pushed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Auto-push 失败(可能远端在此期间有新 commit)。请本地运行 \`cd src-tauri && cargo fmt --all && cd .. && bun run format\` 并提交。"
+            echo "::warning::Auto-push 失败(可能远端在此期间有新 commit)。请本地运行 \`cargo fmt --all && bun run format\` 并提交。"
           fi
 
       # ---------- Fork PR / workflow file changes: print diff for author ----------
@@ -139,7 +146,7 @@ jobs:
           fi
           echo "Please run the following commands locally and push the changes:"
           echo ""
-          echo "  cd src-tauri && cargo fmt --all && cd .."
+          echo "  cargo fmt --all"
           echo "  bun run format"
           git diff
 

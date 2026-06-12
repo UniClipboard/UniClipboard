@@ -77,8 +77,8 @@ export function updateTauriConfig(newVersion, dryRun) {
   return { path: configPath, old: oldVersion, new: newVersion }
 }
 
-export function updateCargoToml(newVersion, dryRun) {
-  const cargoPath = path.join(process.cwd(), 'src-tauri', 'Cargo.toml')
+export function updateCargoToml(newVersion, dryRun, relativePath = path.join('src-tauri', 'Cargo.toml')) {
+  const cargoPath = path.join(process.cwd(), relativePath)
   const content = fs.readFileSync(cargoPath, 'utf8')
 
   // Match ALL lines with version = "..." — covers [package] and [workspace.package]
@@ -100,8 +100,10 @@ export function updateCargoToml(newVersion, dryRun) {
 }
 
 export function updateCargoLock(newVersion, dryRun) {
+  // The cargo workspace lives at the repo root, so Cargo.lock does too; the
+  // `uniclipboard` package manifest still lives in src-tauri/Cargo.toml.
   const cargoTomlPath = path.join(process.cwd(), 'src-tauri', 'Cargo.toml')
-  const cargoLockPath = path.join(process.cwd(), 'src-tauri', 'Cargo.lock')
+  const cargoLockPath = path.join(process.cwd(), 'Cargo.lock')
 
   if (!fs.existsSync(cargoLockPath)) {
     return { path: cargoLockPath, skipped: true, reason: 'Cargo.lock not found' }
@@ -200,6 +202,13 @@ export function run(options = parseArgs()) {
   console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${tauriResult.path}`)
   console.log(`  ${tauriResult.old} → ${tauriResult.new}`)
 
+  // Root workspace manifest: [workspace.package] version, inherited by all
+  // workspace member crates via `version.workspace = true`.
+  const rootCargoResult = updateCargoToml(newVersion, options.dryRun, 'Cargo.toml')
+  console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${rootCargoResult.path}`)
+  console.log(`  ${rootCargoResult.old} → ${rootCargoResult.new}`)
+
+  // Tauri bin package manifest: [package] version of `uniclipboard`.
   const cargoResult = updateCargoToml(newVersion, options.dryRun)
   console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${cargoResult.path}`)
   console.log(`  ${cargoResult.old} → ${cargoResult.new}`)

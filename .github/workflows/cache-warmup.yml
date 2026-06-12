@@ -46,12 +46,11 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: ". -> target"
           shared-key: pr-check
           save-if: true
 
       - name: Check Rust workspace
-        working-directory: src-tauri
         run: cargo check --workspace --locked
 
   warmup-docs-bun:
@@ -101,7 +100,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: ". -> target"
           shared-key: coverage
           save-if: true
 
@@ -112,5 +111,4 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          cd src-tauri
           xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace

@@ -138,17 +138,17 @@ jobs:
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
       - name: ensure darwin targets installed on pinned toolchain
-        # src-tauri/rust-toolchain.toml 把 cargo 锁到一个具体 channel
+        # rust-toolchain.toml (repo root) 把 cargo 锁到一个具体 channel
         # (例如 1.95.0),而 dtolnay/rust-toolchain@stable 装的是 stable —
-        # 这是两个独立的 toolchain。在 src-tauri/ 下跑 cargo 时,target 必须
+        # 这是两个独立的 toolchain。跑 cargo 时,target 必须
         # 已经装到 pinned channel,否则报 `Target ... is not installed`
         # (25960898069 / 25961183688 的真因,见 dtolnay/rust-toolchain#75)。
-        # 这里先在 src-tauri/ 触发 rustup auto-install pinned toolchain,
+        # 这里先触发 rustup auto-install pinned toolchain,
         # 再读出 channel 名,显式 `rustup target add --toolchain <channel>`。
         if: matrix.platform == 'macos-latest'
         shell: bash
         run: |
-          TC=$(cd src-tauri && rustup show active-toolchain | awk '{print $1}')
+          TC=$(rustup show active-toolchain | awk '{print $1}')
           echo "pinned toolchain: $TC"
           rustup target add --toolchain "$TC" aarch64-apple-darwin x86_64-apple-darwin
 
@@ -161,14 +161,14 @@ jobs:
         if: matrix.target == 'aarch64-pc-windows-msvc'
         shell: bash
         run: |
-          TC=$(cd src-tauri && rustup show active-toolchain | awk '{print $1}')
+          TC=$(rustup show active-toolchain | awk '{print $1}')
           echo "pinned toolchain: $TC"
           rustup target add --toolchain "$TC" aarch64-pc-windows-msvc
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: ". -> target"
           shared-key: ${{ matrix.target }}
           # 只在 main 写缓存,其他分支(含 tag 触发的 release)只读。
           # Windows Post Cache Rust 上传单次 ~2m43s (25682907543),tag run
@@ -332,9 +332,9 @@ jobs:
           # x64 builds with the host default target (args=""), landing in
           # target/release; arm64 cross-builds with --target into target/<triple>.
           if [ -n "${{ matrix.args }}" ]; then
-            RELEASE_DIR="src-tauri/target/${{ matrix.target }}/release"
+            RELEASE_DIR="target/${{ matrix.target }}/release"
           else
-            RELEASE_DIR="src-tauri/target/release"
+            RELEASE_DIR="target/release"
           fi
 
           # Tauri may rename the cargo binary (uniclipboard.exe) to the
@@ -392,10 +392,10 @@ jobs:
           npm install -g @sentry/cli
           # macOS 用 --target,产物在 target/<triple>/release/;
           # Linux/Windows args 为空,产物在 target/release/。
-          if [ -d "src-tauri/target/${{ matrix.target }}/release" ]; then
-            TARGET_DIR="src-tauri/target/${{ matrix.target }}/release"
-          elif [ -d "src-tauri/target/release" ]; then
-            TARGET_DIR="src-tauri/target/release"
+          if [ -d "target/${{ matrix.target }}/release" ]; then
+            TARGET_DIR="target/${{ matrix.target }}/release"
+          elif [ -d "target/release" ]; then
+            TARGET_DIR="target/release"
           else
             echo "::warning::No release directory found — skipping"
             exit 0
@@ -407,4 +407,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: uniclipboard-${{ matrix.target }}
-          path: src-tauri/target/**/release/bundle/**
+          path: target/**/release/bundle/**

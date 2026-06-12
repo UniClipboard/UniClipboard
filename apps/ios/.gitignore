@@ -1,0 +1,33 @@
+node_modules
+.next
+out
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+.env*.local
+.build
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+DerivedData/
+build/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+Packages/
+Package.resolved
+.swiftpm/
+
+# Local simulator / device dumps
+devices/
+
+# Skill symlinks into .agents/skills (symlink-to-dir breaks Superset's file tree)
+.claude/skills/swift-concurrency
+.claude/skills/swiftui-expert-skill
+.claude/skills/swiftui-liquid-glass

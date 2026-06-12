@@ -1,0 +1,7 @@
+{
+  "trustInsecureCert": false,
+  "autoCheckUpdate": true,
+  "manualUploadDialogShown": false,
+  "downloadRelativePath": "",
+  "logViewLevelFilter": "info"
+}

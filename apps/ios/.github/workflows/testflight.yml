@@ -1,0 +1,206 @@
+# Archive the iOS app and upload it to App Store Connect (TestFlight).
+#
+# Triggers:
+#   - push of a tag matching v* (e.g. v1.0-b10)
+#   - manual run (workflow_dispatch), with an optional build-number override
+#
+# Required repository secrets:
+#   ASC_API_KEY_ID        App Store Connect API key ID (e.g. 2X9R4HXF34)
+#   ASC_API_ISSUER_ID     App Store Connect API issuer ID (UUID)
+#   ASC_API_KEY_P8        Base64 of the AuthKey_<keyid>.p8 file
+#                         (key needs the App Manager role so xcodebuild can
+#                         manage signing assets and upload the build)
+#   DIST_CERT_P12_BASE64  Base64 of an Apple Distribution certificate + private
+#                         key exported as .p12
+#   DIST_CERT_PASSWORD    Password of that .p12
+#   DEV_CERT_P12_BASE64   Base64 of an Apple Development certificate + private
+#                         key exported as .p12. Required because automatic
+#                         signing archives with development signing — the
+#                         distribution identity is only used at export time.
+#   DEV_CERT_PASSWORD     Password of that .p12
+#
+# Optional repository secrets:
+#   SENTRY_AUTH_TOKEN     Sentry org auth token (Settings → Auth Tokens) with
+#                         project:write scope. When present, dSYMs are also
+#                         uploaded to Sentry (org mkdir700 / uniclipboard-ios)
+#                         so crash stacks symbolicate there too — the
+#                         ExportOptions `uploadSymbols` flag below only feeds
+#                         Apple's own crash reports. When absent the step
+#                         warns and skips; the build still ships.
+#
+# Versioning: MARKETING_VERSION / CURRENT_PROJECT_VERSION come from the
+# committed pbxproj (the repo bumps them before tagging). ExportOptions sets
+# manageAppVersionAndBuildNumber=true, so Xcode bumps the build number at
+# upload time if it would collide with one already on App Store Connect.
+
+name: TestFlight
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Override CURRENT_PROJECT_VERSION (leave empty to use the value committed in the project)"
+        required: false
+        type: string
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # The `runner` context is not allowed in job-level env, so derive
+      # temp-dir paths here instead.
+      - name: Set derived paths
+        run: |
+          echo "ARCHIVE_PATH=$RUNNER_TEMP/UniClipboard.xcarchive" >> "$GITHUB_ENV"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$RUNNER_TEMP/ci.keychain-db" >> "$GITHUB_ENV"
+
+      - name: Select latest Xcode 26
+        run: |
+          XCODE_APP="$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+
+      - name: Run model round-trip tests
+        run: swift test
+
+      - name: Install signing certificates
+        env:
+          DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+          DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
+          DEV_CERT_P12_BASE64: ${{ secrets.DEV_CERT_P12_BASE64 }}
+          DEV_CERT_PASSWORD: ${{ secrets.DEV_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo -n "$DIST_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          echo -n "$DEV_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dev.p12"
+          security import "$RUNNER_TEMP/dist.p12" -P "$DIST_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/dev.p12" -P "$DEV_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          rm "$RUNNER_TEMP/dist.p12" "$RUNNER_TEMP/dev.p12"
+
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Write App Store Connect API key
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: echo -n "$ASC_API_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
+
+      - name: Archive
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          EXTRA_SETTINGS=()
+          if [ -n "$BUILD_NUMBER" ]; then
+            EXTRA_SETTINGS+=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
+          fi
+          xcodebuild archive \
+            -project UniClipboard.xcodeproj \
+            -scheme UniClipboard \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_API_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_API_ISSUER_ID" \
+            "${EXTRA_SETTINGS[@]}"
+
+      - name: Upload dSYMs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dSYMs-${{ github.ref_name }}-${{ github.run_number }}
+          path: ${{ env.ARCHIVE_PATH }}/dSYMs
+          if-no-files-found: error
+
+      - name: Upload dSYMs to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "::warning::SENTRY_AUTH_TOKEN not set — skipping Sentry dSYM upload (crashes in Sentry will be unsymbolicated for this build)"
+            exit 0
+          fi
+          curl -sL https://sentry.io/get-cli/ | INSTALL_DIR="$RUNNER_TEMP/bin" bash
+          "$RUNNER_TEMP/bin/sentry-cli" debug-files upload \
+            --org mkdir700 \
+            --project uniclipboard-ios \
+            "$ARCHIVE_PATH/dSYMs"
+
+      # Automatic signing at export makes xcodebuild attempt cloud signing,
+      # which needs an Admin-role API key ("Cloud signing permission error"
+      # with App Manager). Instead we export with manual signing against
+      # pre-created App Store profiles (Scripts/asc_profiles.rb create) that
+      # this step downloads and installs.
+      - name: Install App Store provisioning profiles
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: ruby Scripts/asc_profiles.rb install "$ASC_API_KEY_ID" "$ASC_API_ISSUER_ID" "$ASC_KEY_PATH"
+
+      - name: Export and upload to App Store Connect
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>teamID</key>
+            <string>8XG39X5CL8</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>app.uniclipboard.UniClipboard</key>
+              <string>UniClipboard App Store</string>
+              <key>app.uniclipboard.UniClipboard.Share</key>
+              <string>UniClipboard Share App Store</string>
+              <key>app.uniclipboard.UniClipboard.Keyboard</key>
+              <string>UniClipboard Keyboard App Store</string>
+            </dict>
+            <key>manageAppVersionAndBuildNumber</key>
+            <true/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_API_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_API_ISSUER_ID"
+
+      - name: Clean up keychain and API key
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          rm -f "$ASC_KEY_PATH"

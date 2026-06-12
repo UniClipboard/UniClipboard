@@ -1,0 +1,8 @@
+{
+  "trustInsecureCert": false,
+  "autoCheckUpdate": true,
+  "manualUploadDialogShown": true,
+  "downloadRelativePath": "SyncClipboard/Inbox",
+  "logViewLevelFilter": "info",
+  "ignoredVersion": "0.3.2"
+}

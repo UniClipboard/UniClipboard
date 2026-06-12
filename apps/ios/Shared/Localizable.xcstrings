@@ -1,0 +1,4347 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "·" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
+    "（未命名）" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(Unnamed)"
+          }
+        }
+      }
+    },
+    "「%@」是最后一台服务器。删除后将返回首次设置流程。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" is your last server. Deleting it returns you to first-run setup."
+          }
+        }
+      }
+    },
+    "「%@」是当前活动服务器。删除后将自动切换到列表中剩余的服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" is the active server. Deleting it switches to another server in the list."
+          }
+        }
+      }
+    },
+    "「允许完全访问」位于 设置 › 通用 › 键盘 › UniClip。系统未提供直达该页的链接,可从上方系统设置页逐级进入。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Allow Full Access” lives in Settings › General › Keyboard › UniClip. iOS offers no direct link there — navigate from the Settings page above."
+          }
+        }
+      }
+    },
+    "「允许完全访问」用于联网同步。系统未提供直达键盘设置的链接,需从系统设置逐级进入。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Allow Full Access” is needed for network sync. iOS offers no direct link to keyboard settings — navigate there from the Settings page."
+          }
+        }
+      }
+    },
+    "%@" : {
+
+    },
+    "%lld" : {
+
+    },
+    "%lld 个" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld total"
+          }
+        }
+      }
+    },
+    "%lld 字" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld characters"
+          }
+        }
+      }
+    },
+    "%lld 字符" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld characters"
+          }
+        }
+      }
+    },
+    "7 天内" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last 7 days"
+          }
+        }
+      }
+    },
+    "https://your-server.com:5033/" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
+    "INFO" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
+    "iOS 默认对来自其他 App 的剪贴板逐条询问——这就是每复制一条新内容、首次读取时都会弹「允许粘贴」的原因。把 设置 › UniClip › 粘贴自其他 App 设为「允许」即可完全静默(该开关在首次弹窗后才出现)。授权按 App 独立:键盘扩展可能需要在键盘内单独授权,且部分系统版本不为键盘提供该开关。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By default iOS asks for each clipboard item copied from another app — that's why a newly-copied item triggers “Allow Paste” the first time it's read. Set Settings › UniClip › Paste from Other Apps to Allow to silence it entirely (the switch appears only after the first prompt). Authorization is per app: the keyboard extension may need its own grant from inside the keyboard, and some iOS versions don't expose the switch for keyboards."
+          }
+        }
+      }
+    },
+    "iOS 默认每次读取其他 App 复制的内容都会询问。把「从其他 App 粘贴」设为「允许」,UniClip 的同步就能完全静默。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By default iOS asks every time an app reads content copied elsewhere. Set “Paste from Other Apps” to “Allow” and UniClip syncs silently."
+          }
+        }
+      }
+    },
+    "Mac、Windows、Linux、iOS——复制一处，处处可用。不再被单一平台锁定。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac, Windows, Linux, iOS — copy once, use anywhere. No more platform lock-in."
+          }
+        }
+      }
+    },
+    "Pulled clipboard from server (%lld min ago)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulled clipboard from server (%lld min ago)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已从服务器拉取（%lld 分钟前）"
+          }
+        }
+      }
+    },
+    "Q3 计划" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Q3 Plan"
+          }
+        }
+      }
+    },
+    "UniClip" : {
+
+    },
+    "UniClip 需要完整的访问权限才能安全地同步并支持所有类型的内容。它永不向任何人（包括开发人员）传送任何敏感信息。" : {
+
+    },
+    "URL" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
+    "WiFi 自动切换" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wi-Fi Auto-Switch"
+          }
+        }
+      }
+    },
+    "一键接收 / 发送剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receive / send clipboard in one tap"
+          }
+        }
+      }
+    },
+    "上排图标滑到最右,点「更多」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe the top row to the end and tap “More”"
+          }
+        }
+      }
+    },
+    "上次推送 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last pushed %@"
+          }
+        }
+      }
+    },
+    "下一项" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next"
+          }
+        }
+      }
+    },
+    "下载子目录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download Subdirectory"
+          }
+        }
+      }
+    },
+    "下载路径" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download Path"
+          }
+        }
+      }
+    },
+    "不自动（仅手动）" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manual only"
+          }
+        }
+      }
+    },
+    "中—— BEGIN LONG NOTE ——" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
+    "主题" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Theme"
+          }
+        }
+      }
+    },
+    "了解「允许粘贴」提示" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About the “Allow Paste” prompt"
+          }
+        }
+      }
+    },
+    "二维码内容损坏,请在桌面端重新生成。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR payload is corrupted. Re-generate it on the desktop."
+          }
+        }
+      }
+    },
+    "二维码声明的服务 \"%@\" 不是手机同步。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The QR's declared service \"%@\" is not mobile sync."
+          }
+        }
+      }
+    },
+    "二维码版本是 v%lld,本 App 暂不支持,请更新 App。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR uses protocol v%lld, which this app version doesn't recognize yet."
+          }
+        }
+      }
+    },
+    "二维码缺少必需字段 \"%@\",请在桌面端重新生成。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR is missing required field \"%@\". Re-generate it on the desktop."
+          }
+        }
+      }
+    },
+    "二维码里的服务地址不合法。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR contains an invalid server URL."
+          }
+        }
+      }
+    },
+    "仅复制文本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy text only"
+          }
+        }
+      }
+    },
+    "仅本机缓存。服务器只保留最新一份。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cached on this device only. The server keeps just the latest item."
+          }
+        }
+      }
+    },
+    "今天" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Today"
+          }
+        }
+      }
+    },
+    "从 ${server} 接收" : {
+
+    },
+    "从 UniClipboard 服务器拉取最新内容并作为快捷指令的输出返回;默认同时写入本机剪贴板。可指定来源服务器。" : {
+
+    },
+    "从 UniClipboard 服务器拉取最新的剪贴板内容,写入到本机剪贴板。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull the latest clipboard content from your UniClipboard server and write it to this device's clipboard."
+          }
+        }
+      }
+    },
+    "从下方推送你的第一份内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push your first item from the bar below."
+          }
+        }
+      }
+    },
+    "从二维码填充" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fill from QR code"
+          }
+        }
+      }
+    },
+    "从任何 App 分享进来" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share in from any app"
+          }
+        }
+      }
+    },
+    "从任意 App 分享内容到服务器，用键盘一键粘贴到任意输入框——你的剪贴板，随处可达。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share content from any app to your server, or paste with the keyboard into any text field — your clipboard, always within reach."
+          }
+        }
+      }
+    },
+    "从其他 App 粘贴" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste from Other Apps"
+          }
+        }
+      }
+    },
+    "从历史中删除" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove from history"
+          }
+        }
+      }
+    },
+    "从文件导入" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import from File"
+          }
+        }
+      }
+    },
+    "位置权限未授予" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Location permission denied"
+          }
+        }
+      }
+    },
+    "你的跨平台剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Cross-Platform\nClipboard"
+          }
+        }
+      }
+    },
+    "使用蜂窝 / 移动数据时，自动切换到此配置。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically switches to this config on cellular / mobile data."
+          }
+        }
+      }
+    },
+    "使用键盘粘贴" : {
+
+    },
+    "便于辨识的名称" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Friendly name"
+          }
+        }
+      }
+    },
+    "保存" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
+          }
+        }
+      }
+    },
+    "保存到 Documents" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save to Documents"
+          }
+        }
+      }
+    },
+    "保存图片" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save Image"
+          }
+        }
+      }
+    },
+    "保存失败" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save failed"
+          }
+        }
+      }
+    },
+    "保存失败:" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save failed:"
+          }
+        }
+      }
+    },
+    "信息" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messages"
+          }
+        }
+      }
+    },
+    "允许" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow"
+          }
+        }
+      }
+    },
+    "允许 UniClip" : {
+
+    },
+    "允许不安全证书" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trust Insecure Certificate"
+          }
+        }
+      }
+    },
+    "允许完全访问" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Full Access"
+          }
+        }
+      }
+    },
+    "全选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select All"
+          }
+        }
+      }
+    },
+    "全部" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All"
+          }
+        }
+      }
+    },
+    "关于" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About"
+          }
+        }
+      }
+    },
+    "关闭" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        }
+      }
+    },
+    "关闭（推荐）：在主页用「粘贴」按钮一键推送，iOS 不会弹窗。开启后会自动读取并推送本机复制的内容——iOS 在读取其他 App 复制的内容时会弹出「允许粘贴」确认。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off (recommended): push with one tap of the Paste button on the home screen — iOS shows no prompt. When on, content you copy is read and pushed automatically; iOS shows an \"Allow Paste\" confirmation each time it reads content copied from another app."
+          }
+        }
+      }
+    },
+    "关闭搜索" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close search"
+          }
+        }
+      }
+    },
+    "关闭筛选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close filter"
+          }
+        }
+      }
+    },
+    "其他" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other"
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "兼容 SyncClipboard v1" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SyncClipboard v1 compatible"
+          }
+        }
+      }
+    },
+    "内容" : {
+
+    },
+    "内容校验失败 — 文件可能损坏" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hash mismatch — file may be corrupted"
+          }
+        }
+      }
+    },
+    "内容过长,仅显示前 %lld 字符(余 %lld 字符未显示)。可保存到 Documents 后查看完整内容。" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "内容过长,仅显示前 %1$lld 字符(余 %2$lld 字符未显示)。可保存到 Documents 后查看完整内容。"
+          }
+        }
+      }
+    },
+    "最近" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent"
+          }
+        }
+      }
+    },
+    "最近 %lld 条" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last %lld items"
+          }
+        }
+      }
+    },
+    "写入本机剪贴板" : {
+
+    },
+    "凭据" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Credentials"
+          }
+        }
+      }
+    },
+    "分享" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share"
+          }
+        }
+      }
+    },
+    "分享、键盘、随处可达" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share, Keyboard,\nAlways Within Reach"
+          }
+        }
+      }
+    },
+    "分享到 UniClipboard" : {
+
+    },
+    "分享到…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share to…"
+          }
+        }
+      }
+    },
+    "分享所选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share selected"
+          }
+        }
+      }
+    },
+    "切换" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch"
+          }
+        }
+      }
+    },
+    "切换到 UniClip 键盘,本机复制的内容会自动同步,服务器最新的内容点一下即可插入——全程不弹「允许粘贴」。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to the UniClip keyboard: what you copy syncs automatically, and the server's latest content inserts with a tap — no “Allow Paste” prompts."
+          }
+        }
+      }
+    },
+    "切换到 UniClip 键盘时 iOS 会询问一次,点「允许」后以后打开键盘即静默同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS asks once when you switch to the UniClip keyboard; tap Allow and every open after that syncs silently"
+          }
+        }
+      }
+    },
+    "切换服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch server"
+          }
+        }
+      }
+    },
+    "切换键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch keyboard"
+          }
+        }
+      }
+    },
+    "刚刚" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Just now"
+          }
+        }
+      }
+    },
+    "删除" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        }
+      }
+    },
+    "删除 %lld 项?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete %lld items?"
+          }
+        }
+      }
+    },
+    "删除所选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete selected"
+          }
+        }
+      }
+    },
+    "删除服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete server"
+          }
+        }
+      }
+    },
+    "刷新" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh"
+          }
+        }
+      }
+    },
+    "前往" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go"
+          }
+        }
+      }
+    },
+    "前往设置 ›" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings ›"
+          }
+        }
+      }
+    },
+    "剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clipboard"
+          }
+        }
+      }
+    },
+    "剪贴板为空" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clipboard is empty"
+          }
+        }
+      }
+    },
+    "剪贴板为空,没有可发送的内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clipboard is empty — nothing to send"
+          }
+        }
+      }
+    },
+    "剪贴板同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clipboard Sync"
+          }
+        }
+      }
+    },
+    "功能引导" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feature Guide"
+          }
+        }
+      }
+    },
+    "加入" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Join"
+          }
+        }
+      }
+    },
+    "加载失败" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed to load"
+          }
+        }
+      }
+    },
+    "协议" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protocol"
+          }
+        }
+      }
+    },
+    "历史" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "History"
+          }
+        }
+      }
+    },
+    "原服务器已不可用,已切换到当前活动服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The original server is no longer available; switched to the current active server."
+          }
+        }
+      }
+    },
+    "去设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        }
+      }
+    },
+    "发送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send"
+          }
+        }
+      }
+    },
+    "发送到" : {
+
+    },
+    "发送到 ${server}" : {
+
+    },
+    "发送剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send Clipboard"
+          }
+        }
+      }
+    },
+    "发送失败" : {
+
+    },
+    "发送失败:%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send failed: %@"
+          }
+        }
+      }
+    },
+    "取消" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        }
+      }
+    },
+    "取消全选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deselect All"
+          }
+        }
+      }
+    },
+    "可能没有相机权限,或正在模拟器中运行" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera permission may be missing, or you are running in the Simulator"
+          }
+        }
+      }
+    },
+    "右上角点「编辑」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap “Edit” in the top right"
+          }
+        }
+      }
+    },
+    "同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync"
+          }
+        }
+      }
+    },
+    "同步失败" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync failed"
+          }
+        }
+      }
+    },
+    "同步成功" : {
+
+    },
+    "名称" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        }
+      }
+    },
+    "启动时检查更新" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check for updates at launch"
+          }
+        }
+      }
+    },
+    "启用 UniClip 键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable UniClip keyboard"
+          }
+        }
+      }
+    },
+    "启用键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable the keyboard"
+          }
+        }
+      }
+    },
+    "启用键盘扩展" : {
+
+    },
+    "和其他设备共享剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Clipboard with Other Devices"
+          }
+        }
+      }
+    },
+    "回车" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return"
+          }
+        }
+      }
+    },
+    "图片" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Image"
+          }
+        }
+      }
+    },
+    "图片 · %@ · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "图片 · %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "在 UniClip 键盘上点按时的声音与振动。按键音还受系统「设置 › 声音与触感」里「键盘点击音」总开关影响;触感反馈需要键盘「允许完全访问」。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sound and vibration when you tap keys on the UniClip keyboard. Key clicks also depend on the system “Keyboard Clicks” switch in Settings › Sounds & Haptics; haptic feedback requires Full Access for the keyboard."
+          }
+        }
+      }
+    },
+    "在 设置 › 通用 › 键盘 › UniClip 中开启「允许完全访问」,即可在打开键盘时自动同步剪贴板。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on “Allow Full Access” in Settings › General › Keyboard › UniClip to auto-sync your clipboard whenever the keyboard opens."
+          }
+        }
+      }
+    },
+    "在任意 App 中选中文字、图片或文件,点「分享」" : {
+
+    },
+    "在任意 App 点「分享」打开分享面板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap Share in any app to open the share sheet"
+          }
+        }
+      }
+    },
+    "在任意 App 点系统「分享」选 UniClip,链接、文本、图片就能直接同步到服务器。把它收藏到分享菜单顶部,用起来更顺手。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap the system Share button in any app and pick UniClip to sync links, text, and images straight to your server. Pin it to the top of the share sheet for quick access."
+          }
+        }
+      }
+    },
+    "在任意 App 里用键盘粘贴" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste with the keyboard in any app"
+          }
+        }
+      }
+    },
+    "在任意输入框切换到 UniClip 键盘时,会把本机刚复制的文本或图片自动发送到当前服务器,并把服务器最新的内容作为候选,点一下即可直接插入——全程不经过系统剪贴板,不会反复弹「允许粘贴」。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to the UniClip keyboard in any text field and it sends the text or image you just copied to the current server, then offers the server's latest content as a candidate you can insert with one tap — all without touching the system pasteboard or repeatedly prompting “Allow Paste”."
+          }
+        }
+      }
+    },
+    "在分享面板中选择 UniClip" : {
+
+    },
+    "在浏览器中打开" : {
+
+    },
+    "在系统设置中开启「位置」权限以读取当前 WiFi" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable \"Location\" permission in Settings to read the current Wi-Fi"
+          }
+        }
+      }
+    },
+    "在键盘列表点按 UniClip,打开「允许完全访问」——联网同步与读取剪贴板都需要它" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap UniClip in the keyboards list and turn on “Allow Full Access” — both network sync and reading the clipboard need it"
+          }
+        }
+      }
+    },
+    "地址" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Address"
+          }
+        }
+      }
+    },
+    "基本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Basics"
+          }
+        }
+      }
+    },
+    "复制" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy"
+          }
+        }
+      }
+    },
+    "复制为纯文本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy as Plain Text"
+          }
+        }
+      }
+    },
+    "复制任何内容会自动同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anything you copy will sync automatically"
+          }
+        }
+      }
+    },
+    "复制到本机" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy to device"
+          }
+        }
+      }
+    },
+    "复制所选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy selected"
+          }
+        }
+      }
+    },
+    "复制文本或图片后回到这里即可发送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy text or an image, then come back here to send it"
+          }
+        }
+      }
+    },
+    "复制新内容后首次会弹一次「允许粘贴」,允许即可" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The first read after copying something new shows “Allow Paste” once — just allow it"
+          }
+        }
+      }
+    },
+    "复制新内容后首次读取时,iOS 会弹一次「允许粘贴」(对每条新内容逐条授权);重复打开键盘、未复制新内容时不会再弹" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS shows “Allow Paste” the first time it reads each newly-copied item; reopening the keyboard without copying anything new won't prompt again"
+          }
+        }
+      }
+    },
+    "外观" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appearance"
+          }
+        }
+      }
+    },
+    "大小" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Size"
+          }
+        }
+      }
+    },
+    "好" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
+    },
+    "如何允许从其他 App 粘贴?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How to allow paste from other apps?"
+          }
+        }
+      }
+    },
+    "如何启用 UniClip 键盘?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How to enable the UniClip keyboard?"
+          }
+        }
+      }
+    },
+    "如何启用键盘扩展？" : {
+
+    },
+    "如何把 UniClip 置顶?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How to pin UniClip?"
+          }
+        }
+      }
+    },
+    "如何设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How to set up"
+          }
+        }
+      }
+    },
+    "如果刚才拒绝了本地网络权限," : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you just denied local network access, "
+          }
+        }
+      }
+    },
+    "存储" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Storage"
+          }
+        }
+      }
+    },
+    "完成" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
+          }
+        }
+      }
+    },
+    "密码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Password"
+          }
+        }
+      }
+    },
+    "将删除「%@」。此操作无法撤销。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This will delete \"%@\". This action cannot be undone."
+          }
+        }
+      }
+    },
+    "将复制的内容准备好，让您在任何输入地方粘贴" : {
+
+    },
+    "将显示在剪贴板顶栏。留空会用服务器地址替代。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shown on the Clipboard toolbar. Falls back to the server address when left blank."
+          }
+        }
+      }
+    },
+    "将服务器二维码对准框内" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Align the server QR code within the frame"
+          }
+        }
+      }
+    },
+    "尚未配置服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No server configured"
+          }
+        }
+      }
+    },
+    "尚未配置服务器，请先在主程序中添加" : {
+
+    },
+    "尚未配置服务器,请先打开 UniClipboard 主程序添加" : {
+
+    },
+    "局域网或自签名证书时勾选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable for LAN or self-signed certificates"
+          }
+        }
+      }
+    },
+    "局域网或自签名证书时勾选。此设置全局生效。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable for LAN or self-signed certs. Applies to all servers."
+          }
+        }
+      }
+    },
+    "左滑可设为当前服务器或删除。WiFi 自动切换：连接到匹配 SSID 时自动切换到该服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe to set as the current server or delete. Wi-Fi auto-switch: automatically switches to this server when you join a matching SSID."
+          }
+        }
+      }
+    },
+    "左滑可设为当前服务器或删除。每个配置可设自动切换策略（指定 Wi-Fi / 蜂窝 / Tailscale）。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe to set as the current server or delete. Each config can pick an auto-switch strategy (specific Wi-Fi / cellular / Tailscale)."
+          }
+        }
+      }
+    },
+    "已下载的图片和长文本将被删除。下次查看时会重新下载。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloaded images and long text will be deleted. Next view re-downloads."
+          }
+        }
+      }
+    },
+    "已保存到 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved to %@"
+          }
+        }
+      }
+    },
+    "已发送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent"
+          }
+        }
+      }
+    },
+    "已发送到 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent to %@"
+          }
+        }
+      }
+    },
+    "已发送本机内容:%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent from this device: %@"
+          }
+        }
+      }
+    },
+    "已同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synced"
+          }
+        }
+      }
+    },
+    "已复制" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copied"
+          }
+        }
+      }
+    },
+    "已复制 %@ 到剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copied %@ to clipboard"
+          }
+        }
+      }
+    },
+    "已开启自动推送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-push is on"
+          }
+        }
+      }
+    },
+    "已接收最新内容" : {
+
+    },
+    "已接收最新内容到本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Latest content received to device clipboard"
+          }
+        }
+      }
+    },
+    "已接收到本机" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Received to this device"
+          }
+        }
+      }
+    },
+    "已接收图像(%@)" : {
+
+    },
+    "已接收图像并写入本机剪贴板" : {
+
+    },
+    "已接收并写入本机剪贴板" : {
+
+    },
+    "已插入" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inserted"
+          }
+        }
+      }
+    },
+    "已添加" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added"
+          }
+        }
+      }
+    },
+    "已添加的 WiFi" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added WiFi Networks"
+          }
+        }
+      }
+    },
+    "已获授权 — 可读取本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorized — clipboard can be read"
+          }
+        }
+      }
+    },
+    "已获授权 — 当前剪贴板为空" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorized — clipboard is currently empty"
+          }
+        }
+      }
+    },
+    "已连接 — 服务器可达" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected — server is reachable"
+          }
+        }
+      }
+    },
+    "已选择 %lld 项" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld selected"
+          }
+        }
+      }
+    },
+    "应用" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply"
+          }
+        }
+      }
+    },
+    "应用到本机" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply to Device"
+          }
+        }
+      }
+    },
+    "应用失败:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply failed:"
+          }
+        }
+      }
+    },
+    "开启 Tailscale 虚拟网络时，自动切换到此配置（优先级最高，会压过 Wi-Fi）。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically switches to this config when Tailscale is up (highest priority — overrides Wi-Fi)."
+          }
+        }
+      }
+    },
+    "开启后，服务器有新内容时会立即覆盖本机剪贴板；关闭则只在主页高亮提示，不修改剪贴板。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When on, new server content immediately overwrites the device clipboard. When off, the Home tab highlights it without modifying the clipboard."
+          }
+        }
+      }
+    },
+    "开启预下载后，新内容会在后台静默缓存，点击预览无需等待。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When pre-download is on, new content silently caches in the background so tap-to-preview is instant."
+          }
+        }
+      }
+    },
+    "开始使用" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Get Started"
+          }
+        }
+      }
+    },
+    "开始设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Get Started"
+          }
+        }
+      }
+    },
+    "开始配置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Get Started"
+          }
+        }
+      }
+    },
+    "开源自托管\n数据由你掌控" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Source & Self-Hosted\nYour Data, Your Control"
+          }
+        }
+      }
+    },
+    "归档" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archive"
+          }
+        }
+      }
+    },
+    "当前" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current"
+          }
+        }
+      }
+    },
+    "当前 Wi-Fi「%@」匹配「%@」，切换?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current Wi-Fi \"%1$@\" matches \"%2$@\" — switch?"
+          }
+        }
+      }
+    },
+    "当前剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current clipboard"
+          }
+        }
+      }
+    },
+    "当前网络" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current Network"
+          }
+        }
+      }
+    },
+    "当前设备无法扫描二维码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This device cannot scan QR codes"
+          }
+        }
+      }
+    },
+    "当前设备无法读取 WiFi 名称" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This device cannot read the Wi-Fi name"
+          }
+        }
+      }
+    },
+    "忽略" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ignore"
+          }
+        }
+      }
+    },
+    "忽略的版本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ignored Version"
+          }
+        }
+      }
+    },
+    "我还没有服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I don't have a server"
+          }
+        }
+      }
+    },
+    "截图.png" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshot.png"
+          }
+        }
+      }
+    },
+    "手动添加 WiFi 名称" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Wi-Fi name manually"
+          }
+        }
+      }
+    },
+    "手动输入服务器信息" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter server details manually"
+          }
+        }
+      }
+    },
+    "打开 UniClip 系统设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open UniClip in Settings"
+          }
+        }
+      }
+    },
+    "打开 UniClip,点星标收藏并拖到顶部" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on UniClip, favorite it, and drag it to the top"
+          }
+        }
+      }
+    },
+    "打开「设置 › UniClip」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings › UniClip"
+          }
+        }
+      }
+    },
+    "打开「设置」，选择「键盘」" : {
+
+    },
+    "打开分享菜单试试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try opening the share sheet"
+          }
+        }
+      }
+    },
+    "打开系统设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open System Settings"
+          }
+        }
+      }
+    },
+    "打开设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        }
+      }
+    },
+    "打开键盘即自动同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the keyboard to auto-sync"
+          }
+        }
+      }
+    },
+    "扫一扫" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan QR Code"
+          }
+        }
+      }
+    },
+    "扫描二维码添加" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add by scanning QR code"
+          }
+        }
+      }
+    },
+    "扫描到 UniClipboard 配对二维码,确认添加此服务器吗?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanned a UniClipboard pairing QR code. Add this server?"
+          }
+        }
+      }
+    },
+    "扫描桌面端的二维码，一键填充以下信息。" : {
+
+    },
+    "扫描桌面端的配对二维码,几秒钟完成连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan the desktop pairing QR code to connect in seconds"
+          }
+        }
+      }
+    },
+    "扫码连接" : {
+
+    },
+    "把「从其他 App 粘贴」设为「允许」可避免反复弹窗,让同步静默进行。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set “Paste from Other Apps” to “Allow” to stop repeated prompts and sync silently."
+          }
+        }
+      }
+    },
+    "把内容发送到 UniClipboard 服务器,供其他设备接收。可在快捷指令中指定目标服务器,以及要发送的文本或文件;都不指定时回退读取本机剪贴板。" : {
+
+    },
+    "把这台设备当前的剪贴板发到 UniClipboard 服务器,供其他设备接收。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send this device's current clipboard to your UniClipboard server for other devices to receive."
+          }
+        }
+      }
+    },
+    "拒绝" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deny"
+          }
+        }
+      }
+    },
+    "指定 Wi-Fi" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Specific Wi-Fi"
+          }
+        }
+      }
+    },
+    "按键反馈" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key Feedback"
+          }
+        }
+      }
+    },
+    "按键音" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key Clicks"
+          }
+        }
+      }
+    },
+    "换一个名称" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generate another name"
+          }
+        }
+      }
+    },
+    "授权" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grant permission"
+          }
+        }
+      }
+    },
+    "授权位置以读取当前 WiFi" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grant location access to read the current Wi-Fi"
+          }
+        }
+      }
+    },
+    "授权本机读取剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorize clipboard access on this device"
+          }
+        }
+      }
+    },
+    "接收" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receive"
+          }
+        }
+      }
+    },
+    "接收剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receive Clipboard"
+          }
+        }
+      }
+    },
+    "接收超时 — 请稍后重试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receive timeout — please retry"
+          }
+        }
+      }
+    },
+    "请求已取消" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Request cancelled"
+          }
+        }
+      }
+    },
+    "推送当前剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push Current Clipboard"
+          }
+        }
+      }
+    },
+    "推送本机剪贴板到服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push device clipboard to server"
+          }
+        }
+      }
+    },
+    "搜索" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search"
+          }
+        }
+      }
+    },
+    "搜索剪贴板" : {
+
+    },
+    "支持文本、链接、图片和文件。内容会直接上传到当前选中的服务器。" : {
+
+    },
+    "收藏 UniClip 到分享菜单顶部,下次更快找到" : {
+
+    },
+    "收藏到分享菜单顶部" : {
+
+    },
+    "收起键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dismiss keyboard"
+          }
+        }
+      }
+    },
+    "文件" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File"
+          }
+        }
+      }
+    },
+    "文件 · %@" : {
+
+    },
+    "文件内容无法在此预览。可保存到 Documents 后用文件 App 查看。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File contents can't be previewed here. Save to Documents and open in the Files app."
+          }
+        }
+      }
+    },
+    "文本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text"
+          }
+        }
+      }
+    },
+    "文本 · %lld 字" : {
+
+    },
+    "无" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None"
+          }
+        }
+      }
+    },
+    "无法识别该二维码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't read this QR code"
+          }
+        }
+      }
+    },
+    "无法读取本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to read device clipboard."
+          }
+        }
+      }
+    },
+    "无法连接 — 检查 URL 和网络" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to connect — check URL and network"
+          }
+        }
+      }
+    },
+    "无法连接 — 请检查网络和 URL" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cannot connect — check network and URL"
+          }
+        }
+      }
+    },
+    "无法连接服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cannot reach the server"
+          }
+        }
+      }
+    },
+    "日志" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Logs"
+          }
+        }
+      }
+    },
+    "日期" : {
+
+    },
+    "昨天" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yesterday"
+          }
+        }
+      }
+    },
+    "暂不支持这种内容" : {
+
+    },
+    "暂无剪贴板记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No clipboard history yet"
+          }
+        }
+      }
+    },
+    "暂无图片记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No images yet"
+          }
+        }
+      }
+    },
+    "暂无文本记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No text yet"
+          }
+        }
+      }
+    },
+    "暂无链接记录" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No links yet"
+          }
+        }
+      }
+    },
+    "更多" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More"
+          }
+        }
+      }
+    },
+    "更早" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Earlier"
+          }
+        }
+      }
+    },
+    "服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server"
+          }
+        }
+      }
+    },
+    "服务器上还没有任何内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing on the server yet"
+          }
+        }
+      }
+    },
+    "服务器最新内容是文件或多类型组合,无法直接作为文本接收" : {
+
+    },
+    "服务器最新内容是文件或多类型组合,无法直接粘贴到剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server's latest item is a file or multi-type bundle that can't be pasted directly"
+          }
+        }
+      }
+    },
+    "服务器最新内容没有图像数据" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server's latest item has no image data"
+          }
+        }
+      }
+    },
+    "服务器列表" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servers"
+          }
+        }
+      }
+    },
+    "服务器地址" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server Address"
+          }
+        }
+      }
+    },
+    "服务器地址无效" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid server address"
+          }
+        }
+      }
+    },
+    "服务器尚未发布剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server has not published any clipboard yet"
+          }
+        }
+      }
+    },
+    "服务器已不存在" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server no longer exists"
+          }
+        }
+      }
+    },
+    "服务器无图像数据" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No image data on server"
+          }
+        }
+      }
+    },
+    "服务器暂无内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing on the server"
+          }
+        }
+      }
+    },
+    "服务器暂无可插入内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing to insert from the server"
+          }
+        }
+      }
+    },
+    "服务器有新内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New content on server"
+          }
+        }
+      }
+    },
+    "服务器的新内容会自动出现在这里；本机内容点下方按钮推送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New content from the server appears here automatically. Push device content with the button below."
+          }
+        }
+      }
+    },
+    "服务器返回 HTTP %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server returned HTTP %lld"
+          }
+        }
+      }
+    },
+    "服务器返回的数据无法解析" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not parse server response"
+          }
+        }
+      }
+    },
+    "服务器还没有发布过剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server hasn't published anything yet."
+          }
+        }
+      }
+    },
+    "服务器配置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server Configuration"
+          }
+        }
+      }
+    },
+    "服务器错误 %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server error %lld"
+          }
+        }
+      }
+    },
+    "未连接 WiFi" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not connected to Wi-Fi"
+          }
+        }
+      }
+    },
+    "未选择服务器" : {
+
+    },
+    "未配置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not configured"
+          }
+        }
+      }
+    },
+    "未配置服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No server configured"
+          }
+        }
+      }
+    },
+    "本机" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Device"
+          }
+        }
+      }
+    },
+    "本机与服务器一致" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Device matches server."
+          }
+        }
+      }
+    },
+    "本机与服务器不一致 · 可推送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Device differs from server · ready to push."
+          }
+        }
+      }
+    },
+    "本机有新图片" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New image on this device"
+          }
+        }
+      }
+    },
+    "本机有新文本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New text on this device"
+          }
+        }
+      }
+    },
+    "本机有新链接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New link on this device"
+          }
+        }
+      }
+    },
+    "来源" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Source"
+          }
+        }
+      }
+    },
+    "来自服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From server"
+          }
+        }
+      }
+    },
+    "查看服务器部署指南、桌面端下载与使用文档。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server setup guides, desktop client downloads, and full documentation."
+          }
+        }
+      }
+    },
+    "校验值" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hash"
+          }
+        }
+      }
+    },
+    "检测到同一份剪贴板内容在本机和服务器之间反复同步。点「重新启用」继续，或检查另一端的客户端是否也在自动同步同一份内容。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The same clipboard content kept bouncing between this device and the server. Tap Re-enable to continue, or check whether another client is also auto-syncing the same content."
+          }
+        }
+      }
+    },
+    "正在保存…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving…"
+          }
+        }
+      }
+    },
+    "正在加载图片…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading image…"
+          }
+        }
+      }
+    },
+    "正在加载完整内容…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading full content…"
+          }
+        }
+      }
+    },
+    "正在发送到 %@…" : {
+
+    },
+    "正在同步…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncing…"
+          }
+        }
+      }
+    },
+    "正在应用…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Applying…"
+          }
+        }
+      }
+    },
+    "正在获取链接预览…" : {
+
+    },
+    "正在读取分享内容…" : {
+
+    },
+    "正在连接…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecting…"
+          }
+        }
+      }
+    },
+    "此配置只在你手动选择时使用，不随网络自动切换。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Used only when you pick it manually — never switches automatically."
+          }
+        }
+      }
+    },
+    "没有可分享的内容" : {
+
+    },
+    "没有可发送的内容 — 请在快捷指令里提供文本或文件,或先复制一些内容" : {
+
+    },
+    "浅色" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light"
+          }
+        }
+      }
+    },
+    "测试连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test Connection"
+          }
+        }
+      }
+    },
+    "深色" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dark"
+          }
+        }
+      }
+    },
+    "添加" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add"
+          }
+        }
+      }
+    },
+    "添加 UniClip 键盘" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add the UniClip keyboard"
+          }
+        }
+      }
+    },
+    "添加服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Server"
+          }
+        }
+      }
+    },
+    "清除" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear"
+          }
+        }
+      }
+    },
+    "清除中…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clearing…"
+          }
+        }
+      }
+    },
+    "清除搜索" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear search"
+          }
+        }
+      }
+    },
+    "清除缓存" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear cache"
+          }
+        }
+      }
+    },
+    "点「从其他 App 粘贴」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap “Paste from Other Apps”"
+          }
+        }
+      }
+    },
+    "点按 UniClip,打开「允许完全访问」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap UniClip and turn on “Allow Full Access”"
+          }
+        }
+      }
+    },
+    "点按后 iOS 会弹出一次「允许粘贴」。允许后,主程序也能在「自动推送本机剪贴板」开启时静默读取并推送,并会在 设置 › UniClip 出现「粘贴自其他 App」开关。授权按 App 独立,键盘会在首次使用时单独询问。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tapping it prompts “Allow Paste” once. After you allow it, the main app can also read and push silently when “Auto-push device clipboard” is on, and a “Paste from Other Apps” switch appears under Settings › UniClip. Authorization is per app — the keyboard asks separately on first use."
+          }
+        }
+      }
+    },
+    "点按按钮即可同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap a button to sync"
+          }
+        }
+      }
+    },
+    "版本" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version"
+          }
+        }
+      }
+    },
+    "用 UniClip 同步这段示例内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync this sample content with UniClip"
+          }
+        }
+      }
+    },
+    "用 UniClip 键盘在任意 App 里打开即自动同步剪贴板；并可在此授权「粘贴自其他 App」。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the UniClip keyboard in any app to auto-sync your clipboard; you can also authorize “Paste from Other Apps” here."
+          }
+        }
+      }
+    },
+    "用 UniClip 键盘在任意 App 里打开即自动同步剪贴板。" : {
+
+    },
+    "用户名" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Username"
+          }
+        }
+      }
+    },
+    "由本机推送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pushed from device"
+          }
+        }
+      }
+    },
+    "确认允许" : {
+
+    },
+    "确认服务器，点「发送」" : {
+
+    },
+    "确认清除缓存?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear cache?"
+          }
+        }
+      }
+    },
+    "确认目标服务器,点「发送」即可同步" : {
+
+    },
+    "示例内容" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sample content"
+          }
+        }
+      }
+    },
+    "离线 · 重试中" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline · retrying"
+          }
+        }
+      }
+    },
+    "移除筛选 %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove filter %@"
+          }
+        }
+      }
+    },
+    "稍后" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Later"
+          }
+        }
+      }
+    },
+    "稍后设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set Up Later"
+          }
+        }
+      }
+    },
+    "空格" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "space"
+          }
+        }
+      }
+    },
+    "立即同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync now"
+          }
+        }
+      }
+    },
+    "立即重试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry now"
+          }
+        }
+      }
+    },
+    "筛选" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter"
+          }
+        }
+      }
+    },
+    "筛选条件" : {
+
+    },
+    "管理服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage Servers"
+          }
+        }
+      }
+    },
+    "类型" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type"
+          }
+        }
+      }
+    },
+    "继续" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue"
+          }
+        }
+      }
+    },
+    "缓存上限" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cache cap"
+          }
+        }
+      }
+    },
+    "缓存占用" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cache size"
+          }
+        }
+      }
+    },
+    "自动" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto"
+          }
+        }
+      }
+    },
+    "自动写入本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-write to device clipboard"
+          }
+        }
+      }
+    },
+    "自动切换" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-switch"
+          }
+        }
+      }
+    },
+    "自动切换：连接到匹配 SSID 时自动切换到该服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-switch: when connected to a matching SSID, that server becomes active automatically."
+          }
+        }
+      }
+    },
+    "自动同步已暂停" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-sync paused"
+          }
+        }
+      }
+    },
+    "自动推送本机剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-push device clipboard"
+          }
+        }
+      }
+    },
+    "自动粘贴授权" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-paste authorization"
+          }
+        }
+      }
+    },
+    "虚拟网络 (Tailscale)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Virtual network (Tailscale)"
+          }
+        }
+      }
+    },
+    "蜂窝" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cellular"
+          }
+        }
+      }
+    },
+    "蜂窝 / 移动数据" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cellular / mobile data"
+          }
+        }
+      }
+    },
+    "蜂窝下也预下载" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Also pre-download on cellular"
+          }
+        }
+      }
+    },
+    "行为" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behavior"
+          }
+        }
+      }
+    },
+    "触感反馈" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haptic Feedback"
+          }
+        }
+      }
+    },
+    "认证失败" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authentication failed"
+          }
+        }
+      }
+    },
+    "认证失败 — 检查用户名和密码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authentication failed — check username and password"
+          }
+        }
+      }
+    },
+    "认证失败 — 请检查用户名和密码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authentication failed — check username and password"
+          }
+        }
+      }
+    },
+    "让粘贴不再被打断" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste without interruptions"
+          }
+        }
+      }
+    },
+    "设为当前服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set as Current Server"
+          }
+        }
+      }
+    },
+    "设备" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Device"
+          }
+        }
+      }
+    },
+    "设置" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings"
+          }
+        }
+      }
+    },
+    "设置 › 通用 › 键盘 › 键盘 › 添加新键盘,选择 UniClip" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings › General › Keyboard › Keyboards › Add New Keyboard, then choose UniClip"
+          }
+        }
+      }
+    },
+    "设置分享扩展" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set up share extension"
+          }
+        }
+      }
+    },
+    "诊断" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnostics"
+          }
+        }
+      }
+    },
+    "询问" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ask"
+          }
+        }
+      }
+    },
+    "该开关在首次出现「允许粘贴」提示后才会显示。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This switch appears only after the “Allow Paste” prompt has shown once."
+          }
+        }
+      }
+    },
+    "该类型无法粘贴" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't paste this type"
+          }
+        }
+      }
+    },
+    "请先在 App 中添加服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a server in the app first"
+          }
+        }
+      }
+    },
+    "请先在 UniClipboard 中添加一台服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a server in UniClipboard first"
+          }
+        }
+      }
+    },
+    "请先打开 UniClipboard 主程序添加服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the UniClipboard app first to add a server"
+          }
+        }
+      }
+    },
+    "请填写 URL、用户名和密码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fill in URL, username, and password"
+          }
+        }
+      }
+    },
+    "请检查用户名和密码是否正确。修改后会自动重新同步。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check that the username and password are correct. Sync resumes automatically after editing."
+          }
+        }
+      }
+    },
+    "读取分享内容失败: %@" : {
+
+    },
+    "跟随系统" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Follow System"
+          }
+        }
+      }
+    },
+    "还没有同步过剪贴板" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No clipboard synced yet"
+          }
+        }
+      }
+    },
+    "还没有服务器" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No servers added yet"
+          }
+        }
+      }
+    },
+    "这个二维码不属于 UniClipboard。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This QR code isn't a UniClipboard sync link."
+          }
+        }
+      }
+    },
+    "连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection"
+          }
+        }
+      }
+    },
+    "连接到下面任一 Wi-Fi 时，自动切换到此配置。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically switches to this config when you join any Wi-Fi below."
+          }
+        }
+      }
+    },
+    "连接到指定 WiFi 时，自动切换到此服务器（可选）。\n稍后也可以在「设置 → 服务器列表」修改。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optionally switch to this server automatically when you join specific Wi-Fi networks. You can change this later in Settings → Servers."
+          }
+        }
+      }
+    },
+    "连接到这里的任一 SSID 时，自动切换到该服务器。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically switches to this server when you join any of these Wi-Fi networks."
+          }
+        }
+      }
+    },
+    "连接超时 — 请检查服务器地址" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect timeout — check the server address"
+          }
+        }
+      }
+    },
+    "选中内容，点「分享」" : {
+
+    },
+    "选择" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select"
+          }
+        }
+      }
+    },
+    "选择 UniClip" : {
+
+    },
+    "选择「允许」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose “Allow”"
+          }
+        }
+      }
+    },
+    "选择此配置在什么网络下自动启用（可选）。\n稍后也可以在「设置 → 服务器列表」修改。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose which network makes this config activate automatically (optional). You can change this later in Settings → Servers."
+          }
+        }
+      }
+    },
+    "通过 UniClipboard 服务器同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synced through your UniClipboard server"
+          }
+        }
+      }
+    },
+    "通过分享同步到服务器" : {
+
+    },
+    "部署在自己的服务器上，数据不经过任何第三方。完全开源，代码透明可审计。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deploy on your own server — data never touches a third party. Fully open source, transparent and auditable."
+          }
+        }
+      }
+    },
+    "重新启用" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Re-enable"
+          }
+        }
+      }
+    },
+    "重新测试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retest"
+          }
+        }
+      }
+    },
+    "重试" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry"
+          }
+        }
+      }
+    },
+    "链接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link"
+          }
+        }
+      }
+    },
+    "键盘与自动同步" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard & auto-sync"
+          }
+        }
+      }
+    },
+    "键盘扩展" : {
+
+    },
+    "隔空投送" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AirDrop"
+          }
+        }
+      }
+    },
+    "需要「完全访问权限」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Full Access required"
+          }
+        }
+      }
+    },
+    "项目主页" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Project Home"
+          }
+        }
+      }
+    },
+    "预下载附件" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pre-download attachments"
+          }
+        }
+      }
+    },
+    "预览" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview"
+          }
+        }
+      }
+    },
+    "首次使用点「允许粘贴」" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap “Allow Paste” on first use"
+          }
+        }
+      }
+    },
+    "默认" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default"
+          }
+        }
+      }
+    },
+    "局域网" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LAN"
+          }
+        }
+      }
+    },
+    "公网" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Internet"
+          }
+        }
+      }
+    },
+    "添加备用地址" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Alternate Address"
+          }
+        }
+      }
+    },
+    "请填写地址、用户名和密码" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter an address, username, and password"
+          }
+        }
+      }
+    },
+    "全部不可达 — 检查地址和网络" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None reachable — check addresses and network"
+          }
+        }
+      }
+    },
+    "将使用" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Will use"
+          }
+        }
+      }
+    },
+    "标注「将使用」的地址是当前网络下的首选；网络变化时会自动重选。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The address marked “Will use” is preferred on the current network; the choice updates automatically when the network changes."
+          }
+        }
+      }
+    },
+    "%lld 个地址" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld addresses"
+          }
+        }
+      }
+    },
+    "左滑可设为当前服务器或删除。每台服务器可填多个地址（局域网 / Tailscale / 公网），按当前网络自动选用。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe left to make a server current or delete it. Each server can have several addresses (LAN / Tailscale / Internet), picked automatically for the current network."
+          }
+        }
+      }
+    },
+    "同一服务器可填多个地址（局域网 / Tailscale / 公网），App 会按当前网络自动选用可达的一条；第一条为默认地址。左滑删除。「允许不安全证书」仅在使用自签名 HTTPS 证书时需要，纯 HTTP 无需开启；此设置全局生效。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One server can have several addresses (LAN / Tailscale / Internet); the app automatically uses whichever is reachable on the current network, with the first entry as the default. Swipe left to delete. “Allow Insecure Certificates” is only needed for self-signed HTTPS certificates — plain HTTP doesn’t need it; the setting applies globally."
+          }
+        }
+      }
+    },
+    "「允许不安全证书」仅在服务器使用自签名 HTTPS 证书时需要，纯 HTTP 无需开启。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Allow Insecure Certificates” is only needed when the server uses a self-signed HTTPS certificate — plain HTTP doesn’t need it."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

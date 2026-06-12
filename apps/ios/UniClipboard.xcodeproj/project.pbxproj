@@ -1,0 +1,738 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4DB1000C2FB1E000B8F901 /* UniClipboardShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4DB100012FB1E000B8F901 /* UniClipboardShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4DC2000C2FC1F000B8F901 /* UniClipboardKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4DC200012FC1F000B8F901 /* UniClipboardKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4DD300042FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4DD300022FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */; };
+		4DD300052FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4DD300032FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4DB1000A2FB1E000B8F901 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4D479E032FAEAE5B00B8F825 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4DB100032FB1E000B8F901;
+			remoteInfo = UniClipboardShare;
+		};
+		4DC2000A2FC1F000B8F901 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4D479E032FAEAE5B00B8F825 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4DC200032FC1F000B8F901;
+			remoteInfo = UniClipboardKeyboard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4DB1000D2FB1E000B8F901 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				4DB1000C2FB1E000B8F901 /* UniClipboardShare.appex in Embed Foundation Extensions */,
+				4DC2000C2FC1F000B8F901 /* UniClipboardKeyboard.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		4D479E0B2FAEAE5B00B8F825 /* UniClipboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UniClipboard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4DB100012FB1E000B8F901 /* UniClipboardShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UniClipboardShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4DC200012FC1F000B8F901 /* UniClipboardKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UniClipboardKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4DB1000E2FB1E000B8F901 /* Exceptions for "UniClipboardShare" folder in "UniClipboardShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4DB100032FB1E000B8F901 /* UniClipboardShare */;
+		};
+		4DC2000E2FC1F000B8F901 /* Exceptions for "UniClipboardKeyboard" folder in "UniClipboardKeyboard" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4DC200032FC1F000B8F901 /* UniClipboardKeyboard */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		4D479E0D2FAEAE5B00B8F825 /* UniClipboard */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UniClipboard;
+			sourceTree = "<group>";
+		};
+		4DA5D0012FB1DEAD00C8F901 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		4DB100022FB1E000B8F901 /* UniClipboardShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4DB1000E2FB1E000B8F901 /* Exceptions for "UniClipboardShare" folder in "UniClipboardShare" target */,
+			);
+			path = UniClipboardShare;
+			sourceTree = "<group>";
+		};
+		4DC200022FC1F000B8F901 /* UniClipboardKeyboard */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4DC2000E2FC1F000B8F901 /* Exceptions for "UniClipboardKeyboard" folder in "UniClipboardKeyboard" target */,
+			);
+			path = UniClipboardKeyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4D479E082FAEAE5B00B8F825 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4DD300042FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DB100052FB1E000B8F901 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4DD300052FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DC200052FC1F000B8F901 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4D479E022FAEAE5B00B8F825 = {
+			isa = PBXGroup;
+			children = (
+				4DA5D0012FB1DEAD00C8F901 /* Shared */,
+				4D479E0D2FAEAE5B00B8F825 /* UniClipboard */,
+				4DB100022FB1E000B8F901 /* UniClipboardShare */,
+				4DC200022FC1F000B8F901 /* UniClipboardKeyboard */,
+				4D479E0C2FAEAE5B00B8F825 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4D479E0C2FAEAE5B00B8F825 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4D479E0B2FAEAE5B00B8F825 /* UniClipboard.app */,
+				4DB100012FB1E000B8F901 /* UniClipboardShare.appex */,
+				4DC200012FC1F000B8F901 /* UniClipboardKeyboard.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4D479E0A2FAEAE5B00B8F825 /* UniClipboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4D479E162FAEAE5C00B8F825 /* Build configuration list for PBXNativeTarget "UniClipboard" */;
+			buildPhases = (
+				4D479E072FAEAE5B00B8F825 /* Sources */,
+				4D479E082FAEAE5B00B8F825 /* Frameworks */,
+				4D479E092FAEAE5B00B8F825 /* Resources */,
+				4DB1000D2FB1E000B8F901 /* Embed Foundation Extensions */,
+				4D8A0E012FB1ABCD00C8F901 /* Patch Info.plist (UIFileSharingEnabled + ATS LAN + LocalNetworkUsage + CameraUsage + LocationUsage) */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4DB1000B2FB1E000B8F901 /* PBXTargetDependency */,
+				4DC2000B2FC1F000B8F901 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				4D479E0D2FAEAE5B00B8F825 /* UniClipboard */,
+				4DA5D0012FB1DEAD00C8F901 /* Shared */,
+			);
+			name = UniClipboard;
+			packageProductDependencies = (
+				4DD300022FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */,
+			);
+			productName = UniClipboard;
+			productReference = 4D479E0B2FAEAE5B00B8F825 /* UniClipboard.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4DB100032FB1E000B8F901 /* UniClipboardShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4DB100072FB1E000B8F901 /* Build configuration list for PBXNativeTarget "UniClipboardShare" */;
+			buildPhases = (
+				4DB100042FB1E000B8F901 /* Sources */,
+				4DB100052FB1E000B8F901 /* Frameworks */,
+				4DB100062FB1E000B8F901 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4DA5D0012FB1DEAD00C8F901 /* Shared */,
+				4DB100022FB1E000B8F901 /* UniClipboardShare */,
+			);
+			name = UniClipboardShare;
+			packageProductDependencies = (
+				4DD300032FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */,
+			);
+			productName = UniClipboardShare;
+			productReference = 4DB100012FB1E000B8F901 /* UniClipboardShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		4DC200032FC1F000B8F901 /* UniClipboardKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4DC200072FC1F000B8F901 /* Build configuration list for PBXNativeTarget "UniClipboardKeyboard" */;
+			buildPhases = (
+				4DC200042FC1F000B8F901 /* Sources */,
+				4DC200052FC1F000B8F901 /* Frameworks */,
+				4DC200062FC1F000B8F901 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4DA5D0012FB1DEAD00C8F901 /* Shared */,
+				4DC200022FC1F000B8F901 /* UniClipboardKeyboard */,
+			);
+			name = UniClipboardKeyboard;
+			packageProductDependencies = (
+			);
+			productName = UniClipboardKeyboard;
+			productReference = 4DC200012FC1F000B8F901 /* UniClipboardKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4D479E032FAEAE5B00B8F825 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					4D479E0A2FAEAE5B00B8F825 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					4DB100032FB1E000B8F901 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					4DC200032FC1F000B8F901 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+				};
+			};
+			buildConfigurationList = 4D479E062FAEAE5B00B8F825 /* Build configuration list for PBXProject "UniClipboard" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+			);
+			mainGroup = 4D479E022FAEAE5B00B8F825;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4DD300012FD2A000B8F901 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4D479E0C2FAEAE5B00B8F825 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4D479E0A2FAEAE5B00B8F825 /* UniClipboard */,
+				4DB100032FB1E000B8F901 /* UniClipboardShare */,
+				4DC200032FC1F000B8F901 /* UniClipboardKeyboard */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4D479E092FAEAE5B00B8F825 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DB100062FB1E000B8F901 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DC200062FC1F000B8F901 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4D8A0E012FB1ABCD00C8F901 /* Patch Info.plist (UIFileSharingEnabled + ATS LAN + LocalNetworkUsage + CameraUsage + LocationUsage) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Patch Info.plist (UIFileSharingEnabled + ATS LAN + LocalNetworkUsage + CameraUsage + LocationUsage)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# After ProcessInfoPlistFile (declared as inputPaths), patch five keys:\n# 1. UIFileSharingEnabled — Xcode 26's processInfoPlistFile silently drops\n#    INFOPLIST_KEY_UIFileSharingEnabled (sibling LS* keys are honored, the\n#    bug is per-key). Files-app needs this to surface the Documents folder.\n# 2. NSAppTransportSecurity > NSAllowsArbitraryLoads — nested dict, no\n#    INFOPLIST_KEY_* equivalent. Lifts ATS entirely because the user's\n#    self-hosted server can sit on arbitrary addresses we can't enumerate\n#    ahead of time: LAN (RFC1918), Tailscale (CGNAT 100.64/10), custom\n#    domains, raw IPs. DO NOT also set NSAllowsLocalNetworking=YES — when\n#    both keys are present, ATS treats LocalNetworking as the narrower,\n#    more-specific permission and re-imposes ATS on anything outside\n#    RFC1918+`.local` (notably the Tailscale CGNAT range), defeating the\n#    intended global opt-out. App Store reviewer will ask for a\n#    justification string: \"app connects to user-deployed SyncClipboard\n#    servers on arbitrary user-controlled hosts; endpoints are not\n#    knowable ahead of time.\"\n# 3. NSLocalNetworkUsageDescription — iOS 14+ requires this string before\n#    the system surfaces the LAN permission prompt; without it, requests\n#    silently fail. zh-Hans copy (matches source language).\n# 4. NSCameraUsageDescription — required to scan QR codes via VisionKit's\n#    DataScannerViewController in the Settings → Servers → Add flow.\n# 5. NSLocationWhenInUseUsageDescription — iOS 13+ gates CNCopyCurrentNetworkInfo\n#    behind Location When In Use auth. Without this string the prompt never\n#    appears and the SSID read silently returns nil.\n# Sandbox is OFF for this target so PlistBuddy in-place writes persist.\n# Idempotent: Add then Set fallback. Verify all five after, fail loudly if\n# the COW overlay regression returns or a key disappears.\nset -e\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nPB=/usr/libexec/PlistBuddy\nif [ ! -f \"$PLIST\" ]; then echo \"error: Info.plist not found at $PLIST\" >&2; exit 1; fi\n$PB -c \"Add :UIFileSharingEnabled bool true\" \"$PLIST\" 2>/dev/null || $PB -c \"Set :UIFileSharingEnabled true\" \"$PLIST\"\n# Force-rebuild the NSAppTransportSecurity dict from scratch so we never inherit\n# a stale NSAllowsLocalNetworking key from an earlier build of this script.\n$PB -c \"Delete :NSAppTransportSecurity\" \"$PLIST\" 2>/dev/null || true\n$PB -c \"Add :NSAppTransportSecurity dict\" \"$PLIST\"\n$PB -c \"Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true\" \"$PLIST\"\nDESC=\"需要访问本地网络以连接你部署的剪贴板服务器\"\n$PB -c \"Add :NSLocalNetworkUsageDescription string $DESC\" \"$PLIST\" 2>/dev/null || $PB -c \"Set :NSLocalNetworkUsageDescription $DESC\" \"$PLIST\"\nCAM=\"需要访问相机以扫描服务器配置二维码\"\n$PB -c \"Add :NSCameraUsageDescription string $CAM\" \"$PLIST\" 2>/dev/null || $PB -c \"Set :NSCameraUsageDescription $CAM\" \"$PLIST\"\nLOC=\"需要位置权限以读取当前 WiFi 名称,用于自动切换服务器\"\n$PB -c \"Add :NSLocationWhenInUseUsageDescription string $LOC\" \"$PLIST\" 2>/dev/null || $PB -c \"Set :NSLocationWhenInUseUsageDescription $LOC\" \"$PLIST\"\nA=$($PB -c \"Print :UIFileSharingEnabled\" \"$PLIST\" 2>/dev/null || true)\nBA=$($PB -c \"Print :NSAppTransportSecurity:NSAllowsArbitraryLoads\" \"$PLIST\" 2>/dev/null || true)\nBLEAK=$($PB -c \"Print :NSAppTransportSecurity:NSAllowsLocalNetworking\" \"$PLIST\" 2>/dev/null || true)\nC=$($PB -c \"Print :NSLocalNetworkUsageDescription\" \"$PLIST\" 2>/dev/null || true)\nD=$($PB -c \"Print :NSCameraUsageDescription\" \"$PLIST\" 2>/dev/null || true)\nE=$($PB -c \"Print :NSLocationWhenInUseUsageDescription\" \"$PLIST\" 2>/dev/null || true)\nif [ \"$A\" != \"true\" ]; then echo \"error: UIFileSharingEnabled persistence failed (got: '$A')\" >&2; exit 1; fi\nif [ \"$BA\" != \"true\" ]; then echo \"error: NSAllowsArbitraryLoads persistence failed (got: '$BA')\" >&2; exit 1; fi\nif [ -n \"$BLEAK\" ]; then echo \"error: NSAllowsLocalNetworking leaked into Info.plist ('$BLEAK') — it narrows ATS and breaks Tailscale CGNAT (100.64/10) when paired with NSAllowsArbitraryLoads\" >&2; exit 1; fi\nif [ -z \"$C\" ]; then echo \"error: NSLocalNetworkUsageDescription persistence failed\" >&2; exit 1; fi\nif [ -z \"$D\" ]; then echo \"error: NSCameraUsageDescription persistence failed\" >&2; exit 1; fi\nif [ -z \"$E\" ]; then echo \"error: NSLocationWhenInUseUsageDescription persistence failed\" >&2; exit 1; fi\n# 6. CFBundleURLTypes — register the uniclipboard:// custom URL scheme so the system Camera (and any app handing off a uniclipboard URL) routes scanned QR codes back via .onOpenURL. Nested array-of-dict, no INFOPLIST_KEY_* equivalent; delete-then-add keeps rebuilds idempotent because PlistBuddy's Add errors on existing keys and Set cannot initialise a missing array.\n$PB -c \"Delete :CFBundleURLTypes\" \"$PLIST\" 2>/dev/null || true\n$PB -c \"Add :CFBundleURLTypes array\" \"$PLIST\"\n$PB -c \"Add :CFBundleURLTypes:0 dict\" \"$PLIST\"\n$PB -c \"Add :CFBundleURLTypes:0:CFBundleURLName string app.uniclipboard.UniClipboard.connect\" \"$PLIST\"\n$PB -c \"Add :CFBundleURLTypes:0:CFBundleURLSchemes array\" \"$PLIST\"\n$PB -c \"Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string uniclipboard\" \"$PLIST\"\nF=$($PB -c \"Print :CFBundleURLTypes:0:CFBundleURLSchemes:0\" \"$PLIST\" 2>/dev/null || true)\nif [ \"$F\" != \"uniclipboard\" ]; then echo \"error: CFBundleURLTypes persistence failed (got: '$F')\" >&2; exit 1; fi\n# 7. UIApplicationShortcutItems — Home Screen quick actions (long-press app icon). Static via Info.plist so the tiles ship with the bundle and appear at install time without needing the app to launch once first; dynamic UIApplication.shared.shortcutItems didn't show up reliably on real devices (Springboard caches the static set from LaunchServices at install). Delete-then-add keeps rebuilds idempotent (PlistBuddy Add errors on existing arrays; Set can't create one). SF Symbol icons via UIApplicationShortcutItemIconSymbolName — square.and.arrow.up/down match the iOS share/save vocabulary the user already recognises.\nSC1T=\"发送\"\nSC1S=\"把本机剪贴板发到其他设备\"\nSC2T=\"接收\"\nSC2S=\"拿其他设备的最新剪贴板\"\n$PB -c \"Delete :UIApplicationShortcutItems\" \"$PLIST\" 2>/dev/null || true\n$PB -c \"Add :UIApplicationShortcutItems array\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:0 dict\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:0:UIApplicationShortcutItemType string app.uniclipboard.UniClipboard.shortcut.push\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:0:UIApplicationShortcutItemTitle string $SC1T\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:0:UIApplicationShortcutItemSubtitle string $SC1S\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:0:UIApplicationShortcutItemIconSymbolName string square.and.arrow.up\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:1 dict\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:1:UIApplicationShortcutItemType string app.uniclipboard.UniClipboard.shortcut.pull\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:1:UIApplicationShortcutItemTitle string $SC2T\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:1:UIApplicationShortcutItemSubtitle string $SC2S\" \"$PLIST\"\n$PB -c \"Add :UIApplicationShortcutItems:1:UIApplicationShortcutItemIconSymbolName string square.and.arrow.down\" \"$PLIST\"\nG=$($PB -c \"Print :UIApplicationShortcutItems:0:UIApplicationShortcutItemType\" \"$PLIST\" 2>/dev/null || true)\nH=$($PB -c \"Print :UIApplicationShortcutItems:1:UIApplicationShortcutItemType\" \"$PLIST\" 2>/dev/null || true)\nif [ \"$G\" != \"app.uniclipboard.UniClipboard.shortcut.push\" ]; then echo \"error: UIApplicationShortcutItems[0] persistence failed (got: '$G')\" >&2; exit 1; fi\nif [ \"$H\" != \"app.uniclipboard.UniClipboard.shortcut.pull\" ]; then echo \"error: UIApplicationShortcutItems[1] persistence failed (got: '$H')\" >&2; exit 1; fi\necho \"note: Info.plist hardened (UIFileSharingEnabled, NSAllowsArbitraryLoads, NSLocalNetworkUsageDescription, NSCameraUsageDescription, NSLocationWhenInUseUsageDescription, CFBundleURLTypes/uniclipboard, UIApplicationShortcutItems)\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4D479E072FAEAE5B00B8F825 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DB100042FB1E000B8F901 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DC200042FC1F000B8F901 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4DB1000B2FB1E000B8F901 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4DB100032FB1E000B8F901 /* UniClipboardShare */;
+			targetProxy = 4DB1000A2FB1E000B8F901 /* PBXContainerItemProxy */;
+		};
+		4DC2000B2FC1F000B8F901 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4DC200032FC1F000B8F901 /* UniClipboardKeyboard */;
+			targetProxy = 4DC2000A2FC1F000B8F901 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		4D479E142FAEAE5C00B8F825 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		4D479E152FAEAE5C00B8F825 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		4D479E172FAEAE5C00B8F825 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = UniClipboard/UniClipboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 8XG39X5CL8;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = UniClip;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.uniclipboard.UniClipboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4D479E182FAEAE5C00B8F825 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = UniClipboard/UniClipboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 8XG39X5CL8;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = UniClip;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.uniclipboard.UniClipboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		4DB100082FB1E000B8F901 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = UniClipboardShare/UniClipboardShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 8XG39X5CL8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UniClipboardShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UniClip;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.uniclipboard.UniClipboard.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4DB100092FB1E000B8F901 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = UniClipboardShare/UniClipboardShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 8XG39X5CL8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UniClipboardShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UniClip;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.uniclipboard.UniClipboard.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		4DC200082FC1F000B8F901 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = UniClipboardKeyboard/UniClipboardKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 8XG39X5CL8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UniClipboardKeyboard/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UniClip;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.uniclipboard.UniClipboard.Keyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4DC200092FC1F000B8F901 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = UniClipboardKeyboard/UniClipboardKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 8XG39X5CL8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UniClipboardKeyboard/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = UniClip;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.uniclipboard.UniClipboard.Keyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4D479E062FAEAE5B00B8F825 /* Build configuration list for PBXProject "UniClipboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4D479E142FAEAE5C00B8F825 /* Debug */,
+				4D479E152FAEAE5C00B8F825 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4D479E162FAEAE5C00B8F825 /* Build configuration list for PBXNativeTarget "UniClipboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4D479E172FAEAE5C00B8F825 /* Debug */,
+				4D479E182FAEAE5C00B8F825 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4DB100072FB1E000B8F901 /* Build configuration list for PBXNativeTarget "UniClipboardShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4DB100082FB1E000B8F901 /* Debug */,
+				4DB100092FB1E000B8F901 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4DC200072FC1F000B8F901 /* Build configuration list for PBXNativeTarget "UniClipboardKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4DC200082FC1F000B8F901 /* Debug */,
+				4DC200092FC1F000B8F901 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4DD300012FD2A000B8F901 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.15.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4DD300022FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4DD300012FD2A000B8F901 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = "Sentry-WithoutUIKitOrAppKit";
+		};
+		4DD300032FD2A000B8F901 /* Sentry-WithoutUIKitOrAppKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4DD300012FD2A000B8F901 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = "Sentry-WithoutUIKitOrAppKit";
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 4D479E032FAEAE5B00B8F825 /* Project object */;
+}

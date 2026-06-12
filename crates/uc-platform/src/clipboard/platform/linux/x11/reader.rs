@@ -18,12 +18,13 @@
 //! [`super::writer::service_selection_request`] from within the wait loop
 //! so an external paster doesn't time out while we're reading.
 
+use std::cell::Cell;
 use std::os::fd::AsFd;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use rustix::event::{poll, PollFd, PollFlags};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_core::ids::RepresentationId;
 use x11rb::connection::Connection;
@@ -52,6 +53,34 @@ const MAX_MIME_BYTES: usize = 32 * 1024 * 1024;
 /// pull at most this much per `PropertyNotify`.
 const PROPERTY_CHUNK_LONGS: u32 = 16 * 1024 * 1024 / 4;
 
+/// Shared context for one snapshot read.
+///
+/// Bundles the optional writer state (so inbound `SelectionRequest`s can be
+/// serviced inline) with a flag recording whether an
+/// `XfixesSelectionNotify` was consumed — and would otherwise be lost —
+/// while a read round-trip was in flight. The watcher event loop re-reads
+/// when the flag is set; without it a clipboard change landing mid-read is
+/// dropped permanently (issue #1029).
+pub(super) struct ReadContext<'a> {
+    writer_state: Option<&'a WriterState>,
+    selection_changed: Cell<bool>,
+}
+
+impl<'a> ReadContext<'a> {
+    pub(super) fn new(writer_state: Option<&'a WriterState>) -> Self {
+        Self {
+            writer_state,
+            selection_changed: Cell::new(false),
+        }
+    }
+
+    /// True when a selection-change notification was swallowed during the
+    /// read. Reading resets the flag.
+    pub(super) fn take_selection_changed(&self) -> bool {
+        self.selection_changed.replace(false)
+    }
+}
+
 /// Read the current `CLIPBOARD` contents into a snapshot.
 ///
 /// Returns an empty snapshot (no representations) if there is no current
@@ -59,17 +88,17 @@ const PROPERTY_CHUNK_LONGS: u32 = 16 * 1024 * 1024 / 4;
 /// are logged at warn and skipped — one broken mime should not lose the
 /// others.
 ///
-/// `writer_state` (if any) is consulted only for the corner case where a
-/// `SelectionRequest` from an external paster arrives while we're waiting:
-/// we service it inline so the paster doesn't time out.
+/// `ctx.writer_state` (if any) is consulted only for the corner case where
+/// a `SelectionRequest` from an external paster arrives while we're
+/// waiting: we service it inline so the paster doesn't time out.
 pub(super) fn read_snapshot(
     server: &X11Server,
-    writer_state: Option<&WriterState>,
+    ctx: &ReadContext<'_>,
 ) -> Result<SystemClipboardSnapshot> {
-    let targets = match convert_selection_bytes(server, server.atoms.TARGETS, writer_state)? {
+    let targets = match convert_selection_bytes(server, server.atoms.TARGETS, ctx)? {
         Some(b) => b,
         None => {
-            debug!("x11 read: no selection owner — empty snapshot");
+            info!("x11 read: no TARGETS reply (no owner, owner refused, or timed out) — empty snapshot");
             return Ok(empty_snapshot());
         }
     };
@@ -80,12 +109,21 @@ pub(super) fn read_snapshot(
     // Resolve atom→name in one batch (one round-trip per atom is fine; the
     // count is typically <16). Build the (atom, mime_name) pairs first so we
     // can run the dedup/filter pass on string names symmetric with wayland.
+    let mut all_names: Vec<String> = Vec::with_capacity(target_atoms.len());
     let mut candidates: Vec<(Atom, String)> = Vec::with_capacity(target_atoms.len());
     for a in target_atoms {
         let name = server.atom_name(a);
         if is_interesting_mime(&name) {
-            candidates.push((a, name));
+            candidates.push((a, name.clone()));
         }
+        all_names.push(name);
+    }
+    if candidates.is_empty() && !all_names.is_empty() {
+        // Names are mime identifiers / atom names, never payload content.
+        info!(
+            targets = %all_names.join(", "),
+            "x11 read: owner advertised no interesting mimes — empty snapshot"
+        );
     }
     // Reorder so we read UTF-8-friendly text mimes (e.g. `UTF8_STRING`,
     // `text/plain;charset=utf-8`) before the Latin-1-bounded fallbacks
@@ -111,10 +149,10 @@ pub(super) fn read_snapshot(
             continue;
         }
 
-        let bytes = match convert_selection_bytes(server, atom, writer_state) {
+        let bytes = match convert_selection_bytes(server, atom, ctx) {
             Ok(Some(b)) => b,
             Ok(None) => {
-                debug!(mime = %mime, "x11 read: owner refused mime");
+                info!(mime = %mime, "x11 read: owner refused mime (or reply timed out)");
                 continue;
             }
             Err(e) => {
@@ -123,6 +161,7 @@ pub(super) fn read_snapshot(
             }
         };
         if bytes.is_empty() {
+            info!(mime = %mime, "x11 read: owner returned empty payload for mime");
             continue;
         }
 
@@ -164,7 +203,7 @@ fn empty_snapshot() -> SystemClipboardSnapshot {
 fn convert_selection_bytes(
     server: &X11Server,
     target: Atom,
-    writer_state: Option<&WriterState>,
+    ctx: &ReadContext<'_>,
 ) -> Result<Option<Vec<u8>>> {
     let conn = &server.conn;
     let atoms = server.atoms;
@@ -190,7 +229,7 @@ fn convert_selection_bytes(
     // Wait for SelectionNotify addressed to our requestor window for this
     // selection. Service inbound SelectionRequest events that arrive in
     // the meantime so external pasters don't stall.
-    let notify = wait_for_selection_notify(server, atoms.CLIPBOARD, target, writer_state)?;
+    let notify = wait_for_selection_notify(server, atoms.CLIPBOARD, target, ctx)?;
     let Some(notify) = notify else {
         return Ok(None);
     };
@@ -199,7 +238,7 @@ fn convert_selection_bytes(
         return Ok(None);
     }
 
-    read_property_value(server, target, writer_state)
+    read_property_value(server, target, ctx)
 }
 
 /// Read the bytes currently stored at our `UC_CLIPBOARD_PROP`. Handles the
@@ -209,7 +248,7 @@ fn convert_selection_bytes(
 fn read_property_value(
     server: &X11Server,
     target: Atom,
-    writer_state: Option<&WriterState>,
+    ctx: &ReadContext<'_>,
 ) -> Result<Option<Vec<u8>>> {
     let conn = &server.conn;
     let atoms = server.atoms;
@@ -250,7 +289,7 @@ fn read_property_value(
                 buf.reserve(hint);
             }
         }
-        read_incr_into(server, target, &mut buf, writer_state)?;
+        read_incr_into(server, target, &mut buf, ctx)?;
         return Ok(Some(buf));
     }
 
@@ -272,7 +311,7 @@ fn read_incr_into(
     server: &X11Server,
     target: Atom,
     buf: &mut Vec<u8>,
-    writer_state: Option<&WriterState>,
+    ctx: &ReadContext<'_>,
 ) -> Result<()> {
     let conn = &server.conn;
     let atoms = server.atoms;
@@ -291,7 +330,7 @@ fn read_incr_into(
             server,
             deadline,
             |e| matches!(e, Event::PropertyNotify(_)),
-            writer_state,
+            ctx,
         )?;
         let Event::PropertyNotify(PropertyNotifyEvent {
             window,
@@ -338,7 +377,7 @@ fn wait_for_selection_notify(
     server: &X11Server,
     selection: Atom,
     target: Atom,
-    writer_state: Option<&WriterState>,
+    ctx: &ReadContext<'_>,
 ) -> Result<Option<x11rb::protocol::xproto::SelectionNotifyEvent>> {
     let deadline = Instant::now() + READ_TIMEOUT;
     let event = wait_for_event_filtered(
@@ -350,13 +389,22 @@ fn wait_for_selection_notify(
             }
             _ => false,
         },
-        writer_state,
+        ctx,
     );
     match event {
         Ok(Event::SelectionNotify(n)) => Ok(Some(n)),
         Ok(_) => Ok(None),
         Err(e) if e.to_string().contains("x11 wait: deadline expired") => {
-            debug!(target = %target, "x11 read: selection_notify deadline expired");
+            // A misbehaving / slow owner (Chromium via the XWayland bridge
+            // is the known offender) — visible at warn so field logs can
+            // tell "owner never answered" apart from "no event at all".
+            warn!(
+                target = %server.atom_name(target),
+                timeout_ms = READ_TIMEOUT.as_millis() as u64,
+                error_kind = "x11_selection_reply_timeout",
+                retryable = true,
+                "x11 read: selection owner did not reply before deadline"
+            );
             Ok(None)
         }
         Err(e) => Err(e),
@@ -371,7 +419,7 @@ fn wait_for_event_filtered(
     server: &X11Server,
     deadline: Instant,
     pred: impl Fn(&Event) -> bool,
-    writer_state: Option<&WriterState>,
+    ctx: &ReadContext<'_>,
 ) -> Result<Event> {
     let conn = &server.conn;
     loop {
@@ -383,7 +431,7 @@ fn wait_for_event_filtered(
             if pred(&event) {
                 return Ok(event);
             }
-            route_unrelated_event(server, &event, writer_state);
+            route_unrelated_event(server, &event, ctx);
         }
 
         let now = Instant::now();
@@ -410,17 +458,25 @@ fn wait_for_event_filtered(
 
 /// Hand a non-target event off to the right place. SelectionRequest goes to
 /// the writer (if we have one) so external pasters don't stall while we're
-/// reading. Other events are dropped — they'd be SelectionClear (lose
-/// ownership) or unrelated XFIXES traffic, neither of which the reader
-/// needs to act on; the next handle_write / event loop iteration picks up
-/// the consequences.
-fn route_unrelated_event(server: &X11Server, event: &Event, writer_state: Option<&WriterState>) {
-    if let Event::SelectionRequest(req) = event {
-        if let Some(ws) = writer_state {
-            if let Err(e) = super::writer::service_selection_request(server, ws, req.clone()) {
-                warn!(error = %e, "x11 read: inline service_selection_request failed");
+/// reading. `XfixesSelectionNotify` is recorded on the context — the
+/// watcher's change subscription delivers on this same connection, and
+/// consuming one here without flagging it would lose that clipboard change
+/// for good (issue #1029). Everything else is dropped — SelectionClear and
+/// the like are picked up by the next handle_write / event loop iteration.
+fn route_unrelated_event(server: &X11Server, event: &Event, ctx: &ReadContext<'_>) {
+    match event {
+        Event::SelectionRequest(req) => {
+            if let Some(ws) = ctx.writer_state {
+                if let Err(e) = super::writer::service_selection_request(server, ws, req.clone()) {
+                    warn!(error = %e, "x11 read: inline service_selection_request failed");
+                }
             }
         }
+        Event::XfixesSelectionNotify(_) => {
+            ctx.selection_changed.set(true);
+            debug!("x11 read: selection changed mid-read; flagged for re-read");
+        }
+        _ => {}
     }
 }
 
@@ -458,5 +514,16 @@ mod tests {
     #[test]
     fn parse_atom_list_empty() {
         assert_eq!(parse_atom_list(&[]), Vec::<Atom>::new());
+    }
+
+    #[test]
+    fn read_context_take_selection_changed_resets() {
+        let ctx = ReadContext::new(None);
+        assert!(!ctx.take_selection_changed());
+
+        ctx.selection_changed.set(true);
+        assert!(ctx.take_selection_changed());
+        // Taking the flag must reset it.
+        assert!(!ctx.take_selection_changed());
     }
 }

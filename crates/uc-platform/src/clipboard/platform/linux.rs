@@ -22,7 +22,7 @@ pub(super) mod x11;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use uc_core::clipboard::SystemClipboardSnapshot;
 use uc_core::ports::SystemClipboardPort;
 
@@ -47,7 +47,7 @@ impl LinuxClipboard {
                     return Ok(Self::Wayland(wl));
                 }
                 Ok(None) => {
-                    debug!(
+                    info!(
                         "Linux clipboard: Wayland session but no data-control protocol; \
                          falling through to native x11rb"
                     );
@@ -63,7 +63,10 @@ impl LinuxClipboard {
 
         match x11::try_new_clipboard() {
             Ok(Some(x)) => {
-                info!("Linux clipboard: native X11 (x11rb)");
+                info!(
+                    wayland_session = is_wayland_session(),
+                    "Linux clipboard: native X11 (x11rb)"
+                );
                 Ok(Self::X11(x))
             }
             Ok(None) => Err(anyhow::anyhow!(
@@ -128,7 +131,7 @@ pub(super) fn build_event_loop() -> Result<Box<dyn PlatformClipboardEventLoop>> 
                 return Ok(Box::new(wl));
             }
             Ok(None) => {
-                debug!(
+                info!(
                     "Linux clipboard event loop: Wayland session but no data-control \
                      protocol; falling through to native x11rb"
                 );
@@ -141,7 +144,10 @@ pub(super) fn build_event_loop() -> Result<Box<dyn PlatformClipboardEventLoop>> 
 
     match x11::try_new_event_loop() {
         Ok(Some(loop_)) => {
-            info!("Linux clipboard event loop: native X11 (x11rb + XFIXES)");
+            info!(
+                wayland_session = is_wayland_session(),
+                "Linux clipboard event loop: native X11 (x11rb + XFIXES)"
+            );
             Ok(Box::new(loop_))
         }
         Ok(None) => Err(anyhow::anyhow!(

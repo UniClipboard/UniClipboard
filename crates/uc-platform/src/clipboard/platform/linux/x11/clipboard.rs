@@ -29,7 +29,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 
 use super::connection::X11Server;
-use super::reader::read_snapshot;
+use super::reader::{read_snapshot, ReadContext};
 use super::writer::{install_snapshot, service_selection_request, WriterState};
 
 /// Upper bound on how long the caller waits for the worker to ack a
@@ -175,7 +175,7 @@ fn worker_main(request_rx: Receiver<Request>, wakeup_fd: OwnedFd) -> Result<()> 
                         // race our own SelectionRequest servicing.
                         Ok(snap)
                     } else {
-                        read_snapshot(&server, Some(&state))
+                        read_snapshot(&server, &ReadContext::new(Some(&state)))
                     };
                     let _ = reply.send(res);
                 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 // `clipboard_rs::ClipboardHandler` is only required by the macOS / Windows
 // adapter that wraps `ClipboardWatcherContext`. The native Wayland and X11
@@ -123,7 +123,10 @@ impl ClipboardWatcher {
         let current_dedupe_key = dedupe_key(&snapshot);
         if let Some(key) = current_dedupe_key.as_ref() {
             if self.last_meaningful_dedupe_key.as_deref() == Some(key.as_str()) {
-                debug!(
+                // Info-level on purpose: this is the last silent spot where a
+                // user-visible "copy did nothing" can hide (key is kind:hash,
+                // never payload content).
+                info!(
                     dedupe_key = %key,
                     "Skipping duplicated meaningful clipboard snapshot"
                 );

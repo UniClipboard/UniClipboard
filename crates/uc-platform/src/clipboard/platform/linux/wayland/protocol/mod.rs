@@ -69,7 +69,7 @@ fn select(conn: &Connection) -> Result<Option<Protocol>> {
     let ext_available = ext::probe(conn).context("ext-data-control probe failed")?;
     let wlr_available = wlr::probe(conn).context("wlr-data-control probe failed")?;
 
-    debug!(
+    info!(
         ext = ext_available,
         wlr = wlr_available,
         force = ?force,
@@ -108,7 +108,7 @@ pub(crate) fn try_new_event_loop() -> Result<Option<WaylandEventLoop>> {
     let conn = match Connection::connect_to_env() {
         Ok(c) => c,
         Err(e) => {
-            debug!(error = %e, "wayland: cannot connect; skipping wayland event loop");
+            warn!(error = %e, "wayland: cannot connect; skipping wayland event loop");
             return Ok(None);
         }
     };
@@ -143,7 +143,7 @@ pub(crate) fn try_new_clipboard() -> Result<Option<WaylandClipboard>> {
     let conn = match Connection::connect_to_env() {
         Ok(c) => c,
         Err(e) => {
-            debug!(error = %e, "wayland: cannot connect; skipping wayland clipboard");
+            warn!(error = %e, "wayland: cannot connect; skipping wayland clipboard");
             return Ok(None);
         }
     };

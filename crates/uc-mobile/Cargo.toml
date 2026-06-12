@@ -1,0 +1,38 @@
+# FFI boundary crate for the mobile spike (B1/B2). Wraps `uc-mobile-proto`
+# behind UniFFI so iOS/Android can call shared Rust logic. See
+# .planning/research/uc-mobile-spike-plan.md.
+#
+# uniffi is pinned EXACTLY (spike plan §5): bindgen output and the Swift/Kotlin
+# runtime shims must come from the same version, or the generated bindings
+# silently drift from the compiled scaffolding.
+
+[package]
+name = "uc-mobile"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+
+[lib]
+# staticlib: linked into the iOS xcframework. cdylib: host dylib used by
+# uniffi-bindgen library mode to extract metadata. lib: unit tests.
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+# Bindgen CLI entrypoint (library mode). Feature-gated so the plain
+# workspace build does not pull clap/uniffi_bindgen into every PR check:
+#   cargo run -p uc-mobile --features bindgen-cli --bin uniffi-bindgen -- \
+#     generate --library target/debug/libuc_mobile.dylib --language swift ...
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen-cli"]
+
+[features]
+bindgen-cli = ["uniffi/cli"]
+
+[dependencies]
+uc-mobile-proto = { path = "../uc-mobile-proto" }
+uniffi = "=0.31.1"
+thiserror = "2.0.17"
+
+[lints]
+workspace = true

@@ -2,7 +2,8 @@
 
 > 配套 `uc-ios-feature-inventory.md`（基线）+ `uc-ios-regression-checklist.md`（全量迁移的验收闸门）。
 > 本版按对抗审查 `wkkg9l3cg`（34 条确认）收窄重写，取代旧版「全量迁移」框架。
-> 状态：spike / 提案。语言审查豁免路径（`.planning/`）。
+> 状态：spike / 进行中。语言审查豁免路径（`.planning/`）。
+> 进度：B0 ✅（`uc-mobile-proto` 抽出，commit c1576bd05）· B1 ✅（`uc-mobile` UniFFI crate + xcframework + Swift binding，iOS 模拟器 demo 三探针全过：golden vector 解析 / 错误映射 / `with_foreign` bridge 构造 + 回调往返；脚本见 `crates/uc-mobile/scripts/`）· B2 ⏳
 
 ## 0. 一句话定位
 
@@ -27,8 +28,8 @@ mobile-sync 只是低风险载体。**不在本 spike 范围**：零回归地把
 | 步 | 内容 | 证明什么 |
 |---|---|---|
 | **B0** | 新建 `crates/uc-mobile-proto` 叶子 crate，把 `connect_uri.rs`（真零内部依赖）移入；`uc-application` 改为依赖它；桌面 build+test 全绿无回归 | 抽取拓扑成立 |
-| **B1** | 新建 `crates/uc-mobile`（UniFFI），暴露**同步**纯函数 `parse_connect_uri`；用 `#[uniffi::export(with_foreign)]` 验证 `Arc<dyn PlatformBridge>` 构造参数；产出 xcframework + Swift binding，iOS demo 调通 | UniFFI codegen 管道通 + 构造参数写法可行 |
-| **B2** | `uc-mobile` 加 **async** `get_latest`/`put_clipboard`（reqwest + tokio + `uc_mobile_init`），iOS demo 打**真实桌面 daemon** 成功完成一次 get 和一次 put | **async-over-FFI + tokio on device + TLS 初始化**（P2P 真正的硬骨头） |
+| **B1** | 新建 `crates/uc-mobile`（UniFFI），暴露 **同步** 纯函数 `parse_connect_uri`；用 `#[uniffi::export(with_foreign)]` 验证 `Arc<dyn PlatformBridge>` 构造参数；产出 xcframework + Swift binding，iOS demo 调通 | UniFFI codegen 管道通 + 构造参数写法可行 |
+| **B2** | `uc-mobile` 加 **async** `get_latest`/`put_clipboard`（reqwest + tokio + `uc_mobile_init`），iOS demo 打 **真实桌面 daemon** 成功完成一次 get 和一次 put | **async-over-FFI + tokio on device + TLS 初始化**（P2P 真正的硬骨头） |
 
 **DoD = B0–B2 完成，且 iOS 通过 async Rust 对真实 daemon 完成 get+put。就这一句。**
 
@@ -60,7 +61,7 @@ crates/
 ### ⚠️ 诚实声明：golden vector 才是唯一跨语言契约
 
 旧版宣称「同一份代码 → 桌面/移动端字节一致」。**这是错的**：
-- connect-uri 实际有**三份实现**——Rust `connect_uri.rs`、驱动桌面 QR 的 TS `src/lib/mobileSyncConnectUri.ts`、iOS `ConnectURI.swift`。B0 只减少 Rust 内部使用面，**消除不了跨语言漂移**。
+- connect-uri 实际有 **三份实现**——Rust `connect_uri.rs`、驱动桌面 QR 的 TS `src/lib/mobileSyncConnectUri.ts`、iOS `ConnectURI.swift`。B0 只减少 Rust 内部使用面，**消除不了跨语言漂移**。
 - 决定 SyncClipboard JSON 字节的是 `uc-webserver/.../sync_doc.rs` 的 `SyncClipboardDoc`（`pub(super)`，server-only，带 rename/alias/nil 省略）；`uc-application` 的 `SyncClipboardMeta` **零 serde、不是 wire 类型**。
 
 **结论**：本 spike 不靠「单一源头」保证字节一致，靠 **golden vector 作为跨实现契约**，且 golden vector 必须覆盖 Rust + TS + iOS 三方。
@@ -70,14 +71,14 @@ crates/
 ## 3. 三个必修工程缝（baked into B0–B2）
 
 ### 缝 1（原 blocker）：rustls CryptoProvider 无安装点
-workspace 的 rustls 同时编入 aws-lc-rs + ring，无自动默认，必须显式 `install_default()`（见 `apps/cli/src/main.rs:311`、`apps/daemon/src/main.rs:56`）。FFI cdylib 被 App/键盘/分享扩展加载时**没有 `main()`**。
+workspace 的 rustls 同时编入 aws-lc-rs + ring，无自动默认，必须显式 `install_default()`（见 `apps/cli/src/main.rs:311`、`apps/daemon/src/main.rs:56`）。FFI cdylib 被 App/键盘/分享扩展加载时 **没有 `main()`**。
 - **修**：`uc-mobile` 导出 `uc_mobile_init()`，用 `OnceLock` 跑一次 `rustls::crypto::ring::default_provider().install_default()`；Swift/Kotlin 构造 client 前必须先调。
 - **修**：reqwest `default-features=false`，pin ring（照 `apps/cli/Cargo.toml:69`、`uc-infra/Cargo.toml:121`）；CI 断言 mobile target 下 `cargo tree -i aws-lc-rs` 为空。
 - **B2 验收**：App / 键盘扩展 / 分享扩展三个进程上下文各自首次 TLS 握手成功。
 
 ### 缝 2：UniFFI 构造参数写法
 `#[uniffi::export(callback_interface)]` 的 trait 不能当 `Arc<dyn PlatformBridge>` 构造参数（uniffi-rs #2797）。
-- **修**：改 `#[uniffi::export(with_foreign)]`；**B1 就验证**这个写法能编译+生成 binding（它是整条管道论点的门，别拖到 B2）。
+- **修**：改 `#[uniffi::export(with_foreign)]`；**B1 就验证** 这个写法能编译 + 生成 binding（它是整条管道论点的门，别拖到 B2）。
 - 注：同步 PlatformBridge + Object 上 `async_runtime="tokio"` 的组合本身 UniFFI 支持（#2576 不命中）；但 ergonomics 仍需对 pinned uniffi 版本实测。
 
 ### 缝 3：async-PUT 被挂起打断
@@ -133,7 +134,7 @@ impl MobileSyncClient {
 
 ## 6. 风险与待决
 
-- **假 oracle 警告（留给目标 B，现在记下）**：daemon 的 history query/PATCH 是**兼容壳**（patch 不读 body、version 硬编码 0、无 409、无 modifiedAfter，见 `routes.rs:15-16`）——未来全量迁移 `HistoryRecord`/version/isDelete 时，**真实 daemon 不是可靠字节对照物**。本 spike 不碰这些，但目标 B 必须另找 oracle（抓 iOS 真实字节 fixture）。
+- **假 oracle 警告（留给目标 B，现在记下）**：daemon 的 history query/PATCH 是 **兼容壳**（patch 不读 body、version 硬编码 0、无 409、无 modifiedAfter，见 `routes.rs:15-16`）——未来全量迁移 `HistoryRecord`/version/isDelete 时，**真实 daemon 不是可靠字节对照物**。本 spike 不碰这些，但目标 B 必须另找 oracle（抓 iOS 真实字节 fixture）。
 - **🟡 P2P 形态待用户拍板**：未来移动端 P2P 是完整 iroh node 还是轻量 client？与 VISION §63「移动端不跑 iroh」冲突。本 spike 删掉 Transport 抽象、不依赖此答案；但目标 B 启动前需此决策 + VISION §63 改写。
 - **iOS demo 载体**：B1/B2 用一个最小 iOS demo target（非接入正式 uc-ios app），避免污染产品代码；管道证明后再谈接入。
 
@@ -143,7 +144,7 @@ impl MobileSyncClient {
 
 1. B0：`uc-mobile-proto` 抽出，桌面 build+test 全绿无回归。
 2. B1：iOS demo 经 UniFFI 调通同步 `parse_connect_uri`；`with_foreign` 构造参数写法编译通过；xcframework + Swift binding 产出。
-3. B2：iOS demo 经 **async** Rust 对**真实 daemon** 完成一次 get + 一次 put；三进程上下文 TLS 握手成功；挂起打断不致损坏。
+3. B2：iOS demo 经 **async** Rust 对 **真实 daemon** 完成一次 get + 一次 put；三进程上下文 TLS 握手成功；挂起打断不致损坏。
 4. 产出判断：**这条管道能否承载未来 P2P**——这才是 spike 的真正交付物。
 
 > 目标 B（零回归全量迁移）是另一份方案，待管道证明后启动，按 `uc-ios-regression-checklist.md` 一个端口一个端口移植 + golden vector。

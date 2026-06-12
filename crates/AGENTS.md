@@ -13,7 +13,7 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |- apps/                 # Runnable binaries
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
-|- crates/               # Library crates (15)
+|- crates/               # Library crates (17)
 |  # -- Hex core (ADR-005) --
 |  |- uc-core/          # Domain models + Port traits only (no external deps)
 |  |- uc-application/   # Use cases / orchestrators (depends on uc-core ports only)
@@ -32,6 +32,9 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |  |- uc-desktop/       # Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)
 |  |- uc-cli-macros/    # Proc-macros for uc-cli (internal)
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
+|  # -- Other --
+|  |- uc-mobile-proto/  # (no description)
+|  |- uc-mobile/        # (no description)
 |- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)
 |  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())
 |  `- crates/uc-tauri/    # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop

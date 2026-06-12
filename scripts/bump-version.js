@@ -77,7 +77,11 @@ export function updateTauriConfig(newVersion, dryRun) {
   return { path: configPath, old: oldVersion, new: newVersion }
 }
 
-export function updateCargoToml(newVersion, dryRun, relativePath = path.join('src-tauri', 'Cargo.toml')) {
+export function updateCargoToml(
+  newVersion,
+  dryRun,
+  relativePath = path.join('src-tauri', 'Cargo.toml')
+) {
   const cargoPath = path.join(process.cwd(), relativePath)
   const content = fs.readFileSync(cargoPath, 'utf8')
 

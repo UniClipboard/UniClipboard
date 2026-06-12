@@ -172,10 +172,14 @@ function generateStructure(members) {
     }
   }
 
-  lines.push('|- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)')
+  lines.push(
+    '|- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)'
+  )
   for (const m of tauri) {
     if (m === 'src-tauri') {
-      lines.push('|  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())')
+      lines.push(
+        '|  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())'
+      )
     } else {
       const name = basename(m)
       lines.push(`|  \`- crates/${name}/    # ${getDescription(m)}`)

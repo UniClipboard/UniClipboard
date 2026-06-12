@@ -7,10 +7,7 @@ import { updateCargoLock } from '../bump-version.js'
 
 describe('workspace version inheritance', () => {
   it('uc-cli uses version.workspace = true', () => {
-    const content = fs.readFileSync(
-      path.resolve(__dirname, '../../apps/cli/Cargo.toml'),
-      'utf8'
-    )
+    const content = fs.readFileSync(path.resolve(__dirname, '../../apps/cli/Cargo.toml'), 'utf8')
     expect(content).toContain('version.workspace = true')
     expect(content).not.toMatch(/^version\s*=\s*"[\d.]+"/m)
   })

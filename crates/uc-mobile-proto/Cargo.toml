@@ -1,0 +1,20 @@
+[package]
+name = "uc-mobile-proto"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+# Leaf crate: pure mobile-sync wire protocol codec (connect-uri today; more to
+# follow). Zero internal workspace deps — depends only on small pure-codec
+# crates so it can compile to iOS/Android targets and be shared by the desktop
+# daemon and a future `uc-mobile` FFI crate. See
+# .planning/research/uc-mobile-spike-plan.md.
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2.0.17"
+base64 = "0.22"
+url = "2"
+
+[lints]
+workspace = true

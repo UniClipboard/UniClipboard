@@ -23,6 +23,7 @@ members = [
   "crates/uc-desktop",
   "crates/uc-cli-macros",
   "crates/uc-daemon-client",
+  "crates/uc-mobile-proto",
   "crates/p2p-bench",
   "apps/cli",
   "apps/daemon",

@@ -7,6 +7,8 @@ edition = "2021"
 [dependencies]
 # Core domain models
 uc-core = { path = "../uc-core" }
+# Mobile-sync wire protocol codec (connect-uri). Leaf crate, zero internal deps.
+uc-mobile-proto = { path = "../uc-mobile-proto" }
 # Infrastructure (pragmatic exception: SearchPipeline is a concrete infra helper
 # grouped in AppDeps.search for single-ownership, per Phase 92 plan decision)
 uc-infra = { path = "../uc-infra" }

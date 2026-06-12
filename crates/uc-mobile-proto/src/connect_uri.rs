@@ -33,9 +33,9 @@ use url::Url;
 /// serde 默认按字段定义顺序序列化, 加上 `o` 用 [`BTreeMap`] 保证字典序, 才能
 /// 让 build 出的字符串在 Rust 与 TS 之间字节相等(规范 §7 golden vector 比对)。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ConnectPayload {
+pub struct ConnectPayload {
     /// payload schema 版本; v1 = 1。与 URI envelope `v` 区分(规范 §3.4)。
-    pub(crate) v: u32,
+    pub v: u32,
     /// 服务端 base URL, 形如 `http://192.168.1.5:42720`, 不带尾斜杠。
     ///
     /// 多候选码下恒等于 `urls[0]` —— 老客户端只读它, v1 语义不变。
@@ -43,7 +43,7 @@ pub(crate) struct ConnectPayload {
     /// `serde(default)`: 字段缺失时回填空字符串, 让后置 `MissingField` 检查
     /// 统一处理"缺失"和"空字符串"两种语义(规范 §4.2 错误码归并)。
     #[serde(default)]
-    pub(crate) url: String,
+    pub url: String,
     /// 有序候选地址列表(规范 §3.1a): `[公网入口(若有), ...合格网卡 IP]`,
     /// 每项是完整 base URL(无尾斜杠), 扫码端自行逐个探活。
     ///
@@ -52,20 +52,20 @@ pub(crate) struct ConnectPayload {
     ///   靠 serde ignore-unknown 无视本字段(因此 [`ConnectPayload`] 永远
     ///   不得加 `deny_unknown_fields`)。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) urls: Vec<String>,
+    pub urls: Vec<String>,
     /// HTTP Basic Auth 用户名。`serde(default)` 同上。
     #[serde(default)]
-    pub(crate) user: String,
+    pub user: String,
     /// HTTP Basic Auth 明文密码 —— 一次性显示语义见规范 §5.1。`serde(default)` 同上。
     #[serde(default)]
-    pub(crate) pwd: String,
+    pub pwd: String,
     /// 扩展元数据 KV。
     /// - 生成侧由 [`ConnectUriOther`] 类型约束写入白名单字段(规范 §3.2)
     /// - 解析侧宽松接受任意字符串 KV, 调用方应忽略未识别的键
     /// - 序列化时 `BTreeMap` 天然字典序输出, 保证跨语言字节一致
     /// - 空 map 时不序列化, 避免 `"o":{}` 让 base64 字节漂移
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub(crate) o: BTreeMap<String, String>,
+    pub o: BTreeMap<String, String>,
 }
 
 /// 生成侧 `o` 字段白名单 —— 类型层面强约束, 避免误把 daemon bearer / 加密
@@ -73,15 +73,15 @@ pub(crate) struct ConnectPayload {
 ///
 /// 新增字段必须先更新规范文档 §3.2 表格, 再在这里添加, 不允许 ad-hoc 扩展。
 #[derive(Debug, Default, Clone)]
-pub(crate) struct ConnectUriOther {
+pub struct ConnectUriOther {
     /// 设备显示标签, 用于客户端 UI(规范 §3.2)。
-    pub(crate) label: Option<String>,
+    pub label: Option<String>,
     /// 服务端 device_id, 用于日志关联(规范 §3.2)。
-    pub(crate) did: Option<String>,
+    pub did: Option<String>,
     /// 协议族提示, v1 仅 `"syncclipboard"`(规范 §3.2)。
-    pub(crate) proto: Option<String>,
+    pub proto: Option<String>,
     /// iOS Shortcut 模板提示(规范 §3.2)。
-    pub(crate) install: Option<String>,
+    pub install: Option<String>,
 }
 
 impl ConnectUriOther {
@@ -106,24 +106,21 @@ impl ConnectUriOther {
 
 /// build / parse 公共失败语义 —— 错误码与规范 §4.2 表一一对应。
 #[derive(Debug, Error, PartialEq, Eq)]
-pub(crate) enum ConnectUriError {
+pub enum ConnectUriError {
     /// scheme ≠ `uniclipboard` 或 host ≠ `connect`(规范 §4.2 `INVALID_SCHEME`)。
     /// 仅 [`parse_mobile_sync_connect_uri`] 构造; build 路径不可能产生。
     #[error("invalid scheme or host (must be uniclipboard://connect)")]
-    #[allow(dead_code)]
     // build 路径不构造; parse 路径单测 + 跨语言契约 + 未来 v2 daemon 接收侧使用。
     InvalidScheme,
 
     /// URI `v` ≠ 1 或 payload `v` ≠ 1(规范 §4.2 `UNSUPPORTED_VERSION`)。
     /// 仅 [`parse_mobile_sync_connect_uri`] 构造。
     #[error("unsupported version (only v=1 is supported)")]
-    #[allow(dead_code)] // 同 InvalidScheme: parse-only variant, 保留供前向兼容路径。
     UnsupportedVersion,
 
     /// URI `svc` ≠ `mobile-sync`(规范 §4.2 `UNSUPPORTED_SERVICE`)。
     /// 仅 [`parse_mobile_sync_connect_uri`] 构造。
     #[error("unsupported service (only svc=mobile-sync is supported)")]
-    #[allow(dead_code)] // 同 InvalidScheme: parse-only variant, 保留供前向兼容路径。
     UnsupportedService,
 
     /// `p` 缺失 / base64url 损坏 / JSON 解析失败(规范 §4.2 `PAYLOAD_DECODE_FAILED`)。
@@ -160,7 +157,7 @@ const PAYLOAD_VERSION: u32 = 1;
 /// 多候选地址(`urls` 上限 20 项, 每项 `http://<ipv4>:<port>` base64 后约
 /// 1100+ 字符)会超旧上限 800, 放宽到 2000 给足余量 —— 常见家用机网卡极少
 /// 超过 4 个, QR 密度仅在极端候选数时才明显升高。
-pub(crate) const URI_MAX_LEN: usize = 2000;
+pub const URI_MAX_LEN: usize = 2000;
 
 // ─── build ──────────────────────────────────────────────────────────────
 
@@ -181,7 +178,7 @@ pub(crate) const URI_MAX_LEN: usize = 2000;
 /// - 不做 url 可达性探测 / 不做候选去重排序(`register_device.rs` 负责)
 /// - 不做密码强度校验(`register_device.rs` 已做)
 /// - 不做 device_id 唯一性检查
-pub(crate) fn build_mobile_sync_connect_uri(
+pub fn build_mobile_sync_connect_uri(
     candidate_urls: &[String],
     username: &str,
     password: &str,
@@ -251,10 +248,7 @@ pub(crate) fn build_mobile_sync_connect_uri(
 /// - 不发起 HTTP 探活(可选, 由调用方决定)
 /// - 不持久化任何字段
 /// - 不修剪 pwd 前后空白(规范 §3.1: pwd 任何字节都合法)
-#[allow(dead_code)] // 仅测试 / 未来 v2 路径使用; 阶段 2 不接入生产消费侧。
-pub(crate) fn parse_mobile_sync_connect_uri(
-    qr_text: &str,
-) -> Result<ConnectPayload, ConnectUriError> {
+pub fn parse_mobile_sync_connect_uri(qr_text: &str) -> Result<ConnectPayload, ConnectUriError> {
     let raw = qr_text.trim();
 
     let uri = Url::parse(raw).map_err(|_| ConnectUriError::InvalidScheme)?;

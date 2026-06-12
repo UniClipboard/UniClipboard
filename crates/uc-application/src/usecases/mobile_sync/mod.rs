@@ -21,7 +21,6 @@
 pub(crate) mod apply_incoming;
 pub(crate) mod authenticate_basic;
 pub(crate) mod clipboard_doc;
-pub(crate) mod connect_uri;
 pub(crate) mod get_file;
 pub(crate) mod get_latest_doc;
 pub(crate) mod get_settings;

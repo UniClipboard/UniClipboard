@@ -35,8 +35,8 @@ use uc_core::ports::{
 use uc_core::settings::model::MobileSyncSettings;
 use uc_observability::analytics::{AnalyticsPort, Event};
 
-use super::connect_uri::{build_mobile_sync_connect_uri, ConnectUriError, ConnectUriOther};
 use super::list_lan_interfaces::may_advertise_interface;
+use uc_mobile_proto::{build_mobile_sync_connect_uri, ConnectUriError, ConnectUriOther};
 
 // ─── public-shaped (input / output / error) ─────────────────────────────
 
@@ -696,10 +696,10 @@ mod tests {
     // 多个 use case 测试共用的 mock(DeviceRepo / Hasher / Minter)+
     // CapturingAnalyticsSink 集中在 test_support;register 独占的
     // SettingsPort / Clock / Probe 仍就近 mockall::mock! 定义。
-    use super::super::connect_uri::parse_mobile_sync_connect_uri;
     use super::super::test_support::{
         CapturingAnalyticsSink, MockDeviceRepo, MockHasher, MockMinter,
     };
+    use uc_mobile_proto::parse_mobile_sync_connect_uri;
 
     mockall::mock! {
         SettingsPortImpl {}

@@ -9886,6 +9886,7 @@ dependencies = [
  "tracing-subscriber",
  "uc-core",
  "uc-infra",
+ "uc-mobile-proto",
  "uc-observability",
  "uc-platform",
  "url",
@@ -10178,6 +10179,17 @@ dependencies = [
  "wiremock",
  "zeroize",
  "zstd",
+]
+
+[[package]]
+name = "uc-mobile-proto"
+version = "0.15.0-alpha.3"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "url",
 ]
 
 [[package]]

@@ -14,15 +14,17 @@ run-name: >-
 # one main package (uniclipboard) whose JS launcher picks the matching one via
 # optionalDependencies. Assembly lives in scripts/build-npm-packages.mjs.
 #
-# Channel mapping: the auto path publishes stable releases only (same policy
-# as homebrew-tap.yml — alpha releases are frequent and npm versions are
-# permanent). Prereleases can still be published via workflow_dispatch; their
-# version suffix maps to the npm dist-tag (X.Y.Z-alpha.N → `alpha`), and only
-# stable gets `latest`.
+# Channel mapping (same pattern as snap.yml / copr.yml): alpha releases are
+# auto-published by release.yml with GITHUB_TOKEN, so their release.published
+# event never fires other workflows — release.yml dispatches this workflow
+# explicitly (dispatch-npm-alpha). beta / rc / stable are left as drafts and
+# published by a human; that release.published event lands here. The version
+# suffix maps to the npm dist-tag (X.Y.Z-alpha.N → `alpha`), and only stable
+# gets `latest`.
 #
-# `workflow_dispatch` is exposed for debugging / re-runs against an existing
-# published release. Already-published package versions are skipped, so the
-# whole job is idempotent.
+# `workflow_dispatch` doubles as the alpha auto-publish entry (dispatched by
+# release.yml) and the manual debugging / re-run path. Already-published
+# package versions are skipped, so the whole job is idempotent.
 on:
   release:
     types: [published]
@@ -38,9 +40,10 @@ permissions: {}
 jobs:
   publish:
     name: Publish npm packages
-    # Skip prereleases on the auto path; manual dispatch always runs so any
-    # published release (including prereleases) can be pushed deliberately.
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    # The release.published path serves manually published releases
+    # (beta / rc / stable); alpha arrives via release.yml's explicit dispatch
+    # instead, so skip it here to avoid double-publishing on re-publish.
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.release.tag_name, '-alpha')
     runs-on: ubuntu-latest
     permissions:
       contents: read

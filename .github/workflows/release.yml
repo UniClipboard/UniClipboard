@@ -545,3 +545,32 @@ jobs:
             -f inputs[run_ids]=""
 
           echo "Dispatched copr.yml for v${VERSION} (uniclipboard-alpha)." >> "$GITHUB_STEP_SUMMARY"
+
+  dispatch-npm-alpha:
+    # alpha release 由本 workflow 用 GITHUB_TOKEN 自动发布,不会触发
+    # npm-publish.yml 的 release.published 入口,这里显式 dispatch
+    # (与 dispatch-snap / dispatch-copr-alpha 同一模式)。
+    #
+    # 版本后缀映射 npm dist-tag:X.Y.Z-alpha.N → `alpha`,不会动 `latest`。
+    # 已发布过的版本会被 npm-publish.yml 跳过,重复 dispatch 幂等。
+    # stable / beta / rc 仍由人工发布 GitHub Release 后触发 npm-publish.yml。
+    name: Dispatch npm publish for alpha
+    needs: [validate, create-release]
+    if: ${{ success() && needs.validate.outputs.channel == 'alpha' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch npm publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/npm-publish.yml/dispatches" \
+            -f ref="v${VERSION}" \
+            -f inputs[version]="${VERSION}"
+
+          echo "Dispatched npm-publish.yml for v${VERSION} (dist-tag: alpha)." >> "$GITHUB_STEP_SUMMARY"

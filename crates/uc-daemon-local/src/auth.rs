@@ -20,8 +20,11 @@ impl DaemonAuthToken {
     /// # Examples
     ///
     /// ```
-    /// let t = crate::auth::DaemonAuthToken("abcd1234".into());
-    /// assert_eq!(t.as_str(), "abcd1234");
+    /// use uc_daemon_local::auth::load_or_create_auth_token;
+    ///
+    /// let tmp = tempfile::tempdir().unwrap();
+    /// let token = load_or_create_auth_token(&tmp.path().join("daemon.token")).unwrap();
+    /// assert_eq!(token.as_str().len(), 64);
     /// ```
     pub fn as_str(&self) -> &str {
         &self.0
@@ -60,10 +63,14 @@ impl DaemonAuthToken {
 /// # Examples
 ///
 /// ```
-/// use std::path::Path;
-/// // Ensure a token exists at "./daemon.token" and obtain it
-/// let token = load_or_create_auth_token(Path::new("./daemon.token")).unwrap();
-/// println!("token = {}", token.as_str());
+/// use uc_daemon_local::auth::load_or_create_auth_token;
+///
+/// let tmp = tempfile::tempdir().unwrap();
+/// let path = tmp.path().join("daemon.token");
+/// let token = load_or_create_auth_token(&path).unwrap();
+/// assert_eq!(token.as_str().len(), 64);
+/// // A second call reads the persisted token back.
+/// assert_eq!(load_or_create_auth_token(&path).unwrap(), token);
 /// ```
 pub fn load_or_create_auth_token(token_path: &Path) -> Result<DaemonAuthToken> {
     debug!(token_path = %token_path.display(), token_path_exists = token_path.exists(), "load_or_create_auth_token: entering");
@@ -97,11 +104,14 @@ pub fn load_or_create_auth_token(token_path: &Path) -> Result<DaemonAuthToken> {
 /// # Examples
 ///
 /// ```
-/// let token = DaemonAuthToken("deadbeef".into());
+/// use uc_daemon_local::auth::{build_connection_info, load_or_create_auth_token};
+///
+/// let tmp = tempfile::tempdir().unwrap();
+/// let token = load_or_create_auth_token(&tmp.path().join("daemon.token")).unwrap();
 /// let info = build_connection_info("127.0.0.1", 8080, &token, 12345);
 /// assert_eq!(info.base_url, "http://127.0.0.1:8080");
 /// assert_eq!(info.ws_url, "ws://127.0.0.1:8080/ws");
-/// assert_eq!(info.token, "deadbeef");
+/// assert_eq!(info.token, token.as_str());
 /// assert_eq!(info.pid, 12345);
 /// ```
 pub fn build_connection_info(
@@ -126,6 +136,8 @@ pub fn build_connection_info(
 /// # Examples
 ///
 /// ```
+/// use uc_daemon_local::auth::parse_bearer_token;
+///
 /// assert_eq!(parse_bearer_token("Bearer abc123"), Some("abc123"));
 /// assert_eq!(parse_bearer_token("bearer xyz"), None);
 /// assert_eq!(parse_bearer_token("Basic abc"), None);
@@ -153,7 +165,10 @@ pub fn parse_bearer_token(header_value: &str) -> Option<&str> {
 ///
 /// # Examples
 ///
-/// ```
+/// Private helper — not importable from doctests; behavior is covered by the
+/// `generate_auth_token_*` unit tests below.
+///
+/// ```ignore
 /// let token = generate_auth_token();
 /// assert_eq!(token.len(), 64);
 /// assert!(token.chars().all(|c| c.is_ascii_hexdigit() && c.is_ascii_lowercase()));
@@ -174,9 +189,11 @@ fn generate_auth_token() -> String {
 ///
 /// # Examples
 ///
-/// ```
-/// use tempfile::tempdir;
-/// let tmp = tempdir().unwrap();
+/// Private helper — not importable from doctests; behavior is covered by the
+/// `persist_auth_token_*` unit tests below.
+///
+/// ```ignore
+/// let tmp = tempfile::tempdir().unwrap();
 /// let path = tmp.path().join("auth_token");
 /// persist_auth_token(&path, "0123abcd").unwrap();
 /// assert!(path.exists());
@@ -230,10 +247,13 @@ fn persist_auth_token(token_path: &Path, token: &str) -> Result<()> {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// Private helper — not importable from doctests; behavior is covered by the
+/// `repair_token_permissions_*` unit tests below.
+///
+/// ```ignore
 /// use std::path::Path;
 /// // After creating or writing the token file:
-/// let _ = repair_token_permissions(Path::new("/path/to/daemon_token")).unwrap();
+/// repair_token_permissions(Path::new("/path/to/daemon_token")).unwrap();
 /// ```
 fn repair_token_permissions(token_path: &Path) -> Result<()> {
     #[cfg(unix)]

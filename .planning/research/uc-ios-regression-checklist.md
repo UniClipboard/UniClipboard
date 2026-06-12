@@ -49,13 +49,21 @@
 - [x] 🔬 TypeMask 位：Text=1 Image=2 File=4 Group=8
 
 ### A6. HTTP 客户端
-- [ ] 🔗🔴 Basic Auth = `base64(utf8(user + ":" + pwd))`
-- [ ] 🔗 base URL 归一：trim、补尾 `/`、校验 http(s)+非空 host
-- [ ] 🔗 端点：GET/PUT SyncClipboard.json、PUT/GET file/{name}、POST api/history/query、GET api/history/{profileId}/data
-- [ ] 🔬 文件名校验：空/含 `/`/含 `\` → 网络前即拒
-- [ ] 🔗 状态映射：200/201/204=成功，401=authFailed，404=notFound，5xx=serverError，其余 4xx=protocolError
-- [ ] 🔬 重试：仅首次遇 `.networkConnectionLost`/`.timedOut`，sleep 300ms 重试一次；401/404 不重试
-- [ ] 🔬 取消：`cancelInFlight` 后续请求立即抛 `.cancelled`
+
+> ✅ M2 完成 2026-06-12（`cargo test -p uc-mobile`，29 测试全绿；逐条对照 Swift
+> `SyncClipboardClient.swift` / `SyncError.swift` / `SyncClipboardClientTests.swift`
+> 移植到 `crates/uc-mobile/src/client.rs`）。🔗 项以 in-process axum mock 做端到端验证
+> （字节兼容已由 proto 层 golden vector 锁，HTTP 层只验状态/重试/取消/路径/认证接线）；
+> 真实 daemon e2e 的 doc/put 已在 B2 跑通，新增 file/history 端点的真机 e2e 经
+> `run-b2-daemon-demo.sh` 扩展跑（M2 未阻塞项，见迁移方案 §3 假 oracle 说明）。
+
+- [x] 🔗🔴 Basic Auth = `base64(utf8(user + ":" + pwd))` — reqwest `.basic_auth`；`basic_auth_header_matches_spec`（alice:secret → `Basic YWxpY2U6c2VjcmV0`，与 Swift 同向量）
+- [x] 🔗 base URL 归一：trim、补尾 `/`、校验 http(s)+非空 host — `normalize_base_url` + `endpoint`；`normalize_base_url_matches_swift`/`endpoint_normalizes_and_joins_paths`
+- [x] 🔗 端点：GET/PUT SyncClipboard.json、PUT/GET file/{name}、POST api/history/query、GET api/history/{profileId}/data — 全部落地，复用 proto `Clipboard`/`HistoryQuery`/`HistoryRecord` 编解码
+- [x] 🔬 文件名校验：空/含 `/`/含 `\` → 网络前即拒（profileId 同规则） — `validate_path_component`；`file_endpoints_reject_bad_filenames_before_network`/`get_history_payload_rejects_bad_profile_id`（断言 events 为空 = 未触网）
+- [x] 🔗 状态映射：200/201/204=成功，401=authFailed，404=notFound，5xx=serverError，其余 4xx=protocolError — `map_status` 逐字节对齐 Swift `mapHTTPStatus`（202/206 等非 {200,201,204} 也归 protocolError）；`status_mapping_matches_swift`（全表）+ `get_latest_maps_http_statuses`（端到端）
+- [x] 🔬 重试：仅首次遇 `.networkConnectionLost`/`.timedOut`，sleep 300ms 重试一次；401/404 不重试 — `is_retriable`（timeout 经 `is_timeout`；connection-lost 经 io `ConnectionReset`/`Aborted`/`BrokenPipe`/`UnexpectedEof`/`NotConnected` 源链遍历）+ `send_with_retry`；`retry_on_timeout_then_succeeds`/`retry_on_connection_reset_then_succeeds`（RST mock）/`status_errors_are_not_retried`
+- [x] 🔬 取消：`cancel_in_flight` 中止在途请求（观测 `.cancelled`），300ms 重试因 task abort 自然不触发 — `cancel_in_flight_yields_cancelled`。**刻意偏离 Swift**：长生命周期、多 server、独占 runtime 的 Rust client **不永久 poison**——`cancel` 后的新请求（原生壳带新 `ServerConfig`）正常工作，避免每次网络切换重建 client+ 重起 runtime 线程；用户 2026-06-12 拍板，`cancel_does_not_poison_subsequent_requests` 守此决策（详见 `client.rs` 模块 docs）
 
 ### A7. 连通性探测（§5.3 Layer 2）
 - [ ] 🔬 单 URL test：200/404→success，401→authFailed，其余→unreachable

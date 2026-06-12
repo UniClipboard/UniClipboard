@@ -3,8 +3,8 @@
 > 前置：spike B0–B2 已完成（FFI 管道证明成立，见 `uc-mobile-spike-plan.md`）。
 > 输入：`uc-ios-feature-inventory.md`（行为基线）+ `uc-ios-regression-checklist.md`（验收闸门）。
 > 范围拍板（2026-06-12）：**只做 mobile-sync，不做 P2P**——本方案不含任何 Transport/iroh/加密栈内容。
-> 状态：M0+M1 已完成（2026-06-12），M2 起待续。语言审查豁免路径（`.planning/`）。
-> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿、clippy/fmt 干净、4 区均经独立对抗 agent 核查；回归清单 A1–A5 + B 区编解码项已勾选）· M2–M6 ⏳
+> 状态：M0+M1+M2 已完成（2026-06-12），M3 起待续。语言审查豁免路径（`.planning/`）。
+> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿）· M2 ✅（`uc-mobile/client.rs` 补全 A6：全端点 + 状态映射 + 重试 + 取消 + base-url/文件名校验，29 测试绿、iOS-sim 交叉编译通过，client 侧 `WireDoc` 收敛到 proto `Clipboard`）· M3–M6 ⏳
 
 ## 0. 一句话定位
 
@@ -49,9 +49,15 @@ A2/A3/A4/A5 + B 区纯逻辑：wire 模型、hash、长文本溢出（字素计�
 **验收**：M0 测试全绿；~~daemon `sync_doc.rs` 改依赖 proto 类型~~。
 **结果**：5 模块落地，140 测试绿。`ClipboardKind`/ISO-8601 跨模块重复已收敛到单一真相。**遗留单列**：daemon `sync_doc.rs` + uc-mobile `WireDoc` 改依赖 proto 规范类型（§1「单一真相收敛」）——拆到独立 commit，不阻塞 M2。核查另发现 `ServerConfig` Codable 持久化迁移属 M4，本里程碑只做形态分类纯函数（见回归清单 B 末项）。
 
-### M2 · uc-mobile HTTP 客户端补全（中）
+### M2 · uc-mobile HTTP 客户端补全（中）— ✅ 完成
 在 B2 `client.rs` 基础上补 A6 全集：history query（multipart POST）/history data 端点、base-url 归一、文件名前置校验、状态映射表（200/201/204、401、404、5xx、其余 4xx）、重试语义（仅首遇 connection-lost/timeout，300ms 一次，401/404 不重试）、`cancel_in_flight` 后续请求立抛 cancelled。
 **验收**：A6 全条（mock 单测 + 真实 daemon e2e 跑 doc/file 端点）；缝 3 drop 测试扩展到新端点。
+**结果**（2026-06-12，`cargo test -p uc-mobile` 29 绿、clippy/fmt 干净、iOS-sim 交叉编译通过）：
+- 新增 FFI 端点 `get_file`/`put_file`/`query_history`/`get_history_payload`，复用 proto `Clipboard`/`HistoryQuery`/`HistoryRecord` 编解码；`get_latest`/`put_clipboard` 重构走同一套 `send_with_retry` + `check`。
+- 新 FFI 镜像类型 `HistoryQuery`/`HistoryRecord`（时间戳 = epoch 毫秒 `Option<i64>`，用户拍板）。`SyncError` 重做：新增 `NotFound`/`ServerError{status}`/`ProtocolError{status}`/`DecodingFailed{reason}`，删 `Http`/`Protocol{reason}`，逐字节对齐 Swift `SyncError.Kind`。
+- **单一真相收敛 #1a（client 侧，本里程碑顺手做）**：删 `uc-mobile` 的 `WireDoc`，`ClipboardMeta` 改 `into_proto`/`from_proto` 经 `uc-mobile-proto::Clipboard`（唯一 JSON 形态真相）。daemon 侧 `SyncClipboardDoc` 收敛因 PascalCase 别名 / `size` 恒在 / `hash` 不归一有回归风险，**另立 issue**（见 §1 + 下方"明确不做"）。
+- **刻意偏离 Swift**：cancel **不永久 poison**（长生命周期/多 server/独占 runtime；用户 2026-06-12 拍板），`client.rs` 模块 docs + 回归清单 A6 记此决策。
+- 缝 3 drop 测试保留（file→metadata 窗口原子）；新增 retry（timeout + RST mock）、状态映射全表、文件名/profileId 前置校验、no-poison、basic-auth 向量等测试。
 
 ### M3 · ConnectionTester（小）
 A7：单 URL test、多 URL 并发 probe（2s 超时、404/401=可达）、`firstReachable` 按序确定性取首达（非竞速）。网络 epoch 由原生传入快照参数，Rust 不订阅系统事件。
@@ -80,6 +86,7 @@ xcframework 经 SPM binaryTarget 进 uc-ios；**feature flag 双路径**（原�
 - P2P / Transport 抽象 / iroh / 加密栈（mobile-sync 是明文 HTTP + Basic Auth，引入加密栈只会拖重 crate）
 - 键盘/分享/Intents 的 UI 壳与系统钩子、剪贴板 I/O、SSID 平台 API（永留原生）
 - daemon history 兼容壳的功能补全（version/409/modifiedAfter）——另开 issue，是服务端工程不是迁移工程
+- **daemon 侧 `SyncClipboardDoc` 收敛到 proto `Clipboard`（单一真相 #1b）**——M2 已收敛 client 侧；daemon 侧改依赖 proto 类型需逐一保住 PascalCase 别名（兼容 iOS Shortcut 大小写）、`size` 恒序列化（默认 0）、`hash` 不归一三处语义，并补 daemon 回归测试，**另立独立 issue**，不混进本迁移线（用户 2026-06-12 拍板：只收敛 client 侧）
 - Android 客户端实装（crate 按 iOS+Android 共享设计，但 Kotlin binding 与 Android 接入不在本方案）
 
 ## 5. 风险与对策

@@ -47,11 +47,15 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # budget rules out the multi-thread runtime; spike plan §4).
 tokio = { version = "1", features = ["rt", "time", "sync"] }
 url = "2"
+# Already in the build graph via uc-mobile-proto; used here only to convert the
+# FFI surface's epoch-millis timestamps to/from the proto chrono types
+# (HistoryQuery / HistoryRecord). Pinned identically to the proto crate.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 axum = { version = "0.7", features = ["tokio", "http1", "json"] }
 base64 = "0.22"
-tokio = { version = "1", features = ["rt", "macros", "net", "time", "sync"] }
+tokio = { version = "1", features = ["rt", "macros", "net", "time", "sync", "io-util"] }
 
 [lints]
 workspace = true

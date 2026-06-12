@@ -1,4 +1,11 @@
-//! B2: async mobile-sync client over FFI.
+//! Async mobile-sync HTTP client over FFI (spike B2 + goal-B M2).
+//!
+//! Byte-for-byte port of uc-ios `Shared/Network/SyncClipboardClient.swift` and
+//! `SyncError.swift` (regression checklist A6). The Swift sources and their
+//! tests (`SyncClipboardClientTests.swift`) are the NORMATIVE reference. All
+//! pure wire codecs (Clipboard JSON, multipart, hashing, ISO-8601, history
+//! records) live in `uc-mobile-proto` and are consumed here; this crate adds
+//! only the HTTP transport, status mapping, retry, and cancellation on top.
 //!
 //! Execution model (this is the load-bearing part of the spike):
 //! - [`MobileSyncClient`] hosts a `current_thread` tokio runtime on ONE
@@ -16,12 +23,51 @@
 //! - Seam 1: rustls 0.23 ships with no default CryptoProvider and this cdylib
 //!   has no `main()` to install one, so [`uc_mobile_init`] must be called
 //!   before constructing a client; the constructor enforces it.
+//!
+//! ## Deliberate divergence from Swift: cancellation does NOT poison
+//!
+//! Swift's `SyncClipboardClient` is constructed per `ServerConfig` / network
+//! context and discarded right after `cancelInFlight()`, so it sets a
+//! permanent `isCancelled` flag (subsequent requests throw `.cancelled`). That
+//! flag is a workaround for a `URLSession`-specific footgun (creating a task on
+//! an invalidated session raises an ObjC exception) and for the
+//! per-context-then-discard lifetime.
+//!
+//! Neither applies here: this client is LONG-LIVED, serves many servers (the
+//! target is passed per call, not at construction), and owns the tokio runtime
+//! thread — the whole point of B2 is "spin the runtime up once". So
+//! [`MobileSyncClient::cancel_in_flight`] aborts in-flight request tasks (their
+//! awaiting callers observe [`SyncError::Cancelled`], and the 300ms retry can
+//! no longer fire because aborting the task tears down its `sleep`) but does
+//! NOT poison the client: a subsequent call — which carries a fresh, possibly
+//! new-network-path `ServerConfig` chosen by the native shell — proceeds
+//! normally. Permanent poisoning would force the native side to rebuild the
+//! client (respawning the runtime thread) on every Wi-Fi/cellular flip.
 
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use chrono::DateTime;
 use tokio::task::AbortHandle;
+
+use uc_mobile_proto::{
+    Clipboard as ProtoClipboard, ClipboardKind as ProtoKind, HistoryQuery as ProtoHistoryQuery,
+    HistoryRecord as ProtoHistoryRecord,
+};
+
+/// Idle/connect timeout for production clients. Mirrors Swift
+/// `timeoutIntervalForRequest = 10` — an IDLE timer (reqwest `read_timeout`
+/// resets on every received byte), so it does NOT cap large transfers; it is
+/// the backstop for a blackholed route (LAN IP over cellular) when no
+/// network-path change fired to cancel the request explicitly
+/// (`SyncClipboardClient.makeSession`).
+const REQUEST_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Single 300ms retry delay for `.networkConnectionLost` / `.timedOut`
+/// (Swift `perform`: `Task.sleep(nanoseconds: 300_000_000)`).
+const RETRY_DELAY: Duration = Duration::from_millis(300);
 
 // ─── seam 1: process-wide init ──────────────────────────────────────────
 
@@ -62,8 +108,9 @@ pub struct ServerConfig {
     pub password: String,
 }
 
-/// Mirror of the SyncClipboard `type` values the daemon speaks
-/// (`uc-webserver/src/mobile_lan/routes/sync_doc.rs`).
+/// Mirror of the SyncClipboard `type` values (`uc_mobile_proto::ClipboardKind`,
+/// raw wire strings `Text`/`Image`/`File`/`Group`). A uniffi-native enum so it
+/// can cross the FFI boundary; converts to/from the proto kind for wire codec.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum ClipboardKind {
     Text,
@@ -72,7 +119,33 @@ pub enum ClipboardKind {
     Group,
 }
 
-/// Clipboard metadata as exchanged with `GET/PUT /SyncClipboard.json`.
+impl From<ProtoKind> for ClipboardKind {
+    fn from(k: ProtoKind) -> Self {
+        match k {
+            ProtoKind::Text => Self::Text,
+            ProtoKind::Image => Self::Image,
+            ProtoKind::File => Self::File,
+            ProtoKind::Group => Self::Group,
+        }
+    }
+}
+
+impl From<ClipboardKind> for ProtoKind {
+    fn from(k: ClipboardKind) -> Self {
+        match k {
+            ClipboardKind::Text => Self::Text,
+            ClipboardKind::Image => Self::Image,
+            ClipboardKind::File => Self::File,
+            ClipboardKind::Group => Self::Group,
+        }
+    }
+}
+
+/// Clipboard metadata as exchanged with `GET/PUT /SyncClipboard.json`. The
+/// FFI-native surface; the wire bytes are produced/consumed exclusively by
+/// [`uc_mobile_proto::Clipboard`] (single source of truth for the JSON shape),
+/// which this maps to/from via [`ClipboardMeta::into_proto`] /
+/// [`ClipboardMeta::from_proto`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ClipboardMeta {
     pub kind: ClipboardKind,
@@ -86,87 +159,162 @@ pub struct ClipboardMeta {
     pub hash: Option<String>,
 }
 
-/// Failure surface of the async client.
+impl ClipboardMeta {
+    /// Map to the canonical wire type for serialization. Routes through
+    /// [`ProtoClipboard::new`] so the `hash` empty/whitespace→omitted
+    /// normalization (Swift `Clipboard.init`) is applied on upload.
+    fn into_proto(self) -> ProtoClipboard {
+        ProtoClipboard::new(
+            self.kind.into(),
+            self.hash,
+            self.text,
+            self.has_data,
+            self.data_name,
+            // The FFI surface keeps `size` non-optional; the daemon/Swift
+            // upload path always carries a size, so emit it.
+            Some(self.size as i64),
+        )
+    }
+
+    /// Map from a decoded wire document. The proto decoder already normalized
+    /// `hash`; a degenerate negative `size` from a buggy peer clamps to 0.
+    fn from_proto(c: ProtoClipboard) -> Self {
+        Self {
+            kind: c.kind.into(),
+            text: c.text,
+            data_name: c.data_name,
+            has_data: c.has_data,
+            size: c.size.unwrap_or(0).max(0) as u64,
+            hash: c.hash,
+        }
+    }
+}
+
+/// Filter parameters for [`MobileSyncClient::query_history`] (spec §2.7). FFI
+/// mirror of [`uc_mobile_proto::HistoryQuery`]; timestamps are Unix epoch
+/// milliseconds (Swift-side `Date(timeIntervalSince1970: ms/1000)`), all other
+/// semantics — including `None` = "field omitted from the multipart body" —
+/// are identical to the proto type.
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryQuery {
+    /// 1-indexed page; omit to fetch from the start. An empty result page is
+    /// the documented end-of-list signal.
+    pub page: Option<i64>,
+    /// Strict upper bound on `createTime` (epoch millis).
+    pub before_ms: Option<i64>,
+    /// Inclusive lower bound on `createTime` (epoch millis).
+    pub after_ms: Option<i64>,
+    /// STRICT lower bound on `lastModified` (epoch millis) — the
+    /// incremental-sync primitive.
+    pub modified_after_ms: Option<i64>,
+    /// Type bitmask: Text=1, Image=2, File=4, Group=8 (15 = all).
+    pub types: Option<i64>,
+    /// Server-side substring match against the record's `text`.
+    pub search_text: Option<String>,
+    pub starred: Option<bool>,
+    pub sort_by_last_accessed: Option<bool>,
+}
+
+impl HistoryQuery {
+    fn into_proto(self) -> ProtoHistoryQuery {
+        ProtoHistoryQuery {
+            page: self.page,
+            before: self.before_ms.and_then(DateTime::from_timestamp_millis),
+            after: self.after_ms.and_then(DateTime::from_timestamp_millis),
+            modified_after: self
+                .modified_after_ms
+                .and_then(DateTime::from_timestamp_millis),
+            types: self.types,
+            search_text: self.search_text,
+            starred: self.starred,
+            sort_by_last_accessed: self.sort_by_last_accessed,
+        }
+    }
+}
+
+/// A history record returned by [`MobileSyncClient::query_history`] (spec
+/// §3.6). FFI mirror of [`uc_mobile_proto::HistoryRecord`] with timestamps as
+/// Unix epoch milliseconds.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryRecord {
+    /// SHA-256 uppercase hex of the content.
+    pub hash: String,
+    pub kind: ClipboardKind,
+    /// Preview text; `None` only when the wire field was absent.
+    pub text: Option<String>,
+    pub has_data: bool,
+    pub size: Option<i64>,
+    pub create_time_ms: Option<i64>,
+    pub last_modified_ms: Option<i64>,
+    pub last_accessed_ms: Option<i64>,
+    pub starred: bool,
+    pub pinned: bool,
+    /// Server-side optimistic-lock version (0 on create).
+    pub version: Option<i64>,
+    pub is_deleted: bool,
+}
+
+impl From<ProtoHistoryRecord> for HistoryRecord {
+    fn from(r: ProtoHistoryRecord) -> Self {
+        Self {
+            hash: r.hash,
+            kind: r.kind.into(),
+            text: r.text,
+            has_data: r.has_data,
+            size: r.size,
+            create_time_ms: r.create_time.map(|d| d.timestamp_millis()),
+            last_modified_ms: r.last_modified.map(|d| d.timestamp_millis()),
+            last_accessed_ms: r.last_accessed.map(|d| d.timestamp_millis()),
+            starred: r.starred,
+            pinned: r.pinned,
+            version: r.version,
+            is_deleted: r.is_deleted,
+        }
+    }
+}
+
+/// Failure surface of the async client. Mirrors the relevant `SyncError.Kind`
+/// cases (`SyncError.swift`): the HTTP-status mapping is byte-for-byte
+/// faithful to Swift `mapHTTPStatus`. Swift's finer network kinds
+/// (`connectTimeout` / `receiveTimeout` / `networkUnreachable`) collapse into
+/// [`SyncError::Network`] — the sync engine treats every non-cancelled
+/// network failure identically (backoff), so the distinction is not surfaced.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum SyncError {
     #[error("uc_mobile_init() must be called before constructing a client")]
     NotInitialized,
+    /// Swift `.invalidURL`: bad base URL, file name, or profile id (rejected
+    /// before any network call).
     #[error("invalid input: {reason}")]
     InvalidInput { reason: String },
+    /// Swift `.networkUnreachable` / `.connectTimeout` / `.receiveTimeout`.
     #[error("network: {reason}")]
     Network { reason: String },
+    /// Swift `.authFailed` — HTTP 401.
     #[error("unauthorized (401): check username/password")]
     Unauthorized,
-    #[error("server returned HTTP {status}")]
-    Http { status: u16 },
-    #[error("protocol: {reason}")]
-    Protocol { reason: String },
+    /// Swift `.notFound` — HTTP 404 (also the documented "empty server" GET
+    /// state, which callers treat as "absent", not an error).
+    #[error("not found (404)")]
+    NotFound,
+    /// Swift `.serverError(status)` — HTTP 5xx.
+    #[error("server error (HTTP {status})")]
+    ServerError { status: u16 },
+    /// Swift `.protocolError(status)` — any other non-success status (e.g.
+    /// other 4xx, 3xx, or a non-{200,201,204} 2xx).
+    #[error("protocol error (HTTP {status})")]
+    ProtocolError { status: u16 },
+    /// Swift `.decodingFailed` — a 2xx body that did not parse as the expected
+    /// wire shape.
+    #[error("decoding failed: {reason}")]
+    DecodingFailed { reason: String },
+    /// Swift `.cancelled` — the request was aborted via
+    /// [`MobileSyncClient::cancel_in_flight`] (or the caller-side future was
+    /// dropped). A deliberate no-op for the sync engine, not a failure.
     #[error("cancelled")]
     Cancelled,
     #[error("internal: {reason}")]
     Internal { reason: String },
-}
-
-// ─── wire DTO ───────────────────────────────────────────────────────────
-
-/// Client-side mirror of the daemon's `SyncClipboardDoc` wire schema. The
-/// daemon serializes lowercase/camelCase and accepts PascalCase aliases; we
-/// emit exactly its response casing so request and response stay symmetric.
-#[derive(Debug, Serialize, Deserialize)]
-struct WireDoc {
-    #[serde(rename = "type")]
-    kind: String,
-    #[serde(default)]
-    text: String,
-    #[serde(rename = "dataName", default, skip_serializing_if = "Option::is_none")]
-    data_name: Option<String>,
-    #[serde(rename = "hasData", default)]
-    has_data: bool,
-    #[serde(default)]
-    size: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    hash: Option<String>,
-}
-
-impl WireDoc {
-    fn from_meta(meta: &ClipboardMeta) -> Self {
-        Self {
-            kind: match meta.kind {
-                ClipboardKind::Text => "Text",
-                ClipboardKind::Image => "Image",
-                ClipboardKind::File => "File",
-                ClipboardKind::Group => "Group",
-            }
-            .to_string(),
-            text: meta.text.clone(),
-            data_name: meta.data_name.clone(),
-            has_data: meta.has_data,
-            size: meta.size,
-            hash: meta.hash.clone(),
-        }
-    }
-
-    fn into_meta(self) -> Result<ClipboardMeta, SyncError> {
-        let kind = match self.kind.as_str() {
-            "Text" => ClipboardKind::Text,
-            "Image" => ClipboardKind::Image,
-            "File" => ClipboardKind::File,
-            "Group" => ClipboardKind::Group,
-            other => {
-                return Err(SyncError::Protocol {
-                    reason: format!("unknown SyncClipboard type {other:?}"),
-                })
-            }
-        };
-        Ok(ClipboardMeta {
-            kind,
-            text: self.text,
-            data_name: self.data_name,
-            has_data: self.has_data,
-            size: self.size,
-            hash: self.hash,
-        })
-    }
 }
 
 // ─── platform bridge (seam 2, carried over from B1) ─────────────────────
@@ -250,6 +398,46 @@ impl Drop for RuntimeHost {
 
 // ─── client ─────────────────────────────────────────────────────────────
 
+/// Timeout policy for the underlying reqwest client. Production uses an idle
+/// (read) + connect timeout mirroring Swift's `timeoutIntervalForRequest`;
+/// tests override with a short TOTAL timeout to exercise the retry-on-timeout
+/// path deterministically.
+#[derive(Debug, Clone, Copy)]
+struct HttpTimeouts {
+    connect: Option<Duration>,
+    read: Option<Duration>,
+    total: Option<Duration>,
+}
+
+impl HttpTimeouts {
+    fn production() -> Self {
+        Self {
+            connect: Some(REQUEST_IDLE_TIMEOUT),
+            read: Some(REQUEST_IDLE_TIMEOUT),
+            total: None,
+        }
+    }
+}
+
+fn build_http_client(t: HttpTimeouts) -> reqwest::Result<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        // No idle connection pool: iOS extensions live under a ~48MB jetsam
+        // ceiling and requests are sporadic (spike plan §4). Also makes each
+        // request a fresh connection, so a per-connection reset surfaces
+        // cleanly to the retry path.
+        .pool_max_idle_per_host(0);
+    if let Some(c) = t.connect {
+        builder = builder.connect_timeout(c);
+    }
+    if let Some(r) = t.read {
+        builder = builder.read_timeout(r);
+    }
+    if let Some(total) = t.total {
+        builder = builder.timeout(total);
+    }
+    builder.build()
+}
+
 /// Async mobile-sync client backed by reqwest(ring rustls) + a dedicated
 /// current_thread tokio runtime.
 #[derive(uniffi::Object)]
@@ -258,6 +446,9 @@ pub struct MobileSyncClient {
     rt: RuntimeHost,
     http: reqwest::Client,
     in_flight: Mutex<Vec<AbortHandle>>,
+    /// Monotonic source of deterministic, per-request multipart boundaries
+    /// (the pure proto crate never generates randomness).
+    boundary_seq: AtomicU64,
 }
 
 #[uniffi::export]
@@ -267,21 +458,7 @@ impl MobileSyncClient {
     /// run in this process.
     #[uniffi::constructor]
     pub fn new(bridge: Arc<dyn PlatformBridge>) -> Result<Arc<Self>, SyncError> {
-        ensure_initialized()?;
-        let http = reqwest::Client::builder()
-            // No idle connection pool: iOS extensions live under a ~48MB
-            // jetsam ceiling and requests are sporadic (spike plan §4).
-            .pool_max_idle_per_host(0)
-            .build()
-            .map_err(|e| SyncError::Internal {
-                reason: format!("build http client: {e}"),
-            })?;
-        Ok(Arc::new(Self {
-            bridge,
-            rt: RuntimeHost::spawn()?,
-            http,
-            in_flight: Mutex::new(Vec::new()),
-        }))
+        Self::construct(bridge, HttpTimeouts::production())
     }
 
     /// Round-trip probe: Rust calling back into the foreign bridge (B1).
@@ -294,27 +471,18 @@ impl MobileSyncClient {
         let http = self.http.clone();
         self.run(async move {
             let url = endpoint(&server.base_url, &["SyncClipboard.json"])?;
-            let resp = http
+            let req = http
                 .get(url)
-                .basic_auth(&server.username, Some(&server.password))
-                .send()
-                .await
-                .map_err(network)?;
-            let doc: WireDoc =
-                check(resp)
-                    .await?
-                    .json()
-                    .await
-                    .map_err(|e| SyncError::Protocol {
-                        reason: format!("decode SyncClipboard.json: {e}"),
-                    })?;
-            doc.into_meta()
+                .basic_auth(&server.username, Some(&server.password));
+            let resp = check(send_with_retry(req).await?).await?;
+            let clip: ProtoClipboard = resp.json().await.map_err(decoding("SyncClipboard.json"))?;
+            Ok(ClipboardMeta::from_proto(clip))
         })
         .await
     }
 
     /// `PUT /SyncClipboard.json`, optionally preceded by
-    /// `PUT /file/{dataName}` for the binary payload (spec §2.2/§2.3).
+    /// `PUT /file/{dataName}` for the binary payload (spec §2.2/§2.3/§3.5).
     ///
     /// The file→metadata sequence runs as one detached task on the runtime
     /// thread: dropping this future mid-flight does NOT interrupt the window
@@ -325,33 +493,109 @@ impl MobileSyncClient {
         meta: ClipboardMeta,
         payload: Option<Vec<u8>>,
     ) -> Result<(), SyncError> {
+        // Validate the payload's file name before spawning any work, matching
+        // Swift's "reject bad names before any network call".
+        if payload.is_some() {
+            let data_name = meta.data_name.as_deref().ok_or(SyncError::InvalidInput {
+                reason: "payload requires meta.data_name".into(),
+            })?;
+            validate_path_component(data_name, "filename")?;
+        }
         let http = self.http.clone();
         self.run(async move {
             if let Some(bytes) = payload {
-                let data_name = meta.data_name.as_deref().ok_or(SyncError::InvalidInput {
-                    reason: "payload requires meta.data_name".into(),
-                })?;
-                let url = endpoint(&server.base_url, &["file", data_name])?;
-                let resp = http
-                    .put(url)
-                    .basic_auth(&server.username, Some(&server.password))
-                    .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
-                    .body(bytes)
-                    .send()
-                    .await
-                    .map_err(network)?;
-                check(resp).await?;
+                // Unwrap-free: presence + validity checked above.
+                if let Some(data_name) = meta.data_name.clone() {
+                    put_file_inner(&http, &server, &data_name, bytes).await?;
+                }
             }
             let url = endpoint(&server.base_url, &["SyncClipboard.json"])?;
-            let resp = http
+            let req = http
                 .put(url)
                 .basic_auth(&server.username, Some(&server.password))
-                .json(&WireDoc::from_meta(&meta))
-                .send()
-                .await
-                .map_err(network)?;
-            check(resp).await?;
+                .json(&meta.into_proto());
+            check(send_with_retry(req).await?).await?;
             Ok(())
+        })
+        .await
+    }
+
+    /// `PUT /file/{name}` — upload payload bytes (spec §2.3). Rejects names
+    /// containing `/`, `\`, or empty before any network call.
+    pub async fn put_file(
+        &self,
+        server: ServerConfig,
+        name: String,
+        body: Vec<u8>,
+    ) -> Result<(), SyncError> {
+        validate_path_component(&name, "filename")?;
+        let http = self.http.clone();
+        self.run(async move { put_file_inner(&http, &server, &name, body).await })
+            .await
+    }
+
+    /// `GET /file/{name}` — download payload bytes (spec §2.4). Same filename
+    /// guard as [`Self::put_file`]; 404 surfaces as [`SyncError::NotFound`].
+    pub async fn get_file(&self, server: ServerConfig, name: String) -> Result<Vec<u8>, SyncError> {
+        validate_path_component(&name, "filename")?;
+        let http = self.http.clone();
+        self.run(async move {
+            let url = endpoint(&server.base_url, &["file", &name])?;
+            let req = http
+                .get(url)
+                .basic_auth(&server.username, Some(&server.password));
+            let resp = check(send_with_retry(req).await?).await?;
+            Ok(resp.bytes().await.map_err(network)?.to_vec())
+        })
+        .await
+    }
+
+    /// `POST /api/history/query` — paginated history listing (spec §2.7).
+    /// Filters are sent as `multipart/form-data`. An empty array is the
+    /// documented end-of-list signal, NOT an error.
+    pub async fn query_history(
+        &self,
+        server: ServerConfig,
+        query: HistoryQuery,
+    ) -> Result<Vec<HistoryRecord>, SyncError> {
+        let http = self.http.clone();
+        let boundary = self.next_boundary();
+        self.run(async move {
+            let multipart = query.into_proto().multipart_encoded(&boundary);
+            let content_type = multipart.content_type();
+            let body = multipart.encoded();
+            let url = endpoint(&server.base_url, &["api", "history", "query"])?;
+            let req = http
+                .post(url)
+                .basic_auth(&server.username, Some(&server.password))
+                .header(reqwest::header::CONTENT_TYPE, content_type)
+                .body(body);
+            let resp = check(send_with_retry(req).await?).await?;
+            let records: Vec<ProtoHistoryRecord> =
+                resp.json().await.map_err(decoding("history query"))?;
+            Ok(records.into_iter().map(HistoryRecord::from).collect())
+        })
+        .await
+    }
+
+    /// `GET /api/history/{profileId}/data` — download a history record's
+    /// payload bytes (spec §2.11). `profile_id` is the composite
+    /// `<type>-<hash>` form ([`uc_mobile_proto::composite_profile_id`]);
+    /// rejected before any network call if empty or containing `/` / `\`.
+    pub async fn get_history_payload(
+        &self,
+        server: ServerConfig,
+        profile_id: String,
+    ) -> Result<Vec<u8>, SyncError> {
+        validate_path_component(&profile_id, "profileId")?;
+        let http = self.http.clone();
+        self.run(async move {
+            let url = endpoint(&server.base_url, &["api", "history", &profile_id, "data"])?;
+            let req = http
+                .get(url)
+                .basic_auth(&server.username, Some(&server.password));
+            let resp = check(send_with_retry(req).await?).await?;
+            Ok(resp.bytes().await.map_err(network)?.to_vec())
         })
         .await
     }
@@ -375,7 +619,8 @@ impl MobileSyncClient {
     }
 
     /// Abort all requests currently running on the runtime thread. Their
-    /// awaiting callers observe [`SyncError::Cancelled`].
+    /// awaiting callers observe [`SyncError::Cancelled`]. Does NOT poison the
+    /// client — subsequent calls proceed normally (see the module docs).
     pub fn cancel_in_flight(&self) {
         if let Ok(mut handles) = self.in_flight.lock() {
             for h in handles.drain(..) {
@@ -386,6 +631,34 @@ impl MobileSyncClient {
 }
 
 impl MobileSyncClient {
+    /// Shared construction path for the exported [`Self::new`] (production
+    /// timeouts) and tests (short total timeout). Enforces seam 1.
+    fn construct(
+        bridge: Arc<dyn PlatformBridge>,
+        timeouts: HttpTimeouts,
+    ) -> Result<Arc<Self>, SyncError> {
+        ensure_initialized()?;
+        let http = build_http_client(timeouts).map_err(|e| SyncError::Internal {
+            reason: format!("build http client: {e}"),
+        })?;
+        Ok(Arc::new(Self {
+            bridge,
+            rt: RuntimeHost::spawn()?,
+            http,
+            in_flight: Mutex::new(Vec::new()),
+            boundary_seq: AtomicU64::new(0),
+        }))
+    }
+
+    /// Next deterministic multipart boundary. A monotonic counter (not a
+    /// random UUID like Swift) — for non-adversarial inputs the collision risk
+    /// with body content is the same as Swift's, and the failure mode is a
+    /// server-rejected request, never a security issue.
+    fn next_boundary(&self) -> String {
+        let n = self.boundary_seq.fetch_add(1, Ordering::Relaxed);
+        format!("UCB-uc-mobile-{n:020}")
+    }
+
     /// Spawn `fut` as a detached task on the runtime thread and await its
     /// JoinHandle (reactor-free, so safe to poll from UniFFI's machinery).
     async fn run<T: Send + 'static>(
@@ -409,16 +682,49 @@ impl MobileSyncClient {
 
 // ─── helpers ────────────────────────────────────────────────────────────
 
+/// Normalize a base URL (spec §1.1, Swift `normalizeBaseURL`): trim
+/// whitespace, reject empty, append a trailing slash if missing, require an
+/// `http`/`https` scheme and a non-empty host. The trailing slash makes
+/// subsequent path-segment joins (`endpoint`) behave like Swift's
+/// `appendingPathComponent`.
+fn normalize_base_url(raw: &str) -> Result<url::Url, SyncError> {
+    let invalid = |reason: String| SyncError::InvalidInput { reason };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(invalid("base url is empty".into()));
+    }
+    let with_slash = if trimmed.ends_with('/') {
+        trimmed.to_owned()
+    } else {
+        format!("{trimmed}/")
+    };
+    let url =
+        url::Url::parse(&with_slash).map_err(|e| invalid(format!("invalid base url: {e}")))?;
+    // `url` lowercases the scheme during parsing.
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(invalid(format!(
+            "base url scheme must be http(s), got {:?}",
+            url.scheme()
+        )));
+    }
+    if url.host_str().is_none_or(str::is_empty) {
+        return Err(invalid("base url has no host".into()));
+    }
+    Ok(url)
+}
+
+/// Build an endpoint URL by normalizing `base_url` and appending each segment
+/// as a single, percent-encoded path component.
 fn endpoint(base_url: &str, segments: &[&str]) -> Result<url::Url, SyncError> {
-    let mut url = url::Url::parse(base_url).map_err(|e| SyncError::InvalidInput {
-        reason: format!("invalid base_url: {e}"),
-    })?;
+    let mut url = normalize_base_url(base_url)?;
     {
         let mut path = url
             .path_segments_mut()
             .map_err(|_| SyncError::InvalidInput {
                 reason: "base_url cannot be a base".into(),
             })?;
+        // Drop the trailing empty segment from the normalized trailing slash
+        // (and from any base path), then append the endpoint components.
         path.pop_if_empty();
         for s in segments {
             path.push(s);
@@ -427,30 +733,136 @@ fn endpoint(base_url: &str, segments: &[&str]) -> Result<url::Url, SyncError> {
     Ok(url)
 }
 
+/// Reject a value used as a single URL path component before any network call
+/// (Swift filename / profileId guards): empty, or containing `/` or `\`.
+fn validate_path_component(value: &str, what: &str) -> Result<(), SyncError> {
+    if value.is_empty() || value.contains('/') || value.contains('\\') {
+        return Err(SyncError::InvalidInput {
+            reason: format!("invalid {what}: {value:?}"),
+        });
+    }
+    Ok(())
+}
+
+/// Map an HTTP status to a [`SyncError`], or `None` for success. BYTE-FAITHFUL
+/// to Swift `SyncError.mapHTTPStatus`: success is EXACTLY `{200, 201, 204}` —
+/// any other 2xx (202, 206, …), every 3xx, and every non-401/404 4xx fall
+/// through to [`SyncError::ProtocolError`]; 5xx is [`SyncError::ServerError`].
+fn map_status(status: u16) -> Option<SyncError> {
+    match status {
+        200 | 201 | 204 => None,
+        401 => Some(SyncError::Unauthorized),
+        404 => Some(SyncError::NotFound),
+        500..=599 => Some(SyncError::ServerError { status }),
+        status => Some(SyncError::ProtocolError { status }),
+    }
+}
+
 fn network(e: reqwest::Error) -> SyncError {
     SyncError::Network {
         reason: e.to_string(),
     }
 }
 
-async fn check(resp: reqwest::Response) -> Result<reqwest::Response, SyncError> {
-    match resp.status().as_u16() {
-        200..=299 => Ok(resp),
-        401 => Err(SyncError::Unauthorized),
-        status => Err(SyncError::Http { status }),
+/// Build a [`SyncError::DecodingFailed`] mapper for a labeled response body.
+fn decoding(what: &'static str) -> impl Fn(reqwest::Error) -> SyncError {
+    move |e| SyncError::DecodingFailed {
+        reason: format!("decode {what}: {e}"),
     }
+}
+
+async fn check(resp: reqwest::Response) -> Result<reqwest::Response, SyncError> {
+    match map_status(resp.status().as_u16()) {
+        None => Ok(resp),
+        Some(err) => Err(err),
+    }
+}
+
+/// Whether a reqwest send error is the retriable class Swift retries once
+/// after 300ms: `.timedOut` (any reqwest timeout) or `.networkConnectionLost`
+/// (a connection reset/abort/EOF mid-flight, surfaced as a transport-level
+/// `io::Error` somewhere in the source chain). Connect-refused / DNS failures
+/// are NOT retriable — they map to Swift `.networkUnreachable`, which Swift
+/// does not retry.
+fn is_retriable(e: &reqwest::Error) -> bool {
+    if e.is_timeout() {
+        return true;
+    }
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    while let Some(err) = source {
+        if let Some(io) = err.downcast_ref::<std::io::Error>() {
+            use std::io::ErrorKind::{
+                BrokenPipe, ConnectionAborted, ConnectionReset, NotConnected, UnexpectedEof,
+            };
+            if matches!(
+                io.kind(),
+                ConnectionReset | ConnectionAborted | BrokenPipe | UnexpectedEof | NotConnected
+            ) {
+                return true;
+            }
+        }
+        source = err.source();
+    }
+    false
+}
+
+/// Send `req`, retrying ONCE after [`RETRY_DELAY`] iff the first attempt failed
+/// with a [retriable](is_retriable) transport error (Swift `perform`'s
+/// 300ms-once workaround for stuck `NWConnection` paths). The second attempt's
+/// result is returned verbatim — no further retry, matching Swift's
+/// `attempt == 1` guard. Cancellation is handled one level up by aborting the
+/// whole task, so a cancelled request never reaches the retry.
+async fn send_with_retry(req: reqwest::RequestBuilder) -> Result<reqwest::Response, SyncError> {
+    // All bodies here are in-memory (json / Vec<u8> / multipart), so
+    // `try_clone` always yields `Some`; the `None` arm is a safe fallback.
+    let retry = req.try_clone();
+    match req.send().await {
+        Ok(resp) => Ok(resp),
+        Err(e) if is_retriable(&e) => match retry {
+            Some(retry_req) => {
+                tokio::time::sleep(RETRY_DELAY).await;
+                retry_req.send().await.map_err(network)
+            }
+            None => Err(network(e)),
+        },
+        Err(e) => Err(network(e)),
+    }
+}
+
+/// `PUT /file/{name}` with octet-stream body (spec §2.3). Shared by
+/// [`MobileSyncClient::put_file`] and the file step of
+/// [`MobileSyncClient::put_clipboard`]. Assumes `name` is already validated.
+async fn put_file_inner(
+    http: &reqwest::Client,
+    server: &ServerConfig,
+    name: &str,
+    body: Vec<u8>,
+) -> Result<(), SyncError> {
+    let url = endpoint(&server.base_url, &["file", name])?;
+    let req = http
+        .put(url)
+        .basic_auth(&server.username, Some(&server.password))
+        .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+        .body(body);
+    check(send_with_retry(req).await?).await?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::net::SocketAddr;
+    use std::sync::atomic::AtomicU32;
     use std::time::Duration;
 
+    use axum::body::Bytes;
     use axum::extract::{Path, State};
     use axum::http::{header, HeaderMap, StatusCode};
-    use axum::routing::{get, put};
+    use axum::response::{IntoResponse, Response};
+    use axum::routing::{get, post, put};
     use axum::{Json, Router};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     struct NoopBridge;
     impl PlatformBridge for NoopBridge {
@@ -459,13 +871,39 @@ mod tests {
         }
     }
 
-    /// Mock daemon: Basic-Auth-checked SyncClipboard endpoints recording the
-    /// request sequence, with a configurable delay on the file PUT so tests
-    /// can drop/cancel mid-window.
+    // ── configurable mock daemon ──────────────────────────────────────────
+
+    /// Knobs for [`spawn_mock`]. Defaults give a healthy daemon: a Text
+    /// `SyncClipboard.json`, empty history, empty file bytes.
+    #[derive(Default)]
+    struct MockConfig {
+        /// When set, EVERY (authed) route returns this status with an empty
+        /// body — drives the status-mapping tests.
+        forced_status: Option<u16>,
+        /// Delay applied ONLY to the first `GET /SyncClipboard.json` attempt
+        /// (the rest are immediate) — drives the timeout-retry test.
+        first_get_delay: Duration,
+        /// Delay on `PUT /file/{name}` — drives the drop/cancel-window tests.
+        file_delay: Duration,
+        /// Body for `GET /SyncClipboard.json`.
+        clip: Option<ProtoClipboard>,
+        /// Body for `POST /api/history/query`.
+        history: Vec<ProtoHistoryRecord>,
+        /// Body for `GET /file/{name}` and `GET /api/history/{id}/data`.
+        file_bytes: Vec<u8>,
+    }
+
+    /// Mock daemon state: Basic-Auth-checked SyncClipboard endpoints recording
+    /// the request sequence, captured auth header, and the query body so tests
+    /// can assert request wiring without re-checking proto's byte-exactness.
     struct MockState {
         events: Mutex<Vec<String>>,
         expected_auth: String,
-        file_delay: Duration,
+        cfg: MockConfig,
+        get_attempts: AtomicU32,
+        last_auth: Mutex<Option<String>>,
+        last_query_body: Mutex<Option<Vec<u8>>>,
+        last_query_content_type: Mutex<Option<String>>,
     }
 
     impl MockState {
@@ -475,60 +913,126 @@ mod tests {
         fn record(&self, e: impl Into<String>) {
             self.events.lock().expect("mock lock").push(e.into());
         }
+        fn get_attempts(&self) -> u32 {
+            self.get_attempts.load(Ordering::Relaxed)
+        }
     }
 
+    fn default_clip() -> ProtoClipboard {
+        ProtoClipboard::new(
+            ProtoKind::Text,
+            Some("AA".into()),
+            "hello from daemon".into(),
+            false,
+            None,
+            Some(0),
+        )
+    }
+
+    /// Capture + verify the Authorization header.
     fn authed(state: &MockState, headers: &HeaderMap) -> bool {
-        headers
+        let value = headers
             .get(header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v == state.expected_auth)
+            .map(str::to_owned);
+        *state.last_auth.lock().expect("mock lock") = value.clone();
+        value.as_deref() == Some(state.expected_auth.as_str())
     }
 
-    async fn mock_get_doc(
-        State(state): State<Arc<MockState>>,
-        headers: HeaderMap,
-    ) -> Result<Json<WireDoc>, StatusCode> {
-        if !authed(&state, &headers) {
-            return Err(StatusCode::UNAUTHORIZED);
+    /// `None` if the route should proceed, else the forced status response.
+    fn gate(state: &MockState, headers: &HeaderMap) -> Option<Response> {
+        if !authed(state, headers) {
+            return Some(StatusCode::UNAUTHORIZED.into_response());
         }
+        state.cfg.forced_status.map(|s| {
+            StatusCode::from_u16(s)
+                .expect("valid status")
+                .into_response()
+        })
+    }
+
+    async fn mock_get_doc(State(state): State<Arc<MockState>>, headers: HeaderMap) -> Response {
+        let attempt = state.get_attempts.fetch_add(1, Ordering::Relaxed);
         state.record("get-doc");
-        Ok(Json(WireDoc {
-            kind: "Text".into(),
-            text: "hello from daemon".into(),
-            data_name: None,
-            has_data: false,
-            size: 0,
-            hash: Some("aa".into()),
-        }))
+        if let Some(resp) = gate(&state, &headers) {
+            return resp;
+        }
+        if attempt == 0 && !state.cfg.first_get_delay.is_zero() {
+            tokio::time::sleep(state.cfg.first_get_delay).await;
+        }
+        Json(state.cfg.clip.clone().unwrap_or_else(default_clip)).into_response()
     }
 
     async fn mock_put_doc(
         State(state): State<Arc<MockState>>,
         headers: HeaderMap,
-        Json(doc): Json<WireDoc>,
-    ) -> StatusCode {
-        if !authed(&state, &headers) {
-            return StatusCode::UNAUTHORIZED;
+        body: Bytes,
+    ) -> Response {
+        if let Some(resp) = gate(&state, &headers) {
+            return resp;
         }
-        state.record(format!("put-doc:{}", doc.kind));
-        StatusCode::OK
+        let doc: ProtoClipboard = serde_json::from_slice(&body).expect("valid clipboard json");
+        state.record(format!("put-doc:{}", doc.kind.as_wire_str()));
+        StatusCode::OK.into_response()
     }
 
     async fn mock_put_file(
         State(state): State<Arc<MockState>>,
         Path(name): Path<String>,
         headers: HeaderMap,
-        body: axum::body::Bytes,
-    ) -> StatusCode {
-        if !authed(&state, &headers) {
-            return StatusCode::UNAUTHORIZED;
+        body: Bytes,
+    ) -> Response {
+        if let Some(resp) = gate(&state, &headers) {
+            return resp;
         }
-        tokio::time::sleep(state.file_delay).await;
+        tokio::time::sleep(state.cfg.file_delay).await;
         state.record(format!("put-file:{name}:{}", body.len()));
-        StatusCode::OK
+        StatusCode::OK.into_response()
     }
 
-    async fn spawn_mock(file_delay: Duration) -> (SocketAddr, Arc<MockState>) {
+    async fn mock_get_file(
+        State(state): State<Arc<MockState>>,
+        Path(name): Path<String>,
+        headers: HeaderMap,
+    ) -> Response {
+        if let Some(resp) = gate(&state, &headers) {
+            return resp;
+        }
+        state.record(format!("get-file:{name}"));
+        state.cfg.file_bytes.clone().into_response()
+    }
+
+    async fn mock_query(
+        State(state): State<Arc<MockState>>,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> Response {
+        let content_type = headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        *state.last_query_content_type.lock().expect("mock lock") = content_type;
+        *state.last_query_body.lock().expect("mock lock") = Some(body.to_vec());
+        if let Some(resp) = gate(&state, &headers) {
+            return resp;
+        }
+        state.record("query");
+        Json(state.cfg.history.clone()).into_response()
+    }
+
+    async fn mock_history_data(
+        State(state): State<Arc<MockState>>,
+        Path(profile_id): Path<String>,
+        headers: HeaderMap,
+    ) -> Response {
+        if let Some(resp) = gate(&state, &headers) {
+            return resp;
+        }
+        state.record(format!("history-data:{profile_id}"));
+        state.cfg.file_bytes.clone().into_response()
+    }
+
+    async fn spawn_mock(cfg: MockConfig) -> (SocketAddr, Arc<MockState>) {
         use base64::Engine as _;
         let state = Arc::new(MockState {
             events: Mutex::new(Vec::new()),
@@ -536,21 +1040,81 @@ mod tests {
                 "Basic {}",
                 base64::engine::general_purpose::STANDARD.encode("u:p")
             ),
-            file_delay,
+            cfg,
+            get_attempts: AtomicU32::new(0),
+            last_auth: Mutex::new(None),
+            last_query_body: Mutex::new(None),
+            last_query_content_type: Mutex::new(None),
         });
         // axum 0.7: route params use `:name`, not `{name}`.
         let app = Router::new()
             .route("/SyncClipboard.json", get(mock_get_doc).put(mock_put_doc))
-            .route("/file/:name", put(mock_put_file))
+            .route("/file/:name", put(mock_put_file).get(mock_get_file))
+            .route("/api/history/query", post(mock_query))
+            .route("/api/history/:profile_id/data", get(mock_history_data))
             .with_state(state.clone());
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind mock");
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
         let addr = listener.local_addr().expect("mock addr");
         tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
         (addr, state)
+    }
+
+    /// Minimal mock that always answers the doc GET with a fixed status + body
+    /// (no auth check) — for the malformed-JSON decode test.
+    async fn spawn_raw_doc_mock(status: u16, body: &'static str) -> SocketAddr {
+        let app = Router::new().route(
+            "/SyncClipboard.json",
+            get(move || async move { (StatusCode::from_u16(status).expect("valid"), body) }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
+        let addr = listener.local_addr().expect("mock addr");
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        addr
+    }
+
+    /// Raw TCP mock: the FIRST connection is reset (RST via SO_LINGER 0) after
+    /// reading the request; every later connection gets a minimal HTTP/1.1 200
+    /// carrying `ok_body`. Exercises the `.networkConnectionLost` retry branch.
+    async fn spawn_reset_then_ok_mock(ok_body: String) -> (SocketAddr, Arc<AtomicU32>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
+        let addr = listener.local_addr().expect("mock addr");
+        let conns = Arc::new(AtomicU32::new(0));
+        let counter = conns.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let n = counter.fetch_add(1, Ordering::Relaxed);
+                let body = ok_body.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 2048];
+                    let _ = sock.read(&mut buf).await;
+                    if n == 0 {
+                        // Force a RST on close so reqwest sees ConnectionReset.
+                        // linger-ZERO is the immediate-reset case, not the
+                        // block-on-drop one the deprecation warns about.
+                        #[allow(deprecated)]
+                        let _ = sock.set_linger(Some(Duration::ZERO));
+                        drop(sock);
+                    } else {
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                             Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        let _ = sock.write_all(resp.as_bytes()).await;
+                        let _ = sock.shutdown().await;
+                    }
+                });
+            }
+        });
+        (addr, conns)
     }
 
     fn server_cfg(addr: SocketAddr, password: &str) -> ServerConfig {
@@ -566,6 +1130,21 @@ mod tests {
         MobileSyncClient::new(Arc::new(NoopBridge)).expect("client constructs after init")
     }
 
+    /// Test-only client whose reqwest layer has a short TOTAL timeout so the
+    /// retry-on-timeout path fires deterministically without a 10s wait.
+    fn new_client_total_timeout(ms: u64) -> Arc<MobileSyncClient> {
+        uc_mobile_init();
+        MobileSyncClient::construct(
+            Arc::new(NoopBridge),
+            HttpTimeouts {
+                connect: None,
+                read: None,
+                total: Some(Duration::from_millis(ms)),
+            },
+        )
+        .expect("client constructs after init")
+    }
+
     fn file_meta() -> ClipboardMeta {
         ClipboardMeta {
             kind: ClipboardKind::File,
@@ -577,9 +1156,112 @@ mod tests {
         }
     }
 
+    fn text_meta() -> ClipboardMeta {
+        ClipboardMeta {
+            kind: ClipboardKind::Text,
+            text: "hi".into(),
+            data_name: None,
+            has_data: false,
+            size: 2,
+            hash: Some("AA".into()),
+        }
+    }
+
+    // ── pure helpers ──────────────────────────────────────────────────────
+
+    // Swift: SyncError.mapHTTPStatus (SyncError.swift) — the FULL table.
+    #[test]
+    fn status_mapping_matches_swift() {
+        assert!(map_status(200).is_none());
+        assert!(map_status(201).is_none());
+        assert!(map_status(204).is_none());
+        assert_eq!(map_status(401), Some(SyncError::Unauthorized));
+        assert_eq!(map_status(404), Some(SyncError::NotFound));
+        assert_eq!(
+            map_status(500),
+            Some(SyncError::ServerError { status: 500 })
+        );
+        assert_eq!(
+            map_status(503),
+            Some(SyncError::ServerError { status: 503 })
+        );
+        // Everything else — other 2xx, 3xx, non-401/404 4xx — is protocolError.
+        for s in [202u16, 206, 300, 302, 400, 403, 405, 418, 451] {
+            assert_eq!(
+                map_status(s),
+                Some(SyncError::ProtocolError { status: s }),
+                "status {s}"
+            );
+        }
+    }
+
+    // Swift: SyncClipboardClientTests.test_normalizeBaseURL_* (§1.1).
+    #[test]
+    fn normalize_base_url_matches_swift() {
+        let norm = |s: &str| normalize_base_url(s).map(|u| u.to_string());
+        assert_eq!(norm("https://example.com").unwrap(), "https://example.com/");
+        assert_eq!(
+            norm("https://example.com/").unwrap(),
+            "https://example.com/"
+        );
+        assert_eq!(
+            norm("  https://example.com  ").unwrap(),
+            "https://example.com/"
+        );
+        assert_eq!(
+            norm("https://nas.local:5033/sync").unwrap(),
+            "https://nas.local:5033/sync/"
+        );
+        assert!(matches!(norm(""), Err(SyncError::InvalidInput { .. })));
+        assert!(matches!(
+            norm("ftp://example.com"),
+            Err(SyncError::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            norm("not-a-url"),
+            Err(SyncError::InvalidInput { .. })
+        ));
+    }
+
+    #[test]
+    fn validate_path_component_rejects_separators_and_empty() {
+        assert!(validate_path_component("ok.txt", "filename").is_ok());
+        for bad in ["", "a/b", "a\\b", "/", "x\\"] {
+            assert!(
+                matches!(
+                    validate_path_component(bad, "filename"),
+                    Err(SyncError::InvalidInput { .. })
+                ),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn endpoint_normalizes_and_joins_paths() {
+        let url = endpoint("http://10.0.0.5:42720/", &["SyncClipboard.json"]).expect("join");
+        assert_eq!(url.as_str(), "http://10.0.0.5:42720/SyncClipboard.json");
+        // No trailing slash on the base, and a segment needing percent-encoding.
+        let url = endpoint("http://10.0.0.5:42720", &["file", "a b.png"]).expect("join");
+        assert_eq!(url.as_str(), "http://10.0.0.5:42720/file/a%20b.png");
+        // A base PATH is preserved beneath the appended segments.
+        let url =
+            endpoint("https://nas.local:5033/sync", &["api", "history", "query"]).expect("join");
+        assert_eq!(
+            url.as_str(),
+            "https://nas.local:5033/sync/api/history/query"
+        );
+        assert!(matches!(
+            endpoint("ftp://x/", &["a"]),
+            Err(SyncError::InvalidInput { .. })
+        ));
+    }
+
+    // ── SyncClipboard.json (§2.1/§2.2) ────────────────────────────────────
+
     #[tokio::test]
     async fn get_latest_decodes_doc() {
-        let (addr, _state) = spawn_mock(Duration::ZERO).await;
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
         let client = new_client();
         let meta = client
             .get_latest(server_cfg(addr, "p"))
@@ -587,12 +1269,12 @@ mod tests {
             .expect("get ok");
         assert_eq!(meta.kind, ClipboardKind::Text);
         assert_eq!(meta.text, "hello from daemon");
-        assert_eq!(meta.hash.as_deref(), Some("aa"));
+        assert_eq!(meta.hash.as_deref(), Some("AA"));
     }
 
     #[tokio::test]
     async fn put_clipboard_sends_file_before_doc() {
-        let (addr, state) = spawn_mock(Duration::ZERO).await;
+        let (addr, state) = spawn_mock(MockConfig::default()).await;
         let client = new_client();
         client
             .put_clipboard(server_cfg(addr, "p"), file_meta(), Some(vec![1, 2, 3]))
@@ -602,8 +1284,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn put_clipboard_accepts_201_and_204() {
+        for status in [201u16, 204] {
+            let (addr, _state) = spawn_mock(MockConfig {
+                forced_status: Some(status),
+                ..Default::default()
+            })
+            .await;
+            let client = new_client();
+            client
+                .put_clipboard(server_cfg(addr, "p"), text_meta(), None)
+                .await
+                .unwrap_or_else(|e| panic!("status {status} must succeed, got {e:?}"));
+        }
+    }
+
+    #[tokio::test]
     async fn wrong_password_maps_to_unauthorized() {
-        let (addr, _state) = spawn_mock(Duration::ZERO).await;
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
         let client = new_client();
         let err = client
             .get_latest(server_cfg(addr, "wrong"))
@@ -612,11 +1310,304 @@ mod tests {
         assert_eq!(err, SyncError::Unauthorized);
     }
 
+    // Swift: test_getClipboard_returns{401,404,500,Other4xx}As* — the mapping
+    // end-to-end through a real HTTP round trip.
+    #[tokio::test]
+    async fn get_latest_maps_http_statuses() {
+        let cases = [
+            (401u16, SyncError::Unauthorized),
+            (404, SyncError::NotFound),
+            (500, SyncError::ServerError { status: 500 }),
+            (418, SyncError::ProtocolError { status: 418 }),
+        ];
+        for (status, want) in cases {
+            let (addr, _state) = spawn_mock(MockConfig {
+                forced_status: Some(status),
+                ..Default::default()
+            })
+            .await;
+            let client = new_client();
+            let err = client
+                .get_latest(server_cfg(addr, "p"))
+                .await
+                .expect_err("status error");
+            assert_eq!(err, want, "status {status}");
+        }
+    }
+
+    // Swift: test_getClipboard_malformedJSONFailsAsDecodingFailed.
+    #[tokio::test]
+    async fn get_latest_malformed_json_maps_to_decoding_failed() {
+        let addr = spawn_raw_doc_mock(200, "not-json").await;
+        let client = new_client();
+        let err = client
+            .get_latest(server_cfg(addr, "p"))
+            .await
+            .expect_err("decode failure");
+        assert!(
+            matches!(err, SyncError::DecodingFailed { .. }),
+            "got {err:?}"
+        );
+    }
+
+    // Swift: test_basicAuthHeader_matchesSpecExample.
+    #[tokio::test]
+    async fn basic_auth_header_matches_spec() {
+        let (addr, state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        let cfg = ServerConfig {
+            base_url: format!("http://{addr}"),
+            username: "alice".into(),
+            password: "secret".into(),
+        };
+        // The mock expects u:p, so this 401s — we only assert the header bytes.
+        let _ = client.get_latest(cfg).await;
+        let auth = state.last_auth.lock().expect("mock lock").clone();
+        assert_eq!(auth.as_deref(), Some("Basic YWxpY2U6c2VjcmV0"));
+    }
+
+    // ── file endpoints (§2.3/§2.4) ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn put_file_uploads_bytes() {
+        let (addr, state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        client
+            .put_file(
+                server_cfg(addr, "p"),
+                "text_ABC.txt".into(),
+                vec![0xDE, 0xAD, 0xBE, 0xEF],
+            )
+            .await
+            .expect("put file ok");
+        assert_eq!(state.events(), vec!["put-file:text_ABC.txt:4"]);
+    }
+
+    #[tokio::test]
+    async fn get_file_returns_bytes_verbatim() {
+        let payload: Vec<u8> = (0..=255u16).map(|b| b as u8).collect();
+        let (addr, _state) = spawn_mock(MockConfig {
+            file_bytes: payload.clone(),
+            ..Default::default()
+        })
+        .await;
+        let client = new_client();
+        let got = client
+            .get_file(server_cfg(addr, "p"), "blob.bin".into())
+            .await
+            .expect("get file ok");
+        assert_eq!(got, payload);
+    }
+
+    #[tokio::test]
+    async fn get_file_404_maps_to_not_found() {
+        let (addr, _state) = spawn_mock(MockConfig {
+            forced_status: Some(404),
+            ..Default::default()
+        })
+        .await;
+        let client = new_client();
+        let err = client
+            .get_file(server_cfg(addr, "p"), "x.bin".into())
+            .await
+            .expect_err("404");
+        assert_eq!(err, SyncError::NotFound);
+    }
+
+    #[tokio::test]
+    async fn file_endpoints_reject_bad_filenames_before_network() {
+        let (addr, state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        for bad in ["a/b", "..\\b", ""] {
+            let put_err = client
+                .put_file(server_cfg(addr, "p"), bad.into(), vec![0])
+                .await
+                .expect_err("invalid put filename");
+            let get_err = client
+                .get_file(server_cfg(addr, "p"), bad.into())
+                .await
+                .expect_err("invalid get filename");
+            assert!(matches!(put_err, SyncError::InvalidInput { .. }), "{bad:?}");
+            assert!(matches!(get_err, SyncError::InvalidInput { .. }), "{bad:?}");
+        }
+        assert!(
+            state.events().is_empty(),
+            "invalid filenames must not reach the network"
+        );
+    }
+
+    // ── history (§2.7/§2.11) ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn query_history_decodes_records_and_posts_multipart() {
+        let mut rec = ProtoHistoryRecord::new("ABC123", ProtoKind::Text);
+        rec.text = Some("hi".into());
+        rec.size = Some(2);
+        rec.create_time = DateTime::from_timestamp_millis(1_700_000_000_000);
+        rec.last_modified = DateTime::from_timestamp_millis(1_700_000_001_000);
+        rec.starred = true;
+        rec.version = Some(0);
+        let (addr, state) = spawn_mock(MockConfig {
+            history: vec![rec],
+            ..Default::default()
+        })
+        .await;
+        let client = new_client();
+        let query = HistoryQuery {
+            page: Some(2),
+            types: Some(15),
+            modified_after_ms: Some(1_700_000_000_000),
+            ..Default::default()
+        };
+        let records = client
+            .query_history(server_cfg(addr, "p"), query)
+            .await
+            .expect("query ok");
+        assert_eq!(records.len(), 1);
+        let got = &records[0];
+        assert_eq!(got.hash, "ABC123");
+        assert_eq!(got.kind, ClipboardKind::Text);
+        assert_eq!(got.text.as_deref(), Some("hi"));
+        assert!(got.starred);
+        assert_eq!(got.create_time_ms, Some(1_700_000_000_000));
+        assert_eq!(got.last_modified_ms, Some(1_700_000_001_000));
+        assert_eq!(got.version, Some(0));
+
+        // Request wiring: multipart content-type + the fields we set, nil
+        // fields omitted (byte-exactness of the body is proto-tested).
+        let content_type = state
+            .last_query_content_type
+            .lock()
+            .expect("mock lock")
+            .clone()
+            .expect("content-type captured");
+        assert!(
+            content_type.starts_with("multipart/form-data; boundary="),
+            "got {content_type}"
+        );
+        let body = state
+            .last_query_body
+            .lock()
+            .expect("mock lock")
+            .clone()
+            .expect("body captured");
+        let body = String::from_utf8(body).expect("utf8 body");
+        assert!(body.contains("name=\"page\"\r\n\r\n2\r\n"), "{body}");
+        assert!(body.contains("name=\"types\"\r\n\r\n15\r\n"), "{body}");
+        assert!(body.contains("name=\"modifiedAfter\""), "{body}");
+        assert!(
+            !body.contains("name=\"starred\""),
+            "nil field must be omitted"
+        );
+    }
+
+    #[tokio::test]
+    async fn query_history_empty_array_is_ok() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        let records = client
+            .query_history(server_cfg(addr, "p"), HistoryQuery::default())
+            .await
+            .expect("empty page is end-of-list, not an error");
+        assert!(records.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_history_payload_returns_bytes() {
+        let payload = vec![1u8, 2, 3, 4, 5];
+        let (addr, _state) = spawn_mock(MockConfig {
+            file_bytes: payload.clone(),
+            ..Default::default()
+        })
+        .await;
+        let client = new_client();
+        let got = client
+            .get_history_payload(server_cfg(addr, "p"), "Image-ABCDEF".into())
+            .await
+            .expect("history data ok");
+        assert_eq!(got, payload);
+    }
+
+    #[tokio::test]
+    async fn get_history_payload_rejects_bad_profile_id() {
+        let (addr, state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        let err = client
+            .get_history_payload(server_cfg(addr, "p"), "a/b".into())
+            .await
+            .expect_err("invalid profileId");
+        assert!(matches!(err, SyncError::InvalidInput { .. }));
+        assert!(
+            state.events().is_empty(),
+            "no network for invalid profileId"
+        );
+    }
+
+    // ── retry (§ perform) ─────────────────────────────────────────────────
+
+    // Swift: perform's 300ms retry-once for .timedOut.
+    #[tokio::test]
+    async fn retry_on_timeout_then_succeeds() {
+        let (addr, state) = spawn_mock(MockConfig {
+            first_get_delay: Duration::from_millis(400),
+            ..Default::default()
+        })
+        .await;
+        let client = new_client_total_timeout(150);
+        let meta = client
+            .get_latest(server_cfg(addr, "p"))
+            .await
+            .expect("the retry recovers after the first attempt times out");
+        assert_eq!(meta.text, "hello from daemon");
+        assert_eq!(state.get_attempts(), 2, "exactly one retry after a timeout");
+    }
+
+    // Swift: perform's 300ms retry-once for .networkConnectionLost.
+    #[tokio::test]
+    async fn retry_on_connection_reset_then_succeeds() {
+        let body = r#"{"type":"Text","text":"after-reset","hasData":false}"#.to_string();
+        let (addr, conns) = spawn_reset_then_ok_mock(body).await;
+        let client = new_client();
+        let meta = client
+            .get_latest(server_cfg(addr, "p"))
+            .await
+            .expect("the retry recovers after a connection reset");
+        assert_eq!(meta.text, "after-reset");
+        assert_eq!(
+            conns.load(Ordering::Relaxed),
+            2,
+            "exactly one retry after a connection reset"
+        );
+    }
+
+    // Swift: 401 is a status, not a send error — it is never retried.
+    #[tokio::test]
+    async fn status_errors_are_not_retried() {
+        let (addr, state) = spawn_mock(MockConfig {
+            forced_status: Some(401),
+            ..Default::default()
+        })
+        .await;
+        let client = new_client();
+        let err = client
+            .get_latest(server_cfg(addr, "p"))
+            .await
+            .expect_err("401");
+        assert_eq!(err, SyncError::Unauthorized);
+        assert_eq!(state.get_attempts(), 1, "status errors must not retry");
+    }
+
+    // ── cancellation (§5.3, deliberate no-poison divergence) ──────────────
+
     /// Seam 3: dropping the exported future mid file→metadata window must NOT
     /// interrupt the sequence — the detached task finishes both requests.
     #[tokio::test]
     async fn dropped_put_future_still_completes_file_and_doc() {
-        let (addr, state) = spawn_mock(Duration::from_millis(150)).await;
+        let (addr, state) = spawn_mock(MockConfig {
+            file_delay: Duration::from_millis(150),
+            ..Default::default()
+        })
+        .await;
         let client = new_client();
         let mut fut =
             Box::pin(client.put_clipboard(server_cfg(addr, "p"), file_meta(), Some(vec![1, 2, 3])));
@@ -643,7 +1634,11 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_in_flight_yields_cancelled() {
-        let (addr, _state) = spawn_mock(Duration::from_millis(500)).await;
+        let (addr, _state) = spawn_mock(MockConfig {
+            file_delay: Duration::from_millis(500),
+            ..Default::default()
+        })
+        .await;
         let client = new_client();
         let mut fut =
             Box::pin(client.put_clipboard(server_cfg(addr, "p"), file_meta(), Some(vec![1, 2, 3])));
@@ -656,6 +1651,21 @@ mod tests {
         assert_eq!(fut.await, Err(SyncError::Cancelled));
     }
 
+    /// Deliberate divergence from Swift: cancel does NOT poison the long-lived
+    /// client — a subsequent request (fresh ServerConfig from the native
+    /// shell) proceeds normally instead of throwing `.cancelled`.
+    #[tokio::test]
+    async fn cancel_does_not_poison_subsequent_requests() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        client.cancel_in_flight();
+        let meta = client
+            .get_latest(server_cfg(addr, "p"))
+            .await
+            .expect("a fresh request after cancel must still work");
+        assert_eq!(meta.kind, ClipboardKind::Text);
+    }
+
     #[tokio::test]
     async fn tls_probe_rejects_plain_http() {
         let client = new_client();
@@ -664,13 +1674,5 @@ mod tests {
             .await
             .expect_err("http must be rejected");
         assert!(matches!(err, SyncError::InvalidInput { .. }));
-    }
-
-    #[test]
-    fn endpoint_joins_paths_without_double_slash() {
-        let url = endpoint("http://10.0.0.5:42720/", &["SyncClipboard.json"]).expect("join");
-        assert_eq!(url.as_str(), "http://10.0.0.5:42720/SyncClipboard.json");
-        let url = endpoint("http://10.0.0.5:42720", &["file", "a b.png"]).expect("join");
-        assert_eq!(url.as_str(), "http://10.0.0.5:42720/file/a%20b.png");
     }
 }

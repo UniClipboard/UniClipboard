@@ -7,7 +7,6 @@ import fileTransferReducer from '../fileTransferSlice'
 function makeItem(id: string, overrides?: Partial<ClipboardItemResponse>): ClipboardItemResponse {
   return {
     id,
-    is_downloaded: true,
     is_favorited: false,
     created_at: Date.now(),
     updated_at: Date.now(),

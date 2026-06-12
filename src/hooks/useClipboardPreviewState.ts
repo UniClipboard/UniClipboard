@@ -9,7 +9,6 @@ import {
   resolveEntryTransferStatus,
   selectEntryTransferStatus,
   selectTransferByEntryId,
-  selectTransferByTransferIds,
   type TransferProgressInfo,
 } from '@/store/slices/fileTransferSlice'
 
@@ -27,10 +26,7 @@ export interface ClipboardPreviewState {
 
 export function useClipboardPreviewState(item: DisplayClipboardItem | null): ClipboardPreviewState {
   const transfer = useAppSelector(state =>
-    item
-      ? (selectTransferByEntryId(state, item.id) ??
-        selectTransferByTransferIds(state, item.fileTransferIds ?? []))
-      : undefined
+    item ? selectTransferByEntryId(state, item.id) : undefined
   )
   const entryStatus = useAppSelector(state =>
     item ? selectEntryTransferStatus(state, item.id) : undefined

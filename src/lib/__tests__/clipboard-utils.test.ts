@@ -7,7 +7,6 @@ function createItemResponse(
 ): ClipboardItemResponse {
   return {
     id: 'item-1',
-    is_downloaded: true,
     is_favorited: false,
     created_at: 0,
     updated_at: 0,

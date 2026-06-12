@@ -30,7 +30,6 @@ import {
   normalizeCancelReason,
   resolveEntryTransferStatus,
   selectEntryTransferStatus,
-  selectTransferByTransferIds,
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
 import type { DisplayClipboardItem } from './ClipboardContent'
@@ -140,11 +139,7 @@ function ClipboardItemRow({
 }: ClipboardItemRowProps & { ref?: React.Ref<HTMLDivElement> }) {
   const { t } = useTranslation()
   const Icon = FILE_EXT_ICON_MAP[getFileExt(item)] ?? typeIcons[item.type] ?? FileText
-  const transfer = useAppSelector(
-    state =>
-      selectTransferByEntryId(state, item.id) ??
-      selectTransferByTransferIds(state, item.fileTransferIds ?? [])
-  )
+  const transfer = useAppSelector(state => selectTransferByEntryId(state, item.id))
   const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, item.id))
 
   // Live progress must override stale pending state so the UI reflects actual movement.

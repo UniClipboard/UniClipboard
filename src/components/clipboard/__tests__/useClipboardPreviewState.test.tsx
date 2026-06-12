@@ -15,7 +15,6 @@ vi.mock('@/store/slices/fileTransferSlice', () => ({
   resolveEntryTransferStatus: vi.fn(() => 'completed'),
   selectEntryTransferStatus: vi.fn(() => undefined),
   selectTransferByEntryId: vi.fn(() => undefined),
-  selectTransferByTransferIds: vi.fn(() => undefined),
 }))
 
 vi.mock('@/lib/clipboard-preview-cache', () => ({

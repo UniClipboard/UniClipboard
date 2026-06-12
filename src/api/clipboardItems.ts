@@ -112,7 +112,6 @@ export interface ClipboardItem {
 
 export interface ClipboardItemResponse {
   id: string
-  is_downloaded: boolean
   is_favorited: boolean
   created_at: number
   updated_at: number
@@ -122,7 +121,6 @@ export interface ClipboardItemResponse {
   file_transfer_status?: string | null
   /** Failure reason when file_transfer_status is "failed" */
   file_transfer_reason?: string | null
-  file_transfer_ids?: string[]
   /**
    * `paste_rep` 的 payload_state, 仅在 `"Lost"` 时由后端输出。其他状态为
    * undefined。前端在列表上把对应 entry 灰显并标记"内容已不可用",
@@ -361,23 +359,6 @@ export async function unfavoriteClipboardItem(id: string): Promise<boolean> {
  */
 export async function copyFileToClipboard(entryId: string): Promise<void> {
   await daemonRestoreEntry(entryId)
-}
-
-/**
- * Download a file entry from a remote device to local clipboard.
- * Returns a transfer_id to track progress via transfer://progress events.
- *
- * TODO(issue #698 follow-up): Rust `download_file_entry` command 不存在 —
- * 调用会 runtime 报 "command not found"。tauri-specta 迁移阶段保留原
- * 字符串调用，待 daemon 化或 Rust 端补 command 时再切 typed `commands.xxx`。
- */
-export async function downloadFileEntry(entryId: string): Promise<{ transfer_id: string }> {
-  try {
-    return await invokeWithTrace('download_file_entry', { entryId })
-  } catch (error) {
-    log.error({ err: error }, 'Failed to download file entry')
-    throw error
-  }
 }
 
 /**

@@ -28,7 +28,6 @@ export function transformDaemonDtoToItemResponse(entry: ClipboardEntryDto): Clip
 
   return {
     id: entry.id,
-    is_downloaded: true,
     is_favorited: entry.isFavorited,
     created_at: entry.capturedAt,
     updated_at: entry.updatedAt,

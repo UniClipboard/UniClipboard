@@ -19,7 +19,6 @@ vi.mock('@/hooks/useClipboardCollection', () => ({
     items: [
       {
         id: 'entry-1',
-        is_downloaded: true,
         is_favorited: false,
         created_at: 1710000000000,
         updated_at: 1710000000000,
@@ -41,7 +40,6 @@ vi.mock('@/hooks/useClipboardCollection', () => ({
       },
       {
         id: 'entry-2',
-        is_downloaded: true,
         is_favorited: false,
         created_at: 1710000001000,
         updated_at: 1710000001000,

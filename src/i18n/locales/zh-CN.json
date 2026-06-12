@@ -656,7 +656,6 @@
     },
     "errors": {
       "copyFailed": "复制到剪贴板失败",
-      "syncFailed": "同步到剪贴板失败",
       "openLocationFailed": "打开文件位置失败",
       "loadDetailFailed": "加载详情失败",
       "unknown": "发生未知错误",
@@ -709,13 +708,10 @@
       "size": "大小",
       "dimensions": "分辨率",
       "filesCount": "{{count}} 个文件",
-      "notDownloaded": "未下载",
       "sourceDevice": "来源设备"
     },
     "contextMenu": {
       "copy": "复制",
-      "syncToClipboard": "同步到剪贴板",
-      "syncing": "同步中...",
       "openFileLocation": "打开文件位置",
       "resend": "重发",
       "resending": "正在重发...",
@@ -724,9 +720,7 @@
     "actionBar": {
       "title": "剪贴板历史",
       "copy": "复制",
-      "delete": "删除",
-      "syncToClipboard": "同步到剪贴板",
-      "syncing": "同步中..."
+      "delete": "删除"
     },
     "notification": {
       "syncStartSingle": "正在同步文件到 {{device}}",

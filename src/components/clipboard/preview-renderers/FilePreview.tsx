@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  CloudOff,
   Database,
   File,
   Hash,
@@ -58,10 +57,9 @@ function getCancelReasonText(
 interface StatusBadgeProps {
   effectiveStatus: EntryTransferStatus['status'] | undefined
   transfer: TransferProgressInfo | undefined
-  isDownloaded: boolean | undefined
 }
 
-const StatusBadge: React.FC<StatusBadgeProps> = ({ effectiveStatus, transfer, isDownloaded }) => {
+const StatusBadge: React.FC<StatusBadgeProps> = ({ effectiveStatus, transfer }) => {
   const { t } = useTranslation()
   return (
     <div className="flex flex-wrap gap-2">
@@ -97,12 +95,6 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ effectiveStatus, transfer, is
         <div className="flex items-center gap-1.5 rounded-full bg-green-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-green-500 backdrop-blur-md ring-1 ring-green-500/30">
           <CheckCircle2 size={10} />
           {t('clipboard.transfer.completed')}
-        </div>
-      )}
-      {!effectiveStatus && isDownloaded === false && (
-        <div className="flex items-center gap-1.5 rounded-full bg-orange-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-orange-500 backdrop-blur-md ring-1 ring-orange-500/20">
-          <CloudOff size={10} />
-          {t('clipboard.preview.notDownloaded')}
         </div>
       )}
     </div>
@@ -203,11 +195,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
                 </div>
               </div>
 
-              <StatusBadge
-                effectiveStatus={effectiveStatus}
-                transfer={transfer}
-                isDownloaded={item.isDownloaded}
-              />
+              <StatusBadge effectiveStatus={effectiveStatus} transfer={transfer} />
             </div>
           </div>
         </div>
@@ -232,11 +220,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <StatusBadge
-          effectiveStatus={effectiveStatus}
-          transfer={transfer}
-          isDownloaded={item.isDownloaded}
-        />
+        <StatusBadge effectiveStatus={effectiveStatus} transfer={transfer} />
         {item.device && (
           <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
             {t('clipboard.preview.sourceDevice')}: {item.device}

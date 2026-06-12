@@ -1,4 +1,4 @@
-import { Copy, Download, FolderOpen, Loader2, RefreshCw, Trash2 } from 'lucide-react'
+import { Copy, FolderOpen, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -20,8 +20,6 @@ import {
 import type { DisplayClipboardItem } from './ClipboardContent'
 
 export interface FileContextMenuTransferStatus {
-  isDownloaded: boolean
-  isTransferring: boolean
   isStale?: boolean
   /**
    * 该 entry 是否含 partial(uniclip-missing://)文件。当 daemon 的
@@ -40,7 +38,6 @@ interface FileContextMenuProps {
   transferStatus: FileContextMenuTransferStatus
   onCopy: (itemId: string) => void
   onDelete: (itemId: string) => void
-  onSyncToClipboard: (itemId: string) => void
   onOpenFileLocation: (itemId: string) => void
 }
 
@@ -51,10 +48,9 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
   transferStatus,
   onCopy,
   onDelete,
-  onSyncToClipboard,
   onOpenFileLocation,
 }) => {
-  const { isDownloaded, isTransferring, isStale, hasMissingFiles } = transferStatus
+  const { isStale, hasMissingFiles } = transferStatus
   const { t } = useTranslation()
   const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, itemId))
   const transfer = useAppSelector(state => selectTransferByEntryId(state, itemId))
@@ -91,49 +87,29 @@ const FileContextMenu: React.FC<FileContextMenuProps> = ({
           : t('clipboard.transfer.copyDisabled.failed')
     : null
 
-  const showSyncAction = isFile && !isDownloaded && !isCopyDisabledByTransfer
-  const showCopyAction = !isFile || isDownloaded || isCopyDisabledByTransfer
-
   return (
     <ContextMenu onOpenChange={setMenuOpen}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-52">
-        {/* Sync to Clipboard (file not yet downloaded, no blocking transfer state) */}
-        {showSyncAction && (
-          <ContextMenuItem disabled={isTransferring} onClick={() => onSyncToClipboard(itemId)}>
-            {isTransferring ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
-            ) : (
-              <Download className="mr-2 size-4" />
-            )}
-            {isTransferring
-              ? t('clipboard.contextMenu.syncing')
-              : t('clipboard.contextMenu.syncToClipboard')}
-          </ContextMenuItem>
-        )}
-
         {/* Copy (disabled for non-completed file transfers) */}
-        {showCopyAction && (
-          <ContextMenuItem
-            disabled={isCopyDisabledByTransfer || (isFile && isStale)}
-            aria-disabled={isCopyDisabledByTransfer || (isFile && isStale)}
-            onClick={() => !isCopyDisabledByTransfer && !isStale && onCopy(itemId)}
-          >
-            <Copy className="mr-2 size-4" />
-            {copyDisabledReason
-              ? copyDisabledReason
-              : isFile && isStale
-                ? t('clipboard.contextMenu.fileDeleted', 'File deleted')
-                : t('clipboard.contextMenu.copy')}
-            {!isCopyDisabledByTransfer && !isStale && <ContextMenuShortcut>C</ContextMenuShortcut>}
-          </ContextMenuItem>
-        )}
+        <ContextMenuItem
+          disabled={isCopyDisabledByTransfer || (isFile && isStale)}
+          aria-disabled={isCopyDisabledByTransfer || (isFile && isStale)}
+          onClick={() => !isCopyDisabledByTransfer && !isStale && onCopy(itemId)}
+        >
+          <Copy className="mr-2 size-4" />
+          {copyDisabledReason
+            ? copyDisabledReason
+            : isFile && isStale
+              ? t('clipboard.contextMenu.fileDeleted', 'File deleted')
+              : t('clipboard.contextMenu.copy')}
+          {!isCopyDisabledByTransfer && !isStale && <ContextMenuShortcut>C</ContextMenuShortcut>}
+        </ContextMenuItem>
 
         <ContextMenuSeparator />
 
-        {/* Open File Location (file type, downloaded, completed transfer) */}
+        {/* Open File Location (file type, completed transfer) */}
         {isFile &&
-          isDownloaded &&
           !hasMissingFiles &&
           effectiveStatus !== 'pending' &&
           effectiveStatus !== 'transferring' &&

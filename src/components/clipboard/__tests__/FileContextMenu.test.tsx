@@ -6,8 +6,8 @@ import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
 
 // Redux store hooks 与 file transfer 选择器: FileContextMenu 在内部用 redux
-// 决定 sync/copy 是否 disable;本测专注 Resend 菜单项的可达性 + 点击行为,
-// 因此 selector 全 stub 成"已下载且完成"的稳定快照。
+// 决定 copy 是否 disable;本测专注 Resend 菜单项的可达性 + 点击行为,
+// 因此 selector 全 stub 成"传输已完成"的稳定快照。
 vi.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => selector({}),
 }))
@@ -62,13 +62,10 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof FileContextMe
     itemId: 'entry-ctx-1',
     itemType: 'text',
     transferStatus: {
-      isDownloaded: true,
-      isTransferring: false,
       isStale: false,
     },
     onCopy: vi.fn(),
     onDelete: vi.fn(),
-    onSyncToClipboard: vi.fn(),
     onOpenFileLocation: vi.fn(),
     children: <div data-testid="row">row content</div>,
     ...overrides,

@@ -234,20 +234,6 @@ export const selectTransferByEntryId = (
   return state.fileTransfer.activeTransfers[transferId]
 }
 
-export const selectTransferByTransferIds = (
-  state: RootState,
-  transferIds: string[]
-): TransferProgressInfo | undefined => {
-  let fallbackTransfer: TransferProgressInfo | undefined
-  for (const transferId of transferIds) {
-    const transfer = state.fileTransfer.activeTransfers[transferId]
-    if (!transfer) continue
-    if (transfer.status === 'active') return transfer
-    fallbackTransfer ??= transfer
-  }
-  return fallbackTransfer
-}
-
 export const selectActiveTransfers = (state: RootState): TransferProgressInfo[] => {
   return Object.values(state.fileTransfer.activeTransfers).filter(t => t.status === 'active')
 }

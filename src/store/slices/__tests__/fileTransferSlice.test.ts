@@ -6,7 +6,6 @@ import fileTransferReducer, {
   setEntryTransferStatus,
   hydrateEntryTransferStatuses,
   removeEntryTransferStatus,
-  selectTransferByTransferIds,
   updateTransferProgress,
   removeTransfer,
 } from '../fileTransferSlice'
@@ -305,91 +304,6 @@ describe('fileTransferSlice - file transfer status', () => {
         markTransferCancelled({ transferId: 'missing', reason: 'unknown' })
       )
       expect(next.activeTransfers).toEqual({})
-    })
-  })
-
-  describe('selectTransferByTransferIds', () => {
-    it('prefers an active transfer over earlier terminal transfers', () => {
-      const state = {
-        fileTransfer: {
-          activeTransfers: {
-            'tx-completed': {
-              transferId: 'tx-completed',
-              entryId: 'entry-1',
-              peerId: 'peer-1',
-              direction: 'Receiving' as const,
-              bytesTransferred: 5000,
-              totalBytes: 5000,
-              status: 'completed' as const,
-              startedAt: 1000,
-              updatedAt: 2000,
-              bytesPerSecond: 2500,
-              estimatedRemainingSeconds: 0,
-            },
-            'tx-active': {
-              transferId: 'tx-active',
-              entryId: 'entry-1',
-              peerId: 'peer-1',
-              direction: 'Receiving' as const,
-              bytesTransferred: 2000,
-              totalBytes: 5000,
-              status: 'active' as const,
-              startedAt: 3000,
-              updatedAt: 3500,
-              bytesPerSecond: 4000,
-              estimatedRemainingSeconds: 1,
-            },
-          },
-          entryTransferMap: {},
-          entryStatusById: {},
-        },
-      }
-
-      expect(selectTransferByTransferIds(state as never, ['tx-completed', 'tx-active'])).toEqual(
-        state.fileTransfer.activeTransfers['tx-active']
-      )
-    })
-
-    it('falls back to the first terminal transfer when no active transfer exists', () => {
-      const state = {
-        fileTransfer: {
-          activeTransfers: {
-            'tx-failed': {
-              transferId: 'tx-failed',
-              entryId: 'entry-2',
-              peerId: 'peer-2',
-              direction: 'Sending' as const,
-              bytesTransferred: 3000,
-              totalBytes: 5000,
-              status: 'failed' as const,
-              errorMessage: 'network closed',
-              startedAt: 1000,
-              updatedAt: 2500,
-              bytesPerSecond: 1200,
-              estimatedRemainingSeconds: null,
-            },
-            'tx-completed': {
-              transferId: 'tx-completed',
-              entryId: 'entry-2',
-              peerId: 'peer-2',
-              direction: 'Sending' as const,
-              bytesTransferred: 5000,
-              totalBytes: 5000,
-              status: 'completed' as const,
-              startedAt: 3000,
-              updatedAt: 4500,
-              bytesPerSecond: 3333,
-              estimatedRemainingSeconds: 0,
-            },
-          },
-          entryTransferMap: {},
-          entryStatusById: {},
-        },
-      }
-
-      expect(selectTransferByTransferIds(state as never, ['tx-failed', 'tx-completed'])).toEqual(
-        state.fileTransfer.activeTransfers['tx-failed']
-      )
     })
   })
 })

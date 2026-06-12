@@ -33,8 +33,8 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |  |- uc-cli-macros/    # Proc-macros for uc-cli (internal)
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
 |  # -- Other --
-|  |- uc-mobile-proto/  # (no description)
-|  |- uc-mobile/        # (no description)
+|  |- uc-mobile-proto/  # Pure mobile-sync wire-protocol codec leaf crate (connect-uri)
+|  |- uc-mobile/        # UniFFI boundary crate exposing shared Rust to iOS/Android (mobile spike)
 |- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)
 |  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())
 |  `- crates/uc-tauri/    # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop

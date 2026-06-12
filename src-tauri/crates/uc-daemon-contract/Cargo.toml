@@ -20,3 +20,5 @@ utoipa = { version = "4", features = ["uuid", "chrono", "url"] }
 # downgrade guard (ADR-008 P5-L L2). semver is a leaf pure-Rust dep — it does
 # NOT pull iroh/diesel, so it keeps this contract crate client-safe.
 semver = "1"
+[lints]
+workspace = true

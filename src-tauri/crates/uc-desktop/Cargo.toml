@@ -39,3 +39,6 @@ chrono = { version = "0.4", default-features = true }
 diesel = { version = "2.3.5", features = ["sqlite"] }
 mockall = "0.13"
 wiremock = "0.6"
+
+[lints]
+workspace = true

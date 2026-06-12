@@ -66,3 +66,6 @@ bytes = "1.7"
 # elide BIND_LOCK 守护（production build 不启用此 feature，结构性防御依然
 # 生效）。见 uc-infra/src/network/iroh/node.rs BIND_LOCK doc comment。
 uc-infra = { path = "../uc-infra", features = ["test-util"] }
+
+[lints]
+workspace = true

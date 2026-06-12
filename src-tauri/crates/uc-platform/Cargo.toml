@@ -178,3 +178,6 @@ clipboard-win = { version = "5.4" }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSPasteboard", "NSPasteboardItem"] }
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSString"] }
+
+[lints]
+workspace = true

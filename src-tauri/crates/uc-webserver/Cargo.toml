@@ -36,3 +36,6 @@ uuid = { version = "1.10.0", features = ["v4"] }
 [dev-dependencies]
 async-trait = "0.1"
 tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

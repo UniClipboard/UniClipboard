@@ -1,3 +1,8 @@
+// stdout/stderr ARE this crate's user-facing output channel (data/JSON to
+// stdout, human-readable lines via src/ui.rs per local AGENTS.md), so the
+// workspace-wide print lints do not apply here.
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
 mod commands;
 mod exit_codes;
 mod local_daemon;

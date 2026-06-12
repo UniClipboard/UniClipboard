@@ -112,3 +112,6 @@ tempfile = "3"
 mockall = "0.13"
 async-trait = "0.1"
 tokio = { version = "1", features = ["full", "test-util"] }
+
+[lints]
+workspace = true

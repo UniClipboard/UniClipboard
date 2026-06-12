@@ -154,6 +154,18 @@ resolver = "2"
 version = "0.15.0-alpha.3"
 license = "AGPL-3.0-only"
 
+# Machine-checked subset of docs/agent/rust-tauri-rules.md ("no unwrap/expect
+# in production", "use tracing, not println/eprintln"). Tests are exempted via
+# clippy.toml (allow-*-in-tests). Member crates opt in with [lints] workspace
+# = true; p2p-bench (throwaway diagnostics) stays out, uc-cli allows print at
+# crate level because stdout is its user-facing output.
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+dbg_macro = "warn"
+
 # Dependencies for workspace crates, mainly for tauri plugins
 [workspace.dependencies]
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
@@ -170,3 +182,6 @@ tauri-plugin-autostart = "2"
 # vendor/iroh-blobs/src/store/fs/bao_file.rs::persist_regression 单元测试。
 [patch.crates-io]
 iroh-blobs = { path = "vendor/iroh-blobs" }
+
+[lints]
+workspace = true

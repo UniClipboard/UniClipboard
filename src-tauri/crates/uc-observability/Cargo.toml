@@ -32,3 +32,6 @@ tempfile = "3"
 # Slice 7b-2: wiremock 烟测 PosthogSink HTTP 形态；tokio macros + rt-multi-thread 给 #[tokio::test] 用
 wiremock = "0.6"
 tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

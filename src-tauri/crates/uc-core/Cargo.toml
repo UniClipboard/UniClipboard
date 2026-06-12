@@ -67,3 +67,6 @@ specta-derive = ["dep:specta", "dep:specta-typescript"]
 # Enables the `task_registry` module (adds tokio rt+time + tokio-util).
 # Consumers that need TaskRegistry opt in; keeps the default dep footprint slim.
 task-registry = ["dep:tokio-util", "tokio/rt", "tokio/time", "tokio/macros"]
+
+[lints]
+workspace = true

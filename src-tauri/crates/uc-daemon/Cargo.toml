@@ -45,3 +45,6 @@ uc-daemon-local = { path = "../uc-daemon-local", features = ["test-helpers"] }
 tempfile = "3"
 chrono = { version = "0.4", default-features = true }
 mockall = "0.13"
+
+[lints]
+workspace = true

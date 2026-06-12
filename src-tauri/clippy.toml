@@ -1,0 +1,6 @@
+# Companion to [workspace.lints.clippy] in Cargo.toml.
+# docs/agent/rust-tauri-rules.md: "Tests are the only exception" for unwrap/expect.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true

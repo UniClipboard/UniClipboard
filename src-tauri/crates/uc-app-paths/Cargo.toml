@@ -13,3 +13,6 @@ path = "src/lib.rs"
 # Cross-platform base data/cache directory resolution. Same version uc-platform
 # and uc-daemon-process previously pinned, so resolved paths stay byte-identical.
 dirs = "6.0"
+
+[lints]
+workspace = true

@@ -68,7 +68,7 @@ amd64 上会直接 segfault，**只有 `-docker2` 是可用的 0.98 镜像**
 （上游打包问题）。
 
 想看当前客户端打包的版本：在 UniClipboard 源码里 `grep iroh = ` 看
-`src-tauri/crates/uc-infra/Cargo.toml`。
+`crates/uc-infra/Cargo.toml`。
 
 </Callout>
 
@@ -349,4 +349,4 @@ UniClipboard 目前 **没有运行时接口** 暴露"当前 home relay URL"
 - 上游源码 / Issues：https://github.com/n0-computer/iroh/tree/main/iroh-relay
 - iroh 关于 relay 的概念性介绍：https://docs.iroh.computer/concepts/relays
 - UniClipboard 这边把 URL 串成 `RelayMode::Custom` 的代码：
-  `src-tauri/crates/uc-infra/src/network/iroh/node.rs`
+  `crates/uc-infra/src/network/iroh/node.rs`

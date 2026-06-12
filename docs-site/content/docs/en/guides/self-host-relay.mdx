@@ -84,7 +84,7 @@ and `0.98.2-docker` images segfault on amd64 — only the `-docker2`
 variant is a working 0.98 image (upstream packaging issue).
 
 To see the version the client is built against, `grep iroh = ` in
-`src-tauri/crates/uc-infra/Cargo.toml` of the UniClipboard source
+`crates/uc-infra/Cargo.toml` of the UniClipboard source
 tree.
 
 </Callout>
@@ -395,4 +395,4 @@ install the staging chain on the client.
 - iroh concept page on relays: https://docs.iroh.computer/concepts/relays
 - The UniClipboard code that turns the URL list into
   `RelayMode::Custom`:
-  `src-tauri/crates/uc-infra/src/network/iroh/node.rs`
+  `crates/uc-infra/src/network/iroh/node.rs`

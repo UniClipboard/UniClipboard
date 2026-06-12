@@ -150,6 +150,11 @@ pub struct BackgroundRuntimeDeps {
 #[derive(Clone)]
 pub struct WiredDependencies {
     pub deps: AppDeps,
+    /// System-clipboard wiring decision from [`create_platform_layer`] —
+    /// the composition root's single call on whether this process talks to
+    /// the real OS clipboard. Hosts gate their OS-clipboard-bound assembly
+    /// (e.g. the daemon's watcher worker) on this instead of re-probing.
+    pub system_clipboard_wiring: SystemClipboardWiring,
     /// Shared host-event bus created at wire time, initially empty.
     /// Callers (GUI bootstrap, non-GUI bootstrap, Tauri setup, daemon start)
     /// `register` their own transport on this bus, so all consumers —
@@ -308,10 +313,31 @@ struct InfraLayer {
 }
 
 /// Platform layer implementations
+/// Outcome of the system-clipboard wiring decision made in
+/// [`create_platform_layer`] — the single place that decides whether this
+/// process talks to the real OS clipboard.
+///
+/// Carried through [`PlatformLayer`] / [`WiredDependencies`] so hosts align
+/// their own clipboard-dependent assembly (e.g. the daemon's OS-clipboard
+/// watcher worker) with the wiring instead of re-deciding — or re-probing —
+/// on their own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemClipboardWiring {
+    /// The real OS clipboard adapter is wired; clipboard integration works.
+    Real,
+    /// `NoopSystemClipboard` is wired (explicitly disabled via
+    /// `UC_DISABLE_SYSTEM_CLIPBOARD`, or no graphical session to talk to).
+    /// Captures and writes are no-ops; nothing OS-clipboard-bound should be
+    /// assembled on top.
+    Noop,
+}
+
 pub struct PlatformLayer {
     // System clipboard
     pub clipboard: Arc<dyn PlatformClipboardPort>,
     pub system_clipboard: Arc<dyn SystemClipboardPort>,
+    /// Which adapter flavor `clipboard` / `system_clipboard` actually are.
+    pub system_clipboard_wiring: SystemClipboardWiring,
 
     // Secure storage
     pub secure_storage: Arc<dyn SecureStoragePort>,
@@ -535,6 +561,13 @@ fn create_infra_layer(
     Ok(infra)
 }
 
+/// Both clipboard port flavors backed by the same no-op adapter (no system
+/// clipboard available or explicitly disabled).
+fn noop_system_clipboard() -> (Arc<dyn PlatformClipboardPort>, Arc<dyn SystemClipboardPort>) {
+    let noop: Arc<NoopSystemClipboard> = Arc::new(NoopSystemClipboard);
+    (noop.clone(), noop)
+}
+
 pub fn create_platform_layer(
     secure_storage: Arc<dyn SecureStoragePort>,
     config_dir: &PathBuf,
@@ -543,30 +576,54 @@ pub fn create_platform_layer(
     clock: Arc<dyn ClockPort>,
     storage_config: Arc<ClipboardStorageConfig>,
 ) -> WiringResult<PlatformLayer> {
-    // Slice 1 CLI commands (init/invite/join) do not touch the system
-    // clipboard, but a non-bundled CLI launched from a shell lacks the
-    // WindowServer / AppKit context that `clipboard-rs` assumes, so
-    // `LocalClipboard::new()` panics inside `+[NSPasteboard generalPasteboard]`.
-    // When `UC_DISABLE_SYSTEM_CLIPBOARD=1` is set we skip the real
-    // adapter entirely and wire in `NoopSystemClipboard`. The CLI sets
-    // this variable before bootstrap; GUI / daemon paths leave it unset
-    // and get the real adapter.
-    let (clipboard, system_clipboard): (
-        Arc<dyn PlatformClipboardPort>,
-        Arc<dyn SystemClipboardPort>,
-    ) = if std::env::var_os("UC_DISABLE_SYSTEM_CLIPBOARD").is_some() {
+    // Which system clipboard adapter to wire. Two reasons to substitute the
+    // no-op adapter, both decided here in the composition root (uc-platform
+    // only reports capability):
+    //
+    // 1. `UC_DISABLE_SYSTEM_CLIPBOARD=1` — explicit opt-out. Slice 1 CLI
+    //    commands (init/invite/join) do not touch the system clipboard, but a
+    //    non-bundled CLI launched from a shell lacks the WindowServer / AppKit
+    //    context that `clipboard-rs` assumes, so `LocalClipboard::new()` panics
+    //    inside `+[NSPasteboard generalPasteboard]`. The CLI sets this variable
+    //    before bootstrap.
+    // 2. No graphical session (headless Linux server / container): the OS has
+    //    no clipboard, so the real adapter can only fail to connect. Wiring the
+    //    no-op adapter keeps the daemon bootable for history / transfer / API
+    //    duties (issue #1021: `uniclip join` on Ubuntu Server died on
+    //    ClipboardInit and the CLI saw only an opaque 30s health timeout).
+    //
+    // Inside a graphical session, a real init failure stays a hard error —
+    // degrading there would mask a genuine platform bug.
+    let system_clipboard_wiring = if std::env::var_os("UC_DISABLE_SYSTEM_CLIPBOARD").is_some() {
         tracing::info!(
             "UC_DISABLE_SYSTEM_CLIPBOARD set; substituting NoopSystemClipboard \
              (any clipboard capture / write is a no-op)"
         );
-        let noop: Arc<NoopSystemClipboard> = Arc::new(NoopSystemClipboard);
-        (noop.clone(), noop)
+        SystemClipboardWiring::Noop
+    } else if uc_platform::capability::detect_system_clipboard_capability()
+        == uc_platform::capability::SystemClipboardCapability::NoDisplaySession
+    {
+        tracing::warn!(
+            "no graphical session detected (DISPLAY / WAYLAND_DISPLAY unset); \
+             substituting NoopSystemClipboard so the process can still serve \
+             history / transfer / API duties on this headless host"
+        );
+        SystemClipboardWiring::Noop
     } else {
-        let clipboard_impl = LocalClipboard::new().map_err(|e| {
-            WiringError::ClipboardInit(format!("Failed to create clipboard: {}", e))
-        })?;
-        let clipboard_impl = Arc::new(clipboard_impl);
-        (clipboard_impl.clone(), clipboard_impl)
+        SystemClipboardWiring::Real
+    };
+    let (clipboard, system_clipboard): (
+        Arc<dyn PlatformClipboardPort>,
+        Arc<dyn SystemClipboardPort>,
+    ) = match system_clipboard_wiring {
+        SystemClipboardWiring::Noop => noop_system_clipboard(),
+        SystemClipboardWiring::Real => {
+            let clipboard_impl = LocalClipboard::new().map_err(|e| {
+                WiringError::ClipboardInit(format!("Failed to create clipboard: {}", e))
+            })?;
+            let clipboard_impl = Arc::new(clipboard_impl);
+            (clipboard_impl.clone(), clipboard_impl)
+        }
     };
 
     let device_identity = LocalDeviceIdentity::load_or_create(config_dir.clone()).map_err(|e| {
@@ -667,6 +724,7 @@ pub fn create_platform_layer(
     Ok(PlatformLayer {
         clipboard,
         system_clipboard,
+        system_clipboard_wiring,
         secure_storage,
         device_identity,
         representation_normalizer,
@@ -1022,6 +1080,7 @@ pub fn wire_dependencies(
             worker_tx.clone(),
         ));
 
+    let system_clipboard_wiring = platform.system_clipboard_wiring;
     let deps = AppDeps {
         clipboard: ClipboardPorts {
             clipboard: platform.clipboard,
@@ -1124,6 +1183,7 @@ pub fn wire_dependencies(
 
     let wired = WiredDependencies {
         deps,
+        system_clipboard_wiring,
         trusted_peer_repo: trusted_peer_repo_for_wiring,
         peer_addr_repo: peer_addr_repo_for_wiring,
         iroh_blob_store_dir: iroh_blob_store_dir_for_wiring,

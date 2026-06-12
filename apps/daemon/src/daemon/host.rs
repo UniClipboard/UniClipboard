@@ -247,6 +247,7 @@ pub async fn start_in_process(
     let runtime_workers = build_daemon_runtime_workers(DaemonRuntimeAssemblyInput {
         deps: &deps,
         run_mode,
+        system_clipboard_wiring: wired.system_clipboard_wiring,
         event_tx: runtime_controls.event_tx.clone(),
         clipboard_capture_gate: runtime_controls.clipboard_capture_gate.clone(),
         clipboard_sync_facade: clipboard_sync_facade.clone(),

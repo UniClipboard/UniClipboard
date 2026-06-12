@@ -18,10 +18,9 @@ use uc_application::{
     InboundWrite as ApplyInboundWrite,
 };
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
-use uc_core::ports::SystemClipboardPort;
+use uc_bootstrap::SystemClipboardWiring;
 use uc_core::ports::{ClipboardEventRepositoryPort, EntryDeliveryRepositoryPort};
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
-use uc_platform::clipboard::LocalClipboard;
 use uc_webserver::api::types::DaemonWsEvent;
 
 use crate::daemon::run_mode::DaemonRunMode;
@@ -37,6 +36,12 @@ pub struct DaemonRuntimeAssemblyInput<'a> {
     /// daemon 运行模式。决定是否装配系统剪贴板出站监听——
     /// `ServerHeadless` 不接 OS 剪贴板，`clipboard_watcher` 产出 `None`。
     pub run_mode: DaemonRunMode,
+    /// System-clipboard wiring decision from the composition root
+    /// (`create_platform_layer`). `Noop` (explicitly disabled, or headless —
+    /// no graphical session) also yields `clipboard_watcher: None`: there is
+    /// no OS clipboard to watch, and the platform event loop could only fail
+    /// to connect (issue #1021).
+    pub system_clipboard_wiring: SystemClipboardWiring,
     pub event_tx: broadcast::Sender<DaemonWsEvent>,
     pub clipboard_capture_gate: Arc<AtomicBool>,
     pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
@@ -72,8 +77,10 @@ pub struct DaemonRuntimeAssemblyInput<'a> {
 /// 出站管线 fan-out 给其他桌面"成立, 文件类型的 blob 发布逻辑只此一处,
 /// 不重复实现。
 pub struct DaemonRuntimeWorkers {
-    /// 系统剪贴板出站监听 worker。`ServerHeadless` 运行模式下为 `None`
-    /// ——无头节点不接 OS 剪贴板，service plan 不会 spawn 它。
+    /// System clipboard outbound watcher worker. `None` under the
+    /// `ServerHeadless` run mode and whenever the composition root wired the
+    /// no-op clipboard adapter (disabled / headless session) — in both cases
+    /// there is no OS clipboard to watch and the service plan won't spawn it.
     pub clipboard_watcher: Option<Arc<ClipboardWatcherWorker>>,
     pub inbound_clipboard_sync: Arc<InboundClipboardSyncWorker>,
     pub file_sync_orchestrator: Arc<FileSyncOrchestratorWorker>,
@@ -130,15 +137,24 @@ pub fn build_daemon_runtime_workers(
         device_identity: input.deps.device.device_identity.clone(),
     }));
 
-    // 系统剪贴板出站监听：只有接管系统剪贴板的运行模式才装配。
-    // `ServerHeadless` 无 X11/Wayland display —— 既不构造 `LocalClipboard`
-    // （会失败），也不 spawn `ClipboardWatcherWorker`（没有 OS 剪贴板可监
-    // 听）。入站落库 / mobile_lan 网关 / fan-out 全部不受影响。
-    let clipboard_watcher = if input.run_mode.runs_system_clipboard() {
-        let local_clipboard: Arc<dyn SystemClipboardPort> = Arc::new(
-            LocalClipboard::new()
-                .map_err(|e| anyhow::anyhow!("failed to create LocalClipboard: {}", e))?,
-        );
+    // System clipboard outbound watcher: assembled only when the run mode
+    // takes over the OS clipboard AND the composition root wired the real
+    // adapter. Two independent reasons to skip, decided elsewhere and only
+    // consumed here:
+    // - `ServerHeadless` run mode never integrates with the OS clipboard;
+    // - `SystemClipboardWiring::Noop` means there is no OS clipboard to talk
+    //   to (explicitly disabled, or headless session — issue #1021), so the
+    //   watcher's platform event loop could only fail to connect.
+    // Inbound persistence / mobile_lan gateway / fan-out are all unaffected.
+    // The watcher reuses the port wired in the platform layer — this is NOT a
+    // second clipboard adapter instance.
+    let assemble_watcher = input.run_mode.runs_system_clipboard()
+        && input.system_clipboard_wiring == SystemClipboardWiring::Real;
+    if input.run_mode.runs_system_clipboard() && !assemble_watcher {
+        tracing::info!("system clipboard wired as no-op; skipping OS clipboard watcher assembly");
+    }
+    let clipboard_watcher = if assemble_watcher {
+        let local_clipboard = input.deps.clipboard.system_clipboard.clone();
         let clipboard_capture_facade =
             Arc::new(ClipboardCaptureFacade::new(apply_inbound_capture_uc));
         let clipboard_live_index_facade = Arc::new(ClipboardLiveIndexFacade::new(Arc::new(

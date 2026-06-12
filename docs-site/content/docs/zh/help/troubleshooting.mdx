@@ -176,8 +176,8 @@ Windows 通常不需要额外授权。如果 `uniclip watch` 没事件：
 
 桌面会话差异最大：
 
-- **Wayland**：要求合成器实现 `wlr-data-control` 协议。GNOME 在很长时间内都不实现该协议，需要装 `wl-clipboard` 之类的桥接工具或切到 Plasma / Sway 等支持的合成器。
-- **X11**：开箱即用，但要求会话里至少有一个剪贴板管理器（`xclip` / `xsel` 任一）。
+- **Wayland**：原生支持 `ext-data-control-v1`（GNOME / mutter ≥ 47、Plasma 6）与 `wlr-data-control`（Sway / Hyprland 等 wlroots 系合成器），无需安装桥接工具。两个协议都不可用时会自动回落到 XWayland（X11 路径）。
+- **X11**：开箱即用，内置原生剪贴板监听，不依赖 `xclip` / `xsel` 等外部剪贴板工具。
 - **无头服务器**：没有 X / Wayland 时只剩 CLI 的 `send` / `watch` 工作；GUI 的剪贴板捕获不可用。
 
 </Tab>

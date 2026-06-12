@@ -261,11 +261,13 @@ Windows usually needs no extra grants. If `uniclip watch` is silent:
 
 The desktop session matters more than the distro:
 
-- **Wayland**: requires the `wlr-data-control` protocol. GNOME has long
-  refused to ship it — use a `wl-clipboard`-style bridge or switch to
-  Plasma / Sway / another supported compositor.
-- **X11**: works out of the box but needs at least one clipboard
-  manager in session (`xclip` / `xsel`).
+- **Wayland**: `ext-data-control-v1` (GNOME / mutter ≥ 47, Plasma 6) and
+  `wlr-data-control` (Sway / Hyprland and other wlroots compositors) are
+  supported natively — no bridge tooling required. When neither protocol
+  is available, capture falls back to XWayland (the X11 path)
+  automatically.
+- **X11**: works out of the box with the built-in native clipboard
+  listener; no external clipboard tools (`xclip` / `xsel`) are needed.
 - **Headless servers**: with no X / Wayland, only the CLI's `send` /
   `watch` features work; GUI clipboard capture isn't available.
 

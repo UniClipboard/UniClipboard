@@ -35,6 +35,33 @@ async fn test_health_endpoint_returns_200() {
     assert_eq!(resp.status(), 200);
 }
 
+/// issue #1021: a daemon spawned in a session with no display server (headless
+/// Linux server, container, SSH without forwarding) must still become healthy —
+/// the composition root substitutes NoopSystemClipboard instead of dying on
+/// ClipboardInit. Before the fix the daemon exited during assembly and the CLI
+/// only ever saw an opaque 30s health timeout.
+///
+/// Linux-only: on macOS / Windows the clipboard capability never depends on
+/// DISPLAY / WAYLAND_DISPLAY, so removing them exercises nothing.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+#[ignore]
+async fn test_daemon_becomes_healthy_without_display_session() {
+    let profile = TestProfile::new("headless-no-display");
+    let mut daemon = TestDaemon::spawn_with(profile, |cmd| {
+        cmd.env_remove("DISPLAY").env_remove("WAYLAND_DISPLAY");
+    })
+    .expect("spawn daemon");
+
+    daemon
+        .wait_healthy(std::time::Duration::from_secs(30))
+        .await
+        .expect(
+            "headless daemon must become healthy (ClipboardInit hard-failed here before the fix)",
+        );
+    assert!(daemon.is_running());
+}
+
 #[tokio::test]
 #[ignore]
 async fn test_daemon_killed_stops_process() {

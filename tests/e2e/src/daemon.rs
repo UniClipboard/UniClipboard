@@ -48,17 +48,28 @@ impl TestDaemon {
 
     /// Spawn a new daemon with the given profile. Does NOT wait for health.
     pub fn spawn(profile: TestProfile) -> std::io::Result<Self> {
+        Self::spawn_with(profile, |_| {})
+    }
+
+    /// Like [`Self::spawn`], but lets the test adjust the `Command` before it
+    /// runs (e.g. `env_remove("DISPLAY")` to simulate a headless session).
+    pub fn spawn_with(
+        profile: TestProfile,
+        configure: impl FnOnce(&mut Command),
+    ) -> std::io::Result<Self> {
         let binary = Self::binary_path();
         let port = Self::port_for_profile(&profile.name);
 
         profile.cleanup();
 
-        let child = Command::new(&binary)
+        let mut command = Command::new(&binary);
+        command
             .env("UC_PROFILE", &profile.name)
             .env("RUST_LOG", "warn")
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
+            .stderr(std::process::Stdio::piped());
+        configure(&mut command);
+        let child = command.spawn()?;
 
         Ok(Self {
             child: Some(child),

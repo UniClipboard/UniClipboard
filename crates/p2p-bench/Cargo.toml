@@ -38,7 +38,7 @@ futures-lite = { version = "2", optional = true }
 time = { version = "0.3", features = ["formatting", "macros"], optional = true }
 
 # http_blob_bench deps (all already in src-tauri/Cargo.lock — no new downloads/lock churn)
-axum = { version = "0.7", default-features = false, features = ["tokio", "http1"] }
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "rustls-tls-webpki-roots", "stream"] }
 bytes = "1"
 futures-util = "0.3"

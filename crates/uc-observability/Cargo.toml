@@ -16,7 +16,7 @@ anyhow = "1.0"
 uuid = { version = "1", features = ["v7", "serde"] }
 # SHA-256 — used to hash `space_id` into the 16-hex PostHog group key
 # (irreversible; the raw id never leaves the device).
-sha2 = "0.10"
+sha2 = "0.11"
 # Slice 7b: PosthogSink 自写 minimal HTTP client
 # - reqwest 0.12 + rustls(ring) features 与 uc-infra/uc-daemon-client/uc-cli/uc-desktop 已有用法一致；
 #   不引 reqwest 0.13 是因为后者 rustls feature 隐式选 aws-lc-rs（C 库 + CMake），破坏 uc-cli musl

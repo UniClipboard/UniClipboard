@@ -1,0 +1,72 @@
+name: Alpha Release Watch 1029
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions: { issues: write, contents: read, actions: write }
+
+jobs:
+  notify:
+    name: Notify issue 1029 after next alpha release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Watch for alpha release containing PR 1054
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          BASE_TAG: v0.15.0-alpha.3
+          MERGED_AT: '2026-06-12T14:51:49Z'
+          EXPIRES_ON: '2026-07-12'
+          ISSUE_NUMBER: '1029'
+          MARKER: '<!-- alpha-release-watch-1029 -->'
+        run: |
+          set -euo pipefail
+
+          if [[ "$(date -u +%F)" > "$EXPIRES_ON" ]]; then
+            echo "Watch window expired on $EXPIRES_ON; exiting."
+            exit 0
+          fi
+
+          NEW_TAG="$(
+            gh api "repos/${REPOSITORY}/releases" --paginate --jq \
+              ".[] | select(.tag_name | test(\"^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+-alpha\\\\.[0-9]+$\")) | select(.published_at > \"${MERGED_AT}\") | [.tag_name, .published_at] | @tsv" |
+              while IFS=$'\t' read -r tag published_at; do
+                if [[ "$(printf '%s\n%s\n' "$BASE_TAG" "$tag" | sort -V | tail -n1)" == "$tag" && "$tag" != "$BASE_TAG" ]]; then
+                  printf '%s\t%s\n' "$tag" "$published_at"
+                fi
+              done |
+              sort -t $'\t' -k1,1V |
+              tail -n1 |
+              cut -f1
+          )"
+
+          if [[ -z "$NEW_TAG" ]]; then
+            echo "No newer alpha release containing PR 1054 found yet."
+            exit 0
+          fi
+
+          COMMENTS_FILE="$(mktemp)"
+          gh issue view "$ISSUE_NUMBER" --repo "$REPOSITORY" --json comments --jq ".comments[].body" > "$COMMENTS_FILE"
+          if grep -Fq "$MARKER" "$COMMENTS_FILE"; then
+            echo "Issue #$ISSUE_NUMBER already has the notification marker; exiting."
+            exit 0
+          fi
+
+          BODY_FILE="$(mktemp)"
+          cat > "$BODY_FILE" <<EOF
+          > 🤖 本条回复由 AI 辅助分析与撰写,已经过维护者审阅后发布。
+
+          ---
+
+          Chrome 地址栏复制间歇失效的修复 PR #1054 已包含在 ${NEW_TAG} 版本中发布。
+
+          请更新到 ${NEW_TAG} 后继续观察这个问题。如果仍然偶发失效，新版本已经为此前静默失败的路径补充了日志，会记录失败原因。到时请把新的日志发上来，我们就可以继续定位。
+
+          ${MARKER}
+          EOF
+
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body-file "$BODY_FILE"
+          gh workflow disable "$WORKFLOW_NAME" --repo "$REPOSITORY"

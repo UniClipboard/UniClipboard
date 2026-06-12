@@ -9,6 +9,15 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/bash-command-hint.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guide-hint.sh"
+          }
+        ]
       }
     ]
   }

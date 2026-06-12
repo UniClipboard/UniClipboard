@@ -50,7 +50,7 @@
       "prettier --write"
     ],
     "{apps,crates,src-tauri}/**/*.rs": [
-      "cargo fmt --manifest-path=Cargo.toml --"
+      "rustfmt --edition 2021"
     ]
   },
   "dependencies": {

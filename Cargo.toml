@@ -41,7 +41,7 @@ exclude = ["vendor/iroh-blobs", "tests/e2e"]
 resolver = "2"
 
 [workspace.package]
-version = "0.15.0-alpha.4"
+version = "0.15.0-alpha.5"
 license = "AGPL-3.0-only"
 
 # Machine-checked subset of docs/agent/rust-tauri-rules.md ("no unwrap/expect

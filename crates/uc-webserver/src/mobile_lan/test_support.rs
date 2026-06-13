@@ -133,19 +133,24 @@ pub(crate) async fn build_facade_with_seeded_device(
             updated: &MobileDevice,
         ) -> Result<bool, MobileDeviceError> {
             let mut devs = self.devices.lock().unwrap();
+            // Mirror the real adapter: a missing device returns Ok(false)
+            // regardless of any username collision, so check existence first.
+            if !devs.iter().any(|d| d.device_id == updated.device_id) {
+                return Ok(false);
+            }
             if devs
                 .iter()
                 .any(|d| d.device_id != updated.device_id && d.username == updated.username)
             {
                 return Err(MobileDeviceError::UsernameCollision);
             }
-            match devs.iter_mut().find(|d| d.device_id == updated.device_id) {
-                Some(d) => {
-                    *d = updated.clone();
-                    Ok(true)
-                }
-                None => Ok(false),
+            // Only the editable management fields change; the rest is preserved.
+            if let Some(d) = devs.iter_mut().find(|d| d.device_id == updated.device_id) {
+                d.label = updated.label.clone();
+                d.username = updated.username.clone();
+                d.password_hash = updated.password_hash.clone();
             }
+            Ok(true)
         }
     }
 

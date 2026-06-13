@@ -1013,10 +1013,13 @@
           "label": "用户名"
         },
         "password": {
-          "label": "密码"
+          "label": "密码",
+          "show": "显示密码",
+          "hide": "隐藏密码"
         },
         "copy": "复制",
         "copied": "已复制",
+        "copyFailed": "复制失败",
         "close": "完成",
         "closeAria": "关闭"
       },
@@ -1025,6 +1028,35 @@
         "confirmDescription": "撤销后该设备将立即无法同步。要再次连接需重新添加（密码无法找回）。",
         "confirm": "撤销",
         "cancel": "取消"
+      },
+      "edit": {
+        "button": "编辑设备",
+        "title": "编辑设备",
+        "cancel": "取消",
+        "save": "保存",
+        "saving": "保存中...",
+        "label": {
+          "label": "设备名称",
+          "placeholder": "我的手机"
+        },
+        "username": {
+          "label": "用户名",
+          "placeholder": "mobile_phone",
+          "help": "6-32 字符，字母开头，仅 A-Z a-z 0-9 _",
+          "renameNotice": "修改用户名会生成新密码，并需要重新配对该设备。"
+        },
+        "password": {
+          "label": "密码",
+          "placeholder": "留空表示保持当前密码",
+          "autoPlaceholder": "将自动生成新密码",
+          "help": "留空则不修改密码；填写新密码（至少 8 位）则替换当前密码。",
+          "autoHelp": "保存后会自动生成新密码，并且只显示这一次。",
+          "regenerate": "重新生成"
+        },
+        "result": {
+          "warning": "这些凭据只显示一次。关闭前请先保存。",
+          "warningReissued": "旧密码已失效。移动端客户端必须使用此新密码才能继续同步。这些凭据只显示一次，请在关闭前先保存。"
+        }
       },
       "rotate": {
         "button": "修改密码",

@@ -26,7 +26,7 @@ import {
   listMobileLanInterfaces as listMobileLanInterfacesSdk,
   registerMobileDevice as registerMobileDeviceSdk,
   revokeMobileDevice as revokeMobileDeviceSdk,
-  rotateMobilePassword as rotateMobilePasswordSdk,
+  updateMobileDevice as updateMobileDeviceSdk,
   updateMobileSyncSettings as updateMobileSyncSettingsSdk,
 } from '@/api/generated/sdk.gen'
 import type {
@@ -35,8 +35,8 @@ import type {
   MobileSyncSettingsViewDto,
   RegisterMobileDeviceRequest,
   RegisterMobileDeviceResultDto,
-  RotateMobilePasswordRequest,
-  RotateMobilePasswordResultDto,
+  UpdateMobileDeviceRequest,
+  UpdateMobileDeviceResultDto,
   UpdateMobileSyncSettingsRequest,
   UpdateMobileSyncSettingsResultDto,
 } from '@/api/generated/types.gen'
@@ -61,13 +61,13 @@ export async function revokeMobileDevice(deviceId: string): Promise<void> {
   )
 }
 
-/** `POST /mobile-sync/devices/{id}/rotate-password` — one-time new password echo. */
-export async function rotateMobilePassword(
+/** `PATCH /mobile-sync/devices/{id}` — edit label/username/password. */
+export async function updateMobileDevice(
   deviceId: string,
-  body: RotateMobilePasswordRequest
-): Promise<RotateMobilePasswordResultDto> {
+  body: UpdateMobileDeviceRequest
+): Promise<UpdateMobileDeviceResultDto> {
   return daemonClient.callEnveloped(() =>
-    rotateMobilePasswordSdk({ path: { device_id: deviceId }, body, throwOnError: true })
+    updateMobileDeviceSdk({ path: { device_id: deviceId }, body, throwOnError: true })
   )
 }
 

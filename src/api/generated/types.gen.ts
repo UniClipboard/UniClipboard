@@ -2506,6 +2506,53 @@ export type UpdateChannelDto = 'stable' | 'alpha' | 'beta' | 'rc';
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
+export type UpdateMobileDeviceEnvelope = {
+    data: UpdateMobileDeviceResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `PATCH /mobile-sync/devices/{device_id}`.
+ *
+ * `label` / `username` absent means keep unchanged. `password` is tri-state:
+ * field absent = keep unless username changes; explicit `null` = auto-generate;
+ * value = use the supplied plaintext after validation.
+ */
+export type UpdateMobileDeviceRequest = {
+    label?: string | null;
+    password?: string | null;
+    username?: string | null;
+};
+
+/**
+ * Result of updating an existing mobile device. `password` is `Some` only when
+ * the update created a new plaintext password that must be shown once.
+ */
+export type UpdateMobileDeviceResultDto = {
+    deviceId: string;
+    label: string;
+    password?: string | null;
+    username: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
 export type UpdateMobileSyncSettingsEnvelope = {
     data: UpdateMobileSyncSettingsResultDto;
     /**
@@ -3671,6 +3718,52 @@ export type RevokeMobileDeviceResponses = {
 };
 
 export type RevokeMobileDeviceResponse = RevokeMobileDeviceResponses[keyof RevokeMobileDeviceResponses];
+
+export type UpdateMobileDeviceData = {
+    body: UpdateMobileDeviceRequest;
+    path: {
+        /**
+         * Mobile device id
+         */
+        device_id: string;
+    };
+    query?: never;
+    url: '/mobile-sync/devices/{device_id}';
+};
+
+export type UpdateMobileDeviceErrors = {
+    /**
+     * Device not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Username taken
+     */
+    409: ApiErrorResponse;
+    /**
+     * Invalid label / username / password
+     */
+    422: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Mobile sync facade unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type UpdateMobileDeviceError = UpdateMobileDeviceErrors[keyof UpdateMobileDeviceErrors];
+
+export type UpdateMobileDeviceResponses = {
+    /**
+     * Device updated; password is present only when reissued
+     */
+    200: UpdateMobileDeviceEnvelope;
+};
+
+export type UpdateMobileDeviceResponse = UpdateMobileDeviceResponses[keyof UpdateMobileDeviceResponses];
 
 export type RotateMobilePasswordData = {
     body: RotateMobilePasswordRequest;

@@ -24,9 +24,10 @@ import type {
   MobileDeviceViewDto,
   RegisterMobileDeviceRequest,
   RegisterMobileDeviceResultDto,
-  RotateMobilePasswordResultDto,
   MobileSyncSettingsViewDto,
   ShortcutInstallMethodViewDto,
+  UpdateMobileDeviceRequest,
+  UpdateMobileDeviceResultDto,
   UpdateMobileSyncSettingsRequest,
   UpdateMobileSyncSettingsResultDto,
 } from '@/api/generated/types.gen'
@@ -135,16 +136,15 @@ function toMobileSyncError(error: unknown): unknown {
 /** Register-device request. Wire shape = generated `RegisterMobileDeviceRequest`. */
 export type RegisterMobileDeviceArgs = RegisterMobileDeviceRequest
 
-/** Rotate-password request. `deviceId` is the path param; `password` the body. */
-export type RotateMobilePasswordArgs = {
+/** Edit-device request. `password` absent keeps it; null auto-generates. */
+export type UpdateMobileDeviceArgs = UpdateMobileDeviceRequest & {
   deviceId: string
-  password?: string | null
 }
 
 /** Update-settings patch. Wire shape = generated `UpdateMobileSyncSettingsRequest`. */
 export type UpdateMobileSyncSettingsArgs = UpdateMobileSyncSettingsRequest
 
-export type RotateMobilePasswordResult = RotateMobilePasswordResultDto
+export type UpdateMobileDeviceResult = UpdateMobileDeviceResultDto
 export type UpdateMobileSyncSettingsResult = UpdateMobileSyncSettingsResultDto
 export type LanInterfaceView = LanInterfaceViewDto
 
@@ -218,15 +218,18 @@ export async function revokeMobileDevice(deviceId: string): Promise<void> {
 }
 
 /**
- * Rotate the password of a previously registered device. Old password is
- * invalidated atomically on the daemon side; the response carries the
- * one-time plaintext of the new password — see `RotateMobilePasswordResult`.
+ * Edit a registered mobile device. A label-only edit returns no plaintext
+ * password; username/password edits return a one-time password echo.
  */
-export async function rotateMobilePassword(
-  args: RotateMobilePasswordArgs
-): Promise<RotateMobilePasswordResult> {
+export async function updateMobileDevice(
+  args: UpdateMobileDeviceArgs
+): Promise<UpdateMobileDeviceResult> {
   try {
-    return await daemon.rotateMobilePassword(args.deviceId, { password: args.password })
+    return await daemon.updateMobileDevice(args.deviceId, {
+      label: args.label,
+      username: args.username,
+      password: args.password,
+    })
   } catch (error) {
     throw toMobileSyncError(error)
   }

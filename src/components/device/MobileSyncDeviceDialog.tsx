@@ -1,55 +1,3 @@
-/**
- * MobileSyncDeviceDialog —— 已注册移动设备的统一管理 modal。
- *
- * 触发: DevicesPage 上 MobileCard 整卡点击。
- *
- * # 单 dialog 多视图设计 (替换了原先三个独立 modal)
- *
- *   ┌─ view = 'info' ───────────────────────────────────────────────┐
- *   │ 📱 label                                                       │
- *   │    username (mono)                                             │
- *   ├─ 服务地址 ─────────────────────────────────────────────────────┤
- *   │ baseUrl chip [▼]    [复制]                                    │
- *   │ ┌─────────────┐                                                │
- *   │ │ 大 QR / 占位 │  ← rotateResult 存在 → connect URI QR        │
- *   │ │             │     否则 → 灰色占位 "未持有明文,点改密生成"   │
- *   │ └─────────────┘                                                │
- *   ├─ 新密码 (仅 rotateResult 时)─────────────────────────────────┤
- *   │ ⚠ 旧密码失效, username / password / [备份]                    │
- *   │ ☐ 我已保存(未勾选则拦截关闭)                                  │
- *   ├─ 设备信息 ─────────────────────────────────────────────────────┤
- *   │ 添加时间 / 最近活动 / 最近来源 IP / 客户端名称 / 客户端系统     │
- *   ├────────────────────────────────────────────────────────────────┤
- *   │ [修改密码] | [撤销] [关闭]                                    │
- *   └────────────────────────────────────────────────────────────────┘
- *
- *   ┌─ view = 'rotate' ─────────────────────────────────────────────┐
- *   │ ⚠ 提交后旧密码立即失效                                         │
- *   │                                                                │
- *   │ 新密码(可选)                                                  │
- *   │ [                    ]                                         │
- *   │ 留空 → 自动生成强密码                                          │
- *   ├────────────────────────────────────────────────────────────────┤
- *   │                                  [取消] [生成新密码]          │
- *   └────────────────────────────────────────────────────────────────┘
- *
- * # 安全不变量
- *
- * 1. **未改密时不展示 QR**: 已注册设备的明文密码服务端不保存(只剩
- *    Argon2 PHC), connect URI 拼不出来。view='info' 默认显示占位区,
- *    引导用户走改密路径。
- * 2. **改密成功后明文仅在内存里**: `rotateResult` 是 useState 本地状态,
- *    dialog 关闭即清空, 下次打开 dialog 又回到"无明文"。amber 凭据区里
- *    的「备份」按钮一键复制 Server/Username/Password,用户在关闭前自行决定
- *    是否保存 —— 不再强制勾选"我已保存"。
- *
- * # 切换网卡逻辑
- *
- * 与 MobileSyncCredentialModal 一致: 切换不写回 daemon settings, 不重启
- * listener (daemon 永远 bind 0.0.0.0:port)。前端 `buildConnectUri` 用新
- * host 重算 QR 即可。
- */
-
 import {
   AlertTriangle,
   Check,
@@ -58,8 +6,10 @@ import {
   EyeOff,
   KeyRound,
   Loader2,
+  Pencil,
   Smartphone,
   Trash2,
+  Wand2,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
@@ -67,12 +17,12 @@ import { useTranslation } from 'react-i18next'
 import {
   isMobileSyncError,
   listMobileLanInterfaces,
-  rotateMobilePassword,
+  updateMobileDevice,
   type LanInterfaceView,
   type MobileDeviceView,
   type MobileSyncError,
   type MobileSyncSettingsView,
-  type RotateMobilePasswordResult,
+  type UpdateMobileDeviceResult,
 } from '@/api/tauri-command/mobile_sync'
 import { BaseUrlChip } from '@/components/device/MobileSyncBaseUrlChip'
 import { Button } from '@/components/ui/button'
@@ -93,17 +43,16 @@ import { cn } from '@/lib/utils'
 
 const log = createLogger('mobile-sync-device-dialog')
 
-type View = 'info' | 'rotate'
+type View = 'info' | 'edit'
+type FieldErrorKey = 'label' | 'username' | 'password'
+type FieldErrors = Partial<Record<FieldErrorKey, string>>
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   device: MobileDeviceView | null
   settings: MobileSyncSettingsView | null
-  /** 撤销路径:父组件接住后弹 AlertDialog 二次确认。 */
   onRevoke: (device: MobileDeviceView) => void
-  /** rotate 成功后通知父组件刷新设备列表 (lastSeen 等可能未变, 但保持
-   *  数据一致性)。 */
   onRotated: () => void
 }
 
@@ -117,27 +66,36 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
 }) => {
   const { t } = useTranslation()
 
-  // ── 视图状态 ────────────────────────────────────────────────────
   const [view, setView] = useState<View>('info')
-  const [rotateResult, setRotateResult] = useState<RotateMobilePasswordResult | null>(null)
+  const [credentialResult, setCredentialResult] = useState<UpdateMobileDeviceResult | null>(null)
+  const [credentialFromRename, setCredentialFromRename] = useState(false)
 
-  // ── 改密表单状态 ────────────────────────────────────────────────
-  const [pwdInput, setPwdInput] = useState('')
+  const [labelInput, setLabelInput] = useState('')
+  const [editBaseUsername, setEditBaseUsername] = useState('')
+  const [usernameInput, setUsernameInput] = useState('')
+  const [passwordInput, setPasswordInput] = useState('')
+  const [autoGeneratePassword, setAutoGeneratePassword] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // ── 网卡 dropdown ──────────────────────────────────────────────
   const [lanInterfaces, setLanInterfaces] = useState<LanInterfaceView[]>([])
   const [selectedHost, setSelectedHost] = useState<string | null>(null)
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [backupCopied, setBackupCopied] = useState(false)
 
-  // dialog 打开 / 设备切换 时重置所有 transient 状态。明文密码 (rotateResult)
-  // 必须在这一刻清掉 —— 否则用户切换设备后会看到上一台设备的密码。
   useEffect(() => {
     if (open) {
       setView('info')
-      setRotateResult(null)
-      setPwdInput('')
+      setCredentialResult(null)
+      setCredentialFromRename(false)
+      setLabelInput('')
+      setEditBaseUsername('')
+      setUsernameInput('')
+      setPasswordInput('')
+      setAutoGeneratePassword(false)
+      setFieldErrors({})
+      setFormError(null)
       setSubmitting(false)
       setSelectedHost(null)
       setPasswordVisible(false)
@@ -145,15 +103,6 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
     }
   }, [open, device?.deviceId])
 
-  // ── 端口 / 首选 host ──────────────────────────────────────────
-  const port = useMemo(() => {
-    if (settings?.lanPort != null) return String(settings.lanPort)
-    return '42720'
-  }, [settings?.lanPort])
-
-  const preferredHost = settings?.lanAdvertiseIp ?? null
-
-  // open 时拉一次接口列表
   useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -167,8 +116,16 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
     }
   }, [open])
 
-  // dropdown 数据源 = list ∪ preferredHost (去重)。preferredHost 兜底
-  // 保证"settings 里偏好的 IP"始终可被点回。
+  const visibleLabel = credentialResult?.label ?? device?.label ?? ''
+  const visibleUsername = credentialResult?.username ?? device?.username ?? ''
+
+  const port = useMemo(() => {
+    if (settings?.lanPort != null) return String(settings.lanPort)
+    return '42720'
+  }, [settings?.lanPort])
+
+  const preferredHost = settings?.lanAdvertiseIp ?? null
+
   const dropdownInterfaces = useMemo<LanInterfaceView[]>(() => {
     const seen = new Set<string>()
     const out: LanInterfaceView[] = []
@@ -184,7 +141,6 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
     return out
   }, [lanInterfaces, preferredHost])
 
-  // selectedHost 初始化
   useEffect(() => {
     if (selectedHost !== null) return
     if (dropdownInterfaces.length === 0) return
@@ -200,70 +156,116 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
     return `http://${host}:${port}`
   }, [selectedHost, preferredHost, port])
 
-  // connect URI 仅在 rotateResult 存在时可拼。device.label 保留用作 ConnectUriOther.label。
-  // 多候选(docs/planning/mobile-sync-qr-multi-url.md §4): 所选 host 提升为 urls[0],
-  // 其后跟公网入口(若配置)与其余网卡候选, 去重保序 —— 改密后的码在其它
-  // 网络位置仍然可用。
   const connectUri = useMemo<string | null>(() => {
-    if (!rotateResult || !device) return null
+    if (!credentialResult?.password) return null
     try {
-      // Set 保插入序去重: 所选 host → 公网入口 → 其余网卡。
       const candidates = new Set<string>([effectiveBaseUrl])
-      if (settings?.lanAdvertiseBaseUrl) {
-        candidates.add(settings.lanAdvertiseBaseUrl)
-      }
-      for (const iface of dropdownInterfaces) {
-        candidates.add(`http://${iface.ipv4}:${port}`)
-      }
-      return buildConnectUri([...candidates], rotateResult.username, rotateResult.password, {
-        label: device.label,
-        did: rotateResult.deviceId,
-        proto: 'syncclipboard',
-      })
+      if (settings?.lanAdvertiseBaseUrl) candidates.add(settings.lanAdvertiseBaseUrl)
+      for (const iface of dropdownInterfaces) candidates.add(`http://${iface.ipv4}:${port}`)
+      return buildConnectUri(
+        [...candidates],
+        credentialResult.username,
+        credentialResult.password,
+        {
+          label: credentialResult.label,
+          did: credentialResult.deviceId,
+          proto: 'syncclipboard',
+        }
+      )
     } catch (err) {
       log.warn({ err }, 'failed to build connect URI in device dialog')
       return null
     }
-  }, [device, effectiveBaseUrl, rotateResult, settings, dropdownInterfaces, port])
+  }, [credentialResult, dropdownInterfaces, effectiveBaseUrl, port, settings])
 
-  // ── 改密提交 ──────────────────────────────────────────────────
-  const handleSubmitRotate = useCallback(async () => {
+  const clearFieldError = useCallback((key: FieldErrorKey) => {
+    setFieldErrors(prev => {
+      if (prev[key] === undefined) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }, [])
+
+  const handleOpenEdit = useCallback(() => {
     if (!device) return
+    setLabelInput(visibleLabel)
+    setEditBaseUsername(visibleUsername)
+    setUsernameInput(visibleUsername)
+    setPasswordInput('')
+    setAutoGeneratePassword(false)
+    setFieldErrors({})
+    setFormError(null)
+    setView('edit')
+  }, [device, visibleLabel, visibleUsername])
+
+  const handleSubmitEdit = useCallback(async () => {
+    if (!device) return
+    const nextLabel = labelInput.trim()
+    const nextUsername = usernameInput.trim()
+    if (nextLabel === '') {
+      setFieldErrors({ label: t('devices.mobileSync.errors.labelEmpty') })
+      setFormError(null)
+      return
+    }
     setSubmitting(true)
+    setFieldErrors({})
+    setFormError(null)
     try {
-      const result = await rotateMobilePassword({
+      const password =
+        passwordInput.length > 0 ? passwordInput : autoGeneratePassword ? null : undefined
+      const result = await updateMobileDevice({
         deviceId: device.deviceId,
-        password: pwdInput.length > 0 ? pwdInput : undefined,
+        label: nextLabel,
+        username: nextUsername,
+        ...(password !== undefined ? { password } : {}),
       })
-      // 关键: 写入 rotateResult 让 view='info' QR 能拼。pwdInput 清掉以免
-      // 用户切回 rotate view 再用旧值二次提交。
-      setRotateResult(result)
-      setPwdInput('')
+      // A username rename mints a brand-new password server-side; flag it so the
+      // credential echo warns that the old password is dead (vs. a plain reset).
+      setCredentialFromRename(result.password != null && nextUsername !== editBaseUsername)
+      setCredentialResult(result)
+      setPasswordInput('')
+      setAutoGeneratePassword(false)
+      setPasswordVisible(false)
+      setBackupCopied(false)
       setView('info')
       onRotated()
     } catch (err) {
-      log.error({ err, deviceId: device.deviceId }, 'failed to rotate mobile password')
-      toast.error(translateRotateError(t, err))
+      log.error({ err, deviceId: device.deviceId }, 'failed to update mobile device')
+      const dispatch = classifyEditError(t, err)
+      if (dispatch.kind === 'field') {
+        setFieldErrors({ [dispatch.field]: dispatch.message })
+      } else {
+        setFormError(dispatch.message)
+      }
     } finally {
       setSubmitting(false)
     }
-  }, [device, onRotated, pwdInput, t])
+  }, [
+    autoGeneratePassword,
+    device,
+    editBaseUsername,
+    labelInput,
+    onRotated,
+    passwordInput,
+    t,
+    usernameInput,
+  ])
 
-  // ── 备份(amber 凭据区一键复制) ────────────────────────────────
   const handleBackup = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      if (!rotateResult) return
-      const text = `Server: ${effectiveBaseUrl}\nUsername: ${rotateResult.username}\nPassword: ${rotateResult.password}`
+      if (!credentialResult?.password) return
+      const text = `Server: ${effectiveBaseUrl}\nUsername: ${credentialResult.username}\nPassword: ${credentialResult.password}`
       try {
         await navigator.clipboard.writeText(text)
         setBackupCopied(true)
-        setTimeout(() => setBackupCopied(false), 1500)
+        window.setTimeout(() => setBackupCopied(false), 1500)
       } catch {
-        toast.error('Copy failed')
+        toast.error(t('devices.mobileSync.credential.copyFailed'))
       }
     },
-    [effectiveBaseUrl, rotateResult]
+    [credentialResult, effectiveBaseUrl, t]
   )
 
   if (!device) return null
@@ -272,9 +274,7 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
     <Dialog
       open={open}
       onOpenChange={next => {
-        // submitting 时全部锁死避免提交中途关闭。
-        if (submitting) return
-        onOpenChange(next)
+        if (!submitting) onOpenChange(next)
       }}
     >
       <DialogContent
@@ -293,12 +293,10 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
             </div>
             <div className="min-w-0 flex-1">
               <DialogTitle className="truncate text-left">
-                {view === 'rotate'
-                  ? t('devices.mobileSync.rotate.dialog.title', { label: device.label })
-                  : device.label}
+                {view === 'edit' ? t('devices.mobileSync.edit.title') : visibleLabel}
               </DialogTitle>
               <DialogDescription className="truncate font-mono text-xs text-muted-foreground">
-                {device.username}
+                {visibleUsername}
               </DialogDescription>
             </div>
           </div>
@@ -314,17 +312,41 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
               selectedHost={selectedHost}
               onSelectHost={setSelectedHost}
               connectUri={connectUri}
-              rotateResult={rotateResult}
+              credentialResult={credentialResult}
+              credentialFromRename={credentialFromRename}
               passwordVisible={passwordVisible}
               setPasswordVisible={setPasswordVisible}
               backupCopied={backupCopied}
               onBackup={handleBackup}
             />
           ) : (
-            <RotateView
-              passwordInput={pwdInput}
-              setPasswordInput={setPwdInput}
+            <EditView
+              labelInput={labelInput}
+              usernameInput={usernameInput}
+              baseUsername={editBaseUsername}
+              passwordInput={passwordInput}
+              autoGeneratePassword={autoGeneratePassword}
               submitting={submitting}
+              fieldErrors={fieldErrors}
+              formError={formError}
+              onLabelChange={value => {
+                setLabelInput(value)
+                clearFieldError('label')
+              }}
+              onUsernameChange={value => {
+                setUsernameInput(value)
+                clearFieldError('username')
+              }}
+              onPasswordChange={value => {
+                setPasswordInput(value)
+                if (value.length > 0) setAutoGeneratePassword(false)
+                clearFieldError('password')
+              }}
+              onToggleAutoPassword={() => {
+                setPasswordInput('')
+                setAutoGeneratePassword(v => !v)
+                clearFieldError('password')
+              }}
             />
           )}
         </div>
@@ -332,9 +354,9 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
         <DialogFooter className="m-0 !flex-row !justify-between gap-2">
           {view === 'info' ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => setView('rotate')}>
-                <KeyRound className="h-3.5 w-3.5" />
-                {t('devices.mobileSync.rotate.button')}
+              <Button variant="outline" size="sm" onClick={handleOpenEdit}>
+                <Pencil className="h-3.5 w-3.5" />
+                {t('devices.mobileSync.edit.button')}
               </Button>
               <div className="flex gap-2">
                 <Button variant="destructive" size="sm" onClick={() => onRevoke(device)}>
@@ -351,19 +373,20 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  setPwdInput('')
-                  setView('info')
-                }}
+                onClick={() => setView('info')}
                 disabled={submitting}
               >
-                {t('devices.mobileSync.rotate.dialog.cancel')}
+                {t('devices.mobileSync.edit.cancel')}
               </Button>
-              <Button size="sm" onClick={handleSubmitRotate} disabled={submitting}>
+              <Button
+                size="sm"
+                onClick={handleSubmitEdit}
+                disabled={submitting || labelInput.trim() === '' || usernameInput.trim() === ''}
+              >
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 {submitting
-                  ? t('devices.mobileSync.rotate.dialog.submitting')
-                  : t('devices.mobileSync.rotate.dialog.submit')}
+                  ? t('devices.mobileSync.edit.saving')
+                  : t('devices.mobileSync.edit.save')}
               </Button>
             </>
           )}
@@ -375,10 +398,6 @@ const MobileSyncDeviceDialog: React.FC<Props> = ({
 
 export default MobileSyncDeviceDialog
 
-// ────────────────────────────────────────────────────────────────────
-// view = 'info'
-// ────────────────────────────────────────────────────────────────────
-
 interface InfoViewProps {
   device: MobileDeviceView
   effectiveBaseUrl: string
@@ -387,7 +406,8 @@ interface InfoViewProps {
   selectedHost: string | null
   onSelectHost: (host: string) => void
   connectUri: string | null
-  rotateResult: RotateMobilePasswordResult | null
+  credentialResult: UpdateMobileDeviceResult | null
+  credentialFromRename: boolean
   passwordVisible: boolean
   setPasswordVisible: (v: boolean) => void
   backupCopied: boolean
@@ -402,7 +422,8 @@ const InfoView: React.FC<InfoViewProps> = ({
   selectedHost,
   onSelectHost,
   connectUri,
-  rotateResult,
+  credentialResult,
+  credentialFromRename,
   passwordVisible,
   setPasswordVisible,
   backupCopied,
@@ -417,7 +438,6 @@ const InfoView: React.FC<InfoViewProps> = ({
 
   return (
     <>
-      {/* ── 服务地址 + QR ──────────────────────────────────────── */}
       <Section title={t('devices.mobileSync.deviceDialog.sections.serverAddress')}>
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border/60 bg-muted/30 p-4">
           <div className="flex w-full flex-col items-center gap-1.5">
@@ -454,14 +474,15 @@ const InfoView: React.FC<InfoViewProps> = ({
         </div>
       </Section>
 
-      {/* ── 凭据(仅 rotateResult 存在时显示) ──────────────────── */}
-      {rotateResult && (
+      {credentialResult?.password && (
         <Section title={t('devices.mobileSync.credential.credentials.title')} accent="amber">
           <div className="space-y-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <p className="flex-1 text-xs text-amber-700/90 dark:text-amber-400/90">
-                {t('devices.mobileSync.rotate.result.warning')}
+                {credentialFromRename
+                  ? t('devices.mobileSync.edit.result.warningReissued')
+                  : t('devices.mobileSync.edit.result.warning')}
               </p>
               <Button
                 type="button"
@@ -487,19 +508,27 @@ const InfoView: React.FC<InfoViewProps> = ({
 
             <CredentialRow
               label={t('devices.mobileSync.credential.username.label')}
-              value={rotateResult.username}
+              value={credentialResult.username}
             />
             <CredentialRow
               label={t('devices.mobileSync.credential.password.label')}
-              value={rotateResult.password}
+              value={credentialResult.password}
               secret={!passwordVisible}
               extra={
                 <Button
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={passwordVisible ? 'hide' : 'show'}
-                  title={passwordVisible ? 'hide' : 'show'}
+                  aria-label={
+                    passwordVisible
+                      ? t('devices.mobileSync.credential.password.hide')
+                      : t('devices.mobileSync.credential.password.show')
+                  }
+                  title={
+                    passwordVisible
+                      ? t('devices.mobileSync.credential.password.hide')
+                      : t('devices.mobileSync.credential.password.show')
+                  }
                   onClick={() => setPasswordVisible(!passwordVisible)}
                 >
                   {passwordVisible ? (
@@ -514,7 +543,6 @@ const InfoView: React.FC<InfoViewProps> = ({
         </Section>
       )}
 
-      {/* ── 设备信息 ──────────────────────────────────────────── */}
       <Section title={t('devices.mobileSync.deviceDialog.sections.info')}>
         <InfoRow label={t('devices.mobileSync.deviceDialog.fields.createdAt')} value={createdAt} />
         <InfoRow label={t('devices.mobileSync.deviceDialog.fields.lastSeen')} value={lastSeen} />
@@ -542,55 +570,165 @@ const InfoView: React.FC<InfoViewProps> = ({
   )
 }
 
-// ────────────────────────────────────────────────────────────────────
-// view = 'rotate'
-// ────────────────────────────────────────────────────────────────────
-
-interface RotateViewProps {
+interface EditViewProps {
+  labelInput: string
+  usernameInput: string
+  baseUsername: string
   passwordInput: string
-  setPasswordInput: (v: string) => void
+  autoGeneratePassword: boolean
   submitting: boolean
+  fieldErrors: FieldErrors
+  formError: string | null
+  onLabelChange: (value: string) => void
+  onUsernameChange: (value: string) => void
+  onPasswordChange: (value: string) => void
+  onToggleAutoPassword: () => void
 }
 
-const RotateView: React.FC<RotateViewProps> = ({ passwordInput, setPasswordInput, submitting }) => {
+const EditView: React.FC<EditViewProps> = ({
+  labelInput,
+  usernameInput,
+  baseUsername,
+  passwordInput,
+  autoGeneratePassword,
+  submitting,
+  fieldErrors,
+  formError,
+  onLabelChange,
+  onUsernameChange,
+  onPasswordChange,
+  onToggleAutoPassword,
+}) => {
   const { t } = useTranslation()
+  // A username change mints a new password server-side and forces re-pairing.
+  const usernameRenamed = usernameInput.trim() !== baseUsername.trim()
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        {t('devices.mobileSync.rotate.dialog.subtitle')}
-      </p>
-
-      <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
-        <p className="text-xs text-amber-700/90 dark:text-amber-400/90">
-          {t('devices.mobileSync.rotate.dialog.warning')}
-        </p>
+      <div className="space-y-1.5">
+        <Label htmlFor="mobile-device-edit-label">{t('devices.mobileSync.edit.label.label')}</Label>
+        <Input
+          id="mobile-device-edit-label"
+          autoFocus
+          value={labelInput}
+          onChange={e => onLabelChange(e.target.value)}
+          placeholder={t('devices.mobileSync.edit.label.placeholder')}
+          disabled={submitting}
+          maxLength={64}
+          aria-invalid={fieldErrors.label !== undefined || undefined}
+          aria-describedby={fieldErrors.label ? 'mobile-device-edit-label-error' : undefined}
+        />
+        {fieldErrors.label !== undefined && (
+          <p id="mobile-device-edit-label-error" role="alert" className="text-xs text-destructive">
+            {fieldErrors.label}
+          </p>
+        )}
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="device-dialog-rotate-password">
-          {t('devices.mobileSync.rotate.dialog.passwordLabel')}
+        <Label htmlFor="mobile-device-edit-username">
+          {t('devices.mobileSync.edit.username.label')}
         </Label>
         <Input
-          id="device-dialog-rotate-password"
-          type="password"
-          autoFocus
-          value={passwordInput}
-          onChange={e => setPasswordInput(e.target.value)}
-          placeholder={t('devices.mobileSync.rotate.dialog.passwordPlaceholder')}
+          id="mobile-device-edit-username"
+          value={usernameInput}
+          onChange={e => onUsernameChange(e.target.value)}
+          placeholder={t('devices.mobileSync.edit.username.placeholder')}
           disabled={submitting}
-          autoComplete="new-password"
+          autoComplete="off"
+          aria-invalid={fieldErrors.username !== undefined || undefined}
+          aria-describedby={
+            fieldErrors.username
+              ? 'mobile-device-edit-username-error'
+              : 'mobile-device-edit-username-help'
+          }
         />
-        <p className="text-xs text-muted-foreground/80">
-          {t('devices.mobileSync.rotate.dialog.passwordHelp')}
-        </p>
+        {fieldErrors.username !== undefined ? (
+          <p
+            id="mobile-device-edit-username-error"
+            role="alert"
+            className="text-xs text-destructive"
+          >
+            {fieldErrors.username}
+          </p>
+        ) : (
+          <p id="mobile-device-edit-username-help" className="text-xs text-muted-foreground/80">
+            {t('devices.mobileSync.edit.username.help')}
+          </p>
+        )}
+        {usernameRenamed && (
+          <p
+            className="flex items-start gap-1.5 text-xs text-amber-700/90 dark:text-amber-400/90"
+            role="status"
+          >
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{t('devices.mobileSync.edit.username.renameNotice')}</span>
+          </p>
+        )}
       </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="mobile-device-edit-password">
+            {t('devices.mobileSync.edit.password.label')}
+          </Label>
+          <Button
+            type="button"
+            variant={autoGeneratePassword ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={onToggleAutoPassword}
+            disabled={submitting}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            {t('devices.mobileSync.edit.password.regenerate')}
+          </Button>
+        </div>
+        <Input
+          id="mobile-device-edit-password"
+          type="password"
+          value={passwordInput}
+          onChange={e => onPasswordChange(e.target.value)}
+          placeholder={
+            autoGeneratePassword
+              ? t('devices.mobileSync.edit.password.autoPlaceholder')
+              : t('devices.mobileSync.edit.password.placeholder')
+          }
+          disabled={submitting || autoGeneratePassword}
+          autoComplete="new-password"
+          aria-invalid={fieldErrors.password !== undefined || undefined}
+          aria-describedby={
+            fieldErrors.password
+              ? 'mobile-device-edit-password-error'
+              : 'mobile-device-edit-password-help'
+          }
+        />
+        {fieldErrors.password !== undefined ? (
+          <p
+            id="mobile-device-edit-password-error"
+            role="alert"
+            className="text-xs text-destructive"
+          >
+            {fieldErrors.password}
+          </p>
+        ) : (
+          <p id="mobile-device-edit-password-help" className="text-xs text-muted-foreground/80">
+            {autoGeneratePassword
+              ? t('devices.mobileSync.edit.password.autoHelp')
+              : t('devices.mobileSync.edit.password.help')}
+          </p>
+        )}
+      </div>
+
+      {formError !== null && (
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
+          {formError}
+        </div>
+      )}
     </div>
   )
 }
-
-// ────────────────────────────────────────────────────────────────────
-// Helpers
-// ────────────────────────────────────────────────────────────────────
 
 const Section: React.FC<{
   title: string
@@ -653,11 +791,11 @@ const InlineCopyButton: React.FC<{ value: string }> = ({ value }) => {
     try {
       await navigator.clipboard.writeText(value)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      window.setTimeout(() => setCopied(false), 1500)
     } catch {
-      toast.error('Copy failed')
+      toast.error(t('devices.mobileSync.credential.copyFailed'))
     }
-  }, [value])
+  }, [t, value])
   const label = copied
     ? t('devices.mobileSync.credential.copied')
     : t('devices.mobileSync.credential.copy')
@@ -691,6 +829,91 @@ const QrPlaceholder: React.FC = () => {
   )
 }
 
+type EditErrorDispatch =
+  | { kind: 'field'; field: FieldErrorKey; message: string }
+  | { kind: 'form'; message: string }
+
+function classifyEditError(
+  t: ReturnType<typeof useTranslation>['t'],
+  err: unknown
+): EditErrorDispatch {
+  if (isMobileSyncError(err)) {
+    const e = err as MobileSyncError
+    switch (e.code) {
+      case 'LABEL_EMPTY':
+        return { kind: 'field', field: 'label', message: t('devices.mobileSync.errors.labelEmpty') }
+      case 'LABEL_TOO_LONG':
+        return {
+          kind: 'field',
+          field: 'label',
+          message: t('devices.mobileSync.errors.labelTooLong', { max: e.max }),
+        }
+      case 'USERNAME_TAKEN':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameTaken', { username: e.username }),
+        }
+      case 'USERNAME_TOO_SHORT':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameTooShort', { min: e.min, got: e.got }),
+        }
+      case 'USERNAME_TOO_LONG':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameTooLong', { max: e.max, got: e.got }),
+        }
+      case 'USERNAME_MUST_START_WITH_LETTER':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameMustStartWithLetter'),
+        }
+      case 'USERNAME_CONTAINS_FORBIDDEN_CHARS':
+        return {
+          kind: 'field',
+          field: 'username',
+          message: t('devices.mobileSync.errors.usernameContainsForbiddenChars'),
+        }
+      case 'PASSWORD_TOO_SHORT':
+        return {
+          kind: 'field',
+          field: 'password',
+          message: t('devices.mobileSync.errors.passwordTooShort', { min: e.min }),
+        }
+      case 'PASSWORD_TOO_LONG':
+        return {
+          kind: 'field',
+          field: 'password',
+          message: t('devices.mobileSync.errors.passwordTooLong', { max: e.max }),
+        }
+      case 'DEVICE_NOT_FOUND':
+        return { kind: 'form', message: t('devices.mobileSync.errors.deviceNotFound') }
+      case 'PASSWORD_HASH_FAILED':
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.passwordHashFailed', { message: e.message }),
+        }
+      case 'PERSISTENCE_FAILED':
+        return {
+          kind: 'form',
+          message: t('devices.mobileSync.errors.persistenceFailed', { message: e.message }),
+        }
+      case 'FACADE_UNAVAILABLE':
+        return { kind: 'form', message: t('devices.mobileSync.errors.facadeUnavailable') }
+      default: {
+        const message = (e as { message?: string }).message ?? e.code
+        return { kind: 'form', message: t('devices.mobileSync.errors.unknown', { message }) }
+      }
+    }
+  }
+  const message = err instanceof Error ? err.message : String(err)
+  return { kind: 'form', message: t('devices.mobileSync.errors.unknown', { message }) }
+}
+
 function formatAbsoluteDateTime(ms: number): string {
   const d = new Date(ms)
   const yyyy = d.getFullYear()
@@ -699,30 +922,4 @@ function formatAbsoluteDateTime(ms: number): string {
   const hh = String(d.getHours()).padStart(2, '0')
   const mi = String(d.getMinutes()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`
-}
-
-function translateRotateError(t: ReturnType<typeof useTranslation>['t'], err: unknown): string {
-  if (isMobileSyncError(err)) {
-    const e = err as MobileSyncError
-    switch (e.code) {
-      case 'DEVICE_NOT_FOUND':
-        return t('devices.mobileSync.errors.deviceNotFound')
-      case 'PASSWORD_TOO_SHORT':
-        return t('devices.mobileSync.errors.passwordTooShort', { min: e.min })
-      case 'PASSWORD_TOO_LONG':
-        return t('devices.mobileSync.errors.passwordTooLong', { max: e.max })
-      case 'PASSWORD_HASH_FAILED':
-        return t('devices.mobileSync.errors.passwordHashFailed', { message: e.message })
-      case 'PERSISTENCE_FAILED':
-        return t('devices.mobileSync.errors.persistenceFailed', { message: e.message })
-      case 'FACADE_UNAVAILABLE':
-        return t('devices.mobileSync.errors.facadeUnavailable')
-      default: {
-        const message = (e as { message?: string }).message ?? e.code
-        return t('devices.mobileSync.errors.unknown', { message })
-      }
-    }
-  }
-  const message = err instanceof Error ? err.message : String(err)
-  return t('devices.mobileSync.errors.unknown', { message })
 }

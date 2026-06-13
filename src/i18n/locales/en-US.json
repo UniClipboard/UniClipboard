@@ -1022,10 +1022,13 @@
           "label": "Username"
         },
         "password": {
-          "label": "Password"
+          "label": "Password",
+          "show": "Show password",
+          "hide": "Hide password"
         },
         "copy": "Copy",
         "copied": "Copied",
+        "copyFailed": "Copy failed",
         "close": "Done",
         "closeAria": "Close"
       },
@@ -1034,6 +1037,35 @@
         "confirmDescription": "Once revoked, this device can no longer sync. To reconnect you must add it again (the password cannot be recovered).",
         "confirm": "Revoke",
         "cancel": "Cancel"
+      },
+      "edit": {
+        "button": "Edit device",
+        "title": "Edit device",
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving...",
+        "label": {
+          "label": "Device label",
+          "placeholder": "My phone"
+        },
+        "username": {
+          "label": "Username",
+          "placeholder": "mobile_phone",
+          "help": "6-32 chars, must start with a letter, only A-Z a-z 0-9 _",
+          "renameNotice": "Changing the username generates a new password and requires re-pairing the device."
+        },
+        "password": {
+          "label": "Password",
+          "placeholder": "Leave blank to keep the current password",
+          "autoPlaceholder": "A new password will be generated",
+          "help": "Leave blank to keep it unchanged. Enter a new password (at least 8 characters) to replace it.",
+          "autoHelp": "A new password will be generated and shown once after saving.",
+          "regenerate": "Regenerate"
+        },
+        "result": {
+          "warning": "These credentials are shown only once. Save them before closing this dialog.",
+          "warningReissued": "The old password no longer works. The mobile client must use this new password to keep syncing. These credentials are shown only once — save them before closing this dialog."
+        }
       },
       "rotate": {
         "button": "Change password",

@@ -179,6 +179,18 @@ pub async fn acquire_with_deadline(
         Err(other) => return Err(other),
     };
 
+    // Single-instance arbitration (the "evicted after update" fix): before
+    // patiently waiting out the holder, decide whether THIS daemon out-ranks it
+    // (`should_evict_holder`). A strictly-older or stuck/orphaned holder is
+    // SIGTERM'd — escalating to SIGKILL — so the newcomer takes over
+    // deterministically, instead of waiting out `deadline` and exiting
+    // `AlreadyRunning` (the symptom users hit after an update: had to kill the
+    // leftover uniclipd by hand). An equal-or-newer holder is left untouched
+    // (downgrade protection) and we fall through to the cooperative wait below.
+    if let Some(lock) = try_evict_outranked_holder(data_dir).await? {
+        return Ok(lock);
+    }
+
     tracing::warn!(
         lock_path = %lock_path.display(),
         deadline_ms = deadline.as_millis() as u64,
@@ -186,33 +198,164 @@ pub async fn acquire_with_deadline(
     );
 
     let started = Instant::now();
-    let dir = data_dir.to_path_buf();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    std::thread::Builder::new()
-        .name("uniclipd-lock-wait".into())
-        .spawn(move || {
-            // If the receiver is gone (deadline expired), the sent lock is
-            // dropped right here, releasing it for the next contender.
-            let _ = tx.send(DaemonInstanceLock::acquire_blocking(&dir));
-        })
-        .map_err(InstanceLockError::Io)?;
-
-    match tokio::time::timeout(deadline, rx).await {
-        Ok(Ok(Ok(lock))) => {
+    match block_acquire_within(data_dir, deadline).await? {
+        Some(lock) => {
             tracing::info!(
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 "daemon instance lock acquired after holder release"
             );
             Ok(lock)
         }
+        // Deadline expired: the holder never released within the bound.
+        None => Err(InstanceLockError::AlreadyRunning { lock_path }),
+    }
+}
+
+/// Park a detached thread in blocking `flock(2)`; resolve to `Ok(Some(lock))` if
+/// acquired within `budget`, `Ok(None)` if the budget expired with the holder
+/// still in place, `Err` on I/O / wait-thread failure.
+///
+/// A DETACHED `std::thread` (NOT `spawn_blocking`: tokio joins its blocking pool
+/// on runtime drop, so a thread still parked in `flock` after a budget expiry
+/// would deadlock the daemon's exit path). On expiry the thread is harmless: if
+/// the holder later exits, the thread wins the lock, fails to send it (receiver
+/// dropped), and releases it immediately; process exit reclaims it regardless.
+async fn block_acquire_within(
+    data_dir: &Path,
+    budget: Duration,
+) -> Result<Option<DaemonInstanceLock>, InstanceLockError> {
+    let dir = data_dir.to_path_buf();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::Builder::new()
+        .name("uniclipd-lock-wait".into())
+        .spawn(move || {
+            let _ = tx.send(DaemonInstanceLock::acquire_blocking(&dir));
+        })
+        .map_err(InstanceLockError::Io)?;
+
+    match tokio::time::timeout(budget, rx).await {
+        Ok(Ok(Ok(lock))) => Ok(Some(lock)),
         Ok(Ok(Err(error))) => Err(error),
         // Sender dropped without sending — the wait thread panicked.
         Ok(Err(_recv_error)) => Err(InstanceLockError::Io(std::io::Error::other(
             "instance lock wait thread terminated unexpectedly",
         ))),
-        // Deadline expired: the holder never released within the bound.
-        Err(_elapsed) => Err(InstanceLockError::AlreadyRunning { lock_path }),
+        // Budget expired: the holder never released within the bound.
+        Err(_elapsed) => Ok(None),
     }
+}
+
+/// Evict the current lock holder iff THIS daemon strictly out-ranks it, then try
+/// to take the freed lock. Returns `Ok(Some(lock))` if eviction won the lock,
+/// `Ok(None)` if no eviction was warranted or it did not free the lock in time
+/// (caller falls through to the cooperative deadline wait), `Err` on terminal
+/// I/O.
+///
+/// Best-effort and conservative: an unreadable/absent holder PID file, a
+/// stale/foreign PID (D22 — not a live `uniclipd`), or an equal-or-newer holder
+/// all yield `Ok(None)` WITHOUT signaling anyone.
+async fn try_evict_outranked_holder(
+    data_dir: &Path,
+) -> Result<Option<DaemonInstanceLock>, InstanceLockError> {
+    use uc_daemon_process::contract::{
+        force_terminate_local_daemon_pid, terminate_local_daemon_pid,
+    };
+    use uc_daemon_process::process_metadata::{
+        read_pid_metadata_in, should_evict_holder, verify_pid_identity, PidVerification,
+        SELF_PACKAGE_VERSION,
+    };
+    use uc_daemon_process::timing::{EVICT_SIGKILL_GRACE, EVICT_SIGTERM_GRACE};
+
+    // Best-effort read of the holder's PID metadata; on any problem fall back to
+    // the plain cooperative wait.
+    let holder = match read_pid_metadata_in(data_dir) {
+        Ok(Some(metadata)) => metadata,
+        Ok(None) => return Ok(None),
+        Err(error) => {
+            tracing::warn!(%error, "could not read lock holder PID metadata — skipping eviction");
+            return Ok(None);
+        }
+    };
+
+    let self_pid = std::process::id();
+
+    // Never signal our own PID. If a stale PID file's recorded pid was recycled
+    // to THIS very process, `verify_pid_identity` would see it "alive" (it is us)
+    // and we would SIGTERM ourselves — the real lock holder is someone else, so
+    // fall back to the cooperative wait instead.
+    if holder.pid == self_pid {
+        return Ok(None);
+    }
+
+    // D22: never signal a PID that is not a live `uniclipd`. A stale PID means
+    // the real holder already exited (the lock will free on its own); a foreign
+    // PID is someone else's process. Either way, do not signal.
+    if !matches!(verify_pid_identity(&holder), PidVerification::Active) {
+        return Ok(None);
+    }
+
+    let self_started_at_ms = now_ms();
+    if !should_evict_holder(SELF_PACKAGE_VERSION, self_started_at_ms, self_pid, &holder) {
+        tracing::info!(
+            holder_pid = holder.pid,
+            holder_version = %holder.package_version,
+            self_version = SELF_PACKAGE_VERSION,
+            "instance lock held by an equal-or-newer daemon — not evicting (downgrade protection)"
+        );
+        return Ok(None);
+    }
+
+    tracing::warn!(
+        holder_pid = holder.pid,
+        holder_version = %holder.package_version,
+        self_version = SELF_PACKAGE_VERSION,
+        "instance lock held by an out-ranked daemon — evicting it (SIGTERM, then SIGKILL)"
+    );
+
+    if let Err(error) = terminate_local_daemon_pid(holder.pid) {
+        tracing::warn!(holder_pid = holder.pid, %error, "SIGTERM to lock holder failed");
+    }
+    if let Some(lock) = block_acquire_within(data_dir, EVICT_SIGTERM_GRACE).await? {
+        tracing::info!(
+            holder_pid = holder.pid,
+            "instance lock acquired after holder SIGTERM"
+        );
+        return Ok(Some(lock));
+    }
+
+    // Holder did not release within the graceful window. Re-verify identity (a
+    // recycled PID must not be SIGKILL'd) and escalate.
+    if matches!(verify_pid_identity(&holder), PidVerification::Active) {
+        tracing::warn!(
+            holder_pid = holder.pid,
+            "lock holder still alive after SIGTERM grace — escalating to SIGKILL"
+        );
+        if let Err(error) = force_terminate_local_daemon_pid(holder.pid) {
+            tracing::warn!(holder_pid = holder.pid, %error, "SIGKILL to lock holder failed");
+        }
+        if let Some(lock) = block_acquire_within(data_dir, EVICT_SIGKILL_GRACE).await? {
+            tracing::info!(
+                holder_pid = holder.pid,
+                "instance lock acquired after holder SIGKILL"
+            );
+            return Ok(Some(lock));
+        }
+    }
+
+    // Even SIGKILL did not free it in time (D-state, or a PID that went stale
+    // between checks). Fall through to the cooperative deadline wait.
+    Ok(None)
+}
+
+/// Unix-epoch milliseconds for "now" — this process's start instant for
+/// single-instance ranking (`should_evict_holder`). Matches how
+/// `DaemonPidMetadata::now` stamps `started_at_ms`, so the value compared here
+/// is on the same clock as a holder's persisted timestamp.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 fn is_would_block(error: &std::io::Error) -> bool {

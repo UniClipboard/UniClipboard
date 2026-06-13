@@ -332,6 +332,9 @@ fn terminate_incompatible_daemon_by_port() -> Result<(), DaemonBootstrapError> {
         mode: DaemonProcessMode::Standalone,
         started_at_ms: 0,
         spawned_by: DaemonSpawnOrigin::Unknown,
+        // Unused by `verify_pid_identity` (liveness + exe name only); the real
+        // version is not knowable from a port lookup with no PID file.
+        package_version: String::new(),
     };
 
     if let PidVerification::Stale(reason) = verify_pid_identity(&synthetic) {
@@ -851,6 +854,7 @@ mod tests {
             mode,
             started_at_ms: 0,
             spawned_by: DaemonSpawnOrigin::Unknown,
+            package_version: String::new(),
         }
     }
 
@@ -936,6 +940,7 @@ mod tests {
             mode: DaemonProcessMode::Standalone,
             started_at_ms: 0,
             spawned_by: origin,
+            package_version: String::new(),
         }
     }
 

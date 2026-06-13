@@ -93,10 +93,27 @@ pub struct DaemonPidMetadata {
     /// conservatively not GUI-owned.
     #[serde(default)]
     pub spawned_by: DaemonSpawnOrigin,
+    /// This daemon's package version (e.g. `"0.15.0-alpha.4"`), used by
+    /// single-instance arbitration ([`should_evict_holder`]) so a newcomer can
+    /// refuse to downgrade a strictly-newer incumbent. `#[serde(default)]` so a
+    /// PID file predating this field deserializes to an empty string, which
+    /// [`should_evict_holder`] ranks BELOW any parseable version — a pre-upgrade
+    /// daemon is therefore always out-ranked by a versioned successor.
+    #[serde(default)]
+    pub package_version: String,
 }
 
+/// This process's package version, baked in at compile time.
+///
+/// The whole workspace shares a single `version` (root `Cargo.toml`; every crate
+/// uses `version.workspace = true`), so this equals the daemon binary's version
+/// reported in the health handshake. A PID file's `package_version` is therefore
+/// a faithful stand-in for "what version is this daemon" without an HTTP probe.
+pub const SELF_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 impl DaemonPidMetadata {
-    /// 构造一份"现在"的元数据：`pid` + `mode` + `spawned_by` + 当前时间戳。
+    /// 构造一份"现在"的元数据：`pid` + `mode` + `spawned_by` + 当前时间戳 +
+    /// 本进程版本（[`SELF_PACKAGE_VERSION`]）。
     pub fn now(pid: u32, mode: DaemonProcessMode, spawned_by: DaemonSpawnOrigin) -> Self {
         let started_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -107,6 +124,7 @@ impl DaemonPidMetadata {
             mode,
             started_at_ms,
             spawned_by,
+            package_version: SELF_PACKAGE_VERSION.to_string(),
         }
     }
 
@@ -123,6 +141,17 @@ impl DaemonPidMetadata {
 /// Leaf filename of the daemon PID file, kept byte-identical to
 /// `AppPaths::daemon_pid_path()` (`<app_data_root>/.daemon-pid`).
 const DAEMON_PID_FILE_NAME: &str = ".daemon-pid";
+
+/// Read the daemon PID metadata for a SPECIFIC profile `data_dir`
+/// (`<data_dir>/.daemon-pid`) rather than the process-wide default root.
+///
+/// Used by single-instance arbitration in `instance_lock`, which already knows
+/// the exact profile directory it is locking and must read the holder's PID
+/// file beside that lock. Same semantics as
+/// [`DaemonPidManager::read_pid_metadata`]: `Ok(None)` if absent/empty/corrupt.
+pub fn read_pid_metadata_in(data_dir: &Path) -> Result<Option<DaemonPidMetadata>> {
+    DaemonPidManager::new(data_dir.join(DAEMON_PID_FILE_NAME)).read_pid_metadata()
+}
 
 /// Provides the process-wide singleton `DaemonPidManager` used by standalone helpers.
 fn default_manager() -> Result<&'static DaemonPidManager> {
@@ -251,6 +280,9 @@ impl DaemonPidManager {
             mode: DaemonProcessMode::Standalone,
             started_at_ms: 0,
             spawned_by: DaemonSpawnOrigin::Unknown,
+            // A bare-u32 PID file predates the version field; empty string ranks
+            // below any parseable version in `should_evict_holder`.
+            package_version: String::new(),
         }))
     }
 
@@ -346,6 +378,66 @@ pub fn verify_pid_identity(metadata: &DaemonPidMetadata) -> PidVerification {
     // treat it as active — the liveness check already passed.
 
     PidVerification::Active
+}
+
+/// Total order over daemon process "identity" for single-instance arbitration.
+///
+/// Returns `true` iff a daemon described by (`self_version`,
+/// `self_started_at_ms`, `self_pid`) strictly out-ranks the current lock
+/// `holder` and should therefore EVICT it.
+///
+/// Ranking is lexicographic, highest wins:
+/// 1. semver `package_version` — an empty/unparseable version ranks BELOW any
+///    parseable one;
+/// 2. `started_at_ms` — later wins;
+/// 3. `pid` — higher wins, a deterministic final tie-break.
+///
+/// ## Why this is a safe single-instance rule, not a mutual-kill
+///
+/// - It is a STRICT TOTAL ORDER (antisymmetric): for any two distinct processes
+///   exactly one out-ranks the other, so `should_evict_holder(A, B)` and
+///   `should_evict_holder(B, A)` are never both `true`.
+/// - Only the contender that FAILED to take the flock ever calls this; the
+///   holder is busy serving and never arbitrates, so there is no simultaneous
+///   bidirectional decision.
+/// - A freshly launched contender always has a later `started_at_ms` than an
+///   incumbent, so **same version ⇒ contender evicts incumbent**. In practice
+///   this only fires against a stuck/orphaned holder: GUI bootstrap REUSES a
+///   healthy same-version daemon (probe → Compatible) instead of spawning a
+///   second one, so a second same-version daemon exists only when the incumbent
+///   is unreachable yet still holds the lock.
+/// - A strictly-newer incumbent always out-ranks the contender, giving free
+///   downgrade protection (mirrors the GUI's `RefusedNewerDaemon`).
+pub fn should_evict_holder(
+    self_version: &str,
+    self_started_at_ms: u64,
+    self_pid: u32,
+    holder: &DaemonPidMetadata,
+) -> bool {
+    use std::cmp::Ordering;
+
+    fn parse(v: &str) -> Option<semver::Version> {
+        semver::Version::parse(v.trim()).ok()
+    }
+
+    // None (empty/unparseable) ranks below any parseable version.
+    fn cmp_version(a: &Option<semver::Version>, b: &Option<semver::Version>) -> Ordering {
+        match (a, b) {
+            (Some(x), Some(y)) => x.cmp(y),
+            (Some(_), None) => Ordering::Greater,
+            (None, Some(_)) => Ordering::Less,
+            (None, None) => Ordering::Equal,
+        }
+    }
+
+    let self_v = parse(self_version);
+    let holder_v = parse(&holder.package_version);
+
+    let ordering = cmp_version(&self_v, &holder_v)
+        .then(self_started_at_ms.cmp(&holder.started_at_ms))
+        .then(self_pid.cmp(&holder.pid));
+
+    ordering == Ordering::Greater
 }
 
 const DAEMON_BINARY_NAME: &str = "uniclipd";
@@ -603,6 +695,105 @@ mod tests {
             !parsed.is_gui_spawned(),
             "legacy daemons must never be treated as GUI-owned"
         );
+    }
+
+    #[test]
+    fn json_without_package_version_defaults_to_empty() {
+        // PID files predating the version field must parse, with the empty
+        // version that `should_evict_holder` ranks as oldest.
+        let legacy = r#"{"pid":7,"mode":"standalone","startedAtMs":123,"spawnedBy":"gui"}"#;
+        let parsed: DaemonPidMetadata = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.package_version, "");
+    }
+
+    fn holder_meta(version: &str, started_at_ms: u64, pid: u32) -> DaemonPidMetadata {
+        DaemonPidMetadata {
+            pid,
+            mode: DaemonProcessMode::Standalone,
+            started_at_ms,
+            spawned_by: DaemonSpawnOrigin::Unknown,
+            package_version: version.to_string(),
+        }
+    }
+
+    #[test]
+    fn evicts_strictly_older_holder() {
+        // The update scenario: a newer daemon evicts a leftover older one.
+        let h = holder_meta("0.15.0-alpha.4", 1_000, 100);
+        assert!(should_evict_holder("0.15.0-alpha.5", 2_000, 200, &h));
+    }
+
+    #[test]
+    fn refuses_to_evict_strictly_newer_holder() {
+        // Downgrade protection: an older daemon never evicts a newer one, even
+        // though it started later.
+        let h = holder_meta("0.15.0-alpha.5", 1_000, 100);
+        assert!(!should_evict_holder("0.15.0-alpha.4", 9_999, 200, &h));
+    }
+
+    #[test]
+    fn same_version_later_started_evicts_incumbent() {
+        // A fresh contender always has a later started_at, so a same-version
+        // stuck/orphaned holder is evicted ("later wins").
+        let h = holder_meta("0.15.0-alpha.4", 1_000, 100);
+        assert!(should_evict_holder("0.15.0-alpha.4", 2_000, 200, &h));
+    }
+
+    #[test]
+    fn same_version_earlier_started_does_not_evict() {
+        // The incumbent out-ranks a contender claiming an earlier start.
+        let h = holder_meta("0.15.0-alpha.4", 2_000, 100);
+        assert!(!should_evict_holder("0.15.0-alpha.4", 1_000, 200, &h));
+    }
+
+    #[test]
+    fn missing_holder_version_ranks_as_oldest() {
+        // A pre-version-field PID file (empty version) is always out-ranked by a
+        // versioned successor, regardless of timestamps.
+        let h = holder_meta("", 9_999, 100);
+        assert!(should_evict_holder("0.15.0-alpha.4", 1, 200, &h));
+    }
+
+    #[test]
+    fn self_missing_version_never_evicts_versioned_holder() {
+        // Defensive: an unparseable own version must not evict a versioned
+        // holder (treat ourselves as oldest).
+        let h = holder_meta("0.15.0-alpha.4", 1, 100);
+        assert!(!should_evict_holder("", 9_999, 200, &h));
+    }
+
+    #[test]
+    fn eviction_order_is_antisymmetric_no_mutual_kill() {
+        // The crux of "same-version also evicts" being safe: for any two
+        // distinct processes exactly one out-ranks the other — never A>B && B>A,
+        // and never a stalemate. A strict total order over (version, started_at,
+        // pid) guarantees both.
+        let cases = [
+            ("0.15.0", 1_000u64, 100u32),
+            ("0.15.0", 2_000, 200),
+            ("0.16.0", 1_000, 50),
+            ("", 5_000, 300),
+            ("0.15.0", 1_000, 101), // same version+time, tie-broken by pid
+        ];
+        for (av, at, ap) in cases {
+            for (bv, bt, bp) in cases {
+                if (av, at, ap) == (bv, bt, bp) {
+                    continue;
+                }
+                let a = holder_meta(av, at, ap);
+                let b = holder_meta(bv, bt, bp);
+                let a_evicts_b = should_evict_holder(av, at, ap, &b);
+                let b_evicts_a = should_evict_holder(bv, bt, bp, &a);
+                assert!(
+                    !(a_evicts_b && b_evicts_a),
+                    "mutual eviction between {av}/{at}/{ap} and {bv}/{bt}/{bp}"
+                );
+                assert!(
+                    a_evicts_b || b_evicts_a,
+                    "no decisive winner between {av}/{at}/{ap} and {bv}/{bt}/{bp}"
+                );
+            }
+        }
     }
 
     #[test]

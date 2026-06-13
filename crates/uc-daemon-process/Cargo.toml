@@ -33,6 +33,10 @@ tokio = { version = "1", features = ["time"] }
 uc-app-paths = { path = "../uc-app-paths" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Single-instance arbitration compares daemon package versions read from peer
+# PID files (`should_evict_holder`). `semver` is a pure-parse leaf — it pulls
+# nothing heavy, preserving this crate's iroh/diesel-free thin invariant.
+semver = "1"
 # Best-effort warn-level logging in the handover store (corrupt/unclearable
 # record). `tracing` is a leaf facade — it pulls nothing heavy, so the
 # iroh/diesel-free invariant of this thin crate is preserved.

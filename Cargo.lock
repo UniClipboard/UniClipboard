@@ -10080,6 +10080,7 @@ version = "0.15.0-alpha.4"
 dependencies = [
  "anyhow",
  "libc",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",

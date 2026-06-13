@@ -202,6 +202,7 @@ mod tests {
             mode,
             started_at_ms: 0,
             spawned_by: uc_daemon_process::process_metadata::DaemonSpawnOrigin::Unknown,
+            package_version: String::new(),
         }
     }
 

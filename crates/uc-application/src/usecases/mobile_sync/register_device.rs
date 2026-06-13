@@ -344,13 +344,7 @@ impl RegisterMobileShortcutDeviceUseCase {
         input: RegisterMobileShortcutDeviceInput,
     ) -> Result<RegisterMobileShortcutDeviceOutput, RegisterMobileShortcutDeviceError> {
         // 0. 标签前置校验 —— 兜底, 不依赖上层。
-        let label = input.label.trim().to_string();
-        if label.is_empty() {
-            return Err(RegisterMobileShortcutDeviceError::LabelEmpty);
-        }
-        if label.chars().count() > MAX_LABEL_LEN {
-            return Err(RegisterMobileShortcutDeviceError::LabelTooLong);
-        }
+        let label = validate_label(input.label)?;
 
         // 0.1 自定义凭据形态前置校验 —— 在 settings / minter 之前做, 让
         //     "格式不合法"快速失败,避免无谓的 IO。username 先 trim 再校验
@@ -494,11 +488,29 @@ impl RegisterMobileShortcutDeviceUseCase {
 
 // ─── helpers ────────────────────────────────────────────────────────────
 
+/// Validate and normalize a device label: trim surrounding whitespace, reject
+/// empty as [`RegisterMobileShortcutDeviceError::LabelEmpty`] and anything
+/// longer than [`MAX_LABEL_LEN`] chars as
+/// [`RegisterMobileShortcutDeviceError::LabelTooLong`], otherwise return the
+/// trimmed value. Single source of truth shared with `update_device`.
+pub(super) fn validate_label(label: String) -> Result<String, RegisterMobileShortcutDeviceError> {
+    let label = label.trim().to_string();
+    if label.is_empty() {
+        return Err(RegisterMobileShortcutDeviceError::LabelEmpty);
+    }
+    if label.chars().count() > MAX_LABEL_LEN {
+        return Err(RegisterMobileShortcutDeviceError::LabelTooLong);
+    }
+    Ok(label)
+}
+
 /// 校验自定义 username 形态:
 /// - 长度 [`MIN_USERNAME_LEN`]–[`MAX_USERNAME_LEN`]
 /// - 必须以 ASCII 字母开头(避免 Basic Auth header 解析歧义)
 /// - 只允许 `[A-Za-z0-9_]`
-fn validate_username_shape(username: &str) -> Result<(), RegisterMobileShortcutDeviceError> {
+pub(super) fn validate_username_shape(
+    username: &str,
+) -> Result<(), RegisterMobileShortcutDeviceError> {
     let len = username.chars().count();
     if len < MIN_USERNAME_LEN {
         return Err(RegisterMobileShortcutDeviceError::UsernameTooShort {
@@ -527,7 +539,9 @@ fn validate_username_shape(username: &str) -> Result<(), RegisterMobileShortcutD
 }
 
 /// 校验自定义 password 长度。**不**校验复杂度(用户选"宽松")。
-fn validate_password_length(password: &str) -> Result<(), RegisterMobileShortcutDeviceError> {
+pub(super) fn validate_password_length(
+    password: &str,
+) -> Result<(), RegisterMobileShortcutDeviceError> {
     let len = password.chars().count();
     if len < MIN_PASSWORD_LEN {
         return Err(RegisterMobileShortcutDeviceError::PasswordTooShort {

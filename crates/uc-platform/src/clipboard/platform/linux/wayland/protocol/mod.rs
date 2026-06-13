@@ -190,6 +190,57 @@ pub(super) fn default_mime_for_format(format_id: &str) -> Option<&'static str> {
     }
 }
 
+/// MIME aliases advertised for a UTF-8 plain-text payload, canonical type first.
+///
+/// Unlike X11 ICCCM (where the selection owner converts on demand), a Wayland
+/// data-control source must advertise *every* MIME a paster might negotiate
+/// over — the compositor performs no conversion. Toolkits disagree on the
+/// canonical text type: GTK / Firefox request `text/plain;charset=utf-8` and
+/// the X11 atom name `UTF8_STRING`, Qt also accepts `STRING` / `TEXT`, and
+/// older code uses a bare `text/plain`. Advertising only one of these makes the
+/// selection invisible to apps that ask for the others — Firefox's Wayland
+/// address bar pastes nothing from a bare `text/plain` offer. Mirror
+/// `wl-clipboard` (and the X11 writer's alias set) by offering the whole family,
+/// all backed by the same bytes.
+pub(super) const TEXT_PLAIN_MIME_ALIASES: &[&str] = &[
+    "text/plain;charset=utf-8",
+    "text/plain;charset=UTF-8",
+    "text/plain",
+    "UTF8_STRING",
+    "STRING",
+    "TEXT",
+];
+
+/// Returns true when `mime` denotes a UTF-8 plain-text payload that should be
+/// advertised under the full [`TEXT_PLAIN_MIME_ALIASES`] set.
+///
+/// Clipboard text synced by the app is always UTF-8, so a bare `text/plain`
+/// (no charset) is treated as UTF-8 and still expands to the charset-qualified
+/// and `UTF8_STRING` aliases.
+pub(super) fn is_text_plain_mime(mime: &str) -> bool {
+    let normalized = mime.trim().to_ascii_lowercase();
+    normalized.starts_with("text/plain")
+        || matches!(normalized.as_str(), "utf8_string" | "string" | "text")
+}
+
+/// Resolve the ordered list of MIME types to advertise for a single
+/// representation whose primary MIME is `primary_mime`.
+///
+/// Plain-text payloads (see [`is_text_plain_mime`]) expand to the full
+/// [`TEXT_PLAIN_MIME_ALIASES`] family; every other format yields just its own
+/// type. The first entry is the canonical/preferred type. Shared between the
+/// [`wlr`] and [`ext`] write paths.
+pub(super) fn offer_mimes_for(primary_mime: &str) -> Vec<String> {
+    if is_text_plain_mime(primary_mime) {
+        TEXT_PLAIN_MIME_ALIASES
+            .iter()
+            .map(|m| (*m).to_string())
+            .collect()
+    } else {
+        vec![primary_mime.to_string()]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +256,47 @@ mod tests {
         assert_eq!(default_mime_for_format("image"), Some("image/png"));
         assert_eq!(default_mime_for_format("files"), Some("text/uri-list"));
         assert_eq!(default_mime_for_format("unknown"), None);
+    }
+
+    #[test]
+    fn bare_text_plain_expands_to_full_utf8_alias_set() {
+        // The bug: a remote text push normalizes to a bare `text/plain` rep, and
+        // the Wayland writer used to advertise only that. Firefox's address bar
+        // requests `text/plain;charset=utf-8` / `UTF8_STRING` and pasted nothing.
+        let offered = offer_mimes_for("text/plain");
+        assert!(offered.contains(&"text/plain;charset=utf-8".to_string()));
+        assert!(offered.contains(&"UTF8_STRING".to_string()));
+        assert!(offered.contains(&"text/plain".to_string()));
+        // Canonical type must come first so paste-priority pickers prefer it.
+        assert_eq!(
+            offered.first().map(String::as_str),
+            Some("text/plain;charset=utf-8")
+        );
+    }
+
+    #[test]
+    fn charset_qualified_text_also_expands() {
+        let offered = offer_mimes_for("text/plain;charset=utf-8");
+        assert_eq!(offered.len(), TEXT_PLAIN_MIME_ALIASES.len());
+        assert!(offered.contains(&"UTF8_STRING".to_string()));
+    }
+
+    #[test]
+    fn non_text_mimes_are_left_untouched() {
+        assert_eq!(offer_mimes_for("text/html"), vec!["text/html".to_string()]);
+        assert_eq!(offer_mimes_for("image/png"), vec!["image/png".to_string()]);
+        assert_eq!(
+            offer_mimes_for("text/uri-list"),
+            vec!["text/uri-list".to_string()]
+        );
+    }
+
+    #[test]
+    fn x11_atom_names_count_as_text() {
+        assert!(is_text_plain_mime("UTF8_STRING"));
+        assert!(is_text_plain_mime("STRING"));
+        assert!(is_text_plain_mime("TEXT"));
+        assert!(!is_text_plain_mime("text/html"));
+        assert!(!is_text_plain_mime("image/png"));
     }
 }

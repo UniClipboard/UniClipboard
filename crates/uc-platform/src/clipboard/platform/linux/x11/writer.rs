@@ -115,6 +115,11 @@ pub(super) fn install_snapshot(
         // without the charset suffix still get bytes (mirrors what wlr /
         // ext data-control sources do via their multi-offer dance, and
         // what clipboard_rs's `file_uri_list_to_clipboard_data` did for X11).
+        // A bare `text/plain` is treated as UTF-8 (clipboard text synced by the
+        // app is always UTF-8) and expands to the SAME full alias set as the
+        // charset-qualified form — otherwise Firefox / GTK, which request
+        // `UTF8_STRING` / `text/plain;charset=utf-8`, paste nothing from a
+        // remote-push rep that normalized to bare `text/plain`.
         //
         // 用 `rep_bytes` 而非 `expect_inline_bytes`：远端 push 的 image rep 由
         // `apply_inbound::materializer` 合成为 `LocalFile` source（指向 blob cache
@@ -134,7 +139,7 @@ pub(super) fn install_snapshot(
             }
         };
         match mime.as_str() {
-            "text/plain;charset=utf-8" | "text/plain;charset=UTF-8" => {
+            "text/plain;charset=utf-8" | "text/plain;charset=UTF-8" | "text/plain" => {
                 payloads.entry(atoms.UTF8_STRING).or_insert(bytes.clone());
                 payloads.entry(atoms.STRING).or_insert(bytes.clone());
                 payloads.entry(atoms.TEXT).or_insert(bytes.clone());
@@ -145,11 +150,6 @@ pub(super) fn install_snapshot(
                 payloads
                     .entry(atoms.TEXT_PLAIN_UTF8_BIG)
                     .or_insert(bytes.clone());
-            }
-            "text/plain" => {
-                payloads.entry(atoms.TEXT_PLAIN).or_insert(bytes.clone());
-                payloads.entry(atoms.TEXT).or_insert(bytes.clone());
-                payloads.entry(atoms.STRING).or_insert(bytes.clone());
             }
             _ => {}
         }

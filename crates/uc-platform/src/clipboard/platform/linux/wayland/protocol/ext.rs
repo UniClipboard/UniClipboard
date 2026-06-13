@@ -664,35 +664,43 @@ fn handle_write(
     let mut payloads: HashMap<String, Arc<Vec<u8>>> = HashMap::new();
 
     for rep in &snapshot.representations {
-        let mime_str = rep
+        let Some(primary_mime) = rep
             .mime
             .as_ref()
             .map(|m| m.0.clone())
-            .or_else(|| super::default_mime_for_format(&rep.format_id).map(String::from));
+            .or_else(|| super::default_mime_for_format(&rep.format_id).map(String::from))
+        else {
+            continue;
+        };
 
-        if let Some(mime) = mime_str {
+        // 用 `rep_bytes` 而非 `expect_inline_bytes`：远端 push 的 image rep 由
+        // `apply_inbound::materializer` 合成为 `LocalFile` source（指向 blob cache
+        // 文件），直接调 `expect_inline_bytes` 会 panic（见
+        // `clipboard::payload::rep_bytes` 注释）。读盘失败时跳过该 rep + warn,
+        // 与 macOS / Windows 平台同语义。
+        let bytes = match crate::clipboard::payload::rep_bytes(rep) {
+            Ok(b) => Arc::new(b.into_owned()),
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    format_id = %rep.format_id,
+                    mime = %primary_mime,
+                    "ext-data-control write: read LocalFile rep failed; skipping this mime"
+                );
+                continue;
+            }
+        };
+
+        // Advertise every MIME alias a paster might request (text expands to the
+        // full UTF-8 family) so apps like Firefox that only negotiate
+        // `text/plain;charset=utf-8` / `UTF8_STRING` can paste. All aliases share
+        // the same payload bytes.
+        for mime in super::offer_mimes_for(&primary_mime) {
             if payloads.contains_key(&mime) {
                 continue;
             }
-            // 用 `rep_bytes` 而非 `expect_inline_bytes`：远端 push 的 image rep 由
-            // `apply_inbound::materializer` 合成为 `LocalFile` source（指向 blob cache
-            // 文件），直接调 `expect_inline_bytes` 会 panic（见
-            // `clipboard::payload::rep_bytes` 注释）。读盘失败时跳过该 rep + warn,
-            // 与 macOS / Windows 平台同语义。
-            let bytes = match crate::clipboard::payload::rep_bytes(rep) {
-                Ok(b) => b.into_owned(),
-                Err(err) => {
-                    warn!(
-                        error = %err,
-                        format_id = %rep.format_id,
-                        mime = %mime,
-                        "ext-data-control write: read LocalFile rep failed; skipping this mime"
-                    );
-                    continue;
-                }
-            };
             source.offer(mime.clone());
-            payloads.insert(mime, Arc::new(bytes));
+            payloads.insert(mime, Arc::clone(&bytes));
         }
     }
 

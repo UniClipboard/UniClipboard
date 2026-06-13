@@ -154,15 +154,17 @@ Alert 区域展示，不再有专门的状态条。
 
 - **Info 视图（默认）** —— 展示当前连接信息：base URL（旁边带网卡
   下拉，可重新挑要对外宣告的 IP），以及一张 QR ——「服务器只存
-  Argon2 哈希，QR 没法再凭空拼出，点 Change password 签发新密码后
-  再来扫」的占位；改密成功后才换成真正的 `uniclipboard://connect`
+  Argon2 哈希，QR 没法再凭空拼出，点 Edit device 设置新密码后
+  再来扫」的占位；改过凭据后才换成真正的 `uniclipboard://connect`
   二维码，并在下方多出一块 amber **凭据（Credentials）** 区域，
-  自带一键 **备份** 按钮。底部按钮：左边 **Change password**，
+  自带一键 **备份** 按钮。底部按钮：左边 **Edit device**，
   右边 **Revoke** + **Done**。
-- **Rotate 视图** —— 点 **Change password** 进入。可以可选输入新
-  密码（留空则自动生成），提交成功后 dialog 会自动切回 Info 视图，
-  顺手把新 QR / amber 凭据呈现出来，方便立刻扫码 / 复制。旧的
-  Argon2id 哈希被原子失效，旧凭据立即停用。
+- **Edit 视图** —— 点 **Edit device** 进入。可以修改 label、用户名
+  和/或密码（密码留空表示保持不变，点 **Regenerate** 自动生成，或
+  输入新密码 —— 至少 8 位）。改用户名会重铸密码，因此设备需要重新
+  配对。提交成功后 dialog 会自动切回 Info 视图，顺手把新 QR / amber
+  凭据呈现出来，方便立刻扫码 / 复制。密码变更时，旧的 Argon2id 哈希
+  被原子失效，旧凭据立即停用。
 
 点 **Revoke** 会删除设备记录。携带旧凭据的后续请求会拿到
 `401 Unauthorized`。

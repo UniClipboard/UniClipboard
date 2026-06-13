@@ -153,7 +153,7 @@ uniclip start                                # 把 daemon 拉回来
 
 <Callout type="info">
   明文密码 **只显示一次**。丢了就在 **移动端同步** 设备列表里点对应
-  设备卡片，在弹出的 dialog 里点 **修改密码（Change password）**，
+  设备卡片，在弹出的 dialog 里点 **Edit device** 设置或重新生成密码，
   或 `uniclip mobile-sync revoke <id>` + `add` 重新
   签发 —— 没法把原始密码再拿回来。
 </Callout>
@@ -422,14 +422,15 @@ tailnet 地址。
 | -------------- | ----------------------------------------- | ---------------------------------------- |
 | 列出已配对     | 设备页 → 移动端同步面板                   | `uniclip mobile-sync status`             |
 | 再加一台       | 移动端同步面板 → **Add device**           | `uniclip mobile-sync add --label "…"`    |
-| 轮换密码       | 点设备卡片 → dialog → **Change password** | _目前只 GUI_；签新的并更新手机端         |
+| 编辑设备       | 点设备卡片 → dialog → **Edit device**（label / 用户名 / 密码） | _目前只 GUI_；签新的并重新配对手机端     |
 | 吊销一台设备   | 点设备卡片 → dialog → **Revoke**          | `uniclip mobile-sync revoke <device-id>` |
 | 关闭整个功能   | 配置 modal → 关闭总开关                   | `uniclip mobile-sync disable`            |
 | 查当前监听 URL | 移动端同步面板状态条                      | `uniclip mobile-sync status`             |
 
-**轮换密码** 会签发一个新的一次性密码，并原子失效旧的 Argon2id 哈希。
-旧凭据立即停用。需要把新密码同步更新到手机端（UniClipboard iOS
-App、快捷指令或其他客户端）。
+**编辑设备** 可以在 **Edit device** 视图里修改 label、用户名和/或密码。
+设置或重新生成密码会签发一个新的一次性密码，并原子失效旧的 Argon2id
+哈希；改用户名同样会重铸密码。旧凭据立即停用，需要把新凭据同步更新
+到手机端（UniClipboard iOS App、快捷指令或其他客户端）。
 
 **吊销** 会删除设备记录。携带旧凭据的后续请求会拿到 `401 Unauthorized`。
 

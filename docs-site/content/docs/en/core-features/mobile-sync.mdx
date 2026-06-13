@@ -172,9 +172,9 @@ are optional and default to auto-mint.
 
 <Callout type="info">
   The plaintext password is shown **once**. If the user loses it,
-  click the device card on the **Mobile sync** grid and press
-  **Change password** inside the dialog (or
-  `uniclip mobile-sync revoke <id>` + `add`) — there
+  click the device card on the **Mobile sync** grid, press
+  **Edit device** inside the dialog and set or regenerate the password
+  (or `uniclip mobile-sync revoke <id>` + `add`) — there
   is no way to retrieve the original.
 </Callout>
 
@@ -477,15 +477,17 @@ the Tailscale "Machines" list and confirm a **direct** connection
 | -------------------- | ------------------------------------------------ | ------------------------------------------------------ |
 | List paired devices  | Devices page → Mobile sync panel                 | `uniclip mobile-sync status`                           |
 | Add another device   | Mobile sync panel → **Add device**               | `uniclip mobile-sync add --label "…"`                  |
-| Rotate password      | Click device card → dialog → **Change password** | _GUI only today_; mint a new one and re-edit the phone |
+| Edit a device        | Click device card → dialog → **Edit device** (label / username / password) | _GUI only today_; mint a new one and re-pair the phone |
 | Revoke a device      | Click device card → dialog → **Revoke**          | `uniclip mobile-sync revoke <device-id>`               |
 | Disable feature      | Configure dialog → switch off                    | `uniclip mobile-sync disable`                          |
 | Inspect listener URL | Mobile sync panel header                         | `uniclip mobile-sync status`                           |
 
-**Rotating** mints a fresh one-time password and atomically
-invalidates the previous Argon2id hash. The old credentials stop
-working immediately. Update the phone (UniClipboard iOS App,
-Shortcut, or other client) with the new password.
+**Editing** lets you change the label, username, and/or password from
+the **Edit device** view. Setting or regenerating the password mints a
+fresh one-time password and atomically invalidates the previous
+Argon2id hash; changing the username reissues the password too. The old
+credentials stop working immediately, so update the phone (UniClipboard
+iOS App, Shortcut, or other client) with the new credentials.
 
 **Revoking** removes the device record. Any subsequent request with
 the old credentials gets `401 Unauthorized`.

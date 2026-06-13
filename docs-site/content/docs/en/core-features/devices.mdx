@@ -199,17 +199,20 @@ has two views:
 - **Info view (default)** — shows the current connection: base URL
   (with a network-interface dropdown so you can re-pick the
   advertised IP) and either a QR placeholder ("server only stores a
-  password hash — click Change password to mint a new one and scan
-  it here") or, if you just rotated, the freshly-minted
+  password hash — click Edit device to set a new one and scan
+  it here") or, if you just changed the credentials, the freshly-minted
   `uniclipboard://connect` QR plus an amber **Credentials** zone
-  with a one-click **Backup** button. Footer buttons: **Change
-  password** (left), **Revoke** + **Done** (right).
-- **Rotate view** — opened by pressing **Change password**. Lets
-  you optionally type a new password (empty → auto-generated) and
-  submit. On success the dialog flips back to Info view with the
-  new QR / amber credentials visible, so you can scan or copy
-  immediately. The old Argon2id hash is invalidated atomically; the
-  old credentials stop working immediately.
+  with a one-click **Backup** button. Footer buttons: **Edit
+  device** (left), **Revoke** + **Done** (right).
+- **Edit view** — opened by pressing **Edit device**. Lets you change
+  the label, username, and/or password (leave the password blank to
+  keep it, press **Regenerate** for an auto-generated one, or type a
+  new one — at least 8 characters). Changing the username reissues the
+  password, so the device must be re-paired. On success the dialog
+  flips back to Info view with the new QR / amber credentials visible,
+  so you can scan or copy immediately. When the password changes, the
+  old Argon2id hash is invalidated atomically and the old credentials
+  stop working immediately.
 
 Pressing **Revoke** removes the device record. Subsequent requests
 with those credentials get `401 Unauthorized`.

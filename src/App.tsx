@@ -211,16 +211,21 @@ const AppContent = ({
 
   const resolvedEncryptionStatus = encryptionStatus ?? encryptionData ?? null
 
-  // Retry without restarting the app: re-run the WS bootstrap (idempotent —
-  // resolves immediately if already connected), force a fresh session token,
-  // then re-pull the encryption status. This recovers the common #995 case
-  // where only the session token had gone stale.
+  // Retry RESTARTS the daemon, then reconnects. A plain WS reconnect can never
+  // recover from a daemon that is wedged or left over from a previous version
+  // (the post-update "had to kill uniclipd by hand" case): restart_daemon stops
+  // THIS profile's pid-file daemon, waits for it to exit, and spawns a fresh one
+  // — whose instance-lock eviction reclaims the lock from any stuck holder. A
+  // missing pid file is fine (nothing to stop → just start). We then re-run the
+  // WS bootstrap, force a fresh session token, and re-pull encryption status.
   const handleBootstrapRetry = useCallback(() => {
     bootstrapRetryingRef.current = true
     setLoadingTimedOut(false)
     setBootEncryptionError(null)
     setBootstrapFailure(null)
-    connectDaemonWs()
+    commands
+      .restartDaemon()
+      .then(() => connectDaemonWs())
       .then(() => {
         setDaemonBootstrapReady(true)
         return daemonClient.refreshSession()

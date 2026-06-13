@@ -541,60 +541,68 @@ pub async fn restart_local_daemon(
             )
         })?;
 
-    // ── 1. 读 PID 文件，校验身份 ──────────────────────────────────
-    let metadata = read_pid_metadata()
-        .map_err(|e| DaemonBootstrapError::Probe(e.context("failed to read daemon PID metadata")))?
-        .ok_or_else(|| {
-            DaemonBootstrapError::Probe(anyhow::anyhow!(
-                "daemon PID file not found — daemon may not be running"
-            ))
-        })?;
+    // ── 1. 读 PID 文件（可能不存在）──────────────────────────────
+    // Retry-from-bootstrap-failure may run with NO daemon at all (the spawn
+    // never succeeded, or the daemon crashed and cleared its PID file). A
+    // missing PID file is therefore NOT an error here — there is simply nothing
+    // to stop, so we skip straight to spawning a fresh daemon ("restart"
+    // degrades to "start"). The network-settings caller always has a running
+    // daemon, so it keeps the stop→spawn path.
+    let metadata = read_pid_metadata().map_err(|e| {
+        DaemonBootstrapError::Probe(e.context("failed to read daemon PID metadata"))
+    })?;
 
-    if matches!(metadata.mode, DaemonProcessMode::InProcess) {
-        return Err(DaemonBootstrapError::IncompatibleDaemon {
-            details: format!(
-                "cannot restart in-process daemon (pid {}); quit the hosting GUI first",
-                metadata.pid
-            ),
-        });
-    }
-
-    let need_terminate = matches!(verify_pid_identity(&metadata), PidVerification::Active);
-
-    if need_terminate {
-        // ── 2. SIGTERM 旧 daemon ──────────────────────────────────
-        tracing::info!(pid = metadata.pid, "restart_local_daemon: sending SIGTERM");
-        if let Err(e) = terminate_local_daemon_pid(metadata.pid) {
-            tracing::warn!(pid = metadata.pid, error = %e, "SIGTERM failed, proceeding to spawn");
+    if let Some(metadata) = &metadata {
+        if matches!(metadata.mode, DaemonProcessMode::InProcess) {
+            return Err(DaemonBootstrapError::IncompatibleDaemon {
+                details: format!(
+                    "cannot restart in-process daemon (pid {}); quit the hosting GUI first",
+                    metadata.pid
+                ),
+            });
         }
 
-        // ── 3. 等待旧 daemon 进程真正退出 ────────────────────────
-        // HTTP 端点消失 ≠ 进程退出。daemon graceful shutdown 先停
-        // HTTP server，再关 iroh/释放 instance lock。必须等进程死
-        // 透，否则新 daemon 拿不到锁或端口。
-        let exit_timeout = Duration::from_secs(10);
-        let deadline = tokio::time::Instant::now() + exit_timeout;
-        loop {
-            if !uc_daemon_process::process_metadata::is_pid_alive(metadata.pid) {
-                tracing::info!(
-                    pid = metadata.pid,
-                    "restart_local_daemon: old daemon process exited"
-                );
-                break;
+        if matches!(verify_pid_identity(metadata), PidVerification::Active) {
+            // ── 2. SIGTERM 旧 daemon ──────────────────────────────
+            tracing::info!(pid = metadata.pid, "restart_local_daemon: sending SIGTERM");
+            if let Err(e) = terminate_local_daemon_pid(metadata.pid) {
+                tracing::warn!(pid = metadata.pid, error = %e, "SIGTERM failed, proceeding to spawn");
             }
-            if tokio::time::Instant::now() >= deadline {
-                tracing::warn!(
-                    pid = metadata.pid,
-                    "restart_local_daemon: old daemon did not exit within timeout; spawning anyway"
-                );
-                break;
+
+            // ── 3. 等待旧 daemon 进程真正退出 ────────────────────
+            // HTTP 端点消失 ≠ 进程退出。daemon graceful shutdown 先停
+            // HTTP server，再关 iroh/释放 instance lock。必须等进程死
+            // 透，否则新 daemon 拿不到锁或端口。若它卡死没在超时内退出，
+            // 新 daemon 的 instance-lock eviction 会把它 SIGKILL 驱逐。
+            let exit_timeout = Duration::from_secs(10);
+            let deadline = tokio::time::Instant::now() + exit_timeout;
+            loop {
+                if !uc_daemon_process::process_metadata::is_pid_alive(metadata.pid) {
+                    tracing::info!(
+                        pid = metadata.pid,
+                        "restart_local_daemon: old daemon process exited"
+                    );
+                    break;
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    tracing::warn!(
+                        pid = metadata.pid,
+                        "restart_local_daemon: old daemon did not exit within timeout; \
+                         spawning anyway (new daemon will evict it via the instance lock)"
+                    );
+                    break;
+                }
+                tokio::time::sleep(HEALTH_POLL_INTERVAL).await;
             }
-            tokio::time::sleep(HEALTH_POLL_INTERVAL).await;
+        } else {
+            tracing::info!(
+                pid = metadata.pid,
+                "restart_local_daemon: PID is stale, spawning fresh daemon"
+            );
         }
     } else {
         tracing::info!(
-            pid = metadata.pid,
-            "restart_local_daemon: PID is stale, spawning fresh daemon"
+            "restart_local_daemon: no PID file — nothing to stop, spawning fresh daemon"
         );
     }
 

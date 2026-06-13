@@ -68,6 +68,7 @@ import {
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -294,7 +295,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
             </div>
           </DialogHeader>
 
-          <div className="space-y-5">
+          <DialogBody className="space-y-5">
             {(settings?.lanListenerError || settingsError) && (
               <div className="space-y-2">
                 {settings?.lanListenerError && (
@@ -413,7 +414,7 @@ const MobileSyncSettingsDialog: React.FC<Props> = ({ open, onOpenChange, onSetti
                 unavailableLabel={t('devices.mobileSync.lanListener.currentUrl.unavailable')}
               />
             </DialogSection>
-          </div>
+          </DialogBody>
 
           <DialogFooter className="!flex-row !items-center !justify-between">
             <div

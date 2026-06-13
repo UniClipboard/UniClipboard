@@ -45,6 +45,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -192,7 +193,7 @@ const DeviceSettingsDialog: React.FC<DeviceSettingsDialogProps> = ({
           </div>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <DialogBody className="space-y-5">
           {/* ── 连接信息 ──────────────────────────────────────── */}
           <DialogSection
             title={t('devices.settings.sections.connection', { defaultValue: '连接信息' })}
@@ -288,7 +289,7 @@ const DeviceSettingsDialog: React.FC<DeviceSettingsDialogProps> = ({
               </>
             )}
           </DialogSection>
-        </div>
+        </DialogBody>
 
         <DialogFooter className="!flex-row !justify-between">
           <Button variant="destructive" size="sm" onClick={() => onUnpair(deviceId)}>

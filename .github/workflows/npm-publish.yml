@@ -2,6 +2,8 @@ name: 'npm Publish'
 run-name: >-
   ${{ github.event_name == 'release'
     && format('npm-publish-{0}', github.event.release.tag_name)
+    || github.event_name == 'repository_dispatch'
+    && format('npm-publish-{0}', github.event.client_payload.version)
     || format('npm-publish-manual-{0}', inputs.version) }}
 
 # Publish the CLI to npm only after a release transitions to `published`,
@@ -16,18 +18,20 @@ run-name: >-
 #
 # Channel mapping (same pattern as snap.yml / copr.yml): alpha releases are
 # auto-published by release.yml with GITHUB_TOKEN, so their release.published
-# event never fires other workflows — release.yml dispatches this workflow
-# explicitly (dispatch-npm-alpha). beta / rc / stable are left as drafts and
-# published by a human; that release.published event lands here. The version
-# suffix maps to the npm dist-tag (X.Y.Z-alpha.N → `alpha`), and only stable
-# gets `latest`.
+# event never fires other workflows — release.yml sends repository_dispatch and
+# this workflow remains the top-level run that npm trusted publishing validates.
+# beta / rc / stable are left as drafts and published by a human; that
+# release.published event lands here. The version suffix maps to the npm
+# dist-tag (X.Y.Z-alpha.N → `alpha`), and only stable gets `latest`.
 #
-# `workflow_dispatch` doubles as the alpha auto-publish entry (dispatched by
-# release.yml) and the manual debugging / re-run path. Already-published
-# package versions are skipped, so the whole job is idempotent.
+# `workflow_dispatch` is the manual debugging / re-run path.
+# Already-published package versions are skipped, so the whole job is
+# idempotent.
 on:
   release:
     types: [published]
+  repository_dispatch:
+    types: [npm-publish]
   workflow_dispatch:
     inputs:
       version:
@@ -41,9 +45,10 @@ jobs:
   publish:
     name: Publish npm packages
     # The release.published path serves manually published releases
-    # (beta / rc / stable); alpha arrives via release.yml's explicit dispatch
-    # instead, so skip it here to avoid double-publishing on re-publish.
-    if: github.event_name == 'workflow_dispatch' || !contains(github.event.release.tag_name, '-alpha')
+    # (beta / rc / stable); alpha arrives via release.yml's repository_dispatch
+    # instead, so skip alpha release events to avoid double-publishing on
+    # re-publish.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' || !contains(github.event.release.tag_name, '-alpha')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,10 +60,13 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           TAG: ${{ github.event.release.tag_name }}
+          CLIENT_PAYLOAD_VERSION: ${{ github.event.client_payload.version }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             VERSION="${INPUT_VERSION#v}"
+          elif [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            VERSION="${CLIENT_PAYLOAD_VERSION#v}"
           else
             VERSION="${TAG#v}"
           fi
@@ -82,11 +90,10 @@ jobs:
         uses: actions/checkout@v6
         with:
           # Release path: pin to the release tag so the launcher / assembly
-          # script match the binaries being published. Dispatch path: use the
-          # ref the workflow was dispatched on — older tags predate
-          # scripts/build-npm-packages.mjs and npm/, so checking out the tag
-          # would break exactly the debugging runs dispatch exists for.
-          ref: ${{ github.event_name == 'release' && format('v{0}', steps.resolve.outputs.version) || github.ref }}
+          # script match the binaries being published. Manual dispatch path:
+          # use the selected ref so older debugging runs can choose a branch
+          # that contains the npm assembly script.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || format('v{0}', steps.resolve.outputs.version) }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

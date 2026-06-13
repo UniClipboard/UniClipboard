@@ -99,12 +99,22 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: lts/*
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Update npm for trusted publishing
         # OIDC trusted publishing requires npm >= 11.5.1; pin to latest to be
         # explicit rather than relying on whatever the runner image bundles.
         run: npm install -g npm@latest && npm --version
+
+      - name: Prepare npm trusted publishing config
+        run: |
+          NPM_CONFIG_USERCONFIG="${RUNNER_TEMP}/npm-trusted-publish.npmrc"
+          {
+            echo "registry=https://registry.npmjs.org/"
+          } > "$NPM_CONFIG_USERCONFIG"
+          echo "NPM_CONFIG_USERCONFIG=$NPM_CONFIG_USERCONFIG" >> "$GITHUB_ENV"
+          echo "NODE_AUTH_TOKEN=" >> "$GITHUB_ENV"
+          unset NODE_AUTH_TOKEN
+          npm config get registry
 
       - name: Download CLI release assets
         env:

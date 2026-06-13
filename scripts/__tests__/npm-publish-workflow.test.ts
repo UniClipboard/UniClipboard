@@ -28,4 +28,16 @@ describe('npm publish workflow trigger', () => {
     )
     expect(npmWorkflow).toContain('"repository_dispatch"')
   })
+
+  it('removes setup-node token auth before trusted publishing', () => {
+    const npmWorkflow = readWorkflow('npm-publish.yml')
+
+    expect(npmWorkflow).toContain(
+      'NPM_CONFIG_USERCONFIG="${RUNNER_TEMP}/npm-trusted-publish.npmrc"'
+    )
+    expect(npmWorkflow).toContain('unset NODE_AUTH_TOKEN')
+    expect(npmWorkflow).not.toContain('registry-url:')
+    expect(npmWorkflow).not.toContain('_authToken')
+    expect(npmWorkflow).toContain('Publish to npm')
+  })
 })

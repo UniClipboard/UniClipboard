@@ -251,10 +251,15 @@ fn disable_webkit_dmabuf_on_wayland() {
         return;
     }
 
-    // SAFETY: called at the very start of `run()` on the main thread, before
-    // any worker thread is spawned and before GTK/WebKit initialize — there are
-    // no concurrent env readers, which is the data race `set_var` is `unsafe`
-    // about since Rust 1.84.
+    // SAFETY: `set_var` is `unsafe` (since Rust 1.84) because it races any
+    // thread that concurrently reads or writes the environment. This runs on
+    // the main thread; the only other thread alive here is the tracing
+    // JSON-writer worker spawned by `init_gui_tracing()` earlier in `run()`,
+    // which merely drains a log channel to disk and never touches the
+    // environment. Tracing's own env reads (`LogProfile::from_env`, app-data
+    // path lookup) already ran synchronously on this thread before that worker
+    // existed, and GTK/WebKit have not initialized — so nothing reads the
+    // environment concurrently with this write.
     unsafe { std::env::set_var(VAR, "1") };
     info!(
         var = VAR,

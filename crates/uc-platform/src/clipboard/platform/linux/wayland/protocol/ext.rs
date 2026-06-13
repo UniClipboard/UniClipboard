@@ -651,9 +651,13 @@ fn handle_write(
         .clone();
 
     if snapshot.representations.is_empty() {
-        if let Some(prev) = state.active_source.take() {
-            prev.source.destroy();
-        }
+        // Clear the selection. Do NOT destroy the previous source eagerly:
+        // `set_selection(None)` makes the compositor cancel it, and the
+        // `Cancelled` handler destroys it. An eager destroy here used to make
+        // the compositor emit an extra `Selection { id: None }` event on top of
+        // the clear, desyncing `self_echo_pending` (see the replace path below
+        // for the full self-deadlock failure mode).
+        state.active_source = None;
         device.set_selection(None);
         state.cached_snapshot = None;
         state.self_echo_pending = state.self_echo_pending.saturating_add(1);
@@ -709,10 +713,19 @@ fn handle_write(
         anyhow::bail!("ext-data-control write: no mime could be derived from snapshot");
     }
 
-    if let Some(prev) = state.active_source.take() {
-        prev.source.destroy();
-    }
-
+    // Do NOT destroy the previous source before installing the new one.
+    // `set_selection` atomically replaces the selection and the compositor
+    // sends `Cancelled` for the old source, which the source Dispatch handler
+    // destroys. Destroying it eagerly here made the compositor emit a spurious
+    // `Selection { id: None }` (clear) event *in addition to* the `Selection`
+    // for the new source — two self-originated selection events for a single
+    // `self_echo_pending += 1`. The clear consumed the only echo token, so the
+    // new selection (our own write) was mis-classified as an external change
+    // and read back via `build_from_offer` on this very worker thread. That
+    // read can only be served by this same thread, so it self-deadlocked until
+    // the 2s per-mime read timeout fired — blocking real apps' paste requests
+    // for seconds. Replacing without the eager destroy keeps echo accounting
+    // balanced (one self `Selection`, one token).
     device.set_selection(Some(&source));
     state.cached_snapshot = Some(snapshot);
     state.self_echo_pending = state.self_echo_pending.saturating_add(1);
@@ -894,14 +907,24 @@ impl Dispatch<ExtDataControlSourceV1, ()> for WorkerState {
                 }
             }
             ext_data_control_source_v1::Event::Cancelled => {
-                if let Some(active) = &state.active_source {
-                    if active.source.id() == source.id() {
-                        debug!("ext-data-control worker: source cancelled by compositor");
-                        if let Some(prev) = state.active_source.take() {
-                            prev.source.destroy();
-                        }
-                    }
+                // A source is cancelled either because another client took over
+                // the selection, or because we replaced our own source via a
+                // fresh `set_selection`. Destroy it in both cases to release the
+                // proxy. Only drop `active_source` when the *current* source
+                // lost the selection; a cancelled *previous* source is just our
+                // own replace cleanup and must not disturb the live one.
+                let is_active = state
+                    .active_source
+                    .as_ref()
+                    .map(|active| active.source.id() == source.id())
+                    .unwrap_or(false);
+                if is_active {
+                    debug!("ext-data-control worker: active source cancelled by compositor");
+                    state.active_source = None;
+                } else {
+                    debug!("ext-data-control worker: replaced source cancelled — cleaning up");
                 }
+                source.destroy();
             }
             _ => {}
         }

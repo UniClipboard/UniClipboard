@@ -214,13 +214,36 @@ pub(super) const TEXT_PLAIN_MIME_ALIASES: &[&str] = &[
 /// Returns true when `mime` denotes a UTF-8 plain-text payload that should be
 /// advertised under the full [`TEXT_PLAIN_MIME_ALIASES`] set.
 ///
-/// Clipboard text synced by the app is always UTF-8, so a bare `text/plain`
-/// (no charset) is treated as UTF-8 and still expands to the charset-qualified
-/// and `UTF8_STRING` aliases.
+/// Accepts the X11 atom-name aliases (`UTF8_STRING` / `STRING` / `TEXT`) and
+/// `text/plain` whose charset is either absent or `utf-8`. Clipboard text
+/// synced by the app is always UTF-8, so a bare `text/plain` (no charset) is
+/// treated as UTF-8. A `text/plain` carrying any other charset (e.g. GBK,
+/// ISO-8859-1) is rejected — expanding it to the UTF-8 alias family would
+/// re-advertise non-UTF-8 bytes as `UTF8_STRING` / `text/plain;charset=utf-8`
+/// and corrupt the paste.
 pub(super) fn is_text_plain_mime(mime: &str) -> bool {
     let normalized = mime.trim().to_ascii_lowercase();
-    normalized.starts_with("text/plain")
-        || matches!(normalized.as_str(), "utf8_string" | "string" | "text")
+
+    // X11 atom-name aliases always denote UTF-8 plain text.
+    if matches!(normalized.as_str(), "utf8_string" | "string" | "text") {
+        return true;
+    }
+
+    // Split the media type from its parameters; require exactly `text/plain`.
+    let mut parts = normalized.split(';').map(str::trim);
+    if parts.next() != Some("text/plain") {
+        return false;
+    }
+
+    // A charset parameter, if present, must be UTF-8. Absence => UTF-8.
+    for param in parts {
+        if let Some(charset) = param.strip_prefix("charset=") {
+            if charset != "utf-8" {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Resolve the ordered list of MIME types to advertise for a single
@@ -298,5 +321,34 @@ mod tests {
         assert!(is_text_plain_mime("TEXT"));
         assert!(!is_text_plain_mime("text/html"));
         assert!(!is_text_plain_mime("image/png"));
+    }
+
+    #[test]
+    fn non_utf8_text_plain_is_rejected() {
+        // A non-UTF-8 charset must NOT expand to the UTF-8 alias family —
+        // otherwise its bytes would be advertised as UTF8_STRING /
+        // text/plain;charset=utf-8 and corrupt paste.
+        assert!(!is_text_plain_mime("text/plain;charset=gbk"));
+        assert!(!is_text_plain_mime("text/plain;charset=iso-8859-1"));
+        assert!(!is_text_plain_mime("text/plain; charset=GBK"));
+        // The old prefix check false-matched this; the parser rejects it.
+        assert!(!is_text_plain_mime("text/plaintext"));
+
+        // Bare and explicit utf-8 still count; a non-charset param is ignored.
+        assert!(is_text_plain_mime("text/plain"));
+        assert!(is_text_plain_mime("text/plain;charset=utf-8"));
+        assert!(is_text_plain_mime("text/plain;charset=UTF-8"));
+        assert!(is_text_plain_mime("text/plain; charset=utf-8"));
+        assert!(is_text_plain_mime("text/plain;format=flowed"));
+
+        // The expansion path stays intact for accepted variants.
+        assert_eq!(
+            offer_mimes_for("text/plain;charset=gbk"),
+            vec!["text/plain;charset=gbk".to_string()]
+        );
+        assert_eq!(
+            offer_mimes_for("text/plain").len(),
+            TEXT_PLAIN_MIME_ALIASES.len()
+        );
     }
 }

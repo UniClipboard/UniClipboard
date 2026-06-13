@@ -7,7 +7,8 @@ use crate::http::enveloped::enveloped_request;
 use crate::DaemonConnectionState;
 use uc_daemon_contract::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
-    RegisterMobileDeviceRequest, RegisterMobileDeviceResultDto, UpdateMobileSyncSettingsRequest,
+    RegisterMobileDeviceRequest, RegisterMobileDeviceResultDto, UpdateMobileDeviceRequest,
+    UpdateMobileDeviceResultDto, UpdateMobileSyncSettingsRequest,
     UpdateMobileSyncSettingsResultDto,
 };
 
@@ -87,6 +88,24 @@ impl DaemonMobileSyncClient {
     pub async fn revoke_device(&self, device_id: &str) -> Result<MobileSyncActionResultDto> {
         let path = format!("/mobile-sync/devices/{device_id}");
         self.enveloped(Method::DELETE, &path).await
+    }
+
+    /// PATCH /mobile-sync/devices/{device_id}
+    pub async fn update_device(
+        &self,
+        device_id: &str,
+        req: &UpdateMobileDeviceRequest,
+    ) -> Result<UpdateMobileDeviceResultDto> {
+        let path = format!("/mobile-sync/devices/{device_id}");
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::PATCH,
+            &path,
+            |r| r.json(req),
+        )
+        .await?)
     }
 
     /// GET /mobile-sync/lan-interfaces

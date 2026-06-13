@@ -66,6 +66,23 @@ pub const PREDECESSOR_RELEASE_BUDGET: Duration =
 /// costs nothing when the holder behaves.
 pub const LOCK_ACQUIRE_DEADLINE: Duration = double(PREDECESSOR_RELEASE_BUDGET);
 
+/// Replacement-daemon-side: grace for an EVICTED holder to release the instance
+/// lock after `SIGTERM`, before escalating to `SIGKILL` (single-instance
+/// arbitration — `instance_lock::acquire_with_deadline`).
+///
+/// Reuses [`PREDECESSOR_RELEASE_BUDGET`]: a holder evicted while cooperatively
+/// shutting down needs the same worst-case graceful teardown window as one that
+/// exits on its own, so a merely-slow (not stuck) daemon is never `SIGKILL`'d
+/// mid-teardown. A genuinely stuck holder ignores `SIGTERM` and is reclaimed by
+/// the `SIGKILL` escalation after this window.
+pub const EVICT_SIGTERM_GRACE: Duration = PREDECESSOR_RELEASE_BUDGET;
+
+/// Replacement-daemon-side: grace for the kernel to reclaim the flock after a
+/// `SIGKILL`. `SIGKILL` is uncatchable and the advisory lock is released on
+/// process death, so this covers only scheduler/teardown latency, not any
+/// in-daemon shutdown work.
+pub const EVICT_SIGKILL_GRACE: Duration = Duration::from_secs(2);
+
 /// Spawner-side: how long a fresh daemon may take from process spawn to
 /// `/health` answering, EXCLUDING any wait on a predecessor's lock (DB
 /// migrations, secure storage, iroh bind, HTTP bind).

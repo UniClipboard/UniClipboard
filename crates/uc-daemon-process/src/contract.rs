@@ -86,6 +86,39 @@ pub fn terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> 
     }
 }
 
+/// Force-kill `pid`: Unix `SIGKILL` (uncatchable, immediate), Windows
+/// `TerminateProcess` (already forceful). Used by single-instance eviction as
+/// the escalation when a `SIGTERM`'d holder does not release the instance lock
+/// within the grace window. The flock is reclaimed by the kernel the moment the
+/// process dies, so a contender parked in `flock(2)` wakes immediately after.
+pub fn force_terminate_local_daemon_pid(pid: u32) -> Result<(), TerminateDaemonError> {
+    // Same pid-0 guard as `terminate_local_daemon_pid`: a corrupted PID file
+    // reading as 0 would broadcast to the caller's whole process group.
+    if pid == 0 {
+        return Err(TerminateDaemonError(
+            "refusing to force-terminate pid 0".to_string(),
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        send_sigkill(pid)
+            .map_err(|e| TerminateDaemonError(format!("failed to force-terminate pid {pid}: {e}")))
+    }
+
+    #[cfg(windows)]
+    {
+        crate::win_process::terminate_pid(pid).map_err(TerminateDaemonError)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        Err(TerminateDaemonError(format!(
+            "process termination unsupported on this platform (pid {pid})"
+        )))
+    }
+}
+
 /// Send SIGTERM to `pid` via the raw `kill(2)` syscall. `Err` carries the OS
 /// error (`ESRCH` = no such process, `EPERM` = exists but unsignalable).
 #[cfg(unix)]
@@ -97,6 +130,23 @@ fn send_sigterm(pid: u32) -> Result<(), std::io::Error> {
         .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "pid exceeds pid_t"))?;
     // SAFETY: kill(2) has no preconditions; callers guard pid != 0.
     if unsafe { libc::kill(pid, libc::SIGTERM) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+/// Send SIGKILL to `pid` via the raw `kill(2)` syscall. `Err` carries the OS
+/// error (`ESRCH` = no such process, `EPERM` = exists but unsignalable).
+#[cfg(unix)]
+fn send_sigkill(pid: u32) -> Result<(), std::io::Error> {
+    // A pid above pid_t::MAX can only come from a corrupted PID file; the `as`
+    // cast would wrap it negative, and kill(2) on a negative pid signals the
+    // process *group* |pid| — reject before the cast.
+    let pid = libc::pid_t::try_from(pid)
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "pid exceeds pid_t"))?;
+    // SAFETY: kill(2) has no preconditions; callers guard pid != 0.
+    if unsafe { libc::kill(pid, libc::SIGKILL) } == 0 {
         Ok(())
     } else {
         Err(std::io::Error::last_os_error())

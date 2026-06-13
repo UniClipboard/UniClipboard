@@ -32,7 +32,7 @@ use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt as _, Property, Prop
 use x11rb::protocol::Event;
 use x11rb::CURRENT_TIME;
 
-use super::atoms::{
+use super::super::mime::{
     format_id_for, is_interesting_mime, is_text_mime, rfc_mime_for, text_mime_priority,
 };
 use super::connection::X11Server;

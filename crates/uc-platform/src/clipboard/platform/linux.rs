@@ -20,6 +20,12 @@
 pub(super) mod wayland;
 pub(super) mod x11;
 
+/// Shared Linux clipboard READ-path MIME mapping, used by BOTH the Wayland
+/// (`wayland::snapshot`) and X11 (`x11::reader`) backends. Default-private to
+/// the `linux` subtree; the `pub(super)` (== `pub(in ...::linux)`) helpers
+/// inside it are reachable from every descendant of `linux`.
+mod mime;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use tracing::{info, warn};

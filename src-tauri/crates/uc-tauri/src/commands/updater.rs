@@ -203,6 +203,61 @@ fn parse_channel(s: &str) -> UpdateChannel {
     }
 }
 
+/// Build the production updater endpoint list for a channel.
+///
+/// The primary host is the CDN-fronted release server; the GitHub Pages
+/// mirror is the fallback the plugin tries if the primary fails.
+fn default_updater_endpoints(channel_str: &str) -> Result<Vec<url::Url>, String> {
+    let primary: url::Url = format!("https://release.uniclipboard.app/{channel_str}.json")
+        .parse()
+        .map_err(|e| format!("Invalid primary updater URL: {e}"))?;
+    let fallback: url::Url =
+        format!("https://uniclipboard.github.io/UniClipboard/{channel_str}.json")
+            .parse()
+            .map_err(|e| format!("Invalid fallback updater URL: {e}"))?;
+    Ok(vec![primary, fallback])
+}
+
+/// Debug-only: let the local update test harness redirect the updater to a
+/// localhost manifest and verify against a throwaway dev key.
+///
+/// When `UC_UPDATE_ENDPOINT` is set, the updater points at that single
+/// manifest URL instead of the production release servers; when
+/// `UC_UPDATE_PUBKEY` is also set, signatures are verified against that
+/// minisign public key instead of the embedded production key. This drives
+/// the real download -> verify -> install -> restart path against a local
+/// server without publishing two releases — see
+/// `docs/development/local-update-loop.md`.
+///
+/// Compiled out of release builds entirely (`#[cfg(debug_assertions)]`), so
+/// shipped binaries have no env-var path to be steered at an
+/// attacker-controlled endpoint or key.
+#[cfg(debug_assertions)]
+fn apply_dev_updater_override(
+    builder: tauri_plugin_updater::UpdaterBuilder,
+    channel_str: &str,
+) -> Result<tauri_plugin_updater::UpdaterBuilder, String> {
+    let Some(endpoint) = std::env::var_os("UC_UPDATE_ENDPOINT") else {
+        return builder
+            .endpoints(default_updater_endpoints(channel_str)?)
+            .map_err(|e| e.to_string());
+    };
+    let endpoint = endpoint.to_string_lossy().into_owned();
+    let url: url::Url = endpoint
+        .parse()
+        .map_err(|e| format!("invalid UC_UPDATE_ENDPOINT {endpoint:?}: {e}"))?;
+    warn!(
+        target: "updater",
+        endpoint = %url,
+        "local-dev updater override active (UC_UPDATE_ENDPOINT)"
+    );
+    let mut builder = builder.endpoints(vec![url]).map_err(|e| e.to_string())?;
+    if let Some(pubkey) = std::env::var_os("UC_UPDATE_PUBKEY") {
+        builder = builder.pubkey(pubkey.to_string_lossy().into_owned());
+    }
+    Ok(builder)
+}
+
 /// Check for an available update on the specified (or auto-detected) channel.
 ///
 /// Crate-internal entry shared by the `check_for_update` Tauri command and
@@ -239,22 +294,16 @@ pub(crate) async fn do_check_for_update(
 
     info!(channel = %channel_str, "checking for update");
 
-    let primary_url: url::Url = format!("https://release.uniclipboard.app/{}.json", channel_str)
-        .parse()
-        .map_err(|e| format!("Invalid primary updater URL: {}", e))?;
-    let fallback_url: url::Url = format!(
-        "https://uniclipboard.github.io/UniClipboard/{}.json",
-        channel_str
-    )
-    .parse()
-    .map_err(|e| format!("Invalid fallback updater URL: {}", e))?;
-
-    let updater = app
-        .updater_builder()
-        .endpoints(vec![primary_url, fallback_url])
-        .map_err(|e| e.to_string())?
-        .build()
-        .map_err(|e| e.to_string())?;
+    let updater = {
+        let builder = app.updater_builder();
+        #[cfg(debug_assertions)]
+        let builder = apply_dev_updater_override(builder, channel_str)?;
+        #[cfg(not(debug_assertions))]
+        let builder = builder
+            .endpoints(default_updater_endpoints(channel_str)?)
+            .map_err(|e| e.to_string())?;
+        builder.build().map_err(|e| e.to_string())?
+    };
 
     let update = updater.check().await.map_err(|e| e.to_string())?;
 
@@ -1262,6 +1311,22 @@ mod tests {
         assert!(matches!(parse_channel("stable"), UpdateChannel::Stable));
         assert!(matches!(parse_channel("unknown"), UpdateChannel::Stable));
         assert!(matches!(parse_channel(""), UpdateChannel::Stable));
+    }
+
+    #[test]
+    fn default_updater_endpoints_match_release_hosts() {
+        // Locks the production endpoint format preserved across the refactor
+        // that introduced the debug-only `UC_UPDATE_ENDPOINT` override.
+        let eps = default_updater_endpoints("alpha").unwrap();
+        assert_eq!(eps.len(), 2);
+        assert_eq!(
+            eps[0].as_str(),
+            "https://release.uniclipboard.app/alpha.json"
+        );
+        assert_eq!(
+            eps[1].as_str(),
+            "https://uniclipboard.github.io/UniClipboard/alpha.json"
+        );
     }
 
     #[test]

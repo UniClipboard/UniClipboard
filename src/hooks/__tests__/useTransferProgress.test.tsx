@@ -61,7 +61,7 @@ describe('useTransferProgress', () => {
     vi.useRealTimers()
   })
 
-  it('subscribes to file-transfer and clipboard topics on mount', async () => {
+  it('subscribes to file-transfer topic on mount', async () => {
     const { daemonWs } = await import('@/lib/daemon-ws')
     const { Wrapper } = createWrapper()
     renderHook(() => useTransferProgress(), { wrapper: Wrapper })
@@ -70,10 +70,7 @@ describe('useTransferProgress', () => {
       expect(capturedHandler).not.toBeNull()
     })
 
-    expect(daemonWs.subscribe).toHaveBeenCalledWith(
-      ['file-transfer', 'clipboard'],
-      expect.any(Function)
-    )
+    expect(daemonWs.subscribe).toHaveBeenCalledWith(['file-transfer'], expect.any(Function))
   })
 
   describe('durable transfer status', () => {
@@ -200,26 +197,8 @@ describe('useTransferProgress', () => {
     })
   })
 
-  describe('clipboard write cancellation', () => {
-    it('cancels clipboard write on clipboard.new_content event', async () => {
-      const { Wrapper } = createWrapper()
-      renderHook(() => useTransferProgress(), { wrapper: Wrapper })
-
-      await waitFor(() => {
-        expect(capturedHandler).not.toBeNull()
-      })
-
-      // Should not throw on clipboard.new_content
-      act(() => {
-        emitWsEvent('clipboard.new_content', {
-          entryId: 'entry-new',
-          preview: 'new content',
-          origin: 'remote',
-        })
-      })
-    })
-
-    it('ignores non-new-content clipboard events without error', async () => {
+  describe('unhandled events', () => {
+    it('ignores unrelated events without error', async () => {
       const { Wrapper, store } = createWrapper()
       renderHook(() => useTransferProgress(), { wrapper: Wrapper })
 
@@ -228,9 +207,7 @@ describe('useTransferProgress', () => {
       })
 
       act(() => {
-        emitWsEvent('clipboard.deleted', {
-          entryId: 'entry-del',
-        })
+        emitWsEvent('file-transfer.unknown', { transferId: 'tx-unknown' })
       })
 
       expect(store.getState().fileTransfer).toBeDefined()

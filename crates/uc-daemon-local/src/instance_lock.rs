@@ -187,18 +187,27 @@ pub async fn acquire_with_deadline(
     // `AlreadyRunning` (the symptom users hit after an update: had to kill the
     // leftover uniclipd by hand). An equal-or-newer holder is left untouched
     // (downgrade protection) and we fall through to the cooperative wait below.
+    // Eviction (below) may itself spend up to EVICT_SIGTERM_GRACE +
+    // EVICT_SIGKILL_GRACE before falling through to the cooperative wait. Start
+    // the clock BEFORE it and charge that time against `deadline`, so the total
+    // wait still honors the caller's budget — the spawner-side
+    // DAEMON_STARTUP_TIMEOUT is derived assuming this lock wait stays ≤ deadline
+    // (the coupling `timing` exists to keep load-bearing).
+    let started = Instant::now();
+
     if let Some(lock) = try_evict_outranked_holder(data_dir).await? {
         return Ok(lock);
     }
 
+    let remaining = deadline.saturating_sub(started.elapsed());
+
     tracing::warn!(
         lock_path = %lock_path.display(),
-        deadline_ms = deadline.as_millis() as u64,
+        deadline_ms = remaining.as_millis() as u64,
         "daemon instance lock busy — blocking until the holder releases it"
     );
 
-    let started = Instant::now();
-    match block_acquire_within(data_dir, deadline).await? {
+    match block_acquire_within(data_dir, remaining).await? {
         Some(lock) => {
             tracing::info!(
                 elapsed_ms = started.elapsed().as_millis() as u64,

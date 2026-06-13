@@ -553,16 +553,22 @@ pub async fn restart_local_daemon(
     })?;
 
     if let Some(metadata) = &metadata {
-        if matches!(metadata.mode, DaemonProcessMode::InProcess) {
-            return Err(DaemonBootstrapError::IncompatibleDaemon {
-                details: format!(
-                    "cannot restart in-process daemon (pid {}); quit the hosting GUI first",
-                    metadata.pid
-                ),
-            });
-        }
-
         if matches!(verify_pid_identity(metadata), PidVerification::Active) {
+            // A LIVE in-process daemon is a legacy GUI shell hosting the daemon
+            // inside its own process — SIGTERM would tear that GUI down, so
+            // refuse. Gate this on the PID being actually Active: stale
+            // InProcess metadata left behind by a since-exited legacy GUI must
+            // NOT block a fresh spawn, otherwise restart strands on "quit the
+            // hosting GUI first" when there is no GUI left to quit.
+            if matches!(metadata.mode, DaemonProcessMode::InProcess) {
+                return Err(DaemonBootstrapError::IncompatibleDaemon {
+                    details: format!(
+                        "cannot restart in-process daemon (pid {}); quit the hosting GUI first",
+                        metadata.pid
+                    ),
+                });
+            }
+
             // ── 2. SIGTERM 旧 daemon ──────────────────────────────
             tracing::info!(pid = metadata.pid, "restart_local_daemon: sending SIGTERM");
             if let Err(e) = terminate_local_daemon_pid(metadata.pid) {

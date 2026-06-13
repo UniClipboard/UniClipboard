@@ -106,19 +106,30 @@ impl MobileDeviceRepositoryPort for InMemoryMobileDeviceRepository {
         Ok(())
     }
 
-    async fn update_password_hash(
+    async fn update_mobile_device(
         &self,
-        device_id: &MobileDeviceId,
-        new_password_hash: String,
+        updated: &MobileDevice,
     ) -> Result<bool, MobileDeviceError> {
         let mut guard = self.devices.lock().await;
-        match guard.get_mut(device_id) {
-            Some(device) => {
-                device.password_hash = new_password_hash;
-                Ok(true)
-            }
-            None => Ok(false),
+
+        if !guard.contains_key(&updated.device_id) {
+            return Ok(false);
         }
+        if guard
+            .values()
+            .any(|d| d.device_id != updated.device_id && d.username == updated.username)
+        {
+            return Err(MobileDeviceError::UsernameCollision);
+        }
+
+        // Mirror the diesel adapter: only the editable management fields change;
+        // created_at / last_seen / reported_* are preserved on the existing row.
+        if let Some(existing) = guard.get_mut(&updated.device_id) {
+            existing.label = updated.label.clone();
+            existing.username = updated.username.clone();
+            existing.password_hash = updated.password_hash.clone();
+        }
+        Ok(true)
     }
 }
 
@@ -242,32 +253,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_password_hash_replaces_only_phc_field() {
+    async fn update_mobile_device_replaces_editable_record() {
         let repo = InMemoryMobileDeviceRepository::new();
-        let d = device("did_x", "0001", "phone");
+        let mut d = device("did_x", "0001", "phone");
         repo.save(&d).await.unwrap();
 
-        let updated = repo
-            .update_password_hash(&d.device_id, "$argon2id$test$rotated".into())
-            .await
-            .unwrap();
-        assert!(updated);
+        d.label = "renamed".into();
+        d.username = "mobile_0002".into();
+        d.password_hash = "$argon2id$test$updated".into();
+
+        assert!(repo.update_mobile_device(&d).await.unwrap());
 
         let got = repo.find_by_device_id(&d.device_id).await.unwrap().unwrap();
-        assert_eq!(got.password_hash, "$argon2id$test$rotated");
-        // 其它字段保持不变
-        assert_eq!(got.label, d.label);
-        assert_eq!(got.username, d.username);
-        assert_eq!(got.created_at_ms, d.created_at_ms);
+        assert_eq!(got.label, "renamed");
+        assert_eq!(got.username, "mobile_0002");
+        assert_eq!(got.password_hash, "$argon2id$test$updated");
+        assert_eq!(got.created_at_ms, 1_000);
     }
 
     #[tokio::test]
-    async fn update_password_hash_returns_false_when_device_missing() {
+    async fn update_mobile_device_rejects_username_collision() {
         let repo = InMemoryMobileDeviceRepository::new();
-        let updated = repo
-            .update_password_hash(&MobileDeviceId::new("did_ghost"), "phc".into())
-            .await
-            .unwrap();
-        assert!(!updated);
+        let mut d1 = device("did_a", "0001", "A");
+        let d2 = device("did_b", "0002", "B");
+        repo.save(&d1).await.unwrap();
+        repo.save(&d2).await.unwrap();
+
+        d1.username = d2.username.clone();
+        let err = repo.update_mobile_device(&d1).await.unwrap_err();
+        assert!(matches!(err, MobileDeviceError::UsernameCollision));
     }
 }

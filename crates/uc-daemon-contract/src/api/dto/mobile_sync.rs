@@ -38,6 +38,27 @@ pub struct RotateMobilePasswordRequest {
     pub password: Option<String>,
 }
 
+/// Request body for `PATCH /mobile-sync/devices/{device_id}`.
+///
+/// `label` / `username` absent means keep unchanged. `password` is tri-state:
+/// field absent = keep unless username changes; explicit `null` = auto-generate;
+/// value = use the supplied plaintext after validation.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMobileDeviceRequest {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_optional_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[schema(value_type = Option<String>)]
+    pub password: Option<Option<String>>,
+}
+
 /// Request body (patch) for `PATCH /mobile-sync/settings`.
 ///
 /// `lanAdvertiseIp` / `lanPort` are three-state: field absent = leave
@@ -110,6 +131,32 @@ pub struct RotateMobilePasswordResultDto {
     pub device_id: String,
     pub username: String,
     pub password: String,
+}
+
+/// Result of updating an existing mobile device. `password` is `Some` only when
+/// the update created a new plaintext password that must be shown once.
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMobileDeviceResultDto {
+    pub device_id: String,
+    pub label: String,
+    pub username: String,
+    pub password: Option<String>,
+}
+
+// Manual Debug so the one-time plaintext password never reaches logs/traces.
+// This DTO is the wire echo of a freshly minted password; it exists in plaintext
+// for exactly one response and must never be printed via the derived Debug.
+// Serialize/Deserialize stay derived so the wire contract is unchanged.
+impl std::fmt::Debug for UpdateMobileDeviceResultDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpdateMobileDeviceResultDto")
+            .field("device_id", &self.device_id)
+            .field("label", &self.label)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 /// Result of revoking a device. Enveloped `{ success: true }` so every 200
@@ -246,6 +293,27 @@ mod tests {
         let args: UpdateMobileSyncSettingsRequest =
             serde_json::from_str(r#"{"lanPort": null}"#).unwrap();
         assert_eq!(args.lan_port, Some(None));
+    }
+
+    #[test]
+    fn update_device_request_password_absent_keeps_credentials() {
+        let args: UpdateMobileDeviceRequest =
+            serde_json::from_str(r#"{"label": "iPhone"}"#).unwrap();
+        assert!(args.password.is_none());
+    }
+
+    #[test]
+    fn update_device_request_password_null_auto_generates() {
+        let args: UpdateMobileDeviceRequest =
+            serde_json::from_str(r#"{"password": null}"#).unwrap();
+        assert_eq!(args.password, Some(None));
+    }
+
+    #[test]
+    fn update_device_request_password_value_is_custom() {
+        let args: UpdateMobileDeviceRequest =
+            serde_json::from_str(r#"{"password": "custom-pass-22"}"#).unwrap();
+        assert_eq!(args.password, Some(Some("custom-pass-22".to_string())));
     }
 
     #[test]

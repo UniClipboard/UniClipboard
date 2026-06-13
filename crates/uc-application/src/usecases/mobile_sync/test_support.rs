@@ -6,11 +6,11 @@
 //! super::test_support::*;` 即可。当前承载:
 //!
 //! - [`MockDeviceRepo`] —— [`MobileDeviceRepositoryPort`] 的 mockall mock,
-//!   被 register / authenticate / rotate / revoke / list 共用。
+//!   被 register / authenticate / update / revoke / list 共用。
 //! - [`MockHasher`] —— [`PasswordHasherPort`] 的 mockall mock,被 register /
-//!   authenticate / rotate 共用。
+//!   authenticate / update 共用。
 //! - [`MockMinter`] —— [`MobileCredentialsMinterPort`] 的 mockall mock,被
-//!   register / rotate 共用。
+//!   register / update 共用。
 //! - [`MockStaging`] —— [`MobileFileStagingPort`] 的 mockall mock,被
 //!   apply_incoming / get_file 共用。
 //! - [`CapturingAnalyticsSink`] —— "录制全部 captured Event" 的 fake
@@ -72,10 +72,9 @@ mockall::mock! {
             reported_name: Option<String>,
             reported_os: Option<String>,
         ) -> Result<(), MobileDeviceError>;
-        async fn update_password_hash(
+        async fn update_mobile_device(
             &self,
-            device_id: &MobileDeviceId,
-            new_password_hash: String,
+            updated: &MobileDevice,
         ) -> Result<bool, MobileDeviceError>;
     }
 }

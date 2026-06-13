@@ -31,11 +31,11 @@ use serde_json::Value;
 use tracing::{info_span, Instrument};
 use uc_application::facade::mobile_sync::{
     GetMobileSyncSettingsError, LanInterfaceOption, ListLanInterfacesError, ListMobileDevicesError,
-    MobileDeviceSummary, MobileSyncFacade, MobileSyncSettingsView,
+    MobileDevicePasswordEdit, MobileDeviceSummary, MobileSyncFacade, MobileSyncSettingsView,
     RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,
     RegisterMobileShortcutDeviceOutput, RevokeMobileDeviceError, RevokeMobileDeviceInput,
-    RotateMobilePasswordError, RotateMobilePasswordInput, RotateMobilePasswordOutput,
-    ShortcutInstallMethod, ShortcutInstallMethodOption, UpdateMobileSyncSettingsError,
+    ShortcutInstallMethod, ShortcutInstallMethodOption, UpdateMobileDeviceError,
+    UpdateMobileDeviceInput, UpdateMobileDeviceOutput, UpdateMobileSyncSettingsError,
     UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
 };
 use uc_core::mobile_sync::{MobileClientType, MobileDeviceId};
@@ -46,7 +46,8 @@ use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
     RegisterMobileDeviceRequest, RegisterMobileDeviceResultDto, RotateMobilePasswordRequest,
-    RotateMobilePasswordResultDto, ShortcutInstallMethodViewDto, UpdateMobileSyncSettingsRequest,
+    RotateMobilePasswordResultDto, ShortcutInstallMethodViewDto, UpdateMobileDeviceRequest,
+    UpdateMobileDeviceResultDto, UpdateMobileSyncSettingsRequest,
     UpdateMobileSyncSettingsResultDto,
 };
 use crate::api::server::DaemonApiState;
@@ -244,18 +245,33 @@ impl From<ListMobileDevicesError> for MobileSyncError {
     }
 }
 
-impl From<RotateMobilePasswordError> for MobileSyncError {
-    fn from(err: RotateMobilePasswordError) -> Self {
+impl From<UpdateMobileDeviceError> for MobileSyncError {
+    fn from(err: UpdateMobileDeviceError) -> Self {
         match err {
-            RotateMobilePasswordError::NotFound(id) => Self::DeviceNotFound {
+            UpdateMobileDeviceError::NotFound(id) => Self::DeviceNotFound {
                 device_id: id.into_string(),
             },
-            RotateMobilePasswordError::PasswordTooShort { min } => Self::PasswordTooShort { min },
-            RotateMobilePasswordError::PasswordTooLong { max } => Self::PasswordTooLong { max },
-            RotateMobilePasswordError::PasswordHashFailed(message) => {
+            UpdateMobileDeviceError::LabelEmpty => Self::LabelEmpty,
+            UpdateMobileDeviceError::LabelTooLong => Self::LabelTooLong { max: LABEL_MAX_LEN },
+            UpdateMobileDeviceError::UsernameTaken(username) => Self::UsernameTaken { username },
+            UpdateMobileDeviceError::UsernameTooShort { min, got } => {
+                Self::UsernameTooShort { min, got }
+            }
+            UpdateMobileDeviceError::UsernameTooLong { max, got } => {
+                Self::UsernameTooLong { max, got }
+            }
+            UpdateMobileDeviceError::UsernameMustStartWithLetter => {
+                Self::UsernameMustStartWithLetter
+            }
+            UpdateMobileDeviceError::UsernameContainsForbiddenChars => {
+                Self::UsernameContainsForbiddenChars
+            }
+            UpdateMobileDeviceError::PasswordTooShort { min } => Self::PasswordTooShort { min },
+            UpdateMobileDeviceError::PasswordTooLong { max } => Self::PasswordTooLong { max },
+            UpdateMobileDeviceError::PasswordHashFailed(message) => {
                 Self::PasswordHashFailed { message }
             }
-            RotateMobilePasswordError::PersistenceFailed(message) => {
+            UpdateMobileDeviceError::PersistenceFailed(message) => {
                 Self::PersistenceFailed { message }
             }
         }
@@ -328,9 +344,22 @@ fn to_register_dto(out: RegisterMobileShortcutDeviceOutput) -> RegisterMobileDev
     }
 }
 
-fn to_rotate_dto(out: RotateMobilePasswordOutput) -> RotateMobilePasswordResultDto {
+/// Build the rotate-password contract DTO from an `update_device` result.
+///
+/// The rotate endpoint always reissues a plaintext password (it never passes
+/// `Keep`), so `password` is resolved by the caller before reaching here.
+fn to_rotate_dto(out: UpdateMobileDeviceOutput, password: String) -> RotateMobilePasswordResultDto {
     RotateMobilePasswordResultDto {
         device_id: out.device_id.into_string(),
+        username: out.username,
+        password,
+    }
+}
+
+fn to_update_device_dto(out: UpdateMobileDeviceOutput) -> UpdateMobileDeviceResultDto {
+    UpdateMobileDeviceResultDto {
+        device_id: out.device_id.into_string(),
+        label: out.label,
         username: out.username,
         password: out.password,
     }
@@ -409,7 +438,7 @@ pub fn router() -> Router<DaemonApiState> {
         )
         .route(
             "/mobile-sync/devices/:device_id",
-            delete(revoke_mobile_device_handler),
+            delete(revoke_mobile_device_handler).patch(update_mobile_device_handler),
         )
         .route(
             "/mobile-sync/devices/:device_id/rotate-password",
@@ -423,6 +452,57 @@ pub fn router() -> Router<DaemonApiState> {
             "/mobile-sync/lan-interfaces",
             get(list_mobile_lan_interfaces_handler),
         )
+}
+
+/// PATCH /mobile-sync/devices/{device_id}
+#[utoipa::path(
+    patch,
+    path = "/mobile-sync/devices/{device_id}",
+    operation_id = "updateMobileDevice",
+    tag = "mobile-sync",
+    params(("device_id" = String, Path, description = "Mobile device id")),
+    request_body = UpdateMobileDeviceRequest,
+    responses(
+        (status = 200, description = "Device updated; password is present only when reissued", body = UpdateMobileDeviceEnvelope),
+        (status = 404, description = "Device not found", body = ApiErrorResponse),
+        (status = 409, description = "Username taken", body = ApiErrorResponse),
+        (status = 422, description = "Invalid label / username / password", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 503, description = "Mobile sync facade unavailable", body = ApiErrorResponse),
+    )
+)]
+async fn update_mobile_device_handler(
+    State(state): State<DaemonApiState>,
+    Path(device_id): Path<String>,
+    Json(req): Json<UpdateMobileDeviceRequest>,
+) -> Result<Json<ApiEnvelope<UpdateMobileDeviceResultDto>>, ApiError> {
+    let password = match req.password {
+        None => MobileDevicePasswordEdit::Keep,
+        Some(None) => MobileDevicePasswordEdit::AutoGenerate,
+        Some(Some(password)) => MobileDevicePasswordEdit::Custom(password),
+    };
+    let span = info_span!(
+        "api.mobile_sync.update_device",
+        device_id = %device_id,
+        label_changed = req.label.is_some(),
+        username_changed = req.username.is_some(),
+        password_changed = !matches!(password, MobileDevicePasswordEdit::Keep),
+    );
+    async move {
+        let facade = mobile_sync_facade(&state)?;
+        let out = facade
+            .update_device(UpdateMobileDeviceInput {
+                device_id: MobileDeviceId::new(device_id),
+                label: req.label,
+                username: req.username,
+                password,
+            })
+            .await
+            .map_err(to_api)?;
+        Ok(Json(ApiEnvelope::now(to_update_device_dto(out))))
+    }
+    .instrument(span)
+    .await
 }
 
 /// Resolve the daemon-resident mobile-sync facade, or 503 `FACADE_UNAVAILABLE`.
@@ -560,14 +640,29 @@ async fn rotate_mobile_password_handler(
     );
     async move {
         let facade = mobile_sync_facade(&state)?;
+        let password = match req.password {
+            Some(password) => MobileDevicePasswordEdit::Custom(password),
+            None => MobileDevicePasswordEdit::AutoGenerate,
+        };
         let out = facade
-            .rotate_password(RotateMobilePasswordInput {
+            .update_device(UpdateMobileDeviceInput {
                 device_id: MobileDeviceId::new(device_id),
-                password: req.password,
+                label: None,
+                username: None,
+                password,
             })
             .await
             .map_err(to_api)?;
-        Ok(Json(ApiEnvelope::now(to_rotate_dto(out))))
+        // Invariant: this path always passes `Custom`/`AutoGenerate`, never
+        // `Keep`, so `update_device` always reissues a plaintext password. A
+        // `None` here is therefore structurally unreachable; map it to an
+        // honest internal error rather than panicking.
+        let password = out.password.clone().ok_or_else(|| {
+            ApiError::from(MobileSyncError::PersistenceFailed {
+                message: "rotate must reissue a plaintext password".to_string(),
+            })
+        })?;
+        Ok(Json(ApiEnvelope::now(to_rotate_dto(out, password))))
     }
     .instrument(span)
     .await

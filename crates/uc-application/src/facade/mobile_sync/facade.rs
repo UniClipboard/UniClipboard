@@ -13,7 +13,6 @@
 //! | [`MobileSyncFacade::register_device`] | `RegisterMobileShortcutDeviceUseCase` | 颁发 (username,password) + 渲染 install URL 二维码 |
 //! | [`MobileSyncFacade::revoke_device`] | `RevokeMobileDeviceUseCase` | 注销已登记设备 |
 //! | [`MobileSyncFacade::list_devices`] | `ListMobileDevicesUseCase` | 列出已登记设备(不含 password_hash) |
-//! | [`MobileSyncFacade::rotate_password`] | `RotateMobilePasswordUseCase` | 给已登记设备换一份新密码(返回一次性明文) |
 //! | [`MobileSyncFacade::get_settings`] | `GetMobileSyncSettingsUseCase` | 读 enabled + LAN URL + install methods |
 //! | [`MobileSyncFacade::update_settings`] | `UpdateMobileSyncSettingsUseCase` | 写 enabled / lan 字段, 装入 lifecycle 时 listener 即时生效 |
 //! | [`MobileSyncFacade::list_lan_interfaces`] | `ListLanInterfacesUseCase` | 列出可作为二维码 URL 的 RFC1918 网卡 |
@@ -68,7 +67,7 @@ use crate::usecases::mobile_sync::{
     latest_snapshot_adapter::LatestClipboardSnapshotAdapter,
     list_devices::ListMobileDevicesUseCase, list_lan_interfaces::ListLanInterfacesUseCase,
     register_device::RegisterMobileShortcutDeviceUseCase, revoke_device::RevokeMobileDeviceUseCase,
-    rotate_password::RotateMobilePasswordUseCase, update_settings::UpdateMobileSyncSettingsUseCase,
+    update_device::UpdateMobileDeviceUseCase, update_settings::UpdateMobileSyncSettingsUseCase,
 };
 
 // ── 对外类型 re-export ─────────────────────────────────────────────────
@@ -103,8 +102,9 @@ pub use crate::usecases::mobile_sync::register_device::SYNC_CLIPBOARD_EX_INSTALL
 pub use crate::usecases::mobile_sync::revoke_device::{
     RevokeMobileDeviceError, RevokeMobileDeviceInput,
 };
-pub use crate::usecases::mobile_sync::rotate_password::{
-    RotateMobilePasswordError, RotateMobilePasswordInput, RotateMobilePasswordOutput,
+pub use crate::usecases::mobile_sync::update_device::{
+    MobileDevicePasswordEdit, UpdateMobileDeviceError, UpdateMobileDeviceInput,
+    UpdateMobileDeviceOutput,
 };
 pub use crate::usecases::mobile_sync::update_settings::{
     UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
@@ -224,13 +224,13 @@ pub struct MobileSyncFacadeDeps {
 
 /// 移动端同步入口, 线程安全, 可放入 `Arc`。
 ///
-/// 内部聚合 10 个 use case;所有方法都是 thin pass-through, 不做跨
+/// 内部聚合多个 use case;所有方法都是 thin pass-through, 不做跨
 /// use case 编排(按 §11.2 facade 不应再承载流程)。
 pub struct MobileSyncFacade {
     register_device: RegisterMobileShortcutDeviceUseCase,
     revoke_device: RevokeMobileDeviceUseCase,
     list_devices: ListMobileDevicesUseCase,
-    rotate_password: RotateMobilePasswordUseCase,
+    update_device: UpdateMobileDeviceUseCase,
     get_settings: GetMobileSyncSettingsUseCase,
     update_settings: UpdateMobileSyncSettingsUseCase,
     list_lan_interfaces: ListLanInterfacesUseCase,
@@ -292,7 +292,7 @@ impl MobileSyncFacade {
             ),
             revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
             list_devices: ListMobileDevicesUseCase::new(device_repo.clone()),
-            rotate_password: RotateMobilePasswordUseCase::new(
+            update_device: UpdateMobileDeviceUseCase::new(
                 device_repo.clone(),
                 password_hasher.clone(),
                 credentials_minter,
@@ -363,16 +363,14 @@ impl MobileSyncFacade {
         self.list_devices.execute().await
     }
 
-    /// 给一台已登记设备换一份新密码。`input.password = None` 走 minter 自动
-    /// 颁发;`Some(p)` 走自定义路径(校验长度)。返回值的 `password` 字段是
-    /// **唯一一次**面向用户的明文回显, 之后只以 PHC 形式存在于服务端 sqlite。
-    /// 旧密码立即失效,UI 必须提示用户同步更新 iPhone shortcut 里的 password
-    /// 字段, 否则下次同步将收到 401。
-    pub async fn rotate_password(
+    /// Update editable management fields for a registered mobile device.
+    /// Label-only edits do not echo plaintext; username or password edits echo
+    /// the new plaintext password once so the UI can rebuild the connect QR.
+    pub async fn update_device(
         &self,
-        input: RotateMobilePasswordInput,
-    ) -> Result<RotateMobilePasswordOutput, RotateMobilePasswordError> {
-        self.rotate_password.execute(input).await
+        input: UpdateMobileDeviceInput,
+    ) -> Result<UpdateMobileDeviceOutput, UpdateMobileDeviceError> {
+        self.update_device.execute(input).await
     }
 
     /// 读移动端同步设置 + 当前 LAN URL + 可用 install methods 的合成视图。
@@ -724,19 +722,30 @@ mod tests {
         ) -> Result<(), MobileDeviceError> {
             Ok(())
         }
-        async fn update_password_hash(
+        async fn update_mobile_device(
             &self,
-            id: &MobileDeviceId,
-            new_hash: String,
+            updated: &MobileDevice,
         ) -> Result<bool, MobileDeviceError> {
             let mut devs = self.devices.lock().unwrap();
-            match devs.iter_mut().find(|d| d.device_id == *id) {
-                Some(d) => {
-                    d.password_hash = new_hash;
-                    Ok(true)
-                }
-                None => Ok(false),
+            // Existence check first: a missing device returns Ok(false)
+            // regardless of any username collision, matching the real adapters.
+            if !devs.iter().any(|d| d.device_id == updated.device_id) {
+                return Ok(false);
             }
+            if devs
+                .iter()
+                .any(|d| d.device_id != updated.device_id && d.username == updated.username)
+            {
+                return Err(MobileDeviceError::UsernameCollision);
+            }
+            if let Some(d) = devs.iter_mut().find(|d| d.device_id == updated.device_id) {
+                // Only the editable management fields change; the rest of the
+                // existing row is preserved.
+                d.label = updated.label.clone();
+                d.username = updated.username.clone();
+                d.password_hash = updated.password_hash.clone();
+            }
+            Ok(true)
         }
     }
 
@@ -1190,9 +1199,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rotate_password_invalidates_old_password_and_keeps_username() {
-        // 端到端验证:rotate 之后旧密码 401, 新密码 200, username/device_id
-        // 不变。把整条 register → rotate → authenticate 链路串起来跑。
+    async fn password_edit_invalidates_old_password_and_keeps_username() {
+        // End-to-end: after a password edit via update_device, the old password
+        // returns 401, the new password authenticates, and username/device_id
+        // stay stable. The public rotate endpoint delegates to update_device, so
+        // this exercises the same backing path.
         let direct_device = MobileDevice {
             device_id: MobileDeviceId::new("did_rot"),
             label: "iPhone".into(),
@@ -1240,7 +1251,7 @@ mod tests {
             clipboard_restore: None,
         });
 
-        // 1. 旧密码可用
+        // 1. old password works
         let old_header = format!(
             "basic {}",
             base64::engine::general_purpose::STANDARD.encode("mobile_rotme:original-pass")
@@ -1250,21 +1261,23 @@ mod tests {
                 authorization_header: old_header.clone(),
             })
             .await
-            .expect("old password ok before rotate");
+            .expect("old password ok before edit");
 
-        // 2. rotate 到自定义新密码
+        // 2. edit to a custom new password
         let out = facade
-            .rotate_password(RotateMobilePasswordInput {
+            .update_device(UpdateMobileDeviceInput {
                 device_id: MobileDeviceId::new("did_rot"),
-                password: Some("brand-new-pass".into()),
+                label: None,
+                username: None,
+                password: MobileDevicePasswordEdit::Custom("brand-new-pass".into()),
             })
             .await
-            .expect("rotate ok");
+            .expect("update_device ok");
         assert_eq!(out.username, "mobile_rotme");
-        assert_eq!(out.password, "brand-new-pass");
+        assert_eq!(out.password.as_deref(), Some("brand-new-pass"));
         assert_eq!(out.device_id.as_str(), "did_rot");
 
-        // 3. 旧密码立即失效
+        // 3. old password is immediately invalid
         let err = facade
             .authenticate_basic(AuthenticateBasicAuthInput {
                 authorization_header: old_header,
@@ -1276,7 +1289,7 @@ mod tests {
             AuthenticateBasicAuthError::InvalidCredentials
         ));
 
-        // 4. 新密码可用
+        // 4. new password works
         let new_header = format!(
             "basic {}",
             base64::engine::general_purpose::STANDARD.encode("mobile_rotme:brand-new-pass")
@@ -1286,18 +1299,20 @@ mod tests {
                 authorization_header: new_header,
             })
             .await
-            .expect("new password ok after rotate");
+            .expect("new password ok after edit");
         assert_eq!(auth.device.username, "mobile_rotme");
 
-        // 5. rotate 不存在的 device → NotFound
+        // 5. editing a missing device → NotFound
         let err = facade
-            .rotate_password(RotateMobilePasswordInput {
+            .update_device(UpdateMobileDeviceInput {
                 device_id: MobileDeviceId::new("did_ghost"),
-                password: None,
+                label: None,
+                username: None,
+                password: MobileDevicePasswordEdit::AutoGenerate,
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, RotateMobilePasswordError::NotFound(_)));
+        assert!(matches!(err, UpdateMobileDeviceError::NotFound(_)));
     }
 
     // ── lan_lifecycle wire-up 测试 ─────────────────────────────────────────

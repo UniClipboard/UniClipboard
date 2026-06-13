@@ -546,10 +546,9 @@ mod tests {
                 reported_name: Option<String>,
                 reported_os: Option<String>,
             ) -> Result<(), MobileDeviceError>;
-            async fn update_password_hash(
+            async fn update_mobile_device(
                 &self,
-                device_id: &MobileDeviceId,
-                new_password_hash: String,
+                updated: &MobileDevice,
             ) -> Result<bool, MobileDeviceError>;
         }
     }

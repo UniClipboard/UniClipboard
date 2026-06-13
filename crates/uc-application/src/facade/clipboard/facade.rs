@@ -706,10 +706,9 @@ mod tests {
                 reported_name: Option<String>,
                 reported_os: Option<String>,
             ) -> Result<(), uc_core::mobile_sync::MobileDeviceError>;
-            async fn update_password_hash(
+            async fn update_mobile_device(
                 &self,
-                device_id: &uc_core::mobile_sync::MobileDeviceId,
-                new_password_hash: String,
+                updated: &uc_core::mobile_sync::MobileDevice,
             ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError>;
         }
     }

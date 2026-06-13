@@ -12,9 +12,10 @@
 //! - 主键命中 → `MobileDeviceError::AlreadyExists`
 //! - 主键未中 → 必然是 username 冲突 → `UsernameCollision`
 //!
-//! 这次额外查询走主键索引,代价可忽略,且不会出现 race —— 我们仍在同一个
-//! `executor.run` 闭包内,r2d2 给的是同一个连接,SQLite WAL 写锁串行化保
-//! 证 insert 与跟随的查询看到的是同一事务视图。
+//! 这次额外查询走主键索引,代价可忽略。它发生在 `save` 路径上:失败的
+//! insert 与跟随的存在性查询都在同一个 `executor.run` 闭包(同一连接)内,
+//! 但默认 autocommit 下二者是两条独立语句,并不共享同一事务 —— 这里的
+//! 分类是失败 insert 之后的 best-effort post-hoc 读,而非事务内原子操作。
 //!
 //! ## record_activity
 //!
@@ -183,22 +184,48 @@ where
         Ok(affected > 0)
     }
 
-    async fn update_password_hash(
+    async fn update_mobile_device(
         &self,
-        device_id_value: &MobileDeviceId,
-        new_password_hash: String,
+        updated: &MobileDevice,
     ) -> Result<bool, MobileDeviceError> {
-        let needle = device_id_value.as_str().to_string();
-        let affected = self
+        let current_device_id = updated.device_id.as_str().to_string();
+
+        #[derive(AsChangeset)]
+        #[diesel(table_name = crate::db::schema::mobile_device)]
+        struct Changeset {
+            label: String,
+            username: String,
+            password_hash: String,
+        }
+
+        let changeset = Changeset {
+            label: updated.label.clone(),
+            username: updated.username.clone(),
+            password_hash: updated.password_hash.clone(),
+        };
+
+        let outcome = self
             .executor
             .run(move |conn| {
-                diesel::update(mobile_device.filter(device_id.eq(&needle)))
-                    .set(password_hash.eq(new_password_hash))
-                    .execute(conn)
-                    .map_err(|e| anyhow::anyhow!(e.to_string()))
+                let result = diesel::update(mobile_device.filter(device_id.eq(&current_device_id)))
+                    .set(&changeset)
+                    .execute(conn);
+
+                match result {
+                    Ok(affected) => Ok(Ok(affected > 0)),
+                    Err(DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {
+                        // device_id is this UPDATE's WHERE key, so it cannot be
+                        // violated by the row keeping its own primary key; the
+                        // only reachable UNIQUE violation here is a cross-device
+                        // username collision.
+                        Ok(Err(MobileDeviceError::UsernameCollision))
+                    }
+                    Err(e) => Err(anyhow::anyhow!(e.to_string())),
+                }
             })
             .map_err(|e| MobileDeviceError::Storage(e.to_string()))?;
-        Ok(affected > 0)
+
+        outcome
     }
 
     async fn record_activity(
@@ -416,32 +443,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_password_hash_replaces_only_phc_and_keeps_other_fields() {
+    async fn update_mobile_device_replaces_label_username_and_password_hash_only() {
         let (repo, _t) = make_repo();
         let d = fixture("did_x", "0001", "phone");
         repo.save(&d).await.unwrap();
 
-        let updated = repo
-            .update_password_hash(&d.device_id, "$argon2id$test$rotated".into())
-            .await
-            .unwrap();
-        assert!(updated);
+        let mut updated = d.clone();
+        updated.label = "renamed".into();
+        updated.username = "mobile_0002".into();
+        updated.password_hash = "$argon2id$test$updated".into();
+
+        assert!(repo.update_mobile_device(&updated).await.unwrap());
 
         let got = repo.find_by_device_id(&d.device_id).await.unwrap().unwrap();
-        assert_eq!(got.password_hash, "$argon2id$test$rotated");
-        // 其它字段必须保持不变
-        assert_eq!(got.label, d.label);
-        assert_eq!(got.username, d.username);
+        assert_eq!(got.label, "renamed");
+        assert_eq!(got.username, "mobile_0002");
+        assert_eq!(got.password_hash, "$argon2id$test$updated");
         assert_eq!(got.created_at_ms, d.created_at_ms);
+        assert_eq!(got.last_seen_at_ms, d.last_seen_at_ms);
     }
 
     #[tokio::test]
-    async fn update_password_hash_returns_false_when_device_missing() {
+    async fn update_mobile_device_rejects_username_collision() {
         let (repo, _t) = make_repo();
-        let updated = repo
-            .update_password_hash(&MobileDeviceId::new("did_ghost"), "phc".into())
-            .await
-            .unwrap();
-        assert!(!updated);
+        let mut d1 = fixture("did_a", "0001", "first");
+        let d2 = fixture("did_b", "0002", "second");
+        repo.save(&d1).await.unwrap();
+        repo.save(&d2).await.unwrap();
+
+        d1.username = d2.username.clone();
+        let err = repo.update_mobile_device(&d1).await.unwrap_err();
+        assert!(matches!(err, MobileDeviceError::UsernameCollision));
+    }
+
+    #[tokio::test]
+    async fn update_mobile_device_returns_false_when_missing() {
+        let (repo, _t) = make_repo();
+        let d = fixture("did_ghost", "0001", "phone");
+        assert!(!repo.update_mobile_device(&d).await.unwrap());
     }
 }

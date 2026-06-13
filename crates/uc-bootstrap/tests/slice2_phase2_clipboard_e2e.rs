@@ -377,10 +377,9 @@ impl uc_core::ports::MobileDeviceRepositoryPort for NoopMobileDeviceRepo {
     ) -> Result<(), uc_core::mobile_sync::MobileDeviceError> {
         Ok(())
     }
-    async fn update_password_hash(
+    async fn update_mobile_device(
         &self,
-        _device_id: &uc_core::mobile_sync::MobileDeviceId,
-        _new_password_hash: String,
+        _updated: &uc_core::mobile_sync::MobileDevice,
     ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError> {
         Ok(false)
     }

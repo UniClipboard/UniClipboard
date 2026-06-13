@@ -117,20 +117,16 @@ pub trait MobileDeviceRepositoryPort: Send + Sync {
         reported_os: Option<String>,
     ) -> Result<(), MobileDeviceError>;
 
-    /// 替换某台设备的 `password_hash`。其它字段保持不变。
+    /// Replace the editable fields of one mobile device in a single write.
     ///
-    /// 用于密码轮换(rotate)用例 —— 用户在 UI 上请求"换一份新密码",
-    /// application 层先 hash 新明文,再调本方法把 PHC 字符串换掉。
-    ///
-    /// 返回 `Ok(true)` 表示真实更新了一行;`Ok(false)` 表示 device_id 不
-    /// 存在(用户已撤销 / UI 列表过期 —— application 层据此提示刷新)。
-    /// 这与 [`Self::delete`] 的"返回值表达存在性"语义保持一致,避免应用
-    /// 层为这种 race 单独处理。
-    async fn update_password_hash(
-        &self,
-        device_id: &MobileDeviceId,
-        new_password_hash: String,
-    ) -> Result<bool, MobileDeviceError>;
+    /// Used by the device-management flow: label edits may keep credentials as-is,
+    /// while username/password edits replace the persisted credential fields
+    /// atomically. Implementations must preserve rows not matching `device_id`,
+    /// return `Ok(false)` when the device is missing, and return
+    /// `UsernameCollision` when `updated.username` is already held by another
+    /// device.
+    async fn update_mobile_device(&self, updated: &MobileDevice)
+        -> Result<bool, MobileDeviceError>;
 }
 
 // ─── endpoint info ───────────────────────────────────────────────────────

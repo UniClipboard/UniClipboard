@@ -128,15 +128,20 @@ pub(crate) async fn build_facade_with_seeded_device(
         ) -> Result<(), MobileDeviceError> {
             Ok(())
         }
-        async fn update_password_hash(
+        async fn update_mobile_device(
             &self,
-            id: &MobileDeviceId,
-            new_hash: String,
+            updated: &MobileDevice,
         ) -> Result<bool, MobileDeviceError> {
             let mut devs = self.devices.lock().unwrap();
-            match devs.iter_mut().find(|d| d.device_id == *id) {
+            if devs
+                .iter()
+                .any(|d| d.device_id != updated.device_id && d.username == updated.username)
+            {
+                return Err(MobileDeviceError::UsernameCollision);
+            }
+            match devs.iter_mut().find(|d| d.device_id == updated.device_id) {
                 Some(d) => {
-                    d.password_hash = new_hash;
+                    *d = updated.clone();
                     Ok(true)
                 }
                 None => Ok(false),

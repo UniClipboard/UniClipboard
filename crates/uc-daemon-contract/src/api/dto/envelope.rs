@@ -29,7 +29,7 @@ use crate::api::dto::encryption::{
 use crate::api::dto::member::{MemberSyncPreferencesDto, MemberSyncResultDto};
 use crate::api::dto::mobile_sync::{
     LanInterfaceViewDto, MobileDeviceViewDto, MobileSyncActionResultDto, MobileSyncSettingsViewDto,
-    RegisterMobileDeviceResultDto, RotateMobilePasswordResultDto,
+    RegisterMobileDeviceResultDto, RotateMobilePasswordResultDto, UpdateMobileDeviceResultDto,
     UpdateMobileSyncSettingsResultDto,
 };
 use crate::api::dto::search::{SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData};
@@ -85,6 +85,7 @@ use crate::api::types::{
     // ── mobile sync ────────────────────────────────────────────────
     RegisterMobileDeviceEnvelope = ApiEnvelope<RegisterMobileDeviceResultDto>,
     RotateMobilePasswordEnvelope = ApiEnvelope<RotateMobilePasswordResultDto>,
+    UpdateMobileDeviceEnvelope = ApiEnvelope<UpdateMobileDeviceResultDto>,
     MobileSyncActionEnvelope = ApiEnvelope<MobileSyncActionResultDto>,
     MobileDeviceListEnvelope = ApiEnvelope<Vec<MobileDeviceViewDto>>,
     MobileSyncSettingsEnvelope = ApiEnvelope<MobileSyncSettingsViewDto>,

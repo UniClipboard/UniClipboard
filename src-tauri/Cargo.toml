@@ -2,7 +2,7 @@
 # Cargo.toml; this is a plain package manifest for the desktop app bin.
 [package]
 name = "uniclipboard"
-version = "0.15.0-alpha.5"
+version = "0.15.0"
 license.workspace = true
 description = "一个剪切板同步工具"
 authors = ["mkdir700@gmail.com"]

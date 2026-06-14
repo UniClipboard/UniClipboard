@@ -7,6 +7,14 @@
 //! records) live in `uc-mobile-proto` and are consumed here; this crate adds
 //! only the HTTP transport, status mapping, retry, and cancellation on top.
 //!
+//! Goal-B M3 adds the connectivity probe (`ConnectionTester.swift`, regression
+//! checklist A7): [`MobileSyncClient::test_connection`] (full single-URL test),
+//! [`MobileSyncClient::probe`] (concurrent, short-timeout, no-retry,
+//! status-only multi-URL probe returning a [`ProbeReport`]), and the pure
+//! [`first_reachable`] picker over the §5.3 shape order (`ordered_urls` lives
+//! in `uc-mobile-proto`). Reachability semantics there deliberately diverge
+//! from the main client: 404 = reachable (see [`ProbeResult`]).
+//!
 //! Execution model (this is the load-bearing part of the spike):
 //! - [`MobileSyncClient`] hosts a `current_thread` tokio runtime on ONE
 //!   dedicated thread (iOS extension jetsam budget rules out the multi-thread
@@ -44,6 +52,7 @@
 //! normally. Permanent poisoning would force the native side to rebuild the
 //! client (respawning the runtime thread) on every Wi-Fi/cellular flip.
 
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -317,6 +326,57 @@ pub enum SyncError {
     Internal { reason: String },
 }
 
+// ─── connectivity probe (A7 / §5.3 Layer 2) ──────────────────────────────
+
+/// Reachability verdict for one candidate URL. Byte-for-byte port of Swift
+/// `ConnectionTester.Result` (`ConnectionTester.swift`).
+///
+/// §2.1 reachability semantics — DELIBERATELY different from the main client's
+/// status mapping: a URL is *reachable* when the server answered at all, so
+/// **404 maps to [`ProbeResult::Success`]** ("no clipboard published yet", the
+/// server is up and auth is fine) and 401 maps to [`ProbeResult::AuthFailed`]
+/// (reachable, credentials wrong). Bad credentials are an account problem, not
+/// a path problem; the URL picker must not skip a perfectly good direct path
+/// because the password is stale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ProbeResult {
+    /// 2xx success or 404 — the server answered, the path works.
+    Success,
+    /// 401 — reachable, but the credentials were rejected.
+    AuthFailed,
+    /// No HTTP answer (connect refused, timeout, TLS failure, malformed URL) or
+    /// a 5xx / other non-success status.
+    Unreachable,
+    /// A required input (URL / username / password) was empty — no request made.
+    MissingFields,
+}
+
+impl ProbeResult {
+    /// §5.3: a candidate is reachable when the server answered at all
+    /// ([`Self::Success`] or [`Self::AuthFailed`]). Single source of truth for
+    /// the picker; mirrors Swift `Result.isReachable`.
+    fn is_reachable(&self) -> bool {
+        matches!(self, ProbeResult::Success | ProbeResult::AuthFailed)
+    }
+}
+
+/// Outcome of a multi-URL [`MobileSyncClient::probe`]: the per-URL verdicts
+/// stamped with the network epoch they were captured under.
+///
+/// The epoch is opaque to this crate (a monotonic counter the native shell
+/// bumps on every network-path change). It is carried through verbatim so a
+/// later consumer can discard a stale snapshot — "a probe conclusion is only
+/// valid while the epoch has not changed" (§5.3). The epoch *check* itself
+/// belongs to the sync engine (goal-B M5), which does not exist yet; M3 only
+/// stamps the snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ProbeReport {
+    /// The `network_epoch` passed to [`MobileSyncClient::probe`], echoed back.
+    pub network_epoch: u64,
+    /// One verdict per *distinct* URL string probed (Swift `[String: Result]`).
+    pub results: HashMap<String, ProbeResult>,
+}
+
 // ─── platform bridge (seam 2, carried over from B1) ─────────────────────
 
 /// Host-side services the native app provides to Rust.
@@ -419,13 +479,24 @@ impl HttpTimeouts {
     }
 }
 
-fn build_http_client(t: HttpTimeouts) -> reqwest::Result<reqwest::Client> {
+fn build_http_client(
+    t: HttpTimeouts,
+    trust_insecure_cert: bool,
+) -> reqwest::Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         // No idle connection pool: iOS extensions live under a ~48MB jetsam
         // ceiling and requests are sporadic (spike plan §4). Also makes each
         // request a fresh connection, so a per-connection reset surfaces
         // cleanly to the retry path.
         .pool_max_idle_per_host(0);
+    if trust_insecure_cert {
+        // Swift `TrustingDelegate` / `makeProbeSession(trustInsecureCert:)`:
+        // skip certificate validation for self-signed-cert NAS hosts. Only the
+        // ConnectionTester probe/test paths thread this in (regression checklist
+        // A7); the long-lived PRODUCTION client built by `construct` always
+        // validates (the settings-gated production trust toggle is M4 / E区).
+        builder = builder.danger_accept_invalid_certs(true);
+    }
     if let Some(c) = t.connect {
         builder = builder.connect_timeout(c);
     }
@@ -469,16 +540,8 @@ impl MobileSyncClient {
     /// `GET /SyncClipboard.json` — latest clipboard metadata (spec §2.1).
     pub async fn get_latest(&self, server: ServerConfig) -> Result<ClipboardMeta, SyncError> {
         let http = self.http.clone();
-        self.run(async move {
-            let url = endpoint(&server.base_url, &["SyncClipboard.json"])?;
-            let req = http
-                .get(url)
-                .basic_auth(&server.username, Some(&server.password));
-            let resp = check(send_with_retry(req).await?).await?;
-            let clip: ProtoClipboard = resp.json().await.map_err(decoding("SyncClipboard.json"))?;
-            Ok(ClipboardMeta::from_proto(clip))
-        })
-        .await
+        self.run(async move { get_latest_with(&http, &server).await })
+            .await
     }
 
     /// `PUT /SyncClipboard.json`, optionally preceded by
@@ -618,6 +681,123 @@ impl MobileSyncClient {
         .await
     }
 
+    /// "测试连接" — probe ONE server's reachability + credentials via a full
+    /// `GET /SyncClipboard.json` (spec §5.3 Layer 2 single-URL form; Swift
+    /// `ConnectionTester.test`). Uses the production retry/timeout policy
+    /// (Swift builds a fresh full client per test), then folds every outcome
+    /// into a [`ProbeResult`] — including a 2xx body that fails to decode,
+    /// which maps to [`ProbeResult::Unreachable`].
+    ///
+    /// `trust_insecure_cert` is honored here (a per-call client is built when
+    /// set); the default-false path reuses the validating production client.
+    pub async fn test_connection(
+        &self,
+        server: ServerConfig,
+        trust_insecure_cert: bool,
+    ) -> ProbeResult {
+        // Swift: empty url/username/password short-circuits to .missingFields
+        // before any client is constructed.
+        if server.base_url.trim().is_empty()
+            || server.username.is_empty()
+            || server.password.is_empty()
+        {
+            return ProbeResult::MissingFields;
+        }
+        // trust=false reuses the validating production client; trust=true builds
+        // a fresh danger-accept client with the same production timeouts (Swift
+        // constructs a new SyncClipboardClient per test() carrying the flag —
+        // a constructor failure there maps to .unreachable).
+        let http = if trust_insecure_cert {
+            match build_http_client(HttpTimeouts::production(), true) {
+                Ok(c) => c,
+                Err(_) => return ProbeResult::Unreachable,
+            }
+        } else {
+            self.http.clone()
+        };
+        // The inner future never returns Err (test_outcome absorbs every
+        // SyncError); a task-level Cancelled/Internal still maps to Unreachable,
+        // matching Swift's `default` catch arm.
+        self.run(async move { Ok(test_outcome(get_latest_with(&http, &server).await)) })
+            .await
+            .unwrap_or(ProbeResult::Unreachable)
+    }
+
+    /// Probe every distinct candidate URL of a profile concurrently and report
+    /// per-URL reachability (spec §5.3; Swift `ConnectionTester.probe`).
+    ///
+    /// Deliberately different from [`Self::test_connection`]:
+    /// - SHORT total timeout (`timeout_ms`, native passes 2000) — "is this path
+    ///   up *right now*"; a LAN IP on cellular must fail fast.
+    /// - NO retry, NO body decode — `GET SyncClipboard.json`'s status code alone
+    ///   carries the signal (404 = reachable-but-empty; 401 = reachable, creds
+    ///   wrong). reqwest never waits for connectivity, so "no route right now"
+    ///   surfaces immediately as [`ProbeResult::Unreachable`] (Swift
+    ///   `waitsForConnectivity = false`).
+    ///
+    /// `network_epoch` is stamped onto the returned [`ProbeReport`] verbatim
+    /// (see its docs). Returns one verdict per *distinct* URL string.
+    pub async fn probe(
+        &self,
+        urls: Vec<String>,
+        username: String,
+        password: String,
+        trust_insecure_cert: bool,
+        timeout_ms: u32,
+        network_epoch: u64,
+    ) -> ProbeReport {
+        let report = |results| ProbeReport {
+            network_epoch,
+            results,
+        };
+        let distinct = dedup_preserving_order(urls);
+        if distinct.is_empty() {
+            return report(HashMap::new());
+        }
+        // Swift: empty credentials → every candidate .missingFields, no network.
+        if username.is_empty() || password.is_empty() {
+            return report(uniform_results(&distinct, ProbeResult::MissingFields));
+        }
+        let timeouts = HttpTimeouts {
+            connect: None,
+            read: None,
+            total: Some(Duration::from_millis(timeout_ms as u64)),
+        };
+        let http = match build_http_client(timeouts, trust_insecure_cert) {
+            Ok(c) => c,
+            Err(_) => return report(uniform_results(&distinct, ProbeResult::Unreachable)),
+        };
+        let results = self
+            .run(async move {
+                // Concurrent fan-out on the single runtime thread: each request
+                // yields at its await points, so the candidates interleave and
+                // the slowest one bounds the wall-clock (not their sum). The
+                // JoinSet is dropped if the parent task is aborted, which aborts
+                // every child — cancellation propagates without per-child
+                // bookkeeping.
+                let mut set = tokio::task::JoinSet::new();
+                for url in distinct {
+                    let http = http.clone();
+                    let username = username.clone();
+                    let password = password.clone();
+                    set.spawn(async move {
+                        let verdict = probe_one(&http, &url, &username, &password).await;
+                        (url, verdict)
+                    });
+                }
+                let mut out: HashMap<String, ProbeResult> = HashMap::new();
+                while let Some(joined) = set.join_next().await {
+                    if let Ok((url, verdict)) = joined {
+                        out.insert(url, verdict);
+                    }
+                }
+                Ok(out)
+            })
+            .await
+            .unwrap_or_default();
+        report(results)
+    }
+
     /// Abort all requests currently running on the runtime thread. Their
     /// awaiting callers observe [`SyncError::Cancelled`]. Does NOT poison the
     /// client — subsequent calls proceed normally (see the module docs).
@@ -638,7 +818,10 @@ impl MobileSyncClient {
         timeouts: HttpTimeouts,
     ) -> Result<Arc<Self>, SyncError> {
         ensure_initialized()?;
-        let http = build_http_client(timeouts).map_err(|e| SyncError::Internal {
+        // The long-lived production client always validates certificates;
+        // certificate-trust overrides are confined to the per-call
+        // ConnectionTester probe/test clients (see `build_http_client`).
+        let http = build_http_client(timeouts, false).map_err(|e| SyncError::Internal {
             reason: format!("build http client: {e}"),
         })?;
         Ok(Arc::new(Self {
@@ -846,6 +1029,96 @@ async fn put_file_inner(
         .body(body);
     check(send_with_retry(req).await?).await?;
     Ok(())
+}
+
+/// `GET /SyncClipboard.json` against an explicit client. Shared by
+/// [`MobileSyncClient::get_latest`] (production client) and
+/// [`MobileSyncClient::test_connection`] (which may build a trust-override
+/// client). Includes the 300ms retry and the JSON decode.
+async fn get_latest_with(
+    http: &reqwest::Client,
+    server: &ServerConfig,
+) -> Result<ClipboardMeta, SyncError> {
+    let url = endpoint(&server.base_url, &["SyncClipboard.json"])?;
+    let req = http
+        .get(url)
+        .basic_auth(&server.username, Some(&server.password));
+    let resp = check(send_with_retry(req).await?).await?;
+    let clip: ProtoClipboard = resp.json().await.map_err(decoding("SyncClipboard.json"))?;
+    Ok(ClipboardMeta::from_proto(clip))
+}
+
+/// Fold a single-URL `GET` outcome into a [`ProbeResult`] (Swift
+/// `ConnectionTester.test`'s catch arms): success/404 → reachable, 401 →
+/// auth-failed, everything else (5xx, protocol, decode failure, network) →
+/// unreachable.
+fn test_outcome(result: Result<ClipboardMeta, SyncError>) -> ProbeResult {
+    match result {
+        Ok(_) => ProbeResult::Success,
+        Err(SyncError::NotFound) => ProbeResult::Success,
+        Err(SyncError::Unauthorized) => ProbeResult::AuthFailed,
+        Err(_) => ProbeResult::Unreachable,
+    }
+}
+
+/// One probe candidate: status-only `GET <base>/SyncClipboard.json` with Basic
+/// Auth, no retry (Swift `ConnectionTester.probeOne`). A blank URL is
+/// [`ProbeResult::MissingFields`]; a URL that fails to normalize, any send
+/// error, or a 5xx/other status is [`ProbeResult::Unreachable`].
+async fn probe_one(
+    http: &reqwest::Client,
+    url: &str,
+    username: &str,
+    password: &str,
+) -> ProbeResult {
+    if url.trim().is_empty() {
+        return ProbeResult::MissingFields;
+    }
+    let Ok(endpoint_url) = endpoint(url, &["SyncClipboard.json"]) else {
+        return ProbeResult::Unreachable;
+    };
+    let req = http.get(endpoint_url).basic_auth(username, Some(password));
+    match req.send().await {
+        Err(_) => ProbeResult::Unreachable,
+        Ok(resp) => match map_status(resp.status().as_u16()) {
+            None => ProbeResult::Success,
+            Some(SyncError::NotFound) => ProbeResult::Success,
+            Some(SyncError::Unauthorized) => ProbeResult::AuthFailed,
+            Some(_) => ProbeResult::Unreachable,
+        },
+    }
+}
+
+/// De-duplicate candidate URLs (Swift `Array(Set(urls))`) keeping first-seen
+/// order. Order does not affect the result map but keeps the probe set stable.
+fn dedup_preserving_order(urls: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    urls.into_iter()
+        .filter(|u| seen.insert(u.clone()))
+        .collect()
+}
+
+/// Map every URL to one verdict (the empty-credentials / build-failure shapes).
+fn uniform_results(urls: &[String], verdict: ProbeResult) -> HashMap<String, ProbeResult> {
+    urls.iter().map(|u| (u.clone(), verdict)).collect()
+}
+
+/// The §5.3 pick: the first URL in `ordered_urls` (shape order for the current
+/// network) whose probe came back reachable, or `None` when none is. PURE and
+/// deterministic given `results` — NOT a race; two reachable candidates resolve
+/// to whichever ranks earlier. A URL with no entry in `results` (filtered out
+/// upstream) is never picked. Port of Swift `ConnectionTester.firstReachable`.
+///
+/// `results` is the [`ProbeReport::results`] map; the caller is responsible for
+/// discarding a report whose `network_epoch` is stale before calling this.
+#[uniffi::export]
+pub fn first_reachable(
+    ordered_urls: Vec<String>,
+    results: HashMap<String, ProbeResult>,
+) -> Option<String> {
+    ordered_urls
+        .into_iter()
+        .find(|u| results.get(u).is_some_and(ProbeResult::is_reachable))
 }
 
 #[cfg(test)]
@@ -1674,5 +1947,460 @@ mod tests {
             .await
             .expect_err("http must be rejected");
         assert!(matches!(err, SyncError::InvalidInput { .. }));
+    }
+
+    // ── connectivity probe (A7 / §5.3 Layer 2) ────────────────────────────
+    //
+    // Swift mirror: ConnectionTesterProbeTests.swift. Those tests route a
+    // single MockURLProtocol session by request host; here each candidate is a
+    // real axum mock on its own loopback port (one port = one status), and a
+    // closed port (`127.0.0.1:1`) stands in for "connection refused".
+
+    fn url_of(addr: SocketAddr) -> String {
+        format!("http://{addr}")
+    }
+
+    /// Build a `[String: ProbeResult]` map from string literals (firstReachable
+    /// + shape-order tests work over synthetic verdicts, no network).
+    fn results_map(pairs: &[(&str, ProbeResult)]) -> HashMap<String, ProbeResult> {
+        pairs.iter().map(|(u, r)| ((*u).to_string(), *r)).collect()
+    }
+
+    // Swift: test_probe_mapsStatusPerCandidate (+ epoch is M3-only).
+    #[tokio::test]
+    async fn probe_maps_status_per_candidate() {
+        let (ok, _s1) = spawn_mock(MockConfig::default()).await; // 200 + body
+        let (empty, _s2) = spawn_mock(MockConfig {
+            forced_status: Some(404),
+            ..Default::default()
+        })
+        .await;
+        let (badauth, _s3) = spawn_mock(MockConfig {
+            forced_status: Some(401),
+            ..Default::default()
+        })
+        .await;
+        let (broken, _s4) = spawn_mock(MockConfig {
+            forced_status: Some(500),
+            ..Default::default()
+        })
+        .await;
+        let gone = "http://127.0.0.1:1".to_string();
+
+        let client = new_client();
+        let report = client
+            .probe(
+                vec![
+                    url_of(ok),
+                    url_of(empty),
+                    url_of(badauth),
+                    url_of(broken),
+                    gone.clone(),
+                ],
+                "u".into(),
+                "p".into(),
+                false,
+                2000,
+                7,
+            )
+            .await;
+
+        assert_eq!(report.network_epoch, 7, "epoch stamped through verbatim");
+        assert_eq!(report.results[&url_of(ok)], ProbeResult::Success);
+        assert_eq!(report.results[&url_of(empty)], ProbeResult::Success); // 404 = reachable (§2.1)
+        assert_eq!(report.results[&url_of(badauth)], ProbeResult::AuthFailed); // 401 = reachable, creds wrong
+        assert_eq!(report.results[&url_of(broken)], ProbeResult::Unreachable); // 500
+        assert_eq!(report.results[&gone], ProbeResult::Unreachable); // refused
+        assert_eq!(report.results.len(), 5);
+    }
+
+    // Swift: test_probe_requestTargetsSyncClipboardJSONWithBasicAuth.
+    #[tokio::test]
+    async fn probe_targets_syncclipboard_json_with_basic_auth() {
+        let (addr, state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        let report = client
+            .probe(vec![url_of(addr)], "u".into(), "p".into(), false, 2000, 0)
+            .await;
+        assert_eq!(report.results[&url_of(addr)], ProbeResult::Success);
+        assert!(
+            state.events().contains(&"get-doc".to_string()),
+            "probe must GET /SyncClipboard.json"
+        );
+        let auth = state.last_auth.lock().expect("mock lock").clone();
+        assert_eq!(auth.as_deref(), Some("Basic dTpw")); // base64("u:p")
+    }
+
+    // Swift: test_probe_emptyCredentials_allMissingFields_withoutNetwork.
+    #[tokio::test]
+    async fn probe_empty_credentials_all_missing_fields_without_network() {
+        // No mock installed: a network attempt would surface as Unreachable, so
+        // MissingFields proves we never issued one.
+        let client = new_client();
+        let report = client
+            .probe(
+                vec!["https://a.example".into(), "https://b.example".into()],
+                "u".into(),
+                String::new(),
+                false,
+                2000,
+                0,
+            )
+            .await;
+        assert_eq!(
+            report.results["https://a.example"],
+            ProbeResult::MissingFields
+        );
+        assert_eq!(
+            report.results["https://b.example"],
+            ProbeResult::MissingFields
+        );
+        assert_eq!(report.results.len(), 2);
+    }
+
+    // Swift: test_probe_emptyList_returnsEmpty (+ epoch still stamped).
+    #[tokio::test]
+    async fn probe_empty_list_returns_empty_with_epoch() {
+        let client = new_client();
+        let report = client
+            .probe(vec![], "u".into(), "p".into(), false, 2000, 42)
+            .await;
+        assert!(report.results.is_empty());
+        assert_eq!(report.network_epoch, 42);
+    }
+
+    // Swift: test_probe_malformedURL_isUnreachable_blankURL_isMissingFields.
+    #[tokio::test]
+    async fn probe_malformed_url_unreachable_blank_missing_fields() {
+        let client = new_client();
+        let report = client
+            .probe(
+                vec!["not-a-url".into(), "   ".into()],
+                "u".into(),
+                "p".into(),
+                false,
+                2000,
+                0,
+            )
+            .await;
+        assert_eq!(report.results["not-a-url"], ProbeResult::Unreachable);
+        assert_eq!(report.results["   "], ProbeResult::MissingFields);
+    }
+
+    // Swift: test_probe_dedupesRepeatedCandidates.
+    #[tokio::test]
+    async fn probe_dedupes_repeated_candidates() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        let report = client
+            .probe(
+                vec![url_of(addr), url_of(addr)],
+                "u".into(),
+                "p".into(),
+                false,
+                2000,
+                0,
+            )
+            .await;
+        assert_eq!(report.results.len(), 1);
+        assert_eq!(report.results[&url_of(addr)], ProbeResult::Success);
+    }
+
+    // §5.3: the short timeout is the "is this path up right now" guard. A mock
+    // that stalls past the timeout (and the probe issues exactly one GET — no
+    // retry) resolves to Unreachable.
+    #[tokio::test]
+    async fn probe_times_out_to_unreachable() {
+        let (addr, _state) = spawn_mock(MockConfig {
+            first_get_delay: Duration::from_millis(500),
+            ..Default::default()
+        })
+        .await;
+        let client = new_client();
+        let report = client
+            .probe(vec![url_of(addr)], "u".into(), "p".into(), false, 100, 0)
+            .await;
+        assert_eq!(report.results[&url_of(addr)], ProbeResult::Unreachable);
+    }
+
+    // trust=true builds a danger-accept client; it must still drive a plain
+    // HTTP probe (full self-signed TLS verification is a device/M6 concern).
+    #[tokio::test]
+    async fn probe_trust_insecure_still_works_over_plain_http() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        let report = client
+            .probe(vec![url_of(addr)], "u".into(), "p".into(), true, 2000, 0)
+            .await;
+        assert_eq!(report.results[&url_of(addr)], ProbeResult::Success);
+    }
+
+    // ── firstReachable pick (pure, §5.3 shape order) ──────────────────────
+
+    // Swift: test_firstReachable_skipsUnreachableHead.
+    #[test]
+    fn first_reachable_skips_unreachable_head() {
+        let ordered = vec![
+            "https://lan.example".to_string(),
+            "https://ts.example".to_string(),
+            "https://wan.example".to_string(),
+        ];
+        let results = results_map(&[
+            ("https://lan.example", ProbeResult::Unreachable),
+            ("https://ts.example", ProbeResult::Success),
+            ("https://wan.example", ProbeResult::Success),
+        ]);
+        assert_eq!(
+            first_reachable(ordered, results).as_deref(),
+            Some("https://ts.example")
+        );
+    }
+
+    // Swift: test_firstReachable_authFailedCountsAsReachable.
+    #[test]
+    fn first_reachable_auth_failed_counts_as_reachable() {
+        let ordered = vec![
+            "https://lan.example".to_string(),
+            "https://wan.example".to_string(),
+        ];
+        let results = results_map(&[
+            ("https://lan.example", ProbeResult::AuthFailed),
+            ("https://wan.example", ProbeResult::Success),
+        ]);
+        assert_eq!(
+            first_reachable(ordered, results).as_deref(),
+            Some("https://lan.example")
+        );
+    }
+
+    // Swift: test_firstReachable_orderDecidesWhenBothReachable.
+    #[test]
+    fn first_reachable_order_decides_when_both_reachable() {
+        let ordered = vec![
+            "https://lan.example".to_string(),
+            "https://wan.example".to_string(),
+        ];
+        let results = results_map(&[
+            ("https://lan.example", ProbeResult::Success),
+            ("https://wan.example", ProbeResult::Success),
+        ]);
+        assert_eq!(
+            first_reachable(ordered, results).as_deref(),
+            Some("https://lan.example")
+        );
+    }
+
+    // Swift: test_firstReachable_nilWhenNothingReachable.
+    #[test]
+    fn first_reachable_none_when_nothing_reachable() {
+        let ordered = vec![
+            "https://lan.example".to_string(),
+            "https://wan.example".to_string(),
+        ];
+        let results = results_map(&[
+            ("https://lan.example", ProbeResult::Unreachable),
+            ("https://wan.example", ProbeResult::MissingFields),
+        ]);
+        assert_eq!(first_reachable(ordered, results), None);
+    }
+
+    // Swift: test_firstReachable_missingProbeEntryIsNotReachable.
+    #[test]
+    fn first_reachable_missing_entry_is_not_reachable() {
+        assert_eq!(
+            first_reachable(vec!["https://lan.example".to_string()], HashMap::new()),
+            None
+        );
+    }
+
+    // Swift: test_probeThenPick_choosesFirstReachableInShapeOrder. Shape order
+    // is the proto's `ordered_urls` (M1, byte-checked); the probe verdict here
+    // is synthetic so the pick's determinism is what's under test (the real
+    // network probe is covered by `probe_then_pick_over_live_mocks`).
+    #[test]
+    fn probe_then_pick_chooses_first_reachable_in_shape_order() {
+        use uc_mobile_proto::{ordered_urls, NetworkContext};
+        let urls = vec![
+            "https://wan.example".to_string(),
+            "http://192.168.1.9:5033".to_string(),
+            "https://host.ts.net".to_string(),
+        ];
+        let ordered = ordered_urls(
+            &urls,
+            &NetworkContext {
+                is_wifi: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            ordered,
+            vec![
+                "http://192.168.1.9:5033".to_string(),
+                "https://host.ts.net".to_string(),
+                "https://wan.example".to_string(),
+            ]
+        );
+        let results = results_map(&[
+            ("http://192.168.1.9:5033", ProbeResult::Unreachable), // LAN down
+            ("https://host.ts.net", ProbeResult::Success),         // TS up, empty
+            ("https://wan.example", ProbeResult::Success),
+        ]);
+        // Deterministic: TS wins over WAN because it ranks earlier, not faster.
+        assert_eq!(
+            first_reachable(ordered, results).as_deref(),
+            Some("https://host.ts.net")
+        );
+    }
+
+    // End-to-end over REAL probed mocks: an unreachable head is skipped for the
+    // next reachable candidate in the given order.
+    #[tokio::test]
+    async fn probe_then_pick_over_live_mocks() {
+        let (down, _s1) = spawn_mock(MockConfig {
+            forced_status: Some(500),
+            ..Default::default()
+        })
+        .await;
+        let (up, _s2) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        let report = client
+            .probe(
+                vec![url_of(down), url_of(up)],
+                "u".into(),
+                "p".into(),
+                false,
+                2000,
+                3,
+            )
+            .await;
+        // `down` ranks first but is unreachable, so the pick falls to `up`.
+        let ordered = vec![url_of(down), url_of(up)];
+        assert_eq!(first_reachable(ordered, report.results), Some(url_of(up)));
+    }
+
+    // ── single-URL test_connection (§5.3 Layer 2 single form) ─────────────
+
+    #[tokio::test]
+    async fn test_connection_success_on_200() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        assert_eq!(
+            client.test_connection(server_cfg(addr, "p"), false).await,
+            ProbeResult::Success
+        );
+    }
+
+    // §2.1: 404 = "no clipboard published yet" = reachable, which is what the
+    // user is testing — so it maps to Success, NOT NotFound.
+    #[tokio::test]
+    async fn test_connection_404_is_success() {
+        let (addr, _state) = spawn_mock(MockConfig {
+            forced_status: Some(404),
+            ..Default::default()
+        })
+        .await;
+        let client = new_client();
+        assert_eq!(
+            client.test_connection(server_cfg(addr, "p"), false).await,
+            ProbeResult::Success
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connection_wrong_password_is_auth_failed() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        assert_eq!(
+            client
+                .test_connection(server_cfg(addr, "wrong"), false)
+                .await,
+            ProbeResult::AuthFailed
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connection_server_error_is_unreachable() {
+        let (addr, _state) = spawn_mock(MockConfig {
+            forced_status: Some(500),
+            ..Default::default()
+        })
+        .await;
+        let client = new_client();
+        assert_eq!(
+            client.test_connection(server_cfg(addr, "p"), false).await,
+            ProbeResult::Unreachable
+        );
+    }
+
+    // A reachable server returning an undecodable 2xx body is Unreachable
+    // (Swift `test`'s catch-all arm), distinct from the probe which never
+    // decodes.
+    #[tokio::test]
+    async fn test_connection_decode_failure_is_unreachable() {
+        let addr = spawn_raw_doc_mock(200, "not-json").await;
+        let client = new_client();
+        assert_eq!(
+            client.test_connection(server_cfg(addr, "p"), false).await,
+            ProbeResult::Unreachable
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connection_missing_fields_makes_no_request() {
+        let (addr, state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        let cfg = ServerConfig {
+            base_url: format!("http://{addr}"),
+            username: "u".into(),
+            password: String::new(),
+        };
+        assert_eq!(
+            client.test_connection(cfg, false).await,
+            ProbeResult::MissingFields
+        );
+        assert!(
+            state.events().is_empty(),
+            "missing fields must short-circuit before any request"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connection_blank_url_is_missing_fields() {
+        let client = new_client();
+        let cfg = ServerConfig {
+            base_url: "   ".into(),
+            username: "u".into(),
+            password: "p".into(),
+        };
+        assert_eq!(
+            client.test_connection(cfg, false).await,
+            ProbeResult::MissingFields
+        );
+    }
+
+    // Non-empty but unparseable URL → endpoint() rejects → Unreachable (Swift:
+    // a failed client constructor maps to .unreachable).
+    #[tokio::test]
+    async fn test_connection_malformed_url_is_unreachable() {
+        let client = new_client();
+        let cfg = ServerConfig {
+            base_url: "not-a-url".into(),
+            username: "u".into(),
+            password: "p".into(),
+        };
+        assert_eq!(
+            client.test_connection(cfg, false).await,
+            ProbeResult::Unreachable
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connection_trust_insecure_still_works_over_plain_http() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        assert_eq!(
+            client.test_connection(server_cfg(addr, "p"), true).await,
+            ProbeResult::Success
+        );
     }
 }

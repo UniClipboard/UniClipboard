@@ -66,9 +66,19 @@
 - [x] 🔬 取消：`cancel_in_flight` 中止在途请求（观测 `.cancelled`），300ms 重试因 task abort 自然不触发 — `cancel_in_flight_yields_cancelled`。**刻意偏离 Swift**：长生命周期、多 server、独占 runtime 的 Rust client **不永久 poison**——`cancel` 后的新请求（原生壳带新 `ServerConfig`）正常工作，避免每次网络切换重建 client+ 重起 runtime 线程；用户 2026-06-12 拍板，`cancel_does_not_poison_subsequent_requests` 守此决策（详见 `client.rs` 模块 docs）
 
 ### A7. 连通性探测（§5.3 Layer 2）
-- [ ] 🔬 单 URL test：200/404→success，401→authFailed，其余→unreachable
-- [ ] 🔬 多 URL probe：2s 超时并发，404/401=可达，`waitsForConnectivity=false`
-- [ ] 🔬 `firstReachable` 按 orderedURLs 顺序取首个可达（确定性，非竞速）
+
+> ✅ M3 完成 2026-06-14（`cargo test -p uc-mobile`，53 测试全绿；逐条对照 Swift
+> `ConnectionTester.swift` / `ConnectionTesterProbeTests.swift` 移植到
+> `crates/uc-mobile/src/client.rs`）。探测路径 **刻意复用** A6 的 `endpoint`/
+> `map_status`/`.basic_auth`，但 **状态语义不同**：probe/test 把 404 当「可达 - 但空」
+> → `Success`（A6 主客户端把 404 当 `NotFound` 错误）。`trustInsecureCert` 用户拍板
+> M3 就为 probe/test 接线（各自构建客户端时 `danger_accept_invalid_certs`；生产客户端
+> 的 trust 仍属 M4/E 区）。`network_epoch` 用户拍板做不透明透传：`probe` 收 epoch 入参、
+> 随 `ProbeReport` 回带（结论的有效性校验属 M5 SyncEngine，M3 只盖戳）。
+
+- [x] 🔬 单 URL test：200/404→success，401→authFailed，其余→unreachable — `test_connection`（走完整 `get_latest_with` + 重试 + 解码；2xx 解码失败→unreachable，对齐 Swift catch-all）；`test_connection_{success_on_200,404_is_success,wrong_password_is_auth_failed,server_error_is_unreachable,decode_failure_is_unreachable,{blank_url,missing_fields}→missing_fields,malformed_url_is_unreachable}`
+- [x] 🔬 多 URL probe：2s 超时并发，404/401=可达，`waitsForConnectivity=false`（reqwest 默认不等连通性，无需额外配置） — `probe`（per-request 短 total timeout、**不重试**、status-only、`JoinSet` 单线程并发扇出）；`probe_{maps_status_per_candidate,targets_syncclipboard_json_with_basic_auth,empty_credentials_all_missing_fields_without_network,empty_list_returns_empty_with_epoch,malformed_url_unreachable_blank_missing_fields,dedupes_repeated_candidates,times_out_to_unreachable,trust_insecure_still_works_over_plain_http}`
+- [x] 🔬 `firstReachable` 按 orderedURLs 顺序取首个可达（确定性，非竞速） — `first_reachable`（纯函数，复用 M1 proto `ordered_urls` 形态序）；`first_reachable_{skips_unreachable_head,auth_failed_counts_as_reachable,order_decides_when_both_reachable,none_when_nothing_reachable,missing_entry_is_not_reachable}` + 端到端 `probe_then_pick_{chooses_first_reachable_in_shape_order,over_live_mocks}`
 
 ---
 

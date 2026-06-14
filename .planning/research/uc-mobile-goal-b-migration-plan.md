@@ -3,8 +3,8 @@
 > 前置：spike B0–B2 已完成（FFI 管道证明成立，见 `uc-mobile-spike-plan.md`）。
 > 输入：`uc-ios-feature-inventory.md`（行为基线）+ `uc-ios-regression-checklist.md`（验收闸门）。
 > 范围拍板（2026-06-12）：**只做 mobile-sync，不做 P2P**——本方案不含任何 Transport/iroh/加密栈内容。
-> 状态：M0+M1+M2 已完成（2026-06-12），M3 起待续。语言审查豁免路径（`.planning/`）。
-> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿）· M2 ✅（`uc-mobile/client.rs` 补全 A6：全端点 + 状态映射 + 重试 + 取消 + base-url/文件名校验，29 测试绿、iOS-sim 交叉编译通过，client 侧 `WireDoc` 收敛到 proto `Clipboard`）· M3–M6 ⏳
+> 状态：M0+M1+M2+M3 已完成（M3 于 2026-06-14），M4 起待续。语言审查豁免路径（`.planning/`）。
+> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿）· M2 ✅（`uc-mobile/client.rs` 补全 A6：全端点 + 状态映射 + 重试 + 取消 + base-url/文件名校验，29 测试绿、iOS-sim 交叉编译通过，client 侧 `WireDoc` 收敛到 proto `Clipboard`）· M3 ✅（`client.rs` 补 A7：`test_connection`/`probe`/`first_reachable`，复用 proto `ordered_urls`，trustInsecureCert 接线 probe/test、epoch 透传回带 `ProbeReport`，53 测试绿、iOS-sim 通过）· M4–M6 ⏳
 
 ## 0. 一句话定位
 
@@ -59,9 +59,14 @@ A2/A3/A4/A5 + B 区纯逻辑：wire 模型、hash、长文本溢出（字素计�
 - **刻意偏离 Swift**：cancel **不永久 poison**（长生命周期/多 server/独占 runtime；用户 2026-06-12 拍板），`client.rs` 模块 docs + 回归清单 A6 记此决策。
 - 缝 3 drop 测试保留（file→metadata 窗口原子）；新增 retry（timeout + RST mock）、状态映射全表、文件名/profileId 前置校验、no-poison、basic-auth 向量等测试。
 
-### M3 · ConnectionTester（小）
+### M3 · ConnectionTester（小）— ✅ 完成
 A7：单 URL test、多 URL 并发 probe（2s 超时、404/401=可达）、`firstReachable` 按序确定性取首达（非竞速）。网络 epoch 由原生传入快照参数，Rust 不订阅系统事件。
 **验收**：A7 + B 区 `preferredURLs` 全条单测绿。
+**结果**（2026-06-14，`cargo test -p uc-mobile` 53 绿、clippy/fmt 干净、proto 140 不回归、iOS-sim 交叉编译通过、`aws-lc-rs` 仍不在依赖树）：
+- `MobileSyncClient::test_connection`（单 URL，走完整 `get_latest_with` + 重试 + 解码，2xx 解码失败→unreachable）、`MobileSyncClient::probe`（多 URL，短 total timeout、**不重试**、status-only、`tokio::task::JoinSet` 单 runtime 线程并发扇出、`dedup_preserving_order`）、自由函数 `first_reachable`（纯，复用 M1 proto `ordered_urls` 形态序）。新增 FFI 类型 `ProbeResult`（Success/AuthFailed/Unreachable/MissingFields，404→Success 的可达语义集中于此）+ `ProbeReport{network_epoch,results}`。
+- **用户拍板（2026-06-14）**：①`trustInsecureCert` M3 就为 probe/test 接线（`build_http_client` 加 trust 参数→`danger_accept_invalid_certs`；生产客户端 trust 仍 M4）；②epoch 不透明透传——`probe` 收 `network_epoch` 入参、随 `ProbeReport` 回带，**有效性校验属 M5**（M3 只盖戳）。
+- API 形态：probe/test 作 `MobileSyncClient` 方法（复用 runtime + reqwest + `send_with_retry`/`check`/`map_status`），`first_reachable` 作纯自由 `#[uniffi::export]` fn——不另起独立 Object（会重复一套 runtime/init）。
+- **遗留单列**：B 区「旧格式迁移」（legacy 单 `url`/`manualOverrideConfigId` 提升）仍属 M4 持久化层，本里程碑只动探测，不碰 `ServerConfig` Codable。
 
 ### M4 · 状态与持久化逻辑（中）
 SettingsStore 键名/默认值/前向兼容（E 区）、watermark、history 去重 append（cap 200、direction 升级）、SyncLoopGuard 状态机、PayloadCache 的 LRU 索引决策（驱逐 **决策** 在 Rust，文件读写/原子写由原生按决策执行——snapshot in、command out）。

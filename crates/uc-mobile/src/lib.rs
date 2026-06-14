@@ -22,8 +22,8 @@ use std::collections::HashMap;
 pub mod client;
 
 pub use client::{
-    uc_mobile_init, ClipboardKind, ClipboardMeta, MobileSyncClient, PlatformBridge, ServerConfig,
-    SyncError,
+    first_reachable, uc_mobile_init, ClipboardKind, ClipboardMeta, MobileSyncClient,
+    PlatformBridge, ProbeReport, ProbeResult, ServerConfig, SyncError,
 };
 
 uniffi::setup_scaffolding!();

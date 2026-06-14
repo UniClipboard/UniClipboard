@@ -53,6 +53,47 @@ static TRACING_INITIALIZED: OnceLock<()> = OnceLock::new();
 /// Guard that ensures the panic logging hook is installed exactly once.
 static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 
+/// Third-party crate target prefixes muted from the **Sentry export path only**.
+///
+/// These are the iroh networking stack plus the host-network probe crates it
+/// pulls in. Their WARN/ERROR output is high-frequency infrastructure noise —
+/// NAT / relay / route-table / DNS churn we cannot fix from this codebase — and
+/// is the dominant consumer of the Sentry Logs quota (origin of #828). Muting is
+/// a `target.starts_with(prefix)` test, so each entry also covers submodules and
+/// sibling crates sharing the prefix (e.g. `iroh_relay`, `hickory_resolver`).
+///
+/// This gates **only** what reaches Sentry. The console and JSON-file layers
+/// keep their own `EnvFilter` (see `LogProfile` / `NOISE_FILTERS`), so offline
+/// diagnostics still capture every one of these events. Genuine failures that
+/// matter are re-emitted by our own `uc_*` layers with business context and are
+/// never matched here.
+///
+/// `noq_` (trailing underscore) is deliberate: it mutes the `noq_proto` /
+/// `noq_udp` sub-crates while leaving the `noq` QUIC core crate visible, whose
+/// WARN/ERROR still carries actionable connection signal.
+///
+/// Recovery: drop an entry once upstream cuts its own log volume, or once we
+/// gain per-target quota controls on the Sentry side.
+const SENTRY_MUTED_TARGET_PREFIXES: &[&str] = &[
+    "iroh",            // transport + net_report (QAD spam) + magicsock / relay actor
+    "noq_",            // forked quinn sub-crates: noq_proto / noq_udp
+    "netwatch",        // host route/interface monitor (macOS AF_ROUTE rib parse spam)
+    "hickory",         // DNS resolver behind pkarr + relay URL resolution
+    "pkarr",           // public-key DNS publish / resolve
+    "portmapper",      // UPnP / IGD / PCP port mapping
+    "swarm_discovery", // mDNS LAN discovery backend
+    "igd_next",        // UPnP / IGD discovery loop
+];
+
+/// Returns `true` when a tracing `target` is allowed to reach Sentry.
+///
+/// `false` for any target under [`SENTRY_MUTED_TARGET_PREFIXES`].
+fn sentry_target_allowed(target: &str) -> bool {
+    !SENTRY_MUTED_TARGET_PREFIXES
+        .iter()
+        .any(|prefix| target.starts_with(prefix))
+}
+
 /// Read the `telemetry_enabled` setting from persisted settings.
 ///
 /// Uses the canonical settings repository read path so that defaults,
@@ -346,16 +387,19 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                 .event_mapper(|event, ctx| {
                     let md = event.metadata();
 
-                    // 1) 噪音 target 完全 drop —— 与旧 event_filter 等价。
+                    // 1) Drop the noise targets the per-layer `with_filter`
+                    //    below does not cover (they are not in
+                    //    SENTRY_MUTED_TARGET_PREFIXES). `panic` is dropped here
+                    //    so the sentry-panic integration solely owns
+                    //    panic -> Issue with no duplicate from this tracing path
+                    //    (see the Sentry init notes above); `opentelemetry` is
+                    //    residual exporter self-tracing noise. The iroh / noq
+                    //    networking stack is already muted upstream by
+                    //    `with_filter`, so it never reaches this mapper.
                     if md.target() == "panic" {
                         return EventMapping::Ignore;
                     }
                     if md.target().starts_with("opentelemetry") {
-                        return EventMapping::Ignore;
-                    }
-                    if md.target().starts_with("noq_proto::connection")
-                        || md.target().starts_with("noq_udp")
-                    {
                         return EventMapping::Ignore;
                     }
 
@@ -408,23 +452,22 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
                         _ => EventMapping::Combined(CombinedEventMapping::from(out)),
                     }
                 })
-                // 紧急止血:屏蔽 iroh / iroh_* / noq_* 系列 target 进 Sentry。
+                // Mute the iroh networking stack and the host-network probe
+                // crates it pulls in from the Sentry export path. The prefix
+                // list and rationale live on `SENTRY_MUTED_TARGET_PREFIXES`.
                 //
-                // 诊断显示 `iroh::socket::transports::poll_send`(QUIC UDP
-                // 发包) 单一 op 占 14 天 span 配额 54%,加上 `iroh::endpoint
-                // ::connect` 与 noq_proto 链路合计 ~70%。这些来自第三方
-                // crate 的 instrument,我们无法直接精简注解,只能在喂给
-                // Sentry 的入口处整体过滤。本地 jsonl / console 不受影响
-                // (它们各自挂的是独立的 layer + filter),离线排障仍可见。
-                //
-                // 与上游 sample_rate 下调到 0.02 协同:两者乘积保证剩余配额
-                // 能撑到月底,同时保留 uc_* / clipboard 主流程 span 的可观
-                // 测性。回收条件:upstream iroh 减少自身 trace span 后,或
-                // 我们在 sentry 上开了 op-级别配额管理后,可放开本过滤。
-                .with_filter(profile.json_filter().and(filter_fn(|meta| {
-                    let t = meta.target();
-                    !(t.starts_with("iroh") || t.starts_with("noq_"))
-                }))),
+                // `profile.json_filter()` keeps level/target parity with the
+                // JSON-file layer; the added `filter_fn` drops the muted infra
+                // prefixes that a single `EnvFilter` directive cannot express
+                // as one "third-party noise" group. Pairs with
+                // `traces_sample_rate: 0.02` to keep the span quota bounded.
+                // Local jsonl / console are unaffected (independent layers),
+                // so offline diagnostics still see every muted event.
+                .with_filter(
+                    profile
+                        .json_filter()
+                        .and(filter_fn(|meta| sentry_target_allowed(meta.target()))),
+                ),
         )
     } else {
         // No eprintln here -- it pollutes CLI output. Absence of a DSN is a
@@ -688,6 +731,49 @@ mod tests {
     fn keeps_unrelated_panic_messages() {
         let ev = make_panic_event("attempt to divide by zero", Some(TAO_DESTROYED_FRAME));
         assert_eq!(known_upstream_panic(&ev), None);
+    }
+
+    #[test]
+    fn sentry_mutes_iroh_networking_stack() {
+        // Targets observed burning the Sentry Logs quota during triage — every
+        // one is third-party infra noise we cannot fix from this codebase.
+        for target in [
+            "iroh::net_report::report",
+            "iroh::socket::transports::relay::actor",
+            "iroh_relay::client",
+            "noq_proto::connection",
+            "noq_udp::socket",
+            "netwatch::netmon::bsd",
+            "hickory_resolver::hosts",
+            "pkarr::client",
+            "portmapper::mapping",
+            "swarm_discovery::socket",
+            "igd_next::aio::tokio",
+        ] {
+            assert!(
+                !sentry_target_allowed(target),
+                "{target} should be muted from Sentry"
+            );
+        }
+    }
+
+    #[test]
+    fn sentry_allows_app_and_unmuted_targets() {
+        // Our own crates must always reach Sentry. `noq` (no trailing `_`) is
+        // intentionally NOT muted — only the `noq_proto` / `noq_udp` sub-crates
+        // are — so its connection-level signal stays visible.
+        for target in [
+            "uc_application::usecases::clipboard_sync::ingest_inbound",
+            "uc_platform::clipboard::common",
+            "uc_webserver::api::server",
+            "panic",
+            "noq::connection",
+        ] {
+            assert!(
+                sentry_target_allowed(target),
+                "{target} should reach Sentry"
+            );
+        }
     }
 
     #[test]

@@ -53,11 +53,11 @@
 //! `ingest_inbound.rs::tests` and Phase 1 `roster/facade.rs::FakePresence`).
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bytes::Bytes;
-use tokio::task::{JoinError, JoinSet};
-use tracing::{debug, info, info_span, instrument, warn, Instrument};
+use tokio::task::JoinSet;
+use tracing::{info, info_span, instrument, Instrument};
 use uc_observability::FlowId;
 
 /// 主流程等 fan-out join 的硬上限。超过此时长后,剩余仍在跑的 peer task 会被
@@ -80,24 +80,41 @@ use uc_observability::FlowId;
 /// 长尾缩到 ~0,但主流程本身的截断契约不变。详见 #785。
 const FAN_OUT_DEADLINE: Duration = Duration::from_secs(5);
 
+mod delivery;
+mod fanout;
+mod header;
+mod per_peer;
+mod target_selector;
+
+#[cfg(test)]
+mod test_support;
+
+use delivery::{
+    classify_dispatch_result, spawn_deferred_drain, DeliveryRecorder, DispatchResultBucket,
+};
+use fanout::DeadlineBoundedFanout;
+use header::OutboundHeaderFactory;
+use per_peer::PerPeerDispatcher;
+use target_selector::TargetSelector;
+
 use crate::facade::blob_transfer::SharedHostEventEmitter;
-use crate::facade::host_event::{DeliveryHostEvent, HostEvent};
 use uc_core::clipboard::{
-    ClipboardContentCategory, ClipboardContentCategorySet, DeliveryFailureReason,
-    EntryDeliveryRecord, EntryDeliveryStatus,
+    ClipboardContentCategory, ClipboardContentCategorySet, EntryDeliveryRecord,
 };
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
-    ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, ClockPort, DeviceIdentityPort,
-    DispatchAck, EntryDeliveryRepositoryPort, FirstSyncStatePort, LocalIdentityPort,
-    PeerAddressRepositoryPort, PresencePort, ReachabilityState, SettingsPort, SyncPayload,
+    ClipboardDispatchError, ClipboardDispatchPort, ClockPort, DeviceIdentityPort, DispatchAck,
+    EntryDeliveryRepositoryPort, FirstSyncStatePort, LocalIdentityPort, PeerAddressRepositoryPort,
+    PresencePort, SettingsPort, SyncPayload,
 };
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::{
-    AnalyticsPort, Direction, Event, FailureReason, PayloadSizeBucket, PayloadType,
-    SyncDeferReason, SyncDeferredProps, SyncEventProps, SyncFailureStage, TransportType,
+    AnalyticsPort, FailureReason, PayloadSizeBucket, PayloadType, SyncFailureStage,
 };
+
+/// One fanned-out peer's settled result: the device plus the wire outcome.
+pub(crate) type PeerDispatchResult = (DeviceId, Result<DispatchAck, ClipboardDispatchError>);
 
 /// Slice 8c-1 · classify the dispatched payload by category priority
 /// (File > Image > Text). Empty / unknown sets fall back to Text rather
@@ -147,37 +164,6 @@ fn dispatch_failure_stage(err: &ClipboardDispatchError) -> SyncFailureStage {
         ClipboardDispatchError::Offline
         | ClipboardDispatchError::PeerRejected(_)
         | ClipboardDispatchError::Io(_) => SyncFailureStage::ImmediateSend,
-    }
-}
-
-async fn capture_sync_attempted(
-    analytics: &Arc<dyn AnalyticsPort>,
-    first_sync_state: &Arc<dyn FirstSyncStatePort>,
-    payload_type: PayloadType,
-    payload_size_bucket: PayloadSizeBucket,
-) {
-    analytics.capture(Event::SyncAttempted(SyncEventProps {
-        direction: Direction::Outbound,
-        payload_type,
-        payload_size_bucket,
-        transport_type: TransportType::P2pDirect,
-        peer_os: None,
-        sync_latency_ms: None,
-        failure_reason: None,
-        failure_stage: None,
-    }));
-    // Slice 8c-2 · funnel: first attempt fires regardless of outcome — keeps
-    // the "started but failed" 漏点信号。deferred 路径也会调用本函数，确保
-    // attempted 时序一致；dashboard 端用 `attempted - deferred` 推导用户感知尝试。
-    match first_sync_state.mark_first_sync_attempted().await {
-        Ok(true) => analytics.capture(Event::FirstClipboardSyncAttempted {
-            direction: Direction::Outbound,
-        }),
-        Ok(false) => {}
-        Err(err) => warn!(
-            error = %err,
-            "first_sync_state.mark_first_sync_attempted failed; skipping fire",
-        ),
     }
 }
 
@@ -267,7 +253,7 @@ pub(crate) enum DispatchSyncError {
 ///
 /// Sole consumer is `ResendEntryUseCase`, whose unit tests assert dispatch
 /// input shape (`target_filter` / `entry_id` / `content_hash`) without
-/// constructing the full 14-port dispatch use case. Production wiring
+/// constructing the full 13-port dispatch use case. Production wiring
 /// satisfies the trait through the blanket impl below. Not exposed beyond
 /// the crate.
 #[async_trait::async_trait]
@@ -288,40 +274,34 @@ impl DispatchEntryRunner for DispatchClipboardEntryUseCase {
     }
 }
 
+/// Fans one clipboard payload out to every eligible peer and records each
+/// per-peer outcome. The use case is thin orchestration over five
+/// concern-scoped collaborators:
+///
+/// - [`TargetSelector`] — who is eligible (roster ∩ !self ∩ filter ∩ gate);
+/// - [`OutboundHeaderFactory`] — the wire header stamped on every frame;
+/// - [`PerPeerDispatcher`] — dispatch one peer + emit its 1:1 telemetry;
+/// - [`DeadlineBoundedFanout`] — run the per-peer tasks under a deadline;
+/// - [`DeliveryRecorder`] — persist outcomes + ping the frontend.
+///
+/// `device_identity` and `clock` stay here as shared context resolved once
+/// per pass: identity stamps both the self-filter and the header origin;
+/// the clock stamps the aggregate outcome and each peer's delivery record.
 pub(crate) struct DispatchClipboardEntryUseCase {
-    peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
-    member_repo: Arc<dyn MemberRepositoryPort>,
-    presence: Arc<dyn PresencePort>,
-    transfer_cipher: Arc<dyn TransferCipherPort>,
-    clipboard_dispatch: Arc<dyn ClipboardDispatchPort>,
+    cipher: Arc<dyn TransferCipherPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
-    local_identity: Arc<dyn LocalIdentityPort>,
-    settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
-    /// fan-out 完成后,按每个 target 的成功/失败落盘 delivery 记录。
-    /// 仅在 `DispatchClipboardEntryInput.entry_id` 为 `Some` 时调用。
-    entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
-    /// Slice 8c-1 · per-peer telemetry. One `sync_attempted` /
-    /// `sync_succeeded` / `sync_failed` event fires per fan-out target so
-    /// PostHog reliability dashboards stay per-peer (peer_os, latency,
-    /// failure_reason are all 1:1 with a single peer outcome).
-    analytics: Arc<dyn AnalyticsPort>,
-    /// Slice 8c-2 · first-sync funnel dedup. spawn 内每次 `mark_*` 返回 `Ok(true)`
-    /// 即"我是首次"，同时额外 fire `first_clipboard_sync_attempted` /
-    /// `first_clipboard_sync_succeeded` / `first_file_sync_succeeded`。
-    /// race 防护由 port impl 内部 `tokio::sync::Mutex` 守护，调用方零感知。
-    first_sync_state: Arc<dyn FirstSyncStatePort>,
-    /// 共享 host-event bus。每条 delivery 记录写盘成功后追发一条
-    /// [`HostEvent::Delivery`],让前端 detail badge 在 dispatch 完成后自动
-    /// 刷新而无需手动切 entry。Issue #747 Phase 5。
-    ///
-    /// emit 走 [`HostEventBus::emit_or_warn`] —— 失败仅 warn,不阻塞
-    /// dispatch 主路径;事件丢失 / 乱序由前端 refetch 幂等吸收。CLI / 单元
-    /// 测试装配传一根空 bus 即可(无下游 = noop)。
-    host_event_bus: SharedHostEventEmitter,
+    selector: TargetSelector,
+    header_factory: OutboundHeaderFactory,
+    dispatcher: Arc<PerPeerDispatcher>,
+    fanout: DeadlineBoundedFanout,
+    recorder: Arc<DeliveryRecorder>,
 }
 
 impl DispatchClipboardEntryUseCase {
+    /// The 13-port positional signature is intentionally preserved so
+    /// bootstrap and tests keep wiring unchanged; the ports are reassembled
+    /// into the five concern-scoped collaborators here.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
@@ -338,20 +318,21 @@ impl DispatchClipboardEntryUseCase {
         entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
         host_event_bus: SharedHostEventEmitter,
     ) -> Self {
+        let header_clock = Arc::clone(&clock);
         Self {
-            peer_addr_repo,
-            member_repo,
-            presence,
-            transfer_cipher,
-            clipboard_dispatch,
+            cipher: transfer_cipher,
             device_identity,
-            local_identity,
-            settings,
             clock,
-            analytics,
-            first_sync_state,
-            entry_delivery_repo,
-            host_event_bus,
+            selector: TargetSelector::new(peer_addr_repo, member_repo),
+            header_factory: OutboundHeaderFactory::new(settings, local_identity, header_clock),
+            dispatcher: Arc::new(PerPeerDispatcher::new(
+                clipboard_dispatch,
+                presence,
+                analytics,
+                first_sync_state,
+            )),
+            fanout: DeadlineBoundedFanout::new(FAN_OUT_DEADLINE),
+            recorder: Arc::new(DeliveryRecorder::new(entry_delivery_repo, host_event_bus)),
         }
     }
 
@@ -379,9 +360,9 @@ impl DispatchClipboardEntryUseCase {
     ) -> Result<DispatchOutcome, DispatchSyncError> {
         let flow_id = FlowId::generate();
         tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
-        // 1. Encrypt. A locked session surfaces here — let it short-circuit
-        //    so we don't spam the dispatch wire with encrypt-retries.
-        let ciphertext = match self.transfer_cipher.encrypt(&input.plaintext).await {
+        // 1. Encrypt once. A locked session surfaces here — let it
+        //    short-circuit so we don't spam the dispatch wire with retries.
+        let ciphertext = match self.cipher.encrypt(&input.plaintext).await {
             Ok(bytes) => Bytes::from(bytes),
             Err(err) => {
                 return Err(match err {
@@ -393,58 +374,17 @@ impl DispatchClipboardEntryUseCase {
             }
         };
 
-        // 2. Enumerate targets. `peer_addr_repo.list()` is the iteration
-        //    source (see module doc); self is the only filter. Presence
-        //    state is intentionally NOT consulted — see module doc for
-        //    rationale. The dispatch port reports `Offline` per-target
-        //    for unreachable peers, which we fold into the outcome below.
-        let records =
-            self.peer_addr_repo.list().await.map_err(|err| {
-                DispatchSyncError::Repository(format!("peer_addr_repo.list: {err}"))
-            })?;
-
+        // 2. Resolve identity once (it stamps both the self-filter and the
+        //    header origin), then enumerate eligible targets and build the
+        //    wire header. Presence is intentionally NOT consulted at
+        //    enumeration time — the per-target preflight happens in the
+        //    fan-out (see `PerPeerDispatcher`).
         let local_device = self.device_identity.current_device_id();
-        let mut candidates: Vec<DeviceId> = Vec::with_capacity(records.len());
-        for record in records {
-            if record.device_id == local_device {
-                continue;
-            }
-            // ADR-005 §2.5 resend:`target_filter` 收紧 fan-out 目标白名单。
-            // `None` 维持现状(全 fan-out);`Some(list)` 只保留交集。
-            // 注意:此处不把"空 list"视作特殊 passthrough —— `ResendEntryUseCase`
-            // 在差集为空(或显式空列表)时直接返回 `NoEligibleTargets`,根本
-            // 不会调进 dispatch。若 dispatch 仍收到空 list,只能是其它调用
-            // 方,按"交集为空"自然落到下面的"no paired peers"分支返回零
-            // fan-out。
-            if let Some(filter) = &input.target_filter {
-                if !filter.iter().any(|d| d == &record.device_id) {
-                    continue;
-                }
-            }
-            if !self
-                .is_send_allowed(&record.device_id, &input.categories)
-                .await
-            {
-                continue;
-            }
-            candidates.push(record.device_id);
-        }
-
-        // 3. Build the header once and clone per target.
-        //
-        // PR3:`flow_id` 写进 header,跨设备传到 inbound 端。inbound 收到后
-        // 会用同一个 id 落到自己的 root span,Sentry 上"A 端 dispatch →
-        // B 端 ingest"两条 trace 在 `flow.id` 维度自动 join。
-        let origin_device_name = self.load_origin_device_name().await;
-        let header = ClipboardHeader {
-            version: ClipboardHeader::CURRENT_VERSION,
-            content_hash: input.content_hash.clone(),
-            captured_at_ms: self.clock.now_ms(),
-            origin_device_id: local_device.as_str().to_string(),
-            origin_device_name,
-            payload_version: input.payload_version,
-            flow_id: Some(flow_id.to_string()),
-        };
+        let candidates = self.selector.select(&input, &local_device).await?;
+        let header = self
+            .header_factory
+            .build(&input, &flow_id, &local_device)
+            .await;
 
         if candidates.is_empty() {
             info!("dispatch: no paired peers; skipping fan-out");
@@ -462,34 +402,21 @@ impl DispatchClipboardEntryUseCase {
 
         tracing::Span::current().record("fanout.candidates", candidates.len());
 
-        // 4. Fan-out. One JoinSet task per target; results merged at the end.
-        //
-        // 每个 peer 走自己的 `peer.dispatch` child span，带上 `peer.device_id`
-        // + `flow.id`。这样 Sentry 上扇出 N 个目标时能看到 N 条平行 child span，
-        // 单点失败一目了然，而不是被 root 的"末次写入"覆盖。`flow.id` 在
-        // child 上也写一份是冗余 —— 但 root span 不一定总在同一个 trace，
-        // 在 worker 任务里显式 carry 更稳。
-        //
-        // Slice 8c-1 · each spawned task fires per-peer telemetry. `sync_attempted`
-        // 始终在 dispatch 前发一次，保证时序一致；`sync_succeeded` / `sync_failed`
-        // / `sync_deferred` 与 attempted 形成 1:1 配对。known-offline peer 仍尝试
-        // 发送（presence 可能 stale）；若 dispatch 仍判为 Offline，结果事件用
-        // `sync_deferred` 而不是 `sync_failed`，因为那是预期不可用，不该计入
-        // 用户感知失败口径（dashboard 以 `attempted - deferred` 推导用户感知尝试）。
+        // 4. Fan out: one task per target, each driving `dispatch_one`
+        //    (presence preflight + dispatch + per-peer telemetry) inside its
+        //    own `peer.dispatch` child span carrying `flow.id`, so Sentry
+        //    can join the outbound dispatch with the inbound ingest.
         let payload_type = payload_type_from_categories(&input.categories);
         let payload_size_bucket = PayloadSizeBucket::from_bytes(input.plaintext.len() as u64);
-        let mut set: JoinSet<(DeviceId, Result<DispatchAck, ClipboardDispatchError>)> =
-            JoinSet::new();
+        let header = Arc::new(header);
+        let mut set: JoinSet<PeerDispatchResult> = JoinSet::new();
         for device_id in &candidates {
-            let dispatch = Arc::clone(&self.clipboard_dispatch);
-            let presence = Arc::clone(&self.presence);
-            let analytics = Arc::clone(&self.analytics);
-            let first_sync_state = Arc::clone(&self.first_sync_state);
-            let header = header.clone();
-            let device_id = device_id.clone();
+            let dispatcher = Arc::clone(&self.dispatcher);
+            let header = Arc::clone(&header);
             let payload = SyncPayload {
                 ciphertext: ciphertext.clone(),
             };
+            let device_id = device_id.clone();
             let child_span = info_span!(
                 "peer.dispatch",
                 peer.device_id = %device_id.as_str(),
@@ -498,259 +425,71 @@ impl DispatchClipboardEntryUseCase {
             );
             set.spawn(
                 async move {
-                    // attempted 始终在 dispatch 前发，时序与口径保持单一：
-                    //   attempted = succeeded + failed + deferred
-                    //   用户感知尝试 = attempted - deferred
-                    // 详见 docs/architecture/telemetry-events.md §7.3b。
-                    let preflight_state = presence.current_state(&device_id).await;
-                    let known_offline = matches!(preflight_state, ReachabilityState::Offline);
-                    capture_sync_attempted(
-                        &analytics,
-                        &first_sync_state,
-                        payload_type,
-                        payload_size_bucket,
-                    )
-                    .await;
-
-                    // Skip the dial entirely when presence already reports
-                    // Offline. A dial against a silently-dead peer can run
-                    // up to STAGGERED_DELAYS[2] (1.5s) + ATTEMPT_TIMEOUT (3s)
-                    // = 4.5s before failing — short of the main loop's
-                    // FAN_OUT_DEADLINE (5s) on its own, but with multiple
-                    // peers piling on the same offline target it still
-                    // stalls every clipboard copy on the deadline. Since
-                    // the dispatch adapter writes presence Offline on its
-                    // own dial failures (PresencePort::mark_offline) and
-                    // the presence fast-path enforces a TTL re-dial, by the
-                    // time `known_offline` is true we have first-hand
-                    // evidence the peer is unreachable — re-dialing here
-                    // would burn the deadline to learn nothing new.
-                    //
-                    // Telemetry preserves attempted+deferred parity: we
-                    // already fired `sync_attempted` above, and now fire
-                    // `sync_deferred` with `peer_known_offline` as the
-                    // reason, matching the post-dial deferred path's
-                    // semantics. Background recovery is unchanged — the
-                    // next clipboard event will retry, and an inbound
-                    // presence connection from the peer flips state back
-                    // to Online and reopens the dial path.
-                    if known_offline {
-                        analytics.capture(Event::SyncDeferred(SyncDeferredProps {
-                            direction: Direction::Outbound,
+                    dispatcher
+                        .dispatch_one(
+                            device_id,
+                            header,
+                            payload,
                             payload_type,
                             payload_size_bucket,
-                            peer_os: None,
-                            defer_reason: SyncDeferReason::PeerKnownOffline,
-                        }));
-                        return (device_id, Err(ClipboardDispatchError::Offline));
-                    }
-
-                    let started_at = Instant::now();
-                    let result = dispatch.dispatch(&device_id, &header, payload).await;
-                    let duration_ms =
-                        started_at.elapsed().as_millis().min(u32::MAX as u128) as u32;
-
-                    // Pre-#886 the use case stamped a local negative
-                    // cache here on `Offline` / `Io` failures. The
-                    // dispatch adapter now calls
-                    // `PresencePort::mark_offline` itself when the dial
-                    // path fully fails, which arms a sticky window in
-                    // the presence adapter — the next dispatch's
-                    // preflight reads `Offline` from `current_state` and
-                    // short-circuits without us maintaining a parallel
-                    // cache here.
-
-                    let event = match &result {
-                        Ok(_) => Event::SyncSucceeded(SyncEventProps {
-                            direction: Direction::Outbound,
-                            payload_type,
-                            payload_size_bucket,
-                            transport_type: TransportType::P2pDirect,
-                            peer_os: None,
-                            sync_latency_ms: Some(duration_ms),
-                            failure_reason: None,
-                            failure_stage: None,
-                        }),
-                        Err(err) => Event::SyncFailed(SyncEventProps {
-                            direction: Direction::Outbound,
-                            payload_type,
-                            payload_size_bucket,
-                            transport_type: TransportType::P2pDirect,
-                            peer_os: None,
-                            sync_latency_ms: None,
-                            failure_reason: Some(map_dispatch_error_to_failure_reason(err)),
-                            failure_stage: Some(dispatch_failure_stage(err)),
-                        }),
-                    };
-                    let is_ok = result.is_ok();
-                    analytics.capture(event);
-
-                    // Slice 8c-2 · funnel: first success path fires both the
-                    // generic clipboard event and (if payload_type=File) the
-                    // file-specific event. Both flags独立 dedup。
-                    if is_ok {
-                        match first_sync_state.mark_first_sync_succeeded().await {
-                            Ok(true) => analytics.capture(Event::FirstClipboardSyncSucceeded {
-                                direction: Direction::Outbound,
-                                peer_os: None,
-                                transport_type: TransportType::P2pDirect,
-                                duration_ms,
-                            }),
-                            Ok(false) => {}
-                            Err(err) => warn!(
-                                error = %err,
-                                "first_sync_state.mark_first_sync_succeeded failed; skipping fire",
-                            ),
-                        }
-                        if matches!(payload_type, PayloadType::File) {
-                            match first_sync_state.mark_first_file_sync_succeeded().await {
-                                Ok(true) => analytics.capture(Event::FirstFileSyncSucceeded {
-                                    peer_os: None,
-                                    transport_type: TransportType::P2pDirect,
-                                    payload_size_bucket,
-                                }),
-                                Ok(false) => {}
-                                Err(err) => warn!(
-                                    error = %err,
-                                    "first_sync_state.mark_first_file_sync_succeeded failed; skipping fire",
-                                ),
-                            }
-                        }
-                    }
-
-                    (device_id, result)
+                        )
+                        .await
                 }
                 .instrument(child_span),
             );
         }
 
+        // 5. Drain within the fan-out deadline; classify + fold each
+        //    foreground settle as it lands. Each peer samples its own
+        //    `now_ms` (inside the closure), so a delivery record reflects
+        //    that peer's actual completion time. Tasks still in flight at
+        //    the deadline are handed back for the background drain below.
+        let entry_id = input.entry_id.clone();
         let mut per_target = Vec::with_capacity(candidates.len());
         let mut total_accepted = 0;
         let mut total_duplicate = 0;
         let mut total_offline = 0;
         let mut total_errored = 0;
-
-        // fan-out 完成后,如果调用方提供了 entry_id,就把"每个对端的结果"
-        // 落盘到 entry_delivery 表。先在 join loop 内收集本地待写记录,
-        // 循环结束再串行 await,避免在 hot path 上多次 await 让出调度器。
-        // updated_at_ms 在每个 arm 内独立采样,反映该对端的实际完成时刻
-        // (不同 peer 的 fan-out 延迟分布很广,共用单点时间会丢失排障信息)。
-        let entry_id_for_delivery = input.entry_id.clone();
         let mut delivery_records: Vec<EntryDeliveryRecord> = Vec::new();
 
-        // 主流程 fan-out join 受 `FAN_OUT_DEADLINE` 截断。在 deadline 内 settle
-        // 的 peer 走原路径(计数 + per_target + delivery)。deadline 到时仍在跑
-        // 的 task 会被整体 move 给后台 spawn 继续 join,主流程立即返回
-        // `total_pending = set.len()`。详见常量 doc 与 #785。
-        let fanout_started = Instant::now();
-        loop {
-            let remaining = FAN_OUT_DEADLINE.saturating_sub(fanout_started.elapsed());
-            if remaining.is_zero() {
-                break;
-            }
-            match tokio::time::timeout(remaining, set.join_next()).await {
-                Ok(Some(joined)) => {
-                    let processed = classify_dispatch_result(
-                        joined,
-                        entry_id_for_delivery.as_ref(),
-                        self.clock.now_ms(),
-                    );
-                    match processed.bucket {
-                        DispatchResultBucket::Accepted => total_accepted += 1,
-                        DispatchResultBucket::Duplicate => total_duplicate += 1,
-                        DispatchResultBucket::Offline => total_offline += 1,
-                        DispatchResultBucket::Errored | DispatchResultBucket::Panicked => {
-                            total_errored += 1
-                        }
-                    }
-                    if let Some(pt) = processed.per_target {
-                        per_target.push(pt);
-                    }
-                    if let Some(rec) = processed.delivery_record {
-                        delivery_records.push(rec);
+        let leftover = self
+            .fanout
+            .drain_foreground(set, |joined| {
+                let processed =
+                    classify_dispatch_result(joined, entry_id.as_ref(), self.clock.now_ms());
+                match processed.bucket {
+                    DispatchResultBucket::Accepted => total_accepted += 1,
+                    DispatchResultBucket::Duplicate => total_duplicate += 1,
+                    DispatchResultBucket::Offline => total_offline += 1,
+                    DispatchResultBucket::Errored | DispatchResultBucket::Panicked => {
+                        total_errored += 1
                     }
                 }
-                Ok(None) => break, // set drained — all peers settled within deadline
-                Err(_) => break,   // deadline elapsed — defer remaining to background
-            }
-        }
+                if let Some(pt) = processed.per_target {
+                    per_target.push(pt);
+                }
+                if let Some(rec) = processed.delivery_record {
+                    delivery_records.push(rec);
+                }
+            })
+            .await;
 
-        // 串行落盘 delivery 记录。失败仅 log,不阻塞主流程的返回,这是
-        // 一个可观测性副作用,不该影响 dispatch 自身的成败语义。
-        //
-        // Issue #747 Phase 5:成功写入一条 record 后,立即追发一条
-        // `HostEvent::Delivery::StatusChanged`,让 GUI detail 视图实时
-        // 刷新。先 record → 后 emit 的顺序很关键 —— 前端拿到事件后会
-        // refetch view,view 必须能读到最新写入,否则前端会得到一份与
-        // 事件不一致的旧快照(看似"再切一次 entry 才刷新"的旧问题原貌)。
-        // 事件 payload 不携带 status —— 前端按 entry_id 匹配后 refetch
-        // 拿真相,事件只是"该不该 refetch"的指针,见 `DeliveryHostEvent`
-        // 的注释。
-        flush_delivery_records(
-            &delivery_records,
-            self.entry_delivery_repo.as_ref(),
-            &self.host_event_bus,
-        )
-        .await;
+        // 6. Record the foreground deliveries (write-then-emit is
+        //    load-bearing — see `DeliveryRecorder::flush`).
+        self.recorder.flush(&delivery_records).await;
 
-        // 把剩余 in-flight 的 peer task 移交后台继续 join。helper 自带
-        // delivery 写盘 + emit,语义与主流程内一致;只是发生在 dispatch_capture
-        // 已经返回之后,前端 delivery badge 会按 peer 真实完成时刻陆续刷新,
-        // 而不是被 staggered retry 长尾整体卡住。
-        let total_pending = set.len();
+        // 7. Hand still-in-flight peers to a detached background drain that
+        //    records each as it finally settles — so an early-acking peer's
+        //    badge isn't held hostage by a staggered-retry long tail. This
+        //    is best-effort RECORD-ONLY, never a resend (VISION #59).
+        let total_pending = leftover.len();
         if total_pending > 0 {
-            let entry_id_bg = entry_id_for_delivery.clone();
-            let clock_bg = Arc::clone(&self.clock);
-            let entry_delivery_repo_bg = Arc::clone(&self.entry_delivery_repo);
-            let host_event_bus_bg = Arc::clone(&self.host_event_bus);
-            let content_hash_bg = input.content_hash.clone();
-            tokio::spawn(
-                async move {
-                    let bg_started = Instant::now();
-                    let mut bg_accepted = 0usize;
-                    let mut bg_duplicate = 0usize;
-                    let mut bg_offline = 0usize;
-                    let mut bg_errored = 0usize;
-                    // 每个 peer task join 完就立刻把它那条 delivery record
-                    // 写盘 + emit,不再累成一笔等所有 deferred peer 跑完再
-                    // flush。否则一个 staggered retry 拖尾的离线 peer 会
-                    // 把前面早就 ack 的 peer 的 badge 刷新也一起卡 15s,
-                    // 与注释里"按 peer 真实完成时刻陆续刷新"的承诺相违背。
-                    while let Some(joined) = set.join_next().await {
-                        let processed = classify_dispatch_result(
-                            joined,
-                            entry_id_bg.as_ref(),
-                            clock_bg.now_ms(),
-                        );
-                        match processed.bucket {
-                            DispatchResultBucket::Accepted => bg_accepted += 1,
-                            DispatchResultBucket::Duplicate => bg_duplicate += 1,
-                            DispatchResultBucket::Offline => bg_offline += 1,
-                            DispatchResultBucket::Errored | DispatchResultBucket::Panicked => {
-                                bg_errored += 1
-                            }
-                        }
-                        if let Some(rec) = processed.delivery_record {
-                            flush_delivery_records(
-                                std::slice::from_ref(&rec),
-                                entry_delivery_repo_bg.as_ref(),
-                                &host_event_bus_bg,
-                            )
-                            .await;
-                        }
-                    }
-                    info!(
-                        content_hash = %content_hash_bg,
-                        deferred_count = total_pending,
-                        accepted = bg_accepted,
-                        duplicate = bg_duplicate,
-                        offline = bg_offline,
-                        errored = bg_errored,
-                        bg_duration_ms = bg_started.elapsed().as_millis() as u64,
-                        "dispatch: deferred fan-out completed"
-                    );
-                }
-                .in_current_span(),
+            spawn_deferred_drain(
+                leftover,
+                entry_id,
+                Arc::clone(&self.clock),
+                Arc::clone(&self.recorder),
+                input.content_hash.clone(),
             );
         }
 
@@ -764,255 +503,6 @@ impl DispatchClipboardEntryUseCase {
             total_pending,
             at_ms: self.clock.now_ms(),
         })
-    }
-
-    /// Per-device sync gate: returns `true` when the local device should
-    /// fan a clipboard frame out to `device_id`. Two stages:
-    ///
-    /// 1. Device-level kill switch (`send_enabled`).
-    /// 2. Content-type filter (`send_content_types`, AND-of-allowed across
-    ///    the snapshot's category set — see `uc-core` `category.rs` module doc).
-    ///    Empty set (raw-bytes / unrecognised payload) passes (fail open)
-    ///    so we don't stall sync silently.
-    ///
-    /// Member-record miss / repo error → fail open with a WARN, mirroring
-    /// the device-level gate's posture: a transient glitch should not
-    /// silently kill sync.
-    async fn is_send_allowed(
-        &self,
-        device_id: &DeviceId,
-        categories: &ClipboardContentCategorySet,
-    ) -> bool {
-        match self.member_repo.get(device_id).await {
-            Ok(Some(member)) => {
-                if !member.sync_preferences.send_enabled {
-                    info!(
-                        device_id = %device_id.as_str(),
-                        reason = "send_disabled_by_user",
-                        "dispatch: skipping peer per per-device sync preferences"
-                    );
-                    return false;
-                }
-                if !categories.allowed_by(&member.sync_preferences.send_content_types) {
-                    info!(
-                        device_id = %device_id.as_str(),
-                        categories = %categories.labels(),
-                        denied = %categories
-                            .denied_labels(&member.sync_preferences.send_content_types),
-                        reason = "content_type_disabled_by_user",
-                        "dispatch: skipping peer per per-device content_types filter"
-                    );
-                    return false;
-                }
-                true
-            }
-            Ok(None) => {
-                warn!(
-                    device_id = %device_id.as_str(),
-                    "dispatch: peer in addr repo but missing from member repo; failing open"
-                );
-                true
-            }
-            Err(err) => {
-                warn!(
-                    device_id = %device_id.as_str(),
-                    error = %err,
-                    "dispatch: member repo lookup failed; failing open"
-                );
-                true
-            }
-        }
-    }
-
-    /// Load the device's own display name to embed in the outbound header
-    /// so the peer can show "from <Alice's Laptop>". Falls back to the
-    /// fingerprint if settings are unreadable or empty.
-    async fn load_origin_device_name(&self) -> String {
-        match self.settings.load().await {
-            Ok(settings) => {
-                if let Some(name) = settings.general.device_name {
-                    if !name.is_empty() {
-                        return name;
-                    }
-                }
-            }
-            Err(err) => {
-                warn!(error = %err, "dispatch: settings load failed; using fingerprint fallback");
-            }
-        }
-        match self.local_identity.get_current_fingerprint().await {
-            Ok(Some(fp)) => fp.as_display().to_string(),
-            _ => "unknown-device".to_string(),
-        }
-    }
-}
-
-/// Outcome bucket for `classify_dispatch_result`. Caller uses this to bump the
-/// matching counter on the aggregated `DispatchOutcome` (or the background
-/// continuation's own counters). `Panicked` rolls up into `Errored` because
-/// the existing `DispatchOutcome` API surface has no separate panic bucket
-/// and treating a panicked task as "errored" keeps `attempted = succeeded +
-/// failed + deferred` semantics intact for telemetry.
-enum DispatchResultBucket {
-    Accepted,
-    Duplicate,
-    Offline,
-    Errored,
-    Panicked,
-}
-
-/// Folded view of one fanned-out peer's `JoinSet` result, ready for the
-/// caller to fold into `DispatchOutcome` (or the background continuation).
-struct ProcessedDispatchResult {
-    /// `None` iff the task panicked / was cancelled (no DeviceId recoverable).
-    per_target: Option<DispatchPerTarget>,
-    /// `None` iff `entry_id` was `None` OR the task panicked. Otherwise a
-    /// fully populated record ready for `EntryDeliveryRepositoryPort::record_attempt`.
-    delivery_record: Option<EntryDeliveryRecord>,
-    bucket: DispatchResultBucket,
-}
-
-/// Shared per-peer result-handling — used by both the main flow and the
-/// background continuation that drains `set` after the fan-out deadline.
-/// Kept as a free function (not a method) so the background `tokio::spawn`
-/// task can call it without holding `&self`.
-///
-/// `now_ms` is sampled by the caller (each peer's `updated_at_ms` reflects
-/// the moment that peer's result was observed, not a shared snapshot of
-/// dispatch completion).
-fn classify_dispatch_result(
-    joined: Result<(DeviceId, Result<DispatchAck, ClipboardDispatchError>), JoinError>,
-    entry_id: Option<&EntryId>,
-    now_ms: i64,
-) -> ProcessedDispatchResult {
-    match joined {
-        Ok((device_id, Ok(DispatchAck::Accepted))) => {
-            debug!(device_id = %device_id.as_str(), "dispatch → Accepted");
-            let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
-                entry_id: eid.clone(),
-                target_device_id: device_id.clone(),
-                status: EntryDeliveryStatus::Delivered,
-                reason_detail: None,
-                updated_at_ms: now_ms,
-            });
-            ProcessedDispatchResult {
-                per_target: Some(DispatchPerTarget {
-                    device_id,
-                    outcome: Ok(DispatchAck::Accepted),
-                }),
-                delivery_record,
-                bucket: DispatchResultBucket::Accepted,
-            }
-        }
-        Ok((device_id, Ok(DispatchAck::DuplicateIgnored))) => {
-            debug!(device_id = %device_id.as_str(), "dispatch → DuplicateIgnored");
-            let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
-                entry_id: eid.clone(),
-                target_device_id: device_id.clone(),
-                status: EntryDeliveryStatus::Duplicate,
-                reason_detail: None,
-                updated_at_ms: now_ms,
-            });
-            ProcessedDispatchResult {
-                per_target: Some(DispatchPerTarget {
-                    device_id,
-                    outcome: Ok(DispatchAck::DuplicateIgnored),
-                }),
-                delivery_record,
-                bucket: DispatchResultBucket::Duplicate,
-            }
-        }
-        Ok((device_id, Err(ClipboardDispatchError::Offline))) => {
-            debug!(device_id = %device_id.as_str(), "dispatch → Offline");
-            let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
-                entry_id: eid.clone(),
-                target_device_id: device_id.clone(),
-                status: EntryDeliveryStatus::Failed {
-                    reason: DeliveryFailureReason::Offline,
-                },
-                reason_detail: None,
-                updated_at_ms: now_ms,
-            });
-            ProcessedDispatchResult {
-                per_target: Some(DispatchPerTarget {
-                    device_id,
-                    outcome: Err("offline".to_string()),
-                }),
-                delivery_record,
-                bucket: DispatchResultBucket::Offline,
-            }
-        }
-        Ok((device_id, Err(err))) => {
-            warn!(device_id = %device_id.as_str(), error = %err, "dispatch failed");
-            let (failure_reason, reason_detail) = match &err {
-                // Offline 在上一个 arm 已处理,这里不会进。保留以满足穷尽性。
-                ClipboardDispatchError::Offline => (DeliveryFailureReason::Offline, None),
-                ClipboardDispatchError::LocalPolicyExceeded(s) => {
-                    (DeliveryFailureReason::LocalPolicy, Some(s.clone()))
-                }
-                ClipboardDispatchError::PeerRejected(s) => {
-                    (DeliveryFailureReason::PeerRejected, Some(s.clone()))
-                }
-                ClipboardDispatchError::Io(s) => (DeliveryFailureReason::Io, Some(s.clone())),
-                ClipboardDispatchError::Internal(s) => {
-                    (DeliveryFailureReason::Internal, Some(s.clone()))
-                }
-            };
-            let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
-                entry_id: eid.clone(),
-                target_device_id: device_id.clone(),
-                status: EntryDeliveryStatus::Failed {
-                    reason: failure_reason,
-                },
-                reason_detail,
-                updated_at_ms: now_ms,
-            });
-            ProcessedDispatchResult {
-                per_target: Some(DispatchPerTarget {
-                    device_id,
-                    outcome: Err(err.to_string()),
-                }),
-                delivery_record,
-                bucket: DispatchResultBucket::Errored,
-            }
-        }
-        Err(err) => {
-            warn!(error = %err, "dispatch task panicked or cancelled");
-            ProcessedDispatchResult {
-                per_target: None,
-                delivery_record: None,
-                bucket: DispatchResultBucket::Panicked,
-            }
-        }
-    }
-}
-
-/// Sequentially `record_attempt` each entry-delivery record then `emit_or_warn`
-/// the matching `DeliveryHostEvent`. Write-then-emit order is load-bearing —
-/// the host event is a "refetch ping" with no payload, so the frontend's
-/// follow-up read must observe the write. See `DeliveryHostEvent` docs.
-///
-/// Errors only `warn!`; this is an observability side-effect that must not
-/// mask `dispatch_capture`'s real success/failure semantics.
-async fn flush_delivery_records(
-    records: &[EntryDeliveryRecord],
-    repo: &dyn EntryDeliveryRepositoryPort,
-    bus: &SharedHostEventEmitter,
-) {
-    for record in records {
-        if let Err(err) = repo.record_attempt(record).await {
-            warn!(
-                error = %err,
-                entry_id = %record.entry_id,
-                target_device_id = %record.target_device_id,
-                "failed to record entry delivery"
-            );
-            continue;
-        }
-        bus.emit_or_warn(HostEvent::Delivery(DeliveryHostEvent::StatusChanged {
-            entry_id: record.entry_id.to_string(),
-            target_device_id: record.target_device_id.as_str().to_string(),
-        }));
     }
 }
 
@@ -1047,15 +537,17 @@ mod tests {
     use mockall::predicate::*;
     use tokio::sync::broadcast;
 
+    use uc_core::clipboard::{DeliveryFailureReason, EntryDeliveryStatus};
     use uc_core::ports::security::{TransferCipherError, TransferCipherPort};
     use uc_core::ports::{
-        ClockPort, DeviceIdentityPort, FirstSyncStateError, LocalIdentityError, LocalIdentityPort,
-        PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort, PresenceError,
-        PresenceEvent, PresencePort, ReachabilityState, SettingsPort,
+        ClipboardHeader, ClockPort, DeviceIdentityPort, FirstSyncStateError, LocalIdentityError,
+        LocalIdentityPort, PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort,
+        PresenceError, PresenceEvent, PresencePort, ReachabilityState, SettingsPort,
     };
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
     use uc_core::{MemberRepositoryPort, MemberSyncPreferences, MembershipError, SpaceMember};
+    use uc_observability::analytics::{Direction, Event, SyncDeferReason, TransportType};
 
     // ── mockall: PeerAddressRepositoryPort ──────────────────────────────
 

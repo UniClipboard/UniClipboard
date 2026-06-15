@@ -603,3 +603,169 @@ async fn paired_send_stdin_pipe() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-device send gate (TargetSelector)
+// ---------------------------------------------------------------------------
+//
+// Unlike the cross-node delivery tests above, the send gate is decided
+// entirely on the SENDER. `TargetSelector` consults each peer's
+// `send_enabled` before the peer ever enters the fan-out, so the effect is
+// observable in the sender's own `send --json` `DispatchOutcomeResponse`
+// without any rendezvous relay or successful p2p delivery — which makes this
+// the one dispatch-selection behaviour we can assert *hard* in headless E2E.
+
+/// Device id of the unique remote (non-local) member in `cli`'s roster.
+/// Dispatch `perTarget` rows are keyed by this same id.
+fn remote_member_id(cli: &TestCli) -> String {
+    let out = cli.run_capture(&["--json", "members"]);
+    assert!(out.success(), "members failed: {}", out.stderr);
+    let members: Value = serde_json::from_str(out.stdout.trim())
+        .unwrap_or_else(|e| panic!("members not valid JSON: {e}\nstdout: {}", out.stdout));
+    let remote: Vec<&Value> = members
+        .as_array()
+        .unwrap_or_else(|| panic!("members not a JSON array: {}", out.stdout))
+        .iter()
+        .filter(|m| !m.get("is_local").and_then(|v| v.as_bool()).unwrap_or(false))
+        .collect();
+    assert_eq!(
+        remote.len(),
+        1,
+        "expected exactly one remote member, got {remote:?}"
+    );
+    remote[0]
+        .get("device_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("remote member missing device_id: {:?}", remote[0]))
+        .to_string()
+}
+
+/// Flip a peer's `send_enabled` gate on `daemon` (the sender side) via
+/// `PATCH /member/:id/sync-preferences`. Asserts the endpoint answers 200.
+async fn set_peer_send_enabled(daemon: &TestDaemon, peer_id: &str, enabled: bool) {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .unwrap();
+    let token = get_session_token(daemon, &client).await;
+    let resp = client
+        .patch(format!(
+            "{}/member/{peer_id}/sync-preferences",
+            daemon.base_url()
+        ))
+        .header("Authorization", format!("Session {token}"))
+        .json(&serde_json::json!({ "sendEnabled": enabled }))
+        .send()
+        .await
+        .expect("patch sync-preferences request");
+    assert_eq!(
+        resp.status().as_u16(),
+        200,
+        "patch sync-preferences should answer 200, got {}",
+        resp.status()
+    );
+}
+
+/// Run `send --json` and parse the `DispatchOutcomeResponse` body.
+fn send_json(cli: &TestCli, payload: &str) -> Value {
+    let out = cli.run_capture(&["--json", "send", payload]);
+    // `send` exits 1 when nothing was accepted; both 0 and 1 are non-crash.
+    assert!(
+        out.exit_code == 0 || out.exit_code == 1,
+        "send crashed (exit={}): {}",
+        out.exit_code,
+        out.stderr
+    );
+    serde_json::from_str(out.stdout.trim())
+        .unwrap_or_else(|e| panic!("send --json not valid JSON: {e}\nstdout: {}", out.stdout))
+}
+
+/// `deviceId`s present in a dispatch outcome's `perTarget` (camelCase key —
+/// note `members` output uses snake_case `device_id`, but the dispatch
+/// response DTO is camelCase).
+fn per_target_ids(outcome: &Value) -> Vec<String> {
+    outcome
+        .get("perTarget")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|t| {
+                    t.get("deviceId")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A muted peer (`send_enabled = false`) is dropped by `TargetSelector`
+/// BEFORE the fan-out, so the sender's dispatch outcome carries no row for it
+/// at all — not even an offline/errored one (the dial was never attempted).
+/// Un-muting restores it as a candidate, which proves the *gate* — not a
+/// missing roster/address row — is what excluded it.
+///
+/// This is delivery-independent: every assertion reads only the sender's
+/// `send --json` outcome, so it holds with or without a working p2p route.
+#[tokio::test]
+#[ignore]
+async fn paired_send_gate_excludes_muted_peer() {
+    let (alice_daemon, alice_cli, bob_daemon, bob_cli) = pair_two_nodes("send-gate").await;
+
+    // Let pairing finish populating Alice's peer-address + member rows.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let bob_id = remote_member_id(&alice_cli);
+
+    // Mute Bob on Alice's side, then dispatch. Bob is Alice's only peer, so
+    // excluding him collapses the fan-out to the empty "no eligible targets"
+    // shape: zero per-target rows and zero counts, but a real content hash
+    // (the encrypt+enumerate pipeline still ran — it just found no targets).
+    set_peer_send_enabled(&alice_daemon, &bob_id, false).await;
+    let muted = send_json(
+        &alice_cli,
+        &format!("send-gate-muted-{}", std::process::id()),
+    );
+    assert!(
+        per_target_ids(&muted).is_empty(),
+        "muted peer must be excluded from per_target: {muted}"
+    );
+    for key in [
+        "totalAccepted",
+        "totalDuplicate",
+        "totalOffline",
+        "totalErrored",
+    ] {
+        assert_eq!(
+            muted.get(key).and_then(|v| v.as_u64()).unwrap_or(u64::MAX),
+            0,
+            "{key} must be 0 once the only peer is muted (no dial attempted): {muted}"
+        );
+    }
+    assert!(
+        muted
+            .get("contentHash")
+            .and_then(|v| v.as_str())
+            .map(|h| !h.is_empty())
+            .unwrap_or(false),
+        "muted send still encrypts + reports a contentHash: {muted}"
+    );
+
+    // Un-mute and dispatch again: Bob re-enters the fan-out and settles into
+    // per_target (accepted on a live loopback route, otherwise offline/errored
+    // within FAN_OUT_DEADLINE — never left pending). His reappearance is the
+    // differential that pins the exclusion above on the send gate.
+    set_peer_send_enabled(&alice_daemon, &bob_id, true).await;
+    let restored = send_json(
+        &alice_cli,
+        &format!("send-gate-restored-{}", std::process::id()),
+    );
+    assert!(
+        per_target_ids(&restored).iter().any(|id| id == &bob_id),
+        "un-muted peer must re-enter the fan-out per_target: {restored}"
+    );
+
+    drop(alice_cli);
+    drop(bob_cli);
+    drop(alice_daemon);
+    drop(bob_daemon);
+}

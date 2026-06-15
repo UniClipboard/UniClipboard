@@ -48,6 +48,7 @@ pub mod net_class;
 pub mod payload_cache;
 pub mod persist_keys;
 pub mod server_config;
+pub mod sync_engine;
 
 pub use app_settings::{
     decode_app_settings, encode_app_settings, AppSettings, AppearanceMode,
@@ -85,4 +86,14 @@ pub use payload_cache::{is_valid_cache_key, plan_eviction, CacheEntry};
 pub use server_config::{
     decode_server_list, encode_server_list, load_servers, LegacyServerConfig, ServerConfig,
     ServerConfigList, ServerLoad,
+};
+pub use sync_engine::{
+    acknowledge_loop_detection, advance_watermark, backoff_secs, cadence_secs, commit_apply,
+    commit_apply_failed, commit_consent_push, commit_converged, commit_history_sync_done,
+    commit_push, commit_push_skipped, commit_stage, commit_tick_failure, commit_tick_success,
+    handle_active_server_changed, handle_network_route_changed, hashes_equal, is_cold_start,
+    is_history_sync_due, is_probe_conclusion_valid, mark_staged_applied, plan_after_server_get,
+    plan_preamble, reset_runtime_state, CommitOutcome, Preamble, PreambleProceed, PreambleSnapshot,
+    PushDecision, ServerGetSnapshot, ServerNewPlan, ServerRoute, StopReason, SyncConfig,
+    SyncRuntimeState, SyncState, TickErrorKind, TickFailureOutcome,
 };

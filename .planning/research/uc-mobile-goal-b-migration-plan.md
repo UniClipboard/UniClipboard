@@ -3,8 +3,8 @@
 > 前置：spike B0–B2 已完成（FFI 管道证明成立，见 `uc-mobile-spike-plan.md`）。
 > 输入：`uc-ios-feature-inventory.md`（行为基线）+ `uc-ios-regression-checklist.md`（验收闸门）。
 > 范围拍板（2026-06-12）：**只做 mobile-sync，不做 P2P**——本方案不含任何 Transport/iroh/加密栈内容。
-> 状态：M0+M1+M2+M3+M4 已完成（M4 于 2026-06-14），M5 起待续。语言审查豁免路径（`.planning/`）。
-> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿）· M2 ✅（`uc-mobile/client.rs` 补全 A6：全端点 + 状态映射 + 重试 + 取消 + base-url/文件名校验，29 测试绿、iOS-sim 交叉编译通过，client 侧 `WireDoc` 收敛到 proto `Clipboard`）· M3 ✅（`client.rs` 补 A7：`test_connection`/`probe`/`first_reachable`，复用 proto `ordered_urls`，trustInsecureCert 接线 probe/test、epoch 透传回带 `ProbeReport`，53 测试绿、iOS-sim 通过）· M4 ✅（E/F 区：Rust 拥有持久化 blob 字节——proto 新增 `app_settings`/`server_config`/`history_log`/`loop_guard`/`payload_cache`/`file_state`/`persist_keys` 7 模块 198 测试；trustInsecureCert 补生产客户端构造期+setter，55+1 测试绿、iOS-sim 通过）· M5–M6 ⏳
+> 状态：M0+M1+M2+M3+M4+M5 已完成（M5 于 2026-06-14），M6 待续。语言审查豁免路径（`.planning/`）。
+> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿）· M2 ✅（`uc-mobile/client.rs` 补全 A6：全端点 + 状态映射 + 重试 + 取消 + base-url/文件名校验，29 测试绿、iOS-sim 交叉编译通过，client 侧 `WireDoc` 收敛到 proto `Clipboard`）· M3 ✅（`client.rs` 补 A7：`test_connection`/`probe`/`first_reachable`，复用 proto `ordered_urls`，trustInsecureCert 接线 probe/test、epoch 透传回带 `ProbeReport`，53 测试绿、iOS-sim 通过）· M4 ✅（E/F 区：Rust 拥有持久化 blob 字节——proto 新增 `app_settings`/`server_config`/`history_log`/`loop_guard`/`payload_cache`/`file_state`/`persist_keys` 7 模块 198 测试；trustInsecureCert 补生产客户端构造期+setter，55+1 测试绿、iOS-sim 通过）· M5 ✅（C 区 SyncEngine 决策核：proto 新增 `sync_engine` 模块——reducer 形态 `SyncRuntimeState` plain struct + plan/commit 纯转移函数；server-wins 路由、去重守卫三件套、loop-guard 接线、退避/节奏、history due/cold-start、epoch 校验；网络 I/O + 1Hz 调度 + UIPasteboard 留原生；proto 246 测试绿、iOS-sim 通过，FFI 镜像延后 M6）· M6 ⏳
 
 ## 0. 一句话定位
 
@@ -77,11 +77,13 @@ SettingsStore 键名/默认值/前向兼容（E 区）、watermark、history 去
 - **trustInsecureCert 补生产客户端**（用户拍板「构造期 + setter」）：`MobileSyncClient::new(bridge, trust)` 构造期固定、`http` 字段改 `RwLock<reqwest::Client>`、新增 `set_trust_insecure_cert` 热切换（swap reqwest client 不重启 runtime 线程）；2 个新冒烟测试。
 - **明确不做（留 M6）**：持久化 FFI 镜像（settings/history/cache 的 uniffi Record + 导出）、文件原子写/跨进程可见性 e2e、PayloadCache 文件 I/O + semaphore 去重（驱逐决策已 Rust）。
 
-### M5 · SyncEngine 决策核（大，最后做，先拆层再迁）
+### M5 · SyncEngine 决策核（大，最后做，先拆层再迁）✅（2026-06-14）
 968 行状态机不整体搬。拆两层：
-- **决策核（进 Rust）**：纯函数 `fn decide(tick_input) -> Vec<SyncAction>`——server-wins 排序、去重三守卫、push 前提判断、loop-guard 计数、退避计算。输入是原生收集的快照（剪贴板 hash、changeCount、网络上下文、settings），输出是动作列表（fetch/apply/push/throttle）。
-- **执行壳（留原生）**：tick 调度（1Hz/5s/暂停）、scenePhase、UIPasteboard 读写、banner。
-**验收**：C 区 🔬 条目以决策核单测覆盖；🔗 条目过 daemon e2e；📱 条目留 M6。
+- **决策核（进 Rust）**：原计划 `fn decide(tick_input) -> Vec<SyncAction>`；通读 `SyncEngine.swift` 后发现 tick 内决策与网络 I/O 深度交织（`getClipboard` 结果决定路由 → apply/push 又是后续 I/O → I/O 后才 commit 守卫/loop-guard），单次纯 `decide` 覆盖不了。**用户 2026-06-14 拍板改为 reducer 形态**：proto `sync_engine` 模块暴露 `SyncRuntimeState` plain struct（caller 持有，同 `loop_guard` 惯例）+ 纯转移函数——`plan_preamble`（早退/记 local/退避门/cross-process resync）、`plan_after_server_get`（truth-gate / server-new 路由 / push 决策，语义动作 enum `ServerRoute`/`PushDecision`）、`commit_*`（apply/push/converged/consent_push/stage/tick_success/tick_failure 折叠 I/O 结果回 state）；纯函数 `backoff_secs`(jitter 入参)/`cadence_secs`/`is_history_sync_due`/`is_cold_start`/`advance_watermark`/`is_probe_conclusion_valid`/`hashes_equal`；公开转移 `mark_staged_applied`/`acknowledge_loop_detection`/`reset_runtime_state`/`handle_active_server_changed`/`handle_network_route_changed`。
+- **执行壳（留原生）**：网络 I/O（getClipboard/apply 写板验 hash/push PUT/history 分页 walk）、tick 调度（1Hz/5s/暂停）、scenePhase、UIPasteboard 读写、banner、prefetch、`last_synced_hash`/`last_history_sync_ms` 持久化 I/O。
+- **交付边界**：proto-only 纯逻辑 + 单测，**不暴露 uniffi**，FFI 镜像延后 M6（同 M4 先例，用户拍板）。
+- **结果**：proto `sync_engine` 模块 + 48 新测试（proto 共 246 绿），clippy/fmt clean，iOS-sim 交叉编译通过，aws-lc-rs 仍缺席。⚠️ 移植中识别 Swift `maybePush` push 路径 trip 被 line 756 无条件 `state=.succeeded` 覆盖的怪异（apply 路径顺序相反无此问题）——忠实移植 + 代码/清单标注，`tripped` 信号仍正确返回供原生 stop loop，建议另开 issue 修正。
+**验收**：C 区 🔬 条目以决策核单测覆盖（✅）；🔗 条目决策逻辑进 proto 并单测、daemon e2e 留 M6（[~]）；📱 条目决策部分进 proto、执行壳留 M6（[~]）。
 
 ### M6 · uc-ios 接入与灰度（跨 repo）
 xcframework 经 SPM binaryTarget 进 uc-ios；**feature flag 双路径**（原生/Rust 各保完整路径，A/B 定位回归来源——checklist 执行建议 #3）；按 M1→M5 的顺序逐模块切换，每切一个模块过一遍对应 📱 清单；三进程上下文 TLS 验收（spike 遗留）在此补。全绿后删原生路径（不留无限期双实现）。

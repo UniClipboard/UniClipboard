@@ -96,16 +96,16 @@
 
 ## C. 同步编排（SyncEngine · 行为关键）
 
-- [ ] 🔗 server-wins：每 tick 先处理 server，再 device
-- [ ] 🔗 auto-apply ON（默认）：server hash 新 → 取字节验 §4.4 hash → 写 pasteboard → 进 watermark
-- [ ] 📱 auto-apply OFF：暂存 `.hasNewUnwritten`，不取字节，显 banner
-- [ ] 🔗 push：仅当 server hash==synced 且 device hash 新于 `lastSyncedContentHash`/`lastAppliedContentHash`
-- [ ] 🔬🔴 去重守卫三件套：`lastSyncedContentHash`（防重 pull）、`lastAppliedContentHash`（防刚写内容被 push）、history 同 hash 去重并升级 direction
-- [ ] 🔗 历史增量：冷启仅取 page 1 播种 watermark；增量用 `modifiedAfter`（严格 `>`）分页至空数组
-- [ ] 🔬 loop guard：同 hash apply/push 翻转 ≥3 次（30s 窗口）→ trip；reset 后恢复
-- [ ] 🔬 网络 epoch：路径变更自增，probe 结论仅 epoch 未变时有效
-- [ ] 📱 tick 频率：前台 1Hz、inactive 5s、后台暂停、离线退避 5→60s+±20% jitter、历史节流 30s
-- [ ] 📱 网络变更：取消在途、清退避、清 lastApplied、nil liveURL、reconcile server、重 probe
+- [~] 🔗 server-wins：每 tick 先处理 server，再 device（M5 决策核：`sync_engine::plan_after_server_get` 路由顺序 truth-gate→server-new→push；测试 `route_*` + `server_wins_then_dedup_short_circuits_push`。e2e 真实 daemon 留 M6）
+- [~] 🔗 auto-apply ON（默认）：server hash 新 → 取字节验 §4.4 hash → 写 pasteboard → 进 watermark（M5：`ServerNewPlan{will_apply}` + `commit_apply`；测试 `route_server_new_when_hash_differs_from_synced`/`commit_apply_advances_guards_and_succeeds`。取字节/验 hash/写板=原生 I/O，e2e 留 M6）
+- [~] 📱 auto-apply OFF：暂存 `.hasNewUnwritten`，不取字节，显 banner（M5 决策核：`will_apply=false`→`commit_stage`→`HasNewUnwritten`，测试 `server_new_auto_apply_off_does_not_apply`/`commit_stage_sets_has_new_unwritten`。banner=原生，留 M6）
+- [~] 🔗 push：仅当 server hash==synced 且 device hash 新于 `lastSyncedContentHash`/`lastAppliedContentHash`（M5：`plan_push`，测试 `push_already_synced`/`push_self_written_guard_blocks_reapplied_content`/`route_push_when_server_unchanged`。e2e 留 M6）
+- [x] 🔬🔴 去重守卫三件套：`lastSyncedContentHash`（防重 pull）、`lastAppliedContentHash`（防刚写内容被 push）、history 同 hash 去重并升级 direction（M5：guard #1/#2 在 `plan_after_server_get`/`plan_push`，测试 `push_self_written_guard_blocks_reapplied_content`/`server_wins_then_dedup_short_circuits_push`；history 去重升级 = M4 `history_log::append`）
+- [~] 🔗 历史增量：冷启仅取 page 1 播种 watermark；增量用 `modifiedAfter`（严格 `>`）分页至空数组（M5 决策核：`is_history_sync_due`/`is_cold_start`/`advance_watermark`，测试 `history_sync_due_*`/`cold_start_when_no_watermark`/`watermark_advances_only_forward`。分页 walk=原生 I/O，e2e 留 M6）
+- [x] 🔬 loop guard：同 hash apply/push 翻转 ≥3 次（30s 窗口）→ trip；reset 后恢复（M5：`commit_apply`/`commit_push` 接 M4 `loop_guard`，测试 `apply_final_trip_shows_loop_detected`/`push_path_trip_is_overwritten_to_succeeded_ios_quirk`/`acknowledge_loop_detection_clears_buffer_and_idles`。⚠️ 已识别 Swift `maybePush` push 路径 trip 被 line 756 覆盖回 succeeded 的怪异，忠实移植 + 标注，建议另开 issue）
+- [x] 🔬 网络 epoch：路径变更自增，probe 结论仅 epoch 未变时有效（M5：`is_probe_conclusion_valid`，测试 `probe_conclusion_valid_only_for_same_epoch`；M3 `ProbeReport` 盖戳）
+- [~] 📱 tick 频率：前台 1Hz、inactive 5s、后台暂停、离线退避 5→60s+±20% jitter、历史节流 30s（M5 决策核：`cadence_secs`/`backoff_secs`（jitter 入参）/`SyncConfig` 默认值，测试 `cadence_active_inactive_and_paused`/`backoff_doubles_and_caps`/`backoff_applies_jitter`。1Hz 调度循环/后台暂停=原生，留 M6）
+- [~] 📱 网络变更：取消在途、清退避、清 lastApplied、nil liveURL、reconcile server、重 probe（M5 决策核：`handle_network_route_changed`（清退避）/`commit_tick_failure` kick_probe，测试 `handle_network_route_changed_clears_backoff`/`tick_failure_network_backs_off_and_kicks_probe`。取消在途/nil liveURL/reconcile=原生 I/O，留 M6）
 
 ---
 

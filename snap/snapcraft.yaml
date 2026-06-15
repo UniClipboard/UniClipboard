@@ -170,10 +170,14 @@ parts:
 
       # 3) 安装到 snap install 目录。strict snap 启动时 mount 这个目录
       # 到 /usr,所以路径必须以 usr/ 开头。
-      install -Dm755 src-tauri/target/release/uniclipboard \
+      # NOTE: artifacts land in the workspace-root target/ (#1041 moved the
+      # cargo workspace root to the repo root; `cd src-tauri` no longer creates
+      # a nested target/). After the `cd ..` above we are at the repo root, so
+      # the release binaries are at target/release/, NOT src-tauri/target/.
+      install -Dm755 target/release/uniclipboard \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipboard"
       # ADR-008 D13: ship the daemon next to the GUI so it spawns as a sibling.
-      install -Dm755 src-tauri/target/release/uniclipd \
+      install -Dm755 target/release/uniclipd \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipd"
       install -Dm644 snap/local/uniclipboard.desktop \
         "${CRAFT_PART_INSTALL}/usr/share/applications/uniclipboard.desktop"

@@ -20,6 +20,7 @@
 use std::collections::HashMap;
 
 pub mod client;
+pub mod reducer;
 
 pub use client::{
     first_reachable, uc_mobile_init, ClipboardKind, ClipboardMeta, MobileSyncClient,

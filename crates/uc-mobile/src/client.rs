@@ -172,7 +172,7 @@ impl ClipboardMeta {
     /// Map to the canonical wire type for serialization. Routes through
     /// [`ProtoClipboard::new`] so the `hash` empty/whitespace→omitted
     /// normalization (Swift `Clipboard.init`) is applied on upload.
-    fn into_proto(self) -> ProtoClipboard {
+    pub(crate) fn into_proto(self) -> ProtoClipboard {
         ProtoClipboard::new(
             self.kind.into(),
             self.hash,
@@ -187,7 +187,7 @@ impl ClipboardMeta {
 
     /// Map from a decoded wire document. The proto decoder already normalized
     /// `hash`; a degenerate negative `size` from a buggy peer clamps to 0.
-    fn from_proto(c: ProtoClipboard) -> Self {
+    pub(crate) fn from_proto(c: ProtoClipboard) -> Self {
         Self {
             kind: c.kind.into(),
             text: c.text,

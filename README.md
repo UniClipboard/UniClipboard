@@ -175,6 +175,11 @@ On macOS, install via the official tap [`UniClipboard/homebrew-tap`](https://git
 ```bash
 brew tap UniClipboard/tap
 
+# Homebrew 6.0+ requires you to trust third-party taps before it will load
+# their formulae/casks. Skip this and you'll hit
+# "Refusing to load ... from untrusted tap". It only needs to run once.
+brew trust UniClipboard/tap
+
 # Desktop app (.app bundle)
 brew install --cask uniclipboard
 
@@ -182,11 +187,12 @@ brew install --cask uniclipboard
 brew install uniclipboard
 ```
 
-Or install in a single command without tapping first:
+Or install in a single command without tapping first (still trust the tap once):
 
 ```bash
-brew install --cask UniClipboard/tap/uniclipboard   # GUI
-brew install UniClipboard/tap/uniclipboard          # CLI
+brew trust UniClipboard/tap                          # Homebrew 6.0+, one-time
+brew install --cask UniClipboard/tap/uniclipboard    # GUI
+brew install UniClipboard/tap/uniclipboard           # CLI
 ```
 
 The cask and the formula can coexist — install both if you want the GUI plus the `uniclip` command.

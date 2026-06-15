@@ -175,6 +175,10 @@ macOS 用户可以通过官方 tap [`UniClipboard/homebrew-tap`](https://github.
 ```bash
 brew tap UniClipboard/tap
 
+# Homebrew 6.0+ 默认要求先信任第三方 tap 才会加载其 formula/cask，
+# 否则会报 “Refusing to load ... from untrusted tap”。该步骤只需执行一次。
+brew trust UniClipboard/tap
+
 # 桌面应用（.app）
 brew install --cask uniclipboard
 
@@ -182,11 +186,12 @@ brew install --cask uniclipboard
 brew install uniclipboard
 ```
 
-也可以省去 `brew tap`，一行直装：
+也可以省去 `brew tap`，一行直装（仍需先信任一次该 tap）：
 
 ```bash
-brew install --cask UniClipboard/tap/uniclipboard   # GUI
-brew install UniClipboard/tap/uniclipboard          # CLI
+brew trust UniClipboard/tap                          # Homebrew 6.0+，一次性
+brew install --cask UniClipboard/tap/uniclipboard    # GUI
+brew install UniClipboard/tap/uniclipboard           # CLI
 ```
 
 GUI 和 CLI 互不冲突，需要的话两个都装即可。

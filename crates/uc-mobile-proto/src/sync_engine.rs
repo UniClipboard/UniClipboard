@@ -367,9 +367,9 @@ fn plan_push(st: &SyncRuntimeState, snap: &ServerGetSnapshot) -> PushDecision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommitOutcome {
     /// The loop guard tripped — the shell should stop the loop (Swift
-    /// `tripLoopBreaker` calls `stop()`). For the apply / consent-push paths
-    /// the state is also set to [`SyncState::LoopDetected`]; for the
-    /// `maybePush` path see [`commit_push`]'s note on the iOS overwrite quirk.
+    /// `tripLoopBreaker` calls `stop()`) and the state is set to
+    /// [`SyncState::LoopDetected`] on the apply, push, and consent-push paths
+    /// alike.
     pub tripped: bool,
 }
 
@@ -420,35 +420,30 @@ pub fn commit_stage(st: &mut SyncRuntimeState, entry: &Clipboard) {
 /// that was actually PUT, or `None` for a documented silent skip (no snapshot /
 /// unpushable type / in-flight push).
 ///
-/// NOTE — faithful port of an iOS inconsistency: Swift records the `.pushed`
-/// loop event and calls `tripLoopBreaker()` (which sets `.loopDetected`)
-/// *before* the unconditional `state = .succeeded` at line 756, so on the push
-/// path a trip's `.loopDetected` is immediately overwritten back to
-/// `.succeeded` (the apply path orders these the other way and a trip sticks).
-/// We replicate that: the visible state ends at `Succeeded`, but `tripped`
-/// still surfaces so the shell can stop the loop exactly as Swift's `stop()`
-/// did. Flagged for a follow-up issue rather than fixed inside the migration.
+/// A push that trips the loop guard sticks as [`SyncState::LoopDetected`], the
+/// same as the apply / consent-push paths. This corrects an iOS inconsistency:
+/// Swift recorded the `.pushed` loop event and called `tripLoopBreaker()` (which
+/// set `.loopDetected`) *before* the unconditional `state = .succeeded` at line
+/// 756, silently overwriting a push-direction trip back to `.succeeded` (the
+/// apply path ordered these the other way, so its trip stuck). The fix lands in
+/// both this reducer and the native `SyncEngine.swift`.
 pub fn commit_push(
     st: &mut SyncRuntimeState,
     pushed_hash: Option<&str>,
     now_ms: i64,
     cfg: &SyncConfig,
 ) -> CommitOutcome {
-    let tripped = if let Some(h) = pushed_hash.filter(|h| !h.is_empty()) {
-        advance_synced(st, Some(h));
-        st.loop_events = loop_guard::record(
-            std::mem::take(&mut st.loop_events),
-            LoopDirection::Pushed,
-            Some(h),
-            now_ms,
-            cfg.loop_window_secs,
-        );
-        loop_guard::tripped(&st.loop_events, cfg.loop_flip_threshold)
-    } else {
-        false
+    let Some(h) = pushed_hash.filter(|h| !h.is_empty()) else {
+        // Documented silent skip: nothing flowed, the tick stays healthy.
+        st.state = SyncState::Succeeded;
+        return CommitOutcome { tripped: false };
     };
+    advance_synced(st, Some(h));
+    // maybePush deliberately does NOT set last_applied / clear staged (unlike
+    // the apply path); a trip in `record_and_check` overrides this to
+    // `LoopDetected`.
     st.state = SyncState::Succeeded;
-    CommitOutcome { tripped }
+    record_and_check(st, LoopDirection::Pushed, Some(h), now_ms, cfg)
 }
 
 /// Push-skip commit — any `maybePush` skip branch leaves the tick healthy
@@ -1244,7 +1239,7 @@ mod tests {
     // --- loop guard integration (apply/push trip) -------------------------
 
     #[test]
-    fn push_path_trip_is_overwritten_to_succeeded_ios_quirk() {
+    fn push_path_trip_shows_loop_detected() {
         let cfg = SyncConfig::default();
         let mut st = SyncRuntimeState::default();
         // Alternate apply/push of the same hash 4× → 3 flips → trip.
@@ -1253,10 +1248,10 @@ mod tests {
         commit_apply(&mut st, Some("H"), NOW + 2, &cfg);
         let out = commit_push(&mut st, Some("H"), NOW + 3, &cfg);
         assert!(out.tripped);
-        // The final commit was a PUSH — the iOS overwrite quirk leaves the
-        // visible state at Succeeded even though the guard tripped. The `tripped`
-        // flag still surfaces so the shell stops the loop (Swift `stop()`).
-        assert_eq!(st.state, SyncState::Succeeded);
+        // The final commit was a PUSH — the trip now sticks as LoopDetected,
+        // matching the apply path (previously an iOS quirk overwrote it back to
+        // Succeeded; fixed in both this reducer and SyncEngine.swift).
+        assert_eq!(st.state, SyncState::LoopDetected);
     }
 
     #[test]

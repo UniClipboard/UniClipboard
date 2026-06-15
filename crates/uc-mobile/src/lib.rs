@@ -177,7 +177,7 @@ mod tests {
             }
         }
         uc_mobile_init();
-        let client = MobileSyncClient::new(std::sync::Arc::new(TestBridge))
+        let client = MobileSyncClient::new(std::sync::Arc::new(TestBridge), false)
             .expect("constructor succeeds after init");
         assert_eq!(client.bridge_probe(), "/tmp/test-app-group");
     }

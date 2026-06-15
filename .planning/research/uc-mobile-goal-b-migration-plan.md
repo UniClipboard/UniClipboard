@@ -3,8 +3,8 @@
 > 前置：spike B0–B2 已完成（FFI 管道证明成立，见 `uc-mobile-spike-plan.md`）。
 > 输入：`uc-ios-feature-inventory.md`（行为基线）+ `uc-ios-regression-checklist.md`（验收闸门）。
 > 范围拍板（2026-06-12）：**只做 mobile-sync，不做 P2P**——本方案不含任何 Transport/iroh/加密栈内容。
-> 状态：M0+M1+M2+M3 已完成（M3 于 2026-06-14），M4 起待续。语言审查豁免路径（`.planning/`）。
-> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿）· M2 ✅（`uc-mobile/client.rs` 补全 A6：全端点 + 状态映射 + 重试 + 取消 + base-url/文件名校验，29 测试绿、iOS-sim 交叉编译通过，client 侧 `WireDoc` 收敛到 proto `Clipboard`）· M3 ✅（`client.rs` 补 A7：`test_connection`/`probe`/`first_reachable`，复用 proto `ordered_urls`，trustInsecureCert 接线 probe/test、epoch 透传回带 `ProbeReport`，53 测试绿、iOS-sim 通过）· M4–M6 ⏳
+> 状态：M0+M1+M2+M3+M4 已完成（M4 于 2026-06-14），M5 起待续。语言审查豁免路径（`.planning/`）。
+> 进度：M0 ✅ + M1 ✅（`uc-mobile-proto` 扩出 `hash`/`clipboard_doc`/`history_record`/`multipart`/`net_class` 五模块，从 uc-ios Swift 逐字节迁移，140 测试全绿）· M2 ✅（`uc-mobile/client.rs` 补全 A6：全端点 + 状态映射 + 重试 + 取消 + base-url/文件名校验，29 测试绿、iOS-sim 交叉编译通过，client 侧 `WireDoc` 收敛到 proto `Clipboard`）· M3 ✅（`client.rs` 补 A7：`test_connection`/`probe`/`first_reachable`，复用 proto `ordered_urls`，trustInsecureCert 接线 probe/test、epoch 透传回带 `ProbeReport`，53 测试绿、iOS-sim 通过）· M4 ✅（E/F 区：Rust 拥有持久化 blob 字节——proto 新增 `app_settings`/`server_config`/`history_log`/`loop_guard`/`payload_cache`/`file_state`/`persist_keys` 7 模块 198 测试；trustInsecureCert 补生产客户端构造期+setter，55+1 测试绿、iOS-sim 通过）· M5–M6 ⏳
 
 ## 0. 一句话定位
 
@@ -68,9 +68,14 @@ A7：单 URL test、多 URL 并发 probe（2s 超时、404/401=可达）、`firs
 - API 形态：probe/test 作 `MobileSyncClient` 方法（复用 runtime + reqwest + `send_with_retry`/`check`/`map_status`），`first_reachable` 作纯自由 `#[uniffi::export]` fn——不另起独立 Object（会重复一套 runtime/init）。
 - **遗留单列**：B 区「旧格式迁移」（legacy 单 `url`/`manualOverrideConfigId` 提升）仍属 M4 持久化层，本里程碑只动探测，不碰 `ServerConfig` Codable。
 
-### M4 · 状态与持久化逻辑（中）
+### M4 · 状态与持久化逻辑（中）— ✅ 完成
 SettingsStore 键名/默认值/前向兼容（E 区）、watermark、history 去重 append（cap 200、direction 升级）、SyncLoopGuard 状态机、PayloadCache 的 LRU 索引决策（驱逐 **决策** 在 Rust，文件读写/原子写由原生按决策执行——snapshot in、command out）。
 **验收**：E/F 区 🔬 条目全绿；损坏 blob 返默认不阻塞启动。
+**结果**（2026-06-14，proto 198 测试绿 / uc-mobile 55+1 绿、clippy+fmt 干净、iOS-sim 交叉编译通过、`aws-lc-rs` 仍缺席）：
+- **边界模型（用户 2026-06-14 拍板）**：Rust **拥有持久化 blob 字节**（decode/encode），原生退化为字节搬运 + 文件 I/O + 提供 UUID/`Date.now()`。同 M1 先例，proto 里程碑=纯逻辑 + 测试；FFI 镜像随 M5 决策核 Rust 内部消费 + M6 原生接入再暴露。
+- proto 新增 7 模块（58 测试）：`app_settings`（17 字段 + `rename_all=camelCase` + 容器 `default` 前向兼容 + appearance 未知→system）、`server_config`（双写 `url`+`urls`、§5.5 legacy 迁移、§5.2 `manualOverrideConfigId` 提升、`load_servers`→`{list,migrated}`）、`history_log`（`append_history` 头去重/`.local` 升级/cap 200/newest-first + `touch` + **timestamp Double-since-2001 + UUID 大写串** 字节忠实 serde）、`loop_guard`（纯函数 over `Vec<Event>`：record 大写归一/空忽略/window 淘汰 + tripped flip≥3）、`payload_cache`（`plan_eviction` mtime LRU + `is_valid_cache_key`）、`file_state`（watermark 复用 iso8601 / `normalize_synced_hash` / `live_urls` map）、`persist_keys`（键名/文件名跨平台单一真相）。
+- **trustInsecureCert 补生产客户端**（用户拍板「构造期 + setter」）：`MobileSyncClient::new(bridge, trust)` 构造期固定、`http` 字段改 `RwLock<reqwest::Client>`、新增 `set_trust_insecure_cert` 热切换（swap reqwest client 不重启 runtime 线程）；2 个新冒烟测试。
+- **明确不做（留 M6）**：持久化 FFI 镜像（settings/history/cache 的 uniffi Record + 导出）、文件原子写/跨进程可见性 e2e、PayloadCache 文件 I/O + semaphore 去重（驱逐决策已 Rust）。
 
 ### M5 · SyncEngine 决策核（大，最后做，先拆层再迁）
 968 行状态机不整体搬。拆两层：

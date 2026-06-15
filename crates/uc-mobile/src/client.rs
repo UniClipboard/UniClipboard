@@ -55,7 +55,7 @@
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use chrono::DateTime;
@@ -491,10 +491,11 @@ fn build_http_client(
         .pool_max_idle_per_host(0);
     if trust_insecure_cert {
         // Swift `TrustingDelegate` / `makeProbeSession(trustInsecureCert:)`:
-        // skip certificate validation for self-signed-cert NAS hosts. Only the
-        // ConnectionTester probe/test paths thread this in (regression checklist
-        // A7); the long-lived PRODUCTION client built by `construct` always
-        // validates (the settings-gated production trust toggle is M4 / E区).
+        // skip certificate validation for self-signed-cert NAS hosts. Threaded
+        // in by both the ConnectionTester probe/test paths (regression checklist
+        // A7) and — since M4 (E区) — the long-lived PRODUCTION client, which
+        // honors the `trustInsecureCert` app setting via `construct` /
+        // `set_trust_insecure_cert`.
         builder = builder.danger_accept_invalid_certs(true);
     }
     if let Some(c) = t.connect {
@@ -515,7 +516,11 @@ fn build_http_client(
 pub struct MobileSyncClient {
     bridge: Arc<dyn PlatformBridge>,
     rt: RuntimeHost,
-    http: reqwest::Client,
+    /// The long-lived production client. Interior-mutable so the
+    /// settings-gated `trustInsecureCert` toggle can swap it
+    /// ([`Self::set_trust_insecure_cert`]) without restarting the runtime
+    /// thread — cheap, since `reqwest::Client` is `Arc`-backed.
+    http: RwLock<reqwest::Client>,
     in_flight: Mutex<Vec<AbortHandle>>,
     /// Monotonic source of deterministic, per-request multipart boundaries
     /// (the pure proto crate never generates randomness).
@@ -527,9 +532,38 @@ impl MobileSyncClient {
     /// Seam-2 probe: a foreign-implemented trait object as constructor input.
     /// Fails with [`SyncError::NotInitialized`] if [`uc_mobile_init`] has not
     /// run in this process.
+    ///
+    /// `trust_insecure_cert` fixes the production client's TLS-validation policy
+    /// at construction (the `trustInsecureCert` app setting, regression checklist
+    /// E区). The native layer rebuilds via [`Self::set_trust_insecure_cert`] when
+    /// the user toggles it — clients are long-lived per server, so a per-call
+    /// flag would force needless rebuilds.
     #[uniffi::constructor]
-    pub fn new(bridge: Arc<dyn PlatformBridge>) -> Result<Arc<Self>, SyncError> {
-        Self::construct(bridge, HttpTimeouts::production())
+    pub fn new(
+        bridge: Arc<dyn PlatformBridge>,
+        trust_insecure_cert: bool,
+    ) -> Result<Arc<Self>, SyncError> {
+        Self::construct(bridge, HttpTimeouts::production(), trust_insecure_cert)
+    }
+
+    /// Swap the production client's TLS-validation policy in place (the user
+    /// toggled `trustInsecureCert`). Rebuilds only the reqwest client — the
+    /// runtime thread, in-flight tracking, and boundary counter are untouched.
+    pub fn set_trust_insecure_cert(&self, trust_insecure_cert: bool) -> Result<(), SyncError> {
+        let client =
+            build_http_client(HttpTimeouts::production(), trust_insecure_cert).map_err(|e| {
+                SyncError::Internal {
+                    reason: format!("rebuild http client: {e}"),
+                }
+            })?;
+        // The lock guards only a clone/replace (no panics inside), so poisoning
+        // is impossible in practice; recover the inner value if it ever happens
+        // rather than unwrap-panicking.
+        match self.http.write() {
+            Ok(mut guard) => *guard = client,
+            Err(poisoned) => *poisoned.into_inner() = client,
+        }
+        Ok(())
     }
 
     /// Round-trip probe: Rust calling back into the foreign bridge (B1).
@@ -539,7 +573,7 @@ impl MobileSyncClient {
 
     /// `GET /SyncClipboard.json` — latest clipboard metadata (spec §2.1).
     pub async fn get_latest(&self, server: ServerConfig) -> Result<ClipboardMeta, SyncError> {
-        let http = self.http.clone();
+        let http = self.http();
         self.run(async move { get_latest_with(&http, &server).await })
             .await
     }
@@ -564,7 +598,7 @@ impl MobileSyncClient {
             })?;
             validate_path_component(data_name, "filename")?;
         }
-        let http = self.http.clone();
+        let http = self.http();
         self.run(async move {
             if let Some(bytes) = payload {
                 // Unwrap-free: presence + validity checked above.
@@ -592,7 +626,7 @@ impl MobileSyncClient {
         body: Vec<u8>,
     ) -> Result<(), SyncError> {
         validate_path_component(&name, "filename")?;
-        let http = self.http.clone();
+        let http = self.http();
         self.run(async move { put_file_inner(&http, &server, &name, body).await })
             .await
     }
@@ -601,7 +635,7 @@ impl MobileSyncClient {
     /// guard as [`Self::put_file`]; 404 surfaces as [`SyncError::NotFound`].
     pub async fn get_file(&self, server: ServerConfig, name: String) -> Result<Vec<u8>, SyncError> {
         validate_path_component(&name, "filename")?;
-        let http = self.http.clone();
+        let http = self.http();
         self.run(async move {
             let url = endpoint(&server.base_url, &["file", &name])?;
             let req = http
@@ -621,7 +655,7 @@ impl MobileSyncClient {
         server: ServerConfig,
         query: HistoryQuery,
     ) -> Result<Vec<HistoryRecord>, SyncError> {
-        let http = self.http.clone();
+        let http = self.http();
         let boundary = self.next_boundary();
         self.run(async move {
             let multipart = query.into_proto().multipart_encoded(&boundary);
@@ -651,7 +685,7 @@ impl MobileSyncClient {
         profile_id: String,
     ) -> Result<Vec<u8>, SyncError> {
         validate_path_component(&profile_id, "profileId")?;
-        let http = self.http.clone();
+        let http = self.http();
         self.run(async move {
             let url = endpoint(&server.base_url, &["api", "history", &profile_id, "data"])?;
             let req = http
@@ -673,7 +707,7 @@ impl MobileSyncClient {
                 reason: "tls_probe requires an https:// url".into(),
             });
         }
-        let http = self.http.clone();
+        let http = self.http();
         self.run(async move {
             let resp = http.get(&url).send().await.map_err(network)?;
             Ok(resp.status().as_u16())
@@ -713,7 +747,7 @@ impl MobileSyncClient {
                 Err(_) => return ProbeResult::Unreachable,
             }
         } else {
-            self.http.clone()
+            self.http()
         };
         // The inner future never returns Err (test_outcome absorbs every
         // SyncError); a task-level Cancelled/Internal still maps to Unreachable,
@@ -813,24 +847,38 @@ impl MobileSyncClient {
 impl MobileSyncClient {
     /// Shared construction path for the exported [`Self::new`] (production
     /// timeouts) and tests (short total timeout). Enforces seam 1.
+    ///
+    /// `trust_insecure_cert` fixes the long-lived production client's TLS policy
+    /// (settings-driven, E区); it can later be swapped via
+    /// [`Self::set_trust_insecure_cert`]. The per-call ConnectionTester
+    /// probe/test clients still build their own trust override independently.
     fn construct(
         bridge: Arc<dyn PlatformBridge>,
         timeouts: HttpTimeouts,
+        trust_insecure_cert: bool,
     ) -> Result<Arc<Self>, SyncError> {
         ensure_initialized()?;
-        // The long-lived production client always validates certificates;
-        // certificate-trust overrides are confined to the per-call
-        // ConnectionTester probe/test clients (see `build_http_client`).
-        let http = build_http_client(timeouts, false).map_err(|e| SyncError::Internal {
-            reason: format!("build http client: {e}"),
-        })?;
+        let http =
+            build_http_client(timeouts, trust_insecure_cert).map_err(|e| SyncError::Internal {
+                reason: format!("build http client: {e}"),
+            })?;
         Ok(Arc::new(Self {
             bridge,
             rt: RuntimeHost::spawn()?,
-            http,
+            http: RwLock::new(http),
             in_flight: Mutex::new(Vec::new()),
             boundary_seq: AtomicU64::new(0),
         }))
+    }
+
+    /// Clone the current production client. `reqwest::Client` is `Arc`-backed,
+    /// so this is cheap and lets each request use a stable snapshot even if a
+    /// concurrent [`Self::set_trust_insecure_cert`] swaps the client mid-flight.
+    fn http(&self) -> reqwest::Client {
+        match self.http.read() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
     }
 
     /// Next deterministic multipart boundary. A monotonic counter (not a
@@ -1400,7 +1448,7 @@ mod tests {
 
     fn new_client() -> Arc<MobileSyncClient> {
         uc_mobile_init();
-        MobileSyncClient::new(Arc::new(NoopBridge)).expect("client constructs after init")
+        MobileSyncClient::new(Arc::new(NoopBridge), false).expect("client constructs after init")
     }
 
     /// Test-only client whose reqwest layer has a short TOTAL timeout so the
@@ -1414,6 +1462,7 @@ mod tests {
                 read: None,
                 total: Some(Duration::from_millis(ms)),
             },
+            false,
         )
         .expect("client constructs after init")
     }
@@ -2402,5 +2451,43 @@ mod tests {
             client.test_connection(server_cfg(addr, "p"), true).await,
             ProbeResult::Success
         );
+    }
+
+    // E区: a production client constructed with trust=true (the settings toggle
+    // on) still drives a normal request — danger-accept-certs is a superset of
+    // the validating client over plain HTTP.
+    #[tokio::test]
+    async fn production_client_built_with_trust_drives_plain_http() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        uc_mobile_init();
+        let client = MobileSyncClient::new(Arc::new(NoopBridge), true)
+            .expect("client constructs after init");
+        let meta = client
+            .get_latest(server_cfg(addr, "p"))
+            .await
+            .expect("trust-true production client works over plain http");
+        assert_eq!(meta.text, "hello from daemon");
+    }
+
+    // E区: toggling `set_trust_insecure_cert` swaps the production client in
+    // place (no runtime restart) and the next request still works.
+    #[tokio::test]
+    async fn set_trust_insecure_cert_swaps_client_and_keeps_working() {
+        let (addr, _state) = spawn_mock(MockConfig::default()).await;
+        let client = new_client();
+        client
+            .set_trust_insecure_cert(true)
+            .expect("swap to trust-true succeeds");
+        let meta = client
+            .get_latest(server_cfg(addr, "p"))
+            .await
+            .expect("client still works after trust swap");
+        assert_eq!(meta.hash.as_deref(), Some("AA"));
+        // Swap back to validating; a plain-HTTP request is unaffected by TLS
+        // policy, so it still succeeds.
+        client
+            .set_trust_insecure_cert(false)
+            .expect("swap back to validating succeeds");
+        assert!(client.get_latest(server_cfg(addr, "p")).await.is_ok());
     }
 }

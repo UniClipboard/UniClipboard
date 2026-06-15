@@ -90,7 +90,7 @@
 - [x] 🔬 try-order：Wi-Fi=[lan,ts,wan]；非 Wi-Fi+TS=[ts,wan,lan]；蜂窝=[wan,ts,lan]；无信号=保持原序 — `net_class.rs::class_preference`
 - [x] 🔬 `activeConfig` 解析：stale id 回落 configs[0]；空列表→nil — `net_class.rs::resolve_active_index`
 - [x] 🔬 `preferredURLs(live:)`：live 有效且在当前 urls → 提头；失效 → 忽略回落形态序 — `net_class.rs::preferred_urls`
-- [ ] 🔬 旧格式迁移：legacy 单 `url`、`manualOverrideConfigId` 一次性提升为 activeConfigId；不回写旧键 — **未迁移**：`ServerConfig`/`ServerConfigList` 的 Codable 持久化逻辑属 M4（持久化层），本里程碑只做形态分类纯函数
+- [x] 🔬 旧格式迁移：legacy 单 `url`、`manualOverrideConfigId` 一次性提升为 activeConfigId；不回写旧键 — M4 落地（proto `server_config`：`load_servers`→`{list,migrated}` + `ServerConfigList` decode 提升 pin）；测试 `server_config::tests::{load_servers_migrates_legacy_only, load_servers_new_key_wins_over_legacy, load_servers_corrupt_new_key_returns_empty, promotes_resolvable_legacy_pin, unresolvable_pin_falls_back_to_active, decodes_legacy_single_url}`
 
 ---
 
@@ -121,20 +121,20 @@
 
 ## E. 设置项（§5.4）
 
-- [ ] 🔬 默认值：`autoApplyServerChanges=true`、`autoPushDeviceChanges=false`、`trustInsecureCert=false`、`prefetchAttachments=true`、`prefetchOnCellular=false`、`payloadCacheMaxBytes=200MB`、`appearance=system`、键盘音/触感=true
-- [ ] 🔬 前向兼容：缺失键填默认、未知键容忍、未知 appearance 回落 system
-- [ ] 📱 各 toggle 实际行为：trustInsecureCert 影响 TLS 校验；autoApply 门控写入分支；autoPush 门控读剪贴板路径；prefetch* 门控预取
+- [x] 🔬 默认值：`autoApplyServerChanges=true`、`autoPushDeviceChanges=false`、`trustInsecureCert=false`、`prefetchAttachments=true`、`prefetchOnCellular=false`、`payloadCacheMaxBytes=200MB`、`appearance=system`、键盘音/触感=true（M4：proto `app_settings::tests::defaults_match_spec_table`）
+- [x] 🔬 前向兼容：缺失键填默认、未知键容忍、未知 appearance 回落 system（M4：proto `app_settings::tests::{partial_json_fills_missing_with_defaults, unknown_keys_are_tolerated, unknown_appearance_falls_back_to_system, decode_empty_or_corrupt_returns_defaults}`）
+- [~] 📱 各 toggle 实际行为：trustInsecureCert 影响 TLS 校验（M4 已接生产客户端：`MobileSyncClient::new(trust)` 构造期固定 + `set_trust_insecure_cert` 热切换，测试 `production_client_built_with_trust_drives_plain_http`/`set_trust_insecure_cert_swaps_client_and_keeps_working`）；autoApply/autoPush/prefetch* 门控属引擎行为 → M5/M6 原生接入验
 
 ---
 
 ## F. 持久化与跨进程（App Group）
 
-- [ ] 🔬 持久化键名与桌面/Android 共用：`server_config_list`、`app_settings`、`clipboard_history` 等
-- [ ] 🔗 文件原子写跨进程：`last_synced_hash`、`last_known_ssid`、`live_urls`（JSON map）
-- [ ] 🔬 history 去重 append：同 hash 在头不重插、`.local` 升级为 pushed/pulled、cap 200、newest-first
-- [ ] 🔬 watermark：`loadHistoryWatermark`/`saveHistoryWatermark`、节流时间戳
-- [ ] 🔬 损坏策略：缺失/不可解码 blob 返默认，永不阻塞启动
-- [ ] 📱 PayloadCache：LRU 按 mtime 驱逐、200MB cap、原子写、backup-excluded、并发 fetch 去重（semaphore=3）
+- [x] 🔬 持久化键名与桌面/Android 共用：`server_config_list`、`app_settings`、`clipboard_history` 等（M4：proto `persist_keys`（`keys`/`files` 常量）+ `persist_keys::tests::key_names_match_swift`）
+- [~] 🔗 文件原子写跨进程：`last_synced_hash`、`last_known_ssid`、`live_urls`（JSON map）——值的 **字符串/字节形态** 已 Rust 单一真相（`file_state::{normalize_synced_hash, parse/format_watermark, decode/encode/update_live_urls}` + `net_class::normalize_ssid`，round-trip 测试）；原子写/跨进程可见性属原生 I/O → M6 真机 e2e 验
+- [x] 🔬 history 去重 append：同 hash 在头不重插、`.local` 升级为 pushed/pulled、cap 200、newest-first（M4：proto `history_log::tests::{append_inserts_newest_first, append_dedups_same_hash_at_head, append_upgrades_local_head_to_directional, append_local_does_not_downgrade_directional_head, append_caps_oldest_dropped, touch_*}`；timestamp/UUID 字节忠实：`timestamp_serializes_as_seconds_since_2001`/`decodes_swift_reference_date_double`）
+- [x] 🔬 watermark：`loadHistoryWatermark`/`saveHistoryWatermark`、节流时间戳（M4：proto `file_state::tests::{watermark_round_trips_to_millisecond, watermark_accepts_plain_iso_without_fractional, watermark_corrupt_or_empty_is_none}`）
+- [x] 🔬 损坏策略：缺失/不可解码 blob 返默认，永不阻塞启动（M4：各 `decode_*` corruption 测试 — app_settings/server_config/history_log/file_state）
+- [~] 📱 PayloadCache：LRU 按 mtime 驱逐、200MB cap、原子写、backup-excluded、并发 fetch 去重（semaphore=3）——驱逐 **决策** 已 Rust（`payload_cache::{plan_eviction, is_valid_cache_key}` + 测试镜像 Swift LRU/setMaxBytes/invalidKey）；文件 I/O、原子写、backup-excluded、semaphore 去重留原生 → M6
 
 ---
 

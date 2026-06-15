@@ -12,7 +12,7 @@ impl uc_mobile::PlatformBridge for NoopBridge {
 
 #[test]
 fn constructor_requires_uc_mobile_init() {
-    match uc_mobile::MobileSyncClient::new(std::sync::Arc::new(NoopBridge)) {
+    match uc_mobile::MobileSyncClient::new(std::sync::Arc::new(NoopBridge), false) {
         Err(err) => assert_eq!(err, uc_mobile::SyncError::NotInitialized),
         Ok(_) => panic!("constructor must fail before uc_mobile_init()"),
     }

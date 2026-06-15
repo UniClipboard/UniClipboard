@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-06-14 (auto; 19 workspace crates)
+**Last refreshed:** 2026-06-15 (manual; WHERE TO LOOK + COMPLEXITY HOTSPOTS + libp2p→iroh/clipboard fixes)
 
 ## OVERVIEW
 
@@ -49,9 +49,9 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 | Runtime/usecase accessors        | `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                            |
 | Tauri commands                   | `src-tauri/crates/uc-tauri/src/commands/`  | Commands call app-layer usecases (or daemon HTTP since ADR-008) |
 | Domain contracts (ports)         | `crates/uc-core/src/ports/`                | Add traits here first                                         |
-| App workflows                    | `crates/uc-application/src/`               | clipboard_capture / pairing_* / file_transfer / sync_planner  |
-| Infra implementations            | `crates/uc-infra/src/`                     | Diesel repos, encryption, fs, timers                          |
-| Platform adapters                | `crates/uc-platform/src/`                  | libp2p, clipboard, secure storage                             |
+| App workflows                    | `crates/uc-application/src/`               | top-level clipboard_capture / pairing_* / file_transfer / sync_planner; `usecases/` = clipboard_sync, mobile_sync, … |
+| Infra implementations            | `crates/uc-infra/src/`                     | Diesel repos, encryption, fs, timers, iroh transport (`network/iroh/`) |
+| Platform adapters                | `crates/uc-platform/src/`                  | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
 | Daemon API surface               | `crates/uc-webserver/src/api/`             | HTTP + WS endpoints; ApiEnvelope normalization                |
 | Legacy reference                 | Removed (2026-02-26)                       | Do not reintroduce legacy module tree                         |
 
@@ -93,10 +93,12 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 
 ## COMPLEXITY HOTSPOTS
 
-- `crates/uc-bootstrap/src/assembly.rs`: global wiring; smallest safe edits only.
-- `crates/uc-application/src/`: setup/pairing orchestrators, high-state async transitions.
-- `crates/uc-core/src/network/`: protocol-critical state machines.
-- `crates/uc-infra/src/network/`: iroh transport internals; keep business rules out.
+- `crates/uc-bootstrap/src/assembly.rs`: global hex wiring (port→adapter); smallest safe edits only.
+- `crates/uc-infra/src/network/iroh/` (`node.rs` ~1.7k lines, `presence_adapter.rs` ~1.5k): iroh endpoint/event-loop internals; preserve non-blocking progress, keep business rules out.
+- `crates/uc-platform/src/clipboard/platform/linux/` (X11 + Wayland): most-churned area lately; MIME-alias / self-echo race fixes cluster here.
+- `crates/uc-application/src/usecases/mobile_sync/` (`apply_incoming.rs` ~2.1k lines): large, actively-evolving LAN mobile-sync flows.
+- `crates/uc-application/src/facade/space_setup/facade.rs` (~2k) + `pairing_inbound/orchestrator.rs` (~1.8k): high-state setup/pairing transitions.
+- `crates/uc-core/src/network/`: protocol-critical session / state machines.
 
 ## COMMANDS
 
@@ -121,7 +123,7 @@ bun run test:coverage
 
 - `src-legacy/` was removed on 2026-02-26; treat any references as historical context only.
 - Root `AGENTS.md` is the navigation index; this file is the Rust-workspace knowledge base covering `crates/`, `apps/`, and `src-tauri/`. Tauri packaging details live in `src-tauri/AGENTS.md`.
-- Any change touching `crates/uc-platform/src/adapters/libp2p_network.rs` must run `cargo test -p uc-platform` before merge.
+- Any change touching `crates/uc-platform/src/clipboard/` (esp. the linux X11/Wayland adapters) should run `cargo test -p uc-platform` before merge. (The network transport is no longer in uc-platform — it lives in `crates/uc-infra/src/network/iroh/`.)
 - Current desktop log files live under the app data root's `logs/` directory, using the current app dir name `app.uniclipboard.desktop` plus optional `UC_PROFILE` suffix.
 - macOS: `~/Library/Application Support/app.uniclipboard.desktop[-<profile>]/logs/`
 - Linux: `~/.local/share/app.uniclipboard.desktop[-<profile>]/logs/`

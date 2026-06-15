@@ -19,7 +19,7 @@
 - [x] 🧬🔴 解析 `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url>`，golden vector 与 iOS/桌面字节相等 — B0/B1 `connect_uri.rs`
 - [x] 🧬🔴 base64url-no-pad：`-`↔`+`、`_`↔`/`，解码前补 `(4-len%4)%4` 个 `=` — `connect_uri.rs`
 - [x] 🔬 required 字段缺失/空/null → `missingField`；非 http(s) → `invalidURL`；svc≠mobile-sync → `unsupportedService`；v≠1 → `unsupportedVersion`
-- [x] 🔬 `urls` 缺省时回落 `[url]`；`o` 中未知字符串键保留、非字符串值丢弃
+- [x] 🔬 `urls` 缺省/全过滤后回落 `[url]`（回落属调用方，FFI 契约返回过滤后列表）；`o` 中未知字符串键保留、非字符串值丢弃；非 http(s) 与非字符串 urls 候选丢弃 — **M6 补齐**：proto `de_lenient_string_map`/`de_lenient_url_list`，测试 `parse_drops_non_string_o_values`/`parse_ignores_non_object_o`/`parse_filters_non_http_urls_candidates`/`parse_urls_all_non_http_becomes_empty`/`parse_drops_non_string_urls_entries` + iOS A/B `nativeAndRustAgreeOn*`。（M0/M1 误标已覆盖，实为 strict 解析与原生防御式行为不符；M6 tracer-bullet A/B 暴露并修复，保全零回归）
 - [x] 🧬 错误码/文案与 spec §4.2 表一致（**文案是跨语言契约**）
 
 ### A2. SyncClipboard 线模型（Clipboard / HistoryRecord）

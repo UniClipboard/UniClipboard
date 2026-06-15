@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use url::Url;
 
@@ -51,7 +51,14 @@ pub struct ConnectPayload {
     /// - **空时不序列化** —— 单候选旧式码与 v1 字节完全一致, 老客户端
     ///   靠 serde ignore-unknown 无视本字段(因此 [`ConnectPayload`] 永远
     ///   不得加 `deny_unknown_fields`)。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// - 解析侧用 [`de_lenient_url_list`] 防御式过滤(丢非字符串 / 非数组 /
+    ///   非 http(s) 条目, 逐项 trim), 与 Swift `ConnectURI.parse` 一致 ——
+    ///   全部被过滤掉时回落 `[url]` 由调用方负责(FFI 契约返回过滤后的原始列表)。
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "de_lenient_url_list"
+    )]
     pub urls: Vec<String>,
     /// HTTP Basic Auth 用户名。`serde(default)` 同上。
     #[serde(default)]
@@ -61,11 +68,66 @@ pub struct ConnectPayload {
     pub pwd: String,
     /// 扩展元数据 KV。
     /// - 生成侧由 [`ConnectUriOther`] 类型约束写入白名单字段(规范 §3.2)
-    /// - 解析侧宽松接受任意字符串 KV, 调用方应忽略未识别的键
+    /// - 解析侧用 [`de_lenient_string_map`] 宽松接受任意字符串 KV, 静默丢弃
+    ///   非字符串值(数字 / bool / 嵌套对象)与非对象 `o`, 调用方忽略未识别的键 ——
+    ///   与 Swift `ConnectURI.parse` 的 `if let s = v as? String` 一致
     /// - 序列化时 `BTreeMap` 天然字典序输出, 保证跨语言字节一致
     /// - 空 map 时不序列化, 避免 `"o":{}` 让 base64 字节漂移
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "de_lenient_string_map"
+    )]
     pub o: BTreeMap<String, String>,
+}
+
+/// Lenient deserialize for the `o` extension map: accept any JSON value, keep
+/// only string-valued entries of an object, and silently drop everything else
+/// (numbers, bools, nested objects, or a non-object `o`). Mirrors the Swift
+/// parser's `if let o = dict["o"] as? [String: Any] { for (k, v) ... if let s
+/// = v as? String }`. A trusted desktop encoder only ever writes strings; this
+/// tolerance is for hand-edited / future QRs and keeps the Rust parser a
+/// zero-regression drop-in for the native one.
+fn de_lenient_string_map<'de, D>(de: D) -> Result<BTreeMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(de)?;
+    let serde_json::Value::Object(map) = value else {
+        return Ok(BTreeMap::new());
+    };
+    Ok(map
+        .into_iter()
+        .filter_map(|(k, v)| match v {
+            serde_json::Value::String(s) => Some((k, s)),
+            _ => None,
+        })
+        .collect())
+}
+
+/// Lenient deserialize for the `urls` candidate list: keep only string entries
+/// of an array, trim each, and retain http(s) ones; a non-array `urls` yields
+/// an empty list. Mirrors the Swift parser's `(dict["urls"] as? [Any])?
+/// .compactMap { $0 as? String }.map(trim).filter(isHTTPURL)`. The canonical
+/// `url` is validated separately; when this list is empty the consumer falls
+/// back to `[url]` (the FFI contract returns the filtered list verbatim).
+fn de_lenient_url_list<'de, D>(de: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(de)?;
+    let serde_json::Value::Array(items) = value else {
+        return Ok(Vec::new());
+    };
+    Ok(items
+        .into_iter()
+        .filter_map(|v| match v {
+            serde_json::Value::String(s) => Some(s),
+            _ => None,
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.starts_with("http://") || s.starts_with("https://"))
+        .collect())
 }
 
 /// 生成侧 `o` 字段白名单 —— 类型层面强约束, 避免误把 daemon bearer / 加密
@@ -688,6 +750,67 @@ mod tests {
             Some("future_val")
         );
         assert_eq!(parsed.o.get("label").map(String::as_str), Some("L"));
+    }
+
+    // ── parse: 防御式宽松解析 (与 Swift ConnectURI.parse 对齐, 零回归) ──
+
+    #[test]
+    fn parse_drops_non_string_o_values() {
+        // Swift `if let s = v as? String` 静默丢弃非字符串值; serde 默认会
+        // 整条解析失败, 故 `o` 走 de_lenient_string_map。
+        let payload = r#"{"v":1,"url":"http://x","user":"u","pwd":"p","o":{"label":"Hi","ttl":3600,"flag":true}}"#;
+        let p = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        let uri = format!("uniclipboard://connect?v=1&svc=mobile-sync&p={p}");
+        let parsed =
+            parse_mobile_sync_connect_uri(&uri).expect("non-string o values dropped, not fatal");
+        assert_eq!(parsed.o.get("label").map(String::as_str), Some("Hi"));
+        assert_eq!(parsed.o.len(), 1, "numeric ttl + bool flag dropped");
+    }
+
+    #[test]
+    fn parse_ignores_non_object_o() {
+        // Swift `dict["o"] as? [String: Any]` → nil 时 other 为空; 非对象 `o`
+        // 不得让解析失败。
+        let payload = r#"{"v":1,"url":"http://x","user":"u","pwd":"p","o":"not-an-object"}"#;
+        let p = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        let uri = format!("uniclipboard://connect?v=1&svc=mobile-sync&p={p}");
+        let parsed = parse_mobile_sync_connect_uri(&uri).expect("non-object o tolerated");
+        assert!(parsed.o.is_empty());
+    }
+
+    #[test]
+    fn parse_filters_non_http_urls_candidates() {
+        // Swift `.compactMap(String).map(trim).filter(isHTTPURL)`: 丢非 http(s)
+        // 条目, 保留次序。
+        let payload = r#"{"v":1,"url":"https://ok.example.com","urls":["ftp://nope","https://ok.example.com","http://10.0.0.2"],"user":"u","pwd":"p"}"#;
+        let p = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        let uri = format!("uniclipboard://connect?v=1&svc=mobile-sync&p={p}");
+        let parsed = parse_mobile_sync_connect_uri(&uri).expect("parse ok");
+        assert_eq!(
+            parsed.urls,
+            vec!["https://ok.example.com", "http://10.0.0.2"]
+        );
+    }
+
+    #[test]
+    fn parse_urls_all_non_http_becomes_empty() {
+        // 全部被过滤掉 → 空列表; 回落 `[url]` 由调用方负责(FFI 契约返回空)。
+        let payload =
+            r#"{"v":1,"url":"https://ok.example.com","urls":["ftp://nope"],"user":"u","pwd":"p"}"#;
+        let p = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        let uri = format!("uniclipboard://connect?v=1&svc=mobile-sync&p={p}");
+        let parsed = parse_mobile_sync_connect_uri(&uri).expect("parse ok");
+        assert!(parsed.urls.is_empty());
+    }
+
+    #[test]
+    fn parse_drops_non_string_urls_entries() {
+        // 非字符串候选(数字 / bool)不得让解析失败, 直接丢弃。
+        let payload = r#"{"v":1,"url":"https://ok.example.com","urls":["https://ok.example.com",42,true],"user":"u","pwd":"p"}"#;
+        let p = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+        let uri = format!("uniclipboard://connect?v=1&svc=mobile-sync&p={p}");
+        let parsed = parse_mobile_sync_connect_uri(&uri).expect("non-string urls entries dropped");
+        assert_eq!(parsed.urls, vec!["https://ok.example.com"]);
     }
 
     // ── round-trip: build → parse → 字段一致 ───────────────────────────

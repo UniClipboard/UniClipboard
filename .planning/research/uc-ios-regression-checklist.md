@@ -14,6 +14,7 @@
 ## A. 协议与编解码（Rust 共享核心 · 字节关键）
 
 > ✅ M0/M1 完成 2026-06-12（`cargo test -p uc-mobile-proto`，140 测试全绿；4 区均经独立对抗 agent 逐字节核查）。下方 A1–A5 + B 区编解码项已由 Rust golden vector / 单测覆盖；🔗（真实 daemon）项属 M2、📱 项属 M6，仍留空。
+> ✅ **A1 connect-uri 📱 M6 真机验收通过 2026-06-15**：M6-0b 把 connect-uri 解析经 `ConnectURIRouter` 灰度到 Rust core（运行时 toggle）。真机（iPhone 16 Pro / iOS 27）翻开关扫码，Console 实测 `ConnectURIRouter: parsing connect URI via Rust core`（进程 UniClipboard，18:37:31），解析正常、与原生结果一致（iOS A/B 单测 `nativeAndRustAgreeOn*` + 真机日志双证）。
 
 ### A1. connect-uri
 - [x] 🧬🔴 解析 `uniclipboard://connect?v=1&svc=mobile-sync&p=<base64url>`，golden vector 与 iOS/桌面字节相等 — B0/B1 `connect_uri.rs`

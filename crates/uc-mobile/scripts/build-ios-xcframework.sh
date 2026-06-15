@@ -53,12 +53,21 @@ echo "    aws-lc-rs absent from mobile tree: OK"
 echo "==> [3/4] simulator static lib (aarch64-apple-ios-sim, release)"
 cargo build -p uc-mobile --release --target aarch64-apple-ios-sim
 
-echo "==> [4/4] xcframework"
+echo "==> [4/5] macOS static lib (aarch64-apple-darwin, release)"
+# Not shipped in the app (uc-ios is iOS-only), but the SwiftPM A/B parity
+# harness runs via `swift test` on the macOS host, which needs a host slice to
+# link against. The Rust logic is identical across slices, so the host slice is
+# a faithful oracle for the platform-independent parse/codec parity tests.
+cargo build -p uc-mobile --release --target aarch64-apple-darwin
+
+echo "==> [5/5] xcframework"
 rm -rf "$XCFRAMEWORK_OUT"
 xcodebuild -create-xcframework \
   -library target/aarch64-apple-ios/release/libuc_mobile.a \
   -headers "$BINDINGS_DIR/include" \
   -library target/aarch64-apple-ios-sim/release/libuc_mobile.a \
+  -headers "$BINDINGS_DIR/include" \
+  -library target/aarch64-apple-darwin/release/libuc_mobile.a \
   -headers "$BINDINGS_DIR/include" \
   -output "$XCFRAMEWORK_OUT"
 
@@ -66,5 +75,6 @@ xcodebuild -create-xcframework \
 echo "==> slice sizes"
 du -sh target/aarch64-apple-ios/release/libuc_mobile.a \
        target/aarch64-apple-ios-sim/release/libuc_mobile.a \
+       target/aarch64-apple-darwin/release/libuc_mobile.a \
        "$XCFRAMEWORK_OUT"
 echo "OK: $XCFRAMEWORK_OUT"

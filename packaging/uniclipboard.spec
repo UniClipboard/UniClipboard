@@ -35,7 +35,7 @@ Version:        %{?_version}%{!?_version:@VERSION@}
 Release:        1%{?dist}
 Summary:        Privacy-first end-to-end encrypted cross-device clipboard sync
 
-License:        Apache-2.0 OR MIT
+License:        AGPL-3.0-only
 URL:            https://github.com/UniClipboard/UniClipboard
 
 # Tauri 在 release.yml 中输出的 binary RPM 命名 = UniClipboard-<tag>-1.<arch>.rpm

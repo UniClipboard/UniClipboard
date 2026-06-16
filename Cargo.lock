@@ -9850,14 +9850,14 @@ checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
 name = "uc-app-paths"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "dirs 6.0.0",
 ]
 
 [[package]]
 name = "uc-application"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9893,7 +9893,7 @@ dependencies = [
 
 [[package]]
 name = "uc-bootstrap"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9921,7 +9921,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -9956,7 +9956,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli-macros"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9965,7 +9965,7 @@ dependencies = [
 
 [[package]]
 name = "uc-core"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -9995,7 +9995,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10024,7 +10024,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-client"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10045,7 +10045,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-contract"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "chrono",
  "semver",
@@ -10058,7 +10058,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-local"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "fs2",
@@ -10076,7 +10076,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-process"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "libc",
@@ -10095,7 +10095,7 @@ dependencies = [
 
 [[package]]
 name = "uc-desktop"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10124,7 +10124,7 @@ dependencies = [
 
 [[package]]
 name = "uc-infra"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "argon2",
@@ -10179,7 +10179,7 @@ dependencies = [
 
 [[package]]
 name = "uc-observability"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -10198,7 +10198,7 @@ dependencies = [
 
 [[package]]
 name = "uc-platform"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10245,7 +10245,7 @@ dependencies = [
 
 [[package]]
 name = "uc-tauri"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10294,7 +10294,7 @@ dependencies = [
 
 [[package]]
 name = "uc-webserver"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10397,7 +10397,7 @@ checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "uniclipboard"
-version = "0.15.0"
+version = "0.16.0-alpha.1"
 dependencies = [
  "serde_json",
  "tauri",

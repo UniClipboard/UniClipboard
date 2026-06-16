@@ -18,7 +18,7 @@ use uc_core::ids::RepresentationId;
 use wayland_client::Connection;
 
 use super::super::mime::{
-    format_id_for, is_interesting_mime, is_text_mime, rfc_mime_for, text_mime_priority,
+    format_id_for, is_interesting_mime, is_text_mime, read_mime_sort_key, rfc_mime_for,
 };
 use super::backend::OfferLike;
 use super::transfer;
@@ -47,12 +47,13 @@ pub(super) fn build_from_offer<O: OfferLike>(
     let mut image_captured = false;
 
     // Stable-sort the interesting mimes so UTF-8 text variants come before
-    // Latin-1 fallbacks. See `text_mime_priority` for the why. Non-text
-    // mimes share `u32::MAX` and keep their relative advertise-order
-    // position via stable sort.
+    // Latin-1 fallbacks, and decodable `image/*` targets come before
+    // undecodable ones (`image/png` over `image/xpm`, issue #1029). See
+    // `read_mime_sort_key` for the why. Mimes that tie on the key keep their
+    // relative advertise-order position via the stable sort.
     let mut interesting_mimes: Vec<&String> =
         mimes.iter().filter(|m| is_interesting_mime(m)).collect();
-    interesting_mimes.sort_by_key(|m| text_mime_priority(m.as_str()));
+    interesting_mimes.sort_by_key(|m| read_mime_sort_key(m.as_str()));
 
     for mime in interesting_mimes {
         // Skip secondary text mimes once we've captured a primary one — the

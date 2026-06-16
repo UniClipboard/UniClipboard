@@ -33,7 +33,7 @@ use x11rb::protocol::Event;
 use x11rb::CURRENT_TIME;
 
 use super::super::mime::{
-    format_id_for, is_interesting_mime, is_text_mime, rfc_mime_for, text_mime_priority,
+    format_id_for, is_interesting_mime, is_text_mime, read_mime_sort_key, rfc_mime_for,
 };
 use super::connection::X11Server;
 use super::writer::WriterState;
@@ -131,10 +131,12 @@ pub(super) fn read_snapshot(
     // first with a percent-encoded copy of a non-ASCII URL, then
     // `UTF8_STRING` with the original UTF-8 — reading in advertise order
     // captures the percent-encoded variant, which the user then sees
-    // wherever the entry is pasted or synced. `sort_by_key` is stable, so
-    // non-text mimes (priority `u32::MAX`) keep their advertise-order
-    // relative position — only the text mimes shuffle among themselves.
-    candidates.sort_by_key(|(_, mime)| text_mime_priority(mime));
+    // wherever the entry is pasted or synced. The same key also ranks
+    // `image/*` candidates by decodability so we capture `image/png` over an
+    // earlier-advertised, undecodable `image/xpm` (issue #1029). `sort_by_key`
+    // is stable, so mimes that tie on the key keep their advertise-order
+    // relative position. See `read_mime_sort_key`.
+    candidates.sort_by_key(|(_, mime)| read_mime_sort_key(mime));
 
     let mut reps = Vec::new();
     let mut text_captured = false;

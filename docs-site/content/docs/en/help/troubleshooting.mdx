@@ -390,7 +390,20 @@ the daemon is currently advertising.
 
 ## Collecting logs
 
-Logs live in a `logs/` subdirectory next to the encrypted history:
+The fastest way to gather everything for an issue report is the built-in
+export, which zips the GUI, daemon, and CLI logs from the last 24 hours
+into your Downloads folder:
+
+- **GUI:** Settings → General → **Export logs**.
+- **CLI:** `uniclip debug export-logs` (use `--since-hours <N>` to widen
+  or narrow the window).
+
+If a problem is hard to reproduce, enable verbose logging first
+(Settings → General → **Debug mode**, or `uniclip debug on`), reproduce,
+then export. Turn it back off and restart afterwards.
+
+If you'd rather grab the files by hand, logs live in a `logs/`
+subdirectory next to the encrypted history:
 
 | Platform | Path                                                           |
 | -------- | -------------------------------------------------------------- |

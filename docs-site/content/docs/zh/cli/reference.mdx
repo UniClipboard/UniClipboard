@@ -172,6 +172,24 @@ uniclip mobile-sync disable
 完整的端到端配置教程（监听器风险提示、iOS 快捷指令安装、密码轮换）见
 [移动端同步指南](../core-features/mobile-sync)。
 
+## 调试与日志导出
+
+```bash
+uniclip debug status                       # 当前是否开启持久化调试日志？
+uniclip debug on                           # 开启更详细的本地日志
+uniclip debug off                          # 恢复正常日志档位
+uniclip debug export-logs                  # 把最近 24h 打包到下载目录
+uniclip debug export-logs --since-hours 6  # 收窄时间窗口
+```
+
+`debug on` / `off` 会把更详细的日志档位持久化，跨重启生效；`status`
+报告当前生效的档位，以及是否还需要重启才能完全生效。剪贴板内容仍然
+不会被记录。
+
+`export-logs` 把最近时间窗口（默认 24h）内的 GUI、daemon、CLI 日志打
+成一个 zip 放到下载目录 —— 这是收齐 issue 报告所需材料最快的方式。
+GUI 里在 **设置 → 常规** 下有同样的操作。
+
 ## 升级检测游标
 
 ```bash

@@ -194,6 +194,26 @@ Behavioural notes:
 For a step-by-step setup walkthrough — listener risks, iOS Shortcut
 install, password rotation — see the [Mobile sync guide](../core-features/mobile-sync).
 
+## Debug & log export
+
+```bash
+uniclip debug status                       # is persistent debug logging on?
+uniclip debug on                           # enable verbose local logging
+uniclip debug off                          # back to the normal profile
+uniclip debug export-logs                  # zip the last 24h to Downloads
+uniclip debug export-logs --since-hours 6  # narrow the window
+```
+
+`debug on` / `off` persists a more verbose logging profile across
+restarts; `status` reports the effective profile and whether a restart
+is still required for the change to fully take effect. Clipboard content
+is still not logged.
+
+`export-logs` collects the GUI, daemon, and CLI logs from the recent
+window (default 24h) into a single zip in your Downloads folder — the
+fastest way to gather everything an issue report needs. The same action
+is available in the GUI under **Settings → General**.
+
 ## Upgrade-detection cursor
 
 ```bash

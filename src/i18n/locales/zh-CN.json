@@ -110,6 +110,7 @@
       "general": {
         "title": "通用设置",
         "startupTitle": "启动设置",
+        "saveError": "保存设置失败",
         "deviceName": {
           "label": "设备名称",
           "description": "用于在局域网中识别此设备",

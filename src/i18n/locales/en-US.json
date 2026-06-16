@@ -110,6 +110,7 @@
       "general": {
         "title": "General",
         "startupTitle": "Startup",
+        "saveError": "Failed to save setting",
         "deviceName": {
           "label": "Device Name",
           "description": "Used to identify this device on the local network",

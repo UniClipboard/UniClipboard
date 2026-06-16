@@ -84,6 +84,7 @@ export default function GeneralSection() {
       setAutoStart(checked)
     } catch (error) {
       log.error({ err: error }, 'Failed to change autostart setting')
+      toast.error(t('settings.sections.general.saveError'))
     } finally {
       setSaving(false)
     }
@@ -97,6 +98,7 @@ export default function GeneralSection() {
       setSilentStart(checked)
     } catch (error) {
       log.error({ err: error }, 'Failed to change silent-start setting')
+      toast.error(t('settings.sections.general.saveError'))
     } finally {
       setSaving(false)
     }
@@ -110,6 +112,7 @@ export default function GeneralSection() {
       setLanguage(normalized)
     } catch (error) {
       log.error({ err: error }, 'Failed to change language setting')
+      toast.error(t('settings.sections.general.saveError'))
     } finally {
       setSaving(false)
     }
@@ -127,6 +130,7 @@ export default function GeneralSection() {
       setTelemetryEnabled(checked)
     } catch (error) {
       log.error({ err: error }, 'Failed to change diagnostics setting')
+      toast.error(t('settings.sections.general.saveError'))
     } finally {
       setSaving(false)
     }
@@ -139,6 +143,7 @@ export default function GeneralSection() {
       setUsageAnalyticsEnabled(checked)
     } catch (error) {
       log.error({ err: error }, 'Failed to change usage analytics setting')
+      toast.error(t('settings.sections.general.saveError'))
     } finally {
       setSaving(false)
     }
@@ -196,6 +201,7 @@ export default function GeneralSection() {
       await updateGeneralSetting({ deviceName: deviceName })
     } catch (error) {
       log.error({ err: error }, 'Failed to change device name')
+      toast.error(t('settings.sections.general.saveError'))
     } finally {
       setSaving(false)
     }

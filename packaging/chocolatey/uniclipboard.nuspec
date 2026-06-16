@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>uniclipboard</id>
+    <version>0.15.0</version>
+    <packageSourceUrl>https://github.com/UniClipboard/UniClipboard/tree/main/packaging/chocolatey</packageSourceUrl>
+    <owners>UniClipboard</owners>
+    <title>UniClipboard</title>
+    <authors>UniClipboard</authors>
+    <projectUrl>https://uniclipboard.app/</projectUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/UniClipboard/UniClipboard@v0.15.0/src-tauri/icons/icon.png</iconUrl>
+    <copyright>UniClipboard</copyright>
+    <licenseUrl>https://github.com/UniClipboard/UniClipboard/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/UniClipboard/UniClipboard</projectSourceUrl>
+    <bugTrackerUrl>https://github.com/UniClipboard/UniClipboard/issues</bugTrackerUrl>
+    <tags>uniclipboard clipboard sync p2p peer-to-peer encrypted cross-platform e2ee</tags>
+    <summary>Encrypted peer-to-peer clipboard sync between your devices</summary>
+    <description>
+UniClipboard syncs your clipboard securely across your devices on the local
+network. End-to-end encrypted and powered by iroh QUIC — no clouds, no
+accounts, no third-party servers, just direct peer-to-peer sync.
+
+Pair your devices once via the in-app QR code, then anything you copy on one
+device — text, images, or files — is automatically available on the others.
+
+This package installs the official Windows build published on GitHub Releases.
+    </description>
+    <releaseNotes>https://github.com/UniClipboard/UniClipboard/releases/tag/v0.15.0</releaseNotes>
+    <!-- UniClipboard needs the Microsoft Edge WebView2 Runtime (preinstalled on
+         current Windows 10/11). If you want Chocolatey to guarantee it, confirm
+         the exact community package id first, then enable a dependency, e.g.:
+    <dependencies>
+      <dependency id="webview2-runtime" />
+    </dependencies>
+    -->
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

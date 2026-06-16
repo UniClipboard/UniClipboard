@@ -5,6 +5,7 @@
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
@@ -133,6 +134,57 @@ async fn run_startup_file_cache_hygiene(history_facade: Arc<ClipboardHistoryFaca
         }
         Err(e) => {
             warn!(error = %e, "Startup file cache cleanup failed (non-fatal)");
+        }
+    }
+}
+
+/// Interval between periodic file-cache hygiene sweeps after the startup pass.
+///
+/// `cleanup_expired_files` enforces the `file_sync.file_cache_quota_per_device`
+/// cap, but originally ran only at startup — so a session that kept accumulating
+/// cache (e.g. issue #957's image capture storm) blew past the user's cap until
+/// the next restart. Re-running the sweep on this cadence bounds growth mid-
+/// session. This is an independent maintenance cadence, NOT coupled to the
+/// restart-handoff budgets in `uc_daemon_process::timing`, so it lives here as a
+/// single named constant rather than in that module.
+const FILE_CACHE_HYGIENE_INTERVAL: Duration = Duration::from_secs(300);
+
+/// Run the startup file-cache hygiene pass once, then re-run the cleanup +
+/// quota sweep every [`FILE_CACHE_HYGIENE_INTERVAL`] until `cancel` fires, so
+/// the cache quota is enforced throughout a long-running session and not only
+/// at startup. Detached + fire-and-forget like the startup pass; failures are
+/// logged and never abort the loop.
+async fn run_file_cache_hygiene(
+    history_facade: Arc<ClipboardHistoryFacade>,
+    cancel: CancellationToken,
+) {
+    run_startup_file_cache_hygiene(Arc::clone(&history_facade)).await;
+
+    let mut ticker = tokio::time::interval(FILE_CACHE_HYGIENE_INTERVAL);
+    // The first tick is immediate; consume it since the startup pass just ran.
+    ticker.tick().await;
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = ticker.tick() => {
+                match history_facade.cleanup_expired_files().await {
+                    Ok(result) => {
+                        if result.files_removed > 0 || result.entries_deleted > 0 {
+                            info!(
+                                files_removed = result.files_removed,
+                                entries_deleted = result.entries_deleted,
+                                orphans_removed = result.orphans_removed,
+                                bytes_reclaimed = result.bytes_reclaimed,
+                                errors = result.errors,
+                                "Periodic file cache cleanup completed"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Periodic file cache cleanup failed (non-fatal)");
+                    }
+                }
+            }
         }
     }
 }
@@ -492,8 +544,11 @@ impl DaemonApp {
         // "service task exited unexpectedly" shutdown arm; this matches the
         // prior fire-and-forget GUI startup behavior.
         let history_facade_for_hygiene = Arc::clone(&self.app_facade.clipboard_history);
-        let _hygiene_handle =
-            tokio::spawn(run_startup_file_cache_hygiene(history_facade_for_hygiene));
+        let hygiene_cancel = self.cancel.child_token();
+        let _hygiene_handle = tokio::spawn(run_file_cache_hygiene(
+            history_facade_for_hygiene,
+            hygiene_cancel,
+        ));
 
         // mobile_sync LAN listener:经 controller 走"对齐到期望状态"的路径,
         // 不再一次性 tokio::spawn。同一个 controller 也注入了 MobileSyncFacade,

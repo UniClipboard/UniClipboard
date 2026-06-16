@@ -57,6 +57,11 @@
         "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
       }
     },
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    },
     "createUpdaterArtifacts": true
   },
   "plugins": {

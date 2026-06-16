@@ -78,3 +78,40 @@ pub async fn open_logs_directory(
     .instrument(span)
     .await
 }
+
+/// Reveal a file or directory in the system file manager, opening its
+/// containing folder with the item selected (Finder / Explorer / file
+/// manager). Used after a log export to show the user where the zip landed.
+/// 在系统文件管理器中定位文件/目录：打开其所在目录并选中该项。
+#[tauri::command]
+#[specta::specta]
+pub async fn reveal_path(
+    app: tauri::AppHandle,
+    path: String,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), CommandError> {
+    let span = info_span!(
+        "command.storage.reveal_path",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let target = std::path::PathBuf::from(&path);
+        if !target.exists() {
+            return Err(CommandError::NotFound(format!(
+                "Path does not exist: {path}"
+            )));
+        }
+
+        app.opener()
+            .reveal_item_in_dir(&target)
+            .map_err(|e| CommandError::InternalError(e.to_string()))?;
+
+        tracing::info!(path = %target.display(), "Revealed path in file manager");
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}

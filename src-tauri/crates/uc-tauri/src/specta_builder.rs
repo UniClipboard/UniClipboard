@@ -69,6 +69,7 @@ pub fn build() -> Builder<tauri::Wry> {
         // ── storage ─────────────────────────────────────────────────────────
         crate::commands::storage::open_data_directory,
         crate::commands::storage::open_logs_directory,
+        crate::commands::storage::reveal_path,
         // ── quick panel ─────────────────────────────────────────────────────
         crate::commands::quick_panel::paste_to_previous_app,
         crate::commands::quick_panel::dismiss_quick_panel,

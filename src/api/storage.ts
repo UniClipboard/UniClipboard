@@ -43,6 +43,19 @@ export async function openLogsDirectory(): Promise<void> {
   await commands.openLogsDirectory()
 }
 
+/**
+ * Reveal a file or directory in the system file explorer, opening its
+ * containing folder with the item selected. Used to show the user where an
+ * exported log archive landed.
+ *
+ * 在系统文件浏览器中定位文件/目录：打开其所在目录并选中该项。
+ * 用于在日志导出后向用户展示归档文件所在位置。
+ */
+export async function revealPath(path: string): Promise<void> {
+  const { commands } = await import('@/lib/ipc')
+  await commands.revealPath(path)
+}
+
 // Re-export clipboard history clearance from daemon clipboard API.
 // This is used by StorageSection for the "clear all history" action.
 export { clearClipboardHistory as clearAllClipboardHistory } from './daemon/clipboard'

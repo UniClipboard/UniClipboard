@@ -198,6 +198,14 @@ export default function GeneralSection() {
       const result = await exportLogs(24)
       setExportPath(result.path)
       toast.success(t('settings.sections.general.logs.export.success'))
+      // Reveal the exported archive in the file manager so the user can find
+      // it immediately. Failure here is non-fatal: the export already
+      // succeeded and the path is shown in the UI.
+      try {
+        await storageApi.revealPath(result.path)
+      } catch (revealError) {
+        log.warn({ err: revealError }, 'Failed to reveal exported log archive')
+      }
     } catch (error) {
       log.error({ err: error }, 'Failed to export logs')
       toast.error(t('settings.sections.general.logs.export.error'))

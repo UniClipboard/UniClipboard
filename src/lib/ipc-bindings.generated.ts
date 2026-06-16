@@ -286,6 +286,16 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("open_logs_directory", { trace })),
 	/**
+	 *  Reveal a file or directory in the system file manager, opening its
+	 *  containing folder with the item selected (Finder / Explorer / file
+	 *  manager). Used after a log export to show the user where the zip landed.
+	 *  在系统文件管理器中定位文件/目录：打开其所在目录并选中该项。
+	 */
+	revealPath: (path: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, CommandError>(__TAURI_INVOKE("reveal_path", { path, trace })),
+	/**
 	 *  Hide the quick panel, re-activate the previous app, and paste.
 	 * 
 	 *  隐藏快捷面板，重新激活之前的应用，并粘贴。

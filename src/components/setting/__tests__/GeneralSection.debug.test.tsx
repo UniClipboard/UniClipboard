@@ -20,6 +20,7 @@ vi.mock('@/api/daemon/diagnostics', () => ({
 
 vi.mock('@/api/storage', () => ({
   openLogsDirectory: vi.fn(),
+  revealPath: vi.fn(),
 }))
 
 vi.mock('@/hooks/useSetting', () => ({

@@ -19,7 +19,7 @@ use rustix::event::{poll, PollFd, PollFlags};
 use tracing::{debug, info, warn};
 use x11rb::connection::Connection;
 use x11rb::protocol::xfixes::{self, SelectionEventMask};
-use x11rb::protocol::xproto::ConnectionExt as _;
+use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _};
 use x11rb::protocol::Event;
 
 use crate::clipboard::event_loop::{PlatformClipboardEventLoop, ShutdownRx};
@@ -93,18 +93,40 @@ impl PlatformClipboardEventLoop for X11EventLoop {
             Err(e) => warn!(error = %e, "x11 watcher: baseline read failed"),
         }
         let mut pending_change = baseline_ctx.take_selection_changed();
+        // Last CLIPBOARD owner we logged, to surface ownership churn without
+        // spamming: issue #957's storm is driven by an EXTERNAL client
+        // re-asserting ownership on a cadence, so logging the owner each time it
+        // changes names the culprit (when it carries WM_CLASS) and exposes a
+        // rapid A↔B ownership war directly in the daemon log.
+        let mut last_owner: Option<u32> = None;
 
         loop {
             // Drain anything currently buffered. We process every event so
             // we don't miss a change that arrived while we were reading —
             // including ones flagged mid-read by the previous iteration.
             let mut saw_change = std::mem::take(&mut pending_change);
+            let mut new_owner = None;
             while let Some(event) = conn
                 .poll_for_event()
                 .context("x11 watcher: poll_for_event failed")?
             {
-                if matches!(event, Event::XfixesSelectionNotify(_)) {
+                if let Event::XfixesSelectionNotify(notify) = event {
                     saw_change = true;
+                    new_owner = Some(notify.owner);
+                }
+            }
+
+            // Diagnostic only (DEBUG, throttled to ownership changes) — does not
+            // affect capture. Resolved after draining so the WM_CLASS query
+            // doesn't interleave with the event drain above.
+            if let Some(owner) = new_owner {
+                if last_owner != Some(owner) {
+                    last_owner = Some(owner);
+                    debug!(
+                        owner,
+                        owner_info = %describe_window(conn, owner),
+                        "x11 watcher: CLIPBOARD selection owner changed"
+                    );
                 }
             }
 
@@ -224,6 +246,33 @@ fn read_changed_selection(
          or offered no interesting mimes) — clipboard change lost"
     );
     ctx.take_selection_changed()
+}
+
+/// Best-effort, diagnostics-only human description of an X11 window: its
+/// `WM_CLASS` when set, otherwise just the hex id. Selection-owner windows are
+/// often unmanaged utility windows with no `WM_CLASS`, so an empty class is
+/// expected and simply yields the bare id. Never fails — any X error degrades
+/// to the id (or "none" for the cleared selection).
+fn describe_window<C: Connection>(conn: &C, window: u32) -> String {
+    if window == x11rb::NONE {
+        return "none (selection cleared)".to_string();
+    }
+    let class = conn
+        .get_property(false, window, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 256)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        // WM_CLASS is "instance\0class\0"; render the NULs as spaces.
+        .map(|reply| {
+            String::from_utf8_lossy(&reply.value)
+                .replace('\0', " ")
+                .trim()
+                .to_string()
+        })
+        .filter(|s| !s.is_empty());
+    match class {
+        Some(c) => format!("0x{window:x} ({c})"),
+        None => format!("0x{window:x}"),
+    }
 }
 
 /// Current owner window of `CLIPBOARD`, or `x11rb::NONE` when unowned or

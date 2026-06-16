@@ -161,6 +161,12 @@ async fn run_file_cache_hygiene(
     run_startup_file_cache_hygiene(Arc::clone(&history_facade)).await;
 
     let mut ticker = tokio::time::interval(FILE_CACHE_HYGIENE_INTERVAL);
+    // Drop missed ticks instead of bursting catch-up sweeps: after a stall
+    // (e.g. the host sleeps/suspends for hours), the default `Burst` would fire
+    // every skipped tick back-to-back, running redundant cleanups on resume.
+    // `Skip` collapses them into a single sweep at the next aligned slot, then
+    // resumes the normal cadence.
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // The first tick is immediate; consume it since the startup pass just ran.
     ticker.tick().await;
     loop {

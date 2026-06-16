@@ -1,0 +1,134 @@
+name: 'Homebrew Official Cask'
+run-name: >-
+  ${{ github.event_name == 'release'
+    && format('homebrew-cask-{0}', github.event.release.tag_name)
+    || format('homebrew-cask-manual-{0}', inputs.version) }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable version without v prefix, e.g. 0.16.0'
+        required: true
+        type: string
+      fork_repo:
+        description: 'Pushable fork used to open the PR'
+        required: true
+        default: 'UniClipboard/homebrew-cask'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    name: Submit official cask PR
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    runs-on: macos-latest
+    env:
+      CASK_TOKEN: ${{ secrets.HOMEBREW_CASK_TOKEN }}
+      FORK_REPO: ${{ inputs.fork_repo || 'UniClipboard/homebrew-cask' }}
+    steps:
+      - name: Checkout UniClipboard
+        uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${INPUT_VERSION#v}"
+          else
+            VERSION="${RELEASE_TAG#v}"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            echo "Could not derive version" >&2
+            exit 1
+          fi
+
+          ASSETS_JSON="$(gh release view "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --json assets)"
+          ARM_DIGEST="$(jq -r --arg version "$VERSION" '.assets[] | select(.name == "UniClipboard_" + $version + "_aarch64.dmg") | .digest // empty' <<<"$ASSETS_JSON")"
+          INTEL_DIGEST="$(jq -r --arg version "$VERSION" '.assets[] | select(.name == "UniClipboard_" + $version + "_x64.dmg") | .digest // empty' <<<"$ASSETS_JSON")"
+
+          ARM_SHA="${ARM_DIGEST#sha256:}"
+          INTEL_SHA="${INTEL_DIGEST#sha256:}"
+          if [ -z "$ARM_SHA" ] || [ -z "$INTEL_SHA" ]; then
+            echo "Missing GitHub release asset digests for UniClipboard_${VERSION}_{aarch64,x64}.dmg" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "arm_sha=$ARM_SHA" >> "$GITHUB_OUTPUT"
+          echo "intel_sha=$INTEL_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Render cask
+        run: |
+          set -euo pipefail
+          mkdir -p rendered
+          sed \
+            -e 's/__VERSION__/${{ steps.release.outputs.version }}/g' \
+            -e 's/__SHA256_ARM__/${{ steps.release.outputs.arm_sha }}/g' \
+            -e 's/__SHA256_INTEL__/${{ steps.release.outputs.intel_sha }}/g' \
+            packaging/homebrew/casks/uniclipboard.rb > rendered/uniclipboard.rb
+          cat rendered/uniclipboard.rb
+
+      - name: Checkout Homebrew cask fork
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FORK_REPO }}
+          token: ${{ secrets.HOMEBREW_CASK_TOKEN }}
+          path: homebrew-cask
+
+      - name: Update cask and open PR
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_CASK_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CASK_TOKEN:-}" ]; then
+            echo "HOMEBREW_CASK_TOKEN is required" >&2
+            exit 1
+          fi
+
+          cd homebrew-cask
+          git config user.name "UniClipboard Release Bot"
+          git config user.email "release@uniclipboard.app"
+          git remote add upstream https://github.com/Homebrew/homebrew-cask.git || true
+          git fetch upstream master
+          git checkout -B "uniclipboard-${VERSION}" upstream/master
+
+          mkdir -p Casks/u
+          IS_NEW=0
+          if [ ! -f Casks/u/uniclipboard.rb ]; then
+            IS_NEW=1
+          fi
+          cp ../rendered/uniclipboard.rb Casks/u/uniclipboard.rb
+
+          if [ "$IS_NEW" -eq 1 ]; then
+            brew audit --cask --new Casks/u/uniclipboard.rb
+            COMMIT_SUBJECT="Add uniclipboard ${VERSION}"
+            PR_TITLE="Add uniclipboard ${VERSION}"
+          else
+            brew audit --cask Casks/u/uniclipboard.rb
+            COMMIT_SUBJECT="Update uniclipboard to ${VERSION}"
+            PR_TITLE="Update uniclipboard to ${VERSION}"
+          fi
+
+          git add Casks/u/uniclipboard.rb
+          git commit -m "$COMMIT_SUBJECT"
+          git push --force-with-lease origin "uniclipboard-${VERSION}"
+
+          gh pr create \
+            --repo Homebrew/homebrew-cask \
+            --head "${FORK_REPO%/*}:uniclipboard-${VERSION}" \
+            --base master \
+            --title "$PR_TITLE" \
+            --body "Adds the UniClipboard macOS GUI cask.\n\nRelease: https://github.com/UniClipboard/UniClipboard/releases/tag/v${VERSION}"

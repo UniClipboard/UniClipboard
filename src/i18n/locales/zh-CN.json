@@ -21,6 +21,14 @@
     "back": "返回",
     "feedback": "反馈"
   },
+  "debugBadge": {
+    "title": "Debug 模式已开启",
+    "description": "本地日志更详细，日志文件增长也会更快。",
+    "restartHint": "关闭后请重启应用或 daemon，才能完全恢复普通日志级别。",
+    "disable": "关闭 Debug 模式",
+    "disabledToast": "Debug 模式已关闭。请重启以完全恢复普通日志级别。",
+    "disableFailed": "关闭 Debug 模式失败"
+  },
   "update": {
     "title": "发现新版本",
     "currentVersion": "当前版本",
@@ -142,6 +150,29 @@
           "label": "日志目录",
           "description": "在文件管理器中打开当前应用的日志文件夹",
           "button": "在文件管理器中打开"
+        },
+        "logs": {
+          "debug": {
+            "label": "Debug 模式",
+            "description": "应用和 daemon 重启后提高本地诊断日志详细度。",
+            "confirmTitle": "开启 Debug 模式？",
+            "confirmDescription": "Debug 模式会增加本地日志量，并可能记录更多运行上下文。剪贴板内容仍不应被主动记录。不需要时请关闭 Debug 模式，并重启应用或 daemon 以完全恢复普通日志级别。",
+            "confirm": "开启 Debug",
+            "cancel": "取消",
+            "restartToast": "请重启应用或 daemon，使日志级别变更完全生效。",
+            "error": "更改 Debug 模式失败"
+          },
+          "export": {
+            "label": "导出日志",
+            "description": "在 Downloads 目录创建包含最近 24 小时 GUI、daemon 和 CLI 日志的 zip 包。",
+            "button": "导出日志",
+            "exporting": "正在导出...",
+            "success": "日志已导出",
+            "error": "导出日志失败",
+            "copyPath": "复制路径",
+            "copySuccess": "已复制导出路径",
+            "copyError": "复制导出路径失败"
+          }
         }
       },
       "appearance": {

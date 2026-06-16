@@ -48,6 +48,7 @@ const baseSetting: Settings = {
     deviceName: 'Test Device',
     telemetryEnabled: true,
     usageAnalyticsEnabled: true,
+    debugMode: false,
   },
   sync: {
     autoSync: true,
@@ -121,6 +122,7 @@ const setupSetting = ({
     setting,
     loading: false,
     error,
+    reloadSetting: vi.fn(),
     updateSetting: vi.fn(),
     updateGeneralSetting: vi.fn(),
     updateAutostart: vi.fn(),

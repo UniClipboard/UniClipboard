@@ -64,6 +64,7 @@ const baseSetting: Settings = {
     deviceName: 'Test Device',
     telemetryEnabled: true,
     usageAnalyticsEnabled: true,
+    debugMode: false,
   },
   sync: {
     autoSync: true,

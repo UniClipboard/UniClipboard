@@ -1,8 +1,9 @@
 import { m } from 'framer-motion'
-import { ArrowUpCircle, Check, Home, MessageSquare, Monitor, Settings } from 'lucide-react'
+import { ArrowUpCircle, Bug, Check, Home, MessageSquare, Monitor, Settings, X } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { updateDebugMode } from '@/api/daemon/diagnostics'
 import {
   captureUpdateActionInvoked,
   captureUpdateDialogOpened,
@@ -160,10 +161,11 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
-  const { setting } = useSetting()
+  const { setting, reloadSetting } = useSetting()
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [packageManagerDialogOpen, setPackageManagerDialogOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [disablingDebug, setDisablingDebug] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   /**
    * When the in-app update dialog closes, distinguish "user clicked 稍后"
@@ -290,6 +292,21 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     setPackageManagerDialogOpen(open)
   }
 
+  const handleDisableDebugMode = async () => {
+    if (disablingDebug) return
+    setDisablingDebug(true)
+    try {
+      await updateDebugMode(false)
+      await reloadSetting()
+      toast.message(t('debugBadge.disabledToast'))
+    } catch (error) {
+      log.error({ err: error }, 'Failed to disable debug mode')
+      toast.error(t('debugBadge.disableFailed'))
+    } finally {
+      setDisablingDebug(false)
+    }
+  }
+
   return (
     <>
       <aside
@@ -318,6 +335,34 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 
         {/* Bottom Navigation */}
         <div className="relative z-10 flex flex-col gap-3 w-full items-center">
+          {setting?.general.debugMode && (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="relative flex size-10 items-center justify-center rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                    <Bug className="size-5" />
+                    <button
+                      type="button"
+                      aria-label={t('debugBadge.disable')}
+                      data-tauri-drag-region="false"
+                      className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:text-foreground"
+                      onClick={handleDisableDebugMode}
+                      disabled={disablingDebug}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right" align="center" className="max-w-64">
+                  <div className="space-y-1">
+                    <p className="font-medium">{t('debugBadge.title')}</p>
+                    <p className="text-xs text-muted-foreground">{t('debugBadge.description')}</p>
+                    <p className="text-xs text-muted-foreground">{t('debugBadge.restartHint')}</p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           {indicatorVisible && (
             <TooltipProvider delayDuration={0}>
               <Tooltip>

@@ -1,10 +1,30 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { updateDebugMode } from '@/api/daemon/diagnostics'
 import type { UpdateMetadata } from '@/api/updater'
 import Sidebar from '@/components/layout/Sidebar'
 import { SettingContext } from '@/contexts/setting-context'
 import { UpdateContext, type UpdateContextType, type UpdateState } from '@/contexts/update-context'
 import type { Settings } from '@/types/setting'
+
+vi.mock('@/api/daemon/diagnostics', () => ({
+  updateDebugMode: vi.fn(),
+}))
+
+const mockUpdateDebugMode = vi.mocked(updateDebugMode)
+
+beforeAll(() => {
+  if ('ResizeObserver' in globalThis) return
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    configurable: true,
+    value: class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  })
+})
 
 const baseSetting: Settings = {
   schemaVersion: 1,
@@ -23,6 +43,7 @@ const baseSetting: Settings = {
     deviceName: 'Test Device',
     telemetryEnabled: true,
     usageAnalyticsEnabled: true,
+    debugMode: false,
   },
   sync: {
     autoSync: true,
@@ -92,13 +113,15 @@ function buildUpdateValue(state: UpdateState): UpdateContextType {
   }
 }
 
-function renderSidebar(state: UpdateState) {
+function renderSidebar(state: UpdateState, setting: Settings = baseSetting) {
+  const reloadSetting = vi.fn().mockResolvedValue(undefined)
   return render(
     <SettingContext.Provider
       value={{
-        setting: baseSetting,
+        setting,
         loading: false,
         error: null,
+        reloadSetting,
         updateSetting: vi.fn(),
         updateGeneralSetting: vi.fn(),
         updateAutostart: vi.fn(),
@@ -176,5 +199,21 @@ describe('Sidebar update indicator', () => {
 
     const button = await waitFor(() => screen.getByLabelText(/update ready/i))
     expect(button).toHaveAttribute('data-update-state', 'ready')
+  })
+
+  it('shows debug badge and disables debug mode through diagnostics', async () => {
+    mockUpdateDebugMode.mockResolvedValue({ debugMode: false, restartRequired: true })
+    const debugSetting: Settings = {
+      ...baseSetting,
+      general: { ...baseSetting.general, debugMode: true },
+    }
+
+    renderSidebar({ phase: 'idle', info: null, downloaded: 0, total: null }, debugSetting)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Turn off Debug mode' }))
+
+    await waitFor(() => {
+      expect(mockUpdateDebugMode).toHaveBeenCalledWith(false)
+    })
   })
 })

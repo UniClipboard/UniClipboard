@@ -5,6 +5,8 @@ export { isSessionExpired } from './types'
 export { DaemonApiError, DaemonErrorCode, mapStatusToErrorCode } from './errors'
 export { signalLifecycleReady, getLifecycleStatus, retryLifecycle } from './lifecycle'
 export { getSettings, updateSettings } from './settings'
+export { exportLogs, getDebugStatus, updateDebugMode } from './diagnostics'
+export type { DebugStatus, LogExportResult, UpdateDebugModeResult } from './diagnostics'
 export type {
   Settings,
   GeneralSettings,

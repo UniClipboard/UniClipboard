@@ -274,6 +274,11 @@ enum Commands {
         #[command(subcommand)]
         subcommand: commands::upgrade::UpgradeCommands,
     },
+    /// Manage persistent local debug logging and export diagnostic logs
+    Debug {
+        #[command(subcommand)]
+        subcommand: commands::debug::DebugCommands,
+    },
     /// Hidden clipboard-diagnostic subcommand group (replaces the standalone
     /// `clipboard-probe` binary). Development and E2E debugging only.
     #[cfg(feature = "dev-tools")]
@@ -433,6 +438,9 @@ fn main() -> anyhow::Result<()> {
             }
             Commands::Upgrade { subcommand } => {
                 commands::upgrade::run(subcommand, cli.json, cli.verbose).await
+            }
+            Commands::Debug { subcommand } => {
+                commands::debug::run(subcommand, cli.json, cli.verbose).await
             }
             #[cfg(feature = "dev-tools")]
             Commands::Probe { subcommand } => commands::probe::run(subcommand, cli.verbose).await,

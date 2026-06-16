@@ -16,6 +16,7 @@ pub mod clipboard_live_index;
 pub mod clipboard_outbound;
 pub mod clipboard_restore;
 pub mod device;
+pub mod diagnostics;
 pub mod encryption;
 pub mod file_transfer;
 pub mod host_event;
@@ -81,6 +82,10 @@ pub use clipboard_restore::{
     ClipboardRestoreError, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
 };
 pub use device::{DeviceFacade, DeviceFacadeError, LocalDeviceInfoView};
+pub use diagnostics::{
+    DebugStatusView, DiagnosticsFacade, DiagnosticsFacadeDeps, DiagnosticsFacadeError,
+    LogExportView, UpdateDebugModeView,
+};
 pub use encryption::{
     EncryptionFacade, EncryptionFacadeDeps, EncryptionFacadeError, EncryptionStateView,
 };

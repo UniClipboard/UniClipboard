@@ -340,6 +340,35 @@ export type DaemonWsEvent = {
     type: string;
 };
 
+export type DebugStatusDto = {
+    debugMode: boolean;
+    effectiveLogProfile: string;
+    restartRequired: boolean;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type DebugStatusEnvelope = {
+    data: DebugStatusDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
 /**
  * Failure reason. i18n key convention: `delivery.failureReason.<variant>`.
  */
@@ -678,6 +707,10 @@ export type GeneralSettingsDto = {
      */
     autoDownloadUpdate?: boolean;
     autoStart: boolean;
+    /**
+     * Persistent local diagnostic logging mode. Takes effect after restart.
+     */
+    debugMode?: boolean;
     deviceName?: string | null;
     language?: string | null;
     silentStart: boolean;
@@ -731,6 +764,7 @@ export type GeneralSettingsPatchDto = {
     autoCheckUpdate?: boolean | null;
     autoDownloadUpdate?: boolean | null;
     autoStart?: boolean | null;
+    debugMode?: boolean | null;
     deviceName?: string | null;
     language?: string | null;
     silentStart?: boolean | null;
@@ -978,6 +1012,39 @@ export type LocalDeviceInfoEnvelope = {
      * Server time when the response was built (unix epoch milliseconds).
      */
     ts: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type LogExportEnvelope = {
+    data: LogExportResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type LogExportRequestDto = {
+    sinceHours?: number | null;
+};
+
+export type LogExportResultDto = {
+    includedFiles: Array<string>;
+    path: string;
+    since: string;
 };
 
 /**
@@ -2506,6 +2573,38 @@ export type UpdateChannelDto = 'stable' | 'alpha' | 'beta' | 'rc';
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
+export type UpdateDebugModeEnvelope = {
+    data: UpdateDebugModeResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type UpdateDebugModeRequestDto = {
+    enabled: boolean;
+};
+
+export type UpdateDebugModeResultDto = {
+    debugMode: boolean;
+    restartRequired: boolean;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
 export type UpdateMobileDeviceEnvelope = {
     data: UpdateMobileDeviceResultDto;
     /**
@@ -3271,6 +3370,81 @@ export type GetLocalDeviceInfoResponses = {
 };
 
 export type GetLocalDeviceInfoResponse = GetLocalDeviceInfoResponses[keyof GetLocalDeviceInfoResponses];
+
+export type GetDebugStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/diagnostics/debug';
+};
+
+export type GetDebugStatusErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type GetDebugStatusError = GetDebugStatusErrors[keyof GetDebugStatusErrors];
+
+export type GetDebugStatusResponses = {
+    /**
+     * Current persistent debug-mode status
+     */
+    200: DebugStatusEnvelope;
+};
+
+export type GetDebugStatusResponse = GetDebugStatusResponses[keyof GetDebugStatusResponses];
+
+export type UpdateDebugModeData = {
+    body: UpdateDebugModeRequestDto;
+    path?: never;
+    query?: never;
+    url: '/diagnostics/debug';
+};
+
+export type UpdateDebugModeErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type UpdateDebugModeError = UpdateDebugModeErrors[keyof UpdateDebugModeErrors];
+
+export type UpdateDebugModeResponses = {
+    /**
+     * Debug mode persisted
+     */
+    200: UpdateDebugModeEnvelope;
+};
+
+export type UpdateDebugModeResponse = UpdateDebugModeResponses[keyof UpdateDebugModeResponses];
+
+export type ExportLogsData = {
+    body: LogExportRequestDto;
+    path?: never;
+    query?: never;
+    url: '/diagnostics/log-export';
+};
+
+export type ExportLogsErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type ExportLogsError = ExportLogsErrors[keyof ExportLogsErrors];
+
+export type ExportLogsResponses = {
+    /**
+     * Logs exported to Downloads
+     */
+    200: LogExportEnvelope;
+};
+
+export type ExportLogsResponse = ExportLogsResponses[keyof ExportLogsResponses];
 
 export type FactoryResetSpaceData = {
     body?: never;

@@ -30,11 +30,12 @@ use utoipa::OpenApi;
 
 use uc_webserver::api::openapi::ApiDoc;
 
-/// Frozen §D cardinality. The `paths(...)` list registers 59 handler operations,
-/// but 5 paths carry two HTTP methods each (`/settings` GET+PUT,
+/// Frozen §D cardinality. The `paths(...)` list registers 66 handler operations,
+/// but 6 paths carry two HTTP methods each (`/settings` GET+PUT,
+/// `/diagnostics/debug` GET+PUT,
 /// `/clipboard/entries/{id}` GET+DELETE, `/member/{device_id}/sync-preferences`
 /// GET+PATCH, `/mobile-sync/devices` GET+POST, `/mobile-sync/settings` GET+PATCH),
-/// so they collapse to 54 unique path templates / 59 operations.
+/// so they collapse to 59 unique path templates / 66 operations.
 /// ADR-008 P3-1 (D15) added `POST /encryption/unlock-with-passphrase`,
 /// `POST /encryption/factory-reset`, `GET /clipboard/entries/{id}/delivery`.
 /// ADR-008 P3-b added the 7 `/mobile-sync/*` operations.
@@ -45,8 +46,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// ADR-008 P5-L (L8d-1) surfaced `POST /lifecycle/restart`: +1 path, +1 operation.
 /// ADR-008 P5-1b added the binary endpoint `GET /clipboard/entries/{id}/file`
 /// (doc-only, octet-stream): +1 path, +1 operation.
-const EXPECTED_PATHS: usize = 57;
-const EXPECTED_OPERATIONS: usize = 63;
+/// Diagnostics debug/log export added `/diagnostics/debug` GET+PUT and
+/// `/diagnostics/log-export` POST: +2 paths, +3 operations.
+const EXPECTED_PATHS: usize = 59;
+const EXPECTED_OPERATIONS: usize = 66;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

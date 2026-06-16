@@ -56,6 +56,7 @@ const baseSetting: Settings = {
     deviceName: 'Test Device',
     telemetryEnabled: true,
     usageAnalyticsEnabled: true,
+    debugMode: false,
   },
   sync: {
     autoSync: true,
@@ -147,6 +148,7 @@ function renderWithSetting(setting: Settings, children: React.ReactNode) {
         setting,
         loading: false,
         error: null,
+        reloadSetting: vi.fn(),
         updateSetting: vi.fn(),
         updateGeneralSetting: vi.fn(),
         updateAutostart: vi.fn(),
@@ -345,6 +347,7 @@ describe('UpdateProvider', () => {
           setting: disabledSetting,
           loading: false,
           error: null,
+          reloadSetting: vi.fn(),
           updateSetting: vi.fn(),
           updateGeneralSetting: vi.fn(),
           updateAutostart: vi.fn(),

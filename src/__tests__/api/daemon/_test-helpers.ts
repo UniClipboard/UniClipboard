@@ -185,6 +185,7 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
       updateChannel: null,
       telemetryEnabled: true,
       usageAnalyticsEnabled: true,
+      debugMode: false,
     },
     sync: {
       autoSync: true,

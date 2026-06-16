@@ -78,6 +78,7 @@ export interface GeneralSettings {
   updateChannel?: UpdateChannel | null
   telemetryEnabled: boolean
   usageAnalyticsEnabled: boolean
+  debugMode: boolean
 }
 
 /** Content type toggles for sync filtering. / 同步过滤的内容类型开关。 */
@@ -313,6 +314,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       updateChannel,
       telemetryEnabled,
       usageAnalyticsEnabled,
+      debugMode,
     } = settings.general
 
     patch.general = {
@@ -330,6 +332,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       updateChannel,
       telemetryEnabled,
       usageAnalyticsEnabled,
+      debugMode,
     }
   }
 

@@ -21,6 +21,10 @@ use crate::api::dto::clipboard::{
     EntryResourceDto, ToggleFavoriteRequest, ToggleFavoriteResultDto,
 };
 use crate::api::dto::device::LocalDeviceInfoDto;
+use crate::api::dto::diagnostics::{
+    DebugStatusDto, LogExportRequestDto, LogExportResultDto, UpdateDebugModeRequestDto,
+    UpdateDebugModeResultDto,
+};
 use crate::api::dto::encryption::{
     EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceRequest,
     UnlockSpaceResponse,
@@ -66,10 +70,10 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
 };
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelTransferEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
-    ClearHistoryEnvelope, ClipboardStatsEnvelope, DispatchOutcomeEnvelope,
+    ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope, DispatchOutcomeEnvelope,
     EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
     EntryDetailEnvelope, EntryResourceEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
-    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope,
+    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
     MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
     MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope,
     PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope,
@@ -78,8 +82,8 @@ use uc_daemon_contract::api::dto::envelope::{
     SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
     SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
     SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
-    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateMobileDeviceEnvelope,
-    UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
+    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
+    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -177,6 +181,9 @@ impl Modify for ContractMeta {
         crate::api::settings::get_settings_handler,
         crate::api::settings::update_settings_handler,
         crate::api::settings::probe_relay_url_handler,
+        crate::api::diagnostics::get_debug_status_handler,
+        crate::api::diagnostics::update_debug_mode_handler,
+        crate::api::diagnostics::export_logs_handler,
         // ── lifecycle ──────────────────────────────────────────────
         crate::api::lifecycle::get_lifecycle_status_handler,
         crate::api::lifecycle::retry_lifecycle_handler,
@@ -366,11 +373,19 @@ impl Modify for ContractMeta {
             UiNotificationDeliveryStatus,
             // ── system: diagnostics & topology ─────────────────────
             StatusEnvelope,
+            DebugStatusEnvelope,
+            UpdateDebugModeEnvelope,
+            LogExportEnvelope,
             PeerSnapshotListEnvelope,
             SpaceMemberListEnvelope,
             PresenceRefreshEnvelope,
             HealthResponse,
             StatusResponse,
+            DebugStatusDto,
+            UpdateDebugModeRequestDto,
+            UpdateDebugModeResultDto,
+            LogExportRequestDto,
+            LogExportResultDto,
             DaemonResidency,
             WorkerStatusDto,
             PeerSnapshotDto,
@@ -512,7 +527,9 @@ mod assembly_smoke_tests {
         // +1 operation → 56 / 61; ADR-008 P5-1b added the binary endpoint
         // `GET /clipboard/entries/{id}/file`: +1 path, +1 operation → 57 / 62.
         // The mobile-device edit feature added `PATCH /mobile-sync/devices/{device_id}`
-        // onto the existing DELETE-only path: +0 paths, +1 operation → 57 / 63.)
+        // onto the existing DELETE-only path: +0 paths, +1 operation → 57 / 63.
+        // Diagnostics added `/diagnostics/debug` GET+PUT and
+        // `/diagnostics/log-export` POST: +2 paths, +3 operations → 59 / 66.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -521,8 +538,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            57,
-            "expected exactly 57 path templates, found {}: {:?}",
+            59,
+            "expected exactly 59 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -536,8 +553,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 63,
-            "expected exactly 63 operations across all paths, found {operation_count}"
+            operation_count, 66,
+            "expected exactly 66 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

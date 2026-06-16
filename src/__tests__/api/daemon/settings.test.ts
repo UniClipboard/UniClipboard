@@ -87,6 +87,7 @@ describe('Settings API', () => {
           updateChannel: 'stable',
           telemetryEnabled: true,
           usageAnalyticsEnabled: false,
+          debugMode: false,
         },
       })
       getSdkMock.mockResolvedValueOnce({ data: { data: settings, ts: Date.now() } })
@@ -183,6 +184,7 @@ describe('Settings API', () => {
           updateChannel: null,
           telemetryEnabled: true,
           usageAnalyticsEnabled: true,
+          debugMode: false,
         },
       })
 
@@ -221,6 +223,7 @@ describe('Settings API', () => {
           updateChannel: null,
           telemetryEnabled: true,
           usageAnalyticsEnabled: true,
+          debugMode: false,
         },
       })
 
@@ -274,6 +277,7 @@ describe('Settings API', () => {
             updateChannel: null,
             telemetryEnabled: true,
             usageAnalyticsEnabled: true,
+            debugMode: false,
           },
         })
       ).rejects.toMatchObject({

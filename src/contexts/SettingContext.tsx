@@ -415,6 +415,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     setting,
     loading,
     error,
+    reloadSetting: loadSetting,
     updateSetting,
     updateGeneralSetting,
     updateAutostart,

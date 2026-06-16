@@ -86,6 +86,7 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
         .merge(crate::api::member::router())
         .merge(crate::api::mobile_sync::router())
         .merge(crate::api::settings::router())
+        .merge(crate::api::diagnostics::router())
         .merge(crate::api::v2::router())
         .merge(crate::api::encryption::router())
         .merge(crate::api::storage::router())

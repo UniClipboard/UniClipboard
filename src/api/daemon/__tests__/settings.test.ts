@@ -117,6 +117,7 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
         deviceName: null,
         telemetryEnabled: false,
         usageAnalyticsEnabled: false,
+        debugMode: false,
       },
     } as Partial<Settings>)
 

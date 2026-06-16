@@ -67,6 +67,7 @@ impl Default for GeneralSettings {
             update_channel: None,
             telemetry_enabled: true,
             usage_analytics_enabled: true,
+            debug_mode: false,
         }
     }
 }
@@ -322,8 +323,8 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use crate::settings::model::{
-        ContentTypes, FileSyncSettings, NetworkSettings, Settings, SyncFrequency, Theme,
-        CURRENT_SCHEMA_VERSION,
+        ContentTypes, FileSyncSettings, GeneralSettings, NetworkSettings, Settings, SyncFrequency,
+        Theme, CURRENT_SCHEMA_VERSION,
     };
 
     /// Pitfall 2 防御：默认值必须为 true（允许 fallback），保护老用户
@@ -343,11 +344,21 @@ mod tests {
     fn settings_default_includes_network_with_fallback_allowed() {
         let s = Settings::default();
         assert!(s.network.allow_relay_fallback);
+        assert!(!s.general.debug_mode);
         assert_eq!(s.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
             s.schema_version, 1,
             "schema_version MUST stay 1 (no migration)"
         );
+    }
+
+    #[test]
+    fn old_general_settings_without_debug_mode_defaults_to_false() {
+        let json = r#"{"auto_start":true}"#;
+        let general: GeneralSettings = serde_json::from_str(json).expect("parse old general");
+
+        assert!(general.auto_start);
+        assert!(!general.debug_mode);
     }
 
     /// NETSET-02 success criterion #2：缺 `network` 段的旧 settings.json

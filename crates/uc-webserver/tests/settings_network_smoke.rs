@@ -238,7 +238,7 @@ async fn restart_required_truth_table() {
         "case 3: Some(allow=false) signals restart"
     );
 
-    // case 4：payload.network.allow_relay_fallback = Some(true) → restart_required = true
+    // case 4: payload.network.allow_relay_fallback = Some(true) means restart_required = true.
     let payload_some_true = SettingsPatchDto {
         network: Some(NetworkSettingsPatchDto {
             allow_relay_fallback: Some(true),
@@ -251,9 +251,8 @@ async fn restart_required_truth_table() {
         "case 4: Some(allow=true) signals restart"
     );
 
-    // case 5：旧客户端 — 纯 general patch、无 network 段 → restart_required = false
-    // NETSET-02 success criterion #2 的硬约束（向后兼容）。
-    // 注：GeneralSettingsPatchDto 没 derive(Default)，显式枚举所有字段为 None 即可。
+    // case 5: legacy client sends a pure general patch with no network section,
+    // so restart_required stays false for NETSET-02 backward compatibility.
     let payload_legacy = SettingsPatchDto {
         general: Some(GeneralSettingsPatchDto {
             auto_start: Some(true),
@@ -271,6 +270,7 @@ async fn restart_required_truth_table() {
             update_channel: None,
             telemetry_enabled: None,
             usage_analytics_enabled: None,
+            debug_mode: None,
         }),
         ..Default::default()
     };

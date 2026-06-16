@@ -20,12 +20,13 @@ use uc_application::facade::{
     AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade, ClipboardHistoryFacade,
     ClipboardHistoryFacadeDeps, ClipboardOutboundDeps, ClipboardOutboundFacade,
     ClipboardRestoreFacade, ClipboardRestoreFacadeDeps, ClipboardSyncFacade, DeviceFacade,
-    EmitError, EncryptionFacade, EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventBus,
-    HostEventEmitterPort, InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade,
-    LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade,
-    MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps,
-    SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade,
-    StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    DiagnosticsFacade, DiagnosticsFacadeDeps, EmitError, EncryptionFacade, EncryptionFacadeDeps,
+    FileTransferFacade, HostEvent, HostEventBus, HostEventEmitterPort, InMemoryLifecycleStatus,
+    IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway,
+    MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts,
+    ResourceFacade, ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade,
+    SearchFacadeDeps, SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade,
+    UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -472,6 +473,11 @@ pub fn build_app_facade_from_deps(
             }
             facade
         }),
+        diagnostics: Arc::new(DiagnosticsFacade::new(DiagnosticsFacadeDeps {
+            settings: deps.settings.clone(),
+            logs_dir: storage_paths.logs_dir.clone(),
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
+        })),
         device: Arc::new(DeviceFacade::new(
             deps.device.device_identity.clone(),
             deps.settings.clone(),

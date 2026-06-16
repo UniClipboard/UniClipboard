@@ -45,12 +45,13 @@ use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
     BlobTransferError, BlobTransferFacade, ClipboardHistoryFacade, ClipboardOutboundFacade,
     ClipboardRestoreFacade, ClipboardSyncError, ClipboardSyncFacade, DeviceFacade,
-    DispatchEntryOutcome, EncryptionFacade, EncryptionFacadeError, EncryptionStateView,
-    FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand, FetchBlobToPathResult,
-    InboundNotice, LifecycleFacade, MemberRosterFacade, PublishBlobCommand, PublishBlobPathCommand,
-    PublishBlobResult, ResendEntryCommand, ResendEntryError, ResendReport, ResourceFacade,
-    SearchFacade, SearchFacadeError, SearchPageView, SearchQueryInput, SearchRebuildAcceptedView,
-    SearchStatusView, SettingsFacade, SettingsFacadeError, SpaceSetupFacade, StorageFacade,
+    DiagnosticsFacade, DispatchEntryOutcome, EncryptionFacade, EncryptionFacadeError,
+    EncryptionStateView, FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand,
+    FetchBlobToPathResult, InboundNotice, LifecycleFacade, MemberRosterFacade, PublishBlobCommand,
+    PublishBlobPathCommand, PublishBlobResult, ResendEntryCommand, ResendEntryError, ResendReport,
+    ResourceFacade, SearchFacade, SearchFacadeError, SearchPageView, SearchQueryInput,
+    SearchRebuildAcceptedView, SearchStatusView, SettingsFacade, SettingsFacadeError,
+    SpaceSetupFacade, StorageFacade,
 };
 use crate::usecases::clipboard_sync::V3BlobRef;
 use uc_core::ids::DeviceId;
@@ -110,6 +111,7 @@ pub struct AppFacade {
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
     pub search: Arc<SearchFacade>,
     pub settings: Arc<SettingsFacade>,
+    pub diagnostics: Arc<DiagnosticsFacade>,
     pub device: Arc<DeviceFacade>,
     pub storage: Arc<StorageFacade>,
     /// 升级检测 facade（P1 thin）。所有桌面入口（GUI / daemon / CLI）共享同
@@ -161,6 +163,7 @@ impl AppFacade {
             clipboard_restore: parts.clipboard_restore,
             search: parts.search,
             settings: parts.settings,
+            diagnostics: parts.diagnostics,
             device: parts.device,
             storage: parts.storage,
             upgrade: parts.upgrade,
@@ -620,6 +623,7 @@ impl AppFacade {
                     update_channel: None,
                     telemetry_enabled: None,
                     usage_analytics_enabled: None,
+                    debug_mode: None,
                 }),
                 sync: None,
                 retention_policy: None,
@@ -732,6 +736,7 @@ pub struct AppFacadeParts {
     pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
     pub search: Arc<SearchFacade>,
     pub settings: Arc<SettingsFacade>,
+    pub diagnostics: Arc<DiagnosticsFacade>,
     pub device: Arc<DeviceFacade>,
     pub storage: Arc<StorageFacade>,
     pub upgrade: Arc<UpgradeFacade>,

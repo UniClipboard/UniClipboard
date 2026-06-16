@@ -108,7 +108,12 @@ async fn update_settings_handler(
     // 260505-1np 改成运行时 gate（见 uc-observability::set_telemetry_enabled），
     // 不再需要重启 — 下面在 facade 写盘成功后直接把新值推进 atomic 即可立即生效。
     // Pitfall 3 防御：调用方（前端 Phase 95）必须显式承担"还没真正生效"。
-    let restart_required = payload.network.is_some();
+    let debug_mode_changed = payload
+        .general
+        .as_ref()
+        .and_then(|general| general.debug_mode)
+        .is_some();
+    let restart_required = payload.network.is_some() || debug_mode_changed;
 
     // 取出可能存在的 telemetry 新值，再传 patch 给 facade 写盘 — 写盘成功后再
     // 把 atomic 推进新值，保证持久化与运行时状态保持单调一致（如果写盘失败，

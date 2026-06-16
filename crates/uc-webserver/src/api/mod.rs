@@ -6,6 +6,7 @@ pub mod blob;
 pub mod clipboard;
 pub mod control_lease;
 pub mod device;
+pub mod diagnostics;
 pub mod dto;
 pub mod encryption;
 pub mod event_emitter;

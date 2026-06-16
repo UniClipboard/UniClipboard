@@ -119,6 +119,24 @@ fn resolve_usage_analytics_enabled(settings_path: &Path) -> bool {
         .usage_analytics_enabled
 }
 
+fn resolve_persisted_debug_mode(settings_path: &Path) -> bool {
+    load_settings_snapshot(settings_path)
+        .unwrap_or_default()
+        .general
+        .debug_mode
+}
+
+fn select_log_profile(settings_path: &Path) -> LogProfile {
+    if std::env::var("UC_LOG_PROFILE").is_ok() || std::env::var("RUST_LOG").is_ok() {
+        return LogProfile::from_env();
+    }
+    if resolve_persisted_debug_mode(settings_path) {
+        LogProfile::Debug
+    } else {
+        LogProfile::from_env()
+    }
+}
+
 /// Initialize the tracing subscriber with dual-output and Sentry integration.
 ///
 /// ## Idempotency
@@ -181,8 +199,9 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
         ::tracing::debug!("ScopeContext already initialized; keeping existing global scope");
     }
 
-    // Step 2: Select log profile
-    let profile = LogProfile::from_env();
+    // Step 2: Select log profile. RUST_LOG and UC_LOG_PROFILE remain explicit
+    // overrides; persisted Debug Mode only applies when neither env override is set.
+    let profile = select_log_profile(&paths.settings_path);
 
     // Step 2b: Resolve `telemetry_enabled` from persisted settings and push it
     // into the process-wide runtime gate exposed by `uc-observability`.

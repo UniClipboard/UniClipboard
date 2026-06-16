@@ -28,6 +28,8 @@ serde = { version = "1", features = ["derive"] }
 # 时需要 serde_json::Map / Value（与 uc-observability 的 IdentifyPayload 同
 # 形态）。本 crate 此前不直接拼 JSON，故新增依赖。
 serde_json = "1"
+dirs = "6"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }

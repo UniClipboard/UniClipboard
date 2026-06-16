@@ -57,6 +57,7 @@ export interface GeneralSettings {
   updateChannel?: UpdateChannel | null
   telemetryEnabled: boolean
   usageAnalyticsEnabled: boolean
+  debugMode: boolean
 }
 
 /**
@@ -252,6 +253,7 @@ export interface SettingContextType {
   setting: Settings | null
   loading: boolean
   error: string | null
+  reloadSetting: () => Promise<void>
   updateSetting: (newSetting: Settings) => Promise<void>
   /**
    * Update general settings EXCEPT `autoStart`. Autostart is a desktop-host OS

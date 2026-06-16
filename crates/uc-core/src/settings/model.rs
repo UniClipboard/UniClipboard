@@ -69,6 +69,11 @@ pub struct GeneralSettings {
     /// 错误上报，本字段控制产品 telemetry（漏斗 / 留存 / 同步可靠性事件）。
     /// 二者由用户独立勾选——GDPR 友好实践。
     pub usage_analytics_enabled: bool,
+    /// Enables a persistent local diagnostic logging profile on the next process start.
+    ///
+    /// This only changes local log verbosity. It does not change sync behavior,
+    /// network policy, telemetry/analytics gates, or clipboard content handling.
+    pub debug_mode: bool,
 }
 
 impl GeneralSettings {

@@ -1,6 +1,7 @@
 pub mod app_session;
 #[cfg(feature = "dev-tools")]
 pub mod blob;
+pub mod debug;
 #[cfg(feature = "dev-tools")]
 pub mod dev;
 pub mod devices;

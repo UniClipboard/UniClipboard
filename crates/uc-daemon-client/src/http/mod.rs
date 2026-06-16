@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod clipboard;
+pub mod diagnostics;
 pub mod enveloped;
 pub mod lifecycle;
 pub mod mobile_sync;
@@ -13,6 +14,7 @@ pub mod upgrade;
 
 pub use analytics::DaemonAnalyticsClient;
 pub use clipboard::DaemonClipboardClient;
+pub use diagnostics::DaemonDiagnosticsClient;
 pub use enveloped::DaemonRequestError;
 pub use lifecycle::DaemonLifecycleClient;
 pub use mobile_sync::DaemonMobileSyncClient;

@@ -110,6 +110,9 @@ pub struct GeneralSettingsDto {
     /// 上报，本字段控制产品 telemetry（漏斗 / 留存 / 同步可靠性事件）。
     #[serde(default = "default_true")]
     pub usage_analytics_enabled: bool,
+    /// Persistent local diagnostic logging mode. Takes effect after restart.
+    #[serde(default)]
+    pub debug_mode: bool,
 }
 
 fn default_true() -> bool {
@@ -375,6 +378,7 @@ pub struct GeneralSettingsPatchDto {
     pub update_channel: Option<Option<UpdateChannelDto>>,
     pub telemetry_enabled: Option<bool>,
     pub usage_analytics_enabled: Option<bool>,
+    pub debug_mode: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -564,6 +568,7 @@ impl From<core::GeneralSettings> for GeneralSettingsDto {
             update_channel: value.update_channel.map(Into::into),
             telemetry_enabled: value.telemetry_enabled,
             usage_analytics_enabled: value.usage_analytics_enabled,
+            debug_mode: value.debug_mode,
         }
     }
 }

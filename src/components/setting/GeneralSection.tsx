@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { exportLogs, updateDebugMode } from '@/api/daemon/diagnostics'
 import * as storageApi from '@/api/storage'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Select,
   SelectContent,
   SelectItem,
@@ -11,6 +20,7 @@ import {
   Input,
   Button,
 } from '@/components/ui'
+import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, getInitialLanguage } from '@/i18n'
 import { createLogger } from '@/lib/logger'
@@ -21,7 +31,13 @@ const log = createLogger('general-section')
 
 export default function GeneralSection() {
   const { t } = useTranslation()
-  const { setting, loading: settingLoading, updateGeneralSetting, updateAutostart } = useSetting()
+  const {
+    setting,
+    loading: settingLoading,
+    reloadSetting,
+    updateGeneralSetting,
+    updateAutostart,
+  } = useSetting()
   const [autoStart, setAutoStart] = useState(setting?.general.autoStart ?? false)
   const [silentStart, setSilentStart] = useState(setting?.general.silentStart ?? false)
   const [telemetryEnabled, setTelemetryEnabled] = useState(
@@ -30,6 +46,10 @@ export default function GeneralSection() {
   const [usageAnalyticsEnabled, setUsageAnalyticsEnabled] = useState(
     setting?.general.usageAnalyticsEnabled ?? true
   )
+  const [debugMode, setDebugMode] = useState(setting?.general.debugMode ?? false)
+  const [debugConfirmOpen, setDebugConfirmOpen] = useState(false)
+  const [exportPath, setExportPath] = useState<string | null>(null)
+  const [exportingLogs, setExportingLogs] = useState(false)
   const [language, setLanguage] = useState<SupportedLanguage>(() => {
     const backendLang = setting?.general.language
     const isValid = backendLang && SUPPORTED_LANGUAGES.includes(backendLang as SupportedLanguage)
@@ -39,13 +59,15 @@ export default function GeneralSection() {
   const [saving, setSaving] = useState(false)
   const isBusy = settingLoading || saving
 
-  // 从配置中读取设置（auto_start 展示值来自持久化设置；切换走专用命令，见下）
+  // Read display state from persisted settings. Autostart still uses the
+  // dedicated host command because it applies OS launch registration.
   useEffect(() => {
     if (!setting?.general) return
     setAutoStart(setting.general.autoStart)
     setSilentStart(setting.general.silentStart)
     setTelemetryEnabled(setting.general.telemetryEnabled)
     setUsageAnalyticsEnabled(setting.general.usageAnalyticsEnabled ?? true)
+    setDebugMode(setting.general.debugMode ?? false)
     // Validate backend language value against supported languages
     const backendLang = setting.general.language
     const isValidLanguage =
@@ -54,22 +76,18 @@ export default function GeneralSection() {
     setDeviceName(setting.general.deviceName ?? '')
   }, [setting])
 
-  // 处理自启动开关变化。走专用命令 update_autostart：在同一后端调用里持久化
-  // auto_start 偏好并应用 OS 启动项注册，失败会回滚设置。不能走通用
-  // updateGeneralSetting —— 设置链路不会触发任何 OS 副作用。
   const handleAutoStartChange = async (checked: boolean) => {
     try {
       setSaving(true)
       await updateAutostart(checked)
       setAutoStart(checked)
     } catch (error) {
-      log.error({ err: error }, '更改自启动状态失败')
+      log.error({ err: error }, 'Failed to change autostart setting')
     } finally {
       setSaving(false)
     }
   }
 
-  // 处理静默启动开关变化
   const handleSilentStartChange = async (checked: boolean) => {
     try {
       setSaving(true)
@@ -77,7 +95,7 @@ export default function GeneralSection() {
       await updateGeneralSetting({ silentStart: checked })
       setSilentStart(checked)
     } catch (error) {
-      log.error({ err: error }, '更改静默启动状态失败')
+      log.error({ err: error }, 'Failed to change silent-start setting')
     } finally {
       setSaving(false)
     }
@@ -90,7 +108,7 @@ export default function GeneralSection() {
       await updateGeneralSetting({ language: normalized })
       setLanguage(normalized)
     } catch (error) {
-      log.error({ err: error }, '更改语言失败')
+      log.error({ err: error }, 'Failed to change language setting')
     } finally {
       setSaving(false)
     }
@@ -107,7 +125,7 @@ export default function GeneralSection() {
       await updateGeneralSetting({ telemetryEnabled: checked })
       setTelemetryEnabled(checked)
     } catch (error) {
-      log.error({ err: error }, '更改诊断数据设置失败')
+      log.error({ err: error }, 'Failed to change diagnostics setting')
     } finally {
       setSaving(false)
     }
@@ -119,10 +137,40 @@ export default function GeneralSection() {
       await updateGeneralSetting({ usageAnalyticsEnabled: checked })
       setUsageAnalyticsEnabled(checked)
     } catch (error) {
-      log.error({ err: error }, '更改使用情况分析设置失败')
+      log.error({ err: error }, 'Failed to change usage analytics setting')
     } finally {
       setSaving(false)
     }
+  }
+
+  const persistDebugMode = async (enabled: boolean) => {
+    try {
+      setSaving(true)
+      const result = await updateDebugMode(enabled)
+      await reloadSetting()
+      setDebugMode(result.debugMode)
+      if (result.restartRequired) {
+        toast.message(t('settings.sections.general.logs.debug.restartToast'))
+      }
+    } catch (error) {
+      log.error({ err: error }, 'Failed to change debug mode')
+      toast.error(t('settings.sections.general.logs.debug.error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDebugModeChange = (checked: boolean) => {
+    if (checked) {
+      setDebugConfirmOpen(true)
+    } else {
+      void persistDebugMode(false)
+    }
+  }
+
+  const handleConfirmDebugMode = () => {
+    setDebugConfirmOpen(false)
+    void persistDebugMode(true)
   }
 
   const handleDeviceNameBlur = async () => {
@@ -130,7 +178,7 @@ export default function GeneralSection() {
       setSaving(true)
       await updateGeneralSetting({ deviceName: deviceName })
     } catch (error) {
-      log.error({ err: error }, '更改设备名称失败')
+      log.error({ err: error }, 'Failed to change device name')
     } finally {
       setSaving(false)
     }
@@ -140,7 +188,32 @@ export default function GeneralSection() {
     try {
       await storageApi.openLogsDirectory()
     } catch (error) {
-      log.error({ err: error }, '打开日志目录失败')
+      log.error({ err: error }, 'Failed to open logs directory')
+    }
+  }
+
+  const handleExportLogs = async () => {
+    try {
+      setExportingLogs(true)
+      const result = await exportLogs(24)
+      setExportPath(result.path)
+      toast.success(t('settings.sections.general.logs.export.success'))
+    } catch (error) {
+      log.error({ err: error }, 'Failed to export logs')
+      toast.error(t('settings.sections.general.logs.export.error'))
+    } finally {
+      setExportingLogs(false)
+    }
+  }
+
+  const handleCopyExportPath = async () => {
+    if (!exportPath) return
+    try {
+      await navigator.clipboard.writeText(exportPath)
+      toast.success(t('settings.sections.general.logs.export.copySuccess'))
+    } catch (error) {
+      log.warn({ err: error }, 'Failed to copy log export path')
+      toast.error(t('settings.sections.general.logs.export.copyError'))
     }
   }
 
@@ -229,6 +302,44 @@ export default function GeneralSection() {
 
       <SettingGroup title={t('settings.sections.general.logsDirectory.title')}>
         <SettingRow
+          label={t('settings.sections.general.logs.debug.label')}
+          description={t('settings.sections.general.logs.debug.description')}
+        >
+          <Switch
+            aria-label={t('settings.sections.general.logs.debug.label')}
+            checked={debugMode}
+            onCheckedChange={handleDebugModeChange}
+            disabled={isBusy}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label={t('settings.sections.general.logs.export.label')}
+          description={t('settings.sections.general.logs.export.description')}
+        >
+          <div className="flex flex-col items-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportLogs}
+              disabled={isBusy || exportingLogs}
+            >
+              {exportingLogs
+                ? t('settings.sections.general.logs.export.exporting')
+                : t('settings.sections.general.logs.export.button')}
+            </Button>
+            {exportPath && (
+              <div className="flex max-w-96 items-center gap-2 text-xs text-muted-foreground">
+                <span className="truncate">{exportPath}</span>
+                <Button variant="ghost" size="sm" onClick={handleCopyExportPath}>
+                  {t('settings.sections.general.logs.export.copyPath')}
+                </Button>
+              </div>
+            )}
+          </div>
+        </SettingRow>
+
+        <SettingRow
           label={t('settings.sections.general.logsDirectory.label')}
           description={t('settings.sections.general.logsDirectory.description')}
         >
@@ -237,6 +348,27 @@ export default function GeneralSection() {
           </Button>
         </SettingRow>
       </SettingGroup>
+
+      <AlertDialog open={debugConfirmOpen} onOpenChange={setDebugConfirmOpen}>
+        <AlertDialogContent className="bg-card text-card-foreground">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('settings.sections.general.logs.debug.confirmTitle')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('settings.sections.general.logs.debug.confirmDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>
+              {t('settings.sections.general.logs.debug.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction disabled={saving} onClick={handleConfirmDebugMode}>
+              {t('settings.sections.general.logs.debug.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

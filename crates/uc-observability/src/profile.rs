@@ -11,7 +11,7 @@ use tracing_subscriber::EnvFilter;
 /// # Profile Selection Precedence
 ///
 /// 1. `RUST_LOG` env var (overrides everything when set)
-/// 2. `UC_LOG_PROFILE` env var (`dev`, `prod`, `debug_clipboard`)
+/// 2. `UC_LOG_PROFILE` env var (`dev`, `prod`, `debug`, `debug_clipboard`)
 /// 3. Build-type default: debug builds -> `Dev`, release builds -> `Prod`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogProfile {
@@ -19,6 +19,8 @@ pub enum LogProfile {
     Dev,
     /// Production profile: info-level base
     Prod,
+    /// User-facing debug profile: production base with UniClipboard targets raised to debug.
+    Debug,
     /// Clipboard debugging profile: info-level base with clipboard targets raised to debug/trace
     DebugClipboard,
     /// CLI profile: console output disabled (no noise), JSON file logging at info level
@@ -133,6 +135,7 @@ impl LogProfile {
         match std::env::var("UC_LOG_PROFILE").as_deref() {
             Ok("dev") => Self::Dev,
             Ok("prod") => Self::Prod,
+            Ok("debug") => Self::Debug,
             Ok("debug_clipboard") => Self::DebugClipboard,
             Ok("cli") => Self::Cli,
             _ => {
@@ -192,7 +195,7 @@ impl LogProfile {
         let base = match self {
             Self::Dev => "debug",
             Self::Prod | Self::Cli => "info",
-            Self::DebugClipboard => "info",
+            Self::Debug | Self::DebugClipboard => "info",
         };
 
         let mut directives = vec![base.to_string()];
@@ -213,6 +216,21 @@ impl LogProfile {
                 directives.push("uc_app::usecases::clipboard=debug".to_string());
                 directives.push("uc_core::clipboard=debug".to_string());
             }
+            Self::Debug => {
+                directives.push("uc_core=debug".to_string());
+                directives.push("uc_application=debug".to_string());
+                directives.push("uc_app=debug".to_string());
+                directives.push("uc_infra=debug".to_string());
+                directives.push("uc_platform=debug".to_string());
+                directives.push("uc_bootstrap=debug".to_string());
+                directives.push("uc_webserver=debug".to_string());
+                directives.push("uc_daemon_client=debug".to_string());
+                directives.push("uc_daemon_local=debug".to_string());
+                directives.push("uc_daemon_process=debug".to_string());
+                directives.push("uc_desktop=debug".to_string());
+                directives.push("uc_tauri=debug".to_string());
+                directives.push("uc_cli=debug".to_string());
+            }
             Self::Prod | Self::Cli => {}
         }
 
@@ -225,6 +243,7 @@ impl fmt::Display for LogProfile {
         match self {
             Self::Dev => write!(f, "dev"),
             Self::Prod => write!(f, "prod"),
+            Self::Debug => write!(f, "debug"),
             Self::DebugClipboard => write!(f, "debug_clipboard"),
             Self::Cli => write!(f, "cli"),
         }

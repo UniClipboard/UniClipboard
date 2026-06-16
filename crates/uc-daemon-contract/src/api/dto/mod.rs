@@ -4,6 +4,7 @@ pub mod clipboard;
 pub mod clipboard_command;
 pub mod clipboard_delivery;
 pub mod device;
+pub mod diagnostics;
 pub mod encryption;
 pub mod envelope;
 pub mod error;

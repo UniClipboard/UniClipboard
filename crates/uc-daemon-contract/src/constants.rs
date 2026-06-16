@@ -102,6 +102,10 @@ pub mod http_route {
     pub const SETTINGS: &str = "/settings";
     /// POST /settings/relay-probe — probe a candidate relay URL (ADR-008 P3-3 B2'-1)
     pub const SETTINGS_RELAY_PROBE: &str = "/settings/relay-probe";
+    /// GET/PUT /diagnostics/debug — inspect or update persistent local debug mode.
+    pub const DIAGNOSTICS_DEBUG: &str = "/diagnostics/debug";
+    /// POST /diagnostics/log-export — export recent GUI/daemon/CLI logs to Downloads.
+    pub const DIAGNOSTICS_LOG_EXPORT: &str = "/diagnostics/log-export";
     /// GET /encryption/state — encryption state
     pub const ENCRYPTION_STATE: &str = "/encryption/state";
     /// POST /encryption/unlock — unlock encryption with passphrase

@@ -126,9 +126,12 @@ jobs:
           git commit -m "$COMMIT_SUBJECT"
           git push --force-with-lease origin "uniclipboard-${VERSION}"
 
+          # printf so the blank line renders as a real newline; gh --body keeps
+          # literal "\n" as backslash-n in the PR description otherwise.
+          PR_BODY="$(printf 'Adds the UniClipboard macOS GUI cask.\n\nRelease: https://github.com/UniClipboard/UniClipboard/releases/tag/v%s\n' "$VERSION")"
           gh pr create \
             --repo Homebrew/homebrew-cask \
             --head "${FORK_REPO%/*}:uniclipboard-${VERSION}" \
             --base master \
             --title "$PR_TITLE" \
-            --body "Adds the UniClipboard macOS GUI cask.\n\nRelease: https://github.com/UniClipboard/UniClipboard/releases/tag/v${VERSION}"
+            --body "$PR_BODY"

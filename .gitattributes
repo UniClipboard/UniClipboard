@@ -31,3 +31,9 @@
 *.ttf binary
 *.eot binary
 *.pdf binary
+
+# Linguist / CodeQL: Homebrew casks & formulae are Ruby DSL, not analyzable
+# application source. Exclude them from language detection so CodeQL's default
+# setup does not add "ruby" and then fail finalize with "no source code seen"
+# (the brew cask added in #1086 is the only Ruby in the repo).
+packaging/**/*.rb linguist-detectable=false

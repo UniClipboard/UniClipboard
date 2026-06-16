@@ -1,0 +1,92 @@
+name: 'Chocolatey Publish'
+run-name: >-
+  ${{ github.event_name == 'release'
+    && format('choco-{0}', github.event.release.tag_name)
+    || format('choco-manual-{0}', inputs.version) }}
+
+# Chocolatey 没有官方自动升级 bot(不像 nixpkgs 的 r-ryantm、Scoop Extras 的
+# excavator),每个新版本都得我们自己 pack + push。本 workflow 在 stable
+# release 正式发布后自动:下载 NSIS 安装器、算 sha256(并与 release 自带的
+# minisign 签名 SHA256SUMS.txt 交叉核对防篡改)、回填 nuspec 与 install 脚本、
+# choco pack、choco push 到 community repo。
+#
+# 首版仍需人工过 moderation 上架;之后版本走 trusted maintainer 自动校验。
+# 与 homebrew-tap.yml / copr.yml 一样监听 release.published —— stable release
+# 在 release.yml 里是 draft,人工点 "Publish" 后 asset URL 才可达,此时触发。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号(不带 v 前缀,例如 0.15.0)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    name: Pack and push to Chocolatey
+    # 跳过 prerelease 自动路径;手动 dispatch 任何版本都跑。
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${INPUT_VERSION#v}"
+          else
+            VERSION="${TAG#v}"
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "无法解析版本号 (event=$EVENT_NAME tag=$TAG input=$INPUT_VERSION)" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Download installer and fill manifest
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = "https://github.com/UniClipboard/UniClipboard/releases/download/v$env:VERSION"
+          $exe  = "UniClipboard_${env:VERSION}_x64-setup.exe"
+
+          Write-Host "Downloading $base/$exe"
+          Invoke-WebRequest -Uri "$base/$exe" -OutFile $exe
+          $sha = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "sha256=$sha"
+
+          # 与 release 自带 SHA256SUMS.txt(minisign 签名的可信源)交叉核对。
+          $sums = (Invoke-WebRequest -Uri "$base/SHA256SUMS.txt").Content
+          if ($sums -notmatch [Regex]::Escape($sha)) {
+            Write-Error "下载的 $exe 的 sha256 未出现在 SHA256SUMS.txt,中止以防被篡改"
+          }
+
+          $nuspec  = 'packaging/chocolatey/uniclipboard.nuspec'
+          $install = 'packaging/chocolatey/tools/chocolateyInstall.ps1'
+          (Get-Content $nuspec)  -replace '<version>[^<]*</version>', "<version>$env:VERSION</version>" | Set-Content $nuspec
+          (Get-Content $install) -replace "checksum64\s+= '[^']*'", "checksum64     = '$sha'" | Set-Content $install
+
+      - name: Pack
+        shell: pwsh
+        run: choco pack packaging/chocolatey/uniclipboard.nuspec --out packaging/chocolatey
+
+      - name: Push
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          choco apikey --key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
+          choco push "packaging/chocolatey/uniclipboard.$env:VERSION.nupkg" --source https://push.chocolatey.org/

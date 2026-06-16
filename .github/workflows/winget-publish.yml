@@ -1,0 +1,66 @@
+name: 'winget Publish'
+run-name: >-
+  ${{ github.event_name == 'release'
+    && format('winget-{0}', github.event.release.tag_name)
+    || format('winget-manual-{0}', inputs.version) }}
+
+# winget 也没有官方自动升级 bot,新版本需自己提 PR 到 microsoft/winget-pkgs。
+# 用微软官方工具 wingetcreate 自动下载安装器、算 sha256、生成 manifest 并提 PR。
+#
+# 注意:wingetcreate `update` 要求包已存在于 winget-pkgs —— 首版需人工提交
+# (见 packaging/winget/README.md,推荐 wingetcreate new),之后由本 workflow
+# 接管。winget 不被 Repology 抓取,这条 workflow 不影响 packaging-status 徽章,
+# 只为补 Windows 官方包管理器的自动分发。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号(不带 v 前缀,例如 0.15.0)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    name: Submit to winget-pkgs
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    runs-on: windows-latest
+    steps:
+      - name: Resolve version
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${INPUT_VERSION#v}"
+          else
+            VERSION="${TAG#v}"
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "无法解析版本号 (event=$EVENT_NAME tag=$TAG input=$INPUT_VERSION)" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Update and submit via wingetcreate
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          # GitHub PAT(classic, public_repo)用于 fork microsoft/winget-pkgs 提 PR。
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = "https://github.com/UniClipboard/UniClipboard/releases/download/v$env:VERSION"
+
+          # 拉取微软官方 wingetcreate(自带下载安装器 + 算 hash + 生成 manifest)。
+          Invoke-WebRequest -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+
+          .\wingetcreate.exe update UniClipboard.UniClipboard `
+            --version $env:VERSION `
+            --urls "$base/UniClipboard_${env:VERSION}_x64-setup.exe" "$base/UniClipboard_${env:VERSION}_arm64-setup.exe" `
+            --submit --token $env:WINGET_TOKEN

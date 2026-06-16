@@ -156,8 +156,8 @@
             "label": "Debug 模式",
             "description": "应用和 daemon 重启后提高本地诊断日志详细度。",
             "confirmTitle": "开启 Debug 模式？",
-            "confirmDescription": "Debug 模式会增加本地日志量，并可能记录更多运行上下文。剪贴板内容仍不应被主动记录。不需要时请关闭 Debug 模式，并重启应用或 daemon 以完全恢复普通日志级别。",
-            "confirm": "开启 Debug",
+            "confirmDescription": "Debug 模式会增加本地日志量，并可能记录更多运行上下文。剪贴板内容仍不应被主动记录。确认后将立即重启应用与后台 daemon 以使变更生效。不需要时请关闭 Debug 模式，并重启应用或 daemon 以完全恢复普通日志级别。",
+            "confirm": "开启并重启",
             "cancel": "取消",
             "restartToast": "请重启应用或 daemon，使日志级别变更完全生效。",
             "error": "更改 Debug 模式失败"

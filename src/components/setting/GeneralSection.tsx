@@ -23,6 +23,7 @@ import {
 import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, getInitialLanguage } from '@/i18n'
+import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
@@ -168,9 +169,25 @@ export default function GeneralSection() {
     }
   }
 
-  const handleConfirmDebugMode = () => {
+  const handleConfirmDebugMode = async () => {
     setDebugConfirmOpen(false)
-    void persistDebugMode(true)
+    try {
+      setSaving(true)
+      const result = await updateDebugMode(true)
+      await reloadSetting()
+      setDebugMode(result.debugMode)
+      // Debug mode changes the log profile, which both the daemon and the GUI
+      // read only at process start. Restart the daemon first so the engine —
+      // the primary log producer — picks up the debug profile, then restart the
+      // GUI. restartApp() exits this process, so code after it is unreachable on
+      // the happy path.
+      await commands.restartDaemon()
+      await commands.restartApp()
+    } catch (error) {
+      log.error({ err: error }, 'Failed to enable debug mode and restart')
+      toast.error(t('settings.sections.general.logs.debug.error'))
+      setSaving(false)
+    }
   }
 
   const handleDeviceNameBlur = async () => {

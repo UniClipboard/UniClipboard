@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { exportLogs, updateDebugMode } from '@/api/daemon/diagnostics'
 import GeneralSection from '@/components/setting/GeneralSection'
 import { useSetting } from '@/hooks/useSetting'
+import { commands } from '@/lib/ipc'
 import type { SettingContextType, Settings } from '@/types/setting'
 
 vi.mock('react-i18next', () => ({
@@ -27,6 +28,13 @@ vi.mock('@/hooks/useSetting', () => ({
   useSetting: vi.fn(),
 }))
 
+vi.mock('@/lib/ipc', () => ({
+  commands: {
+    restartDaemon: vi.fn().mockResolvedValue(undefined),
+    restartApp: vi.fn().mockResolvedValue(undefined),
+  },
+}))
+
 vi.mock('@/components/ui/toast', () => ({
   toast: {
     success: vi.fn(),
@@ -38,6 +46,8 @@ vi.mock('@/components/ui/toast', () => ({
 const mockUseSetting = vi.mocked(useSetting)
 const mockUpdateDebugMode = vi.mocked(updateDebugMode)
 const mockExportLogs = vi.mocked(exportLogs)
+const mockRestartDaemon = vi.mocked(commands.restartDaemon)
+const mockRestartApp = vi.mocked(commands.restartApp)
 
 const baseSetting: Settings = {
   schemaVersion: 1,
@@ -135,7 +145,7 @@ beforeEach(() => {
 })
 
 describe('GeneralSection debug diagnostics controls', () => {
-  it('requires confirmation before enabling debug mode', async () => {
+  it('enables debug mode then restarts the daemon and app after confirmation', async () => {
     const user = userEvent.setup()
     mockUpdateDebugMode.mockResolvedValue({ debugMode: true, restartRequired: true })
     const { reloadSetting } = setup()
@@ -144,6 +154,8 @@ describe('GeneralSection debug diagnostics controls', () => {
 
     await user.click(screen.getByRole('switch', { name: /logs\.debug\.label/ }))
     expect(mockUpdateDebugMode).not.toHaveBeenCalled()
+    expect(mockRestartDaemon).not.toHaveBeenCalled()
+    expect(mockRestartApp).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: /logs\.debug\.confirm$/ }))
 
@@ -151,6 +163,10 @@ describe('GeneralSection debug diagnostics controls', () => {
       expect(mockUpdateDebugMode).toHaveBeenCalledWith(true)
     })
     expect(reloadSetting).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(mockRestartDaemon).toHaveBeenCalledTimes(1)
+    })
+    expect(mockRestartApp).toHaveBeenCalledTimes(1)
   })
 
   it('exports the last 24 hours of logs and shows the path', async () => {

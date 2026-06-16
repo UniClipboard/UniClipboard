@@ -156,8 +156,8 @@
             "label": "Debug mode",
             "description": "Increase local diagnostic log detail after the app and daemon are restarted.",
             "confirmTitle": "Enable Debug mode?",
-            "confirmDescription": "Debug mode increases local log volume and may include more runtime context. Clipboard content should still not be actively logged. Turn it off when no longer needed and restart the app or daemon to return fully to normal logging.",
-            "confirm": "Enable Debug",
+            "confirmDescription": "Debug mode increases local log volume and may include more runtime context. Clipboard content should still not be actively logged. Confirming will immediately restart the app and daemon to apply the change. Turn it off when no longer needed and restart the app or daemon to return fully to normal logging.",
+            "confirm": "Enable & Restart",
             "cancel": "Cancel",
             "restartToast": "Restart the app or daemon for the logging change to fully take effect.",
             "error": "Failed to change Debug mode"

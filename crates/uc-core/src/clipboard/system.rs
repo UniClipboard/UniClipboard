@@ -478,6 +478,20 @@ impl SystemClipboardSnapshot {
             .map(|rep| rep.size_bytes())
     }
 
+    /// Inline bytes of the dominant image representation — the same one
+    /// [`Self::primary_image_size_bytes`] measures — or `None` when the
+    /// snapshot carries no image representation or that representation isn't
+    /// held inline (e.g. it was spooled to a file). Lets a caller fingerprint
+    /// the very bytes whose size it would otherwise compare, without exposing
+    /// the image-detection predicate. This stays a pure byte accessor: any
+    /// decoding/normalization is the caller's concern, not the domain's.
+    pub fn primary_image_inline_bytes(&self) -> Option<&[u8]> {
+        self.representations
+            .iter()
+            .find(|rep| is_image_representation(rep))
+            .and_then(|rep| rep.inline_bytes())
+    }
+
     /// 是否为空快照（没有任何 representation）
     pub fn is_empty(&self) -> bool {
         self.representations.is_empty()

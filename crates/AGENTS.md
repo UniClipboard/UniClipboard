@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-06-15 (manual; WHERE TO LOOK + COMPLEXITY HOTSPOTS + libp2p→iroh/clipboard fixes)
+**Last refreshed:** 2026-06-16 (auto; 19 workspace crates)
 
 ## OVERVIEW
 

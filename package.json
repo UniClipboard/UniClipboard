@@ -17,6 +17,7 @@
     "daemon:dev": "node scripts/prepare-daemon-sidecar.mjs --debug",
     "daemon:sidecar": "node scripts/prepare-daemon-sidecar.mjs",
     "tauri:dev": "cross-env UNICLIPBOARD_ENV=development UC_PROFILE=dev tauri dev",
+    "tauri:build": "bun run daemon:sidecar && tauri build",
     "tauri:build:dev": "bun run daemon:sidecar && tauri build --config src-tauri/tauri.dev.conf.json --features dev-profile",
     "tauri:dev:peerA": "cross-env UNICLIPBOARD_ENV=development UC_DISABLE_SINGLE_INSTANCE=1 UC_PROFILE=a UC_CLIPBOARD_MODE=full tauri dev",
     "tauri:dev:peerB": "cross-env UNICLIPBOARD_ENV=development UC_DISABLE_SINGLE_INSTANCE=1 UC_PROFILE=b UC_CLIPBOARD_MODE=passive tauri dev --config '{\"build\":{\"beforeDevCommand\":\"\"}}' --no-dev-server-wait",

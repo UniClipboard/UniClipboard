@@ -218,7 +218,7 @@ The tracing subscriber produces two simultaneous outputs from the same pipeline:
 
 - **Format**: Flat NDJSON (one JSON object per line)
 - **Destination**: Daily-rotating file in platform log directory
-- **File naming**: `uniclipboard.json.YYYY-MM-DD`
+- **File naming**: `uniclipboard-{gui,daemon,cli}.json.YYYY-MM-DD` (role prefix; see [JSON File Locations](#json-file-locations))
 - **Rotation**: New file each day (UTC date boundary)
 
 **JSON field layout**:

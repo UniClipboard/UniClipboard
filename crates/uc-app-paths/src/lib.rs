@@ -339,10 +339,15 @@ mod tests {
         // assert the contract only when a directory is available.
         if let Some(dir) = app_log_dir() {
             assert!(dir.is_absolute(), "log dir must be absolute: {dir:?}");
-            assert!(
-                dir.to_string_lossy().contains(APP_DIR_NAME),
-                "log dir must include the app directory name: {dir:?}"
-            );
+            // Portable builds keep logs under `<portable-root>/logs`, which does
+            // not carry the app directory name, so only assert it off the
+            // platform-conventional path.
+            if portable_data_root().is_none() {
+                assert!(
+                    dir.to_string_lossy().contains(APP_DIR_NAME),
+                    "log dir must include the app directory name: {dir:?}"
+                );
+            }
         }
     }
 

@@ -412,6 +412,9 @@ last 7 days are kept per process; older files are removed automatically:
 | Linux    | `~/.local/state/app.uniclipboard.desktop/logs/` |
 | Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\` |
 
+On Linux, if the state directory is unavailable, logs fall back to the
+data-local root instead: `~/.local/share/app.uniclipboard.desktop/logs/`.
+
 Each process writes its own file: `uniclipboard-gui`,
 `uniclipboard-daemon`, or `uniclipboard-cli`. With `UC_PROFILE` set, the
 directory carries a suffix (`app.uniclipboard.desktop-dev`). See

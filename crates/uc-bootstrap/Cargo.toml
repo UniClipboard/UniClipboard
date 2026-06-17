@@ -11,6 +11,10 @@ uc-application = { path = "../uc-application" }
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
 uc-observability = { path = "../uc-observability" }
+# Directory-layout authority: used to locate the superseded `<data>/logs`
+# directory for one-time cleanup after logs moved to the platform-conventional
+# location.
+uc-app-paths = { path = "../uc-app-paths" }
 
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"

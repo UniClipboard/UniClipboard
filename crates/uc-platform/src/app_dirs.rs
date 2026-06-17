@@ -117,9 +117,18 @@ impl AppDirsPort for DirsAppDirsAdapter {
         let base_cache = self
             .base_cache_dir()
             .ok_or(AppDirsError::CacheDirUnavailable)?;
+        // "Where logs live" has a single source of truth in `uc-app-paths`.
+        // The test override redirects every directory under one base, so logs
+        // follow it there (keeping tests off the real system log location);
+        // production resolves the platform-conventional location upstream.
+        let app_log_dir = match &self.base_data_local_dir_override {
+            Some(base) => base.join(&self.cached_app_dir_name).join("logs"),
+            None => uc_app_paths::app_log_dir().ok_or(AppDirsError::DataLocalDirUnavailable)?,
+        };
         Ok(AppDirs {
             app_data_root: base_data.join(&self.cached_app_dir_name),
             app_cache_root: base_cache.join(&self.cached_app_dir_name),
+            app_log_dir,
         })
     }
 }

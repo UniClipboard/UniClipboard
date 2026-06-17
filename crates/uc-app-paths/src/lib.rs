@@ -179,6 +179,72 @@ pub fn app_cache_root() -> Option<PathBuf> {
     Some(base_cache_dir()?.join(resolved_app_dir_name(None)))
 }
 
+/// Resolve the platform-conventional **log directory** (the final leaf, not a
+/// root). Logs follow each OS's logging convention instead of living under the
+/// data root, while still honoring the portable redirect and the `UC_PROFILE`
+/// suffix.
+///
+/// This is the single source of truth for *where logs live*: every consumer
+/// (the daemon, the CLI, and the GUI host's pre-wiring tracing init) resolves
+/// the log directory through this function. No other code should join `"logs"`
+/// onto a base path.
+///
+/// - macOS:            `~/Library/Logs/<app>`
+/// - Linux:            `<XDG_STATE_HOME>/<app>/logs` (falls back to the
+///                     data-local root when the state dir is unavailable)
+/// - Windows / other:  `<data-local>/<app>/logs`
+/// - portable:         `<portable-root>/logs`
+///
+/// Returns `None` only when the underlying base directory is unavailable.
+pub fn app_log_dir() -> Option<PathBuf> {
+    // Portable ("green") builds keep logs next to the executable, alongside the
+    // rest of the data, so the app leaves no trace in the system log location.
+    if let Some(portable_root) = portable_data_root() {
+        return Some(portable_root.join("logs"));
+    }
+    platform_log_dir(&resolved_app_dir_name(None))
+}
+
+#[cfg(target_os = "macos")]
+fn platform_log_dir(app_dir_name: &str) -> Option<PathBuf> {
+    // Apple convention: per-user logs live under `~/Library/Logs/<app>`.
+    Some(
+        dirs::home_dir()?
+            .join("Library")
+            .join("Logs")
+            .join(app_dir_name),
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn platform_log_dir(app_dir_name: &str) -> Option<PathBuf> {
+    // XDG convention groups logs under the state dir; fall back to the
+    // data-local root when the state dir is unavailable.
+    let base = dirs::state_dir().or_else(dirs::data_local_dir)?;
+    Some(base.join(app_dir_name).join("logs"))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn platform_log_dir(app_dir_name: &str) -> Option<PathBuf> {
+    // Windows (and any other platform) has no dedicated OS log directory, so
+    // logs stay under the data-local app root, matching the historical layout.
+    Some(dirs::data_local_dir()?.join(app_dir_name).join("logs"))
+}
+
+/// The pre-split log location `<app_data_root>/logs`, exposed only so callers
+/// can clean up the old directory after logs moved to [`app_log_dir`].
+///
+/// Returns `None` when the data root is unavailable, or when the old and new
+/// locations coincide (Windows / portable) — in that case there is nothing to
+/// clean up.
+pub fn legacy_logs_dir() -> Option<PathBuf> {
+    let legacy = app_data_root()?.join("logs");
+    match app_log_dir() {
+        Some(current) if current == legacy => None,
+        _ => Some(legacy),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +330,33 @@ mod tests {
         match prev {
             Some(v) => std::env::set_var("UC_PROFILE", v),
             None => std::env::remove_var("UC_PROFILE"),
+        }
+    }
+
+    #[test]
+    fn app_log_dir_is_absolute_and_carries_app_name() {
+        // Resolution can return None in a bare CI sandbox without a home dir;
+        // assert the contract only when a directory is available.
+        if let Some(dir) = app_log_dir() {
+            assert!(dir.is_absolute(), "log dir must be absolute: {dir:?}");
+            assert!(
+                dir.to_string_lossy().contains(APP_DIR_NAME),
+                "log dir must include the app directory name: {dir:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_logs_dir_is_none_when_it_equals_current() {
+        // On any platform where `app_log_dir()` resolves to the old
+        // `<app_data_root>/logs` location (Windows / portable), there is
+        // nothing to clean up, so `legacy_logs_dir()` must report `None`.
+        if let (Some(current), Some(data_root)) = (app_log_dir(), app_data_root()) {
+            if current == data_root.join("logs") {
+                assert_eq!(legacy_logs_dir(), None);
+            } else {
+                assert_eq!(legacy_logs_dir(), Some(data_root.join("logs")));
+            }
         }
     }
 }

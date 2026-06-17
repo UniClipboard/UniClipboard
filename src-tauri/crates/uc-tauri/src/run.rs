@@ -936,8 +936,18 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 /// failure) is lost. `None` when the app-data root is unavailable or a
 /// subscriber was already registered.
 fn init_gui_tracing() -> Option<uc_observability::WorkerGuard> {
-    let app_data_root = uc_app_paths::app_data_root()?;
-    let logs_dir = app_data_root.join("logs");
+    // Single source of truth for the log location (platform-conventional,
+    // portable-aware) lives in uc-app-paths; this pre-wiring init reads it
+    // rather than deriving its own `<data>/logs` path.
+    let logs_dir = uc_app_paths::app_log_dir()?;
+
+    // One-time migration: best-effort removal of the old `<data>/logs`
+    // directory now that logs moved to the platform-conventional location.
+    // No-op when old and new coincide (Windows / portable) or already gone.
+    if let Some(legacy_logs) = uc_app_paths::legacy_logs_dir() {
+        let _ = std::fs::remove_dir_all(&legacy_logs);
+    }
+
     let profile = uc_observability::LogProfile::from_env();
     uc_observability::init_tracing_subscriber(&logs_dir, profile).ok()
 }

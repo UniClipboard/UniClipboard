@@ -82,10 +82,13 @@ pub fn build_gui_client_context() -> anyhow::Result<GuiClientDeps> {
         .ok_or_else(|| anyhow::anyhow!("unable to resolve app data root directory"))?;
     let app_cache_root = uc_app_paths::app_cache_root()
         .ok_or_else(|| anyhow::anyhow!("unable to resolve app cache root directory"))?;
+    let app_log_dir = uc_app_paths::app_log_dir()
+        .ok_or_else(|| anyhow::anyhow!("unable to resolve app log directory"))?;
 
     let dirs = AppDirs {
         app_data_root,
         app_cache_root,
+        app_log_dir,
     };
     let paths = AppPaths::from_app_dirs(&dirs);
 

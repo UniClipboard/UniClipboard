@@ -176,6 +176,13 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     let paths = AppPaths::from_app_dirs(&app_dirs);
     std::fs::create_dir_all(&paths.logs_dir)?;
 
+    // Step 1a: One-time migration. Logs moved to the platform-conventional
+    // location; best-effort removal of the old `<data>/logs` directory. No-op
+    // when old and new coincide (Windows / portable) or when it is already gone.
+    if let Some(legacy_logs) = uc_app_paths::legacy_logs_dir() {
+        let _ = std::fs::remove_dir_all(&legacy_logs);
+    }
+
     // Step 1b: Resolve device_id for process-wide logging correlation
     let device_id = std::fs::read_to_string(&paths.device_id_path()).ok();
 

@@ -4,6 +4,13 @@ use std::path::PathBuf;
 pub struct AppDirs {
     pub app_data_root: PathBuf,
     pub app_cache_root: PathBuf,
+    /// Fully-resolved log directory (the final leaf, not a root).
+    ///
+    /// Logs follow each platform's logging convention rather than living under
+    /// `app_data_root`, so this is carried as an already-resolved value from the
+    /// directory-layout authority. `uc-core` stays platform-agnostic — it only
+    /// holds the path, it does not compute it.
+    pub app_log_dir: PathBuf,
 }
 
 /// Derived filesystem paths for all application subsystems.
@@ -63,7 +70,9 @@ impl AppPaths {
             db_path: dirs.app_data_root.join("uniclipboard.db"),
             vault_dir: dirs.app_data_root.join("vault"),
             settings_path: dirs.app_data_root.join("settings.json"),
-            logs_dir: dirs.app_data_root.join("logs"),
+            // Logs no longer derive from the data root: the directory-layout
+            // authority resolves the platform-conventional location upstream.
+            logs_dir: dirs.app_log_dir.clone(),
             cache_dir: cache_root.clone(),
             file_cache_dir: dirs.app_data_root.join("file-cache"),
             spool_dir: cache_root.join("spool"),
@@ -79,6 +88,9 @@ impl AppPaths {
         let dirs = AppDirs {
             app_data_root: base.clone(),
             app_cache_root: cache_base,
+            // Test/fallback layout: keep logs under the provided base. The
+            // platform-conventional location is resolved upstream in production.
+            app_log_dir: base.join("logs"),
         };
         Self::from_app_dirs(&dirs)
     }
@@ -102,6 +114,7 @@ mod tests {
         let dirs = AppDirs {
             app_data_root: root.clone(),
             app_cache_root: root.clone(),
+            app_log_dir: root.join("logs"),
         };
         let paths = AppPaths::from_app_dirs(&dirs);
 
@@ -122,6 +135,7 @@ mod tests {
         let dirs = AppDirs {
             app_data_root: data.clone(),
             app_cache_root: cache.clone(),
+            app_log_dir: data.join("logs"),
         };
         let paths = AppPaths::from_app_dirs(&dirs);
 

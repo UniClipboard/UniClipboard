@@ -14,9 +14,12 @@ The helper script lives at `.claude/skills/dual-side-debug/dual-logs.sh`. It is 
 
 ## Log layout you must remember
 
-* **macOS logs**: `~/Library/Application Support/app.uniclipboard.desktop[-<UC_PROFILE>]/logs/uniclipboard.json.YYYY-MM-DD`
-* **Windows logs (mounted)**: `/tmp/win-local/app.uniclipboard.desktop[-<WIN_PROFILE>]/logs/uniclipboard.json.YYYY-MM-DD`
-* Format: **JSON Lines**. Each line has at least `timestamp` (UTC, ISO-8601 with `Z`), `level`, `target`, `message`, `span`, `device_id`, plus structured fields.
+* **macOS logs**: `~/Library/Logs/app.uniclipboard.desktop[-<UC_PROFILE>]/uniclipboard-{gui,daemon,cli}.json.YYYY-MM-DD`
+  — Apple convention (`~/Library/Logs/<app>`); the profile dir **is** the log dir, there is **no `logs/` subdir** on macOS.
+* **Windows logs (mounted)**: `/tmp/win-local/app.uniclipboard.desktop[-<WIN_PROFILE>]/logs/uniclipboard-{gui,daemon,cli}.json.YYYY-MM-DD`
+  — Windows keeps the `logs/` subdir under the data-local app root.
+* **Per-role files** (since the platform-log-dir split): each process writes its own family — `gui` (Tauri host), `daemon` (`uniclipd`), `cli` (`uniclip`) — daily rotation, 7-day retention. `dual-logs.sh` picks the **newest by mtime** per side, i.e. the busiest process (usually the daemon for sync/pairing/transfer). The legacy single-file name `uniclipboard.json.YYYY-MM-DD` is still matched for old logs. For per-role single-host digging, use the **`local-log-debug`** skill instead.
+* Format: **JSON Lines**. Each line has at least `timestamp` (UTC, ISO-8601 with `Z`, always the first field), `level`, `target`, `message`, `span`, `device_id`, plus structured fields.
 * The date in the filename is **UTC**, not local time. A file named `...2026-04-25` can be the live file while it is still 2026-04-24 in PDT.
 
 ## Mount setup (do this once per Mac reboot)

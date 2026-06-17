@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # dual-logs.sh — Helper for inspecting macOS + Windows uniclipboard logs side-by-side.
 #
-# Logs are JSONL (one JSON object per line). File names use UTC dates
-# (uniclipboard.json.YYYY-MM-DD), so "today" here means UTC today.
+# Logs are JSONL (one JSON object per line). Since the platform-log-dir split,
+# files are written per role: uniclipboard-{gui,daemon,cli}.json.YYYY-MM-DD
+# (daily rotation, UTC dates), so "today" here means UTC today. The legacy
+# single-file name (uniclipboard.json.YYYY-MM-DD) is still matched for old logs.
+# "Latest" = newest by mtime across roles, which in practice is the busiest
+# process (usually the daemon). For per-role single-host digging, use the
+# `local-log-debug` skill instead.
 #
-# macOS path:    $MAC_BASE/app.uniclipboard.desktop[-<UC_PROFILE>]/logs/
+# macOS path:    $MAC_BASE/app.uniclipboard.desktop[-<UC_PROFILE>]/
+#                (Apple convention: ~/Library/Logs/<app>; the app dir IS the log
+#                dir — there is NO `logs/` subdir on macOS anymore)
 # Windows path:  $WIN_BASE/app.uniclipboard.desktop[-<WIN_PROFILE>]/logs/
-#                (SMB share of //<host>/Users/<user>/AppData/Local mounted at $WIN_BASE)
+#                (SMB share of //<host>/Users/<user>/AppData/Local mounted at
+#                $WIN_BASE; Windows keeps the `logs/` subdir under the data root)
 #
 # Win profile resolution priority:
 #   1. --win-profile <name> on the command line
@@ -15,7 +23,7 @@
 
 set -euo pipefail
 
-MAC_BASE="${MAC_BASE:-$HOME/Library/Application Support}"
+MAC_BASE="${MAC_BASE:-$HOME/Library/Logs}"
 WIN_BASE="${WIN_BASE:-/tmp/win-local}"
 WIN_LOGS_OVERRIDE="${WIN_LOGS:-}"
 DEFAULT_PROFILE="${UC_PROFILE_DEFAULT:-dev}"
@@ -74,22 +82,31 @@ profile_dir() {
 mac_profile_dir() { profile_dir "$MAC_BASE" "${1:-}"; }
 win_profile_dir() { profile_dir "$WIN_BASE" "${1:-}"; }
 
-# list_profile_dirs_in <base>
-#   Print one line per existing profile dir that has a logs/ subdir.
-#   Format: <profile>\t<dir>\t<latest_log>\t<latest_mtime_iso>\t<latest_mtime_epoch>
+# Resolve the actual logs directory per platform. macOS logs live directly under
+# ~/Library/Logs/<app> (no subdir); Windows keeps a `logs/` subdir under the
+# data-local app root. These are the asymmetry the rest of the script relies on.
+mac_logs_dir() { mac_profile_dir "${1:-}"; }
+win_logs_dir() { printf '%s/logs' "$(win_profile_dir "${1:-}")"; }
+
+# list_profile_dirs_in <base> [logs_subdir]
+#   Print one line per existing profile dir that has logs. `logs_subdir` is the
+#   relative dir holding the log files: "logs" for Windows (default, keeps the
+#   data-root subdir), "" for macOS (the profile dir itself is the log dir).
+#   Format: <profile>\t<logdir>\t<latest_log>\t<latest_mtime_iso>\t<latest_mtime_epoch>
 list_profile_dirs_in() {
-  local base="$1"
+  local base="$1" logs_subdir="${2-logs}"
   shopt -s nullglob
-  local d name profile latest mtime epoch
+  local d name profile logdir latest mtime epoch
   for d in "$base"/app.uniclipboard.desktop "$base"/app.uniclipboard.desktop-*; do
-    [[ -d "$d/logs" ]] || continue
+    if [[ -n "$logs_subdir" ]]; then logdir="$d/$logs_subdir"; else logdir="$d"; fi
+    [[ -d "$logdir" ]] || continue
     name="$(basename "$d")"
     if [[ "$name" == "app.uniclipboard.desktop" ]]; then
       profile="default"
     else
       profile="${name#app.uniclipboard.desktop-}"
     fi
-    latest="$(latest_log_in "$d/logs" || true)"
+    latest="$(latest_log_in "$logdir" || true)"
     if [[ -n "$latest" ]]; then
       mtime="$(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%S' "$latest" 2>/dev/null || echo '')"
       epoch="$(stat -f '%m' "$latest" 2>/dev/null || echo '0')"
@@ -97,7 +114,7 @@ list_profile_dirs_in() {
       mtime=""
       epoch="0"
     fi
-    printf '%s\t%s\t%s\t%s\t%s\n' "$profile" "$d/logs" "${latest:-<empty>}" "${mtime:-<no-logs>}" "$epoch"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$profile" "$logdir" "${latest:-<empty>}" "${mtime:-<no-logs>}" "$epoch"
   done
 }
 
@@ -111,11 +128,17 @@ auto_detect_profile() {
 latest_log_in() {
   local dir="$1"
   [[ -d "$dir" ]] || return 1
-  # Pick the most recently modified uniclipboard.json.* file.
-  # ls -t orders by mtime descending.
+  # Pick the most recently modified log file across all roles. The glob
+  # `uniclipboard*.json.*` matches the per-role names
+  # (uniclipboard-{gui,daemon,cli}.json.<date>) AND the legacy single-file name
+  # (uniclipboard.json.<date>). ls -t orders by mtime descending, so the busiest
+  # role's file wins — usually the daemon for sync/pairing/transfer debugging.
   local f
-  f="$(ls -t "$dir"/uniclipboard.json.* 2>/dev/null | head -n1 || true)"
-  [[ -n "$f" ]] || return 1
+  f="$(ls -t "$dir"/uniclipboard*.json.* 2>/dev/null | head -n1 || true)"
+  # Guard against nullglob (list_profile_dirs_in enables it): with no match the
+  # glob vanishes and bare `ls -t` would list the cwd. Only accept a path that
+  # actually lives inside $dir.
+  [[ -n "$f" && "$f" == "$dir/"* ]] || return 1
   printf '%s' "$f"
 }
 
@@ -156,7 +179,7 @@ resolve_win_logs() {
   # Priority 1: explicit --win-profile flag
   if [[ -n "$win_profile" ]]; then
     WIN_PROFILE_RESOLVED="$win_profile"
-    WIN_LOGS_RESOLVED="$(win_profile_dir "$win_profile")/logs"
+    WIN_LOGS_RESOLVED="$(win_logs_dir "$win_profile")"
     return
   fi
 
@@ -172,7 +195,7 @@ resolve_win_logs() {
   detected="$(auto_detect_profile "$WIN_BASE")"
   if [[ -n "$detected" ]]; then
     WIN_PROFILE_RESOLVED="$detected (auto)"
-    WIN_LOGS_RESOLVED="$(win_profile_dir "$detected")/logs"
+    WIN_LOGS_RESOLVED="$(win_logs_dir "$detected")"
   else
     WIN_PROFILE_RESOLVED="<none>"
     WIN_LOGS_RESOLVED=""
@@ -191,7 +214,7 @@ cmd_status() {
     esac
   done
   local mac_dir mac_log win_log
-  mac_dir="$(mac_profile_dir "$profile")/logs"
+  mac_dir="$(mac_logs_dir "$profile")"
 
   echo "=== uniclipboard dual-log status ==="
   echo "now (local):   $(date '+%Y-%m-%d %H:%M:%S %Z')"
@@ -212,7 +235,7 @@ cmd_status() {
   else
     echo "  (profile dir does not exist — likely wrong UC_PROFILE)"
     echo "  available profiles:"
-    list_profile_dirs_in "$MAC_BASE" \
+    list_profile_dirs_in "$MAC_BASE" "" \
       | awk -F'\t' '{printf "    - %s  (latest=%s, mtime=%s)\n", $1, $3, $4}'
   fi
   echo
@@ -255,7 +278,7 @@ cmd_list_profiles() {
   if [[ "$side" == "mac" || "$side" == "both" ]]; then
     echo "===== mac profiles (base: $MAC_BASE) ====="
     printf '%s\t%s\t%s\t%s\n' "PROFILE" "DIR" "LATEST" "MTIME"
-    list_profile_dirs_in "$MAC_BASE" | cut -f1-4
+    list_profile_dirs_in "$MAC_BASE" "" | cut -f1-4
   fi
   if [[ "$side" == "win" || "$side" == "both" ]]; then
     [[ "$side" == "both" ]] && echo
@@ -279,7 +302,7 @@ cmd_paths() {
     esac
   done
   local mac_dir mac_log win_log
-  mac_dir="$(mac_profile_dir "$profile")/logs"
+  mac_dir="$(mac_logs_dir "$profile")"
   mac_log="$(latest_log_in "$mac_dir" 2>/dev/null || true)"
   resolve_win_logs "$win_profile"
   win_log="$(latest_log_in "$WIN_LOGS_RESOLVED" 2>/dev/null || true)"
@@ -291,7 +314,7 @@ resolve_pair() {
   # Sets globals MAC_LOG and WIN_LOG. Empties them if missing.
   local profile="$1" win_profile="${2:-}"
   local mac_dir
-  mac_dir="$(mac_profile_dir "$profile")/logs"
+  mac_dir="$(mac_logs_dir "$profile")"
   MAC_LOG="$(latest_log_in "$mac_dir" 2>/dev/null || true)"
   resolve_win_logs "$win_profile"
   WIN_LOG="$(latest_log_in "$WIN_LOGS_RESOLVED" 2>/dev/null || true)"

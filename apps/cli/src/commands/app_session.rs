@@ -7,7 +7,9 @@ use crate::exit_codes;
 use crate::local_daemon::probe_running;
 use crate::ui;
 
-use uc_daemon_client::{DaemonClientContext, DaemonService, HttpWsDaemonService};
+use uc_daemon_client::{
+    ControlLeaseGuard, DaemonClientContext, DaemonService, HttpWsDaemonService,
+};
 use uc_daemon_contract::probe::ProbeOutcome;
 
 // ── In-process session (dev-tools only) ────────────────────────────────
@@ -128,6 +130,32 @@ pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn Da
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
     }
+}
+
+/// Connect to (or spawn) the daemon, hold a control lease for the command's
+/// duration, and return a ready [`DaemonClientContext`].
+///
+/// Bundles the boilerplate shared by every daemon-client command — probe/spawn,
+/// lease acquisition, and context construction — behind one consistent error
+/// path. The returned [`ControlLeaseGuard`] must stay bound for the rest of the
+/// command (e.g. `let (_lease, ctx) = connect_with_lease(verbose).await?;`):
+/// dropping it releases the lease and lets a transient Oneshot daemon exit.
+pub async fn connect_with_lease(
+    verbose: bool,
+) -> Result<(ControlLeaseGuard, DaemonClientContext), i32> {
+    let service = connect_or_spawn_oneshot_daemon(verbose).await?;
+
+    let lease = service.hold_control_lease().await.map_err(|err| {
+        ui::error(&format!("Failed to hold daemon session lease: {err}"));
+        exit_codes::EXIT_ERROR
+    })?;
+
+    let ctx = DaemonClientContext::from_env().map_err(|err| {
+        ui::error(&format!("Failed to connect to daemon: {err}"));
+        exit_codes::EXIT_ERROR
+    })?;
+
+    Ok((lease, ctx))
 }
 
 fn build_daemon_client_service() -> Result<Box<dyn DaemonService>, i32> {

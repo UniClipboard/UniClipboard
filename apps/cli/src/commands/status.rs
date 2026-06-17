@@ -3,12 +3,10 @@
 use serde::Serialize;
 use std::fmt;
 
-use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+use crate::commands::app_session::connect_with_lease;
 use crate::exit_codes;
 use crate::output;
 use crate::ui;
-
-use uc_daemon_client::DaemonClientContext;
 
 #[derive(Serialize)]
 struct StatusOutput {
@@ -33,25 +31,9 @@ impl fmt::Display for StatusOutput {
 }
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
-    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
-        Ok(s) => s,
+    let (_lease, ctx) = match connect_with_lease(verbose).await {
+        Ok(pair) => pair,
         Err(code) => return code,
-    };
-
-    let _lease = match service.hold_control_lease().await {
-        Ok(guard) => guard,
-        Err(err) => {
-            ui::error(&format!("Failed to hold daemon session lease: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-
-    let ctx = match DaemonClientContext::from_env() {
-        Ok(ctx) => ctx,
-        Err(err) => {
-            ui::error(&format!("Failed to connect to daemon: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
     };
 
     // Assumption: a healthy daemon implies setup_complete=true and

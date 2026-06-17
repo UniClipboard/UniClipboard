@@ -4,32 +4,16 @@
 //! lease to keep a transient Oneshot daemon alive for the query sequence.
 
 use serde::Serialize;
-use uc_daemon_client::DaemonClientContext;
 
-use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+use crate::commands::app_session::connect_with_lease;
 use crate::exit_codes;
+use crate::output;
 use crate::ui;
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
-    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
-        Ok(s) => s,
+    let (_lease, ctx) = match connect_with_lease(verbose).await {
+        Ok(pair) => pair,
         Err(code) => return code,
-    };
-
-    let _lease = match service.hold_control_lease().await {
-        Ok(guard) => guard,
-        Err(err) => {
-            ui::error(&format!("Failed to hold daemon session lease: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-
-    let ctx = match DaemonClientContext::from_env() {
-        Ok(ctx) => ctx,
-        Err(err) => {
-            ui::error(&format!("Failed to connect to daemon: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
     };
     let query = ctx.query_client();
 
@@ -69,17 +53,10 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
     }
 
     if json {
-        match serde_json::to_string_pretty(&devices) {
-            Ok(value) => println!("{value}"),
-            Err(err) => {
-                ui::error(&format!("Failed to serialize paired devices: {err}"));
-                return exit_codes::EXIT_ERROR;
-            }
-        }
-    } else {
-        render_devices_output(&devices);
+        return output::emit_json(&devices, "paired devices");
     }
 
+    render_devices_output(&devices);
     exit_codes::EXIT_SUCCESS
 }
 

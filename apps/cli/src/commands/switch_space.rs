@@ -10,10 +10,9 @@
 use tokio::select;
 use tokio::signal;
 
-use uc_daemon_client::DaemonClientContext;
 use uc_daemon_contract::api::dto::v2::setup::SwitchSpaceRequest;
 
-use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+use crate::commands::app_session::connect_with_lease;
 use crate::exit_codes;
 use crate::ui;
 
@@ -74,24 +73,9 @@ pub async fn run(args: SwitchSpaceArgs, verbose: bool) -> i32 {
     // ------------------------------------------------------------------
     // 3. Connect to daemon (device IS set up → normal connect path)
     // ------------------------------------------------------------------
-    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
-        Ok(s) => s,
+    let (_lease, ctx) = match connect_with_lease(verbose).await {
+        Ok(pair) => pair,
         Err(code) => return code,
-    };
-    let _lease = match service.hold_control_lease().await {
-        Ok(g) => g,
-        Err(err) => {
-            ui::error(&format!("Failed to acquire control lease: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-
-    let ctx = match DaemonClientContext::from_env() {
-        Ok(c) => c,
-        Err(err) => {
-            ui::error(&format!("Failed to build daemon client context: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
     };
 
     // ------------------------------------------------------------------

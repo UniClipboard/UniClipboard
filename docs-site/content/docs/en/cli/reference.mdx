@@ -84,7 +84,9 @@ uniclip get --list -n 20
 ```
 
 Output contract: **text / link** content is printed to stdout
-(pipe-friendly); **image / file** bytes are written to `--out` (a
+(pipe-friendly). A trailing newline is appended only when stdout is an
+interactive terminal, so piped or redirected output stays byte-exact;
+**image / file** bytes are written to `--out` (a
 directory, defaulting to a per-user cache dir) and the absolute path is
 printed to stdout, or streamed to stdout with `--out -`. Status lines go
 to stderr, so stdout stays clean. Unlike `recv`, `get` never blocks.

@@ -74,7 +74,7 @@ uniclip get --id <ENTRY_ID> --out ./inbox
 uniclip get --list -n 20
 ```
 
-输出约定：**文本 / 链接**内容打到 stdout（可管道）；**图片 / 文件**字节写入
+输出约定：**文本 / 链接**内容打到 stdout（可管道）；仅当 stdout 是交互式终端时才补一个尾换行，因此管道或重定向输出保持字节精确；**图片 / 文件**字节写入
 `--out`（目录，默认 per-user 缓存目录）并把绝对路径打到 stdout，或用 `--out -`
 直接写到 stdout。状态行走 stderr，stdout 保持干净。与 `recv` 不同，`get` 不阻塞。
 

@@ -253,15 +253,15 @@ back to force a refresh; if it's still off, head to
 
 ## CLI equivalents
 
-| GUI action                      | CLI equivalent                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------ |
+| GUI action                      | CLI equivalent                                                                                                        |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | "Space members" list            | `uniclip members` (local device + paired peers; add `--probe` for fresh online state). `uniclip devices` is an alias. |
-| Add device → invite code        | `uniclip invite`                                                               |
-| Join an existing space          | `uniclip join <code>`                                                          |
-| Copy Peer ID                    | `uniclip status --json` → `network.endpoint`                                   |
-| Unpair                          | **GUI only today**; a CLI subcommand is on the roadmap                         |
-| Per-peer content-type allowlist | **GUI only today**; CLI configuration subcommand is on the roadmap             |
-| Mobile sync — status            | `uniclip mobile-sync status`                                                   |
-| Mobile sync — list paired       | `uniclip mobile-sync status`                                                   |
-| Mobile sync — register a device | `uniclip mobile-sync setup` (wizard) or `mobile-sync add --label …`            |
-| Mobile sync — revoke a device   | `uniclip mobile-sync revoke <device-id>`                                       |
+| Add device → invite code        | `uniclip invite`                                                                                                      |
+| Join an existing space          | `uniclip join <code>`                                                                                                 |
+| Copy Peer ID                    | `uniclip status --json` → `network.endpoint`                                                                          |
+| Unpair                          | **GUI only today**; a CLI subcommand is on the roadmap                                                                |
+| Per-peer content-type allowlist | **GUI only today**; CLI configuration subcommand is on the roadmap                                                    |
+| Mobile sync — status            | `uniclip mobile-sync status`                                                                                          |
+| Mobile sync — list paired       | `uniclip mobile-sync status`                                                                                          |
+| Mobile sync — register a device | `uniclip mobile-sync setup` (wizard) or `mobile-sync add --label …`                                                   |
+| Mobile sync — revoke a device   | `uniclip mobile-sync revoke <device-id>`                                                                              |

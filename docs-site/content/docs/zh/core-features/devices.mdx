@@ -200,15 +200,15 @@ Alert 区域展示，不再有专门的状态条。
 
 ## 与 CLI 的对应
 
-| GUI 操作                | CLI 等价                                                           |
-| ----------------------- | ------------------------------------------------------------------ |
+| GUI 操作                | CLI 等价                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
 | 「空间成员」列表        | `uniclip members`（本机 + 已配对对端；加 `--probe` 获取实时在线状态）。`uniclip devices` 是其别名。 |
-| 添加设备 → 邀请码       | `uniclip invite`                                                   |
-| 加入已有空间            | `uniclip join <code>`                                              |
-| 复制 Peer ID            | `uniclip status --json` 中的 `network.endpoint`                    |
-| 解除配对                | 当前 **仅 GUI** 提供专用命令；CLI 等价子命令在路线图上             |
-| 按对端的内容类型白名单  | 当前 **仅 GUI** 提供；CLI 等价配置子命令在路线图上                 |
-| 移动端同步 — 状态       | `uniclip mobile-sync status`                                       |
-| 移动端同步 — 列出已配对 | `uniclip mobile-sync status`                                       |
-| 移动端同步 — 注册设备   | `uniclip mobile-sync setup`（向导） 或 `mobile-sync add --label …` |
-| 移动端同步 — 吊销设备   | `uniclip mobile-sync revoke <device-id>`                           |
+| 添加设备 → 邀请码       | `uniclip invite`                                                                                    |
+| 加入已有空间            | `uniclip join <code>`                                                                               |
+| 复制 Peer ID            | `uniclip status --json` 中的 `network.endpoint`                                                     |
+| 解除配对                | 当前 **仅 GUI** 提供专用命令；CLI 等价子命令在路线图上                                              |
+| 按对端的内容类型白名单  | 当前 **仅 GUI** 提供；CLI 等价配置子命令在路线图上                                                  |
+| 移动端同步 — 状态       | `uniclip mobile-sync status`                                                                        |
+| 移动端同步 — 列出已配对 | `uniclip mobile-sync status`                                                                        |
+| 移动端同步 — 注册设备   | `uniclip mobile-sync setup`（向导） 或 `mobile-sync add --label …`                                  |
+| 移动端同步 — 吊销设备   | `uniclip mobile-sync revoke <device-id>`                                                            |

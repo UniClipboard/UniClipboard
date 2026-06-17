@@ -103,39 +103,40 @@ enum Commands {
     /// `unlock` — no passphrase re-entry needed. Fails if the profile
     /// has not been initialized yet.
     Invite,
-    /// Redeem an invitation and join an existing space (joiner side).
+    /// Join a space with an invitation code and passphrase, auto-routing
+    /// by this device's current state.
+    ///
+    /// * Not yet set up → redeems the invitation and joins the sponsor's
+    ///   space (joiner side of pairing).
+    /// * Already in a space → switches to the new sponsor's space,
+    ///   re-encrypting local clipboard history under the new master key
+    ///   (4-phase migration: backup → handshake → swap → commit). This is
+    ///   destructive and prompts for confirmation; pass `--yes` to skip the
+    ///   prompt in non-interactive contexts. A daemon crash mid-migration
+    ///   auto-resumes on the next `uniclip` invocation thanks to
+    ///   `MigrationStatePort` persistence.
     Join {
         /// Invitation code printed by the sponsor's `invite`. Prompted
         /// interactively when omitted.
         #[arg(long)]
         code: Option<String>,
-        /// Space passphrase the sponsor chose during `init`. Prompted
-        /// interactively when omitted.
+        /// Space passphrase: the sponsor's passphrase when joining, or the
+        /// new sponsor's passphrase when switching. Prompted interactively
+        /// when omitted.
         #[arg(long)]
         passphrase: Option<String>,
-        /// Display name advertised to the sponsor as this device's name.
-        /// Defaults to the OS hostname (plus `(profile)` suffix when
-        /// `--profile` is set). Persisted to settings before dialing so
-        /// the B2 handshake can read it back.
+        /// Display name advertised to the sponsor as this device's name on
+        /// first-time join. Defaults to the OS hostname (plus `(profile)`
+        /// suffix when `--profile` is set). Persisted to settings before
+        /// dialing so the B2 handshake can read it back. Ignored when
+        /// switching spaces.
         #[arg(long)]
         device_name: Option<String>,
-    },
-    /// Switch to another sponsor's space, re-encrypting local clipboard
-    /// history under the new master key (4-phase migration).
-    ///
-    /// Pre-condition: this device has already completed `init` or `join`.
-    /// Runs the full re-encryption pipeline: backup → handshake → swap →
-    /// commit. A daemon crash mid-run resumes automatically on the next
-    /// `uniclip` invocation thanks to `MigrationStatePort` persistence.
-    SwitchSpace {
-        /// Invitation code printed by the new sponsor's `invite`. Prompted
-        /// interactively when omitted.
+        /// Skip the confirmation prompt shown before a destructive space
+        /// switch (re-encrypting local history). Required when switching
+        /// non-interactively. Ignored on first-time join.
         #[arg(long)]
-        code: Option<String>,
-        /// Passphrase the new sponsor chose during `init`. Prompted
-        /// interactively when omitted.
-        #[arg(long)]
-        new_passphrase: Option<String>,
+        yes: bool,
     },
     /// List members of this space: the local device plus paired peers.
     ///
@@ -373,25 +374,14 @@ fn main() -> anyhow::Result<()> {
                 code,
                 passphrase,
                 device_name,
+                yes,
             } => {
                 commands::join::run(
                     commands::join::JoinArgs {
                         code,
                         passphrase,
                         device_name,
-                    },
-                    cli.verbose,
-                )
-                .await
-            }
-            Commands::SwitchSpace {
-                code,
-                new_passphrase,
-            } => {
-                commands::switch_space::run(
-                    commands::switch_space::SwitchSpaceArgs {
-                        code,
-                        new_passphrase,
+                        yes,
                     },
                     cli.verbose,
                 )
@@ -500,6 +490,36 @@ mod tests {
             result.is_err(),
             "legacy setup command should be removed; CLI should keep init/invite/join"
         );
+    }
+
+    #[test]
+    fn switch_space_command_is_removed() {
+        let result = Cli::try_parse_from(["uniclip", "switch-space", "--code", "ABCD-1234"]);
+
+        assert!(
+            result.is_err(),
+            "switch-space is merged into `join`; the standalone command must be gone"
+        );
+    }
+
+    #[test]
+    fn join_accepts_yes_flag() {
+        // `--yes` skips the destructive-switch confirmation in non-interactive
+        // contexts (the switch path is reached when the device is already set up).
+        let cli = Cli::try_parse_from([
+            "uniclip",
+            "join",
+            "--code",
+            "ABCD-1234",
+            "--passphrase",
+            "pw",
+            "--yes",
+        ])
+        .expect("join must accept --yes");
+        let Some(Commands::Join { yes, .. }) = cli.command else {
+            panic!("expected Join command");
+        };
+        assert!(yes, "--yes must parse into the Join command");
     }
 
     #[test]

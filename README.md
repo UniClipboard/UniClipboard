@@ -229,7 +229,7 @@ bun tauri build
 2. On the new device, choose **Join an existing space**, enter the invitation code together with the space passphrase
 3. Once verified, the device joins and syncing starts automatically.
 
-> Already set up and want to move to another space? Use **Switch space** from the Devices page (or `uniclip switch-space` from the CLI) — your local clipboard history is re-encrypted and migrated.
+> Already set up and want to move to another space? Use **Switch space** from the Devices page (or just run `uniclip join` from the CLI — on an already-set-up device it auto-routes to the switch path) — your local clipboard history is re-encrypted and migrated.
 
 ### Pair a Mobile Device (companion) <a id="mobile-companion-lan"></a>
 
@@ -290,11 +290,10 @@ The `uniclip` CLI mirrors the GUI flow and works headlessly (e.g. on servers):
 ```bash
 uniclip init                    # Create a new encrypted space on this device
 uniclip invite                  # Generate a short-lived invitation code
-uniclip join <code>             # Join an existing space
+uniclip join <code>             # Join a space (auto-switches if already set up)
 uniclip members                 # List paired devices and presence
 uniclip send "hello"            # Send clipboard content to other devices
 uniclip watch                   # Stream incoming clipboard events
-uniclip switch-space            # Move this device to another space
 uniclip status / start / stop   # Daemon lifecycle
 ```
 

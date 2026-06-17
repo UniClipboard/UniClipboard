@@ -255,7 +255,7 @@ back to force a refresh; if it's still off, head to
 
 | GUI action                      | CLI equivalent                                                                 |
 | ------------------------------- | ------------------------------------------------------------------------------ |
-| "Space members" list            | `uniclip devices` (persistent records) / `uniclip members` (with online state) |
+| "Space members" list            | `uniclip members` (local device + paired peers; add `--probe` for fresh online state). `uniclip devices` is an alias. |
 | Add device → invite code        | `uniclip invite`                                                               |
 | Join an existing space          | `uniclip join <code>`                                                          |
 | Copy Peer ID                    | `uniclip status --json` → `network.endpoint`                                   |

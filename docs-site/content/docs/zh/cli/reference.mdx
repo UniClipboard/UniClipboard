@@ -5,14 +5,14 @@ description: uniclip 全部子命令 —— 成员、发送/监听、搜索、bl
 
 这是 `uniclip` 的完整子命令参考。第一次用 CLI？先看 [CLI 概览](../cli/getting-started)。
 
-## 成员与设备
+## 成员
 
-| 命令              | 返回内容                                                  |
-| ----------------- | --------------------------------------------------------- |
-| `uniclip devices` | 配对设备列表（持久化记录）。                              |
-| `uniclip members` | 实时在线状态：`{name} ({online \| offline \| unknown})`。 |
+| 命令                      | 返回内容                                                                                              |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `uniclip members`         | 本空间的成员 —— 本机加上已配对的对端 —— 及各对端的最近一次可达状态：`{name} ({online \| offline \| unknown})`。 |
+| `uniclip members --probe` | 同上，但会先主动 ping 每个已配对对端以刷新状态（会多一次网络往返）。                                   |
 
-两个命令都支持 `--json`，方便脚本调用。
+`uniclip devices` 是 `uniclip members` 的别名。两个写法都支持 `--json`，方便脚本调用。
 
 ## 发送与监听
 
@@ -67,7 +67,7 @@ uniclip get
 # 最新一条指定类型：image | file | text | link
 uniclip get --type image
 
-# 按 id 取指定条目（id 来自 `uniclip search query`），落地到目录
+# 按 id 取指定条目（id 来自 `uniclip search`），落地到目录
 uniclip get --id <ENTRY_ID> --out ./inbox
 
 # 仅列出最近条目，不取回
@@ -85,11 +85,11 @@ uniclip get --list -n 20
 ```bash
 uniclip search status                    # 索引是否就绪 / 是否在建
 uniclip search rebuild                   # 从历史重建索引（同步执行）
-uniclip search query "报告"              # 基本查询
-uniclip search query "报告" \
+uniclip search "报告"                    # 基本查询
+uniclip search "报告" \
     --type text --ext md \
     --limit 20 --detailed
-uniclip search query "报告" \
+uniclip search "报告" \
     --from-ms 1710000000000 --to-ms 1710100000000
 ```
 
@@ -193,8 +193,9 @@ GUI 里在 **设置 → 常规** 下有同样的操作。
 ## 升级检测游标
 
 ```bash
-uniclip upgrade status
-uniclip upgrade advance
+uniclip upgrade            # 不带子命令时打印状态
+uniclip upgrade status     # 与不带子命令时等价
+uniclip upgrade ack        # 把游标推进到当前构建版本
 ```
 
 查看或推进升级检测游标 —— 用于手动验证升级模块。普通用户基本用不到。

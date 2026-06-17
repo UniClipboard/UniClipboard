@@ -202,7 +202,7 @@ Alert 区域展示，不再有专门的状态条。
 
 | GUI 操作                | CLI 等价                                                           |
 | ----------------------- | ------------------------------------------------------------------ |
-| 「空间成员」列表        | `uniclip devices`（持久记录） / `uniclip members`（含在线状态）    |
+| 「空间成员」列表        | `uniclip members`（本机 + 已配对对端；加 `--probe` 获取实时在线状态）。`uniclip devices` 是其别名。 |
 | 添加设备 → 邀请码       | `uniclip invite`                                                   |
 | 加入已有空间            | `uniclip join <code>`                                              |
 | 复制 Peer ID            | `uniclip status --json` 中的 `network.endpoint`                    |

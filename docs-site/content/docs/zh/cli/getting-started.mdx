@@ -74,8 +74,13 @@ uniclip members
 
 </Tabs>
 
-把当前设备切换到另一个 sponsor 的空间（用新 MasterKey 重新加密本地历史）：
+把当前设备切换到另一个 sponsor 的空间（用新 MasterKey 重新加密本地历史）时，
+带上新 sponsor 的邀请码再次运行 `join` 即可 —— 它会识别出本机已完成初始化，
+自动路由到空间切换流程：
 
 ```bash
-uniclip switch-space
+uniclip join <新邀请码>
 ```
+
+切换是破坏性操作（会重新加密本地历史），因此 `join` 会先弹出确认提示。
+在非交互场景下可加 `--yes` 跳过确认。

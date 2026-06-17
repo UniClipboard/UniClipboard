@@ -85,8 +85,14 @@ without leaking the guess to the sponsor.
 </Tabs>
 
 To switch this device to a different sponsor's space (re-encrypting
-local history under the new MasterKey):
+local history under the new MasterKey), run `join` again with the new
+sponsor's invitation — it detects that this device is already set up and
+auto-routes to the space switch:
 
 ```bash
-uniclip switch-space
+uniclip join <new-invitation-code>
 ```
+
+The switch is destructive (local history is re-encrypted), so `join`
+prompts for confirmation first. Pass `--yes` to skip the prompt in
+non-interactive contexts.

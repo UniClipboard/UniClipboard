@@ -146,6 +146,33 @@ pub async fn invite_join_round(
     join_out
 }
 
+/// Run one invite (sponsor) + switch (already-set-up joiner) round.
+///
+/// The switcher is already in its own space, so `join` auto-routes to the
+/// destructive switch path; `--yes` skips the confirmation prompt (there is
+/// no TTY in the harness). No `--device-name` is passed — it is ignored on
+/// the switch path. Returns the join output for the caller to assert on; the
+/// sponsor's invite process is reaped (or killed) before returning.
+pub async fn invite_switch_round(
+    sponsor_cli: &TestCli,
+    switcher_cli: &TestCli,
+    new_passphrase: &str,
+) -> CapturedOutput {
+    let (session, code) = InviteSession::start(sponsor_cli).await;
+
+    let switch_out = switcher_cli.run_capture(&[
+        "join",
+        "--code",
+        &code,
+        "--passphrase",
+        new_passphrase,
+        "--yes",
+    ]);
+
+    session.finish().await;
+    switch_out
+}
+
 /// Pair two fresh nodes: Alice inits a space and invites, Bob joins.
 ///
 /// Returns (alice_daemon, alice_cli, bob_daemon, bob_cli) with the join

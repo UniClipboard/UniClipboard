@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-06-16 (auto; 19 workspace crates)
+**Last refreshed:** 2026-06-17 (auto; 19 workspace crates)
 
 ## OVERVIEW
 

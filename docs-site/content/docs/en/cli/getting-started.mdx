@@ -84,15 +84,19 @@ without leaking the guess to the sponsor.
 
 </Tabs>
 
-To switch this device to a different sponsor's space (re-encrypting
-local history under the new MasterKey), run `join` again with the new
-sponsor's invitation — it detects that this device is already set up and
-auto-routes to the space switch:
+To switch this device to a **different** sponsor's space (re-encrypting
+local history under the new MasterKey), run `join` with the new
+sponsor's invitation and the `--switch` flag:
 
 ```bash
-uniclip join <new-invitation-code>
+uniclip join --switch --code <new-invitation-code>
 ```
 
 The switch is destructive (local history is re-encrypted), so `join`
 prompts for confirmation first. Pass `--yes` to skip the prompt in
 non-interactive contexts.
+
+Without `--switch`, `join` always takes the non-destructive re-pair
+path — which is also how you re-pair after a one-sided unpair (it
+redeems against the space you're already in and replaces the stale
+records).

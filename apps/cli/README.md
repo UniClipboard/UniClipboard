@@ -40,7 +40,7 @@ cargo build -p uc-cli
 | `uniclip status` | 查看当前应用状态。 |
 | `uniclip init` | 在当前 profile 创建新的加密空间。 |
 | `uniclip invite` | 作为 sponsor 发起配对邀请。 |
-| `uniclip join` | 用邀请码加入空间；按本机当前状态自动分流——未加入则赎回邀请加入，已加入则切换到新 sponsor 的空间并重加密迁移本地历史（破坏性，会先确认，加 `--yes` 在非交互场景跳过确认）。 |
+| `uniclip join` | 用邀请码加入空间。默认走非破坏性的赎回 / 重新配对分支（首次加入，以及在「同一空间」单侧解除配对后重新配对——见 issue #1023）。加 `--switch` 才切换到「另一个」sponsor 的空间并重加密迁移本地历史（破坏性，会先确认，再加 `--yes` 在非交互场景跳过确认）。 |
 | `uniclip members` | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。`devices` 是其别名。 |
 | `uniclip send [TEXT]` | 向在线配对设备发送一段文本；省略 `TEXT` 时从 stdin 读取。 |
 | `uniclip watch` | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。 |
@@ -106,7 +106,7 @@ uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
 
 ## 空间切换
 
-切换到另一个 sponsor 的空间已合并进 `uniclip join`：在已经加入空间的设备上运行 `join`，会自动走切换分支，重加密并迁移本地历史数据。无需单独的 `switch-space` 命令。
+切换到另一个 sponsor 的空间已合并进 `uniclip join`：在已加入空间的设备上运行 `join --switch`，会走切换分支，重加密并迁移本地历史数据。无需单独的 `switch-space` 命令。不带 `--switch` 的 `join` 始终走非破坏性的赎回 / 重新配对分支。
 
 ## 隐藏的剪贴板诊断命令组（`probe`）
 

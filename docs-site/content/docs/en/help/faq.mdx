@@ -147,10 +147,10 @@ treated as a trusted peer by every other device in the space.
 
 ### Can one device join multiple spaces?
 
-Yes, but **only one is active at a time**. Running `uniclip join` with
-another sponsor's invitation (or the GUI's Devices page) re-encrypts
-local history under the new space's MasterKey before completing the
-switch — there is no plaintext window during the handoff.
+Yes, but **only one is active at a time**. Running `uniclip join
+--switch` with another sponsor's invitation (or the GUI's Devices page)
+re-encrypts local history under the new space's MasterKey before
+completing the switch — there is no plaintext window during the handoff.
 
 Typical use: split "personal" and "work" devices into two spaces with
 different sensitivity levels.

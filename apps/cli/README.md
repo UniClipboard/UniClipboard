@@ -41,8 +41,7 @@ cargo build -p uc-cli
 | `uniclip init` | 在当前 profile 创建新的加密空间。 |
 | `uniclip invite` | 作为 sponsor 发起配对邀请。 |
 | `uniclip join` | 使用邀请加入已有空间。 |
-| `uniclip devices` | 列出已配对设备。 |
-| `uniclip members` | 列出空间成员和在线状态。 |
+| `uniclip members` | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。`devices` 是其别名。 |
 | `uniclip send [TEXT]` | 向在线配对设备发送一段文本；省略 `TEXT` 时从 stdin 读取。 |
 | `uniclip watch` | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。 |
 | `uniclip recv` | 阻塞等待 **下一个** 入站文件并落盘；不会写入系统剪贴板。 |

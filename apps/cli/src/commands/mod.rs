@@ -4,7 +4,6 @@ pub mod blob;
 pub mod debug;
 #[cfg(feature = "dev-tools")]
 pub mod dev;
-pub mod devices;
 #[cfg(feature = "dev-tools")]
 pub mod dump_clipboard;
 pub mod get;

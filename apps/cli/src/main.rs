@@ -137,14 +137,19 @@ enum Commands {
         #[arg(long)]
         new_passphrase: Option<String>,
     },
-    /// List paired devices
-    Devices,
-    /// List members of this space with presence (online / offline / unknown).
+    /// List members of this space: the local device plus paired peers.
     ///
-    /// Self-contained direct mode (Slice 2 Phase 1): runs a one-off probe of
-    /// all paired peers so states are fresh on every call. No daemon
-    /// required. Prints `{name} ({state}) [local]` per device.
-    Members,
+    /// Self-contained direct mode. Prints `{name} ({state}) [local]` per
+    /// member using each peer's last-known reachability. Pass `--probe` to
+    /// actively ping every paired peer first so the states are fresh.
+    /// Also available under the `devices` alias.
+    #[command(alias = "devices")]
+    Members {
+        /// Actively probe paired peers for fresh online/offline state
+        /// before listing (adds a network round-trip; off by default).
+        #[arg(long)]
+        probe: bool,
+    },
     /// Dispatch one clipboard payload to paired peers.
     ///
     /// Self-contained direct mode. Two input modes, mutually exclusive:
@@ -392,8 +397,9 @@ fn main() -> anyhow::Result<()> {
                 )
                 .await
             }
-            Commands::Devices => commands::devices::run(cli.json, cli.verbose).await,
-            Commands::Members => commands::members::run(cli.json, cli.verbose).await,
+            Commands::Members { probe } => {
+                commands::members::run(probe, cli.json, cli.verbose).await
+            }
             Commands::Send {
                 text,
                 file,
@@ -554,6 +560,29 @@ mod tests {
             subcommand,
             Some(commands::upgrade::UpgradeCommands::Ack)
         ));
+    }
+
+    #[test]
+    fn members_probe_flag_parses_and_defaults_off() {
+        let bare = Cli::try_parse_from(["uniclip", "members"]).expect("bare members must parse");
+        let Some(Commands::Members { probe }) = bare.command else {
+            panic!("expected Members command");
+        };
+        assert!(!probe, "probe must default off");
+
+        let probed =
+            Cli::try_parse_from(["uniclip", "members", "--probe"]).expect("members --probe parses");
+        let Some(Commands::Members { probe }) = probed.command else {
+            panic!("expected Members command");
+        };
+        assert!(probe);
+    }
+
+    #[test]
+    fn devices_is_an_alias_for_members() {
+        // The former `devices` command is now a hidden alias of `members`.
+        let cli = Cli::try_parse_from(["uniclip", "devices"]).expect("devices alias must parse");
+        assert!(matches!(cli.command, Some(Commands::Members { .. })));
     }
 
     #[test]

@@ -7,9 +7,9 @@
 #            wait for joiner.
 #   * bob:   initialize its own space B1 (passphrase B) on a different
 #            profile, accumulating local clipboard state.
-#   * bob:   `join` against alice's invitation — since bob is already set up,
-#            this auto-routes to the switch path and runs the 4-phase
-#            re-encryption migration so bob abandons B1 and joins A1.
+#   * bob:   `join --switch` against alice's invitation — bob opts into the
+#            switch path, running the 4-phase re-encryption migration so bob
+#            abandons B1 and joins A1.
 #
 # Assertions:
 #   * bob's `join` (switch path) exits 0.
@@ -21,7 +21,7 @@
 #   * --dev mode to avoid Keychain collisions between the two profiles.
 #
 # 与 `test_pair_e2e.sh` 共用 alice/bob 两个 profile 和清理流程；本脚本走
-# `join` 的切换分支（bob 已 setup → 自动迁移），对照 `test_pair_e2e.sh`
+# `join --switch` 的切换分支（bob 显式选择迁移），对照 `test_pair_e2e.sh`
 # 的首次加入分支。
 
 set -euo pipefail
@@ -111,11 +111,12 @@ fi
 
 echo "    got code: $CODE"
 
-echo "==> bob: join --code $CODE --passphrase <alice's> --yes (already set up → switch path)"
+echo "==> bob: join --switch --code $CODE --passphrase <alice's> --yes (explicit switch path)"
 set +e
 "$CLI" $COMMON_FLAGS --profile bob join \
     --code "$CODE" \
     --passphrase "$PASSPHRASE_ALICE" \
+    --switch \
     --yes
 BOB_EXIT=$?
 set -e

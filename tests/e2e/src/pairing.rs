@@ -148,11 +148,12 @@ pub async fn invite_join_round(
 
 /// Run one invite (sponsor) + switch (already-set-up joiner) round.
 ///
-/// The switcher is already in its own space, so `join` auto-routes to the
-/// destructive switch path; `--yes` skips the confirmation prompt (there is
-/// no TTY in the harness). No `--device-name` is passed — it is ignored on
-/// the switch path. Returns the join output for the caller to assert on; the
-/// sponsor's invite process is reaped (or killed) before returning.
+/// The switcher is moving to a different space, so it passes `join --switch`
+/// to opt into the destructive migration path; `--yes` skips the confirmation
+/// prompt (there is no TTY in the harness). No `--device-name` is passed — it
+/// is ignored on the switch path. Returns the join output for the caller to
+/// assert on; the sponsor's invite process is reaped (or killed) before
+/// returning.
 pub async fn invite_switch_round(
     sponsor_cli: &TestCli,
     switcher_cli: &TestCli,
@@ -166,6 +167,7 @@ pub async fn invite_switch_round(
         &code,
         "--passphrase",
         new_passphrase,
+        "--switch",
         "--yes",
     ]);
 

@@ -1,10 +1,9 @@
 //! E2E test for the merged `join` switch path.
 //!
-//! When a device is already set up, `uniclip join` auto-routes to the
-//! switch-space migration (re-encrypting local history under the new
-//! sponsor's master key). This test verifies the *routing + happy path*:
-//! an already-initialized Bob runs `join --yes` against Alice's invitation
-//! and ends up a member of Alice's space.
+//! `uniclip join --switch` opts into the switch-space migration (re-encrypting
+//! local history under the new sponsor's master key). This test verifies the
+//! *routing + happy path*: an already-initialized Bob runs `join --switch
+//! --yes` against Alice's invitation and ends up a member of Alice's space.
 //!
 //! NOTE: data round-trip integrity — seeded clipboard history surviving the
 //! re-encryption — is intentionally NOT covered here. The headless E2E binary
@@ -45,8 +44,9 @@ fn has_member_named(members: &[Value], needle: &str) -> bool {
     })
 }
 
-/// Bob already has his own space, so `join` must auto-route to the switch
-/// path (not first-time redeem) and migrate him into Alice's space.
+/// Bob already has his own space; running `join --switch` must take the
+/// destructive switch path (not first-time redeem) and migrate him into
+/// Alice's space.
 #[tokio::test]
 #[ignore]
 async fn already_set_up_join_routes_to_switch_and_migrates_membership() {
@@ -54,16 +54,15 @@ async fn already_set_up_join_routes_to_switch_and_migrates_membership() {
     let (alice_daemon, alice_cli) =
         setup_initialized_node("switch-alice", "alice-node", PASSPHRASE_ALICE).await;
 
-    // Bob: his own space B — this prior setup is what makes `join` take the
-    // switch path instead of redeem.
+    // Bob: his own space B. He must explicitly pass `--switch` to migrate.
     let (bob_daemon, bob_cli) =
         setup_initialized_node("switch-bob", "bob-node", PASSPHRASE_BOB).await;
 
-    // Bob switches into Alice's space via `join --yes`.
+    // Bob switches into Alice's space via `join --switch --yes`.
     let switch_out = invite_switch_round(&alice_cli, &bob_cli, PASSPHRASE_ALICE).await;
     assert!(
         switch_out.success(),
-        "bob switch (join --yes) failed (exit={}): stdout={}, stderr={}",
+        "bob switch (join --switch --yes) failed (exit={}): stdout={}, stderr={}",
         switch_out.exit_code,
         switch_out.stdout,
         switch_out.stderr,
@@ -71,8 +70,8 @@ async fn already_set_up_join_routes_to_switch_and_migrates_membership() {
 
     // The switch path prints "Switched space" + a `migrated_records` line on
     // stderr (all ui output goes to Term::stderr). Redeem prints "Joined
-    // space" with no `migrated_records` — so these confirm `join` auto-routed
-    // to the destructive switch, not a first-time join.
+    // space" with no `migrated_records` — so these confirm `--switch` took the
+    // destructive switch, not a first-time join.
     assert!(
         switch_out.stderr.contains("Switched space"),
         "expected switch-path output, got stderr: {}",

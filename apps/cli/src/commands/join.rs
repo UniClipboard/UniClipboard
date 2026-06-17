@@ -1,15 +1,20 @@
-//! `uniclip join` — join a space via daemon HTTP API, auto-routing by the
-//! device's current setup state.
+//! `uniclip join` — join a space via daemon HTTP API. The route is chosen by
+//! explicit intent, not by the device's setup state.
 //!
-//! * Not yet set up → calls `POST /v2/setup/redeem` (joiner side of Slice 1
-//!   pairing). A single blocking RPC — the daemon drives the dial/wait loop
-//!   internally, so we simply await the result.
-//! * Already in a space → calls `POST /v2/setup/switch-space`, which drives
-//!   the 4-phase re-encryption migration internally. This is destructive, so
-//!   we confirm first (unless `--yes`) and show a spinner while it runs.
+//! * Default (no `--switch`) → calls `POST /v2/setup/redeem` (joiner side of
+//!   Slice 1 pairing). A single blocking RPC — the daemon drives the dial/wait
+//!   loop internally, so we simply await the result. Safe to run when already
+//!   in the *same* space: stale rows are replaced in the new handshake (issue
+//!   #1023), so this is also the re-pair-after-unpair path.
+//! * `--switch` → calls `POST /v2/setup/switch-space`, which drives the
+//!   4-phase re-encryption migration internally for moving to a *different*
+//!   space. This is destructive, so we confirm first (unless `--yes`) and show
+//!   a spinner while it runs.
 //!
-//! Both paths handle Ctrl+C for clean cancellation. Routing uses the local
-//! filesystem [`setup_check`](crate::setup_check) — no daemon round-trip.
+//! Routing on explicit intent (rather than a local setup-state check) keeps
+//! same-space re-pair non-destructive: a set-up device re-joining its own
+//! space must redeem, not migrate. Both paths handle Ctrl+C for clean
+//! cancellation.
 
 use tokio::select;
 use tokio::signal;
@@ -58,6 +63,7 @@ pub struct JoinArgs {
     pub code: Option<String>,
     pub passphrase: Option<String>,
     pub device_name: Option<String>,
+    pub switch: bool,
     pub yes: bool,
 }
 
@@ -106,11 +112,13 @@ pub async fn run(args: JoinArgs, verbose: bool) -> i32 {
         },
     };
 
-    // Route by current setup state — a local filesystem check, no daemon
-    // round-trip. On a read error, default to the non-destructive redeem path
-    // and let the daemon surface the real error rather than risk an
-    // unconfirmed re-encryption migration.
-    if crate::setup_check::is_setup_complete().unwrap_or(false) {
+    // Route by explicit intent, not by setup state. Without `--switch` we
+    // always take the non-destructive redeem path — which doubles as the
+    // re-pair-after-unpair path (issue #1023), since redeeming an invitation
+    // for the space this device is already in just replaces stale rows. Only
+    // `--switch` opts into the destructive re-encryption migration to a
+    // different space.
+    if args.switch {
         if args.device_name.is_some() {
             ui::warn("--device-name is ignored when switching spaces");
         }

@@ -103,18 +103,20 @@ enum Commands {
     /// `unlock` — no passphrase re-entry needed. Fails if the profile
     /// has not been initialized yet.
     Invite,
-    /// Join a space with an invitation code and passphrase, auto-routing
-    /// by this device's current state.
+    /// Join a space with an invitation code and passphrase.
     ///
-    /// * Not yet set up → redeems the invitation and joins the sponsor's
-    ///   space (joiner side of pairing).
-    /// * Already in a space → switches to the new sponsor's space,
-    ///   re-encrypting local clipboard history under the new master key
-    ///   (4-phase migration: backup → handshake → swap → commit). This is
-    ///   destructive and prompts for confirmation; pass `--yes` to skip the
-    ///   prompt in non-interactive contexts. A daemon crash mid-migration
-    ///   auto-resumes on the next `uniclip` invocation thanks to
-    ///   `MigrationStatePort` persistence.
+    /// Default (re-pair / first-time join) → redeems the invitation and
+    /// joins the sponsor's space (joiner side of pairing). Safe to run when
+    /// already in the *same* space: stale member/trust rows are replaced in
+    /// the new handshake (issue #1023), so this is how you re-pair after a
+    /// one-sided unpair.
+    ///
+    /// `--switch` → switches to a *different* sponsor's space, re-encrypting
+    /// local clipboard history under the new master key (4-phase migration:
+    /// backup → handshake → swap → commit). This is destructive and prompts
+    /// for confirmation; pass `--yes` to skip the prompt in non-interactive
+    /// contexts. A daemon crash mid-migration auto-resumes on the next
+    /// `uniclip` invocation thanks to `MigrationStatePort` persistence.
     Join {
         /// Invitation code printed by the sponsor's `invite`. Prompted
         /// interactively when omitted.
@@ -128,13 +130,19 @@ enum Commands {
         /// Display name advertised to the sponsor as this device's name on
         /// first-time join. Defaults to the OS hostname (plus `(profile)`
         /// suffix when `--profile` is set). Persisted to settings before
-        /// dialing so the B2 handshake can read it back. Ignored when
-        /// switching spaces.
+        /// dialing so the B2 handshake can read it back. Ignored with
+        /// `--switch`.
         #[arg(long)]
         device_name: Option<String>,
+        /// Switch to a *different* sponsor's space instead of re-pairing,
+        /// re-encrypting local clipboard history under the new master key.
+        /// Destructive; without it `join` always takes the non-destructive
+        /// re-pair path.
+        #[arg(long)]
+        switch: bool,
         /// Skip the confirmation prompt shown before a destructive space
         /// switch (re-encrypting local history). Required when switching
-        /// non-interactively. Ignored on first-time join.
+        /// non-interactively. Only meaningful together with `--switch`.
         #[arg(long)]
         yes: bool,
     },
@@ -374,6 +382,7 @@ fn main() -> anyhow::Result<()> {
                 code,
                 passphrase,
                 device_name,
+                switch,
                 yes,
             } => {
                 commands::join::run(
@@ -381,6 +390,7 @@ fn main() -> anyhow::Result<()> {
                         code,
                         passphrase,
                         device_name,
+                        switch,
                         yes,
                     },
                     cli.verbose,
@@ -503,9 +513,9 @@ mod tests {
     }
 
     #[test]
-    fn join_accepts_yes_flag() {
-        // `--yes` skips the destructive-switch confirmation in non-interactive
-        // contexts (the switch path is reached when the device is already set up).
+    fn join_accepts_switch_and_yes_flags() {
+        // `--switch` opts into the destructive migration path; `--yes` skips
+        // its confirmation in non-interactive contexts.
         let cli = Cli::try_parse_from([
             "uniclip",
             "join",
@@ -513,13 +523,34 @@ mod tests {
             "ABCD-1234",
             "--passphrase",
             "pw",
+            "--switch",
             "--yes",
         ])
-        .expect("join must accept --yes");
-        let Some(Commands::Join { yes, .. }) = cli.command else {
+        .expect("join must accept --switch and --yes");
+        let Some(Commands::Join { switch, yes, .. }) = cli.command else {
             panic!("expected Join command");
         };
+        assert!(switch, "--switch must parse into the Join command");
         assert!(yes, "--yes must parse into the Join command");
+    }
+
+    #[test]
+    fn join_defaults_to_re_pair_without_switch() {
+        // A bare `join` (no `--switch`) must route to the non-destructive
+        // redeem / re-pair path regardless of setup state (issue #1023).
+        let cli = Cli::try_parse_from([
+            "uniclip",
+            "join",
+            "--code",
+            "ABCD-1234",
+            "--passphrase",
+            "pw",
+        ])
+        .expect("bare join must parse");
+        let Some(Commands::Join { switch, .. }) = cli.command else {
+            panic!("expected Join command");
+        };
+        assert!(!switch, "join must default to re-pair, not switch");
     }
 
     #[test]

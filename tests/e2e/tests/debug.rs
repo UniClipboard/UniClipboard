@@ -111,6 +111,12 @@ async fn test_debug_on_off_round_trip() {
 
     // The persisted flag should be visible on the next status read.
     let after_on = cli.run_capture(&["--json", "debug", "status"]);
+    assert!(
+        after_on.success(),
+        "status after debug on failed (exit={}): {}",
+        after_on.exit_code,
+        after_on.stderr
+    );
     let after_on_json: serde_json::Value = serde_json::from_str(after_on.stdout.trim())
         .unwrap_or_else(|e| panic!("status --json not valid JSON ({e}): {}", after_on.stdout));
     assert_eq!(
@@ -136,6 +142,12 @@ async fn test_debug_on_off_round_trip() {
     );
 
     let after_off = cli.run_capture(&["--json", "debug", "status"]);
+    assert!(
+        after_off.success(),
+        "status after debug off failed (exit={}): {}",
+        after_off.exit_code,
+        after_off.stderr
+    );
     let after_off_json: serde_json::Value = serde_json::from_str(after_off.stdout.trim())
         .unwrap_or_else(|e| panic!("status --json not valid JSON ({e}): {}", after_off.stdout));
     assert_eq!(
@@ -163,19 +175,25 @@ async fn test_debug_export_logs_creates_zip() {
     let path = parsed
         .get("path")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("export-logs --json missing string path: {parsed}"));
+        .unwrap_or_else(|| panic!("export-logs --json missing string path: {parsed}"))
+        .to_owned();
+
+    // The export writes to the real Downloads directory. Register cleanup via an
+    // RAII guard so the archive is removed even if an assertion below panics.
+    struct ZipCleanup(std::path::PathBuf);
+    impl Drop for ZipCleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    let _cleanup = ZipCleanup(std::path::PathBuf::from(&path));
+
     assert!(
         path.ends_with(".zip"),
         "exported archive should be a .zip: {path}"
     );
-
-    // The export writes to the real Downloads directory; verify the archive
-    // exists, then remove it so the test leaves no artifact behind.
-    let zip_path = std::path::Path::new(path);
     assert!(
-        zip_path.exists(),
+        std::path::Path::new(&path).exists(),
         "export-logs reported {path} but the file does not exist"
     );
-    std::fs::remove_file(zip_path)
-        .unwrap_or_else(|e| panic!("failed to clean up exported zip {path}: {e}"));
 }

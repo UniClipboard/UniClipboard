@@ -111,7 +111,7 @@ async fn test_search_before_init_fails() {
         .expect("daemon start failed");
     let cli = TestCli::new(&daemon.profile);
 
-    let output = cli.run_capture(&["search", "query", "test"]);
+    let output = cli.run_capture(&["search", "test"]);
     assert!(
         !output.success(),
         "search before init should fail but got exit=0"

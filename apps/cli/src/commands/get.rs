@@ -12,7 +12,9 @@
 //!
 //! ## Output contract (agent-friendly)
 //!
-//! * **text / link** → content is printed to **stdout** (pipe-friendly).
+//! * **text / link** → content is printed to **stdout** (pipe-friendly). A
+//!   trailing newline is appended only when stdout is an interactive terminal,
+//!   so piped/redirected output keeps the exact bytes.
 //!   `--out` does not apply; redirect with `>` to capture to a file.
 //! * **image / file** → bytes are written to the `--out` directory (default
 //!   cache dir) and the **absolute path** is printed to stdout. `--out -`
@@ -28,7 +30,7 @@
 //! * `EXIT_CONTENT_UNAVAILABLE` — entry exists but its payload is `Lost` /
 //!   not materialized; the remedy is to re-send it from the source device.
 
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
 use base64::engine::general_purpose::STANDARD;
@@ -225,8 +227,14 @@ async fn emit_text(
             outcome: "exported",
         });
     } else {
-        // Raw content to stdout (pipe-friendly); no trailing newline injected.
+        // Raw content to stdout. When stdout is an interactive terminal, append
+        // a trailing newline (if absent) so the shell prompt starts on its own
+        // line. When piped/redirected, keep the bytes verbatim so callers like
+        // `uniclip get | xclip` or `$(uniclip get)` capture the exact content.
         print!("{}", detail.content);
+        if std::io::stdout().is_terminal() && !detail.content.ends_with('\n') {
+            println!();
+        }
         let _ = std::io::stdout().flush();
     }
     exit_codes::EXIT_SUCCESS

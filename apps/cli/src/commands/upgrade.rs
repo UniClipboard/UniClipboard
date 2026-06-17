@@ -3,8 +3,9 @@
 //!
 //! Subcommands:
 //!
-//! * `status` — calls `GET /upgrade/status` on the daemon and prints the
-//!   structured outcome (FreshInstall / NoChange / Upgraded / Downgraded).
+//! * `status` (default) — calls `GET /upgrade/status` on the daemon and prints
+//!   the structured outcome (FreshInstall / NoChange / Upgraded / Downgraded).
+//!   Bare `uniclip upgrade` runs this.
 //! * `ack` — calls `POST /upgrade/ack` to advance the cursor to the
 //!   daemon's current build version. Subsequent `status` runs report
 //!   `NoChange` until the binary version moves.
@@ -18,10 +19,9 @@ use clap::Subcommand;
 use serde::Serialize;
 use std::fmt;
 
-use uc_daemon_client::DaemonClientContext;
 use uc_daemon_contract::api::dto::upgrade::UpgradeStatusDto;
 
-use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+use crate::commands::app_session::connect_with_lease;
 use crate::exit_codes;
 use crate::output;
 use crate::ui;
@@ -92,30 +92,15 @@ impl fmt::Display for AckOutput {
     }
 }
 
-pub async fn run(subcommand: UpgradeCommands, json: bool, verbose: bool) -> i32 {
-    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
-        Ok(s) => s,
+pub async fn run(subcommand: Option<UpgradeCommands>, json: bool, verbose: bool) -> i32 {
+    let (_lease, ctx) = match connect_with_lease(verbose).await {
+        Ok(pair) => pair,
         Err(code) => return code,
-    };
-
-    let _lease = match service.hold_control_lease().await {
-        Ok(guard) => guard,
-        Err(err) => {
-            ui::error(&format!("Failed to hold daemon session lease: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-
-    let ctx = match DaemonClientContext::from_env() {
-        Ok(ctx) => ctx,
-        Err(err) => {
-            ui::error(&format!("Failed to connect to daemon: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
     };
     let upgrade = ctx.upgrade_client();
 
-    match subcommand {
+    // Bare `uniclip upgrade` defaults to the read-only status check.
+    match subcommand.unwrap_or(UpgradeCommands::Status) {
         UpgradeCommands::Status => match upgrade.status().await {
             Ok(dto) => {
                 let payload: StatusOutput = dto.into();

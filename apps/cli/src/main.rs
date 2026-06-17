@@ -273,10 +273,11 @@ enum Commands {
         subcommand: Option<commands::search::SearchCommands>,
     },
     /// Inspect or advance the upgrade-detection cursor (manual verification
-    /// for the P1 thin upgrade module).
+    /// for the P1 thin upgrade module). Bare `upgrade` prints status; use
+    /// the `ack` subcommand to advance the cursor.
     Upgrade {
         #[command(subcommand)]
-        subcommand: commands::upgrade::UpgradeCommands,
+        subcommand: Option<commands::upgrade::UpgradeCommands>,
     },
     /// Manage persistent local debug logging and export diagnostic logs
     Debug {
@@ -529,6 +530,29 @@ mod tests {
         assert!(matches!(
             subcommand,
             Some(commands::search::SearchCommands::Status)
+        ));
+    }
+
+    #[test]
+    fn bare_upgrade_defaults_to_no_subcommand() {
+        // `uniclip upgrade` (no subcommand) is valid and means "show status".
+        let cli = Cli::try_parse_from(["uniclip", "upgrade"]).expect("bare upgrade must parse");
+        let Some(Commands::Upgrade { subcommand }) = cli.command else {
+            panic!("expected Upgrade command");
+        };
+        assert!(subcommand.is_none());
+    }
+
+    #[test]
+    fn upgrade_ack_parses_as_subcommand() {
+        let cli =
+            Cli::try_parse_from(["uniclip", "upgrade", "ack"]).expect("upgrade ack must parse");
+        let Some(Commands::Upgrade { subcommand }) = cli.command else {
+            panic!("expected Upgrade command");
+        };
+        assert!(matches!(
+            subcommand,
+            Some(commands::upgrade::UpgradeCommands::Ack)
         ));
     }
 

@@ -1,19 +1,16 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use iroh::endpoint::Connection;
 use iroh::{Endpoint, EndpointAddr, TransportAddr};
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
-/// Per-attempt connect timeout.
+/// Per-attempt connect timeout for a **direct-only** candidate set.
 ///
 /// 3s sits comfortably above the observed LAN/direct `iroh connect`
-/// success latency (~1s for an Online peer's first attempt) and the
-/// relay-fallback case (~1-2s when pkarr discovery completes before
-/// the direct path), while keeping the worst-case staggered-retry
-/// budget below [`crate::network::iroh::FAN_OUT_DEADLINE_HINT`]'s 5s
-/// dispatch-side hard cap.
+/// success latency (~1s for an Online peer's first attempt) and fails a
+/// dead direct path fast.
 ///
 /// Pre-#886 phase 4 this was 10s, picked when staggered retry was the
 /// only thing guarding the dispatch path. Now that the dispatch
@@ -23,7 +20,33 @@ use tracing::{debug, info, warn};
 /// accumulate 15s tails — the leader's first batch alone defines the
 /// per-storm dial cost, so trimming the constant is no longer
 /// trading off ergonomics against repeated-storm cost.
-const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
+const ATTEMPT_TIMEOUT_DIRECT: Duration = Duration::from_secs(3);
+
+/// Per-attempt connect timeout when the candidate set still contains a
+/// **relay** path after `strip_relay_if_lan_only`.
+///
+/// A peer reachable only via relay — e.g. it sits behind a NAT that does
+/// not forward inbound, so every direct candidate (host-reflexive
+/// `192.168.x`, ULA, dead overlay) silently black-holes — needs the
+/// connect to wait out the relay path: a home-relay (re)handshake when
+/// the local relay link isn't warm, plus the relay's store-and-forward
+/// round-trip to the remote. Cross-region relays push this past the 3s
+/// direct budget, so reusing [`ATTEMPT_TIMEOUT_DIRECT`] here declares an
+/// *online* peer unreachable before its only working path completes —
+/// observed as a NAT'd peer flapping Online/Offline while every
+/// outbound dial times out at exactly 3000ms, even though the relay is
+/// reachable. Live direct candidates in the same set still win the
+/// staggered race early when they work; this only extends how long we
+/// wait before giving up on the relay fallback.
+///
+/// Worst-case staggered lifetime becomes `STAGGERED_DELAYS[2]` (1.5s) +
+/// `ATTEMPT_TIMEOUT_RELAY` (8s) = 9.5s, which exceeds the dispatch
+/// `FAN_OUT_DEADLINE` (5s). That is intentional and safe: the dispatch
+/// fan-out moves still-running per-peer tasks to a background join after
+/// its deadline (delivery recording + host event emit are
+/// fire-and-forget), so a slow relay dial no longer blocks the main
+/// fan-out — it just lands its delivery a few seconds later.
+const ATTEMPT_TIMEOUT_RELAY: Duration = Duration::from_secs(8);
 
 /// Stagger offsets for the three concurrent attempts inside one
 /// `connect_with_staggered_retry` call. 500ms + 1500ms after the
@@ -32,7 +55,10 @@ const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
 /// dragging the worst-case lifetime out past the dispatch deadline.
 ///
 /// Worst-case lifetime = `STAGGERED_DELAYS[2]` (1.5s) +
-/// `ATTEMPT_TIMEOUT` (3s) = 4.5s. Storm metric per #886: a 5-copy
+/// `ATTEMPT_TIMEOUT_DIRECT` (3s) = 4.5s for a direct-only set, or +
+/// `ATTEMPT_TIMEOUT_RELAY` (8s) = 9.5s when a relay path is present (see
+/// `ATTEMPT_TIMEOUT_RELAY` for why overrunning the 5s dispatch deadline
+/// is safe). Storm metric per #886: a 5-copy
 /// burst against an offline peer at 1s intervals lands at ~4s spawn
 /// + 4.5s leader = 8.5s aggregate wall (down from the 19s phase-0
 /// baseline), with `iroh connect` attempts capped at 3 and
@@ -72,6 +98,32 @@ pub(crate) async fn connect_with_staggered_retry(
     purpose: &'static str,
 ) -> Result<Connection, String> {
     let addr = strip_relay_if_lan_only(addr);
+
+    // Pick the per-attempt timeout by candidate shape. A relay-bearing set
+    // (after the LAN-only strip above) means the peer may only be reachable
+    // via the relay fallback, which needs materially longer to establish than
+    // a healthy direct path — see ATTEMPT_TIMEOUT_RELAY. Computed once here so
+    // every staggered attempt and the diagnostics below agree.
+    let relay_candidates = addr
+        .addrs
+        .iter()
+        .filter(|a| matches!(a, TransportAddr::Relay(_)))
+        .count();
+    let direct_candidates = addr.addrs.len().saturating_sub(relay_candidates);
+    let attempt_timeout = if relay_candidates > 0 {
+        ATTEMPT_TIMEOUT_RELAY
+    } else {
+        ATTEMPT_TIMEOUT_DIRECT
+    };
+    debug!(
+        purpose,
+        peer = %addr.id.fmt_short(),
+        direct_candidates,
+        relay_candidates,
+        attempt_timeout_ms = attempt_timeout.as_millis() as u64,
+        "iroh connect: candidate shape resolved (relay-aware timeout)"
+    );
+
     let mut attempts = JoinSet::new();
 
     for (idx, delay) in STAGGERED_DELAYS.iter().copied().enumerate() {
@@ -87,11 +139,12 @@ pub(crate) async fn connect_with_staggered_retry(
             debug!(
                 purpose,
                 attempt = attempt_no,
-                timeout_ms = ATTEMPT_TIMEOUT.as_millis(),
+                timeout_ms = attempt_timeout.as_millis() as u64,
                 "iroh connect attempt started"
             );
 
-            match tokio::time::timeout(ATTEMPT_TIMEOUT, endpoint.connect(addr, alpn)).await {
+            let started = Instant::now();
+            match tokio::time::timeout(attempt_timeout, endpoint.connect(addr, alpn)).await {
                 Ok(Ok(connection)) => {
                     // Diagnostic for UniClipboard#486 — log which path won
                     // the candidate race. iroh 0.98 replaced the older
@@ -123,6 +176,7 @@ pub(crate) async fn connect_with_staggered_retry(
                         attempt = attempt_no,
                         peer = %addr_id.fmt_short(),
                         conn_type = %conn_type_str,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
                         "iroh connect selected path (refs UniClipboard#486)"
                     );
                     Ok((attempt_no, connection))
@@ -130,7 +184,7 @@ pub(crate) async fn connect_with_staggered_retry(
                 Ok(Err(err)) => Err((attempt_no, err.to_string())),
                 Err(_) => Err((
                     attempt_no,
-                    format!("timed out after {}ms", ATTEMPT_TIMEOUT.as_millis()),
+                    format!("timed out after {}ms", attempt_timeout.as_millis()),
                 )),
             }
         });
@@ -165,5 +219,13 @@ pub(crate) async fn connect_with_staggered_retry(
         }
     }
 
+    debug!(
+        purpose,
+        peer = %addr.id.fmt_short(),
+        relay_candidates,
+        attempt_timeout_ms = attempt_timeout.as_millis() as u64,
+        failures = %failures.join("; "),
+        "iroh connect: all staggered attempts failed (relay-aware timeout)"
+    );
     Err(failures.join("; "))
 }

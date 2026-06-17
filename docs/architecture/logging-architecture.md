@@ -5,7 +5,7 @@
 UniClipboard uses **`tracing`** crate as the primary logging framework with structured logging and span-based context tracking. The system produces **dual output** from a single tracing pipeline:
 
 - **Console output**: Pretty human-readable format with ANSI colors (stdout)
-- **JSON file output**: Structured flat JSON with daily-rotating files for tooling and analysis
+- **JSON file output**: Structured flat JSON with daily-rotating files (7-day retention) for tooling and analysis
 
 A **dual-track** coexistence is maintained during the transition from legacy `log` crate to `tracing`:
 
@@ -251,11 +251,23 @@ The tracing subscriber produces two simultaneous outputs from the same pipeline:
 
 ### JSON File Locations
 
-- **macOS**: `~/Library/Application Support/app.uniclipboard.desktop[-<profile>]/logs/uniclipboard.json.YYYY-MM-DD`
-- **Linux**: `~/.local/share/app.uniclipboard.desktop[-<profile>]/logs/uniclipboard.json.YYYY-MM-DD`
-- **Windows**: `%LOCALAPPDATA%\app.uniclipboard.desktop[-<profile>]\logs\uniclipboard.json.YYYY-MM-DD`
+Each process role writes its own daily-rotating file — `uniclipboard-gui`,
+`uniclipboard-daemon`, or `uniclipboard-cli` (e.g.
+`uniclipboard-daemon.json.YYYY-MM-DD`) — so co-resident processes never share a
+file. Logs follow each platform's logging convention and live **outside** the
+data directory:
+
+- **macOS**: `~/Library/Logs/app.uniclipboard.desktop[-<profile>]/`
+- **Linux**: `~/.local/state/app.uniclipboard.desktop[-<profile>]/logs/` (XDG state dir)
+- **Windows**: `%LOCALAPPDATA%\app.uniclipboard.desktop[-<profile>]\logs\`
 
 `[-<profile>]` means the directory gains a suffix such as `-dev` when `UC_PROFILE` is set.
+
+**Retention**: the last 7 daily files per role are kept; older files are pruned
+automatically on each start, so the log directory cannot grow without bound.
+Portable ("green") builds keep logs next to the executable under
+`<exe>/data/logs/`. The single source of truth for the location is
+`uc_app_paths::app_log_dir()`.
 
 ## Configuration
 
@@ -577,30 +589,32 @@ bun run tauri:dev
 
 **JSON log file**:
 
+Replace `gui` with `daemon` or `cli` to inspect another role's file.
+
 ```bash
 # macOS - view latest JSON log
-cat ~/Library/Application\ Support/app.uniclipboard.desktop/logs/uniclipboard.json.$(date +%Y-%m-%d) | jq .
+cat ~/Library/Logs/app.uniclipboard.desktop/uniclipboard-gui.json.$(date +%Y-%m-%d) | jq .
 
 # macOS - follow live
-tail -f ~/Library/Application\ Support/app.uniclipboard.desktop/logs/uniclipboard.json.$(date +%Y-%m-%d)
+tail -f ~/Library/Logs/app.uniclipboard.desktop/uniclipboard-gui.json.$(date +%Y-%m-%d)
 
 # Linux
-tail -f ~/.local/share/app.uniclipboard.desktop/logs/uniclipboard.json.$(date +%Y-%m-%d)
+tail -f ~/.local/state/app.uniclipboard.desktop/logs/uniclipboard-gui.json.$(date +%Y-%m-%d)
 
 # Windows (PowerShell)
-Get-Content "$env:LOCALAPPDATA\app.uniclipboard.desktop\logs\uniclipboard.json.$(Get-Date -Format yyyy-MM-dd)" -Wait
+Get-Content "$env:LOCALAPPDATA\app.uniclipboard.desktop\logs\uniclipboard-gui.json.$(Get-Date -Format yyyy-MM-dd)" -Wait
 ```
 
 **Filter JSON logs for errors**:
 
 ```bash
-cat ~/Library/Application\ Support/app.uniclipboard.desktop/logs/uniclipboard.json.$(date +%Y-%m-%d) | jq 'select(.level == "ERROR")'
+cat ~/Library/Logs/app.uniclipboard.desktop/uniclipboard-gui.json.$(date +%Y-%m-%d) | jq 'select(.level == "ERROR")'
 ```
 
 **View last 100 lines**:
 
 ```bash
-tail -n 100 ~/Library/Application\ Support/app.uniclipboard.desktop/logs/uniclipboard.json.$(date +%Y-%m-%d)
+tail -n 100 ~/Library/Logs/app.uniclipboard.desktop/uniclipboard-gui.json.$(date +%Y-%m-%d)
 ```
 
 ## Testing
@@ -652,7 +666,7 @@ cd src-tauri && cargo test --package uc-tauri -- bootstrap::tracing
 ### JSON log file not created
 
 1. Check app has write permissions to the log directory
-2. Verify the directory exists: `ls ~/Library/Application\ Support/app.uniclipboard.desktop/logs/` (macOS)
+2. Verify the directory exists: `ls ~/Library/Logs/app.uniclipboard.desktop/` (macOS)
 3. Check `init_tracing_subscriber()` completed without error (look for "Tracing initialized" in console)
 4. Ensure `UC_LOG_PROFILE` is a valid value (or unset for default)
 

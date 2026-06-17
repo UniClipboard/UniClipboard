@@ -96,12 +96,19 @@ Then selectively read:
 - `src-tauri/AGENTS.md` for Tauri packaging specifics
 - `apps/cli/AGENTS.md` for `uniclip` CLI-local rules
 
-Log file locations for the current desktop app naming:
-- macOS: `~/Library/Application Support/app.uniclipboard.desktop[-<profile>]/logs/`
-- Linux: `~/.local/share/app.uniclipboard.desktop[-<profile>]/logs/`
+Log file locations (platform-conventional, separate from the data root; single
+source of truth is `uc_app_paths::app_log_dir()`):
+- macOS: `~/Library/Logs/app.uniclipboard.desktop[-<profile>]/`
+- Linux: `~/.local/state/app.uniclipboard.desktop[-<profile>]/logs/`
 - Windows: `%LOCALAPPDATA%\\app.uniclipboard.desktop[-<profile>]\\logs\\`
 
-Do not assume the older `uniclipboard` root is current. Current code resolves data/logs under `app.uniclipboard.desktop`, with an optional `UC_PROFILE` suffix such as `-dev`.
+Per-role files (`uniclipboard-{gui,daemon,cli}.json.<date>`), daily rotation,
+7-day retention (older files pruned on start). Portable builds keep logs under
+`<exe>/data/logs/`.
+
+Do not assume the older `uniclipboard` root is current, and note logs are no
+longer under the data root's `logs/` subdir on macOS/Linux. The app dir name is
+`app.uniclipboard.desktop`, with an optional `UC_PROFILE` suffix such as `-dev`.
 
 Use when:
 - entering an unfamiliar subsystem

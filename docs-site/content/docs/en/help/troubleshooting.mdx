@@ -402,17 +402,19 @@ If a problem is hard to reproduce, enable verbose logging first
 (Settings → General → **Debug mode**, or `uniclip debug on`), reproduce,
 then export. Turn it back off and restart afterwards.
 
-If you'd rather grab the files by hand, logs live in a `logs/`
-subdirectory next to the encrypted history:
+If you'd rather grab the files by hand, logs live in each platform's
+conventional log location (separate from the encrypted history). Only the
+last 7 days are kept per process; older files are removed automatically:
 
-| Platform | Path                                                           |
-| -------- | -------------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/app.uniclipboard.desktop/logs/` |
-| Linux    | `~/.local/share/app.uniclipboard.desktop/logs/`                |
-| Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\`                |
+| Platform | Path                                                  |
+| -------- | ----------------------------------------------------- |
+| macOS    | `~/Library/Logs/app.uniclipboard.desktop/`            |
+| Linux    | `~/.local/state/app.uniclipboard.desktop/logs/`       |
+| Windows  | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\`       |
 
-With `UC_PROFILE` set, the directory carries a suffix
-(`app.uniclipboard.desktop-dev`). See
+Each process writes its own file: `uniclipboard-gui`,
+`uniclipboard-daemon`, or `uniclipboard-cli`. With `UC_PROFILE` set, the
+directory carries a suffix (`app.uniclipboard.desktop-dev`). See
 [Install — Where data lives](../getting-started/install#where-data-lives).
 
 Reproduce while capturing — much better than digging through old logs:

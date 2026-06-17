@@ -282,11 +282,11 @@ GUI、daemon、CLI 日志打成一个 zip 放到下载目录。
 
 如果你更想手动拿文件，日志写在各平台约定的日志目录下（已和加密历史分开存放）。每种进程只保留最近 7 天，更早的会在启动时自动清理：
 
-| 平台    | 路径                                              |
-| ------- | ------------------------------------------------- |
-| macOS   | `~/Library/Logs/app.uniclipboard.desktop/`        |
-| Linux   | `~/.local/state/app.uniclipboard.desktop/logs/`   |
-| Windows | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\`   |
+| 平台    | 路径                                            |
+| ------- | ----------------------------------------------- |
+| macOS   | `~/Library/Logs/app.uniclipboard.desktop/`      |
+| Linux   | `~/.local/state/app.uniclipboard.desktop/logs/` |
+| Windows | `%LOCALAPPDATA%\app.uniclipboard.desktop\logs\` |
 
 每种进程各写各的文件：`uniclipboard-gui`、`uniclipboard-daemon`、`uniclipboard-cli`。带 `UC_PROFILE` 时目录后会有后缀（如 `app.uniclipboard.desktop-dev`）。详见 [安装 — 数据存储位置](../getting-started/install#数据存储位置)。
 

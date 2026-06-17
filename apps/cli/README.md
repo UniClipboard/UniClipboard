@@ -56,7 +56,7 @@ cargo build -p uc-cli
 uniclip get                      # 取最新一条可用条目
 uniclip get --type image         # 取最新一张图片
 uniclip get --type file -o ~/in  # 取最新一个文件并落地到 ~/in
-uniclip get --id <ENTRY-ID>      # 取指定条目（id 来自 search query）
+uniclip get --id <ENTRY-ID>      # 取指定条目（id 来自 uniclip search）
 uniclip get --list -n 20         # 仅列出最近 20 条，不取回
 ```
 

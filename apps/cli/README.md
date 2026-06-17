@@ -80,16 +80,16 @@ path=$(uniclip get --type image)   # 落地并拿到路径
 ## 搜索命令
 
 ```bash
+uniclip search "keyword"
 uniclip search status
 uniclip search rebuild
-uniclip search query "keyword"
 ```
 
-`search query` 支持内容类型、文件扩展名、时间范围、分页和详细输出：
+查询直接跟在 `search` 后面，支持内容类型、文件扩展名、时间范围、分页和详细输出：
 
 ```bash
-uniclip search query "report" --type text --ext md --limit 20 --detailed
-uniclip search query "report" --from-ms 1710000000000 --to-ms 1710100000000
+uniclip search "report" --type text --ext md --limit 20 --detailed
+uniclip search "report" --from-ms 1710000000000 --to-ms 1710100000000
 ```
 
 `search rebuild` 是同步命令，完成后才返回。

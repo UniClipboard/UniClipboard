@@ -1,108 +1,96 @@
-//! Search 命令:通过 daemon 查询、查看状态、触发重建本地索引。
+//! Search command: query the index, inspect status, or trigger a rebuild via the daemon.
 
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 use serde::Serialize;
 
-use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+use crate::commands::app_session::connect_with_lease;
 use crate::exit_codes;
+use crate::output;
 use crate::ui;
 
-use uc_daemon_client::{DaemonClientContext, DaemonRequestError, SearchQueryRequest};
+use uc_daemon_client::{DaemonRequestError, SearchQueryRequest};
 use uc_daemon_contract::api::dto::search::{
     SearchQueryResultDto, SearchResultDto, SearchStatusData,
 };
 
+/// Query arguments accepted directly on `uniclip search <query>`.
+#[derive(Args, Debug)]
+pub struct SearchQueryArgs {
+    /// Free-text query string
+    query: Option<String>,
+    /// Boolean operator: "and" or "or"
+    #[arg(long)]
+    operator: Option<String>,
+    /// Time preset: today, yesterday, last_7d, last_30d
+    #[arg(long = "time-preset")]
+    time_preset: Option<String>,
+    /// Start of absolute time range, in milliseconds since epoch
+    #[arg(long = "from-ms")]
+    from_ms: Option<i64>,
+    /// End of absolute time range, in milliseconds since epoch
+    #[arg(long = "to-ms")]
+    to_ms: Option<i64>,
+    /// Filter by content type (text, html, link, file, image, other); repeatable
+    #[arg(long = "type")]
+    content_types: Vec<String>,
+    /// Filter by file extension, for example md or txt; repeatable
+    #[arg(long = "ext")]
+    extensions: Vec<String>,
+    /// Maximum results to return
+    #[arg(long, default_value_t = 50)]
+    limit: u32,
+    /// Result offset for pagination
+    #[arg(long, default_value_t = 0)]
+    offset: u32,
+    /// Show detailed metadata for each result
+    #[arg(long)]
+    detailed: bool,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum SearchCommands {
-    /// Query the search index
-    Query {
-        /// Free-text query string
-        query: String,
-        /// Boolean operator: "and" or "or"
-        #[arg(long)]
-        operator: Option<String>,
-        /// Time preset: today, yesterday, last_7d, last_30d
-        #[arg(long = "time-preset")]
-        time_preset: Option<String>,
-        /// Start of absolute time range, in milliseconds since epoch
-        #[arg(long = "from-ms")]
-        from_ms: Option<i64>,
-        /// End of absolute time range, in milliseconds since epoch
-        #[arg(long = "to-ms")]
-        to_ms: Option<i64>,
-        /// Filter by content type (text, html, link, file, image, other); repeatable
-        #[arg(long = "type")]
-        content_types: Vec<String>,
-        /// Filter by file extension, for example md or txt; repeatable
-        #[arg(long = "ext")]
-        extensions: Vec<String>,
-        /// Maximum results to return
-        #[arg(long, default_value_t = 50)]
-        limit: u32,
-        /// Result offset for pagination
-        #[arg(long, default_value_t = 0)]
-        offset: u32,
-        /// Show detailed metadata for each result
-        #[arg(long)]
-        detailed: bool,
-    },
     /// Show search index status
     Status,
     /// Trigger a search index rebuild on the daemon
     Rebuild,
 }
 
-pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
-    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
-        Ok(s) => s,
+pub async fn run(
+    query: SearchQueryArgs,
+    subcommand: Option<SearchCommands>,
+    json: bool,
+    verbose: bool,
+) -> i32 {
+    let (_lease, ctx) = match connect_with_lease(verbose).await {
+        Ok(pair) => pair,
         Err(code) => return code,
-    };
-
-    let _lease = match service.hold_control_lease().await {
-        Ok(guard) => guard,
-        Err(err) => {
-            ui::error(&format!("Failed to hold daemon session lease: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-
-    let ctx = match DaemonClientContext::from_env() {
-        Ok(ctx) => ctx,
-        Err(err) => {
-            ui::error(&format!("Failed to connect to daemon: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
     };
     let search = ctx.search_client();
 
     match subcommand {
-        SearchCommands::Query {
-            query,
-            operator,
-            time_preset,
-            from_ms,
-            to_ms,
-            content_types,
-            extensions,
-            limit,
-            offset,
-            detailed,
-        } => {
-            if from_ms.is_some() != to_ms.is_some() {
+        None => {
+            let Some(query_string) = query.query else {
+                ui::error(
+                    "Missing search query. Run `uniclip search <query>`, or `search status` / `search rebuild`.",
+                );
+                return exit_codes::EXIT_ERROR;
+            };
+
+            if query.from_ms.is_some() != query.to_ms.is_some() {
                 ui::error("--from-ms and --to-ms must be provided together");
                 return exit_codes::EXIT_ERROR;
             }
 
             let req = SearchQueryRequest {
-                query,
-                operator,
-                time_preset,
-                from_ms,
-                to_ms,
-                content_types,
-                extensions,
-                limit,
-                offset,
+                query: query_string,
+                operator: query.operator,
+                time_preset: query.time_preset,
+                from_ms: query.from_ms,
+                to_ms: query.to_ms,
+                content_types: query.content_types,
+                extensions: query.extensions,
+                limit: query.limit,
+                offset: query.offset,
             };
 
             let page = match search.query(req).await {
@@ -111,47 +99,31 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
             };
 
             if json {
-                let dto = SearchPageJsonDto::from(&page);
-                match serde_json::to_string_pretty(&dto) {
-                    Ok(value) => println!("{value}"),
-                    Err(err) => {
-                        ui::error(&format!("Failed to serialize search query response: {err}"));
-                        return exit_codes::EXIT_ERROR;
-                    }
-                }
+                output::emit_json(&SearchPageJsonDto::from(&page), "search query response")
             } else {
-                println!("{}", render_query_output(&page, detailed));
+                println!("{}", render_query_output(&page, query.detailed));
+                exit_codes::EXIT_SUCCESS
             }
-
-            exit_codes::EXIT_SUCCESS
         }
-        SearchCommands::Status => {
+        Some(SearchCommands::Status) => {
             let status = match search.status().await {
                 Ok(status) => status,
                 Err(err) => return render_search_error("get search status", err, json),
             };
 
             if json {
-                let dto = SearchStatusJsonDto::from(&status);
-                match serde_json::to_string_pretty(&dto) {
-                    Ok(value) => println!("{value}"),
-                    Err(err) => {
-                        ui::error(&format!(
-                            "Failed to serialize search status response: {err}"
-                        ));
-                        return exit_codes::EXIT_ERROR;
-                    }
-                }
+                output::emit_json(
+                    &SearchStatusJsonDto::from(&status),
+                    "search status response",
+                )
             } else {
                 println!("{}", render_status_output(&status));
+                exit_codes::EXIT_SUCCESS
             }
-
-            exit_codes::EXIT_SUCCESS
         }
-        SearchCommands::Rebuild => {
-            match search.rebuild().await {
-                Ok(_) => {}
-                Err(err) => return render_search_error("rebuild search index", err, json),
+        Some(SearchCommands::Rebuild) => {
+            if let Err(err) = search.rebuild().await {
+                return render_search_error("rebuild search index", err, json);
             }
 
             let status = match search.status().await {
@@ -160,25 +132,18 @@ pub async fn run(subcommand: SearchCommands, json: bool, verbose: bool) -> i32 {
             };
 
             if json {
-                let dto = SearchRebuildJsonDto {
-                    accepted: true,
-                    status: SearchStatusJsonDto::from(&status),
-                };
-                match serde_json::to_string_pretty(&dto) {
-                    Ok(value) => println!("{value}"),
-                    Err(err) => {
-                        ui::error(&format!(
-                            "Failed to serialize search rebuild response: {err}"
-                        ));
-                        return exit_codes::EXIT_ERROR;
-                    }
-                }
+                output::emit_json(
+                    &SearchRebuildJsonDto {
+                        accepted: true,
+                        status: SearchStatusJsonDto::from(&status),
+                    },
+                    "search rebuild response",
+                )
             } else {
                 println!("Search rebuild accepted (runs in background).");
                 println!("{}", render_status_output(&status));
+                exit_codes::EXIT_SUCCESS
             }
-
-            exit_codes::EXIT_SUCCESS
         }
     }
 }

@@ -227,7 +227,7 @@ enum Commands {
     ///
     /// Selection (default: the newest usable entry):
     /// * `--type <image|file|text|link>` — newest entry of that kind.
-    /// * `--id <ENTRY-ID>` — a specific entry (see `uniclip search query`).
+    /// * `--id <ENTRY-ID>` — a specific entry (see `uniclip search`).
     /// * `--list` — list recent entries instead of materializing one.
     ///
     /// Output: text/link content prints to stdout; image/file bytes are
@@ -242,7 +242,7 @@ enum Commands {
         /// Restrict selection to the newest entry of this kind.
         #[arg(long = "type", value_name = "KIND", value_enum)]
         kind: Option<commands::get::GetKind>,
-        /// Select a specific entry by id (from `uniclip search query`).
+        /// Select a specific entry by id (from `uniclip search`).
         #[arg(long, value_name = "ENTRY-ID", conflicts_with = "kind")]
         id: Option<String>,
         /// List recent entries instead of materializing one.
@@ -263,10 +263,14 @@ enum Commands {
         #[command(subcommand)]
         subcommand: commands::blob::BlobCommands,
     },
-    /// Search clipboard history (query or inspect search availability)
+    /// Search clipboard history. Provide a query to search, or use the
+    /// `status` / `rebuild` subcommands to inspect or maintain the index.
+    #[command(args_conflicts_with_subcommands = true)]
     Search {
+        #[command(flatten)]
+        query: commands::search::SearchQueryArgs,
         #[command(subcommand)]
-        subcommand: commands::search::SearchCommands,
+        subcommand: Option<commands::search::SearchCommands>,
     },
     /// Inspect or advance the upgrade-detection cursor (manual verification
     /// for the P1 thin upgrade module).
@@ -433,8 +437,8 @@ fn main() -> anyhow::Result<()> {
             Commands::Blob { subcommand } => {
                 commands::blob::run(subcommand, cli.json, cli.verbose).await
             }
-            Commands::Search { subcommand } => {
-                commands::search::run(subcommand, cli.json, cli.verbose).await
+            Commands::Search { query, subcommand } => {
+                commands::search::run(query, subcommand, cli.json, cli.verbose).await
             }
             Commands::Upgrade { subcommand } => {
                 commands::upgrade::run(subcommand, cli.json, cli.verbose).await
@@ -459,7 +463,7 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
+    use super::{commands, Cli, Commands};
     use clap::{CommandFactory, Parser};
 
     #[test]
@@ -499,6 +503,33 @@ mod tests {
             result.is_err(),
             "standalone CLI search rebuild must be synchronous and reject --no-wait"
         );
+    }
+
+    #[test]
+    fn search_query_is_flattened_to_top_level() {
+        // `search <query>` no longer requires the `query` subcommand.
+        let cli = Cli::try_parse_from(["uniclip", "search", "report", "--type", "text"])
+            .expect("flattened search query must parse");
+        let Some(Commands::Search { subcommand, .. }) = cli.command else {
+            panic!("expected Search command");
+        };
+        assert!(
+            subcommand.is_none(),
+            "a bare query must not be parsed as a subcommand"
+        );
+    }
+
+    #[test]
+    fn search_status_still_parses_as_subcommand() {
+        let cli =
+            Cli::try_parse_from(["uniclip", "search", "status"]).expect("search status must parse");
+        let Some(Commands::Search { subcommand, .. }) = cli.command else {
+            panic!("expected Search command");
+        };
+        assert!(matches!(
+            subcommand,
+            Some(commands::search::SearchCommands::Status)
+        ));
     }
 
     #[test]

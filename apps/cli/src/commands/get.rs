@@ -80,7 +80,7 @@ impl Category {
 pub struct GetArgs {
     /// Restrict selection to the newest entry of this kind.
     pub kind: Option<GetKind>,
-    /// Select a specific entry by id (from `uniclip search query`).
+    /// Select a specific entry by id (from `uniclip search`).
     pub id: Option<String>,
     /// List recent entries instead of materializing one.
     pub list: bool,
@@ -151,7 +151,7 @@ fn select_target<'a>(
             None => {
                 ui::error(&format!(
                     "No entry with id {} in the latest {} entries. It may be older — \
-                     raise --limit, or find it with `uniclip search query`.",
+                     raise --limit, or find it with `uniclip search`.",
                     short_hash(id),
                     entries.len()
                 ));

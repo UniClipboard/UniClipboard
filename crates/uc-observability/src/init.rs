@@ -27,6 +27,11 @@ use tracing_subscriber::{fmt, registry};
 use crate::format::FlatJsonFormat;
 use crate::profile::LogProfile;
 
+/// Number of daily rolling log files to keep per role. Older files are pruned
+/// automatically on initialization, so the log directory cannot grow without
+/// bound.
+const LOG_RETENTION_DAYS: usize = 7;
+
 /// Build the console (pretty) layer with per-layer filtering.
 ///
 /// Returns a layer suitable for composing with other layers on a subscriber.
@@ -83,9 +88,17 @@ where
     let json_filter = profile.json_filter();
 
     // ADR-008 D20 (P4-0): per-role file name so the GUI host and the detached
-    // `uniclipd` never append to the same rolling log file.
-    let file_name = format!("{}.json", crate::scope::role_log_file_stem());
-    let daily_appender = tracing_appender::rolling::daily(logs_dir, file_name);
+    // `uniclipd` never append to the same rolling log file. The `.json` is part
+    // of the *prefix* (no suffix is set), so the rolled files keep the
+    // `uniclipboard-<role>.json.<date>` shape — the Builder appends `.<date>`.
+    // `max_files` prunes everything older than the last `LOG_RETENTION_DAYS`.
+    let filename_prefix = format!("{}.json", crate::scope::role_log_file_stem());
+    let daily_appender = tracing_appender::rolling::RollingFileAppender::builder()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix(filename_prefix)
+        .max_log_files(LOG_RETENTION_DAYS)
+        .build(logs_dir)
+        .map_err(|err| anyhow::anyhow!("failed to build rolling log appender: {err}"))?;
     let (non_blocking, guard) = tracing_appender::non_blocking(daily_appender);
 
     let json_layer = fmt::layer()

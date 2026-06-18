@@ -116,16 +116,6 @@ pub(crate) async fn build_facade_with_seeded_device(
         async fn delete(&self, _: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
             Ok(false)
         }
-        async fn record_activity(
-            &self,
-            _: &MobileDeviceId,
-            _: i64,
-            _: Option<String>,
-            _: Option<String>,
-            _: Option<String>,
-        ) -> Result<(), MobileDeviceError> {
-            Ok(())
-        }
         async fn update_mobile_device(
             &self,
             updated: &MobileDevice,

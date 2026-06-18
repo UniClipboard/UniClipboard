@@ -64,14 +64,6 @@ mockall::mock! {
         ) -> Result<Option<MobileDevice>, MobileDeviceError>;
         async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
         async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
-        async fn record_activity(
-            &self,
-            device_id: &MobileDeviceId,
-            last_seen_at_ms: i64,
-            last_seen_ip: Option<String>,
-            reported_name: Option<String>,
-            reported_os: Option<String>,
-        ) -> Result<(), MobileDeviceError>;
         async fn update_mobile_device(
             &self,
             updated: &MobileDevice,

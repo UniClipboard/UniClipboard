@@ -21,9 +21,8 @@
 //!    本 use case 不在外面做"先 username 比对再说"的提前短路, 让 hasher
 //!    那 ~50ms 成为统一时长 ceiling, 哪怕命中"用户名不存在"也跑一次假
 //!    验证(实现见下文)。
-//! 4. **不更新 last_seen_*** —— 那是上层路由 happy path 后再决定是否调
-//!    `record_activity` 的事(给路由更细的控制粒度: 401 不应当 last_seen,
-//!    成功的请求才应当)。
+//! 4. **不更新 last_seen_*** —— 鉴权 use case 只回答"凭据是否合法",
+//!    活跃信息的回写不属于本职责。
 
 use std::sync::Arc;
 
@@ -46,9 +45,7 @@ pub struct AuthenticateBasicAuthInput {
 
 /// 鉴权成功的产物:已被仓储确认存在并通过密码校验的 device。
 ///
-/// 上层路由拿到它后, 通常会:
-///   1. 把 `device` 塞进 axum extension 供后续 handler 用;
-///   2. 调 facade 的 record_activity 异步更新 last_seen_*。
+/// 上层路由拿到它后, 通常会把 `device` 塞进 axum extension 供后续 handler 用。
 #[derive(Debug, Clone)]
 pub struct AuthenticatedDevice {
     pub device: MobileDevice,

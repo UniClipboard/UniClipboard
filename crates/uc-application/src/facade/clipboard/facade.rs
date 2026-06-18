@@ -691,14 +691,6 @@ mod tests {
                 &self,
                 device_id: &uc_core::mobile_sync::MobileDeviceId,
             ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError>;
-            async fn record_activity(
-                &self,
-                device_id: &uc_core::mobile_sync::MobileDeviceId,
-                last_seen_at_ms: i64,
-                last_seen_ip: Option<String>,
-                reported_name: Option<String>,
-                reported_os: Option<String>,
-            ) -> Result<(), uc_core::mobile_sync::MobileDeviceError>;
             async fn update_mobile_device(
                 &self,
                 updated: &uc_core::mobile_sync::MobileDevice,

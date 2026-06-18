@@ -103,20 +103,6 @@ pub trait MobileDeviceRepositoryPort: Send + Sync {
     /// 不存在(撤销操作幂等)。
     async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
 
-    /// 鉴权链路成功后回写最近活跃信息 —— 仅运维 / UI 用。失败不应阻塞业
-    /// 务请求,调用方决定是否吞错。
-    ///
-    /// `reported_name` / `reported_os` 在 SyncClipboard 协议下永远是 `None`
-    /// (shortcut 不上报);保留参数以备 v2 ClipboardAuto 客户端扩展。
-    async fn record_activity(
-        &self,
-        device_id: &MobileDeviceId,
-        last_seen_at_ms: i64,
-        last_seen_ip: Option<String>,
-        reported_name: Option<String>,
-        reported_os: Option<String>,
-    ) -> Result<(), MobileDeviceError>;
-
     /// Replace the editable fields of one mobile device in a single write.
     ///
     /// Used by the device-management flow: label edits may keep credentials as-is,

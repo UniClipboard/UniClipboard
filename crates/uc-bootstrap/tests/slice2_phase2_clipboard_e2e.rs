@@ -353,16 +353,6 @@ impl uc_core::ports::MobileDeviceRepositoryPort for NoopMobileDeviceRepo {
     ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError> {
         Ok(false)
     }
-    async fn record_activity(
-        &self,
-        _device_id: &uc_core::mobile_sync::MobileDeviceId,
-        _last_seen_at_ms: i64,
-        _last_seen_ip: Option<String>,
-        _reported_name: Option<String>,
-        _reported_os: Option<String>,
-    ) -> Result<(), uc_core::mobile_sync::MobileDeviceError> {
-        Ok(())
-    }
     async fn update_mobile_device(
         &self,
         _updated: &uc_core::mobile_sync::MobileDevice,

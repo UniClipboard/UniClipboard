@@ -710,16 +710,6 @@ mod tests {
             devs.retain(|d| d.device_id != *id);
             Ok(devs.len() < before)
         }
-        async fn record_activity(
-            &self,
-            _: &MobileDeviceId,
-            _: i64,
-            _: Option<String>,
-            _: Option<String>,
-            _: Option<String>,
-        ) -> Result<(), MobileDeviceError> {
-            Ok(())
-        }
         async fn update_mobile_device(
             &self,
             updated: &MobileDevice,

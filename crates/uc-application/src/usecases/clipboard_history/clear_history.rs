@@ -3,10 +3,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{info, info_span, warn, Instrument};
 use uc_core::ports::blob::BlobTransferPort;
-use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort, SearchIndexPort,
+use uc_core::ports::clipboard::{
+    DeleteClipboardEntryPort, GetClipboardEntryPort, ListClipboardEntriesPort,
+    ListRepresentationsForEventPort,
 };
+use uc_core::ports::{ClipboardEventWriterPort, ClipboardSelectionRepositoryPort, SearchIndexPort};
 
 use super::delete_entry::DeleteClipboardEntryUseCase;
 
@@ -19,10 +20,12 @@ pub(crate) struct ClearHistoryResult {
 /// Use case for clearing all clipboard history entries via paginated listing
 /// and per-entry deletion.
 pub(crate) struct ClearClipboardHistoryUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    list_entries: Arc<dyn ListClipboardEntriesPort>,
+    get_entry: Arc<dyn GetClipboardEntryPort>,
+    delete_entry: Arc<dyn DeleteClipboardEntryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     event_writer: Arc<dyn ClipboardEventWriterPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     file_cache_dir: Option<PathBuf>,
     search_index: Option<Arc<dyn SearchIndexPort>>,
     blob_transfer: Option<Arc<dyn BlobTransferPort>>,
@@ -32,13 +35,17 @@ const BATCH_SIZE: usize = 1000;
 
 impl ClearClipboardHistoryUseCase {
     pub(crate) fn from_ports(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        list_entries: Arc<dyn ListClipboardEntriesPort>,
+        get_entry: Arc<dyn GetClipboardEntryPort>,
+        delete_entry: Arc<dyn DeleteClipboardEntryPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         event_writer: Arc<dyn ClipboardEventWriterPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     ) -> Self {
         Self {
-            entry_repo,
+            list_entries,
+            get_entry,
+            delete_entry,
             selection_repo,
             event_writer,
             representation_repo,
@@ -84,7 +91,8 @@ impl ClearClipboardHistoryUseCase {
         let mut failed_entries: Vec<(String, String)> = Vec::new();
 
         let mut delete_uc = DeleteClipboardEntryUseCase::from_ports(
-            self.entry_repo.clone(),
+            self.get_entry.clone(),
+            self.delete_entry.clone(),
             self.selection_repo.clone(),
             self.event_writer.clone(),
             self.representation_repo.clone(),
@@ -140,7 +148,7 @@ impl ClearClipboardHistoryUseCase {
 
         loop {
             let batch = self
-                .entry_repo
+                .list_entries
                 .list_entries(BATCH_SIZE, offset)
                 .instrument(info_span!(
                     "list_entries_batch",

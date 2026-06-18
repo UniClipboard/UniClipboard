@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use uc_core::ids::EntryId;
-use uc_core::ports::ClipboardEntryRepositoryPort;
+use uc_core::ports::clipboard::GetClipboardEntryPort;
 
 /// Toggle favorite state for a clipboard entry.
 ///
 /// 切换剪贴板条目的收藏状态。
 pub(crate) struct ToggleFavoriteClipboardEntryUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    entry_repo: Arc<dyn GetClipboardEntryPort>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -17,7 +17,7 @@ pub(crate) enum ToggleFavoriteError {
 }
 
 impl ToggleFavoriteClipboardEntryUseCase {
-    pub(crate) fn new(entry_repo: Arc<dyn ClipboardEntryRepositoryPort>) -> Self {
+    pub(crate) fn new(entry_repo: Arc<dyn GetClipboardEntryPort>) -> Self {
         Self { entry_repo }
     }
 

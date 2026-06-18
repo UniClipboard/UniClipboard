@@ -3,18 +3,16 @@ use std::sync::Arc;
 use uc_core::{
     ids::EntryId,
     ports::clipboard::ResolvedClipboardPayload,
-    ports::{
-        ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
-        ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
-    },
+    ports::clipboard::{GetClipboardEntryPort, GetRepresentationPort},
+    ports::{ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort},
     BlobId,
 };
 
 /// Get clipboard entry resource metadata (blob reference only).
 pub(crate) struct GetEntryResourceUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    entry_repo: Arc<dyn GetClipboardEntryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn GetRepresentationPort>,
     payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
 }
 
@@ -29,9 +27,9 @@ pub(crate) struct EntryResourceResult {
 
 impl GetEntryResourceUseCase {
     pub(crate) fn new(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        entry_repo: Arc<dyn GetClipboardEntryPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn GetRepresentationPort>,
         payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     ) -> Self {
         Self {

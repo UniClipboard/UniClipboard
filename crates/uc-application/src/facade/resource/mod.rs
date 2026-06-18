@@ -4,16 +4,18 @@ use tracing::instrument;
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::MimeType;
 use uc_core::ids::{BlobId, EntryId, RepresentationId};
-use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort, ThumbnailRepositoryPort,
+use uc_core::ports::clipboard::{
+    GetClipboardEntryPort, GetRepresentationByBlobIdPort, ListRepresentationsForEventPort,
+    ThumbnailRepositoryPort,
 };
 
 #[derive(Clone)]
 pub struct ResourceFacadeDeps {
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub representation_by_blob_id: Arc<dyn GetRepresentationByBlobIdPort>,
+    pub representations_for_event: Arc<dyn ListRepresentationsForEventPort>,
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
-    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +61,7 @@ impl ResourceFacade {
         let blob_id = BlobId::from(blob_id);
         let representation = self
             .deps
-            .representation_repo
+            .representation_by_blob_id
             .get_representation_by_blob_id(&blob_id)
             .await
             .map_err(|err| ResourceFacadeError::Internal(err.to_string()))?
@@ -149,7 +151,7 @@ impl ResourceFacade {
 
         let representations = self
             .deps
-            .representation_repo
+            .representations_for_event
             .get_representations_for_event(&entry.event_id)
             .await
             .map_err(|err| ResourceFacadeError::Internal(err.to_string()))?;
@@ -245,10 +247,9 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
     use uc_core::clipboard::{
-        PayloadAvailability, PersistedClipboardRepresentation, ThumbnailMetadata,
+        ClipboardRepositoryError, PersistedClipboardRepresentation, ThumbnailMetadata,
     };
     use uc_core::ids::{EventId, FormatId};
-    use uc_core::ports::ProcessingUpdateOutcome;
     use uc_core::ClipboardEntry;
 
     #[derive(Default)]
@@ -258,26 +259,11 @@ mod tests {
     }
 
     #[async_trait]
-    impl ClipboardRepresentationRepositoryPort for FakeRepresentationRepo {
-        async fn get_representation(
-            &self,
-            _event_id: &EventId,
-            _representation_id: &RepresentationId,
-        ) -> Result<Option<PersistedClipboardRepresentation>> {
-            Ok(None)
-        }
-
-        async fn get_representation_by_id(
-            &self,
-            _representation_id: &RepresentationId,
-        ) -> Result<Option<PersistedClipboardRepresentation>> {
-            Ok(None)
-        }
-
+    impl GetRepresentationByBlobIdPort for FakeRepresentationRepo {
         async fn get_representation_by_blob_id(
             &self,
             blob_id: &BlobId,
-        ) -> Result<Option<PersistedClipboardRepresentation>> {
+        ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
             Ok(self
                 .by_blob_id
                 .lock()
@@ -285,38 +271,14 @@ mod tests {
                 .get(blob_id)
                 .cloned())
         }
+    }
 
-        async fn update_blob_id(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> Result<()> {
-            Ok(())
-        }
-
-        async fn update_blob_id_if_none(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> Result<bool> {
-            Ok(true)
-        }
-
-        async fn update_processing_result(
-            &self,
-            _rep_id: &RepresentationId,
-            _expected_states: &[PayloadAvailability],
-            _blob_id: Option<&BlobId>,
-            _new_state: PayloadAvailability,
-            _last_error: Option<&str>,
-        ) -> Result<ProcessingUpdateOutcome> {
-            Ok(ProcessingUpdateOutcome::NotFound)
-        }
-
+    #[async_trait]
+    impl ListRepresentationsForEventPort for FakeRepresentationRepo {
         async fn get_representations_for_event(
             &self,
             event_id: &EventId,
-        ) -> Result<Vec<PersistedClipboardRepresentation>> {
+        ) -> Result<Vec<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
             Ok(self
                 .by_event_id
                 .lock()
@@ -333,30 +295,17 @@ mod tests {
     }
 
     #[async_trait]
-    impl ClipboardEntryRepositoryPort for FakeEntryRepo {
-        async fn save_entry_and_selection(
+    impl GetClipboardEntryPort for FakeEntryRepo {
+        async fn get_entry(
             &self,
-            _entry: &ClipboardEntry,
-            _selection: &uc_core::ClipboardSelectionDecision,
-        ) -> Result<()> {
-            Ok(())
-        }
-
-        async fn get_entry(&self, entry_id: &EntryId) -> Result<Option<ClipboardEntry>> {
+            entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError> {
             Ok(self
                 .by_entry_id
                 .lock()
                 .expect("entry lock")
                 .get(entry_id)
                 .cloned())
-        }
-
-        async fn list_entries(&self, _limit: usize, _offset: usize) -> Result<Vec<ClipboardEntry>> {
-            Ok(vec![])
-        }
-
-        async fn delete_entry(&self, _entry_id: &EntryId) -> Result<()> {
-            Ok(())
         }
     }
 
@@ -429,7 +378,8 @@ mod tests {
         let blob_store = Arc::new(FakeBlobStore::default());
         let entry_repo = Arc::new(FakeEntryRepo::default());
         let facade = ResourceFacade::new(ResourceFacadeDeps {
-            representation_repo: representation_repo.clone(),
+            representation_by_blob_id: representation_repo.clone(),
+            representations_for_event: representation_repo.clone(),
             thumbnail_repo: thumbnail_repo.clone(),
             blob_store: blob_store.clone(),
             entry_repo: entry_repo.clone(),

@@ -6,13 +6,16 @@ use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::link_utils::extract_domain;
 use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
 use uc_core::ports::blob::BlobTransferPort;
-use uc_core::ports::clipboard::{ClipboardPayloadResolverPort, ThumbnailRepositoryPort};
+use uc_core::ports::clipboard::{
+    ClipboardPayloadResolverPort, SaveClipboardEntryPort, ThumbnailRepositoryPort,
+};
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::{
-    CacheFsPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
-    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, ClockPort,
+    CacheFsPort, ClipboardEventWriterPort, ClipboardSelectionRepositoryPort, ClockPort,
     DeviceIdentityPort, GetEntryTransferSummaryPort, SettingsPort,
 };
+
+use crate::deps::{ClipboardEntryPorts, ClipboardRepresentationPorts};
 use uc_core::{
     ClipboardEntry, ClipboardEvent, ClipboardSelection, ClipboardSelectionDecision, MimeType,
     ObservedClipboardRepresentation, PayloadAvailability, PersistedClipboardRepresentation,
@@ -122,9 +125,9 @@ pub enum ClipboardHistoryError {
 /// wiring deps and pass it once to `ClipboardHistoryFacade::new`. The facade
 /// then owns the use cases internally; no per-call gateway adapter is needed.
 pub struct ClipboardHistoryFacadeDeps {
-    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub entry_ports: ClipboardEntryPorts,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub representation_ports: ClipboardRepresentationPorts,
     pub event_writer: Arc<dyn ClipboardEventWriterPort>,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
@@ -161,7 +164,7 @@ pub struct ClipboardHistoryFacade {
     reconcile_uc: Option<ReconcileMissingFilesUseCase>,
     /// debug seed 路径需要的额外 ports，常态业务不直接消费。
     seed_event_writer: Arc<dyn ClipboardEventWriterPort>,
-    seed_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    seed_entry_repo: Arc<dyn SaveClipboardEntryPort>,
     seed_device_identity: Arc<dyn DeviceIdentityPort>,
     seed_clock: Arc<dyn ClockPort>,
 }
@@ -169,9 +172,9 @@ pub struct ClipboardHistoryFacade {
 impl ClipboardHistoryFacade {
     pub fn new(deps: ClipboardHistoryFacadeDeps) -> Self {
         let ClipboardHistoryFacadeDeps {
-            entry_repo,
+            entry_ports,
             selection_repo,
-            representation_repo,
+            representation_ports,
             event_writer,
             payload_resolver,
             blob_store,
@@ -185,10 +188,24 @@ impl ClipboardHistoryFacade {
             clock,
             cache_fs,
         } = deps;
+        let ClipboardEntryPorts {
+            get: entry_get,
+            list: entry_list,
+            save: entry_save,
+            touch: _entry_touch,
+            delete: entry_delete,
+            find_by_snapshot_hash: _entry_find,
+        } = entry_ports;
+        let ClipboardRepresentationPorts {
+            get: rep_get,
+            get_by_blob_id: _rep_get_by_blob_id,
+            list_for_event: rep_list_for_event,
+            update_processing_result: _rep_update,
+        } = representation_ports;
         // seed 路径要在主 use case 装配之后单独留一份 Arc 引用——其它字段
         // 都被 move 进各 use case 内部，不能在外面继续 clone。
         let seed_event_writer = Arc::clone(&event_writer);
-        let seed_entry_repo = Arc::clone(&entry_repo);
+        let seed_entry_repo = Arc::clone(&entry_save);
         let seed_device_identity = Arc::clone(&device_identity);
         let seed_clock = Arc::clone(&clock);
         // device_identity / clock 在常态 use case 里目前不消费，避免出现
@@ -198,35 +215,36 @@ impl ClipboardHistoryFacade {
         let _ = clock;
 
         let list_uc = ListClipboardEntryProjectionsUseCase::new(
-            entry_repo.clone(),
+            entry_list.clone(),
             selection_repo.clone(),
-            representation_repo.clone(),
+            rep_get.clone(),
             thumbnail_repo,
             file_transfer_repo,
         );
 
         let detail_uc = GetEntryDetailUseCase::new(
-            entry_repo.clone(),
+            entry_get.clone(),
             selection_repo.clone(),
-            representation_repo.clone(),
+            rep_get.clone(),
             blob_store,
             payload_resolver.clone(),
         );
 
         let resource_uc = GetEntryResourceUseCase::new(
-            entry_repo.clone(),
+            entry_get.clone(),
             selection_repo.clone(),
-            representation_repo.clone(),
+            rep_get.clone(),
             payload_resolver,
         );
 
-        let toggle_favorite_uc = ToggleFavoriteClipboardEntryUseCase::new(entry_repo.clone());
+        let toggle_favorite_uc = ToggleFavoriteClipboardEntryUseCase::new(entry_get.clone());
 
         let mut delete_uc = DeleteClipboardEntryUseCase::from_ports(
-            entry_repo.clone(),
+            entry_get.clone(),
+            entry_delete.clone(),
             selection_repo.clone(),
             event_writer.clone(),
-            representation_repo.clone(),
+            rep_list_for_event.clone(),
         );
         if let Some(dir) = file_cache_dir.clone() {
             delete_uc = delete_uc.with_file_cache_dir(dir);
@@ -239,10 +257,12 @@ impl ClipboardHistoryFacade {
         }
 
         let mut clear_uc = ClearClipboardHistoryUseCase::from_ports(
-            entry_repo.clone(),
+            entry_list.clone(),
+            entry_get.clone(),
+            entry_delete.clone(),
             selection_repo.clone(),
             event_writer.clone(),
-            representation_repo.clone(),
+            rep_list_for_event.clone(),
         );
         if let Some(dir) = file_cache_dir.clone() {
             clear_uc = clear_uc.with_file_cache_dir(dir);
@@ -264,10 +284,12 @@ impl ClipboardHistoryFacade {
             let mut uc = CleanupExpiredFilesUseCase::new(
                 settings,
                 dir,
-                entry_repo.clone(),
+                entry_list.clone(),
+                entry_get.clone(),
+                entry_delete.clone(),
                 selection_repo.clone(),
                 event_writer.clone(),
-                representation_repo.clone(),
+                rep_list_for_event.clone(),
                 cache_fs.clone(),
             );
             if let Some(idx) = search_index.clone() {
@@ -282,10 +304,12 @@ impl ClipboardHistoryFacade {
         let reconcile_uc = file_cache_dir.map(|dir| {
             let mut uc = ReconcileMissingFilesUseCase::new(
                 dir,
-                entry_repo,
+                entry_list,
+                entry_get,
+                entry_delete,
                 selection_repo,
                 event_writer,
-                representation_repo,
+                rep_list_for_event,
                 cache_fs,
             );
             if let Some(idx) = search_index {

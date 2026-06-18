@@ -43,10 +43,13 @@ use tracing::{info, info_span, warn, Instrument};
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::ids::EntryId;
 use uc_core::ports::blob::BlobTransferPort;
+use uc_core::ports::clipboard::{
+    DeleteClipboardEntryPort, GetClipboardEntryPort, ListClipboardEntriesPort,
+    ListRepresentationsForEventPort,
+};
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::{
-    CacheFsPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
-    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, SettingsPort,
+    CacheFsPort, ClipboardEventWriterPort, ClipboardSelectionRepositoryPort, SettingsPort,
 };
 
 use super::delete_entry::DeleteClipboardEntryUseCase;
@@ -75,10 +78,12 @@ const QUOTA_BASELINE_FILE: &str = ".cache-quota-baseline";
 pub(crate) struct CleanupExpiredFilesUseCase {
     settings: Arc<dyn SettingsPort>,
     file_cache_dir: PathBuf,
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    list_entries: Arc<dyn ListClipboardEntriesPort>,
+    get_entry: Arc<dyn GetClipboardEntryPort>,
+    delete_entry: Arc<dyn DeleteClipboardEntryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     event_writer: Arc<dyn ClipboardEventWriterPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     blob_transfer: Option<Arc<dyn BlobTransferPort>>,
     search_index: Option<Arc<dyn SearchIndexPort>>,
     /// Filesystem port — every on-disk access this use case makes (the TTL
@@ -88,19 +93,24 @@ pub(crate) struct CleanupExpiredFilesUseCase {
 }
 
 impl CleanupExpiredFilesUseCase {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         settings: Arc<dyn SettingsPort>,
         file_cache_dir: PathBuf,
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        list_entries: Arc<dyn ListClipboardEntriesPort>,
+        get_entry: Arc<dyn GetClipboardEntryPort>,
+        delete_entry: Arc<dyn DeleteClipboardEntryPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         event_writer: Arc<dyn ClipboardEventWriterPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn ListRepresentationsForEventPort>,
         cache_fs: Arc<dyn CacheFsPort>,
     ) -> Self {
         Self {
             settings,
             file_cache_dir,
-            entry_repo,
+            list_entries,
+            get_entry,
+            delete_entry,
             selection_repo,
             event_writer,
             representation_repo,
@@ -143,7 +153,8 @@ impl CleanupExpiredFilesUseCase {
         // entries this untags the blob; iroh-blobs GC reclaims the bytes on its
         // next sweep (see DeleteClipboardEntryUseCase).
         let mut delete_uc = DeleteClipboardEntryUseCase::from_ports(
-            self.entry_repo.clone(),
+            self.get_entry.clone(),
+            self.delete_entry.clone(),
             self.selection_repo.clone(),
             self.event_writer.clone(),
             self.representation_repo.clone(),
@@ -462,7 +473,7 @@ impl CleanupExpiredFilesUseCase {
 
         loop {
             let batch = self
-                .entry_repo
+                .list_entries
                 .list_entries(ENTRY_LIST_BATCH_SIZE, offset)
                 .await
                 .map_err(|e| anyhow::anyhow!("list entries for quota: {e}"))?;
@@ -530,7 +541,7 @@ impl CleanupExpiredFilesUseCase {
 
         loop {
             let batch = self
-                .entry_repo
+                .list_entries
                 .list_entries(ENTRY_LIST_BATCH_SIZE, offset)
                 .instrument(info_span!(
                     "list_entries_batch",

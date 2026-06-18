@@ -6,8 +6,8 @@ use tracing::{debug, warn};
 use uc_core::clipboard::link_utils::{is_all_urls, is_single_url, parse_uri_list};
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::network::protocol::MIME_IMAGE_PREFIX;
+use uc_core::ports::clipboard::{GetRepresentationPort, ListClipboardEntriesPort};
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
     ClipboardSelectionRepositoryPort, GetEntryTransferSummaryPort, ThumbnailRepositoryPort,
 };
 
@@ -50,9 +50,9 @@ pub(crate) enum ListProjectionsError {
 }
 
 pub(crate) struct ListClipboardEntryProjectionsUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    entry_repo: Arc<dyn ListClipboardEntriesPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn GetRepresentationPort>,
     thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
     max_limit: usize,
@@ -113,9 +113,9 @@ fn compute_file_sizes(inline_data: &[u8]) -> Vec<i64> {
 
 impl ListClipboardEntryProjectionsUseCase {
     pub(crate) fn new(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        entry_repo: Arc<dyn ListClipboardEntriesPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn GetRepresentationPort>,
         thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
         file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
     ) -> Self {

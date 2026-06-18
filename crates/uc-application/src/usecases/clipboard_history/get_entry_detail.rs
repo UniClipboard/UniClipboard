@@ -6,17 +6,15 @@ use uc_core::{
     clipboard::MimeType,
     ids::EntryId,
     ports::clipboard::ResolvedClipboardPayload,
-    ports::{
-        ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
-        ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
-    },
+    ports::clipboard::{GetClipboardEntryPort, GetRepresentationPort},
+    ports::{ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort},
 };
 
 /// Get full clipboard entry detail.
 pub(crate) struct GetEntryDetailUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    entry_repo: Arc<dyn GetClipboardEntryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn GetRepresentationPort>,
     blob_store: Arc<dyn BlobReaderPort>,
     payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
 }
@@ -33,9 +31,9 @@ pub(crate) struct EntryDetailResult {
 
 impl GetEntryDetailUseCase {
     pub(crate) fn new(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        entry_repo: Arc<dyn GetClipboardEntryPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn GetRepresentationPort>,
         blob_store: Arc<dyn BlobReaderPort>,
         payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     ) -> Self {

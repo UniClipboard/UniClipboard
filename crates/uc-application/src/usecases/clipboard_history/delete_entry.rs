@@ -4,17 +4,18 @@ use std::sync::Arc;
 use tracing::{info, info_span, warn, Instrument};
 use uc_core::ids::EntryId;
 use uc_core::ports::blob::{BlobTransferPort, TagReason};
-use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort, SearchIndexPort,
+use uc_core::ports::clipboard::{
+    DeleteClipboardEntryPort, GetClipboardEntryPort, ListRepresentationsForEventPort,
 };
+use uc_core::ports::{ClipboardEventWriterPort, ClipboardSelectionRepositoryPort, SearchIndexPort};
 
 /// Use case for deleting clipboard entries with all associated data.
 pub(crate) struct DeleteClipboardEntryUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    get_entry: Arc<dyn GetClipboardEntryPort>,
+    delete_entry: Arc<dyn DeleteClipboardEntryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     event_writer: Arc<dyn ClipboardEventWriterPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     file_cache_dir: Option<PathBuf>,
     search_index: Option<Arc<dyn SearchIndexPort>>,
     blob_transfer: Option<Arc<dyn BlobTransferPort>>,
@@ -22,13 +23,15 @@ pub(crate) struct DeleteClipboardEntryUseCase {
 
 impl DeleteClipboardEntryUseCase {
     pub(crate) fn from_ports(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        get_entry: Arc<dyn GetClipboardEntryPort>,
+        delete_entry: Arc<dyn DeleteClipboardEntryPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         event_writer: Arc<dyn ClipboardEventWriterPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     ) -> Self {
         Self {
-            entry_repo,
+            get_entry,
+            delete_entry,
             selection_repo,
             event_writer,
             representation_repo,
@@ -64,7 +67,7 @@ impl DeleteClipboardEntryUseCase {
     )]
     pub(crate) async fn execute(&self, entry_id: &EntryId) -> Result<()> {
         let entry = async {
-            self.entry_repo
+            self.get_entry
                 .get_entry(entry_id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Clipboard entry not found: {}", entry_id))
@@ -185,7 +188,7 @@ impl DeleteClipboardEntryUseCase {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to delete selection: {}", e))?;
 
-        self.entry_repo
+        self.delete_entry
             .delete_entry(entry_id)
             .instrument(info_span!(
                 "delete_entry",

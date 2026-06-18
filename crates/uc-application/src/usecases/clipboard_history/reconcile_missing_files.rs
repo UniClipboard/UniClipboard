@@ -25,11 +25,12 @@ use tracing::{info, info_span, warn, Instrument};
 
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::blob::BlobTransferPort;
-use uc_core::ports::search::search_index::SearchIndexPort;
-use uc_core::ports::{
-    CacheFsPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
-    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
+use uc_core::ports::clipboard::{
+    DeleteClipboardEntryPort, GetClipboardEntryPort, ListClipboardEntriesPort,
+    ListRepresentationsForEventPort,
 };
+use uc_core::ports::search::search_index::SearchIndexPort;
+use uc_core::ports::{CacheFsPort, ClipboardEventWriterPort, ClipboardSelectionRepositoryPort};
 
 use super::delete_entry::DeleteClipboardEntryUseCase;
 
@@ -51,27 +52,34 @@ const ENTRY_LIST_BATCH_SIZE: usize = 1000;
 
 pub(crate) struct ReconcileMissingFilesUseCase {
     file_cache_dir: PathBuf,
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    list_entries: Arc<dyn ListClipboardEntriesPort>,
+    get_entry: Arc<dyn GetClipboardEntryPort>,
+    delete_entry: Arc<dyn DeleteClipboardEntryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     event_writer: Arc<dyn ClipboardEventWriterPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     cache_fs: Arc<dyn CacheFsPort>,
     blob_transfer: Option<Arc<dyn BlobTransferPort>>,
     search_index: Option<Arc<dyn SearchIndexPort>>,
 }
 
 impl ReconcileMissingFilesUseCase {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         file_cache_dir: PathBuf,
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        list_entries: Arc<dyn ListClipboardEntriesPort>,
+        get_entry: Arc<dyn GetClipboardEntryPort>,
+        delete_entry: Arc<dyn DeleteClipboardEntryPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         event_writer: Arc<dyn ClipboardEventWriterPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn ListRepresentationsForEventPort>,
         cache_fs: Arc<dyn CacheFsPort>,
     ) -> Self {
         Self {
             file_cache_dir,
-            entry_repo,
+            list_entries,
+            get_entry,
+            delete_entry,
             selection_repo,
             event_writer,
             representation_repo,
@@ -102,7 +110,8 @@ impl ReconcileMissingFilesUseCase {
         }
 
         let mut delete_uc = DeleteClipboardEntryUseCase::from_ports(
-            self.entry_repo.clone(),
+            self.get_entry.clone(),
+            self.delete_entry.clone(),
             self.selection_repo.clone(),
             self.event_writer.clone(),
             self.representation_repo.clone(),
@@ -125,7 +134,7 @@ impl ReconcileMissingFilesUseCase {
         // offset-based pages and skips entries adjacent to deletions.
         loop {
             let batch = self
-                .entry_repo
+                .list_entries
                 .list_entries(ENTRY_LIST_BATCH_SIZE, offset)
                 .instrument(info_span!(
                     "list_entries_batch",

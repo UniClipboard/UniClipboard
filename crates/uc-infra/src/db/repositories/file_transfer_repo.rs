@@ -8,8 +8,7 @@ use crate::db::ports::DbExecutor;
 use crate::db::schema::file_transfer;
 use uc_core::ports::file_transfer_repository::{
     compute_aggregate_status, EntryTransferSummary, ExpiredInflightTransfer,
-    FileTransferRepositoryPort, PendingInboundTransfer, TrackedFileTransfer,
-    TrackedFileTransferStatus,
+    FileTransferRepositoryPort, PendingInboundTransfer, TrackedFileTransferStatus,
 };
 
 /// SQLite adapter for `FileTransferRepositoryPort`.
@@ -20,24 +19,6 @@ pub struct DieselFileTransferRepository<E> {
 impl<E> DieselFileTransferRepository<E> {
     pub fn new(executor: E) -> Self {
         Self { executor }
-    }
-}
-
-fn row_to_domain(row: &FileTransferRow) -> TrackedFileTransfer {
-    let status = TrackedFileTransferStatus::from_str_value(&row.status)
-        .unwrap_or(TrackedFileTransferStatus::Pending);
-    TrackedFileTransfer {
-        transfer_id: row.transfer_id.clone(),
-        entry_id: row.entry_id.clone(),
-        origin_device_id: row.source_device.clone(),
-        filename: row.filename.clone(),
-        cached_path: row.cached_path.clone().unwrap_or_default(),
-        status,
-        failure_reason: row.failure_reason.clone(),
-        file_size: row.file_size,
-        content_hash: row.content_hash.clone(),
-        updated_at_ms: row.updated_at_ms,
-        created_at_ms: row.created_at_ms,
     }
 }
 
@@ -54,43 +35,6 @@ fn row_to_expired(row: &FileTransferRow) -> ExpiredInflightTransfer {
 
 #[async_trait]
 impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<E> {
-    async fn insert_pending_transfers(
-        &self,
-        transfers: &[PendingInboundTransfer],
-    ) -> anyhow::Result<()> {
-        let span = debug_span!(
-            "infra.sqlite.insert_pending_transfers",
-            count = transfers.len()
-        );
-        let rows: Vec<NewFileTransferRow> = transfers
-            .iter()
-            .map(|t| NewFileTransferRow {
-                transfer_id: t.transfer_id.clone(),
-                entry_id: t.entry_id.clone(),
-                filename: t.filename.clone(),
-                file_size: None,
-                content_hash: None,
-                status: TrackedFileTransferStatus::Pending.as_str().to_string(),
-                source_device: t.origin_device_id.clone(),
-                cached_path: Some(t.cached_path.clone()),
-                failure_reason: None,
-                created_at_ms: t.created_at_ms,
-                updated_at_ms: t.created_at_ms,
-            })
-            .collect();
-
-        span.in_scope(|| {
-            self.executor.run(|conn| {
-                for row in &rows {
-                    diesel::insert_into(file_transfer::table)
-                        .values(row)
-                        .execute(conn)?;
-                }
-                Ok(())
-            })
-        })
-    }
-
     async fn upsert_pending_transfer(
         &self,
         transfer: &PendingInboundTransfer,
@@ -150,96 +94,6 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
                 })?;
                 Ok(())
             })
-        })
-    }
-
-    async fn backfill_announce_metadata(
-        &self,
-        transfer_id: &str,
-        file_size: i64,
-        content_hash: &str,
-    ) -> anyhow::Result<()> {
-        let span = debug_span!(
-            "infra.sqlite.backfill_announce_metadata",
-            transfer_id = transfer_id
-        );
-        let tid = transfer_id.to_string();
-        let hash = content_hash.to_string();
-        span.in_scope(|| {
-            self.executor.run(move |conn| {
-                diesel::update(file_transfer::table.filter(file_transfer::transfer_id.eq(&tid)))
-                    .set((
-                        file_transfer::file_size.eq(Some(file_size)),
-                        file_transfer::content_hash.eq(Some(&hash)),
-                    ))
-                    .execute(conn)?;
-                Ok(())
-            })
-        })
-    }
-
-    async fn mark_transferring(&self, transfer_id: &str, now_ms: i64) -> anyhow::Result<bool> {
-        let span = debug_span!("infra.sqlite.mark_transferring", transfer_id = transfer_id);
-        let tid = transfer_id.to_string();
-        span.in_scope(|| {
-            self.executor.run(move |conn| {
-                let affected = diesel::update(
-                    file_transfer::table
-                        .filter(file_transfer::transfer_id.eq(&tid))
-                        .filter(
-                            file_transfer::status
-                                .eq(TrackedFileTransferStatus::Pending.as_str())
-                                .or(file_transfer::status
-                                    .eq(TrackedFileTransferStatus::Transferring.as_str())),
-                        ),
-                )
-                .set((
-                    file_transfer::status.eq(TrackedFileTransferStatus::Transferring.as_str()),
-                    file_transfer::updated_at_ms.eq(now_ms),
-                ))
-                .execute(conn)?;
-                Ok(affected > 0)
-            })
-        })
-    }
-
-    async fn refresh_activity(&self, transfer_id: &str, now_ms: i64) -> anyhow::Result<()> {
-        let tid = transfer_id.to_string();
-        self.executor.run(move |conn| {
-            diesel::update(file_transfer::table.filter(file_transfer::transfer_id.eq(&tid)))
-                .set(file_transfer::updated_at_ms.eq(now_ms))
-                .execute(conn)?;
-            Ok(())
-        })
-    }
-
-    async fn mark_completed(
-        &self,
-        transfer_id: &str,
-        content_hash: Option<&str>,
-        now_ms: i64,
-    ) -> anyhow::Result<bool> {
-        let tid = transfer_id.to_string();
-        let hash = content_hash.map(|h| h.to_string());
-        self.executor.run(move |conn| {
-            // Always set status and updated_at_ms; optionally set content_hash
-            let affected = if let Some(h) = &hash {
-                diesel::update(file_transfer::table.filter(file_transfer::transfer_id.eq(&tid)))
-                    .set((
-                        file_transfer::status.eq(TrackedFileTransferStatus::Completed.as_str()),
-                        file_transfer::updated_at_ms.eq(now_ms),
-                        file_transfer::content_hash.eq(Some(h)),
-                    ))
-                    .execute(conn)?
-            } else {
-                diesel::update(file_transfer::table.filter(file_transfer::transfer_id.eq(&tid)))
-                    .set((
-                        file_transfer::status.eq(TrackedFileTransferStatus::Completed.as_str()),
-                        file_transfer::updated_at_ms.eq(now_ms),
-                    ))
-                    .execute(conn)?
-            };
-            Ok(affected > 0)
         })
     }
 
@@ -371,19 +225,6 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
         })
     }
 
-    async fn list_transfers_for_entry(
-        &self,
-        entry_id: &str,
-    ) -> anyhow::Result<Vec<TrackedFileTransfer>> {
-        let eid = entry_id.to_string();
-        self.executor.run(move |conn| {
-            let rows = file_transfer::table
-                .filter(file_transfer::entry_id.eq(&eid))
-                .load::<FileTransferRow>(conn)?;
-            Ok(rows.iter().map(row_to_domain).collect())
-        })
-    }
-
     async fn get_entry_id_for_transfer(&self, transfer_id: &str) -> anyhow::Result<Option<String>> {
         let tid = transfer_id.to_string();
         self.executor.run(move |conn| {
@@ -393,17 +234,6 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
                 .first::<String>(conn)
                 .optional()?;
             Ok(entry_id)
-        })
-    }
-
-    async fn get_transfer(&self, transfer_id: &str) -> anyhow::Result<Option<TrackedFileTransfer>> {
-        let tid = transfer_id.to_string();
-        self.executor.run(move |conn| {
-            let row = file_transfer::table
-                .filter(file_transfer::transfer_id.eq(&tid))
-                .first::<FileTransferRow>(conn)
-                .optional()?;
-            Ok(row.as_ref().map(row_to_domain))
         })
     }
 

@@ -54,25 +54,6 @@ impl std::fmt::Display for TrackedFileTransferStatus {
     }
 }
 
-/// A tracked inbound file transfer record.
-#[derive(Debug, Clone)]
-pub struct TrackedFileTransfer {
-    pub transfer_id: String,
-    pub entry_id: String,
-    pub origin_device_id: String,
-    pub filename: String,
-    pub cached_path: String,
-    pub status: TrackedFileTransferStatus,
-    pub failure_reason: Option<String>,
-    /// Nullable until announce metadata fills it in.
-    pub file_size: Option<i64>,
-    /// Nullable until completion with hash verification.
-    pub content_hash: Option<String>,
-    /// Epoch milliseconds of the last durable activity.
-    pub updated_at_ms: i64,
-    pub created_at_ms: i64,
-}
-
 /// Input for seeding a pending transfer record from clipboard metadata.
 #[derive(Debug, Clone)]
 pub struct PendingInboundTransfer {
@@ -116,12 +97,6 @@ pub struct ExpiredInflightTransfer {
 /// Used by app-layer use cases for state transitions and projections.
 #[async_trait::async_trait]
 pub trait FileTransferRepositoryPort: Send + Sync {
-    /// Seed pending records from clipboard metadata.
-    async fn insert_pending_transfers(
-        &self,
-        transfers: &[PendingInboundTransfer],
-    ) -> anyhow::Result<()>;
-
     /// Upsert a single pending transfer record.
     ///
     /// If no row exists for `transfer.transfer_id`, a fresh `pending` row
@@ -136,31 +111,6 @@ pub trait FileTransferRepositoryPort: Send + Sync {
         &self,
         transfer: &PendingInboundTransfer,
     ) -> anyhow::Result<()>;
-
-    /// Backfill announce metadata (file_size, content_hash) when available later.
-    async fn backfill_announce_metadata(
-        &self,
-        transfer_id: &str,
-        file_size: i64,
-        content_hash: &str,
-    ) -> anyhow::Result<()>;
-
-    /// Mark a transfer as `transferring` (first data chunk received).
-    async fn mark_transferring(&self, transfer_id: &str, now_ms: i64) -> anyhow::Result<bool>;
-
-    /// Refresh in-flight liveness without changing semantic status.
-    async fn refresh_activity(&self, transfer_id: &str, now_ms: i64) -> anyhow::Result<()>;
-
-    /// Mark a transfer as `completed`.
-    ///
-    /// Returns `true` if a row was actually updated, `false` if no matching
-    /// row existed (e.g., the pending record hasn't been seeded yet).
-    async fn mark_completed(
-        &self,
-        transfer_id: &str,
-        content_hash: Option<&str>,
-        now_ms: i64,
-    ) -> anyhow::Result<bool>;
 
     /// Mark a transfer as `failed` with a reason.
     async fn mark_failed(&self, transfer_id: &str, reason: &str, now_ms: i64)
@@ -191,12 +141,6 @@ pub trait FileTransferRepositoryPort: Send + Sync {
         entry_id: &str,
     ) -> anyhow::Result<Option<EntryTransferSummary>>;
 
-    /// List transfers for an entry.
-    async fn list_transfers_for_entry(
-        &self,
-        entry_id: &str,
-    ) -> anyhow::Result<Vec<TrackedFileTransfer>>;
-
     /// Look up a single transfer by transfer_id.
     /// Returns the entry_id for the transfer, if found.
     async fn get_entry_id_for_transfer(&self, transfer_id: &str) -> anyhow::Result<Option<String>>;
@@ -214,75 +158,6 @@ pub trait FileTransferRepositoryPort: Send + Sync {
         entry_id: &str,
         now_ms: i64,
     ) -> anyhow::Result<bool>;
-
-    /// Look up the full projection row for a transfer_id.
-    ///
-    /// Used by receiver-side workers that need the locally-recorded
-    /// `cached_path` (and other context) once the domain timeline reports
-    /// completion. Returns `None` when no receiver projection row exists
-    /// for the given id — e.g. sender-side transfers.
-    async fn get_transfer(&self, transfer_id: &str) -> anyhow::Result<Option<TrackedFileTransfer>>;
-}
-
-/// No-op stub for `FileTransferRepositoryPort` used at construction sites
-/// before the real Diesel adapter is wired in (Plan 02).
-pub struct NoopFileTransferRepositoryPort;
-
-#[async_trait::async_trait]
-impl FileTransferRepositoryPort for NoopFileTransferRepositoryPort {
-    async fn insert_pending_transfers(&self, _: &[PendingInboundTransfer]) -> anyhow::Result<()> {
-        Ok(())
-    }
-    async fn upsert_pending_transfer(&self, _: &PendingInboundTransfer) -> anyhow::Result<()> {
-        Ok(())
-    }
-    async fn backfill_announce_metadata(&self, _: &str, _: i64, _: &str) -> anyhow::Result<()> {
-        Ok(())
-    }
-    async fn mark_transferring(&self, _: &str, _: i64) -> anyhow::Result<bool> {
-        Ok(false)
-    }
-    async fn refresh_activity(&self, _: &str, _: i64) -> anyhow::Result<()> {
-        Ok(())
-    }
-    async fn mark_completed(&self, _: &str, _: Option<&str>, _: i64) -> anyhow::Result<bool> {
-        Ok(false)
-    }
-    async fn mark_failed(&self, _: &str, _: &str, _: i64) -> anyhow::Result<()> {
-        Ok(())
-    }
-    async fn list_expired_inflight(
-        &self,
-        _: i64,
-        _: i64,
-    ) -> anyhow::Result<Vec<ExpiredInflightTransfer>> {
-        Ok(vec![])
-    }
-    async fn bulk_fail_inflight(
-        &self,
-        _: &str,
-        _: i64,
-    ) -> anyhow::Result<Vec<ExpiredInflightTransfer>> {
-        Ok(vec![])
-    }
-    async fn get_entry_transfer_summary(
-        &self,
-        _: &str,
-    ) -> anyhow::Result<Option<EntryTransferSummary>> {
-        Ok(None)
-    }
-    async fn list_transfers_for_entry(&self, _: &str) -> anyhow::Result<Vec<TrackedFileTransfer>> {
-        Ok(vec![])
-    }
-    async fn get_entry_id_for_transfer(&self, _: &str) -> anyhow::Result<Option<String>> {
-        Ok(None)
-    }
-    async fn get_transfer(&self, _: &str) -> anyhow::Result<Option<TrackedFileTransfer>> {
-        Ok(None)
-    }
-    async fn link_transfer_to_entry(&self, _: &str, _: &str, _: i64) -> anyhow::Result<bool> {
-        Ok(false)
-    }
 }
 
 /// Compute aggregate status from a list of individual transfer statuses.

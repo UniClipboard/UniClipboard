@@ -134,7 +134,9 @@ fn cancellation_reason_of(reason: FileTransferCancellationReason) -> &'static st
 mod tests {
     use super::*;
     use crate::db::executor::DieselSqliteExecutor;
+    use crate::db::models::FileTransferRow;
     use crate::db::pool::init_db_pool;
+    use crate::db::ports::DbExecutor;
     use crate::db::repositories::DieselFileTransferRepository;
     use crate::file_transfer::receiver_store::SqliteReceiverFileTransferStore;
     use tempfile::{tempdir, TempDir};
@@ -146,15 +148,30 @@ mod tests {
     fn make_setup() -> (
         SqliteReceiverFileTransferStore<DieselSqliteExecutor>,
         DieselFileTransferRepository<DieselSqliteExecutor>,
+        DieselSqliteExecutor,
         TempDir,
     ) {
         let tempdir = tempdir().unwrap();
         let database_url = tempdir.path().join("file-transfer-projection.sqlite");
         let pool = init_db_pool(database_url.to_str().unwrap()).unwrap();
         let store = SqliteReceiverFileTransferStore::new(DieselSqliteExecutor::new(pool.clone()));
-        let repo = DieselFileTransferRepository::new(DieselSqliteExecutor::new(pool));
+        let repo = DieselFileTransferRepository::new(DieselSqliteExecutor::new(pool.clone()));
+        let reader = DieselSqliteExecutor::new(pool);
 
-        (store, repo, tempdir)
+        (store, repo, reader, tempdir)
+    }
+
+    // Read projection rows back directly via the schema — the receiver
+    // projection is verified at the infra layer, not through a domain port.
+    fn load_rows(reader: &DieselSqliteExecutor, entry_id: &str) -> Vec<FileTransferRow> {
+        let eid = entry_id.to_string();
+        reader
+            .run(move |conn| {
+                Ok(file_transfer::table
+                    .filter(file_transfer::entry_id.eq(&eid))
+                    .load::<FileTransferRow>(conn)?)
+            })
+            .unwrap()
     }
 
     fn pending_transfer() -> PendingInboundTransfer {
@@ -170,25 +187,25 @@ mod tests {
 
     #[tokio::test]
     async fn upsert_pending_transfer_creates_pending_projection_row() {
-        let (_store, repo, _tempdir) = make_setup();
+        let (_store, repo, reader, _tempdir) = make_setup();
 
         repo.upsert_pending_transfer(&pending_transfer())
             .await
             .unwrap();
 
-        let transfers = repo.list_transfers_for_entry("entry-1").await.unwrap();
-        assert_eq!(transfers.len(), 1);
-        let transfer = &transfers[0];
-        assert_eq!(transfer.transfer_id, "transfer-1");
-        assert_eq!(transfer.origin_device_id, "device-1");
-        assert_eq!(transfer.status, TrackedFileTransferStatus::Pending);
-        assert_eq!(transfer.cached_path, "/tmp/report.pdf");
-        assert_eq!(transfer.file_size, None);
+        let rows = load_rows(&reader, "entry-1");
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.transfer_id, "transfer-1");
+        assert_eq!(row.source_device, "device-1");
+        assert_eq!(row.status, TrackedFileTransferStatus::Pending.as_str());
+        assert_eq!(row.cached_path.as_deref(), Some("/tmp/report.pdf"));
+        assert_eq!(row.file_size, None);
     }
 
     #[tokio::test]
     async fn apply_event_projects_started_and_completed_states() {
-        let (store, repo, _tempdir) = make_setup();
+        let (store, repo, reader, _tempdir) = make_setup();
         repo.upsert_pending_transfer(&pending_transfer())
             .await
             .unwrap();
@@ -207,15 +224,15 @@ mod tests {
             .await
             .unwrap();
 
-        let transfers = repo.list_transfers_for_entry("entry-1").await.unwrap();
-        let transfer = &transfers[0];
-        assert_eq!(transfer.status, TrackedFileTransferStatus::Completed);
-        assert_eq!(transfer.file_size, Some(128));
+        let rows = load_rows(&reader, "entry-1");
+        let row = &rows[0];
+        assert_eq!(row.status, TrackedFileTransferStatus::Completed.as_str());
+        assert_eq!(row.file_size, Some(128));
     }
 
     #[tokio::test]
     async fn progress_and_cancelled_events_update_projection_as_expected() {
-        let (store, repo, _tempdir) = make_setup();
+        let (store, repo, reader, _tempdir) = make_setup();
         repo.upsert_pending_transfer(&pending_transfer())
             .await
             .unwrap();
@@ -241,10 +258,10 @@ mod tests {
             .await
             .unwrap();
 
-        let transfers = repo.list_transfers_for_entry("entry-1").await.unwrap();
-        let transfer = &transfers[0];
-        assert_eq!(transfer.status, TrackedFileTransferStatus::Cancelled);
-        assert_eq!(transfer.failure_reason.as_deref(), Some("remote_peer"));
+        let rows = load_rows(&reader, "entry-1");
+        let row = &rows[0];
+        assert_eq!(row.status, TrackedFileTransferStatus::Cancelled.as_str());
+        assert_eq!(row.failure_reason.as_deref(), Some("remote_peer"));
     }
 
     #[tokio::test]
@@ -253,7 +270,7 @@ mod tests {
         // updater without ever seeding a receiver context. The update must
         // silently no-op rather than erroring, otherwise sender-side event
         // append would fail.
-        let (store, _repo, _tempdir) = make_setup();
+        let (store, _repo, _reader, _tempdir) = make_setup();
 
         store
             .append(FileTransferEvent::completed(

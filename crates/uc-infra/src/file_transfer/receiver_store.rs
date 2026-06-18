@@ -41,25 +41,46 @@ impl<E: DbExecutor> FileTransferEventStorePort for SqliteReceiverFileTransferSto
 mod tests {
     use super::*;
     use crate::db::executor::DieselSqliteExecutor;
+    use crate::db::models::FileTransferRow;
     use crate::db::pool::init_db_pool;
+    use crate::db::ports::DbExecutor;
     use crate::db::repositories::DieselFileTransferRepository;
+    use crate::db::schema::file_transfer;
+    use diesel::prelude::*;
     use tempfile::{tempdir, TempDir};
-    use uc_core::ports::file_transfer_repository::PendingInboundTransfer;
+    use uc_core::ports::file_transfer_repository::{
+        PendingInboundTransfer, TrackedFileTransferStatus,
+    };
     use uc_core::ports::FileTransferRepositoryPort;
     use uc_core::{FileTransferDirection, FileTransferProgress};
 
     fn make_store() -> (
         SqliteReceiverFileTransferStore<DieselSqliteExecutor>,
         DieselFileTransferRepository<DieselSqliteExecutor>,
+        DieselSqliteExecutor,
         TempDir,
     ) {
         let tempdir = tempdir().unwrap();
         let database_url = tempdir.path().join("receiver-file-transfer-store.sqlite");
         let pool = init_db_pool(database_url.to_str().unwrap()).unwrap();
         let store = SqliteReceiverFileTransferStore::new(DieselSqliteExecutor::new(pool.clone()));
-        let repo = DieselFileTransferRepository::new(DieselSqliteExecutor::new(pool));
+        let repo = DieselFileTransferRepository::new(DieselSqliteExecutor::new(pool.clone()));
+        let reader = DieselSqliteExecutor::new(pool);
 
-        (store, repo, tempdir)
+        (store, repo, reader, tempdir)
+    }
+
+    // Read projection rows back directly via the schema — the receiver
+    // projection is verified at the infra layer, not through a domain port.
+    fn load_rows(reader: &DieselSqliteExecutor, entry_id: &str) -> Vec<FileTransferRow> {
+        let eid = entry_id.to_string();
+        reader
+            .run(move |conn| {
+                Ok(file_transfer::table
+                    .filter(file_transfer::entry_id.eq(&eid))
+                    .load::<FileTransferRow>(conn)?)
+            })
+            .unwrap()
     }
 
     fn pending_transfer() -> PendingInboundTransfer {
@@ -75,7 +96,7 @@ mod tests {
 
     #[tokio::test]
     async fn append_event_and_project_updates_both_event_log_and_projection() {
-        let (store, repo, _tempdir) = make_store();
+        let (store, repo, reader, _tempdir) = make_store();
         repo.upsert_pending_transfer(&pending_transfer())
             .await
             .unwrap();
@@ -99,13 +120,10 @@ mod tests {
             vec![started, progress]
         );
 
-        let transfers = repo.list_transfers_for_entry("entry-1").await.unwrap();
-        let transfer = &transfers[0];
-        assert_eq!(transfer.file_size, Some(128));
-        assert_eq!(
-            transfer.status,
-            uc_core::ports::file_transfer_repository::TrackedFileTransferStatus::Transferring
-        );
+        let rows = load_rows(&reader, "entry-1");
+        let row = &rows[0];
+        assert_eq!(row.file_size, Some(128));
+        assert_eq!(row.status, TrackedFileTransferStatus::Transferring.as_str());
     }
 
     #[tokio::test]
@@ -114,7 +132,7 @@ mod tests {
         // The event log still records them; the receiver projection update is
         // simply a no-op when no row exists. This makes `store.append` safe to
         // call from both sides without the caller caring which one it is.
-        let (store, _repo, _tempdir) = make_store();
+        let (store, _repo, _reader, _tempdir) = make_store();
         let event = FileTransferEvent::completed("sender-only-transfer", "peer-1");
 
         store.append(event.clone()).await.unwrap();

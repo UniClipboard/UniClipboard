@@ -66,8 +66,7 @@ pub use device_identity::DeviceIdentityPort;
 pub use errors::AppDirsError;
 pub use file_transfer_repository::{
     compute_aggregate_status, EntryTransferSummary, ExpiredInflightTransfer,
-    FileTransferRepositoryPort, NoopFileTransferRepositoryPort, PendingInboundTransfer,
-    TrackedFileTransfer, TrackedFileTransferStatus,
+    FileTransferRepositoryPort, PendingInboundTransfer, TrackedFileTransferStatus,
 };
 pub use host_event::{
     ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, EmitError, HostEvent,

@@ -161,7 +161,9 @@
             "confirm": "Enable & Restart",
             "cancel": "Cancel",
             "restartToast": "Restart the app or daemon for the logging change to fully take effect.",
-            "error": "Failed to change Debug mode"
+            "error": "Failed to change Debug mode",
+            "restartingTitle": "Restarting…",
+            "restartingDescription": "Restarting the app and background daemon to apply Debug mode. Please wait and do not close this window."
           },
           "export": {
             "label": "Export logs",

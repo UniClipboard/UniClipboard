@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { exportLogs, updateDebugMode } from '@/api/daemon/diagnostics'
@@ -49,6 +50,7 @@ export default function GeneralSection() {
   )
   const [debugMode, setDebugMode] = useState(setting?.general.debugMode ?? false)
   const [debugConfirmOpen, setDebugConfirmOpen] = useState(false)
+  const [debugRestarting, setDebugRestarting] = useState(false)
   const [exportPath, setExportPath] = useState<string | null>(null)
   const [exportingLogs, setExportingLogs] = useState(false)
   const [language, setLanguage] = useState<SupportedLanguage>(() => {
@@ -175,8 +177,10 @@ export default function GeneralSection() {
   }
 
   const handleConfirmDebugMode = async () => {
-    setDebugConfirmOpen(false)
+    // Keep the dialog open and switch it into a forced "restarting" state so the
+    // user cannot dismiss it while the app and daemon are coming back up.
     try {
+      setDebugRestarting(true)
       setSaving(true)
       const result = await updateDebugMode(true)
       await reloadSetting()
@@ -191,7 +195,9 @@ export default function GeneralSection() {
     } catch (error) {
       log.error({ err: error }, 'Failed to enable debug mode and restart')
       toast.error(t('settings.sections.general.logs.debug.error'))
+      // Restart failed: leave the dialog open but allow the user to dismiss it.
       setSaving(false)
+      setDebugRestarting(false)
     }
   }
 
@@ -380,24 +386,58 @@ export default function GeneralSection() {
         </SettingRow>
       </SettingGroup>
 
-      <AlertDialog open={debugConfirmOpen} onOpenChange={setDebugConfirmOpen}>
-        <AlertDialogContent className="bg-card text-card-foreground">
+      <AlertDialog
+        open={debugConfirmOpen}
+        onOpenChange={open => {
+          // While restarting, the dialog is forced: ignore every close request
+          // (Escape, overlay, programmatic) until the restart finishes or fails.
+          if (debugRestarting) return
+          setDebugConfirmOpen(open)
+        }}
+      >
+        <AlertDialogContent
+          className="bg-card text-card-foreground"
+          onEscapeKeyDown={event => {
+            if (debugRestarting) event.preventDefault()
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t('settings.sections.general.logs.debug.confirmTitle')}
+              {debugRestarting
+                ? t('settings.sections.general.logs.debug.restartingTitle')
+                : t('settings.sections.general.logs.debug.confirmTitle')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t('settings.sections.general.logs.debug.confirmDescription')}
+              {debugRestarting
+                ? t('settings.sections.general.logs.debug.restartingDescription')
+                : t('settings.sections.general.logs.debug.confirmDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>
-              {t('settings.sections.general.logs.debug.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction disabled={saving} onClick={handleConfirmDebugMode}>
-              {t('settings.sections.general.logs.debug.confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          {debugRestarting ? (
+            <AlertDialogFooter>
+              <div className="flex w-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                {t('settings.sections.general.logs.debug.restartingTitle')}
+              </div>
+            </AlertDialogFooter>
+          ) : (
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={saving}>
+                {t('settings.sections.general.logs.debug.cancel')}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={saving}
+                onClick={event => {
+                  // Prevent Radix from auto-closing the dialog on action click;
+                  // we keep it open to show the forced restarting state.
+                  event.preventDefault()
+                  void handleConfirmDebugMode()
+                }}
+              >
+                {t('settings.sections.general.logs.debug.confirm')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          )}
         </AlertDialogContent>
       </AlertDialog>
     </>

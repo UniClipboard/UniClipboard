@@ -161,7 +161,9 @@
             "confirm": "开启并重启",
             "cancel": "取消",
             "restartToast": "请重启应用或 daemon，使日志级别变更完全生效。",
-            "error": "更改 Debug 模式失败"
+            "error": "更改 Debug 模式失败",
+            "restartingTitle": "正在重启…",
+            "restartingDescription": "正在重启应用与后台 daemon 以应用 Debug 模式，请稍候，期间请勿关闭窗口。"
           },
           "export": {
             "label": "导出日志",

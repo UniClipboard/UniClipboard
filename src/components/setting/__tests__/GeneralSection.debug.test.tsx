@@ -169,6 +169,33 @@ describe('GeneralSection debug diagnostics controls', () => {
     expect(mockRestartApp).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the dialog open in a forced restarting state after confirmation', async () => {
+    const user = userEvent.setup()
+    mockUpdateDebugMode.mockResolvedValue({ debugMode: true, restartRequired: true })
+    setup()
+
+    render(<GeneralSection />)
+
+    await user.click(screen.getByRole('switch', { name: /logs\.debug\.label/ }))
+    await user.click(screen.getByRole('button', { name: /logs\.debug\.confirm$/ }))
+
+    // Once restarting, the dialog switches to the waiting copy and removes the
+    // confirm/cancel actions so the user cannot dismiss or re-trigger it.
+    await waitFor(() => {
+      expect(
+        screen.getByText('settings.sections.general.logs.debug.restartingDescription')
+      ).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: /logs\.debug\.confirm$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /logs\.debug\.cancel$/ })).not.toBeInTheDocument()
+
+    // Escape must not close the forced dialog.
+    await user.keyboard('{Escape}')
+    expect(
+      screen.getByText('settings.sections.general.logs.debug.restartingDescription')
+    ).toBeInTheDocument()
+  })
+
   it('exports the last 24 hours of logs and shows the path', async () => {
     const user = userEvent.setup()
     mockExportLogs.mockResolvedValue({

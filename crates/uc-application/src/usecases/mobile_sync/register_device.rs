@@ -220,6 +220,7 @@ pub(crate) struct RegisterMobileShortcutDeviceUseCase {
 }
 
 impl RegisterMobileShortcutDeviceUseCase {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
         password_hasher: Arc<dyn PasswordHasherPort>,

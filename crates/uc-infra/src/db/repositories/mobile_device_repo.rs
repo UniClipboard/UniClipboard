@@ -1,4 +1,4 @@
-//! `DieselMobileDeviceRepository` —— `MobileDeviceRepositoryPort` 的 sqlite
+//! `DieselMobileDeviceRepository` —— `MobileDeviceStore` 的 sqlite
 //! 实现(v3 SyncClipboard 兼容版)。
 //!
 //! ## 错误映射
@@ -22,7 +22,7 @@ use diesel::prelude::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 
 use uc_core::mobile_sync::{MobileDevice, MobileDeviceError, MobileDeviceId};
-use uc_core::ports::MobileDeviceRepositoryPort;
+use uc_core::ports::MobileDeviceStore;
 
 use crate::db::models::{MobileDeviceRow, NewMobileDeviceRow};
 use crate::db::ports::{DbExecutor, InsertMapper, RowMapper};
@@ -48,7 +48,7 @@ impl<E, M> DieselMobileDeviceRepository<E, M> {
 }
 
 #[async_trait]
-impl<E, M> MobileDeviceRepositoryPort for DieselMobileDeviceRepository<E, M>
+impl<E, M> MobileDeviceStore for DieselMobileDeviceRepository<E, M>
 where
     E: DbExecutor,
     M: InsertMapper<MobileDevice, NewMobileDeviceRow>
@@ -253,7 +253,7 @@ mod intent_ports {
             &self,
             username_value: &str,
         ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            MobileDeviceRepositoryPort::find_by_username(self, username_value).await
+            MobileDeviceStore::find_by_username(self, username_value).await
         }
     }
 
@@ -270,7 +270,7 @@ mod intent_ports {
             &self,
             device_id_value: &MobileDeviceId,
         ) -> Result<Option<MobileDevice>, MobileDeviceError> {
-            MobileDeviceRepositoryPort::find_by_device_id(self, device_id_value).await
+            MobileDeviceStore::find_by_device_id(self, device_id_value).await
         }
     }
 
@@ -284,7 +284,7 @@ mod intent_ports {
             + Sync,
     {
         async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError> {
-            MobileDeviceRepositoryPort::list_all(self).await
+            MobileDeviceStore::list_all(self).await
         }
     }
 
@@ -298,7 +298,7 @@ mod intent_ports {
             + Sync,
     {
         async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError> {
-            MobileDeviceRepositoryPort::save(self, device).await
+            MobileDeviceStore::save(self, device).await
         }
     }
 
@@ -315,7 +315,7 @@ mod intent_ports {
             &self,
             device_id_value: &MobileDeviceId,
         ) -> Result<bool, MobileDeviceError> {
-            MobileDeviceRepositoryPort::delete(self, device_id_value).await
+            MobileDeviceStore::delete(self, device_id_value).await
         }
     }
 
@@ -332,7 +332,7 @@ mod intent_ports {
             &self,
             updated: &MobileDevice,
         ) -> Result<bool, MobileDeviceError> {
-            MobileDeviceRepositoryPort::update_mobile_device(self, updated).await
+            MobileDeviceStore::update_mobile_device(self, updated).await
         }
     }
 }

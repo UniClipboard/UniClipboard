@@ -73,14 +73,16 @@ pub enum PasswordHasherError {
     Internal(String),
 }
 
-// ─── device repository ───────────────────────────────────────────────────
+// ─── device store (inner aggregate) ──────────────────────────────────────
 
-/// 已登记 mobile 设备的持久化能力(v3 改用 username 索引)。
+/// Inner aggregate persistence surface for registered mobile devices
+/// (username-indexed).
 ///
-/// 鉴权热路径调用 `find_by_username` —— adapter 必须确保有 username 索引;
-/// 删除路径在撤销 / 解绑时调用,需要立即生效(不能走异步队列)。
+/// This is the low-level store (ports.md §5.1/§12): adapters implement it once
+/// and the narrow device intent ports below delegate to it. Application-layer
+/// consumers depend on the narrow ports, never on this aggregate.
 #[async_trait]
-pub trait MobileDeviceRepositoryPort: Send + Sync {
+pub trait MobileDeviceStore: Send + Sync {
     /// 持久化一台新设备。重复 device_id / username 应返回对应的领域错误。
     async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
 
@@ -119,7 +121,7 @@ pub trait MobileDeviceRepositoryPort: Send + Sync {
 //
 // Narrow, single-responsibility views over the registered-device store. Each
 // consumer depends only on the slice it actually uses; the concrete adapter
-// implements every one of them (see ports.md §8.3). `MobileDeviceRepositoryPort`
+// implements every one of them (see ports.md §8.3). `MobileDeviceStore`
 // above remains the inner aggregate store.
 
 /// Locate a registered device by its username.

@@ -6,7 +6,7 @@
 //!   实装(单次原子颁发 username / password / password_hash / device_id)
 //! - `password_hasher`:`PasswordHasherPort` 的 Argon2id PHC 实装,鉴权热路
 //!   径走它做 verify
-//! - `device_repo`(`#[cfg(test)]` 限定):`MobileDeviceRepositoryPort` 的进
+//! - `device_repo`(`#[cfg(test)]` 限定):`MobileDeviceStore` 的进
 //!   程内实装,仅作为本 crate 单测的轻量替身。生产路径走
 //!   `db::repositories::DieselMobileDeviceRepository`
 //! - `endpoint_info`:`MobileSyncEndpointInfoPort` 的 in-memory adapter,

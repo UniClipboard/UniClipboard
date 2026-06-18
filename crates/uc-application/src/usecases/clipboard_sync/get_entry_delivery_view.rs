@@ -78,7 +78,7 @@ pub enum GetEntryDeliveryViewError {
 
 /// `mobile_sync:` 前缀——移动端入站在 `apply_incoming.rs` 里
 /// 用 `DeviceId::new(format!("mobile_sync:{}", source_device_id))` 生成伪
-/// DeviceId。本 use case 需要识别该前缀以从 `MobileDeviceRepositoryPort`
+/// DeviceId。本 use case 需要识别该前缀以从 `FindMobileDeviceByIdPort`
 /// 查出设备 label。
 const MOBILE_SYNC_DEVICE_PREFIX: &str = "mobile_sync:";
 
@@ -862,7 +862,7 @@ mod tests {
     //
     // 移动端入站写的 from_device 是 `mobile_sync:<mobile_device_id>` 伪
     // DeviceId,不在 SpaceMember 表里。视图层应剥离前缀后从
-    // MobileDeviceRepositoryPort 查出 label 作为展示名。
+    // FindMobileDeviceByIdPort 查出 label 作为展示名。
 
     #[tokio::test]
     async fn mobile_source_device_name_resolves_from_mobile_device_repo() {

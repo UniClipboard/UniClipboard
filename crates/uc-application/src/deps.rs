@@ -26,7 +26,6 @@ use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
 use uc_core::ports::search::search_pipeline::SearchPipelinePort;
 use uc_core::ports::*;
-use uc_core::ports::{MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort};
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::AnalyticsPort;
 
@@ -194,7 +193,6 @@ pub struct MobileDevicePorts {
 
 #[derive(Clone)]
 pub struct MobileSyncPorts {
-    pub device_repo: Arc<dyn MobileDeviceRepositoryPort>,
     pub devices: MobileDevicePorts,
     pub endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
 }

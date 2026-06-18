@@ -78,10 +78,9 @@ pub use local_identity::{LocalIdentityError, LocalIdentityPort};
 pub use mobile_sync::{
     DeleteMobileDevicePort, EndpointInfoError, FindMobileDeviceByIdPort,
     FindMobileDeviceByUsernamePort, LanInterfaceProbeError, LanInterfaceProbePort,
-    ListMobileDevicesPort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort,
-    MobileFileStagingError, MobileFileStagingPort, MobileLanLifecyclePort, MobileLanTarget,
-    MobileSyncEndpointInfoPort, PasswordHasherError, PasswordHasherPort, SaveMobileDevicePort,
-    UpdateMobileDevicePort,
+    ListMobileDevicesPort, MobileCredentialsMinterPort, MobileDeviceStore, MobileFileStagingError,
+    MobileFileStagingPort, MobileLanLifecyclePort, MobileLanTarget, MobileSyncEndpointInfoPort,
+    PasswordHasherError, PasswordHasherPort, SaveMobileDevicePort, UpdateMobileDevicePort,
 };
 pub use observability::{extract_trace, OptionalTrace, TraceMetadata, TraceParseError};
 pub use pairing::{

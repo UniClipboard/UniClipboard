@@ -301,12 +301,9 @@ struct InfraLayer {
     // handing it to the publisher and use cases).
     file_transfer_store: Arc<crate::file_transfer_lifecycle::FileTransferEventStore>,
 
-    // Mobile sync 设备仓库 — `DieselMobileDeviceRepository`,跨重启 / 跨进
-    // 程稳定的已登记设备列表(替代之前进程内 HashMap)。
-    mobile_device_repo: Arc<dyn uc_core::ports::MobileDeviceRepositoryPort>,
-
-    // Narrow device-repository intent ports, all backed by the same adapter as
-    // `mobile_device_repo` (coerced per ports.md §8.3).
+    // Mobile sync 设备仓库 — narrow device-repository intent ports, all backed
+    // by one `DieselMobileDeviceRepository` (cross-restart / cross-process
+    // stable; coerced per ports.md §8.3).
     mobile_device_ports: MobileDevicePorts,
 
     // Mobile sync LAN 端点状态(单例) — daemon listener 启停时调 inherent
@@ -545,10 +542,9 @@ fn create_infra_layer(
     );
 
     // Keep a concrete Arc so it can be coerced into each narrow device-repo
-    // intent port. The adapter still implements the aggregate
-    // MobileDeviceRepositoryPort (the intent-port impls delegate to it); the
-    // wide trait object is exposed via `mobile_device_repo` only until consumers
-    // migrate to the bundle.
+    // intent port. The adapter implements the aggregate MobileDeviceStore and
+    // each intent-port impl delegates to it (ports.md §8.3); only the narrow
+    // ports are exposed upward.
     let mobile_device_repo_arc = Arc::new(DieselMobileDeviceRepository::new(
         Arc::clone(&db_executor),
         MobileDeviceRowMapper,
@@ -559,10 +555,8 @@ fn create_infra_layer(
         list: mobile_device_repo_arc.clone(),
         save: mobile_device_repo_arc.clone(),
         delete: mobile_device_repo_arc.clone(),
-        update: mobile_device_repo_arc.clone(),
+        update: mobile_device_repo_arc,
     };
-    let mobile_device_repo: Arc<dyn uc_core::ports::MobileDeviceRepositoryPort> =
-        mobile_device_repo_arc;
 
     // endpoint_info adapter:进程级单例,daemon LAN listener 与 facade 各持
     // 一份 Arc 共享同一份内存。整个进程只跑一次 `wire_dependencies`,这里
@@ -595,7 +589,6 @@ fn create_infra_layer(
         hash,
         file_transfer,
         file_transfer_store,
-        mobile_device_repo,
         mobile_device_ports,
         mobile_sync_endpoint_info,
     };
@@ -1186,7 +1179,6 @@ pub fn wire_dependencies(
             search_pipeline,
         },
         mobile_sync: MobileSyncPorts {
-            device_repo: infra.mobile_device_repo,
             devices: infra.mobile_device_ports,
             endpoint_info: infra.mobile_sync_endpoint_info.clone(),
         },

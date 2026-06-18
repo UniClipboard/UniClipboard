@@ -1,4 +1,4 @@
-//! `InMemoryMobileDeviceRepository` —— [`MobileDeviceRepositoryPort`] 的进
+//! `InMemoryMobileDeviceRepository` —— [`MobileDeviceStore`] 的进
 //! 程内实现(v3 SyncClipboard 兼容版)。
 //!
 //! 现在 daemon 链路上默认走 [`crate::db::repositories::DieselMobileDeviceRepository`]
@@ -22,7 +22,7 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use uc_core::mobile_sync::{MobileDevice, MobileDeviceError, MobileDeviceId};
-use uc_core::ports::MobileDeviceRepositoryPort;
+use uc_core::ports::MobileDeviceStore;
 
 #[derive(Default)]
 pub struct InMemoryMobileDeviceRepository {
@@ -36,7 +36,7 @@ impl InMemoryMobileDeviceRepository {
 }
 
 #[async_trait]
-impl MobileDeviceRepositoryPort for InMemoryMobileDeviceRepository {
+impl MobileDeviceStore for InMemoryMobileDeviceRepository {
     async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError> {
         let mut guard = self.devices.lock().await;
 

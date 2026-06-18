@@ -16,8 +16,11 @@ use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
     ClipboardChangeOriginPort, ClipboardPayloadResolverPort, ClipboardRepresentationNormalizerPort,
-    RepresentationCachePort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
-    ThumbnailRepositoryPort,
+    DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
+    GetRepresentationByBlobIdPort, GetRepresentationPort, ListClipboardEntriesPort,
+    ListRepresentationsForEventPort, RepresentationCachePort, SaveClipboardEntryPort,
+    SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
+    TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
@@ -27,6 +30,33 @@ use uc_core::ports::{MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort};
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::AnalyticsPort;
 
+/// Clipboard entry intent ports.
+///
+/// The composition root coerces the single Diesel entry adapter into each of
+/// these narrow ports; a consumer declares only the capability it calls.
+#[derive(Clone)]
+pub struct ClipboardEntryPorts {
+    pub get: Arc<dyn GetClipboardEntryPort>,
+    pub list: Arc<dyn ListClipboardEntriesPort>,
+    pub save: Arc<dyn SaveClipboardEntryPort>,
+    pub touch: Arc<dyn TouchClipboardEntryPort>,
+    pub delete: Arc<dyn DeleteClipboardEntryPort>,
+    pub find_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
+}
+
+/// Clipboard representation intent ports facing the application layer.
+///
+/// The decrypting decorator is coerced into each of these. Background payload
+/// workers keep the wider inner store; the application layer sees only this
+/// read-plus-processing slice.
+#[derive(Clone)]
+pub struct ClipboardRepresentationPorts {
+    pub get: Arc<dyn GetRepresentationPort>,
+    pub get_by_blob_id: Arc<dyn GetRepresentationByBlobIdPort>,
+    pub list_for_event: Arc<dyn ListRepresentationsForEventPort>,
+    pub update_processing_result: Arc<dyn UpdateRepresentationProcessingResultPort>,
+}
+
 /// Clipboard-domain ports bundle.
 /// 剪贴板领域端口组。
 #[derive(Clone)]
@@ -34,8 +64,10 @@ pub struct ClipboardPorts {
     pub clipboard: Arc<dyn PlatformClipboardPort>,
     pub system_clipboard: Arc<dyn SystemClipboardPort>,
     pub clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub entry_ports: ClipboardEntryPorts,
     pub clipboard_event_repo: Arc<dyn ClipboardEventWriterPort>,
     pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub representation_ports: ClipboardRepresentationPorts,
     pub representation_normalizer: Arc<dyn ClipboardRepresentationNormalizerPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     pub representation_policy: Arc<dyn SelectRepresentationPolicyPort>,

@@ -34,6 +34,14 @@ const log = createLogger('general-section')
  */
 type DebugDialogState = 'closed' | 'confirming' | 'restarting'
 
+const handleOpenLogsDir = async () => {
+  try {
+    await storageApi.openLogsDirectory()
+  } catch (error) {
+    log.error({ err: error }, 'Failed to open logs directory')
+  }
+}
+
 export function DiagnosticsSettings() {
   const { t } = useTranslation()
   const { setting, loading, reloadSetting } = useSetting()
@@ -92,14 +100,6 @@ export function DiagnosticsSettings() {
       toast.error(t('settings.sections.general.logs.debug.error'))
       // Restart failed: drop back to the confirm state so the user can dismiss.
       setDebugDialog('confirming')
-    }
-  }
-
-  const handleOpenLogsDir = async () => {
-    try {
-      await storageApi.openLogsDirectory()
-    } catch (error) {
-      log.error({ err: error }, 'Failed to open logs directory')
     }
   }
 

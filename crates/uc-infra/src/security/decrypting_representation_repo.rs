@@ -10,9 +10,16 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, trace};
 
-use uc_core::ports::clipboard::ProcessingUpdateOutcome;
+use uc_core::ports::clipboard::{
+    GetRepresentationByBlobIdPort, GetRepresentationByIdPort, GetRepresentationPort,
+    ListRepresentationIdsByStatePort, ListRepresentationsForEventPort, ProcessingUpdateOutcome,
+    UpdateRepresentationBlobIdPort, UpdateRepresentationMimePort,
+    UpdateRepresentationProcessingResultPort,
+};
 use uc_core::{
-    clipboard::{PayloadAvailability, PersistedClipboardRepresentation},
+    clipboard::{
+        ClipboardRepositoryError, MimeType, PayloadAvailability, PersistedClipboardRepresentation,
+    },
     crypto::aad,
     crypto::domain::{Aad, ActiveSpace, Ciphertext},
     ids::{EventId, RepresentationId, SpaceId},
@@ -230,5 +237,140 @@ impl ClipboardRepresentationRepositoryPort for DecryptingClipboardRepresentation
         states: &[PayloadAvailability],
     ) -> Result<Vec<RepresentationId>> {
         self.inner.list_ids_by_payload_state(states).await
+    }
+}
+
+// ---- Intent ports ------------------------------------------------------
+//
+// The decorator is coerced into these narrow intent ports at the composition
+// root for the application layer. Reads stay decrypting (they delegate to the
+// aggregate trait above); writes forward to the inner repository. Each impl
+// translates the storage error into the typed domain error.
+
+fn to_repo_err(e: anyhow::Error) -> ClipboardRepositoryError {
+    ClipboardRepositoryError::Storage(e.to_string())
+}
+
+#[async_trait]
+impl GetRepresentationPort for DecryptingClipboardRepresentationRepository {
+    async fn get_representation(
+        &self,
+        event_id: &EventId,
+        representation_id: &RepresentationId,
+    ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::get_representation(self, event_id, representation_id)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait]
+impl GetRepresentationByIdPort for DecryptingClipboardRepresentationRepository {
+    async fn get_representation_by_id(
+        &self,
+        representation_id: &RepresentationId,
+    ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::get_representation_by_id(self, representation_id)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait]
+impl GetRepresentationByBlobIdPort for DecryptingClipboardRepresentationRepository {
+    async fn get_representation_by_blob_id(
+        &self,
+        blob_id: &BlobId,
+    ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::get_representation_by_blob_id(self, blob_id)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait]
+impl ListRepresentationsForEventPort for DecryptingClipboardRepresentationRepository {
+    async fn get_representations_for_event(
+        &self,
+        event_id: &EventId,
+    ) -> Result<Vec<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::get_representations_for_event(self, event_id)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait]
+impl UpdateRepresentationBlobIdPort for DecryptingClipboardRepresentationRepository {
+    async fn update_blob_id(
+        &self,
+        representation_id: &RepresentationId,
+        blob_id: &BlobId,
+    ) -> Result<(), ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::update_blob_id(self, representation_id, blob_id)
+            .await
+            .map_err(to_repo_err)
+    }
+
+    async fn update_blob_id_if_none(
+        &self,
+        representation_id: &RepresentationId,
+        blob_id: &BlobId,
+    ) -> Result<bool, ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::update_blob_id_if_none(
+            self,
+            representation_id,
+            blob_id,
+        )
+        .await
+        .map_err(to_repo_err)
+    }
+}
+
+#[async_trait]
+impl UpdateRepresentationProcessingResultPort for DecryptingClipboardRepresentationRepository {
+    async fn update_processing_result(
+        &self,
+        rep_id: &RepresentationId,
+        expected_states: &[PayloadAvailability],
+        blob_id: Option<&BlobId>,
+        new_state: PayloadAvailability,
+        last_error: Option<&str>,
+    ) -> Result<ProcessingUpdateOutcome, ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::update_processing_result(
+            self,
+            rep_id,
+            expected_states,
+            blob_id,
+            new_state,
+            last_error,
+        )
+        .await
+        .map_err(to_repo_err)
+    }
+}
+
+#[async_trait]
+impl UpdateRepresentationMimePort for DecryptingClipboardRepresentationRepository {
+    async fn update_mime_type(
+        &self,
+        rep_id: &RepresentationId,
+        mime: &MimeType,
+    ) -> Result<(), ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::update_mime_type(self, rep_id, mime)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait]
+impl ListRepresentationIdsByStatePort for DecryptingClipboardRepresentationRepository {
+    async fn list_ids_by_payload_state(
+        &self,
+        states: &[PayloadAvailability],
+    ) -> Result<Vec<RepresentationId>, ClipboardRepositoryError> {
+        ClipboardRepresentationRepositoryPort::list_ids_by_payload_state(self, states)
+            .await
+            .map_err(to_repo_err)
     }
 }

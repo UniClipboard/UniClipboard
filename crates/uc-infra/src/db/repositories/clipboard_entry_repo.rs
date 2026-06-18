@@ -15,8 +15,12 @@ use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::RunQueryDsl;
 use tracing::instrument;
-use uc_core::clipboard::{ClipboardEntry, ClipboardSelectionDecision};
+use uc_core::clipboard::{ClipboardEntry, ClipboardRepositoryError, ClipboardSelectionDecision};
 use uc_core::ids::EntryId;
+use uc_core::ports::clipboard::{
+    DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
+    ListClipboardEntriesPort, SaveClipboardEntryPort, TouchClipboardEntryPort,
+};
 use uc_core::ports::ClipboardEntryRepositoryPort;
 
 pub struct DieselClipboardEntryRepository<E, ME, MS, RE> {
@@ -253,6 +257,124 @@ where
     }
 }
 
+// ---- Intent ports ------------------------------------------------------
+//
+// The single Diesel adapter is coerced into these narrow intent ports at the
+// composition root. Each impl delegates to the aggregate trait above and
+// translates the storage error into the typed domain error.
+
+fn to_repo_err(e: anyhow::Error) -> ClipboardRepositoryError {
+    ClipboardRepositoryError::Storage(e.to_string())
+}
+
+#[async_trait::async_trait]
+impl<E, ME, MS, RE> GetClipboardEntryPort for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn get_entry(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError> {
+        ClipboardEntryRepositoryPort::get_entry(self, entry_id)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait::async_trait]
+impl<E, ME, MS, RE> ListClipboardEntriesPort for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn list_entries(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<ClipboardEntry>, ClipboardRepositoryError> {
+        ClipboardEntryRepositoryPort::list_entries(self, limit, offset)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait::async_trait]
+impl<E, ME, MS, RE> SaveClipboardEntryPort for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn save_entry_and_selection(
+        &self,
+        entry: &ClipboardEntry,
+        selection: &ClipboardSelectionDecision,
+    ) -> Result<(), ClipboardRepositoryError> {
+        ClipboardEntryRepositoryPort::save_entry_and_selection(self, entry, selection)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait::async_trait]
+impl<E, ME, MS, RE> TouchClipboardEntryPort for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn touch_entry(
+        &self,
+        entry_id: &EntryId,
+        active_time_ms: i64,
+    ) -> Result<bool, ClipboardRepositoryError> {
+        ClipboardEntryRepositoryPort::touch_entry(self, entry_id, active_time_ms)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait::async_trait]
+impl<E, ME, MS, RE> DeleteClipboardEntryPort for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn delete_entry(&self, entry_id: &EntryId) -> Result<(), ClipboardRepositoryError> {
+        ClipboardEntryRepositoryPort::delete_entry(self, entry_id)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait::async_trait]
+impl<E, ME, MS, RE> FindEntryIdBySnapshotHashPort for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn find_entry_id_by_snapshot_hash(
+        &self,
+        snapshot_hash: &str,
+    ) -> Result<Option<EntryId>, ClipboardRepositoryError> {
+        ClipboardEntryRepositoryPort::find_entry_id_by_snapshot_hash(self, snapshot_hash)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,8 +460,7 @@ mod tests {
         let hash = "blake3v1:deadbeef00000000000000000000000000000000000000000000000000000000";
         let expected_entry_id = seed_event_and_entry(&executor, hash);
 
-        let actual = repo
-            .find_entry_id_by_snapshot_hash(hash)
+        let actual = ClipboardEntryRepositoryPort::find_entry_id_by_snapshot_hash(&repo, hash)
             .await
             .expect("query ok");
         assert_eq!(
@@ -352,12 +473,12 @@ mod tests {
     #[tokio::test]
     async fn find_entry_id_by_snapshot_hash_returns_none_for_missing() {
         let (repo, _executor, _tempdir) = make_repo();
-        let result = repo
-            .find_entry_id_by_snapshot_hash(
-                "blake3v1:ffffffff00000000000000000000000000000000000000000000000000000000",
-            )
-            .await
-            .expect("query ok");
+        let result = ClipboardEntryRepositoryPort::find_entry_id_by_snapshot_hash(
+            &repo,
+            "blake3v1:ffffffff00000000000000000000000000000000000000000000000000000000",
+        )
+        .await
+        .expect("query ok");
         assert!(result.is_none(), "unknown hash must return None");
     }
 }

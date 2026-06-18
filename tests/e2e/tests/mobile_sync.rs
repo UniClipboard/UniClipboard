@@ -42,7 +42,7 @@ async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
 fn run_setup_non_interactive(cli: &TestCli, label: &str, ip: &str, extra_args: &[&str]) -> Value {
     let mut args: Vec<&str> = vec![
         "--json",
-        "mobile-sync",
+        "mobile",
         "setup",
         "--non-interactive",
         "--label",
@@ -72,7 +72,12 @@ fn run_setup_non_interactive(cli: &TestCli, label: &str, ip: &str, extra_args: &
 async fn mobile_sync_setup_non_interactive_json() {
     let (_daemon, cli) = setup_initialized_node("ms-setup-json").await;
 
-    let json = run_setup_non_interactive(&cli, "TestPhone", "192.168.1.100", &[]);
+    // Use a unique, uncommon LAN port. The well-known default (42720) is
+    // often occupied by a real UniClipboard instance on the same host (on
+    // WSL2 even a Windows-side instance, via localhost forwarding), and setup
+    // now aborts on a bind failure — so an e2e test must not depend on 42720
+    // being free. The 42720 default itself is the DEFAULT_LAN_PORT constant.
+    let json = run_setup_non_interactive(&cli, "TestPhone", "192.168.1.100", &["--port", "42725"]);
 
     // Verify all expected fields are present.
     assert!(
@@ -97,8 +102,8 @@ async fn mobile_sync_setup_non_interactive_json() {
     );
     assert_eq!(
         json.get("port").and_then(|v| v.as_u64()),
-        Some(42720),
-        "port should default to 42720: {json}"
+        Some(42725),
+        "setup response should reflect the configured port: {json}"
     );
 }
 
@@ -110,7 +115,7 @@ async fn mobile_sync_setup_missing_flags_non_interactive() {
     // Run setup --non-interactive --json WITHOUT required --label /
     // --accept-network-risk (--ip is now optional). The CLI should reject
     // early on the still-required flags.
-    let output = cli.run_capture(&["--json", "mobile-sync", "setup", "--non-interactive"]);
+    let output = cli.run_capture(&["--json", "mobile", "setup", "--non-interactive"]);
 
     assert!(
         !output.success(),
@@ -135,7 +140,7 @@ async fn mobile_sync_setup_missing_flags_non_interactive() {
 async fn mobile_sync_status_before_setup() {
     let (_daemon, cli) = setup_initialized_node("ms-status-before").await;
 
-    let output = cli.run_capture(&["--json", "mobile-sync", "status"]);
+    let output = cli.run_capture(&["--json", "mobile", "status"]);
     assert!(
         output.success(),
         "status before setup failed (exit={}): {}",
@@ -169,11 +174,13 @@ async fn mobile_sync_status_before_setup() {
 async fn mobile_sync_status_after_setup() {
     let (_daemon, cli) = setup_initialized_node("ms-status-after").await;
 
-    // Run setup first.
-    run_setup_non_interactive(&cli, "MyPhone", "192.168.1.50", &[]);
+    // Run setup first. A unique LAN port avoids colliding with the other
+    // setup-running tests on the default 42720 (they bind 0.0.0.0:port in
+    // parallel; setup now aborts on a bind failure).
+    run_setup_non_interactive(&cli, "MyPhone", "192.168.1.50", &["--port", "42721"]);
 
     // Now check status.
-    let output = cli.run_capture(&["--json", "mobile-sync", "status"]);
+    let output = cli.run_capture(&["--json", "mobile", "status"]);
     assert!(
         output.success(),
         "status after setup failed (exit={}): {}",
@@ -221,11 +228,11 @@ async fn mobile_sync_status_after_setup() {
 async fn mobile_sync_add_device() {
     let (_daemon, cli) = setup_initialized_node("ms-add-device").await;
 
-    // Initial setup.
-    run_setup_non_interactive(&cli, "FirstPhone", "192.168.1.10", &[]);
+    // Initial setup. Unique LAN port — see status_after_setup for why.
+    run_setup_non_interactive(&cli, "FirstPhone", "192.168.1.10", &["--port", "42722"]);
 
     // Add a second device.
-    let add_output = cli.run_capture(&["--json", "mobile-sync", "add", "--label", "SecondPhone"]);
+    let add_output = cli.run_capture(&["--json", "mobile", "add", "--label", "SecondPhone"]);
     assert!(
         add_output.success(),
         "add device failed (exit={}): stdout={}, stderr={}",
@@ -248,7 +255,7 @@ async fn mobile_sync_add_device() {
     );
 
     // Verify status shows 2 devices.
-    let status_output = cli.run_capture(&["--json", "mobile-sync", "status"]);
+    let status_output = cli.run_capture(&["--json", "mobile", "status"]);
     assert!(
         status_output.success(),
         "status failed: {}",
@@ -269,8 +276,10 @@ async fn mobile_sync_add_device() {
 async fn mobile_sync_revoke_device() {
     let (_daemon, cli) = setup_initialized_node("ms-revoke").await;
 
-    // Setup to register the first device.
-    let setup_json = run_setup_non_interactive(&cli, "PhoneToRevoke", "192.168.1.20", &[]);
+    // Setup to register the first device. Unique LAN port — see
+    // status_after_setup for why.
+    let setup_json =
+        run_setup_non_interactive(&cli, "PhoneToRevoke", "192.168.1.20", &["--port", "42723"]);
 
     let device_id = setup_json
         .get("device_id")
@@ -279,11 +288,11 @@ async fn mobile_sync_revoke_device() {
         .to_string();
 
     // Add a second device so we can verify count changes.
-    let add_out = cli.run_capture(&["--json", "mobile-sync", "add", "--label", "KeepMe"]);
+    let add_out = cli.run_capture(&["--json", "mobile", "add", "--label", "KeepMe"]);
     assert!(add_out.success(), "add failed: {}", add_out.stderr);
 
     // Verify 2 devices before revoke.
-    let pre_status = cli.run_capture(&["--json", "mobile-sync", "status"]);
+    let pre_status = cli.run_capture(&["--json", "mobile", "status"]);
     let pre_json: Value = serde_json::from_str(pre_status.stdout.trim()).expect("pre JSON");
     assert_eq!(
         pre_json.get("device_count").and_then(|v| v.as_u64()),
@@ -292,7 +301,7 @@ async fn mobile_sync_revoke_device() {
     );
 
     // Revoke the first device.
-    let revoke_output = cli.run_capture(&["--json", "mobile-sync", "revoke", &device_id]);
+    let revoke_output = cli.run_capture(&["--json", "mobile", "revoke", &device_id]);
     assert!(
         revoke_output.success(),
         "revoke failed (exit={}): stdout={}, stderr={}",
@@ -310,7 +319,7 @@ async fn mobile_sync_revoke_device() {
     );
 
     // Verify device_count decreased.
-    let post_status = cli.run_capture(&["--json", "mobile-sync", "status"]);
+    let post_status = cli.run_capture(&["--json", "mobile", "status"]);
     let post_json: Value = serde_json::from_str(post_status.stdout.trim()).expect("post JSON");
     assert_eq!(
         post_json.get("device_count").and_then(|v| v.as_u64()),
@@ -324,11 +333,11 @@ async fn mobile_sync_revoke_device() {
 async fn mobile_sync_disable() {
     let (_daemon, cli) = setup_initialized_node("ms-disable").await;
 
-    // Setup first.
-    run_setup_non_interactive(&cli, "DisablePhone", "192.168.1.30", &[]);
+    // Setup first. Unique LAN port — see status_after_setup for why.
+    run_setup_non_interactive(&cli, "DisablePhone", "192.168.1.30", &["--port", "42724"]);
 
     // Disable mobile-sync.
-    let disable_output = cli.run_capture(&["--json", "mobile-sync", "disable"]);
+    let disable_output = cli.run_capture(&["--json", "mobile", "disable"]);
     assert!(
         disable_output.success(),
         "disable failed (exit={}): stdout={}, stderr={}",
@@ -338,7 +347,7 @@ async fn mobile_sync_disable() {
     );
 
     // Verify status shows disabled.
-    let status_output = cli.run_capture(&["--json", "mobile-sync", "status"]);
+    let status_output = cli.run_capture(&["--json", "mobile", "status"]);
     assert!(
         status_output.success(),
         "status failed: {}",
@@ -374,7 +383,7 @@ async fn mobile_sync_disable() {
 async fn mobile_sync_network_interfaces() {
     let (_daemon, cli) = setup_initialized_node("ms-net-ifaces").await;
 
-    let output = cli.run_capture(&["--json", "mobile-sync", "network", "interfaces"]);
+    let output = cli.run_capture(&["--json", "mobile", "network", "interfaces"]);
     assert!(
         output.success(),
         "network interfaces failed (exit={}): stdout={}, stderr={}",
@@ -425,7 +434,7 @@ async fn mobile_sync_setup_custom_port() {
     );
 
     // Verify status reflects the custom port.
-    let status_output = cli.run_capture(&["--json", "mobile-sync", "status"]);
+    let status_output = cli.run_capture(&["--json", "mobile", "status"]);
     assert!(
         status_output.success(),
         "status failed: {}",

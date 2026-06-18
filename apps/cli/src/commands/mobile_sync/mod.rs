@@ -1,4 +1,5 @@
-//! `uniclip mobile-sync` —— 移动端同步管理命令组。
+//! `uniclip mobile` —— 移动端同步管理命令组(旧名 `mobile-sync` 仍作为隐藏
+//! 弃用别名保留,调用时打印迁移提示,见 `main.rs` 的 dispatcher)。
 //!
 //! 任务导向的命令拓扑 —— 顶层只暴露用户高频动作,网络细节收进 `network`:
 //!

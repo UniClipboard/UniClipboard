@@ -313,8 +313,16 @@ enum Commands {
         #[command(subcommand)]
         subcommand: commands::dev::DevCommands,
     },
-    /// Manage mobile-sync (iPhone over LAN, SyncClipboard-compatible).
-    #[command(name = "mobile-sync")]
+    /// Manage mobile clipboard sync (iPhone over LAN, SyncClipboard-compatible).
+    #[command(name = "mobile")]
+    Mobile {
+        #[command(subcommand)]
+        subcommand: commands::mobile_sync::MobileSyncCommands,
+    },
+    /// Deprecated alias for `mobile`. Hidden from `--help`; still runs but
+    /// prints a deprecation notice. Kept so already-published scripts keep
+    /// working; will be removed in a future release.
+    #[command(name = "mobile-sync", hide = true)]
     MobileSync {
         #[command(subcommand)]
         subcommand: commands::mobile_sync::MobileSyncCommands,
@@ -459,7 +467,17 @@ fn main() -> anyhow::Result<()> {
             Commands::Dev { subcommand } => {
                 commands::dev::run(subcommand, cli.json, cli.verbose).await
             }
+            Commands::Mobile { subcommand } => {
+                commands::mobile_sync::run(subcommand, cli.json, cli.verbose).await
+            }
             Commands::MobileSync { subcommand } => {
+                // Deprecation notice goes to stderr (via ui::warn), so it never
+                // corrupts `--json` stdout. The old alias otherwise behaves
+                // identically to `mobile`.
+                ui::warn(
+                    "`mobile-sync` is deprecated; use `mobile` instead. \
+                     This alias will be removed in a future release.",
+                );
                 commands::mobile_sync::run(subcommand, cli.json, cli.verbose).await
             }
         }
@@ -637,12 +655,21 @@ mod tests {
     }
 
     #[test]
-    fn mobile_sync_kebab_case_is_accepted() {
-        // 子命令名是 kebab-case `mobile-sync` 而非默认的 `mobile_sync` /
-        // `mobilesync`。锁住这个外部契约 —— 改名会让所有发布的脚本失效。
-        // (Step 4 起 `enable` 已删, 用 `status` 这个稳定读命令探针。)
-        let result = Cli::try_parse_from(["uniclip", "mobile-sync", "status"]);
-        assert!(result.is_ok(), "expected `mobile-sync status` to parse");
+    fn mobile_is_the_primary_command_name() {
+        // `mobile` 是新的主命令名(显示在 --help 里)。锁住外部契约。
+        let cli = Cli::try_parse_from(["uniclip", "mobile", "status"])
+            .expect("expected `mobile status` to parse");
+        assert!(matches!(cli.command, Some(Commands::Mobile { .. })));
+    }
+
+    #[test]
+    fn mobile_sync_is_a_hidden_deprecated_alias() {
+        // `mobile-sync` 保留为隐藏的弃用别名 —— 仍能解析(已发布脚本不
+        // 失效),但映射到独立的 `MobileSync` 变体,runtime 会打印弃用提示
+        // 再走与 `mobile` 相同的逻辑。(用 `status` 这个稳定读命令做探针。)
+        let cli = Cli::try_parse_from(["uniclip", "mobile-sync", "status"])
+            .expect("expected `mobile-sync status` to still parse");
+        assert!(matches!(cli.command, Some(Commands::MobileSync { .. })));
     }
 
     #[test]
@@ -814,8 +841,9 @@ mod tests {
     #[test]
     fn mobile_sync_setup_parses_with_no_args() {
         // `setup` 不强制任何 flag —— 默认全交互式。runtime 才会按
-        // `--non-interactive` / `--json` 决定是否要求 --label / --ip /
-        // --accept-network-risk;clap 解析层不下结论。
+        // `--non-interactive` / `--json` 决定是否要求 --label /
+        // --accept-network-risk(--ip 已降级为可选高级覆盖);clap 解析层
+        // 不下结论。
         let r = Cli::try_parse_from(["uniclip", "mobile-sync", "setup"]);
         assert!(r.is_ok(), "expected `setup` to parse with no args");
     }

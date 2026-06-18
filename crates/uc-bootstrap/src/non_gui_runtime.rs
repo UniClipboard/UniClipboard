@@ -182,7 +182,7 @@ pub struct ClipboardRestoreAssembly {
 ///
 /// - **capture**:真 `CaptureClipboardUseCase`。写 entry_repo + event_repo +
 ///   spool_queue,与 daemon 装配的 capture 完全等价。让 P5a.9 引入的
-///   `uniclip mobile-sync debug put-*` 子命令真能把数据落库,后续
+///   `uniclip mobile debug put-*` 子命令真能把数据落库,后续
 ///   `debug get-doc` / `debug get-file` 直接读得到 ——"完整链路" 验证不再
 ///   是空壳。
 /// - **write**:`NoopInboundWrite`。CLI 进程主动设置

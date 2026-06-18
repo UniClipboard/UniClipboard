@@ -1,4 +1,4 @@
-//! `uniclip mobile-sync debug ...` —— SyncClipboard 协议链路的本地回归命令。
+//! `uniclip mobile debug ...` —— SyncClipboard 协议链路的本地回归命令。
 //!
 //! P5a.9 引入,便于无 iPhone 时手动验证整条 SyncClipboard 协议链路。
 //! 全部 4 个子命令 **绕过 HTTP** 直接调 [`MobileSyncFacade`],模拟 iPhone

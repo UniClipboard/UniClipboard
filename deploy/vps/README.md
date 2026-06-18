@@ -115,7 +115,7 @@ makes the phone's install URL/QR point at Caddy instead of a LAN IP:
 
 ```bash
 docker compose run --rm app \
-  uniclip mobile-sync network set \
+  uniclip mobile network set \
   --url https://${UC_DOMAIN:-clip.example.com} \
   --accept-network-risk
 ```
@@ -123,7 +123,7 @@ docker compose run --rm app \
 **c. Register your phone.** Mints credentials and prints the install QR/URL:
 
 ```bash
-docker compose run --rm app uniclip mobile-sync add --label "My iPhone"
+docker compose run --rm app uniclip mobile add --label "My iPhone"
 ```
 
 Scan the QR (or open the printed `https://<domain>` URL) in the SyncClipboard /
@@ -205,7 +205,7 @@ swaps the binary. To move to a pinned release, bump `UC_IMAGE` in `.env` before
 
 To change the advertised domain or add devices later, **stop the daemon first**
 (`docker compose down`), rerun the relevant `docker compose run --rm app
-uniclip mobile-sync …` command, then `docker compose up -d` — the write commands
+uniclip mobile …` command, then `docker compose up -d` — the write commands
 still refuse to run while the daemon is up.
 
 ## Security notes

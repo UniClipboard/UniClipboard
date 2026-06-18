@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# P5a.9: SyncClipboard 协议本地端到端 e2e（基于 `uniclip mobile-sync debug`
+# P5a.9: SyncClipboard 协议本地端到端 e2e（基于 `uniclip mobile debug`
 # 4 子命令，无 iPhone / 无 LAN / 无 daemon）。
 #
 # 验证范围:
@@ -140,7 +140,7 @@ ok "init succeeded"
 TEXT_A="hello P5a.9 e2e $(date +%s)"  # 唯一文本，避免与历史 entries 冲突
 
 step "Step 1.1 — put-text first time (expect: applied + entry_id)"
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-text "$TEXT_A")"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug put-text "$TEXT_A")"
 assert_contains "put-text outcome" '"outcome": "applied"' "$OUT"
 ENTRY_ID_A="$(extract_entry_id "$OUT")"
 if [[ -n "$ENTRY_ID_A" ]]; then
@@ -151,7 +151,7 @@ else
 fi
 
 step "Step 1.2 — get-doc reflects TEXT_A"
-OUT="$("$CLI" "${COMMON[@]}" mobile-sync debug get-doc 2>&1)"
+OUT="$("$CLI" "${COMMON[@]}" mobile debug get-doc 2>&1)"
 assert_contains "get-doc type" "type: Text" "$OUT"
 assert_contains "get-doc text" "$TEXT_A" "$OUT"
 assert_contains "get-doc has_data" "hasData: false" "$OUT"
@@ -160,7 +160,7 @@ assert_contains "get-doc hash" "hash:" "$OUT"
 # ── Step 2: dedup (content_hash 命中) ────────────────────────────────────
 
 step "Step 2 — put-text same TEXT_A (expect: duplicate_skipped + existing == entry_id_a)"
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-text "$TEXT_A")"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug put-text "$TEXT_A")"
 assert_contains "second put-text outcome" '"outcome": "duplicate_skipped"' "$OUT"
 EXISTING_ID="$(extract_existing_entry_id "$OUT")"
 if [[ "$EXISTING_ID" == "$ENTRY_ID_A" ]]; then
@@ -174,7 +174,7 @@ fi
 TEXT_B="different content $(date +%s%N)"
 
 step "Step 3.1 — put-text TEXT_B (expect: applied + new entry_id)"
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-text "$TEXT_B")"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug put-text "$TEXT_B")"
 assert_contains "TEXT_B outcome" '"outcome": "applied"' "$OUT"
 ENTRY_ID_B="$(extract_entry_id "$OUT")"
 if [[ -n "$ENTRY_ID_B" && "$ENTRY_ID_B" != "$ENTRY_ID_A" ]]; then
@@ -184,7 +184,7 @@ else
 fi
 
 step "Step 3.2 — get-doc reflects TEXT_B (latest wins)"
-OUT="$("$CLI" "${COMMON[@]}" mobile-sync debug get-doc 2>&1)"
+OUT="$("$CLI" "${COMMON[@]}" mobile debug get-doc 2>&1)"
 assert_contains "get-doc shows TEXT_B" "$TEXT_B" "$OUT"
 assert_not_contains "get-doc no longer shows TEXT_A" "$TEXT_A" "$OUT"
 
@@ -196,13 +196,13 @@ printf 'fake png bytes for P5a.9 e2e %s' "$(date +%s%N)" > "$PNG_PATH"
 PNG_SIZE=$(wc -c < "$PNG_PATH" | tr -d ' ')
 
 step "Step 4.1 — put-file $PNG_PATH (expect: step1 buffered + step2 applied)"
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-file "$PNG_PATH")"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug put-file "$PNG_PATH")"
 # 两步 outcome 在嵌套 JSON 里:{"file":{"outcome":"buffered",...},"doc":{"outcome":"applied",...}}
 assert_contains "step1 outcome" '"outcome": "buffered"' "$OUT"
 assert_contains "step2 outcome" '"outcome": "applied"' "$OUT"
 
 step "Step 4.2 — get-doc reflects Image meta + has_data=true + size=$PNG_SIZE"
-OUT="$("$CLI" "${COMMON[@]}" mobile-sync debug get-doc 2>&1)"
+OUT="$("$CLI" "${COMMON[@]}" mobile debug get-doc 2>&1)"
 assert_contains "type Image" "type: Image" "$OUT"
 assert_contains "has_data true" "hasData: true" "$OUT"
 assert_contains "size matches PNG_SIZE" "size: $PNG_SIZE" "$OUT"
@@ -218,7 +218,7 @@ fi
 
 step "Step 4.3 — get-file --output → diff bytes identical"
 OUT_PATH="$TMPDIR_RUN/p5a9-roundtrip.png"
-"$CLI" "${COMMON[@]}" mobile-sync debug get-file "$DATANAME" --output "$OUT_PATH" >/dev/null
+"$CLI" "${COMMON[@]}" mobile debug get-file "$DATANAME" --output "$OUT_PATH" >/dev/null
 if [[ -f "$OUT_PATH" ]]; then
     if diff -q "$PNG_PATH" "$OUT_PATH" >/dev/null; then
         ok "round-tripped bytes byte-identical ($PNG_SIZE bytes)"
@@ -235,20 +235,20 @@ WEBP_PATH="$TMPDIR_RUN/p5a9.txt"  # 故意用 .txt ext 但 override 成 image/we
 printf 'fake webp via override %s' "$(date +%s%N)" > "$WEBP_PATH"
 
 step "Step 5 — put-file with --mime image/webp on .txt extension (override wins)"
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-file "$WEBP_PATH" --mime image/webp)"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug put-file "$WEBP_PATH" --mime image/webp)"
 # 顶层 JSON 结构没有 mime 字段,但 step1 / step2 都应该 buffered + applied
 assert_contains "override step1 outcome" '"outcome": "buffered"' "$OUT"
 assert_contains "override step2 outcome" '"outcome": "applied"' "$OUT"
 
 step "Step 5.1 — get-doc 显示 type=Image 而不是 File"
-OUT="$("$CLI" "${COMMON[@]}" mobile-sync debug get-doc 2>&1)"
+OUT="$("$CLI" "${COMMON[@]}" mobile debug get-doc 2>&1)"
 assert_contains "override resulted in Image type" "type: Image" "$OUT"
 
 # ── Step 6: NotFound — get-file 不存在的 dataName ────────────────────────
 
 step "Step 6 — get-file <unknown> exits non-zero with NotFound message"
 set +e
-OUT="$("$CLI" "${COMMON[@]}" mobile-sync debug get-file "no-such-file-xyzzy.bin" 2>&1)"
+OUT="$("$CLI" "${COMMON[@]}" mobile debug get-file "no-such-file-xyzzy.bin" 2>&1)"
 CODE=$?
 set -e
 assert_exit_nonzero "get-file unknown" "$CODE"
@@ -260,7 +260,7 @@ step "Step 7 — start daemon then debug command must refuse"
 "$CLI" "${COMMON[@]}" start >/dev/null 2>&1
 sleep 2
 set +e
-OUT="$("$CLI" "${COMMON[@]}" mobile-sync debug put-text "should be refused" 2>&1)"
+OUT="$("$CLI" "${COMMON[@]}" mobile debug put-text "should be refused" 2>&1)"
 CODE=$?
 set -e
 assert_exit_nonzero "debug put-text while daemon running" "$CODE"
@@ -275,12 +275,12 @@ DOC_BYTES="fake binary file $(date +%s%N)"  # 唯一字节避开 dedup
 printf '%s' "$DOC_BYTES" > "$DOC_PATH"
 
 step "Step 8 — put-file .bin (item_type=File) → 两步均 applied,file-list rep 落库"
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-file "$DOC_PATH")"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug put-file "$DOC_PATH")"
 assert_contains "step1 buffered"        '"outcome": "buffered"' "$OUT"
 assert_contains "step2 applied"         '"outcome": "applied"'  "$OUT"
 
 # get-doc 应看到 type=File + dataName 指向 staging 文件
-DOC="$("$CLI" "${COMMON[@]}" mobile-sync debug get-doc 2>&1)"
+DOC="$("$CLI" "${COMMON[@]}" mobile debug get-doc 2>&1)"
 assert_contains "get-doc reports File" "type: File" "$DOC"
 DATANAME_FILE="$(extract_data_name "$DOC")"
 if [[ -n "$DATANAME_FILE" ]]; then
@@ -292,7 +292,7 @@ fi
 
 # P5a.3.5 后:get-file 经 staging.read_by_uri 直接返真文件字节(不是 URI list)
 OUT_FILE="$TMPDIR_RUN/p5a9-file-out.bin"
-"$CLI" "${COMMON[@]}" mobile-sync debug get-file "$DATANAME_FILE" --output "$OUT_FILE" >/dev/null 2>&1 \
+"$CLI" "${COMMON[@]}" mobile debug get-file "$DATANAME_FILE" --output "$OUT_FILE" >/dev/null 2>&1 \
     || fail "get-file for File-type dataName failed"
 if [[ -f "$OUT_FILE" ]]; then
     ok "get-file --output wrote real bytes"
@@ -314,24 +314,24 @@ TEXT_J="json-mode-check $(date +%s%N)"
 PNG_J_PATH="$TMPDIR_RUN/p5a9-json.png"
 printf 'json-mode unique png %s' "$(date +%s%N)" > "$PNG_J_PATH"
 
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-text "$TEXT_J")"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug put-text "$TEXT_J")"
 assert_contains "put-text JSON has outcome" '"outcome":' "$OUT"
 
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug get-doc)"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug get-doc)"
 assert_contains "get-doc JSON has item_type" '"item_type":' "$OUT"
 assert_contains "get-doc JSON has hash"      '"hash":'      "$OUT"
 
 # 这次 put-file 用一个**新**字节的 PNG，保证 latest 必是 Image（不是 Text/duplicate）
-OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug put-file "$PNG_J_PATH")"
+OUT="$("$CLI" "${COMMON[@]}" --json mobile debug put-file "$PNG_J_PATH")"
 assert_contains "put-file JSON has file"     '"file":'                 "$OUT"
 assert_contains "put-file JSON has doc"      '"doc":'                  "$OUT"
 assert_contains "put-file step2 applied"     '"outcome": "applied"'    "$OUT"
 
 # get-file 需要一个真存在的 dataName —— 复用上一步 put-file 后的 latest
-LATEST="$("$CLI" "${COMMON[@]}" mobile-sync debug get-doc 2>&1)"
+LATEST="$("$CLI" "${COMMON[@]}" mobile debug get-doc 2>&1)"
 DATANAME_J="$(extract_data_name "$LATEST")"
 if [[ -n "$DATANAME_J" ]]; then
-    OUT="$("$CLI" "${COMMON[@]}" --json mobile-sync debug get-file "$DATANAME_J" \
+    OUT="$("$CLI" "${COMMON[@]}" --json mobile debug get-file "$DATANAME_J" \
         --output "$TMPDIR_RUN/json-out.bin")"
     assert_contains "get-file JSON has data_name" '"data_name":'   "$OUT"
     assert_contains "get-file JSON has mime"      '"mime":'        "$OUT"

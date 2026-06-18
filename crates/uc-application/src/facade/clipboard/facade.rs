@@ -42,7 +42,8 @@ use crate::usecases::clipboard_sync::{
     InboundClipboardNotice as UcInboundNotice, IngestInboundClipboardUseCase, IngestSpawnHandle,
 };
 use uc_core::clipboard::ClipboardContentCategorySet;
-use uc_core::ports::{ClipboardEntryRepositoryPort, ClipboardEventRepositoryPort};
+use uc_core::ports::clipboard::GetClipboardEntryPort;
+use uc_core::ports::ClipboardEventRepositoryPort;
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_observability::FlowId;
 
@@ -74,7 +75,7 @@ pub struct ClipboardSyncDeps {
     /// `get_entry_delivery_view` 拼装视图时需要 entry / event / trusted_peer
     /// 三类仓储:entry 验存在 + 取 delivery_tracked,event 反查来源设备,
     /// trusted_peer 给出"全集"用于合成 Pending。
-    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
     pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     /// 移动设备仓库,`GetEntryDeliveryViewUseCase` 用于把 `mobile_sync:` 前缀
@@ -612,22 +613,14 @@ mod tests {
     mockall::mock! {
         pub EntryRepo {}
         #[async_trait]
-        impl ClipboardEntryRepositoryPort for EntryRepo {
-            async fn save_entry_and_selection(
-                &self,
-                entry: &uc_core::clipboard::ClipboardEntry,
-                selection: &uc_core::ClipboardSelectionDecision,
-            ) -> anyhow::Result<()>;
+        impl GetClipboardEntryPort for EntryRepo {
             async fn get_entry(
                 &self,
                 entry_id: &EntryId,
-            ) -> anyhow::Result<Option<uc_core::clipboard::ClipboardEntry>>;
-            async fn list_entries(
-                &self,
-                limit: usize,
-                offset: usize,
-            ) -> anyhow::Result<Vec<uc_core::clipboard::ClipboardEntry>>;
-            async fn delete_entry(&self, entry_id: &EntryId) -> anyhow::Result<()>;
+            ) -> std::result::Result<
+                Option<uc_core::clipboard::ClipboardEntry>,
+                uc_core::clipboard::ClipboardRepositoryError,
+            >;
         }
     }
 
@@ -825,10 +818,7 @@ mod tests {
     /// 默认 panic,把"视图路径在本文件不应被触发"这层契约硬化成测试失败。
     fn make_noop_entry_repo() -> MockEntryRepo {
         let mut m = MockEntryRepo::new();
-        m.expect_save_entry_and_selection().returning(|_, _| Ok(()));
         m.expect_get_entry().returning(|_| Ok(None));
-        m.expect_list_entries().returning(|_, _| Ok(Vec::new()));
-        m.expect_delete_entry().returning(|_| Ok(()));
         m
     }
 

@@ -460,7 +460,7 @@ pub async fn build_space_setup_assembly(
         analytics: Arc::clone(&deps.analytics),
         first_sync_state: Arc::clone(&deps.first_sync_state),
         entry_delivery_repo: Arc::clone(&wired.entry_delivery_repo),
-        entry_repo: Arc::clone(&deps.clipboard.clipboard_entry_repo),
+        entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
         event_repo: Arc::clone(&wired.clipboard_event_reader_repo),
         trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
         mobile_device_repo: Arc::clone(&deps.mobile_sync.device_repo),

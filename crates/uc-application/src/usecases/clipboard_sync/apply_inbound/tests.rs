@@ -15,9 +15,10 @@ use crate::facade::host_event::{
     HostEventEmitterPort,
 };
 
+use uc_core::clipboard::ClipboardRepositoryError;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::blob::{BlobDigest, BlobTicket, PlaintextHash};
-use uc_core::ports::{ClipboardEntryRepositoryPort, PeerAddressError};
+use uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort;
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use uc_observability::FlowId;
 
@@ -74,17 +75,11 @@ impl Visit for FlowIdVisitor {
 mockall::mock! {
     pub EntryRepo {}
     #[async_trait]
-    impl ClipboardEntryRepositoryPort for EntryRepo {
-        async fn save_entry_and_selection(
+    impl FindEntryIdBySnapshotHashPort for EntryRepo {
+        async fn find_entry_id_by_snapshot_hash(
             &self,
-            entry: &uc_core::ClipboardEntry,
-            selection: &uc_core::ClipboardSelectionDecision,
-        ) -> Result<()>;
-        async fn get_entry(&self, entry_id: &EntryId) -> Result<Option<uc_core::ClipboardEntry>>;
-        async fn list_entries(&self, limit: usize, offset: usize) -> Result<Vec<uc_core::ClipboardEntry>>;
-        async fn touch_entry(&self, entry_id: &EntryId, active_time_ms: i64) -> Result<bool>;
-        async fn delete_entry(&self, entry_id: &EntryId) -> Result<()>;
-        async fn find_entry_id_by_snapshot_hash(&self, snapshot_hash: &str) -> Result<Option<EntryId>>;
+            snapshot_hash: &str,
+        ) -> std::result::Result<Option<EntryId>, ClipboardRepositoryError>;
     }
 }
 
@@ -674,11 +669,7 @@ async fn dedup_query_failure_short_circuits() {
     let mut repo = MockEntryRepo::new();
     repo.expect_find_entry_id_by_snapshot_hash()
         .times(1)
-        .returning(|_| {
-            Err(anyhow::Error::from(PeerAddressError::Internal(
-                "db down".to_string(),
-            )))
-        });
+        .returning(|_| Err(ClipboardRepositoryError::Storage("db down".to_string())));
     let capture = MockCapture::new();
     let write = MockWrite::new();
 

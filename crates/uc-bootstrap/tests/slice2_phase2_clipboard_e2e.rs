@@ -286,29 +286,15 @@ impl uc_core::ports::EntryDeliveryRepositoryPort for NoopEntryDeliveryRepo {
 #[derive(Default)]
 struct NoopClipboardEntryRepo;
 #[async_trait]
-impl uc_core::ports::ClipboardEntryRepositoryPort for NoopClipboardEntryRepo {
-    async fn save_entry_and_selection(
-        &self,
-        _entry: &uc_core::clipboard::ClipboardEntry,
-        _selection: &uc_core::ClipboardSelectionDecision,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
+impl uc_core::ports::clipboard::GetClipboardEntryPort for NoopClipboardEntryRepo {
     async fn get_entry(
         &self,
         _entry_id: &uc_core::ids::EntryId,
-    ) -> anyhow::Result<Option<uc_core::clipboard::ClipboardEntry>> {
+    ) -> Result<
+        Option<uc_core::clipboard::ClipboardEntry>,
+        uc_core::clipboard::ClipboardRepositoryError,
+    > {
         Ok(None)
-    }
-    async fn list_entries(
-        &self,
-        _limit: usize,
-        _offset: usize,
-    ) -> anyhow::Result<Vec<uc_core::clipboard::ClipboardEntry>> {
-        Ok(Vec::new())
-    }
-    async fn delete_entry(&self, _entry_id: &uc_core::ids::EntryId) -> anyhow::Result<()> {
-        Ok(())
     }
 }
 

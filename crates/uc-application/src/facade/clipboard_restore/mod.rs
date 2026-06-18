@@ -6,7 +6,6 @@ use uc_core::clipboard::ClipboardIntegrationMode;
 use uc_core::ids::EntryId;
 use uc_core::ports::{
     clipboard::{ClipboardPayloadResolverPort, PayloadResolveError},
-    ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
     ClipboardSelectionRepositoryPort, ClockPort,
 };
 
@@ -44,19 +43,14 @@ pub enum ClipboardRestoreError {
 /// this once from their wiring deps and pass it to
 /// `ClipboardRestoreFacade::new`.
 pub struct ClipboardRestoreFacadeDeps {
-    /// Aggregate entry repo for the multi-format restore path
-    /// (`RestoreClipboardSelectionUseCase` delegates to the shared
-    /// `reconstruct_snapshot_from_entry` helper, which still takes the wide
-    /// repository traits).
-    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    /// Aggregate representation repo for the same shared helper.
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
-    /// Narrow entry intent ports: `get` feeds the plain-text restore path,
-    /// `touch` feeds the post-restore LRU touch.
+    /// Narrow entry intent ports: `get` feeds both the multi-format restore
+    /// path (via the shared `reconstruct_snapshot_from_entry` helper) and the
+    /// plain-text restore path; `touch` feeds the post-restore LRU touch.
     pub entry_ports: ClipboardEntryPorts,
-    /// Narrow representation intent ports: `get` feeds the plain-text restore
-    /// candidate lookup.
+    /// Narrow representation intent ports: `get` feeds both restore paths'
+    /// candidate lookup; `update_processing_result` feeds the shared helper's
+    /// orphan→Lost demotion side effect.
     pub representation_ports: ClipboardRepresentationPorts,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
@@ -74,9 +68,7 @@ pub struct ClipboardRestoreFacade {
 impl ClipboardRestoreFacade {
     pub fn new(deps: ClipboardRestoreFacadeDeps) -> Self {
         let ClipboardRestoreFacadeDeps {
-            entry_repo,
             selection_repo,
-            representation_repo,
             entry_ports,
             representation_ports,
             payload_resolver,
@@ -98,14 +90,15 @@ impl ClipboardRestoreFacade {
             get: rep_get,
             get_by_blob_id: _rep_get_by_blob_id,
             list_for_event: _rep_list_for_event,
-            update_processing_result: _rep_update,
+            update_processing_result: rep_update,
         } = representation_ports;
 
         let restore_uc = RestoreClipboardSelectionUseCase::new(
-            entry_repo,
+            entry_get.clone(),
             write_coordinator.clone(),
             selection_repo.clone(),
-            representation_repo,
+            rep_get.clone(),
+            rep_update,
             payload_resolver.clone(),
             blob_store.clone(),
             integration_mode,

@@ -61,10 +61,12 @@ use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::clipboard::EntryDeliveryStatus;
 use uc_core::ids::{DeviceId, EntryId};
-use uc_core::ports::clipboard::ClipboardPayloadResolverPort;
+use uc_core::ports::clipboard::{
+    ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
+    UpdateRepresentationProcessingResultPort,
+};
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardEventRepositoryPort,
-    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, DeviceIdentityPort,
+    ClipboardEventRepositoryPort, ClipboardSelectionRepositoryPort, DeviceIdentityPort,
     EntryDeliveryRepositoryPort, SettingsPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
@@ -190,10 +192,11 @@ impl ResendEntryRunner for ResendEntryUseCase {
 }
 
 pub(crate) struct ResendEntryUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    entry_repo: Arc<dyn GetClipboardEntryPort>,
     event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn GetRepresentationPort>,
+    rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
     payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     blob_store: Arc<dyn BlobReaderPort>,
     entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
@@ -212,10 +215,11 @@ pub(crate) struct ResendEntryUseCase {
 /// 外部 crate 通过 [`ClipboardOutboundFacade::new`](crate::facade::ClipboardOutboundFacade::new)
 /// 间接装配。
 pub(crate) struct ResendEntryDeps {
-    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
     pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub representation_repo: Arc<dyn GetRepresentationPort>,
+    pub rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
@@ -233,6 +237,7 @@ impl ResendEntryUseCase {
             event_repo: deps.event_repo,
             selection_repo: deps.selection_repo,
             representation_repo: deps.representation_repo,
+            rep_processing_repo: deps.rep_processing_repo,
             payload_resolver: deps.payload_resolver,
             blob_store: deps.blob_store,
             entry_delivery_repo: deps.entry_delivery_repo,
@@ -306,6 +311,7 @@ impl ResendEntryUseCase {
             self.entry_repo.as_ref(),
             self.selection_repo.as_ref(),
             self.representation_repo.as_ref(),
+            self.rep_processing_repo.as_ref(),
             self.payload_resolver.as_ref(),
             self.blob_store.as_ref(),
             &cmd.entry_id,
@@ -532,9 +538,9 @@ mod tests {
     use bytes::Bytes;
     use chrono::Utc;
     use uc_core::clipboard::{
-        ClipboardEntry, ClipboardSelection, ClipboardSelectionDecision, EntryDeliveryError,
-        EntryDeliveryRecord, MimeType, ObservedClipboardRepresentation, PayloadAvailability,
-        PersistedClipboardRepresentation, SelectionPolicyVersion,
+        ClipboardEntry, ClipboardRepositoryError, ClipboardSelection, ClipboardSelectionDecision,
+        EntryDeliveryError, EntryDeliveryRecord, MimeType, ObservedClipboardRepresentation,
+        PayloadAvailability, PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
     use uc_core::ids::{EventId, FormatId, RepresentationId};
     use uc_core::ports::clipboard::{
@@ -556,26 +562,12 @@ mod tests {
         entry: Option<ClipboardEntry>,
     }
     #[async_trait]
-    impl ClipboardEntryRepositoryPort for FakeEntryRepo {
-        async fn save_entry_and_selection(
+    impl GetClipboardEntryPort for FakeEntryRepo {
+        async fn get_entry(
             &self,
-            _entry: &ClipboardEntry,
-            _selection: &ClipboardSelectionDecision,
-        ) -> anyhow::Result<()> {
-            unimplemented!()
-        }
-        async fn get_entry(&self, _entry_id: &EntryId) -> anyhow::Result<Option<ClipboardEntry>> {
+            _entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError> {
             Ok(self.entry.clone())
-        }
-        async fn list_entries(
-            &self,
-            _limit: usize,
-            _offset: usize,
-        ) -> anyhow::Result<Vec<ClipboardEntry>> {
-            unimplemented!()
-        }
-        async fn delete_entry(&self, _entry_id: &EntryId) -> anyhow::Result<()> {
-            unimplemented!()
         }
     }
 
@@ -616,44 +608,25 @@ mod tests {
         reps: Vec<PersistedClipboardRepresentation>,
     }
     #[async_trait]
-    impl ClipboardRepresentationRepositoryPort for StaticRepRepo {
+    impl GetRepresentationPort for StaticRepRepo {
         async fn get_representation(
             &self,
             _event_id: &EventId,
             representation_id: &RepresentationId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
+        ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
             Ok(self
                 .reps
                 .iter()
                 .find(|r| r.id == *representation_id)
                 .cloned())
         }
-        async fn get_representation_by_id(
-            &self,
-            _representation_id: &RepresentationId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn get_representation_by_blob_id(
-            &self,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn update_blob_id(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-        async fn update_blob_id_if_none(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<bool> {
-            Ok(false)
-        }
+    }
+
+    /// No-op processing-result port — resend tests don't exercise the
+    /// orphan-demotion path, so a fixed `StateMismatch` is enough.
+    struct StubProcessingRepo;
+    #[async_trait]
+    impl UpdateRepresentationProcessingResultPort for StubProcessingRepo {
         async fn update_processing_result(
             &self,
             _rep_id: &RepresentationId,
@@ -661,7 +634,7 @@ mod tests {
             _blob_id: Option<&BlobId>,
             _new_state: PayloadAvailability,
             _last_error: Option<&str>,
-        ) -> anyhow::Result<ProcessingUpdateOutcome> {
+        ) -> Result<ProcessingUpdateOutcome, ClipboardRepositoryError> {
             Ok(ProcessingUpdateOutcome::StateMismatch)
         }
     }
@@ -937,6 +910,7 @@ mod tests {
                 selection: Some(selection),
             }),
             representation_repo: Arc::new(StaticRepRepo { reps: vec![rep] }),
+            rep_processing_repo: Arc::new(StubProcessingRepo),
             payload_resolver: Arc::new(StubResolver(ResolveBehavior::Inline(
                 b"hello resend".to_vec(),
             ))),
@@ -998,6 +972,7 @@ mod tests {
             // 下游 ports 都不应被触达,塞 panic-on-call 的 fake。
             selection_repo: Arc::new(FakeSelectionRepo { selection: None }),
             representation_repo: Arc::new(StaticRepRepo { reps: Vec::new() }),
+            rep_processing_repo: Arc::new(StubProcessingRepo),
             payload_resolver: Arc::new(StubResolver(ResolveBehavior::Lost)),
             blob_store: Arc::new(UnusedBlobStore),
             entry_delivery_repo: Arc::new(StubDeliveryRepo {
@@ -1049,6 +1024,7 @@ mod tests {
                 selection: Some(selection_for(&entry_id, "rep-lost")),
             }),
             representation_repo: Arc::new(StaticRepRepo { reps: vec![rep] }),
+            rep_processing_repo: Arc::new(StubProcessingRepo),
             // resolver 返回 Lost
             payload_resolver: Arc::new(StubResolver(ResolveBehavior::Lost)),
             blob_store: Arc::new(UnusedBlobStore),

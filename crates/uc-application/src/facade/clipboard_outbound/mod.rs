@@ -11,10 +11,12 @@ use tracing::{info, warn};
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::ClipboardPayloadSource;
 use uc_core::ids::EntryId;
-use uc_core::ports::clipboard::ClipboardPayloadResolverPort;
+use uc_core::ports::clipboard::{
+    ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
+    UpdateRepresentationProcessingResultPort,
+};
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardEventRepositoryPort,
-    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, DeviceIdentityPort,
+    ClipboardEventRepositoryPort, ClipboardSelectionRepositoryPort, DeviceIdentityPort,
     EntryDeliveryRepositoryPort, SettingsPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
@@ -127,10 +129,11 @@ pub struct ClipboardOutboundDeps {
     pub blob_transfer: Arc<BlobTransferFacade>,
 
     // ── resend path ────────────────────────────────────────────────────
-    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
     pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub representation_repo: Arc<dyn GetRepresentationPort>,
+    pub rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
@@ -364,6 +367,7 @@ impl ClipboardOutboundFacade {
             event_repo: deps.event_repo,
             selection_repo: deps.selection_repo,
             representation_repo: deps.representation_repo,
+            rep_processing_repo: deps.rep_processing_repo,
             payload_resolver: deps.payload_resolver,
             blob_store: deps.blob_store,
             entry_delivery_repo: deps.entry_delivery_repo,

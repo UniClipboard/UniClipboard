@@ -15,9 +15,10 @@ use uc_core::clipboard::{
 };
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::mobile_sync::MobileDeviceId;
+use uc_core::ports::clipboard::GetClipboardEntryPort;
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardEventRepositoryPort, DeviceIdentityPort,
-    EntryDeliveryRepositoryPort, MobileDeviceRepositoryPort,
+    ClipboardEventRepositoryPort, DeviceIdentityPort, EntryDeliveryRepositoryPort,
+    MobileDeviceRepositoryPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::MemberRepositoryPort;
@@ -82,7 +83,7 @@ pub enum GetEntryDeliveryViewError {
 const MOBILE_SYNC_DEVICE_PREFIX: &str = "mobile_sync:";
 
 pub(crate) struct GetEntryDeliveryViewUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    entry_repo: Arc<dyn GetClipboardEntryPort>,
     event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
@@ -93,7 +94,7 @@ pub(crate) struct GetEntryDeliveryViewUseCase {
 
 impl GetEntryDeliveryViewUseCase {
     pub(crate) fn new(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        entry_repo: Arc<dyn GetClipboardEntryPort>,
         event_repo: Arc<dyn ClipboardEventRepositoryPort>,
         trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
         entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
@@ -297,7 +298,6 @@ mod tests {
     use uc_core::mobile_sync::{MobileClientType, MobileDevice, MobileDeviceError};
     use uc_core::security::IdentityFingerprint;
     use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError};
-    use uc_core::ClipboardSelectionDecision;
     use uc_core::ObservedClipboardRepresentation;
     use uc_core::{MemberSyncPreferences, MembershipError, SpaceMember};
 
@@ -320,31 +320,17 @@ mod tests {
         }
     }
     #[async_trait]
-    impl ClipboardEntryRepositoryPort for FakeEntryRepo {
-        async fn save_entry_and_selection(
+    impl GetClipboardEntryPort for FakeEntryRepo {
+        async fn get_entry(
             &self,
-            _entry: &ClipboardEntry,
-            _selection: &ClipboardSelectionDecision,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-        async fn get_entry(&self, entry_id: &EntryId) -> anyhow::Result<Option<ClipboardEntry>> {
+            entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, uc_core::clipboard::ClipboardRepositoryError> {
             Ok(self
                 .entries
                 .lock()
                 .unwrap()
                 .get(&entry_id.to_string())
                 .cloned())
-        }
-        async fn list_entries(
-            &self,
-            _limit: usize,
-            _offset: usize,
-        ) -> anyhow::Result<Vec<ClipboardEntry>> {
-            Ok(Vec::new())
-        }
-        async fn delete_entry(&self, _entry_id: &EntryId) -> anyhow::Result<()> {
-            Ok(())
         }
     }
 

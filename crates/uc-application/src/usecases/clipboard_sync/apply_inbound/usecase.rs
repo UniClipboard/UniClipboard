@@ -8,7 +8,7 @@ use tracing::{debug, error, info, instrument, warn, Instrument};
 use uc_observability::FlowId;
 
 use uc_core::ids::EntryId;
-use uc_core::ports::ClipboardEntryRepositoryPort;
+use uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort;
 use uc_core::SystemClipboardSnapshot;
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
@@ -26,7 +26,7 @@ const VISIBLE_DUPLICATE_WINDOW: Duration = Duration::from_secs(2);
 const RECENT_INBOUND_MAX_RECORDS: u64 = 128;
 
 pub struct ApplyInboundClipboardUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    entry_repo: Arc<dyn FindEntryIdBySnapshotHashPort>,
     capture: Arc<dyn InboundCapture>,
     write: Arc<dyn InboundWrite>,
     blob_materializer: Option<Arc<dyn InboundBlobMaterializer>>,
@@ -44,7 +44,7 @@ pub struct ApplyInboundClipboardUseCase {
 
 impl ApplyInboundClipboardUseCase {
     pub fn new(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        entry_repo: Arc<dyn FindEntryIdBySnapshotHashPort>,
         capture: Arc<dyn InboundCapture>,
         write: Arc<dyn InboundWrite>,
     ) -> Self {

@@ -43,10 +43,10 @@ use uc_core::{
     ids::{EntryId, EventId, RepresentationId},
     ports::{
         clipboard::{
-            ClipboardPayloadResolverPort, PayloadResolveError, ProcessingUpdateOutcome,
-            ResolvedClipboardPayload,
+            ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
+            PayloadResolveError, ProcessingUpdateOutcome, ResolvedClipboardPayload,
+            UpdateRepresentationProcessingResultPort,
         },
-        ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
         ClipboardSelectionRepositoryPort,
     },
     BlobId,
@@ -130,9 +130,10 @@ pub(crate) enum BuildSnapshotError {
 ///
 /// See the module docs for the orphan-demotion side effect.
 pub(crate) async fn reconstruct_snapshot_from_entry(
-    entry_repo: &dyn ClipboardEntryRepositoryPort,
+    entry_repo: &dyn GetClipboardEntryPort,
     selection_repo: &dyn ClipboardSelectionRepositoryPort,
-    representation_repo: &dyn ClipboardRepresentationRepositoryPort,
+    representation_repo: &dyn GetRepresentationPort,
+    rep_processing_repo: &dyn UpdateRepresentationProcessingResultPort,
     payload_resolver: &dyn ClipboardPayloadResolverPort,
     blob_store: &dyn BlobReaderPort,
     entry_id: &EntryId,
@@ -142,7 +143,7 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
     let entry = entry_repo
         .get_entry(entry_id)
         .await
-        .map_err(BuildSnapshotError::Repository)?
+        .map_err(|e| BuildSnapshotError::Repository(e.into()))?
         .ok_or_else(|| BuildSnapshotError::EntryNotFound {
             entry_id: entry_id.clone(),
         })?;
@@ -171,7 +172,7 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
         let rep = representation_repo
             .get_representation(&entry.event_id, rep_id)
             .await
-            .map_err(BuildSnapshotError::Repository)?;
+            .map_err(|e| BuildSnapshotError::Repository(e.into()))?;
         if let Some(rep) = rep {
             candidates.push(rep);
         } else if *rep_id == selection.selection.paste_rep_id {
@@ -203,7 +204,7 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
         return build_file_branch(
             payload_resolver,
             blob_store,
-            representation_repo,
+            rep_processing_repo,
             entry_id,
             paste_rep,
         )
@@ -263,7 +264,7 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
                 // stable `Lost` error instead of churning through the same
                 // transient failure path.
                 if let PayloadResolveError::Orphaned { rep_id, state } = &resolver_err {
-                    demote_orphaned_to_lost(representation_repo, rep_id, state).await;
+                    demote_orphaned_to_lost(rep_processing_repo, rep_id, state).await;
                 }
                 return Err(BuildSnapshotError::PasteRepUnavailable(resolver_err));
             }
@@ -325,7 +326,7 @@ fn is_file_rep(rep: &PersistedClipboardRepresentation) -> bool {
 async fn build_file_branch(
     payload_resolver: &dyn ClipboardPayloadResolverPort,
     blob_store: &dyn BlobReaderPort,
-    representation_repo: &dyn ClipboardRepresentationRepositoryPort,
+    rep_processing_repo: &dyn UpdateRepresentationProcessingResultPort,
     entry_id: &EntryId,
     rep: &PersistedClipboardRepresentation,
 ) -> Result<SystemClipboardSnapshot, BuildSnapshotError> {
@@ -358,7 +359,7 @@ async fn build_file_branch(
                 // blob fallback gets demoted before propagating, so the
                 // next attempt sees a stable `Lost` outcome.
                 if let PayloadResolveError::Orphaned { rep_id, state } = &resolver_err {
-                    demote_orphaned_to_lost(representation_repo, rep_id, state).await;
+                    demote_orphaned_to_lost(rep_processing_repo, rep_id, state).await;
                 }
                 return Err(BuildSnapshotError::PasteRepUnavailable(resolver_err));
             }
@@ -458,13 +459,13 @@ async fn build_file_branch(
 /// [`ProcessingUpdateOutcome`] arms without constructing the full helper
 /// dependency set.
 pub(crate) async fn demote_orphaned_to_lost(
-    representation_repo: &dyn ClipboardRepresentationRepositoryPort,
+    rep_processing_repo: &dyn UpdateRepresentationProcessingResultPort,
     rep_id: &RepresentationId,
     state: &PayloadAvailability,
 ) {
     let last_error =
         "orphaned during snapshot reconstruction: bytes lost before blob materialization";
-    match representation_repo
+    match rep_processing_repo
         .update_processing_result(
             rep_id,
             &[
@@ -516,24 +517,22 @@ mod tests {
     use async_trait::async_trait;
     use std::sync::Mutex;
     use uc_core::clipboard::{
-        ClipboardEntry, ClipboardSelection, ClipboardSelectionDecision, MimeType,
-        PersistedClipboardRepresentation, SelectionPolicyVersion,
+        ClipboardEntry, ClipboardRepositoryError, ClipboardSelection, ClipboardSelectionDecision,
+        MimeType, PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
     use uc_core::ids::{EventId, FormatId};
     use uc_core::BlobId;
 
     // ── demote_orphaned_to_lost ─────────────────────────────────────────
 
-    /// Minimal hand-rolled fake — mockall cannot model
-    /// `Option<&BlobId>` / `Option<&str>` parameters in this trait without
-    /// trait-side lifetime generics, which we do not own.
+    /// Minimal hand-rolled fake for the narrow processing-result port.
     struct FakeRepRepo {
-        next: Mutex<Option<anyhow::Result<ProcessingUpdateOutcome>>>,
+        next: Mutex<Option<Result<ProcessingUpdateOutcome, ClipboardRepositoryError>>>,
         calls: Mutex<Vec<(RepresentationId, PayloadAvailability, Option<String>)>>,
     }
 
     impl FakeRepRepo {
-        fn new(outcome: anyhow::Result<ProcessingUpdateOutcome>) -> Self {
+        fn new(outcome: Result<ProcessingUpdateOutcome, ClipboardRepositoryError>) -> Self {
             Self {
                 next: Mutex::new(Some(outcome)),
                 calls: Mutex::new(Vec::new()),
@@ -542,40 +541,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl ClipboardRepresentationRepositoryPort for FakeRepRepo {
-        async fn get_representation(
-            &self,
-            _event_id: &EventId,
-            _representation_id: &RepresentationId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
-            unimplemented!("FakeRepRepo: get_representation not used by demotion tests")
-        }
-        async fn get_representation_by_id(
-            &self,
-            _representation_id: &RepresentationId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn get_representation_by_blob_id(
-            &self,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn update_blob_id(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<()> {
-            unimplemented!()
-        }
-        async fn update_blob_id_if_none(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<bool> {
-            unimplemented!()
-        }
+    impl UpdateRepresentationProcessingResultPort for FakeRepRepo {
         async fn update_processing_result(
             &self,
             rep_id: &RepresentationId,
@@ -583,7 +549,7 @@ mod tests {
             _blob_id: Option<&BlobId>,
             new_state: PayloadAvailability,
             last_error: Option<&str>,
-        ) -> anyhow::Result<ProcessingUpdateOutcome> {
+        ) -> Result<ProcessingUpdateOutcome, ClipboardRepositoryError> {
             self.calls.lock().unwrap().push((
                 rep_id.clone(),
                 new_state.clone(),
@@ -645,7 +611,9 @@ mod tests {
 
     #[tokio::test]
     async fn demote_orphaned_swallows_repo_error() {
-        let repo = FakeRepRepo::new(Err(anyhow::anyhow!("transient db error")));
+        let repo = FakeRepRepo::new(Err(ClipboardRepositoryError::Storage(
+            "transient db error".to_string(),
+        )));
         let rep_id = RepresentationId::from("rep-4");
 
         demote_orphaned_to_lost(&repo, &rep_id, &PayloadAvailability::Staged).await;
@@ -663,26 +631,12 @@ mod tests {
     }
 
     #[async_trait]
-    impl ClipboardEntryRepositoryPort for FakeEntryRepo {
-        async fn save_entry_and_selection(
+    impl GetClipboardEntryPort for FakeEntryRepo {
+        async fn get_entry(
             &self,
-            _entry: &ClipboardEntry,
-            _selection: &ClipboardSelectionDecision,
-        ) -> anyhow::Result<()> {
-            unimplemented!()
-        }
-        async fn get_entry(&self, _entry_id: &EntryId) -> anyhow::Result<Option<ClipboardEntry>> {
+            _entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError> {
             Ok(self.entry.clone())
-        }
-        async fn list_entries(
-            &self,
-            _limit: usize,
-            _offset: usize,
-        ) -> anyhow::Result<Vec<ClipboardEntry>> {
-            unimplemented!()
-        }
-        async fn delete_entry(&self, _entry_id: &EntryId) -> anyhow::Result<()> {
-            unimplemented!()
         }
     }
 
@@ -708,44 +662,26 @@ mod tests {
     }
 
     #[async_trait]
-    impl ClipboardRepresentationRepositoryPort for StaticRepRepo {
+    impl GetRepresentationPort for StaticRepRepo {
         async fn get_representation(
             &self,
             _event_id: &EventId,
             representation_id: &RepresentationId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
+        ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
             Ok(self
                 .reps
                 .iter()
                 .find(|r| r.id == *representation_id)
                 .cloned())
         }
-        async fn get_representation_by_id(
-            &self,
-            _representation_id: &RepresentationId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn get_representation_by_blob_id(
-            &self,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn update_blob_id(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-        async fn update_blob_id_if_none(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> anyhow::Result<bool> {
-            Ok(false)
-        }
+    }
+
+    /// Always reports a state mismatch — the reconstruct tests don't exercise
+    /// the orphan-demotion path, so this stub is a no-op recorder.
+    struct StubProcessingRepo;
+
+    #[async_trait]
+    impl UpdateRepresentationProcessingResultPort for StubProcessingRepo {
         async fn update_processing_result(
             &self,
             _rep_id: &RepresentationId,
@@ -753,7 +689,7 @@ mod tests {
             _blob_id: Option<&BlobId>,
             _new_state: PayloadAvailability,
             _last_error: Option<&str>,
-        ) -> anyhow::Result<ProcessingUpdateOutcome> {
+        ) -> Result<ProcessingUpdateOutcome, ClipboardRepositoryError> {
             Ok(ProcessingUpdateOutcome::StateMismatch)
         }
     }
@@ -836,6 +772,7 @@ mod tests {
             &FakeEntryRepo { entry: None },
             &FakeSelectionRepo { selection: None },
             &StaticRepRepo { reps: Vec::new() },
+            &StubProcessingRepo,
             &StubResolver {
                 behavior: ResolveBehavior::Lost,
             },
@@ -864,6 +801,7 @@ mod tests {
             },
             &FakeSelectionRepo { selection: None },
             &StaticRepRepo { reps: Vec::new() },
+            &StubProcessingRepo,
             &StubResolver {
                 behavior: ResolveBehavior::Lost,
             },
@@ -895,6 +833,7 @@ mod tests {
                 selection: Some(selection_for(&entry_id, "rep-text")),
             },
             &StaticRepRepo { reps: vec![rep] },
+            &StubProcessingRepo,
             &StubResolver {
                 behavior: ResolveBehavior::Inline(b"hello world".to_vec()),
             },
@@ -924,6 +863,7 @@ mod tests {
                 selection: Some(selection_for(&entry_id, "rep-lost")),
             },
             &StaticRepRepo { reps: vec![rep] },
+            &StubProcessingRepo,
             &StubResolver {
                 behavior: ResolveBehavior::Lost,
             },
@@ -958,6 +898,7 @@ mod tests {
                 selection: Some(selection_for(&entry_id, "rep-x")),
             },
             &StaticRepRepo { reps: Vec::new() },
+            &StubProcessingRepo,
             &StubResolver {
                 behavior: ResolveBehavior::Lost,
             },

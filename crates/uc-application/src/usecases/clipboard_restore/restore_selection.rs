@@ -19,8 +19,11 @@ use uc_core::{
     clipboard::ClipboardIntegrationMode,
     ids::EntryId,
     ports::{
-        clipboard::ClipboardPayloadResolverPort, ClipboardEntryRepositoryPort,
-        ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
+        clipboard::{
+            ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
+            UpdateRepresentationProcessingResultPort,
+        },
+        ClipboardSelectionRepositoryPort,
     },
 };
 
@@ -30,10 +33,11 @@ use crate::usecases::clipboard_sync::snapshot_from_entry::{
 };
 
 pub(crate) struct RestoreClipboardSelectionUseCase {
-    clipboard_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    clipboard_repo: Arc<dyn GetClipboardEntryPort>,
     coordinator: Arc<ClipboardWriteCoordinator>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn GetRepresentationPort>,
+    rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
     payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     blob_store: Arc<dyn BlobReaderPort>,
     mode: ClipboardIntegrationMode,
@@ -41,10 +45,11 @@ pub(crate) struct RestoreClipboardSelectionUseCase {
 
 impl RestoreClipboardSelectionUseCase {
     pub(crate) fn new(
-        clipboard_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        clipboard_repo: Arc<dyn GetClipboardEntryPort>,
         coordinator: Arc<ClipboardWriteCoordinator>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn GetRepresentationPort>,
+        rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
         payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
         blob_store: Arc<dyn BlobReaderPort>,
         mode: ClipboardIntegrationMode,
@@ -54,6 +59,7 @@ impl RestoreClipboardSelectionUseCase {
             coordinator,
             selection_repo,
             representation_repo,
+            rep_processing_repo,
             payload_resolver,
             blob_store,
             mode,
@@ -71,6 +77,7 @@ impl RestoreClipboardSelectionUseCase {
             self.clipboard_repo.as_ref(),
             self.selection_repo.as_ref(),
             self.representation_repo.as_ref(),
+            self.rep_processing_repo.as_ref(),
             self.payload_resolver.as_ref(),
             self.blob_store.as_ref(),
             entry_id,

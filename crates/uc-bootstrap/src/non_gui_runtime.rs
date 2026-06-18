@@ -208,7 +208,7 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
     let capture: Arc<dyn ApplyInboundCapture> = capture_uc;
     let write: Arc<dyn ApplyInboundWrite> = Arc::new(NoopInboundWrite);
     Arc::new(ApplyInboundClipboardUseCase::new(
-        deps.clipboard.clipboard_entry_repo.clone(),
+        deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
         capture,
         write,
     ))
@@ -396,9 +396,7 @@ pub fn build_app_facade_from_deps(
 
     let clipboard_restore = options.clipboard_restore.map(|restore| {
         Arc::new(ClipboardRestoreFacade::new(ClipboardRestoreFacadeDeps {
-            entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
             selection_repo: deps.clipboard.selection_repo.clone(),
-            representation_repo: deps.clipboard.representation_repo.clone(),
             entry_ports: deps.clipboard.entry_ports.clone(),
             representation_ports: deps.clipboard.representation_ports.clone(),
             payload_resolver: deps.clipboard.payload_resolver.clone(),
@@ -639,10 +637,15 @@ pub async fn build_cli_app_runtime(
         settings: deps.settings.clone(),
         clipboard_sync: assembly.clipboard_sync.clone(),
         blob_transfer: assembly.blob.clone(),
-        entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
+        entry_repo: deps.clipboard.entry_ports.get.clone(),
         event_repo: wired.clipboard_event_reader_repo.clone(),
         selection_repo: deps.clipboard.selection_repo.clone(),
-        representation_repo: deps.clipboard.representation_repo.clone(),
+        representation_repo: deps.clipboard.representation_ports.get.clone(),
+        rep_processing_repo: deps
+            .clipboard
+            .representation_ports
+            .update_processing_result
+            .clone(),
         payload_resolver: deps.clipboard.payload_resolver.clone(),
         blob_store: deps.storage.blob_store.clone(),
         entry_delivery_repo: wired.entry_delivery_repo.clone(),

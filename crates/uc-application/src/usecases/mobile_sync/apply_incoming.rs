@@ -898,7 +898,7 @@ mod tests {
     use async_trait::async_trait;
     use mockall::predicate::*;
 
-    use uc_core::ports::ClipboardEntryRepositoryPort;
+    use uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort;
 
     use crate::usecases::clipboard_sync::apply_inbound::{InboundCapture, InboundWrite};
 
@@ -942,17 +942,11 @@ mod tests {
     mockall::mock! {
         EntryRepo {}
         #[async_trait]
-        impl ClipboardEntryRepositoryPort for EntryRepo {
-            async fn save_entry_and_selection(
+        impl FindEntryIdBySnapshotHashPort for EntryRepo {
+            async fn find_entry_id_by_snapshot_hash(
                 &self,
-                entry: &uc_core::ClipboardEntry,
-                selection: &uc_core::ClipboardSelectionDecision,
-            ) -> AnyResult<()>;
-            async fn get_entry(&self, entry_id: &EntryId) -> AnyResult<Option<uc_core::ClipboardEntry>>;
-            async fn list_entries(&self, limit: usize, offset: usize) -> AnyResult<Vec<uc_core::ClipboardEntry>>;
-            async fn touch_entry(&self, entry_id: &EntryId, active_time_ms: i64) -> AnyResult<bool>;
-            async fn delete_entry(&self, entry_id: &EntryId) -> AnyResult<()>;
-            async fn find_entry_id_by_snapshot_hash(&self, snapshot_hash: &str) -> AnyResult<Option<EntryId>>;
+                snapshot_hash: &str,
+            ) -> std::result::Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError>;
         }
     }
 

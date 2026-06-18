@@ -228,7 +228,8 @@ pub(crate) async fn build_facade_with_seeded_device(
     // routes.rs 测试断言 404 即建立在这条事实上。
     let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(NoopEntryRepo);
     let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
-        entry_repo.clone(),
+        Arc::new(NoopEntryRepo)
+            as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
         Arc::new(NoopInboundCapture),
         Arc::new(NoopInboundWrite),
     ));
@@ -285,6 +286,16 @@ impl ClipboardEntryRepositoryPort for NoopEntryRepo {
         Ok(())
     }
     async fn find_entry_id_by_snapshot_hash(&self, _: &str) -> AnyResult<Option<EntryId>> {
+        Ok(None)
+    }
+}
+
+#[async_trait]
+impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for NoopEntryRepo {
+    async fn find_entry_id_by_snapshot_hash(
+        &self,
+        _snapshot_hash: &str,
+    ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
         Ok(None)
     }
 }

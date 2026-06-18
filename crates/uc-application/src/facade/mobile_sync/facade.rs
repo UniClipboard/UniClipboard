@@ -832,6 +832,16 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for UnusedEntryRepo {
+        async fn find_entry_id_by_snapshot_hash(
+            &self,
+            _: &str,
+        ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
+            unimplemented!()
+        }
+    }
+
     struct UnusedSelectionRepo;
     #[async_trait]
     impl ClipboardSelectionRepositoryPort for UnusedSelectionRepo {
@@ -982,7 +992,8 @@ mod tests {
     fn build_facade() -> MobileSyncFacade {
         let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
-            entry_repo.clone(),
+            Arc::new(UnusedEntryRepo)
+                as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
             Arc::new(UnusedCapture),
             Arc::new(UnusedWrite),
         ));
@@ -1138,7 +1149,8 @@ mod tests {
 
         let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
-            entry_repo.clone(),
+            Arc::new(UnusedEntryRepo)
+                as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
             Arc::new(UnusedCapture),
             Arc::new(UnusedWrite),
         ));
@@ -1221,7 +1233,8 @@ mod tests {
 
         let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
-            entry_repo.clone(),
+            Arc::new(UnusedEntryRepo)
+                as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
             Arc::new(UnusedCapture),
             Arc::new(UnusedWrite),
         ));
@@ -1336,7 +1349,8 @@ mod tests {
     fn build_facade_with_lifecycle(lifecycle: Arc<RecordingLanLifecycle>) -> MobileSyncFacade {
         let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
-            entry_repo.clone(),
+            Arc::new(UnusedEntryRepo)
+                as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
             Arc::new(UnusedCapture),
             Arc::new(UnusedWrite),
         ));
@@ -1481,7 +1495,8 @@ mod tests {
 
         let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
-            entry_repo.clone(),
+            Arc::new(UnusedEntryRepo)
+                as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
             Arc::new(UnusedCapture),
             Arc::new(UnusedWrite),
         ));

@@ -112,7 +112,12 @@ pub fn build_daemon_runtime_workers(
     ));
     let apply_inbound_uc = Arc::new(
         ApplyInboundClipboardUseCase::new(
-            input.deps.clipboard.clipboard_entry_repo.clone(),
+            input
+                .deps
+                .clipboard
+                .entry_ports
+                .find_by_snapshot_hash
+                .clone(),
             Arc::clone(&apply_inbound_capture_uc) as Arc<dyn ApplyInboundCapture>,
             Arc::clone(&input.clipboard_write_coordinator) as Arc<dyn ApplyInboundWrite>,
         )
@@ -126,10 +131,16 @@ pub fn build_daemon_runtime_workers(
         clipboard_sync: input.clipboard_sync_facade.clone(),
         blob_transfer: input.blob_transfer_facade.clone(),
         // resend path
-        entry_repo: input.deps.clipboard.clipboard_entry_repo.clone(),
+        entry_repo: input.deps.clipboard.entry_ports.get.clone(),
         event_repo: input.clipboard_event_reader_repo,
         selection_repo: input.deps.clipboard.selection_repo.clone(),
-        representation_repo: input.deps.clipboard.representation_repo.clone(),
+        representation_repo: input.deps.clipboard.representation_ports.get.clone(),
+        rep_processing_repo: input
+            .deps
+            .clipboard
+            .representation_ports
+            .update_processing_result
+            .clone(),
         payload_resolver: input.deps.clipboard.payload_resolver.clone(),
         blob_store: input.deps.storage.blob_store.clone(),
         entry_delivery_repo: input.entry_delivery_repo,

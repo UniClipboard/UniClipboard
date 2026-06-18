@@ -177,9 +177,25 @@ pub struct SystemPorts {
 /// `clear` 来更新这份状态;facade 通过本字段读它,看到 daemon 当前真实绑定
 /// 的 LAN URL。两端共享同一 `Arc<InMemoryMobileSyncEndpointInfoAdapter>`,通过
 /// unsizing coercion 转成 trait object。
+/// Registered-device intent ports facing the application layer.
+///
+/// The composition root coerces one Diesel device-repository adapter into each
+/// of these; each consumer takes only the slice it needs, never the whole
+/// aggregate store (see ports.md §8.3).
+#[derive(Clone)]
+pub struct MobileDevicePorts {
+    pub find_by_username: Arc<dyn FindMobileDeviceByUsernamePort>,
+    pub find_by_id: Arc<dyn FindMobileDeviceByIdPort>,
+    pub list: Arc<dyn ListMobileDevicesPort>,
+    pub save: Arc<dyn SaveMobileDevicePort>,
+    pub delete: Arc<dyn DeleteMobileDevicePort>,
+    pub update: Arc<dyn UpdateMobileDevicePort>,
+}
+
 #[derive(Clone)]
 pub struct MobileSyncPorts {
     pub device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    pub devices: MobileDevicePorts,
     pub endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
 }
 

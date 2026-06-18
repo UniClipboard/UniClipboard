@@ -81,6 +81,20 @@ pub struct DevicePorts {
     pub member_repo: Arc<dyn MemberRepositoryPort>,
 }
 
+/// Receiver-side file-transfer projection ports (ADR-009).
+///
+/// The composition root coerces the single Diesel adapter into these intent
+/// ports; each downstream consumer takes only the slice it needs, never the
+/// whole bundle.
+#[derive(Clone)]
+pub struct FileTransferPorts {
+    pub record: Arc<dyn RecordReceiverTransferPort>,
+    pub entry_summary: Arc<dyn GetEntryTransferSummaryPort>,
+    pub find_entry_id: Arc<dyn FindEntryIdForTransferPort>,
+    pub list_expired: Arc<dyn ListExpiredInflightTransfersPort>,
+    pub fail_inflight: Arc<dyn FailInflightTransfersPort>,
+}
+
 /// Storage-domain ports bundle (blobs, thumbnails, file transfer tracking).
 /// 存储领域端口组（Blob、缩略图、文件传输追踪）。
 #[derive(Clone)]
@@ -89,7 +103,7 @@ pub struct StoragePorts {
     pub blob_writer: Arc<dyn BlobWriterPort>,
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub thumbnail_generator: Arc<dyn ThumbnailGeneratorPort>,
-    pub file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort>,
+    pub file_transfer: FileTransferPorts,
 }
 
 /// Search-domain ports bundle.

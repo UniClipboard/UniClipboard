@@ -12,8 +12,8 @@
 //! | [`FileTransferFacade::complete`] | `CompleteTransferUseCase` | 标记传输完成，落 `Completed` 事件 |
 //! | [`FileTransferFacade::fail`] | `FailTransferUseCase` | 标记传输失败，落 `Failed` 事件 |
 //! | [`FileTransferFacade::cancel`] | `CancelTransferUseCase` | 取消传输，落 `Cancelled` 事件 |
-//! | [`FileTransferFacade::link_transfer_to_entry`] | `FileTransferRepositoryPort::link_transfer_to_entry` | 把 projection 行重新关联到另一个 `entry_id`（`now_ms` 由内部 clock 提供） |
-//! | [`FileTransferFacade::seed_receiver_context`] | `FileTransferRepositoryPort::upsert_pending_transfer` | 在 receiver-side projection 表里 upsert 一条 `pending` 行（接收方本地上下文，不进 domain event 总线） |
+//! | [`FileTransferFacade::link_transfer_to_entry`] | `RecordReceiverTransferPort::link_transfer_to_entry` | 把 projection 行重新关联到另一个 `entry_id`（`now_ms` 由内部 clock 提供） |
+//! | [`FileTransferFacade::seed_receiver_context`] | `RecordReceiverTransferPort::upsert_pending_transfer` | 在 receiver-side projection 表里 upsert 一条 `pending` 行（接收方本地上下文，不进 domain event 总线） |
 //!
 //! ## 设计取舍
 //!
@@ -27,8 +27,8 @@
 use std::sync::Arc;
 
 use uc_core::file_transfer::{FileTransferEventPublisherPort, FileTransferEventStorePort};
-use uc_core::ports::file_transfer_repository::PendingInboundTransfer;
-use uc_core::ports::{ClockPort, FileTransferRepositoryPort};
+use uc_core::ports::file_transfer::PendingInboundTransfer;
+use uc_core::ports::{ClockPort, RecordReceiverTransferPort};
 use uc_core::FileTransferEvent;
 
 use crate::facade::host_event::FileTransferHostEventPublisher;
@@ -73,7 +73,7 @@ pub struct SeedReceiverContext {
 pub struct FileTransferFacadeDeps {
     pub store: Arc<dyn FileTransferEventStorePort>,
     pub publisher: Arc<dyn FileTransferEventPublisherPort>,
-    pub repo: Arc<dyn FileTransferRepositoryPort>,
+    pub repo: Arc<dyn RecordReceiverTransferPort>,
     pub clock: Arc<dyn ClockPort>,
     /// 可选:concrete publisher 引用,用于在 `link_transfer_to_entry` 成功后
     /// flush buffered 阶段暂存的 `StatusChanged transferring`。生产装配会
@@ -94,7 +94,7 @@ pub struct FileTransferFacade {
     complete_uc: Arc<CompleteTransferUseCase>,
     fail_uc: Arc<FailTransferUseCase>,
     cancel_uc: Arc<CancelTransferUseCase>,
-    repo: Arc<dyn FileTransferRepositoryPort>,
+    repo: Arc<dyn RecordReceiverTransferPort>,
     clock: Arc<dyn ClockPort>,
     host_publisher: Option<Arc<FileTransferHostEventPublisher>>,
 }

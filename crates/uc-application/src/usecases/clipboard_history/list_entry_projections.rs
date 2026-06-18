@@ -8,7 +8,7 @@ use uc_core::clipboard::PayloadAvailability;
 use uc_core::network::protocol::MIME_IMAGE_PREFIX;
 use uc_core::ports::{
     ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort, FileTransferRepositoryPort, ThumbnailRepositoryPort,
+    ClipboardSelectionRepositoryPort, GetEntryTransferSummaryPort, ThumbnailRepositoryPort,
 };
 
 /// Application-layer DTO for clipboard entry projection.
@@ -54,7 +54,7 @@ pub(crate) struct ListClipboardEntryProjectionsUseCase {
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
     thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
-    file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
+    file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
     max_limit: usize,
 }
 
@@ -117,7 +117,7 @@ impl ListClipboardEntryProjectionsUseCase {
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
         thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
-        file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
+        file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
     ) -> Self {
         Self {
             entry_repo,

@@ -7,7 +7,7 @@ use crate::db::schema::file_transfer;
 use uc_core::file_transfer::{
     FileTransferCancellationReason, FileTransferEvent, FileTransferFailureReason,
 };
-use uc_core::ports::file_transfer_repository::TrackedFileTransferStatus;
+use uc_core::ports::file_transfer::TrackedFileTransferStatus;
 
 pub(crate) fn apply_event(
     conn: &mut diesel::sqlite::SqliteConnection,
@@ -141,8 +141,8 @@ mod tests {
     use crate::file_transfer::receiver_store::SqliteReceiverFileTransferStore;
     use tempfile::{tempdir, TempDir};
     use uc_core::file_transfer::{FileTransferEventStorePort, FileTransferProgress};
-    use uc_core::ports::file_transfer_repository::PendingInboundTransfer;
-    use uc_core::ports::FileTransferRepositoryPort;
+    use uc_core::ports::file_transfer::PendingInboundTransfer;
+    use uc_core::ports::RecordReceiverTransferPort;
     use uc_core::FileTransferDirection;
 
     fn make_setup() -> (

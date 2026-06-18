@@ -23,7 +23,7 @@ use uc_core::file_transfer::{
     FileTransferCancellationReason, FileTransferEvent, FileTransferEventPublisherPort,
     FileTransferFailureReason,
 };
-use uc_core::ports::file_transfer_repository::FileTransferRepositoryPort;
+use uc_core::ports::FindEntryIdForTransferPort;
 
 use super::{HostEvent, HostEventBus, OutboundEntryIdCache, TransferHostEvent};
 
@@ -51,7 +51,7 @@ struct PendingStatusChange {
 
 pub struct FileTransferHostEventPublisher {
     bus: Arc<HostEventBus>,
-    file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
+    file_transfer_repo: Arc<dyn FindEntryIdForTransferPort>,
     outbound_entry_cache: Arc<OutboundEntryIdCache>,
     /// transfer_id → 暂存的 status_changed,等 link 后补发。
     pending_status: Arc<Mutex<HashMap<String, PendingStatusChange>>>,
@@ -64,7 +64,7 @@ pub struct FileTransferHostEventPublisher {
 impl FileTransferHostEventPublisher {
     pub fn new(
         bus: Arc<HostEventBus>,
-        file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
+        file_transfer_repo: Arc<dyn FindEntryIdForTransferPort>,
         outbound_entry_cache: Arc<OutboundEntryIdCache>,
     ) -> Self {
         Self {

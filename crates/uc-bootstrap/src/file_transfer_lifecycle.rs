@@ -14,6 +14,7 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use tracing::{info, info_span, warn, Instrument};
 
+use uc_application::deps::FileTransferPorts;
 use uc_application::facade::{
     BlobTransferFacade, FileTransferFacade, FileTransferFacadeDeps, FileTransferHostEventPublisher,
     HostEvent, HostEventBus, InboundCancelOutcome, OutboundEntryIdCache, TransferHostEvent,
@@ -21,8 +22,8 @@ use uc_application::facade::{
 use uc_core::file_transfer::{
     FileTransferCancellationReason, FileTransferEventPublisherPort, FileTransferEventStorePort,
 };
-use uc_core::ports::file_transfer_repository::TrackedFileTransferStatus;
-use uc_core::ports::{ClockPort, FileTransferRepositoryPort};
+use uc_core::ports::file_transfer::TrackedFileTransferStatus;
+use uc_core::ports::{ClockPort, FailInflightTransfersPort, ListExpiredInflightTransfersPort};
 use uc_infra::db::executor::DieselSqliteExecutor;
 use uc_infra::file_transfer::SqliteReceiverFileTransferStore;
 
@@ -72,7 +73,8 @@ pub struct FileTransferLifecycle {
     /// timeline).
     pub host_event_bus: Arc<HostEventBus>,
 
-    file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
+    list_expired: Arc<dyn ListExpiredInflightTransfersPort>,
+    fail_inflight: Arc<dyn FailInflightTransfersPort>,
     clock: Arc<dyn ClockPort>,
 }
 
@@ -98,7 +100,8 @@ impl FileTransferLifecycle {
         cancel: tokio::sync::watch::Receiver<bool>,
         blob_transfer: Arc<BlobTransferFacade>,
     ) -> JoinHandle<()> {
-        let repo = Arc::clone(&self.file_transfer_repo);
+        let list_expired = Arc::clone(&self.list_expired);
+        let fail_inflight = Arc::clone(&self.fail_inflight);
         let clock = Arc::clone(&self.clock);
         let bus = Arc::clone(&self.host_event_bus);
 
@@ -122,7 +125,7 @@ impl FileTransferLifecycle {
                     let pending_cutoff = now_ms - PENDING_TIMEOUT_MS;
                     let transferring_cutoff = now_ms - TRANSFERRING_TIMEOUT_MS;
 
-                    let expired = match repo
+                    let expired = match list_expired
                         .list_expired_inflight(pending_cutoff, transferring_cutoff)
                         .await
                     {
@@ -179,7 +182,7 @@ impl FileTransferLifecycle {
 
                         let reason = timeout_reason_for(t.status);
 
-                        if let Err(err) = repo.mark_failed(&t.transfer_id, reason, now_ms).await {
+                        if let Err(err) = fail_inflight.mark_failed(&t.transfer_id, reason, now_ms).await {
                             warn!(
                                 error = %err,
                                 transfer_id = %t.transfer_id,
@@ -212,7 +215,7 @@ impl FileTransferLifecycle {
         let reason = "orphaned: app restarted while transfer was in-flight";
 
         let cleanup_targets = match self
-            .file_transfer_repo
+            .fail_inflight
             .bulk_fail_inflight(reason, now_ms)
             .instrument(info_span!("file_transfer.startup_reconcile"))
             .await
@@ -296,14 +299,14 @@ async fn cleanup_cached_path(cached_path: &str) {
 pub fn build_file_transfer_assembly(
     store: Arc<FileTransferEventStore>,
     host_event_bus: Arc<HostEventBus>,
-    file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
+    file_transfer: FileTransferPorts,
     clock: Arc<dyn ClockPort>,
 ) -> FileTransferAssembly {
     let outbound_entry_cache = Arc::new(OutboundEntryIdCache::new());
 
     let publisher = Arc::new(FileTransferHostEventPublisher::new(
         Arc::clone(&host_event_bus),
-        Arc::clone(&file_transfer_repo),
+        file_transfer.find_entry_id,
         Arc::clone(&outbound_entry_cache),
     ));
 
@@ -313,7 +316,7 @@ pub fn build_file_transfer_assembly(
     let facade = Arc::new(FileTransferFacade::new(FileTransferFacadeDeps {
         store: store_port,
         publisher: publisher_port,
-        repo: Arc::clone(&file_transfer_repo),
+        repo: file_transfer.record,
         clock: Arc::clone(&clock),
         host_publisher: Some(Arc::clone(&publisher)),
     }));
@@ -321,7 +324,8 @@ pub fn build_file_transfer_assembly(
     let lifecycle = Arc::new(FileTransferLifecycle {
         outbound_entry_cache,
         host_event_bus,
-        file_transfer_repo,
+        list_expired: file_transfer.list_expired,
+        fail_inflight: file_transfer.fail_inflight,
         clock,
     });
 

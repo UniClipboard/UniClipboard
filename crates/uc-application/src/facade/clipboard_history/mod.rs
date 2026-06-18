@@ -11,7 +11,7 @@ use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::{
     CacheFsPort, ClipboardEntryRepositoryPort, ClipboardEventWriterPort,
     ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, ClockPort,
-    DeviceIdentityPort, FileTransferRepositoryPort, SettingsPort,
+    DeviceIdentityPort, GetEntryTransferSummaryPort, SettingsPort,
 };
 use uc_core::{
     ClipboardEntry, ClipboardEvent, ClipboardSelection, ClipboardSelectionDecision, MimeType,
@@ -129,7 +129,7 @@ pub struct ClipboardHistoryFacadeDeps {
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
-    pub file_transfer_repo: Arc<dyn FileTransferRepositoryPort>,
+    pub file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
     pub search_index: Option<Arc<dyn SearchIndexPort>>,
     pub file_cache_dir: Option<PathBuf>,
     /// 删除剪贴板条目时释放对应的 iroh-blobs tag。`None` 表示该装配场景

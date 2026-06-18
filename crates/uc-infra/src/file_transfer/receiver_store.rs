@@ -48,10 +48,8 @@ mod tests {
     use crate::db::schema::file_transfer;
     use diesel::prelude::*;
     use tempfile::{tempdir, TempDir};
-    use uc_core::ports::file_transfer_repository::{
-        PendingInboundTransfer, TrackedFileTransferStatus,
-    };
-    use uc_core::ports::FileTransferRepositoryPort;
+    use uc_core::ports::file_transfer::{PendingInboundTransfer, TrackedFileTransferStatus};
+    use uc_core::ports::RecordReceiverTransferPort;
     use uc_core::{FileTransferDirection, FileTransferProgress};
 
     fn make_store() -> (

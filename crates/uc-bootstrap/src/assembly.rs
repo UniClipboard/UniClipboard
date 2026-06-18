@@ -20,8 +20,8 @@ use std::sync::Arc;
 use tracing::info;
 
 use uc_application::deps::{
-    AppDeps, ClipboardPorts, DevicePorts, MobileSyncPorts, SearchPorts, SecurityPorts,
-    StoragePorts, SystemPorts,
+    AppDeps, ClipboardPorts, DevicePorts, FileTransferPorts, MobileSyncPorts, SearchPorts,
+    SecurityPorts, StoragePorts, SystemPorts,
 };
 use uc_application::facade::HostEventEmitterPort;
 use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
@@ -292,8 +292,8 @@ struct InfraLayer {
     clock: Arc<dyn ClockPort>,
     hash: Arc<dyn ContentHashPort>,
 
-    // File transfer tracking (projection/read-model port).
-    file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort>,
+    // File transfer tracking — receiver-side projection intent ports (ADR-009).
+    file_transfer: FileTransferPorts,
 
     // File transfer durable event store. Held as the concrete type so the
     // assembly can pass it directly to `build_file_transfer_assembly`
@@ -512,8 +512,17 @@ fn create_infra_layer(
     let selection_repo_impl = DieselClipboardSelectionRepository::new(Arc::clone(&db_executor));
     let selection_repo: Arc<dyn ClipboardSelectionRepositoryPort> = Arc::new(selection_repo_impl);
 
-    let file_transfer_repo: Arc<dyn uc_core::ports::FileTransferRepositoryPort> =
+    // One Diesel adapter implements all five receiver-side projection intent
+    // ports; coerce it into each so every consumer holds only its slice.
+    let file_transfer_adapter =
         Arc::new(DieselFileTransferRepository::new(Arc::clone(&db_executor)));
+    let file_transfer = FileTransferPorts {
+        record: Arc::clone(&file_transfer_adapter) as _,
+        entry_summary: Arc::clone(&file_transfer_adapter) as _,
+        find_entry_id: Arc::clone(&file_transfer_adapter) as _,
+        list_expired: Arc::clone(&file_transfer_adapter) as _,
+        fail_inflight: file_transfer_adapter as _,
+    };
 
     let file_transfer_store = Arc::new(
         uc_infra::file_transfer::SqliteReceiverFileTransferStore::new(Arc::clone(&db_executor)),
@@ -552,7 +561,7 @@ fn create_infra_layer(
         first_sync_state,
         clock,
         hash,
-        file_transfer_repo,
+        file_transfer,
         file_transfer_store,
         mobile_device_repo,
         mobile_sync_endpoint_info,
@@ -1119,7 +1128,7 @@ pub fn wire_dependencies(
             blob_writer: platform.blob_writer,
             thumbnail_repo: infra.thumbnail_repo,
             thumbnail_generator: infra.thumbnail_generator,
-            file_transfer_repo: infra.file_transfer_repo,
+            file_transfer: infra.file_transfer,
         },
         settings: infra.settings_repo,
         system: SystemPorts {
@@ -1158,7 +1167,7 @@ pub fn wire_dependencies(
     } = crate::file_transfer_lifecycle::build_file_transfer_assembly(
         Arc::clone(&file_transfer_store_arc),
         Arc::clone(&host_event_bus),
-        deps.storage.file_transfer_repo.clone(),
+        deps.storage.file_transfer.clone(),
         deps.system.clock.clone(),
     );
 

@@ -7,12 +7,10 @@ use crate::db::models::{FileTransferRow, NewFileTransferRow};
 use crate::db::ports::DbExecutor;
 use crate::db::schema::file_transfer;
 use uc_core::ports::file_transfer::{
-    FailInflightTransfersPort, FileTransferProjectionError, FindEntryIdForTransferPort,
-    GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, RecordReceiverTransferPort,
-};
-use uc_core::ports::file_transfer_repository::{
     compute_aggregate_status, EntryTransferSummary, ExpiredInflightTransfer,
-    FileTransferRepositoryPort, PendingInboundTransfer, TrackedFileTransferStatus,
+    FailInflightTransfersPort, FileTransferProjectionError, FindEntryIdForTransferPort,
+    GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, PendingInboundTransfer,
+    RecordReceiverTransferPort, TrackedFileTransferStatus,
 };
 
 /// SQLite adapter for the receiver-side file-transfer projection ports.
@@ -299,80 +297,5 @@ impl<E: DbExecutor> FailInflightTransfersPort for DieselFileTransferRepository<E
                 Ok(targets)
             })
             .map_err(backend)
-    }
-}
-
-// Legacy aggregate port — kept until consumers migrate to the intent ports
-// (ADR-009). Each method delegates to the corresponding intent-port impl.
-#[async_trait]
-impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<E> {
-    async fn upsert_pending_transfer(
-        &self,
-        transfer: &PendingInboundTransfer,
-    ) -> anyhow::Result<()> {
-        RecordReceiverTransferPort::upsert_pending_transfer(self, transfer)
-            .await
-            .map_err(anyhow::Error::new)
-    }
-
-    async fn mark_failed(
-        &self,
-        transfer_id: &str,
-        reason: &str,
-        now_ms: i64,
-    ) -> anyhow::Result<()> {
-        FailInflightTransfersPort::mark_failed(self, transfer_id, reason, now_ms)
-            .await
-            .map_err(anyhow::Error::new)
-    }
-
-    async fn list_expired_inflight(
-        &self,
-        pending_cutoff_ms: i64,
-        transferring_cutoff_ms: i64,
-    ) -> anyhow::Result<Vec<ExpiredInflightTransfer>> {
-        ListExpiredInflightTransfersPort::list_expired_inflight(
-            self,
-            pending_cutoff_ms,
-            transferring_cutoff_ms,
-        )
-        .await
-        .map_err(anyhow::Error::new)
-    }
-
-    async fn bulk_fail_inflight(
-        &self,
-        reason: &str,
-        now_ms: i64,
-    ) -> anyhow::Result<Vec<ExpiredInflightTransfer>> {
-        FailInflightTransfersPort::bulk_fail_inflight(self, reason, now_ms)
-            .await
-            .map_err(anyhow::Error::new)
-    }
-
-    async fn get_entry_transfer_summary(
-        &self,
-        entry_id: &str,
-    ) -> anyhow::Result<Option<EntryTransferSummary>> {
-        GetEntryTransferSummaryPort::get_entry_transfer_summary(self, entry_id)
-            .await
-            .map_err(anyhow::Error::new)
-    }
-
-    async fn get_entry_id_for_transfer(&self, transfer_id: &str) -> anyhow::Result<Option<String>> {
-        FindEntryIdForTransferPort::get_entry_id_for_transfer(self, transfer_id)
-            .await
-            .map_err(anyhow::Error::new)
-    }
-
-    async fn link_transfer_to_entry(
-        &self,
-        transfer_id: &str,
-        entry_id: &str,
-        now_ms: i64,
-    ) -> anyhow::Result<bool> {
-        RecordReceiverTransferPort::link_transfer_to_entry(self, transfer_id, entry_id, now_ms)
-            .await
-            .map_err(anyhow::Error::new)
     }
 }

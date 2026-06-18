@@ -36,7 +36,7 @@ use tracing::{debug, info, warn};
 
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::ports::clipboard::ProcessingUpdateOutcome;
-use uc_core::ports::ClipboardRepresentationRepositoryPort;
+use uc_core::ports::ClipboardRepresentationStore;
 
 use crate::clipboard::SpoolManager;
 
@@ -44,15 +44,12 @@ use crate::clipboard::SpoolManager;
 /// can no longer be recovered. Run once at startup, before any worker that
 /// might consume these reps.
 pub struct StagedReconciler {
-    repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    repo: Arc<dyn ClipboardRepresentationStore>,
     spool: Arc<SpoolManager>,
 }
 
 impl StagedReconciler {
-    pub fn new(
-        repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
-        spool: Arc<SpoolManager>,
-    ) -> Self {
+    pub fn new(repo: Arc<dyn ClipboardRepresentationStore>, spool: Arc<SpoolManager>) -> Self {
         Self { repo, spool }
     }
 

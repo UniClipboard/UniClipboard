@@ -8,7 +8,7 @@ use tokio::fs;
 use tracing::{debug, warn};
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::ports::clipboard::ProcessingUpdateOutcome;
-use uc_core::ports::{ClipboardRepresentationRepositoryPort, ClockPort};
+use uc_core::ports::{ClipboardRepresentationStore, ClockPort};
 
 use crate::clipboard::SpoolManager;
 
@@ -16,7 +16,7 @@ use crate::clipboard::SpoolManager;
 /// 过期缓存条目的清理任务。
 pub struct SpoolJanitor {
     spool: Arc<SpoolManager>,
-    repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    repo: Arc<dyn ClipboardRepresentationStore>,
     clock: Arc<dyn ClockPort>,
     ttl_days: u64,
 }
@@ -24,7 +24,7 @@ pub struct SpoolJanitor {
 impl SpoolJanitor {
     pub fn new(
         spool: Arc<SpoolManager>,
-        repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        repo: Arc<dyn ClipboardRepresentationStore>,
         clock: Arc<dyn ClockPort>,
         ttl_days: u64,
     ) -> Self {

@@ -16,7 +16,7 @@ use uc_application::deps::AppDeps;
 use crate::task_registry::TaskRegistry;
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
-    ClipboardRepresentationRepositoryPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
+    ClipboardRepresentationStore, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
 };
 use uc_core::ports::{ClockPort, ContentHashPort};
 use uc_infra::blob::BlobWriterPort;
@@ -32,7 +32,7 @@ pub const SPOOL_JANITOR_INTERVAL_SECS: u64 = 60 * 60;
 /// Since `AppDeps` is not `Clone` and the spawn boundary requires `'static`,
 /// callers clone these `Arc`s before entering the async context.
 pub struct BlobProcessingPorts {
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub representation_repo: Arc<dyn ClipboardRepresentationStore>,
     pub worker_tx: mpsc::Sender<RepresentationId>,
     pub blob_writer: Arc<dyn BlobWriterPort>,
     pub hasher: Arc<dyn ContentHashPort>,
@@ -45,7 +45,7 @@ impl BlobProcessingPorts {
     /// Clone the relevant ports from `AppDeps`.
     pub fn from_app_deps(deps: &AppDeps) -> Self {
         Self {
-            representation_repo: deps.clipboard.representation_repo.clone(),
+            representation_repo: deps.clipboard.representation_store.clone(),
             worker_tx: deps.clipboard.worker_tx.clone(),
             blob_writer: deps.storage.blob_writer.clone(),
             hasher: deps.system.hash.clone(),

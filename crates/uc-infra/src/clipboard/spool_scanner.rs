@@ -10,13 +10,13 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::ids::RepresentationId;
-use uc_core::ports::ClipboardRepresentationRepositoryPort;
+use uc_core::ports::ClipboardRepresentationStore;
 
 /// Scans spool directory and re-queues recoverable representations.
 /// 扫描磁盘缓存目录并重新入队可恢复的表示。
 pub struct SpoolScanner {
     spool_dir: PathBuf,
-    repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    repo: Arc<dyn ClipboardRepresentationStore>,
     worker_tx: mpsc::Sender<RepresentationId>,
 }
 
@@ -25,7 +25,7 @@ impl SpoolScanner {
     /// 创建新的扫描器。
     pub fn new(
         spool_dir: PathBuf,
-        repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        repo: Arc<dyn ClipboardRepresentationStore>,
         worker_tx: mpsc::Sender<RepresentationId>,
     ) -> Self {
         Self {

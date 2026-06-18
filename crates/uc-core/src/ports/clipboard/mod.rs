@@ -22,7 +22,7 @@ mod thumbnail_repository;
 
 pub use blob_migration_repo::{BlobMigrationRepoError, BlobMigrationRepoPort, MigrationRecord};
 pub use clipboard_change_origin::ClipboardChangeOriginPort;
-pub use clipboard_entry_repository::ClipboardEntryRepositoryPort;
+pub use clipboard_entry_repository::ClipboardEntryStore;
 pub use clipboard_event_repository::ClipboardEventRepositoryPort;
 pub use clipboard_selection_repository::ClipboardSelectionRepositoryPort;
 pub use delivery::EntryDeliveryRepositoryPort;
@@ -43,9 +43,7 @@ pub use representation_intents::{
     UpdateRepresentationProcessingResultPort,
 };
 pub use representation_normalizer::ClipboardRepresentationNormalizerPort;
-pub use representation_repository::{
-    ClipboardRepresentationRepositoryPort, ProcessingUpdateOutcome,
-};
+pub use representation_repository::{ClipboardRepresentationStore, ProcessingUpdateOutcome};
 pub use select_representation_policy::SelectRepresentationPolicyPort;
 pub use selection_resolver::SelectionResolverPort;
 pub use spool_queue::{SpoolQueuePort, SpoolRequest};

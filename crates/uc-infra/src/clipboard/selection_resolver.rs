@@ -8,22 +8,22 @@ use std::sync::Arc;
 use uc_core::clipboard::{ClipboardEntry, PersistedClipboardRepresentation};
 use uc_core::ids::EntryId;
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort, SelectionResolverPort,
+    ClipboardEntryStore, ClipboardRepresentationStore, ClipboardSelectionRepositoryPort,
+    SelectionResolverPort,
 };
 
 /// Selection resolver implementation
 pub struct SelectionResolver {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    entry_repo: Arc<dyn ClipboardEntryStore>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn ClipboardRepresentationStore>,
 }
 
 impl SelectionResolver {
     pub fn new(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        entry_repo: Arc<dyn ClipboardEntryStore>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn ClipboardRepresentationStore>,
     ) -> Self {
         Self {
             entry_repo,

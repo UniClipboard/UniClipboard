@@ -231,8 +231,6 @@ pub struct WiredDependencies {
 /// Infrastructure layer implementations
 struct InfraLayer {
     // Clipboard repositories
-    #[allow(dead_code)]
-    clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     clipboard_entry_ports: ClipboardEntryPorts,
     clipboard_event_repo: Arc<dyn ClipboardEventWriterPort>,
     /// 与 `clipboard_event_repo` 共享底层 `DieselClipboardEventRepository`,
@@ -242,7 +240,7 @@ struct InfraLayer {
     /// 投递结果仓储,由 `DispatchClipboardEntryUseCase` 写、由
     /// `GetEntryDeliveryViewUseCase` 读。
     entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn ClipboardRepresentationStore>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
 
     // Membership repository (phase 4b PR-4 起成为唯一持久成员层).
@@ -417,10 +415,11 @@ fn create_infra_layer(
         selection_row_mapper,
         ClipboardEntryRowMapper, // ZST - can instantiate again
     );
-    // Keep a concrete Arc so it can be coerced into both the legacy aggregate
-    // port (for inner consumers) and each narrow entry intent port.
+    // Keep a concrete Arc so it can be coerced into each narrow entry intent
+    // port. The entry adapter still implements the aggregate ClipboardEntryStore
+    // (the intent-port impls delegate to it), but no consumer needs the wide
+    // trait object, so it is not exposed through the ports bundle.
     let entry_repo_arc = Arc::new(entry_repo);
-    let clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = entry_repo_arc.clone();
     let clipboard_entry_ports = ClipboardEntryPorts {
         get: entry_repo_arc.clone(),
         list: entry_repo_arc.clone(),
@@ -443,7 +442,7 @@ fn create_infra_layer(
         clipboard_event_repo_impl as Arc<_>;
 
     let rep_repo = DieselClipboardRepresentationRepository::new(Arc::clone(&db_executor));
-    let representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort> = Arc::new(rep_repo);
+    let representation_repo: Arc<dyn ClipboardRepresentationStore> = Arc::new(rep_repo);
 
     let entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort> = Arc::new(
         uc_infra::db::repositories::DieselEntryDeliveryRepository::new(Arc::clone(&db_executor)),
@@ -551,7 +550,6 @@ fn create_infra_layer(
         Arc::new(uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter::new());
 
     let infra = InfraLayer {
-        clipboard_entry_repo,
         clipboard_entry_ports,
         clipboard_event_repo,
         clipboard_event_reader_repo,
@@ -1020,7 +1018,7 @@ pub fn wire_dependencies(
         infra.representation_repo.clone(),
         blob_cipher.clone(),
     ));
-    let decrypting_rep_repo: Arc<dyn ClipboardRepresentationRepositoryPort> =
+    let decrypting_rep_repo: Arc<dyn ClipboardRepresentationStore> =
         decrypting_rep_repo_concrete.clone();
     let clipboard_representation_ports = ClipboardRepresentationPorts {
         get: decrypting_rep_repo_concrete.clone(),
@@ -1117,10 +1115,9 @@ pub fn wire_dependencies(
         clipboard: ClipboardPorts {
             clipboard: platform.clipboard,
             system_clipboard: platform.system_clipboard,
-            clipboard_entry_repo: infra.clipboard_entry_repo,
             entry_ports: infra.clipboard_entry_ports,
             clipboard_event_repo: encrypting_event_writer,
-            representation_repo: decrypting_rep_repo,
+            representation_store: decrypting_rep_repo,
             representation_ports: clipboard_representation_ports,
             representation_normalizer: platform.representation_normalizer,
             selection_repo: infra.selection_repo,

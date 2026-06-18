@@ -24,7 +24,7 @@ pub enum ProcessingUpdateOutcome {
 }
 
 #[async_trait]
-pub trait ClipboardRepresentationRepositoryPort: Send + Sync {
+pub trait ClipboardRepresentationStore: Send + Sync {
     async fn get_representation(
         &self,
         event_id: &EventId,

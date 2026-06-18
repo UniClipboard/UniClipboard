@@ -1,6 +1,6 @@
 //! Clipboard Representation Repository
 //!
-//! Implements [`ClipboardRepresentationRepositoryPort`] for querying and updating
+//! Implements [`ClipboardRepresentationStore`] for querying and updating
 //! clipboard snapshot representations stored in SQLite.
 //!
 //! # Usage
@@ -34,7 +34,7 @@ use anyhow::Result;
 use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use uc_core::clipboard::{MimeType, PayloadAvailability, PersistedClipboardRepresentation};
 use uc_core::ids::{EventId, RepresentationId};
-use uc_core::ports::clipboard::{ClipboardRepresentationRepositoryPort, ProcessingUpdateOutcome};
+use uc_core::ports::clipboard::{ClipboardRepresentationStore, ProcessingUpdateOutcome};
 use uc_core::BlobId;
 
 pub struct DieselClipboardRepresentationRepository<E>
@@ -54,7 +54,7 @@ where
 }
 
 #[async_trait::async_trait]
-impl<E> ClipboardRepresentationRepositoryPort for DieselClipboardRepresentationRepository<E>
+impl<E> ClipboardRepresentationStore for DieselClipboardRepresentationRepository<E>
 where
     E: DbExecutor,
 {

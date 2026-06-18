@@ -63,10 +63,12 @@ pub struct ClipboardRepresentationPorts {
 pub struct ClipboardPorts {
     pub clipboard: Arc<dyn PlatformClipboardPort>,
     pub system_clipboard: Arc<dyn SystemClipboardPort>,
-    pub clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
     pub entry_ports: ClipboardEntryPorts,
     pub clipboard_event_repo: Arc<dyn ClipboardEventWriterPort>,
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    /// Inner representation store (the full aggregate surface). Threaded by the
+    /// composition root to the background payload workers only; the application
+    /// layer depends on `representation_ports` instead.
+    pub representation_store: Arc<dyn ClipboardRepresentationStore>,
     pub representation_ports: ClipboardRepresentationPorts,
     pub representation_normalizer: Arc<dyn ClipboardRepresentationNormalizerPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,

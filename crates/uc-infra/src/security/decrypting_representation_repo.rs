@@ -1,6 +1,6 @@
 //! Decrypting clipboard representation repository decorator.
 //!
-//! Wraps ClipboardRepresentationRepositoryPort and decrypts inline_data on read.
+//! Wraps ClipboardRepresentationStore and decrypts inline_data on read.
 //!
 //! Slice 3 起通过 BlobCipherPort 加解密——见 decrypting_clipboard_event_repo
 //! 的 wire format 兼容性说明。
@@ -23,19 +23,19 @@ use uc_core::{
     crypto::aad,
     crypto::domain::{Aad, ActiveSpace, Ciphertext},
     ids::{EventId, RepresentationId, SpaceId},
-    ports::{security::BlobCipherPort, ClipboardRepresentationRepositoryPort},
+    ports::{security::BlobCipherPort, ClipboardRepresentationStore},
     BlobId,
 };
 
 /// Decorator that decrypts representation inline_data on read.
 pub struct DecryptingClipboardRepresentationRepository {
-    inner: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    inner: Arc<dyn ClipboardRepresentationStore>,
     blob_cipher: Arc<dyn BlobCipherPort>,
 }
 
 impl DecryptingClipboardRepresentationRepository {
     pub fn new(
-        inner: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        inner: Arc<dyn ClipboardRepresentationStore>,
         blob_cipher: Arc<dyn BlobCipherPort>,
     ) -> Self {
         Self { inner, blob_cipher }
@@ -47,7 +47,7 @@ fn placeholder_active_space() -> ActiveSpace {
 }
 
 #[async_trait]
-impl ClipboardRepresentationRepositoryPort for DecryptingClipboardRepresentationRepository {
+impl ClipboardRepresentationStore for DecryptingClipboardRepresentationRepository {
     async fn get_representation(
         &self,
         event_id: &EventId,
@@ -258,7 +258,7 @@ impl GetRepresentationPort for DecryptingClipboardRepresentationRepository {
         event_id: &EventId,
         representation_id: &RepresentationId,
     ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::get_representation(self, event_id, representation_id)
+        ClipboardRepresentationStore::get_representation(self, event_id, representation_id)
             .await
             .map_err(to_repo_err)
     }
@@ -270,7 +270,7 @@ impl GetRepresentationByIdPort for DecryptingClipboardRepresentationRepository {
         &self,
         representation_id: &RepresentationId,
     ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::get_representation_by_id(self, representation_id)
+        ClipboardRepresentationStore::get_representation_by_id(self, representation_id)
             .await
             .map_err(to_repo_err)
     }
@@ -282,7 +282,7 @@ impl GetRepresentationByBlobIdPort for DecryptingClipboardRepresentationReposito
         &self,
         blob_id: &BlobId,
     ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::get_representation_by_blob_id(self, blob_id)
+        ClipboardRepresentationStore::get_representation_by_blob_id(self, blob_id)
             .await
             .map_err(to_repo_err)
     }
@@ -294,7 +294,7 @@ impl ListRepresentationsForEventPort for DecryptingClipboardRepresentationReposi
         &self,
         event_id: &EventId,
     ) -> Result<Vec<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::get_representations_for_event(self, event_id)
+        ClipboardRepresentationStore::get_representations_for_event(self, event_id)
             .await
             .map_err(to_repo_err)
     }
@@ -307,7 +307,7 @@ impl UpdateRepresentationBlobIdPort for DecryptingClipboardRepresentationReposit
         representation_id: &RepresentationId,
         blob_id: &BlobId,
     ) -> Result<(), ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::update_blob_id(self, representation_id, blob_id)
+        ClipboardRepresentationStore::update_blob_id(self, representation_id, blob_id)
             .await
             .map_err(to_repo_err)
     }
@@ -317,13 +317,9 @@ impl UpdateRepresentationBlobIdPort for DecryptingClipboardRepresentationReposit
         representation_id: &RepresentationId,
         blob_id: &BlobId,
     ) -> Result<bool, ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::update_blob_id_if_none(
-            self,
-            representation_id,
-            blob_id,
-        )
-        .await
-        .map_err(to_repo_err)
+        ClipboardRepresentationStore::update_blob_id_if_none(self, representation_id, blob_id)
+            .await
+            .map_err(to_repo_err)
     }
 }
 
@@ -337,7 +333,7 @@ impl UpdateRepresentationProcessingResultPort for DecryptingClipboardRepresentat
         new_state: PayloadAvailability,
         last_error: Option<&str>,
     ) -> Result<ProcessingUpdateOutcome, ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::update_processing_result(
+        ClipboardRepresentationStore::update_processing_result(
             self,
             rep_id,
             expected_states,
@@ -357,7 +353,7 @@ impl UpdateRepresentationMimePort for DecryptingClipboardRepresentationRepositor
         rep_id: &RepresentationId,
         mime: &MimeType,
     ) -> Result<(), ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::update_mime_type(self, rep_id, mime)
+        ClipboardRepresentationStore::update_mime_type(self, rep_id, mime)
             .await
             .map_err(to_repo_err)
     }
@@ -369,7 +365,7 @@ impl ListRepresentationIdsByStatePort for DecryptingClipboardRepresentationRepos
         &self,
         states: &[PayloadAvailability],
     ) -> Result<Vec<RepresentationId>, ClipboardRepositoryError> {
-        ClipboardRepresentationRepositoryPort::list_ids_by_payload_state(self, states)
+        ClipboardRepresentationStore::list_ids_by_payload_state(self, states)
             .await
             .map_err(to_repo_err)
     }

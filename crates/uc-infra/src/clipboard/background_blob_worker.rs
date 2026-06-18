@@ -14,7 +14,7 @@ use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
     ProcessingUpdateOutcome, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
 };
-use uc_core::ports::{ClipboardRepresentationRepositoryPort, ClockPort, ContentHashPort};
+use uc_core::ports::{ClipboardRepresentationStore, ClockPort, ContentHashPort};
 
 use crate::blob::BlobWriterPort;
 use crate::clipboard::{RepresentationCache, SpoolManager};
@@ -75,7 +75,7 @@ pub struct BackgroundBlobWorker {
     worker_rx: mpsc::Receiver<RepresentationId>,
     cache: Arc<RepresentationCache>,
     spool: Arc<SpoolManager>,
-    repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    repo: Arc<dyn ClipboardRepresentationStore>,
     blob_writer: Arc<dyn BlobWriterPort>,
     hasher: Arc<dyn ContentHashPort>,
     thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
@@ -91,7 +91,7 @@ impl BackgroundBlobWorker {
         worker_rx: mpsc::Receiver<RepresentationId>,
         cache: Arc<RepresentationCache>,
         spool: Arc<SpoolManager>,
-        repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        repo: Arc<dyn ClipboardRepresentationStore>,
         blob_writer: Arc<dyn BlobWriterPort>,
         hasher: Arc<dyn ContentHashPort>,
         thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,

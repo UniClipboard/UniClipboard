@@ -1,6 +1,6 @@
 //! Test-only helpers for the `clipboard` module.
 //!
-//! Why a hand-rolled fake instead of `mockall`: `ClipboardRepresentationRepositoryPort`
+//! Why a hand-rolled fake instead of `mockall`: `ClipboardRepresentationStore`
 //! takes `Option<&BlobId>` and `Option<&str>`, which can't be matched by `mockall::mock!`
 //! without rewriting the trait signature with explicit lifetimes (mockall 0.13 rejects
 //! method-level lifetime params that don't match the trait declaration). Project-wide
@@ -15,7 +15,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use uc_core::clipboard::{MimeType, PayloadAvailability, PersistedClipboardRepresentation};
 use uc_core::ids::{EventId, RepresentationId};
-use uc_core::ports::clipboard::{ClipboardRepresentationRepositoryPort, ProcessingUpdateOutcome};
+use uc_core::ports::clipboard::{ClipboardRepresentationStore, ProcessingUpdateOutcome};
 use uc_core::BlobId;
 
 /// A scripted return value for one call to `update_processing_result`.
@@ -34,7 +34,7 @@ pub struct UpdateProcessingCall {
     pub last_error: Option<String>,
 }
 
-/// Hand-rolled fake for `ClipboardRepresentationRepositoryPort`.
+/// Hand-rolled fake for `ClipboardRepresentationStore`.
 ///
 /// - `update_processing_result` consumes one scripted outcome per call (FIFO),
 ///   panicking if the script is empty — that's the same "unexpected call" signal
@@ -79,7 +79,7 @@ impl ScriptedRepRepo {
 }
 
 #[async_trait]
-impl ClipboardRepresentationRepositoryPort for ScriptedRepRepo {
+impl ClipboardRepresentationStore for ScriptedRepRepo {
     async fn get_representation(
         &self,
         _event_id: &EventId,

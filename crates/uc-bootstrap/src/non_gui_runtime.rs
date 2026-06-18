@@ -269,7 +269,7 @@ pub fn build_mobile_sync_facade(
         // 装配处直接 new 即可。
         credentials_minter: Arc::new(OsRngCredentialsMinter),
         password_hasher: Arc::new(Argon2idPasswordHasher),
-        device_repo: deps.mobile_sync.device_repo.clone(),
+        devices: deps.mobile_sync.devices.clone(),
         endpoint_info: deps.mobile_sync.endpoint_info.clone(),
         lan_interface_probe: Arc::new(NetworkInterfaceLanProbe::new()),
         settings: deps.settings.clone(),

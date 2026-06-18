@@ -11,8 +11,8 @@ use tracing::{debug, instrument};
 
 use uc_core::mobile_sync::{MintedCredentials, MobileDeviceError, MobileDeviceId};
 use uc_core::ports::{
-    MobileCredentialsMinterPort, MobileDeviceRepositoryPort, PasswordHasherError,
-    PasswordHasherPort,
+    FindMobileDeviceByIdPort, FindMobileDeviceByUsernamePort, MobileCredentialsMinterPort,
+    PasswordHasherError, PasswordHasherPort, UpdateMobileDevicePort,
 };
 
 use super::register_device::{
@@ -96,19 +96,25 @@ pub enum UpdateMobileDeviceError {
 }
 
 pub(crate) struct UpdateMobileDeviceUseCase {
-    device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    find_by_id: Arc<dyn FindMobileDeviceByIdPort>,
+    find_by_username: Arc<dyn FindMobileDeviceByUsernamePort>,
+    update: Arc<dyn UpdateMobileDevicePort>,
     password_hasher: Arc<dyn PasswordHasherPort>,
     credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
 }
 
 impl UpdateMobileDeviceUseCase {
     pub(crate) fn new(
-        device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+        find_by_id: Arc<dyn FindMobileDeviceByIdPort>,
+        find_by_username: Arc<dyn FindMobileDeviceByUsernamePort>,
+        update: Arc<dyn UpdateMobileDevicePort>,
         password_hasher: Arc<dyn PasswordHasherPort>,
         credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
     ) -> Self {
         Self {
-            device_repo,
+            find_by_id,
+            find_by_username,
+            update,
             password_hasher,
             credentials_minter,
         }
@@ -127,7 +133,7 @@ impl UpdateMobileDeviceUseCase {
         input: UpdateMobileDeviceInput,
     ) -> Result<UpdateMobileDeviceOutput, UpdateMobileDeviceError> {
         let mut device = self
-            .device_repo
+            .find_by_id
             .find_by_device_id(&input.device_id)
             .await
             .map_err(translate_device_error)?
@@ -192,7 +198,7 @@ impl UpdateMobileDeviceUseCase {
         }
 
         let updated = self
-            .device_repo
+            .update
             .update_mobile_device(&device)
             .await
             .map_err(|err| translate_update_error(err, &device.username))?;
@@ -217,7 +223,7 @@ impl UpdateMobileDeviceUseCase {
         current_id: &MobileDeviceId,
         username: &str,
     ) -> Result<(), UpdateMobileDeviceError> {
-        match self.device_repo.find_by_username(username).await {
+        match self.find_by_username.find_by_username(username).await {
             Ok(Some(existing)) if existing.device_id != *current_id => {
                 Err(UpdateMobileDeviceError::UsernameTaken(username.to_string()))
             }
@@ -379,7 +385,14 @@ mod tests {
         let mut minter = MockMinter::new();
         minter.expect_mint_credentials().never();
 
-        let uc = UpdateMobileDeviceUseCase::new(Arc::new(repo), Arc::new(hasher), Arc::new(minter));
+        let device_repo = Arc::new(repo);
+        let uc = UpdateMobileDeviceUseCase::new(
+            device_repo.clone(),
+            device_repo.clone(),
+            device_repo,
+            Arc::new(hasher),
+            Arc::new(minter),
+        );
 
         let out = uc
             .execute(UpdateMobileDeviceInput {
@@ -422,8 +435,11 @@ mod tests {
         let mut hasher = MockHasher::new();
         hasher.expect_hash().never();
 
+        let device_repo = Arc::new(repo);
         let uc = UpdateMobileDeviceUseCase::new(
-            Arc::new(repo),
+            device_repo.clone(),
+            device_repo.clone(),
+            device_repo,
             Arc::new(hasher),
             Arc::new(minter_emitting("minted-update-pw-22")),
         );
@@ -462,8 +478,11 @@ mod tests {
         let mut minter = MockMinter::new();
         minter.expect_mint_credentials().never();
 
+        let device_repo = Arc::new(repo);
         let uc = UpdateMobileDeviceUseCase::new(
-            Arc::new(repo),
+            device_repo.clone(),
+            device_repo.clone(),
+            device_repo,
             Arc::new(identity_hasher_for("brand-new-pass-42")),
             Arc::new(minter),
         );
@@ -500,8 +519,11 @@ mod tests {
             });
         repo.expect_update_mobile_device().never();
 
+        let device_repo = Arc::new(repo);
         let uc = UpdateMobileDeviceUseCase::new(
-            Arc::new(repo),
+            device_repo.clone(),
+            device_repo.clone(),
+            device_repo,
             Arc::new(identity_hasher_for("minted-update-pw-22")),
             Arc::new(minter_emitting("minted-update-pw-22")),
         );
@@ -537,8 +559,11 @@ mod tests {
         repo.expect_update_mobile_device()
             .returning(|_| Err(MobileDeviceError::UsernameCollision));
 
+        let device_repo = Arc::new(repo);
         let uc = UpdateMobileDeviceUseCase::new(
-            Arc::new(repo),
+            device_repo.clone(),
+            device_repo.clone(),
+            device_repo,
             Arc::new(identity_hasher_for("minted-update-pw-22")),
             Arc::new(minter_emitting("minted-update-pw-22")),
         );

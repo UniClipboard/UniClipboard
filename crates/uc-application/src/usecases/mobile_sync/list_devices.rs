@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use uc_core::mobile_sync::{MobileClientType, MobileDevice, MobileDeviceError, MobileDeviceId};
-use uc_core::ports::MobileDeviceRepositoryPort;
+use uc_core::ports::ListMobileDevicesPort;
 
 // ─── public-shaped (output / error) ─────────────────────────────────────
 
@@ -89,12 +89,12 @@ pub enum ListMobileDevicesError {
 // ─── use case ───────────────────────────────────────────────────────────
 
 pub(crate) struct ListMobileDevicesUseCase {
-    device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    list: Arc<dyn ListMobileDevicesPort>,
 }
 
 impl ListMobileDevicesUseCase {
-    pub(crate) fn new(device_repo: Arc<dyn MobileDeviceRepositoryPort>) -> Self {
-        Self { device_repo }
+    pub(crate) fn new(list: Arc<dyn ListMobileDevicesPort>) -> Self {
+        Self { list }
     }
 
     /// 列出全部设备，按"最近活跃 desc → 创建时间 desc"排序。
@@ -106,11 +106,7 @@ impl ListMobileDevicesUseCase {
     ///     的设备后面，而不是被夹在过期设备中间。
     #[instrument(skip(self))]
     pub(crate) async fn execute(&self) -> Result<Vec<MobileDeviceSummary>, ListMobileDevicesError> {
-        let devices = self
-            .device_repo
-            .list_all()
-            .await
-            .map_err(translate_device_error)?;
+        let devices = self.list.list_all().await.map_err(translate_device_error)?;
 
         let mut summaries: Vec<MobileDeviceSummary> = devices
             .into_iter()

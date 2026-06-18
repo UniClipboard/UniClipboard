@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use uc_core::mobile_sync::{MobileDeviceError, MobileDeviceId};
-use uc_core::ports::MobileDeviceRepositoryPort;
+use uc_core::ports::DeleteMobileDevicePort;
 
 // ─── public-shaped (input / error) ──────────────────────────────────────
 
@@ -41,12 +41,12 @@ pub enum RevokeMobileDeviceError {
 // ─── use case ───────────────────────────────────────────────────────────
 
 pub(crate) struct RevokeMobileDeviceUseCase {
-    device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    delete: Arc<dyn DeleteMobileDevicePort>,
 }
 
 impl RevokeMobileDeviceUseCase {
-    pub(crate) fn new(device_repo: Arc<dyn MobileDeviceRepositoryPort>) -> Self {
-        Self { device_repo }
+    pub(crate) fn new(delete: Arc<dyn DeleteMobileDevicePort>) -> Self {
+        Self { delete }
     }
 
     #[instrument(skip(self, input), fields(device_id = %input.device_id))]
@@ -55,7 +55,7 @@ impl RevokeMobileDeviceUseCase {
         input: RevokeMobileDeviceInput,
     ) -> Result<(), RevokeMobileDeviceError> {
         let removed = self
-            .device_repo
+            .delete
             .delete(&input.device_id)
             .await
             .map_err(translate_device_error)?;

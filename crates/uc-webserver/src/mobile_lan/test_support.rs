@@ -24,6 +24,7 @@ use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD as BASE64_STD;
 use base64::Engine;
 
+use uc_application::deps::MobileDevicePorts;
 use uc_application::facade::{
     IncomingMobileBuffer, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts,
 };
@@ -45,9 +46,11 @@ use uc_core::ports::clipboard::{
     ListClipboardEntriesPort, PayloadResolveError, ResolvedClipboardPayload,
 };
 use uc_core::ports::{
-    ClockPort, EndpointInfoError, LanInterfaceProbeError, LanInterfaceProbePort,
-    MobileCredentialsMinterPort, MobileDeviceRepositoryPort, MobileSyncEndpointInfoPort,
-    PasswordHasherError, PasswordHasherPort, SettingsPort,
+    ClockPort, DeleteMobileDevicePort, EndpointInfoError, FindMobileDeviceByIdPort,
+    FindMobileDeviceByUsernamePort, LanInterfaceProbeError, LanInterfaceProbePort,
+    ListMobileDevicesPort, MobileCredentialsMinterPort, MobileSyncEndpointInfoPort,
+    PasswordHasherError, PasswordHasherPort, SaveMobileDevicePort, SettingsPort,
+    UpdateMobileDevicePort,
 };
 use uc_core::settings::model::Settings;
 use uc_core::{BlobId, DeviceId, SystemClipboardSnapshot};
@@ -87,11 +90,14 @@ pub(crate) async fn build_facade_with_seeded_device(
         devices: Mutex<Vec<MobileDevice>>,
     }
     #[async_trait]
-    impl MobileDeviceRepositoryPort for InMemoryDeviceRepo {
+    impl SaveMobileDevicePort for InMemoryDeviceRepo {
         async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError> {
             self.devices.lock().unwrap().push(device.clone());
             Ok(())
         }
+    }
+    #[async_trait]
+    impl FindMobileDeviceByUsernamePort for InMemoryDeviceRepo {
         async fn find_by_username(
             &self,
             username: &str,
@@ -104,18 +110,30 @@ pub(crate) async fn build_facade_with_seeded_device(
                 .find(|d| d.username == username)
                 .cloned())
         }
+    }
+    #[async_trait]
+    impl FindMobileDeviceByIdPort for InMemoryDeviceRepo {
         async fn find_by_device_id(
             &self,
             _: &MobileDeviceId,
         ) -> Result<Option<MobileDevice>, MobileDeviceError> {
             Ok(None)
         }
+    }
+    #[async_trait]
+    impl ListMobileDevicesPort for InMemoryDeviceRepo {
         async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError> {
             Ok(self.devices.lock().unwrap().clone())
         }
+    }
+    #[async_trait]
+    impl DeleteMobileDevicePort for InMemoryDeviceRepo {
         async fn delete(&self, _: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
             Ok(false)
         }
+    }
+    #[async_trait]
+    impl UpdateMobileDevicePort for InMemoryDeviceRepo {
         async fn update_mobile_device(
             &self,
             updated: &MobileDevice,
@@ -226,7 +244,14 @@ pub(crate) async fn build_facade_with_seeded_device(
         clock: Arc::new(FixedClock),
         credentials_minter: Arc::new(StaticMinter),
         password_hasher: Arc::new(FakeHasher),
-        device_repo: repo,
+        devices: MobileDevicePorts {
+            find_by_username: repo.clone(),
+            find_by_id: repo.clone(),
+            list: repo.clone(),
+            save: repo.clone(),
+            delete: repo.clone(),
+            update: repo,
+        },
         endpoint_info: Arc::new(FixedEndpoint),
         lan_interface_probe: Arc::new(StubLanProbe),
         settings: Arc::new(InMemorySettings::default()),

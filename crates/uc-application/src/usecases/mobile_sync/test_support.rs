@@ -5,8 +5,11 @@
 //! 在多个 use case 测试里**重复出现**的 mock,集中一次写完,所有测试 `use
 //! super::test_support::*;` 即可。当前承载:
 //!
-//! - [`MockDeviceRepo`] —— [`MobileDeviceRepositoryPort`] 的 mockall mock,
-//!   被 register / authenticate / update / revoke / list 共用。
+//! - [`MockDeviceRepo`] —— the narrow device-repo ports' mockall mock
+//!   (`FindMobileDeviceByUsernamePort` / `FindMobileDeviceByIdPort` /
+//!   `ListMobileDevicesPort` / `SaveMobileDevicePort` / `DeleteMobileDevicePort`
+//!   / `UpdateMobileDevicePort`), shared by register / authenticate / update /
+//!   revoke / list.
 //! - [`MockHasher`] —— [`PasswordHasherPort`] 的 mockall mock,被 register /
 //!   authenticate / update 共用。
 //! - [`MockMinter`] —— [`MobileCredentialsMinterPort`] 的 mockall mock,被
@@ -44,26 +47,42 @@ use uc_core::mobile_sync::{
 };
 use uc_core::ports::mobile_sync::{MobileFileStagingError, MobileFileStagingPort};
 use uc_core::ports::{
-    MobileCredentialsMinterPort, MobileDeviceRepositoryPort, PasswordHasherError,
-    PasswordHasherPort,
+    DeleteMobileDevicePort, FindMobileDeviceByIdPort, FindMobileDeviceByUsernamePort,
+    ListMobileDevicesPort, MobileCredentialsMinterPort, PasswordHasherError, PasswordHasherPort,
+    SaveMobileDevicePort, UpdateMobileDevicePort,
 };
 use uc_observability::analytics::{AnalyticsPort, Event};
 
 mockall::mock! {
     pub DeviceRepo {}
     #[async_trait]
-    impl MobileDeviceRepositoryPort for DeviceRepo {
-        async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
+    impl FindMobileDeviceByUsernamePort for DeviceRepo {
         async fn find_by_username(
             &self,
             username: &str,
         ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+    }
+    #[async_trait]
+    impl FindMobileDeviceByIdPort for DeviceRepo {
         async fn find_by_device_id(
             &self,
             device_id: &MobileDeviceId,
         ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+    }
+    #[async_trait]
+    impl ListMobileDevicesPort for DeviceRepo {
         async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
+    }
+    #[async_trait]
+    impl SaveMobileDevicePort for DeviceRepo {
+        async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
+    }
+    #[async_trait]
+    impl DeleteMobileDevicePort for DeviceRepo {
         async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
+    }
+    #[async_trait]
+    impl UpdateMobileDevicePort for DeviceRepo {
         async fn update_mobile_device(
             &self,
             updated: &MobileDevice,

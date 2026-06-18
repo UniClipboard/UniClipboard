@@ -45,12 +45,13 @@ use uc_core::mobile_sync::LanListenerStatus;
 use uc_core::mobile_sync::MobileDeviceId;
 use uc_core::ports::mobile_sync::LatestClipboardSnapshotPort;
 use uc_core::ports::{
-    ClockPort, LanInterfaceProbePort, MobileCredentialsMinterPort, MobileDeviceRepositoryPort,
-    MobileFileStagingPort, MobileLanLifecyclePort, MobileLanTarget, MobileSyncEndpointInfoPort,
-    PasswordHasherPort, SettingsPort,
+    ClockPort, LanInterfaceProbePort, MobileCredentialsMinterPort, MobileFileStagingPort,
+    MobileLanLifecyclePort, MobileLanTarget, MobileSyncEndpointInfoPort, PasswordHasherPort,
+    SettingsPort,
 };
 use uc_observability::analytics::AnalyticsPort;
 
+use crate::deps::MobileDevicePorts;
 use crate::facade::clipboard_outbound::ClipboardOutboundFacade;
 use crate::facade::clipboard_restore::ClipboardRestoreFacade;
 use crate::facade::file_transfer::FileTransferFacade;
@@ -154,7 +155,7 @@ pub struct MobileSyncFacadeDeps {
     pub clock: Arc<dyn ClockPort>,
     pub credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
     pub password_hasher: Arc<dyn PasswordHasherPort>,
-    pub device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    pub devices: MobileDevicePorts,
     pub endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
     pub lan_interface_probe: Arc<dyn LanInterfaceProbePort>,
     pub settings: Arc<dyn SettingsPort>,
@@ -262,7 +263,7 @@ impl MobileSyncFacade {
             clock,
             credentials_minter,
             password_hasher,
-            device_repo,
+            devices,
             endpoint_info,
             lan_interface_probe,
             settings,
@@ -284,16 +285,19 @@ impl MobileSyncFacade {
             register_device: RegisterMobileShortcutDeviceUseCase::new(
                 credentials_minter.clone(),
                 password_hasher.clone(),
-                device_repo.clone(),
+                devices.find_by_username.clone(),
+                devices.save.clone(),
                 settings.clone(),
                 clock.clone(),
                 lan_interface_probe.clone(),
                 analytics.clone(),
             ),
-            revoke_device: RevokeMobileDeviceUseCase::new(device_repo.clone()),
-            list_devices: ListMobileDevicesUseCase::new(device_repo.clone()),
+            revoke_device: RevokeMobileDeviceUseCase::new(devices.delete.clone()),
+            list_devices: ListMobileDevicesUseCase::new(devices.list.clone()),
             update_device: UpdateMobileDeviceUseCase::new(
-                device_repo.clone(),
+                devices.find_by_id.clone(),
+                devices.find_by_username.clone(),
+                devices.update.clone(),
                 password_hasher.clone(),
                 credentials_minter,
             ),
@@ -304,7 +308,7 @@ impl MobileSyncFacade {
             update_settings: UpdateMobileSyncSettingsUseCase::new(settings),
             list_lan_interfaces: ListLanInterfacesUseCase::new(lan_interface_probe),
             authenticate_basic: AuthenticateBasicAuthUseCase::new(
-                device_repo,
+                devices.find_by_username.clone(),
                 password_hasher,
                 analytics.clone(),
             ),
@@ -639,7 +643,11 @@ mod tests {
         ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, GetRepresentationPort,
         ListClipboardEntriesPort, PayloadResolveError, ResolvedClipboardPayload,
     };
-    use uc_core::ports::{EndpointInfoError, LanInterfaceProbeError, PasswordHasherError};
+    use uc_core::ports::{
+        DeleteMobileDevicePort, EndpointInfoError, FindMobileDeviceByIdPort,
+        FindMobileDeviceByUsernamePort, LanInterfaceProbeError, ListMobileDevicesPort,
+        PasswordHasherError, SaveMobileDevicePort, UpdateMobileDevicePort,
+    };
     use uc_core::settings::model::Settings;
     use uc_core::BlobId;
     use uc_core::DeviceId;
@@ -672,11 +680,14 @@ mod tests {
         devices: Mutex<Vec<MobileDevice>>,
     }
     #[async_trait]
-    impl MobileDeviceRepositoryPort for InMemoryDeviceRepo {
+    impl SaveMobileDevicePort for InMemoryDeviceRepo {
         async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError> {
             self.devices.lock().unwrap().push(device.clone());
             Ok(())
         }
+    }
+    #[async_trait]
+    impl FindMobileDeviceByUsernamePort for InMemoryDeviceRepo {
         async fn find_by_username(
             &self,
             username: &str,
@@ -689,6 +700,9 @@ mod tests {
                 .find(|d| d.username == username)
                 .cloned())
         }
+    }
+    #[async_trait]
+    impl FindMobileDeviceByIdPort for InMemoryDeviceRepo {
         async fn find_by_device_id(
             &self,
             id: &MobileDeviceId,
@@ -701,15 +715,24 @@ mod tests {
                 .find(|d| d.device_id == *id)
                 .cloned())
         }
+    }
+    #[async_trait]
+    impl ListMobileDevicesPort for InMemoryDeviceRepo {
         async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError> {
             Ok(self.devices.lock().unwrap().clone())
         }
+    }
+    #[async_trait]
+    impl DeleteMobileDevicePort for InMemoryDeviceRepo {
         async fn delete(&self, id: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
             let mut devs = self.devices.lock().unwrap();
             let before = devs.len();
             devs.retain(|d| d.device_id != *id);
             Ok(devs.len() < before)
         }
+    }
+    #[async_trait]
+    impl UpdateMobileDevicePort for InMemoryDeviceRepo {
         async fn update_mobile_device(
             &self,
             updated: &MobileDevice,
@@ -734,6 +757,19 @@ mod tests {
                 d.password_hash = updated.password_hash.clone();
             }
             Ok(true)
+        }
+    }
+
+    /// Build the six narrow device-repo ports from one shared
+    /// `InMemoryDeviceRepo` so all consumers see the same backing store.
+    fn device_ports_from(repo: Arc<InMemoryDeviceRepo>) -> MobileDevicePorts {
+        MobileDevicePorts {
+            find_by_username: repo.clone(),
+            find_by_id: repo.clone(),
+            list: repo.clone(),
+            save: repo.clone(),
+            delete: repo.clone(),
+            update: repo,
         }
     }
 
@@ -945,7 +981,7 @@ mod tests {
             clock: Arc::new(FixedClock(1_000)),
             credentials_minter: Arc::new(StaticMinter),
             password_hasher: Arc::new(FakeHasher),
-            device_repo: Arc::new(InMemoryDeviceRepo::default()),
+            devices: device_ports_from(Arc::new(InMemoryDeviceRepo::default())),
             endpoint_info: Arc::new(FixedEndpoint),
             lan_interface_probe: Arc::new(StubLanProbe),
             settings: Arc::new(InMemorySettings::default()),
@@ -1103,7 +1139,7 @@ mod tests {
             clock: Arc::new(FixedClock(1_000)),
             credentials_minter: Arc::new(StaticMinter),
             password_hasher: Arc::new(FakeHasher),
-            device_repo: repo,
+            devices: device_ports_from(repo),
             endpoint_info: Arc::new(FixedEndpoint),
             lan_interface_probe: Arc::new(StubLanProbe),
             settings: Arc::new(InMemorySettings::default()),
@@ -1187,7 +1223,7 @@ mod tests {
             clock: Arc::new(FixedClock(1_000)),
             credentials_minter: Arc::new(StaticMinter),
             password_hasher: Arc::new(FakeHasher),
-            device_repo: repo.clone(),
+            devices: device_ports_from(repo.clone()),
             endpoint_info: Arc::new(FixedEndpoint),
             lan_interface_probe: Arc::new(StubLanProbe),
             settings: Arc::new(InMemorySettings::default()),
@@ -1302,7 +1338,7 @@ mod tests {
             clock: Arc::new(FixedClock(1_000)),
             credentials_minter: Arc::new(StaticMinter),
             password_hasher: Arc::new(FakeHasher),
-            device_repo: Arc::new(InMemoryDeviceRepo::default()),
+            devices: device_ports_from(Arc::new(InMemoryDeviceRepo::default())),
             endpoint_info: Arc::new(FixedEndpoint),
             lan_interface_probe: Arc::new(StubLanProbe),
             settings: Arc::new(InMemorySettings::default()),
@@ -1448,7 +1484,7 @@ mod tests {
             clock: Arc::new(FixedClock(1_000)),
             credentials_minter: Arc::new(StaticMinter),
             password_hasher: Arc::new(FakeHasher),
-            device_repo: Arc::new(InMemoryDeviceRepo::default()),
+            devices: device_ports_from(Arc::new(InMemoryDeviceRepo::default())),
             // 关键:endpoint_info 装的是 BindFailureEndpoint, lifecycle 也持
             // 同一份 Arc, apply 写完 facade 立刻能读到。
             endpoint_info: endpoint.clone(),

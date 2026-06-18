@@ -28,8 +28,9 @@ use uc_core::mobile_sync::{
     LanInterface, MintedCredentials, MobileClientType, MobileDevice, MobileDeviceError,
 };
 use uc_core::ports::{
-    ClockPort, LanInterfaceProbeError, LanInterfaceProbePort, MobileCredentialsMinterPort,
-    MobileDeviceRepositoryPort, PasswordHasherError, PasswordHasherPort, SettingsPort,
+    ClockPort, FindMobileDeviceByUsernamePort, LanInterfaceProbeError, LanInterfaceProbePort,
+    MobileCredentialsMinterPort, PasswordHasherError, PasswordHasherPort, SaveMobileDevicePort,
+    SettingsPort,
 };
 use uc_core::settings::model::MobileSyncSettings;
 use uc_observability::analytics::{AnalyticsPort, Event};
@@ -206,7 +207,8 @@ pub const SYNC_CLIPBOARD_EX_INSTALL_URL: &str =
 pub(crate) struct RegisterMobileShortcutDeviceUseCase {
     credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
     password_hasher: Arc<dyn PasswordHasherPort>,
-    device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    find_by_username: Arc<dyn FindMobileDeviceByUsernamePort>,
+    save: Arc<dyn SaveMobileDevicePort>,
     settings: Arc<dyn SettingsPort>,
     clock: Arc<dyn ClockPort>,
     lan_interface_probe: Arc<dyn LanInterfaceProbePort>,
@@ -221,7 +223,8 @@ impl RegisterMobileShortcutDeviceUseCase {
     pub(crate) fn new(
         credentials_minter: Arc<dyn MobileCredentialsMinterPort>,
         password_hasher: Arc<dyn PasswordHasherPort>,
-        device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+        find_by_username: Arc<dyn FindMobileDeviceByUsernamePort>,
+        save: Arc<dyn SaveMobileDevicePort>,
         settings: Arc<dyn SettingsPort>,
         clock: Arc<dyn ClockPort>,
         lan_interface_probe: Arc<dyn LanInterfaceProbePort>,
@@ -230,7 +233,8 @@ impl RegisterMobileShortcutDeviceUseCase {
         Self {
             credentials_minter,
             password_hasher,
-            device_repo,
+            find_by_username,
+            save,
             settings,
             clock,
             lan_interface_probe,
@@ -422,7 +426,7 @@ impl RegisterMobileShortcutDeviceUseCase {
             reported_name: None,
             reported_os: None,
         };
-        self.device_repo
+        self.save
             .save(&device)
             .await
             .map_err(translate_device_error)?;
@@ -476,7 +480,7 @@ impl RegisterMobileShortcutDeviceUseCase {
         &self,
         username: &str,
     ) -> Result<(), RegisterMobileShortcutDeviceError> {
-        match self.device_repo.find_by_username(username).await {
+        match self.find_by_username.find_by_username(username).await {
             Ok(Some(_)) => Err(RegisterMobileShortcutDeviceError::UsernameTaken(
                 username.to_string(),
             )),
@@ -870,10 +874,12 @@ mod tests {
     /// 默认 LAN advertise settings / 1_000ms clock / 空 probe(LAN 已配置时
     /// 走不到 auto-pick,empty probe 即可)。`lan_listen_enabled` 控开关。
     fn build_uc(lan_listen_enabled: bool) -> RegisterMobileShortcutDeviceUseCase {
+        let device_repo = Arc::new(empty_device_repo());
         RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(deterministic_minter()),
             Arc::new(recording_hasher()),
-            Arc::new(empty_device_repo()),
+            device_repo.clone(), // find_by_username
+            device_repo,         // save
             Arc::new(settings_port_lan_advertise(lan_listen_enabled)),
             Arc::new(clock_at(1_000)),
             Arc::new(probe_returning(vec![])),
@@ -890,10 +896,12 @@ mod tests {
         Arc<CapturingAnalyticsSink>,
     ) {
         let analytics = Arc::new(CapturingAnalyticsSink::default());
+        let device_repo = Arc::new(empty_device_repo());
         let uc = RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(deterministic_minter()),
             Arc::new(recording_hasher()),
-            Arc::new(empty_device_repo()),
+            device_repo.clone(), // find_by_username
+            device_repo,         // save
             Arc::new(settings_port_lan_advertise(lan_listen_enabled)),
             Arc::new(clock_at(1_000)),
             Arc::new(probe_returning(vec![])),
@@ -1042,10 +1050,12 @@ mod tests {
     async fn base_url_override_takes_precedence_over_advertise_ip() {
         // settings 同时有 lan_advertise_ip 和 lan_advertise_base_url —— base_url
         // 必须胜出, 出现在 out.base_url 与 connect_uri payload 里。
+        let device_repo = Arc::new(empty_device_repo());
         let uc = RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(deterministic_minter()),
             Arc::new(recording_hasher()),
-            Arc::new(empty_device_repo()),
+            device_repo.clone(), // find_by_username
+            device_repo,         // save
             Arc::new(settings_port_base_url()),
             Arc::new(clock_at(1_000)),
             // probe 永远不该被调到(base_url 已定 → 不走 auto-pick)。给个空
@@ -1167,10 +1177,12 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_username_already_taken() {
+        let device_repo = Arc::new(device_repo_with_existing_username("alice_001"));
         let uc = RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(deterministic_minter()),
             Arc::new(recording_hasher()),
-            Arc::new(device_repo_with_existing_username("alice_001")),
+            device_repo.clone(), // find_by_username
+            device_repo,         // save
             Arc::new(settings_port_lan_advertise(true)),
             Arc::new(clock_at(1_000)),
             Arc::new(probe_returning(vec![])),
@@ -1203,10 +1215,12 @@ mod tests {
             .times(1)
             .returning(|p| Ok(format!("phc-of:{p}")));
 
+        let device_repo = Arc::new(empty_device_repo());
         let uc = RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(deterministic_minter()),
             Arc::new(hasher),
-            Arc::new(empty_device_repo()),
+            device_repo.clone(), // find_by_username
+            device_repo,         // save
             Arc::new(settings_port_lan_advertise(true)),
             Arc::new(clock_at(1_000)),
             Arc::new(probe_returning(vec![])),
@@ -1271,10 +1285,12 @@ mod tests {
 
     #[tokio::test]
     async fn translates_hasher_internal_error() {
+        let device_repo = Arc::new(empty_device_repo());
         let uc = RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(deterministic_minter()),
             Arc::new(failing_hasher()),
-            Arc::new(empty_device_repo()),
+            device_repo.clone(), // find_by_username
+            device_repo,         // save
             Arc::new(settings_port_lan_advertise(true)),
             Arc::new(clock_at(1_000)),
             Arc::new(probe_returning(vec![])),
@@ -1318,10 +1334,12 @@ mod tests {
     // ── tests: auto-pick advertise_ip ─────────────────────────────────
 
     fn build_uc_auto(probe: MockProbe) -> RegisterMobileShortcutDeviceUseCase {
+        let device_repo = Arc::new(empty_device_repo());
         RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(deterministic_minter()),
             Arc::new(recording_hasher()),
-            Arc::new(empty_device_repo()),
+            device_repo.clone(), // find_by_username
+            device_repo,         // save
             Arc::new(settings_port_auto()),
             Arc::new(clock_at(1_000)),
             Arc::new(probe),
@@ -1401,10 +1419,12 @@ mod tests {
         settings: MockSettingsPortImpl,
         probe: MockProbe,
     ) -> RegisterMobileShortcutDeviceUseCase {
+        let device_repo = Arc::new(empty_device_repo());
         RegisterMobileShortcutDeviceUseCase::new(
             Arc::new(deterministic_minter()),
             Arc::new(recording_hasher()),
-            Arc::new(empty_device_repo()),
+            device_repo.clone(), // find_by_username
+            device_repo,         // save
             Arc::new(settings),
             Arc::new(clock_at(1_000)),
             Arc::new(probe),

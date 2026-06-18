@@ -1,11 +1,11 @@
 //! HKDF-SHA256 backed implementation of `SearchKeyDerivationPort`.
 //!
-//! Slice 3 起通过 `SpaceAccessPort::derive_subkey` 派生——adapter 内部
+//! Slice 3 起通过 `DeriveSpaceSubkeyPort::derive_subkey` 派生——adapter 内部
 //! 用 IKM = MasterKey + HKDF-SHA256,本 adapter 只负责构造 salt (profile_id)
 //! 与 info ("uniclipboard-search-index/v1"),并把 32 字节字节包装成 `SearchKey`。
 //!
-//! 不再持有 `EncryptionSessionPort`——会话状态由 SpaceAccessPort adapter
-//! 端到端管理,本 adapter 不直接接触 master_key。
+//! 不再持有 `EncryptionSessionPort`——会话状态由空间访问 adapter 端到端
+//! 管理,本 adapter 不直接接触 master_key。
 
 use std::sync::Arc;
 
@@ -16,7 +16,7 @@ use sha2::Sha256;
 
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
 use uc_core::ports::security::current_profile::CurrentProfilePort;
-use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
+use uc_core::ports::space::{DeriveSpaceSubkeyPort, SpaceAccessError};
 use uc_core::search::error::SearchError;
 use uc_core::search::key::SearchKey;
 
@@ -31,13 +31,13 @@ type HmacSha256 = Hmac<Sha256>;
 /// 行为与历史一致——同一 master_key + 同一 profile_id 总是派生出同一 SearchKey,
 /// 不同 profile 派生不同 key。
 pub struct HkdfSearchKeyDerivation {
-    space_access: Arc<dyn SpaceAccessPort>,
+    space_access: Arc<dyn DeriveSpaceSubkeyPort>,
     current_profile: Arc<dyn CurrentProfilePort>,
 }
 
 impl HkdfSearchKeyDerivation {
     pub fn new(
-        space_access: Arc<dyn SpaceAccessPort>,
+        space_access: Arc<dyn DeriveSpaceSubkeyPort>,
         current_profile: Arc<dyn CurrentProfilePort>,
     ) -> Self {
         Self {

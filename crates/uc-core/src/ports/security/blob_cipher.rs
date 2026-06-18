@@ -23,7 +23,7 @@ pub enum BlobCipherError {
     /// `ActiveSpace` 所对应的会话已经不再持有密钥（例如被 lock 过）。
     ///
     /// 正常情况下拿到 `ActiveSpace` 意味着已解锁；出现此错误通常代表
-    /// 调用方把句柄抱过了 lock 边界——调用方应重新走 `SpaceAccessPort::unlock`。
+    /// 调用方把句柄抱过了 lock 边界——调用方应重新走 `UnlockSpacePort::unlock`。
     #[error("space session is no longer unlocked")]
     NotUnlocked,
 

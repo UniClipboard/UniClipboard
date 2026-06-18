@@ -384,18 +384,18 @@ pub async fn build_space_setup_assembly(
         Arc::clone(&wired.host_event_bus),
     );
 
-    // HMAC proof adapter verifies the joiner's ChallengeResponse against
-    // the master key that `SpaceAccessPort::derive_master_key_for_proof`
-    // stashes in-session. Fed the same `space_access` the use cases use
-    // so the cache-miss fallback can still find the current session key.
+    // HMAC proof adapter verifies the joiner's ChallengeResponse against the
+    // master key that `DeriveProofKeyPort::derive_master_key_for_proof` stashes
+    // in-session. Fed the same session-proof-key port the use cases share so
+    // the cache-miss fallback can still find the current session key.
     let proof_port: Arc<dyn ProofPort> = Arc::new(HmacProofAdapter::new_with_space_access(
-        Arc::clone(&deps.security.space_access),
+        Arc::clone(&deps.security.space_access_ports.current_session_proof_key),
     ));
 
     let local_identity: Arc<dyn LocalIdentityPort> = identity_store;
 
     let facade = Arc::new(SpaceSetupFacade::new(SpaceSetupDeps {
-        space_access: Arc::clone(&deps.security.space_access),
+        space_access: deps.security.space_access_ports.clone(),
         local_identity: Arc::clone(&local_identity),
         device_identity: Arc::clone(&deps.device.device_identity),
         member_repo: Arc::clone(&deps.device.member_repo),

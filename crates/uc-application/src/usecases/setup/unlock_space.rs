@@ -1,7 +1,7 @@
 //! A2 · `UnlockSpaceUseCase`.
 //!
 //! Post-setup start-up flow: check `SetupStatus.has_completed`, then
-//! forward to `SpaceAccessPort::unlock`. Because A1 is atomic, if we
+//! forward to `UnlockSpacePort::unlock`. Because A1 is atomic, if we
 //! ever reach A2 we can assume the owner `SpaceMember` / identity are
 //! already persisted — A2 does not do a "self-member self-heal" round
 //! (decision from Slice 1 outside-in session).
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
 use uc_core::ids::SpaceId;
-use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
+use uc_core::ports::space::{SpaceAccessError, UnlockSpacePort};
 use uc_core::ports::SetupStatusPort;
 use uc_observability::analytics::{AnalyticsFacade, Event, UnlockFailureReason};
 
@@ -19,7 +19,7 @@ use crate::facade::space_setup::commands::UnlockSpaceCommand;
 use crate::facade::space_setup::{UnlockSpaceError, UnlockSpaceResult};
 
 pub(crate) struct UnlockSpaceUseCase {
-    space_access: Arc<dyn SpaceAccessPort>,
+    space_access: Arc<dyn UnlockSpacePort>,
     setup_status: Arc<dyn SetupStatusPort>,
     /// schema doc §12.1 · 每次 daemon 重启的可靠性 anchor。成功路径发
     /// `space_unlocked`，失败路径按 `UnlockFailureReason` 映射发
@@ -30,7 +30,7 @@ pub(crate) struct UnlockSpaceUseCase {
 
 impl UnlockSpaceUseCase {
     pub(crate) fn new(
-        space_access: Arc<dyn SpaceAccessPort>,
+        space_access: Arc<dyn UnlockSpacePort>,
         setup_status: Arc<dyn SetupStatusPort>,
         analytics: Arc<dyn AnalyticsFacade>,
     ) -> Self {
@@ -119,9 +119,8 @@ mod tests {
 
     use uc_core::crypto::domain::{ActiveSpace, Passphrase};
     use uc_core::ids::SpaceId;
-    use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
+    use uc_core::ports::space::{SpaceAccessError, UnlockSpacePort};
     use uc_core::setup::SetupStatus;
-    use uc_core::space_access::{JoinOffer, ProofDerivedKey};
 
     #[derive(Default)]
     struct FakeSpaceAccess {
@@ -129,14 +128,7 @@ mod tests {
         unlock_calls: Mutex<u32>,
     }
     #[async_trait]
-    impl SpaceAccessPort for FakeSpaceAccess {
-        async fn initialize(
-            &self,
-            _space_id: &SpaceId,
-            _passphrase: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            unimplemented!("A2 test does not touch initialize")
-        }
+    impl UnlockSpacePort for FakeSpaceAccess {
         async fn unlock(
             &self,
             space_id: &SpaceId,
@@ -147,50 +139,6 @@ mod tests {
                 return Err(err);
             }
             Ok(ActiveSpace::new(space_id.clone()))
-        }
-        async fn is_unlocked(&self, _space_id: &SpaceId) -> bool {
-            true
-        }
-        async fn lock(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn factory_reset(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn try_resume_session(
-            &self,
-            _space_id: &SpaceId,
-        ) -> Result<Option<ActiveSpace>, SpaceAccessError> {
-            Ok(None)
-        }
-        async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
-            Ok(true)
-        }
-        async fn derive_subkey(
-            &self,
-            _salt: &[u8],
-            _info: &[u8],
-        ) -> Result<[u8; 32], SpaceAccessError> {
-            Ok([0; 32])
-        }
-        async fn current_session_proof_key(
-            &self,
-        ) -> Result<Option<ProofDerivedKey>, SpaceAccessError> {
-            Ok(None)
-        }
-        async fn prepare_join_offer(
-            &self,
-            _space_id: &SpaceId,
-            _passphrase: &Passphrase,
-        ) -> Result<JoinOffer, SpaceAccessError> {
-            unimplemented!()
-        }
-        async fn derive_master_key_for_proof(
-            &self,
-            _offer: &JoinOffer,
-            _passphrase: &Passphrase,
-        ) -> Result<ProofDerivedKey, SpaceAccessError> {
-            unimplemented!()
         }
     }
 

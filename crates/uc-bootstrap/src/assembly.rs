@@ -22,7 +22,7 @@ use tracing::info;
 use uc_application::deps::{
     AppDeps, ClipboardEntryPorts, ClipboardPorts, ClipboardRepresentationPorts, DevicePorts,
     FileTransferPorts, MobileDevicePorts, MobileSyncPorts, SearchPorts, SecurityPorts,
-    StoragePorts, SystemPorts,
+    SpaceAccessPorts, StoragePorts, SystemPorts,
 };
 use uc_application::facade::HostEventEmitterPort;
 use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
@@ -985,21 +985,27 @@ pub fn wire_dependencies(
         storage_config.clone(),
     )?;
 
-    // SpaceAccessPort——单一会话/密钥访问入口。adapter 自管 KeyMaterialStore +
-    // InMemorySession + CurrentProfilePort,V1 AEAD 走 v1_aead helper。
-    // Phase C 起不再依赖 EncryptionStatePort (已物理删除);adapter 用
-    // `key_material.keyslot_exists()` 判断是否已初始化。
-    let space_access: Arc<dyn uc_core::ports::space::SpaceAccessPort> =
-        Arc::new(uc_infra::security::DefaultSpaceAccessAdapter::new(
-            infra.key_material.clone(),
-            platform.current_profile.clone(),
-            platform.session.clone(),
-        ));
+    // Space access——单一会话/密钥访问入口。adapter 自管 KeyMaterialStore +
+    // InMemorySession + CurrentProfilePort,V1 AEAD 走 v1_aead helper。adapter
+    // 用 `key_material.keyslot_exists()` 判断是否已初始化。
+    //
+    // One concrete adapter is coerced into each narrow space-access intent port
+    // (the adapter implements the aggregate `SpaceAccessStore` and every
+    // intent-port impl delegates to it, ports.md §8.3); the narrow bundle is
+    // the only space-access surface the application layer consumes.
+    let space_access_adapter = Arc::new(uc_infra::security::DefaultSpaceAccessAdapter::new(
+        infra.key_material.clone(),
+        platform.current_profile.clone(),
+        platform.session.clone(),
+    ));
+    let space_access_ports = SpaceAccessPorts::from_adapter(space_access_adapter);
 
-    // Wire the search bundle (Phase 92).
-    let search_key_derivation: Arc<dyn SearchKeyDerivationPort> = Arc::new(
-        HkdfSearchKeyDerivation::new(space_access.clone(), platform.current_profile.clone()),
-    );
+    // Wire the search bundle (Phase 92). Search only derives a subkey.
+    let search_key_derivation: Arc<dyn SearchKeyDerivationPort> =
+        Arc::new(HkdfSearchKeyDerivation::new(
+            space_access_ports.derive_subkey.clone(),
+            platform.current_profile.clone(),
+        ));
     let search_index: Arc<dyn SearchIndexPort> = Arc::new(SqliteSearchIndex::new(
         db_pool_for_search,
         platform.current_profile.clone(),
@@ -1146,7 +1152,7 @@ pub fn wire_dependencies(
         security: SecurityPorts {
             current_profile: platform.current_profile,
             secure_storage: platform.secure_storage,
-            space_access: space_access.clone(),
+            space_access_ports,
             blob_cipher: blob_cipher.clone(),
             transfer_cipher: transfer_cipher.clone(),
             pin_hasher: Arc::new(Argon2PinHasher),

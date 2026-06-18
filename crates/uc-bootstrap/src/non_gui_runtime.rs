@@ -417,7 +417,15 @@ pub fn build_app_facade_from_deps(
         })),
         encryption: Arc::new(EncryptionFacade::new(EncryptionFacadeDeps {
             setup_status: deps.setup_status.clone(),
-            space_access: deps.security.space_access.clone(),
+            initialize: deps.security.space_access_ports.initialize.clone(),
+            resume_session: deps.security.space_access_ports.resume_session.clone(),
+            is_unlocked: deps.security.space_access_ports.is_unlocked.clone(),
+            lock: deps.security.space_access_ports.lock.clone(),
+            verify_keychain_access: deps
+                .security
+                .space_access_ports
+                .verify_keychain_access
+                .clone(),
         })),
         resource: Arc::new(ResourceFacade::new(ResourceFacadeDeps {
             representation_by_blob_id: deps.clipboard.representation_ports.get_by_blob_id.clone(),

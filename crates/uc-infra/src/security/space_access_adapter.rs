@@ -1,13 +1,15 @@
-//! `SpaceAccessPort` 的基础设施适配器。
+//! 空间访问的基础设施适配器。
 //!
 //! Slice 3 - C8 起完全独立运行: 不再依赖任何已删除的 port trait
 //! (EncryptionPort / EncryptionSessionPort / KeyMaterialPort),
 //! 改用 uc-infra 内部具体类型 `KeyMaterialStore` + `InMemorySession`,
 //! AEAD 算法走 `super::v1_aead` helper。
 //!
-//! 公共 port 边界保持稳定: `SpaceAccessPort` trait + 全部方法签名不变。
-//! 字节级行为与历史 `EncryptionRepository` 一致——V1 加密协议
-//! (Argon2id KDF + XChaCha20-Poly1305 wrap/unwrap) ironclad 保留。
+//! 该 adapter 实现内层聚合 trait `SpaceAccessStore`,并把每个窄意图 port
+//! (`InitializeSpacePort` / `UnlockSpacePort` / … )经 UFCS 委托给它
+//! (ports.md §8.3);全部方法签名保持稳定。字节级行为与历史
+//! `EncryptionRepository` 一致——V1 加密协议 (Argon2id KDF +
+//! XChaCha20-Poly1305 wrap/unwrap) ironclad 保留。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -25,7 +27,7 @@ use super::crypto_model::{KeyScope, KeySlot, WrappedMasterKey};
 use super::secrets::MasterKey;
 use uc_core::ids::{ProfileId, SpaceId};
 use uc_core::ports::security::current_profile::CurrentProfilePort;
-use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
+use uc_core::ports::space::{SpaceAccessError, SpaceAccessStore};
 use uc_core::space_access::{JoinOffer, ProofDerivedKey};
 
 use super::key_material::KeyMaterialStore;
@@ -33,7 +35,7 @@ use super::scope_identifier::scope_identifier;
 use super::session::InMemorySession;
 use super::v1_aead;
 
-/// `SpaceAccessPort` 默认实现。
+/// `SpaceAccessStore` 默认实现(同时提供全部窄意图 port)。
 pub struct DefaultSpaceAccessAdapter {
     key_material: Arc<KeyMaterialStore>,
     current_profile: Arc<dyn CurrentProfilePort>,
@@ -208,7 +210,7 @@ impl DefaultSpaceAccessAdapter {
 }
 
 #[async_trait]
-impl SpaceAccessPort for DefaultSpaceAccessAdapter {
+impl SpaceAccessStore for DefaultSpaceAccessAdapter {
     async fn initialize(
         &self,
         space_id: &SpaceId,
@@ -704,5 +706,126 @@ impl SpaceAccessPort for DefaultSpaceAccessAdapter {
         }
         .instrument(span)
         .await
+    }
+}
+
+// ---- Intent ports ----
+//
+// The single adapter satisfies every narrow space-access intent port by
+// delegating to its aggregate-store methods (UFCS disambiguates the same-named
+// methods). The composition root coerces one
+// `Arc<DefaultSpaceAccessAdapter>` into each port (see ports.md §8.3).
+//
+// These impls live in a private submodule so the narrow port traits do not
+// leak into other method-resolution scopes (they share method names with the
+// aggregate store); trait-impl coherence still applies crate-wide.
+mod intent_ports {
+    use super::*;
+    use uc_core::ports::space::{
+        CurrentSessionProofKeyPort, DeriveProofKeyPort, DeriveSpaceSubkeyPort,
+        FactoryResetSpacePort, InitializeSpacePort, IsSpaceUnlockedPort, LockSpacePort,
+        PrepareJoinOfferPort, ResumeSpaceSessionPort, UnlockSpacePort, VerifyKeychainAccessPort,
+    };
+
+    #[async_trait]
+    impl InitializeSpacePort for DefaultSpaceAccessAdapter {
+        async fn initialize(
+            &self,
+            space_id: &SpaceId,
+            passphrase: &DomainPassphrase,
+        ) -> Result<ActiveSpace, SpaceAccessError> {
+            SpaceAccessStore::initialize(self, space_id, passphrase).await
+        }
+    }
+
+    #[async_trait]
+    impl UnlockSpacePort for DefaultSpaceAccessAdapter {
+        async fn unlock(
+            &self,
+            space_id: &SpaceId,
+            passphrase: &DomainPassphrase,
+        ) -> Result<ActiveSpace, SpaceAccessError> {
+            SpaceAccessStore::unlock(self, space_id, passphrase).await
+        }
+    }
+
+    #[async_trait]
+    impl IsSpaceUnlockedPort for DefaultSpaceAccessAdapter {
+        async fn is_unlocked(&self, space_id: &SpaceId) -> bool {
+            SpaceAccessStore::is_unlocked(self, space_id).await
+        }
+    }
+
+    #[async_trait]
+    impl LockSpacePort for DefaultSpaceAccessAdapter {
+        async fn lock(&self, space_id: &SpaceId) -> Result<(), SpaceAccessError> {
+            SpaceAccessStore::lock(self, space_id).await
+        }
+    }
+
+    #[async_trait]
+    impl FactoryResetSpacePort for DefaultSpaceAccessAdapter {
+        async fn factory_reset(&self, space_id: &SpaceId) -> Result<(), SpaceAccessError> {
+            SpaceAccessStore::factory_reset(self, space_id).await
+        }
+    }
+
+    #[async_trait]
+    impl ResumeSpaceSessionPort for DefaultSpaceAccessAdapter {
+        async fn try_resume_session(
+            &self,
+            space_id: &SpaceId,
+        ) -> Result<Option<ActiveSpace>, SpaceAccessError> {
+            SpaceAccessStore::try_resume_session(self, space_id).await
+        }
+    }
+
+    #[async_trait]
+    impl VerifyKeychainAccessPort for DefaultSpaceAccessAdapter {
+        async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
+            SpaceAccessStore::verify_keychain_access(self).await
+        }
+    }
+
+    #[async_trait]
+    impl DeriveSpaceSubkeyPort for DefaultSpaceAccessAdapter {
+        async fn derive_subkey(
+            &self,
+            salt: &[u8],
+            info: &[u8],
+        ) -> Result<[u8; 32], SpaceAccessError> {
+            SpaceAccessStore::derive_subkey(self, salt, info).await
+        }
+    }
+
+    #[async_trait]
+    impl CurrentSessionProofKeyPort for DefaultSpaceAccessAdapter {
+        async fn current_session_proof_key(
+            &self,
+        ) -> Result<Option<ProofDerivedKey>, SpaceAccessError> {
+            SpaceAccessStore::current_session_proof_key(self).await
+        }
+    }
+
+    #[async_trait]
+    impl PrepareJoinOfferPort for DefaultSpaceAccessAdapter {
+        async fn prepare_join_offer(
+            &self,
+            space_id: &SpaceId,
+            passphrase: &DomainPassphrase,
+        ) -> Result<JoinOffer, SpaceAccessError> {
+            SpaceAccessStore::prepare_join_offer(self, space_id, passphrase).await
+        }
+    }
+
+    #[async_trait]
+    impl DeriveProofKeyPort for DefaultSpaceAccessAdapter {
+        async fn derive_master_key_for_proof(
+            &self,
+            offer: &JoinOffer,
+            passphrase: &DomainPassphrase,
+        ) -> Result<ProofDerivedKey, SpaceAccessError> {
+            SpaceAccessStore::derive_master_key_for_proof(self, offer, passphrase).await
+        }
     }
 }

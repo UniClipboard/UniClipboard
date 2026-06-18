@@ -4,14 +4,23 @@ use tracing::instrument;
 use uc_core::crypto::model::Passphrase;
 use uc_core::ids::SpaceId;
 use uc_core::ports::setup::SetupStatusPort;
-use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
+use uc_core::ports::space::{
+    InitializeSpacePort, IsSpaceUnlockedPort, LockSpacePort, ResumeSpaceSessionPort,
+    SpaceAccessError, VerifyKeychainAccessPort,
+};
 
 const DEFAULT_SPACE_ID: &str = "space";
 
+/// Narrow space-access ports consumed by [`EncryptionFacade`]. Each maps to one
+/// facade method; the facade holds only the slices it calls (ports.md §8.1).
 #[derive(Clone)]
 pub struct EncryptionFacadeDeps {
     pub setup_status: Arc<dyn SetupStatusPort>,
-    pub space_access: Arc<dyn SpaceAccessPort>,
+    pub initialize: Arc<dyn InitializeSpacePort>,
+    pub resume_session: Arc<dyn ResumeSpaceSessionPort>,
+    pub is_unlocked: Arc<dyn IsSpaceUnlockedPort>,
+    pub lock: Arc<dyn LockSpacePort>,
+    pub verify_keychain_access: Arc<dyn VerifyKeychainAccessPort>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +64,7 @@ impl EncryptionFacade {
             .map_err(|err| EncryptionFacadeError::SetupStatus(err.to_string()))?;
         let space_id = default_space_id();
         let session_ready = if initialized {
-            self.deps.space_access.is_unlocked(&space_id).await
+            self.deps.is_unlocked.is_unlocked(&space_id).await
         } else {
             false
         };
@@ -79,7 +88,7 @@ impl EncryptionFacade {
         let domain_passphrase = uc_core::crypto::domain::Passphrase::new(passphrase.0);
 
         self.deps
-            .space_access
+            .initialize
             .initialize(&space_id, &domain_passphrase)
             .await
             .map_err(|err| match err {
@@ -107,7 +116,7 @@ impl EncryptionFacade {
     pub async fn unlock(&self) -> Result<bool, EncryptionFacadeError> {
         match self
             .deps
-            .space_access
+            .resume_session
             .try_resume_session(&default_space_id())
             .await
         {
@@ -120,7 +129,7 @@ impl EncryptionFacade {
     #[instrument(skip_all)]
     pub async fn lock(&self) -> Result<(), EncryptionFacadeError> {
         self.deps
-            .space_access
+            .lock
             .lock(&default_space_id())
             .await
             .map_err(space_access_error)
@@ -129,7 +138,7 @@ impl EncryptionFacade {
     #[instrument(skip_all)]
     pub async fn verify_keychain_access(&self) -> Result<bool, EncryptionFacadeError> {
         self.deps
-            .space_access
+            .verify_keychain_access
             .verify_keychain_access()
             .await
             .map_err(space_access_error)
@@ -152,7 +161,6 @@ mod tests {
     use std::sync::Mutex;
     use uc_core::crypto::domain::{ActiveSpace, Passphrase};
     use uc_core::setup::SetupStatus;
-    use uc_core::space_access::{JoinOffer, ProofDerivedKey};
 
     #[derive(Default)]
     struct FakeSetupStatus {
@@ -182,7 +190,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SpaceAccessPort for FakeSpaceAccess {
+    impl InitializeSpacePort for FakeSpaceAccess {
         async fn initialize(
             &self,
             space_id: &SpaceId,
@@ -194,29 +202,26 @@ mod tests {
             }
             Ok(ActiveSpace::new(space_id.clone()))
         }
+    }
 
-        async fn unlock(
-            &self,
-            space_id: &SpaceId,
-            _passphrase: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            Ok(ActiveSpace::new(space_id.clone()))
-        }
-
+    #[async_trait]
+    impl IsSpaceUnlockedPort for FakeSpaceAccess {
         async fn is_unlocked(&self, _space_id: &SpaceId) -> bool {
             *self.unlocked.lock().expect("unlocked lock")
         }
+    }
 
+    #[async_trait]
+    impl LockSpacePort for FakeSpaceAccess {
         async fn lock(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
             *self.unlocked.lock().expect("unlocked lock") = false;
             *self.lock_calls.lock().expect("lock calls lock") += 1;
             Ok(())
         }
+    }
 
-        async fn factory_reset(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-
+    #[async_trait]
+    impl ResumeSpaceSessionPort for FakeSpaceAccess {
         async fn try_resume_session(
             &self,
             space_id: &SpaceId,
@@ -228,43 +233,12 @@ mod tests {
                 Ok(None)
             }
         }
+    }
 
+    #[async_trait]
+    impl VerifyKeychainAccessPort for FakeSpaceAccess {
         async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
             Ok(*self.verify_granted.lock().expect("verify lock"))
-        }
-
-        async fn derive_subkey(
-            &self,
-            _salt: &[u8],
-            _info: &[u8],
-        ) -> Result<[u8; 32], SpaceAccessError> {
-            Ok([0; 32])
-        }
-
-        async fn current_session_proof_key(
-            &self,
-        ) -> Result<Option<ProofDerivedKey>, SpaceAccessError> {
-            Ok(None)
-        }
-
-        async fn prepare_join_offer(
-            &self,
-            space_id: &SpaceId,
-            _passphrase: &Passphrase,
-        ) -> Result<JoinOffer, SpaceAccessError> {
-            Ok(JoinOffer {
-                space_id: space_id.clone(),
-                keyslot_blob: Vec::new(),
-                challenge_nonce: [0; 32],
-            })
-        }
-
-        async fn derive_master_key_for_proof(
-            &self,
-            _offer: &JoinOffer,
-            _passphrase: &Passphrase,
-        ) -> Result<ProofDerivedKey, SpaceAccessError> {
-            Ok(ProofDerivedKey::from_bytes([0; 32]))
         }
     }
 
@@ -291,7 +265,11 @@ mod tests {
         (
             EncryptionFacade::new(EncryptionFacadeDeps {
                 setup_status,
-                space_access: space_access.clone(),
+                initialize: space_access.clone(),
+                resume_session: space_access.clone(),
+                is_unlocked: space_access.clone(),
+                lock: space_access.clone(),
+                verify_keychain_access: space_access.clone(),
             }),
             space_access,
         )

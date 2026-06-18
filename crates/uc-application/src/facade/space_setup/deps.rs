@@ -15,7 +15,7 @@ use uc_core::ports::pairing_invitation::{
 };
 use uc_core::ports::security::{BlobCipherPort, KeyMigrationPort};
 use uc_core::ports::setup::MigrationStatePort;
-use uc_core::ports::space::{ProofPort, SpaceAccessPort};
+use uc_core::ports::space::ProofPort;
 use uc_core::ports::{
     ClockPort, DeviceIdentityPort, LocalIdentityPort, PeerAddressRepositoryPort, PresencePort,
     SettingsPort, SetupStatusPort,
@@ -23,14 +23,17 @@ use uc_core::ports::{
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_observability::analytics::AnalyticsFacade;
 
+use crate::deps::SpaceAccessPorts;
+
 /// Dependencies for [`super::SpaceSetupFacade`].
 ///
-/// `SpaceAccessPort` / `SetupStatusPort` are shared between A1 and A2
-/// because the underlying adapter keeps the active space / setup status
-/// as process-wide singletons; the facade clones these `Arc`s when
-/// constructing each use case.
+/// The space-access bundle / `SetupStatusPort` are shared across A1, A2, the
+/// pairing handshakes, and the facade's own silent-resume / factory-reset
+/// paths because the underlying adapter keeps the active space / setup status
+/// as process-wide singletons; the facade hands each use case the narrow slice
+/// it needs (ports.md §8.2/§8.3).
 pub struct SpaceSetupDeps {
-    pub space_access: Arc<dyn SpaceAccessPort>,
+    pub space_access: SpaceAccessPorts,
     pub local_identity: Arc<dyn LocalIdentityPort>,
     pub device_identity: Arc<dyn DeviceIdentityPort>,
     pub member_repo: Arc<dyn MemberRepositoryPort>,

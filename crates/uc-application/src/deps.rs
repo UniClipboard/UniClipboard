@@ -25,6 +25,11 @@ use uc_core::ports::clipboard::{
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
 use uc_core::ports::search::search_pipeline::SearchPipelinePort;
+use uc_core::ports::space::{
+    CurrentSessionProofKeyPort, DeriveProofKeyPort, DeriveSpaceSubkeyPort, FactoryResetSpacePort,
+    InitializeSpacePort, IsSpaceUnlockedPort, LockSpacePort, PrepareJoinOfferPort,
+    ResumeSpaceSessionPort, UnlockSpacePort, VerifyKeychainAccessPort,
+};
 use uc_core::ports::*;
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::AnalyticsPort;
@@ -79,16 +84,73 @@ pub struct ClipboardPorts {
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
 }
 
+/// Narrow space-access intent ports facing the application layer.
+///
+/// The composition root coerces one space-access adapter into each of these;
+/// every consumer takes only the slice it needs, never a catch-all surface
+/// (ports.md §8.1/§8.3). Distribution hubs (facade dep bundles) carry the
+/// whole struct and hand each use case its slice.
+#[derive(Clone)]
+pub struct SpaceAccessPorts {
+    pub initialize: Arc<dyn InitializeSpacePort>,
+    pub unlock: Arc<dyn UnlockSpacePort>,
+    pub is_unlocked: Arc<dyn IsSpaceUnlockedPort>,
+    pub lock: Arc<dyn LockSpacePort>,
+    pub factory_reset: Arc<dyn FactoryResetSpacePort>,
+    pub resume_session: Arc<dyn ResumeSpaceSessionPort>,
+    pub verify_keychain_access: Arc<dyn VerifyKeychainAccessPort>,
+    pub derive_subkey: Arc<dyn DeriveSpaceSubkeyPort>,
+    pub current_session_proof_key: Arc<dyn CurrentSessionProofKeyPort>,
+    pub prepare_join_offer: Arc<dyn PrepareJoinOfferPort>,
+    pub derive_proof_key: Arc<dyn DeriveProofKeyPort>,
+}
+
+impl SpaceAccessPorts {
+    /// Fan one concrete adapter — implementing every narrow space-access intent
+    /// port — out into the bundle. Used by the composition root and by
+    /// integration tests that build a single adapter (ports.md §8.3).
+    pub fn from_adapter<A>(adapter: Arc<A>) -> Self
+    where
+        A: InitializeSpacePort
+            + UnlockSpacePort
+            + IsSpaceUnlockedPort
+            + LockSpacePort
+            + FactoryResetSpacePort
+            + ResumeSpaceSessionPort
+            + VerifyKeychainAccessPort
+            + DeriveSpaceSubkeyPort
+            + CurrentSessionProofKeyPort
+            + PrepareJoinOfferPort
+            + DeriveProofKeyPort
+            + 'static,
+    {
+        Self {
+            initialize: adapter.clone(),
+            unlock: adapter.clone(),
+            is_unlocked: adapter.clone(),
+            lock: adapter.clone(),
+            factory_reset: adapter.clone(),
+            resume_session: adapter.clone(),
+            verify_keychain_access: adapter.clone(),
+            derive_subkey: adapter.clone(),
+            current_session_proof_key: adapter.clone(),
+            prepare_join_offer: adapter.clone(),
+            derive_proof_key: adapter,
+        }
+    }
+}
+
 /// Security-domain ports bundle.
 /// 安全领域端口组。
 #[derive(Clone)]
 pub struct SecurityPorts {
     pub current_profile: Arc<dyn uc_core::ports::security::current_profile::CurrentProfilePort>,
     pub secure_storage: Arc<dyn SecureStoragePort>,
-    /// 单一空间访问 port——initialize / unlock / try_resume_session /
-    /// verify_keychain_access / derive_subkey / current_session_proof_key 等
-    /// 业务动作的统一入口。所有会话/密钥访问都从这里走。
-    pub space_access: Arc<dyn uc_core::ports::space::SpaceAccessPort>,
+    /// Narrow space-access intent ports (initialize / unlock / lock / resume /
+    /// factory-reset / keychain-probe / subkey / proof-key, etc.). Each
+    /// consumer depends on the slice it calls; nothing holds a catch-all
+    /// space-access surface.
+    pub space_access_ports: SpaceAccessPorts,
     /// 业务 blob 加解密 port——4 个剪切板 decorator 通过此 port 加解密
     /// inline_data。adapter 内部端到端自管会话与 V1 AEAD。
     pub blob_cipher: Arc<dyn uc_core::ports::security::BlobCipherPort>,

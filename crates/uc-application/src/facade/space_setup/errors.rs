@@ -215,7 +215,7 @@ pub enum ResetSpaceError {
 /// Failure modes of [`crate::facade::space_setup::SpaceSetupFacade::factory_reset`].
 ///
 /// 用户级"重置并重新开始"的失败原因。与 `ResetSpaceError` 不同,本路径
-/// 还会调 `SpaceAccessPort::factory_reset` 删 keyslot + KEK,所以多了
+/// 还会调 `FactoryResetSpacePort::factory_reset` 删 keyslot + KEK,所以多了
 /// `KeyMaterialWipeFailed` 变体——磁盘上残留的 keyslot 会让后续
 /// `InitializeSpaceUseCase` 撞到 `AlreadyInitialized`,把用户卡死,所以
 /// 这一步失败必须显式上抛而不是吞掉。
@@ -225,7 +225,7 @@ pub enum ResetSpaceError {
 /// keyslot 残留"的更糟状态。
 #[derive(Debug, Error)]
 pub enum FactoryResetError {
-    /// `SpaceAccessPort::factory_reset` 失败 —— keyslot / KEK 删除出错,
+    /// `FactoryResetSpacePort::factory_reset` 失败 —— keyslot / KEK 删除出错,
     /// 后续重新 setup 会撞 `AlreadyInitialized`。
     #[error("failed to wipe key material: {0}")]
     KeyMaterialWipeFailed(String),

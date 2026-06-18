@@ -1,10 +1,14 @@
-//! 空间访问 port。
+//! 空间访问端口。
 //!
-//! 以"用户口令视角"把空间的初始化 / 解锁 / 换口令 / 加锁 /
-//! 就绪查询合并到一个业务动作 port。签名里只出现领域中性类型
-//! （`Passphrase` / `ActiveSpace`），密钥物料（KEK / MasterKey /
-//! KeySlot / WrappedMasterKey 等）一律在 adapter 内部生成和持有，
-//! 不穿过这一层。
+//! 以"用户口令视角"覆盖空间的初始化 / 解锁 / 加锁 / 就绪查询 /
+//! 工厂重置 / 静默恢复 / 子密钥派生 / pairing offer 与 proof 派生。签名里
+//! 只出现领域中性类型（`Passphrase` / `ActiveSpace` / `JoinOffer` /
+//! `ProofDerivedKey`），密钥物料（KEK / MasterKey / KeySlot /
+//! WrappedMasterKey 等）一律在 adapter 内部生成和持有，不穿过这一层。
+//!
+//! 本模块同时定义内层聚合 trait [`SpaceAccessStore`]（adapter 实现一次）
+//! 与一组窄意图端口（每个表示一个业务动作）。应用层消费方只依赖窄端口，
+//! 不依赖聚合 store（ports.md §12）。
 //!
 //! 合并了原先的 `EncryptionPort`（KDF + wrap/unwrap 部分）、
 //! `EncryptionSessionPort`、`KeyMaterialPort`、以及已删除的 `space::CryptoPort`
@@ -47,12 +51,17 @@ pub enum SpaceAccessError {
     Internal(String),
 }
 
-/// 空间访问 port。
+/// Inner aggregate surface for space access.
 ///
-/// 所有方法都以"空间"为中心——adapter 需要把 `SpaceId` 作为
-/// 内部会话/密钥物料查找的键，外部调用方不感知 KEK / MasterKey。
+/// 所有方法都以"空间"为中心——adapter 需要把 `SpaceId` 作为内部
+/// 会话/密钥物料查找的键，外部调用方不感知 KEK / MasterKey。
+///
+/// This is the low-level store (ports.md §5.1/§12): a single adapter
+/// implements it once and the narrow space-access intent ports below delegate
+/// to it. Application-layer consumers depend on the narrow ports, never on this
+/// aggregate.
 #[async_trait]
-pub trait SpaceAccessPort: Send + Sync {
+pub trait SpaceAccessStore: Send + Sync {
     /// 首次初始化一个空间。
     ///
     /// 语义：
@@ -162,6 +171,165 @@ pub trait SpaceAccessPort: Send + Sync {
     /// 返回的 `ProofDerivedKey` 是只在本次 pairing proof 链路里有意义的
     /// 32 字节秘密——后续直接喂给 `ProofPort::build_proof` 计算 HMAC,
     /// 领域代码无需也无法把它当作 `MasterKey` 转用到其它路径。
+    async fn derive_master_key_for_proof(
+        &self,
+        offer: &JoinOffer,
+        passphrase: &Passphrase,
+    ) -> Result<ProofDerivedKey, SpaceAccessError>;
+}
+
+// ─── space-access intent ports ───────────────────────────────────────────
+//
+// Narrow, single-responsibility views over space access. Each represents one
+// business action and each consumer depends only on the slice it actually
+// uses (ports.md §4.1/§8.1/§8.2). The concrete adapter implements every one
+// of them and the composition root coerces a single instance into each
+// (ports.md §8.3); `SpaceAccessStore` above remains the inner aggregate the
+// impls delegate to (ports.md §12).
+
+/// Create the key material for a space for the first time.
+#[async_trait]
+pub trait InitializeSpacePort: Send + Sync {
+    /// Generate fresh key material for `space_id`, protect it with
+    /// `passphrase`, persist it, and leave the in-memory session unlocked.
+    /// Returns an [`ActiveSpace`] credential on success.
+    ///
+    /// Returns [`SpaceAccessError::AlreadyInitialized`] when the space already
+    /// has persisted key material.
+    async fn initialize(
+        &self,
+        space_id: &SpaceId,
+        passphrase: &Passphrase,
+    ) -> Result<ActiveSpace, SpaceAccessError>;
+}
+
+/// Unlock an already-initialized space with its passphrase.
+#[async_trait]
+pub trait UnlockSpacePort: Send + Sync {
+    /// Unlock `space_id` by unwrapping its persisted key material with
+    /// `passphrase`, leaving the session unlocked and returning an
+    /// [`ActiveSpace`] credential.
+    ///
+    /// Returns [`SpaceAccessError::WrongPassphrase`] on passphrase mismatch
+    /// and [`SpaceAccessError::NotInitialized`] when the space has no
+    /// persisted material.
+    async fn unlock(
+        &self,
+        space_id: &SpaceId,
+        passphrase: &Passphrase,
+    ) -> Result<ActiveSpace, SpaceAccessError>;
+}
+
+/// Query whether a space session is currently unlocked.
+#[async_trait]
+pub trait IsSpaceUnlockedPort: Send + Sync {
+    /// Return whether `space_id` currently holds an unlocked in-memory session.
+    async fn is_unlocked(&self, space_id: &SpaceId) -> bool;
+}
+
+/// Clear the in-memory session of a space.
+#[async_trait]
+pub trait LockSpacePort: Send + Sync {
+    /// Drop the in-memory key material for `space_id`. Persisted material is
+    /// untouched, so the space can be unlocked again afterwards. Idempotent.
+    async fn lock(&self, space_id: &SpaceId) -> Result<(), SpaceAccessError>;
+}
+
+/// Wipe all persisted key material for a space.
+#[async_trait]
+pub trait FactoryResetSpacePort: Send + Sync {
+    /// Delete every persisted key artifact for `space_id` and clear the
+    /// in-memory session. Deleting material that is already absent is treated
+    /// as idempotent success.
+    async fn factory_reset(&self, space_id: &SpaceId) -> Result<(), SpaceAccessError>;
+}
+
+/// Silently restore a previously unlocked session without a passphrase.
+#[async_trait]
+pub trait ResumeSpaceSessionPort: Send + Sync {
+    /// Attempt to restore the session for `space_id` from persisted key
+    /// material without prompting for a passphrase.
+    ///
+    /// - Returns `Ok(None)` when the space was never initialized (not an
+    ///   error; the caller decides whether first-time setup is needed).
+    /// - Returns `Ok(Some(ActiveSpace))` when the session is restored.
+    /// - Returns an error when persisted material exists but is unreadable,
+    ///   corrupted, or access is denied.
+    ///
+    /// Unlike [`UnlockSpacePort::unlock`] this takes no passphrase; when the
+    /// silent path cannot recover the key the caller falls back to a
+    /// passphrase unlock.
+    async fn try_resume_session(
+        &self,
+        space_id: &SpaceId,
+    ) -> Result<Option<ActiveSpace>, SpaceAccessError>;
+}
+
+/// Probe whether the persistent secret store can silently yield a space's
+/// wrapping key.
+#[async_trait]
+pub trait VerifyKeychainAccessPort: Send + Sync {
+    /// Check whether the wrapping key can be read from the persistent secret
+    /// store without further user authorization.
+    ///
+    /// - `Ok(true)`: the key is silently available.
+    /// - `Ok(false)`: access is denied or the store is temporarily
+    ///   unavailable; treat as "authorization not granted".
+    /// - `Err(NotInitialized)`: the space has no persisted wrapping key.
+    /// - `Err(Internal)`: any other unrecoverable failure.
+    async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError>;
+}
+
+/// Derive a purpose-scoped 32-byte subkey from the unlocked session.
+#[async_trait]
+pub trait DeriveSpaceSubkeyPort: Send + Sync {
+    /// Derive a 32-byte subkey bound to the current session's key material,
+    /// scoped by caller-chosen `salt` and `info`. The same inputs always
+    /// yield the same bytes; a different `info` yields an independent subkey.
+    ///
+    /// Returns [`SpaceAccessError::NotUnlocked`] when the session is locked.
+    async fn derive_subkey(&self, salt: &[u8], info: &[u8]) -> Result<[u8; 32], SpaceAccessError>;
+}
+
+/// Read the proof credential of the currently unlocked session.
+#[async_trait]
+pub trait CurrentSessionProofKeyPort: Send + Sync {
+    /// Return the opaque proof credential derived from the currently unlocked
+    /// session, or `None` when the session is locked.
+    ///
+    /// The returned [`ProofDerivedKey`] is the same secret a joiner derives
+    /// from a [`JoinOffer`] via [`DeriveProofKeyPort`], so both sides compute
+    /// matching proofs.
+    async fn current_session_proof_key(&self) -> Result<Option<ProofDerivedKey>, SpaceAccessError>;
+}
+
+/// Build a pairing offer that lets another device join a space.
+#[async_trait]
+pub trait PrepareJoinOfferPort: Send + Sync {
+    /// Build a [`JoinOffer`] for `space_id`: the serialized key material plus
+    /// a fresh challenge nonce.
+    ///
+    /// When the space is not yet initialized this first-time-initializes it
+    /// with `passphrase` (leaving the session unlocked); when it is already
+    /// initialized the existing material is read and `passphrase` is ignored.
+    async fn prepare_join_offer(
+        &self,
+        space_id: &SpaceId,
+        passphrase: &Passphrase,
+    ) -> Result<JoinOffer, SpaceAccessError>;
+}
+
+/// Derive the proof credential needed to join a space from an offer.
+#[async_trait]
+pub trait DeriveProofKeyPort: Send + Sync {
+    /// Unwrap the key material carried by `offer` using `passphrase` and
+    /// return the opaque [`ProofDerivedKey`] used to answer the offer's
+    /// challenge. Symmetric counterpart to
+    /// [`CurrentSessionProofKeyPort::current_session_proof_key`].
+    ///
+    /// Returns [`SpaceAccessError::WrongPassphrase`] when the passphrase does
+    /// not match the offer, and [`SpaceAccessError::CorruptedKeyMaterial`]
+    /// when the offer payload cannot be parsed.
     async fn derive_master_key_for_proof(
         &self,
         offer: &JoinOffer,

@@ -609,14 +609,14 @@ mod tests {
     use chrono::{DateTime, Duration};
     use tokio::sync::mpsc;
 
-    use uc_core::crypto::domain::{ActiveSpace, Passphrase};
+    use uc_core::crypto::domain::Passphrase;
     use uc_core::ids::{DeviceId, SessionId, SpaceId};
     use uc_core::membership::{MembershipError, SpaceMember};
     use uc_core::pairing::invitation::{InvitationCode, PairingInvitation};
     use uc_core::pairing::session_message::{JoinerChallengeResponse, PairingReject};
     use uc_core::ports::pairing::{DialError, DialOutcome, PairingSessionPort, SessionError};
     use uc_core::ports::pairing_invitation::{InvitationError, IssuedInvitation};
-    use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
+    use uc_core::ports::space::{PrepareJoinOfferPort, ProofPort, SpaceAccessError};
     use uc_core::ports::LocalIdentityError;
     use uc_core::ports::{DeviceIdentityPort, LocalIdentityPort, SettingsPort};
     use uc_core::security::IdentityFingerprint;
@@ -725,47 +725,7 @@ mod tests {
         challenge_nonce: [u8; 32],
     }
     #[async_trait]
-    impl SpaceAccessPort for StubSpaceAccess {
-        async fn initialize(
-            &self,
-            _: &SpaceId,
-            _: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            unimplemented!()
-        }
-        async fn unlock(
-            &self,
-            _: &SpaceId,
-            _: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            unimplemented!()
-        }
-        async fn is_unlocked(&self, _: &SpaceId) -> bool {
-            true
-        }
-        async fn lock(&self, _: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn factory_reset(&self, _: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn try_resume_session(
-            &self,
-            _: &SpaceId,
-        ) -> Result<Option<ActiveSpace>, SpaceAccessError> {
-            Ok(None)
-        }
-        async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
-            Ok(true)
-        }
-        async fn derive_subkey(&self, _: &[u8], _: &[u8]) -> Result<[u8; 32], SpaceAccessError> {
-            Ok([0; 32])
-        }
-        async fn current_session_proof_key(
-            &self,
-        ) -> Result<Option<ProofDerivedKey>, SpaceAccessError> {
-            Ok(None)
-        }
+    impl PrepareJoinOfferPort for StubSpaceAccess {
         async fn prepare_join_offer(
             &self,
             _: &SpaceId,
@@ -776,13 +736,6 @@ mod tests {
                 keyslot_blob: vec![0xAA; 32],
                 challenge_nonce: self.challenge_nonce,
             })
-        }
-        async fn derive_master_key_for_proof(
-            &self,
-            _: &JoinOffer,
-            _: &Passphrase,
-        ) -> Result<ProofDerivedKey, SpaceAccessError> {
-            unimplemented!()
         }
     }
 

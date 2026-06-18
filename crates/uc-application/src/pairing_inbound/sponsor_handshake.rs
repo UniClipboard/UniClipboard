@@ -52,7 +52,7 @@ use uc_core::pairing::session_message::{
     PairingSessionMessage, SponsorConfirm, SponsorKeyslotOffer,
 };
 use uc_core::ports::pairing::{PairingSessionId, PairingSessionPort};
-use uc_core::ports::space::{ProofPort, SpaceAccessPort};
+use uc_core::ports::space::{PrepareJoinOfferPort, ProofPort};
 use uc_core::ports::{DeviceIdentityPort, LocalIdentityPort, SettingsPort, SetupStatusPort};
 use uc_core::security::IdentityFingerprint;
 use uc_core::space_access::domain::SpaceAccessProofArtifact;
@@ -98,7 +98,7 @@ struct SessionCtx {
 
 pub(crate) struct SponsorHandshakeCoordinator {
     pairing_session: Arc<dyn PairingSessionPort>,
-    space_access: Arc<dyn SpaceAccessPort>,
+    space_access: Arc<dyn PrepareJoinOfferPort>,
     proof_port: Arc<dyn ProofPort>,
     local_identity: Arc<dyn LocalIdentityPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
@@ -127,7 +127,7 @@ pub(crate) struct SponsorHandshakeCoordinator {
 impl SponsorHandshakeCoordinator {
     pub(crate) fn new(
         pairing_session: Arc<dyn PairingSessionPort>,
-        space_access: Arc<dyn SpaceAccessPort>,
+        space_access: Arc<dyn PrepareJoinOfferPort>,
         proof_port: Arc<dyn ProofPort>,
         local_identity: Arc<dyn LocalIdentityPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
@@ -505,11 +505,10 @@ mod tests {
 
     use async_trait::async_trait;
 
-    use uc_core::crypto::domain::ActiveSpace;
     use uc_core::ids::DeviceId;
     use uc_core::pairing::invitation::InvitationCode;
     use uc_core::ports::pairing::{DialError, DialOutcome, SessionError};
-    use uc_core::ports::space::SpaceAccessError;
+    use uc_core::ports::space::{PrepareJoinOfferPort, SpaceAccessError};
     use uc_core::ports::LocalIdentityError;
     use uc_core::settings::model::Settings;
     use uc_core::space_access::domain::{JoinOffer, ProofDerivedKey};
@@ -568,47 +567,7 @@ mod tests {
         fail: StdMutex<bool>,
     }
     #[async_trait]
-    impl SpaceAccessPort for StubSpaceAccess {
-        async fn initialize(
-            &self,
-            _: &SpaceId,
-            _: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            unimplemented!()
-        }
-        async fn unlock(
-            &self,
-            _: &SpaceId,
-            _: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            unimplemented!()
-        }
-        async fn is_unlocked(&self, _: &SpaceId) -> bool {
-            true
-        }
-        async fn lock(&self, _: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn factory_reset(&self, _: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn try_resume_session(
-            &self,
-            _: &SpaceId,
-        ) -> Result<Option<ActiveSpace>, SpaceAccessError> {
-            Ok(None)
-        }
-        async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
-            Ok(true)
-        }
-        async fn derive_subkey(&self, _: &[u8], _: &[u8]) -> Result<[u8; 32], SpaceAccessError> {
-            Ok([0; 32])
-        }
-        async fn current_session_proof_key(
-            &self,
-        ) -> Result<Option<ProofDerivedKey>, SpaceAccessError> {
-            Ok(None)
-        }
+    impl PrepareJoinOfferPort for StubSpaceAccess {
         async fn prepare_join_offer(
             &self,
             _: &SpaceId,
@@ -622,13 +581,6 @@ mod tests {
                 keyslot_blob: vec![0xAA; 32],
                 challenge_nonce: self.challenge_nonce,
             })
-        }
-        async fn derive_master_key_for_proof(
-            &self,
-            _: &JoinOffer,
-            _: &Passphrase,
-        ) -> Result<ProofDerivedKey, SpaceAccessError> {
-            unimplemented!()
         }
     }
 

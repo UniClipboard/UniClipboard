@@ -27,7 +27,7 @@ pub struct JoinOffer {
 
 /// Pairing proof 链路上的不透明派生密钥。
 ///
-/// 由 `SpaceAccessPort::derive_master_key_for_proof` 构造（adapter 内部
+/// 由 `DeriveProofKeyPort::derive_master_key_for_proof` 构造（adapter 内部
 /// 从 keyslot 解出原始密钥字节后包装），传给 `ProofPort::build_proof`
 /// 用于 HMAC 计算。两端都看不到 `MasterKey`——领域层只看到一段
 /// "本次 proof 链路专用的 32 字节秘密"。

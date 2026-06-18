@@ -25,7 +25,7 @@ use tokio::task::JoinHandle;
 use tracing::{info, instrument, warn};
 
 use uc_core::ids::{DeviceId, SpaceId};
-use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
+use uc_core::ports::space::{FactoryResetSpacePort, ResumeSpaceSessionPort, SpaceAccessError};
 use uc_core::ports::{
     PeerAddressRepositoryPort, PresenceError, PresencePort, ReachabilityState, SettingsPort,
     SetupStatusPort,
@@ -83,11 +83,14 @@ pub struct SpaceSetupFacade {
     /// Held on the facade so [`Self::subscribe_pairing_completion`] can
     /// hand out fresh receivers as long as the facade is alive.
     pairing_outcome_tx: broadcast::Sender<PairingOutcome>,
-    /// Held for [`Self::try_resume_session`] — the silent resume path
-    /// needs both the setup flag (to decide whether there's anything
-    /// to resume at all) and direct access to `SpaceAccessPort::try_resume_session`.
+    /// Held for [`Self::try_resume_session`] — the silent resume path needs
+    /// both the setup flag (to decide whether there's anything to resume at
+    /// all) and direct access to [`ResumeSpaceSessionPort::try_resume_session`].
     /// Everything else still goes through use cases.
-    space_access: Arc<dyn SpaceAccessPort>,
+    resume_session: Arc<dyn ResumeSpaceSessionPort>,
+    /// Held for [`Self::factory_reset`] — wipes persisted key material before
+    /// clearing setup status.
+    factory_reset: Arc<dyn FactoryResetSpacePort>,
     setup_status: Arc<dyn SetupStatusPort>,
     /// Slice4 P3 T3.2 · `query_setup_state` reads `device_name` from
     /// `Settings.general`; `cancel_invitation` / `reset` need no
@@ -159,11 +162,12 @@ impl SpaceSetupFacade {
             analytics,
         } = deps;
 
-        // Stash handles for `try_resume_session` before the originals
-        // get moved into the respective use cases below. Needed so the
-        // facade itself owns a silent-resume path without routing
-        // through a use case that would only wrap two port calls.
-        let space_access_for_facade = Arc::clone(&space_access);
+        // Stash the narrow slices the facade itself drives (`try_resume_session`
+        // / `factory_reset`) before the bundle's other slices are handed to the
+        // use cases below. The facade owns these two paths directly rather than
+        // routing through a use case that would only wrap a single port call.
+        let resume_session_for_facade = Arc::clone(&space_access.resume_session);
+        let factory_reset_for_facade = Arc::clone(&space_access.factory_reset);
         let setup_status_for_facade = Arc::clone(&setup_status);
         // Slice4 P3 T3.2 · facade-local handle for `query_setup_state`
         // (reads `Settings.general.device_name`).
@@ -178,7 +182,7 @@ impl SpaceSetupFacade {
         let invitation_holder_for_facade = Arc::clone(&invitation_holder);
 
         let initialize_space = Arc::new(InitializeSpaceUseCase::new(
-            Arc::clone(&space_access),
+            Arc::clone(&space_access.initialize),
             Arc::clone(&local_identity),
             Arc::clone(&device_identity),
             Arc::clone(&member_repo),
@@ -188,7 +192,7 @@ impl SpaceSetupFacade {
             Arc::clone(&analytics),
         ));
         let unlock_space = Arc::new(UnlockSpaceUseCase::new(
-            Arc::clone(&space_access),
+            Arc::clone(&space_access.unlock),
             Arc::clone(&setup_status),
             Arc::clone(&analytics),
         ));
@@ -239,7 +243,7 @@ impl SpaceSetupFacade {
 
         let sponsor_handshake = SponsorHandshakeCoordinator::new(
             Arc::clone(&pairing_session),
-            Arc::clone(&space_access),
+            Arc::clone(&space_access.prepare_join_offer),
             Arc::clone(&proof_port),
             Arc::clone(&local_identity),
             Arc::clone(&device_identity),
@@ -273,7 +277,7 @@ impl SpaceSetupFacade {
         // case composes it with admit/trust/setup-status.
         let joiner_handshake = JoinerHandshakeCoordinator::new(
             pairing_session,
-            space_access,
+            Arc::clone(&space_access.derive_proof_key),
             proof_port,
             local_identity,
             device_identity,
@@ -318,7 +322,8 @@ impl SpaceSetupFacade {
             redeem_pairing_invitation,
             pairing_inbound_handle,
             pairing_outcome_tx,
-            space_access: space_access_for_facade,
+            resume_session: resume_session_for_facade,
+            factory_reset: factory_reset_for_facade,
             setup_status: setup_status_for_facade,
             settings: settings_for_facade,
             invitation_holder: invitation_holder_for_facade,
@@ -382,7 +387,7 @@ impl SpaceSetupFacade {
         // passed here is an opaque handle rather than a lookup key.
         // Minting a fresh UUID matches how A2 `unlock` does it.
         let space_id = SpaceId::new();
-        let resumed = match self.space_access.try_resume_session(&space_id).await {
+        let resumed = match self.resume_session.try_resume_session(&space_id).await {
             Ok(Some(_)) => true,
             // Keyslot missing despite has_completed == true — treat
             // as "nothing to resume" rather than an error: can happen
@@ -633,7 +638,7 @@ impl SpaceSetupFacade {
     ///
     /// Step order matters:
     ///
-    /// 1. `SpaceAccessPort::factory_reset` — wipe keyslot + KEK first. If
+    /// 1. `FactoryResetSpacePort::factory_reset` — wipe keyslot + KEK first. If
     ///    this fails we leave `setup_status.has_completed = true` so the
     ///    UI still routes the user to `UnlockPage` (where they can retry)
     ///    rather than `SetupPage` (which would immediately fail with
@@ -651,7 +656,7 @@ impl SpaceSetupFacade {
     #[instrument(skip_all)]
     pub async fn factory_reset(&self) -> Result<(), FactoryResetError> {
         let space_id = SpaceId::new();
-        self.space_access
+        self.factory_reset
             .factory_reset(&space_id)
             .await
             .map_err(|err| FactoryResetError::KeyMaterialWipeFailed(err.to_string()))?;
@@ -834,11 +839,18 @@ mod tests {
         CodeOrigin, ConsumeInvitationError, InvitationError, IssuedInvitation,
         PairingInvitationAddressQueryPort, PairingInvitationByAddressPort, PairingInvitationPort,
     };
-    use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
+    use uc_core::ports::space::{
+        CurrentSessionProofKeyPort, DeriveProofKeyPort, DeriveSpaceSubkeyPort,
+        FactoryResetSpacePort, InitializeSpacePort, IsSpaceUnlockedPort, LockSpacePort,
+        PrepareJoinOfferPort, ProofPort, ResumeSpaceSessionPort, SpaceAccessError, UnlockSpacePort,
+        VerifyKeychainAccessPort,
+    };
     use uc_core::ports::{
         ClockPort, DeviceIdentityPort, LocalIdentityError, LocalIdentityPort, SettingsPort,
         SetupStatusPort,
     };
+
+    use crate::deps::SpaceAccessPorts;
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
     use uc_core::setup::SetupStatus;
@@ -856,7 +868,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SpaceAccessPort for FakeSpaceAccess {
+    impl InitializeSpacePort for FakeSpaceAccess {
         async fn initialize(
             &self,
             space_id: &SpaceId,
@@ -864,6 +876,9 @@ mod tests {
         ) -> Result<ActiveSpace, SpaceAccessError> {
             Ok(ActiveSpace::new(space_id.clone()))
         }
+    }
+    #[async_trait]
+    impl UnlockSpacePort for FakeSpaceAccess {
         async fn unlock(
             &self,
             space_id: &SpaceId,
@@ -874,12 +889,21 @@ mod tests {
             }
             Ok(ActiveSpace::new(space_id.clone()))
         }
+    }
+    #[async_trait]
+    impl IsSpaceUnlockedPort for FakeSpaceAccess {
         async fn is_unlocked(&self, _space_id: &SpaceId) -> bool {
             true
         }
+    }
+    #[async_trait]
+    impl LockSpacePort for FakeSpaceAccess {
         async fn lock(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
             Ok(())
         }
+    }
+    #[async_trait]
+    impl FactoryResetSpacePort for FakeSpaceAccess {
         async fn factory_reset(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
             *self.factory_reset_calls.lock().unwrap() += 1;
             if let Some(err) = self.factory_reset_err.lock().unwrap().take() {
@@ -887,15 +911,24 @@ mod tests {
             }
             Ok(())
         }
+    }
+    #[async_trait]
+    impl ResumeSpaceSessionPort for FakeSpaceAccess {
         async fn try_resume_session(
             &self,
             _space_id: &SpaceId,
         ) -> Result<Option<ActiveSpace>, SpaceAccessError> {
             Ok(None)
         }
+    }
+    #[async_trait]
+    impl VerifyKeychainAccessPort for FakeSpaceAccess {
         async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
             Ok(true)
         }
+    }
+    #[async_trait]
+    impl DeriveSpaceSubkeyPort for FakeSpaceAccess {
         async fn derive_subkey(
             &self,
             _salt: &[u8],
@@ -903,11 +936,17 @@ mod tests {
         ) -> Result<[u8; 32], SpaceAccessError> {
             Ok([0; 32])
         }
+    }
+    #[async_trait]
+    impl CurrentSessionProofKeyPort for FakeSpaceAccess {
         async fn current_session_proof_key(
             &self,
         ) -> Result<Option<ProofDerivedKey>, SpaceAccessError> {
             Ok(None)
         }
+    }
+    #[async_trait]
+    impl PrepareJoinOfferPort for FakeSpaceAccess {
         async fn prepare_join_offer(
             &self,
             _space_id: &SpaceId,
@@ -915,6 +954,9 @@ mod tests {
         ) -> Result<JoinOffer, SpaceAccessError> {
             unimplemented!("not used by A1/A2")
         }
+    }
+    #[async_trait]
+    impl DeriveProofKeyPort for FakeSpaceAccess {
         async fn derive_master_key_for_proof(
             &self,
             _offer: &JoinOffer,
@@ -1411,7 +1453,7 @@ mod tests {
     }
 
     fn make_facade(
-        space_access: Arc<dyn SpaceAccessPort>,
+        space_access: Arc<FakeSpaceAccess>,
         setup_status: Arc<dyn SetupStatusPort>,
         settings: Arc<dyn SettingsPort>,
     ) -> (
@@ -1428,7 +1470,7 @@ mod tests {
     }
 
     fn make_facade_with_migration_state(
-        space_access: Arc<dyn SpaceAccessPort>,
+        space_access: Arc<FakeSpaceAccess>,
         setup_status: Arc<dyn SetupStatusPort>,
         settings: Arc<dyn SettingsPort>,
         migration_state: Arc<FakeMigrationState>,
@@ -1440,7 +1482,7 @@ mod tests {
         let pairing_invitation = Arc::new(FakeInvitationPort::default());
         let peer_addr_repo = Arc::new(FakePeerAddrRepo::default());
         let facade = SpaceSetupFacade::new(SpaceSetupDeps {
-            space_access,
+            space_access: SpaceAccessPorts::from_adapter(space_access),
             local_identity: Arc::new(FakeLocalIdentity {
                 fp: default_fingerprint(),
             }),

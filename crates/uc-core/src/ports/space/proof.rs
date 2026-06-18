@@ -3,7 +3,8 @@ use crate::space_access::{ProofDerivedKey, SpaceAccessProofArtifact};
 
 #[async_trait::async_trait]
 pub trait ProofPort: Send + Sync {
-    /// 用 SpaceAccessPort 派生出的不透明凭据计算 HMAC proof。
+    /// 用 `DeriveProofKeyPort` / `CurrentSessionProofKeyPort` 派生出的不透明
+    /// 凭据计算 HMAC proof。
     ///
     /// 签名里只出现领域级"本次 proof 链路的派生密钥"——adapter 内部如何
     /// 把它映射到具体算法（HMAC-SHA256 等）属于实现细节。

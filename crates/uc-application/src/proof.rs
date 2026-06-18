@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use uc_core::ids::{SessionId, SpaceId};
-use uc_core::ports::space::{ProofPort, SpaceAccessPort};
+use uc_core::ports::space::{CurrentSessionProofKeyPort, ProofPort};
 use uc_core::space_access::{ProofDerivedKey, SpaceAccessProofArtifact};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -20,7 +20,7 @@ struct ProofCacheKey {
 
 pub struct HmacProofAdapter {
     key_cache: Mutex<HashMap<ProofCacheKey, [u8; 32]>>,
-    space_access: Option<Arc<dyn SpaceAccessPort>>,
+    space_access: Option<Arc<dyn CurrentSessionProofKeyPort>>,
 }
 
 impl HmacProofAdapter {
@@ -33,7 +33,7 @@ impl HmacProofAdapter {
 
     /// 给 sponsor 侧 verify_proof 的 cache miss fallback 路径注入会话访问器。
     /// 不传时 cache miss 直接判失败,适合无持久会话的测试场景。
-    pub fn new_with_space_access(space_access: Arc<dyn SpaceAccessPort>) -> Self {
+    pub fn new_with_space_access(space_access: Arc<dyn CurrentSessionProofKeyPort>) -> Self {
         Self {
             key_cache: Mutex::new(HashMap::new()),
             space_access: Some(space_access),

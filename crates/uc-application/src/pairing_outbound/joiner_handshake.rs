@@ -52,7 +52,7 @@ use uc_core::pairing::session_message::{
 use uc_core::ports::pairing::{
     DialError, DialOutcome, DiscoveryChannel, PairingSessionId, PairingSessionPort, SessionError,
 };
-use uc_core::ports::space::{ProofPort, SpaceAccessError, SpaceAccessPort};
+use uc_core::ports::space::{DeriveProofKeyPort, ProofPort, SpaceAccessError};
 use uc_core::ports::{DeviceIdentityPort, LocalIdentityPort, SettingsPort};
 use uc_core::security::IdentityFingerprint;
 use uc_core::space_access::JoinOffer;
@@ -94,7 +94,7 @@ pub(crate) struct JoinerHandshakeOutcome {
 
 pub(crate) struct JoinerHandshakeCoordinator {
     pairing_session: Arc<dyn PairingSessionPort>,
-    space_access: Arc<dyn SpaceAccessPort>,
+    space_access: Arc<dyn DeriveProofKeyPort>,
     proof_port: Arc<dyn ProofPort>,
     local_identity: Arc<dyn LocalIdentityPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
@@ -109,7 +109,7 @@ impl JoinerHandshakeCoordinator {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         pairing_session: Arc<dyn PairingSessionPort>,
-        space_access: Arc<dyn SpaceAccessPort>,
+        space_access: Arc<dyn DeriveProofKeyPort>,
         proof_port: Arc<dyn ProofPort>,
         local_identity: Arc<dyn LocalIdentityPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
@@ -442,13 +442,13 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Duration as ChronoDuration;
 
-    use uc_core::crypto::domain::{ActiveSpace, Passphrase};
+    use uc_core::crypto::domain::Passphrase;
     use uc_core::ids::{DeviceId, SpaceId};
     use uc_core::pairing::session_message::{
         JoinerChallengeResponse, JoinerRequest, PairingReject, SponsorConfirm, SponsorKeyslotOffer,
     };
     use uc_core::ports::pairing::{DialError, DialOutcome, DiscoveryChannel, SessionError};
-    use uc_core::ports::space::SpaceAccessError;
+    use uc_core::ports::space::{DeriveProofKeyPort, SpaceAccessError};
     use uc_core::ports::LocalIdentityError;
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
@@ -568,54 +568,7 @@ mod tests {
         }
     }
     #[async_trait]
-    impl SpaceAccessPort for ScriptedSpaceAccess {
-        async fn initialize(
-            &self,
-            _: &SpaceId,
-            _: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            unimplemented!()
-        }
-        async fn unlock(
-            &self,
-            _: &SpaceId,
-            _: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            unimplemented!()
-        }
-        async fn is_unlocked(&self, _: &SpaceId) -> bool {
-            true
-        }
-        async fn lock(&self, _: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn factory_reset(&self, _: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn try_resume_session(
-            &self,
-            _: &SpaceId,
-        ) -> Result<Option<ActiveSpace>, SpaceAccessError> {
-            Ok(None)
-        }
-        async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
-            Ok(true)
-        }
-        async fn derive_subkey(&self, _: &[u8], _: &[u8]) -> Result<[u8; 32], SpaceAccessError> {
-            Ok([0; 32])
-        }
-        async fn current_session_proof_key(
-            &self,
-        ) -> Result<Option<ProofDerivedKey>, SpaceAccessError> {
-            Ok(None)
-        }
-        async fn prepare_join_offer(
-            &self,
-            _: &SpaceId,
-            _: &Passphrase,
-        ) -> Result<JoinOffer, SpaceAccessError> {
-            unimplemented!()
-        }
+    impl DeriveProofKeyPort for ScriptedSpaceAccess {
         async fn derive_master_key_for_proof(
             &self,
             _: &JoinOffer,

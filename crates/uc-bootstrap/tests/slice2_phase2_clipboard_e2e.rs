@@ -37,6 +37,7 @@ use tempfile::TempDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
+use uc_application::deps::SpaceAccessPorts;
 use uc_application::facade::space_setup::{
     InitializeSpaceInput, RedeemPairingInvitationInput, SpaceSetupDeps, SpaceSetupFacade,
 };
@@ -50,7 +51,7 @@ use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::membership::{MemberRepositoryPort, MembershipError, SpaceMember};
 use uc_core::ports::pairing::PairingSessionPort;
 use uc_core::ports::security::TransferCipherPort;
-use uc_core::ports::space::{ProofPort, SpaceAccessPort};
+use uc_core::ports::space::ProofPort;
 use uc_core::ports::{
     ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort,
     FirstSyncStateError, FirstSyncStatePort, LocalIdentityPort, PresencePort, SecureStorageError,
@@ -437,7 +438,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
     ));
     let current_profile = Arc::new(DefaultCurrentProfile::new());
     let session = Arc::new(InMemorySession::new());
-    let space_access: Arc<dyn SpaceAccessPort> = Arc::new(DefaultSpaceAccessAdapter::new(
+    let space_access = Arc::new(DefaultSpaceAccessAdapter::new(
         key_material,
         current_profile,
         Arc::clone(&session),
@@ -494,7 +495,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
     let iroh_node = builder.spawn();
 
     let proof_port: Arc<dyn ProofPort> = Arc::new(HmacProofAdapter::new_with_space_access(
-        Arc::clone(&space_access),
+        space_access.clone(),
     ));
     let local_identity: Arc<dyn LocalIdentityPort> = Arc::clone(&identity_store) as _;
 
@@ -511,7 +512,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
     let (migration_state, key_migration, blob_migration_repo, blob_cipher) =
         common::migration_noop_deps();
     let facade = Arc::new(SpaceSetupFacade::new(SpaceSetupDeps {
-        space_access,
+        space_access: SpaceAccessPorts::from_adapter(space_access),
         local_identity,
         device_identity,
         member_repo: Arc::clone(&member_repo) as Arc<dyn MemberRepositoryPort>,

@@ -7,7 +7,7 @@
 //!    A2 (unlock) instead, or factory-reset first.
 //! 1. Validate the passphrase confirmation.
 //! 2. Resolve & persist `device_name` (`Settings.general.device_name`).
-//! 3. `SpaceAccessPort::initialize` — create the encrypted space.
+//! 3. `InitializeSpacePort::initialize` — create the encrypted space.
 //! 4. `LocalIdentityPort::ensure` — read or lazily generate the Ed25519
 //!    identity fingerprint. In Slice 1 the iroh endpoint binds its
 //!    identity at bootstrap, so by the time A1 runs the identity already
@@ -30,7 +30,7 @@ use tracing::{debug, info, instrument, warn};
 
 use uc_core::ids::SpaceId;
 use uc_core::membership::{MemberRepositoryPort, MemberSyncPreferences, SpaceMember};
-use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
+use uc_core::ports::space::{InitializeSpacePort, SpaceAccessError};
 use uc_core::ports::{
     ClockPort, DeviceIdentityPort, LocalIdentityError, LocalIdentityPort, SettingsPort,
     SetupStatusPort,
@@ -44,7 +44,7 @@ use crate::facade::space_setup::commands::InitializeSpaceCommand;
 use crate::facade::space_setup::{InitializeSpaceError, InitializeSpaceResult};
 
 pub(crate) struct InitializeSpaceUseCase {
-    space_access: Arc<dyn SpaceAccessPort>,
+    space_access: Arc<dyn InitializeSpacePort>,
     local_identity: Arc<dyn LocalIdentityPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     member_repo: Arc<dyn MemberRepositoryPort>,
@@ -61,7 +61,7 @@ pub(crate) struct InitializeSpaceUseCase {
 
 impl InitializeSpaceUseCase {
     pub(crate) fn new(
-        space_access: Arc<dyn SpaceAccessPort>,
+        space_access: Arc<dyn InitializeSpacePort>,
         local_identity: Arc<dyn LocalIdentityPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
         member_repo: Arc<dyn MemberRepositoryPort>,
@@ -291,10 +291,9 @@ mod tests {
     use uc_core::crypto::domain::{ActiveSpace, Passphrase};
     use uc_core::ids::{DeviceId, SpaceId};
     use uc_core::membership::{MembershipError, SpaceMember};
-    use uc_core::ports::space::{SpaceAccessError, SpaceAccessPort};
+    use uc_core::ports::space::{InitializeSpacePort, SpaceAccessError};
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
-    use uc_core::space_access::{JoinOffer, ProofDerivedKey};
 
     // ---------- Fakes ----------
 
@@ -302,12 +301,10 @@ mod tests {
     struct FakeSpaceAccess {
         initialized: Mutex<bool>,
         initialize_err: Mutex<Option<SpaceAccessError>>,
-        unlock_err: Mutex<Option<SpaceAccessError>>,
-        unlock_calls: Mutex<u32>,
     }
 
     #[async_trait]
-    impl SpaceAccessPort for FakeSpaceAccess {
+    impl InitializeSpacePort for FakeSpaceAccess {
         async fn initialize(
             &self,
             space_id: &SpaceId,
@@ -318,61 +315,6 @@ mod tests {
             }
             *self.initialized.lock().unwrap() = true;
             Ok(ActiveSpace::new(space_id.clone()))
-        }
-        async fn unlock(
-            &self,
-            space_id: &SpaceId,
-            _passphrase: &Passphrase,
-        ) -> Result<ActiveSpace, SpaceAccessError> {
-            *self.unlock_calls.lock().unwrap() += 1;
-            if let Some(err) = self.unlock_err.lock().unwrap().take() {
-                return Err(err);
-            }
-            Ok(ActiveSpace::new(space_id.clone()))
-        }
-        async fn is_unlocked(&self, _space_id: &SpaceId) -> bool {
-            true
-        }
-        async fn lock(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn factory_reset(&self, _space_id: &SpaceId) -> Result<(), SpaceAccessError> {
-            Ok(())
-        }
-        async fn try_resume_session(
-            &self,
-            _space_id: &SpaceId,
-        ) -> Result<Option<ActiveSpace>, SpaceAccessError> {
-            Ok(None)
-        }
-        async fn verify_keychain_access(&self) -> Result<bool, SpaceAccessError> {
-            Ok(true)
-        }
-        async fn derive_subkey(
-            &self,
-            _salt: &[u8],
-            _info: &[u8],
-        ) -> Result<[u8; 32], SpaceAccessError> {
-            Ok([0; 32])
-        }
-        async fn current_session_proof_key(
-            &self,
-        ) -> Result<Option<ProofDerivedKey>, SpaceAccessError> {
-            Ok(None)
-        }
-        async fn prepare_join_offer(
-            &self,
-            _space_id: &SpaceId,
-            _passphrase: &Passphrase,
-        ) -> Result<JoinOffer, SpaceAccessError> {
-            unimplemented!("not used in A1/A2 tests")
-        }
-        async fn derive_master_key_for_proof(
-            &self,
-            _offer: &JoinOffer,
-            _passphrase: &Passphrase,
-        ) -> Result<ProofDerivedKey, SpaceAccessError> {
-            unimplemented!("not used in A1/A2 tests")
         }
     }
 

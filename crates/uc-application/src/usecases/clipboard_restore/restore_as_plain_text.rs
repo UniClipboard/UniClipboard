@@ -35,8 +35,10 @@ use uc_core::{
     },
     ids::EntryId,
     ports::{
-        clipboard::{ClipboardPayloadResolverPort, ResolvedClipboardPayload},
-        ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
+        clipboard::{
+            ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
+            ResolvedClipboardPayload,
+        },
         ClipboardSelectionRepositoryPort,
     },
 };
@@ -55,10 +57,10 @@ pub(crate) enum PlainRestoreOutcome {
 }
 
 pub(crate) struct RestoreClipboardEntryAsPlainTextUseCase {
-    clipboard_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    clipboard_repo: Arc<dyn GetClipboardEntryPort>,
     coordinator: Arc<ClipboardWriteCoordinator>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    representation_repo: Arc<dyn GetRepresentationPort>,
     payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     blob_store: Arc<dyn BlobReaderPort>,
     mode: ClipboardIntegrationMode,
@@ -66,10 +68,10 @@ pub(crate) struct RestoreClipboardEntryAsPlainTextUseCase {
 
 impl RestoreClipboardEntryAsPlainTextUseCase {
     pub(crate) fn new(
-        clipboard_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        clipboard_repo: Arc<dyn GetClipboardEntryPort>,
         coordinator: Arc<ClipboardWriteCoordinator>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn GetRepresentationPort>,
         payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
         blob_store: Arc<dyn BlobReaderPort>,
         mode: ClipboardIntegrationMode,
@@ -236,19 +238,16 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use uc_core::clipboard::{
-        ClipboardChangeOrigin, ClipboardEntry, ClipboardIntegrationMode, ClipboardSelection,
-        ClipboardSelectionDecision, MimeType, PayloadAvailability,
-        PersistedClipboardRepresentation, SelectionPolicyVersion, SystemClipboardSnapshot,
+        ClipboardChangeOrigin, ClipboardEntry, ClipboardIntegrationMode, ClipboardRepositoryError,
+        ClipboardSelection, ClipboardSelectionDecision, MimeType, PersistedClipboardRepresentation,
+        SelectionPolicyVersion, SystemClipboardSnapshot,
     };
     use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
     use uc_core::ports::clipboard::{
-        ClipboardChangeOriginPort, ClipboardPayloadResolverPort, PayloadResolveError,
-        ProcessingUpdateOutcome, ResolvedClipboardPayload, SystemClipboardPort,
+        ClipboardChangeOriginPort, ClipboardPayloadResolverPort, GetClipboardEntryPort,
+        GetRepresentationPort, PayloadResolveError, ResolvedClipboardPayload, SystemClipboardPort,
     };
-    use uc_core::ports::{
-        ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
-        ClipboardSelectionRepositoryPort,
-    };
+    use uc_core::ports::ClipboardSelectionRepositoryPort;
     use uc_core::BlobId;
 
     fn make_rep(
@@ -292,20 +291,11 @@ mod tests {
     mockall::mock! {
         EntryRepo {}
         #[async_trait]
-        impl ClipboardEntryRepositoryPort for EntryRepo {
-            async fn save_entry_and_selection(
+        impl GetClipboardEntryPort for EntryRepo {
+            async fn get_entry(
                 &self,
-                entry: &ClipboardEntry,
-                selection: &ClipboardSelectionDecision,
-            ) -> AnyResult<()>;
-            async fn get_entry(&self, entry_id: &EntryId) -> AnyResult<Option<ClipboardEntry>>;
-            async fn list_entries(&self, limit: usize, offset: usize) -> AnyResult<Vec<ClipboardEntry>>;
-            async fn touch_entry(&self, entry_id: &EntryId, active_time_ms: i64) -> AnyResult<bool>;
-            async fn delete_entry(&self, entry_id: &EntryId) -> AnyResult<()>;
-            async fn find_entry_id_by_snapshot_hash(
-                &self,
-                snapshot_hash: &str,
-            ) -> AnyResult<Option<EntryId>>;
+                entry_id: &EntryId,
+            ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError>;
         }
     }
 
@@ -321,54 +311,21 @@ mod tests {
         }
     }
 
-    /// `ClipboardRepresentationRepositoryPort` 的 `update_processing_result` 方法
-    /// 同时持有 `Option<&BlobId>` 与 `Option<&str>` 两个借用参数，mockall 无法
-    /// 推断出与 `&self` 协同的生命周期（详见 `restore_selection.rs` 的
-    /// `FakeRepo` 注释）。本 trait 因此 hand-roll，其他 trait 仍走 mockall。
+    /// Hand-rolled fake for the narrow `GetRepresentationPort` — the only
+    /// representation capability this use case consumes. Returns the matching
+    /// rep by id from a fixed list.
     struct FakeRepRepo {
         reps: Vec<PersistedClipboardRepresentation>,
     }
 
     #[async_trait]
-    impl ClipboardRepresentationRepositoryPort for FakeRepRepo {
+    impl GetRepresentationPort for FakeRepRepo {
         async fn get_representation(
             &self,
             _: &EventId,
             rep_id: &RepresentationId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+        ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
             Ok(self.reps.iter().find(|r| &r.id == rep_id).cloned())
-        }
-        async fn get_representation_by_id(
-            &self,
-            _: &RepresentationId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn get_representation_by_blob_id(
-            &self,
-            _: &BlobId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn update_blob_id(&self, _: &RepresentationId, _: &BlobId) -> AnyResult<()> {
-            unimplemented!()
-        }
-        async fn update_blob_id_if_none(
-            &self,
-            _: &RepresentationId,
-            _: &BlobId,
-        ) -> AnyResult<bool> {
-            unimplemented!()
-        }
-        async fn update_processing_result(
-            &self,
-            _: &RepresentationId,
-            _: &[PayloadAvailability],
-            _: Option<&BlobId>,
-            _: PayloadAvailability,
-            _: Option<&str>,
-        ) -> AnyResult<ProcessingUpdateOutcome> {
-            unimplemented!()
         }
     }
 

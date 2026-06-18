@@ -223,6 +223,120 @@ where
     }
 }
 
+// ---- Intent ports ----
+//
+// The single Diesel adapter satisfies every narrow device-repository port by
+// delegating to its aggregate-store methods (UFCS disambiguates the same-named
+// methods). The composition root coerces one `Arc<DieselMobileDeviceRepository>`
+// into each port (see ports.md §8.3).
+//
+// These impls live in a private submodule so the narrow port traits do not leak
+// into the test module's method-resolution scope (they share method names with
+// the aggregate store); trait-impl coherence still applies crate-wide.
+mod intent_ports {
+    use super::*;
+    use uc_core::ports::{
+        DeleteMobileDevicePort, FindMobileDeviceByIdPort, FindMobileDeviceByUsernamePort,
+        ListMobileDevicesPort, SaveMobileDevicePort, UpdateMobileDevicePort,
+    };
+
+    #[async_trait]
+    impl<E, M> FindMobileDeviceByUsernamePort for DieselMobileDeviceRepository<E, M>
+    where
+        E: DbExecutor,
+        M: InsertMapper<MobileDevice, NewMobileDeviceRow>
+            + RowMapper<MobileDeviceRow, MobileDevice>
+            + Send
+            + Sync,
+    {
+        async fn find_by_username(
+            &self,
+            username_value: &str,
+        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
+            MobileDeviceRepositoryPort::find_by_username(self, username_value).await
+        }
+    }
+
+    #[async_trait]
+    impl<E, M> FindMobileDeviceByIdPort for DieselMobileDeviceRepository<E, M>
+    where
+        E: DbExecutor,
+        M: InsertMapper<MobileDevice, NewMobileDeviceRow>
+            + RowMapper<MobileDeviceRow, MobileDevice>
+            + Send
+            + Sync,
+    {
+        async fn find_by_device_id(
+            &self,
+            device_id_value: &MobileDeviceId,
+        ) -> Result<Option<MobileDevice>, MobileDeviceError> {
+            MobileDeviceRepositoryPort::find_by_device_id(self, device_id_value).await
+        }
+    }
+
+    #[async_trait]
+    impl<E, M> ListMobileDevicesPort for DieselMobileDeviceRepository<E, M>
+    where
+        E: DbExecutor,
+        M: InsertMapper<MobileDevice, NewMobileDeviceRow>
+            + RowMapper<MobileDeviceRow, MobileDevice>
+            + Send
+            + Sync,
+    {
+        async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError> {
+            MobileDeviceRepositoryPort::list_all(self).await
+        }
+    }
+
+    #[async_trait]
+    impl<E, M> SaveMobileDevicePort for DieselMobileDeviceRepository<E, M>
+    where
+        E: DbExecutor,
+        M: InsertMapper<MobileDevice, NewMobileDeviceRow>
+            + RowMapper<MobileDeviceRow, MobileDevice>
+            + Send
+            + Sync,
+    {
+        async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError> {
+            MobileDeviceRepositoryPort::save(self, device).await
+        }
+    }
+
+    #[async_trait]
+    impl<E, M> DeleteMobileDevicePort for DieselMobileDeviceRepository<E, M>
+    where
+        E: DbExecutor,
+        M: InsertMapper<MobileDevice, NewMobileDeviceRow>
+            + RowMapper<MobileDeviceRow, MobileDevice>
+            + Send
+            + Sync,
+    {
+        async fn delete(
+            &self,
+            device_id_value: &MobileDeviceId,
+        ) -> Result<bool, MobileDeviceError> {
+            MobileDeviceRepositoryPort::delete(self, device_id_value).await
+        }
+    }
+
+    #[async_trait]
+    impl<E, M> UpdateMobileDevicePort for DieselMobileDeviceRepository<E, M>
+    where
+        E: DbExecutor,
+        M: InsertMapper<MobileDevice, NewMobileDeviceRow>
+            + RowMapper<MobileDeviceRow, MobileDevice>
+            + Send
+            + Sync,
+    {
+        async fn update_mobile_device(
+            &self,
+            updated: &MobileDevice,
+        ) -> Result<bool, MobileDeviceError> {
+            MobileDeviceRepositoryPort::update_mobile_device(self, updated).await
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

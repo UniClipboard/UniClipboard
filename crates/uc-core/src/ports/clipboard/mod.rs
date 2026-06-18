@@ -4,10 +4,12 @@ mod clipboard_entry_repository;
 mod clipboard_event_repository;
 mod clipboard_selection_repository;
 mod delivery;
+mod entry_intents;
 mod local_clipboard;
 mod payload_resolver;
 mod platform_clipboard;
 mod representation_cache;
+mod representation_intents;
 mod representation_normalizer;
 mod representation_repository;
 mod select_representation_policy;
@@ -24,12 +26,22 @@ pub use clipboard_entry_repository::ClipboardEntryRepositoryPort;
 pub use clipboard_event_repository::ClipboardEventRepositoryPort;
 pub use clipboard_selection_repository::ClipboardSelectionRepositoryPort;
 pub use delivery::EntryDeliveryRepositoryPort;
+pub use entry_intents::{
+    DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
+    ListClipboardEntriesPort, SaveClipboardEntryPort, TouchClipboardEntryPort,
+};
 pub use local_clipboard::SystemClipboardPort;
 pub use payload_resolver::{
     ClipboardPayloadResolverPort, PayloadResolveError, ResolvedClipboardPayload,
 };
 pub use platform_clipboard::PlatformClipboardPort;
 pub use representation_cache::RepresentationCachePort;
+pub use representation_intents::{
+    GetRepresentationByBlobIdPort, GetRepresentationByIdPort, GetRepresentationPort,
+    ListRepresentationIdsByStatePort, ListRepresentationsForEventPort,
+    UpdateRepresentationBlobIdPort, UpdateRepresentationMimePort,
+    UpdateRepresentationProcessingResultPort,
+};
 pub use representation_normalizer::ClipboardRepresentationNormalizerPort;
 pub use representation_repository::{
     ClipboardRepresentationRepositoryPort, ProcessingUpdateOutcome,

@@ -12,6 +12,7 @@ mod mime;
 mod origin;
 mod payload_availability;
 mod policy;
+mod repository_error;
 mod selection;
 mod snapshot;
 mod system;
@@ -27,6 +28,7 @@ pub use entry::*;
 pub use event::*;
 pub use policy::ClipboardSelection;
 pub use policy::*;
+pub use repository_error::ClipboardRepositoryError;
 pub use selection::*;
 pub use snapshot::*;
 pub use system::{

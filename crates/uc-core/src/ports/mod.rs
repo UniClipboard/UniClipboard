@@ -28,6 +28,7 @@ pub mod connection_channel;
 pub mod device_identity;
 pub mod errors;
 pub mod file_cache_hygiene;
+pub mod file_transfer;
 pub mod file_transfer_repository;
 pub mod first_sync_state;
 mod hash;
@@ -64,6 +65,10 @@ pub use clipboard_change_handler::ClipboardChangeHandler;
 pub use connection_channel::{ConnectionChannel, ConnectionChannelPort, ConnectionPath};
 pub use device_identity::DeviceIdentityPort;
 pub use errors::AppDirsError;
+pub use file_transfer::{
+    FailInflightTransfersPort, FileTransferProjectionError, FindEntryIdForTransferPort,
+    GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, RecordReceiverTransferPort,
+};
 pub use file_transfer_repository::{
     compute_aggregate_status, EntryTransferSummary, ExpiredInflightTransfer,
     FileTransferRepositoryPort, PendingInboundTransfer, TrackedFileTransferStatus,

@@ -463,7 +463,7 @@ pub async fn build_space_setup_assembly(
         entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
         event_repo: Arc::clone(&wired.clipboard_event_reader_repo),
         trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
-        mobile_device_repo: Arc::clone(&deps.mobile_sync.device_repo),
+        mobile_device_repo: Arc::clone(&deps.mobile_sync.devices.find_by_id),
         // Issue #747 Phase 5：与 blob_transfer / apply_inbound 共享同一根
         // host_event_bus。GUI 装配链路在 Tauri setup callback 中
         // `bus.register("tauri", TauriHostEventEmitter)`,daemon 启动时

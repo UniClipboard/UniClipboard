@@ -21,7 +21,7 @@ use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
     ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, DeviceIdentityPort, DispatchAck,
-    EntryDeliveryRepositoryPort, FirstSyncStatePort, LocalIdentityPort, MobileDeviceRepositoryPort,
+    EntryDeliveryRepositoryPort, FindMobileDeviceByIdPort, FirstSyncStatePort, LocalIdentityPort,
     PeerAddressRepositoryPort, PresencePort, SettingsPort,
 };
 use uc_core::MemberRepositoryPort;
@@ -80,7 +80,7 @@ pub struct ClipboardSyncDeps {
     pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     /// 移动设备仓库,`GetEntryDeliveryViewUseCase` 用于把 `mobile_sync:` 前缀
     /// 的伪 DeviceId 解析为移动设备的人类可读 label。
-    pub mobile_device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    pub mobile_device_repo: Arc<dyn FindMobileDeviceByIdPort>,
     /// 共享 host-event bus。dispatch fan-out 完成、delivery 状态写入后追发
     /// 一条 `HostEvent::Delivery::StatusChanged`,GUI 前端凭此实时刷新 badge。
     /// 测试 / CLI 装配传一根空 bus(`Arc::new(HostEventBus::new())`)即可
@@ -671,30 +671,11 @@ mod tests {
     mockall::mock! {
         pub MobileDeviceRepo {}
         #[async_trait]
-        impl MobileDeviceRepositoryPort for MobileDeviceRepo {
-            async fn save(
-                &self,
-                device: &uc_core::mobile_sync::MobileDevice,
-            ) -> Result<(), uc_core::mobile_sync::MobileDeviceError>;
-            async fn find_by_username(
-                &self,
-                username: &str,
-            ) -> Result<Option<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>;
+        impl FindMobileDeviceByIdPort for MobileDeviceRepo {
             async fn find_by_device_id(
                 &self,
                 device_id: &uc_core::mobile_sync::MobileDeviceId,
             ) -> Result<Option<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>;
-            async fn list_all(
-                &self,
-            ) -> Result<Vec<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>;
-            async fn delete(
-                &self,
-                device_id: &uc_core::mobile_sync::MobileDeviceId,
-            ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError>;
-            async fn update_mobile_device(
-                &self,
-                updated: &uc_core::mobile_sync::MobileDevice,
-            ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError>;
         }
     }
 

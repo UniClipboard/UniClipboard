@@ -18,7 +18,7 @@ use uc_core::mobile_sync::MobileDeviceId;
 use uc_core::ports::clipboard::GetClipboardEntryPort;
 use uc_core::ports::{
     ClipboardEventRepositoryPort, DeviceIdentityPort, EntryDeliveryRepositoryPort,
-    MobileDeviceRepositoryPort,
+    FindMobileDeviceByIdPort,
 };
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::MemberRepositoryPort;
@@ -89,7 +89,7 @@ pub(crate) struct GetEntryDeliveryViewUseCase {
     entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     member_repo: Arc<dyn MemberRepositoryPort>,
-    mobile_device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+    mobile_device_repo: Arc<dyn FindMobileDeviceByIdPort>,
 }
 
 impl GetEntryDeliveryViewUseCase {
@@ -100,7 +100,7 @@ impl GetEntryDeliveryViewUseCase {
         entry_delivery_repo: Arc<dyn EntryDeliveryRepositoryPort>,
         device_identity: Arc<dyn DeviceIdentityPort>,
         member_repo: Arc<dyn MemberRepositoryPort>,
-        mobile_device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+        mobile_device_repo: Arc<dyn FindMobileDeviceByIdPort>,
     ) -> Self {
         Self {
             entry_repo,
@@ -512,22 +512,11 @@ mod tests {
     mockall::mock! {
         MobileDeviceRepo {}
         #[async_trait]
-        impl MobileDeviceRepositoryPort for MobileDeviceRepo {
-            async fn save(&self, device: &MobileDevice) -> Result<(), MobileDeviceError>;
-            async fn find_by_username(
-                &self,
-                username: &str,
-            ) -> Result<Option<MobileDevice>, MobileDeviceError>;
+        impl FindMobileDeviceByIdPort for MobileDeviceRepo {
             async fn find_by_device_id(
                 &self,
                 device_id: &MobileDeviceId,
             ) -> Result<Option<MobileDevice>, MobileDeviceError>;
-            async fn list_all(&self) -> Result<Vec<MobileDevice>, MobileDeviceError>;
-            async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError>;
-            async fn update_mobile_device(
-                &self,
-                updated: &MobileDevice,
-            ) -> Result<bool, MobileDeviceError>;
         }
     }
 
@@ -616,7 +605,7 @@ mod tests {
         trusted_peer_repo: Arc<FakeTrustedPeerRepo>,
         delivery_repo: Arc<FakeDeliveryRepo>,
         member_repo: Arc<FakeMemberRepo>,
-        mobile_device_repo: Arc<dyn MobileDeviceRepositoryPort>,
+        mobile_device_repo: Arc<dyn FindMobileDeviceByIdPort>,
     ) -> GetEntryDeliveryViewUseCase {
         GetEntryDeliveryViewUseCase::new(
             entry_repo,

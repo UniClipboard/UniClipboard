@@ -320,44 +320,13 @@ impl uc_core::ports::ClipboardEventRepositoryPort for NoopClipboardEventRepo {
 #[derive(Default)]
 struct NoopMobileDeviceRepo;
 #[async_trait]
-impl uc_core::ports::MobileDeviceRepositoryPort for NoopMobileDeviceRepo {
-    async fn save(
-        &self,
-        _device: &uc_core::mobile_sync::MobileDevice,
-    ) -> Result<(), uc_core::mobile_sync::MobileDeviceError> {
-        Ok(())
-    }
-    async fn find_by_username(
-        &self,
-        _username: &str,
-    ) -> Result<Option<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>
-    {
-        Ok(None)
-    }
+impl uc_core::ports::FindMobileDeviceByIdPort for NoopMobileDeviceRepo {
     async fn find_by_device_id(
         &self,
         _device_id: &uc_core::mobile_sync::MobileDeviceId,
     ) -> Result<Option<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>
     {
         Ok(None)
-    }
-    async fn list_all(
-        &self,
-    ) -> Result<Vec<uc_core::mobile_sync::MobileDevice>, uc_core::mobile_sync::MobileDeviceError>
-    {
-        Ok(Vec::new())
-    }
-    async fn delete(
-        &self,
-        _device_id: &uc_core::mobile_sync::MobileDeviceId,
-    ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError> {
-        Ok(false)
-    }
-    async fn update_mobile_device(
-        &self,
-        _updated: &uc_core::mobile_sync::MobileDevice,
-    ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError> {
-        Ok(false)
     }
 }
 

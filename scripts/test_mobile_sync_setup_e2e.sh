@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# mobile-sync setup / add / revoke / status 命令拓扑 + 自定义凭据校验的
+# mobile setup / add / revoke / status 命令拓扑 + 自定义凭据校验的
 # 本地端到端 e2e。
 #
 # 验证范围:
 #   * `setup` 一键向导 (--non-interactive --json) → register_device 出
 #     install_url + 一次性 password
-#   * `setup` 缺 flag 拒绝 (--label / --ip / --accept-network-risk)
+#   * `setup` 缺 flag 拒绝 (--label / --accept-network-risk;--ip 现为可选)
 #   * `status` / `disable` 综合行为(设备列表由 status 呈现)
 #   * `add` 自动凭据 + 自定义 username + --password-stdin pipe
 #   * username/password 校验 5 种拒绝形态:
@@ -146,7 +146,7 @@ ok "init succeeded"
 # ── Step 1: setup --non-interactive --json happy path ────────────────────
 
 step "Step 1 — setup --non-interactive --json happy path"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync setup \
+run_capture "$CLI" "${COMMON[@]}" --json mobile setup \
     --non-interactive \
     --label "iPhone-A" \
     --ip "127.0.0.1" \
@@ -166,23 +166,22 @@ note "iPhone-A device_id: $DEVICE_A_ID"
 # ── Step 2: setup 缺 flag 拒绝 ───────────────────────────────────────────
 
 step "Step 2.1 — setup --non-interactive without --label rejected"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync setup \
+run_capture "$CLI" "${COMMON[@]}" --json mobile setup \
     --non-interactive \
     --ip "127.0.0.1" \
     --accept-network-risk
 assert_exit_nonzero "missing --label" "$LAST_RC"
 assert_contains "error mentions --label" "--label is required" "$LAST_OUT"
 
-step "Step 2.2 — setup --non-interactive without --ip rejected"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync setup \
-    --non-interactive \
-    --label "X" \
-    --accept-network-risk
-assert_exit_nonzero "missing --ip" "$LAST_RC"
-assert_contains "error mentions --ip" "--ip is required" "$LAST_OUT"
+# NOTE: there is intentionally no "setup without --ip rejected" case anymore.
+# --ip is now an optional advanced pin (the QR auto-carries every detected
+# interface), so omitting it is valid — and a *successful* setup would register
+# an extra device, which would break the device_count assertions below. The
+# "--ip optional" contract is covered by `mobile setup --help` wording and the
+# happy path in Step 1 (which still accepts an explicit --ip pin).
 
-step "Step 2.3 — setup --json without --accept-network-risk rejected"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync setup \
+step "Step 2.2 — setup --json without --accept-network-risk rejected"
+run_capture "$CLI" "${COMMON[@]}" --json mobile setup \
     --label "X" \
     --ip "127.0.0.1"
 assert_exit_nonzero "missing --accept-network-risk" "$LAST_RC"
@@ -191,7 +190,7 @@ assert_contains "error mentions risk" "--accept-network-risk is required" "$LAST
 # ── Step 3: status comprehensive view ────────────────────────────────────
 
 step "Step 3 — status --json reflects 1 device + LAN enabled"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync status
+run_capture "$CLI" "${COMMON[@]}" --json mobile status
 assert_exit_zero "status" "$LAST_RC"
 assert_contains "status enabled=true" '"enabled": true' "$LAST_OUT"
 assert_contains "status lan_listen_enabled=true" '"lan_listen_enabled": true' "$LAST_OUT"
@@ -201,7 +200,7 @@ assert_contains "status devices array contains iPhone-A" '"label": "iPhone-A"' "
 # ── Step 4: add (auto credentials) ───────────────────────────────────────
 
 step "Step 4 — add --label B (auto credentials)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add --label "iPhone-B"
+run_capture "$CLI" "${COMMON[@]}" --json mobile add --label "iPhone-B"
 assert_exit_zero "add auto" "$LAST_RC"
 DEVICE_B_USERNAME="$(extract_username "$LAST_OUT")"
 note "iPhone-B auto username: $DEVICE_B_USERNAME"
@@ -217,7 +216,7 @@ fi
 step "Step 5 — add --label C --username alice_001 --password-stdin"
 CUSTOM_PW="MyStrongPassword123"
 run_capture_stdin "$CUSTOM_PW" \
-    "$CLI" "${COMMON[@]}" --json mobile-sync add \
+    "$CLI" "${COMMON[@]}" --json mobile add \
     --label "iPhone-C" \
     --username "alice_001" \
     --password-stdin
@@ -228,28 +227,28 @@ assert_contains "custom password echoed" "\"password\": \"$CUSTOM_PW\"" "$LAST_O
 # ── Step 6: 5 种校验拒绝 ─────────────────────────────────────────────────
 
 step "Step 6.1 — add --username alice_001 rejected (taken)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add \
+run_capture "$CLI" "${COMMON[@]}" --json mobile add \
     --label "iPhone-Dup" \
     --username "alice_001"
 assert_exit_nonzero "duplicate username" "$LAST_RC"
 assert_contains "error mentions taken" "already taken" "$LAST_OUT"
 
 step "Step 6.2 — add --username ali rejected (too short)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add \
+run_capture "$CLI" "${COMMON[@]}" --json mobile add \
     --label "iPhone-Short" \
     --username "ali"
 assert_exit_nonzero "username too short" "$LAST_RC"
 assert_contains "error mentions too short" "Username is too short" "$LAST_OUT"
 
 step "Step 6.3 — add --username 1abc12 rejected (digit-leading)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add \
+run_capture "$CLI" "${COMMON[@]}" --json mobile add \
     --label "iPhone-DigitHead" \
     --username "1abc12"
 assert_exit_nonzero "username digit-leading" "$LAST_RC"
 assert_contains "error mentions letter-leading" "must start with an ASCII letter" "$LAST_OUT"
 
 step "Step 6.4 — add --username has-hyphen rejected (invalid char)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync add \
+run_capture "$CLI" "${COMMON[@]}" --json mobile add \
     --label "iPhone-Hyphen" \
     --username "alice-002"
 assert_exit_nonzero "username with hyphen" "$LAST_RC"
@@ -257,7 +256,7 @@ assert_contains "error mentions forbidden chars" "forbidden characters" "$LAST_O
 
 step "Step 6.5 — add --password-stdin too short (<8) rejected"
 run_capture_stdin "abc" \
-    "$CLI" "${COMMON[@]}" --json mobile-sync add \
+    "$CLI" "${COMMON[@]}" --json mobile add \
     --label "iPhone-WeakPw" \
     --password-stdin
 assert_exit_nonzero "password too short" "$LAST_RC"
@@ -266,14 +265,14 @@ assert_contains "error mentions password length" "Password is too short" "$LAST_
 # ── Step 7: status now shows 3 devices (A, B, C) ────────────────────────
 
 step "Step 7 — status --json now shows 3 devices"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync status
+run_capture "$CLI" "${COMMON[@]}" --json mobile status
 assert_exit_zero "status after adds" "$LAST_RC"
 assert_contains "device_count=3" '"device_count": 3' "$LAST_OUT"
 
 # ── Step 8: revoke <id> 显式 ─────────────────────────────────────
 
 step "Step 8 — revoke <id> (iPhone-A explicit id)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync revoke "$DEVICE_A_ID"
+run_capture "$CLI" "${COMMON[@]}" --json mobile revoke "$DEVICE_A_ID"
 assert_exit_zero "revoke explicit" "$LAST_RC"
 assert_contains "revoked=true" '"revoked": true' "$LAST_OUT"
 assert_contains "revoke echoes device_id" "\"device_id\": \"$DEVICE_A_ID\"" "$LAST_OUT"
@@ -281,27 +280,27 @@ assert_contains "revoke echoes device_id" "\"device_id\": \"$DEVICE_A_ID\"" "$LA
 # ── Step 9: revoke (no id) --json 拒绝 ─────────────────────────
 
 step "Step 9 — revoke (no id) --json rejected"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync revoke
+run_capture "$CLI" "${COMMON[@]}" --json mobile revoke
 assert_exit_nonzero "revoke no id JSON" "$LAST_RC"
 assert_contains "error mentions device-id required" "device-id" "$LAST_OUT"
 
 # ── Step 10: status now 2 devices ───────────────────────────────────────
 
 step "Step 10 — status --json now shows 2 devices"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync status
+run_capture "$CLI" "${COMMON[@]}" --json mobile status
 assert_exit_zero "status after revoke" "$LAST_RC"
 assert_contains "device_count=2 after revoke" '"device_count": 2' "$LAST_OUT"
 
 # ── Step 11: disable -> both flags off ──────────────────────────────────
 
 step "Step 11 — disable --json (master + LAN both off)"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync disable
+run_capture "$CLI" "${COMMON[@]}" --json mobile disable
 assert_exit_zero "disable" "$LAST_RC"
 assert_contains "disable enabled=false" '"enabled": false' "$LAST_OUT"
 assert_contains "disable lan_listen_enabled=false" '"lan_listen_enabled": false' "$LAST_OUT"
 
 step "Step 11.1 — status reflects disabled state, devices retained"
-run_capture "$CLI" "${COMMON[@]}" --json mobile-sync status
+run_capture "$CLI" "${COMMON[@]}" --json mobile status
 assert_exit_zero "status after disable" "$LAST_RC"
 assert_contains "status enabled=false" '"enabled": false' "$LAST_OUT"
 assert_contains "status lan_listen_enabled=false" '"lan_listen_enabled": false' "$LAST_OUT"
@@ -312,6 +311,6 @@ assert_contains "status devices retained" '"device_count": 2' "$LAST_OUT"
 echo
 echo "============================================="
 echo "PASS: all $PASS_COUNT assertions OK"
-echo "  mobile-sync — setup wizard / add / revoke / 校验 / status"
+echo "  mobile — setup wizard / add / revoke / 校验 / status"
 echo "  全部命令拓扑 + 自定义凭据规则 + 综合视图本地 e2e 验证通过"
 echo "============================================="

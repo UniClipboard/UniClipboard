@@ -107,8 +107,9 @@ async fn mobile_sync_setup_non_interactive_json() {
 async fn mobile_sync_setup_missing_flags_non_interactive() {
     let (_daemon, cli) = setup_initialized_node("ms-setup-missing").await;
 
-    // Run setup --non-interactive --json WITHOUT required --label, --ip,
-    // --accept-network-risk. The CLI should reject early.
+    // Run setup --non-interactive --json WITHOUT required --label /
+    // --accept-network-risk (--ip is now optional). The CLI should reject
+    // early on the still-required flags.
     let output = cli.run_capture(&["--json", "mobile-sync", "setup", "--non-interactive"]);
 
     assert!(
@@ -123,7 +124,6 @@ async fn mobile_sync_setup_missing_flags_non_interactive() {
     assert!(
         combined.contains("required")
             || combined.contains("--label")
-            || combined.contains("--ip")
             || combined.contains("--accept-network-risk")
             || combined.contains("error"),
         "error output should mention missing required flags: {combined}"

@@ -418,14 +418,14 @@ tailnet 地址。
 
 ## 管理已配对设备
 
-| 操作           | GUI                                                            | CLI                                      |
-| -------------- | -------------------------------------------------------------- | ---------------------------------------- |
-| 列出已配对     | 设备页 → 移动端同步面板                                        | `uniclip mobile status`             |
-| 再加一台       | 移动端同步面板 → **Add device**                                | `uniclip mobile add --label "…"`    |
-| 编辑设备       | 点设备卡片 → dialog → **Edit device**（label / 用户名 / 密码） | _目前只 GUI_；签新的并重新配对手机端     |
-| 吊销一台设备   | 点设备卡片 → dialog → **Revoke**                               | `uniclip mobile revoke <device-id>` |
-| 关闭整个功能   | 配置 modal → 关闭总开关                                        | `uniclip mobile disable`            |
-| 查当前监听 URL | 移动端同步面板状态条                                           | `uniclip mobile status`             |
+| 操作           | GUI                                                            | CLI                                  |
+| -------------- | -------------------------------------------------------------- | ------------------------------------ |
+| 列出已配对     | 设备页 → 移动端同步面板                                        | `uniclip mobile status`              |
+| 再加一台       | 移动端同步面板 → **Add device**                                | `uniclip mobile add --label "…"`     |
+| 编辑设备       | 点设备卡片 → dialog → **Edit device**（label / 用户名 / 密码） | _目前只 GUI_；签新的并重新配对手机端 |
+| 吊销一台设备   | 点设备卡片 → dialog → **Revoke**                               | `uniclip mobile revoke <device-id>`  |
+| 关闭整个功能   | 配置 modal → 关闭总开关                                        | `uniclip mobile disable`             |
+| 查当前监听 URL | 移动端同步面板状态条                                           | `uniclip mobile status`              |
 
 **编辑设备** 可以在 **Edit device** 视图里修改 label、用户名和/或密码。
 设置或重新生成密码会签发一个新的一次性密码，并原子失效旧的 Argon2id

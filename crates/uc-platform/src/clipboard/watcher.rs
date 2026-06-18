@@ -108,7 +108,7 @@ fn snapshot_has_files(snapshot: &SystemClipboardSnapshot) -> bool {
 const MAX_FINGERPRINT_DECODE_BYTES: usize = 64 * 1024 * 1024;
 
 /// A decode-stable identity for a clipboard image: the blake3 hash of its
-/// canonical RGBA8 pixel buffer plus dimensions.
+/// canonical RGB pixels (alpha deliberately excluded) plus dimensions.
 ///
 /// Two reads of the *same* image produce the same fingerprint even when the
 /// source re-serializes it with churning padding / alpha / metadata bytes (the
@@ -117,16 +117,32 @@ const MAX_FINGERPRINT_DECODE_BYTES: usize = 64 * 1024 * 1024;
 /// can't decode (unknown/unsupported format such as `image/xpm`, or corrupt
 /// bytes) or that exceed [`MAX_FINGERPRINT_DECODE_BYTES`]; the caller then
 /// falls back to the raw-byte key plus the size-based storm latch.
+///
+/// Alpha is excluded on purpose. VirtualBox's shared clipboard (`VBoxShCl`)
+/// hands us a 32-bit BMP whose alpha byte is uninitialized memory that churns
+/// on every re-serialization (issue #957). `to_rgba8()` faithfully carries that
+/// garbage alpha, so hashing the full RGBA buffer makes the "stable"
+/// fingerprint churn anyway, defeating the dedup and reviving the storm. The
+/// visible image lives in RGB; for clipboard identity that is the stable,
+/// sufficient signal.
 fn stable_image_fingerprint(bytes: &[u8]) -> Option<String> {
     if bytes.is_empty() || bytes.len() > MAX_FINGERPRINT_DECODE_BYTES {
         return None;
     }
     let image = image::load_from_memory(bytes).ok()?;
     let rgba = image.to_rgba8();
+    let (width, height) = (rgba.width(), rgba.height());
     let mut hasher = blake3::Hasher::new();
-    hasher.update(&rgba.width().to_le_bytes());
-    hasher.update(&rgba.height().to_le_bytes());
-    hasher.update(rgba.as_raw());
+    hasher.update(&width.to_le_bytes());
+    hasher.update(&height.to_le_bytes());
+    // Neutralize the alpha byte of every RGBA pixel before hashing so churning
+    // garbage alpha (see above) cannot perturb the fingerprint; a single
+    // update over the contiguous buffer keeps this cheap on large images.
+    let mut raw = rgba.into_raw();
+    for px in raw.chunks_exact_mut(4) {
+        px[3] = 0xFF;
+    }
+    hasher.update(&raw);
     Some(hasher.finalize().to_hex().to_string())
 }
 
@@ -396,6 +412,19 @@ mod tests {
         out.into_inner()
     }
 
+    /// Encode a solid-colour `w`×`h` RGBA image with a uniform `alpha` byte.
+    /// Lets a test vary only the alpha channel — the #957 VBoxShCl churn shape
+    /// where the visible RGB image is identical but the (uninitialized) alpha
+    /// byte differs on every re-read.
+    fn encode_rgba(w: u32, h: u32, rgb: [u8; 3], alpha: u8) -> Vec<u8> {
+        let buf = image::RgbaImage::from_pixel(w, h, image::Rgba([rgb[0], rgb[1], rgb[2], alpha]));
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(buf)
+            .write_to(&mut out, image::ImageFormat::Png)
+            .expect("encode test image");
+        out.into_inner()
+    }
+
     /// Image snapshot carrying real (decodable) `bytes`.
     fn decodable_image(bytes: Vec<u8>) -> SystemClipboardSnapshot {
         let rep = ObservedClipboardRepresentation::new(
@@ -569,6 +598,31 @@ mod tests {
             drain(&mut rx),
             1,
             "the same image in two serializations must collapse via the fingerprint"
+        );
+    }
+
+    #[test]
+    fn churning_alpha_of_same_image_collapses_via_fingerprint() {
+        // Reproduces the #957 VirtualBox (VBoxShCl) recurrence: a 32-bit BMP
+        // whose alpha byte is uninitialized memory churns on every re-read, so
+        // the decoded RGBA buffer — and a full-RGBA fingerprint — differed every
+        // time even though the visible RGB image was identical. That defeated
+        // the dedup and revived the storm. Excluding alpha from the fingerprint
+        // makes the two reads collapse to a single emit, even at a cadence
+        // beyond IMAGE_STORM_MAX_GAP (so the size latch is irrelevant here).
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        let a = encode_rgba(8, 8, [10, 20, 30], 0x11);
+        let b = encode_rgba(8, 8, [10, 20, 30], 0x22);
+        w.emit_with_dedup_at(decodable_image(a), base);
+        w.emit_with_dedup_at(
+            decodable_image(b),
+            base + IMAGE_STORM_MAX_GAP + Duration::from_secs(1),
+        );
+        assert_eq!(
+            drain(&mut rx),
+            1,
+            "same RGB image with churning alpha must collapse via the fingerprint"
         );
     }
 

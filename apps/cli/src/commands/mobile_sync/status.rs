@@ -88,7 +88,7 @@ impl From<&MobileSyncSettingsViewDto> for StatusDto {
 }
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
-    let ctx = match shared::enter("Mobile-sync status", json, verbose).await {
+    let ctx = match shared::enter("Mobile status", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };

@@ -136,7 +136,7 @@ UC_IROH_BIND_PORT=42999         # iroh 直连用的固定 UDP 端口
 
 ## 置备（一次性，先于守护进程）
 
-`join` 和 `mobile-sync` 这些写命令**在 daemon 运行时会拒绝执行**，所以置备
+`join` 和 `mobile` 这些写命令**在 daemon 运行时会拒绝执行**，所以置备
 全部用一次性容器先做完。它们和常驻守护进程共用同一个状态卷。
 
 **1. 加入你的空间。** 在一台已在空间里的桌面端跑 `uniclip invite` 拿邀请码,
@@ -255,7 +255,7 @@ docker compose up -d --build                     # 升级（方案 B：源码构
 ```
 
 升级保留状态卷，新镜像只是换二进制 —— 不用重新配对。之后要改广告域名或加
-设备，**先停守护进程**（`docker compose down`），重跑对应的 `mobile-sync`
+设备，**先停守护进程**（`docker compose down`），重跑对应的 `mobile`
 命令，再 `docker compose up -d` —— 写命令在 daemon 运行时仍然会拒绝。
 
 ## 验证
@@ -279,6 +279,6 @@ curl -i http://clip.example.com:42720/SyncClipboard.json
 | ------------------------------- | -------------------------------------------------------------------------------- |
 | `up -d` 报 `setup not complete` | 置备（`join`）没落盘。确认 `docker compose run` 命令打的是同一个卷。             |
 | Caddy 一直签不出证书            | `UC_DOMAIN` 的 DNS 必须解析到这台 VPS，且 `80`/`443` 在 `up -d` **之前**已放开。 |
-| 手机拿到的 URL 不对             | 停掉守护进程重跑 `mobile-sync network set --url https://<域名>`，再 `up -d`。    |
+| 手机拿到的 URL 不对             | 停掉守护进程重跑 `mobile network set --url https://<域名>`，再 `up -d`。    |
 | 另一网络的桌面端同步不上        | 防火墙放开 `UC_IROH_BIND_PORT/udp`，并确认 `UC_PUBLIC_IP` 是真实公网 IP。        |
 | 经你的反代返回 `401`            | 说明网关在、并在要 Basic Auth —— 用 `add` 给出的凭据。                           |

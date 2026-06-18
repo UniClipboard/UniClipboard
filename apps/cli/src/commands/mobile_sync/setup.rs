@@ -14,11 +14,6 @@ use crate::commands::mobile_sync::shared;
 use crate::exit_codes;
 use crate::ui;
 
-/// SPEC §3.2 default LAN port. `setup` provisions this explicitly so the
-/// persisted port is inspectable, rather than relying on the daemon's silent
-/// fallback for an unset value.
-const DEFAULT_LAN_PORT: u16 = 42720;
-
 #[derive(Args, Debug)]
 pub struct SetupArgs {
     /// Human-readable device label, e.g. "My iPhone 15". Required in
@@ -81,7 +76,7 @@ struct SetupResult {
 
 pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
     if !json {
-        ui::header("Mobile-sync setup");
+        ui::header("Mobile setup");
     }
 
     // JSON mode is implicitly non-interactive — no terminal prompt is safe
@@ -185,19 +180,20 @@ pub async fn run(args: SetupArgs, json: bool, verbose: bool) -> i32 {
 
     // 8. Apply settings: enable feature + LAN listener. Mirrors the GUI's
     // one-click enable — we flip the switches and let the QR carry every
-    // detected interface. `--ip` is an optional advanced pin: patched only
-    // when given (`None` ⇒ leave unchanged), otherwise the QR auto-collects
-    // all interfaces. The port is provisioned explicitly (default 42720) so
-    // the persisted setting is inspectable. `lan_advertise_base_url` is left
-    // untouched — multi-address QRs happily carry a reverse-proxy entry
-    // alongside the LAN IPs, so there is no longer anything to clear.
+    // detected interface. `--ip` / `--port` are optional advanced pins:
+    // patched only when given (`None` ⇒ leave unchanged), so re-running
+    // `setup` never resets a previously configured port. An unset port falls
+    // back to the SPEC default (42720) at advertise time.
+    // `lan_advertise_base_url` is left untouched — multi-address QRs happily
+    // carry a reverse-proxy entry alongside the LAN IPs, so there is no longer
+    // anything to clear.
     let upd = match ctx
         .client
         .update_settings(&UpdateMobileSyncSettingsRequest {
             enabled: Some(true),
             lan_listen_enabled: Some(true),
             lan_advertise_ip: args.ip.clone().map(Some),
-            lan_port: Some(Some(args.port.unwrap_or(DEFAULT_LAN_PORT))),
+            lan_port: args.port.map(Some),
             lan_advertise_base_url: None,
         })
         .await

@@ -87,7 +87,7 @@ cp .env.example .env
 
 ## 2. Provision (one-time, interactive — BEFORE the daemon)
 
-`join` and the `mobile-sync` write commands refuse to run while a daemon is up,
+`join` and the `mobile` write commands refuse to run while a daemon is up,
 so all provisioning happens in one-off containers first. They share the same
 `uniclip-state` volume, so what they write is exactly what the long-running
 daemon reads in step 3.

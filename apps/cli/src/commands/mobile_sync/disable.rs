@@ -18,7 +18,7 @@ struct DisableResult {
 }
 
 pub async fn run(json: bool, verbose: bool) -> i32 {
-    let ctx = match shared::enter("Mobile-sync disable", json, verbose).await {
+    let ctx = match shared::enter("Mobile disable", json, verbose).await {
         Ok(c) => c,
         Err(code) => return code,
     };

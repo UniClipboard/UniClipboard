@@ -172,8 +172,9 @@ Behavioural notes:
   `setup`, `add`, `network set`, etc. The read command (`status`) is
   tolerant of a running daemon.
 - **`--json` implies non-interactive.** No prompts will be shown.
-  `setup` in non-interactive / JSON mode requires `--label`,
-  `--ip`, and `--accept-network-risk`. `--username` /
+  `setup` in non-interactive / JSON mode requires `--label` and
+  `--accept-network-risk`. `--ip` / `--port` are optional advanced pins
+  (omit them and the QR carries every detected interface). `--username` /
   `--password-stdin` remain optional and default to auto-mint.
 - **`--password-stdin`** reads exactly one line from stdin. Use it to
   pipe a password from a manager / CI without leaving it in shell
@@ -188,7 +189,7 @@ Behavioural notes:
   so the install URL / QR points at a TLS reverse proxy (Caddy, nginx,
   …) while the listener itself stays plain HTTP on the internal
   network. The two are mutually exclusive and setting one clears the
-  other; `mobile-sync status` reflects whichever is active.
+  other; `mobile status` reflects whichever is active.
 - A **debug** subcommand group exists (`uniclip mobile debug`)
   but is hidden from `--help` — it is reserved for development and
   E2E scripts (it bypasses HTTP and pokes the facade directly), and

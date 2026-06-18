@@ -312,6 +312,6 @@ the phone and confirm it appears on your desktops.
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `setup not complete` on `up -d`       | Provisioning (`join`) didn't persist. Confirm the `docker compose run` commands hit the same volume. |
 | Caddy never gets a certificate        | DNS for `UC_DOMAIN` must resolve to this VPS and `80`/`443` must be open **before** `up -d`.         |
-| Phone gets the wrong URL              | Re-run `mobile network set --url https://<domain>` (daemon stopped), then `up -d`.              |
+| Phone gets the wrong URL              | Re-run `mobile network set --url https://<domain>` (daemon stopped), then `up -d`.                   |
 | Desktop on another network won't sync | Open `UC_IROH_BIND_PORT/udp` in the firewall and check `UC_PUBLIC_IP` is the real public IP.         |
 | `401` through your reverse proxy      | That means the gateway is up and asking for Basic Auth — use the credentials from `add`.             |

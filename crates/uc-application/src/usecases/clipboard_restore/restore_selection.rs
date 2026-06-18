@@ -44,6 +44,7 @@ pub(crate) struct RestoreClipboardSelectionUseCase {
 }
 
 impl RestoreClipboardSelectionUseCase {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         clipboard_repo: Arc<dyn GetClipboardEntryPort>,
         coordinator: Arc<ClipboardWriteCoordinator>,

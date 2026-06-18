@@ -6,12 +6,16 @@ use tracing::debug_span;
 use crate::db::models::{FileTransferRow, NewFileTransferRow};
 use crate::db::ports::DbExecutor;
 use crate::db::schema::file_transfer;
+use uc_core::ports::file_transfer::{
+    FailInflightTransfersPort, FileTransferProjectionError, FindEntryIdForTransferPort,
+    GetEntryTransferSummaryPort, ListExpiredInflightTransfersPort, RecordReceiverTransferPort,
+};
 use uc_core::ports::file_transfer_repository::{
     compute_aggregate_status, EntryTransferSummary, ExpiredInflightTransfer,
     FileTransferRepositoryPort, PendingInboundTransfer, TrackedFileTransferStatus,
 };
 
-/// SQLite adapter for `FileTransferRepositoryPort`.
+/// SQLite adapter for the receiver-side file-transfer projection ports.
 pub struct DieselFileTransferRepository<E> {
     executor: E,
 }
@@ -33,12 +37,17 @@ fn row_to_expired(row: &FileTransferRow) -> ExpiredInflightTransfer {
     }
 }
 
+/// Map a backend (Diesel/I-O) failure onto the domain projection error.
+fn backend(err: anyhow::Error) -> FileTransferProjectionError {
+    FileTransferProjectionError::Backend(err.to_string())
+}
+
 #[async_trait]
-impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<E> {
+impl<E: DbExecutor> RecordReceiverTransferPort for DieselFileTransferRepository<E> {
     async fn upsert_pending_transfer(
         &self,
         transfer: &PendingInboundTransfer,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), FileTransferProjectionError> {
         let span = debug_span!(
             "infra.sqlite.upsert_pending_transfer",
             transfer_id = %transfer.transfer_id
@@ -95,146 +104,7 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
                 Ok(())
             })
         })
-    }
-
-    async fn mark_failed(
-        &self,
-        transfer_id: &str,
-        reason: &str,
-        now_ms: i64,
-    ) -> anyhow::Result<()> {
-        let tid = transfer_id.to_string();
-        let reason = reason.to_string();
-        self.executor.run(move |conn| {
-            diesel::update(file_transfer::table.filter(file_transfer::transfer_id.eq(&tid)))
-                .set((
-                    file_transfer::status.eq(TrackedFileTransferStatus::Failed.as_str()),
-                    file_transfer::failure_reason.eq(Some(&reason)),
-                    file_transfer::updated_at_ms.eq(now_ms),
-                ))
-                .execute(conn)?;
-            Ok(())
-        })
-    }
-
-    async fn list_expired_inflight(
-        &self,
-        pending_cutoff_ms: i64,
-        transferring_cutoff_ms: i64,
-    ) -> anyhow::Result<Vec<ExpiredInflightTransfer>> {
-        self.executor.run(move |conn| {
-            let rows = file_transfer::table
-                .filter(
-                    file_transfer::status
-                        .eq(TrackedFileTransferStatus::Pending.as_str())
-                        .and(file_transfer::updated_at_ms.lt(pending_cutoff_ms))
-                        .or(file_transfer::status
-                            .eq(TrackedFileTransferStatus::Transferring.as_str())
-                            .and(file_transfer::updated_at_ms.lt(transferring_cutoff_ms))),
-                )
-                .load::<FileTransferRow>(conn)?;
-            Ok(rows.iter().map(row_to_expired).collect())
-        })
-    }
-
-    async fn bulk_fail_inflight(
-        &self,
-        reason: &str,
-        now_ms: i64,
-    ) -> anyhow::Result<Vec<ExpiredInflightTransfer>> {
-        let reason = reason.to_string();
-        self.executor.run(move |conn| {
-            // First, select all in-flight rows
-            let rows = file_transfer::table
-                .filter(
-                    file_transfer::status
-                        .eq(TrackedFileTransferStatus::Pending.as_str())
-                        .or(file_transfer::status
-                            .eq(TrackedFileTransferStatus::Transferring.as_str())),
-                )
-                .load::<FileTransferRow>(conn)?;
-
-            let targets: Vec<ExpiredInflightTransfer> = rows.iter().map(row_to_expired).collect();
-
-            // Then bulk-update them to failed
-            if !targets.is_empty() {
-                diesel::update(
-                    file_transfer::table.filter(
-                        file_transfer::status
-                            .eq(TrackedFileTransferStatus::Pending.as_str())
-                            .or(file_transfer::status
-                                .eq(TrackedFileTransferStatus::Transferring.as_str())),
-                    ),
-                )
-                .set((
-                    file_transfer::status.eq(TrackedFileTransferStatus::Failed.as_str()),
-                    file_transfer::failure_reason.eq(Some(&reason)),
-                    file_transfer::updated_at_ms.eq(now_ms),
-                ))
-                .execute(conn)?;
-            }
-
-            Ok(targets)
-        })
-    }
-
-    async fn get_entry_transfer_summary(
-        &self,
-        entry_id: &str,
-    ) -> anyhow::Result<Option<EntryTransferSummary>> {
-        let eid = entry_id.to_string();
-        self.executor.run(move |conn| {
-            let rows = file_transfer::table
-                .filter(file_transfer::entry_id.eq(&eid))
-                .load::<FileTransferRow>(conn)?;
-
-            if rows.is_empty() {
-                return Ok(None);
-            }
-
-            let statuses: Vec<TrackedFileTransferStatus> = rows
-                .iter()
-                .map(|r| {
-                    TrackedFileTransferStatus::from_str_value(&r.status)
-                        .unwrap_or(TrackedFileTransferStatus::Pending)
-                })
-                .collect();
-
-            let aggregate_status = match compute_aggregate_status(&statuses) {
-                Some(s) => s,
-                None => return Ok(None),
-            };
-
-            // Pick failure_reason from any failed transfer
-            let failure_reason = if aggregate_status == TrackedFileTransferStatus::Failed {
-                rows.iter()
-                    .find(|r| r.status == TrackedFileTransferStatus::Failed.as_str())
-                    .and_then(|r| r.failure_reason.clone())
-            } else {
-                None
-            };
-
-            let transfer_ids = rows.iter().map(|r| r.transfer_id.clone()).collect();
-
-            Ok(Some(EntryTransferSummary {
-                entry_id: eid,
-                aggregate_status,
-                failure_reason,
-                transfer_ids,
-            }))
-        })
-    }
-
-    async fn get_entry_id_for_transfer(&self, transfer_id: &str) -> anyhow::Result<Option<String>> {
-        let tid = transfer_id.to_string();
-        self.executor.run(move |conn| {
-            let entry_id = file_transfer::table
-                .filter(file_transfer::transfer_id.eq(&tid))
-                .select(file_transfer::entry_id)
-                .first::<String>(conn)
-                .optional()?;
-            Ok(entry_id)
-        })
+        .map_err(backend)
     }
 
     async fn link_transfer_to_entry(
@@ -242,7 +112,7 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
         transfer_id: &str,
         entry_id: &str,
         now_ms: i64,
-    ) -> anyhow::Result<bool> {
+    ) -> Result<bool, FileTransferProjectionError> {
         let span = debug_span!(
             "infra.sqlite.link_transfer_to_entry",
             transfer_id = transfer_id
@@ -262,5 +132,247 @@ impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<
                 Ok(affected > 0)
             })
         })
+        .map_err(backend)
+    }
+}
+
+#[async_trait]
+impl<E: DbExecutor> GetEntryTransferSummaryPort for DieselFileTransferRepository<E> {
+    async fn get_entry_transfer_summary(
+        &self,
+        entry_id: &str,
+    ) -> Result<Option<EntryTransferSummary>, FileTransferProjectionError> {
+        let eid = entry_id.to_string();
+        self.executor
+            .run(move |conn| {
+                let rows = file_transfer::table
+                    .filter(file_transfer::entry_id.eq(&eid))
+                    .load::<FileTransferRow>(conn)?;
+
+                if rows.is_empty() {
+                    return Ok(None);
+                }
+
+                let statuses: Vec<TrackedFileTransferStatus> = rows
+                    .iter()
+                    .map(|r| {
+                        TrackedFileTransferStatus::from_str_value(&r.status)
+                            .unwrap_or(TrackedFileTransferStatus::Pending)
+                    })
+                    .collect();
+
+                let aggregate_status = match compute_aggregate_status(&statuses) {
+                    Some(s) => s,
+                    None => return Ok(None),
+                };
+
+                // Pick failure_reason from any failed transfer
+                let failure_reason = if aggregate_status == TrackedFileTransferStatus::Failed {
+                    rows.iter()
+                        .find(|r| r.status == TrackedFileTransferStatus::Failed.as_str())
+                        .and_then(|r| r.failure_reason.clone())
+                } else {
+                    None
+                };
+
+                let transfer_ids = rows.iter().map(|r| r.transfer_id.clone()).collect();
+
+                Ok(Some(EntryTransferSummary {
+                    entry_id: eid,
+                    aggregate_status,
+                    failure_reason,
+                    transfer_ids,
+                }))
+            })
+            .map_err(backend)
+    }
+}
+
+#[async_trait]
+impl<E: DbExecutor> FindEntryIdForTransferPort for DieselFileTransferRepository<E> {
+    async fn get_entry_id_for_transfer(
+        &self,
+        transfer_id: &str,
+    ) -> Result<Option<String>, FileTransferProjectionError> {
+        let tid = transfer_id.to_string();
+        self.executor
+            .run(move |conn| {
+                let entry_id = file_transfer::table
+                    .filter(file_transfer::transfer_id.eq(&tid))
+                    .select(file_transfer::entry_id)
+                    .first::<String>(conn)
+                    .optional()?;
+                Ok(entry_id)
+            })
+            .map_err(backend)
+    }
+}
+
+#[async_trait]
+impl<E: DbExecutor> ListExpiredInflightTransfersPort for DieselFileTransferRepository<E> {
+    async fn list_expired_inflight(
+        &self,
+        pending_cutoff_ms: i64,
+        transferring_cutoff_ms: i64,
+    ) -> Result<Vec<ExpiredInflightTransfer>, FileTransferProjectionError> {
+        self.executor
+            .run(move |conn| {
+                let rows = file_transfer::table
+                    .filter(
+                        file_transfer::status
+                            .eq(TrackedFileTransferStatus::Pending.as_str())
+                            .and(file_transfer::updated_at_ms.lt(pending_cutoff_ms))
+                            .or(file_transfer::status
+                                .eq(TrackedFileTransferStatus::Transferring.as_str())
+                                .and(file_transfer::updated_at_ms.lt(transferring_cutoff_ms))),
+                    )
+                    .load::<FileTransferRow>(conn)?;
+                Ok(rows.iter().map(row_to_expired).collect())
+            })
+            .map_err(backend)
+    }
+}
+
+#[async_trait]
+impl<E: DbExecutor> FailInflightTransfersPort for DieselFileTransferRepository<E> {
+    async fn mark_failed(
+        &self,
+        transfer_id: &str,
+        reason: &str,
+        now_ms: i64,
+    ) -> Result<(), FileTransferProjectionError> {
+        let tid = transfer_id.to_string();
+        let reason = reason.to_string();
+        self.executor
+            .run(move |conn| {
+                diesel::update(file_transfer::table.filter(file_transfer::transfer_id.eq(&tid)))
+                    .set((
+                        file_transfer::status.eq(TrackedFileTransferStatus::Failed.as_str()),
+                        file_transfer::failure_reason.eq(Some(&reason)),
+                        file_transfer::updated_at_ms.eq(now_ms),
+                    ))
+                    .execute(conn)?;
+                Ok(())
+            })
+            .map_err(backend)
+    }
+
+    async fn bulk_fail_inflight(
+        &self,
+        reason: &str,
+        now_ms: i64,
+    ) -> Result<Vec<ExpiredInflightTransfer>, FileTransferProjectionError> {
+        let reason = reason.to_string();
+        self.executor
+            .run(move |conn| {
+                // First, select all in-flight rows
+                let rows = file_transfer::table
+                    .filter(
+                        file_transfer::status
+                            .eq(TrackedFileTransferStatus::Pending.as_str())
+                            .or(file_transfer::status
+                                .eq(TrackedFileTransferStatus::Transferring.as_str())),
+                    )
+                    .load::<FileTransferRow>(conn)?;
+
+                let targets: Vec<ExpiredInflightTransfer> =
+                    rows.iter().map(row_to_expired).collect();
+
+                // Then bulk-update them to failed
+                if !targets.is_empty() {
+                    diesel::update(
+                        file_transfer::table.filter(
+                            file_transfer::status
+                                .eq(TrackedFileTransferStatus::Pending.as_str())
+                                .or(file_transfer::status
+                                    .eq(TrackedFileTransferStatus::Transferring.as_str())),
+                        ),
+                    )
+                    .set((
+                        file_transfer::status.eq(TrackedFileTransferStatus::Failed.as_str()),
+                        file_transfer::failure_reason.eq(Some(&reason)),
+                        file_transfer::updated_at_ms.eq(now_ms),
+                    ))
+                    .execute(conn)?;
+                }
+
+                Ok(targets)
+            })
+            .map_err(backend)
+    }
+}
+
+// Legacy aggregate port — kept until consumers migrate to the intent ports
+// (ADR-009). Each method delegates to the corresponding intent-port impl.
+#[async_trait]
+impl<E: DbExecutor> FileTransferRepositoryPort for DieselFileTransferRepository<E> {
+    async fn upsert_pending_transfer(
+        &self,
+        transfer: &PendingInboundTransfer,
+    ) -> anyhow::Result<()> {
+        RecordReceiverTransferPort::upsert_pending_transfer(self, transfer)
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
+    async fn mark_failed(
+        &self,
+        transfer_id: &str,
+        reason: &str,
+        now_ms: i64,
+    ) -> anyhow::Result<()> {
+        FailInflightTransfersPort::mark_failed(self, transfer_id, reason, now_ms)
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
+    async fn list_expired_inflight(
+        &self,
+        pending_cutoff_ms: i64,
+        transferring_cutoff_ms: i64,
+    ) -> anyhow::Result<Vec<ExpiredInflightTransfer>> {
+        ListExpiredInflightTransfersPort::list_expired_inflight(
+            self,
+            pending_cutoff_ms,
+            transferring_cutoff_ms,
+        )
+        .await
+        .map_err(anyhow::Error::new)
+    }
+
+    async fn bulk_fail_inflight(
+        &self,
+        reason: &str,
+        now_ms: i64,
+    ) -> anyhow::Result<Vec<ExpiredInflightTransfer>> {
+        FailInflightTransfersPort::bulk_fail_inflight(self, reason, now_ms)
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
+    async fn get_entry_transfer_summary(
+        &self,
+        entry_id: &str,
+    ) -> anyhow::Result<Option<EntryTransferSummary>> {
+        GetEntryTransferSummaryPort::get_entry_transfer_summary(self, entry_id)
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
+    async fn get_entry_id_for_transfer(&self, transfer_id: &str) -> anyhow::Result<Option<String>> {
+        FindEntryIdForTransferPort::get_entry_id_for_transfer(self, transfer_id)
+            .await
+            .map_err(anyhow::Error::new)
+    }
+
+    async fn link_transfer_to_entry(
+        &self,
+        transfer_id: &str,
+        entry_id: &str,
+        now_ms: i64,
+    ) -> anyhow::Result<bool> {
+        RecordReceiverTransferPort::link_transfer_to_entry(self, transfer_id, entry_id, now_ms)
+            .await
+            .map_err(anyhow::Error::new)
     }
 }

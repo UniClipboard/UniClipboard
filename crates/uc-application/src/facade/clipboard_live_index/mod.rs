@@ -4,11 +4,9 @@ use async_trait::async_trait;
 use thiserror::Error;
 use tracing::debug;
 use uc_core::ids::EntryId;
+use uc_core::ports::clipboard::GetClipboardEntryPort;
 use uc_core::ports::search::SearchPipelinePort;
-use uc_core::ports::{
-    ClipboardEntryRepositoryPort, SearchIndexPort, SearchKeyDerivationPort,
-    SelectRepresentationPolicyPort,
-};
+use uc_core::ports::{SearchIndexPort, SearchKeyDerivationPort, SelectRepresentationPolicyPort};
 use uc_core::SystemClipboardSnapshot;
 
 use crate::facade::SearchProjectionBuilder;
@@ -44,7 +42,7 @@ pub trait ClipboardLiveIndexPort: Send + Sync {
 }
 
 pub struct ClipboardLiveIndexDeps {
-    pub clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub clipboard_entry_repo: Arc<dyn GetClipboardEntryPort>,
     pub representation_policy: Arc<dyn SelectRepresentationPolicyPort>,
     pub search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
     pub search_pipeline: Arc<dyn SearchPipelinePort>,

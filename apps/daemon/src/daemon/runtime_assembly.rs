@@ -96,7 +96,14 @@ pub fn build_daemon_runtime_workers(
     input: DaemonRuntimeAssemblyInput<'_>,
 ) -> anyhow::Result<DaemonRuntimeWorkers> {
     let apply_inbound_capture_uc = Arc::new(CaptureClipboardUseCase::new(
-        input.deps.clipboard.clipboard_entry_repo.clone(),
+        input.deps.clipboard.entry_ports.save.clone(),
+        input.deps.clipboard.entry_ports.touch.clone(),
+        input
+            .deps
+            .clipboard
+            .entry_ports
+            .find_by_snapshot_hash
+            .clone(),
         input.deps.clipboard.clipboard_event_repo.clone(),
         input.deps.clipboard.representation_policy.clone(),
         input.deps.clipboard.representation_normalizer.clone(),
@@ -170,7 +177,7 @@ pub fn build_daemon_runtime_workers(
             Arc::new(ClipboardCaptureFacade::new(apply_inbound_capture_uc));
         let clipboard_live_index_facade = Arc::new(ClipboardLiveIndexFacade::new(Arc::new(
             ClipboardLiveIndexer::new(ClipboardLiveIndexDeps {
-                clipboard_entry_repo: input.deps.clipboard.clipboard_entry_repo.clone(),
+                clipboard_entry_repo: input.deps.clipboard.entry_ports.get.clone(),
                 representation_policy: input.deps.clipboard.representation_policy.clone(),
                 search_key_derivation: input.deps.search.search_key_derivation.clone(),
                 search_pipeline: input.deps.search.search_pipeline.clone(),

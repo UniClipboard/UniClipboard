@@ -49,9 +49,8 @@ use uc_core::clipboard::{
 use uc_core::ids::{EntryId, EventId, RepresentationId};
 use uc_core::mobile_sync::LatestPasteRepresentation;
 use uc_core::ports::clipboard::{
-    ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
-    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
-    ResolvedClipboardPayload,
+    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, GetRepresentationPort,
+    ListClipboardEntriesPort, ResolvedClipboardPayload,
 };
 use uc_core::ports::mobile_sync::{LatestClipboardSnapshotError, LatestClipboardSnapshotPort};
 use uc_core::MimeType;
@@ -65,9 +64,9 @@ use uc_core::MimeType;
 /// 但因为本文件在 `pub(crate) mod latest_snapshot_adapter` 之下,只能
 /// 通过 facade 层 re-export 间接访问 —— 仍守住 §11.4 边界。
 pub struct MobileSyncSnapshotPorts {
-    pub entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    pub entry_repo: Arc<dyn ListClipboardEntriesPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub representation_repo: Arc<dyn GetRepresentationPort>,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_reader: Arc<dyn BlobReaderPort>,
 }
@@ -275,17 +274,17 @@ mod tests {
     use std::sync::Mutex;
 
     use uc_core::clipboard::{
-        ClipboardEntry, ClipboardSelection, ClipboardSelectionDecision, MimeType,
-        PayloadAvailability, PersistedClipboardRepresentation, SelectionPolicyVersion,
+        ClipboardEntry, ClipboardRepositoryError, ClipboardSelection, ClipboardSelectionDecision,
+        MimeType, PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
     use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
-    use uc_core::ports::clipboard::{PayloadResolveError, ProcessingUpdateOutcome};
+    use uc_core::ports::clipboard::PayloadResolveError;
     use uc_core::BlobId;
 
     // ── Fake EntryRepo ───────────────────────────────────────────────────
     #[derive(Default)]
     struct FakeEntryRepo {
-        next: Mutex<Option<AnyResult<Vec<ClipboardEntry>>>>,
+        next: Mutex<Option<Result<Vec<ClipboardEntry>, ClipboardRepositoryError>>>,
     }
     impl FakeEntryRepo {
         fn ok(entries: Vec<ClipboardEntry>) -> Self {
@@ -295,44 +294,24 @@ mod tests {
         }
         fn err(msg: &str) -> Self {
             Self {
-                next: Mutex::new(Some(Err(anyhow!("{}", msg.to_string())))),
+                next: Mutex::new(Some(Err(ClipboardRepositoryError::Storage(
+                    msg.to_string(),
+                )))),
             }
         }
     }
     #[async_trait]
-    impl ClipboardEntryRepositoryPort for FakeEntryRepo {
-        async fn save_entry_and_selection(
-            &self,
-            _entry: &ClipboardEntry,
-            _selection: &ClipboardSelectionDecision,
-        ) -> AnyResult<()> {
-            unimplemented!()
-        }
-        async fn get_entry(&self, _entry_id: &EntryId) -> AnyResult<Option<ClipboardEntry>> {
-            unimplemented!()
-        }
+    impl ListClipboardEntriesPort for FakeEntryRepo {
         async fn list_entries(
             &self,
             _limit: usize,
             _offset: usize,
-        ) -> AnyResult<Vec<ClipboardEntry>> {
+        ) -> Result<Vec<ClipboardEntry>, ClipboardRepositoryError> {
             self.next
                 .lock()
                 .unwrap()
                 .take()
                 .expect("list_entries 被调用多次")
-        }
-        async fn touch_entry(&self, _entry_id: &EntryId, _active_time_ms: i64) -> AnyResult<bool> {
-            unimplemented!()
-        }
-        async fn delete_entry(&self, _entry_id: &EntryId) -> AnyResult<()> {
-            unimplemented!()
-        }
-        async fn find_entry_id_by_snapshot_hash(
-            &self,
-            _snapshot_hash: &str,
-        ) -> AnyResult<Option<EntryId>> {
-            unimplemented!()
         }
     }
 
@@ -364,7 +343,9 @@ mod tests {
     // ── Fake RepresentationRepo ──────────────────────────────────────────
     #[derive(Default)]
     struct FakeRepRepo {
-        next: Mutex<Option<AnyResult<Option<PersistedClipboardRepresentation>>>>,
+        next: Mutex<
+            Option<Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError>>,
+        >,
     }
     impl FakeRepRepo {
         fn ok(rep: Option<PersistedClipboardRepresentation>) -> Self {
@@ -374,49 +355,13 @@ mod tests {
         }
     }
     #[async_trait]
-    impl ClipboardRepresentationRepositoryPort for FakeRepRepo {
+    impl GetRepresentationPort for FakeRepRepo {
         async fn get_representation(
             &self,
             _event_id: &EventId,
             _representation_id: &RepresentationId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+        ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
             self.next.lock().unwrap().take().expect("调用多次")
-        }
-        async fn get_representation_by_id(
-            &self,
-            _representation_id: &RepresentationId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn get_representation_by_blob_id(
-            &self,
-            _blob_id: &BlobId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn update_blob_id(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> AnyResult<()> {
-            unimplemented!()
-        }
-        async fn update_blob_id_if_none(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> AnyResult<bool> {
-            unimplemented!()
-        }
-        async fn update_processing_result(
-            &self,
-            _rep_id: &RepresentationId,
-            _expected_states: &[PayloadAvailability],
-            _blob_id: Option<&BlobId>,
-            _new_state: PayloadAvailability,
-            _last_error: Option<&str>,
-        ) -> AnyResult<ProcessingUpdateOutcome> {
-            unimplemented!()
         }
     }
 
@@ -506,9 +451,9 @@ mod tests {
     }
 
     fn build_adapter(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        entry_repo: Arc<dyn ListClipboardEntriesPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        representation_repo: Arc<dyn GetRepresentationPort>,
         payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
         blob_reader: Arc<dyn BlobReaderPort>,
     ) -> LatestClipboardSnapshotAdapter {
@@ -530,7 +475,7 @@ mod tests {
         Arc::new(FakeResolver::default())
     }
 
-    fn dummy_rep_repo() -> Arc<dyn ClipboardRepresentationRepositoryPort> {
+    fn dummy_rep_repo() -> Arc<dyn GetRepresentationPort> {
         Arc::new(FakeRepRepo::default())
     }
 
@@ -716,49 +661,13 @@ mod tests {
         }
     }
     #[async_trait]
-    impl ClipboardRepresentationRepositoryPort for FakeRepRepoById {
+    impl GetRepresentationPort for FakeRepRepoById {
         async fn get_representation(
             &self,
             _event_id: &EventId,
             representation_id: &RepresentationId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+        ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
             Ok(self.reps.get(representation_id).cloned())
-        }
-        async fn get_representation_by_id(
-            &self,
-            _representation_id: &RepresentationId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn get_representation_by_blob_id(
-            &self,
-            _blob_id: &BlobId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn update_blob_id(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> AnyResult<()> {
-            unimplemented!()
-        }
-        async fn update_blob_id_if_none(
-            &self,
-            _representation_id: &RepresentationId,
-            _blob_id: &BlobId,
-        ) -> AnyResult<bool> {
-            unimplemented!()
-        }
-        async fn update_processing_result(
-            &self,
-            _rep_id: &RepresentationId,
-            _expected_states: &[PayloadAvailability],
-            _blob_id: Option<&BlobId>,
-            _new_state: PayloadAvailability,
-            _last_error: Option<&str>,
-        ) -> AnyResult<ProcessingUpdateOutcome> {
-            unimplemented!()
         }
     }
 

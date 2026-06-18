@@ -5,11 +5,9 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
+use uc_core::ports::clipboard::{ListClipboardEntriesPort, ListRepresentationsForEventPort};
 use uc_core::ports::search::SearchPipelinePort;
-use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardRepresentationRepositoryPort,
-    ClipboardSelectionRepositoryPort, SearchIndexPort, SearchKeyDerivationPort,
-};
+use uc_core::ports::{ClipboardSelectionRepositoryPort, SearchIndexPort, SearchKeyDerivationPort};
 use uc_core::search::{RebuildProgress, RebuildStage, SearchError};
 use uc_infra::search::constants::CURRENT_INDEX_VERSION;
 
@@ -56,8 +54,8 @@ pub struct SearchCoordinatorDeps {
     pub search_index: Arc<dyn SearchIndexPort>,
     pub search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
     pub search_pipeline: Arc<dyn SearchPipelinePort>,
-    pub clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
-    pub representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+    pub clipboard_entry_repo: Arc<dyn ListClipboardEntriesPort>,
+    pub representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     pub current_index_version: String,
 }
@@ -67,8 +65,8 @@ impl SearchCoordinatorDeps {
         search_index: Arc<dyn SearchIndexPort>,
         search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
         search_pipeline: Arc<dyn SearchPipelinePort>,
-        clipboard_entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
-        representation_repo: Arc<dyn ClipboardRepresentationRepositoryPort>,
+        clipboard_entry_repo: Arc<dyn ListClipboardEntriesPort>,
+        representation_repo: Arc<dyn ListRepresentationsForEventPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     ) -> Self {
         Self {

@@ -24,8 +24,8 @@ pub fn build_daemon_search_assembly(
         deps.search.search_index.clone(),
         deps.search.search_key_derivation.clone(),
         deps.search.search_pipeline.clone(),
-        deps.clipboard.clipboard_entry_repo.clone(),
-        deps.clipboard.representation_repo.clone(),
+        deps.clipboard.entry_ports.list.clone(),
+        deps.clipboard.representation_ports.list_for_event.clone(),
         deps.clipboard.selection_repo.clone(),
     )));
 

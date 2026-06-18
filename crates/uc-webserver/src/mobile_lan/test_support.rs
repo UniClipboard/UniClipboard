@@ -33,8 +33,7 @@ use uc_application::{
 };
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::{
-    ClipboardEntry, ClipboardSelectionDecision, PayloadAvailability,
-    PersistedClipboardRepresentation,
+    ClipboardEntry, ClipboardSelectionDecision, PersistedClipboardRepresentation,
 };
 use uc_core::ids::{EntryId, EventId, RepresentationId};
 use uc_core::mobile_sync::{
@@ -42,9 +41,8 @@ use uc_core::mobile_sync::{
     MobileDeviceError, MobileDeviceId,
 };
 use uc_core::ports::clipboard::{
-    ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
-    ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort, PayloadResolveError,
-    ProcessingUpdateOutcome, ResolvedClipboardPayload,
+    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, GetRepresentationPort,
+    ListClipboardEntriesPort, PayloadResolveError, ResolvedClipboardPayload,
 };
 use uc_core::ports::{
     ClockPort, EndpointInfoError, LanInterfaceProbeError, LanInterfaceProbePort,
@@ -226,7 +224,7 @@ pub(crate) async fn build_facade_with_seeded_device(
     // 校验,从不需要"真捕获 + 真 OS 写"或"真读最近一条 entry",因此这里
     // 用 NoOp 实现塞过编译。GET 路径下 NoOp entry repo 永远返回空列表,
     // routes.rs 测试断言 404 即建立在这条事实上。
-    let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(NoopEntryRepo);
+    let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(NoopEntryRepo);
     let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
         Arc::new(NoopEntryRepo)
             as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -265,28 +263,13 @@ pub(crate) async fn build_facade_with_seeded_device(
 
 struct NoopEntryRepo;
 #[async_trait]
-impl ClipboardEntryRepositoryPort for NoopEntryRepo {
-    async fn save_entry_and_selection(
+impl ListClipboardEntriesPort for NoopEntryRepo {
+    async fn list_entries(
         &self,
-        _: &ClipboardEntry,
-        _: &ClipboardSelectionDecision,
-    ) -> AnyResult<()> {
-        Err(anyhow!("noop"))
-    }
-    async fn get_entry(&self, _: &EntryId) -> AnyResult<Option<ClipboardEntry>> {
-        Ok(None)
-    }
-    async fn list_entries(&self, _: usize, _: usize) -> AnyResult<Vec<ClipboardEntry>> {
+        _: usize,
+        _: usize,
+    ) -> Result<Vec<ClipboardEntry>, uc_core::clipboard::ClipboardRepositoryError> {
         Ok(vec![])
-    }
-    async fn touch_entry(&self, _: &EntryId, _: i64) -> AnyResult<bool> {
-        Ok(false)
-    }
-    async fn delete_entry(&self, _: &EntryId) -> AnyResult<()> {
-        Ok(())
-    }
-    async fn find_entry_id_by_snapshot_hash(&self, _: &str) -> AnyResult<Option<EntryId>> {
-        Ok(None)
     }
 }
 
@@ -313,41 +296,16 @@ impl ClipboardSelectionRepositoryPort for NoopSelectionRepo {
 
 struct NoopRepRepo;
 #[async_trait]
-impl ClipboardRepresentationRepositoryPort for NoopRepRepo {
+impl GetRepresentationPort for NoopRepRepo {
     async fn get_representation(
         &self,
         _: &EventId,
         _: &RepresentationId,
-    ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
+    ) -> Result<
+        Option<PersistedClipboardRepresentation>,
+        uc_core::clipboard::ClipboardRepositoryError,
+    > {
         Ok(None)
-    }
-    async fn get_representation_by_id(
-        &self,
-        _: &RepresentationId,
-    ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-        Ok(None)
-    }
-    async fn get_representation_by_blob_id(
-        &self,
-        _: &BlobId,
-    ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-        Ok(None)
-    }
-    async fn update_blob_id(&self, _: &RepresentationId, _: &BlobId) -> AnyResult<()> {
-        Ok(())
-    }
-    async fn update_blob_id_if_none(&self, _: &RepresentationId, _: &BlobId) -> AnyResult<bool> {
-        Ok(false)
-    }
-    async fn update_processing_result(
-        &self,
-        _: &RepresentationId,
-        _: &[PayloadAvailability],
-        _: Option<&BlobId>,
-        _: PayloadAvailability,
-        _: Option<&str>,
-    ) -> AnyResult<ProcessingUpdateOutcome> {
-        Ok(ProcessingUpdateOutcome::NotFound)
     }
 }
 

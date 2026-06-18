@@ -628,8 +628,7 @@ mod tests {
     use base64::Engine;
 
     use uc_core::clipboard::{
-        ClipboardEntry, ClipboardSelectionDecision, PayloadAvailability,
-        PersistedClipboardRepresentation,
+        ClipboardEntry, ClipboardSelectionDecision, PersistedClipboardRepresentation,
     };
     use uc_core::ids::{EntryId, EventId, RepresentationId};
     use uc_core::mobile_sync::{
@@ -637,9 +636,8 @@ mod tests {
         MobileDeviceError, MobileDeviceId,
     };
     use uc_core::ports::clipboard::{
-        ClipboardEntryRepositoryPort, ClipboardPayloadResolverPort,
-        ClipboardRepresentationRepositoryPort, ClipboardSelectionRepositoryPort,
-        PayloadResolveError, ProcessingUpdateOutcome, ResolvedClipboardPayload,
+        ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, GetRepresentationPort,
+        ListClipboardEntriesPort, PayloadResolveError, ResolvedClipboardPayload,
     };
     use uc_core::ports::{EndpointInfoError, LanInterfaceProbeError, PasswordHasherError};
     use uc_core::settings::model::Settings;
@@ -807,28 +805,13 @@ mod tests {
     // ── 链路上的方法都不会被调用) ─────────────────────────────────────
     struct UnusedEntryRepo;
     #[async_trait]
-    impl ClipboardEntryRepositoryPort for UnusedEntryRepo {
-        async fn save_entry_and_selection(
+    impl ListClipboardEntriesPort for UnusedEntryRepo {
+        async fn list_entries(
             &self,
-            _: &ClipboardEntry,
-            _: &ClipboardSelectionDecision,
-        ) -> AnyResult<()> {
+            _: usize,
+            _: usize,
+        ) -> Result<Vec<ClipboardEntry>, uc_core::clipboard::ClipboardRepositoryError> {
             unimplemented!("not used by facade-level happy-path tests")
-        }
-        async fn get_entry(&self, _: &EntryId) -> AnyResult<Option<ClipboardEntry>> {
-            unimplemented!()
-        }
-        async fn list_entries(&self, _: usize, _: usize) -> AnyResult<Vec<ClipboardEntry>> {
-            unimplemented!()
-        }
-        async fn touch_entry(&self, _: &EntryId, _: i64) -> AnyResult<bool> {
-            unimplemented!()
-        }
-        async fn delete_entry(&self, _: &EntryId) -> AnyResult<()> {
-            unimplemented!()
-        }
-        async fn find_entry_id_by_snapshot_hash(&self, _: &str) -> AnyResult<Option<EntryId>> {
-            unimplemented!()
         }
     }
 
@@ -858,44 +841,15 @@ mod tests {
 
     struct UnusedRepRepo;
     #[async_trait]
-    impl ClipboardRepresentationRepositoryPort for UnusedRepRepo {
+    impl GetRepresentationPort for UnusedRepRepo {
         async fn get_representation(
             &self,
             _: &EventId,
             _: &RepresentationId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn get_representation_by_id(
-            &self,
-            _: &RepresentationId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn get_representation_by_blob_id(
-            &self,
-            _: &BlobId,
-        ) -> AnyResult<Option<PersistedClipboardRepresentation>> {
-            unimplemented!()
-        }
-        async fn update_blob_id(&self, _: &RepresentationId, _: &BlobId) -> AnyResult<()> {
-            unimplemented!()
-        }
-        async fn update_blob_id_if_none(
-            &self,
-            _: &RepresentationId,
-            _: &BlobId,
-        ) -> AnyResult<bool> {
-            unimplemented!()
-        }
-        async fn update_processing_result(
-            &self,
-            _: &RepresentationId,
-            _: &[PayloadAvailability],
-            _: Option<&BlobId>,
-            _: PayloadAvailability,
-            _: Option<&str>,
-        ) -> AnyResult<ProcessingUpdateOutcome> {
+        ) -> Result<
+            Option<PersistedClipboardRepresentation>,
+            uc_core::clipboard::ClipboardRepositoryError,
+        > {
             unimplemented!()
         }
     }
@@ -990,7 +944,7 @@ mod tests {
     }
 
     fn build_facade() -> MobileSyncFacade {
-        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1147,7 +1101,7 @@ mod tests {
         let repo = Arc::new(InMemoryDeviceRepo::default());
         repo.save(&direct_device).await.unwrap();
 
-        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1231,7 +1185,7 @@ mod tests {
         let repo = Arc::new(InMemoryDeviceRepo::default());
         repo.save(&direct_device).await.unwrap();
 
-        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1347,7 +1301,7 @@ mod tests {
     }
 
     fn build_facade_with_lifecycle(lifecycle: Arc<RecordingLanLifecycle>) -> MobileSyncFacade {
-        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1493,7 +1447,7 @@ mod tests {
             reason: "Address already in use (os error 48)".into(),
         });
 
-        let entry_repo: Arc<dyn ClipboardEntryRepositoryPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,

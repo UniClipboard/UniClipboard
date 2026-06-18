@@ -195,7 +195,9 @@ pub struct ClipboardRestoreAssembly {
 /// daemon 入口仍走自己的 enhanced 装配(`runtime_assembly.rs`),不受影响。
 fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseCase> {
     let capture_uc = Arc::new(CaptureClipboardUseCase::new(
-        deps.clipboard.clipboard_entry_repo.clone(),
+        deps.clipboard.entry_ports.save.clone(),
+        deps.clipboard.entry_ports.touch.clone(),
+        deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
         deps.clipboard.clipboard_event_repo.clone(),
         deps.clipboard.representation_policy.clone(),
         deps.clipboard.representation_normalizer.clone(),
@@ -275,9 +277,9 @@ pub fn build_mobile_sync_facade(
         incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
         file_staging: FilesystemMobileFileStaging::new(storage_paths.file_cache_dir.clone()),
         snapshot_ports: MobileSyncSnapshotPorts {
-            entry_repo: deps.clipboard.clipboard_entry_repo.clone(),
+            entry_repo: deps.clipboard.entry_ports.list.clone(),
             selection_repo: deps.clipboard.selection_repo.clone(),
-            representation_repo: deps.clipboard.representation_repo.clone(),
+            representation_repo: deps.clipboard.representation_ports.get.clone(),
             payload_resolver: deps.clipboard.payload_resolver.clone(),
             blob_reader: deps.storage.blob_store.clone(),
         },
@@ -524,8 +526,8 @@ pub async fn build_cli_app_facade(
         deps.search.search_index.clone(),
         deps.search.search_key_derivation.clone(),
         deps.search.search_pipeline.clone(),
-        deps.clipboard.clipboard_entry_repo.clone(),
-        deps.clipboard.representation_repo.clone(),
+        deps.clipboard.entry_ports.list.clone(),
+        deps.clipboard.representation_ports.list_for_event.clone(),
         deps.clipboard.selection_repo.clone(),
     )));
 
@@ -617,8 +619,8 @@ pub async fn build_cli_app_runtime(
         deps.search.search_index.clone(),
         deps.search.search_key_derivation.clone(),
         deps.search.search_pipeline.clone(),
-        deps.clipboard.clipboard_entry_repo.clone(),
-        deps.clipboard.representation_repo.clone(),
+        deps.clipboard.entry_ports.list.clone(),
+        deps.clipboard.representation_ports.list_for_event.clone(),
         deps.clipboard.selection_repo.clone(),
     )));
 

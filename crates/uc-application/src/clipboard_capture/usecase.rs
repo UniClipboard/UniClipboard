@@ -32,10 +32,13 @@ use uc_observability::{stages, FlowId};
 use uc_core::blob::ports::BlobWriterPort;
 use uc_core::clipboard::{ClipboardPayloadSource, PersistedClipboardRepresentation};
 use uc_core::ids::{EntryId, EventId};
-use uc_core::ports::clipboard::{RepresentationCachePort, SpoolQueuePort, SpoolRequest};
+use uc_core::ports::clipboard::{
+    FindEntryIdBySnapshotHashPort, RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort,
+    SpoolRequest, TouchClipboardEntryPort,
+};
 use uc_core::ports::{
-    ClipboardEntryRepositoryPort, ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort,
-    DeviceIdentityPort, SelectRepresentationPolicyPort,
+    ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort, DeviceIdentityPort,
+    SelectRepresentationPolicyPort,
 };
 use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
@@ -60,7 +63,9 @@ pub struct CaptureOutcome {
 /// the recommended pattern for application-layer use cases, matching the
 /// rest of `uc-application`.
 pub struct CaptureClipboardUseCase {
-    entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+    save_entry: Arc<dyn SaveClipboardEntryPort>,
+    touch_entry: Arc<dyn TouchClipboardEntryPort>,
+    find_entry_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
     event_writer: Arc<dyn ClipboardEventWriterPort>,
     representation_policy: Arc<dyn SelectRepresentationPolicyPort>,
     representation_normalizer: Arc<dyn ClipboardRepresentationNormalizerPort>,
@@ -79,8 +84,11 @@ pub struct CaptureClipboardUseCase {
 }
 
 impl CaptureClipboardUseCase {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        entry_repo: Arc<dyn ClipboardEntryRepositoryPort>,
+        save_entry: Arc<dyn SaveClipboardEntryPort>,
+        touch_entry: Arc<dyn TouchClipboardEntryPort>,
+        find_entry_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
         event_writer: Arc<dyn ClipboardEventWriterPort>,
         representation_policy: Arc<dyn SelectRepresentationPolicyPort>,
         representation_normalizer: Arc<dyn ClipboardRepresentationNormalizerPort>,
@@ -91,7 +99,9 @@ impl CaptureClipboardUseCase {
         analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
-            entry_repo,
+            save_entry,
+            touch_entry,
+            find_entry_by_snapshot_hash,
             event_writer,
             representation_policy,
             representation_normalizer,
@@ -193,9 +203,13 @@ impl CaptureClipboardUseCase {
             // entry) rather than propagating.
             if origin == ClipboardChangeOrigin::LocalCapture {
                 let hash_str = snapshot_hash.to_string();
-                if let Some(existing) =
-                    resurface_existing_entry(self.entry_repo.as_ref(), &hash_str, captured_at_ms)
-                        .await
+                if let Some(existing) = resurface_existing_entry(
+                    self.find_entry_by_snapshot_hash.as_ref(),
+                    self.touch_entry.as_ref(),
+                    &hash_str,
+                    captured_at_ms,
+                )
+                .await
                 {
                     info!(
                         entry_id = %existing,
@@ -415,9 +429,10 @@ impl CaptureClipboardUseCase {
                     Self::generate_title(&snapshot),
                     total_size,
                 );
-                self.entry_repo
+                self.save_entry
                     .save_entry_and_selection(&new_entry, &new_selection)
                     .await
+                    .map_err(anyhow::Error::from)
             }
             .instrument(info_span!(stages::PERSIST_ENTRY))
             .await?;
@@ -554,11 +569,12 @@ impl CaptureClipboardUseCase {
 ///
 /// All failure paths are non-fatal: a dedup miss must never drop the capture.
 async fn resurface_existing_entry(
-    entry_repo: &dyn ClipboardEntryRepositoryPort,
+    find_entry_by_snapshot_hash: &dyn FindEntryIdBySnapshotHashPort,
+    touch_entry: &dyn TouchClipboardEntryPort,
     snapshot_hash: &str,
     captured_at_ms: i64,
 ) -> Option<EntryId> {
-    let existing = match entry_repo
+    let existing = match find_entry_by_snapshot_hash
         .find_entry_id_by_snapshot_hash(snapshot_hash)
         .await
     {
@@ -570,7 +586,7 @@ async fn resurface_existing_entry(
         }
     };
 
-    match entry_repo.touch_entry(&existing, captured_at_ms).await {
+    match touch_entry.touch_entry(&existing, captured_at_ms).await {
         Ok(true) => Some(existing),
         Ok(false) => {
             debug!(
@@ -822,8 +838,8 @@ mod tests {
         Err,
     }
 
-    /// Minimal `ClipboardEntryRepositoryPort` exercising only the two methods
-    /// `resurface_existing_entry` calls; everything else is unreachable here.
+    /// Minimal fake implementing only the two narrow ports
+    /// `resurface_existing_entry` depends on.
     struct DedupFakeRepo {
         /// `Ok(_)` value returned by `find_entry_id_by_snapshot_hash`.
         found: Option<EntryId>,
@@ -832,38 +848,36 @@ mod tests {
         touch: Touch,
     }
 
+    use uc_core::clipboard::ClipboardRepositoryError;
+
     #[async_trait::async_trait]
-    impl ClipboardEntryRepositoryPort for DedupFakeRepo {
-        async fn save_entry_and_selection(
-            &self,
-            _entry: &ClipboardEntry,
-            _selection: &ClipboardSelectionDecision,
-        ) -> Result<()> {
-            unreachable!("not exercised by resurface_existing_entry tests")
-        }
-        async fn get_entry(&self, _entry_id: &EntryId) -> Result<Option<ClipboardEntry>> {
-            unreachable!("not exercised by resurface_existing_entry tests")
-        }
-        async fn list_entries(&self, _limit: usize, _offset: usize) -> Result<Vec<ClipboardEntry>> {
-            unreachable!("not exercised by resurface_existing_entry tests")
-        }
-        async fn delete_entry(&self, _entry_id: &EntryId) -> Result<()> {
-            unreachable!("not exercised by resurface_existing_entry tests")
-        }
+    impl FindEntryIdBySnapshotHashPort for DedupFakeRepo {
         async fn find_entry_id_by_snapshot_hash(
             &self,
             _snapshot_hash: &str,
-        ) -> Result<Option<EntryId>> {
+        ) -> Result<Option<EntryId>, ClipboardRepositoryError> {
             if self.find_err {
-                anyhow::bail!("simulated dedup lookup failure");
+                return Err(ClipboardRepositoryError::Storage(
+                    "simulated dedup lookup failure".to_string(),
+                ));
             }
             Ok(self.found.clone())
         }
-        async fn touch_entry(&self, _entry_id: &EntryId, _active_time_ms: i64) -> Result<bool> {
+    }
+
+    #[async_trait::async_trait]
+    impl TouchClipboardEntryPort for DedupFakeRepo {
+        async fn touch_entry(
+            &self,
+            _entry_id: &EntryId,
+            _active_time_ms: i64,
+        ) -> Result<bool, ClipboardRepositoryError> {
             match self.touch {
                 Touch::Updated => Ok(true),
                 Touch::NoRows => Ok(false),
-                Touch::Err => anyhow::bail!("simulated touch failure"),
+                Touch::Err => Err(ClipboardRepositoryError::Storage(
+                    "simulated touch failure".to_string(),
+                )),
             }
         }
     }
@@ -875,7 +889,7 @@ mod tests {
             find_err: false,
             touch: Touch::Updated,
         };
-        let out = resurface_existing_entry(&repo, "blake3v1:abc", 123).await;
+        let out = resurface_existing_entry(&repo, &repo, "blake3v1:abc", 123).await;
         assert_eq!(out, Some(EntryId::from("e1")));
     }
 
@@ -890,7 +904,7 @@ mod tests {
             touch: Touch::NoRows,
         };
         assert_eq!(
-            resurface_existing_entry(&repo, "blake3v1:abc", 123).await,
+            resurface_existing_entry(&repo, &repo, "blake3v1:abc", 123).await,
             None
         );
     }
@@ -903,7 +917,7 @@ mod tests {
             touch: Touch::Err,
         };
         assert_eq!(
-            resurface_existing_entry(&repo, "blake3v1:abc", 123).await,
+            resurface_existing_entry(&repo, &repo, "blake3v1:abc", 123).await,
             None
         );
     }
@@ -916,7 +930,7 @@ mod tests {
             touch: Touch::Updated,
         };
         assert_eq!(
-            resurface_existing_entry(&repo, "blake3v1:abc", 123).await,
+            resurface_existing_entry(&repo, &repo, "blake3v1:abc", 123).await,
             None
         );
     }
@@ -929,7 +943,7 @@ mod tests {
             touch: Touch::Updated,
         };
         assert_eq!(
-            resurface_existing_entry(&repo, "blake3v1:abc", 123).await,
+            resurface_existing_entry(&repo, &repo, "blake3v1:abc", 123).await,
             None
         );
     }

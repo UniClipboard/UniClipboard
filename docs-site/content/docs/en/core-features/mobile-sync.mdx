@@ -148,23 +148,23 @@ an Argon2id hash after the modal closes.
 # One-shot: enable feature + LAN listener, register one device,
 # print install QR + a one-time password.
 uniclip stop                                 # required: writes refuse a running daemon
-uniclip mobile-sync setup                    # interactive (recommended)
+uniclip mobile setup                    # interactive (recommended)
 
 # Or non-interactive (e.g. CI / scripts)
-uniclip mobile-sync setup \
+uniclip mobile setup \
     --label "My iPhone 15" \
-    --ip 192.168.1.5 \
     --accept-network-risk \
     --non-interactive
-# → prints baseUrl, username, password (one-time), installUrl,
-#   QR ASCII, and a "restart daemon" hint
+# → prints baseUrl, username, password (one-time), installUrl, and a
+#   multi-address QR (ASCII) that the phone probes address-by-address
 
 uniclip start                                # bring the daemon back up
 ```
 
-For non-interactive runs, `--label`, `--ip`, and
-`--accept-network-risk` are required. `--username` / `--password-stdin`
-are optional and default to auto-mint.
+For non-interactive runs, `--label` and `--accept-network-risk` are
+required. `--ip` / `--port` are optional advanced pins — omit them and the
+QR carries every detected interface, so there is normally nothing to pick.
+`--username` / `--password-stdin` are optional and default to auto-mint.
 
 </Tab>
 
@@ -174,7 +174,7 @@ are optional and default to auto-mint.
   The plaintext password is shown **once**. If the user loses it,
   click the device card on the **Mobile sync** grid, press
   **Edit device** inside the dialog and set or regenerate the password
-  (or `uniclip mobile-sync revoke <id>` + `add`) — there
+  (or `uniclip mobile revoke <id>` + `add`) — there
   is no way to retrieve the original.
 </Callout>
 
@@ -314,7 +314,7 @@ Either way, the connection settings are the same:
   IP:
 
 ```bash
-uniclip mobile-sync network set \
+uniclip mobile network set \
     --url https://clip.example.com \
     --accept-network-risk
 ```
@@ -475,12 +475,12 @@ the Tailscale "Machines" list and confirm a **direct** connection
 
 | Action               | GUI                                                                        | CLI                                                    |
 | -------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------ |
-| List paired devices  | Devices page → Mobile sync panel                                           | `uniclip mobile-sync status`                           |
-| Add another device   | Mobile sync panel → **Add device**                                         | `uniclip mobile-sync add --label "…"`                  |
+| List paired devices  | Devices page → Mobile sync panel                                           | `uniclip mobile status`                           |
+| Add another device   | Mobile sync panel → **Add device**                                         | `uniclip mobile add --label "…"`                  |
 | Edit a device        | Click device card → dialog → **Edit device** (label / username / password) | _GUI only today_; mint a new one and re-pair the phone |
-| Revoke a device      | Click device card → dialog → **Revoke**                                    | `uniclip mobile-sync revoke <device-id>`               |
-| Disable feature      | Configure dialog → switch off                                              | `uniclip mobile-sync disable`                          |
-| Inspect listener URL | Mobile sync panel header                                                   | `uniclip mobile-sync status`                           |
+| Revoke a device      | Click device card → dialog → **Revoke**                                    | `uniclip mobile revoke <device-id>`               |
+| Disable feature      | Configure dialog → switch off                                              | `uniclip mobile disable`                          |
+| Inspect listener URL | Mobile sync panel header                                                   | `uniclip mobile status`                           |
 
 **Editing** lets you change the label, username, and/or password from
 the **Edit device** view. Setting or regenerating the password mints a
@@ -541,7 +541,7 @@ images, what to do after changing the LAN IP), see
   a new SyncClipboard-compatible client or shortcut that consumes
   the **Scan to add** QR.
 - [CLI reference — Mobile sync](../cli/reference#mobile-sync) — every
-  `uniclip mobile-sync ...` subcommand and flag.
+  `uniclip mobile ...` subcommand and flag.
 - [Self-hosting a headless server node](../guides/self-host-server-node)
   — run the gateway on a public VPS so the phone reaches it over HTTPS
   from any network.

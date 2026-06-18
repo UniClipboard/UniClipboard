@@ -130,22 +130,22 @@ modal 顶部会出现红色 Alert，列出具体原因；监听不起来时 tab 
 ```bash
 # 一键：启用功能 + LAN 监听器，注册一台设备，打印安装 QR + 一次性密码。
 uniclip stop                                 # 必须：写命令拒绝同 profile daemon 在跑
-uniclip mobile-sync setup                    # 推荐：交互式
+uniclip mobile setup                    # 推荐：交互式
 
 # 或非交互（如 CI / 脚本）
-uniclip mobile-sync setup \
+uniclip mobile setup \
     --label "My iPhone 15" \
-    --ip 192.168.1.5 \
     --accept-network-risk \
     --non-interactive
-# → 输出 baseUrl、username、password (one-time)、installUrl、
-#   QR ASCII，以及"重启 daemon"提示
+# → 输出 baseUrl、username、password (one-time)、installUrl，
+#   以及一个多地址 QR (ASCII)，手机会逐个地址探活连通
 
 uniclip start                                # 把 daemon 拉回来
 ```
 
-非交互模式下 `--label`、`--ip`、`--accept-network-risk`
-必填；`--username` / `--password-stdin` 可选，缺省走自动生成。
+非交互模式下 `--label`、`--accept-network-risk` 必填；`--ip` / `--port`
+是可选的高级覆盖项 —— 不给就让 QR 自动携带所有检测到的网卡，通常无需选择。
+`--username` / `--password-stdin` 可选，缺省走自动生成。
 
 </Tab>
 
@@ -154,7 +154,7 @@ uniclip start                                # 把 daemon 拉回来
 <Callout type="info">
   明文密码 **只显示一次**。丢了就在 **移动端同步** 设备列表里点对应
   设备卡片，在弹出的 dialog 里点 **Edit device** 设置或重新生成密码，
-  或 `uniclip mobile-sync revoke <id>` + `add` 重新
+  或 `uniclip mobile revoke <id>` + `add` 重新
   签发 —— 没法把原始密码再拿回来。
 </Callout>
 
@@ -278,7 +278,7 @@ SyncClipboard 协议兼容客户端也能接入。推荐顺序：
   并宣告它的地址而不是内网 IP：
 
 ```bash
-uniclip mobile-sync network set \
+uniclip mobile network set \
     --url https://clip.example.com \
     --accept-network-risk
 ```
@@ -420,12 +420,12 @@ tailnet 地址。
 
 | 操作           | GUI                                                            | CLI                                      |
 | -------------- | -------------------------------------------------------------- | ---------------------------------------- |
-| 列出已配对     | 设备页 → 移动端同步面板                                        | `uniclip mobile-sync status`             |
-| 再加一台       | 移动端同步面板 → **Add device**                                | `uniclip mobile-sync add --label "…"`    |
+| 列出已配对     | 设备页 → 移动端同步面板                                        | `uniclip mobile status`             |
+| 再加一台       | 移动端同步面板 → **Add device**                                | `uniclip mobile add --label "…"`    |
 | 编辑设备       | 点设备卡片 → dialog → **Edit device**（label / 用户名 / 密码） | _目前只 GUI_；签新的并重新配对手机端     |
-| 吊销一台设备   | 点设备卡片 → dialog → **Revoke**                               | `uniclip mobile-sync revoke <device-id>` |
-| 关闭整个功能   | 配置 modal → 关闭总开关                                        | `uniclip mobile-sync disable`            |
-| 查当前监听 URL | 移动端同步面板状态条                                           | `uniclip mobile-sync status`             |
+| 吊销一台设备   | 点设备卡片 → dialog → **Revoke**                               | `uniclip mobile revoke <device-id>` |
+| 关闭整个功能   | 配置 modal → 关闭总开关                                        | `uniclip mobile disable`            |
+| 查当前监听 URL | 移动端同步面板状态条                                           | `uniclip mobile status`             |
 
 **编辑设备** 可以在 **Edit device** 视图里修改 label、用户名和/或密码。
 设置或重新生成密码会签发一个新的一次性密码，并原子失效旧的 Argon2id
@@ -475,7 +475,7 @@ tailnet 地址。
   SyncClipboard 客户端或快捷指令，需要消费弹窗里的「扫码接入」二维码，
   看这一页。
 - [CLI 参考 — 移动端同步](../cli/reference#移动端同步) —— 所有
-  `uniclip mobile-sync ...` 子命令与参数。
+  `uniclip mobile ...` 子命令与参数。
 - [自建无头 server 节点](../guides/self-host-server-node) —— 把网关跑在
   公网 VPS 上，让手机从任意网络都能经 HTTPS 访问。
 - [配对与同步 — 移动端伴侣](../guides/pairing#移动端伴侣) —— 移动端

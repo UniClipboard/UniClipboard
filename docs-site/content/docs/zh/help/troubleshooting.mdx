@@ -226,8 +226,8 @@ uniclip search rebuild     # 同步重建（会阻塞直至完成）
    IPv4。Configure dialog 已经替你兜住这一点：监听 IP 为 `Auto` 时，
    「当前监听地址」行会内联展开列出全部 RFC1918 候选 —— 挑手机所在
    那个直接复制；选了具体网卡时，行内就是固定的那条 URL。CLI 走
-   `uniclip mobile-sync network set --ip <LAN_IPV4>`。
-3. **看监听器状态。** `uniclip mobile-sync status` 在 daemon 试图 bind 但
+   `uniclip mobile network set --ip <LAN_IPV4>`。
+3. **看监听器状态。** `uniclip mobile status` 在 daemon 试图 bind 但
    失败时会上抛 `lan_listener_error`（端口被占、权限不足等），先解决
    底层错误或换一个端口。
 4. **桌面操作系统的防火墙。** 确认 `42720`（或你自定义的端口）允许 LAN
@@ -240,7 +240,7 @@ uniclip search rebuild     # 同步重建（会阻塞直至完成）
 用户名或密码错了。原因有两类：
 
 - 明文密码在注册时 **只显示一次**。丢了只能在设备行点 **轮换密码**
-  （或 `uniclip mobile-sync revoke <id>` + `add`）—— 没办法
+  （或 `uniclip mobile revoke <id>` + `add`）—— 没办法
   把原始密码再拿回来。
 - 轮换之后，手机上的快捷指令里可能还存着旧凭据。把
   `url` / `username` / `password` 字段都更新一次。
@@ -257,7 +257,7 @@ uniclip search rebuild     # 同步重建（会阻塞直至完成）
 **不要** 在咖啡馆 / 机场 / 会场的公共 Wi-Fi 下开启 LAN 监听器。v1
 线上格式是明文 HTTP + Basic Auth —— 同一 SSID 上的人就能嗅到你的剪贴
 内容。临时需要在不可信网络上工作时，先
-`uniclip mobile-sync network off` 关掉监听器，回到可信网络再开。
+`uniclip mobile network off` 关掉监听器，回到可信网络再开。
 
 ### 改了 LAN IP 或端口之后？
 
@@ -266,7 +266,7 @@ uniclip search rebuild     # 同步重建（会阻塞直至完成）
 1. 重启 daemon，让监听器重新 bind。
 2. 把手机端快捷指令里的 `url` 字段改成新的对外宣告 URL。
 
-`uniclip mobile-sync status` 可以快速确认 daemon 当前宣告的是哪个。
+`uniclip mobile status` 可以快速确认 daemon 当前宣告的是哪个。
 
 ## 收集日志
 

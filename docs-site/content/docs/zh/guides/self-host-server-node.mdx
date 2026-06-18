@@ -154,7 +154,7 @@ docker compose run --rm app uniclip join
 
 ```bash
 docker compose run --rm app \
-  uniclip mobile-sync network set \
+  uniclip mobile network set \
   --url https://clip.example.com \
   --accept-network-risk
 ```
@@ -162,7 +162,7 @@ docker compose run --rm app \
 **3. 注册你的手机。** 铸设备凭据并渲染安装 QR：
 
 ```bash
-docker compose run --rm app uniclip mobile-sync add --label "我的 iPhone"
+docker compose run --rm app uniclip mobile add --label "我的 iPhone"
 ```
 
 把它打印的一次性密码记下来 —— 不会再显示第二次。

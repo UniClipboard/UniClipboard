@@ -114,36 +114,36 @@ uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
 
 ## 移动端同步
 
-`uniclip mobile-sync ...` 是移动端同步功能的命令行入口，覆盖
+`uniclip mobile ...` 是移动端同步功能的命令行入口，覆盖
 **设备 → 移动端同步** 面板的所有动作。协议层文档见
 [移动端 LAN API](../reference/mobile-api)。
 
 ```bash
 # 一键向导：开启功能、配置 LAN 监听器、注册一台 iPhone，打印
 # 安装 QR 码与一次性密码。
-uniclip mobile-sync setup
+uniclip mobile setup
 
 # 只读命令（daemon 在跑时也可以调）
-uniclip mobile-sync status            # 综合视图：功能 + LAN + 已配对设备
+uniclip mobile status            # 综合视图：功能 + LAN + 已配对设备
 
 # 已配对设备管理
-uniclip mobile-sync add --label "My iPhone" \
+uniclip mobile add --label "My iPhone" \
     [--username my_user] [--password-stdin]
-uniclip mobile-sync revoke <device-id>
+uniclip mobile revoke <device-id>
 
 # 进阶监听器配置（写命令 —— 必须先停 daemon）。`setup` 已覆盖常用场景，
 # 需要手动改地址或反代前置时才用这一组。
-uniclip mobile-sync network interfaces
+uniclip mobile network interfaces
 # LAN 形态：宣告内网 IPv4 → 安装 URL 为 http://<IP>:<port>
-uniclip mobile-sync network set --ip <LAN_IPV4> [--port 42720] --accept-network-risk
+uniclip mobile network set --ip <LAN_IPV4> [--port 42720] --accept-network-risk
 # 反代形态：宣告完整 base URL → 安装 URL/二维码指向 HTTPS 前端（如 Caddy），
 # 监听器本身仍是内网明文 HTTP
-uniclip mobile-sync network set --url https://clip.example.com --accept-network-risk
-uniclip mobile-sync network off       # 只关 LAN 监听器
+uniclip mobile network set --url https://clip.example.com --accept-network-risk
+uniclip mobile network off       # 只关 LAN 监听器
 
 # 把整个功能彻底关掉（总开关 + 监听器都关；已配对设备记录保留，
 # 想清掉用 `revoke`）
-uniclip mobile-sync disable
+uniclip mobile disable
 ```
 
 行为约定：
@@ -165,7 +165,7 @@ uniclip mobile-sync disable
   host + 可选 port，如 `https://clip.example.com`），让安装 URL / 二维码
   指向 TLS 反向代理（Caddy、nginx 等），而监听器本身仍是内网明文 HTTP。
   两者互斥，设一个会清掉另一个；`mobile-sync status` 会反映当前生效的那个。
-- 还有一组 **debug** 子命令（`uniclip mobile-sync debug`），从 `--help`
+- 还有一组 **debug** 子命令（`uniclip mobile debug`），从 `--help`
   里隐藏 —— 仅供开发与 E2E 脚本使用（绕过 HTTP，直接打 facade），可能
   在不发版本说明的情况下变化。
 

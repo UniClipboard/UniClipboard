@@ -174,7 +174,7 @@ makes the phone's install URL/QR point at your HTTPS endpoint:
 
 ```bash
 docker compose run --rm app \
-  uniclip mobile-sync network set \
+  uniclip mobile network set \
   --url https://clip.example.com \
   --accept-network-risk
 ```
@@ -182,7 +182,7 @@ docker compose run --rm app \
 **3. Register your phone.** Mints credentials and renders the install QR:
 
 ```bash
-docker compose run --rm app uniclip mobile-sync add --label "My iPhone"
+docker compose run --rm app uniclip mobile add --label "My iPhone"
 ```
 
 Copy the one-time password it prints — it is not shown again.

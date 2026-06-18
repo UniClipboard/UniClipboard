@@ -132,37 +132,37 @@ reach blob storage.
 
 ## Mobile sync
 
-`uniclip mobile-sync ...` is the CLI surface for the mobile companion
+`uniclip mobile ...` is the CLI surface for the mobile companion
 feature. It mirrors the **Devices → Mobile sync** panel in the GUI and
 the protocol is documented in the [Mobile LAN API](../reference/mobile-api).
 
 ```bash
 # One-shot wizard: turn the feature on, configure the LAN listener,
 # register one iPhone, print the install QR + a one-time password.
-uniclip mobile-sync setup
+uniclip mobile setup
 
 # Read-only view (allowed while the daemon is running)
-uniclip mobile-sync status            # combined: feature + LAN + paired devices
+uniclip mobile status            # combined: feature + LAN + paired devices
 
 # Paired device management
-uniclip mobile-sync add --label "My iPhone" \
+uniclip mobile add --label "My iPhone" \
     [--username my_user] [--password-stdin]
-uniclip mobile-sync revoke <device-id>
+uniclip mobile revoke <device-id>
 
 # Advanced listener configuration (write commands — daemon must be stopped).
 # `setup` already covers the common case; reach for these to re-point the
 # address or front the listener with a reverse proxy.
-uniclip mobile-sync network interfaces
+uniclip mobile network interfaces
 # LAN form: advertise an internal IPv4 → install URL is http://<IP>:<port>
-uniclip mobile-sync network set --ip <LAN_IPV4> [--port 42720] --accept-network-risk
+uniclip mobile network set --ip <LAN_IPV4> [--port 42720] --accept-network-risk
 # Reverse-proxy form: advertise a full base URL → install URL/QR points at
 # the HTTPS front-end (e.g. Caddy), while the listener stays plain HTTP.
-uniclip mobile-sync network set --url https://clip.example.com --accept-network-risk
-uniclip mobile-sync network off       # stop just the LAN listener
+uniclip mobile network set --url https://clip.example.com --accept-network-risk
+uniclip mobile network off       # stop just the LAN listener
 
 # Disable the feature entirely (master switch + listener off; paired
 # device records stay until you `revoke` them).
-uniclip mobile-sync disable
+uniclip mobile disable
 ```
 
 Behavioural notes:
@@ -189,7 +189,7 @@ Behavioural notes:
   …) while the listener itself stays plain HTTP on the internal
   network. The two are mutually exclusive and setting one clears the
   other; `mobile-sync status` reflects whichever is active.
-- A **debug** subcommand group exists (`uniclip mobile-sync debug`)
+- A **debug** subcommand group exists (`uniclip mobile debug`)
   but is hidden from `--help` — it is reserved for development and
   E2E scripts (it bypasses HTTP and pokes the facade directly), and
   may change without notice.

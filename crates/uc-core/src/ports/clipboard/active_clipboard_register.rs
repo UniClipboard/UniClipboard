@@ -43,3 +43,19 @@ pub trait LoadActiveClipboardPort: Send + Sync {
     /// rather than gating it on a prior `load`.
     async fn load(&self) -> Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError>;
 }
+
+/// Unconditionally clear the locally-recorded active-clipboard value.
+#[async_trait]
+pub trait ResetActiveClipboardPort: Send + Sync {
+    /// Clear the register so a subsequent [`LoadActiveClipboardPort::load`]
+    /// returns `None`, regardless of the value currently stored.
+    ///
+    /// Unlike [`AdvanceActiveClipboardPort::advance`], which only writes when
+    /// the incoming value supersedes the stored one under the LWW order, this
+    /// is an unconditional local reset: the stored value's timestamp does not
+    /// gate it. After a successful reset the register holds no value and any
+    /// subsequently observed state supersedes it.
+    ///
+    /// Idempotent: clearing an already-empty register is a successful no-op.
+    async fn reset(&self) -> Result<(), ActiveClipboardRegisterError>;
+}

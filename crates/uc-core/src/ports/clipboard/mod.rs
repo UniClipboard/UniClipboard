@@ -27,6 +27,7 @@ pub use active_clipboard_dispatch::{ActiveClipboardDispatchError, ActiveClipboar
 pub use active_clipboard_receiver::{ActiveClipboardReceiverPort, InboundActiveClipboardState};
 pub use active_clipboard_register::{
     ActiveClipboardRegisterError, AdvanceActiveClipboardPort, LoadActiveClipboardPort,
+    ResetActiveClipboardPort,
 };
 pub use blob_migration_repo::{BlobMigrationRepoError, BlobMigrationRepoPort, MigrationRecord};
 pub use clipboard_change_origin::ClipboardChangeOriginPort;

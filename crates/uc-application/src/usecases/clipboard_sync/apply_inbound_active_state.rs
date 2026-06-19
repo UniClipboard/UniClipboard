@@ -30,7 +30,7 @@ use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
 
 use uc_core::clipboard::{ActiveClipboardState, ClipboardContentCategorySet};
-use uc_core::ids::{DeviceId, SpaceId};
+use uc_core::ids::SpaceId;
 use uc_core::ports::clipboard::{
     ActiveClipboardDispatchPort, ActiveClipboardReceiverPort, AdvanceActiveClipboardPort,
     FindEntryIdBySnapshotHashPort, InboundActiveClipboardState, LoadActiveClipboardPort,
@@ -41,7 +41,9 @@ use uc_core::MemberRepositoryPort;
 
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
 
+use super::active_state_fanout::fan_out_active_state;
 use super::receive_gate::MemberReceiveGate;
+use super::send_gate::MemberSendGate;
 use super::snapshot_from_entry::SnapshotReconstructor;
 
 /// The fixed space id of the single-space model. Active-clipboard state is
@@ -88,7 +90,7 @@ pub(crate) struct ApplyInboundActiveClipboardStateUseCase {
     coordinator: Arc<ClipboardWriteCoordinator>,
     dispatch: Arc<dyn ActiveClipboardDispatchPort>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
-    member_repo: Arc<dyn MemberRepositoryPort>,
+    send_gate: MemberSendGate,
     clock: Arc<dyn ClockPort>,
 }
 
@@ -118,7 +120,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
             coordinator,
             dispatch,
             peer_addr_repo,
-            member_repo,
+            send_gate: MemberSendGate::new(member_repo),
             clock,
         }
     }
@@ -287,21 +289,24 @@ impl ApplyInboundActiveClipboardStateUseCase {
             incoming.activated_at_ms,
             incoming.activated_by.clone(),
         );
-        self.spawn_write_then_converge(snapshot, advance_state);
+        self.spawn_write_then_converge(snapshot, advance_state, categories);
     }
 
     /// Spawn the OS write; on success advance the register (SQL CAS enforces
-    /// LWW) and re-broadcast the same-key state to allowed peers.
+    /// LWW) and re-broadcast the same-key state to allowed peers. `categories`
+    /// is the activation's content category set, threaded into the outbound
+    /// gate (`send_content_types`) of the shared fan-out.
     fn spawn_write_then_converge(
         &self,
         snapshot: uc_core::SystemClipboardSnapshot,
         state: ActiveClipboardState,
+        categories: ClipboardContentCategorySet,
     ) -> JoinHandle<()> {
         let coordinator = Arc::clone(&self.coordinator);
         let advance_register = Arc::clone(&self.advance_register);
         let dispatch = Arc::clone(&self.dispatch);
         let peer_addr_repo = Arc::clone(&self.peer_addr_repo);
-        let member_repo = Arc::clone(&self.member_repo);
+        let send_gate = self.send_gate.clone();
 
         tokio::spawn(async move {
             // The active-clipboard write is a remote-originated push: use the
@@ -342,68 +347,12 @@ impl ApplyInboundActiveClipboardStateUseCase {
                 }
             }
 
-            re_broadcast(&dispatch, &peer_addr_repo, &member_repo, &state).await;
+            // Re-broadcast the converged state to every allowed peer through
+            // the shared fan-out (full outbound gate: send_enabled ∧
+            // send_content_types, the latter via the activation's category
+            // set). Same implementation as the restore broadcast path.
+            fan_out_active_state(&dispatch, &peer_addr_repo, &send_gate, &state, &categories).await;
         })
-    }
-}
-
-/// Re-broadcast the converged state to every allowed peer.
-///
-/// Outbound gate (issue #1017 D2): a peer is eligible only if the local
-/// device's per-member `send_enabled` is set. The roster is the set of peers
-/// we hold an address for (`peer_addr_repo.list()`), so a peer with no address
-/// is silently skipped (offline / never reachable). Per-peer dispatch failures
-/// are isolated and logged — the register is convergent, so a missed send is
-/// recovered by a later advance or a peer-online resync.
-async fn re_broadcast(
-    dispatch: &Arc<dyn ActiveClipboardDispatchPort>,
-    peer_addr_repo: &Arc<dyn PeerAddressRepositoryPort>,
-    member_repo: &Arc<dyn MemberRepositoryPort>,
-    state: &ActiveClipboardState,
-) {
-    let records = match peer_addr_repo.list().await {
-        Ok(r) => r,
-        Err(err) => {
-            warn!(error = %err, "active state re-broadcast skipped: peer_addr_repo.list failed");
-            return;
-        }
-    };
-
-    for record in records {
-        let target = record.device_id;
-        // Never echo the state back to the device that activated it.
-        if target == state.activated_by {
-            continue;
-        }
-        if !is_send_allowed(member_repo, &target).await {
-            continue;
-        }
-        if let Err(err) = dispatch.dispatch(&target, state).await {
-            debug!(
-                device = %target.as_str(),
-                error = %err,
-                "active state re-broadcast: per-peer dispatch failed (isolated)"
-            );
-        }
-    }
-}
-
-/// Per-device outbound kill switch (`send_enabled`). Fails open on a
-/// member-repo miss / error, mirroring the bulk dispatch gate: a transient
-/// glitch should not silently stop propagation.
-async fn is_send_allowed(member_repo: &Arc<dyn MemberRepositoryPort>, device: &DeviceId) -> bool {
-    match member_repo.get(device).await {
-        Ok(Some(member)) => {
-            if !member.sync_preferences.send_enabled {
-                debug!(
-                    device = %device.as_str(),
-                    "active state re-broadcast: skipping peer (send disabled by user)"
-                );
-                return false;
-            }
-            true
-        }
-        Ok(None) | Err(_) => true,
     }
 }
 
@@ -431,7 +380,7 @@ mod tests {
         ClipboardEntry, ClipboardRepositoryError, ClipboardSelectionDecision, PayloadAvailability,
         PersistedClipboardRepresentation, SystemClipboardSnapshot,
     };
-    use uc_core::ids::{EntryId, EventId, RepresentationId, SpaceId};
+    use uc_core::ids::{DeviceId, EntryId, EventId, RepresentationId, SpaceId};
     use uc_core::membership::{MembershipError, SpaceMember};
     use uc_core::ports::clipboard::{
         ActiveClipboardRegisterError, ClipboardPayloadResolverPort, GetClipboardEntryPort,

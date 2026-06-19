@@ -137,6 +137,15 @@ pub struct SyncSettings {
     pub auto_sync: bool,
     pub sync_frequency: SyncFrequency,
     pub content_types: ContentTypes,
+    /// Whether restoring a historical entry makes its content the active
+    /// clipboard for the rest of the synced devices.
+    ///
+    /// When enabled, putting a past entry back on this device's clipboard
+    /// announces it as the latest active content so peers converge on it
+    /// (subject to the per-device send preferences). Default `false`:
+    /// re-activating old content is an explicit opt-in so a routine restore
+    /// never silently changes what other devices consider current.
+    pub sync_on_restore: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

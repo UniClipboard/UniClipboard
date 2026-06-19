@@ -117,12 +117,16 @@ impl Default for SyncSettings {
     /// let s = SyncSettings::default();
     /// assert!(s.auto_sync);
     /// assert_eq!(s.sync_frequency, SyncFrequency::Realtime);
+    /// assert!(!s.sync_on_restore);
     /// ```
     fn default() -> Self {
         Self {
             auto_sync: true,
             sync_frequency: SyncFrequency::Realtime,
             content_types: ContentTypes::default(),
+            // Opt-in: a restore announces active content to peers only when
+            // the user has explicitly enabled it.
+            sync_on_restore: false,
         }
     }
 }

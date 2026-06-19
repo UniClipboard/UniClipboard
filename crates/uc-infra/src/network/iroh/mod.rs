@@ -5,6 +5,9 @@
 //! [`IrohIdentityStore`]; later slices add the rest.
 
 pub mod active_clipboard_dispatch_adapter;
+pub mod active_clipboard_pull_client_adapter;
+pub mod active_clipboard_pull_serve_adapter;
+pub mod active_clipboard_pull_wire;
 pub mod active_clipboard_receiver_adapter;
 pub mod active_clipboard_wire;
 mod addr_filter;
@@ -24,6 +27,11 @@ pub mod transfer_progress_adapter;
 pub mod transfer_progress_wire;
 
 pub use active_clipboard_dispatch_adapter::IrohActiveClipboardDispatchAdapter;
+pub use active_clipboard_pull_client_adapter::IrohActiveClipboardPullClientAdapter;
+pub use active_clipboard_pull_serve_adapter::{
+    IrohActiveClipboardPullServeAdapter, IrohActiveClipboardPullServeHandler,
+    ACTIVE_CLIPBOARD_PULL_ALPN,
+};
 pub use active_clipboard_receiver_adapter::{
     IrohActiveClipboardReceiverAdapter, IrohActiveClipboardReceiverHandler, ACTIVE_CLIPBOARD_ALPN,
 };
@@ -35,8 +43,9 @@ pub(crate) use connect::connect_with_staggered_retry;
 pub use connection_channel_adapter::IrohConnectionChannelAdapter;
 pub use identity_store::{IrohIdentityStore, IDENTITY_STORE_KEY};
 pub use node::{
-    ActiveClipboardHandlers, BlobHandlers, ClipboardHandlers, IrohNode, IrohNodeBuilder,
-    IrohNodeConfig, IrohNodeError, PairingHandlers, TransferProgressHandlers,
+    ActiveClipboardHandlers, ActiveClipboardPullHandlers, BlobHandlers, ClipboardHandlers,
+    IrohNode, IrohNodeBuilder, IrohNodeConfig, IrohNodeError, PairingHandlers,
+    TransferProgressHandlers,
 };
 pub use presence_adapter::{IrohPresenceAdapter, IrohPresenceHandler, PRESENCE_ALPN};
 pub use relay_probe::{

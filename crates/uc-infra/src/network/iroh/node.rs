@@ -40,15 +40,20 @@ use uc_core::ports::pairing_invitation::{
 };
 use uc_core::ports::security::IdentityFingerprintFactoryPort;
 use uc_core::ports::{
-    ActiveClipboardDispatchPort, ActiveClipboardReceiverPort, ClipboardDispatchPort,
-    ClipboardReceiverPort, ClockPort, ConnectionChannelPort, DeviceIdentityPort,
-    LocalIdentityError, PeerAddressRepositoryPort, PresencePort, SettingsPort,
+    ActiveClipboardDispatchPort, ActiveClipboardPullClientPort, ActiveClipboardPullServePort,
+    ActiveClipboardReceiverPort, ClipboardDispatchPort, ClipboardReceiverPort, ClockPort,
+    ConnectionChannelPort, DeviceIdentityPort, LocalIdentityError, PeerAddressRepositoryPort,
+    PresencePort, SettingsPort,
 };
 
 use crate::pairing::{IrohPairingSessionAdapter, PAIRING_ALPN};
 use crate::rendezvous::{RendezvousClient, RendezvousPairingInvitationAdapter};
 
 use super::active_clipboard_dispatch_adapter::IrohActiveClipboardDispatchAdapter;
+use super::active_clipboard_pull_client_adapter::IrohActiveClipboardPullClientAdapter;
+use super::active_clipboard_pull_serve_adapter::{
+    IrohActiveClipboardPullServeAdapter, ACTIVE_CLIPBOARD_PULL_ALPN,
+};
 use super::active_clipboard_receiver_adapter::{
     IrohActiveClipboardReceiverAdapter, ACTIVE_CLIPBOARD_ALPN,
 };
@@ -106,6 +111,19 @@ pub struct ClipboardHandlers {
 pub struct ActiveClipboardHandlers {
     pub dispatch: Arc<dyn ActiveClipboardDispatchPort>,
     pub receiver: Arc<dyn ActiveClipboardReceiverPort>,
+}
+
+/// The active-clipboard pull port produced by
+/// [`IrohNodeBuilder::install_active_clipboard_pull`].
+///
+/// `client` requests the on-demand transfer envelope for content this device
+/// observed but does not hold; the serve handler (the holder side) is
+/// registered under [`ACTIVE_CLIPBOARD_PULL_ALPN`] on the same `RouterBuilder`
+/// and delegates content production to the application-layer serve port passed
+/// into the install method. Only the client port is returned — the serve side
+/// has no outbound surface.
+pub struct ActiveClipboardPullHandlers {
+    pub client: Arc<dyn ActiveClipboardPullClientPort>,
 }
 
 /// [`IrohNodeBuilder::install_blobs`] 产出的 blob port。
@@ -837,6 +855,49 @@ impl IrohNodeBuilder {
             dispatch,
             receiver: Arc::new(receiver),
         }
+    }
+
+    /// Install the active-clipboard pull transport (issue #1017 PR8).
+    ///
+    /// * Registers [`IrohActiveClipboardPullServeHandler`] as the
+    ///   [`ACTIVE_CLIPBOARD_PULL_ALPN`] `ProtocolHandler`, an independent
+    ///   sibling of the active-clipboard state ALPN. Admission is
+    ///   member-fingerprint only; the handler delegates content production to
+    ///   `serve` (the application-layer serve port), which produces a fresh
+    ///   transfer envelope and requires an unlocked session.
+    /// * Builds the outbound pull client on the same endpoint, reusing
+    ///   `peer_addr_repo` so a pull rides the same NAT/relay mapping presence
+    ///   already established (mirrors `install_active_clipboard`).
+    /// * Returns only the client port; the serve side has no outbound surface.
+    ///
+    /// Must be called before [`spawn`](Self::spawn). Coexists with every other
+    /// `install_*` — all ALPNs share a single router.
+    ///
+    /// [`IrohActiveClipboardPullServeHandler`]: super::active_clipboard_pull_serve_adapter::IrohActiveClipboardPullServeHandler
+    pub fn install_active_clipboard_pull(
+        &mut self,
+        peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        member_repo: Arc<dyn MemberRepositoryPort>,
+        fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
+        serve: Arc<dyn ActiveClipboardPullServePort>,
+    ) -> ActiveClipboardPullHandlers {
+        let serve_adapter =
+            IrohActiveClipboardPullServeAdapter::new(member_repo, fingerprint_factory, serve);
+        let handler = serve_adapter.handler();
+
+        let builder = self
+            .router_builder
+            .take()
+            .expect("router_builder missing — install_* called after spawn");
+        let builder = builder.accept(ACTIVE_CLIPBOARD_PULL_ALPN, handler);
+        self.router_builder = Some(builder);
+
+        let client = Arc::new(IrohActiveClipboardPullClientAdapter::new(
+            Arc::clone(&self.endpoint),
+            peer_addr_repo,
+        ));
+
+        ActiveClipboardPullHandlers { client }
     }
 
     /// 安装"反向传输进度"通道(receiver → sender)。

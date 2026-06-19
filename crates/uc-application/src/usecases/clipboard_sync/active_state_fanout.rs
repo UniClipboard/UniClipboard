@@ -1,15 +1,21 @@
-//! Shared outbound fan-out for active-clipboard state (0xC3).
+//! Shared outbound send of active-clipboard state (0xC3).
 //!
-//! Single implementation of "send this converged active-clipboard state to
-//! every allowed peer", reused by both 0xC3 origination paths:
+//! Single implementation of "send this converged active-clipboard state to a
+//! peer under the full outbound gate", reused by every 0xC3 origination path:
 //!
 //! * inbound re-broadcast (after an inbound observation is honoured — the
 //!   core invariant "register advanced ⟺ OS write succeeded ⟺ re-broadcast"),
-//! * restore broadcast (after a local history restore advances the register).
+//! * restore broadcast (after a local history restore advances the register),
+//! * peer-online resync (after a peer comes online — send our current
+//!   register to it so both ends converge via LWW).
 //!
-//! Keeping one fan-out avoids parallel gate/skip/dispatch copies drifting
-//! apart. The full outbound gate (issue #1017 D2) is applied here:
-//! `send_enabled` ∧ `send_content_types`, threaded via the activation's
+//! Two entry points share the same gate + dispatch step so they cannot drift:
+//!
+//! * [`send_active_state_to`] — single-target gated send.
+//! * [`fan_out_active_state`] — multi-target fan-out built on top of it.
+//!
+//! The full outbound gate (issue #1017 D2) is applied in the single-target
+//! step: `send_enabled` ∧ `send_content_types`, threaded via the activation's
 //! content category set.
 
 use std::sync::Arc;
@@ -17,10 +23,41 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use uc_core::clipboard::{ActiveClipboardState, ClipboardContentCategorySet};
+use uc_core::ids::DeviceId;
 use uc_core::ports::clipboard::ActiveClipboardDispatchPort;
 use uc_core::ports::PeerAddressRepositoryPort;
 
 use super::send_gate::MemberSendGate;
+
+/// Send `state` to a single `target` under the full outbound gate (issue
+/// #1017 D2): `send_enabled` ∧ `send_content_types` (the latter via
+/// `categories`). A gate-rejected target is silently skipped; a dispatch
+/// failure is isolated and logged at `debug` (the register is convergent, so
+/// a missed send is recovered by a later advance or another peer-online
+/// resync).
+///
+/// This is the single gate+dispatch step every 0xC3 origination path shares.
+/// It does *not* consult the peer-address roster or the echo-suppression rule
+/// (`state.activated_by`); that selection is the caller's concern —
+/// [`fan_out_active_state`] applies both before delegating here.
+pub(crate) async fn send_active_state_to(
+    dispatch: &Arc<dyn ActiveClipboardDispatchPort>,
+    send_gate: &MemberSendGate,
+    target: &DeviceId,
+    state: &ActiveClipboardState,
+    categories: &ClipboardContentCategorySet,
+) {
+    if !send_gate.is_send_allowed(target, categories).await {
+        return;
+    }
+    if let Err(err) = dispatch.dispatch(target, state).await {
+        debug!(
+            device = %target.as_str(),
+            error = %err,
+            "active state send: per-peer dispatch failed (isolated)"
+        );
+    }
+}
 
 /// Fan `state` out to every allowed peer.
 ///
@@ -53,15 +90,6 @@ pub(crate) async fn fan_out_active_state(
         if target == state.activated_by {
             continue;
         }
-        if !send_gate.is_send_allowed(&target, categories).await {
-            continue;
-        }
-        if let Err(err) = dispatch.dispatch(&target, state).await {
-            debug!(
-                device = %target.as_str(),
-                error = %err,
-                "active state fan-out: per-peer dispatch failed (isolated)"
-            );
-        }
+        send_active_state_to(dispatch, send_gate, &target, state, categories).await;
     }
 }

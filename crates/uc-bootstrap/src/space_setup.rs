@@ -45,9 +45,10 @@ const TRANSLATOR_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(200);
 
 use uc_application::facade::{
     ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle,
-    ActiveClipboardRestoreBroadcastHandle, BlobTransferDeps, BlobTransferFacade, ClipboardSyncDeps,
-    ClipboardSyncFacade, HostEvent, HostEventBus, IngestHandle, MemberRosterDeps,
-    MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade, TransferHostEvent,
+    ActiveClipboardPeerOnlineResyncHandle, ActiveClipboardRestoreBroadcastHandle, BlobTransferDeps,
+    BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent, HostEventBus,
+    IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade,
+    TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
 use uc_core::file_transfer::{
@@ -111,9 +112,11 @@ pub struct SpaceSetupAssembly {
     /// inbound stream.
     pub active_clipboard_receiver: Arc<dyn ActiveClipboardReceiverPort>,
     /// Active-clipboard register convergence facade (issue #1017). Owns the
-    /// inbound 0xC3 state use case; the inbound loop's lifetime is tracked by
-    /// `active_clipboard_inbound_handle`. Held so future outbound-origination
-    /// edit-sites (restore broadcast, peer-online resync) can reach it.
+    /// inbound 0xC3 state use case (lifetime tracked by
+    /// `active_clipboard_inbound_handle`) and the outbound peer-online resync
+    /// worker (`active_clipboard_peer_online_resync_handle`). Held so the
+    /// remaining outbound-origination edit-site (restore broadcast) can reach
+    /// it via `attach_restore_broadcast`.
     pub active_clipboard: Arc<ActiveClipboardFacade>,
     /// The shared iroh node. Held privately so callers can't bind a second
     /// node or install additional handlers after `spawn` — that would
@@ -130,6 +133,12 @@ pub struct SpaceSetupAssembly {
     /// active-clipboard receiver adapter's broadcast senders drop at router
     /// shutdown; `shutdown` aborts it explicitly first.
     active_clipboard_inbound_handle: ActiveClipboardHandle,
+    /// Outbound peer-online resync worker handle (issue #1017 PR5). Subscribes
+    /// to presence transitions and resends the current register to peers that
+    /// come back online (debounced ~1.5s, full outbound gate). Spawned at
+    /// assembly; exits on its own when the presence subscription closes at
+    /// router shutdown, and `shutdown` aborts it explicitly first.
+    active_clipboard_peer_online_resync_handle: ActiveClipboardPeerOnlineResyncHandle,
     /// Outbound restore-broadcast worker handle (issue #1017 PR4). Attached by
     /// the daemon entry point once the restore-broadcast channel is wired
     /// (the sender side lives in the restore use cases). `None` for entry
@@ -176,6 +185,7 @@ impl SpaceSetupAssembly {
         // shaves a tick off teardown latency and makes ordering obvious.
         self.ingest_handle.abort();
         self.active_clipboard_inbound_handle.abort();
+        self.active_clipboard_peer_online_resync_handle.abort();
         if let Some(handle) = &self.restore_broadcast_handle {
             handle.abort();
         }
@@ -569,6 +579,7 @@ pub async fn build_space_setup_assembly(
         advance_register: Arc::clone(&deps.clipboard.active_register),
         member_repo: Arc::clone(&deps.device.member_repo),
         peer_addr_repo: Arc::clone(&wired.peer_addr_repo),
+        presence: Arc::clone(&presence),
         entry_lookup: Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
         coordinator: Arc::clone(&wired.clipboard_write_coordinator),
         clock: Arc::clone(&deps.system.clock),
@@ -583,6 +594,13 @@ pub async fn build_space_setup_assembly(
         blob_store: Arc::clone(&deps.storage.blob_store),
     }));
     let active_clipboard_inbound_handle = active_clipboard.spawn_inbound_loop();
+    // Peer-online resync (issue #1017 PR5, D10). Subscribes to presence and,
+    // when a directly-connected peer comes online, resends this device's
+    // current register to it (debounced ~1.5s) so both ends converge under
+    // LWW. Symmetric: the peer runs the same worker and resends to us, no ack.
+    // Same lifetime as the inbound loop — exits when the presence
+    // subscription closes at router shutdown; aborted explicitly in `shutdown`.
+    let active_clipboard_peer_online_resync_handle = active_clipboard.spawn_peer_online_resync();
 
     info!("Slice 2/3 SpaceSetupFacade + MemberRosterFacade + ClipboardSyncFacade + BlobTransferFacade assembled");
     Ok(SpaceSetupAssembly {
@@ -598,6 +616,7 @@ pub async fn build_space_setup_assembly(
         iroh_node,
         ingest_handle,
         active_clipboard_inbound_handle,
+        active_clipboard_peer_online_resync_handle,
         restore_broadcast_handle: None,
         outbound_progress_translator,
     })

@@ -1,12 +1,12 @@
 //! `ActiveClipboardFacade` — application entry point for the cross-device
 //! active-clipboard register convergence (issue #1017).
 //!
-//! Owns the inbound state use case and exposes a single action: spawn the
-//! background loop that subscribes to inbound 0xC3 observations and drives the
-//! register toward convergence (write OS → advance register → re-broadcast).
-//! The outbound *origination* paths (restore broadcast, peer-online resync,
-//! mobile fan-out) are separate edit-sites in later PRs; this facade is the
-//! inbound-convergence seam.
+//! Owns the inbound state use case and exposes outbound origination actions:
+//! spawn the background loop that subscribes to inbound 0xC3 observations and
+//! drives the register toward convergence (write OS → advance register →
+//! re-broadcast), plus the outbound origination workers (restore broadcast,
+//! peer-online resync). The mobile fan-out path is a separate edit-site in a
+//! later PR.
 
 use std::sync::Arc;
 
@@ -19,12 +19,15 @@ use uc_core::ports::clipboard::{
     UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::space::IsSpaceUnlockedPort;
-use uc_core::ports::{ClockPort, PeerAddressRepositoryPort, SettingsPort};
+use uc_core::ports::{ClockPort, PeerAddressRepositoryPort, PresencePort, SettingsPort};
 use uc_core::{blob::ports::BlobReaderPort, MemberRepositoryPort};
 
 use crate::clipboard_write::{ClipboardWriteCoordinator, RestoreBroadcastRequest};
 use crate::usecases::clipboard_sync::apply_inbound_active_state::{
     ActiveClipboardInboundHandle, ApplyInboundActiveClipboardStateUseCase,
+};
+use crate::usecases::clipboard_sync::peer_online_resync_worker::{
+    PeerOnlineResyncHandle, PeerOnlineResyncWorker,
 };
 use crate::usecases::clipboard_sync::restore_broadcast_worker::{
     RestoreBroadcastHandle, RestoreBroadcastWorker,
@@ -40,6 +43,9 @@ pub struct ActiveClipboardDeps {
     pub advance_register: Arc<dyn AdvanceActiveClipboardPort>,
     pub member_repo: Arc<dyn MemberRepositoryPort>,
     pub peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    /// Presence stream for the peer-online resync worker: an "online"
+    /// transition triggers a resend of the current register to that peer.
+    pub presence: Arc<dyn PresencePort>,
     pub entry_lookup: Arc<dyn FindEntryIdBySnapshotHashPort>,
     pub coordinator: Arc<ClipboardWriteCoordinator>,
     pub clock: Arc<dyn ClockPort>,
@@ -59,7 +65,8 @@ pub struct ActiveClipboardDeps {
 pub use crate::usecases::clipboard_sync::apply_inbound_active_state::ActiveClipboardInboundHandle as ActiveClipboardHandle;
 
 /// Thin facade over the inbound active-clipboard state use case plus the
-/// outbound restore-broadcast origination (issue #1017).
+/// outbound origination workers — restore broadcast and peer-online resync
+/// (issue #1017).
 pub struct ActiveClipboardFacade {
     inbound_uc: Arc<ApplyInboundActiveClipboardStateUseCase>,
     // Retained for the restore-broadcast worker (outbound origination). Same
@@ -68,6 +75,13 @@ pub struct ActiveClipboardFacade {
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     member_repo: Arc<dyn MemberRepositoryPort>,
     settings: Arc<dyn SettingsPort>,
+    // Retained for the peer-online resync worker (outbound origination): on a
+    // peer-online presence transition it loads the register, reconstructs the
+    // activation's content category for the outbound gate, and resends the
+    // current state to that peer.
+    presence: Arc<dyn PresencePort>,
+    load_register: Arc<dyn LoadActiveClipboardPort>,
+    reconstructor: SnapshotReconstructor,
 }
 
 impl ActiveClipboardFacade {
@@ -83,11 +97,11 @@ impl ActiveClipboardFacade {
         let inbound_uc = Arc::new(ApplyInboundActiveClipboardStateUseCase::new(
             deps.receiver,
             deps.is_unlocked,
-            deps.load_register,
+            Arc::clone(&deps.load_register),
             deps.advance_register,
             Arc::clone(&deps.member_repo),
             deps.entry_lookup,
-            reconstructor,
+            reconstructor.clone(),
             deps.coordinator,
             Arc::clone(&deps.dispatch),
             Arc::clone(&deps.peer_addr_repo),
@@ -99,6 +113,9 @@ impl ActiveClipboardFacade {
             peer_addr_repo: deps.peer_addr_repo,
             member_repo: deps.member_repo,
             settings: deps.settings,
+            presence: deps.presence,
+            load_register: deps.load_register,
+            reconstructor,
         }
     }
 
@@ -130,8 +147,33 @@ impl ActiveClipboardFacade {
         )
         .spawn()
     }
+
+    /// Spawn the peer-online resync worker (issue #1017 PR5, D10). The worker
+    /// subscribes to presence transitions; when a peer comes online it
+    /// debounces a burst (D7, ~1.5s), loads the current register, reconstructs
+    /// the activation's content category for the outbound gate, and resends
+    /// the current state to each newly-online peer (full outbound gate:
+    /// `send_enabled` ∧ `send_content_types`). The resync is symmetric — the
+    /// peer runs the same worker and resends to us; LWW converges both ends
+    /// with no ack. Caller owns the returned handle; dropping it terminates
+    /// the worker (which also exits when the presence subscription closes at
+    /// router shutdown).
+    pub fn spawn_peer_online_resync(&self) -> PeerOnlineResyncHandle {
+        PeerOnlineResyncWorker::new(
+            Arc::clone(&self.presence),
+            Arc::clone(&self.load_register),
+            self.reconstructor.clone(),
+            Arc::clone(&self.dispatch),
+            Arc::clone(&self.member_repo),
+        )
+        .spawn()
+    }
 }
 
 /// Re-exported handle so bootstrap can hold the restore-broadcast worker's
 /// lifetime alongside the inbound loop handle.
 pub use crate::usecases::clipboard_sync::restore_broadcast_worker::RestoreBroadcastHandle as ActiveClipboardRestoreBroadcastHandle;
+
+/// Re-exported handle so bootstrap can hold the peer-online resync worker's
+/// lifetime alongside the other active-clipboard worker handles.
+pub use crate::usecases::clipboard_sync::peer_online_resync_worker::PeerOnlineResyncHandle as ActiveClipboardPeerOnlineResyncHandle;

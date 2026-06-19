@@ -65,10 +65,35 @@ const FILE_DEDUP_WINDOW: Duration = Duration::from_millis(500);
 /// handle that case without the size proxy.
 const IMAGE_STORM_MAX_GAP: Duration = Duration::from_secs(5);
 
+/// How long a freshly-emitted text / rich-text key keeps suppressing a
+/// byte-identical re-read.
+///
+/// Images dedup *permanently*: their `image:<fingerprint>` key is a
+/// decode-stable identity, so an identical key is provably the same image (the
+/// `churning_*` fingerprint tests rely on this holding regardless of elapsed
+/// time). Text is different — users deliberately re-copy the same string,
+/// especially URLs, and such a re-copy should resurface the existing entry
+/// downstream rather than be silently dropped. A permanent text key-dedup
+/// turned every re-copy after the first into a no-op for as long as the
+/// clipboard kept that content, which surfaced as "copying a URL did nothing".
+///
+/// The window only needs to absorb re-reads of the *same* physical copy: macOS
+/// polls `changeCount` on the order of a second and can fire a second time when
+/// an app appends metadata (e.g. LinkPresentation) a beat after the initial
+/// write. That second read carries identical text but a *different*
+/// `snapshot_hash`, so the downstream snapshot-hash resurface can't collapse it
+/// — only this key window can. Sized above the poll cadence yet well below a
+/// human re-copy interval, so a deliberate re-copy seconds later passes through
+/// and resurfaces.
+const MEANINGFUL_REDEDUP_WINDOW: Duration = Duration::from_secs(2);
+
 pub struct ClipboardWatcher {
     local_clipboard: Arc<dyn SystemClipboardPort>,
     sender: PlatformEventSender,
-    last_meaningful_dedupe_key: Option<String>,
+    /// The most recently emitted meaningful key and when it was emitted.
+    /// Drives the re-dedup guard: an identical key re-collapses permanently for
+    /// images, or only within [`MEANINGFUL_REDEDUP_WINDOW`] for text.
+    last_meaningful: Option<(String, Instant)>,
     last_file_emit_time: Option<Instant>,
     /// `(observed_at, size_bytes)` of the most recent image-dominant snapshot.
     /// Updated on every image observation (emitted or suppressed) and cleared
@@ -82,7 +107,7 @@ impl ClipboardWatcher {
         Self {
             local_clipboard,
             sender,
-            last_meaningful_dedupe_key: None,
+            last_meaningful: None,
             last_file_emit_time: None,
             last_image_seen: None,
         }
@@ -211,15 +236,26 @@ impl ClipboardWatcher {
         };
 
         if let Some(key) = current_dedupe_key.as_ref() {
-            if self.last_meaningful_dedupe_key.as_deref() == Some(key.as_str()) {
-                // Info-level on purpose: this is the last silent spot where a
-                // user-visible "copy did nothing" can hide (key is kind:hash,
-                // never payload content).
-                info!(
-                    dedupe_key = %key,
-                    "Skipping duplicated meaningful clipboard snapshot"
-                );
-                return;
+            if let Some((last_key, last_at)) = self.last_meaningful.as_ref() {
+                if last_key == key {
+                    // Image keys are a decode-stable fingerprint, so an
+                    // identical key is the same image — dedup permanently.
+                    // Text / rich-text keys are content-stable too, but a
+                    // deliberate user re-copy should resurface downstream, so
+                    // only collapse re-reads of the same physical copy, i.e.
+                    // within MEANINGFUL_REDEDUP_WINDOW.
+                    let permanent = key.starts_with("image:");
+                    if permanent || now.duration_since(*last_at) < MEANINGFUL_REDEDUP_WINDOW {
+                        // Info-level on purpose: this is the last silent spot
+                        // where a user-visible "copy did nothing" can hide (key
+                        // is kind:hash, never payload content).
+                        info!(
+                            dedupe_key = %key,
+                            "Skipping duplicated meaningful clipboard snapshot"
+                        );
+                        return;
+                    }
+                }
             }
         }
 
@@ -296,7 +332,7 @@ impl ClipboardWatcher {
                 self.last_image_seen = None;
             }
             if let Some(key) = current_dedupe_key {
-                self.last_meaningful_dedupe_key = Some(key);
+                self.last_meaningful = Some((key, now));
             }
         }
     }
@@ -648,6 +684,62 @@ mod tests {
             drain(&mut rx),
             2,
             "different images of equal byte size must both emit (no size false-negative)"
+        );
+    }
+
+    #[test]
+    fn text_recopy_after_window_reemits() {
+        // Core regression for the macOS "copy did nothing" report: re-copying
+        // the SAME text/URL after a human-scale pause (with no different
+        // content in between) must emit again, so the downstream capture use
+        // case can resurface the existing entry. The old permanent key-dedup
+        // swallowed every such re-copy forever, even minutes apart.
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        w.emit_with_dedup_at(text("https://example.com/a"), base);
+        w.emit_with_dedup_at(text("https://example.com/a"), base + Duration::from_secs(3));
+        assert_eq!(
+            drain(&mut rx),
+            2,
+            "a deliberate re-copy of the same text past the window must re-emit"
+        );
+    }
+
+    #[test]
+    fn text_recopy_within_window_collapses() {
+        // A re-read of the SAME physical copy (e.g. macOS appending
+        // LinkPresentation metadata a beat later — this changes snapshot_hash
+        // but not the plain text) must still collapse. Otherwise it would
+        // create a duplicate entry the snapshot-hash resurface can't catch.
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        w.emit_with_dedup_at(text("https://example.com/a"), base);
+        w.emit_with_dedup_at(
+            text("https://example.com/a"),
+            base + Duration::from_millis(300),
+        );
+        assert_eq!(
+            drain(&mut rx),
+            1,
+            "a same-copy re-read within the window must collapse"
+        );
+    }
+
+    #[test]
+    fn identical_image_recopy_after_window_still_collapses() {
+        // Image keys carry a decode-stable fingerprint, so an identical key
+        // always means the same image regardless of elapsed time — they must
+        // keep deduping permanently (the churning_* fingerprint tests rely on
+        // this). The text re-dedup window must not regress image behavior.
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        let png = encode(image::ImageFormat::Png, 8, 8, [10, 20, 30]);
+        w.emit_with_dedup_at(decodable_image(png.clone()), base);
+        w.emit_with_dedup_at(decodable_image(png), base + Duration::from_secs(60));
+        assert_eq!(
+            drain(&mut rx),
+            1,
+            "an identical image must dedup permanently, not just within the text window"
         );
     }
 }

@@ -11,6 +11,7 @@ use uc_core::clipboard::ActiveClipboardState;
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::clipboard::{
     ActiveClipboardRegisterError, AdvanceActiveClipboardPort, LoadActiveClipboardPort,
+    ResetActiveClipboardPort,
 };
 
 /// Fixed primary key for the single register row (the table is pinned to a
@@ -144,6 +145,27 @@ impl<E: DbExecutor> LoadActiveClipboardPort for DieselActiveClipboardRegisterRep
                 )
             }),
         )
+    }
+}
+
+#[async_trait]
+impl<E: DbExecutor> ResetActiveClipboardPort for DieselActiveClipboardRegisterRepository<E> {
+    async fn reset(&self) -> Result<(), ActiveClipboardRegisterError> {
+        let span = debug_span!("infra.sqlite.active_clipboard_register.reset");
+        span.in_scope(|| {
+            self.executor.run(move |conn| {
+                // Unconditional clear: delete the single row regardless of its
+                // LWW key. Deleting an absent row affects zero rows and still
+                // succeeds, so the operation is idempotent.
+                diesel::delete(
+                    active_clipboard_register::table
+                        .filter(active_clipboard_register::id.eq(REGISTER_ROW_ID)),
+                )
+                .execute(conn)?;
+                Ok(())
+            })
+        })
+        .map_err(|e| ActiveClipboardRegisterError::Storage(e.to_string()))
     }
 }
 
@@ -304,5 +326,59 @@ mod tests {
         assert_eq!(loaded.entry_id.as_ref(), "entry-xyz");
         assert_eq!(loaded.activated_at_ms, 4242);
         assert_eq!(loaded.activated_by.as_str(), "dev-load");
+    }
+
+    #[tokio::test]
+    async fn reset_clears_a_stored_value_unconditionally() {
+        let (repo, reader, _tmp) = make_repo();
+        // Store a value with a high timestamp — a value that would *win* every
+        // LWW comparison, so `advance` could never overwrite it. `reset` must
+        // clear it anyway.
+        repo.advance(&state("blake3v1:aa", i64::MAX, "dev-z"))
+            .await
+            .unwrap();
+        assert!(read_row(&reader).is_some());
+
+        repo.reset().await.unwrap();
+        assert_eq!(read_row(&reader), None, "reset must clear the register row");
+        assert!(
+            repo.load().await.unwrap().is_none(),
+            "register loads as None after reset"
+        );
+    }
+
+    #[tokio::test]
+    async fn reset_on_empty_register_is_a_noop_success() {
+        let (repo, reader, _tmp) = make_repo();
+        assert_eq!(read_row(&reader), None);
+
+        repo.reset()
+            .await
+            .expect("reset on empty register succeeds");
+        assert_eq!(read_row(&reader), None);
+    }
+
+    #[tokio::test]
+    async fn advance_after_reset_inserts_a_fresh_value() {
+        let (repo, reader, _tmp) = make_repo();
+        // A high-timestamp value, then reset, then a *lower*-timestamp advance:
+        // with no row present the lower value must win (no stale ts blocks it).
+        repo.advance(&state("blake3v1:aa", 9_000, "dev-a"))
+            .await
+            .unwrap();
+        repo.reset().await.unwrap();
+
+        let advanced = repo
+            .advance(&state("blake3v1:bb", 100, "dev-b"))
+            .await
+            .unwrap();
+        assert!(
+            advanced,
+            "after reset, any advance wins against the empty row"
+        );
+        assert_eq!(
+            read_row(&reader),
+            Some(("blake3v1:bb".to_string(), 100, "dev-b".to_string()))
+        );
     }
 }

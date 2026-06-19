@@ -1,0 +1,175 @@
+name: 'Build Mobile Core'
+run-name: "mobile-core-${{ github.run_number }}${{ inputs.dry_run && ' (dry-run)' || '' }}"
+
+# Builds + publishes the shared Rust mobile-sync core (uc-mobile) as a
+# checksummed `UniClipboardCore.xcframework.zip` + the paired `uc_mobile.swift`
+# UniFFI binding, under a `uc-mobile-v<version>` GitHub Release. The separate
+# iOS app repo consumes it via SwiftPM `.binaryTarget(url:checksum:)`.
+#
+# Versioning (decision D1): the release version is uc-mobile's OWN Cargo.toml
+# version (independent of the desktop `v*` line). To cut a release: bump
+# `crates/uc-mobile/Cargo.toml` `version`, merge, then run this workflow.
+#
+# Tag namespace `uc-mobile-v*` does NOT overlap the desktop `v*` glob, so this
+# never triggers release.yml / build-server-image.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Mark the GitHub Release as a prerelease'
+        required: false
+        type: boolean
+        default: true
+      dry_run:
+        description: 'Build + upload as a workflow artifact only (no tag, no Release)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-mobile-core:
+    # xcodebuild / lipo / Apple cross-targets require a macOS runner. Mobile-core
+    # releases are low-frequency, so the higher macOS runner cost is acceptable.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The cargo workspace `[patch.crates-io]` points at vendor/iroh-blobs;
+          # cargo metadata/build fails to parse the manifest if it is absent,
+          # even though uc-mobile does not pull it.
+          submodules: recursive
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin
+
+      - name: Prepend cargo bin to PATH
+        # See build.yml: works around the macos image's Homebrew rustup shim so
+        # `cargo` resolves to the rustup-managed toolchain, not rustup-init.
+        shell: bash
+        run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
+
+      - name: ensure apple targets on pinned toolchain
+        # rust-toolchain.toml (repo root) pins cargo to a specific channel
+        # (e.g. 1.95.0), which is a DIFFERENT toolchain from the stable one
+        # dtolnay installed above. The cross-compile targets must be installed
+        # on the pinned channel or cargo reports `target ... is not installed`.
+        shell: bash
+        run: |
+          TC=$(rustup show active-toolchain | awk '{print $1}')
+          echo "pinned toolchain: $TC"
+          rustup target add --toolchain "$TC" \
+            aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: mobile-core
+
+      - name: Resolve release version (single source = uc-mobile Cargo.toml)
+        id: ver
+        shell: bash
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | python3 -c "import sys,json;print(next(p['version'] for p in json.load(sys.stdin)['packages'] if p['name']=='uc-mobile'))")
+          if [ -z "$VERSION" ]; then echo "::error::could not resolve uc-mobile version"; exit 1; fi
+          TAG="uc-mobile-v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved: $TAG"
+
+      - name: Guard against re-releasing an existing tag
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists. Bump crates/uc-mobile/Cargo.toml version first."
+            exit 1
+          fi
+
+      - name: Build xcframework + binding + checksum
+        shell: bash
+        env:
+          UC_MOBILE_BUILD_LOCKED: '1'
+          UC_MOBILE_BUILD_ZIP: '1'
+        run: bash crates/uc-mobile/scripts/build-ios-xcframework.sh
+
+      - name: Size budget report (D5 — warn-only, collecting baseline)
+        shell: bash
+        run: |
+          {
+            echo "### uc-mobile-core ${{ steps.ver.outputs.tag }}"
+            echo ''
+            echo '| artifact | size |'
+            echo '| --- | --- |'
+            for f in \
+              target/aarch64-apple-ios/release/libuc_mobile.a \
+              target/UniClipboardCore.xcframework \
+              target/UniClipboardCore.xcframework.zip; do
+              printf '| `%s` | %s |\n' "$(basename "$f")" "$(du -sh "$f" | cut -f1)"
+            done
+            echo ''
+            echo "checksum (sha256): \`$(cat target/UniClipboardCore.checksum.txt)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stage release assets
+        shell: bash
+        run: |
+          mkdir -p mobile-core-dist
+          cp target/UniClipboardCore.xcframework.zip mobile-core-dist/
+          cp target/uniffi-bindings/uc_mobile.swift   mobile-core-dist/
+          cp target/UniClipboardCore.checksum.txt     mobile-core-dist/
+          ls -la mobile-core-dist
+
+      # Dry-run: hand the artifacts back as a workflow artifact for inspection,
+      # without creating a tag or Release. Lets us validate the whole pipeline
+      # end-to-end before cutting a real `uc-mobile-v*` release.
+      - name: Upload artifact (dry-run)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ver.outputs.tag }}-dryrun
+          path: mobile-core-dist/
+          if-no-files-found: error
+
+      - name: Write release notes
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        run: |
+          CHK=$(cat target/UniClipboardCore.checksum.txt)
+          # binaryTarget(checksum:) is sha256-of-zip == this value; the iOS
+          # update script re-derives via `swift package compute-checksum`.
+          {
+            printf 'Shared Rust mobile-sync core (uc-mobile) `%s`.\n\n' "${{ steps.ver.outputs.tag }}"
+            printf -- '- commit: `%s`\n' "${{ github.sha }}"
+            printf -- '- `UniClipboardCore.xcframework.zip` sha256: `%s`\n' "$CHK"
+            printf -- '- paired binding `uc_mobile.swift` MUST be adopted together — the uniffi binding and compiled lib are version-locked (decision D7).\n\n'
+            printf 'iOS adoption: `Scripts/update-rust-core.sh %s` (sets SwiftPM `.binaryTarget(url:checksum:)` + drops in the binding).\n' "${{ steps.ver.outputs.version }}"
+          } > mobile-core-dist/RELEASE_NOTES.md
+          cat mobile-core-dist/RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE_FLAG: ${{ inputs.prerelease && '--prerelease' || '' }}
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          gh release create "$TAG" \
+            --target "${{ github.sha }}" \
+            --title "uc-mobile core ${{ steps.ver.outputs.version }}" \
+            --notes-file mobile-core-dist/RELEASE_NOTES.md \
+            $PRERELEASE_FLAG \
+            target/UniClipboardCore.xcframework.zip \
+            target/uniffi-bindings/uc_mobile.swift \
+            target/UniClipboardCore.checksum.txt
+          echo "Published $TAG"

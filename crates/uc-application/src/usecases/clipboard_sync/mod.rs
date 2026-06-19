@@ -27,6 +27,7 @@ pub(crate) mod reconcile_active_state;
 pub(crate) mod resend_entry;
 pub(crate) mod restore_broadcast_worker;
 pub(crate) mod send_gate;
+pub(crate) mod serve_pull;
 pub(crate) mod snapshot_from_entry;
 
 pub(crate) use dispatch_entry::{

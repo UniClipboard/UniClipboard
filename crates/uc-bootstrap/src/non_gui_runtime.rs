@@ -172,6 +172,10 @@ pub fn build_non_gui_bundle(
 pub struct ClipboardRestoreAssembly {
     pub write_coordinator: Arc<uc_application::clipboard_write::ClipboardWriteCoordinator>,
     pub integration_mode: ClipboardIntegrationMode,
+    /// Optional restore-broadcast trigger (issue #1017). When present, a
+    /// successful restore announces the activation to peers (gated). `None`
+    /// for entry points without a network broadcast stack (CLI fallback).
+    pub restore_broadcast: Option<uc_application::clipboard_write::RestoreBroadcastTrigger>,
 }
 
 // ── mobile_sync PUT 路径的 fallback adapters ────────────────────────────
@@ -409,6 +413,7 @@ pub fn build_app_facade_from_deps(
             clock: deps.system.clock.clone(),
             device_identity: deps.device.device_identity.clone(),
             active_register: deps.clipboard.active_register.clone(),
+            restore_broadcast: restore.restore_broadcast,
             write_coordinator: restore.write_coordinator,
             integration_mode: restore.integration_mode,
         }))

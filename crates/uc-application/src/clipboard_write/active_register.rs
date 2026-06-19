@@ -47,7 +47,17 @@ impl LocalActiveRegisterAdvancer {
     /// active clipboard content, activated on this device at the current
     /// wall-clock. Best-effort: a register storage failure is logged and
     /// swallowed.
-    pub async fn advance_local(&self, content_hash: String, entry_id: EntryId) {
+    ///
+    /// Returns the [`ActiveClipboardState`] stamped for this activation so the
+    /// caller can hand it on (e.g. to a broadcaster) without re-deriving the
+    /// `(now, this_device)` key. The state is returned regardless of whether
+    /// the register storage write succeeded — the local OS clipboard already
+    /// holds this content, so it is the activation of record either way.
+    pub async fn advance_local(
+        &self,
+        content_hash: String,
+        entry_id: EntryId,
+    ) -> ActiveClipboardState {
         let state = ActiveClipboardState::new(
             content_hash,
             entry_id,
@@ -72,5 +82,6 @@ impl LocalActiveRegisterAdvancer {
                 );
             }
         }
+        state
     }
 }

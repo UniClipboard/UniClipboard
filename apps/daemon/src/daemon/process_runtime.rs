@@ -14,7 +14,7 @@ use uc_application::deps::AppDeps;
 use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade, InMemoryLifecycleStatus};
 use uc_bootstrap::{build_app_facade_from_deps, AppFacadeAssemblyOptions, TaskRegistry};
 
-use uc_application::clipboard_write::ClipboardWriteCoordinator;
+use uc_application::clipboard_write::{ClipboardWriteCoordinator, RestoreBroadcastTrigger};
 use uc_bootstrap::ClipboardRestoreAssembly;
 
 pub struct DaemonProcessRuntime {
@@ -28,6 +28,7 @@ impl DaemonProcessRuntime {
         storage_paths: AppPaths,
         clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
         file_transfer_facade: Arc<FileTransferFacade>,
+        restore_broadcast: RestoreBroadcastTrigger,
     ) -> Self {
         let task_registry = Arc::new(TaskRegistry::new());
 
@@ -42,6 +43,10 @@ impl DaemonProcessRuntime {
                 clipboard_restore: Some(ClipboardRestoreAssembly {
                     write_coordinator: clipboard_write_coordinator,
                     integration_mode: clipboard_integration_mode,
+                    // The restore use cases hold the sender; the active-clipboard
+                    // facade's worker (spawned once space setup is assembled)
+                    // owns the receiver.
+                    restore_broadcast: Some(restore_broadcast),
                 }),
                 file_transfer: Some(file_transfer_facade),
                 ..Default::default()

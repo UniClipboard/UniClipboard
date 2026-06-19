@@ -17,7 +17,9 @@
 mod active_register;
 mod coordinator;
 mod primary_rep_selector;
+mod restore_broadcast;
 
 pub use active_register::LocalActiveRegisterAdvancer;
 pub use coordinator::{ClipboardWriteCoordinator, ClipboardWriteIntent};
 pub use primary_rep_selector::{narrow_to_primary, PrimaryRepError};
+pub use restore_broadcast::{RestoreBroadcastRequest, RestoreBroadcastTrigger};

@@ -42,6 +42,13 @@ impl ClipboardRestoreOnDuplicateAdapter {
 #[async_trait::async_trait]
 impl MobileDuplicateRestorePort for ClipboardRestoreOnDuplicateAdapter {
     async fn restore_to_clipboard(&self, entry_id: &EntryId) {
+        // NOTE (issue #1017 PR4): this shares `restore_entry` with a real user
+        // history restore, so a mobile duplicate hit also flows through the
+        // restore-broadcast trigger. That broadcast is gated on
+        // `sync_on_restore` (default off), so by default mobile hits announce
+        // nothing; even when on, announcing the now-active content is benign
+        // and LWW-protected. The mobile fan-out gets its own dedicated gate in
+        // PR7, which removes `MobileDuplicateRestorePort` and this shared path.
         if let Err(err) = self.restore_facade.restore_entry(entry_id.as_ref()).await {
             warn!(
                 entry_id = %entry_id,

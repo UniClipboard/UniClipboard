@@ -33,7 +33,10 @@ pub mod space_setup;
 pub mod storage;
 pub mod upgrade;
 
-pub use active_clipboard::{ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle};
+pub use active_clipboard::{
+    ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle,
+    ActiveClipboardRestoreBroadcastHandle,
+};
 pub use app_facade::{
     AppFacade, AppFacadeParts, AppPresenceEvent, AppPresenceSubscription,
     AppPresenceSubscriptionError, DaemonLifecycleFacades,

@@ -11,7 +11,9 @@ use uc_core::ports::{
 
 use crate::deps::{ClipboardEntryPorts, ClipboardRepresentationPorts};
 
-use crate::clipboard_write::{ClipboardWriteCoordinator, LocalActiveRegisterAdvancer};
+use crate::clipboard_write::{
+    ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, RestoreBroadcastTrigger,
+};
 use crate::usecases::clipboard_restore::{
     PlainRestoreOutcome, RestoreClipboardEntryAsPlainTextUseCase, RestoreClipboardSelectionUseCase,
     TouchClipboardEntryUseCase,
@@ -61,6 +63,12 @@ pub struct ClipboardRestoreFacadeDeps {
     /// Cross-device active-clipboard register advanced after a successful
     /// restore.
     pub active_register: Arc<dyn AdvanceActiveClipboardPort>,
+    /// Optional restore-broadcast trigger. When present, a successful restore
+    /// that advanced the register also offers the activation to the broadcast
+    /// subsystem (which gates on `sync_on_restore` + per-device send prefs
+    /// before announcing to peers). `None` where no broadcaster is wired
+    /// (e.g. CLI fallback without a daemon network stack).
+    pub restore_broadcast: Option<RestoreBroadcastTrigger>,
     pub write_coordinator: Arc<ClipboardWriteCoordinator>,
     pub integration_mode: ClipboardIntegrationMode,
 }
@@ -82,6 +90,7 @@ impl ClipboardRestoreFacade {
             clock,
             device_identity,
             active_register,
+            restore_broadcast,
             write_coordinator,
             integration_mode,
         } = deps;
@@ -106,7 +115,7 @@ impl ClipboardRestoreFacade {
             update_processing_result: rep_update,
         } = representation_ports;
 
-        let restore_uc = RestoreClipboardSelectionUseCase::new(
+        let mut restore_uc = RestoreClipboardSelectionUseCase::new(
             entry_get.clone(),
             write_coordinator.clone(),
             selection_repo.clone(),
@@ -117,7 +126,7 @@ impl ClipboardRestoreFacade {
             integration_mode,
         )
         .with_active_register(register_advancer.clone());
-        let plain_uc = RestoreClipboardEntryAsPlainTextUseCase::new(
+        let mut plain_uc = RestoreClipboardEntryAsPlainTextUseCase::new(
             entry_get,
             write_coordinator,
             selection_repo,
@@ -127,6 +136,13 @@ impl ClipboardRestoreFacade {
             integration_mode,
         )
         .with_active_register(register_advancer);
+        // Wire the restore-broadcast trigger into both paths when present, so a
+        // successful restore that advanced the register also announces it
+        // (subject to the broadcaster's gate). Shared trigger; cloning is cheap.
+        if let Some(trigger) = restore_broadcast {
+            restore_uc = restore_uc.with_restore_broadcast(trigger.clone());
+            plain_uc = plain_uc.with_restore_broadcast(trigger);
+        }
         let touch_uc = TouchClipboardEntryUseCase::new(entry_touch, clock);
 
         Self {

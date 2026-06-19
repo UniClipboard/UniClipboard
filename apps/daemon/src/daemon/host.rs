@@ -20,7 +20,9 @@
 use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
-use uc_application::clipboard_write::ClipboardWriteCoordinator;
+use uc_application::clipboard_write::{
+    ClipboardWriteCoordinator, RestoreBroadcastRequest, RestoreBroadcastTrigger,
+};
 use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
 use uc_bootstrap::assembly::WiredDependencies;
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
@@ -130,11 +132,20 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
         let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
         let file_transfer_facade = wired.file_transfer_facade.clone();
 
+        // Restore-broadcast channel (issue #1017 PR4): the restore use cases
+        // (inside the AppFacade below) hold the sender; the active-clipboard
+        // facade's worker (spawned in `start_in_process` once space setup is
+        // assembled) drains the receiver.
+        let (restore_broadcast_tx, restore_broadcast_rx) =
+            tokio::sync::mpsc::unbounded_channel::<RestoreBroadcastRequest>();
+        let restore_broadcast_trigger = RestoreBroadcastTrigger::new(restore_broadcast_tx);
+
         let runtime = DaemonProcessRuntime::new(
             wired.deps.clone(),
             storage_paths.clone(),
             clipboard_write_coordinator.clone(),
             file_transfer_facade.clone(),
+            restore_broadcast_trigger,
         );
         let app_facade = Arc::clone(runtime.app_facade());
 
@@ -156,7 +167,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
             file_transfer_lifecycle,
             file_transfer_facade,
         };
-        let handle = start_in_process(run_mode, app_facade, handles).await?;
+        let handle = start_in_process(run_mode, app_facade, handles, restore_broadcast_rx).await?;
         let result = handle.wait().await;
         drop(runtime);
         result
@@ -197,6 +208,7 @@ pub async fn start_in_process(
     run_mode: DaemonRunMode,
     app_facade: Arc<AppFacade>,
     handles: ProcessRuntimeHandles,
+    restore_broadcast_rx: tokio::sync::mpsc::UnboundedReceiver<RestoreBroadcastRequest>,
 ) -> anyhow::Result<DaemonHandle> {
     let cancel = CancellationToken::new();
 
@@ -227,7 +239,7 @@ pub async fn start_in_process(
     let DaemonBootstrapAssembly {
         clipboard_sync_facade,
         blob_transfer_facade,
-        space_setup_assembly,
+        mut space_setup_assembly,
         mobile_sync_endpoint_info,
     } = build_daemon_bootstrap_assembly(&handles.wired).await?;
 
@@ -238,6 +250,12 @@ pub async fn start_in_process(
         file_transfer_lifecycle,
         file_transfer_facade,
     } = handles;
+
+    // Start draining the restore-broadcast channel now that the
+    // active-clipboard facade exists. The worker debounces + gates restores
+    // before announcing them to peers; its lifetime is tracked by the
+    // assembly so shutdown aborts it (issue #1017 PR4).
+    space_setup_assembly.attach_restore_broadcast(restore_broadcast_rx);
 
     let deps = wired.deps;
     let host_event_bus = wired.host_event_bus;

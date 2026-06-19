@@ -23,6 +23,7 @@ pub(crate) mod ingest_inbound;
 pub mod payload_codec;
 pub(crate) mod receive_gate;
 pub(crate) mod resend_entry;
+pub(crate) mod restore_broadcast_worker;
 pub(crate) mod send_gate;
 pub(crate) mod snapshot_from_entry;
 

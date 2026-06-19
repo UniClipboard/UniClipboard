@@ -16,7 +16,7 @@ use tracing::info;
 
 use uc_core::{
     blob::ports::BlobReaderPort,
-    clipboard::ClipboardIntegrationMode,
+    clipboard::{ClipboardContentCategorySet, ClipboardIntegrationMode},
     ids::EntryId,
     ports::{
         clipboard::{
@@ -29,6 +29,7 @@ use uc_core::{
 
 use crate::clipboard_write::{
     ClipboardWriteCoordinator, ClipboardWriteIntent, LocalActiveRegisterAdvancer,
+    RestoreBroadcastTrigger,
 };
 use crate::usecases::clipboard_sync::snapshot_from_entry::{
     reconstruct_snapshot_from_entry, BuildSnapshotError,
@@ -48,6 +49,12 @@ pub(crate) struct RestoreClipboardSelectionUseCase {
     /// becomes the latest active clipboard state. `None` in tests / contexts
     /// that don't track active state.
     active_register: Option<LocalActiveRegisterAdvancer>,
+    /// Optional restore-broadcast hook. When wired, a successful restore that
+    /// advanced the register also offers the activation to the broadcast
+    /// subsystem (which applies the `sync_on_restore` + per-device send gate
+    /// before announcing it to peers). `None` decouples the OS write from any
+    /// network announcement (tests / non-broadcasting contexts).
+    restore_broadcast: Option<RestoreBroadcastTrigger>,
 }
 
 impl RestoreClipboardSelectionUseCase {
@@ -72,6 +79,7 @@ impl RestoreClipboardSelectionUseCase {
             blob_store,
             mode,
             active_register: None,
+            restore_broadcast: None,
         }
     }
 
@@ -79,6 +87,15 @@ impl RestoreClipboardSelectionUseCase {
     /// restore advances the cross-device register (best-effort).
     pub(crate) fn with_active_register(mut self, advancer: LocalActiveRegisterAdvancer) -> Self {
         self.active_register = Some(advancer);
+        self
+    }
+
+    /// Wire the restore-broadcast trigger. When set, a successful restore that
+    /// advanced the register offers the activation to the broadcast subsystem.
+    /// Only meaningful alongside `with_active_register`; without it nothing
+    /// advances, so nothing is offered.
+    pub(crate) fn with_restore_broadcast(mut self, trigger: RestoreBroadcastTrigger) -> Self {
+        self.restore_broadcast = Some(trigger);
         self
     }
 
@@ -100,15 +117,23 @@ impl RestoreClipboardSelectionUseCase {
         )
         .await
         .map_err(map_build_snapshot_error)?;
-        // Capture the content identity before the snapshot is moved into the
-        // write boundary; the register advances only after the OS write
-        // succeeds, keeping "register advanced ⟺ OS write succeeded".
+        // Capture the content identity and category set before the snapshot is
+        // moved into the write boundary; the register advances only after the
+        // OS write succeeds, keeping "register advanced ⟺ OS write succeeded".
         let content_hash = snapshot.snapshot_hash().to_string();
+        let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await?;
         if let Some(advancer) = &self.active_register {
-            advancer.advance_local(content_hash, entry_id.clone()).await;
+            let state = advancer.advance_local(content_hash, entry_id.clone()).await;
+            // Offer the just-activated state to the broadcast subsystem. The
+            // gate (`sync_on_restore` + per-device send filter) lives in the
+            // broadcaster; here we only hand off the activation + its
+            // categories. Fire-and-forget — never fails the restore.
+            if let Some(trigger) = &self.restore_broadcast {
+                trigger.offer(state, categories);
+            }
         }
         Ok(())
     }

@@ -30,8 +30,8 @@ use tracing::{debug, info, warn};
 use uc_core::{
     blob::ports::BlobReaderPort,
     clipboard::{
-        is_plain_text_mime_or_format, ClipboardIntegrationMode, ObservedClipboardRepresentation,
-        PersistedClipboardRepresentation, SystemClipboardSnapshot,
+        is_plain_text_mime_or_format, ClipboardContentCategorySet, ClipboardIntegrationMode,
+        ObservedClipboardRepresentation, PersistedClipboardRepresentation, SystemClipboardSnapshot,
     },
     ids::EntryId,
     ports::{
@@ -45,6 +45,7 @@ use uc_core::{
 
 use crate::clipboard_write::{
     ClipboardWriteCoordinator, ClipboardWriteIntent, LocalActiveRegisterAdvancer,
+    RestoreBroadcastTrigger,
 };
 
 /// 本用例的可观察执行结果。
@@ -69,6 +70,9 @@ pub(crate) struct RestoreClipboardEntryAsPlainTextUseCase {
     /// Optional active-clipboard register hook; see
     /// `RestoreClipboardSelectionUseCase`. `None` in tests.
     active_register: Option<LocalActiveRegisterAdvancer>,
+    /// Optional restore-broadcast hook; see `RestoreClipboardSelectionUseCase`.
+    /// `None` in tests / non-broadcasting contexts.
+    restore_broadcast: Option<RestoreBroadcastTrigger>,
 }
 
 impl RestoreClipboardEntryAsPlainTextUseCase {
@@ -90,6 +94,7 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
             blob_store,
             mode,
             active_register: None,
+            restore_broadcast: None,
         }
     }
 
@@ -97,6 +102,13 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
     /// plain-text restore advances the cross-device register (best-effort).
     pub(crate) fn with_active_register(mut self, advancer: LocalActiveRegisterAdvancer) -> Self {
         self.active_register = Some(advancer);
+        self
+    }
+
+    /// Wire the restore-broadcast trigger; see
+    /// `RestoreClipboardSelectionUseCase::with_restore_broadcast`.
+    pub(crate) fn with_restore_broadcast(mut self, trigger: RestoreBroadcastTrigger) -> Self {
+        self.restore_broadcast = Some(trigger);
         self
     }
 
@@ -120,15 +132,20 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
             }
         };
 
-        // Identity of exactly what we narrowed to plain text and put on the
-        // OS clipboard — captured before the snapshot moves into the write
-        // boundary so the register reflects the bytes actually written.
+        // Identity + category set of exactly what we narrowed to plain text and
+        // put on the OS clipboard — captured before the snapshot moves into the
+        // write boundary so the register reflects the bytes actually written.
         let content_hash = snapshot.snapshot_hash().to_string();
+        let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await?;
         if let Some(advancer) = &self.active_register {
-            advancer.advance_local(content_hash, entry_id.clone()).await;
+            let state = advancer.advance_local(content_hash, entry_id.clone()).await;
+            // Offer the activation to the broadcaster (gate lives there).
+            if let Some(trigger) = &self.restore_broadcast {
+                trigger.offer(state, categories);
+            }
         }
 
         Ok(PlainRestoreOutcome::Done)

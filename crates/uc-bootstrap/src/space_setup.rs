@@ -44,10 +44,10 @@ use tracing::debug;
 const TRANSLATOR_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(200);
 
 use uc_application::facade::{
-    ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle, BlobTransferDeps,
-    BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent, HostEventBus,
-    IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade,
-    TransferHostEvent,
+    ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle,
+    ActiveClipboardRestoreBroadcastHandle, BlobTransferDeps, BlobTransferFacade, ClipboardSyncDeps,
+    ClipboardSyncFacade, HostEvent, HostEventBus, IngestHandle, MemberRosterDeps,
+    MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade, TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
 use uc_core::file_transfer::{
@@ -130,6 +130,12 @@ pub struct SpaceSetupAssembly {
     /// active-clipboard receiver adapter's broadcast senders drop at router
     /// shutdown; `shutdown` aborts it explicitly first.
     active_clipboard_inbound_handle: ActiveClipboardHandle,
+    /// Outbound restore-broadcast worker handle (issue #1017 PR4). Attached by
+    /// the daemon entry point once the restore-broadcast channel is wired
+    /// (the sender side lives in the restore use cases). `None` for entry
+    /// points that don't originate restore broadcasts. Aborted on shutdown
+    /// like the inbound handle.
+    restore_broadcast_handle: Option<ActiveClipboardRestoreBroadcastHandle>,
     /// 反向"传输进度"翻译 worker 的 join handle。订阅
     /// `IrohTransferProgressAdapter` 的 inbound 流,将每帧 progress 翻译
     /// 为 `HostEvent::Transfer { direction: Sending, ... }` 并发到 emitter。
@@ -138,6 +144,21 @@ pub struct SpaceSetupAssembly {
 }
 
 impl SpaceSetupAssembly {
+    /// Spawn the outbound restore-broadcast worker on the active-clipboard
+    /// facade and retain its handle for coordinated teardown. `rx` is the
+    /// receiving end of the restore-broadcast channel whose sender the restore
+    /// use cases hold. Call once, after assembly, from the entry point that
+    /// created the channel.
+    pub fn attach_restore_broadcast(
+        &mut self,
+        rx: tokio::sync::mpsc::UnboundedReceiver<
+            uc_application::clipboard_write::RestoreBroadcastRequest,
+        >,
+    ) {
+        let handle = self.active_clipboard.spawn_restore_broadcast(rx);
+        self.restore_broadcast_handle = Some(handle);
+    }
+
     /// Coordinated teardown. Order matters:
     ///
     /// 1. [`SpaceSetupFacade::on_shutdown`] aborts the sponsor-side inbound
@@ -155,6 +176,9 @@ impl SpaceSetupAssembly {
         // shaves a tick off teardown latency and makes ordering obvious.
         self.ingest_handle.abort();
         self.active_clipboard_inbound_handle.abort();
+        if let Some(handle) = &self.restore_broadcast_handle {
+            handle.abort();
+        }
         self.outbound_progress_translator.abort();
         self.facade.on_shutdown().await;
         self.iroh_node.shutdown().await;
@@ -548,6 +572,7 @@ pub async fn build_space_setup_assembly(
         entry_lookup: Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
         coordinator: Arc::clone(&wired.clipboard_write_coordinator),
         clock: Arc::clone(&deps.system.clock),
+        settings: Arc::clone(&deps.settings),
         entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
         selection_repo: Arc::clone(&deps.clipboard.selection_repo),
         representation_repo: Arc::clone(&deps.clipboard.representation_ports.get),
@@ -573,6 +598,7 @@ pub async fn build_space_setup_assembly(
         iroh_node,
         ingest_handle,
         active_clipboard_inbound_handle,
+        restore_broadcast_handle: None,
         outbound_progress_translator,
     })
 }

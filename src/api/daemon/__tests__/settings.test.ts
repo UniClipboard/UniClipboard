@@ -99,6 +99,18 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
     })
   })
 
+  it('Test 2c: toSettingsPatchRequest 镜像 sync.syncOnRestore（防 builder 静默丢字段）', async () => {
+    mockUpdateOk(false)
+    await updateSettings({
+      sync: { syncOnRestore: true },
+    } as Partial<Settings>)
+
+    expect(updateSdkMock).toHaveBeenCalledTimes(1)
+    const [options] = updateSdkMock.mock.calls[0]
+    expect(options.body.sync).toMatchObject({ syncOnRestore: true })
+    expect(Object.keys(options.body)).toEqual(['sync'])
+  })
+
   it('Test 3: toSettingsPatchRequest 无 network 段 — patch 不含 network key', async () => {
     mockUpdateOk(false)
     await updateSettings({

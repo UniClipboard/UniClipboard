@@ -234,6 +234,10 @@
           "label": "Auto sync",
           "description": "Control clipboard sync across all devices. When disabled, no content will be synced to any device."
         },
+        "syncOnRestore": {
+          "label": "Sync on restore",
+          "description": "When you restore a past clipboard entry, make it the active clipboard on your other devices too. Off by default."
+        },
         "syncFrequency": {
           "label": "Sync frequency",
           "description": "Control how often uniClipboard checks for new content",

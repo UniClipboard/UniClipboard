@@ -20,6 +20,7 @@ const SyncSection: React.FC = () => {
 
   // Local state for UI display - initialize from setting to avoid flash
   const [autoSync, setAutoSync] = useState(setting?.sync.autoSync ?? true)
+  const [syncOnRestore, setSyncOnRestore] = useState(setting?.sync.syncOnRestore ?? false)
 
   // File sync local state
   const [fileSyncEnabled, setFileSyncEnabled] = useState(setting?.fileSync?.fileSyncEnabled ?? true)
@@ -52,6 +53,7 @@ const SyncSection: React.FC = () => {
   useEffect(() => {
     if (setting) {
       setAutoSync(setting.sync.autoSync)
+      setSyncOnRestore(setting.sync.syncOnRestore)
 
       // File sync settings
       setFileSyncEnabled(setting.fileSync?.fileSyncEnabled ?? true)
@@ -67,6 +69,12 @@ const SyncSection: React.FC = () => {
   const handleAutoSyncChange = (checked: boolean) => {
     setAutoSync(checked)
     updateSyncSetting({ autoSync: checked })
+  }
+
+  // Handle "sync on restore" switch change
+  const handleSyncOnRestoreChange = (checked: boolean) => {
+    setSyncOnRestore(checked)
+    updateSyncSetting({ syncOnRestore: checked })
   }
 
   // --- File sync handlers ---
@@ -217,6 +225,18 @@ const SyncSection: React.FC = () => {
           description={t('settings.sections.sync.autoSync.description')}
         >
           <Switch id="auto-sync" checked={autoSync} onCheckedChange={handleAutoSyncChange} />
+        </SettingRow>
+
+        <SettingRow
+          label={t('settings.sections.sync.syncOnRestore.label')}
+          description={t('settings.sections.sync.syncOnRestore.description')}
+        >
+          <Switch
+            id="sync-on-restore"
+            checked={syncOnRestore}
+            onCheckedChange={handleSyncOnRestoreChange}
+            disabled={!autoSync}
+          />
         </SettingRow>
 
         <SettingRow

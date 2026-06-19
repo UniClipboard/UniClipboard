@@ -84,6 +84,8 @@ export interface SyncSettings {
   autoSync: boolean
   syncFrequency: SyncFrequency
   contentTypes: ContentTypes
+  /** Announce a restored history entry as the active clipboard to peers. */
+  syncOnRestore: boolean
 }
 
 /**

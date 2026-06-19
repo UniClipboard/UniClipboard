@@ -3969,12 +3969,16 @@
           },
           "syncFrequency": {
             "$ref": "#/components/schemas/SyncFrequencyDto"
+          },
+          "syncOnRestore": {
+            "type": "boolean"
           }
         },
         "required": [
           "autoSync",
           "syncFrequency",
-          "contentTypes"
+          "contentTypes",
+          "syncOnRestore"
         ],
         "type": "object"
       },
@@ -3999,6 +4003,10 @@
               }
             ],
             "nullable": true
+          },
+          "syncOnRestore": {
+            "nullable": true,
+            "type": "boolean"
           }
         },
         "type": "object"

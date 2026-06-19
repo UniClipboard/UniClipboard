@@ -198,6 +198,7 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
         codeSnippet: true,
         richText: true,
       },
+      syncOnRestore: false,
     },
     retentionPolicy: {
       enabled: false,

@@ -40,6 +40,7 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                 auto_sync: sync.auto_sync,
                 sync_frequency: sync.sync_frequency.map(IntoDomain::into_domain),
                 content_types: sync.content_types.map(IntoDomain::into_domain),
+                sync_on_restore: sync.sync_on_restore,
             }),
             retention_policy: self.retention_policy.map(|retention_policy| {
                 app_settings::RetentionPolicyPatch {
@@ -130,6 +131,7 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
                 auto_sync: self.sync.auto_sync,
                 sync_frequency: self.sync.sync_frequency.into_api_dto(),
                 content_types: self.sync.content_types.into_api_dto(),
+                sync_on_restore: self.sync.sync_on_restore,
             },
             retention_policy: RetentionPolicyDto {
                 enabled: self.retention_policy.enabled,

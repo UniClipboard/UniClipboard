@@ -119,6 +119,7 @@ describe('Settings API', () => {
             codeSnippet: true,
             richText: false,
           },
+          syncOnRestore: false,
         },
       })
       getSdkMock.mockResolvedValueOnce({ data: { data: settings, ts: Date.now() } })

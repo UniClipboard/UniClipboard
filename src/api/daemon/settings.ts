@@ -96,6 +96,8 @@ export interface SyncSettings {
   autoSync: boolean
   syncFrequency: SyncFrequency
   contentTypes: ContentTypes
+  /** Announce a restored history entry as the active clipboard to peers. */
+  syncOnRestore: boolean
 }
 
 /** Security / encryption settings. / 安全/加密设置。 */
@@ -340,11 +342,12 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
   }
 
   if (settings.sync) {
-    const { autoSync, syncFrequency, contentTypes } = settings.sync
+    const { autoSync, syncFrequency, contentTypes, syncOnRestore } = settings.sync
     patch.sync = {
       autoSync,
       syncFrequency,
       contentTypes,
+      syncOnRestore,
     }
   }
 

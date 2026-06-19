@@ -61,6 +61,7 @@ const baseSetting: Settings = {
       codeSnippet: true,
       richText: true,
     },
+    syncOnRestore: false,
   },
   retentionPolicy: {
     enabled: false,

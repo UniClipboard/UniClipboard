@@ -234,6 +234,10 @@
           "label": "自动同步",
           "description": "控制所有设备的剪贴板同步。关闭后停止向所有设备同步内容。"
         },
+        "syncOnRestore": {
+          "label": "恢复时同步",
+          "description": "从历史记录恢复某条内容时，把它也设为其他设备上的当前剪贴板。默认关闭。"
+        },
         "syncFrequency": {
           "label": "同步频率",
           "description": "控制 uniClipboard 检查新内容的频率",

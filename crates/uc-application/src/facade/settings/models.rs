@@ -105,6 +105,7 @@ pub struct SyncSettingsView {
     pub auto_sync: bool,
     pub sync_frequency: SyncFrequencyView,
     pub content_types: ContentTypesView,
+    pub sync_on_restore: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -220,6 +221,7 @@ pub struct SyncSettingsPatch {
     pub auto_sync: Option<bool>,
     pub sync_frequency: Option<SyncFrequencyView>,
     pub content_types: Option<ContentTypesPatch>,
+    pub sync_on_restore: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -509,6 +511,7 @@ impl From<core::Settings> for SettingsView {
                 auto_sync: value.sync.auto_sync,
                 sync_frequency: value.sync.sync_frequency.into(),
                 content_types: value.sync.content_types.into(),
+                sync_on_restore: value.sync.sync_on_restore,
             },
             retention_policy: RetentionPolicyView {
                 enabled: value.retention_policy.enabled,
@@ -624,6 +627,9 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(content_types) = sync.content_types {
             apply_content_types_patch(&mut existing.sync.content_types, content_types);
+        }
+        if let Some(v) = sync.sync_on_restore {
+            existing.sync.sync_on_restore = v;
         }
     }
 

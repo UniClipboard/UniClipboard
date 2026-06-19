@@ -29,15 +29,15 @@ serde = { version = "1", features = ["derive"] }
 # 形态）。本 crate 此前不直接拼 JSON，故新增依赖。
 serde_json = "1"
 dirs = "6"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "4", default-features = false, features = ["deflate"] }
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2.0.17"
 futures = "0.3.31"
 tracing = "0.1.44"
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 blake3 = "1"
 hex = "0.4"
 # Slice 2 Phase 2: carry ciphertext bytes across use case / facade / port
@@ -69,7 +69,7 @@ features = ["v4"]
 [dev-dependencies]
 uc-infra = { path = "../uc-infra" }
 uc-platform = { path = "../uc-platform" }
-mockall = "0.13"
+mockall = "0.14"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 image = "0.25"

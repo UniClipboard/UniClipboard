@@ -8,6 +8,12 @@
 //! peer-online resync). The mobile fan-out path is a separate edit-site in a
 //! later PR.
 
+mod reconcile;
+
+pub use reconcile::{
+    ActiveClipboardReconcileDeps, ActiveClipboardReconcileFacade, ActiveClipboardReconcileOutcome,
+};
+
 use std::sync::Arc;
 
 use tokio::sync::mpsc::UnboundedReceiver;

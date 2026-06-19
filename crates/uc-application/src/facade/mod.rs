@@ -35,7 +35,9 @@ pub mod upgrade;
 
 pub use active_clipboard::{
     ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle,
-    ActiveClipboardPeerOnlineResyncHandle, ActiveClipboardRestoreBroadcastHandle,
+    ActiveClipboardPeerOnlineResyncHandle, ActiveClipboardReconcileDeps,
+    ActiveClipboardReconcileFacade, ActiveClipboardReconcileOutcome,
+    ActiveClipboardRestoreBroadcastHandle,
 };
 pub use app_facade::{
     AppFacade, AppFacadeParts, AppPresenceEvent, AppPresenceSubscription,

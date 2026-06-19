@@ -23,7 +23,10 @@ use tokio_util::sync::CancellationToken;
 use uc_application::clipboard_write::{
     ClipboardWriteCoordinator, RestoreBroadcastRequest, RestoreBroadcastTrigger,
 };
-use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade};
+use uc_application::facade::{
+    ActiveClipboardReconcileDeps, ActiveClipboardReconcileFacade, AppFacade, AppPaths,
+    FileTransferFacade,
+};
 use uc_bootstrap::assembly::WiredDependencies;
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
 
@@ -234,6 +237,27 @@ pub async fn start_in_process(
             }
             return Err(anyhow::anyhow!("{violation}"));
         }
+    }
+
+    // Reconcile the persisted active-clipboard register against the live OS
+    // clipboard before any active-clipboard worker is spawned (issue #1017 PR6,
+    // D8). The persisted row is only an untrusted baseline: if it no longer
+    // matches the OS clipboard it is cleared, so a stale activation can neither
+    // win LWW nor be broadcast by the inbound / peer-online-resync workers that
+    // `build_daemon_bootstrap_assembly` spawns next. Best-effort: never writes
+    // the OS clipboard, never broadcasts, never fails startup.
+    {
+        let clipboard = &handles.wired.deps.clipboard;
+        let reconcile = ActiveClipboardReconcileFacade::new(ActiveClipboardReconcileDeps {
+            system_clipboard: clipboard.system_clipboard.clone(),
+            load_register: clipboard.active_register_load.clone(),
+            reset_register: clipboard.active_register_reset.clone(),
+        });
+        let outcome = reconcile.reconcile().await;
+        tracing::debug!(
+            ?outcome,
+            "active-clipboard register startup reconcile complete"
+        );
     }
 
     let DaemonBootstrapAssembly {

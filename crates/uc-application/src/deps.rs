@@ -19,8 +19,8 @@ use uc_core::ports::clipboard::{
     ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
     GetClipboardEntryPort, GetRepresentationByBlobIdPort, GetRepresentationPort,
     ListClipboardEntriesPort, ListRepresentationsForEventPort, LoadActiveClipboardPort,
-    RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort, SystemClipboardPort,
-    ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
+    RepresentationCachePort, ResetActiveClipboardPort, SaveClipboardEntryPort, SpoolQueuePort,
+    SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
     UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
@@ -91,6 +91,10 @@ pub struct ClipboardPorts {
     /// inbound 0xC3 state handler to decide whether an incoming observation
     /// supersedes the current value (LWW + loop-stop).
     pub active_register_load: Arc<dyn LoadActiveClipboardPort>,
+    /// Cross-device active-clipboard LWW register reset port. Clears the
+    /// register unconditionally; the startup reconcile uses it to drop a
+    /// persisted row that no longer matches the live OS clipboard.
+    pub active_register_reset: Arc<dyn ResetActiveClipboardPort>,
 }
 
 /// Narrow space-access intent ports facing the application layer.

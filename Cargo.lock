@@ -10313,7 +10313,7 @@ dependencies = [
 
 [[package]]
 name = "uc-mobile-proto"
-version = "0.15.0-alpha.3"
+version = "0.16.0-alpha.4"
 dependencies = [
  "base64 0.22.1",
  "chrono",

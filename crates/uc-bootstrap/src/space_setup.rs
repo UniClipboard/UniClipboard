@@ -55,13 +55,13 @@ use uc_core::file_transfer::{
 use uc_core::ports::blob::{BlobReferenceRepositoryPort, BlobTransferPort};
 use uc_core::ports::space::ProofPort;
 use uc_core::ports::{
-    ClipboardDispatchPort, ClipboardReceiverPort, ConnectionChannelPort, LocalIdentityPort,
-    PresencePort,
+    ActiveClipboardReceiverPort, ClipboardDispatchPort, ClipboardReceiverPort,
+    ConnectionChannelPort, LocalIdentityPort, PresencePort,
 };
 use uc_infra::network::iroh::transfer_progress_adapter::InboundProgressEvent;
 use uc_infra::network::iroh::{
-    BlobHandlers, ClipboardHandlers, IrohIdentityStore, IrohNode, IrohNodeBuilder, IrohNodeError,
-    TransferProgressHandlers, IDENTITY_STORE_KEY,
+    ActiveClipboardHandlers, BlobHandlers, ClipboardHandlers, IrohIdentityStore, IrohNode,
+    IrohNodeBuilder, IrohNodeError, TransferProgressHandlers, IDENTITY_STORE_KEY,
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
@@ -102,6 +102,13 @@ pub struct SpaceSetupAssembly {
     /// 也需要直接订阅事件流,所以这里再 clone 一份对外暴露,避免门面层
     /// 多包一道 subscribe 转发。
     pub presence: Arc<dyn PresencePort>,
+    /// Inbound active-clipboard state stream. The 0xC3 accept handler is
+    /// installed on the shared iroh node during assembly so the ALPN is
+    /// reachable; this port exposes the broadcast of inbound observations for
+    /// a downstream consumer to drive register convergence. Held here as the
+    /// single subscription seam, mirroring how `clipboard_sync` owns the bulk
+    /// inbound stream.
+    pub active_clipboard_receiver: Arc<dyn ActiveClipboardReceiverPort>,
     /// The shared iroh node. Held privately so callers can't bind a second
     /// node or install additional handlers after `spawn` — that would
     /// fragment peer identity (§"共用网络栈" decision, Slice 1 planning).
@@ -355,6 +362,19 @@ pub async fn build_space_setup_assembly(
     );
     let clipboard_dispatch: Arc<dyn ClipboardDispatchPort> = clipboard_dispatch;
     let clipboard_receiver: Arc<dyn ClipboardReceiverPort> = clipboard_receiver;
+    // Install the active-clipboard state ALPN (0xC3) as an independent
+    // sibling on the same node. A lone `.accept()` deeper in the node would
+    // not be reachable from here — the handler has to be installed on this
+    // builder before `spawn()`, so the seam is threaded through here.
+    // Only the inbound receiver port is produced today; the outbound
+    // dispatch path comes online with its consumer.
+    let ActiveClipboardHandlers {
+        receiver: active_clipboard_receiver,
+    } = builder.install_active_clipboard(
+        Arc::clone(&deps.device.member_repo),
+        Arc::clone(&deps.security.fingerprint),
+    );
+    let active_clipboard_receiver: Arc<dyn ActiveClipboardReceiverPort> = active_clipboard_receiver;
     // 反向"传输进度"通道(receiver → sender):同一节点装第四个 ALPN。
     // 装在 install_blobs 之前是为了让 `IrohTransferProgressAdapter` 的
     // reporter 能在 BlobTransferDeps 构造时一起接入 facade。inbound_events
@@ -502,6 +522,7 @@ pub async fn build_space_setup_assembly(
         blob_transfer,
         blob_reference: Arc::clone(&wired.blob_reference_repo),
         presence,
+        active_clipboard_receiver,
         iroh_node,
         ingest_handle,
         outbound_progress_translator,

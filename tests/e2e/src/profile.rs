@@ -5,10 +5,11 @@
 
 use std::path::PathBuf;
 
-/// A unique test profile that isolates daemon data and socket paths.
+/// A unique test profile that isolates daemon data, cache, and socket paths.
 pub struct TestProfile {
     pub name: String,
     data_dir: PathBuf,
+    cache_dir: PathBuf,
 }
 
 impl TestProfile {
@@ -16,9 +17,11 @@ impl TestProfile {
     pub fn new(test_name: &str) -> Self {
         let unique = format!("e2e-{}-{}", test_name, uuid::Uuid::new_v4().as_simple());
         let data_dir = Self::resolve_data_dir(&unique);
+        let cache_dir = Self::resolve_cache_dir(&unique);
         Self {
             name: unique,
             data_dir,
+            cache_dir,
         }
     }
 
@@ -49,10 +52,25 @@ impl TestProfile {
         &self.data_dir
     }
 
-    /// Clean up the profile's data directory.
+    /// Resolve the cache directory for the given profile name. The daemon writes
+    /// a cache dir (clipboard spool, blobs) separate from the data dir, under
+    /// the OS cache root.
+    fn resolve_cache_dir(profile: &str) -> PathBuf {
+        dirs_next::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join(format!("app.uniclipboard.desktop-{}", profile))
+    }
+
+    /// Remove every directory this profile's daemon may have created.
+    ///
+    /// The daemon writes BOTH a data dir and a separate cache dir (spool /
+    /// blobs). Cleaning only the data dir leaked one cache dir per test run
+    /// (`~/Library/Caches/...` on macOS), which accumulated unbounded.
     pub fn cleanup(&self) {
-        if self.data_dir.exists() {
-            let _ = std::fs::remove_dir_all(&self.data_dir);
+        for dir in [&self.data_dir, &self.cache_dir] {
+            if dir.exists() {
+                let _ = std::fs::remove_dir_all(dir);
+            }
         }
     }
 }

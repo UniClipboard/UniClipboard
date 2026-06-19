@@ -1,6 +1,16 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    active_clipboard_register (id) {
+        id -> Integer,
+        content_hash -> Text,
+        entry_id -> Text,
+        activated_at_ms -> BigInt,
+        activated_by -> Text,
+    }
+}
+
+diesel::table! {
     blob (blob_id) {
         blob_id -> Text,
         storage_path -> Text,

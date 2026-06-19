@@ -1,3 +1,4 @@
+mod active_clipboard_register_repo;
 mod blob_reference_repo;
 mod blob_repo;
 mod clipboard_entry_repo;
@@ -13,6 +14,7 @@ mod space_member_repo;
 mod thumbnail_repo;
 mod trusted_peer_repo;
 
+pub use active_clipboard_register_repo::*;
 pub use blob_reference_repo::*;
 pub use blob_repo::*;
 pub use clipboard_entry_repo::*;

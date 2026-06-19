@@ -127,6 +127,7 @@ bun run test:coverage
 - `src-legacy/` was removed on 2026-02-26; treat any references as historical context only.
 - Root `AGENTS.md` is the navigation index; this file is the Rust-workspace knowledge base covering `crates/`, `apps/`, and `src-tauri/`. Tauri packaging details live in `src-tauri/AGENTS.md`.
 - Any change touching `crates/uc-platform/src/clipboard/` (esp. the linux X11/Wayland adapters) should run `cargo test -p uc-platform` before merge. (The network transport is no longer in uc-platform — it lives in `crates/uc-infra/src/network/iroh/`.)
+- `uc-mobile` ships on an INDEPENDENT version line (`crates/uc-mobile/Cargo.toml` `version`, not `workspace`) and is released as a `uc-mobile-v*` xcframework via `.github/workflows/build-mobile-core.yml`. The iOS app repo consumes it through SwiftPM `binaryTarget(url:checksum:)`. Full runbook: `docs/packaging/mobile-core-build-release.md`. `uc-mobile-proto` stays on the workspace version (shared with the desktop daemon via `uc-application`).
 - Log files live in the platform-conventional log location (separate from the data root since the logs split). Single source of truth: `uc_app_paths::app_log_dir()`. Per-role files `uniclipboard-{gui,daemon,cli}.json.<date>`, daily rotation, 7-day retention (older pruned on start).
 - macOS: `~/Library/Logs/app.uniclipboard.desktop[-<profile>]/`
 - Linux: `~/.local/state/app.uniclipboard.desktop[-<profile>]/logs/`

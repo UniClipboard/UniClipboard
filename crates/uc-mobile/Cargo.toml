@@ -8,7 +8,14 @@
 
 [package]
 name = "uc-mobile"
-version.workspace = true
+# Independent version line (goal-B build/release decision D1): uc-mobile is the
+# mobile-only FFI artifact, released as `uc-mobile-v{version}` xcframework on a
+# cadence decoupled from the desktop app's `v*` releases. This version IS the
+# single source of truth for the published xcframework / SwiftPM binaryTarget.
+# Bump it here, then run the `build-mobile-core` workflow to cut a release.
+# (uc-mobile-proto stays on `version.workspace = true` — it is shared with the
+# desktop daemon graph via uc-application and ships under the desktop version.)
+version = "0.1.0"
 license.workspace = true
 edition = "2021"
 description = "UniFFI boundary crate exposing shared Rust to iOS/Android (mobile spike)"

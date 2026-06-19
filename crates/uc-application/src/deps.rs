@@ -15,12 +15,12 @@ use tokio::sync::mpsc;
 use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
-    ClipboardChangeOriginPort, ClipboardPayloadResolverPort, ClipboardRepresentationNormalizerPort,
-    DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
-    GetRepresentationByBlobIdPort, GetRepresentationPort, ListClipboardEntriesPort,
-    ListRepresentationsForEventPort, RepresentationCachePort, SaveClipboardEntryPort,
-    SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
-    TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
+    AdvanceActiveClipboardPort, ClipboardChangeOriginPort, ClipboardPayloadResolverPort,
+    ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
+    GetClipboardEntryPort, GetRepresentationByBlobIdPort, GetRepresentationPort,
+    ListClipboardEntriesPort, ListRepresentationsForEventPort, RepresentationCachePort,
+    SaveClipboardEntryPort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
+    ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
@@ -82,6 +82,10 @@ pub struct ClipboardPorts {
     pub clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
     pub worker_tx: mpsc::Sender<RepresentationId>,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
+    /// Cross-device active-clipboard LWW register write port. Advanced by the
+    /// restore and inbound-apply paths when a local OS clipboard write makes
+    /// its content the latest active clipboard state.
+    pub active_register: Arc<dyn AdvanceActiveClipboardPort>,
 }
 
 /// Narrow space-access intent ports facing the application layer.

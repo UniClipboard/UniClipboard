@@ -5,13 +5,13 @@ use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::ClipboardIntegrationMode;
 use uc_core::ids::EntryId;
 use uc_core::ports::{
-    clipboard::{ClipboardPayloadResolverPort, PayloadResolveError},
-    ClipboardSelectionRepositoryPort, ClockPort,
+    clipboard::{AdvanceActiveClipboardPort, ClipboardPayloadResolverPort, PayloadResolveError},
+    ClipboardSelectionRepositoryPort, ClockPort, DeviceIdentityPort,
 };
 
 use crate::deps::{ClipboardEntryPorts, ClipboardRepresentationPorts};
 
-use crate::clipboard_write::ClipboardWriteCoordinator;
+use crate::clipboard_write::{ClipboardWriteCoordinator, LocalActiveRegisterAdvancer};
 use crate::usecases::clipboard_restore::{
     PlainRestoreOutcome, RestoreClipboardEntryAsPlainTextUseCase, RestoreClipboardSelectionUseCase,
     TouchClipboardEntryUseCase,
@@ -55,6 +55,12 @@ pub struct ClipboardRestoreFacadeDeps {
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub clock: Arc<dyn ClockPort>,
+    /// Identity of this device, used to stamp the active-clipboard register
+    /// when a restore makes its content the latest active clipboard state.
+    pub device_identity: Arc<dyn DeviceIdentityPort>,
+    /// Cross-device active-clipboard register advanced after a successful
+    /// restore.
+    pub active_register: Arc<dyn AdvanceActiveClipboardPort>,
     pub write_coordinator: Arc<ClipboardWriteCoordinator>,
     pub integration_mode: ClipboardIntegrationMode,
 }
@@ -74,9 +80,16 @@ impl ClipboardRestoreFacade {
             payload_resolver,
             blob_store,
             clock,
+            device_identity,
+            active_register,
             write_coordinator,
             integration_mode,
         } = deps;
+
+        // Shared advancer wired into both restore paths so any successful
+        // restore advances the cross-device active-clipboard register.
+        let register_advancer =
+            LocalActiveRegisterAdvancer::new(active_register, device_identity, clock.clone());
 
         let ClipboardEntryPorts {
             get: entry_get,
@@ -102,7 +115,8 @@ impl ClipboardRestoreFacade {
             payload_resolver.clone(),
             blob_store.clone(),
             integration_mode,
-        );
+        )
+        .with_active_register(register_advancer.clone());
         let plain_uc = RestoreClipboardEntryAsPlainTextUseCase::new(
             entry_get,
             write_coordinator,
@@ -111,7 +125,8 @@ impl ClipboardRestoreFacade {
             payload_resolver,
             blob_store,
             integration_mode,
-        );
+        )
+        .with_active_register(register_advancer);
         let touch_uc = TouchClipboardEntryUseCase::new(entry_touch, clock);
 
         Self {

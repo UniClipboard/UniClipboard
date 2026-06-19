@@ -43,7 +43,9 @@ use uc_core::{
     },
 };
 
-use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
+use crate::clipboard_write::{
+    ClipboardWriteCoordinator, ClipboardWriteIntent, LocalActiveRegisterAdvancer,
+};
 
 /// 本用例的可观察执行结果。
 ///
@@ -64,6 +66,9 @@ pub(crate) struct RestoreClipboardEntryAsPlainTextUseCase {
     payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     blob_store: Arc<dyn BlobReaderPort>,
     mode: ClipboardIntegrationMode,
+    /// Optional active-clipboard register hook; see
+    /// `RestoreClipboardSelectionUseCase`. `None` in tests.
+    active_register: Option<LocalActiveRegisterAdvancer>,
 }
 
 impl RestoreClipboardEntryAsPlainTextUseCase {
@@ -84,7 +89,15 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
             payload_resolver,
             blob_store,
             mode,
+            active_register: None,
         }
+    }
+
+    /// Wire the active-clipboard register advancer. When set, a successful
+    /// plain-text restore advances the cross-device register (best-effort).
+    pub(crate) fn with_active_register(mut self, advancer: LocalActiveRegisterAdvancer) -> Self {
+        self.active_register = Some(advancer);
+        self
     }
 
     pub(crate) async fn execute(&self, entry_id: &EntryId) -> Result<PlainRestoreOutcome> {
@@ -107,9 +120,16 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
             }
         };
 
+        // Identity of exactly what we narrowed to plain text and put on the
+        // OS clipboard — captured before the snapshot moves into the write
+        // boundary so the register reflects the bytes actually written.
+        let content_hash = snapshot.snapshot_hash().to_string();
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await?;
+        if let Some(advancer) = &self.active_register {
+            advancer.advance_local(content_hash, entry_id.clone()).await;
+        }
 
         Ok(PlainRestoreOutcome::Done)
     }

@@ -7,8 +7,9 @@ use moka::sync::Cache;
 use tracing::{debug, error, info, instrument, warn, Instrument};
 use uc_observability::FlowId;
 
+use uc_core::clipboard::ActiveClipboardState;
 use uc_core::ids::EntryId;
-use uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort;
+use uc_core::ports::clipboard::{AdvanceActiveClipboardPort, FindEntryIdBySnapshotHashPort};
 use uc_core::SystemClipboardSnapshot;
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
@@ -40,6 +41,11 @@ pub struct ApplyInboundClipboardUseCase {
     /// before the fetch+capture pipeline finishes. Wired only in daemon
     /// mode; tests / CLI leave it `None`.
     host_event_emitter: Option<SharedHostEventEmitter>,
+    /// Optional cross-device active-clipboard register. When wired, a freshly
+    /// applied inbound entry advances the register at capture-commit (the OS
+    /// write that trails it is best-effort and intentionally not gated on).
+    /// `None` in tests / contexts that don't track active state.
+    active_register: Option<Arc<dyn AdvanceActiveClipboardPort>>,
 }
 
 impl ApplyInboundClipboardUseCase {
@@ -54,6 +60,7 @@ impl ApplyInboundClipboardUseCase {
             write,
             blob_materializer: None,
             host_event_emitter: None,
+            active_register: None,
             recent_content_hashes: Cache::builder()
                 .max_capacity(RECENT_INBOUND_MAX_RECORDS)
                 .time_to_live(RAPID_DUPLICATE_WINDOW)
@@ -80,6 +87,40 @@ impl ApplyInboundClipboardUseCase {
     pub fn with_host_event_emitter(mut self, emitter: SharedHostEventEmitter) -> Self {
         self.host_event_emitter = Some(emitter);
         self
+    }
+
+    /// Wire the cross-device active-clipboard register. When set, a newly
+    /// applied inbound entry advances the register so this device reflects
+    /// that the peer's content is now its active clipboard state.
+    pub fn with_active_register(mut self, register: Arc<dyn AdvanceActiveClipboardPort>) -> Self {
+        self.active_register = Some(register);
+        self
+    }
+
+    /// Advance the active-clipboard register for a freshly applied inbound
+    /// entry. The activation is attributed to the sending device, stamped
+    /// with the snapshot's observed time — the best available proxy on the
+    /// receiver for when the sender activated this content. Best-effort: a
+    /// register storage failure is logged and swallowed.
+    async fn advance_active_register(
+        &self,
+        content_hash: String,
+        entry_id: EntryId,
+        activated_by: uc_core::ids::DeviceId,
+        activated_at_ms: i64,
+    ) {
+        let Some(register) = self.active_register.as_ref() else {
+            return;
+        };
+        let state =
+            ActiveClipboardState::new(content_hash, entry_id, activated_at_ms, activated_by);
+        if let Err(e) = register.advance(&state).await {
+            warn!(
+                error = %e,
+                content_hash = %state.content_hash,
+                "active register: inbound advance failed (best-effort, ignored)"
+            );
+        }
     }
 
     fn emit_host_event(&self, event: HostEvent) {
@@ -305,6 +346,17 @@ impl ApplyInboundClipboardUseCase {
         // partial 不进 dedup,完整成功才记。
         if !is_partial {
             self.remember_recent_inbound(input.content_hash.clone(), visible_key, entry_id.clone());
+            // Advance the active-clipboard register at capture-commit (D1
+            // call-site: inbound apply). The OS write below is detached and
+            // best-effort, so the register is intentionally decoupled from it
+            // for the bulk content-sync path.
+            self.advance_active_register(
+                input.content_hash.clone(),
+                entry_id.clone(),
+                input.from_device,
+                snapshot_for_write.ts_ms,
+            )
+            .await;
             debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
             let write_port = Arc::clone(&self.write);
             let entry_id_for_write = entry_id.clone();

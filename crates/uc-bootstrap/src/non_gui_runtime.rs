@@ -209,11 +209,14 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
     ));
     let capture: Arc<dyn ApplyInboundCapture> = capture_uc;
     let write: Arc<dyn ApplyInboundWrite> = Arc::new(NoopInboundWrite);
-    Arc::new(ApplyInboundClipboardUseCase::new(
-        deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
-        capture,
-        write,
-    ))
+    Arc::new(
+        ApplyInboundClipboardUseCase::new(
+            deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
+            capture,
+            write,
+        )
+        .with_active_register(deps.clipboard.active_register.clone()),
+    )
 }
 
 /// `InboundWrite` 的 NoOp 实装。
@@ -404,6 +407,8 @@ pub fn build_app_facade_from_deps(
             payload_resolver: deps.clipboard.payload_resolver.clone(),
             blob_store: deps.storage.blob_store.clone(),
             clock: deps.system.clock.clone(),
+            device_identity: deps.device.device_identity.clone(),
+            active_register: deps.clipboard.active_register.clone(),
             write_coordinator: restore.write_coordinator,
             integration_mode: restore.integration_mode,
         }))

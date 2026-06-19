@@ -249,6 +249,9 @@ struct InfraLayer {
     representation_repo: Arc<dyn ClipboardRepresentationStore>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
 
+    // Cross-device active-clipboard LWW register (single-row table).
+    active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort>,
+
     // Membership repository (phase 4b PR-4 起成为唯一持久成员层).
     member_repo: Arc<dyn uc_core::MemberRepositoryPort>,
 
@@ -530,6 +533,13 @@ fn create_infra_layer(
     let selection_repo_impl = DieselClipboardSelectionRepository::new(Arc::clone(&db_executor));
     let selection_repo: Arc<dyn ClipboardSelectionRepositoryPort> = Arc::new(selection_repo_impl);
 
+    let active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort> =
+        Arc::new(
+            uc_infra::db::repositories::DieselActiveClipboardRegisterRepository::new(Arc::clone(
+                &db_executor,
+            )),
+        );
+
     // One Diesel adapter implements all five receiver-side projection intent
     // ports; coerce it into each so every consumer holds only its slice.
     let file_transfer_adapter =
@@ -576,6 +586,7 @@ fn create_infra_layer(
         entry_delivery_repo,
         representation_repo,
         selection_repo,
+        active_clipboard_register,
         member_repo,
         trusted_peer_repo,
         peer_addr_repo,
@@ -1235,6 +1246,7 @@ pub fn wire_dependencies(
             clipboard_change_origin,
             worker_tx,
             payload_resolver,
+            active_register: infra.active_clipboard_register,
         },
         security: SecurityPorts {
             current_profile: platform.current_profile,

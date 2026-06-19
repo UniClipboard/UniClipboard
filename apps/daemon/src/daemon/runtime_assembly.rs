@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use uc_application::clipboard_capture::CaptureClipboardUseCase;
 use uc_application::clipboard_write::ClipboardWriteCoordinator;
+use uc_application::clipboard_write::LocalActiveRegisterAdvancer;
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
     BlobTransferFacade, ClipboardCaptureFacade, ClipboardLiveIndexDeps, ClipboardLiveIndexFacade,
@@ -129,7 +130,8 @@ pub fn build_daemon_runtime_workers(
             Arc::clone(&input.clipboard_write_coordinator) as Arc<dyn ApplyInboundWrite>,
         )
         .with_blob_materializer(blob_materializer)
-        .with_host_event_emitter(input.host_event_bus),
+        .with_host_event_emitter(input.host_event_bus)
+        .with_active_register(input.deps.clipboard.active_register.clone()),
     );
     let inbound_clipboard_facade = Arc::new(InboundClipboardFacade::new(apply_inbound_uc.clone()));
     let clipboard_outbound_facade = Arc::new(ClipboardOutboundFacade::new(ClipboardOutboundDeps {
@@ -191,6 +193,11 @@ pub fn build_daemon_runtime_workers(
             clipboard_capture_facade,
             clipboard_live_index_facade,
             clipboard_outbound_facade.clone(),
+            LocalActiveRegisterAdvancer::new(
+                input.deps.clipboard.active_register.clone(),
+                input.deps.device.device_identity.clone(),
+                input.deps.system.clock.clone(),
+            ),
         ));
         Some(Arc::new(ClipboardWatcherWorker::new(
             local_clipboard,

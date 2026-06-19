@@ -15,6 +15,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, instrument, warn, Instrument};
 
+use uc_application::clipboard_write::LocalActiveRegisterAdvancer;
 use uc_application::facade::{
     ClipboardCaptureFacade, ClipboardLiveIndexFacade, ClipboardLiveIndexInput,
     ClipboardLiveIndexOutcome, ClipboardOutboundFacade, ClipboardOutboundInput,
@@ -72,9 +73,13 @@ pub struct DaemonClipboardChangeHandler {
     clipboard_capture: Arc<ClipboardCaptureFacade>,
     clipboard_live_index: Arc<ClipboardLiveIndexFacade>,
     clipboard_outbound: Arc<ClipboardOutboundFacade>,
+    /// Advances the cross-device active-clipboard register when a genuine
+    /// local capture makes its content the active OS clipboard state.
+    active_register: LocalActiveRegisterAdvancer,
 }
 
 impl DaemonClipboardChangeHandler {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         event_tx: broadcast::Sender<DaemonWsEvent>,
         clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
@@ -82,6 +87,7 @@ impl DaemonClipboardChangeHandler {
         clipboard_capture: Arc<ClipboardCaptureFacade>,
         clipboard_live_index: Arc<ClipboardLiveIndexFacade>,
         clipboard_outbound: Arc<ClipboardOutboundFacade>,
+        active_register: LocalActiveRegisterAdvancer,
     ) -> Self {
         Self {
             event_tx,
@@ -90,6 +96,7 @@ impl DaemonClipboardChangeHandler {
             clipboard_capture,
             clipboard_live_index,
             clipboard_outbound,
+            active_register,
         }
     }
 }
@@ -184,6 +191,17 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                 let entry_id = EntryId::from(captured.entry_id.as_str());
                 let deduplicated = captured.deduplicated;
                 debug!(entry_id = %entry_id, ?origin, deduplicated, "Daemon clipboard capture succeeded");
+
+                // A genuine local copy makes this content the active OS
+                // clipboard state — advance the cross-device register (the
+                // RemotePush echo and LocalRestore paths short-circuit before
+                // here, so this only fires for real local captures).
+                self.active_register
+                    .advance_local(
+                        outbound_snapshot.snapshot_hash().to_string(),
+                        entry_id.clone(),
+                    )
+                    .await;
 
                 let payload = ClipboardNewContentPayload {
                     entry_id: captured.entry_id,

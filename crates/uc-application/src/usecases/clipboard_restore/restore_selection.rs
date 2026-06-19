@@ -27,7 +27,9 @@ use uc_core::{
     },
 };
 
-use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
+use crate::clipboard_write::{
+    ClipboardWriteCoordinator, ClipboardWriteIntent, LocalActiveRegisterAdvancer,
+};
 use crate::usecases::clipboard_sync::snapshot_from_entry::{
     reconstruct_snapshot_from_entry, BuildSnapshotError,
 };
@@ -41,6 +43,11 @@ pub(crate) struct RestoreClipboardSelectionUseCase {
     payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     blob_store: Arc<dyn BlobReaderPort>,
     mode: ClipboardIntegrationMode,
+    /// Optional active-clipboard register hook. When wired, a successful
+    /// restore advances the cross-device register so the restored content
+    /// becomes the latest active clipboard state. `None` in tests / contexts
+    /// that don't track active state.
+    active_register: Option<LocalActiveRegisterAdvancer>,
 }
 
 impl RestoreClipboardSelectionUseCase {
@@ -64,7 +71,15 @@ impl RestoreClipboardSelectionUseCase {
             payload_resolver,
             blob_store,
             mode,
+            active_register: None,
         }
+    }
+
+    /// Wire the active-clipboard register advancer. When set, a successful
+    /// restore advances the cross-device register (best-effort).
+    pub(crate) fn with_active_register(mut self, advancer: LocalActiveRegisterAdvancer) -> Self {
+        self.active_register = Some(advancer);
+        self
     }
 
     pub(crate) async fn execute(&self, entry_id: &EntryId) -> Result<()> {
@@ -85,9 +100,17 @@ impl RestoreClipboardSelectionUseCase {
         )
         .await
         .map_err(map_build_snapshot_error)?;
+        // Capture the content identity before the snapshot is moved into the
+        // write boundary; the register advances only after the OS write
+        // succeeds, keeping "register advanced ⟺ OS write succeeded".
+        let content_hash = snapshot.snapshot_hash().to_string();
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
-            .await
+            .await?;
+        if let Some(advancer) = &self.active_register {
+            advancer.advance_local(content_hash, entry_id.clone()).await;
+        }
+        Ok(())
     }
 }
 

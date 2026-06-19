@@ -40,13 +40,17 @@ use uc_core::ports::pairing_invitation::{
 };
 use uc_core::ports::security::IdentityFingerprintFactoryPort;
 use uc_core::ports::{
-    ClipboardDispatchPort, ClipboardReceiverPort, ClockPort, ConnectionChannelPort,
-    DeviceIdentityPort, LocalIdentityError, PeerAddressRepositoryPort, PresencePort, SettingsPort,
+    ActiveClipboardReceiverPort, ClipboardDispatchPort, ClipboardReceiverPort, ClockPort,
+    ConnectionChannelPort, DeviceIdentityPort, LocalIdentityError, PeerAddressRepositoryPort,
+    PresencePort, SettingsPort,
 };
 
 use crate::pairing::{IrohPairingSessionAdapter, PAIRING_ALPN};
 use crate::rendezvous::{RendezvousClient, RendezvousPairingInvitationAdapter};
 
+use super::active_clipboard_receiver_adapter::{
+    IrohActiveClipboardReceiverAdapter, ACTIVE_CLIPBOARD_ALPN,
+};
 use super::addr_filter::{apply_addr_filter, enumerate_local_lan_v4};
 use super::blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
@@ -88,6 +92,17 @@ pub struct PairingHandlers {
 pub struct ClipboardHandlers {
     pub dispatch: Arc<dyn ClipboardDispatchPort>,
     pub receiver: Arc<dyn ClipboardReceiverPort>,
+}
+
+/// The active-clipboard state port produced by
+/// [`IrohNodeBuilder::install_active_clipboard`].
+///
+/// `receiver` exposes the broadcast of inbound active-clipboard state
+/// observations; its handler is registered under [`ACTIVE_CLIPBOARD_ALPN`] on
+/// the same `RouterBuilder` as every other transport. The outbound dispatch
+/// side rides a separate edit-site that comes online with its consumer.
+pub struct ActiveClipboardHandlers {
+    pub receiver: Arc<dyn ActiveClipboardReceiverPort>,
 }
 
 /// [`IrohNodeBuilder::install_blobs`] 产出的 blob port。
@@ -775,6 +790,39 @@ impl IrohNodeBuilder {
 
         ClipboardHandlers {
             dispatch,
+            receiver: Arc::new(receiver),
+        }
+    }
+
+    /// Install the active-clipboard state transport.
+    ///
+    /// * Registers [`IrohActiveClipboardReceiverHandler`] as the
+    ///   [`ACTIVE_CLIPBOARD_ALPN`] `ProtocolHandler`, an independent sibling
+    ///   of the bulk clipboard ALPN. Unknown peers are dropped at the
+    ///   identity boundary via `remote_id()` + fingerprint resolution.
+    /// * Returns the active-clipboard receiver port as a trait object — the
+    ///   broadcast of inbound LWW state observations.
+    ///
+    /// Must be called before [`spawn`](Self::spawn). Coexists with every
+    /// other `install_*` — all ALPNs share a single router.
+    ///
+    /// [`IrohActiveClipboardReceiverHandler`]: super::active_clipboard_receiver_adapter::IrohActiveClipboardReceiverHandler
+    pub fn install_active_clipboard(
+        &mut self,
+        member_repo: Arc<dyn MemberRepositoryPort>,
+        fingerprint_factory: Arc<dyn IdentityFingerprintFactoryPort>,
+    ) -> ActiveClipboardHandlers {
+        let receiver = IrohActiveClipboardReceiverAdapter::new(member_repo, fingerprint_factory);
+        let handler = receiver.handler();
+
+        let builder = self
+            .router_builder
+            .take()
+            .expect("router_builder missing — install_* called after spawn");
+        let builder = builder.accept(ACTIVE_CLIPBOARD_ALPN, handler);
+        self.router_builder = Some(builder);
+
+        ActiveClipboardHandlers {
             receiver: Arc::new(receiver),
         }
     }

@@ -164,7 +164,19 @@ impl ProtocolHandler for IrohActiveClipboardReceiverHandler {
             }
         };
 
-        // 4. Publish to subscribers. A `SendError` means no subscriber is
+        // 4. Decode the activator device id off the wire. `try_new` rejects
+        //    an over-long value instead of panicking the accept task — the
+        //    field is untrusted peer input, so a malformed id drops the
+        //    frame like any other codec failure.
+        let Some(activated_by) = DeviceId::try_new(&msg.activated_by) else {
+            warn!(
+                peer = %peer_device_id.as_str(),
+                "active-clipboard receiver: activated_by exceeds device id bound; dropping frame"
+            );
+            return Ok(());
+        };
+
+        // 5. Publish to subscribers. A `SendError` means no subscriber is
         //    attached; dropping the observation is acceptable — the register
         //    converges on the next observation a peer reports.
         let inbound = InboundActiveClipboardState {
@@ -172,7 +184,7 @@ impl ProtocolHandler for IrohActiveClipboardReceiverHandler {
             content_hash: msg.content_hash,
             sender_entry_id: msg.entry_id,
             activated_at_ms: msg.activated_at_ms,
-            activated_by: DeviceId::new(msg.activated_by),
+            activated_by,
         };
         if self.state.event_tx.send(inbound).is_err() {
             debug!(
@@ -461,6 +473,37 @@ mod tests {
         let mut inbound_rx = harness.inbound_rx;
         let fast_poll = tokio::time::timeout(Duration::from_millis(300), inbound_rx.recv()).await;
         assert!(fast_poll.is_err(), "bad magic must not publish");
+
+        harness.receiver_router.shutdown().await.ok();
+    }
+
+    /// Verdict 4 — a well-formed frame whose `activated_by` exceeds the
+    /// device-id bound is dropped at the trust boundary instead of panicking
+    /// the accept task, and never reaches the broadcast stream.
+    #[tokio::test]
+    async fn drops_overlong_activated_by_without_publishing() {
+        use uc_core::ids::device_id::DEVICE_ID_MAX_BYTES;
+
+        let sender_seed = [0x77u8; 32];
+        let receiver_seed = [0x88u8; 32];
+
+        let member_repo: Arc<dyn MemberRepositoryPort> = Arc::new(MemMemberRepo::default());
+        let sender_member = make_member(sender_seed, "sender-a");
+        member_repo.save(&sender_member).await.unwrap();
+
+        let harness = spawn_receiver(receiver_seed, Arc::clone(&member_repo)).await;
+        let receiver_addr = harness.receiver_endpoint.addr();
+
+        let mut msg = sample_message();
+        msg.activated_by = "x".repeat(DEVICE_ID_MAX_BYTES + 1);
+        send_one_frame(sender_seed, receiver_addr, &msg).await;
+
+        let mut inbound_rx = harness.inbound_rx;
+        let fast_poll = tokio::time::timeout(Duration::from_millis(300), inbound_rx.recv()).await;
+        assert!(
+            fast_poll.is_err(),
+            "over-long activated_by must not publish"
+        );
 
         harness.receiver_router.shutdown().await.ok();
     }

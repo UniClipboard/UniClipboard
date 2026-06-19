@@ -20,20 +20,28 @@
 //!    The OS write is detached; only its success advances the register and
 //!    triggers the same-key re-broadcast, realizing the core invariant
 //!    "register advanced ⟺ OS write succeeded ⟺ re-broadcast".
-//! 6. **Content missing locally → log + return.** Pulling the content from the
-//!    sender is PR8; this branch leaves the register untouched.
+//! 6. **Content missing locally → pull from the sender (PR8).** Request the
+//!    transfer envelope from the reporting peer (10s deadline), decrypt +
+//!    store it, then fall through to the same OS-write → advance →
+//!    re-broadcast tail. Any pull failure (timeout / offline / locked / decode
+//!    / store) is a logged drop: no register advance, no re-broadcast, no
+//!    retry. The pull/store seam is optional — when unwired this branch logs
+//!    and returns, leaving the register untouched.
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use thiserror::Error;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, instrument, warn};
 
 use uc_core::clipboard::{ActiveClipboardState, ClipboardContentCategorySet};
-use uc_core::ids::SpaceId;
+use uc_core::ids::{DeviceId, EntryId, SpaceId};
 use uc_core::ports::clipboard::{
-    ActiveClipboardDispatchPort, ActiveClipboardReceiverPort, AdvanceActiveClipboardPort,
-    FindEntryIdBySnapshotHashPort, InboundActiveClipboardState, LoadActiveClipboardPort,
+    ActiveClipboardDispatchPort, ActiveClipboardPullClientError, ActiveClipboardPullClientPort,
+    ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, FindEntryIdBySnapshotHashPort,
+    InboundActiveClipboardState, LoadActiveClipboardPort,
 };
 use uc_core::ports::space::IsSpaceUnlockedPort;
 use uc_core::ports::{ClockPort, PeerAddressRepositoryPort};
@@ -55,6 +63,39 @@ const DEFAULT_SPACE_ID: &str = "space";
 /// state stamped wildly in the future would otherwise win every LWW
 /// comparison and pin the register, suppressing real later activations.
 const FUTURE_TIMESTAMP_TOLERANCE_MS: i64 = 300_000; // 300s
+
+/// Failure surface for storing a pulled transfer envelope locally.
+#[derive(Debug, Error)]
+pub(crate) enum InboundPulledContentStoreError {
+    /// The envelope could not be decrypted (e.g. the session locked between
+    /// the pull and the store, or the bytes were malformed / tampered).
+    #[error("pulled content decrypt failed: {0}")]
+    Decrypt(String),
+    /// The decrypted envelope could not be decoded / persisted.
+    #[error("pulled content store failed: {0}")]
+    Store(String),
+}
+
+/// Decrypt + persist a pulled transfer envelope, returning the local entry id.
+///
+/// This is the inbound store half of the pull path: the requester has the
+/// transfer-encrypted envelope a peer served and needs it materialized into a
+/// local entry (decrypt → decode V3 → materialize blobs → persist) so the
+/// active-clipboard convergence tail can resolve + write it. The store does
+/// **not** advance the active-clipboard register or re-broadcast — that stays
+/// with the convergence tail, which couples the advance to OS-write success.
+#[async_trait]
+pub(crate) trait InboundPulledContentStore: Send + Sync {
+    /// Decrypt `transfer_envelope` (the bytes a peer served), persist the
+    /// content as an entry attributed to `from_device`, and return its local
+    /// entry id. `content_hash` is the cross-device identity used for dedup.
+    async fn store(
+        &self,
+        from_device: &DeviceId,
+        content_hash: &str,
+        transfer_envelope: Vec<u8>,
+    ) -> Result<EntryId, InboundPulledContentStoreError>;
+}
 
 /// Handle owning the spawned inbound active-clipboard loop. Drop or
 /// `abort()` to stop it; the loop also exits on its own when the receiver
@@ -92,6 +133,13 @@ pub(crate) struct ApplyInboundActiveClipboardStateUseCase {
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     send_gate: MemberSendGate,
     clock: Arc<dyn ClockPort>,
+    /// On-demand pull of content this device observed but does not hold (D6).
+    /// `None` when the pull subsystem is unwired — the "content missing"
+    /// branch then logs and returns without converging.
+    pull_client: Option<Arc<dyn ActiveClipboardPullClientPort>>,
+    /// Decrypts + persists a pulled transfer envelope. Paired with
+    /// `pull_client`; both are wired together or not at all.
+    pulled_content_store: Option<Arc<dyn InboundPulledContentStore>>,
 }
 
 impl ApplyInboundActiveClipboardStateUseCase {
@@ -122,7 +170,24 @@ impl ApplyInboundActiveClipboardStateUseCase {
             peer_addr_repo,
             send_gate: MemberSendGate::new(member_repo),
             clock,
+            pull_client: None,
+            pulled_content_store: None,
         }
+    }
+
+    /// Wire the on-demand pull subsystem (issue #1017 PR8). When set, the
+    /// "content missing locally" branch pulls the transfer envelope from the
+    /// reporting peer (10s deadline), stores it, and converges; without it
+    /// that branch logs and returns. The two ports are wired together — a pull
+    /// is useless without the store and vice versa.
+    pub(crate) fn with_pull(
+        mut self,
+        pull_client: Arc<dyn ActiveClipboardPullClientPort>,
+        pulled_content_store: Arc<dyn InboundPulledContentStore>,
+    ) -> Self {
+        self.pull_client = Some(pull_client);
+        self.pulled_content_store = Some(pulled_content_store);
+        self
     }
 
     /// Spawn the inbound loop. Takes `Arc<Self>` so the spawned task owns the
@@ -238,17 +303,15 @@ impl ApplyInboundActiveClipboardStateUseCase {
         {
             Ok(Some(id)) => id,
             Ok(None) => {
-                // Content missing locally. Pulling it from the sender is PR8
-                // (issue #1017 §6); until then leave the register untouched
-                // so a later observation that *does* carry resolvable content
-                // can still converge.
-                //
-                // TODO(PR8): pull the content from `peer` (10s timeout, V3
-                // decrypt→re-encrypt; blob sub-path re-signs the ticket),
-                // then fall through to the OS-write + advance + re-broadcast
-                // branch below.
-                info!("active state inbound: content not held locally; deferring to pull (PR8)");
-                return;
+                // 6. Content missing locally → pull it from the reporting peer
+                //    (D3/D4/D6). On success this stores the entry and falls
+                //    through to the same convergence tail. Any pull/store
+                //    failure leaves the register untouched (no advance, no
+                //    re-broadcast, no retry).
+                match self.pull_and_store(&peer, &incoming.content_hash).await {
+                    Some(id) => id,
+                    None => return,
+                }
             }
             Err(err) => {
                 warn!(error = %err, "active state inbound dropped: entry lookup failed");
@@ -256,6 +319,70 @@ impl ApplyInboundActiveClipboardStateUseCase {
             }
         };
 
+        self.converge_with_entry(&peer, &incoming, local_entry_id)
+            .await;
+    }
+
+    /// Pull the content for `content_hash` from `peer` and store it locally,
+    /// returning the stored entry id. Returns `None` on any failure (pull
+    /// subsystem unwired, peer unreachable / timed out, holder locked or
+    /// without the content, decrypt / store failure) — the caller must then
+    /// leave the register untouched (no advance, no re-broadcast, no retry,
+    /// per D6).
+    async fn pull_and_store(&self, peer: &DeviceId, content_hash: &str) -> Option<EntryId> {
+        let (Some(pull_client), Some(store)) = (
+            self.pull_client.as_ref(),
+            self.pulled_content_store.as_ref(),
+        ) else {
+            info!("active state inbound: content not held locally and pull subsystem unwired; dropping");
+            return None;
+        };
+
+        // Pull the transfer envelope (the client bounds this with the 10s pull
+        // deadline). Every failure mode is a logged drop.
+        let envelope = match pull_client.pull(peer, content_hash).await {
+            Ok(bytes) => bytes,
+            Err(ActiveClipboardPullClientError::Unreachable) => {
+                debug!(
+                    "active state inbound: pull failed (peer unreachable / timed out); dropping"
+                );
+                return None;
+            }
+            Err(ActiveClipboardPullClientError::NotAvailable) => {
+                debug!("active state inbound: pull failed (peer cannot serve content); dropping");
+                return None;
+            }
+            Err(ActiveClipboardPullClientError::Io(reason)) => {
+                warn!(reason, "active state inbound: pull failed (io); dropping");
+                return None;
+            }
+        };
+
+        // Decrypt + persist. A store failure (decrypt / decode / capture)
+        // leaves the register untouched.
+        match store.store(peer, content_hash, envelope).await {
+            Ok(entry_id) => {
+                info!(entry_id = %entry_id, "active state inbound: pulled content stored");
+                Some(entry_id)
+            }
+            Err(err) => {
+                warn!(error = %err, "active state inbound: pulled content store failed; dropping");
+                None
+            }
+        }
+    }
+
+    /// Reconstruct the resolved entry, apply the content-type receive gate,
+    /// and schedule the detached OS write whose success advances the register
+    /// and re-broadcasts the same-key state (the core invariant). Shared by
+    /// the "content present locally" and "content pulled" paths so both
+    /// converge identically.
+    async fn converge_with_entry(
+        &self,
+        peer: &DeviceId,
+        incoming: &ActiveClipboardState,
+        local_entry_id: EntryId,
+    ) {
         // Reconstruct the snapshot for the resolved entry. A reconstruction
         // failure (payload lost / locked / blob unavailable) means we cannot
         // honour the activation — drop without advancing.
@@ -272,17 +399,17 @@ impl ApplyInboundActiveClipboardStateUseCase {
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         if !self
             .receive_gate
-            .is_receive_category_allowed(&peer, &categories)
+            .is_receive_category_allowed(peer, &categories)
             .await
         {
             return;
         }
 
-        // 6. Schedule the detached OS write. The register advance + the
-        //    re-broadcast live in the write task's success branch so they
-        //    fire iff the OS write succeeded (core invariant). The write is
-        //    detached because OS clipboard writes can block 1–3s on some
-        //    platforms; coupling them inline would stall the inbound loop.
+        // Schedule the detached OS write. The register advance + the
+        // re-broadcast live in the write task's success branch so they fire
+        // iff the OS write succeeded (core invariant). The write is detached
+        // because OS clipboard writes can block 1–3s on some platforms;
+        // coupling them inline would stall the inbound loop.
         let advance_state = ActiveClipboardState::new(
             incoming.content_hash.clone(),
             local_entry_id.clone(),
@@ -742,5 +869,386 @@ mod tests {
         h.uc.handle_one(inbound("blake3v1:aa", 1_000, "dev-x"))
             .await;
         assert_inert(&h);
+    }
+
+    // ========================================================================
+    // Pull path (issue #1017 PR8) — content missing locally → pull from peer
+    // ========================================================================
+
+    use std::sync::Mutex;
+
+    /// Entry lookup that always reports "content not held locally", driving the
+    /// inbound flow into the pull branch.
+    struct EntryLookupAlwaysMissing;
+    #[async_trait]
+    impl FindEntryIdBySnapshotHashPort for EntryLookupAlwaysMissing {
+        async fn find_entry_id_by_snapshot_hash(
+            &self,
+            _hash: &str,
+        ) -> Result<Option<EntryId>, ClipboardRepositoryError> {
+            Ok(None)
+        }
+    }
+
+    /// Pull client spy with a canned result. Records the call so a test can
+    /// assert the pull was (or was not) attempted.
+    struct PullClientSpy {
+        result: Mutex<Option<Result<Vec<u8>, ActiveClipboardPullClientError>>>,
+        calls: AtomicUsize,
+    }
+    impl PullClientSpy {
+        fn new(result: Result<Vec<u8>, ActiveClipboardPullClientError>) -> Arc<Self> {
+            Arc::new(Self {
+                result: Mutex::new(Some(result)),
+                calls: AtomicUsize::new(0),
+            })
+        }
+    }
+    #[async_trait]
+    impl ActiveClipboardPullClientPort for PullClientSpy {
+        async fn pull(
+            &self,
+            _peer: &DeviceId,
+            _content_hash: &str,
+        ) -> Result<Vec<u8>, ActiveClipboardPullClientError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.result
+                .lock()
+                .unwrap()
+                .take()
+                .expect("pull called more than once")
+        }
+    }
+
+    /// Store spy returning a fixed entry id; records the envelope it received.
+    struct StoreSpy {
+        entry_id: EntryId,
+        seen_envelope: Mutex<Option<Vec<u8>>>,
+    }
+    #[async_trait]
+    impl InboundPulledContentStore for StoreSpy {
+        async fn store(
+            &self,
+            _from_device: &DeviceId,
+            _content_hash: &str,
+            transfer_envelope: Vec<u8>,
+        ) -> Result<EntryId, InboundPulledContentStoreError> {
+            *self.seen_envelope.lock().unwrap() = Some(transfer_envelope);
+            Ok(self.entry_id.clone())
+        }
+    }
+
+    /// Store that must never be reached (pull failed before it).
+    struct StoreNeverCalled;
+    #[async_trait]
+    impl InboundPulledContentStore for StoreNeverCalled {
+        async fn store(
+            &self,
+            _from_device: &DeviceId,
+            _content_hash: &str,
+            _transfer_envelope: Vec<u8>,
+        ) -> Result<EntryId, InboundPulledContentStoreError> {
+            panic!("store reached after a pull failure");
+        }
+    }
+
+    /// System clipboard whose `write_snapshot` succeeds — used by the pull
+    /// happy path so the convergence tail can advance + re-broadcast.
+    struct OkWriteClipboard;
+    impl SystemClipboardPort for OkWriteClipboard {
+        fn read_snapshot(&self) -> anyhow::Result<SystemClipboardSnapshot> {
+            unreachable!("read_snapshot must not be called")
+        }
+        fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Reconstruct ports backing a single inline text entry, so the pull happy
+    /// path can reconstruct the stored content and converge.
+    struct TextEntry {
+        entry_id: EntryId,
+        event_id: EventId,
+        rep_id: RepresentationId,
+        bytes: Vec<u8>,
+    }
+    #[async_trait]
+    impl GetClipboardEntryPort for TextEntry {
+        async fn get_entry(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError> {
+            Ok(Some(ClipboardEntry::new(
+                self.entry_id.clone(),
+                self.event_id.clone(),
+                0,
+                None,
+                0,
+            )))
+        }
+    }
+    #[async_trait]
+    impl ClipboardSelectionRepositoryPort for TextEntry {
+        async fn get_selection(
+            &self,
+            _entry_id: &EntryId,
+        ) -> anyhow::Result<Option<ClipboardSelectionDecision>> {
+            use uc_core::clipboard::{ClipboardSelection, SelectionPolicyVersion};
+            Ok(Some(ClipboardSelectionDecision::new(
+                self.entry_id.clone(),
+                ClipboardSelection {
+                    primary_rep_id: self.rep_id.clone(),
+                    secondary_rep_ids: Vec::new(),
+                    preview_rep_id: self.rep_id.clone(),
+                    paste_rep_id: self.rep_id.clone(),
+                    policy_version: SelectionPolicyVersion::V1,
+                },
+            )))
+        }
+        async fn delete_selection(&self, _entry_id: &EntryId) -> anyhow::Result<()> {
+            unreachable!()
+        }
+    }
+    #[async_trait]
+    impl GetRepresentationPort for TextEntry {
+        async fn get_representation(
+            &self,
+            _event_id: &EventId,
+            representation_id: &RepresentationId,
+        ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
+            use uc_core::clipboard::MimeType;
+            use uc_core::ids::FormatId;
+            if *representation_id != self.rep_id {
+                return Ok(None);
+            }
+            Ok(Some(PersistedClipboardRepresentation::new(
+                self.rep_id.clone(),
+                FormatId::from("public.utf8-plain-text"),
+                Some(MimeType("text/plain".to_string())),
+                self.bytes.len() as i64,
+                Some(self.bytes.clone()),
+                None,
+            )))
+        }
+    }
+    #[async_trait]
+    impl UpdateRepresentationProcessingResultPort for TextEntry {
+        async fn update_processing_result(
+            &self,
+            _rep_id: &RepresentationId,
+            _expected_states: &[PayloadAvailability],
+            _blob_id: Option<&BlobId>,
+            _new_state: PayloadAvailability,
+            _last_error: Option<&str>,
+        ) -> Result<ProcessingUpdateOutcome, ClipboardRepositoryError> {
+            Ok(ProcessingUpdateOutcome::StateMismatch)
+        }
+    }
+    #[async_trait]
+    impl ClipboardPayloadResolverPort for TextEntry {
+        async fn resolve(
+            &self,
+            rep: &PersistedClipboardRepresentation,
+        ) -> Result<ResolvedClipboardPayload, PayloadResolveError> {
+            Ok(ResolvedClipboardPayload::Inline {
+                mime: rep
+                    .mime_type
+                    .as_ref()
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
+                bytes: self.bytes.clone(),
+            })
+        }
+    }
+    #[async_trait]
+    impl BlobReaderPort for TextEntry {
+        async fn get(&self, _blob_id: &BlobId) -> anyhow::Result<Vec<u8>> {
+            unreachable!()
+        }
+    }
+
+    /// Peer-address repo with a single reachable peer, so the convergence
+    /// tail's fan-out has a target to re-broadcast to.
+    struct OnePeerAddrRepo(String);
+    #[async_trait]
+    impl PeerAddressRepositoryPort for OnePeerAddrRepo {
+        async fn get(
+            &self,
+            _device: &DeviceId,
+        ) -> Result<Option<PeerAddressRecord>, PeerAddressError> {
+            Ok(None)
+        }
+        async fn upsert(&self, _record: &PeerAddressRecord) -> Result<(), PeerAddressError> {
+            Ok(())
+        }
+        async fn list(&self) -> Result<Vec<PeerAddressRecord>, PeerAddressError> {
+            Ok(vec![PeerAddressRecord {
+                device_id: DeviceId::new(&self.0),
+                addr_blob: vec![0xAA; 8],
+                observed_at: Utc::now(),
+            }])
+        }
+        async fn remove(&self, _device: &DeviceId) -> Result<(), PeerAddressError> {
+            Ok(())
+        }
+    }
+
+    /// Build a UC whose entry lookup always misses (driving the pull branch),
+    /// wired with the given pull client + store. The reconstruct + coordinator
+    /// are real enough that a successful store can converge. `peer_addr_repo`
+    /// lets a caller supply a re-broadcast target.
+    #[allow(clippy::too_many_arguments)]
+    fn pull_harness_with_peers(
+        pull_client: Option<Arc<dyn ActiveClipboardPullClientPort>>,
+        store: Option<Arc<dyn InboundPulledContentStore>>,
+        stored_entry_id: EntryId,
+        peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    ) -> Harness {
+        let advance = Arc::new(AdvanceSpy::default());
+        let dispatch = Arc::new(DispatchSpy::default());
+        let text = Arc::new(TextEntry {
+            entry_id: stored_entry_id.clone(),
+            event_id: EventId::from("evt-pull"),
+            rep_id: RepresentationId::from("rep-pull"),
+            bytes: b"pulled text".to_vec(),
+        });
+        let reconstructor = SnapshotReconstructor::new(
+            text.clone(),
+            text.clone(),
+            text.clone(),
+            text.clone(),
+            text.clone(),
+            text.clone(),
+        );
+        let coordinator = Arc::new(ClipboardWriteCoordinator::new(
+            Arc::new(OkWriteClipboard),
+            Arc::new(StubOrigin),
+        ));
+        let mut uc = ApplyInboundActiveClipboardStateUseCase::new(
+            Arc::new(NoopReceiver),
+            Arc::new(FixedUnlocked(true)),
+            Arc::new(FixedRegister(None)),
+            Arc::clone(&advance) as Arc<dyn AdvanceActiveClipboardPort>,
+            Arc::new(MemberRepoStub {
+                receive_enabled: true,
+            }),
+            Arc::new(EntryLookupAlwaysMissing),
+            reconstructor,
+            coordinator,
+            Arc::clone(&dispatch) as Arc<dyn ActiveClipboardDispatchPort>,
+            peer_addr_repo,
+            Arc::new(FixedClock(1_000)),
+        );
+        if let (Some(pull_client), Some(store)) = (pull_client, store) {
+            uc = uc.with_pull(pull_client, store);
+        }
+        Harness {
+            advance,
+            dispatch,
+            uc,
+        }
+    }
+
+    /// Convenience wrapper: no re-broadcast target (empty peer roster).
+    fn pull_harness(
+        pull_client: Option<Arc<dyn ActiveClipboardPullClientPort>>,
+        store: Option<Arc<dyn InboundPulledContentStore>>,
+        stored_entry_id: EntryId,
+    ) -> Harness {
+        pull_harness_with_peers(
+            pull_client,
+            store,
+            stored_entry_id,
+            Arc::new(EmptyPeerAddrRepo),
+        )
+    }
+
+    /// Poll until `advance` is observed (the convergence tail runs detached).
+    async fn wait_for_advance(advance: &AdvanceSpy) -> bool {
+        for _ in 0..200 {
+            if advance.calls.load(Ordering::SeqCst) > 0 {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        false
+    }
+
+    /// Pull subsystem unwired → the "content missing" branch logs + returns;
+    /// nothing converges.
+    #[tokio::test]
+    async fn missing_content_without_pull_subsystem_is_inert() {
+        let h = pull_harness(None, None, EntryId::new());
+        h.uc.handle_one(inbound("blake3v1:aa", 1_000, "dev-x"))
+            .await;
+        // No async convergence is scheduled on this path, so a direct inert
+        // assertion holds.
+        assert_inert(&h);
+    }
+
+    /// Pull fails (peer unreachable / timed out) → no store, no advance, no
+    /// re-broadcast, no retry.
+    #[tokio::test]
+    async fn pull_failure_does_not_advance_or_broadcast() {
+        let pull_client = PullClientSpy::new(Err(ActiveClipboardPullClientError::Unreachable));
+        let h = pull_harness(
+            Some(Arc::clone(&pull_client) as _),
+            Some(Arc::new(StoreNeverCalled)),
+            EntryId::new(),
+        );
+        h.uc.handle_one(inbound("blake3v1:aa", 1_000, "dev-x"))
+            .await;
+        // Give any (erroneously) spawned convergence task a chance to run.
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        assert_eq!(
+            pull_client.calls.load(Ordering::SeqCst),
+            1,
+            "pull must be attempted exactly once (no retry)"
+        );
+        assert_inert(&h);
+    }
+
+    /// Pull succeeds → the envelope is stored, then the convergence tail writes
+    /// OS, advances the register, and re-broadcasts the same-key state to a
+    /// send-allowed peer.
+    #[tokio::test]
+    async fn pull_success_stores_then_advances_and_rebroadcasts() {
+        let stored_entry_id = EntryId::from("entry-pulled");
+        let pull_client = PullClientSpy::new(Ok(b"transfer-envelope".to_vec()));
+        let store = Arc::new(StoreSpy {
+            entry_id: stored_entry_id.clone(),
+            seen_envelope: Mutex::new(None),
+        });
+        // A reachable peer distinct from the activator → fan-out re-broadcasts.
+        let h = pull_harness_with_peers(
+            Some(Arc::clone(&pull_client) as _),
+            Some(Arc::clone(&store) as _),
+            stored_entry_id,
+            Arc::new(OnePeerAddrRepo("peer-rebroadcast".to_string())),
+        );
+        h.uc.handle_one(inbound("blake3v1:aa", 1_000, "dev-x"))
+            .await;
+
+        assert!(
+            wait_for_advance(&h.advance).await,
+            "register must advance after a successful pull + store + OS write"
+        );
+        assert_eq!(
+            pull_client.calls.load(Ordering::SeqCst),
+            1,
+            "pull attempted once"
+        );
+        assert_eq!(
+            store.seen_envelope.lock().unwrap().as_deref(),
+            Some(b"transfer-envelope".as_slice()),
+            "store must receive the pulled transfer envelope"
+        );
+        // The same-key re-broadcast fires through the shared fan-out to the
+        // (send-allowed) peer — the core invariant's third clause.
+        assert_eq!(
+            h.dispatch.calls.load(Ordering::SeqCst),
+            1,
+            "converged state must be re-broadcast to the allowed peer"
+        );
     }
 }

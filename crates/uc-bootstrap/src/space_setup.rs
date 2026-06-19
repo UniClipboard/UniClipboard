@@ -43,14 +43,20 @@ use tracing::debug;
 /// 最终状态,不会因为正好落在 cooldown 窗口里被丢掉。
 const TRANSLATOR_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(200);
 
+use uc_application::clipboard_capture::CaptureClipboardUseCase;
 use uc_application::facade::{
-    ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle,
-    ActiveClipboardPeerOnlineResyncHandle, ActiveClipboardRestoreBroadcastHandle, BlobTransferDeps,
+    build_active_clipboard_pull_serve_port, ActiveClipboardDeps, ActiveClipboardFacade,
+    ActiveClipboardHandle, ActiveClipboardPeerOnlineResyncHandle,
+    ActiveClipboardPullServeFacadeDeps, ActiveClipboardRestoreBroadcastHandle, BlobTransferDeps,
     BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent, HostEventBus,
-    IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade,
-    TransferHostEvent,
+    InboundClipboardApplyPort, IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps,
+    SpaceSetupFacade, TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
+use uc_application::{
+    ApplyInboundClipboardUseCase, FileCacheBlobMaterializer, InboundCapture as ApplyInboundCapture,
+    InboundWrite as ApplyInboundWrite,
+};
 use uc_core::file_transfer::{
     FileTransferCancellationReason, FileTransferDirection, OutboundProgressStatus,
 };
@@ -62,8 +68,9 @@ use uc_core::ports::{
 };
 use uc_infra::network::iroh::transfer_progress_adapter::InboundProgressEvent;
 use uc_infra::network::iroh::{
-    ActiveClipboardHandlers, BlobHandlers, ClipboardHandlers, IrohIdentityStore, IrohNode,
-    IrohNodeBuilder, IrohNodeError, TransferProgressHandlers, IDENTITY_STORE_KEY,
+    ActiveClipboardHandlers, ActiveClipboardPullHandlers, BlobHandlers, ClipboardHandlers,
+    IrohIdentityStore, IrohNode, IrohNodeBuilder, IrohNodeError, TransferProgressHandlers,
+    IDENTITY_STORE_KEY,
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
@@ -297,6 +304,21 @@ fn spawn_outbound_progress_translator(
     })
 }
 
+/// No-op `InboundWrite` for the active-clipboard pull store path (issue #1017
+/// PR8). The store only needs to persist a pulled entry; the active-clipboard
+/// convergence tail (`spawn_write_then_converge`) does the authoritative OS
+/// write whose success couples the register advance + re-broadcast. Doing an
+/// OS write here too would be a redundant best-effort write before the real
+/// one, so this returns `Ok(())` without touching the OS clipboard.
+struct NoopPullStoreWrite;
+
+#[async_trait::async_trait]
+impl ApplyInboundWrite for NoopPullStoreWrite {
+    async fn write(&self, _snapshot: uc_core::SystemClipboardSnapshot) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
 /// Failures during Slice 1 assembly. Bootstrap callers surface these as
 /// fatal startup errors — there is no useful retry here.
 #[derive(Debug, thiserror::Error)]
@@ -443,6 +465,59 @@ pub async fn build_space_setup_assembly(
     let BlobHandlers { blob_transfer } = builder
         .install_blobs(wired.iroh_blob_store_dir.clone())
         .await?;
+
+    // Build the blob transfer facade now (before `spawn()`) so the
+    // active-clipboard pull serve port can reuse it: the serve side publishes
+    // large/image reps + free-standing files through it, re-issuing tickets
+    // pinned to this device (D3). All of its deps are already available.
+    let blob = Arc::new(BlobTransferFacade::new(BlobTransferDeps {
+        hash: Arc::clone(&deps.system.hash),
+        blob_transfer: Arc::clone(&blob_transfer),
+        blob_reference: Arc::clone(&wired.blob_reference_repo),
+        // 共享同一根 host_event_bus —— daemon bootstrap 注册自己的 WS
+        // emitter 之后, fetch_blob 自动开始向前端 fan-out progress 事件;
+        // CLI 装配走同一 bus 但只挂着 logging emitter, 事件被静默打 log,
+        // 不影响行为。状态切换(transferring / completed / failed)走
+        // file_transfer lifecycle, 由 `FileTransferHostEventPublisher`
+        // 统一发出。
+        host_event_emitter: Some(Arc::clone(&wired.host_event_bus)),
+        // 反向进度上报端口:接收端 fetch 进度通过新 ALPN 推回 sender。
+        outbound_progress_reporter: Some(outbound_progress_reporter),
+        // file_transfer lifecycle facade —— iroh 路径每次 fetch 通过它落
+        // `Started` / `Completed` / `Failed` 事件,让 file_transfer 表的
+        // 状态投影与 sweep / reconcile workers 真正发挥作用。
+        file_transfer: Some(Arc::clone(&wired.file_transfer_facade)),
+    }));
+
+    // Install the active-clipboard pull ALPN (0xC2, issue #1017 PR8) as a
+    // further independent sibling, before `spawn()`. The serve port reuses the
+    // resend crypto chain (reconstruct → publish blobs re-signing self-pinned
+    // tickets, D3 → encode V3 → encrypt, D4); the returned client port drives
+    // the inbound seam's on-demand pull.
+    let active_clipboard_pull_serve =
+        build_active_clipboard_pull_serve_port(ActiveClipboardPullServeFacadeDeps {
+            entry_lookup: Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
+            settings: Arc::clone(&deps.settings),
+            transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
+            blob_publisher: Arc::clone(&blob),
+            entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
+            selection_repo: Arc::clone(&deps.clipboard.selection_repo),
+            representation_repo: Arc::clone(&deps.clipboard.representation_ports.get),
+            rep_processing_repo: Arc::clone(
+                &deps.clipboard.representation_ports.update_processing_result,
+            ),
+            payload_resolver: Arc::clone(&deps.clipboard.payload_resolver),
+            blob_store: Arc::clone(&deps.storage.blob_store),
+        });
+    let ActiveClipboardPullHandlers {
+        client: active_clipboard_pull_client,
+    } = builder.install_active_clipboard_pull(
+        Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&deps.device.member_repo),
+        Arc::clone(&deps.security.fingerprint),
+        active_clipboard_pull_serve,
+    );
+
     let iroh_node = builder.spawn();
 
     // Translator worker:从 sender 端的反向通道收 InboundProgressEvent,
@@ -544,24 +619,41 @@ pub async fn build_space_setup_assembly(
         host_event_bus: Arc::clone(&wired.host_event_bus),
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
-    let blob = Arc::new(BlobTransferFacade::new(BlobTransferDeps {
-        hash: Arc::clone(&deps.system.hash),
-        blob_transfer: Arc::clone(&blob_transfer),
-        blob_reference: Arc::clone(&wired.blob_reference_repo),
-        // 共享同一根 host_event_bus —— daemon bootstrap 注册自己的 WS
-        // emitter 之后, fetch_blob 自动开始向前端 fan-out progress 事件;
-        // CLI 装配走同一 bus 但只挂着 logging emitter, 事件被静默打 log,
-        // 不影响行为。状态切换(transferring / completed / failed)走
-        // file_transfer lifecycle, 由 `FileTransferHostEventPublisher`
-        // 统一发出。
-        host_event_emitter: Some(Arc::clone(&wired.host_event_bus)),
-        // 反向进度上报端口:接收端 fetch 进度通过新 ALPN 推回 sender。
-        outbound_progress_reporter: Some(outbound_progress_reporter),
-        // file_transfer lifecycle facade —— iroh 路径每次 fetch 通过它落
-        // `Started` / `Completed` / `Failed` 事件,让 file_transfer 表的
-        // 状态投影与 sweep / reconcile workers 真正发挥作用。
-        file_transfer: Some(Arc::clone(&wired.file_transfer_facade)),
-    }));
+
+    // Store-only inbound apply path for pulled content (issue #1017 PR8). It
+    // reuses the same inbound pipeline the bulk 0xC1 path uses (decode V3 →
+    // materialize blobs → capture) but **without** `with_active_register`: the
+    // active-clipboard convergence tail owns the register advance (coupled to
+    // OS-write success), so a capture-commit advance here would race it with a
+    // newer reconstruct timestamp and starve the correct same-key advance.
+    let pull_store_capture = Arc::new(CaptureClipboardUseCase::new(
+        Arc::clone(&deps.clipboard.entry_ports.save),
+        Arc::clone(&deps.clipboard.entry_ports.touch),
+        Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
+        Arc::clone(&deps.clipboard.clipboard_event_repo),
+        Arc::clone(&deps.clipboard.representation_policy),
+        Arc::clone(&deps.clipboard.representation_normalizer),
+        Arc::clone(&deps.device.device_identity),
+        Arc::clone(&deps.clipboard.representation_cache),
+        Arc::clone(&deps.clipboard.spool_queue),
+        Arc::clone(&deps.storage.blob_writer),
+        Arc::clone(&deps.analytics),
+    ));
+    let pull_store_materializer = Arc::new(FileCacheBlobMaterializer::new(
+        blob.clone() as Arc<dyn uc_application::InboundBlobFetcher>,
+        wired.file_cache_dir.clone(),
+    ));
+    let pull_store_apply: Arc<dyn InboundClipboardApplyPort> = Arc::new(
+        ApplyInboundClipboardUseCase::new(
+            Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
+            pull_store_capture as Arc<dyn ApplyInboundCapture>,
+            // The store only persists; the convergence tail does the
+            // authoritative OS write, so this path's OS write is a no-op.
+            Arc::new(NoopPullStoreWrite) as Arc<dyn ApplyInboundWrite>,
+        )
+        .with_blob_materializer(pull_store_materializer)
+        .with_host_event_emitter(Arc::clone(&wired.host_event_bus)),
+    );
 
     // Active-clipboard register convergence (issue #1017). The inbound worker
     // subscribes to the 0xC3 receiver and drives the LWW register: locked /
@@ -593,6 +685,12 @@ pub async fn build_space_setup_assembly(
         ),
         payload_resolver: Arc::clone(&deps.clipboard.payload_resolver),
         blob_store: Arc::clone(&deps.storage.blob_store),
+        // On-demand pull subsystem (PR8): when the observed content is not held
+        // locally, pull it from the reporting peer (10s deadline), decrypt +
+        // store it via the store-only apply path, then converge.
+        transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
+        pull_client: Some(active_clipboard_pull_client),
+        pull_apply: Some(pull_store_apply),
     }));
     let active_clipboard_inbound_handle = active_clipboard.spawn_inbound_loop();
     // Peer-online resync (issue #1017 PR5, D10). Subscribes to presence and,

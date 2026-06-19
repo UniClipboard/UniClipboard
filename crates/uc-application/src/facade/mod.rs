@@ -34,8 +34,9 @@ pub mod storage;
 pub mod upgrade;
 
 pub use active_clipboard::{
-    ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle,
-    ActiveClipboardPeerOnlineResyncHandle, ActiveClipboardReconcileDeps,
+    build_active_clipboard_pull_serve_port, ActiveClipboardDeps, ActiveClipboardFacade,
+    ActiveClipboardHandle, ActiveClipboardPeerOnlineResyncHandle,
+    ActiveClipboardPullServeFacadeDeps, ActiveClipboardReconcileDeps,
     ActiveClipboardReconcileFacade, ActiveClipboardReconcileOutcome,
     ActiveClipboardRestoreBroadcastHandle,
 };

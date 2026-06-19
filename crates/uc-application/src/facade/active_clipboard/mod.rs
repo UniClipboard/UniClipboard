@@ -16,16 +16,19 @@ pub use reconcile::{
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tracing::warn;
 
 use uc_core::clipboard::ClipboardContentCategorySet;
-use uc_core::ids::EntryId;
+use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::clipboard::{
-    ActiveClipboardDispatchPort, ActiveClipboardReceiverPort, AdvanceActiveClipboardPort,
-    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, FindEntryIdBySnapshotHashPort,
-    GetClipboardEntryPort, GetRepresentationPort, LoadActiveClipboardPort,
-    UpdateRepresentationProcessingResultPort,
+    ActiveClipboardDispatchPort, ActiveClipboardPullClientPort, ActiveClipboardPullServePort,
+    ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
+    ClipboardSelectionRepositoryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
+    GetRepresentationPort, LoadActiveClipboardPort, UpdateRepresentationProcessingResultPort,
 };
+use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::space::IsSpaceUnlockedPort;
 use uc_core::ports::{
     ClockPort, DeviceIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort,
@@ -35,9 +38,15 @@ use uc_core::{blob::ports::BlobReaderPort, MemberRepositoryPort};
 use crate::clipboard_write::{
     ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, RestoreBroadcastRequest,
 };
+use crate::facade::blob_transfer::BlobTransferFacade;
+use crate::facade::clipboard_inbound::{
+    InboundClipboardApplyInput, InboundClipboardApplyOutcome, InboundClipboardApplyPort,
+};
+use crate::facade::clipboard_outbound::OutboundBlobPublishGateway;
 use crate::usecases::clipboard_sync::active_state_fanout::fan_out_active_state;
 use crate::usecases::clipboard_sync::apply_inbound_active_state::{
     ActiveClipboardInboundHandle, ApplyInboundActiveClipboardStateUseCase,
+    InboundPulledContentStore, InboundPulledContentStoreError,
 };
 use crate::usecases::clipboard_sync::peer_online_resync_worker::{
     PeerOnlineResyncHandle, PeerOnlineResyncWorker,
@@ -46,6 +55,9 @@ use crate::usecases::clipboard_sync::restore_broadcast_worker::{
     RestoreBroadcastHandle, RestoreBroadcastWorker,
 };
 use crate::usecases::clipboard_sync::send_gate::MemberSendGate;
+use crate::usecases::clipboard_sync::serve_pull::{
+    ActiveClipboardPullServeDeps, ActiveClipboardPullServeUseCase,
+};
 use crate::usecases::clipboard_sync::snapshot_from_entry::SnapshotReconstructor;
 
 /// Wiring dependencies for [`ActiveClipboardFacade`]. Assembled by bootstrap.
@@ -76,6 +88,70 @@ pub struct ActiveClipboardDeps {
     pub rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     pub blob_store: Arc<dyn BlobReaderPort>,
+    // ---- On-demand pull subsystem (issue #1017 PR8) ----
+    /// Transfer cipher shared with the bulk sync path. The inbound store side
+    /// decrypts a pulled envelope before persisting it.
+    pub transfer_cipher: Arc<dyn TransferCipherPort>,
+    /// Outbound pull client. `None` when the pull subsystem is unwired (e.g.
+    /// the GUI/CLI client paths) — the inbound "content missing" branch then
+    /// logs and returns. Paired with `pull_apply`.
+    pub pull_client: Option<Arc<dyn ActiveClipboardPullClientPort>>,
+    /// Store-only inbound apply path used to persist a pulled envelope. Must
+    /// **not** advance the active-clipboard register itself — the inbound
+    /// convergence tail owns the register advance (coupled to OS-write
+    /// success). Paired with `pull_client`.
+    pub pull_apply: Option<Arc<dyn InboundClipboardApplyPort>>,
+}
+
+/// Dependencies for the standalone pull serve port
+/// ([`build_active_clipboard_pull_serve_port`]). Built separately from the
+/// facade because the serve port must be registered on the pull accept handler
+/// before the node spawns, whereas the facade (which owns the inbound loop) is
+/// assembled after.
+pub struct ActiveClipboardPullServeFacadeDeps {
+    pub entry_lookup: Arc<dyn FindEntryIdBySnapshotHashPort>,
+    pub settings: Arc<dyn SettingsPort>,
+    pub transfer_cipher: Arc<dyn TransferCipherPort>,
+    /// Blob transfer facade. The serve side publishes large/image reps and
+    /// free-standing files into this device's blob store through it, re-issuing
+    /// tickets pinned to this device (D3) before encoding the V3 envelope.
+    pub blob_publisher: Arc<BlobTransferFacade>,
+    // Snapshot reconstruction ports (shared with restore / resend).
+    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
+    pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+    pub representation_repo: Arc<dyn GetRepresentationPort>,
+    pub rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
+    pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
+    pub blob_store: Arc<dyn BlobReaderPort>,
+}
+
+/// Build the active-clipboard pull serve port (issue #1017 PR8). Reuses the
+/// resend crypto chain (reconstruct → publish blobs (re-issues self-pinned
+/// tickets, D3) → encode V3 → encrypt with a fresh transfer identity, D4).
+///
+/// Standalone (not a facade method) so bootstrap can register it on the pull
+/// accept handler before the node spawns.
+pub fn build_active_clipboard_pull_serve_port(
+    deps: ActiveClipboardPullServeFacadeDeps,
+) -> Arc<dyn ActiveClipboardPullServePort> {
+    let reconstructor = SnapshotReconstructor::new(
+        deps.entry_repo,
+        deps.selection_repo,
+        deps.representation_repo,
+        deps.rep_processing_repo,
+        deps.payload_resolver,
+        deps.blob_store,
+    );
+    let blob_publisher: Arc<dyn OutboundBlobPublishGateway> = deps.blob_publisher;
+    Arc::new(ActiveClipboardPullServeUseCase::new(
+        ActiveClipboardPullServeDeps {
+            entry_lookup: deps.entry_lookup,
+            reconstructor,
+            settings: deps.settings,
+            blob_publisher,
+            cipher: deps.transfer_cipher,
+        },
+    ))
 }
 
 /// Re-exported handle so bootstrap can hold the spawned loop's lifetime.
@@ -123,7 +199,8 @@ impl ActiveClipboardFacade {
             Arc::clone(&deps.clock),
         );
         let send_gate = MemberSendGate::new(Arc::clone(&deps.member_repo));
-        let inbound_uc = Arc::new(ApplyInboundActiveClipboardStateUseCase::new(
+
+        let mut inbound_uc = ApplyInboundActiveClipboardStateUseCase::new(
             deps.receiver,
             deps.is_unlocked,
             Arc::clone(&deps.load_register),
@@ -135,7 +212,21 @@ impl ActiveClipboardFacade {
             Arc::clone(&deps.dispatch),
             Arc::clone(&deps.peer_addr_repo),
             deps.clock,
-        ));
+        );
+
+        // Wire the inbound "content missing → pull" branch when both the pull
+        // client and the store-only apply path are present. The store decrypts
+        // the pulled envelope and persists it WITHOUT advancing the register —
+        // the inbound convergence tail owns the register advance (D6).
+        if let (Some(pull_client), Some(pull_apply)) = (deps.pull_client, deps.pull_apply) {
+            let store: Arc<dyn InboundPulledContentStore> = Arc::new(PulledContentStore {
+                cipher: Arc::clone(&deps.transfer_cipher),
+                apply: pull_apply,
+            });
+            inbound_uc = inbound_uc.with_pull(pull_client, store);
+        }
+        let inbound_uc = Arc::new(inbound_uc);
+
         Self {
             inbound_uc,
             dispatch: deps.dispatch,
@@ -231,6 +322,64 @@ impl ActiveClipboardFacade {
             Arc::clone(&self.member_repo),
         )
         .spawn()
+    }
+}
+
+/// Inbound store half of the pull path (issue #1017 PR8). Decrypts a pulled
+/// transfer envelope and persists it through the shared inbound apply path,
+/// returning the local entry id. The wrapped apply path must **not** advance
+/// the active-clipboard register — the inbound convergence tail owns that.
+struct PulledContentStore {
+    cipher: Arc<dyn TransferCipherPort>,
+    apply: Arc<dyn InboundClipboardApplyPort>,
+}
+
+#[async_trait]
+impl InboundPulledContentStore for PulledContentStore {
+    async fn store(
+        &self,
+        from_device: &DeviceId,
+        content_hash: &str,
+        transfer_envelope: Vec<u8>,
+    ) -> Result<EntryId, InboundPulledContentStoreError> {
+        // Decrypt the transfer envelope into the V3 plaintext the inbound apply
+        // path decodes. A locked session (between the pull and the store) or a
+        // tampered envelope surfaces here.
+        let plaintext = self
+            .cipher
+            .decrypt(&transfer_envelope)
+            .await
+            .map_err(|err| InboundPulledContentStoreError::Decrypt(err.to_string()))?;
+
+        // Persist via the shared inbound apply path (decode V3 → materialize
+        // blobs → capture). Reuses the same pipeline the bulk 0xC1 path uses,
+        // so the pulled entry's schema matches a normal inbound entry.
+        let outcome = self
+            .apply
+            .apply(InboundClipboardApplyInput {
+                from_device: from_device.as_str().to_string(),
+                content_hash: content_hash.to_string(),
+                plaintext: plaintext.into(),
+                flow_id: None,
+            })
+            .await
+            .map_err(|err| InboundPulledContentStoreError::Store(err.to_string()))?;
+
+        match outcome {
+            InboundClipboardApplyOutcome::Applied { entry_id } => Ok(EntryId::from(entry_id)),
+            // A duplicate means the content landed locally between the pull and
+            // the store (e.g. the bulk path raced us); the existing entry is
+            // exactly what we wanted, so converge on it.
+            InboundClipboardApplyOutcome::DuplicateSkipped {
+                existing_entry_id, ..
+            } => Ok(EntryId::from(existing_entry_id)),
+            InboundClipboardApplyOutcome::DecodeFailed { reason } => {
+                warn!(reason, "pulled content store: envelope decode failed");
+                Err(InboundPulledContentStoreError::Store(format!(
+                    "decode: {reason}"
+                )))
+            }
+        }
     }
 }
 

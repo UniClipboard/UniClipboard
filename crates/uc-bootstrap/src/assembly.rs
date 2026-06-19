@@ -181,6 +181,11 @@ pub struct WiredDependencies {
     /// Slice 3 Phase 1:iroh-blobs store 目录。由 `SpaceSetupAssembly`
     /// 装配 iroh blob handler 时使用。
     pub iroh_blob_store_dir: PathBuf,
+    /// Local cache directory for inbound blob materialization. The
+    /// active-clipboard pull store (issue #1017 PR8) reuses the same inbound
+    /// apply pipeline as the bulk path, whose blob materializer fetches
+    /// free-standing files into `<file_cache_dir>/iroh-blobs/<entry_id>/`.
+    pub file_cache_dir: PathBuf,
     /// iroh 长期 Ed25519 设备身份的文件存储根目录(`<app_data>/iroh-identity[_<profile>]/`)。
     ///
     /// 与 KEK 的系统 keychain 隔离:iroh 设备身份是网络栈的"我是哪台机器"
@@ -1375,6 +1380,7 @@ pub fn wire_dependencies(
         file_transfer_facade,
         analytics_facade,
         clipboard_write_coordinator: Arc::clone(&clipboard_write_coordinator),
+        file_cache_dir: paths.file_cache_dir.clone(),
     };
     let background = BackgroundRuntimeDeps {
         representation_cache,

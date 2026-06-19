@@ -51,15 +51,16 @@ use uc_core::ports::{
 };
 use uc_observability::analytics::AnalyticsPort;
 
+use crate::clipboard_write::ClipboardWriteCoordinator;
 use crate::deps::MobileDevicePorts;
+use crate::facade::active_clipboard::ActiveClipboardFacade;
 use crate::facade::clipboard_outbound::ClipboardOutboundFacade;
-use crate::facade::clipboard_restore::ClipboardRestoreFacade;
 use crate::facade::file_transfer::FileTransferFacade;
+use crate::facade::mobile_sync::activation_announce_adapter::MobileActivationAnnounceAdapter;
 use crate::facade::mobile_sync::outbound_adapter::ClipboardOutboundFanOutAdapter;
-use crate::facade::mobile_sync::restore_adapter::ClipboardRestoreOnDuplicateAdapter;
 use crate::usecases::clipboard_sync::apply_inbound::ApplyInboundClipboardUseCase;
 use crate::usecases::mobile_sync::apply_incoming::{
-    MobileDuplicateRestorePort, MobileInboundFanOutPort,
+    MobileActivationAnnouncePort, MobileInboundFanOutPort,
 };
 use crate::usecases::mobile_sync::{
     apply_incoming::ApplyIncomingMobileClipUseCase,
@@ -212,13 +213,17 @@ pub struct MobileSyncFacadeDeps {
     /// `GatedAnalyticsSink`，运行时按用户 `usage_analytics_enabled` 切换
     /// noop / 真实 sink）。测试装配传 `NoopAnalyticsSink`。
     pub analytics: Arc<dyn AnalyticsPort>,
-    /// 可选剪贴板 restore facade。装配处提供时, 移动端 PUT 触发的
-    /// `DuplicateSkipped` 分支会把已有 entry 恢复到系统剪贴板 ——
-    /// 用户从手机推送已有内容的语义是"我想粘贴", 而不是"仅同步"。
+    /// 可选剪贴板写边界 + active-clipboard facade。两者同时提供时, 移动端
+    /// 入站激活本机剪贴板后 (`Applied` 新内容 / `DuplicateSkipped` 重复命中)
+    /// 统一收敛对端 (issue #1017 D1 call-sites 3 & 4):盖本设备激活戳、前进
+    /// 跨设备 register、按 per-device send 闸门广播 0xC3 state; duplicate
+    /// 命中还先用 `write_coordinator` 把这次上传的 snapshot 写回系统剪贴板。
     ///
-    /// daemon 装配传 `Some(clipboard_restore_facade)`;CLI fallback /
-    /// 单测传 `None`, 行为与本字段引入前一致。
-    pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
+    /// daemon 装配两者都传 `Some(...)`;CLI fallback / 单测传 `None`,
+    /// 移动端上传仅落地本机, 不收敛(行为与本特性引入前一致)。两者
+    /// 必须**同时** `Some` 才装 announce adapter —— 缺一个就降级成 `None`。
+    pub write_coordinator: Option<Arc<ClipboardWriteCoordinator>>,
+    pub active_clipboard: Option<Arc<ActiveClipboardFacade>>,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
@@ -275,7 +280,8 @@ impl MobileSyncFacade {
             clipboard_outbound,
             lan_lifecycle,
             analytics,
-            clipboard_restore,
+            write_coordinator,
+            active_clipboard,
         } = deps;
 
         let snapshot_port: Arc<dyn LatestClipboardSnapshotPort> =
@@ -329,10 +335,19 @@ impl MobileSyncFacade {
                         as Arc<dyn MobileInboundFanOutPort>
                 }),
                 analytics,
-                clipboard_restore.map(|facade| {
-                    Arc::new(ClipboardRestoreOnDuplicateAdapter::new(facade))
-                        as Arc<dyn MobileDuplicateRestorePort>
-                }),
+                // Mobile-activation announce (issue #1017 PR7): wired only when
+                // both the write boundary and the active-clipboard facade are
+                // present, so the adapter can re-write the OS clipboard on a
+                // duplicate hit and converge peers via the send-gated 0xC3 path.
+                // Either missing → no announce (mobile upload lands locally only).
+                write_coordinator
+                    .zip(active_clipboard)
+                    .map(|(coordinator, active_clipboard)| {
+                        Arc::new(MobileActivationAnnounceAdapter::new(
+                            coordinator,
+                            active_clipboard,
+                        )) as Arc<dyn MobileActivationAnnouncePort>
+                    }),
             ),
             get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
             get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging.clone()),
@@ -999,7 +1014,8 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            clipboard_restore: None,
+            write_coordinator: None,
+            active_clipboard: None,
         })
     }
 
@@ -1157,7 +1173,8 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            clipboard_restore: None,
+            write_coordinator: None,
+            active_clipboard: None,
         });
 
         // happy path
@@ -1241,7 +1258,8 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: None,
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            clipboard_restore: None,
+            write_coordinator: None,
+            active_clipboard: None,
         });
 
         // 1. old password works
@@ -1356,7 +1374,8 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            clipboard_restore: None,
+            write_coordinator: None,
+            active_clipboard: None,
         })
     }
 
@@ -1504,7 +1523,8 @@ mod tests {
             clipboard_outbound: None,
             lan_lifecycle: Some(lifecycle),
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
-            clipboard_restore: None,
+            write_coordinator: None,
+            active_clipboard: None,
         });
 
         // enable 两开关 → lifecycle.apply(Enabled) → endpoint = BindFailed

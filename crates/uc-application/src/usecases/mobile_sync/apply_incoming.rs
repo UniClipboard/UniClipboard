@@ -99,31 +99,45 @@ pub(crate) trait MobileInboundFanOutPort: Send + Sync {
     );
 }
 
-/// 移动端入站去重命中时, 把已有 entry 恢复到系统剪贴板的能力抽象。
+/// 移动端入站激活本机剪贴板后, 把这次激活向 Space 内其他设备收敛的能力
+/// 抽象 (issue #1017 D1 call-sites 3 & 4, D2 "Mobile push → fan-out")。
 ///
-/// ## 为什么需要
+/// ## 领域语义
 ///
-/// 用户从手机推送一条"本机已存在"的内容, 语义是"我现在想在桌面粘贴
-/// 这条内容"。`ApplyInboundClipboardUseCase` 的 `DuplicateSkipped` 只
-/// 意味着"不需要再持久化", 但不等于"不需要写系统剪贴板"。如果静默
-/// 跳过, 用户 Cmd-V 粘出来的仍是上一次复制的内容, 与预期不符。
+/// 用户从手机推送一条内容, 语义是"现在让桌面也活跃这条内容"——这是**本
+/// 设备**的一次激活 (`activated_by = self`, `activated_at_ms = now`), 不论
+/// 这条 content_hash 本机此前是否存在。因此两个入站结果都要收敛对端:
+///
+/// - `announce_new`: 内容是新的, 入站管线已写过系统剪贴板; 只需盖本设备
+///   激活戳、前进跨设备 register、按 per-device send 闸门广播 0xC3 state。
+/// - `announce_duplicate`: 内容本机已有 (`DuplicateSkipped`), 系统剪贴板
+///   可能早被后续复制覆盖, 需要先把这次上传的 snapshot 写回系统剪贴板,
+///   再盖激活戳 + 前进 register + 同一条 send-gated 广播。
+///
+/// 两条路径的 register 前进与 0xC3 广播只受 **per-device send 闸门**
+/// (`send_enabled` ∧ `send_content_types`) 约束, **不**看 `sync_on_restore`
+/// (那个 flag 仅作用于历史 restore 广播)。
 ///
 /// ## 设计 (与 `MobileInboundFanOutPort` 同模式)
 ///
 /// - use case 持 trait 而非具体 facade, 测试可注入 fake;
-/// - 生产 adapter 在 `facade/mobile_sync/restore_adapter.rs`, 委托
-///   `ClipboardRestoreFacade::restore_entry`;
-/// - 失败仅 `warn!`, 不回灌成 HTTP 错误 —— mobile 上传是否"成功"
-///   只取决于本机入站管线的 outcome, restore 是 best-effort 增强。
+/// - 生产 adapter 在 `facade/mobile_sync/activation_announce_adapter.rs`,
+///   委托 `ClipboardWriteCoordinator` (duplicate 写 OS) +
+///   `ActiveClipboardFacade::announce_local_activation` (advance + fan-out);
+/// - 失败仅 `warn!`, 不回灌成 HTTP 错误 —— mobile 上传是否"成功"只取决
+///   于本机入站管线的 outcome, 收敛是事后传播。
 ///
-/// ## 仅 `DuplicateSkipped` 分支调用
+/// ## 仅 `Applied` / `DuplicateSkipped` 分支调用
 ///
-/// - `Applied`: 入站管线已经写了系统剪贴板, 不需要再 restore;
-/// - `DecodeFailed` / `Err(...)`: 本机入站没成功, 没有 entry 可恢复;
+/// - `DecodeFailed` / `Err(...)`: 本机入站没成功, 没有激活可收敛;
 /// - `Buffered`: 两步 PUT 中间态, 还没有 entry。
 #[async_trait::async_trait]
-pub(crate) trait MobileDuplicateRestorePort: Send + Sync {
-    async fn restore_to_clipboard(&self, entry_id: &EntryId);
+pub(crate) trait MobileActivationAnnouncePort: Send + Sync {
+    /// New content already on the OS clipboard (inbound apply wrote it).
+    async fn announce_new(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot);
+    /// Duplicate of existing content: re-write `snapshot` to the OS clipboard,
+    /// then converge the activation like `announce_new`.
+    async fn announce_duplicate(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot);
 }
 
 // ─── Public types (pub(crate) per AGENTS.md §11.4) ──────────────────────
@@ -368,13 +382,14 @@ pub(crate) struct ApplyIncomingMobileClipUseCase {
     /// `Buffered` / `DuplicateSkipped` / `DecodeFailed` / `Err` 都不上报，
     /// 沿用 `ClipboardEntryCaptured` 防 RemotePush 双计的红线哲学。
     analytics: Arc<dyn AnalyticsPort>,
-    /// 可选 restore port。装配处提供实现时, `DuplicateSkipped` 分支在
-    /// 确认本机已有该记录后, 把它恢复到系统剪贴板 —— 用户从手机推送已
-    /// 有内容的语义是"我想在桌面粘贴这个", 不能静默跳过。
+    /// 可选 activation-announce port。装配处提供实现时, 移动端入站激活本机
+    /// 剪贴板后 (`Applied` 新内容 / `DuplicateSkipped` 重复命中) 统一收敛对端:
+    /// 盖本设备激活戳、前进跨设备 register、按 per-device send 闸门广播 0xC3
+    /// state; duplicate 命中还会先把这次上传的 snapshot 写回系统剪贴板。
     ///
     /// `None` 时静默降级(测试装配 / CLI fallback): 行为与本字段引入前
-    /// 完全一致(DuplicateSkipped 不写 OS 剪贴板)。
-    restore: Option<Arc<dyn MobileDuplicateRestorePort>>,
+    /// 完全一致(不前进 register / 不广播 / DuplicateSkipped 不写 OS 剪贴板)。
+    announce: Option<Arc<dyn MobileActivationAnnouncePort>>,
 }
 
 impl ApplyIncomingMobileClipUseCase {
@@ -386,7 +401,7 @@ impl ApplyIncomingMobileClipUseCase {
         file_transfer: Option<Arc<FileTransferFacade>>,
         fan_out: Option<Arc<dyn MobileInboundFanOutPort>>,
         analytics: Arc<dyn AnalyticsPort>,
-        restore: Option<Arc<dyn MobileDuplicateRestorePort>>,
+        announce: Option<Arc<dyn MobileActivationAnnouncePort>>,
     ) -> Self {
         Self {
             inbound,
@@ -396,7 +411,7 @@ impl ApplyIncomingMobileClipUseCase {
             file_transfer,
             fan_out,
             analytics,
-            restore,
+            announce,
         }
     }
 
@@ -476,10 +491,13 @@ impl ApplyIncomingMobileClipUseCase {
                     snapshot,
                     transfer_id,
                 } = built;
-                // 仅当本装配真的接了 fan-out port 时才克隆 snapshot ——
-                // Image / File 分支的 snapshot 内含完整字节, 无 fan-out
-                // 装配的场景(CLI fallback / 单测)不应该白付一份克隆开销。
+                // 仅当本装配真的接了 fan-out / announce port 时才克隆 snapshot
+                // —— Image / File 分支的 snapshot 内含完整字节, 无这两个 port
+                // 的场景(CLI fallback / 单测)不应该白付一份克隆开销。两条
+                // 传播路径各消费一份独立 snapshot(fan-out 走 0xC1 内容出站,
+                // announce 走 0xC3 state 收敛 + duplicate 写 OS)。
                 let snapshot_for_fanout = self.fan_out.as_ref().map(|_| snapshot.clone());
+                let snapshot_for_announce = self.announce.as_ref().map(|_| snapshot.clone());
                 // analytics 用：在 dispatch 消费 snapshot 之前把字节总数
                 // 取出来，避免在 outcome 分支里再保留一份 snapshot 引用。
                 let payload_bytes = snapshot.total_size_bytes().max(0) as u64;
@@ -492,7 +510,8 @@ impl ApplyIncomingMobileClipUseCase {
                     &dispatch_outcome,
                     snapshot_for_fanout,
                 );
-                self.maybe_restore_duplicate(&dispatch_outcome).await;
+                self.maybe_announce_activation(&dispatch_outcome, snapshot_for_announce)
+                    .await;
                 self.finalize_transfer_lifecycle(transfer_id, source_device_id, &dispatch_outcome)
                     .await;
                 dispatch_outcome
@@ -559,29 +578,59 @@ impl ApplyIncomingMobileClipUseCase {
         fan_out.fan_out(entry_id.clone(), snapshot, source_device_id.clone());
     }
 
-    /// `DuplicateSkipped` 分支: 把已存在的 entry 恢复到系统剪贴板。
+    /// 移动端入站激活本机剪贴板后, 把这次激活向 Space 内其他设备收敛
+    /// (issue #1017 D1 call-sites 3 & 4)。
     ///
-    /// 用户从手机推送的语义是"我想在桌面粘贴这条内容", 即使本机已经
-    /// 持久化过相同的 entry, 系统剪贴板可能早已被后续复制操作覆盖,
-    /// 需要显式 restore 才能让 Cmd-V 粘出正确内容。
-    async fn maybe_restore_duplicate(
+    /// 移动端推送的语义是"现在让桌面也活跃这条内容"——本设备的一次激活:
+    ///
+    /// - `Applied` (新内容): 入站管线已写过系统剪贴板, 只需盖本设备激活戳
+    ///   + 前进跨设备 register + 按 per-device send 闸门广播 0xC3 state;
+    /// - `DuplicateSkipped` (本机已有): 系统剪贴板可能早被后续复制覆盖,
+    ///   先把这次上传的 snapshot 写回系统剪贴板, 再走同一条 advance + 广播。
+    ///
+    /// 收敛只受 per-device send 闸门(`send_enabled` ∧ `send_content_types`)
+    /// 约束, **不**看 `sync_on_restore`。`DecodeFailed` / `Err(...)` 本机入站
+    /// 没成功、`Buffered` 还没有 entry, 都不收敛。
+    ///
+    /// adapter 一定接了才会到这里时 snapshot 已被上游克隆; 若 announce 已接
+    /// 但 snapshot 为 `None` 属编程错误, 沉默跳过(收敛只是事后传播, 不应
+    /// 让 mobile 上传整体失败)。
+    async fn maybe_announce_activation(
         &self,
         outcome: &Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError>,
+        snapshot_for_announce: Option<SystemClipboardSnapshot>,
     ) {
-        let Some(restore) = self.restore.as_ref() else {
+        let Some(announce) = self.announce.as_ref() else {
             return;
         };
-        let Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped {
-            existing_entry_id, ..
-        }) = outcome
-        else {
+        let entry_id = match outcome {
+            Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id }) => entry_id.clone(),
+            Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped {
+                existing_entry_id, ..
+            }) => existing_entry_id.clone(),
+            _ => return,
+        };
+        let Some(snapshot) = snapshot_for_announce else {
+            warn!("mobile_sync announce: announce wired but snapshot_for_announce=None, skipping");
             return;
         };
-        info!(
-            entry_id = %existing_entry_id,
-            "mobile_sync apply_incoming: duplicate detected, restoring existing entry to system clipboard"
-        );
-        restore.restore_to_clipboard(existing_entry_id).await;
+        match outcome {
+            Ok(ApplyIncomingMobileClipOutcome::Applied { .. }) => {
+                info!(
+                    entry_id = %entry_id,
+                    "mobile_sync apply_incoming: new content applied, announcing active-clipboard state"
+                );
+                announce.announce_new(entry_id, snapshot).await;
+            }
+            Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }) => {
+                info!(
+                    entry_id = %entry_id,
+                    "mobile_sync apply_incoming: duplicate detected, re-writing to OS and announcing active-clipboard state"
+                );
+                announce.announce_duplicate(entry_id, snapshot).await;
+            }
+            _ => {}
+        }
     }
 
     /// SyncDoc apply 完成后把 mobile_lan 路径预先打开的 transfer 关闭。
@@ -1951,45 +2000,63 @@ mod tests {
         assert!(analytics.events().is_empty(), "{:?}", analytics.events());
     }
 
-    // ── restore-on-duplicate trait wire-up ────────────────────────────────
+    // ── activation-announce trait wire-up ─────────────────────────────────
     //
-    // 验证 `ApplyIncomingMobileClipUseCase` 与 `MobileDuplicateRestorePort`
-    // 之间的接线契约。use case 只该保证"DuplicateSkipped 分支以正确的
-    // entry_id 调一次 trait, 其它分支不调"。
+    // 验证 `ApplyIncomingMobileClipUseCase` 与 `MobileActivationAnnouncePort`
+    // 之间的接线契约 (issue #1017 PR7 D1 call-sites 3 & 4)。use case 只该
+    // 保证"在对的分支以对的 entry_id + snapshot 调对的方法一次":
+    // `Applied` → `announce_new`、`DuplicateSkipped` → `announce_duplicate`、
+    // 其它分支都不调。真正的"前进 register + send-gated 0xC3 fan-out"行为
+    // 是 `MobileActivationAnnounceAdapter` 的责任, 改 adapter 不动这里。
 
+    /// 记录被调到的 announce 方法 + 参数, 单测断言用。
     #[derive(Default)]
-    struct RecordingRestore {
-        calls: std::sync::Mutex<Vec<EntryId>>,
+    struct RecordingAnnounce {
+        new_calls: std::sync::Mutex<Vec<(EntryId, SystemClipboardSnapshot)>>,
+        duplicate_calls: std::sync::Mutex<Vec<(EntryId, SystemClipboardSnapshot)>>,
     }
 
-    impl RecordingRestore {
-        fn calls(&self) -> Vec<EntryId> {
-            self.calls.lock().unwrap().clone()
+    impl RecordingAnnounce {
+        fn new_calls(&self) -> Vec<(EntryId, SystemClipboardSnapshot)> {
+            self.new_calls.lock().unwrap().clone()
+        }
+        fn duplicate_calls(&self) -> Vec<(EntryId, SystemClipboardSnapshot)> {
+            self.duplicate_calls.lock().unwrap().clone()
         }
     }
 
     #[async_trait::async_trait]
-    impl MobileDuplicateRestorePort for RecordingRestore {
-        async fn restore_to_clipboard(&self, entry_id: &EntryId) {
-            self.calls.lock().unwrap().push(entry_id.clone());
+    impl MobileActivationAnnouncePort for RecordingAnnounce {
+        async fn announce_new(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot) {
+            self.new_calls.lock().unwrap().push((entry_id, snapshot));
+        }
+        async fn announce_duplicate(&self, entry_id: EntryId, snapshot: SystemClipboardSnapshot) {
+            self.duplicate_calls
+                .lock()
+                .unwrap()
+                .push((entry_id, snapshot));
         }
     }
 
-    /// `DuplicateSkipped` 命中 → 必须以 `existing_entry_id` 调一次 restore。
+    /// `Applied` (新内容) → `announce_new` 一次, `announce_duplicate` 零次。
+    /// snapshot 必须随之透传 (adapter 据此派生 content_hash / categories)。
     #[tokio::test]
-    async fn duplicate_skipped_invokes_restore_with_existing_entry_id() {
+    async fn applied_invokes_announce_new_with_snapshot() {
         let mut repo = MockEntryRepo::new();
-        let existing = EntryId::from("entry-existing");
-        let existing_clone = existing.clone();
         repo.expect_find_entry_id_by_snapshot_hash()
             .times(1)
-            .returning(move |_| Ok(Some(existing_clone.clone())));
-        let capture = MockCapture::new();
-        let write = MockWrite::new();
+            .returning(|_| Ok(None));
+        let mut capture = MockCapture::new();
+        capture
+            .expect_capture()
+            .times(1)
+            .returning(|_, _, _| Ok(Some(EntryId::from("entry-new"))));
+        let mut write = MockWrite::new();
+        write.expect_write().times(1).returning(|_| Ok(()));
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
 
-        let recorder = Arc::new(RecordingRestore::default());
+        let recorder = Arc::new(RecordingAnnounce::default());
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
@@ -1998,7 +2065,60 @@ mod tests {
             None,
             None,
             noop_analytics(),
-            Some(Arc::clone(&recorder) as Arc<dyn MobileDuplicateRestorePort>),
+            Some(Arc::clone(&recorder) as Arc<dyn MobileActivationAnnouncePort>),
+        );
+
+        let outcome = uc
+            .execute(input_sync_doc(
+                SyncClipboardItemType::Text,
+                "new content",
+                None,
+            ))
+            .await
+            .expect("applied ok");
+        assert!(matches!(
+            outcome,
+            ApplyIncomingMobileClipOutcome::Applied { .. }
+        ));
+
+        let new_calls = recorder.new_calls();
+        assert_eq!(new_calls.len(), 1, "Applied 必须触发 announce_new 一次");
+        assert_eq!(new_calls[0].0, EntryId::from("entry-new"));
+        // snapshot 至少携带原 rep, 让 adapter 能派生 content_hash / categories。
+        assert_eq!(new_calls[0].1.representations.len(), 1);
+        assert_eq!(
+            recorder.duplicate_calls().len(),
+            0,
+            "Applied 分支不得触发 announce_duplicate"
+        );
+    }
+
+    /// `DuplicateSkipped` (本机已有) → `announce_duplicate` 一次,
+    /// `announce_new` 零次。entry_id 用 `existing_entry_id`。
+    #[tokio::test]
+    async fn duplicate_skipped_invokes_announce_duplicate() {
+        let mut repo = MockEntryRepo::new();
+        let existing = EntryId::from("entry-existing");
+        let existing_clone = existing.clone();
+        repo.expect_find_entry_id_by_snapshot_hash()
+            .times(1)
+            .returning(move |_| Ok(Some(existing_clone.clone())));
+        // dedup hit → capture / write 都不该被调。
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+
+        let recorder = Arc::new(RecordingAnnounce::default());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            noop_analytics(),
+            Some(Arc::clone(&recorder) as Arc<dyn MobileActivationAnnouncePort>),
         );
 
         let outcome = uc
@@ -2014,65 +2134,32 @@ mod tests {
             ApplyIncomingMobileClipOutcome::DuplicateSkipped { .. }
         ));
 
-        let calls = recorder.calls();
-        assert_eq!(calls.len(), 1, "DuplicateSkipped 必须触发 restore 一次");
-        assert_eq!(calls[0], existing);
-    }
-
-    /// `Applied` 分支不调 restore —— 入站管线已经写了系统剪贴板。
-    #[tokio::test]
-    async fn applied_does_not_invoke_restore() {
-        let mut repo = MockEntryRepo::new();
-        repo.expect_find_entry_id_by_snapshot_hash()
-            .times(1)
-            .returning(|_| Ok(None));
-        let mut capture = MockCapture::new();
-        capture
-            .expect_capture()
-            .times(1)
-            .returning(|_, _, _| Ok(Some(EntryId::from("entry-new"))));
-        let mut write = MockWrite::new();
-        write.expect_write().times(1).returning(|_| Ok(()));
-        let inbound =
-            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
-
-        let recorder = Arc::new(RecordingRestore::default());
-        let uc = ApplyIncomingMobileClipUseCase::new(
-            Arc::new(inbound),
-            Arc::new(IncomingMobileBuffer::new()),
-            staging_never_called(),
-            Arc::new(FixedClock),
-            None,
-            None,
-            noop_analytics(),
-            Some(Arc::clone(&recorder) as Arc<dyn MobileDuplicateRestorePort>),
+        let dup_calls = recorder.duplicate_calls();
+        assert_eq!(
+            dup_calls.len(),
+            1,
+            "DuplicateSkipped 必须触发 announce_duplicate 一次"
         );
-
-        let outcome = uc
-            .execute(input_sync_doc(
-                SyncClipboardItemType::Text,
-                "new content",
-                None,
-            ))
-            .await
-            .expect("applied ok");
-        assert!(matches!(
-            outcome,
-            ApplyIncomingMobileClipOutcome::Applied { .. }
-        ));
-        assert_eq!(recorder.calls().len(), 0, "Applied 分支不得触发 restore");
+        assert_eq!(dup_calls[0].0, existing);
+        assert_eq!(dup_calls[0].1.representations.len(), 1);
+        assert_eq!(
+            recorder.new_calls().len(),
+            0,
+            "DuplicateSkipped 分支不得触发 announce_new"
+        );
     }
 
-    /// `DecodeFailed` 分支不调 restore —— 本机入站没成功, 没有 entry 可恢复。
+    /// `DecodeFailed` 分支两个 announce 方法都不调 —— 本机入站没成功,
+    /// 没有激活可收敛。
     #[tokio::test]
-    async fn decode_failed_does_not_invoke_restore() {
+    async fn decode_failed_does_not_invoke_announce() {
         let repo = MockEntryRepo::new();
         let capture = MockCapture::new();
         let write = MockWrite::new();
         let inbound =
             ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
 
-        let recorder = Arc::new(RecordingRestore::default());
+        let recorder = Arc::new(RecordingAnnounce::default());
         let uc = ApplyIncomingMobileClipUseCase::new(
             Arc::new(inbound),
             Arc::new(IncomingMobileBuffer::new()),
@@ -2081,7 +2168,7 @@ mod tests {
             None,
             None,
             noop_analytics(),
-            Some(Arc::clone(&recorder) as Arc<dyn MobileDuplicateRestorePort>),
+            Some(Arc::clone(&recorder) as Arc<dyn MobileActivationAnnouncePort>),
         );
 
         let outcome = uc
@@ -2093,9 +2180,47 @@ mod tests {
             ApplyIncomingMobileClipOutcome::DecodeFailed { .. }
         ));
         assert_eq!(
-            recorder.calls().len(),
+            recorder.new_calls().len() + recorder.duplicate_calls().len(),
             0,
-            "DecodeFailed 分支不得触发 restore"
+            "DecodeFailed 分支不得触发任何 announce"
+        );
+    }
+
+    /// `BufferFile` 中间态两个 announce 方法都不调 —— 还没有 entry / 激活。
+    #[tokio::test]
+    async fn buffer_file_does_not_invoke_announce() {
+        let repo = MockEntryRepo::new();
+        let capture = MockCapture::new();
+        let write = MockWrite::new();
+        let inbound =
+            ApplyInboundClipboardUseCase::new(Arc::new(repo), Arc::new(capture), Arc::new(write));
+
+        let recorder = Arc::new(RecordingAnnounce::default());
+        let uc = ApplyIncomingMobileClipUseCase::new(
+            Arc::new(inbound),
+            Arc::new(IncomingMobileBuffer::new()),
+            staging_never_called(),
+            Arc::new(FixedClock),
+            None,
+            None,
+            noop_analytics(),
+            Some(Arc::clone(&recorder) as Arc<dyn MobileActivationAnnouncePort>),
+        );
+
+        let outcome = uc
+            .execute(input_buffer_file(
+                "photo.png",
+                "image/png",
+                "file:///tmp/mobile_inbound/buf-announce/photo.png",
+                "photo.png",
+            ))
+            .await
+            .expect("buffer-file path returns Ok");
+        assert_eq!(outcome, ApplyIncomingMobileClipOutcome::Buffered);
+        assert_eq!(
+            recorder.new_calls().len() + recorder.duplicate_calls().len(),
+            0,
+            "Buffered 分支不得触发任何 announce"
         );
     }
 }

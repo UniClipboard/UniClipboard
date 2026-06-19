@@ -583,6 +583,7 @@ pub async fn build_space_setup_assembly(
         entry_lookup: Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
         coordinator: Arc::clone(&wired.clipboard_write_coordinator),
         clock: Arc::clone(&deps.system.clock),
+        device_identity: Arc::clone(&deps.device.device_identity),
         settings: Arc::clone(&deps.settings),
         entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
         selection_repo: Arc::clone(&deps.clipboard.selection_repo),

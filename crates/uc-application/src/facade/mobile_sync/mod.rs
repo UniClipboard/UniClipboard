@@ -8,9 +8,9 @@
 //!
 //! 详细的方法清单与设计取舍见 [`facade`] 子模块文档。
 
+mod activation_announce_adapter;
 mod facade;
 mod outbound_adapter;
-mod restore_adapter;
 
 pub use facade::streaming_scope_nonce as mobile_sync_streaming_scope_nonce;
 pub use facade::{

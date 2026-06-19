@@ -5,8 +5,8 @@
 //! spawn the background loop that subscribes to inbound 0xC3 observations and
 //! drives the register toward convergence (write OS → advance register →
 //! re-broadcast), plus the outbound origination workers (restore broadcast,
-//! peer-online resync). The mobile fan-out path is a separate edit-site in a
-//! later PR.
+//! peer-online resync) and the mobile-push activation announce
+//! ([`ActiveClipboardFacade::announce_local_activation`]).
 
 mod reconcile;
 
@@ -18,6 +18,8 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use uc_core::clipboard::ClipboardContentCategorySet;
+use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
     ActiveClipboardDispatchPort, ActiveClipboardReceiverPort, AdvanceActiveClipboardPort,
     ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, FindEntryIdBySnapshotHashPort,
@@ -25,10 +27,15 @@ use uc_core::ports::clipboard::{
     UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::space::IsSpaceUnlockedPort;
-use uc_core::ports::{ClockPort, PeerAddressRepositoryPort, PresencePort, SettingsPort};
+use uc_core::ports::{
+    ClockPort, DeviceIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort,
+};
 use uc_core::{blob::ports::BlobReaderPort, MemberRepositoryPort};
 
-use crate::clipboard_write::{ClipboardWriteCoordinator, RestoreBroadcastRequest};
+use crate::clipboard_write::{
+    ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, RestoreBroadcastRequest,
+};
+use crate::usecases::clipboard_sync::active_state_fanout::fan_out_active_state;
 use crate::usecases::clipboard_sync::apply_inbound_active_state::{
     ActiveClipboardInboundHandle, ApplyInboundActiveClipboardStateUseCase,
 };
@@ -38,6 +45,7 @@ use crate::usecases::clipboard_sync::peer_online_resync_worker::{
 use crate::usecases::clipboard_sync::restore_broadcast_worker::{
     RestoreBroadcastHandle, RestoreBroadcastWorker,
 };
+use crate::usecases::clipboard_sync::send_gate::MemberSendGate;
 use crate::usecases::clipboard_sync::snapshot_from_entry::SnapshotReconstructor;
 
 /// Wiring dependencies for [`ActiveClipboardFacade`]. Assembled by bootstrap.
@@ -55,6 +63,9 @@ pub struct ActiveClipboardDeps {
     pub entry_lookup: Arc<dyn FindEntryIdBySnapshotHashPort>,
     pub coordinator: Arc<ClipboardWriteCoordinator>,
     pub clock: Arc<dyn ClockPort>,
+    /// Identity of this device, used to stamp a locally-originated activation
+    /// (`activated_by = self`) when announcing a fresh active-clipboard state.
+    pub device_identity: Arc<dyn DeviceIdentityPort>,
     /// Settings reader for the restore-broadcast feature gate
     /// (`sync.sync_on_restore`).
     pub settings: Arc<dyn SettingsPort>,
@@ -88,6 +99,12 @@ pub struct ActiveClipboardFacade {
     presence: Arc<dyn PresencePort>,
     load_register: Arc<dyn LoadActiveClipboardPort>,
     reconstructor: SnapshotReconstructor,
+    // Outbound origination of a locally-stamped activation (mobile push). The
+    // advancer stamps `(now, this_device)`; the send gate enforces the full
+    // outbound gate (`send_enabled` ∧ `send_content_types`) per peer, shared
+    // with every other 0xC3 origination path.
+    local_advancer: LocalActiveRegisterAdvancer,
+    send_gate: MemberSendGate,
 }
 
 impl ActiveClipboardFacade {
@@ -100,6 +117,12 @@ impl ActiveClipboardFacade {
             deps.payload_resolver,
             deps.blob_store,
         );
+        let local_advancer = LocalActiveRegisterAdvancer::new(
+            Arc::clone(&deps.advance_register),
+            deps.device_identity,
+            Arc::clone(&deps.clock),
+        );
+        let send_gate = MemberSendGate::new(Arc::clone(&deps.member_repo));
         let inbound_uc = Arc::new(ApplyInboundActiveClipboardStateUseCase::new(
             deps.receiver,
             deps.is_unlocked,
@@ -122,7 +145,42 @@ impl ActiveClipboardFacade {
             presence: deps.presence,
             load_register: deps.load_register,
             reconstructor,
+            local_advancer,
+            send_gate,
         }
+    }
+
+    /// Announce a locally-originated activation of this device's clipboard
+    /// (issue #1017 D1 call-sites 3 & 4, D2 "Mobile push → fan-out").
+    ///
+    /// Stamps a fresh activation `(now, this_device)` for `content_hash` (held
+    /// locally as `entry_id`), advances the cross-device register, then fans
+    /// the converged 0xC3 state out to every send-allowed peer through the
+    /// shared fan-out. The outbound gate is the full per-device send gate
+    /// (`send_enabled` ∧ `send_content_types`, the latter via `categories`) —
+    /// **not** `sync_on_restore`, which gates only history-restore broadcasts.
+    ///
+    /// Best-effort and fire-and-forget at the call site: a register storage
+    /// hiccup is logged and swallowed by the advancer, and per-peer dispatch
+    /// failures are isolated by the fan-out.
+    pub async fn announce_local_activation(
+        &self,
+        content_hash: String,
+        entry_id: EntryId,
+        categories: ClipboardContentCategorySet,
+    ) {
+        let state = self
+            .local_advancer
+            .advance_local(content_hash, entry_id)
+            .await;
+        fan_out_active_state(
+            &self.dispatch,
+            &self.peer_addr_repo,
+            &self.send_gate,
+            &state,
+            &categories,
+        )
+        .await;
     }
 
     /// Spawn the inbound convergence loop. Caller owns the returned handle;

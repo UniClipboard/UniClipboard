@@ -11,10 +11,11 @@
 
 use std::sync::Arc;
 
+use uc_application::clipboard_write::ClipboardWriteCoordinator;
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
-    AppPaths, BlobTransferFacade, ClipboardOutboundFacade, ClipboardRestoreFacade,
-    ClipboardSyncFacade, DaemonLifecycleFacades, FileTransferFacade,
+    AppPaths, BlobTransferFacade, ClipboardOutboundFacade, ClipboardSyncFacade,
+    DaemonLifecycleFacades, FileTransferFacade,
 };
 use uc_application::ApplyInboundClipboardUseCase;
 use uc_bootstrap::{build_mobile_sync_facade, SpaceSetupAssembly};
@@ -49,9 +50,11 @@ pub struct DaemonLifecycleFacadesInput<'a> {
     /// 喂给 `MobileSyncFacade`(本字段) 与 daemon `run()`(`DaemonApp`),
     /// 两条链路共用单点状态机。
     pub lan_lifecycle: Arc<dyn MobileLanLifecyclePort>,
-    /// 进程级 `ClipboardRestoreFacade`。移动端 PUT 去重命中时恢复已有
-    /// entry 到系统剪贴板。
-    pub clipboard_restore: Option<Arc<ClipboardRestoreFacade>>,
+    /// 进程级剪贴板写边界。移动端 PUT 去重命中时, 用这次上传的 snapshot
+    /// 把内容写回系统剪贴板 (issue #1017 PR7 D1 call-site 4)。与
+    /// `space_setup_assembly.active_clipboard` 一起喂给 mobile_sync facade,
+    /// 装出 active-clipboard 收敛 adapter。
+    pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
 }
 
 /// 构造 5 个 daemon-lifecycle 子 facade。返回的 [`DaemonLifecycleFacades`]
@@ -70,7 +73,7 @@ pub fn build_daemon_lifecycle_facades(
         mobile_sync_apply_inbound,
         clipboard_outbound,
         lan_lifecycle,
-        clipboard_restore,
+        clipboard_write_coordinator,
     } = input;
 
     let mobile_sync = build_mobile_sync_facade(
@@ -80,13 +83,18 @@ pub fn build_daemon_lifecycle_facades(
         Some(file_transfer),
         Some(lan_lifecycle),
         // 让 mobile_sync facade 在 PUT 落地本机后自动把同一份 snapshot 走
-        // 本机捕获完全相同的出站管线 fan-out 给 Space 内其他已配对设备
-        // —— 闭合"手机 → 任一桌面 → 所有桌面"链路, 文件类型走
-        // iroh-blobs free-file ref(`publish_blob_path`),接收端拉回并改
-        // 写 file-list rep。daemon 这条装配路径必装,CLI fallback 与其他
-        // 无 outbound dispatcher 的入口走 `None`。
+        // 本机捕获完全相同的出站管线 fan-out 给 Space 内已配对设备 —— 闭合
+        // "手机 → 任一桌面 → 所有桌面"链路, 文件类型走 iroh-blobs free-file
+        // ref(`publish_blob_path`),接收端拉回并改写 file-list rep。daemon
+        // 这条装配路径必装,CLI fallback 与其他无 outbound dispatcher 的入口
+        // 走 `None`。
         Some(Arc::clone(&clipboard_outbound)),
-        clipboard_restore,
+        // active-clipboard 收敛 (issue #1017 PR7):写边界 + 进程级
+        // active-clipboard facade(由 SpaceSetupAssembly 装好)。两者一起让
+        // mobile_sync facade 在入站激活后盖本设备激活戳、前进跨设备 register、
+        // 按 per-device send 闸门广播 0xC3 state(duplicate 命中先写回 OS)。
+        Some(Arc::clone(&clipboard_write_coordinator)),
+        Some(Arc::clone(&space_setup_assembly.active_clipboard)),
     );
 
     let local_device_id = deps.device.device_identity.current_device_id().to_string();

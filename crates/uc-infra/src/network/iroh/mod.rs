@@ -4,6 +4,7 @@
 //! endpoint lifecycle, session opener, blob transfer. Slice 1 only ships
 //! [`IrohIdentityStore`]; later slices add the rest.
 
+pub mod active_clipboard_dispatch_adapter;
 pub mod active_clipboard_receiver_adapter;
 pub mod active_clipboard_wire;
 mod addr_filter;
@@ -22,6 +23,7 @@ pub(crate) mod runtime_consts;
 pub mod transfer_progress_adapter;
 pub mod transfer_progress_wire;
 
+pub use active_clipboard_dispatch_adapter::IrohActiveClipboardDispatchAdapter;
 pub use active_clipboard_receiver_adapter::{
     IrohActiveClipboardReceiverAdapter, IrohActiveClipboardReceiverHandler, ACTIVE_CLIPBOARD_ALPN,
 };

@@ -8,7 +8,10 @@ use tracing::debug_span;
 use crate::db::ports::DbExecutor;
 use crate::db::schema::active_clipboard_register;
 use uc_core::clipboard::ActiveClipboardState;
-use uc_core::ports::clipboard::{ActiveClipboardRegisterError, AdvanceActiveClipboardPort};
+use uc_core::ids::{DeviceId, EntryId};
+use uc_core::ports::clipboard::{
+    ActiveClipboardRegisterError, AdvanceActiveClipboardPort, LoadActiveClipboardPort,
+};
 
 /// Fixed primary key for the single register row (the table is pinned to a
 /// single row via a `CHECK (id = 1)` constraint).
@@ -107,6 +110,40 @@ impl<E: DbExecutor> AdvanceActiveClipboardPort for DieselActiveClipboardRegister
             })
         })
         .map_err(|e| ActiveClipboardRegisterError::Storage(e.to_string()))
+    }
+}
+
+#[async_trait]
+impl<E: DbExecutor> LoadActiveClipboardPort for DieselActiveClipboardRegisterRepository<E> {
+    async fn load(&self) -> Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError> {
+        let span = debug_span!("infra.sqlite.active_clipboard_register.load");
+        let row: Option<(String, String, i64, String)> = span
+            .in_scope(|| {
+                self.executor.run(move |conn| {
+                    Ok(active_clipboard_register::table
+                        .filter(active_clipboard_register::id.eq(REGISTER_ROW_ID))
+                        .select((
+                            active_clipboard_register::content_hash,
+                            active_clipboard_register::entry_id,
+                            active_clipboard_register::activated_at_ms,
+                            active_clipboard_register::activated_by,
+                        ))
+                        .first::<(String, String, i64, String)>(conn)
+                        .optional()?)
+                })
+            })
+            .map_err(|e| ActiveClipboardRegisterError::Storage(e.to_string()))?;
+
+        Ok(
+            row.map(|(content_hash, entry_id, activated_at_ms, activated_by)| {
+                ActiveClipboardState::new(
+                    content_hash,
+                    EntryId::from(entry_id),
+                    activated_at_ms,
+                    DeviceId::new(activated_by),
+                )
+            }),
+        )
     }
 }
 
@@ -242,5 +279,30 @@ mod tests {
             .unwrap();
         assert!(!advanced, "an exact-key duplicate must not advance");
         assert_eq!(read_row(&reader).unwrap().0, "blake3v1:aa");
+    }
+
+    #[tokio::test]
+    async fn load_returns_none_when_register_empty() {
+        let (repo, _reader, _tmp) = make_repo();
+        let loaded = repo.load().await.unwrap();
+        assert!(loaded.is_none(), "empty register must load as None");
+    }
+
+    #[tokio::test]
+    async fn load_returns_the_full_advanced_state() {
+        let (repo, _reader, _tmp) = make_repo();
+        let written = ActiveClipboardState::new(
+            "blake3v1:cafe",
+            EntryId::from("entry-xyz"),
+            4242,
+            DeviceId::new("dev-load"),
+        );
+        repo.advance(&written).await.unwrap();
+
+        let loaded = repo.load().await.unwrap().expect("register has a value");
+        assert_eq!(loaded.content_hash, "blake3v1:cafe");
+        assert_eq!(loaded.entry_id.as_ref(), "entry-xyz");
+        assert_eq!(loaded.activated_at_ms, 4242);
+        assert_eq!(loaded.activated_by.as_str(), "dev-load");
     }
 }

@@ -43,6 +43,15 @@ impl DeviceId {
         Self(arr)
     }
 
+    /// Fallible constructor for untrusted input. Returns `None` when the
+    /// candidate exceeds `DEVICE_ID_MAX_BYTES`, instead of panicking like
+    /// [`new`](Self::new). Use this at trust boundaries (e.g. decoding a
+    /// device id off the wire) where an over-long value is a rejectable
+    /// input rather than a local contract violation.
+    pub fn try_new(id: impl AsRef<str>) -> Option<Self> {
+        ArrayString::from(id.as_ref()).ok().map(Self)
+    }
+
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
@@ -91,6 +100,18 @@ mod tests {
     fn rejects_overlong_id() {
         let too_long = "x".repeat(DEVICE_ID_MAX_BYTES + 1);
         let _ = DeviceId::new(too_long);
+    }
+
+    #[test]
+    fn try_new_accepts_in_bounds_and_rejects_overlong() {
+        let ok = DeviceId::try_new("peer-x").expect("in-bounds id");
+        assert_eq!(ok.as_str(), "peer-x");
+
+        let too_long = "x".repeat(DEVICE_ID_MAX_BYTES + 1);
+        assert!(
+            DeviceId::try_new(&too_long).is_none(),
+            "over-long id must be rejected, not truncated or panicked"
+        );
     }
 
     #[test]

@@ -1,4 +1,5 @@
 //! Clipboard domain models.
+mod active_state;
 mod category;
 mod change;
 mod decision;
@@ -19,6 +20,7 @@ mod system;
 mod thumbnail;
 mod timestamp;
 
+pub use active_state::ActiveClipboardState;
 pub use category::{ClipboardContentCategory, ClipboardContentCategorySet};
 pub use change::*;
 pub use delivery::{

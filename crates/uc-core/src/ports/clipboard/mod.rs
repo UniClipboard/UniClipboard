@@ -1,3 +1,4 @@
+mod active_clipboard_receiver;
 mod active_clipboard_register;
 mod blob_migration_repo;
 mod clipboard_change_origin;
@@ -21,6 +22,7 @@ mod sync_receiver;
 mod thumbnail_generator;
 mod thumbnail_repository;
 
+pub use active_clipboard_receiver::{ActiveClipboardReceiverPort, InboundActiveClipboardState};
 pub use active_clipboard_register::{ActiveClipboardRegisterError, AdvanceActiveClipboardPort};
 pub use blob_migration_repo::{BlobMigrationRepoError, BlobMigrationRepoPort, MigrationRecord};
 pub use clipboard_change_origin::ClipboardChangeOriginPort;

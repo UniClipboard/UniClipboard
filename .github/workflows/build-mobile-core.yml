@@ -37,6 +37,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # No authenticated git operations run after checkout (the Release is
+          # cut via the `gh` CLI using GH_TOKEN), so don't leave the checkout
+          # token behind in `.git/config`.
+          persist-credentials: false
           # The cargo workspace `[patch.crates-io]` points at vendor/iroh-blobs;
           # cargo metadata/build fails to parse the manifest if it is absent,
           # even though uc-mobile does not pull it.

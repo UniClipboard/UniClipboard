@@ -61,6 +61,27 @@ impl ActiveClipboardState {
             Ordering::Equal => self.activated_by.as_str() > current.activated_by.as_str(),
         }
     }
+
+    /// Whether `self` and `other` describe the *same activation event*.
+    ///
+    /// Compares the full cross-device activation key
+    /// `(content_hash, activated_at_ms, activated_by)`. `entry_id` is a
+    /// per-device handle and is deliberately excluded — two devices holding
+    /// the same content under the same activation have different `entry_id`s
+    /// yet are converged on that activation.
+    ///
+    /// This is the convergence/loop-stop predicate: an observation that is
+    /// the same activation as the stored value is already known and must not
+    /// be re-applied or re-propagated. It is strictly stronger than
+    /// `!a.supersedes(b) && !b.supersedes(a)` only in that it also requires
+    /// `content_hash` to match — at equal `(activated_at_ms, activated_by)`
+    /// the LWW order already treats the values as converged, but the content
+    /// could in principle differ, so the full-key check is the safe identity.
+    pub fn is_same_activation(&self, other: &ActiveClipboardState) -> bool {
+        self.content_hash == other.content_hash
+            && self.activated_at_ms == other.activated_at_ms
+            && self.activated_by == other.activated_by
+    }
 }
 
 #[cfg(test)]
@@ -93,5 +114,34 @@ mod tests {
         let b = state("blake3v1:aa", 100, "dev-a");
         assert!(!a.supersedes(&b));
         assert!(!b.supersedes(&a));
+    }
+
+    #[test]
+    fn same_activation_ignores_entry_id() {
+        // Same full key, different per-device entry_id → same activation.
+        let a = ActiveClipboardState::new("blake3v1:aa", EntryId::new(), 100, DeviceId::new("d"));
+        let b = ActiveClipboardState::new("blake3v1:aa", EntryId::new(), 100, DeviceId::new("d"));
+        assert_ne!(a.entry_id, b.entry_id, "entry_ids must differ for the test");
+        assert!(a.is_same_activation(&b));
+        assert!(b.is_same_activation(&a));
+    }
+
+    #[test]
+    fn different_content_hash_is_not_same_activation() {
+        // Equal ts + activator but different content → distinct activations,
+        // even though neither supersedes the other under LWW.
+        let a = state("blake3v1:aa", 100, "dev-a");
+        let b = state("blake3v1:bb", 100, "dev-a");
+        assert!(!a.is_same_activation(&b));
+        assert!(!a.supersedes(&b) && !b.supersedes(&a));
+    }
+
+    #[test]
+    fn differing_ts_or_activator_is_not_same_activation() {
+        let base = state("blake3v1:aa", 100, "dev-a");
+        let newer_ts = state("blake3v1:aa", 101, "dev-a");
+        let other_by = state("blake3v1:aa", 100, "dev-b");
+        assert!(!base.is_same_activation(&newer_ts));
+        assert!(!base.is_same_activation(&other_by));
     }
 }

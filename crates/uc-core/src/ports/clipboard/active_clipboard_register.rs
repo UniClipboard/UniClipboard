@@ -29,3 +29,17 @@ pub trait AdvanceActiveClipboardPort: Send + Sync {
         state: &ActiveClipboardState,
     ) -> Result<bool, ActiveClipboardRegisterError>;
 }
+
+/// Read the current value of the single-row active-clipboard register.
+#[async_trait]
+pub trait LoadActiveClipboardPort: Send + Sync {
+    /// Return the register's current value, or `None` when it has never
+    /// been written.
+    ///
+    /// This is a point-in-time read: a concurrent
+    /// [`AdvanceActiveClipboardPort::advance`] may change the value
+    /// immediately afterwards. Callers that need the read and a conditional
+    /// write to be atomic must rely on `advance`'s own compare-and-set
+    /// rather than gating it on a prior `load`.
+    async fn load(&self) -> Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError>;
+}

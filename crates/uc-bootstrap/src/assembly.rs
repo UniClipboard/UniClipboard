@@ -232,6 +232,14 @@ pub struct WiredDependencies {
     /// `<app_data>/analytics/`, sharing storage with the global
     /// EventContext set up by `compose_event_context`.
     pub analytics_facade: Arc<dyn AnalyticsFacade>,
+    /// Single write boundary for all programmatic clipboard writes (the same
+    /// `Arc` carried on [`BackgroundRuntimeDeps`]). Threaded onto
+    /// `WiredDependencies` so `build_space_setup_assembly` can hand the
+    /// active-clipboard inbound worker the *shared* coordinator — a separate
+    /// instance would split the circuit-breaker + origin-guard state from the
+    /// restore/capture write path.
+    pub clipboard_write_coordinator:
+        Arc<uc_application::clipboard_write::ClipboardWriteCoordinator>,
 }
 
 /// Infrastructure layer implementations
@@ -251,6 +259,7 @@ struct InfraLayer {
 
     // Cross-device active-clipboard LWW register (single-row table).
     active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort>,
+    active_clipboard_register_load: Arc<dyn uc_core::ports::clipboard::LoadActiveClipboardPort>,
 
     // Membership repository (phase 4b PR-4 起成为唯一持久成员层).
     member_repo: Arc<dyn uc_core::MemberRepositoryPort>,
@@ -533,12 +542,19 @@ fn create_infra_layer(
     let selection_repo_impl = DieselClipboardSelectionRepository::new(Arc::clone(&db_executor));
     let selection_repo: Arc<dyn ClipboardSelectionRepositoryPort> = Arc::new(selection_repo_impl);
 
+    // One Diesel adapter implements both the write (advance / SQL CAS) and
+    // read (load) sides of the single-row register; coerce it into each so
+    // every consumer holds only its slice (ports.md §8.3).
+    let active_clipboard_register_impl = Arc::new(
+        uc_infra::db::repositories::DieselActiveClipboardRegisterRepository::new(Arc::clone(
+            &db_executor,
+        )),
+    );
     let active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort> =
-        Arc::new(
-            uc_infra::db::repositories::DieselActiveClipboardRegisterRepository::new(Arc::clone(
-                &db_executor,
-            )),
-        );
+        Arc::clone(&active_clipboard_register_impl) as _;
+    let active_clipboard_register_load: Arc<
+        dyn uc_core::ports::clipboard::LoadActiveClipboardPort,
+    > = active_clipboard_register_impl as _;
 
     // One Diesel adapter implements all five receiver-side projection intent
     // ports; coerce it into each so every consumer holds only its slice.
@@ -587,6 +603,7 @@ fn create_infra_layer(
         representation_repo,
         selection_repo,
         active_clipboard_register,
+        active_clipboard_register_load,
         member_repo,
         trusted_peer_repo,
         peer_addr_repo,
@@ -1247,6 +1264,7 @@ pub fn wire_dependencies(
             worker_tx,
             payload_resolver,
             active_register: infra.active_clipboard_register,
+            active_register_load: infra.active_clipboard_register_load,
         },
         security: SecurityPorts {
             current_profile: platform.current_profile,
@@ -1350,6 +1368,7 @@ pub fn wire_dependencies(
         host_event_bus,
         file_transfer_facade,
         analytics_facade,
+        clipboard_write_coordinator: Arc::clone(&clipboard_write_coordinator),
     };
     let background = BackgroundRuntimeDeps {
         representation_cache,

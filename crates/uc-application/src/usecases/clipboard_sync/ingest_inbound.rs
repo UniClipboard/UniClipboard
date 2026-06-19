@@ -38,6 +38,7 @@ use uc_core::ports::{ClipboardReceiverPort, ClockPort};
 use uc_core::MemberRepositoryPort;
 
 use super::payload_codec::decode_v3_bytes_to_snapshot;
+use super::receive_gate::MemberReceiveGate;
 use uc_core::clipboard::ClipboardContentCategorySet;
 
 /// Application-layer view of one decrypted inbound clipboard payload.
@@ -65,7 +66,7 @@ const NOTICE_CHANNEL_CAPACITY: usize = 64;
 
 pub(crate) struct IngestInboundClipboardUseCase {
     receiver: Arc<dyn ClipboardReceiverPort>,
-    member_repo: Arc<dyn MemberRepositoryPort>,
+    receive_gate: MemberReceiveGate,
     transfer_cipher: Arc<dyn TransferCipherPort>,
     notices_tx: broadcast::Sender<InboundClipboardNotice>,
     clock: Arc<dyn ClockPort>,
@@ -100,7 +101,7 @@ impl IngestInboundClipboardUseCase {
         let (notices_tx, _) = broadcast::channel(NOTICE_CHANNEL_CAPACITY);
         Self {
             receiver,
-            member_repo,
+            receive_gate: MemberReceiveGate::new(member_repo),
             transfer_cipher,
             notices_tx,
             clock,
@@ -186,7 +187,11 @@ impl IngestInboundClipboardUseCase {
         };
         // Stage 1: device-level kill switch (`receive_enabled`). Cheaper
         // than decrypt + decode, so do this first.
-        if !self.is_receive_allowed(&inbound.peer_device_id).await {
+        if !self
+            .receive_gate
+            .is_receive_allowed(&inbound.peer_device_id)
+            .await
+        {
             return;
         }
         let plaintext = match self.transfer_cipher.decrypt(&inbound.ciphertext).await {
@@ -220,6 +225,7 @@ impl IngestInboundClipboardUseCase {
             }
         };
         if !self
+            .receive_gate
             .is_receive_category_allowed(&inbound.peer_device_id, &categories)
             .await
         {
@@ -238,73 +244,6 @@ impl IngestInboundClipboardUseCase {
                 peer = %inbound.peer_device_id.as_str(),
                 "ingest: no notice subscribers; frame dropped"
             );
-        }
-    }
-
-    /// Per-device receive gate (stage 1): returns `true` when the local
-    /// device should accept clipboard frames from `peer`. Reads
-    /// `SpaceMember.sync_preferences.receive_enabled`; fails open on
-    /// lookup error or missing record (mirrors `dispatch_entry`'s gate)
-    /// so a transient repo glitch can't silently kill incoming sync.
-    async fn is_receive_allowed(&self, peer: &DeviceId) -> bool {
-        match self.member_repo.get(peer).await {
-            Ok(Some(member)) => {
-                if !member.sync_preferences.receive_enabled {
-                    info!(
-                        peer = %peer.as_str(),
-                        reason = "receive_disabled_by_user",
-                        "ingest: dropping inbound per per-device sync preferences"
-                    );
-                    return false;
-                }
-                true
-            }
-            Ok(None) => {
-                warn!(
-                    peer = %peer.as_str(),
-                    "ingest: inbound from peer missing in member repo; failing open"
-                );
-                true
-            }
-            Err(err) => {
-                warn!(
-                    peer = %peer.as_str(),
-                    error = %err,
-                    "ingest: member repo lookup failed; failing open"
-                );
-                true
-            }
-        }
-    }
-
-    /// Per-device receive gate (stage 2): content-type filter, AND-of-allowed
-    /// across the snapshot's category set (see `uc-core` `category.rs` module
-    /// doc). An empty set passes (fail open); a non-empty set passes only
-    /// when every category in it is allowed by `receive_content_types`.
-    /// Same fail-open posture as stage 1 on lookup errors.
-    async fn is_receive_category_allowed(
-        &self,
-        peer: &DeviceId,
-        categories: &ClipboardContentCategorySet,
-    ) -> bool {
-        match self.member_repo.get(peer).await {
-            Ok(Some(member)) => {
-                if !categories.allowed_by(&member.sync_preferences.receive_content_types) {
-                    info!(
-                        peer = %peer.as_str(),
-                        categories = %categories.labels(),
-                        denied = %categories
-                            .denied_labels(&member.sync_preferences.receive_content_types),
-                        reason = "content_type_disabled_by_user",
-                        "ingest: dropping inbound per per-device content_types filter"
-                    );
-                    return false;
-                }
-                true
-            }
-            // Stage 1 already logged on these branches; stay quiet to
-            // avoid log spam, but still fail open.
-            Ok(None) | Err(_) => true,
         }
     }
 }

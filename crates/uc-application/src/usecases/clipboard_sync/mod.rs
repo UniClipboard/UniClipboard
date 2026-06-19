@@ -11,6 +11,7 @@
 //! `ClipboardSyncFacade`.
 
 pub(crate) mod apply_inbound;
+pub(crate) mod apply_inbound_active_state;
 pub(crate) mod dispatch_entry;
 pub(crate) mod get_entry_delivery_view;
 pub(crate) mod ingest_inbound;
@@ -19,6 +20,7 @@ pub(crate) mod ingest_inbound;
 /// Individual private helpers inside stay scoped via their own
 /// `pub(crate)` / no-modifier visibility.
 pub mod payload_codec;
+pub(crate) mod receive_gate;
 pub(crate) mod resend_entry;
 pub(crate) mod snapshot_from_entry;
 

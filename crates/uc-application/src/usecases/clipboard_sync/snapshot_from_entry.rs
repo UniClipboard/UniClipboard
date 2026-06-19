@@ -30,6 +30,7 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use thiserror::Error;
 use tracing::{debug, info, warn};
@@ -508,6 +509,58 @@ pub(crate) async fn demote_orphaned_to_lost(
                 "Failed to demote orphaned representation to Lost"
             );
         }
+    }
+}
+
+/// Bundles the ports [`reconstruct_snapshot_from_entry`] needs so callers can
+/// rebuild a snapshot from an entry id with a single dependency instead of
+/// threading six ports each. The free function above stays the single source
+/// of truth; this is a thin owning wrapper.
+#[derive(Clone)]
+pub(crate) struct SnapshotReconstructor {
+    entry_repo: Arc<dyn GetClipboardEntryPort>,
+    selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+    representation_repo: Arc<dyn GetRepresentationPort>,
+    rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
+    payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
+    blob_store: Arc<dyn BlobReaderPort>,
+}
+
+impl SnapshotReconstructor {
+    pub(crate) fn new(
+        entry_repo: Arc<dyn GetClipboardEntryPort>,
+        selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+        representation_repo: Arc<dyn GetRepresentationPort>,
+        rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
+        payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
+        blob_store: Arc<dyn BlobReaderPort>,
+    ) -> Self {
+        Self {
+            entry_repo,
+            selection_repo,
+            representation_repo,
+            rep_processing_repo,
+            payload_resolver,
+            blob_store,
+        }
+    }
+
+    /// Rebuild the [`SystemClipboardSnapshot`] for `entry_id`. Delegates to
+    /// [`reconstruct_snapshot_from_entry`].
+    pub(crate) async fn reconstruct(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<SystemClipboardSnapshot, BuildSnapshotError> {
+        reconstruct_snapshot_from_entry(
+            self.entry_repo.as_ref(),
+            self.selection_repo.as_ref(),
+            self.representation_repo.as_ref(),
+            self.rep_processing_repo.as_ref(),
+            self.payload_resolver.as_ref(),
+            self.blob_store.as_ref(),
+            entry_id,
+        )
+        .await
     }
 }
 

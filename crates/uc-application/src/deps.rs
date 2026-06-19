@@ -18,9 +18,10 @@ use uc_core::ports::clipboard::{
     AdvanceActiveClipboardPort, ClipboardChangeOriginPort, ClipboardPayloadResolverPort,
     ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
     GetClipboardEntryPort, GetRepresentationByBlobIdPort, GetRepresentationPort,
-    ListClipboardEntriesPort, ListRepresentationsForEventPort, RepresentationCachePort,
-    SaveClipboardEntryPort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
-    ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
+    ListClipboardEntriesPort, ListRepresentationsForEventPort, LoadActiveClipboardPort,
+    RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort, SystemClipboardPort,
+    ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
+    UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
@@ -86,6 +87,10 @@ pub struct ClipboardPorts {
     /// restore and inbound-apply paths when a local OS clipboard write makes
     /// its content the latest active clipboard state.
     pub active_register: Arc<dyn AdvanceActiveClipboardPort>,
+    /// Cross-device active-clipboard LWW register read port. Read by the
+    /// inbound 0xC3 state handler to decide whether an incoming observation
+    /// supersedes the current value (LWW + loop-stop).
+    pub active_register_load: Arc<dyn LoadActiveClipboardPort>,
 }
 
 /// Narrow space-access intent ports facing the application layer.

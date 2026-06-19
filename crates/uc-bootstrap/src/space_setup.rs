@@ -44,9 +44,10 @@ use tracing::debug;
 const TRANSLATOR_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(200);
 
 use uc_application::facade::{
-    BlobTransferDeps, BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent,
-    HostEventBus, IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps,
-    SpaceSetupFacade, TransferHostEvent,
+    ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle, BlobTransferDeps,
+    BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent, HostEventBus,
+    IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade,
+    TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
 use uc_core::file_transfer::{
@@ -55,8 +56,8 @@ use uc_core::file_transfer::{
 use uc_core::ports::blob::{BlobReferenceRepositoryPort, BlobTransferPort};
 use uc_core::ports::space::ProofPort;
 use uc_core::ports::{
-    ActiveClipboardReceiverPort, ClipboardDispatchPort, ClipboardReceiverPort,
-    ConnectionChannelPort, LocalIdentityPort, PresencePort,
+    ActiveClipboardDispatchPort, ActiveClipboardReceiverPort, ClipboardDispatchPort,
+    ClipboardReceiverPort, ConnectionChannelPort, LocalIdentityPort, PresencePort,
 };
 use uc_infra::network::iroh::transfer_progress_adapter::InboundProgressEvent;
 use uc_infra::network::iroh::{
@@ -109,6 +110,11 @@ pub struct SpaceSetupAssembly {
     /// single subscription seam, mirroring how `clipboard_sync` owns the bulk
     /// inbound stream.
     pub active_clipboard_receiver: Arc<dyn ActiveClipboardReceiverPort>,
+    /// Active-clipboard register convergence facade (issue #1017). Owns the
+    /// inbound 0xC3 state use case; the inbound loop's lifetime is tracked by
+    /// `active_clipboard_inbound_handle`. Held so future outbound-origination
+    /// edit-sites (restore broadcast, peer-online resync) can reach it.
+    pub active_clipboard: Arc<ActiveClipboardFacade>,
     /// The shared iroh node. Held privately so callers can't bind a second
     /// node or install additional handlers after `spawn` — that would
     /// fragment peer identity (§"共用网络栈" decision, Slice 1 planning).
@@ -119,6 +125,11 @@ pub struct SpaceSetupAssembly {
     /// 出 `RecvError::Closed`)。`shutdown` 显式 abort 一次走在 router
     /// 关闭之前,加快进程退出。
     ingest_handle: IngestHandle,
+    /// Inbound active-clipboard (0xC3) convergence loop handle (issue #1017).
+    /// Same lifetime as `ingest_handle`: exits on its own when the
+    /// active-clipboard receiver adapter's broadcast senders drop at router
+    /// shutdown; `shutdown` aborts it explicitly first.
+    active_clipboard_inbound_handle: ActiveClipboardHandle,
     /// 反向"传输进度"翻译 worker 的 join handle。订阅
     /// `IrohTransferProgressAdapter` 的 inbound 流,将每帧 progress 翻译
     /// 为 `HostEvent::Transfer { direction: Sending, ... }` 并发到 emitter。
@@ -143,6 +154,7 @@ impl SpaceSetupAssembly {
         // same when `self` falls out of scope; the explicit call only
         // shaves a tick off teardown latency and makes ordering obvious.
         self.ingest_handle.abort();
+        self.active_clipboard_inbound_handle.abort();
         self.outbound_progress_translator.abort();
         self.facade.on_shutdown().await;
         self.iroh_node.shutdown().await;
@@ -365,15 +377,19 @@ pub async fn build_space_setup_assembly(
     // Install the active-clipboard state ALPN (0xC3) as an independent
     // sibling on the same node. A lone `.accept()` deeper in the node would
     // not be reachable from here — the handler has to be installed on this
-    // builder before `spawn()`, so the seam is threaded through here.
-    // Only the inbound receiver port is produced today; the outbound
-    // dispatch path comes online with its consumer.
+    // builder before `spawn()`, so the seam is threaded through here. Produces
+    // both the inbound receiver (broadcast of peer observations) and the
+    // outbound dispatch port (re-broadcast of converged state), sharing the
+    // endpoint + peer_addr_repo like install_clipboard.
     let ActiveClipboardHandlers {
+        dispatch: active_clipboard_dispatch,
         receiver: active_clipboard_receiver,
     } = builder.install_active_clipboard(
+        Arc::clone(&wired.peer_addr_repo),
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&deps.security.fingerprint),
     );
+    let active_clipboard_dispatch: Arc<dyn ActiveClipboardDispatchPort> = active_clipboard_dispatch;
     let active_clipboard_receiver: Arc<dyn ActiveClipboardReceiverPort> = active_clipboard_receiver;
     // 反向"传输进度"通道(receiver → sender):同一节点装第四个 ALPN。
     // 装在 install_blobs 之前是为了让 `IrohTransferProgressAdapter` 的
@@ -513,6 +529,36 @@ pub async fn build_space_setup_assembly(
         file_transfer: Some(Arc::clone(&wired.file_transfer_facade)),
     }));
 
+    // Active-clipboard register convergence (issue #1017). The inbound worker
+    // subscribes to the 0xC3 receiver and drives the LWW register: locked /
+    // gate / LWW checks → reconstruct the locally-held content → detached OS
+    // write → on success advance the register + re-broadcast the same-key
+    // state to allowed peers. Spawned here with `ingest_handle`'s lifetime —
+    // the loop exits when the receiver adapter's broadcast senders drop on
+    // router shutdown, and `SpaceSetupAssembly::shutdown` aborts it explicitly
+    // to shave a tick off teardown.
+    let active_clipboard = Arc::new(ActiveClipboardFacade::new(ActiveClipboardDeps {
+        receiver: Arc::clone(&active_clipboard_receiver),
+        dispatch: active_clipboard_dispatch,
+        is_unlocked: Arc::clone(&deps.security.space_access_ports.is_unlocked),
+        load_register: Arc::clone(&deps.clipboard.active_register_load),
+        advance_register: Arc::clone(&deps.clipboard.active_register),
+        member_repo: Arc::clone(&deps.device.member_repo),
+        peer_addr_repo: Arc::clone(&wired.peer_addr_repo),
+        entry_lookup: Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
+        coordinator: Arc::clone(&wired.clipboard_write_coordinator),
+        clock: Arc::clone(&deps.system.clock),
+        entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
+        selection_repo: Arc::clone(&deps.clipboard.selection_repo),
+        representation_repo: Arc::clone(&deps.clipboard.representation_ports.get),
+        rep_processing_repo: Arc::clone(
+            &deps.clipboard.representation_ports.update_processing_result,
+        ),
+        payload_resolver: Arc::clone(&deps.clipboard.payload_resolver),
+        blob_store: Arc::clone(&deps.storage.blob_store),
+    }));
+    let active_clipboard_inbound_handle = active_clipboard.spawn_inbound_loop();
+
     info!("Slice 2/3 SpaceSetupFacade + MemberRosterFacade + ClipboardSyncFacade + BlobTransferFacade assembled");
     Ok(SpaceSetupAssembly {
         facade,
@@ -522,9 +568,11 @@ pub async fn build_space_setup_assembly(
         blob_transfer,
         blob_reference: Arc::clone(&wired.blob_reference_repo),
         presence,
+        active_clipboard,
         active_clipboard_receiver,
         iroh_node,
         ingest_handle,
+        active_clipboard_inbound_handle,
         outbound_progress_translator,
     })
 }

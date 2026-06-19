@@ -5,6 +5,7 @@
 //! Use cases live under `crate::usecases::<domain>` and stay `pub(crate)`;
 //! sub-facades expose them through domain-scoped methods.
 
+pub mod active_clipboard;
 pub mod app_facade;
 pub mod app_paths;
 pub mod blob_transfer;
@@ -32,6 +33,7 @@ pub mod space_setup;
 pub mod storage;
 pub mod upgrade;
 
+pub use active_clipboard::{ActiveClipboardDeps, ActiveClipboardFacade, ActiveClipboardHandle};
 pub use app_facade::{
     AppFacade, AppFacadeParts, AppPresenceEvent, AppPresenceSubscription,
     AppPresenceSubscriptionError, DaemonLifecycleFacades,

@@ -41,6 +41,9 @@ if [ -z "$UDID" ]; then
   [ -n "$UDID" ] || { echo "no available iPhone simulator found" >&2; exit 1; }
   echo "    booting $UDID"
   xcrun simctl boot "$UDID"
+  # `boot` returns immediately; block until the device finishes booting so the
+  # `simctl spawn` below doesn't race a half-booted simulator (flaky failures).
+  xcrun simctl bootstatus "$UDID"
   BOOTED_BY_SCRIPT=1
 else
   BOOTED_BY_SCRIPT=0

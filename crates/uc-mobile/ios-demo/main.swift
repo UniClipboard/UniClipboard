@@ -54,10 +54,10 @@ print("1/7 parseConnectUri golden vector OK")
 do {
     _ = try parseConnectUri(uri: "uniclip://connect?v=1&svc=mobile-sync&p=eyJ2IjoxfQ")
     fail("uniclip:// alias must be rejected")
-} catch let e as ConnectUriError {
-    print("2/7 error mapping OK: \(e)")
+} catch ConnectUriError.InvalidScheme {
+    print("2/7 error mapping OK: InvalidScheme")
 } catch {
-    fail("expected ConnectUriError, got \(error)")
+    fail("expected ConnectUriError.InvalidScheme, got \(error)")
 }
 
 final class DemoBridge: PlatformBridge {

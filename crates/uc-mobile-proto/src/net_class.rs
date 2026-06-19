@@ -159,7 +159,15 @@ fn extract_host(s: &str) -> Option<String> {
         // lenient about the contents (verified: `http://[10.0.0.5]` → host
         // `10.0.0.5` → LAN, `http://[x.local]` → `x.local`), so decode the
         // inner text like a reg-name but additionally allow ':'.
-        let (h, _) = bracketed.split_once(']')?;
+        let (h, tail) = bracketed.split_once(']')?;
+        // After the closing bracket Foundation accepts only an optional
+        // `:port` (digits, possibly empty); any other tail fails its URL
+        // parse → host nil → WAN.
+        match tail.strip_prefix(':') {
+            Some(port) if port.bytes().all(|b| b.is_ascii_digit()) => {}
+            None if tail.is_empty() => {}
+            _ => return None,
+        }
         decode_host(h, true)?
     } else {
         let h = match host_port.rsplit_once(':') {
@@ -537,6 +545,9 @@ mod tests {
         // inner text classifies as-is.
         assert_eq!(classify_url("http://[10.0.0.5]"), ServerUrlClass::Lan);
         assert_eq!(classify_url("http://[x.local]"), ServerUrlClass::Lan);
+        // A `:port` after the bracket is accepted; any other tail is not.
+        assert_eq!(classify_url("http://[10.0.0.5]:80"), ServerUrlClass::Lan);
+        assert_eq!(classify_url("http://[10.0.0.5]x"), ServerUrlClass::Wan);
         // Invalid userinfo never invalidates the host (Foundation drops it).
         assert_eq!(classify_url("http://a%zz b@nas.local"), ServerUrlClass::Lan);
     }

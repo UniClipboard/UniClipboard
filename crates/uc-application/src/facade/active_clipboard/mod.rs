@@ -43,22 +43,53 @@ use crate::facade::clipboard_inbound::{
     InboundClipboardApplyInput, InboundClipboardApplyOutcome, InboundClipboardApplyPort,
 };
 use crate::facade::clipboard_outbound::OutboundBlobPublishGateway;
-use crate::usecases::clipboard_sync::active_state::fanout::fan_out_active_state;
 use crate::usecases::clipboard_sync::active_state::apply_inbound::{
     ActiveClipboardInboundHandle, ApplyInboundActiveClipboardStateUseCase,
     InboundPulledContentStore, InboundPulledContentStoreError,
 };
+use crate::usecases::clipboard_sync::active_state::fanout::fan_out_active_state;
 use crate::usecases::clipboard_sync::active_state::peer_online_resync_worker::{
     PeerOnlineResyncHandle, PeerOnlineResyncWorker,
 };
 use crate::usecases::clipboard_sync::active_state::restore_broadcast_worker::{
     RestoreBroadcastHandle, RestoreBroadcastWorker,
 };
-use crate::usecases::clipboard_sync::send_gate::MemberSendGate;
 use crate::usecases::clipboard_sync::active_state::serve_pull::{
     ActiveClipboardPullServeDeps, ActiveClipboardPullServeUseCase,
 };
+use crate::usecases::clipboard_sync::send_gate::MemberSendGate;
 use crate::usecases::clipboard_sync::snapshot_from_entry::SnapshotReconstructor;
+
+/// The six repository / resolver ports needed to rebuild a
+/// `SystemClipboardSnapshot` from a local entry id. Bundled so callers wire one
+/// dependency instead of threading six identical ports; folded into a
+/// `SnapshotReconstructor` at facade construction. Shared by the
+/// inbound / resend / restore paths ([`ActiveClipboardDeps`]) and the pull
+/// serve path ([`ActiveClipboardPullServeFacadeDeps`]).
+pub struct ClipboardSnapshotDeps {
+    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
+    pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+    pub representation_repo: Arc<dyn GetRepresentationPort>,
+    pub rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
+    pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
+    pub blob_store: Arc<dyn BlobReaderPort>,
+}
+
+impl ClipboardSnapshotDeps {
+    /// Fold the bundled ports into the shared `SnapshotReconstructor`. The free
+    /// function `reconstruct_snapshot_from_entry` stays the single source of
+    /// truth; this just owns the ports.
+    fn into_reconstructor(self) -> SnapshotReconstructor {
+        SnapshotReconstructor::new(
+            self.entry_repo,
+            self.selection_repo,
+            self.representation_repo,
+            self.rep_processing_repo,
+            self.payload_resolver,
+            self.blob_store,
+        )
+    }
+}
 
 /// Wiring dependencies for [`ActiveClipboardFacade`]. Assembled by bootstrap.
 pub struct ActiveClipboardDeps {
@@ -81,13 +112,9 @@ pub struct ActiveClipboardDeps {
     /// Settings reader for the restore-broadcast feature gate
     /// (`sync.sync_on_restore`).
     pub settings: Arc<dyn SettingsPort>,
-    // Snapshot reconstruction ports (shared with restore / resend).
-    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
-    pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    pub representation_repo: Arc<dyn GetRepresentationPort>,
-    pub rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
-    pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
-    pub blob_store: Arc<dyn BlobReaderPort>,
+    /// Snapshot reconstruction ports (shared with restore / resend), folded
+    /// into a `SnapshotReconstructor` at construction.
+    pub snapshot: ClipboardSnapshotDeps,
     // ---- On-demand pull subsystem (issue #1017 PR8) ----
     /// Transfer cipher shared with the bulk sync path. The inbound store side
     /// decrypts a pulled envelope before persisting it.
@@ -116,13 +143,9 @@ pub struct ActiveClipboardPullServeFacadeDeps {
     /// free-standing files into this device's blob store through it, re-issuing
     /// tickets pinned to this device (D3) before encoding the V3 envelope.
     pub blob_publisher: Arc<BlobTransferFacade>,
-    // Snapshot reconstruction ports (shared with restore / resend).
-    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
-    pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
-    pub representation_repo: Arc<dyn GetRepresentationPort>,
-    pub rep_processing_repo: Arc<dyn UpdateRepresentationProcessingResultPort>,
-    pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
-    pub blob_store: Arc<dyn BlobReaderPort>,
+    /// Snapshot reconstruction ports (shared with restore / resend), folded
+    /// into a `SnapshotReconstructor` at construction.
+    pub snapshot: ClipboardSnapshotDeps,
 }
 
 /// Build the active-clipboard pull serve port (issue #1017 PR8). Reuses the
@@ -134,14 +157,7 @@ pub struct ActiveClipboardPullServeFacadeDeps {
 pub fn build_active_clipboard_pull_serve_port(
     deps: ActiveClipboardPullServeFacadeDeps,
 ) -> Arc<dyn ActiveClipboardPullServePort> {
-    let reconstructor = SnapshotReconstructor::new(
-        deps.entry_repo,
-        deps.selection_repo,
-        deps.representation_repo,
-        deps.rep_processing_repo,
-        deps.payload_resolver,
-        deps.blob_store,
-    );
+    let reconstructor = deps.snapshot.into_reconstructor();
     let blob_publisher: Arc<dyn OutboundBlobPublishGateway> = deps.blob_publisher;
     Arc::new(ActiveClipboardPullServeUseCase::new(
         ActiveClipboardPullServeDeps {
@@ -185,14 +201,7 @@ pub struct ActiveClipboardFacade {
 
 impl ActiveClipboardFacade {
     pub fn new(deps: ActiveClipboardDeps) -> Self {
-        let reconstructor = SnapshotReconstructor::new(
-            deps.entry_repo,
-            deps.selection_repo,
-            deps.representation_repo,
-            deps.rep_processing_repo,
-            deps.payload_resolver,
-            deps.blob_store,
-        );
+        let reconstructor = deps.snapshot.into_reconstructor();
         let local_advancer = LocalActiveRegisterAdvancer::new(
             Arc::clone(&deps.advance_register),
             deps.device_identity,

@@ -48,9 +48,9 @@ use uc_application::facade::{
     build_active_clipboard_pull_serve_port, ActiveClipboardDeps, ActiveClipboardFacade,
     ActiveClipboardHandle, ActiveClipboardPeerOnlineResyncHandle,
     ActiveClipboardPullServeFacadeDeps, ActiveClipboardRestoreBroadcastHandle, BlobTransferDeps,
-    BlobTransferFacade, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent, HostEventBus,
-    InboundClipboardApplyPort, IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps,
-    SpaceSetupFacade, TransferHostEvent,
+    BlobTransferFacade, ClipboardSnapshotDeps, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent,
+    HostEventBus, InboundClipboardApplyPort, IngestHandle, MemberRosterDeps, MemberRosterFacade,
+    SpaceSetupDeps, SpaceSetupFacade, TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
 use uc_application::{
@@ -500,14 +500,16 @@ pub async fn build_space_setup_assembly(
             settings: Arc::clone(&deps.settings),
             transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
             blob_publisher: Arc::clone(&blob),
-            entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
-            selection_repo: Arc::clone(&deps.clipboard.selection_repo),
-            representation_repo: Arc::clone(&deps.clipboard.representation_ports.get),
-            rep_processing_repo: Arc::clone(
-                &deps.clipboard.representation_ports.update_processing_result,
-            ),
-            payload_resolver: Arc::clone(&deps.clipboard.payload_resolver),
-            blob_store: Arc::clone(&deps.storage.blob_store),
+            snapshot: ClipboardSnapshotDeps {
+                entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
+                selection_repo: Arc::clone(&deps.clipboard.selection_repo),
+                representation_repo: Arc::clone(&deps.clipboard.representation_ports.get),
+                rep_processing_repo: Arc::clone(
+                    &deps.clipboard.representation_ports.update_processing_result,
+                ),
+                payload_resolver: Arc::clone(&deps.clipboard.payload_resolver),
+                blob_store: Arc::clone(&deps.storage.blob_store),
+            },
         });
     let ActiveClipboardPullHandlers {
         client: active_clipboard_pull_client,
@@ -677,14 +679,16 @@ pub async fn build_space_setup_assembly(
         clock: Arc::clone(&deps.system.clock),
         device_identity: Arc::clone(&deps.device.device_identity),
         settings: Arc::clone(&deps.settings),
-        entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
-        selection_repo: Arc::clone(&deps.clipboard.selection_repo),
-        representation_repo: Arc::clone(&deps.clipboard.representation_ports.get),
-        rep_processing_repo: Arc::clone(
-            &deps.clipboard.representation_ports.update_processing_result,
-        ),
-        payload_resolver: Arc::clone(&deps.clipboard.payload_resolver),
-        blob_store: Arc::clone(&deps.storage.blob_store),
+        snapshot: ClipboardSnapshotDeps {
+            entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
+            selection_repo: Arc::clone(&deps.clipboard.selection_repo),
+            representation_repo: Arc::clone(&deps.clipboard.representation_ports.get),
+            rep_processing_repo: Arc::clone(
+                &deps.clipboard.representation_ports.update_processing_result,
+            ),
+            payload_resolver: Arc::clone(&deps.clipboard.payload_resolver),
+            blob_store: Arc::clone(&deps.storage.blob_store),
+        },
         // On-demand pull subsystem (PR8): when the observed content is not held
         // locally, pull it from the reporting peer (10s deadline), decrypt +
         // store it via the store-only apply path, then converge.

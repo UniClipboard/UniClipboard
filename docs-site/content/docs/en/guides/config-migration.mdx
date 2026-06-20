@@ -12,12 +12,11 @@ it). After it restarts, your clipboard history, settings, and pairings with
 other devices are all still there — **no re-pairing needed**.
 
 <Callout type="warn">
-  This is a *move*, not a *multi-machine backup*. Importing carries this
-  device's **identity** along with it: after import, the new machine
-  **becomes** your original device. So **do not bring the original device back
-  online** after the move — two devices sharing the same identity will fight
-  each other on the device network. See
-  [Move semantics](#move-semantics-why-you-cant-run-both-at-once).
+  This is a *move*, not a *multi-machine backup*. Importing carries this device's **identity** along
+  with it: after import, the new machine **becomes** your original device. So **do not bring the
+  original device back online** after the move — two devices sharing the same identity will fight
+  each other on the device network. See [Move
+  semantics](#move-semantics-why-you-cant-run-both-at-once).
 </Callout>
 
 ## When to use it
@@ -62,9 +61,9 @@ other devices are all still there — **no re-pairing needed**.
    passphrase**. Without that passphrase no one can open it.
 
 <Callout type="info">
-  Export requires the session to be unlocked, and it takes no separate
-  password: the file is sealed with your existing Space passphrase. If you're on
-  the lock screen, unlock with your sync passphrase first, then export.
+  Export requires the session to be unlocked, and it takes no separate password: the file is sealed
+  with your existing Space passphrase. If you're on the lock screen, unlock with your sync
+  passphrase first, then export.
 </Callout>
 
 Transfer the `.ucbundle` file to the target machine (USB stick, cloud drive,
@@ -108,11 +107,10 @@ Export / import **carries this identity along**. So it's not a "copy", it's a
   same NodeId on the device network will conflict and behave unpredictably.
 
 <Callout type="warn">
-  **Once moved, retire the original device.** After confirming the new machine
-  works, don't start UniClipboard on the original device again (or reset /
-  uninstall it). If what you actually want is "two independent machines, both
-  usable", add a second device through the normal
-  [pairing flow](./pairing) instead of importing.
+  **Once moved, retire the original device.** After confirming the new machine works, don't start
+  UniClipboard on the original device again (or reset / uninstall it). If what you actually want is
+  "two independent machines, both usable", add a second device through the normal [pairing
+  flow](./pairing) instead of importing.
 </Callout>
 
 ## FAQ
@@ -124,10 +122,9 @@ the imported config overwrites the target's existing space, history, keys, and
 identity in one go. You don't need to factory-reset it yourself.
 
 <Callout type="warn">
-  Because import overwrites in place, **the target machine's existing clipboard
-  history is replaced** and that can't be undone. Only import onto a machine
-  once you're sure there's nothing on it you want to keep. The confirmation
-  dialog spells this out before anything is changed.
+  Because import overwrites in place, **the target machine's existing clipboard history is
+  replaced** and that can't be undone. Only import onto a machine once you're sure there's nothing
+  on it you want to keep. The confirmation dialog spells this out before anything is changed.
 </Callout>
 
 ### It asks me to unlock after import?

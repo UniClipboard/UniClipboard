@@ -182,6 +182,15 @@ pub const KEYSLOT_MEMBER: &str = "vault/keyslot.json";
 /// Member path of the device id inside the bundle / staging area.
 pub const DEVICE_ID_MEMBER: &str = "vault/device_id.txt";
 
+/// Member path of the setup-status marker inside the bundle / staging area.
+///
+/// `FileSetupStatusRepository` persists `SetupStatus { has_completed, space_id }`
+/// to `vault_dir/.setup_status`. The facade reads `has_completed` as its
+/// "is this installation initialized" source of truth, so the marker must
+/// travel with the bundle — without it, an imported installation that holds all
+/// its data would still be treated as uninitialized and re-prompt setup.
+pub const SETUP_STATUS_MEMBER: &str = "vault/.setup_status";
+
 /// Member path of settings inside the bundle / staging area.
 pub const SETTINGS_MEMBER: &str = "settings.json";
 

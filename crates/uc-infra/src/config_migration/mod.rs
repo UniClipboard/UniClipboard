@@ -45,6 +45,7 @@ mod tests {
 
     use super::staging::{
         PendingImportMarker, SecretsFile, StagingLayout, DEVICE_ID_MEMBER, KEYSLOT_MEMBER,
+        SETUP_STATUS_MEMBER,
     };
     use super::{ConfigMigrationAdapter, ConfigMigrationPaths};
     use crate::db::pool::init_db_pool;
@@ -123,6 +124,11 @@ mod tests {
         std::fs::write(
             vault.join("device_id.txt"),
             b"550e8400-e29b-41d4-a716-446655440000",
+        )
+        .unwrap();
+        std::fs::write(
+            vault.join(".setup_status"),
+            b"{\"has_completed\":true,\"space_id\":null}",
         )
         .unwrap();
         std::fs::write(data_root.join("settings.json"), b"{\"schema_version\":1}").unwrap();
@@ -244,6 +250,15 @@ mod tests {
         assert!(layout.staging_dir().join(KEYSLOT_MEMBER).exists());
         assert!(layout.staging_dir().join(DEVICE_ID_MEMBER).exists());
         assert!(layout.staging_dir().join("db/uniclipboard.db").exists());
+
+        // The setup-status marker travels through the bundle into staging so a
+        // later apply keeps the installation flagged as initialized.
+        let staged_setup_status = layout.staging_dir().join(SETUP_STATUS_MEMBER);
+        assert!(staged_setup_status.exists());
+        assert_eq!(
+            std::fs::read(staged_setup_status).unwrap(),
+            b"{\"has_completed\":true,\"space_id\":null}"
+        );
     }
 
     #[tokio::test]

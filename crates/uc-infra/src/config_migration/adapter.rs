@@ -30,7 +30,8 @@ use super::manifest::{BundleManifest, ManifestSourceMode, MANIFEST_MEMBER, MANIF
 use super::secret_keys::{migratable_secret_keys, MigratableSecretKind, SECRETS_MEMBER};
 use super::staging::{
     PendingImportMarker, SecretsFile, StagingError, StagingLayout, DB_MEMBER, DEVICE_ID_MEMBER,
-    KEYSLOT_MEMBER, PENDING_IMPORT_SCHEMA_VER, SETTINGS_MEMBER, STAGING_DIR_NAME, UI_STATE_PREFIX,
+    KEYSLOT_MEMBER, PENDING_IMPORT_SCHEMA_VER, SETTINGS_MEMBER, SETUP_STATUS_MEMBER,
+    STAGING_DIR_NAME, UI_STATE_PREFIX,
 };
 
 /// Raw secure-storage entries collected for a bundle, paired with whether a KEK
@@ -325,6 +326,12 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
         // 3. Vault + settings files.
         let keyslot = Self::read_required(&self.paths.vault_dir.join("keyslot.json"))?;
         let device_id = Self::read_required(&self.paths.vault_dir.join("device_id.txt"))?;
+        // Setup-status marker (`vault/.setup_status`): on an initialized source
+        // it should exist, but read it defensively (carry if present, skip if
+        // absent) so a corner case where the marker was deleted but keyslot
+        // remains does not abort the export. Its absence in the target after
+        // apply would make the facade treat the installation as uninitialized.
+        let setup_status = Self::read_optional(&self.paths.vault_dir.join(".setup_status"))?;
         let settings = Self::read_optional(&self.paths.settings_path)?;
 
         // 4. Device fingerprint (human-confirmable identity) + timestamp.
@@ -344,6 +351,9 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
         archive.insert(DB_MEMBER, db_bytes);
         archive.insert(KEYSLOT_MEMBER, keyslot);
         archive.insert(DEVICE_ID_MEMBER, device_id);
+        if let Some(setup_status) = setup_status {
+            archive.insert(SETUP_STATUS_MEMBER, setup_status);
+        }
         if let Some(settings) = settings {
             archive.insert(SETTINGS_MEMBER, settings);
         }

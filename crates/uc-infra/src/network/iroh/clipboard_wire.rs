@@ -126,7 +126,7 @@ pub struct InvalidAckByte(pub u8);
 #[derive(Serialize, Deserialize, Debug)]
 struct WireHeaderV1 {
     version: u8,
-    content_hash: String,
+    snapshot_hash: String,
     captured_at_ms: i64,
     origin_device_id: String,
     origin_device_name: String,
@@ -136,7 +136,7 @@ struct WireHeaderV1 {
 #[derive(Serialize, Deserialize, Debug)]
 struct WireHeaderV2 {
     version: u8,
-    content_hash: String,
+    snapshot_hash: String,
     captured_at_ms: i64,
     origin_device_id: String,
     origin_device_name: String,
@@ -192,7 +192,7 @@ pub enum WireDecodeError {
 pub fn encode_header(header: &ClipboardHeader) -> Result<Vec<u8>, WireEncodeError> {
     let wire = WireHeaderV2 {
         version: ClipboardHeader::CURRENT_VERSION,
-        content_hash: header.content_hash.clone(),
+        snapshot_hash: header.snapshot_hash.clone(),
         captured_at_ms: header.captured_at_ms,
         origin_device_id: header.origin_device_id.clone(),
         origin_device_name: header.origin_device_name.clone(),
@@ -225,7 +225,7 @@ pub fn decode_header(bytes: &[u8]) -> Result<ClipboardHeader, WireDecodeError> {
             let wire: WireHeaderV1 = postcard::from_bytes(bytes)?;
             Ok(ClipboardHeader {
                 version: wire.version,
-                content_hash: wire.content_hash,
+                snapshot_hash: wire.snapshot_hash,
                 captured_at_ms: wire.captured_at_ms,
                 origin_device_id: wire.origin_device_id,
                 origin_device_name: wire.origin_device_name,
@@ -237,7 +237,7 @@ pub fn decode_header(bytes: &[u8]) -> Result<ClipboardHeader, WireDecodeError> {
             let wire: WireHeaderV2 = postcard::from_bytes(bytes)?;
             Ok(ClipboardHeader {
                 version: wire.version,
-                content_hash: wire.content_hash,
+                snapshot_hash: wire.snapshot_hash,
                 captured_at_ms: wire.captured_at_ms,
                 origin_device_id: wire.origin_device_id,
                 origin_device_name: wire.origin_device_name,
@@ -361,7 +361,7 @@ mod tests {
     fn sample_header() -> ClipboardHeader {
         ClipboardHeader {
             version: ClipboardHeader::CURRENT_VERSION,
-            content_hash: "a".repeat(64),
+            snapshot_hash: "a".repeat(64),
             captured_at_ms: 1_700_000_000_000,
             origin_device_id: "dev-alpha".to_string(),
             origin_device_name: "Alpha Laptop".to_string(),
@@ -510,7 +510,7 @@ mod tests {
     async fn decode_rejects_future_header_version() {
         let future = WireHeaderV2 {
             version: ClipboardHeader::CURRENT_VERSION + 1,
-            content_hash: "stub".to_string(),
+            snapshot_hash: "stub".to_string(),
             captured_at_ms: 0,
             origin_device_id: "d".to_string(),
             origin_device_name: "n".to_string(),
@@ -538,7 +538,7 @@ mod tests {
     async fn decode_v1_yields_none_flow_id() {
         let v1 = WireHeaderV1 {
             version: 1,
-            content_hash: "old".to_string(),
+            snapshot_hash: "old".to_string(),
             captured_at_ms: 17,
             origin_device_id: "legacy-peer".to_string(),
             origin_device_name: "Legacy".to_string(),
@@ -548,7 +548,7 @@ mod tests {
 
         let decoded = decode_header(&bytes).expect("v1 frame must decode on v2 receiver");
         assert_eq!(decoded.version, 1);
-        assert_eq!(decoded.content_hash, "old");
+        assert_eq!(decoded.snapshot_hash, "old");
         assert_eq!(decoded.origin_device_id, "legacy-peer");
         assert!(
             decoded.flow_id.is_none(),

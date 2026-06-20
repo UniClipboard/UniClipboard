@@ -137,7 +137,7 @@ impl ProtocolHandler for IrohActiveClipboardPullServeHandler {
         // 3. Read the request frame. A codec failure (bad magic, over-long
         //    hash, non-UTF8) drops the connection — the field is untrusted
         //    peer input and the codec validates lengths before allocating.
-        let content_hash = match pull_wire::read_request(&mut recv).await {
+        let snapshot_hash = match pull_wire::read_request(&mut recv).await {
             Ok(h) => h,
             Err(err) => {
                 warn!(
@@ -152,7 +152,7 @@ impl ProtocolHandler for IrohActiveClipboardPullServeHandler {
         // 4. Resolve the content through the application-layer serve port.
         //    NotUnlocked / NotAvailable map to typed no-content statuses; a
         //    locked holder never leaks plaintext.
-        let response = match self.state.serve.serve(&content_hash).await {
+        let response = match self.state.serve.serve(&snapshot_hash).await {
             Ok(envelope) => PullResponse::Envelope(envelope),
             Err(ActiveClipboardPullServeError::NotAvailable) => {
                 debug!(
@@ -311,9 +311,9 @@ mod tests {
     impl ActiveClipboardPullServePort for StubServe {
         async fn serve(
             &self,
-            content_hash: &str,
+            snapshot_hash: &str,
         ) -> Result<Vec<u8>, ActiveClipboardPullServeError> {
-            *self.seen_hash.lock().await = Some(content_hash.to_string());
+            *self.seen_hash.lock().await = Some(snapshot_hash.to_string());
             self.result
                 .lock()
                 .await
@@ -329,7 +329,7 @@ mod tests {
     impl ActiveClipboardPullServePort for NeverServe {
         async fn serve(
             &self,
-            _content_hash: &str,
+            _snapshot_hash: &str,
         ) -> Result<Vec<u8>, ActiveClipboardPullServeError> {
             panic!("serve reached past the admission gate");
         }
@@ -396,7 +396,7 @@ mod tests {
     async fn pull_request(
         sender_seed: [u8; 32],
         receiver_addr: iroh::EndpointAddr,
-        content_hash: &str,
+        snapshot_hash: &str,
     ) -> Result<PullResponse, super::pull_wire::PullWireError> {
         let sender = bind_endpoint_with(sender_seed).await;
         wait_for_direct_addrs(&sender).await;
@@ -405,7 +405,7 @@ mod tests {
             .await
             .expect("dial serve");
         let (mut send, mut recv) = conn.open_bi().await.expect("open_bi");
-        write_request(&mut send, content_hash)
+        write_request(&mut send, snapshot_hash)
             .await
             .expect("write request");
         send.finish().expect("finish");

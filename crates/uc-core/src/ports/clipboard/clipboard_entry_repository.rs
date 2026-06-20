@@ -31,8 +31,9 @@ pub trait ClipboardEntryStore: Send + Sync {
     /// Returns error if database operation fails
     async fn delete_entry(&self, entry_id: &EntryId) -> Result<()>;
 
-    /// Look up an existing entry by its event's `snapshot_hash` (stored as
-    /// the wire `content_hash` string, formatted as `"blake3v1:<hex>"`).
+    /// Look up an existing entry by its event's `snapshot_hash` (carried on
+    /// the wire as the `snapshot_hash` string, formatted as
+    /// `"blake3v1:<hex>"`).
     ///
     /// Returns `Some(EntryId)` when a prior capture (local or remote push)
     /// persisted a `ClipboardEvent` carrying this exact hash; returns

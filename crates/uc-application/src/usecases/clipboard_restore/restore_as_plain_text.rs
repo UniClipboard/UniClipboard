@@ -135,13 +135,15 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
         // Identity + category set of exactly what we narrowed to plain text and
         // put on the OS clipboard — captured before the snapshot moves into the
         // write boundary so the register reflects the bytes actually written.
-        let content_hash = snapshot.snapshot_hash().to_string();
+        let snapshot_hash = snapshot.snapshot_hash().to_string();
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await?;
         if let Some(advancer) = &self.active_register {
-            let state = advancer.advance_local(content_hash, entry_id.clone()).await;
+            let state = advancer
+                .advance_local(snapshot_hash, entry_id.clone())
+                .await;
             // Offer the activation to the broadcaster (gate lives there).
             if let Some(trigger) = &self.restore_broadcast {
                 trigger.offer(state, categories);

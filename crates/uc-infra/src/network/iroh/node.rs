@@ -1351,7 +1351,7 @@ mod tests {
                 &DeviceId::new("never-paired"),
                 &uc_core::ports::ClipboardHeader {
                     version: uc_core::ports::ClipboardHeader::CURRENT_VERSION,
-                    content_hash: "0".repeat(64),
+                    snapshot_hash: "0".repeat(64),
                     captured_at_ms: 0,
                     origin_device_id: "self".to_string(),
                     origin_device_name: "Self".to_string(),

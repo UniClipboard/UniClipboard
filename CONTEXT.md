@@ -92,6 +92,53 @@ _Avoid_: eventual consistency、message queue、store-and-forward
   是 **Receiver-side file transfer projection**（两侧各自为本地投影，不互为真相源）
 - 上述投递全部遵循 **Transient sync semantics**——失败不重试，由用户手动重发
 
+## Language — Active clipboard（跨设备活跃剪贴板）
+
+**ActiveClipboardState**（active-clipboard register）：
+「此刻哪一条内容是设备群的活跃剪贴板」这一事实的跨设备 last-writer-wins 单行
+寄存器值对象（`snapshot_hash`、`entry_id`、`activated_at_ms`、`activated_by`），随
+观测自动收敛。它表达「当前选中」，区别于逐次复制的 **ClipboardEvent** 与用户可见
+的 **ClipboardEntry**。
+_Avoid_: clipboard state、current clip、selection、LWW key
+
+**snapshot_hash**：
+active-clipboard 寄存器与线格里一条内容的跨设备身份键（`blake3v1:<hex>`），两台
+设备持相同内容即算得同值。它 **就是** 该内容 **ClipboardEvent** 的 `snapshot_hash`
+（同一个 hash、同一个名字：持久层与同步路径共用，不是新立的量）。
+_Avoid_: entry_id、digest、checksum、transfer_id、blob 的 content_hash
+
+**activated_at_ms**：
+某内容「成为活跃剪贴板」那一刻的 wall-clock 毫秒，LWW 主键；与 entry 的
+`created_at`、快照 `ts` 无关——一次激活戳一次、所有副本继承。
+_Avoid_: created_at、ts、timestamp
+
+**activated_by**：
+执行该次激活的设备 `DeviceId`，只作 LWW 平局破解与归属。**不是** pull 的目标
+（pull 永远向状态消息的发送方拉），也不参与内容身份。
+_Avoid_: source device、owner、pull target、sender
+
+**Activation**（一次激活）：
+「某内容在某设备于某刻成为活跃剪贴板」这一事件，由全键
+`(snapshot_hash, activated_at_ms, activated_by)` 唯一标识；全键相同即同一激活
+（收敛 / 断环依据），`entry_id` 每设备各异故不入键。
+_Avoid_: copy、write、event、restore
+
+**Active-clipboard pull**：
+对端收到活跃状态、却没有该 `snapshot_hash` 内容时，按内容身份向状态来源设备取回
+内容的按需拉取；源端唯有在本机能用该 `snapshot_hash` 反查到 entry 时才服务得了。
+_Avoid_: download、resend、fetch、sync
+
+### 关系
+
+- **ActiveClipboardState** 的 `snapshot_hash` ≡ 对应 **ClipboardEvent** 的
+  `snapshot_hash`（跨层同一 hash、同一名字）；`entry_id` 则每设备各异、不跨设备比较
+- 一次 **Activation** 由 `(snapshot_hash, activated_at_ms, activated_by)` 唯一确定：
+  **snapshot_hash** 是内容身份，**activated_by** 只定序与归属
+- 对端缺内容时走 **Active-clipboard pull**，源端用 `snapshot_hash` 反查本机 entry——
+  故凡写入 register 的 `snapshot_hash` 必须取该 entry 已持久化的 `snapshot_hash`，
+  不得对 reconstruct 出的快照重算（file 类内容重算会漂）
+- active-clipboard 的投递同样遵循 **Transient sync semantics**（失败不重试）
+
 ## Language — 文件传输（接收侧）
 
 **Tracked inbound file transfer**：
@@ -142,6 +189,13 @@ _Avoid_: recovery、startup cleanup
 > **领域专家**：目前不算。我们只跟 **In-flight transfer** 的状态枚举，不跟逐块
 > 进度——历史上预留过逐块投影方法，但从未接线，已在 ADR-009 删除。
 
+> **Dev**：active-clipboard 寄存器的 hash 和历史里的 `snapshot_hash` 要不要
+> 各算一份？
+> **领域专家**：不要，它们是同一个 hash，也已统一成同一个名字 `snapshot_hash`
+> （寄存器 / 线格 / 持久层共用）。register 前进时直接取这条 entry 已存的
+> `snapshot_hash`，别对 reconstruct 出来的快照重算——file 类内容重算会漂，对端
+> 就 **Active-clipboard pull** 不到了。
+
 ## Flagged ambiguities — 已澄清的歧义
 
 - `mark_completed` / `mark_failed` 曾在两个无关 trait 上同名（文件传输投影 vs
@@ -150,3 +204,10 @@ _Avoid_: recovery、startup cleanup
 - 「receiver-side 分块进度投影」一族方法（`mark_transferring` / `refresh_activity`
   / `backfill_announce_metadata` 等）曾被误认为是活功能——已澄清为未接线的预留面，
   ADR-009 删除；将来若需进度功能须按 `uc-core/AGENTS.md §2.3` 另立新意图端口。
+- active-clipboard 寄存器 / 线格曾把这条身份键叫 `content_hash`、而 **ClipboardEvent**
+  持久层叫 `snapshot_hash`，易被误认成两个独立量——它们 **是同一个 hash**，现已统一
+  命名为 `snapshot_hash`（迁移 `2026-06-20-000001`，寄存器列 / 线格 / 持久层共用一
+  名）。混淆遗留的真正契约：register 前进路径若对「reconstruct 出的快照」重算 hash，
+  对 file 类内容会得到与持久 `snapshot_hash` 背离的瞬态值，使 **Active-clipboard
+  pull** 的源端「按 `snapshot_hash` 反查本机 entry」必然落空。故任何写入 register 的
+  `snapshot_hash` 必须取该 entry 已持久化的 `snapshot_hash`，不得重算。

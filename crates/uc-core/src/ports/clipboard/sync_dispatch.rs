@@ -32,10 +32,10 @@ use crate::ids::DeviceId;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardHeader {
     pub version: u8,
-    /// SHA256 hex string. Shared with
-    /// [`ClipboardEntry`](crate::clipboard::ClipboardEntry) for dedup
+    /// Whole-snapshot identity hash as a `"blake3v1:<hex>"` string. Shared
+    /// with [`ClipboardEntry`](crate::clipboard::ClipboardEntry) for dedup
     /// (see `IngestInboundClipboardUseCase`).
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub captured_at_ms: i64,
     pub origin_device_id: String,
     /// Plaintext device name. Passively propagated for future A5 rename;

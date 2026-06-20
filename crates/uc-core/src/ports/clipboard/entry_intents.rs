@@ -68,8 +68,8 @@ pub trait DeleteClipboardEntryPort: Send + Sync {
 #[async_trait]
 pub trait FindEntryIdBySnapshotHashPort: Send + Sync {
     /// Returns the entry whose event carries `snapshot_hash`, or `None` when no
-    /// prior capture persisted that exact hash. The hash is the wire
-    /// `content_hash` string (formatted as `"blake3v1:<hex>"`).
+    /// prior capture persisted that exact hash. The hash is carried on the wire
+    /// as the `snapshot_hash` string (formatted as `"blake3v1:<hex>"`).
     async fn find_entry_id_by_snapshot_hash(
         &self,
         snapshot_hash: &str,

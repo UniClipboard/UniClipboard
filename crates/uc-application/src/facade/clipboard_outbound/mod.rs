@@ -502,7 +502,7 @@ const OVERSIZED_REP_THRESHOLD_BYTES: usize = 64 * 1024;
 ///
 /// **重要细节**：在清空 `bytes` 之前显式调用一次 `content_hash()`，强制把原内容
 /// 哈希写入 OnceLock 缓存，这样 envelope 编码阶段的 `snapshot.snapshot_hash()`
-/// 仍反映真实图片内容（receiver 端解码后会拿到一致的 content_hash 用于 dedup）。
+/// 仍反映真实图片内容（receiver 端解码后会拿到一致的 snapshot_hash 用于 dedup）。
 ///
 /// 仅对 `mime` 以 `image/` 开头的 rep 生效。其它类型的大 rep 暂保持 inline；
 /// 后续若有非 image 大 rep 撞上限，会在此处扩展并补对应的 receiver 处理。

@@ -20,7 +20,7 @@
 //!
 //! Phase 2 consumers (CLI `send` / `watch`) that still deal in raw text
 //! bytes can keep using the `payload_version=3` marker + caller-computed
-//! `content_hash` via `dispatch_entry`; Phase 3 CLI upgrades (T9/T10) go
+//! `snapshot_hash` via `dispatch_entry`; Phase 3 CLI upgrades (T9/T10) go
 //! through these helpers to match the daemon's wire format.
 
 use std::io::{Read, Write};
@@ -63,9 +63,9 @@ pub struct V3BlobRef {
 }
 
 /// Encode a snapshot into the V3 wire envelope and return
-/// `(envelope_bytes, content_hash)`.
+/// `(envelope_bytes, snapshot_hash)`.
 ///
-/// `content_hash` is the canonical `"blake3v1:<hex>"` string produced by
+/// `snapshot_hash` is the canonical `"blake3v1:<hex>"` string produced by
 /// `snapshot.snapshot_hash()` — the same value the daemon will store in
 /// `clipboard_event.snapshot_hash` after a local capture, so receiver
 /// dedup via `find_entry_id_by_snapshot_hash` matches.
@@ -97,9 +97,9 @@ pub(crate) fn encode_snapshot_to_v3_bytes(
     let bytes = payload
         .encode_to_vec()
         .map_err(|e| anyhow!("encode V3 envelope: {e}"))?;
-    let content_hash = snapshot.snapshot_hash().to_string();
+    let snapshot_hash = snapshot.snapshot_hash().to_string();
 
-    Ok((Bytes::from(bytes), content_hash))
+    Ok((Bytes::from(bytes), snapshot_hash))
 }
 
 /// 编码 V3 envelope,并在尾部追加可选 blob 引用扩展。
@@ -110,15 +110,15 @@ pub fn encode_snapshot_with_blob_refs_to_v3_bytes(
     snapshot: &SystemClipboardSnapshot,
     blob_refs: &[V3BlobRef],
 ) -> Result<(Bytes, String)> {
-    let (bytes, content_hash) = encode_snapshot_to_v3_bytes(snapshot)?;
+    let (bytes, snapshot_hash) = encode_snapshot_to_v3_bytes(snapshot)?;
     if blob_refs.is_empty() {
-        return Ok((bytes, content_hash));
+        return Ok((bytes, snapshot_hash));
     }
 
     let mut out = bytes.to_vec();
     write_blob_refs_extension(&mut out, blob_refs)
         .map_err(|e| anyhow!("encode V3 blob refs extension: {e}"))?;
-    Ok((Bytes::from(out), content_hash))
+    Ok((Bytes::from(out), snapshot_hash))
 }
 
 /// Decode V3 envelope bytes back into a `SystemClipboardSnapshot`.
@@ -418,7 +418,7 @@ mod tests {
         assert!(bytes.len() > 0);
         assert!(
             hash.starts_with("blake3v1:"),
-            "content_hash should be blake3v1:<hex>, got {hash}"
+            "snapshot_hash should be blake3v1:<hex>, got {hash}"
         );
 
         let decoded = decode_v3_bytes_to_snapshot(&bytes).expect("decode should succeed");
@@ -468,11 +468,11 @@ mod tests {
         assert!(decoded.representations[1].mime.is_none());
     }
 
-    /// Verdict 3 — content_hash is deterministic: same snapshot bytes →
+    /// Verdict 3 — snapshot_hash is deterministic: same snapshot bytes →
     /// same hash. Guards against future refactors accidentally making
     /// it order-dependent or including non-content fields.
     #[test]
-    fn content_hash_deterministic_across_encodes() {
+    fn snapshot_hash_deterministic_across_encodes() {
         let snap_a = fixture_snapshot("same text");
         let snap_b = fixture_snapshot("same text");
         let (_, hash_a) = encode_snapshot_to_v3_bytes(&snap_a).unwrap();

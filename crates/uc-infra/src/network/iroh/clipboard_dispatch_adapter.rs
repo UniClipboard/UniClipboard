@@ -443,7 +443,7 @@ mod tests {
     fn sample_header() -> ClipboardHeader {
         ClipboardHeader {
             version: ClipboardHeader::CURRENT_VERSION,
-            content_hash: "c".repeat(64),
+            snapshot_hash: "c".repeat(64),
             captured_at_ms: 1_700_000_000_000,
             origin_device_id: "sender-001".to_string(),
             origin_device_name: "Sender".to_string(),

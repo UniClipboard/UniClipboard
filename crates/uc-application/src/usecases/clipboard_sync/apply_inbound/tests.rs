@@ -146,28 +146,28 @@ fn fixture_input(text: &str) -> (ApplyInboundInput, String) {
             text.as_bytes().to_vec(),
         )],
     };
-    let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot).unwrap();
+    let (plaintext, snapshot_hash) = encode_snapshot_to_v3_bytes(&snapshot).unwrap();
     (
         ApplyInboundInput {
             from_device: DeviceId::new("peer-x"),
-            content_hash: content_hash.clone(),
+            snapshot_hash: snapshot_hash.clone(),
             plaintext,
             flow_id: None,
         },
-        content_hash,
+        snapshot_hash,
     )
 }
 
 fn fixture_input_from_snapshot(snapshot: SystemClipboardSnapshot) -> (ApplyInboundInput, String) {
-    let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot).unwrap();
+    let (plaintext, snapshot_hash) = encode_snapshot_to_v3_bytes(&snapshot).unwrap();
     (
         ApplyInboundInput {
             from_device: DeviceId::new("peer-x"),
-            content_hash: content_hash.clone(),
+            snapshot_hash: snapshot_hash.clone(),
             plaintext,
             flow_id: None,
         },
-        content_hash,
+        snapshot_hash,
     )
 }
 
@@ -315,7 +315,7 @@ async fn duplicate_skipped_when_hash_already_local() {
     assert_eq!(
         outcome,
         ApplyOutcome::DuplicateSkipped {
-            content_hash: hash,
+            snapshot_hash: hash,
             existing_entry_id: EntryId::from("entry-existing"),
         }
     );
@@ -359,7 +359,7 @@ async fn rapid_duplicate_skipped_even_when_repo_has_not_caught_up() {
     assert_eq!(
         second,
         ApplyOutcome::DuplicateSkipped {
-            content_hash: hash,
+            snapshot_hash: hash,
             existing_entry_id: EntryId::from("entry-first"),
         }
     );
@@ -439,7 +439,7 @@ async fn visible_duplicate_skipped_across_channel_representation_expansion() {
     assert_eq!(
         second,
         ApplyOutcome::DuplicateSkipped {
-            content_hash: second_hash,
+            snapshot_hash: second_hash,
             existing_entry_id: EntryId::from("entry-visible"),
         }
     );
@@ -508,7 +508,7 @@ async fn visible_duplicate_window_expires() {
 async fn decode_failed_on_truncated_envelope() {
     let input = ApplyInboundInput {
         from_device: DeviceId::new("peer-broken"),
-        content_hash: "blake3v1:00".to_string(),
+        snapshot_hash: "blake3v1:00".to_string(),
         plaintext: Bytes::from_static(b"not a valid V3 envelope"),
         flow_id: None,
     };
@@ -538,7 +538,7 @@ async fn execute_records_incoming_flow_id_on_span() {
     let incoming_flow_id = FlowId::generate();
     let input = ApplyInboundInput {
         from_device: DeviceId::new("peer-flow"),
-        content_hash: "blake3v1:11".to_string(),
+        snapshot_hash: "blake3v1:11".to_string(),
         plaintext: Bytes::from_static(b"not a valid V3 envelope"),
         flow_id: Some(incoming_flow_id.clone()),
     };
@@ -702,18 +702,18 @@ async fn materializes_blob_refs_before_capture_and_write() {
         size_bytes: 13,
         representation_index: None,
     };
-    let (plaintext, content_hash) =
+    let (plaintext, snapshot_hash) =
         encode_snapshot_with_blob_refs_to_v3_bytes(&original, &[blob_ref.clone()]).unwrap();
     let input = ApplyInboundInput {
         from_device: DeviceId::new("peer-x"),
-        content_hash: content_hash.clone(),
+        snapshot_hash: snapshot_hash.clone(),
         plaintext,
         flow_id: None,
     };
 
     let mut repo = MockEntryRepo::new();
     repo.expect_find_entry_id_by_snapshot_hash()
-        .with(eq(content_hash))
+        .with(eq(snapshot_hash))
         .times(1)
         .returning(|_| Ok(None));
 
@@ -785,11 +785,11 @@ async fn partial_materialize_persists_entry_but_skips_os_write() {
         size_bytes: 950_000_000,
         representation_index: None,
     };
-    let (plaintext, content_hash) =
+    let (plaintext, snapshot_hash) =
         encode_snapshot_with_blob_refs_to_v3_bytes(&original, &[blob_ref.clone()]).unwrap();
     let input = ApplyInboundInput {
         from_device: DeviceId::new("peer-sender"),
-        content_hash,
+        snapshot_hash,
         plaintext,
         flow_id: None,
     };
@@ -868,17 +868,17 @@ async fn partial_materialize_does_not_register_dedup_entry() {
         size_bytes: 100,
         representation_index: None,
     };
-    let (plaintext, content_hash) =
+    let (plaintext, snapshot_hash) =
         encode_snapshot_with_blob_refs_to_v3_bytes(&original, &[blob_ref.clone()]).unwrap();
     let input1 = ApplyInboundInput {
         from_device: DeviceId::new("peer-sender"),
-        content_hash: content_hash.clone(),
+        snapshot_hash: snapshot_hash.clone(),
         plaintext: plaintext.clone(),
         flow_id: None,
     };
     let input2 = ApplyInboundInput {
         from_device: DeviceId::new("peer-sender"),
-        content_hash,
+        snapshot_hash,
         plaintext,
         flow_id: None,
     };

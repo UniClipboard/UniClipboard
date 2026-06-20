@@ -41,7 +41,7 @@
 //! ## 方案 X(不区分来源)
 //!
 //! 本 use case 永远查"最新一条 entry",无论来源是本地复制 / mobile sync
-//! 入站 / P2P 入站。dedup 由 `ApplyInbound` 的 content_hash 在入站时已经
+//! 入站 / P2P 入站。dedup 由 `ApplyInbound` 的 snapshot_hash 在入站时已经
 //! 处理 —— 同一段内容多次 PUT 不会反复 capture,所以 GET 路径无需"过滤掉
 //! mobile 来源避免回环",反而会让 Mac 复制的内容也无法回流给 iPhone。
 

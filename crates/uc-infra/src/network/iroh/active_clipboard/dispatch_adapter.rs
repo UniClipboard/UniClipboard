@@ -29,9 +29,9 @@ use uc_core::ports::{
     ActiveClipboardDispatchError, ActiveClipboardDispatchPort, PeerAddressRepositoryPort,
 };
 
+use super::super::connect::connect_with_staggered_retry;
 use super::receiver_adapter::ACTIVE_CLIPBOARD_ALPN;
 use super::wire::{self, ActiveClipboardWireMessage};
-use super::super::connect::connect_with_staggered_retry;
 
 /// Sends one active-clipboard state observation to a single peer over the
 /// active-clipboard ALPN. Reuses the shared endpoint + `peer_addr_repo` so a
@@ -84,7 +84,7 @@ impl IrohActiveClipboardDispatchAdapter {
 
 #[async_trait]
 impl ActiveClipboardDispatchPort for IrohActiveClipboardDispatchAdapter {
-    #[instrument(skip_all, fields(device = %target.as_str(), content_hash = %state.content_hash))]
+    #[instrument(skip_all, fields(device = %target.as_str(), snapshot_hash = %state.snapshot_hash))]
     async fn dispatch(
         &self,
         target: &DeviceId,
@@ -128,7 +128,7 @@ impl ActiveClipboardDispatchPort for IrohActiveClipboardDispatchAdapter {
             .map_err(|err| ActiveClipboardDispatchError::Io(format!("open_bi: {err}")))?;
 
         let msg = ActiveClipboardWireMessage {
-            content_hash: state.content_hash.clone(),
+            snapshot_hash: state.snapshot_hash.clone(),
             entry_id: state.entry_id.as_ref().to_string(),
             activated_at_ms: state.activated_at_ms,
             activated_by: state.activated_by.as_str().to_string(),
@@ -353,7 +353,7 @@ mod tests {
             .expect("broadcast arrives within timeout")
             .expect("subscriber sees the observation");
         assert_eq!(inbound.peer_device_id.as_str(), "sender-dispatch");
-        assert_eq!(inbound.content_hash, state.content_hash);
+        assert_eq!(inbound.snapshot_hash, state.snapshot_hash);
         assert_eq!(inbound.sender_entry_id, state.entry_id.as_ref());
         assert_eq!(inbound.activated_at_ms, state.activated_at_ms);
         assert_eq!(inbound.activated_by.as_str(), "sender-dispatch");

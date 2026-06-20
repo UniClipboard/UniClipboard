@@ -106,7 +106,7 @@ pub(crate) trait MobileInboundFanOutPort: Send + Sync {
 ///
 /// 用户从手机推送一条内容, 语义是"现在让桌面也活跃这条内容"——这是**本
 /// 设备**的一次激活 (`activated_by = self`, `activated_at_ms = now`), 不论
-/// 这条 content_hash 本机此前是否存在。因此两个入站结果都要收敛对端:
+/// 这条 snapshot_hash 本机此前是否存在。因此两个入站结果都要收敛对端:
 ///
 /// - `announce_new`: 内容是新的, 入站管线已写过系统剪贴板; 只需盖本设备
 ///   激活戳、前进跨设备 register、按 per-device send 闸门广播 0xC3 state。
@@ -193,10 +193,10 @@ pub enum IncomingMobileClipEvent {
 pub enum ApplyIncomingMobileClipOutcome {
     /// New content — persisted via capture + OS clipboard written.
     Applied { entry_id: EntryId },
-    /// `content_hash` already exists locally — no persist, no OS write.
+    /// `snapshot_hash` already exists locally — no persist, no OS write.
     /// Mirrors `ApplyOutcome::DuplicateSkipped`.
     DuplicateSkipped {
-        content_hash: String,
+        snapshot_hash: String,
         existing_entry_id: EntryId,
     },
     /// Decode-time / contract failure (unsupported type, missing
@@ -367,7 +367,7 @@ pub(crate) struct ApplyIncomingMobileClipUseCase {
     ///
     /// ## 仅 `Applied` 分支调用
     ///
-    /// `DuplicateSkipped` 命中本机 dedup —— 这条 content_hash 此前已被
+    /// `DuplicateSkipped` 命中本机 dedup —— 这条 snapshot_hash 此前已被
     /// 本设备处理过, 上次处理时若已 fan-out 过, 重复广播只会浪费带宽
     /// 并扰乱对端 dedup 时序;`DecodeFailed` / `Err(...)` 表示本机入站
     /// 根本没成功, 没有"已应用的内容"可广播。
@@ -858,7 +858,7 @@ impl ApplyIncomingMobileClipUseCase {
         source_device_id: MobileDeviceId,
         snapshot: SystemClipboardSnapshot,
     ) -> Result<ApplyIncomingMobileClipOutcome, ApplyIncomingMobileClipError> {
-        let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot)
+        let (plaintext, snapshot_hash) = encode_snapshot_to_v3_bytes(&snapshot)
             .map_err(|e| ApplyIncomingMobileClipError::EncodeFailed(e.to_string()))?;
 
         // 伪 DeviceId: `mobile_sync:<id>` 前缀让日志 / clipboard_event.from_device
@@ -866,7 +866,7 @@ impl ApplyIncomingMobileClipUseCase {
         let pseudo_from = DeviceId::new(format!("mobile_sync:{}", source_device_id));
 
         debug!(
-            content_hash = %content_hash,
+            snapshot_hash = %snapshot_hash,
             plaintext_len = plaintext.len(),
             from_device = %pseudo_from,
             "mobile_sync apply_incoming: dispatching to ApplyInbound"
@@ -876,7 +876,7 @@ impl ApplyIncomingMobileClipUseCase {
             .inbound
             .execute(ApplyInboundInput {
                 from_device: pseudo_from,
-                content_hash: content_hash.clone(),
+                snapshot_hash: snapshot_hash.clone(),
                 plaintext,
                 flow_id: None,
             })
@@ -888,16 +888,16 @@ impl ApplyIncomingMobileClipUseCase {
                 ApplyIncomingMobileClipOutcome::Applied { entry_id }
             }
             ApplyOutcome::DuplicateSkipped {
-                content_hash: hash,
+                snapshot_hash: hash,
                 existing_entry_id,
             } => {
                 debug!(
-                    content_hash = %hash,
+                    snapshot_hash = %hash,
                     existing_entry_id = %existing_entry_id,
                     "mobile_sync apply_incoming: dedup hit, skipping"
                 );
                 ApplyIncomingMobileClipOutcome::DuplicateSkipped {
-                    content_hash: hash,
+                    snapshot_hash: hash,
                     existing_entry_id,
                 }
             }
@@ -1672,7 +1672,7 @@ mod tests {
         assert_eq!(snapshot.representations.len(), 1);
     }
 
-    /// `DuplicateSkipped` 命中本机 dedup —— 这条 content_hash 之前已被
+    /// `DuplicateSkipped` 命中本机 dedup —— 这条 snapshot_hash 之前已被
     /// 本设备处理过, **绝对不能**再 fan-out: 重复广播浪费带宽且可能扰
     /// 乱对端 dedup 时序。
     #[tokio::test]
@@ -1945,7 +1945,7 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_skipped_does_not_emit_synced() {
-        // dedup 命中 = 本机已存在该 content_hash；重复埋点会让 dashboard
+        // dedup 命中 = 本机已存在该 snapshot_hash；重复埋点会让 dashboard
         // 频率口径双计，沿用 ClipboardEntryCaptured 防 RemotePush 双计的
         // 红线哲学。
         let analytics = capturing_analytics();
@@ -2039,7 +2039,7 @@ mod tests {
     }
 
     /// `Applied` (新内容) → `announce_new` 一次, `announce_duplicate` 零次。
-    /// snapshot 必须随之透传 (adapter 据此派生 content_hash / categories)。
+    /// snapshot 必须随之透传 (adapter 据此派生 snapshot_hash / categories)。
     #[tokio::test]
     async fn applied_invokes_announce_new_with_snapshot() {
         let mut repo = MockEntryRepo::new();
@@ -2084,7 +2084,7 @@ mod tests {
         let new_calls = recorder.new_calls();
         assert_eq!(new_calls.len(), 1, "Applied 必须触发 announce_new 一次");
         assert_eq!(new_calls[0].0, EntryId::from("entry-new"));
-        // snapshot 至少携带原 rep, 让 adapter 能派生 content_hash / categories。
+        // snapshot 至少携带原 rep, 让 adapter 能派生 snapshot_hash / categories。
         assert_eq!(new_calls[0].1.representations.len(), 1);
         assert_eq!(
             recorder.duplicate_calls().len(),

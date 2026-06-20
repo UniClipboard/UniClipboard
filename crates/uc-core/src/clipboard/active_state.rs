@@ -7,7 +7,7 @@ use crate::ids::{DeviceId, EntryId};
 /// devices.
 ///
 /// The register identity (the thing that is "the same content" on any
-/// device) is [`content_hash`](Self::content_hash). The LWW order is the
+/// device) is [`snapshot_hash`](Self::snapshot_hash). The LWW order is the
 /// pair `(activated_at_ms, activated_by)`: a higher `activated_at_ms`
 /// wins, ties break on the lexicographically greater `activated_by`.
 ///
@@ -19,7 +19,7 @@ pub struct ActiveClipboardState {
     /// Stable, cross-device content identity string (`"blake3v1:<hex>"`).
     /// Two devices holding identical clipboard content compute the same
     /// value; equals the content's snapshot hash.
-    pub content_hash: String,
+    pub snapshot_hash: String,
     /// Local entry handle for the content on this device. Per-device only;
     /// never compared across devices.
     pub entry_id: EntryId,
@@ -34,13 +34,13 @@ pub struct ActiveClipboardState {
 
 impl ActiveClipboardState {
     pub fn new(
-        content_hash: impl Into<String>,
+        snapshot_hash: impl Into<String>,
         entry_id: EntryId,
         activated_at_ms: i64,
         activated_by: DeviceId,
     ) -> Self {
         Self {
-            content_hash: content_hash.into(),
+            snapshot_hash: snapshot_hash.into(),
             entry_id,
             activated_at_ms,
             activated_by,
@@ -65,7 +65,7 @@ impl ActiveClipboardState {
     /// Whether `self` and `other` describe the *same activation event*.
     ///
     /// Compares the full cross-device activation key
-    /// `(content_hash, activated_at_ms, activated_by)`. `entry_id` is a
+    /// `(snapshot_hash, activated_at_ms, activated_by)`. `entry_id` is a
     /// per-device handle and is deliberately excluded — two devices holding
     /// the same content under the same activation have different `entry_id`s
     /// yet are converged on that activation.
@@ -74,11 +74,11 @@ impl ActiveClipboardState {
     /// the same activation as the stored value is already known and must not
     /// be re-applied or re-propagated. It is strictly stronger than
     /// `!a.supersedes(b) && !b.supersedes(a)` only in that it also requires
-    /// `content_hash` to match — at equal `(activated_at_ms, activated_by)`
+    /// `snapshot_hash` to match — at equal `(activated_at_ms, activated_by)`
     /// the LWW order already treats the values as converged, but the content
     /// could in principle differ, so the full-key check is the safe identity.
     pub fn is_same_activation(&self, other: &ActiveClipboardState) -> bool {
-        self.content_hash == other.content_hash
+        self.snapshot_hash == other.snapshot_hash
             && self.activated_at_ms == other.activated_at_ms
             && self.activated_by == other.activated_by
     }
@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn different_content_hash_is_not_same_activation() {
+    fn different_snapshot_hash_is_not_same_activation() {
         // Equal ts + activator but different content → distinct activations,
         // even though neither supersedes the other under LWW.
         let a = state("blake3v1:aa", 100, "dev-a");

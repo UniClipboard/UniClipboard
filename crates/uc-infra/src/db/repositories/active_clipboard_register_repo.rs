@@ -22,7 +22,7 @@ const REGISTER_ROW_ID: i32 = 1;
 #[diesel(table_name = active_clipboard_register)]
 struct NewRegisterRow {
     id: i32,
-    content_hash: String,
+    snapshot_hash: String,
     entry_id: String,
     activated_at_ms: i64,
     activated_by: String,
@@ -47,13 +47,13 @@ impl<E: DbExecutor> AdvanceActiveClipboardPort for DieselActiveClipboardRegister
     ) -> Result<bool, ActiveClipboardRegisterError> {
         let span = debug_span!(
             "infra.sqlite.active_clipboard_register.advance",
-            content_hash = %state.content_hash,
+            snapshot_hash = %state.snapshot_hash,
             activated_at_ms = state.activated_at_ms,
             activated_by = %state.activated_by,
         );
         let row = NewRegisterRow {
             id: REGISTER_ROW_ID,
-            content_hash: state.content_hash.clone(),
+            snapshot_hash: state.snapshot_hash.clone(),
             entry_id: state.entry_id.as_ref().to_string(),
             activated_at_ms: state.activated_at_ms,
             activated_by: state.activated_by.as_str().to_string(),
@@ -95,8 +95,8 @@ impl<E: DbExecutor> AdvanceActiveClipboardPort for DieselActiveClipboardRegister
                         .on_conflict(active_clipboard_register::id)
                         .do_update()
                         .set((
-                            active_clipboard_register::content_hash
-                                .eq(excluded(active_clipboard_register::content_hash)),
+                            active_clipboard_register::snapshot_hash
+                                .eq(excluded(active_clipboard_register::snapshot_hash)),
                             active_clipboard_register::entry_id
                                 .eq(excluded(active_clipboard_register::entry_id)),
                             active_clipboard_register::activated_at_ms
@@ -124,7 +124,7 @@ impl<E: DbExecutor> LoadActiveClipboardPort for DieselActiveClipboardRegisterRep
                     Ok(active_clipboard_register::table
                         .filter(active_clipboard_register::id.eq(REGISTER_ROW_ID))
                         .select((
-                            active_clipboard_register::content_hash,
+                            active_clipboard_register::snapshot_hash,
                             active_clipboard_register::entry_id,
                             active_clipboard_register::activated_at_ms,
                             active_clipboard_register::activated_by,
@@ -136,9 +136,9 @@ impl<E: DbExecutor> LoadActiveClipboardPort for DieselActiveClipboardRegisterRep
             .map_err(|e| ActiveClipboardRegisterError::Storage(e.to_string()))?;
 
         Ok(
-            row.map(|(content_hash, entry_id, activated_at_ms, activated_by)| {
+            row.map(|(snapshot_hash, entry_id, activated_at_ms, activated_by)| {
                 ActiveClipboardState::new(
-                    content_hash,
+                    snapshot_hash,
                     EntryId::from(entry_id),
                     activated_at_ms,
                     DeviceId::new(activated_by),
@@ -194,7 +194,7 @@ mod tests {
         ActiveClipboardState::new(hash, EntryId::new(), ts, DeviceId::new(by))
     }
 
-    /// Read back the stored `(content_hash, activated_at_ms, activated_by)`,
+    /// Read back the stored `(snapshot_hash, activated_at_ms, activated_by)`,
     /// or `None` when the register is still empty.
     fn read_row(executor: &DieselSqliteExecutor) -> Option<(String, i64, String)> {
         executor
@@ -202,7 +202,7 @@ mod tests {
                 Ok(active_clipboard_register::table
                     .filter(active_clipboard_register::id.eq(REGISTER_ROW_ID))
                     .select((
-                        active_clipboard_register::content_hash,
+                        active_clipboard_register::snapshot_hash,
                         active_clipboard_register::activated_at_ms,
                         active_clipboard_register::activated_by,
                     ))
@@ -322,7 +322,7 @@ mod tests {
         repo.advance(&written).await.unwrap();
 
         let loaded = repo.load().await.unwrap().expect("register has a value");
-        assert_eq!(loaded.content_hash, "blake3v1:cafe");
+        assert_eq!(loaded.snapshot_hash, "blake3v1:cafe");
         assert_eq!(loaded.entry_id.as_ref(), "entry-xyz");
         assert_eq!(loaded.activated_at_ms, 4242);
         assert_eq!(loaded.activated_by.as_str(), "dev-load");

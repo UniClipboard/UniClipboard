@@ -3,7 +3,7 @@
 //!
 //! ## Flow
 //!
-//! 1. **Dedup short-circuit**: if `content_hash` already exists in the
+//! 1. **Dedup short-circuit**: if `snapshot_hash` already exists in the
 //!    local `clipboard_event` table, return `DuplicateSkipped`. Skips
 //!    persist + OS-clipboard write — Phase 3 acceptance #4 guarantees a
 //!    repeat copy from a peer doesn't double-write the user's clipboard.
@@ -76,7 +76,7 @@ pub use usecase::ApplyInboundClipboardUseCase;
 #[derive(Debug, Clone)]
 pub struct ApplyInboundInput {
     pub from_device: DeviceId,
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub plaintext: Bytes,
     pub flow_id: Option<FlowId>,
 }
@@ -88,10 +88,10 @@ pub struct ApplyInboundInput {
 pub enum ApplyOutcome {
     /// New content — persisted + OS clipboard written. WS event fires.
     Applied { entry_id: EntryId },
-    /// `content_hash` was already present in the local DB. No persist,
+    /// `snapshot_hash` was already present in the local DB. No persist,
     /// no OS write, no WS event.
     DuplicateSkipped {
-        content_hash: String,
+        snapshot_hash: String,
         existing_entry_id: EntryId,
     },
     /// V3 envelope was malformed. Frame dropped silently except for a

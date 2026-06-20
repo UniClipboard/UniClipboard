@@ -93,7 +93,7 @@ pub struct ClipboardSyncDeps {
 #[derive(Debug, Clone)]
 pub struct DispatchEntryInput {
     pub plaintext: Bytes,
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub payload_version: u8,
     /// Optional explicit recipient list. `Some(list)` restricts fan-out to
     /// the intersection of `trusted_peer` ∧ `list`; `None` falls back to
@@ -122,7 +122,7 @@ pub struct DispatchEntryPerTarget {
 /// written by a background continuation. They are NOT present in `per_target`.
 #[derive(Debug, Clone)]
 pub struct DispatchEntryOutcome {
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub per_target: Vec<DispatchEntryPerTarget>,
     pub total_accepted: usize,
     pub total_duplicate: usize,
@@ -158,7 +158,7 @@ impl From<DispatchSyncError> for ClipboardSyncError {
 #[derive(Debug, Clone)]
 pub struct InboundNotice {
     pub from_device: DeviceId,
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub plaintext: Bytes,
     pub flow_id: Option<FlowId>,
     pub action: InboundAction,
@@ -243,13 +243,13 @@ impl ClipboardSyncFacade {
     /// Fan out one plaintext payload to every online paired peer.
     ///
     /// Phase 2 / CLI / test entry point — caller has already encoded the
-    /// payload and computed `content_hash`. The per-device
+    /// payload and computed `snapshot_hash`. The per-device
     /// `send_content_types` filter is bypassed here (empty
     /// `ClipboardContentCategorySet`, fail open) because raw-bytes callers
     /// don't carry the snapshot structure needed to classify; daemon goes through
     /// [`Self::dispatch_snapshot`] / [`Self::dispatch_snapshot_with_blob_refs`]
     /// which preserve the snapshot and apply the filter.
-    #[instrument(skip_all, fields(content_hash = %input.content_hash))]
+    #[instrument(skip_all, fields(snapshot_hash = %input.snapshot_hash))]
     pub async fn dispatch_entry(
         &self,
         input: DispatchEntryInput,
@@ -258,7 +258,7 @@ impl ClipboardSyncFacade {
             .dispatch_uc
             .execute(DispatchClipboardEntryInput {
                 plaintext: input.plaintext,
-                content_hash: input.content_hash.clone(),
+                snapshot_hash: input.snapshot_hash.clone(),
                 payload_version: input.payload_version,
                 categories: ClipboardContentCategorySet::empty(),
                 // raw-bytes 路径不与某条 entry 绑定,跳过 delivery 落盘。
@@ -276,7 +276,7 @@ impl ClipboardSyncFacade {
     async fn dispatch_internal(
         &self,
         plaintext: Bytes,
-        content_hash: String,
+        snapshot_hash: String,
         payload_version: u8,
         categories: ClipboardContentCategorySet,
         entry_id: Option<EntryId>,
@@ -286,7 +286,7 @@ impl ClipboardSyncFacade {
             .dispatch_uc
             .execute(DispatchClipboardEntryInput {
                 plaintext,
-                content_hash,
+                snapshot_hash,
                 payload_version,
                 categories,
                 entry_id,
@@ -317,11 +317,11 @@ impl ClipboardSyncFacade {
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let _ = origin; // span metadata only (see doc above)
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
-        let (plaintext, content_hash) = encode_snapshot_to_v3_bytes(&snapshot)
+        let (plaintext, snapshot_hash) = encode_snapshot_to_v3_bytes(&snapshot)
             .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
         self.dispatch_internal(
             plaintext,
-            content_hash,
+            snapshot_hash,
             3,
             categories,
             entry_id,
@@ -345,12 +345,12 @@ impl ClipboardSyncFacade {
     ) -> Result<DispatchEntryOutcome, ClipboardSyncError> {
         let _ = origin;
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
-        let (plaintext, content_hash) =
+        let (plaintext, snapshot_hash) =
             encode_snapshot_with_blob_refs_to_v3_bytes(&snapshot, &blob_refs)
                 .map_err(|e| ClipboardSyncError::CipherFailure(format!("payload encode: {e}")))?;
         self.dispatch_internal(
             plaintext,
-            content_hash,
+            snapshot_hash,
             3,
             categories,
             entry_id,
@@ -413,7 +413,7 @@ impl ClipboardSyncFacade {
 
 fn lift_outcome(internal: DispatchOutcome) -> DispatchEntryOutcome {
     DispatchEntryOutcome {
-        content_hash: internal.content_hash,
+        snapshot_hash: internal.snapshot_hash,
         per_target: internal
             .per_target
             .into_iter()
@@ -438,7 +438,7 @@ fn lift_per_target(internal: DispatchPerTarget) -> DispatchEntryPerTarget {
 fn lift_notice(internal: UcInboundNotice) -> InboundNotice {
     InboundNotice {
         from_device: internal.from_device,
-        content_hash: internal.content_hash,
+        snapshot_hash: internal.snapshot_hash,
         plaintext: internal.plaintext,
         flow_id: internal.flow_id,
         action: match internal.action {
@@ -889,7 +889,7 @@ mod tests {
         let outcome = facade
             .dispatch_entry(DispatchEntryInput {
                 plaintext: Bytes::from_static(b"hello"),
-                content_hash: "abc".to_string(),
+                snapshot_hash: "abc".to_string(),
                 payload_version: 3,
                 target_filter: None,
             })
@@ -936,7 +936,7 @@ mod tests {
             peer_device_id: DeviceId::new("peer-x"),
             header: ClipboardHeader {
                 version: ClipboardHeader::CURRENT_VERSION,
-                content_hash: "xx".repeat(32),
+                snapshot_hash: "xx".repeat(32),
                 captured_at_ms: 42,
                 origin_device_id: "peer-x".to_string(),
                 origin_device_name: "Peer X".to_string(),
@@ -956,7 +956,7 @@ mod tests {
     }
 
     /// Verdict 3 — `dispatch_snapshot` encodes the snapshot into the V3
-    /// envelope + derives the canonical content_hash from
+    /// envelope + derives the canonical snapshot_hash from
     /// `snapshot_hash()`, then calls the same underlying dispatch path
     /// as `dispatch_entry`. mockall asserts encrypt is invoked with the
     /// encoded envelope bytes (not raw plaintext), and that the target
@@ -1027,9 +1027,9 @@ mod tests {
             .expect("dispatch_snapshot ok");
         assert_eq!(outcome.total_accepted, 1);
         assert!(
-            outcome.content_hash.starts_with("blake3v1:"),
+            outcome.snapshot_hash.starts_with("blake3v1:"),
             "outcome carries the canonical snapshot_hash, got {}",
-            outcome.content_hash
+            outcome.snapshot_hash
         );
     }
 
@@ -1108,7 +1108,7 @@ mod tests {
         let outcome = facade
             .dispatch_entry(DispatchEntryInput {
                 plaintext: Bytes::from_static(b"hello"),
-                content_hash: "abc".to_string(),
+                snapshot_hash: "abc".to_string(),
                 payload_version: 3,
                 target_filter: Some(vec![DeviceId::new("peer-b")]),
             })

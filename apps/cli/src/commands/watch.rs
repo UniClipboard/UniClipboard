@@ -114,7 +114,7 @@ fn render_daemon_notice(event: &InboundNoticeEvent, json: bool) {
         #[derive(Serialize)]
         struct DaemonNoticeDto {
             from_device: String,
-            content_hash: String,
+            snapshot_hash: String,
             #[serde(skip_serializing_if = "Option::is_none")]
             text: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,7 +124,7 @@ fn render_daemon_notice(event: &InboundNoticeEvent, json: bool) {
         }
         let dto = DaemonNoticeDto {
             from_device: event.from_device.clone(),
-            content_hash: event.content_hash.clone(),
+            snapshot_hash: event.snapshot_hash.clone(),
             text: text_preview.clone(),
             rep_summary: rep_summary.clone(),
             action: event.action.clone(),

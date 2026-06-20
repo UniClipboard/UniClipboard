@@ -179,7 +179,7 @@ pub(super) async fn put_sync_clipboard_json(
     let text_preview_len = meta.text.len();
 
     // hash 不在路由层日志里再算 —— ApplyInbound 的 V3 envelope 流程内部
-    // 已经把 content_hash 算好(`encode_snapshot_to_v3_bytes` 的副产物),
+    // 已经把 snapshot_hash 算好(`encode_snapshot_to_v3_bytes` 的副产物),
     // tracing 字段在 use case 层已经打了。重复算 SHA-256 只浪费 CPU。
 
     let device_id = authed.device.device_id.clone();

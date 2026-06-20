@@ -235,7 +235,7 @@ async fn run_send_via_daemon(
 
 fn render_daemon_dispatch(resp: &DispatchOutcomeResponse) {
     ui::bar();
-    ui::info("hash", short_hash(&resp.content_hash));
+    ui::info("hash", short_hash(&resp.snapshot_hash));
     if resp.per_target.is_empty() {
         ui::info("targets", "(none — no online peers)");
     } else {
@@ -439,7 +439,7 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
 
     if json {
         let dto = SendFileOutcomeDto {
-            content_hash: outcome.content_hash.clone(),
+            snapshot_hash: outcome.snapshot_hash.clone(),
             filename: filename.clone(),
             size_bytes,
             entry_id: entry_id.to_string(),
@@ -461,7 +461,7 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
         ui::bar();
         ui::info("file", &filename);
         ui::info("size", &human_size(size_bytes));
-        ui::info("hash", short_hash(&outcome.content_hash));
+        ui::info("hash", short_hash(&outcome.snapshot_hash));
         if outcome.per_target.is_empty() {
             ui::info("targets", "(none — no online peers)");
         } else {
@@ -547,7 +547,7 @@ fn human_size(bytes: u64) -> String {
 #[cfg(feature = "dev-tools")]
 #[derive(Serialize)]
 struct SendFileOutcomeDto {
-    content_hash: String,
+    snapshot_hash: String,
     filename: String,
     size_bytes: u64,
     entry_id: String,

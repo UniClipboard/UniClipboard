@@ -3,7 +3,7 @@
 diesel::table! {
     active_clipboard_register (id) {
         id -> Integer,
-        content_hash -> Text,
+        snapshot_hash -> Text,
         entry_id -> Text,
         activated_at_ms -> BigInt,
         activated_by -> Text,

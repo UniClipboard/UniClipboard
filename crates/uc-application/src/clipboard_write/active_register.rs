@@ -43,7 +43,7 @@ impl LocalActiveRegisterAdvancer {
         }
     }
 
-    /// Record that `content_hash` (held locally as `entry_id`) is now the
+    /// Record that `snapshot_hash` (held locally as `entry_id`) is now the
     /// active clipboard content, activated on this device at the current
     /// wall-clock. Best-effort: a register storage failure is logged and
     /// swallowed.
@@ -55,11 +55,11 @@ impl LocalActiveRegisterAdvancer {
     /// holds this content, so it is the activation of record either way.
     pub async fn advance_local(
         &self,
-        content_hash: String,
+        snapshot_hash: String,
         entry_id: EntryId,
     ) -> ActiveClipboardState {
         let state = ActiveClipboardState::new(
-            content_hash,
+            snapshot_hash,
             entry_id,
             self.clock.now_ms(),
             self.device_identity.current_device_id(),
@@ -67,7 +67,7 @@ impl LocalActiveRegisterAdvancer {
         match self.register.advance(&state).await {
             Ok(advanced) => {
                 tracing::debug!(
-                    content_hash = %state.content_hash,
+                    snapshot_hash = %state.snapshot_hash,
                     entry_id = %state.entry_id,
                     advanced,
                     "active register: local advance"
@@ -76,7 +76,7 @@ impl LocalActiveRegisterAdvancer {
             Err(e) => {
                 warn!(
                     error = %e,
-                    content_hash = %state.content_hash,
+                    snapshot_hash = %state.snapshot_hash,
                     entry_id = %state.entry_id,
                     "active register: local advance failed (best-effort, ignored)"
                 );

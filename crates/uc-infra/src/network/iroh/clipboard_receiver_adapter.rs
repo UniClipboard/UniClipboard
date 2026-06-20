@@ -416,7 +416,7 @@ mod tests {
     fn sample_header() -> ClipboardHeader {
         ClipboardHeader {
             version: ClipboardHeader::CURRENT_VERSION,
-            content_hash: "9".repeat(64),
+            snapshot_hash: "9".repeat(64),
             captured_at_ms: 1_700_000_000_000,
             origin_device_id: "sender-001".to_string(),
             origin_device_name: "Alice".to_string(),

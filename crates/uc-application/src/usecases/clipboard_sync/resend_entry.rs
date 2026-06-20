@@ -428,7 +428,7 @@ impl ResendEntryUseCase {
 
         // 6. Encode V3 envelope.
         let categories = ClipboardContentCategorySet::from_snapshot(&clipboard_intent.snapshot);
-        let (plaintext, content_hash) =
+        let (plaintext, snapshot_hash) =
             encode_snapshot_with_blob_refs_to_v3_bytes(&clipboard_intent.snapshot, &blob_refs)
                 .map_err(|e| ResendEntryError::Dispatch(format!("payload encode: {e}")))?;
 
@@ -441,7 +441,7 @@ impl ResendEntryUseCase {
             .dispatch_runner
             .execute(DispatchClipboardEntryInput {
                 plaintext,
-                content_hash,
+                snapshot_hash,
                 payload_version: 3,
                 categories,
                 entry_id: Some(cmd.entry_id.clone()),
@@ -868,7 +868,7 @@ mod tests {
     fn happy_outcome(input: &DispatchClipboardEntryInput) -> DispatchOutcome {
         let targets: Vec<DeviceId> = input.target_filter.clone().unwrap_or_default();
         DispatchOutcome {
-            content_hash: input.content_hash.clone(),
+            snapshot_hash: input.snapshot_hash.clone(),
             per_target: targets
                 .iter()
                 .map(|d| DispatchPerTarget {
@@ -1164,8 +1164,8 @@ mod tests {
             !captured[0].plaintext.is_empty(),
             "encoded V3 envelope must not be empty"
         );
-        // Plaintext 与 content_hash 来自同一次 encode → 内容自洽。
-        assert!(captured[0].content_hash.starts_with("blake3v1:"));
+        // Plaintext 与 snapshot_hash 来自同一次 encode → 内容自洽。
+        assert!(captured[0].snapshot_hash.starts_with("blake3v1:"));
     }
 
     /// V6 — `target_filter = Some([peer-b])`,trusted = {a, b, c}。dispatch
@@ -1206,7 +1206,7 @@ mod tests {
     }
 
     /// V7 — happy path:dispatch 成功返回 outcome,resend 把字段平铺到
-    /// `ResendReport`。`content_hash` 应来自 V3 encode 后的 blake3v1 哈希
+    /// `ResendReport`。`snapshot_hash` 应来自 V3 encode 后的 blake3v1 哈希
     /// (而不是凭空构造),且每次 resend 触发的 dispatch 都该带"刷新过的"
     /// timestamp(由下游 dispatch_uc 写盘时采样,本用例只断 outcome 流通)。
     #[tokio::test]
@@ -1253,9 +1253,9 @@ mod tests {
         sorted.sort();
         assert_eq!(sorted, vec!["peer-a", "peer-b"]);
 
-        // 入参 plaintext 不为空(encode 成功),content_hash 是 blake3v1。
+        // 入参 plaintext 不为空(encode 成功),snapshot_hash 是 blake3v1。
         assert!(!captured[0].plaintext.is_empty());
-        assert!(captured[0].content_hash.starts_with("blake3v1:"));
+        assert!(captured[0].snapshot_hash.starts_with("blake3v1:"));
 
         // categories 由 from_snapshot 计算 —— text rep 应被识别为 Text。
         assert!(!captured[0]

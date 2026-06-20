@@ -45,7 +45,7 @@ use uc_core::clipboard::ClipboardContentCategorySet;
 #[derive(Debug, Clone)]
 pub(crate) struct InboundClipboardNotice {
     pub from_device: DeviceId,
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub plaintext: Bytes,
     pub flow_id: Option<FlowId>,
     pub action: InboundAction,
@@ -153,7 +153,7 @@ impl IngestInboundClipboardUseCase {
         skip_all,
         fields(
             peer.device_id = %inbound.peer_device_id.as_str(),
-            content_hash = %inbound.header.content_hash,
+            snapshot_hash = %inbound.header.snapshot_hash,
             flow.id = tracing::field::Empty,
             flow.kind = "clipboard_sync",
             flow.synthetic = tracing::field::Empty,
@@ -199,7 +199,7 @@ impl IngestInboundClipboardUseCase {
             Err(err) => {
                 warn!(
                     peer = %inbound.peer_device_id.as_str(),
-                    content_hash = %inbound.header.content_hash,
+                    snapshot_hash = %inbound.header.snapshot_hash,
                     error = %err,
                     "ingest: decrypt failed; dropping frame"
                 );
@@ -217,7 +217,7 @@ impl IngestInboundClipboardUseCase {
             Err(err) => {
                 warn!(
                     peer = %inbound.peer_device_id.as_str(),
-                    content_hash = %inbound.header.content_hash,
+                    snapshot_hash = %inbound.header.snapshot_hash,
                     error = %err,
                     "ingest: classify decode failed; failing open"
                 );
@@ -233,7 +233,7 @@ impl IngestInboundClipboardUseCase {
         }
         let notice = InboundClipboardNotice {
             from_device: inbound.peer_device_id.clone(),
-            content_hash: inbound.header.content_hash.clone(),
+            snapshot_hash: inbound.header.snapshot_hash.clone(),
             plaintext,
             flow_id,
             action: InboundAction::NewEntry,
@@ -366,12 +366,12 @@ mod tests {
         m
     }
 
-    fn inbound_fixture(peer: &str, content_hash: &str, ciphertext: Bytes) -> InboundClipboard {
+    fn inbound_fixture(peer: &str, snapshot_hash: &str, ciphertext: Bytes) -> InboundClipboard {
         InboundClipboard {
             peer_device_id: DeviceId::new(peer),
             header: ClipboardHeader {
                 version: ClipboardHeader::CURRENT_VERSION,
-                content_hash: content_hash.to_string(),
+                snapshot_hash: snapshot_hash.to_string(),
                 captured_at_ms: 1_700_000_000_000,
                 origin_device_id: peer.to_string(),
                 origin_device_name: format!("Device {peer}"),
@@ -427,7 +427,7 @@ mod tests {
             .expect("notice arrives")
             .expect("sender alive");
         assert_eq!(notice.from_device.as_str(), "peer-1");
-        assert_eq!(notice.content_hash, "0".repeat(64));
+        assert_eq!(notice.snapshot_hash, "0".repeat(64));
         assert_eq!(notice.plaintext, Bytes::from_static(b"hello"));
         assert_eq!(notice.action, InboundAction::NewEntry);
         assert_eq!(notice.at_ms, 42);
@@ -699,7 +699,7 @@ mod tests {
             peer_device_id: DeviceId::new("peer-no-text"),
             header: ClipboardHeader {
                 version: ClipboardHeader::CURRENT_VERSION,
-                content_hash: "0".repeat(64),
+                snapshot_hash: "0".repeat(64),
                 captured_at_ms: 1_700_000_000_000,
                 origin_device_id: "peer-no-text".to_string(),
                 origin_device_name: "Peer NoText".to_string(),

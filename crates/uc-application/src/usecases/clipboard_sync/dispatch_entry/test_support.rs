@@ -242,7 +242,7 @@ pub(crate) fn default_settings() -> Settings {
 pub(crate) fn dispatch_input() -> DispatchClipboardEntryInput {
     DispatchClipboardEntryInput {
         plaintext: Bytes::from_static(b"hello world"),
-        content_hash: "9".repeat(64),
+        snapshot_hash: "9".repeat(64),
         payload_version: 3,
         categories: ClipboardContentCategorySet::empty(),
         entry_id: None,
@@ -255,7 +255,7 @@ pub(crate) fn dispatch_input() -> DispatchClipboardEntryInput {
 pub(crate) fn test_header() -> ClipboardHeader {
     ClipboardHeader {
         version: ClipboardHeader::CURRENT_VERSION,
-        content_hash: "0".repeat(64),
+        snapshot_hash: "0".repeat(64),
         captured_at_ms: 0,
         origin_device_id: "self-device".to_string(),
         origin_device_name: "Self".to_string(),

@@ -49,10 +49,10 @@ use uc_core::MemberRepositoryPort;
 
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
 
-use super::fanout::fan_out_active_state;
 use super::super::receive_gate::MemberReceiveGate;
 use super::super::send_gate::MemberSendGate;
 use super::super::snapshot_from_entry::SnapshotReconstructor;
+use super::fanout::fan_out_active_state;
 
 /// The fixed space id of the single-space model. Active-clipboard state is
 /// only meaningful while that space is unlocked.
@@ -88,11 +88,11 @@ pub(crate) enum InboundPulledContentStoreError {
 pub(crate) trait InboundPulledContentStore: Send + Sync {
     /// Decrypt `transfer_envelope` (the bytes a peer served), persist the
     /// content as an entry attributed to `from_device`, and return its local
-    /// entry id. `content_hash` is the cross-device identity used for dedup.
+    /// entry id. `snapshot_hash` is the cross-device identity used for dedup.
     async fn store(
         &self,
         from_device: &DeviceId,
-        content_hash: &str,
+        snapshot_hash: &str,
         transfer_envelope: Vec<u8>,
     ) -> Result<EntryId, InboundPulledContentStoreError>;
 }
@@ -230,15 +230,15 @@ impl ApplyInboundActiveClipboardStateUseCase {
         skip_all,
         fields(
             peer.device_id = %inbound.peer_device_id.as_str(),
-            content_hash = %inbound.content_hash,
+            snapshot_hash = %inbound.snapshot_hash,
             activated_at_ms = inbound.activated_at_ms,
         ),
     )]
     pub(crate) async fn handle_one(&self, inbound: InboundActiveClipboardState) {
         let peer = inbound.peer_device_id.clone();
         let incoming = ActiveClipboardState::new(
-            inbound.content_hash,
-            // Placeholder: the cross-device identity is `content_hash`; the
+            inbound.snapshot_hash,
+            // Placeholder: the cross-device identity is `snapshot_hash`; the
             // sender's `entry_id` is never used to resolve local content, so
             // we keep the sender's value only for LWW/loop comparison and
             // overwrite it with the local entry id before advancing.
@@ -294,11 +294,11 @@ impl ApplyInboundActiveClipboardStateUseCase {
             return;
         }
 
-        // 5. Resolve the content locally by `content_hash` (never by the
+        // 5. Resolve the content locally by `snapshot_hash` (never by the
         //    sender's per-device entry_id).
         let local_entry_id = match self
             .entry_lookup
-            .find_entry_id_by_snapshot_hash(&incoming.content_hash)
+            .find_entry_id_by_snapshot_hash(&incoming.snapshot_hash)
             .await
         {
             Ok(Some(id)) => id,
@@ -308,7 +308,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
                 //    through to the same convergence tail. Any pull/store
                 //    failure leaves the register untouched (no advance, no
                 //    re-broadcast, no retry).
-                match self.pull_and_store(&peer, &incoming.content_hash).await {
+                match self.pull_and_store(&peer, &incoming.snapshot_hash).await {
                     Some(id) => id,
                     None => return,
                 }
@@ -323,13 +323,13 @@ impl ApplyInboundActiveClipboardStateUseCase {
             .await;
     }
 
-    /// Pull the content for `content_hash` from `peer` and store it locally,
+    /// Pull the content for `snapshot_hash` from `peer` and store it locally,
     /// returning the stored entry id. Returns `None` on any failure (pull
     /// subsystem unwired, peer unreachable / timed out, holder locked or
     /// without the content, decrypt / store failure) — the caller must then
     /// leave the register untouched (no advance, no re-broadcast, no retry,
     /// per D6).
-    async fn pull_and_store(&self, peer: &DeviceId, content_hash: &str) -> Option<EntryId> {
+    async fn pull_and_store(&self, peer: &DeviceId, snapshot_hash: &str) -> Option<EntryId> {
         let (Some(pull_client), Some(store)) = (
             self.pull_client.as_ref(),
             self.pulled_content_store.as_ref(),
@@ -340,7 +340,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
 
         // Pull the transfer envelope (the client bounds this with the 10s pull
         // deadline). Every failure mode is a logged drop.
-        let envelope = match pull_client.pull(peer, content_hash).await {
+        let envelope = match pull_client.pull(peer, snapshot_hash).await {
             Ok(bytes) => bytes,
             Err(ActiveClipboardPullClientError::Unreachable) => {
                 debug!(
@@ -360,7 +360,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
 
         // Decrypt + persist. A store failure (decrypt / decode / capture)
         // leaves the register untouched.
-        match store.store(peer, content_hash, envelope).await {
+        match store.store(peer, snapshot_hash, envelope).await {
             Ok(entry_id) => {
                 info!(entry_id = %entry_id, "active state inbound: pulled content stored");
                 Some(entry_id)
@@ -411,7 +411,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         // because OS clipboard writes can block 1–3s on some platforms;
         // coupling them inline would stall the inbound loop.
         let advance_state = ActiveClipboardState::new(
-            incoming.content_hash.clone(),
+            incoming.snapshot_hash.clone(),
             local_entry_id.clone(),
             incoming.activated_at_ms,
             incoming.activated_by.clone(),
@@ -445,7 +445,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
             {
                 warn!(
                     error = %err,
-                    content_hash = %state.content_hash,
+                    snapshot_hash = %state.snapshot_hash,
                     "active state inbound: OS write failed; not advancing register or re-broadcasting"
                 );
                 return;
@@ -459,7 +459,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
                 Ok(true) => {}
                 Ok(false) => {
                     debug!(
-                        content_hash = %state.content_hash,
+                        snapshot_hash = %state.snapshot_hash,
                         "active state inbound: register did not advance (lost LWW race); skipping re-broadcast"
                     );
                     return;
@@ -467,7 +467,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
                 Err(err) => {
                     warn!(
                         error = %err,
-                        content_hash = %state.content_hash,
+                        snapshot_hash = %state.snapshot_hash,
                         "active state inbound: register advance failed; skipping re-broadcast"
                     );
                     return;
@@ -796,10 +796,10 @@ mod tests {
         }
     }
 
-    fn inbound(content_hash: &str, ts: i64, by: &str) -> InboundActiveClipboardState {
+    fn inbound(snapshot_hash: &str, ts: i64, by: &str) -> InboundActiveClipboardState {
         InboundActiveClipboardState {
             peer_device_id: DeviceId::new("peer-p"),
-            content_hash: content_hash.to_string(),
+            snapshot_hash: snapshot_hash.to_string(),
             sender_entry_id: "sender-entry".to_string(),
             activated_at_ms: ts,
             activated_by: DeviceId::new(by),
@@ -909,7 +909,7 @@ mod tests {
         async fn pull(
             &self,
             _peer: &DeviceId,
-            _content_hash: &str,
+            _snapshot_hash: &str,
         ) -> Result<Vec<u8>, ActiveClipboardPullClientError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.result
@@ -930,7 +930,7 @@ mod tests {
         async fn store(
             &self,
             _from_device: &DeviceId,
-            _content_hash: &str,
+            _snapshot_hash: &str,
             transfer_envelope: Vec<u8>,
         ) -> Result<EntryId, InboundPulledContentStoreError> {
             *self.seen_envelope.lock().unwrap() = Some(transfer_envelope);
@@ -945,7 +945,7 @@ mod tests {
         async fn store(
             &self,
             _from_device: &DeviceId,
-            _content_hash: &str,
+            _snapshot_hash: &str,
             _transfer_envelope: Vec<u8>,
         ) -> Result<EntryId, InboundPulledContentStoreError> {
             panic!("store reached after a pull failure");

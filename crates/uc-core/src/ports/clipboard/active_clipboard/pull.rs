@@ -55,8 +55,8 @@ pub enum ActiveClipboardPullServeError {
 #[async_trait]
 pub trait ActiveClipboardPullServePort: Send + Sync {
     /// Build the transfer envelope for the content identified by
-    /// `content_hash` (the cross-device `"blake3v1:<hex>"` string).
-    async fn serve(&self, content_hash: &str) -> Result<Vec<u8>, ActiveClipboardPullServeError>;
+    /// `snapshot_hash` (the cross-device `"blake3v1:<hex>"` string).
+    async fn serve(&self, snapshot_hash: &str) -> Result<Vec<u8>, ActiveClipboardPullServeError>;
 }
 
 /// Failure surface for issuing a pull request (requesting side).
@@ -75,7 +75,7 @@ pub enum ActiveClipboardPullClientError {
     Io(String),
 }
 
-/// Request the transfer envelope for `content_hash` from a single peer.
+/// Request the transfer envelope for `snapshot_hash` from a single peer.
 ///
 /// Returns the transfer-encrypted envelope bytes the holder produced (the
 /// same format [`ActiveClipboardPullServePort::serve`] returns), ready to be
@@ -86,10 +86,10 @@ pub enum ActiveClipboardPullClientError {
 /// [`ActiveClipboardPullClientError::NotAvailable`].
 #[async_trait]
 pub trait ActiveClipboardPullClientPort: Send + Sync {
-    /// Pull the content behind `content_hash` from `peer`.
+    /// Pull the content behind `snapshot_hash` from `peer`.
     async fn pull(
         &self,
         peer: &DeviceId,
-        content_hash: &str,
+        snapshot_hash: &str,
     ) -> Result<Vec<u8>, ActiveClipboardPullClientError>;
 }

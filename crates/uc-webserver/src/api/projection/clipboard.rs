@@ -182,7 +182,7 @@ impl IntoApiDto<DispatchOutcomeResponse> for DispatchEntryOutcome {
             .collect();
 
         DispatchOutcomeResponse {
-            content_hash: self.content_hash,
+            snapshot_hash: self.snapshot_hash,
             at_ms: self.at_ms,
             total_accepted: self.total_accepted,
             total_duplicate: self.total_duplicate,

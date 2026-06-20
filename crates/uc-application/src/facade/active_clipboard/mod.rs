@@ -253,7 +253,7 @@ impl ActiveClipboardFacade {
     /// Announce a locally-originated activation of this device's clipboard
     /// (issue #1017 D1 call-sites 3 & 4, D2 "Mobile push → fan-out").
     ///
-    /// Stamps a fresh activation `(now, this_device)` for `content_hash` (held
+    /// Stamps a fresh activation `(now, this_device)` for `snapshot_hash` (held
     /// locally as `entry_id`), advances the cross-device register, then fans
     /// the converged 0xC3 state out to every send-allowed peer through the
     /// shared fan-out. The outbound gate is the full per-device send gate
@@ -265,13 +265,13 @@ impl ActiveClipboardFacade {
     /// failures are isolated by the fan-out.
     pub async fn announce_local_activation(
         &self,
-        content_hash: String,
+        snapshot_hash: String,
         entry_id: EntryId,
         categories: ClipboardContentCategorySet,
     ) {
         let state = self
             .local_advancer
-            .advance_local(content_hash, entry_id)
+            .advance_local(snapshot_hash, entry_id)
             .await;
         fan_out_active_state(
             &self.dispatch,
@@ -348,7 +348,7 @@ impl InboundPulledContentStore for PulledContentStore {
     async fn store(
         &self,
         from_device: &DeviceId,
-        content_hash: &str,
+        snapshot_hash: &str,
         transfer_envelope: Vec<u8>,
     ) -> Result<EntryId, InboundPulledContentStoreError> {
         // Decrypt the transfer envelope into the V3 plaintext the inbound apply
@@ -367,7 +367,7 @@ impl InboundPulledContentStore for PulledContentStore {
             .apply
             .apply(InboundClipboardApplyInput {
                 from_device: from_device.as_str().to_string(),
-                content_hash: content_hash.to_string(),
+                snapshot_hash: snapshot_hash.to_string(),
                 plaintext: plaintext.into(),
                 flow_id: None,
             })

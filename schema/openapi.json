@@ -616,14 +616,14 @@
             "format": "int64",
             "type": "integer"
           },
-          "contentHash": {
-            "type": "string"
-          },
           "perTarget": {
             "items": {
               "$ref": "#/components/schemas/PerTargetOutcomeDto"
             },
             "type": "array"
+          },
+          "snapshotHash": {
+            "type": "string"
           },
           "totalAccepted": {
             "minimum": 0,
@@ -643,7 +643,7 @@
           }
         },
         "required": [
-          "contentHash",
+          "snapshotHash",
           "atMs",
           "totalAccepted",
           "totalDuplicate",

@@ -49,9 +49,9 @@ use uc_core::ports::presence::{PresenceEvent, ReachabilityState};
 use uc_core::ports::PresencePort;
 use uc_core::MemberRepositoryPort;
 
-use super::fanout::send_active_state_to;
 use super::super::send_gate::MemberSendGate;
 use super::super::snapshot_from_entry::SnapshotReconstructor;
+use super::fanout::send_active_state_to;
 
 /// Debounce window for coalescing a burst of peer-online transitions into one
 /// resync per device (D7). Distinct from the restore broadcast's 300ms window:
@@ -177,7 +177,7 @@ impl PeerOnlineResyncWorker {
 
     /// Resync the current register to every coalesced online peer.
     ///
-    /// The register stores only `{content_hash, entry_id, …}` with no content
+    /// The register stores only `{snapshot_hash, entry_id, …}` with no content
     /// category, but the outbound content-type gate (D2) needs one. We
     /// reconstruct the locally-held snapshot to derive it: the register only
     /// ever advanced because the content was written to *this* device's OS
@@ -310,7 +310,7 @@ mod tests {
         }
     }
 
-    /// Records the (target, content_hash) pairs dispatched, in order.
+    /// Records the (target, snapshot_hash) pairs dispatched, in order.
     #[derive(Default)]
     struct DispatchSpy {
         sent: Mutex<Vec<(String, String)>>,
@@ -325,7 +325,7 @@ mod tests {
             self.sent
                 .lock()
                 .unwrap()
-                .push((target.as_str().to_string(), state.content_hash.clone()));
+                .push((target.as_str().to_string(), state.snapshot_hash.clone()));
             Ok(())
         }
     }
@@ -471,9 +471,9 @@ mod tests {
         )
     }
 
-    fn state(content_hash: &str, by: &str) -> ActiveClipboardState {
+    fn state(snapshot_hash: &str, by: &str) -> ActiveClipboardState {
         ActiveClipboardState::new(
-            content_hash,
+            snapshot_hash,
             EntryId::from("entry-local"),
             1_000,
             DeviceId::new(by),

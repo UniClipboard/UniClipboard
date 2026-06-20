@@ -181,7 +181,7 @@ impl ProtocolHandler for IrohActiveClipboardReceiverHandler {
         //    converges on the next observation a peer reports.
         let inbound = InboundActiveClipboardState {
             peer_device_id,
-            content_hash: msg.content_hash,
+            snapshot_hash: msg.snapshot_hash,
             sender_entry_id: msg.entry_id,
             activated_at_ms: msg.activated_at_ms,
             activated_by,
@@ -333,7 +333,7 @@ mod tests {
 
     fn sample_message() -> ActiveClipboardWireMessage {
         ActiveClipboardWireMessage {
-            content_hash: format!("blake3v1:{}", "9".repeat(64)),
+            snapshot_hash: format!("blake3v1:{}", "9".repeat(64)),
             entry_id: "01941b00-0000-7000-8000-000000000001".to_string(),
             activated_at_ms: 1_700_000_000_000,
             activated_by: "sender-001".to_string(),
@@ -413,7 +413,7 @@ mod tests {
             .expect("subscriber sees the observation");
 
         assert_eq!(inbound.peer_device_id.as_str(), "sender-a");
-        assert_eq!(inbound.content_hash, msg.content_hash);
+        assert_eq!(inbound.snapshot_hash, msg.snapshot_hash);
         assert_eq!(inbound.sender_entry_id, msg.entry_id);
         assert_eq!(inbound.activated_at_ms, msg.activated_at_ms);
         assert_eq!(inbound.activated_by.as_str(), msg.activated_by);

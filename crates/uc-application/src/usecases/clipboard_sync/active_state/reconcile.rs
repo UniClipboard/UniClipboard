@@ -111,11 +111,11 @@ impl ReconcileActiveClipboardStateUseCase {
             }
         };
 
-        if stored.content_hash == os_hash {
+        if stored.snapshot_hash == os_hash {
             // The persisted row still matches the OS clipboard: the invariant
             // holds, keep the row as the baseline.
             debug!(
-                content_hash = %stored.content_hash,
+                snapshot_hash = %stored.snapshot_hash,
                 "active state reconcile: stored register matches OS clipboard; kept"
             );
             ReconcileOutcome::Kept
@@ -124,7 +124,7 @@ impl ReconcileActiveClipboardStateUseCase {
             // empty) than the row claims. Clear so the row can neither win LWW
             // against a real later activation nor be resynced to peers.
             info!(
-                stored_hash = %stored.content_hash,
+                stored_hash = %stored.snapshot_hash,
                 os_hash = %os_hash,
                 "active state reconcile: stored register does not match OS clipboard; clearing"
             );
@@ -224,7 +224,7 @@ mod tests {
         }
     }
 
-    /// Build a state whose `content_hash` equals the snapshot hash of the given
+    /// Build a state whose `snapshot_hash` equals the snapshot hash of the given
     /// text — so a `FakeClipboard::Text(t)` reconcile sees a match.
     fn state_matching(text: &str) -> ActiveClipboardState {
         let hash = text_snapshot(text).snapshot_hash().to_string();

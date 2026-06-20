@@ -42,7 +42,7 @@ impl OutboundHeaderFactory {
         let origin_device_name = self.load_origin_device_name().await;
         ClipboardHeader {
             version: ClipboardHeader::CURRENT_VERSION,
-            content_hash: input.content_hash.clone(),
+            snapshot_hash: input.snapshot_hash.clone(),
             captured_at_ms: self.clock.now_ms(),
             origin_device_id: local_device.as_str().to_string(),
             origin_device_name,
@@ -108,7 +108,7 @@ mod tests {
         let header = factory.build(&input, &flow, &dev("self-device")).await;
 
         assert_eq!(header.version, ClipboardHeader::CURRENT_VERSION);
-        assert_eq!(header.content_hash, input.content_hash);
+        assert_eq!(header.snapshot_hash, input.snapshot_hash);
         assert_eq!(header.payload_version, input.payload_version);
         assert_eq!(header.captured_at_ms, 1_700_000_000_000);
         assert_eq!(header.origin_device_id, "self-device");

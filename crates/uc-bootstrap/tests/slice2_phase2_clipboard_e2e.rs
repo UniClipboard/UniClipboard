@@ -5,7 +5,7 @@
 //! contract from plan §1 / §15 acceptance criteria:
 //!
 //! 1. A copies text → ≤ 2s B sees the same plaintext + matching
-//!    `content_hash` via `ClipboardSyncFacade::subscribe_inbound_notices`.
+//!    `snapshot_hash` via `ClipboardSyncFacade::subscribe_inbound_notices`.
 //! 2. Repeating the same dispatch a second time still Accepts on the wire
 //!    (Phase 2's receiver adapter does not dedup; the ingest use case
 //!    only re-broadcasts decrypted plaintext) — the `DuplicateIgnored`
@@ -706,8 +706,8 @@ async fn sponsor_dispatch_lands_on_joiner_within_2s() {
         "notice must report sponsor as origin"
     );
     assert_eq!(
-        notice.content_hash, expected_hash,
-        "content_hash (canonical snapshot_hash) must round-trip unchanged"
+        notice.snapshot_hash, expected_hash,
+        "snapshot_hash (canonical snapshot_hash) must round-trip unchanged"
     );
 
     // Decode the V3 envelope and check the text representation round-tripped.
@@ -761,7 +761,7 @@ async fn repeat_dispatch_lands_twice_phase2_no_dedup() {
     let mut joiner_notices = joiner.clipboard_sync.subscribe_inbound_notices();
 
     // Phase 3 upgrade(T11):same fixture built twice — `snapshot_hash`
-    // is deterministic so both sends produce identical `content_hash`.
+    // is deterministic so both sends produce identical `snapshot_hash`.
     // At the wire/facade level, Phase 2 behaviour holds: receiver adapter
     // doesn't dedup, so both sends get Accepted. Phase 3 dedup(in
     // `ApplyInboundClipboardUseCase`) is a daemon concern, NOT exercised
@@ -797,7 +797,7 @@ async fn repeat_dispatch_lands_twice_phase2_no_dedup() {
             "no Phase 2 producer returns DuplicateIgnored on the wire"
         );
         assert_eq!(
-            outcome.content_hash, canonical_hash,
+            outcome.snapshot_hash, canonical_hash,
             "snapshot_hash should be deterministic across identical snapshots"
         );
     }
@@ -811,8 +811,8 @@ async fn repeat_dispatch_lands_twice_phase2_no_dedup() {
         received.push(notice);
     }
     assert!(
-        received.iter().all(|n| n.content_hash == canonical_hash),
-        "both notices must carry identical canonical content_hash; got {received:?}"
+        received.iter().all(|n| n.snapshot_hash == canonical_hash),
+        "both notices must carry identical canonical snapshot_hash; got {received:?}"
     );
     for notice in &received {
         let decoded = decode_v3_bytes_to_snapshot(&notice.plaintext)

@@ -216,7 +216,7 @@ pub(crate) fn spawn_deferred_drain(
     entry_id: Option<EntryId>,
     clock: Arc<dyn ClockPort>,
     recorder: Arc<DeliveryRecorder>,
-    content_hash: String,
+    snapshot_hash: String,
 ) {
     let deferred_count = set.len();
     tokio::spawn(
@@ -239,7 +239,7 @@ pub(crate) fn spawn_deferred_drain(
                 }
             }
             info!(
-                content_hash = %content_hash,
+                snapshot_hash = %snapshot_hash,
                 deferred_count,
                 accepted,
                 duplicate,

@@ -10,7 +10,7 @@
 //! [`ResendEntryUseCase`](super::resend_entry::ResendEntryUseCase) already
 //! runs:
 //!
-//! 1. resolve the local entry by its cross-device `content_hash`;
+//! 1. resolve the local entry by its cross-device `snapshot_hash`;
 //! 2. [`reconstruct_snapshot_from_entry`] — read at-rest, decrypt, materialize
 //!    plaintext (requires an unlocked session);
 //! 3. plan + publish blobs — large/image reps and free-standing files are
@@ -84,21 +84,21 @@ impl ActiveClipboardPullServeUseCase {
         }
     }
 
-    /// Build the transfer envelope for `content_hash`. See the module docs for
+    /// Build the transfer envelope for `snapshot_hash`. See the module docs for
     /// the chain. Returns [`ActiveClipboardPullServeError::NotAvailable`] when
     /// the content is not held / not materializable, and
     /// [`ActiveClipboardPullServeError::NotUnlocked`] when the session is
     /// locked.
-    #[instrument(name = "active_state.serve_pull", skip_all, fields(content_hash = %content_hash))]
+    #[instrument(name = "active_state.serve_pull", skip_all, fields(snapshot_hash = %snapshot_hash))]
     pub(crate) async fn serve(
         &self,
-        content_hash: &str,
+        snapshot_hash: &str,
     ) -> Result<Vec<u8>, ActiveClipboardPullServeError> {
         // 1. Resolve the local entry by cross-device content hash. No match →
         //    not available (the observing peer should ask another holder).
         let entry_id = match self
             .entry_lookup
-            .find_entry_id_by_snapshot_hash(content_hash)
+            .find_entry_id_by_snapshot_hash(snapshot_hash)
             .await
         {
             Ok(Some(id)) => id,
@@ -193,7 +193,7 @@ impl ActiveClipboardPullServeUseCase {
         blob_refs.append(&mut image_blob_refs);
 
         // 4. Encode the V3 envelope (snapshot + blob refs trailer).
-        let (plaintext, _content_hash) = match encode_snapshot_with_blob_refs_to_v3_bytes(
+        let (plaintext, _snapshot_hash) = match encode_snapshot_with_blob_refs_to_v3_bytes(
             &clipboard_intent.snapshot,
             &blob_refs,
         ) {
@@ -233,8 +233,8 @@ impl ActiveClipboardPullServeUseCase {
 
 #[async_trait]
 impl ActiveClipboardPullServePort for ActiveClipboardPullServeUseCase {
-    async fn serve(&self, content_hash: &str) -> Result<Vec<u8>, ActiveClipboardPullServeError> {
-        ActiveClipboardPullServeUseCase::serve(self, content_hash).await
+    async fn serve(&self, snapshot_hash: &str) -> Result<Vec<u8>, ActiveClipboardPullServeError> {
+        ActiveClipboardPullServeUseCase::serve(self, snapshot_hash).await
     }
 }
 

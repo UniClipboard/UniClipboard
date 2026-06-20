@@ -250,7 +250,7 @@ pub enum LanInterfaceProbeError {
 ///
 /// **方案 X**(P5a Decisions):本 port 永远返回**最新一条**记录,**不区分**
 /// 来源(本地复制 / mobile sync 入站 / P2P 入站)。dedup 由 `ApplyInbound` 的
-/// `content_hash` 在入站时已经处理;mobile sync 这条出站路径无需在 query
+/// `snapshot_hash` 在入站时已经处理;mobile sync 这条出站路径无需在 query
 /// 阶段再做"过滤掉自己来源避免回环"的小聪明。
 #[async_trait]
 pub trait LatestClipboardSnapshotPort: Send + Sync {

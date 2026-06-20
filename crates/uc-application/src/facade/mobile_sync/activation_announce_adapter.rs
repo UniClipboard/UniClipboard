@@ -64,7 +64,7 @@ use crate::usecases::mobile_sync::apply_incoming::MobileActivationAnnouncePort;
 pub(crate) trait LocalActivationConverge: Send + Sync {
     async fn announce_local_activation(
         &self,
-        content_hash: String,
+        snapshot_hash: String,
         entry_id: EntryId,
         categories: ClipboardContentCategorySet,
     );
@@ -74,13 +74,13 @@ pub(crate) trait LocalActivationConverge: Send + Sync {
 impl LocalActivationConverge for ActiveClipboardFacade {
     async fn announce_local_activation(
         &self,
-        content_hash: String,
+        snapshot_hash: String,
         entry_id: EntryId,
         categories: ClipboardContentCategorySet,
     ) {
         // Fully-qualified call resolves to the inherent method (inherent
         // methods take precedence over trait methods), not this trait impl.
-        ActiveClipboardFacade::announce_local_activation(self, content_hash, entry_id, categories)
+        ActiveClipboardFacade::announce_local_activation(self, snapshot_hash, entry_id, categories)
             .await;
     }
 }
@@ -105,10 +105,10 @@ impl MobileActivationAnnounceAdapter {
     /// snapshot, then advance the register and fan the 0xC3 state out under the
     /// per-device send gate. Shared tail of both `announce_*` paths.
     async fn converge(&self, entry_id: EntryId, snapshot: &SystemClipboardSnapshot) {
-        let content_hash = snapshot.snapshot_hash().to_string();
+        let snapshot_hash = snapshot.snapshot_hash().to_string();
         let categories = ClipboardContentCategorySet::from_snapshot(snapshot);
         self.active_clipboard
-            .announce_local_activation(content_hash, entry_id, categories)
+            .announce_local_activation(snapshot_hash, entry_id, categories)
             .await;
     }
 }
@@ -177,7 +177,7 @@ mod tests {
     impl LocalActivationConverge for SpyConverge {
         async fn announce_local_activation(
             &self,
-            _content_hash: String,
+            _snapshot_hash: String,
             _entry_id: EntryId,
             _categories: ClipboardContentCategorySet,
         ) {

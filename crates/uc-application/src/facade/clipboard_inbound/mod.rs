@@ -11,7 +11,7 @@ use crate::{ApplyInboundClipboardUseCase, ApplyInboundInput, ApplyOutcome};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InboundClipboardNoticeInput {
     pub from_device: String,
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub plaintext: Bytes,
     pub flow_id: Option<FlowId>,
 }
@@ -22,7 +22,7 @@ pub enum InboundClipboardApplyOutcome {
         entry_id: String,
     },
     DuplicateSkipped {
-        content_hash: String,
+        snapshot_hash: String,
         existing_entry_id: String,
     },
     DecodeFailed {
@@ -47,7 +47,7 @@ pub trait InboundClipboardApplyPort: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InboundClipboardApplyInput {
     pub from_device: String,
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub plaintext: Bytes,
     pub flow_id: Option<FlowId>,
 }
@@ -61,7 +61,7 @@ impl InboundClipboardApplyPort for ApplyInboundClipboardUseCase {
         let outcome = self
             .execute(ApplyInboundInput {
                 from_device: DeviceId::new(input.from_device),
-                content_hash: input.content_hash,
+                snapshot_hash: input.snapshot_hash,
                 plaintext: input.plaintext,
                 flow_id: input.flow_id,
             })
@@ -87,7 +87,7 @@ impl InboundClipboardFacade {
         self.apply
             .apply(InboundClipboardApplyInput {
                 from_device: input.from_device,
-                content_hash: input.content_hash,
+                snapshot_hash: input.snapshot_hash,
                 plaintext: input.plaintext,
                 flow_id: input.flow_id,
             })
@@ -101,10 +101,10 @@ fn apply_outcome_to_view(outcome: ApplyOutcome) -> InboundClipboardApplyOutcome 
             entry_id: entry_id.to_string(),
         },
         ApplyOutcome::DuplicateSkipped {
-            content_hash,
+            snapshot_hash,
             existing_entry_id,
         } => InboundClipboardApplyOutcome::DuplicateSkipped {
-            content_hash,
+            snapshot_hash,
             existing_entry_id: existing_entry_id.to_string(),
         },
         ApplyOutcome::DecodeFailed { reason } => {
@@ -139,7 +139,7 @@ mod tests {
         let outcome = facade
             .apply_notice(InboundClipboardNoticeInput {
                 from_device: "device-a".to_string(),
-                content_hash: "hash-a".to_string(),
+                snapshot_hash: "hash-a".to_string(),
                 plaintext: Bytes::from_static(b"payload"),
                 flow_id: None,
             })

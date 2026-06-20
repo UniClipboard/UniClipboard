@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! requester -> holder (request):
-//!   [magic(1) | content_hash_len_be(2) | content_hash_bytes | FIN]
+//!   [magic(1) | snapshot_hash_len_be(2) | snapshot_hash_bytes | FIN]
 //!
 //! holder -> requester (response):
 //!   [status(1) | (status==Ok ? envelope_len_be(4) | envelope_bytes) | FIN]
@@ -15,8 +15,8 @@
 //!
 //! * `magic` = [`ACTIVE_PULL_MAGIC`] — a fixed sentinel so bytes arriving on a
 //!   mis-routed ALPN are rejected before anything is allocated.
-//! * `content_hash` is the cross-device `"blake3v1:<hex>"` identity string,
-//!   length-capped at [`MAX_CONTENT_HASH_LEN`] before allocation.
+//! * `snapshot_hash` is the cross-device `"blake3v1:<hex>"` identity string,
+//!   length-capped at [`MAX_SNAPSHOT_HASH_LEN`] before allocation.
 //! * `status` discriminates the response (see [`PullResponseStatus`]). Only
 //!   `Ok` carries an envelope; the error statuses are a single byte.
 //! * `envelope_bytes` is the transfer-encrypted clipboard payload the holder
@@ -43,10 +43,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// so a mis-routed connection fails fast at the magic check.
 pub const ACTIVE_PULL_MAGIC: u8 = 0xC2;
 
-/// Hard ceiling on the request's content-hash length. A `"blake3v1:<hex>"`
+/// Hard ceiling on the request's snapshot-hash length. A `"blake3v1:<hex>"`
 /// string is ~71 bytes; 1 KiB leaves ample headroom while bounding the
 /// allocation a hostile peer can request.
-pub const MAX_CONTENT_HASH_LEN: u16 = 1024;
+pub const MAX_SNAPSHOT_HASH_LEN: u16 = 1024;
 
 /// Hard ceiling on the response envelope length (16 MiB). Inline V3 envelopes
 /// carry small/text content directly; large content travels as blob refs
@@ -119,10 +119,10 @@ pub enum PullResponse {
 pub enum PullWireError {
     #[error("bad magic byte: got 0x{got:02X} (expected 0x{expected:02X})")]
     BadMagic { got: u8, expected: u8 },
-    #[error("content hash length {len} exceeds maximum {max}")]
-    ContentHashTooLong { len: u16, max: u16 },
-    #[error("content hash bytes are not valid UTF-8")]
-    ContentHashNotUtf8,
+    #[error("snapshot hash length {len} exceeds maximum {max}")]
+    SnapshotHashTooLong { len: u16, max: u16 },
+    #[error("snapshot hash bytes are not valid UTF-8")]
+    SnapshotHashNotUtf8,
     #[error("envelope length {len} exceeds maximum {max}")]
     EnvelopeTooLong { len: u32, max: u32 },
     #[error("unknown response status byte 0x{got:02X}")]
@@ -139,13 +139,13 @@ pub enum PullWireError {
 /// The caller closes the send half after this returns.
 pub async fn write_request<W: AsyncWrite + Unpin>(
     send: &mut W,
-    content_hash: &str,
+    snapshot_hash: &str,
 ) -> Result<(), PullWireError> {
-    let bytes = content_hash.as_bytes();
-    if bytes.len() > MAX_CONTENT_HASH_LEN as usize {
-        return Err(PullWireError::ContentHashTooLong {
+    let bytes = snapshot_hash.as_bytes();
+    if bytes.len() > MAX_SNAPSHOT_HASH_LEN as usize {
+        return Err(PullWireError::SnapshotHashTooLong {
             len: bytes.len().min(u16::MAX as usize) as u16,
-            max: MAX_CONTENT_HASH_LEN,
+            max: MAX_SNAPSHOT_HASH_LEN,
         });
     }
     let len = bytes.len() as u16;
@@ -161,7 +161,7 @@ pub async fn write_request<W: AsyncWrite + Unpin>(
 }
 
 /// Read one pull request frame, validating magic + length cap **before**
-/// allocating the content-hash buffer. Returns the requested content hash.
+/// allocating the snapshot-hash buffer. Returns the requested snapshot hash.
 pub async fn read_request<R: AsyncRead + Unpin>(recv: &mut R) -> Result<String, PullWireError> {
     let mut magic = [0u8; 1];
     recv.read_exact(&mut magic)
@@ -179,10 +179,10 @@ pub async fn read_request<R: AsyncRead + Unpin>(recv: &mut R) -> Result<String, 
         .await
         .map_err(PullWireError::Io)?;
     let len = u16::from_be_bytes(len_buf);
-    if len > MAX_CONTENT_HASH_LEN {
-        return Err(PullWireError::ContentHashTooLong {
+    if len > MAX_SNAPSHOT_HASH_LEN {
+        return Err(PullWireError::SnapshotHashTooLong {
             len,
-            max: MAX_CONTENT_HASH_LEN,
+            max: MAX_SNAPSHOT_HASH_LEN,
         });
     }
 
@@ -190,7 +190,7 @@ pub async fn read_request<R: AsyncRead + Unpin>(recv: &mut R) -> Result<String, 
     recv.read_exact(&mut body)
         .await
         .map_err(PullWireError::Io)?;
-    String::from_utf8(body).map_err(|_| PullWireError::ContentHashNotUtf8)
+    String::from_utf8(body).map_err(|_| PullWireError::SnapshotHashNotUtf8)
 }
 
 // ============================================================================
@@ -312,9 +312,9 @@ mod tests {
         Ok(got)
     }
 
-    /// 1. Request round-trips the content hash field-for-field.
+    /// 1. Request round-trips the snapshot hash field-for-field.
     #[tokio::test]
-    async fn request_round_trips_content_hash() {
+    async fn request_round_trips_snapshot_hash() {
         let hash = format!("blake3v1:{}", "a".repeat(64));
         let got = request_round_trip(&hash).await.expect("round trip");
         assert_eq!(got, hash);
@@ -344,7 +344,7 @@ mod tests {
     }
 
     /// 4. A request frame with the wrong magic is rejected at the magic check,
-    /// before allocating the content-hash buffer.
+    /// before allocating the snapshot-hash buffer.
     #[tokio::test]
     async fn read_request_rejects_bad_magic() {
         let (mut client, mut server) = duplex(64);
@@ -366,12 +366,12 @@ mod tests {
         send_task.await.unwrap();
     }
 
-    /// 5. A request claiming an over-long content hash is rejected at the
+    /// 5. A request claiming an over-long snapshot hash is rejected at the
     /// length prefix, before allocating the body buffer.
     #[tokio::test]
-    async fn read_request_rejects_oversized_content_hash() {
+    async fn read_request_rejects_oversized_snapshot_hash() {
         let (mut client, mut server) = duplex(64);
-        let oversized = MAX_CONTENT_HASH_LEN + 1;
+        let oversized = MAX_SNAPSHOT_HASH_LEN + 1;
         let send_task = tokio::spawn(async move {
             client.write_all(&[ACTIVE_PULL_MAGIC]).await.ok();
             client.write_all(&oversized.to_be_bytes()).await.ok();
@@ -379,13 +379,13 @@ mod tests {
         });
         let err = read_request(&mut server)
             .await
-            .expect_err("oversized content hash must be rejected");
+            .expect_err("oversized snapshot hash must be rejected");
         match err {
-            PullWireError::ContentHashTooLong { len, max } => {
+            PullWireError::SnapshotHashTooLong { len, max } => {
                 assert_eq!(len, oversized);
-                assert_eq!(max, MAX_CONTENT_HASH_LEN);
+                assert_eq!(max, MAX_SNAPSHOT_HASH_LEN);
             }
-            other => panic!("expected ContentHashTooLong, got {other:?}"),
+            other => panic!("expected SnapshotHashTooLong, got {other:?}"),
         }
         send_task.await.unwrap();
     }

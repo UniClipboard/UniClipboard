@@ -36,7 +36,7 @@ pub enum ActiveClipboardDispatchError {
 ///
 /// `entry_id` on the carried [`ActiveClipboardState`] is the *sending*
 /// device's per-device handle; it travels for traceability only and is never
-/// resolved by the receiver, which looks the content up by `content_hash`.
+/// resolved by the receiver, which looks the content up by `snapshot_hash`.
 #[async_trait]
 pub trait ActiveClipboardDispatchPort: Send + Sync {
     /// Send `state` to `target`. Returns once the observation has been

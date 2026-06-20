@@ -120,13 +120,15 @@ impl RestoreClipboardSelectionUseCase {
         // Capture the content identity and category set before the snapshot is
         // moved into the write boundary; the register advances only after the
         // OS write succeeds, keeping "register advanced ⟺ OS write succeeded".
-        let content_hash = snapshot.snapshot_hash().to_string();
+        let snapshot_hash = snapshot.snapshot_hash().to_string();
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await?;
         if let Some(advancer) = &self.active_register {
-            let state = advancer.advance_local(content_hash, entry_id.clone()).await;
+            let state = advancer
+                .advance_local(snapshot_hash, entry_id.clone())
+                .await;
             // Offer the just-activated state to the broadcast subsystem. The
             // gate (`sync_on_restore` + per-device send filter) lives in the
             // broadcaster; here we only hand off the activation + its

@@ -31,9 +31,9 @@ use uc_core::ids::DeviceId;
 use uc_core::ports::clipboard::{ActiveClipboardPullClientError, ActiveClipboardPullClientPort};
 use uc_core::ports::PeerAddressRepositoryPort;
 
+use super::super::connect::connect_with_staggered_retry;
 use super::pull_serve_adapter::ACTIVE_CLIPBOARD_PULL_ALPN;
 use super::pull_wire::{self, PullResponse};
-use super::super::connect::connect_with_staggered_retry;
 
 /// Hard deadline on one pull exchange (dial + request + response). Issue #1017
 /// D6 fixes this at 10s: pull-fail (timeout, offline, holder locked) does not
@@ -97,16 +97,16 @@ impl IrohActiveClipboardPullClientAdapter {
 
 #[async_trait]
 impl ActiveClipboardPullClientPort for IrohActiveClipboardPullClientAdapter {
-    #[instrument(skip_all, fields(device = %peer.as_str(), content_hash = %content_hash))]
+    #[instrument(skip_all, fields(device = %peer.as_str(), snapshot_hash = %snapshot_hash))]
     async fn pull(
         &self,
         peer: &DeviceId,
-        content_hash: &str,
+        snapshot_hash: &str,
     ) -> Result<Vec<u8>, ActiveClipboardPullClientError> {
         // The whole dial + request + response exchange is bounded by a single
         // deadline (D6, 10s). A timeout maps to `Unreachable` — pull-fail does
         // not advance the register, so the caller just logs and drops.
-        match tokio::time::timeout(PULL_TIMEOUT, self.exchange(peer, content_hash)).await {
+        match tokio::time::timeout(PULL_TIMEOUT, self.exchange(peer, snapshot_hash)).await {
             Ok(result) => result,
             Err(_) => {
                 debug!("active-clipboard pull: exceeded deadline; treating as Unreachable");
@@ -121,7 +121,7 @@ impl IrohActiveClipboardPullClientAdapter {
     async fn exchange(
         &self,
         peer: &DeviceId,
-        content_hash: &str,
+        snapshot_hash: &str,
     ) -> Result<Vec<u8>, ActiveClipboardPullClientError> {
         // 1. Resolve address; missing / bad record = unreachable.
         let addr = match self.resolve_addr(peer).await {
@@ -154,7 +154,7 @@ impl IrohActiveClipboardPullClientAdapter {
             .await
             .map_err(|err| ActiveClipboardPullClientError::Io(format!("open_bi: {err}")))?;
 
-        pull_wire::write_request(&mut send, content_hash)
+        pull_wire::write_request(&mut send, snapshot_hash)
             .await
             .map_err(|err| ActiveClipboardPullClientError::Io(format!("request write: {err}")))?;
         send.finish()
@@ -279,7 +279,7 @@ mod tests {
     impl ActiveClipboardPullServePort for StubServe {
         async fn serve(
             &self,
-            _content_hash: &str,
+            _snapshot_hash: &str,
         ) -> Result<Vec<u8>, ActiveClipboardPullServeError> {
             self.0
                 .lock()

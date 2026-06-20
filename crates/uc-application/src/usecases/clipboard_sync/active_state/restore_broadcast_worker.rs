@@ -31,8 +31,8 @@ use uc_core::MemberRepositoryPort;
 
 use crate::clipboard_write::RestoreBroadcastRequest;
 
-use super::fanout::fan_out_active_state;
 use super::super::send_gate::MemberSendGate;
+use super::fanout::fan_out_active_state;
 
 /// Debounce window for coalescing rapid restores into one broadcast (D7).
 const RESTORE_BROADCAST_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -143,7 +143,7 @@ impl RestoreBroadcastWorker {
         };
         if !sync_on_restore {
             debug!(
-                content_hash = %request.state.content_hash,
+                snapshot_hash = %request.state.snapshot_hash,
                 "restore broadcast skipped: sync_on_restore disabled"
             );
             return;
@@ -200,7 +200,7 @@ mod tests {
     /// Records the content hashes dispatched, in order.
     #[derive(Default)]
     struct DispatchSpy {
-        sent: Mutex<Vec<(String, String)>>, // (target, content_hash)
+        sent: Mutex<Vec<(String, String)>>, // (target, snapshot_hash)
     }
     #[async_trait]
     impl ActiveClipboardDispatchPort for DispatchSpy {
@@ -212,7 +212,7 @@ mod tests {
             self.sent
                 .lock()
                 .unwrap()
-                .push((target.as_str().to_string(), state.content_hash.clone()));
+                .push((target.as_str().to_string(), state.snapshot_hash.clone()));
             Ok(())
         }
     }
@@ -270,12 +270,12 @@ mod tests {
         }
     }
 
-    fn request(content_hash: &str) -> RestoreBroadcastRequest {
+    fn request(snapshot_hash: &str) -> RestoreBroadcastRequest {
         let mut categories = ClipboardContentCategorySet::empty();
         categories.insert(ClipboardContentCategory::Text);
         RestoreBroadcastRequest {
             state: ActiveClipboardState::new(
-                content_hash,
+                snapshot_hash,
                 EntryId::new(),
                 1_000,
                 DeviceId::new("self"),

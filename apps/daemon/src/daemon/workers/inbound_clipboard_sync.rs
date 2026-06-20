@@ -89,7 +89,7 @@ impl InboundClipboardSyncWorker {
         let from_device = notice.from_device.as_str().to_string();
         let input = InboundClipboardNoticeInput {
             from_device: from_device.clone(),
-            content_hash: notice.content_hash,
+            snapshot_hash: notice.snapshot_hash,
             plaintext: notice.plaintext,
             flow_id: notice.flow_id,
         };
@@ -99,11 +99,11 @@ impl InboundClipboardSyncWorker {
                 Self::emit_ws_event(&self.event_tx, entry_id, from_device);
             }
             Ok(InboundClipboardApplyOutcome::DuplicateSkipped {
-                content_hash,
+                snapshot_hash,
                 existing_entry_id,
             }) => {
                 debug!(
-                    content_hash = %content_hash,
+                    snapshot_hash = %snapshot_hash,
                     existing_entry_id = %existing_entry_id,
                     "inbound dropped: duplicate of existing local entry"
                 );
@@ -159,7 +159,7 @@ impl InboundClipboardSyncWorker {
         };
         let payload = InboundNoticeEvent {
             from_device: notice.from_device.as_str().to_string(),
-            content_hash: notice.content_hash.clone(),
+            snapshot_hash: notice.snapshot_hash.clone(),
             plaintext_base64: STANDARD.encode(&notice.plaintext),
             action: action.to_string(),
             at_ms: notice.at_ms,

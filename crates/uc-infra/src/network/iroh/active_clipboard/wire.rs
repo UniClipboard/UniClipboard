@@ -66,7 +66,7 @@ pub const MAX_BODY_SIZE: u32 = 4 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveClipboardWireMessage {
     /// Stable, cross-device content identity string (`"blake3v1:<hex>"`).
-    pub content_hash: String,
+    pub snapshot_hash: String,
     /// The sending device's local entry handle. Per-device only.
     pub entry_id: String,
     /// Wall-clock milliseconds of the activation event. Primary LWW key.
@@ -80,7 +80,7 @@ pub struct ActiveClipboardWireMessage {
 #[derive(Serialize, Deserialize, Debug)]
 struct WireActiveStateV1 {
     version: u8,
-    content_hash: String,
+    snapshot_hash: String,
     entry_id: String,
     activated_at_ms: i64,
     activated_by: String,
@@ -124,7 +124,7 @@ pub enum ActiveWireDecodeError {
 pub fn encode_body(msg: &ActiveClipboardWireMessage) -> Result<Vec<u8>, ActiveWireEncodeError> {
     let wire = WireActiveStateV1 {
         version: ACTIVE_STATE_WIRE_VERSION,
-        content_hash: msg.content_hash.clone(),
+        snapshot_hash: msg.snapshot_hash.clone(),
         entry_id: msg.entry_id.clone(),
         activated_at_ms: msg.activated_at_ms,
         activated_by: msg.activated_by.clone(),
@@ -156,7 +156,7 @@ pub fn decode_body(bytes: &[u8]) -> Result<ActiveClipboardWireMessage, ActiveWir
         1 => {
             let wire: WireActiveStateV1 = postcard::from_bytes(bytes)?;
             Ok(ActiveClipboardWireMessage {
-                content_hash: wire.content_hash,
+                snapshot_hash: wire.snapshot_hash,
                 entry_id: wire.entry_id,
                 activated_at_ms: wire.activated_at_ms,
                 activated_by: wire.activated_by,
@@ -241,7 +241,7 @@ mod tests {
 
     fn sample_message() -> ActiveClipboardWireMessage {
         ActiveClipboardWireMessage {
-            content_hash: format!("blake3v1:{}", "a".repeat(64)),
+            snapshot_hash: format!("blake3v1:{}", "a".repeat(64)),
             entry_id: "01941b00-0000-7000-8000-000000000001".to_string(),
             activated_at_ms: 1_700_000_000_000,
             activated_by: "dev-alpha".to_string(),
@@ -357,7 +357,7 @@ mod tests {
     fn decode_rejects_future_body_version() {
         let future = WireActiveStateV1 {
             version: ACTIVE_STATE_WIRE_VERSION + 1,
-            content_hash: "blake3v1:stub".to_string(),
+            snapshot_hash: "blake3v1:stub".to_string(),
             entry_id: "e".to_string(),
             activated_at_ms: 0,
             activated_by: "d".to_string(),

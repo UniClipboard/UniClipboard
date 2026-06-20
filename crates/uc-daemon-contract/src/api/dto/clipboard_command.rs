@@ -38,7 +38,7 @@ pub struct PerTargetOutcomeDto {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DispatchOutcomeResponse {
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub at_ms: i64,
     pub total_accepted: usize,
     pub total_duplicate: usize,
@@ -111,7 +111,7 @@ pub struct RestoreEntryResponse {
 #[serde(rename_all = "camelCase")]
 pub struct InboundNoticeEvent {
     pub from_device: String,
-    pub content_hash: String,
+    pub snapshot_hash: String,
     /// Base64-encoded V3 envelope bytes.
     pub plaintext_base64: String,
     /// `"new_entry"` | `"duplicate_ignored"`.
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn dispatch_outcome_response_camel_case() {
         let resp = DispatchOutcomeResponse {
-            content_hash: "abc".into(),
+            snapshot_hash: "abc".into(),
             at_ms: 1000,
             total_accepted: 1,
             total_duplicate: 0,
@@ -178,7 +178,7 @@ mod tests {
             }],
         };
         let json = serde_json::to_value(&resp).unwrap();
-        assert!(json.get("contentHash").is_some());
+        assert!(json.get("snapshotHash").is_some());
         assert!(json.get("atMs").is_some());
         assert!(json.get("totalAccepted").is_some());
         assert!(json.get("perTarget").is_some());
@@ -206,14 +206,14 @@ mod tests {
     fn inbound_notice_event_camel_case() {
         let evt = InboundNoticeEvent {
             from_device: "d1".into(),
-            content_hash: "h".into(),
+            snapshot_hash: "h".into(),
             plaintext_base64: "base64data".into(),
             action: "new_entry".into(),
             at_ms: 123,
         };
         let json = serde_json::to_value(&evt).unwrap();
         assert!(json.get("fromDevice").is_some());
-        assert!(json.get("contentHash").is_some());
+        assert!(json.get("snapshotHash").is_some());
         assert!(json.get("plaintextBase64").is_some());
     }
 }

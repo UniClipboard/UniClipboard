@@ -8,7 +8,7 @@
 //! ## Inputs, not side-effects
 //!
 //! This use case takes a [`DispatchClipboardEntryInput`] — plaintext bytes
-//! + `content_hash` + `payload_version`. Reading the system clipboard +
+//! + `snapshot_hash` + `payload_version`. Reading the system clipboard +
 //! building the `ClipboardBinaryPayload` is the caller's responsibility
 //! (CLI `send` / `watch` in T11, daemon in Phase 3). Keeping the
 //! plaintext-production step outside keeps the use case testable with
@@ -176,7 +176,7 @@ pub(crate) struct DispatchClipboardEntryInput {
     /// clipboard snapshot.
     pub plaintext: Bytes,
     /// SHA256 hex of the plaintext above. Receiver uses this for dedup.
-    pub content_hash: String,
+    pub snapshot_hash: String,
     /// Payload codec tag, e.g. `3` for the V3 `ClipboardBinaryPayload`.
     pub payload_version: u8,
     /// Set of content categories present in the snapshot, used to gate
@@ -224,7 +224,7 @@ pub(crate) struct DispatchPerTarget {
 /// (the returned vec only describes peers settled within the deadline).
 #[derive(Debug, Clone)]
 pub(crate) struct DispatchOutcome {
-    pub content_hash: String,
+    pub snapshot_hash: String,
     pub per_target: Vec<DispatchPerTarget>,
     pub total_accepted: usize,
     pub total_duplicate: usize,
@@ -252,7 +252,7 @@ pub(crate) enum DispatchSyncError {
 /// Crate-internal abstraction over [`DispatchClipboardEntryUseCase::execute`].
 ///
 /// Sole consumer is `ResendEntryUseCase`, whose unit tests assert dispatch
-/// input shape (`target_filter` / `entry_id` / `content_hash`) without
+/// input shape (`target_filter` / `entry_id` / `snapshot_hash`) without
 /// constructing the full 13-port dispatch use case. Production wiring
 /// satisfies the trait through the blanket impl below. Not exposed beyond
 /// the crate.
@@ -348,7 +348,7 @@ impl DispatchClipboardEntryUseCase {
     #[instrument(
         skip_all,
         fields(
-            content_hash = %input.content_hash,
+            snapshot_hash = %input.snapshot_hash,
             flow.id = tracing::field::Empty,
             flow.kind = "clipboard_sync",
             fanout.candidates = tracing::field::Empty,
@@ -389,7 +389,7 @@ impl DispatchClipboardEntryUseCase {
         if candidates.is_empty() {
             info!("dispatch: no paired peers; skipping fan-out");
             return Ok(DispatchOutcome {
-                content_hash: input.content_hash,
+                snapshot_hash: input.snapshot_hash,
                 per_target: Vec::new(),
                 total_accepted: 0,
                 total_duplicate: 0,
@@ -489,12 +489,12 @@ impl DispatchClipboardEntryUseCase {
                 entry_id,
                 Arc::clone(&self.clock),
                 Arc::clone(&self.recorder),
-                input.content_hash.clone(),
+                input.snapshot_hash.clone(),
             );
         }
 
         Ok(DispatchOutcome {
-            content_hash: input.content_hash,
+            snapshot_hash: input.snapshot_hash,
             per_target,
             total_accepted,
             total_duplicate,
@@ -977,7 +977,7 @@ mod tests {
     fn input() -> DispatchClipboardEntryInput {
         DispatchClipboardEntryInput {
             plaintext: Bytes::from_static(b"hello world"),
-            content_hash: "9".repeat(64),
+            snapshot_hash: "9".repeat(64),
             payload_version: 3,
             // Existing verdicts predate the content-type filter; default
             // to an empty set so they always pass the gate (fail open).
@@ -1509,7 +1509,7 @@ mod tests {
         categories.insert(ClipboardContentCategory::Text);
         let text_input = DispatchClipboardEntryInput {
             plaintext: Bytes::from_static(b"hello world"),
-            content_hash: "9".repeat(64),
+            snapshot_hash: "9".repeat(64),
             payload_version: 3,
             categories,
             entry_id: None,
@@ -1840,7 +1840,7 @@ mod tests {
         categories.insert(ClipboardContentCategory::File);
         let file_input = DispatchClipboardEntryInput {
             plaintext: Bytes::from_static(b"hello world"),
-            content_hash: "9".repeat(64),
+            snapshot_hash: "9".repeat(64),
             payload_version: 3,
             categories,
             entry_id: None,

@@ -134,7 +134,7 @@ async fn ensure_session_resumed(ctx: &MobileSyncCmdCtx) -> Result<(), i32> {
 struct PutOutcomeDto {
     outcome: &'static str,
     entry_id: Option<String>,
-    content_hash: Option<String>,
+    snapshot_hash: Option<String>,
     existing_entry_id: Option<String>,
     decode_reason: Option<String>,
 }
@@ -145,31 +145,31 @@ impl From<&ApplyIncomingMobileClipOutcome> for PutOutcomeDto {
             ApplyIncomingMobileClipOutcome::Applied { entry_id } => Self {
                 outcome: "applied",
                 entry_id: Some(entry_id.to_string()),
-                content_hash: None,
+                snapshot_hash: None,
                 existing_entry_id: None,
                 decode_reason: None,
             },
             ApplyIncomingMobileClipOutcome::DuplicateSkipped {
-                content_hash,
+                snapshot_hash,
                 existing_entry_id,
             } => Self {
                 outcome: "duplicate_skipped",
                 entry_id: None,
-                content_hash: Some(content_hash.clone()),
+                snapshot_hash: Some(snapshot_hash.clone()),
                 existing_entry_id: Some(existing_entry_id.to_string()),
                 decode_reason: None,
             },
             ApplyIncomingMobileClipOutcome::DecodeFailed { reason } => Self {
                 outcome: "decode_failed",
                 entry_id: None,
-                content_hash: None,
+                snapshot_hash: None,
                 existing_entry_id: None,
                 decode_reason: Some(reason.clone()),
             },
             ApplyIncomingMobileClipOutcome::Buffered => Self {
                 outcome: "buffered",
                 entry_id: None,
-                content_hash: None,
+                snapshot_hash: None,
                 existing_entry_id: None,
                 decode_reason: None,
             },
@@ -184,11 +184,11 @@ fn print_outcome(label: &str, outcome: &ApplyIncomingMobileClipOutcome) {
             ui::info("entryId", &entry_id.to_string());
         }
         ApplyIncomingMobileClipOutcome::DuplicateSkipped {
-            content_hash,
+            snapshot_hash,
             existing_entry_id,
         } => {
             ui::info(label, "duplicate_skipped");
-            ui::info("contentHash", content_hash);
+            ui::info("snapshotHash", snapshot_hash);
             ui::info("existingEntryId", &existing_entry_id.to_string());
         }
         ApplyIncomingMobileClipOutcome::DecodeFailed { reason } => {

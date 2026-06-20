@@ -971,15 +971,32 @@ pub fn wire_dependencies(
         )
         .map_err(|e| WiringError::SecureStorageInit(e.to_string()))?;
 
+    // iroh device-identity directory (0600 files, profile-suffixed). Computed
+    // here — ahead of the db pool — because the staged-import bridge migrates
+    // the identity as *files* into this dir (not as a secret), and the
+    // config-migration adapter below reads its fingerprint from this same dir.
+    // `apply_profile_suffix` matches the `iroh-blobs` rule for multi-profile dev
+    // isolation; `create_dir_all` ensures `FileSecureStorage::with_base_dir`
+    // never fails on first identity write.
+    let iroh_identity_dir = apply_profile_suffix(app_data_root.join("iroh-identity"));
+    std::fs::create_dir_all(&iroh_identity_dir).map_err(|e| {
+        WiringError::SecureStorageInit(format!(
+            "failed to create iroh-identity dir {}: {e}",
+            iroh_identity_dir.display()
+        ))
+    })?;
+
     // Apply a pending staged import (if `pending-import.json` exists): write
-    // staged secrets into the current backend, then copy db/vault/settings into
-    // their live locations, then clear staging. Idempotent and crash-safe
-    // (secrets-first); the common no-marker case is a cheap existence check.
+    // staged secrets into the current backend, then copy db/vault/settings and
+    // the iroh-identity files into their live locations, then clear staging.
+    // Idempotent and crash-safe (secrets-first); the common no-marker case is a
+    // cheap existence check.
     crate::pending_import::apply_pending_import(
         &app_data_root,
         &db_path,
         &vault_path,
         &settings_path,
+        &iroh_identity_dir,
         &secure_storage,
     )
     .map_err(|e| WiringError::PendingImport(e.to_string()))?;
@@ -1118,17 +1135,11 @@ pub fn wire_dependencies(
     let clipboard_event_reader_repo_for_wiring = Arc::clone(&infra.clipboard_event_reader_repo);
     let iroh_blob_store_dir_for_wiring =
         apply_profile_suffix(paths.app_data_root_dir.join("iroh-blobs"));
-    // iroh 设备身份的文件存储目录。先 mkdir,确保 `FileSecureStorage::with_base_dir`
-    // 在首次写身份时不会因目录不存在而失败。`apply_profile_suffix` 与
-    // `iroh_blob_store_dir` 用同一规则,保证 multi-profile dev 隔离。
-    let iroh_identity_dir_for_wiring =
-        apply_profile_suffix(paths.app_data_root_dir.join("iroh-identity"));
-    std::fs::create_dir_all(&iroh_identity_dir_for_wiring).map_err(|e| {
-        WiringError::SecureStorageInit(format!(
-            "failed to create iroh-identity dir {}: {e}",
-            iroh_identity_dir_for_wiring.display()
-        ))
-    })?;
+    // iroh device-identity dir was resolved (and created) once near the
+    // secure-storage setup above so the staged-import bridge could migrate its
+    // files. Reuse that single resolution here for `WiredDependencies` /
+    // space_setup instead of recomputing it (avoids divergence).
+    let iroh_identity_dir_for_wiring = iroh_identity_dir.clone();
 
     // Switch-space migration ports for SpaceSetupFacade. Same WiredDependencies
     // bypass pattern as `peer_addr_repo` — consumer lives in uc-application.
@@ -1165,17 +1176,25 @@ pub fn wire_dependencies(
     // abstract `AppDeps` ports and cannot reconstruct them. The composed facade
     // therefore travels on `AppDeps` (see its `config_migration` field).
     //
-    // It reuses the wiring's existing `secure_storage` backend (no new
-    // secure-storage wrapper is introduced here): the `IrohIdentityStore`
-    // adapter only reads the device fingerprint recorded in the export manifest,
-    // and `migratable_secret_keys` enumerates whatever the current backend
-    // holds. Single-user mode pins the profile to `default` (the same value
+    // The `local_identity` port reads the device fingerprint for the export
+    // manifest. The iroh identity lives in the *file* backend under
+    // `iroh_identity_dir` (a 0600 file dir), NOT in `platform.secure_storage`
+    // (Credential Manager / Keychain on installer builds). So bind it to a
+    // `FileSecureStorage` pointed at that dir — otherwise the fingerprint would
+    // read empty. This is best-effort (a missing identity only blanks the
+    // manifest fingerprint), so no `MigratingSecureStorage` is needed.
+    // `migratable_secret_keys` still enumerates the KEK from the current backend.
+    // Single-user mode pins the profile to `default` (the same value
     // `DefaultCurrentProfile` and the pending-import bridge use); resolving it
     // through the async `CurrentProfilePort` is impossible from this sync path.
     let config_migration_profile = ProfileId::from("default");
     let config_migration_local_identity: Arc<dyn LocalIdentityPort> =
         Arc::new(IrohIdentityStore::new(
-            platform.secure_storage.clone(),
+            Arc::new(
+                uc_platform::file_secure_storage::FileSecureStorage::with_base_dir(
+                    iroh_identity_dir.clone(),
+                ),
+            ),
             Arc::new(Sha256IdentityFingerprintFactory),
         ));
     let config_migration_adapter = Arc::new(ConfigMigrationAdapter::new(
@@ -1188,6 +1207,7 @@ pub fn wire_dependencies(
             vault_dir: vault_path.clone(),
             settings_path: settings_path.clone(),
             app_data_root: app_data_root.clone(),
+            iroh_identity_dir: iroh_identity_dir.clone(),
         },
         config_migration_profile,
     ));

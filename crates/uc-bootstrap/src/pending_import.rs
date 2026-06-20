@@ -6,12 +6,18 @@
 //! daemon boot adopts it here, before the db pool is opened and before secure
 //! storage is consumed by key material / identity wiring.
 //!
-//! This is the bridge across "gap 3" from the design doc: the staged
-//! `secrets.json` (portable iroh identity + optional KEK) is written into the
-//! *current* secure-storage backend — whichever backend the rest of wiring
-//! selected (installer ⇒ Credential Manager / Keychain, portable ⇒ file). That
-//! is what lets a portable→installer migration keep the same network identity
-//! without re-pairing.
+//! This is the bridge across "gap 3" from the design doc. The migration spans
+//! two backends:
+//!
+//! * The optional KEK travels in `secrets.json` and is written into the
+//!   *current* secure-storage backend — whichever the rest of wiring selected
+//!   (installer ⇒ Credential Manager / Keychain, portable ⇒ file).
+//! * The iroh device identity travels as 0600 *files* under `iroh-identity/`
+//!   (it lives in a dedicated file dir, never in the system keyring) and is
+//!   copied back into the live identity dir.
+//!
+//! Together these let a portable→installer migration keep the same network
+//! identity without re-pairing.
 //!
 //! ## Crash-safety / idempotency (design doc §8)
 //!
@@ -19,13 +25,13 @@
 //! (which would silently mint a fresh NodeId and force re-pairing — the exact
 //! outcome the feature exists to avoid):
 //!
-//! 1. Write every staged secret into the current backend. `set` is an
+//! 1. Write every staged secret (the KEK) into the current backend. `set` is an
 //!    idempotent overwrite. If any secret fails, abort: copy no files, keep the
 //!    staging directory + marker, log an error, and let boot continue
 //!    uninitialized. The next boot retries from the intact marker.
 //! 2. Only after all secrets land, copy the file members (db / keyslot /
-//!    device-id / setup-status / settings / ui-state) into their live
-//!    locations. File copy is an idempotent overwrite.
+//!    device-id / setup-status / iroh-identity / settings / ui-state) into their
+//!    live locations. File copy is an idempotent overwrite.
 //! 3. Only after all copies succeed, delete the staging directory + marker.
 //!
 //! A schema-version mismatch on the marker is *not* fatal: it is logged and the
@@ -41,20 +47,28 @@ use uc_core::ports::SecureStoragePort;
 use uc_infra::config_migration::secret_keys::SECRETS_MEMBER;
 use uc_infra::config_migration::staging::{
     decode_secret_value, PendingImportMarker, SecretsFile, StagingLayout, DB_MEMBER,
-    DEVICE_ID_MEMBER, KEYSLOT_MEMBER, PENDING_IMPORT_SCHEMA_VER, SETTINGS_MEMBER,
-    SETUP_STATUS_MEMBER, UI_STATE_PREFIX,
+    DEVICE_ID_MEMBER, IROH_IDENTITY_PREFIX, KEYSLOT_MEMBER, PENDING_IMPORT_SCHEMA_VER,
+    SETTINGS_MEMBER, SETUP_STATUS_MEMBER, UI_STATE_PREFIX,
 };
 
 /// Secure-storage key prefixes whose presence may be logged (no values ever
 /// leave the process). Anything else is reported as `unknown`.
+///
+/// The iroh device identity no longer travels as a secret (it is migrated as
+/// 0600 files under `iroh-identity/`), so only the KEK is expected here; the
+/// identity prefix is kept defensively for forward/backward-compatible bundles.
 const KNOWN_SECRET_PREFIXES: &[&str] = &["iroh-identity:", "kek:v1:"];
 
 /// Detect and apply a staged configuration import, if one is pending.
 ///
 /// `app_data_root` is the staging/marker root (and the parent of `ui-state/`);
 /// `db_path` / `vault_dir` / `settings_path` are the live destinations for the
-/// copied members. `secure_storage` must be the *same* backend the rest of
-/// wiring uses so secrets land where the running daemon will later read them.
+/// copied members. `iroh_identity_dir` is the live device-identity directory
+/// (`<app_data>/iroh-identity[_<profile>]/`): the iroh identity is migrated as
+/// 0600 files (not a secret), so each staged `iroh-identity/<file>` is copied
+/// back here. `secure_storage` must be the *same* backend the rest of wiring
+/// uses so the staged secrets (the KEK) land where the running daemon will later
+/// read them.
 ///
 /// Returns `Ok(())` in the common (no-marker) case with zero filesystem work,
 /// and also when a recoverable problem (schema mismatch, secret-write failure)
@@ -66,6 +80,7 @@ pub fn apply_pending_import(
     db_path: &Path,
     vault_dir: &Path,
     settings_path: &Path,
+    iroh_identity_dir: &Path,
     secure_storage: &Arc<dyn SecureStoragePort>,
 ) -> Result<(), PendingImportError> {
     let layout = StagingLayout::new(app_data_root);
@@ -156,9 +171,18 @@ pub fn apply_pending_import(
         &vault_dir.join(".setup_status"),
     )?;
 
+    // Device identity: migrated as 0600 files, not a secret. Copy each staged
+    // `iroh-identity/<file>` into the live identity dir. A missing/empty staged
+    // dir is not fatal (mirrors the export side's defensive handling).
+    copy_dir_members(&staging_dir, IROH_IDENTITY_PREFIX, iroh_identity_dir)?;
+
     // Optional members: skip silently when absent.
     copy_member_if_present(&staging_dir, SETTINGS_MEMBER, settings_path)?;
-    copy_ui_state(&staging_dir, app_data_root)?;
+    copy_dir_members(
+        &staging_dir,
+        UI_STATE_PREFIX,
+        &app_data_root.join(UI_STATE_PREFIX.trim_end_matches('/')),
+    )?;
 
     // --- Step 3: clean up only after everything landed. ----------------------
     std::fs::remove_dir_all(&staging_dir).map_err(|_| PendingImportError::Cleanup)?;
@@ -191,17 +215,21 @@ fn copy_member_if_present(
     Ok(())
 }
 
-/// Copy every `ui-state/*` member to `<app_data_root>/ui-state/*`. The whole
-/// prefix is optional.
-fn copy_ui_state(staging_dir: &Path, app_data_root: &Path) -> Result<(), PendingImportError> {
-    let prefix = UI_STATE_PREFIX.trim_end_matches('/');
-    let src_dir = staging_dir.join(prefix);
+/// Copy every top-level file under a staged directory `prefix` (e.g.
+/// `ui-state/` or `iroh-identity/`) into `dest_dir`. The whole prefix is
+/// optional: an absent staged directory is a silent no-op. Nested entries are
+/// skipped — both prefixes are flat directories of files.
+fn copy_dir_members(
+    staging_dir: &Path,
+    prefix: &str,
+    dest_dir: &Path,
+) -> Result<(), PendingImportError> {
+    let src_dir = staging_dir.join(prefix.trim_end_matches('/'));
     if !src_dir.is_dir() {
         return Ok(());
     }
 
-    let dest_dir = app_data_root.join(prefix);
-    std::fs::create_dir_all(&dest_dir).map_err(|_| PendingImportError::CopyMember)?;
+    std::fs::create_dir_all(dest_dir).map_err(|_| PendingImportError::CopyMember)?;
 
     let entries = std::fs::read_dir(&src_dir).map_err(|_| PendingImportError::CopyMember)?;
     for entry in entries {
@@ -319,17 +347,31 @@ mod tests {
         )
         .unwrap();
 
+        // Device identity now travels as 0600 files under `iroh-identity/`,
+        // not as a secret. Seed one flat file to assert it lands in the live
+        // identity dir.
+        std::fs::create_dir_all(staging.join(IROH_IDENTITY_PREFIX.trim_end_matches('/'))).unwrap();
+        std::fs::write(
+            staging
+                .join(IROH_IDENTITY_PREFIX)
+                .join("iroh-identity-v1.bin"),
+            b"IROHKEYFILE",
+        )
+        .unwrap();
+
         // Optional members.
         std::fs::write(staging.join(SETTINGS_MEMBER), b"{\"schema_version\":1}").unwrap();
         std::fs::create_dir_all(staging.join("ui-state")).unwrap();
         std::fs::write(staging.join("ui-state/last_notified_update.json"), b"{}").unwrap();
 
         // secrets.json — built via the staging contract's own encoder so the
-        // base64 layout matches exactly what the importer wrote.
-        let mut raw: Vec<(String, Vec<u8>)> = vec![("iroh-identity:v1".to_string(), vec![7u8; 32])];
-        if has_kek {
-            raw.push(("kek:v1:profile:default".to_string(), vec![9u8; 32]));
-        }
+        // base64 layout matches exactly what the importer wrote. Only the KEK is
+        // carried as a secret now (the identity is a file member, see above).
+        let raw: Vec<(String, Vec<u8>)> = if has_kek {
+            vec![("kek:v1:profile:default".to_string(), vec![9u8; 32])]
+        } else {
+            Vec::new()
+        };
         let secrets_file = SecretsFile::from_raw(raw);
         std::fs::write(
             staging.join(SECRETS_MEMBER),
@@ -355,6 +397,7 @@ mod tests {
         db_path: std::path::PathBuf,
         vault_dir: std::path::PathBuf,
         settings_path: std::path::PathBuf,
+        iroh_identity_dir: std::path::PathBuf,
     }
 
     fn live_dests(root: &Path) -> Dests {
@@ -362,6 +405,7 @@ mod tests {
             db_path: root.join("live/uniclipboard.db"),
             vault_dir: root.join("vault"),
             settings_path: root.join("settings.json"),
+            iroh_identity_dir: root.join("iroh-identity"),
         }
     }
 
@@ -377,6 +421,7 @@ mod tests {
             &d.db_path,
             &d.vault_dir,
             &d.settings_path,
+            &d.iroh_identity_dir,
             &storage,
         )
         .expect("no-marker path must be ok");
@@ -399,6 +444,7 @@ mod tests {
             &d.db_path,
             &d.vault_dir,
             &d.settings_path,
+            &d.iroh_identity_dir,
             &storage,
         )
         .expect("apply should succeed");
@@ -426,11 +472,15 @@ mod tests {
             b"{}"
         );
 
-        // (2) Secrets written into the backend.
+        // (1b) Device-identity files copied into the live identity dir (not the
+        // secure-storage backend).
         assert_eq!(
-            storage_concrete.get("iroh-identity:v1").unwrap().unwrap(),
-            vec![7u8; 32]
+            std::fs::read(d.iroh_identity_dir.join("iroh-identity-v1.bin")).unwrap(),
+            b"IROHKEYFILE"
         );
+
+        // (2) Secrets written into the backend: only the KEK now; the identity
+        // is no longer carried as a secret.
         assert_eq!(
             storage_concrete
                 .get("kek:v1:profile:default")
@@ -438,6 +488,7 @@ mod tests {
                 .unwrap(),
             vec![9u8; 32]
         );
+        assert!(storage_concrete.get("iroh-identity:v1").unwrap().is_none());
 
         // (3) Staging + marker cleaned up.
         let layout = StagingLayout::new(data_root);
@@ -451,6 +502,7 @@ mod tests {
             &d.db_path,
             &d.vault_dir,
             &d.settings_path,
+            &d.iroh_identity_dir,
             &storage,
         )
         .expect("second apply must be a no-op");
@@ -473,6 +525,7 @@ mod tests {
             &d.db_path,
             &d.vault_dir,
             &d.settings_path,
+            &d.iroh_identity_dir,
             &storage,
         )
         .expect("secret-write failure is handled in-band (Ok)");
@@ -481,6 +534,7 @@ mod tests {
         assert!(!d.db_path.exists());
         assert!(!d.vault_dir.join("keyslot.json").exists());
         assert!(!d.settings_path.exists());
+        assert!(!d.iroh_identity_dir.join("iroh-identity-v1.bin").exists());
 
         // Staging + marker preserved for the next boot's retry.
         let layout = StagingLayout::new(data_root);
@@ -516,6 +570,7 @@ mod tests {
             &d.db_path,
             &d.vault_dir,
             &d.settings_path,
+            &d.iroh_identity_dir,
             &storage,
         )
         .expect("schema mismatch must not block boot");

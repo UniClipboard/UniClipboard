@@ -28,9 +28,10 @@ describe('setup screens e2e selectors', () => {
   it('exposes stable controls for the real-window setup smoke test', () => {
     const noop = vi.fn()
 
-    const { rerender } = render(<EntryScreen onCreate={noop} onJoin={noop} />)
+    const { rerender } = render(<EntryScreen onCreate={noop} onJoin={noop} onImport={noop} />)
     expect(screen.getByTestId('setup-entry-create')).toBeInTheDocument()
     expect(screen.getByTestId('setup-entry-join')).toBeInTheDocument()
+    expect(screen.getByTestId('setup-entry-import')).toBeInTheDocument()
 
     rerender(<InitializeSpaceScreen onSubmit={vi.fn()} onBack={noop} />)
     expect(screen.getByTestId('setup-initialize-back')).toBeInTheDocument()

@@ -1581,9 +1581,13 @@
       "encryptPassphraseLabel": "Encryption passphrase",
       "encryptPassphrasePlaceholder": "Enter the passphrase shown on the host device"
     },
+    "brand": {
+      "headline": "Your clipboard, everywhere.",
+      "tagline": "End-to-end encrypted. Your keys never leave your devices."
+    },
     "welcome": {
-      "title": "Welcome to UniClipboard",
-      "subtitle": "Create a secure space or join an existing trusted device.",
+      "title": "Get started",
+      "subtitle": "Choose how to set up this device.",
       "create": {
         "title": "Create a new secure space",
         "description": "Generate encryption keys and protect your clipboard data with your own passphrase.",
@@ -1594,7 +1598,44 @@
         "description": "Pair with another device and reuse the passphrase to access the shared space.",
         "cta": "Join via pairing"
       },
+      "import": {
+        "divider": "Already set up on another device?",
+        "title": "Import from a backup",
+        "description": "Move your space here from an exported config file."
+      },
       "footer": "You can switch spaces or invite more devices later in Settings."
+    },
+    "importConfig": {
+      "title": "Import configuration",
+      "subtitle": "Set up this device from a config file you exported on another device.",
+      "confirmSubtitle": "Review what you're importing, then confirm.",
+      "fileLabel": "Config bundle",
+      "chooseFile": "Choose a .ucbundle file…",
+      "changeFile": "Change",
+      "passwordLabel": "Space passphrase",
+      "passwordPlaceholder": "Passphrase of the exported device",
+      "passwordHint": "Use the Space passphrase from the device this file was exported from - that's what unlocks it.",
+      "note": "This device will take over the exported device's identity and pairings. After importing, don't bring the original device back online - two devices sharing one identity will conflict on the device network.",
+      "metaTitle": "Config to import",
+      "metaAppVersion": "Exported from version",
+      "metaSourceMode": "Source type",
+      "metaSourcePortable": "Portable",
+      "metaSourceInstalled": "Installed",
+      "metaFingerprint": "Device fingerprint",
+      "restartingTitle": "Restarting to finish import",
+      "restartingDescription": "Please wait - the app will restart and apply the imported config. Do not close it.",
+      "restartingUnlockHint": "After the restart you'll need your Space passphrase to unlock.",
+      "errors": {
+        "invalidPassword": "Wrong passphrase, or the file is corrupted",
+        "incompatible": "This config bundle's version is not compatible with the current app",
+        "generic": "Failed to import config. Please try again."
+      },
+      "actions": {
+        "back": "Back",
+        "continue": "Continue",
+        "staging": "Importing…",
+        "import": "Start import"
+      }
     },
     "initializeSpace": {
       "title": "Create your space",

@@ -32,10 +32,12 @@ const log = createLogger('use-setup-flow')
  */
 export type SetupScreen =
   | { kind: 'loading' }
-  /** S0 — choose create / join. */
+  /** S0 — choose create / join / import. */
   | { kind: 'entry' }
   /** S1 — sponsor: device name + passphrase + confirm. */
   | { kind: 'initialize_space' }
+  /** S6 — migrate an existing setup from an exported bundle. */
+  | { kind: 'import_config' }
   /** S3 — sponsor: showing invitation code with countdown. */
   | { kind: 'show_invitation'; code: string; expiresAtMs: number }
   /** S4 — joiner: paste invitation code + passphrase. */
@@ -50,6 +52,7 @@ export interface UseSetupFlowReturn {
   goEntry: () => void
   startCreateSpace: () => void
   startJoinSpace: () => void
+  startImportConfig: () => void
   initializeSpace: (input: {
     passphrase: string
     passphraseConfirm: string
@@ -110,6 +113,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
   const goEntry = useCallback(() => setPageScreen({ kind: 'entry' }), [])
   const startCreateSpace = useCallback(() => setPageScreen({ kind: 'initialize_space' }), [])
   const startJoinSpace = useCallback(() => setPageScreen({ kind: 'redeem_invitation' }), [])
+  const startImportConfig = useCallback(() => setPageScreen({ kind: 'import_config' }), [])
 
   const handleInitialize = useCallback(
     async (input: { passphrase: string; passphraseConfirm: string; deviceName: string }) => {
@@ -247,6 +251,7 @@ export function useSetupFlow(): UseSetupFlowReturn {
     goEntry,
     startCreateSpace,
     startJoinSpace,
+    startImportConfig,
     initializeSpace: handleInitialize,
     issueInvitation: handleIssue,
     cancelInvitation: handleCancel,

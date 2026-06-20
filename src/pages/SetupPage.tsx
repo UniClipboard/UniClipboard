@@ -3,14 +3,16 @@ import { Loader2 } from 'lucide-react'
 import type React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import FloatingParticles from '@/components/effects/FloatingParticles'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetupFlow } from '@/hooks/useSetupFlow'
+import { cn } from '@/lib/utils'
 import {
   EntryScreen,
+  ImportConfigScreen,
   InitializeSpaceScreen,
   PairingCompleteScreen,
   RedeemInvitationScreen,
+  SetupBrandPanel,
   ShowInvitationScreen,
 } from '@/pages/setup/screens'
 
@@ -26,6 +28,7 @@ interface SetupScreenProps {
   goEntry: SetupFlow['goEntry']
   startCreateSpace: SetupFlow['startCreateSpace']
   startJoinSpace: SetupFlow['startJoinSpace']
+  startImportConfig: SetupFlow['startImportConfig']
   initializeSpace: SetupFlow['initializeSpace']
   cancelInvitation: SetupFlow['cancelInvitation']
   redeemInvitation: SetupFlow['redeemInvitation']
@@ -38,6 +41,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
   goEntry,
   startCreateSpace,
   startJoinSpace,
+  startImportConfig,
   initializeSpace,
   cancelInvitation,
   redeemInvitation,
@@ -55,9 +59,18 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
         </div>
       )
     case 'entry':
-      return <EntryScreen onCreate={startCreateSpace} onJoin={startJoinSpace} loading={loading} />
+      return (
+        <EntryScreen
+          onCreate={startCreateSpace}
+          onJoin={startJoinSpace}
+          onImport={startImportConfig}
+          loading={loading}
+        />
+      )
     case 'initialize_space':
       return <InitializeSpaceScreen onSubmit={initializeSpace} onBack={goEntry} loading={loading} />
+    case 'import_config':
+      return <ImportConfigScreen onBack={goEntry} />
     case 'show_invitation':
       return (
         <ShowInvitationScreen
@@ -85,6 +98,7 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
     goEntry,
     startCreateSpace,
     startJoinSpace,
+    startImportConfig,
     initializeSpace,
     cancelInvitation,
     redeemInvitation,
@@ -100,48 +114,39 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
   const stepKey = screen.kind
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-background">
-      <div
-        data-uc-decorative-effect="true"
-        className="pointer-events-none absolute inset-0 overflow-hidden"
-      >
-        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-muted/30" />
-        <div className="aurora-drift-1 absolute -top-32 -left-32 size-[28rem] rounded-full bg-blue-500/25 blur-[6rem] dark:bg-blue-500/15" />
-        <div className="aurora-drift-2 absolute -bottom-24 -right-24 size-[24rem] rounded-full bg-emerald-500/25 blur-[5rem] dark:bg-emerald-500/15" />
-        <div className="aurora-drift-3 absolute top-1/3 left-1/2 size-[20rem] -translate-x-1/2 rounded-full bg-violet-500/20 blur-[5rem] dark:bg-violet-500/12" />
-        <FloatingParticles />
-      </div>
+    <div className="grid h-full w-full overflow-hidden bg-background lg:grid-cols-[22rem_1fr]">
+      <SetupBrandPanel />
 
-      <div className="relative flex h-full w-full min-h-0 flex-col">
+      <main className="relative flex min-h-0 flex-col bg-background">
+        {/* Drag strip. On macOS below `lg` (brand rail hidden) the traffic
+            lights land here, so leave room; once the rail is shown they move
+            onto it and the strip reclaims the space. */}
         <header
           data-tauri-drag-region
-          className={`relative z-10 flex h-12 shrink-0 items-center pr-4 ${
-            isMac ? 'pl-20' : 'pl-4'
-          }`}
+          className={cn('flex h-12 shrink-0 items-center pr-4', isMac ? 'pl-20 lg:pl-6' : 'pl-6')}
         />
 
-        <main className="flex min-h-0 flex-1 items-center overflow-y-auto px-8 py-4 sm:px-12 sm:py-6">
-          <div className="mx-auto w-full max-w-3xl max-h-full">
-            <div className="max-h-full px-1 py-1 sm:px-0 sm:py-2">
-              <AnimatePresence mode="wait" initial={false}>
-                <div key={stepKey} className="w-full">
-                  <SetupScreen
-                    screen={screen}
-                    loading={loading}
-                    goEntry={goEntry}
-                    startCreateSpace={startCreateSpace}
-                    startJoinSpace={startJoinSpace}
-                    initializeSpace={initializeSpace}
-                    cancelInvitation={cancelInvitation}
-                    redeemInvitation={redeemInvitation}
-                    onDone={handleDone}
-                  />
-                </div>
-              </AnimatePresence>
-            </div>
+        <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-8 pb-12 sm:px-14">
+          <div className="mx-auto w-full max-w-md">
+            <AnimatePresence mode="wait" initial={false}>
+              <div key={stepKey} className="w-full">
+                <SetupScreen
+                  screen={screen}
+                  loading={loading}
+                  goEntry={goEntry}
+                  startCreateSpace={startCreateSpace}
+                  startJoinSpace={startJoinSpace}
+                  startImportConfig={startImportConfig}
+                  initializeSpace={initializeSpace}
+                  cancelInvitation={cancelInvitation}
+                  redeemInvitation={redeemInvitation}
+                  onDone={handleDone}
+                />
+              </div>
+            </AnimatePresence>
           </div>
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   )
 }

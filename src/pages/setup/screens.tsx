@@ -1,14 +1,22 @@
 import { AnimatePresence, m } from 'framer-motion'
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  ClipboardCheck,
   Eye,
   EyeOff,
+  FileUp,
+  KeyRound,
   Loader2,
+  type LucideIcon,
+  Package,
   Shield,
+  ShieldCheck,
   Smartphone,
+  Wifi,
   XCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -24,6 +32,7 @@ import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useConfigImport, type ConfigImportErrorKind } from '@/hooks/useConfigImport'
 import { cn } from '@/lib/utils'
 
 // ── Common shell ───────────────────────────────────────────────────────────
@@ -82,79 +91,161 @@ function ScreenShell({
   )
 }
 
+// ── Brand panel (split-screen left rail) ────────────────────────────────────
+
+/**
+ * Persistent dark brand rail shown on the left of the setup window (≥lg). Carries
+ * the wordmark, a one-line value proposition, and the trust badges. Drag-enabled
+ * so the window stays movable; on macOS the traffic lights sit over its top-left,
+ * so the content starts below a small spacer. Hidden below `lg`, where the right
+ * pane takes the full width.
+ */
+export function SetupBrandPanel() {
+  const { t } = useTranslation(undefined, { keyPrefix: 'setup' })
+
+  const badges = [
+    { icon: ShieldCheck, label: t('page.badges.e2ee') },
+    { icon: KeyRound, label: t('page.badges.localKeys') },
+    { icon: Wifi, label: t('page.badges.lanDiscovery') },
+  ]
+
+  return (
+    <aside
+      data-tauri-drag-region
+      className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-zinc-950 p-10 text-white lg:flex"
+    >
+      {/* Restrained depth: two soft white glows + a faint grid. Monochrome to
+          match the app's neutral palette — no particles, no aurora. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-20 -top-24 size-72 rounded-full bg-white/10 blur-[6rem]" />
+        <div className="absolute -bottom-28 -right-20 size-80 rounded-full bg-white/[0.06] blur-[7rem]" />
+        <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(rgba(255,255,255,0.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.7)_1px,transparent_1px)] [background-size:34px_34px]" />
+      </div>
+
+      {/* Wordmark — pushed down past the macOS traffic lights. */}
+      <div className="relative z-10 flex items-center gap-3 pt-3">
+        <div className="flex size-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15 backdrop-blur">
+          <ClipboardCheck className="size-5" />
+        </div>
+        <span className="text-base font-semibold tracking-tight">UniClipboard</span>
+      </div>
+
+      {/* Value proposition. */}
+      <div className="relative z-10 space-y-3">
+        <h2 className="text-2xl font-semibold leading-snug tracking-tight">
+          {t('brand.headline')}
+        </h2>
+        <p className="max-w-xs text-sm leading-relaxed text-white/55">{t('brand.tagline')}</p>
+      </div>
+
+      {/* Trust badges. */}
+      <div className="relative z-10 flex flex-col gap-2.5">
+        {badges.map(({ icon: Icon, label }) => (
+          <div key={label} className="flex items-center gap-2.5 text-xs text-white/55">
+            <Icon className="size-4 text-white/70" />
+            {label}
+          </div>
+        ))}
+      </div>
+    </aside>
+  )
+}
+
 // ── S0 — Entry ─────────────────────────────────────────────────────────────
+
+/**
+ * A single getting-started choice, rendered as a settings-style list row:
+ * leading tinted icon, title + description, trailing arrow that nudges on hover.
+ */
+function EntryRow({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+  loading,
+  testId,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+  onClick: () => void
+  loading?: boolean
+  testId: string
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      disabled={loading}
+      className="group flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-muted/60 disabled:pointer-events-none disabled:opacity-50"
+    >
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+        <Icon className="size-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</div>
+      </div>
+      <ArrowRight className="size-4 shrink-0 text-muted-foreground/40 transition-all group-hover:translate-x-0.5 group-hover:text-foreground" />
+    </button>
+  )
+}
 
 export function EntryScreen({
   onCreate,
   onJoin,
+  onImport,
   loading,
 }: {
   onCreate: () => void
   onJoin: () => void
+  onImport: () => void
   loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.welcome' })
 
   return (
     <m.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -12 }}
+      exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
       className="w-full"
     >
-      <div className="mb-8 text-center sm:mb-10">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-          {t('title')}
-        </h1>
-        <p className="mt-4 text-lg text-muted-foreground">{t('subtitle')}</p>
+      <div className="mb-7">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <div className="flex flex-row gap-4">
-        <button
-          type="button"
-          data-testid="setup-entry-create"
+      <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+        <EntryRow
+          icon={Shield}
+          title={t('create.title')}
+          description={t('create.description')}
           onClick={onCreate}
-          disabled={loading}
-          className="group relative flex flex-1 flex-col items-start gap-5 rounded-xl border border-white/20 bg-white/40 p-7 text-left backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:bg-white/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
-        >
-          <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Shield className="size-6" />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-lg font-medium text-foreground">{t('create.title')}</h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {t('create.description')}
-            </p>
-          </div>
-          <div className="mt-auto flex items-center gap-2 text-sm font-medium text-primary">
-            {t('create.cta')}
-            <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-          </div>
-        </button>
-
-        <button
-          type="button"
-          data-testid="setup-entry-join"
+          loading={loading}
+          testId="setup-entry-create"
+        />
+        <EntryRow
+          icon={Smartphone}
+          title={t('join.title')}
+          description={t('join.description')}
           onClick={onJoin}
-          disabled={loading}
-          className="group relative flex flex-1 flex-col items-start gap-5 rounded-xl border border-white/20 bg-white/40 p-7 text-left backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-white/40 hover:bg-white/50 hover:shadow-lg active:translate-y-0 active:shadow-sm disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
-        >
-          <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Smartphone className="size-6" />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-lg font-medium text-foreground">{t('join.title')}</h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">{t('join.description')}</p>
-          </div>
-          <div className="mt-auto flex items-center gap-2 text-sm font-medium text-primary">
-            {t('join.cta')}
-            <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-          </div>
-        </button>
+          loading={loading}
+          testId="setup-entry-join"
+        />
+        <EntryRow
+          icon={Package}
+          title={t('import.title')}
+          description={t('import.description')}
+          onClick={onImport}
+          loading={loading}
+          testId="setup-entry-import"
+        />
       </div>
 
-      <div className="mt-8 text-center text-xs text-muted-foreground sm:mt-10">{t('footer')}</div>
+      <p className="mt-6 text-xs leading-relaxed text-muted-foreground">{t('footer')}</p>
     </m.div>
   )
 }
@@ -629,6 +720,216 @@ export function PairingCompleteScreen({
             <div className="font-mono text-xs">{redeem.sponsorIdentityFingerprint}</div>
           </div>
         )}
+      </div>
+    </ScreenShell>
+  )
+}
+
+// ── S6 — Import configuration ───────────────────────────────────────────────
+
+/** Trailing path segment of an absolute file path (POSIX or Windows). */
+function baseName(path: string): string {
+  const parts = path.split(/[/\\]/)
+  return parts[parts.length - 1] || path
+}
+
+/**
+ * First-run "migrate from a backup" path: pick an exported `.ucbundle`, unlock
+ * it with the source device's space passphrase, confirm the device-identity
+ * move, then stage + restart. Mirrors the settings import flow
+ * (`ConfigBackupGroup`) but rendered as a full-screen setup step with softer,
+ * fresh-install copy — on an uninitialized device there is nothing to replace.
+ */
+export function ImportConfigScreen({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation(undefined, { keyPrefix: 'setup.importConfig' })
+  const [showPass, setShowPass] = useState(false)
+  const [errorKind, setErrorKind] = useState<ConfigImportErrorKind | null>(null)
+
+  const imp = useConfigImport({ onError: setErrorKind })
+
+  const errorMessage = errorKind ? t(`errors.${errorKind}`) : null
+  const fileName = imp.sourcePath ? baseName(imp.sourcePath) : null
+
+  const handlePick = () => {
+    setErrorKind(null)
+    void imp.pickFile()
+  }
+  const handleContinue = () => {
+    setErrorKind(null)
+    void imp.submitPassword()
+  }
+  const handleConfirm = () => {
+    setErrorKind(null)
+    void imp.confirmImport()
+  }
+
+  const sourceModeLabel = (mode: string) =>
+    mode === 'portable'
+      ? t('metaSourcePortable')
+      : mode === 'installed'
+        ? t('metaSourceInstalled')
+        : mode
+
+  // ── Restarting: forced terminal state, no navigation. ──
+  if (imp.isRestarting) {
+    return (
+      <ScreenShell title={t('restartingTitle')} centered>
+        <div className="mt-8 flex flex-col items-center gap-3 text-center sm:mt-10">
+          <Loader2 className="size-8 animate-spin text-primary" />
+          <p className="max-w-md text-sm text-muted-foreground">{t('restartingDescription')}</p>
+          {imp.stagedResult?.unlockRequiredAfterApply && (
+            <p className="text-xs text-muted-foreground">{t('restartingUnlockHint')}</p>
+          )}
+        </div>
+      </ScreenShell>
+    )
+  }
+
+  // ── Confirm: preview metadata + device-move note. ──
+  if (imp.phase === 'confirm') {
+    return (
+      <ScreenShell
+        title={t('title')}
+        subtitle={t('confirmSubtitle')}
+        error={errorMessage}
+        footer={
+          <div className="flex w-full items-center justify-between gap-3">
+            <Button variant="ghost" onClick={imp.back} disabled={imp.busy}>
+              <ArrowLeft className="mr-2 size-4" />
+              {t('actions.back')}
+            </Button>
+            <Button onClick={handleConfirm} disabled={imp.busy} className="min-w-32">
+              {imp.busy ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  {t('actions.staging')}
+                </>
+              ) : (
+                t('actions.import')
+              )}
+            </Button>
+          </div>
+        }
+      >
+        <div className="mt-6 space-y-4 sm:mt-8">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-snug text-foreground/90">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <span>{t('note')}</span>
+          </div>
+
+          {imp.preview && (
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-muted-foreground">{t('metaTitle')}</div>
+              <dl className="space-y-1 text-xs">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">{t('metaAppVersion')}</dt>
+                  <dd className="tabular-nums">{imp.preview.appVersion}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">{t('metaSourceMode')}</dt>
+                  <dd>{sourceModeLabel(imp.preview.sourceMode)}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">{t('metaFingerprint')}</dt>
+                  <dd className="max-w-56 truncate font-mono">{imp.preview.deviceFingerprint}</dd>
+                </div>
+              </dl>
+            </div>
+          )}
+        </div>
+      </ScreenShell>
+    )
+  }
+
+  // ── Idle / password: choose a bundle and unlock it. ──
+  const canContinue = !!imp.sourcePath && !!imp.password && !imp.busy
+
+  return (
+    <ScreenShell
+      title={t('title')}
+      subtitle={t('subtitle')}
+      error={errorMessage}
+      footer={
+        <div className="flex w-full items-center justify-between gap-3">
+          <Button variant="ghost" onClick={onBack} disabled={imp.busy}>
+            <ArrowLeft className="mr-2 size-4" />
+            {t('actions.back')}
+          </Button>
+          <Button onClick={handleContinue} disabled={!canContinue} className="min-w-32">
+            {imp.busy ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                {t('actions.staging')}
+              </>
+            ) : (
+              t('actions.continue')
+            )}
+          </Button>
+        </div>
+      }
+    >
+      <div className="mt-6 space-y-6 sm:mt-8">
+        <div className="space-y-2">
+          <Label>{t('fileLabel')}</Label>
+          <button
+            type="button"
+            data-testid="setup-import-pick"
+            onClick={handlePick}
+            disabled={imp.busy}
+            className="flex w-full items-center gap-3 rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/50 disabled:opacity-50"
+          >
+            <FileUp className="size-5 shrink-0 text-muted-foreground" />
+            {fileName ? (
+              <span className="min-w-0 flex-1 truncate text-sm text-foreground">{fileName}</span>
+            ) : (
+              <span className="flex-1 text-sm text-muted-foreground">{t('chooseFile')}</span>
+            )}
+            {fileName && (
+              <span className="shrink-0 text-xs font-medium text-primary">{t('changeFile')}</span>
+            )}
+          </button>
+        </div>
+
+        <AnimatePresence initial={false}>
+          {imp.sourcePath && (
+            <m.div
+              key="import-pass"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.22, ease: [0.22, 0.61, 0.36, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="space-y-2 pt-0.5">
+                <Label htmlFor="import-pass">{t('passwordLabel')}</Label>
+                <div className="relative">
+                  <Input
+                    id="import-pass"
+                    type={showPass ? 'text' : 'password'}
+                    value={imp.password}
+                    onChange={e => {
+                      setErrorKind(null)
+                      imp.setPassword(e.target.value)
+                    }}
+                    disabled={imp.busy}
+                    className="pr-10"
+                    placeholder={t('passwordPlaceholder')}
+                    onKeyDown={e => e.key === 'Enter' && canContinue && handleContinue()}
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute right-0 top-0 flex h-full items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">{t('passwordHint')}</p>
+              </div>
+            </m.div>
+          )}
+        </AnimatePresence>
       </div>
     </ScreenShell>
   )

@@ -90,6 +90,7 @@ How this device participates in sync, plus file-related thresholds:
 | Setting                   | What it does                                                               |
 | ------------------------- | -------------------------------------------------------------------------- |
 | Enable auto-sync          | Off → this device only receives; outbound is manual (`uniclip send`).      |
+| Sync on restore           | Off by default. When you restore a history entry, your other devices restore the same content too. Requires auto-sync. |
 | Enable file sync          | Master switch; off → file payloads neither sent nor received.              |
 | Small-file threshold (MB) | Files below it ride the inline fast path; above it use the blob stream.    |
 | Max single-file size (MB) | Files larger than this are rejected and surfaced in history with a reason. |

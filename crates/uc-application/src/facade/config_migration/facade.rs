@@ -48,7 +48,8 @@ pub struct ConfigMigrationDeps {
 /// Enforces the migration preconditions before delegating:
 /// * export requires an unlocked, initialized installation;
 /// * preview is read-only and ungated;
-/// * staging an import requires an uninitialized target.
+/// * staging an import replaces whatever configuration the target currently
+///   holds — there is no uninitialized-target precondition.
 pub struct ConfigMigrationFacade {
     deps: ConfigMigrationDeps,
 }

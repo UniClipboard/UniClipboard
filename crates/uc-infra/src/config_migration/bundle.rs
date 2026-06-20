@@ -60,6 +60,22 @@ const HEADER_LEN: usize = 8 + 2 + 1 + 4 + 4 + 4 + SALT_LEN + NONCE_LEN;
 /// incompatible rather than attempted.
 const MAX_SEALED_LEN: u64 = 2 * 1024 * 1024 * 1024;
 
+/// Upper bound on the Argon2 memory cost we will honour from a bundle header.
+///
+/// The header is authenticated as AAD, but the KDF runs *before* the AEAD tag
+/// can be checked (the derived key is needed to verify the tag), and preview is
+/// ungated — so a hostile header could otherwise drive an unbounded Argon2
+/// allocation during an unauthenticated read. 1 GiB is 8× the production
+/// baseline (128 MiB), well above any value we emit, yet bounds the blast
+/// radius. Higher values are rejected as incompatible.
+const MAX_KDF_MEM_KIB: u32 = 1024 * 1024;
+
+/// Upper bound on the Argon2 time cost (iterations) honoured from a header.
+const MAX_KDF_ITERS: u32 = 1024;
+
+/// Upper bound on the Argon2 degree of parallelism honoured from a header.
+const MAX_KDF_PARALLELISM: u32 = 256;
+
 /// Argon2id cost parameters recorded in the header and used for derivation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Argon2Params {
@@ -171,6 +187,17 @@ pub fn parse_header(bytes: &[u8]) -> Result<(BundleHeader, usize), BundleError> 
     o += 4;
     let parallelism = read_u32(o);
     o += 4;
+    // Bound the KDF parameters before they reach `derive_key`: derivation runs
+    // ahead of the AEAD tag check, so an out-of-range memory cost in a hostile
+    // header would otherwise allocate before authentication can reject it.
+    if !(8..=MAX_KDF_MEM_KIB).contains(&mem_kib)
+        || !(1..=MAX_KDF_ITERS).contains(&iters)
+        || !(1..=MAX_KDF_PARALLELISM).contains(&parallelism)
+    {
+        return Err(BundleError::Incompatible(format!(
+            "key-derivation parameters out of range (mem_kib={mem_kib}, iters={iters}, parallelism={parallelism})"
+        )));
+    }
     let mut salt = [0u8; SALT_LEN];
     salt.copy_from_slice(&bytes[o..o + SALT_LEN]);
     o += SALT_LEN;

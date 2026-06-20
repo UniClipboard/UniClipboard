@@ -918,7 +918,6 @@ export function ImportConfigScreen({ onBack }: { onBack: () => void }) {
                   />
                   <button
                     type="button"
-                    tabIndex={-1}
                     onClick={() => setShowPass(!showPass)}
                     className="absolute right-0 top-0 flex h-full items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
                   >

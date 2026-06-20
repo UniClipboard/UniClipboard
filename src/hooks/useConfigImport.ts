@@ -129,26 +129,42 @@ export function useConfigImport(options: UseConfigImportOptions = {}): UseConfig
   const confirmImport = async () => {
     if (!sourcePath) return
     setBusy(true)
+    let result: ImportConfigStageResult
     try {
-      const result = await commands.importConfigPackage(password, sourcePath)
-      // Staged successfully — switch into the forced restarting state and let
-      // the daemon + GUI restart so the migration lands on boot. restartApp()
-      // exits this process, so code after it is unreachable on the happy path.
-      setStagedResult(result)
-      setPhase('restarting')
-      setPassword('')
-      onStaged?.(result)
-      await commands.restartDaemon()
-      await commands.restartApp()
+      result = await commands.importConfigPackage(password, sourcePath)
     } catch (error) {
+      setBusy(false)
       if (isCancelled(error)) {
         setPhase('confirm')
         return
       }
       log.error({ err: error }, 'Failed to import config')
       onError?.(classify(error), error)
-      // Drop back to the confirm step so the surface stays dismissable.
+      // Staging failed — drop back to the confirm step so the surface stays
+      // dismissable and the user can retry.
       setPhase('confirm')
+      return
+    }
+
+    // Staged successfully — switch into the forced restarting state and let the
+    // daemon + GUI restart so the migration lands on boot. From here we never
+    // drop back to `confirm`: the bundle is already staged, so a restart hiccup
+    // must not be confused with a staging failure. restartApp() exits this
+    // process, so code after it is unreachable on the happy path.
+    setStagedResult(result)
+    setPhase('restarting')
+    setPassword('')
+    onStaged?.(result)
+    try {
+      await commands.restartDaemon()
+      await commands.restartApp()
+    } catch (error) {
+      // Staging already succeeded; the migration applies on the next boot
+      // regardless. Surface the restart failure but stay in `restarting` so the
+      // user is told to relaunch manually rather than being sent back to retry
+      // an import that is already committed.
+      log.error({ err: error }, 'Failed to restart after staging config import')
+      onError?.('generic', error)
     } finally {
       setBusy(false)
     }

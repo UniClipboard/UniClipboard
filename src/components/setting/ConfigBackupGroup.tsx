@@ -93,12 +93,14 @@ export function ConfigBackupGroup() {
     }
   }
 
-  const sourceModeLabel = (mode: string) =>
-    mode === 'portable'
-      ? t(`${I18N}.import.metaSourcePortable`)
-      : mode === 'installed'
-        ? t(`${I18N}.import.metaSourceInstalled`)
-        : mode
+  const sourceModeLabelKeys: Record<string, string> = {
+    portable: `${I18N}.import.metaSourcePortable`,
+    installed: `${I18N}.import.metaSourceInstalled`,
+  }
+  const sourceModeLabel = (mode: string) => {
+    const key = sourceModeLabelKeys[mode]
+    return key ? t(key) : mode
+  }
 
   return (
     <SettingGroup title={t(`${I18N}.label`)}>
@@ -193,14 +195,13 @@ export function ConfigBackupGroup() {
             <>
               {/* Irreversible device-move warnings */}
               <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
-                {[
-                  t(`${I18N}.import.warningMove`),
-                  t(`${I18N}.import.warningNoDualOnline`),
-                  t(`${I18N}.import.warningReplace`),
-                ].map(text => (
-                  <div key={text} className="flex items-start gap-2 text-xs text-foreground/90">
+                {['warningMove', 'warningNoDualOnline', 'warningReplace'].map(warningKey => (
+                  <div
+                    key={warningKey}
+                    className="flex items-start gap-2 text-xs text-foreground/90"
+                  >
                     <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
-                    <span className="leading-snug">{text}</span>
+                    <span className="leading-snug">{t(`${I18N}.import.${warningKey}`)}</span>
                   </div>
                 ))}
               </div>

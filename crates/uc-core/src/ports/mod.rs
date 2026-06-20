@@ -24,6 +24,7 @@ pub mod clipboard;
 mod clipboard_change_handler;
 mod clipboard_event;
 mod clock;
+pub mod config_migration;
 pub mod connection_channel;
 pub mod device_identity;
 pub mod errors;
@@ -61,6 +62,10 @@ pub use timer::TimerPort;
 pub use autostart::AutostartPort;
 pub use clipboard::*;
 pub use clipboard_change_handler::ClipboardChangeHandler;
+pub use config_migration::{
+    ConfigImportPreview, ConfigMigrationError, ConfigSourceMode, ExportConfigBundlePort,
+    PreviewConfigImportPort, StageConfigImportPort, StagedConfigImport,
+};
 pub use connection_channel::{ConnectionChannel, ConnectionChannelPort, ConnectionPath};
 pub use device_identity::DeviceIdentityPort;
 pub use errors::AppDirsError;

@@ -22,6 +22,7 @@ import { useAppDispatch } from '@/store/hooks'
 import { resetItems } from '@/store/slices/clipboardSlice'
 import type { RetentionRule } from '@/types/setting'
 import ClearHistoryDialog from './ClearHistoryDialog'
+import { ConfigBackupGroup } from './ConfigBackupGroup'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 
@@ -664,6 +665,9 @@ const StorageSection: React.FC = () => {
           </Button>
         </SettingRow>
       </SettingGroup>
+
+      {/* ── Config Backup / Migration ── */}
+      <ConfigBackupGroup />
 
       {/* ── Confirmation Dialog ── */}
       <ClearHistoryDialog

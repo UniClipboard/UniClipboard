@@ -272,6 +272,7 @@ mod tests {
         MimeType, PayloadAvailability, PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
     use uc_core::ids::{EventId, FormatId, RepresentationId};
+    use uc_core::ports::blob::{BlobDigest, BlobTicket, PlaintextHash};
     use uc_core::ports::clipboard::{
         ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, GetClipboardEntryPort,
         GetRepresentationPort, PayloadResolveError, ProcessingUpdateOutcome,
@@ -283,6 +284,7 @@ mod tests {
     use crate::facade::{
         BlobTransferError, PublishBlobCommand, PublishBlobPathCommand, PublishBlobResult,
     };
+    use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_and_blob_refs;
 
     // ── fakes ────────────────────────────────────────────────────────────
 
@@ -423,6 +425,55 @@ mod tests {
         }
     }
 
+    /// Recording publish gateway that stands in for the real
+    /// `BlobTransferFacade` on the blob sub-path. It records every file path
+    /// handed to `publish_blob_path` (so a test can prove the serve chain
+    /// re-published the referenced file into THIS device's store — the D3
+    /// self-pin step) and returns a `PublishBlobResult` carrying a recognizable
+    /// ticket, so a test can then prove that exact re-issued ticket flowed into
+    /// the emitted V3 envelope rather than any original/provider ticket.
+    struct RecordingPublishGateway {
+        /// The fixed ticket this gateway hands back for every published file.
+        /// Distinctive bytes so the envelope assertion is unambiguous.
+        resigned_ticket: BlobTicket,
+        /// Entry id stamped onto the returned result; the serve chain copies it
+        /// into the V3 blob ref's `entry_id` field.
+        result_entry_id: EntryId,
+        /// Paths passed to `publish_blob_path`, in call order.
+        published_paths: std::sync::Mutex<Vec<std::path::PathBuf>>,
+    }
+    impl RecordingPublishGateway {
+        fn new(resigned_ticket: BlobTicket, result_entry_id: EntryId) -> Arc<Self> {
+            Arc::new(Self {
+                resigned_ticket,
+                result_entry_id,
+                published_paths: std::sync::Mutex::new(Vec::new()),
+            })
+        }
+    }
+    #[async_trait]
+    impl OutboundBlobPublishGateway for RecordingPublishGateway {
+        async fn publish_blob(
+            &self,
+            _command: PublishBlobCommand,
+        ) -> Result<PublishBlobResult, BlobTransferError> {
+            unreachable!("publish_blob (inline image path) must not run for a file-only snapshot")
+        }
+        async fn publish_blob_path(
+            &self,
+            command: PublishBlobPathCommand,
+        ) -> Result<PublishBlobResult, BlobTransferError> {
+            self.published_paths.lock().unwrap().push(command.path);
+            Ok(PublishBlobResult {
+                ticket: self.resigned_ticket.clone(),
+                entry_id: self.result_entry_id.clone(),
+                plaintext_hash: PlaintextHash::from_bytes([0u8; 32]),
+                digest: BlobDigest::from_bytes([0u8; 32]),
+                reused_existing: false,
+            })
+        }
+    }
+
     /// Cipher that records the plaintext it was handed and returns a canned
     /// result, so a test can assert "encrypt ran on the freshly-encoded V3
     /// envelope" and exercise the NotUnlocked branch.
@@ -462,6 +513,23 @@ mod tests {
             Some(MimeType("text/plain".to_string())),
             bytes.len() as i64,
             Some(bytes.to_vec()),
+            None,
+        )
+    }
+
+    /// A `text/uri-list` file representation whose inline bytes are a single
+    /// `file://` URI. `FormatId::from("files")` + `MimeType::uri_list()` is the
+    /// pair both the reconstruct file branch and `extract_file_paths_from_snapshot`
+    /// recognize, so a held entry built on this rep drives the blob (file)
+    /// sub-path of the serve chain.
+    fn file_uri_rep(id: &str, file_uri: &str) -> PersistedClipboardRepresentation {
+        let bytes = file_uri.as_bytes().to_vec();
+        PersistedClipboardRepresentation::new(
+            RepresentationId::from(id),
+            FormatId::from("files"),
+            Some(MimeType::uri_list()),
+            bytes.len() as i64,
+            Some(bytes),
             None,
         )
     }
@@ -512,6 +580,44 @@ mod tests {
             reconstructor,
             settings: Arc::new(StubSettings),
             blob_publisher: Arc::new(UnusedPublishGateway),
+            cipher,
+        })
+    }
+
+    /// Build a serve use case whose local entry resolves to a single-file
+    /// `text/uri-list` snapshot pointing at `file_uri`, with an injectable
+    /// blob publish gateway. Drives the blob (file) sub-path: reconstruct →
+    /// extract path → plan(Resend) → `publish_blob_path` → V3 blob ref trailer.
+    fn build_uc_for_file(
+        file_uri: &str,
+        gateway: Arc<dyn OutboundBlobPublishGateway>,
+        cipher: Arc<dyn TransferCipherPort>,
+    ) -> ActiveClipboardPullServeUseCase {
+        let entry_id = EntryId::from("entry-1");
+        let event_id = EventId::from("evt-1");
+        let reconstructor = SnapshotReconstructor::new(
+            Arc::new(FakeEntryRepo {
+                entry: Some(entry_with_event(&entry_id, &event_id)),
+            }),
+            Arc::new(FakeSelectionRepo {
+                selection: Some(selection_for(&entry_id, "rep-file")),
+            }),
+            Arc::new(StaticRepRepo {
+                reps: vec![file_uri_rep("rep-file", file_uri)],
+            }),
+            Arc::new(StubProcessingRepo),
+            // The reconstruct file branch reads the paste rep's URI-list bytes
+            // through the resolver, so hand back the same URI bytes inline.
+            Arc::new(StubResolver(ResolveBehavior::Inline(
+                file_uri.as_bytes().to_vec(),
+            ))),
+            Arc::new(UnusedBlobStore),
+        );
+        ActiveClipboardPullServeUseCase::new(ActiveClipboardPullServeDeps {
+            entry_lookup: Arc::new(FixedLookup(Some(entry_id))),
+            reconstructor,
+            settings: Arc::new(StubSettings),
+            blob_publisher: gateway,
             cipher,
         })
     }
@@ -603,5 +709,80 @@ mod tests {
             .expect_err("lost payload must not serve");
         assert!(matches!(err, ActiveClipboardPullServeError::NotAvailable));
         assert!(cipher.seen_plaintext.lock().unwrap().is_none());
+    }
+
+    /// V5 (D3 blob sub-path) — serving a blob-backed (file) entry re-publishes
+    /// the referenced file into THIS device's store and stamps the re-issued
+    /// self-pinned ticket into the emitted V3 envelope.
+    ///
+    /// The inline-text verdicts above never touch the blob path
+    /// (`UnusedPublishGateway` makes both publish methods `unreachable!`). This
+    /// fills that zero-coverage seam with two hard assertions:
+    ///   1. the serve chain called `publish_blob_path` for the referenced file
+    ///      (D3 re-publish happened — not a byte copy of any original ticket);
+    ///   2. the V3 blob ref carried in the encrypted envelope plaintext points
+    ///      at the gateway's re-issued ticket, not any original/provider ticket.
+    #[tokio::test]
+    async fn serves_blob_backed_entry_via_resigned_ticket() {
+        // A real on-disk file: the serve chain calls `tokio::fs::metadata` and
+        // the reconstruct file branch calls `path.exists()`; a missing path
+        // would be excluded → NotAvailable, so the file must actually exist.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file_path = dir.path().join("pulled-file.bin");
+        std::fs::write(&file_path, b"blob-backed payload bytes").expect("write temp file");
+        let file_uri = url::Url::from_file_path(&file_path)
+            .expect("file path to file:// URI")
+            .to_string();
+
+        // Distinctive ticket bytes so the envelope assertion is unambiguous —
+        // this stands in for the self-pinned ticket the real `BlobTransferFacade`
+        // re-issues against this device's endpoint (D3).
+        let resigned_ticket = BlobTicket::from_bytes(b"RESIGNED-SELF-PINNED-TICKET".to_vec());
+        let gateway =
+            RecordingPublishGateway::new(resigned_ticket.clone(), EntryId::from("entry-1"));
+
+        let cipher = StubCipher::new(Ok(b"CIPHERTEXT".to_vec()));
+        let uc = build_uc_for_file(
+            &file_uri,
+            Arc::clone(&gateway) as _,
+            Arc::clone(&cipher) as _,
+        );
+
+        let envelope = uc.serve("blake3v1:whatever").await.expect("serve ok");
+        assert_eq!(envelope, b"CIPHERTEXT");
+
+        // Assertion 1 — the D3 re-publish ran: the gateway was asked to
+        // publish exactly the referenced file into this device's store.
+        let published = gateway.published_paths.lock().unwrap().clone();
+        assert_eq!(
+            published.len(),
+            1,
+            "the serve chain must re-publish exactly the one referenced file"
+        );
+        assert_eq!(
+            published[0], file_path,
+            "publish_blob_path must receive the file referenced by the entry"
+        );
+
+        // Assertion 2 — the re-issued ticket flowed into the V3 envelope. The
+        // cipher captured the freshly-encoded V3 plaintext (the `UC3\0` magic
+        // is added inside the real cipher, not here); decode its blob-ref
+        // trailer and prove the ref points at the gateway's re-signed ticket.
+        let seen = cipher.seen_plaintext.lock().unwrap().clone().unwrap();
+        let (_snapshot, blob_refs) = decode_v3_bytes_to_snapshot_and_blob_refs(&seen)
+            .expect("encrypted plaintext must be a valid V3 envelope with a blob-ref trailer");
+        assert_eq!(
+            blob_refs.len(),
+            1,
+            "exactly one file blob ref must travel in the envelope"
+        );
+        assert_eq!(
+            blob_refs[0].ticket.as_bytes(),
+            resigned_ticket.as_bytes(),
+            "the envelope's blob ref must carry the re-issued self-pinned ticket"
+        );
+        // File blob refs are independent files (not inline image reps), so the
+        // ref must not claim a representation slot.
+        assert_eq!(blob_refs[0].representation_index, None);
     }
 }

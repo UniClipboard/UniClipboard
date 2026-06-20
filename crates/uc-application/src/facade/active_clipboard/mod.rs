@@ -220,6 +220,7 @@ impl ActiveClipboardFacade {
             deps.coordinator,
             Arc::clone(&deps.dispatch),
             Arc::clone(&deps.peer_addr_repo),
+            Arc::clone(&deps.presence),
             deps.clock,
         );
 
@@ -276,6 +277,7 @@ impl ActiveClipboardFacade {
         fan_out_active_state(
             &self.dispatch,
             &self.peer_addr_repo,
+            &self.presence,
             &self.send_gate,
             &state,
             &categories,
@@ -307,6 +309,7 @@ impl ActiveClipboardFacade {
             Arc::clone(&self.settings),
             Arc::clone(&self.dispatch),
             Arc::clone(&self.peer_addr_repo),
+            Arc::clone(&self.presence),
             Arc::clone(&self.member_repo),
         )
         .spawn()

@@ -25,7 +25,7 @@ use tracing::{debug, warn};
 use uc_core::clipboard::{ActiveClipboardState, ClipboardContentCategorySet};
 use uc_core::ids::DeviceId;
 use uc_core::ports::clipboard::ActiveClipboardDispatchPort;
-use uc_core::ports::PeerAddressRepositoryPort;
+use uc_core::ports::{PeerAddressRepositoryPort, PresencePort, ReachabilityState};
 
 use super::super::send_gate::MemberSendGate;
 
@@ -64,14 +64,16 @@ pub(crate) async fn send_active_state_to(
 /// The roster is the set of peers we hold an address for
 /// (`peer_addr_repo.list()`), so a peer with no address is silently skipped
 /// (offline / never reachable). The device that activated the state
-/// (`state.activated_by`) is never echoed back to. Each surviving target is
-/// gated by the full outbound gate (`send_enabled` ∧ `send_content_types`,
-/// the latter via `categories`). Per-peer dispatch failures are isolated and
-/// logged — the register is convergent, so a missed send is recovered by a
-/// later advance or a peer-online resync.
+/// (`state.activated_by`) is never echoed back to, and a peer the presence
+/// tracker already reports `Offline` is skipped without dialing. Each surviving
+/// target is gated by the full outbound gate (`send_enabled` ∧
+/// `send_content_types`, the latter via `categories`). Per-peer dispatch
+/// failures are isolated and logged — the register is convergent, so a missed
+/// send is recovered by a later advance or a peer-online resync.
 pub(crate) async fn fan_out_active_state(
     dispatch: &Arc<dyn ActiveClipboardDispatchPort>,
     peer_addr_repo: &Arc<dyn PeerAddressRepositoryPort>,
+    presence: &Arc<dyn PresencePort>,
     send_gate: &MemberSendGate,
     state: &ActiveClipboardState,
     categories: &ClipboardContentCategorySet,
@@ -88,6 +90,22 @@ pub(crate) async fn fan_out_active_state(
         let target = record.device_id;
         // Never echo the state back to the device that activated it.
         if target == state.activated_by {
+            continue;
+        }
+        // Skip peers the presence tracker already knows are offline (mirrors the
+        // 0xC1 dispatch preflight): the roster can carry stale/ghost members,
+        // and dialing each costs a multi-second connect timeout. `Unknown` is
+        // deliberately NOT pre-filtered — the dispatch adapter marks peers
+        // offline on its own dial failures, so an unprobed peer still gets one
+        // real attempt rather than being silently dropped.
+        if matches!(
+            presence.current_state(&target).await,
+            ReachabilityState::Offline
+        ) {
+            debug!(
+                device = %target.as_str(),
+                "active state fan-out: skipping peer known offline (deferred)"
+            );
             continue;
         }
         send_active_state_to(dispatch, send_gate, &target, state, categories).await;

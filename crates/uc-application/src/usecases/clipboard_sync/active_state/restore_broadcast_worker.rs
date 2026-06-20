@@ -26,7 +26,7 @@ use tokio::time::sleep;
 use tracing::{debug, instrument, warn};
 
 use uc_core::ports::clipboard::ActiveClipboardDispatchPort;
-use uc_core::ports::{PeerAddressRepositoryPort, SettingsPort};
+use uc_core::ports::{PeerAddressRepositoryPort, PresencePort, SettingsPort};
 use uc_core::MemberRepositoryPort;
 
 use crate::clipboard_write::RestoreBroadcastRequest;
@@ -63,6 +63,7 @@ pub(crate) struct RestoreBroadcastWorker {
     settings: Arc<dyn SettingsPort>,
     dispatch: Arc<dyn ActiveClipboardDispatchPort>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    presence: Arc<dyn PresencePort>,
     send_gate: MemberSendGate,
 }
 
@@ -72,6 +73,7 @@ impl RestoreBroadcastWorker {
         settings: Arc<dyn SettingsPort>,
         dispatch: Arc<dyn ActiveClipboardDispatchPort>,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        presence: Arc<dyn PresencePort>,
         member_repo: Arc<dyn MemberRepositoryPort>,
     ) -> Self {
         Self {
@@ -79,6 +81,7 @@ impl RestoreBroadcastWorker {
             settings,
             dispatch,
             peer_addr_repo,
+            presence,
             send_gate: MemberSendGate::new(member_repo),
         }
     }
@@ -152,6 +155,7 @@ impl RestoreBroadcastWorker {
         fan_out_active_state(
             &self.dispatch,
             &self.peer_addr_repo,
+            &self.presence,
             &self.send_gate,
             &request.state,
             &request.categories,
@@ -176,9 +180,32 @@ mod tests {
     use uc_core::ids::{DeviceId, EntryId};
     use uc_core::membership::{MembershipError, SpaceMember};
     use uc_core::ports::clipboard::ActiveClipboardDispatchError;
-    use uc_core::ports::{PeerAddressError, PeerAddressRecord};
+    use uc_core::ports::{
+        PeerAddressError, PeerAddressRecord, PresenceError, PresenceEvent, PresencePort,
+        ReachabilityState,
+    };
     use uc_core::settings::model::Settings;
     use uc_core::MemberSyncPreferences;
+
+    /// Presence fake reporting every device with a fixed reachability. The
+    /// broadcast tests want their roster peer reachable, so `Online` is the
+    /// default; `Offline` exercises the fan-out skip.
+    struct StaticPresence(ReachabilityState);
+    #[async_trait]
+    impl PresencePort for StaticPresence {
+        async fn ensure_reachable(
+            &self,
+            _device: &DeviceId,
+        ) -> Result<ReachabilityState, PresenceError> {
+            Ok(self.0)
+        }
+        async fn current_state(&self, _device: &DeviceId) -> ReachabilityState {
+            self.0
+        }
+        fn subscribe(&self) -> tokio::sync::broadcast::Receiver<PresenceEvent> {
+            tokio::sync::broadcast::channel(1).1
+        }
+    }
 
     // ---- spies / fakes ------------------------------------------------------
 
@@ -286,6 +313,7 @@ mod tests {
 
     fn build_worker(
         sync_on_restore: bool,
+        presence: ReachabilityState,
     ) -> (
         RestoreBroadcastWorker,
         tokio::sync::mpsc::UnboundedSender<RestoreBroadcastRequest>,
@@ -300,6 +328,7 @@ mod tests {
             Arc::new(OnePeerAddrRepo {
                 device: DeviceId::new("peer-1"),
             }),
+            Arc::new(StaticPresence(presence)),
             Arc::new(AllowAllMembers),
         );
         (worker, tx, dispatch)
@@ -307,7 +336,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_on_restore_disabled_does_not_broadcast() {
-        let (worker, tx, dispatch) = build_worker(false);
+        let (worker, tx, dispatch) = build_worker(false, ReachabilityState::Online);
         let handle = worker.spawn();
 
         tx.send(request("blake3v1:aa")).unwrap();
@@ -323,7 +352,7 @@ mod tests {
 
     #[tokio::test]
     async fn enabled_broadcasts_to_allowed_peer() {
-        let (worker, tx, dispatch) = build_worker(true);
+        let (worker, tx, dispatch) = build_worker(true, ReachabilityState::Online);
         let handle = worker.spawn();
 
         tx.send(request("blake3v1:aa")).unwrap();
@@ -338,7 +367,7 @@ mod tests {
 
     #[tokio::test]
     async fn rapid_restores_coalesce_to_latest() {
-        let (worker, tx, dispatch) = build_worker(true);
+        let (worker, tx, dispatch) = build_worker(true, ReachabilityState::Online);
         let handle = worker.spawn();
 
         // Three offers inside the debounce window — only the last should win.
@@ -357,6 +386,23 @@ mod tests {
             "the coalesced broadcast carries the latest restore"
         );
         drop(sent);
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn known_offline_peer_is_skipped() {
+        // The only roster peer is already known offline → the fan-out skips it
+        // without dialing, so nothing is dispatched even with sync_on_restore on.
+        let (worker, tx, dispatch) = build_worker(true, ReachabilityState::Offline);
+        let handle = worker.spawn();
+
+        tx.send(request("blake3v1:aa")).unwrap();
+        tokio::time::sleep(RESTORE_BROADCAST_DEBOUNCE + Duration::from_millis(80)).await;
+
+        assert!(
+            dispatch.sent.lock().unwrap().is_empty(),
+            "a peer known offline must be skipped, not dialed"
+        );
         handle.abort();
     }
 }

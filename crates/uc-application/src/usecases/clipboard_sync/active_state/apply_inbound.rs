@@ -44,7 +44,7 @@ use uc_core::ports::clipboard::{
     InboundActiveClipboardState, LoadActiveClipboardPort,
 };
 use uc_core::ports::space::IsSpaceUnlockedPort;
-use uc_core::ports::{ClockPort, PeerAddressRepositoryPort};
+use uc_core::ports::{ClockPort, PeerAddressRepositoryPort, PresencePort};
 use uc_core::MemberRepositoryPort;
 
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
@@ -131,6 +131,9 @@ pub(crate) struct ApplyInboundActiveClipboardStateUseCase {
     coordinator: Arc<ClipboardWriteCoordinator>,
     dispatch: Arc<dyn ActiveClipboardDispatchPort>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+    /// Reachability tracker: the re-broadcast fan-out skips peers already known
+    /// offline rather than burning a dial timeout per stale/ghost roster entry.
+    presence: Arc<dyn PresencePort>,
     send_gate: MemberSendGate,
     clock: Arc<dyn ClockPort>,
     /// On-demand pull of content this device observed but does not hold (D6).
@@ -155,6 +158,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         coordinator: Arc<ClipboardWriteCoordinator>,
         dispatch: Arc<dyn ActiveClipboardDispatchPort>,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
+        presence: Arc<dyn PresencePort>,
         clock: Arc<dyn ClockPort>,
     ) -> Self {
         Self {
@@ -168,6 +172,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
             coordinator,
             dispatch,
             peer_addr_repo,
+            presence,
             send_gate: MemberSendGate::new(member_repo),
             clock,
             pull_client: None,
@@ -433,6 +438,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         let advance_register = Arc::clone(&self.advance_register);
         let dispatch = Arc::clone(&self.dispatch);
         let peer_addr_repo = Arc::clone(&self.peer_addr_repo);
+        let presence = Arc::clone(&self.presence);
         let send_gate = self.send_gate.clone();
 
         tokio::spawn(async move {
@@ -478,7 +484,15 @@ impl ApplyInboundActiveClipboardStateUseCase {
             // the shared fan-out (full outbound gate: send_enabled ∧
             // send_content_types, the latter via the activation's category
             // set). Same implementation as the restore broadcast path.
-            fan_out_active_state(&dispatch, &peer_addr_repo, &send_gate, &state, &categories).await;
+            fan_out_active_state(
+                &dispatch,
+                &peer_addr_repo,
+                &presence,
+                &send_gate,
+                &state,
+                &categories,
+            )
+            .await;
         })
     }
 }
@@ -515,9 +529,31 @@ mod tests {
         ResolvedClipboardPayload, UpdateRepresentationProcessingResultPort,
     };
     use uc_core::ports::{
-        ClipboardSelectionRepositoryPort, PeerAddressError, PeerAddressRecord, SystemClipboardPort,
+        ClipboardSelectionRepositoryPort, PeerAddressError, PeerAddressRecord, PresenceError,
+        PresenceEvent, PresencePort, ReachabilityState, SystemClipboardPort,
     };
     use uc_core::{BlobId, MemberSyncPreferences};
+
+    /// Presence fake that reports every device with a fixed reachability. The
+    /// early-return gate tests never reach the fan-out, and the convergence
+    /// tests want their re-broadcast target reachable, so `Online` is the
+    /// natural default; a test can pass `Offline` to exercise the skip.
+    struct StaticPresence(ReachabilityState);
+    #[async_trait]
+    impl PresencePort for StaticPresence {
+        async fn ensure_reachable(
+            &self,
+            _device: &DeviceId,
+        ) -> Result<ReachabilityState, PresenceError> {
+            Ok(self.0)
+        }
+        async fn current_state(&self, _device: &DeviceId) -> ReachabilityState {
+            self.0
+        }
+        fn subscribe(&self) -> tokio::sync::broadcast::Receiver<PresenceEvent> {
+            tokio::sync::broadcast::channel(1).1
+        }
+    }
 
     use crate::clipboard_write::ClipboardWriteCoordinator;
 
@@ -787,6 +823,7 @@ mod tests {
             coordinator,
             Arc::clone(&dispatch) as Arc<dyn ActiveClipboardDispatchPort>,
             Arc::new(EmptyPeerAddrRepo),
+            Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(now_ms)),
         );
         Harness {
@@ -1137,6 +1174,7 @@ mod tests {
             coordinator,
             Arc::clone(&dispatch) as Arc<dyn ActiveClipboardDispatchPort>,
             peer_addr_repo,
+            Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(1_000)),
         );
         if let (Some(pull_client), Some(store)) = (pull_client, store) {

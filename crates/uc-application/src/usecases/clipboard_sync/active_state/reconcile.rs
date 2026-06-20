@@ -11,12 +11,20 @@
 //! activation, and the outbound resync would propagate a state that does not
 //! match this device's clipboard.
 //!
-//! Policy (D8): read the OS clipboard, compare its content hash to the stored
-//! row, and
+//! Policy (D8): rebuild the entry the stored row points at into the snapshot a
+//! restore would place on the OS clipboard, read the live OS clipboard, compare
+//! the two materialized-snapshot hashes, and
 //!
-//! * **keep** the row when it still matches the OS clipboard (the invariant
-//!   holds — nothing to do); otherwise
+//! * **keep** the row when the reconstructed entry still matches the OS
+//!   clipboard (the invariant holds — nothing to do); otherwise
 //! * **clear** the register (reset to no value).
+//!
+//! The comparison is deliberately reconstruct-vs-OS, not stored-hash-vs-OS: the
+//! row's `snapshot_hash` is the persisted cross-device identity (e.g. a file's
+//! content hash), which lives in a different representation space than a live
+//! OS read of that content (a `text/uri-list`). Comparing the stored hash
+//! directly would mismatch for every file entry; rebuilding the entry yields
+//! the same representation the OS holds, making the check apples-to-apples.
 //!
 //! Clearing — rather than re-stamping the row to the observed OS content — is
 //! deliberate. A cleared register makes no claim about the active clipboard, so
@@ -41,6 +49,8 @@ use uc_core::ports::clipboard::{
     LoadActiveClipboardPort, ResetActiveClipboardPort, SystemClipboardPort,
 };
 
+use super::super::snapshot_from_entry::SnapshotReconstructor;
+
 /// Outcome of a reconcile pass. Returned for observability / testing; callers
 /// drive reconcile for its side effect on the register, not this value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,13 +65,15 @@ pub enum ReconcileOutcome {
 }
 
 /// Reconciles the persisted active-clipboard register against the live OS
-/// clipboard at startup. Holds only the three ports it needs (read OS, load
-/// register, reset register) — no dispatch, no OS-write port — so the
-/// no-broadcast / no-OS-write invariants are structural, not merely observed.
+/// clipboard at startup. Holds the OS-read / load / reset ports plus a
+/// read-only snapshot reconstructor (to rebuild the entry the row points at for
+/// the comparison) — no dispatch, no OS-write port — so the no-broadcast /
+/// no-OS-write invariants stay structural, not merely observed.
 pub(crate) struct ReconcileActiveClipboardStateUseCase {
     system_clipboard: Arc<dyn SystemClipboardPort>,
     load_register: Arc<dyn LoadActiveClipboardPort>,
     reset_register: Arc<dyn ResetActiveClipboardPort>,
+    reconstructor: SnapshotReconstructor,
 }
 
 impl ReconcileActiveClipboardStateUseCase {
@@ -69,11 +81,13 @@ impl ReconcileActiveClipboardStateUseCase {
         system_clipboard: Arc<dyn SystemClipboardPort>,
         load_register: Arc<dyn LoadActiveClipboardPort>,
         reset_register: Arc<dyn ResetActiveClipboardPort>,
+        reconstructor: SnapshotReconstructor,
     ) -> Self {
         Self {
             system_clipboard,
             load_register,
             reset_register,
+            reconstructor,
         }
     }
 
@@ -99,6 +113,27 @@ impl ReconcileActiveClipboardStateUseCase {
             }
         };
 
+        // Rebuild the entry the row points at into the snapshot a restore would
+        // place on the OS clipboard. Its hash is in the same representation
+        // space as a live OS read (e.g. both a `text/uri-list` for a file), so
+        // the two are directly comparable — unlike the row's stored
+        // `snapshot_hash`, which is the persisted cross-device identity. If the
+        // entry can no longer be materialized (payload lost / locked / blob
+        // gone), we cannot confirm the OS still holds it: treat as untrusted
+        // and clear.
+        let reconstructed_hash = match self.reconstructor.reconstruct(&stored.entry_id).await {
+            Ok(snapshot) => snapshot.snapshot_hash().to_string(),
+            Err(err) => {
+                info!(
+                    error = %err,
+                    entry_id = %stored.entry_id,
+                    "active state reconcile: stored entry not reconstructable; clearing as untrusted"
+                );
+                self.clear().await;
+                return ReconcileOutcome::Cleared;
+            }
+        };
+
         // Read the actual OS clipboard. An unreadable clipboard means we cannot
         // confirm the stored row still matches reality, so we treat the row as
         // untrusted and clear it (prefer clearing over trusting a stale row).
@@ -111,9 +146,9 @@ impl ReconcileActiveClipboardStateUseCase {
             }
         };
 
-        if stored.snapshot_hash == os_hash {
-            // The persisted row still matches the OS clipboard: the invariant
-            // holds, keep the row as the baseline.
+        if reconstructed_hash == os_hash {
+            // The reconstructed entry still matches the OS clipboard: the
+            // invariant holds, keep the row as the baseline.
             debug!(
                 snapshot_hash = %stored.snapshot_hash,
                 "active state reconcile: stored register matches OS clipboard; kept"
@@ -121,10 +156,11 @@ impl ReconcileActiveClipboardStateUseCase {
             ReconcileOutcome::Kept
         } else {
             // Stale/untrusted: the OS clipboard holds different content (or is
-            // empty) than the row claims. Clear so the row can neither win LWW
-            // against a real later activation nor be resynced to peers.
+            // empty) than the row's entry reconstructs to. Clear so the row can
+            // neither win LWW against a real later activation nor be resynced.
             info!(
                 stored_hash = %stored.snapshot_hash,
+                reconstructed_hash = %reconstructed_hash,
                 os_hash = %os_hash,
                 "active state reconcile: stored register does not match OS clipboard; clearing"
             );
@@ -150,12 +186,20 @@ mod tests {
 
     use async_trait::async_trait;
 
+    use uc_core::blob::ports::BlobReaderPort;
     use uc_core::clipboard::{
-        ActiveClipboardState, ObservedClipboardRepresentation, SystemClipboardSnapshot,
+        ActiveClipboardState, ClipboardEntry, ClipboardRepositoryError, ClipboardSelection,
+        ClipboardSelectionDecision, ObservedClipboardRepresentation, PayloadAvailability,
+        PersistedClipboardRepresentation, SelectionPolicyVersion, SystemClipboardSnapshot,
     };
-    use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
-    use uc_core::ports::clipboard::ActiveClipboardRegisterError;
-    use uc_core::MimeType;
+    use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
+    use uc_core::ports::clipboard::{
+        ActiveClipboardRegisterError, ClipboardPayloadResolverPort,
+        ClipboardSelectionRepositoryPort, GetClipboardEntryPort, GetRepresentationPort,
+        PayloadResolveError, ProcessingUpdateOutcome, ResolvedClipboardPayload,
+        UpdateRepresentationProcessingResultPort,
+    };
+    use uc_core::{BlobId, MimeType};
 
     // ---- fakes / spies ------------------------------------------------------
 
@@ -231,22 +275,133 @@ mod tests {
         ActiveClipboardState::new(hash, EntryId::new(), 1_000, DeviceId::new("self"))
     }
 
+    /// Backs all six snapshot-reconstruction ports with one fixed text entry.
+    /// `Some(text)` reconstructs any entry into a single `text/plain` rep
+    /// carrying `text` — so its `snapshot_hash` equals `text_snapshot(text)`'s,
+    /// letting a test line the reconstruct up with (or against) the OS read.
+    /// `None` makes `get_entry` miss, so reconstruction fails with
+    /// `EntryNotFound`, exercising the "stored entry no longer materializable"
+    /// path.
+    struct ReconstructFake {
+        text: Option<&'static str>,
+    }
+
+    impl ReconstructFake {
+        fn reconstructor(text: Option<&'static str>) -> SnapshotReconstructor {
+            let f = Arc::new(ReconstructFake { text });
+            SnapshotReconstructor::new(f.clone(), f.clone(), f.clone(), f.clone(), f.clone(), f)
+        }
+    }
+
+    #[async_trait]
+    impl GetClipboardEntryPort for ReconstructFake {
+        async fn get_entry(
+            &self,
+            entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError> {
+            Ok(self
+                .text
+                .map(|_| ClipboardEntry::new(entry_id.clone(), EventId::from("evt"), 0, None, 0)))
+        }
+    }
+
+    #[async_trait]
+    impl ClipboardSelectionRepositoryPort for ReconstructFake {
+        async fn get_selection(
+            &self,
+            entry_id: &EntryId,
+        ) -> anyhow::Result<Option<ClipboardSelectionDecision>> {
+            let rep = RepresentationId::from("rep-x");
+            Ok(Some(ClipboardSelectionDecision::new(
+                entry_id.clone(),
+                ClipboardSelection {
+                    primary_rep_id: rep.clone(),
+                    secondary_rep_ids: Vec::new(),
+                    preview_rep_id: rep.clone(),
+                    paste_rep_id: rep,
+                    policy_version: SelectionPolicyVersion::V1,
+                },
+            )))
+        }
+        async fn delete_selection(&self, _entry_id: &EntryId) -> anyhow::Result<()> {
+            unreachable!()
+        }
+    }
+
+    #[async_trait]
+    impl GetRepresentationPort for ReconstructFake {
+        async fn get_representation(
+            &self,
+            _event_id: &EventId,
+            representation_id: &RepresentationId,
+        ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError> {
+            Ok(Some(PersistedClipboardRepresentation::new(
+                representation_id.clone(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                0,
+                None,
+                None,
+            )))
+        }
+    }
+
+    #[async_trait]
+    impl UpdateRepresentationProcessingResultPort for ReconstructFake {
+        async fn update_processing_result(
+            &self,
+            _rep_id: &RepresentationId,
+            _expected_states: &[PayloadAvailability],
+            _blob_id: Option<&BlobId>,
+            _new_state: PayloadAvailability,
+            _last_error: Option<&str>,
+        ) -> Result<ProcessingUpdateOutcome, ClipboardRepositoryError> {
+            Ok(ProcessingUpdateOutcome::StateMismatch)
+        }
+    }
+
+    #[async_trait]
+    impl ClipboardPayloadResolverPort for ReconstructFake {
+        async fn resolve(
+            &self,
+            rep: &PersistedClipboardRepresentation,
+        ) -> Result<ResolvedClipboardPayload, PayloadResolveError> {
+            Ok(ResolvedClipboardPayload::Inline {
+                mime: rep
+                    .mime_type
+                    .as_ref()
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
+                bytes: self.text.unwrap_or("").as_bytes().to_vec(),
+            })
+        }
+    }
+
+    #[async_trait]
+    impl BlobReaderPort for ReconstructFake {
+        async fn get(&self, _blob_id: &BlobId) -> anyhow::Result<Vec<u8>> {
+            unreachable!("reconcile's text reconstruct never reaches the blob store")
+        }
+    }
+
     fn build(
         clipboard: FakeClipboard,
         register: Option<ActiveClipboardState>,
+        reconstruct_text: Option<&'static str>,
     ) -> (ReconcileActiveClipboardStateUseCase, Arc<ResetSpy>) {
         let reset = Arc::new(ResetSpy::default());
         let uc = ReconcileActiveClipboardStateUseCase::new(
             Arc::new(clipboard),
             Arc::new(FixedRegister(register)),
             Arc::clone(&reset) as Arc<dyn ResetActiveClipboardPort>,
+            ReconstructFake::reconstructor(reconstruct_text),
         );
         (uc, reset)
     }
 
     #[tokio::test]
     async fn empty_register_is_already_empty_and_does_not_reset() {
-        let (uc, reset) = build(FakeClipboard::Text("anything"), None);
+        let (uc, reset) = build(FakeClipboard::Text("anything"), None, None);
         assert_eq!(uc.run().await, ReconcileOutcome::AlreadyEmpty);
         assert_eq!(
             reset.calls.load(Ordering::SeqCst),
@@ -258,7 +413,13 @@ mod tests {
     #[tokio::test]
     async fn matching_register_is_kept_and_not_reset() {
         let text = "hello world";
-        let (uc, reset) = build(FakeClipboard::Text(text), Some(state_matching(text)));
+        // The stored entry reconstructs to `text` and the OS holds `text` → the
+        // reconstruct-vs-OS hashes match → kept.
+        let (uc, reset) = build(
+            FakeClipboard::Text(text),
+            Some(state_matching(text)),
+            Some(text),
+        );
         assert_eq!(uc.run().await, ReconcileOutcome::Kept);
         assert_eq!(
             reset.calls.load(Ordering::SeqCst),
@@ -269,10 +430,12 @@ mod tests {
 
     #[tokio::test]
     async fn mismatched_register_is_cleared() {
-        // Register claims content for "stored", OS clipboard holds "different".
+        // The stored entry reconstructs to "stored" but the OS holds
+        // "different" → reconstruct-vs-OS mismatch → clear.
         let (uc, reset) = build(
             FakeClipboard::Text("different"),
             Some(state_matching("stored")),
+            Some("stored"),
         );
         assert_eq!(uc.run().await, ReconcileOutcome::Cleared);
         assert_eq!(
@@ -284,16 +447,24 @@ mod tests {
 
     #[tokio::test]
     async fn empty_os_clipboard_clears_a_nonempty_register() {
-        // OS clipboard is empty (its hash can't match any content hash) → the
-        // row is stale → clear.
-        let (uc, reset) = build(FakeClipboard::Empty, Some(state_matching("stored")));
+        // OS clipboard is empty (its hash can't match the reconstructed entry)
+        // → the row is stale → clear.
+        let (uc, reset) = build(
+            FakeClipboard::Empty,
+            Some(state_matching("stored")),
+            Some("stored"),
+        );
         assert_eq!(uc.run().await, ReconcileOutcome::Cleared);
         assert_eq!(reset.calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn unreadable_os_clipboard_clears_register_as_untrusted() {
-        let (uc, reset) = build(FakeClipboard::ReadError, Some(state_matching("stored")));
+        let (uc, reset) = build(
+            FakeClipboard::ReadError,
+            Some(state_matching("stored")),
+            Some("stored"),
+        );
         assert_eq!(uc.run().await, ReconcileOutcome::Cleared);
         assert_eq!(
             reset.calls.load(Ordering::SeqCst),
@@ -309,8 +480,27 @@ mod tests {
             Arc::new(FakeClipboard::Text("x")),
             Arc::new(LoadErrors),
             Arc::clone(&reset) as Arc<dyn ResetActiveClipboardPort>,
+            ReconstructFake::reconstructor(Some("x")),
         );
         assert_eq!(uc.run().await, ReconcileOutcome::Cleared);
         assert_eq!(reset.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn unreconstructable_entry_clears_as_untrusted() {
+        // The stored row points at an entry that can no longer be rebuilt
+        // (gone / payload lost) → we cannot confirm the OS still holds it →
+        // clear. `None` makes the reconstruct fake's `get_entry` miss.
+        let (uc, reset) = build(
+            FakeClipboard::Text("anything"),
+            Some(state_matching("stored")),
+            None,
+        );
+        assert_eq!(uc.run().await, ReconcileOutcome::Cleared);
+        assert_eq!(
+            reset.calls.load(Ordering::SeqCst),
+            1,
+            "an unreconstructable stored entry must be cleared"
+        );
     }
 }

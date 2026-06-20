@@ -15,6 +15,7 @@ use uc_core::ports::clipboard::{
     LoadActiveClipboardPort, ResetActiveClipboardPort, SystemClipboardPort,
 };
 
+use super::ClipboardSnapshotDeps;
 use crate::usecases::clipboard_sync::active_state::reconcile::{
     ReconcileActiveClipboardStateUseCase, ReconcileOutcome,
 };
@@ -26,6 +27,12 @@ pub struct ActiveClipboardReconcileDeps {
     pub system_clipboard: Arc<dyn SystemClipboardPort>,
     pub load_register: Arc<dyn LoadActiveClipboardPort>,
     pub reset_register: Arc<dyn ResetActiveClipboardPort>,
+    /// Snapshot reconstruction ports (shared with restore / resend). The
+    /// reconcile rebuilds the stored row's entry into the snapshot a restore
+    /// would place on the OS clipboard, so it can compare like-for-like against
+    /// the live OS read rather than against the row's persisted (cross-device)
+    /// `snapshot_hash`, which diverges for file entries.
+    pub snapshot: ClipboardSnapshotDeps,
 }
 
 /// Thin facade over the startup reconcile use case.
@@ -40,6 +47,7 @@ impl ActiveClipboardReconcileFacade {
                 deps.system_clipboard,
                 deps.load_register,
                 deps.reset_register,
+                deps.snapshot.into_reconstructor(),
             ),
         }
     }

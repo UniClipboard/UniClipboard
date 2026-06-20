@@ -25,7 +25,7 @@ use uc_application::clipboard_write::{
 };
 use uc_application::facade::{
     ActiveClipboardReconcileDeps, ActiveClipboardReconcileFacade, AppFacade, AppPaths,
-    FileTransferFacade,
+    ClipboardSnapshotDeps, FileTransferFacade,
 };
 use uc_bootstrap::assembly::WiredDependencies;
 use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
@@ -252,6 +252,19 @@ pub async fn start_in_process(
             system_clipboard: clipboard.system_clipboard.clone(),
             load_register: clipboard.active_register_load.clone(),
             reset_register: clipboard.active_register_reset.clone(),
+            // Reconstruction ports so reconcile can rebuild the stored entry and
+            // compare it like-for-like against the live OS read.
+            snapshot: ClipboardSnapshotDeps {
+                entry_repo: clipboard.entry_ports.get.clone(),
+                selection_repo: clipboard.selection_repo.clone(),
+                representation_repo: clipboard.representation_ports.get.clone(),
+                rep_processing_repo: clipboard
+                    .representation_ports
+                    .update_processing_result
+                    .clone(),
+                payload_resolver: clipboard.payload_resolver.clone(),
+                blob_store: handles.wired.deps.storage.blob_store.clone(),
+            },
         });
         let outcome = reconcile.reconcile().await;
         tracing::debug!(

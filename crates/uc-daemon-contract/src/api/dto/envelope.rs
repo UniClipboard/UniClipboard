@@ -22,6 +22,7 @@ use crate::api::dto::clipboard_command::{
     CancelTransferResponse, DispatchOutcomeResponse, ResendResponse, RestoreEntryResponse,
 };
 use crate::api::dto::clipboard_delivery::EntryDeliveryViewDto;
+use crate::api::dto::config::{ExportConfigResponse, ImportConfigResponse, PreviewImportResponse};
 use crate::api::dto::device::LocalDeviceInfoDto;
 use crate::api::dto::diagnostics::{DebugStatusDto, LogExportResultDto, UpdateDebugModeResultDto};
 use crate::api::dto::encryption::{
@@ -112,6 +113,10 @@ use crate::api::types::{
     // ── storage ────────────────────────────────────────────────────
     StorageStatsEnvelope = ApiEnvelope<StorageStatsDto>,
     ClearCacheEnvelope = ApiEnvelope<ClearCacheResponse>,
+    // ── config migration (export / import preview / import staging) ──
+    ExportConfigEnvelope = ApiEnvelope<ExportConfigResponse>,
+    PreviewImportEnvelope = ApiEnvelope<PreviewImportResponse>,
+    ImportConfigEnvelope = ApiEnvelope<ImportConfigResponse>,
     // ── system diagnostics & topology (newly enveloped, §H) ────────
     HealthEnvelope = ApiEnvelope<HealthResponse>,
     StatusEnvelope = ApiEnvelope<StatusResponse>,

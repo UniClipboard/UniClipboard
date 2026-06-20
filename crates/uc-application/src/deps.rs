@@ -282,6 +282,14 @@ pub struct AppDeps {
     pub device: DevicePorts,
     /// Setup status (setup-specific) / 设置状态（设置流程专用）
     pub setup_status: Arc<dyn SetupStatusPort>,
+    /// 整机配置迁移 facade（导出 / 导入预览 / 暂存导入）。
+    ///
+    /// 与其它抽象 port 不同,这里直接携带组装好的 facade:它的依赖
+    /// (db_pool / local_identity / profile_id 等)只在 `wire_dependencies`
+    /// 的同步上下文里齐全,无法仅凭 `AppDeps` 里的抽象 port 在
+    /// `build_app_facade_from_deps` 处重新组装。因此在 wiring 处构造好后随
+    /// `AppDeps` 流转,与 `setup_status` 一样是"携带即用"的句柄。
+    pub config_migration: Arc<crate::facade::ConfigMigrationFacade>,
     /// 升级游标端口：持久化"上次运行的应用版本"。
     /// 由 `UpgradeFacade::detect_on_startup` 在启动期读取并比较。
     pub app_version_state: Arc<dyn AppVersionStatePort>,

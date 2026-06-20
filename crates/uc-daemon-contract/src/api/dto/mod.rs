@@ -3,6 +3,7 @@ pub mod auth;
 pub mod clipboard;
 pub mod clipboard_command;
 pub mod clipboard_delivery;
+pub mod config;
 pub mod device;
 pub mod diagnostics;
 pub mod encryption;

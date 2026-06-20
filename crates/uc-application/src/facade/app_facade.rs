@@ -29,6 +29,7 @@ use std::sync::{Arc, OnceLock};
 use thiserror::Error;
 use tokio::sync::broadcast;
 
+use crate::facade::config_migration::ConfigMigrationFacade;
 use crate::facade::file_transfer::FileTransferFacade;
 use crate::facade::mobile_sync::MobileSyncFacade;
 use crate::facade::roster::{MemberSummary, PeerSnapshotView, RosterError};
@@ -114,6 +115,10 @@ pub struct AppFacade {
     pub diagnostics: Arc<DiagnosticsFacade>,
     pub device: Arc<DeviceFacade>,
     pub storage: Arc<StorageFacade>,
+    /// 整机配置迁移 facade（导出 / 导入预览 / 暂存导入）。所有桌面入口共享
+    /// 同一份;daemon HTTP `/config/*` 端点经它执行。装配在
+    /// `wire_dependencies`,与 `encryption` / `storage` 同流向。
+    pub config_migration: Arc<ConfigMigrationFacade>,
     /// 升级检测 facade（P1 thin）。所有桌面入口（GUI / daemon / CLI）共享同
     /// 一份；启动期 host 调一次 `upgrade.detect_on_startup()` 决定是否触发
     /// 重新配对引导等动作。
@@ -166,6 +171,7 @@ impl AppFacade {
             diagnostics: parts.diagnostics,
             device: parts.device,
             storage: parts.storage,
+            config_migration: parts.config_migration,
             upgrade: parts.upgrade,
             mobile_sync: once_lock_from(parts.mobile_sync),
         }
@@ -739,6 +745,7 @@ pub struct AppFacadeParts {
     pub diagnostics: Arc<DiagnosticsFacade>,
     pub device: Arc<DeviceFacade>,
     pub storage: Arc<StorageFacade>,
+    pub config_migration: Arc<ConfigMigrationFacade>,
     pub upgrade: Arc<UpgradeFacade>,
     pub mobile_sync: Option<Arc<MobileSyncFacade>>,
 }

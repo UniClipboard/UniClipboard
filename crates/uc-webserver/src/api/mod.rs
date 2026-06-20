@@ -4,6 +4,7 @@ pub mod analytics;
 pub mod auth;
 pub mod blob;
 pub mod clipboard;
+pub mod config;
 pub mod control_lease;
 pub mod device;
 pub mod diagnostics;

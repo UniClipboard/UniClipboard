@@ -1134,6 +1134,53 @@
           }
         ]
       },
+      "ExportConfigEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ExportConfigResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ExportConfigRequest": {
+        "description": "Request body for `POST /config/export`.\n\n`password` protects the produced bundle (defaults to the space passphrase\nin the UI). `target_path` is the absolute destination the daemon writes the\n`.ucbundle` file to. The handler MUST never log this body.",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "targetPath"
+        ],
+        "type": "object"
+      },
+      "ExportConfigResponse": {
+        "description": "Response payload for `POST /config/export` on success.",
+        "properties": {
+          "path": {
+            "description": "Absolute path the bundle was written to.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
       "FileSyncSettingsDto": {
         "properties": {
           "fileAutoCleanup": {
@@ -1421,6 +1468,62 @@
           "status",
           "packageVersion",
           "apiRevision"
+        ],
+        "type": "object"
+      },
+      "ImportConfigEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ImportConfigResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ImportConfigRequest": {
+        "description": "Request body for `POST /config/import`.\n\n`confirmed` is a deliberate gate: the import is a device-identity move, so\nthe caller must explicitly confirm. The handler MUST never log this body.",
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": "string"
+          },
+          "sourcePath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "sourcePath",
+          "confirmed"
+        ],
+        "type": "object"
+      },
+      "ImportConfigResponse": {
+        "description": "Response payload for `POST /config/import` on success (staged for the next\nrestart to apply on boot).",
+        "properties": {
+          "stagedOk": {
+            "description": "Always `true` on success: the bundle was validated and staged.",
+            "type": "boolean"
+          },
+          "unlockRequiredAfterApply": {
+            "description": "`true` when applying the staged migration will require the operator to\nre-enter their passphrase to unlock after restart; `false` when the\nstaged material is sufficient to unlock without further input.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stagedOk",
+          "unlockRequiredAfterApply"
         ],
         "type": "object"
       },
@@ -2229,6 +2332,74 @@
           "online",
           "offline",
           "errors"
+        ],
+        "type": "object"
+      },
+      "PreviewImportEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PreviewImportResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "PreviewImportRequest": {
+        "description": "Request body for `POST /config/import/preview`.\n\nRead-only: decrypts the bundle's manifest to surface descriptive metadata\nfor operator confirmation. The handler MUST never log this body.",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "sourcePath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "sourcePath"
+        ],
+        "type": "object"
+      },
+      "PreviewImportResponse": {
+        "description": "Response payload for `POST /config/import/preview`.\n\nCarries only non-secret descriptive metadata read from the bundle manifest.",
+        "properties": {
+          "appVersion": {
+            "description": "Application version string of the installation that produced the bundle.",
+            "type": "string"
+          },
+          "createdAtUnixMs": {
+            "description": "Bundle creation time, milliseconds since the Unix epoch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "deviceFingerprint": {
+            "description": "Stable identity fingerprint of the producing device, for human\nconfirmation. Adopting this bundle makes the target device present\nitself under this same identity.",
+            "type": "string"
+          },
+          "profileId": {
+            "description": "Profile the bundle's configuration belongs to.",
+            "type": "string"
+          },
+          "sourceMode": {
+            "description": "Storage layout the bundle was produced under (`portable` / `installed`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "appVersion",
+          "sourceMode",
+          "createdAtUnixMs",
+          "profileId",
+          "deviceFingerprint"
         ],
         "type": "object"
       },
@@ -5479,6 +5650,226 @@
         ]
       }
     },
+    "/config/export": {
+      "post": {
+        "description": "Pack the current installation into a password-protected `.ucbundle` written\nto `targetPath`. The facade enforces the preconditions (initialized +\nunlocked) before any material is read. D14: session-JWT gated; the handler\nMUST NOT log the request body (no password / path on any span here).",
+        "operationId": "exportConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportConfigEnvelope"
+                }
+              }
+            },
+            "description": "Configuration bundle written"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Source installation is not initialized"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /config/export",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/config/import": {
+      "post": {
+        "description": "Validate a bundle and stage it for the next restart to apply on boot. The\nfacade enforces the precondition (target must be uninitialized). `confirmed`\nmust be `true` (the import is a device-identity move); a missing/invalid\nbody or `confirmed != true` is a 400. D14: session-JWT gated; the handler\nMUST NOT log the request body.",
+        "operationId": "importConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportConfigEnvelope"
+                }
+              }
+            },
+            "description": "Bundle staged for next restart"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Confirmation missing/false, or invalid password / corrupt bundle"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Target installation is already initialized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Incompatible bundle"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /config/import",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/config/import/preview": {
+      "post": {
+        "description": "Decrypt a bundle's manifest and return its non-secret descriptive metadata\nso the UI can confirm before staging. Read-only and ungated. D14:\nsession-JWT gated; the handler MUST NOT log the request body.",
+        "operationId": "previewConfigImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewImportEnvelope"
+                }
+              }
+            },
+            "description": "Bundle preview metadata"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid password or corrupt bundle"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Incompatible bundle"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /config/import/preview",
+        "tags": [
+          "config"
+        ]
+      }
+    },
     "/device/me": {
       "get": {
         "description": "Returns the local device's peer ID and resolved device name.",
@@ -8205,6 +8596,10 @@
     {
       "description": "Storage stats and cache maintenance",
       "name": "storage"
+    },
+    {
+      "description": "Whole-installation configuration migration: export, import preview, and staged import",
+      "name": "config"
     },
     {
       "description": "Local device identity",

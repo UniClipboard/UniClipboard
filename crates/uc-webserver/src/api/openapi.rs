@@ -68,16 +68,21 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
     DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
     EntrySourceDto,
 };
+use uc_daemon_contract::api::dto::config::{
+    ExportConfigRequest, ExportConfigResponse, ImportConfigRequest, ImportConfigResponse,
+    PreviewImportRequest, PreviewImportResponse,
+};
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelTransferEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
     ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope, DispatchOutcomeEnvelope,
     EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
-    EntryDetailEnvelope, EntryResourceEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
-    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
-    MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
-    MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope,
-    PresenceRefreshEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope,
-    ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
+    EntryDetailEnvelope, EntryResourceEnvelope, ExportConfigEnvelope, ImportConfigEnvelope,
+    KeychainAccessEnvelope, LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
+    LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
+    MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
+    MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope, PresenceRefreshEnvelope,
+    PreviewImportEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope, ResendEnvelope,
+    RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
     SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope,
     SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
     SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
@@ -154,6 +159,10 @@ impl Modify for ContractMeta {
         // ── storage ────────────────────────────────────────────────
         crate::api::storage::get_storage_stats_handler,
         crate::api::storage::clear_cache_handler,
+        // ── config migration ───────────────────────────────────────
+        crate::api::config::export_config_handler,
+        crate::api::config::preview_import_handler,
+        crate::api::config::import_config_handler,
         // ── device ─────────────────────────────────────────────────
         crate::api::device::get_local_device_info_handler,
         // ── member ─────────────────────────────────────────────────
@@ -265,6 +274,16 @@ impl Modify for ContractMeta {
             StorageStatsDto,
             ClearCacheRequest,
             ClearCacheResponse,
+            // ── config migration ───────────────────────────────────
+            ExportConfigEnvelope,
+            PreviewImportEnvelope,
+            ImportConfigEnvelope,
+            ExportConfigRequest,
+            ExportConfigResponse,
+            PreviewImportRequest,
+            PreviewImportResponse,
+            ImportConfigRequest,
+            ImportConfigResponse,
             // ── device ─────────────────────────────────────────────
             LocalDeviceInfoEnvelope,
             LocalDeviceInfoDto,
@@ -423,6 +442,7 @@ impl Modify for ContractMeta {
         (name = "clipboard", description = "Clipboard entry CRUD, stats, resources, binary blobs/thumbnails, history actions, and delivery"),
         (name = "search", description = "Query, index status, and index rebuild"),
         (name = "storage", description = "Storage stats and cache maintenance"),
+        (name = "config", description = "Whole-installation configuration migration: export, import preview, and staged import"),
         (name = "device", description = "Local device identity"),
         (name = "member", description = "Per-space-member sync preferences"),
         (name = "mobile-sync", description = "iPhone Shortcut device registration, credentials, and LAN settings"),
@@ -529,7 +549,10 @@ mod assembly_smoke_tests {
         // The mobile-device edit feature added `PATCH /mobile-sync/devices/{device_id}`
         // onto the existing DELETE-only path: +0 paths, +1 operation → 57 / 63.
         // Diagnostics added `/diagnostics/debug` GET+PUT and
-        // `/diagnostics/log-export` POST: +2 paths, +3 operations → 59 / 66.)
+        // `/diagnostics/log-export` POST: +2 paths, +3 operations → 59 / 66.
+        // Config migration (issue #1110) added `POST /config/export`,
+        // `POST /config/import/preview`, and `POST /config/import`: +3 paths,
+        // +3 operations → 62 / 69.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -538,8 +561,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            59,
-            "expected exactly 59 path templates, found {}: {:?}",
+            62,
+            "expected exactly 62 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -553,8 +576,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 66,
-            "expected exactly 66 operations across all paths, found {operation_count}"
+            operation_count, 69,
+            "expected exactly 69 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

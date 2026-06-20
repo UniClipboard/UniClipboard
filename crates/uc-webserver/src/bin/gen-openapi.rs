@@ -48,8 +48,11 @@ use uc_webserver::api::openapi::ApiDoc;
 /// (doc-only, octet-stream): +1 path, +1 operation.
 /// Diagnostics debug/log export added `/diagnostics/debug` GET+PUT and
 /// `/diagnostics/log-export` POST: +2 paths, +3 operations.
-const EXPECTED_PATHS: usize = 59;
-const EXPECTED_OPERATIONS: usize = 66;
+/// Config migration (issue #1110) added `POST /config/export`,
+/// `POST /config/import/preview`, and `POST /config/import`: +3 paths,
+/// +3 operations → 62 / 69.
+const EXPECTED_PATHS: usize = 62;
+const EXPECTED_OPERATIONS: usize = 69;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

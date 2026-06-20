@@ -679,6 +679,51 @@ export type EntrySourceDto = {
     tag: 'historical';
 };
 
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type ExportConfigEnvelope = {
+    data: ExportConfigResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /config/export`.
+ *
+ * `password` protects the produced bundle (defaults to the space passphrase
+ * in the UI). `target_path` is the absolute destination the daemon writes the
+ * `.ucbundle` file to. The handler MUST never log this body.
+ */
+export type ExportConfigRequest = {
+    password: string;
+    targetPath: string;
+};
+
+/**
+ * Response payload for `POST /config/export` on success.
+ */
+export type ExportConfigResponse = {
+    /**
+     * Absolute path the bundle was written to.
+     */
+    path: string;
+};
+
 export type FileSyncSettingsDto = {
     fileAutoCleanup: boolean;
     fileCacheQuotaPerDevice: number;
@@ -826,6 +871,58 @@ export type HealthResponse = {
     packageVersion: string;
     residency?: DaemonResidency;
     status: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type ImportConfigEnvelope = {
+    data: ImportConfigResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /config/import`.
+ *
+ * `confirmed` is a deliberate gate: the import is a device-identity move, so
+ * the caller must explicitly confirm. The handler MUST never log this body.
+ */
+export type ImportConfigRequest = {
+    confirmed: boolean;
+    password: string;
+    sourcePath: string;
+};
+
+/**
+ * Response payload for `POST /config/import` on success (staged for the next
+ * restart to apply on boot).
+ */
+export type ImportConfigResponse = {
+    /**
+     * Always `true` on success: the bundle was validated and staged.
+     */
+    stagedOk: boolean;
+    /**
+     * `true` when applying the staged migration will require the operator to
+     * re-enter their passphrase to unlock after restart; `false` when the
+     * staged material is sufficient to unlock without further input.
+     */
+    unlockRequiredAfterApply: boolean;
 };
 
 /**
@@ -1393,6 +1490,70 @@ export type PresenceRefreshResponse = {
     offline: number;
     online: number;
     total: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type PreviewImportEnvelope = {
+    data: PreviewImportResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /config/import/preview`.
+ *
+ * Read-only: decrypts the bundle's manifest to surface descriptive metadata
+ * for operator confirmation. The handler MUST never log this body.
+ */
+export type PreviewImportRequest = {
+    password: string;
+    sourcePath: string;
+};
+
+/**
+ * Response payload for `POST /config/import/preview`.
+ *
+ * Carries only non-secret descriptive metadata read from the bundle manifest.
+ */
+export type PreviewImportResponse = {
+    /**
+     * Application version string of the installation that produced the bundle.
+     */
+    appVersion: string;
+    /**
+     * Bundle creation time, milliseconds since the Unix epoch.
+     */
+    createdAtUnixMs: number;
+    /**
+     * Stable identity fingerprint of the producing device, for human
+     * confirmation. Adopting this bundle makes the target device present
+     * itself under this same identity.
+     */
+    deviceFingerprint: string;
+    /**
+     * Profile the bundle's configuration belongs to.
+     */
+    profileId: string;
+    /**
+     * Storage layout the bundle was produced under (`portable` / `installed`).
+     */
+    sourceMode: string;
 };
 
 /**
@@ -3345,6 +3506,109 @@ export type GetClipboardThumbnailResponses = {
 };
 
 export type GetClipboardThumbnailResponse = GetClipboardThumbnailResponses[keyof GetClipboardThumbnailResponses];
+
+export type ExportConfigData = {
+    body: ExportConfigRequest;
+    path?: never;
+    query?: never;
+    url: '/config/export';
+};
+
+export type ExportConfigErrors = {
+    /**
+     * Source installation is not initialized
+     */
+    409: ApiErrorResponse;
+    /**
+     * Session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type ExportConfigError = ExportConfigErrors[keyof ExportConfigErrors];
+
+export type ExportConfigResponses = {
+    /**
+     * Configuration bundle written
+     */
+    200: ExportConfigEnvelope;
+};
+
+export type ExportConfigResponse2 = ExportConfigResponses[keyof ExportConfigResponses];
+
+export type ImportConfigData = {
+    body: ImportConfigRequest;
+    path?: never;
+    query?: never;
+    url: '/config/import';
+};
+
+export type ImportConfigErrors = {
+    /**
+     * Confirmation missing/false, or invalid password / corrupt bundle
+     */
+    400: ApiErrorResponse;
+    /**
+     * Target installation is already initialized
+     */
+    409: ApiErrorResponse;
+    /**
+     * Incompatible bundle
+     */
+    422: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type ImportConfigError = ImportConfigErrors[keyof ImportConfigErrors];
+
+export type ImportConfigResponses = {
+    /**
+     * Bundle staged for next restart
+     */
+    200: ImportConfigEnvelope;
+};
+
+export type ImportConfigResponse2 = ImportConfigResponses[keyof ImportConfigResponses];
+
+export type PreviewConfigImportData = {
+    body: PreviewImportRequest;
+    path?: never;
+    query?: never;
+    url: '/config/import/preview';
+};
+
+export type PreviewConfigImportErrors = {
+    /**
+     * Invalid password or corrupt bundle
+     */
+    400: ApiErrorResponse;
+    /**
+     * Incompatible bundle
+     */
+    422: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type PreviewConfigImportError = PreviewConfigImportErrors[keyof PreviewConfigImportErrors];
+
+export type PreviewConfigImportResponses = {
+    /**
+     * Bundle preview metadata
+     */
+    200: PreviewImportEnvelope;
+};
+
+export type PreviewConfigImportResponse = PreviewConfigImportResponses[keyof PreviewConfigImportResponses];
 
 export type GetLocalDeviceInfoData = {
     body?: never;

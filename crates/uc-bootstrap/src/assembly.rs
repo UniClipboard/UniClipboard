@@ -24,11 +24,11 @@ use uc_application::deps::{
     FileTransferPorts, MobileDevicePorts, MobileSyncPorts, SearchPorts, SecurityPorts,
     SpaceAccessPorts, StoragePorts, SystemPorts,
 };
-use uc_application::facade::HostEventEmitterPort;
+use uc_application::facade::{ConfigMigrationDeps, ConfigMigrationFacade, HostEventEmitterPort};
 use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
 use uc_core::clipboard::SelectRepresentationPolicyV1;
 use uc_core::config::AppConfig;
-use uc_core::ids::RepresentationId;
+use uc_core::ids::{ProfileId, RepresentationId};
 use uc_core::ports::blob::BlobReferenceRepositoryPort;
 use uc_core::ports::clipboard::{
     ClipboardChangeOriginPort, ClipboardRepresentationNormalizerPort, RepresentationCachePort,
@@ -42,6 +42,7 @@ use uc_infra::clipboard::{
     InfraThumbnailGenerator, RepresentationCache, SpoolManager,
 };
 use uc_infra::config::ClipboardStorageConfig;
+use uc_infra::config_migration::{ConfigMigrationAdapter, ConfigMigrationPaths};
 use uc_infra::db::executor::DieselSqliteExecutor;
 use uc_infra::db::mappers::{
     blob_mapper::BlobRowMapper, clipboard_entry_mapper::ClipboardEntryRowMapper,
@@ -61,6 +62,7 @@ use uc_infra::db::repositories::{
 };
 use uc_infra::device::LocalDeviceIdentity;
 use uc_infra::fs::key_slot_store::JsonKeySlotStore;
+use uc_infra::network::iroh::IrohIdentityStore;
 use uc_infra::search::{HkdfSearchKeyDerivation, SearchPipeline, SqliteSearchIndex};
 use uc_infra::security::{
     Argon2PinHasher, Blake3Hasher, DecryptingClipboardRepresentationRepository, EncryptedBlobStore,
@@ -985,6 +987,9 @@ pub fn wire_dependencies(
     let db_pool = create_db_pool(&db_path)?;
     // Clone pool before infra layer consumes it — search bundle needs the same pool.
     let db_pool_for_search = db_pool.clone();
+    // Config-migration export produces a consistent db snapshot via `VACUUM INTO`
+    // off its own pooled connection; clone before infra consumes the pool.
+    let db_pool_for_config_migration = db_pool.clone();
 
     let infra = create_infra_layer(
         db_pool,
@@ -1151,6 +1156,49 @@ pub fn wire_dependencies(
         ));
 
     let system_clipboard_wiring = platform.system_clipboard_wiring;
+
+    // Whole-installation configuration migration (export / import preview /
+    // staged import). The adapter is assembled here because its inputs
+    // (`secure_storage`, the db pool, the local-identity port, the resolved
+    // filesystem layout, and the current profile) are only available in this
+    // synchronous wiring context — `build_app_facade_from_deps` sees only the
+    // abstract `AppDeps` ports and cannot reconstruct them. The composed facade
+    // therefore travels on `AppDeps` (see its `config_migration` field).
+    //
+    // It reuses the wiring's existing `secure_storage` backend (no new
+    // secure-storage wrapper is introduced here): the `IrohIdentityStore`
+    // adapter only reads the device fingerprint recorded in the export manifest,
+    // and `migratable_secret_keys` enumerates whatever the current backend
+    // holds. Single-user mode pins the profile to `default` (the same value
+    // `DefaultCurrentProfile` and the pending-import bridge use); resolving it
+    // through the async `CurrentProfilePort` is impossible from this sync path.
+    let config_migration_profile = ProfileId::from("default");
+    let config_migration_local_identity: Arc<dyn LocalIdentityPort> =
+        Arc::new(IrohIdentityStore::new(
+            platform.secure_storage.clone(),
+            Arc::new(Sha256IdentityFingerprintFactory),
+        ));
+    let config_migration_adapter = Arc::new(ConfigMigrationAdapter::new(
+        platform.secure_storage.clone(),
+        db_pool_for_config_migration,
+        config_migration_local_identity,
+        infra.clock.clone(),
+        ConfigMigrationPaths {
+            db_path: db_path.clone(),
+            vault_dir: vault_path.clone(),
+            settings_path: settings_path.clone(),
+            app_data_root: app_data_root.clone(),
+        },
+        config_migration_profile,
+    ));
+    let config_migration = Arc::new(ConfigMigrationFacade::new(ConfigMigrationDeps {
+        export_bundle: config_migration_adapter.clone(),
+        preview_import: config_migration_adapter.clone(),
+        stage_import: config_migration_adapter.clone(),
+        setup_status: infra.setup_status.clone(),
+        is_unlocked: space_access_ports.is_unlocked.clone(),
+    }));
+
     let deps = AppDeps {
         clipboard: ClipboardPorts {
             clipboard: platform.clipboard,
@@ -1183,6 +1231,7 @@ pub fn wire_dependencies(
             member_repo: infra.member_repo,
         },
         setup_status: infra.setup_status,
+        config_migration,
         app_version_state: infra.app_version_state,
         first_sync_state: infra.first_sync_state,
         storage: StoragePorts {

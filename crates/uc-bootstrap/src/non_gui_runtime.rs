@@ -501,6 +501,9 @@ pub fn build_app_facade_from_deps(
             app_data_root_dir: storage_paths.app_data_root_dir.clone(),
             cache_fs: deps.system.cache_fs.clone(),
         })),
+        // Carried through from `wire_dependencies` (its db_pool / local_identity /
+        // profile_id materials are only available there); see `AppDeps`.
+        config_migration: deps.config_migration.clone(),
         upgrade: Arc::new(UpgradeFacade::new(UpgradeFacadeDeps {
             app_version_state: deps.app_version_state.clone(),
             setup_status: deps.setup_status.clone(),

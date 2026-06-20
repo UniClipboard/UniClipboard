@@ -22,8 +22,8 @@ import {
   Label,
 } from '@/components/ui'
 import { toast } from '@/components/ui/toast'
+import { asConfigError, isCancelled, useConfigImport } from '@/hooks/useConfigImport'
 import { commands } from '@/lib/ipc'
-import type { ConfigCommandError, ConfigImportPreview } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
@@ -31,32 +31,6 @@ import { SettingRow } from './SettingRow'
 const log = createLogger('config-backup')
 
 const I18N = 'settings.sections.storage.configBackup'
-
-/**
- * Narrow an unknown thrown value to the typed {@link ConfigCommandError}. The
- * `commands` proxy rethrows the Rust-side discriminated union verbatim, so call
- * sites can branch on `kind` / daemon `code` instead of scraping messages.
- */
-function asConfigError(error: unknown): ConfigCommandError | null {
-  if (typeof error === 'object' && error !== null && 'kind' in error) {
-    return error as ConfigCommandError
-  }
-  return null
-}
-
-function isCancelled(error: unknown): boolean {
-  return asConfigError(error)?.kind === 'cancelled'
-}
-
-/**
- * Import flow is a small state machine:
- * - `idle`       — nothing open
- * - `password`   — a file was picked; ask for the import password
- * - `confirm`    — preview loaded; show the irreversible device-move warning
- * - `restarting` — forced, non-dismissable state while the daemon + GUI restart
- *   to apply the staged migration on boot
- */
-type ImportPhase = 'idle' | 'password' | 'confirm' | 'restarting'
 
 export function ConfigBackupGroup() {
   const { t } = useTranslation()
@@ -67,16 +41,30 @@ export function ConfigBackupGroup() {
   // passphrase), so the button goes straight to the save dialog.
   const [exporting, setExporting] = useState(false)
 
-  // ── Import state ─────────────────────────────────────────────────
-  const [importPhase, setImportPhase] = useState<ImportPhase>('idle')
-  const [importSourcePath, setImportSourcePath] = useState<string | null>(null)
-  const [importPassword, setImportPassword] = useState('')
-  const [importPreview, setImportPreview] = useState<ConfigImportPreview | null>(null)
-  const [importBusy, setImportBusy] = useState(false)
+  // ── Import flow ──────────────────────────────────────────────────
+  // The command sequence + daemon error classification live in the shared
+  // hook; this surface only renders the dialogs and maps failures to toasts.
+  const imp = useConfigImport({
+    onError: kind => {
+      switch (kind) {
+        case 'invalidPassword':
+          toast.error(t(`${I18N}.import.invalidPasswordError`))
+          return
+        case 'incompatible':
+          toast.error(t(`${I18N}.import.incompatibleError`))
+          return
+        default:
+          toast.error(t(`${I18N}.import.genericError`))
+      }
+    },
+    onStaged: result => {
+      if (result.unlockRequiredAfterApply) {
+        toast.message(t(`${I18N}.import.restartingUnlockHint`))
+      }
+    },
+  })
 
-  const isRestarting = importPhase === 'restarting'
-
-  // ── Export handlers ──────────────────────────────────────────────
+  // ── Export handler ───────────────────────────────────────────────
 
   const handleExport = async () => {
     setExporting(true)
@@ -105,94 +93,6 @@ export function ConfigBackupGroup() {
     }
   }
 
-  // ── Import handlers ──────────────────────────────────────────────
-
-  const handlePickAndStart = async () => {
-    try {
-      const path = await commands.pickConfigBundlePath()
-      // Cancelled the open dialog — silent.
-      if (path === null) return
-      setImportSourcePath(path)
-      setImportPassword('')
-      setImportPreview(null)
-      setImportPhase('password')
-    } catch (error) {
-      if (isCancelled(error)) return
-      log.error({ err: error }, 'Failed to pick config bundle')
-      toast.error(t(`${I18N}.import.genericError`))
-    }
-  }
-
-  /** Map a daemon error `code` to user-facing copy for the import flow. */
-  const reportImportError = (error: unknown) => {
-    const cfg = asConfigError(error)
-    if (cfg?.kind === 'daemon') {
-      switch (cfg.code) {
-        case 'INVALID_PASSWORD_OR_CORRUPT':
-          toast.error(t(`${I18N}.import.invalidPasswordError`))
-          return
-        case 'INCOMPATIBLE_BUNDLE':
-          toast.error(t(`${I18N}.import.incompatibleError`))
-          return
-        default:
-          break
-      }
-    }
-    log.error({ err: error }, 'Failed to import config')
-    toast.error(t(`${I18N}.import.genericError`))
-  }
-
-  const handlePreview = async () => {
-    if (!importSourcePath) return
-    setImportBusy(true)
-    try {
-      const preview = await commands.previewConfigImport(importPassword, importSourcePath)
-      setImportPreview(preview)
-      setImportPhase('confirm')
-    } catch (error) {
-      if (isCancelled(error)) return
-      reportImportError(error)
-    } finally {
-      setImportBusy(false)
-    }
-  }
-
-  const handleConfirmImport = async () => {
-    if (!importSourcePath) return
-    setImportBusy(true)
-    try {
-      const result = await commands.importConfigPackage(importPassword, importSourcePath)
-      // Staged successfully — switch into the forced restarting state and let
-      // the daemon + GUI restart so the migration lands on boot. restartApp()
-      // exits this process, so code after it is unreachable on the happy path.
-      setImportPhase('restarting')
-      setImportPassword('')
-      if (result.unlockRequiredAfterApply) {
-        toast.message(t(`${I18N}.import.restartingUnlockHint`))
-      }
-      await commands.restartDaemon()
-      await commands.restartApp()
-    } catch (error) {
-      if (isCancelled(error)) {
-        setImportPhase('confirm')
-        return
-      }
-      reportImportError(error)
-      // Drop back to the confirm step so the dialog can be dismissed.
-      setImportPhase('confirm')
-    } finally {
-      setImportBusy(false)
-    }
-  }
-
-  const closeImport = () => {
-    if (isRestarting) return
-    setImportPhase('idle')
-    setImportSourcePath(null)
-    setImportPassword('')
-    setImportPreview(null)
-  }
-
   const sourceModeLabel = (mode: string) =>
     mode === 'portable'
       ? t(`${I18N}.import.metaSourcePortable`)
@@ -209,17 +109,17 @@ export function ConfigBackupGroup() {
       </SettingRow>
 
       <SettingRow label={t(`${I18N}.import.label`)} description={t(`${I18N}.import.description`)}>
-        <Button variant="outline" size="sm" onClick={handlePickAndStart} disabled={importBusy}>
+        <Button variant="outline" size="sm" onClick={imp.pickFile} disabled={imp.busy}>
           {t(`${I18N}.import.button`)}
         </Button>
       </SettingRow>
 
       {/* ── Import password dialog ── */}
       <Dialog
-        open={importPhase === 'password'}
+        open={imp.phase === 'password'}
         onOpenChange={open => {
-          if (importBusy) return
-          if (!open) closeImport()
+          if (imp.busy) return
+          if (!open) imp.reset()
         }}
       >
         <DialogContent>
@@ -232,23 +132,23 @@ export function ConfigBackupGroup() {
             <Input
               id="config-import-password"
               type="password"
-              value={importPassword}
-              onChange={e => setImportPassword(e.target.value)}
+              value={imp.password}
+              onChange={e => imp.setPassword(e.target.value)}
               placeholder={t(`${I18N}.import.passwordPlaceholder`)}
-              disabled={importBusy}
+              disabled={imp.busy}
               onKeyDown={e => {
-                if (e.key === 'Enter' && importPassword && !importBusy) {
-                  void handlePreview()
+                if (e.key === 'Enter' && imp.password && !imp.busy) {
+                  void imp.submitPassword()
                 }
               }}
             />
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={closeImport} disabled={importBusy}>
+            <Button variant="ghost" onClick={imp.reset} disabled={imp.busy}>
               {t(`${I18N}.import.cancelButton`)}
             </Button>
-            <Button onClick={handlePreview} disabled={importBusy || !importPassword}>
-              {importBusy ? t(`${I18N}.import.staging`) : t(`${I18N}.import.passwordConfirmButton`)}
+            <Button onClick={imp.submitPassword} disabled={imp.busy || !imp.password}>
+              {imp.busy ? t(`${I18N}.import.staging`) : t(`${I18N}.import.passwordConfirmButton`)}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -256,33 +156,33 @@ export function ConfigBackupGroup() {
 
       {/* ── Import confirmation (device-move warning) ── */}
       <AlertDialog
-        open={importPhase === 'confirm' || isRestarting}
+        open={imp.phase === 'confirm' || imp.isRestarting}
         onOpenChange={open => {
           // While restarting, the dialog is forced: ignore every close request.
-          if (isRestarting) return
-          if (!open) closeImport()
+          if (imp.isRestarting) return
+          if (!open) imp.reset()
         }}
       >
         <AlertDialogContent
           className="bg-card text-card-foreground"
           onEscapeKeyDown={event => {
-            if (isRestarting) event.preventDefault()
+            if (imp.isRestarting) event.preventDefault()
           }}
         >
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isRestarting
+              {imp.isRestarting
                 ? t(`${I18N}.import.restartingTitle`)
                 : t(`${I18N}.import.confirmTitle`)}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {isRestarting
+              {imp.isRestarting
                 ? t(`${I18N}.import.restartingDescription`)
                 : t(`${I18N}.import.confirmDescription`)}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          {isRestarting ? (
+          {imp.isRestarting ? (
             <AlertDialogFooter>
               <div className="flex w-full items-center justify-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
@@ -306,7 +206,7 @@ export function ConfigBackupGroup() {
               </div>
 
               {/* Preview metadata */}
-              {importPreview && (
+              {imp.preview && (
                 <div className="space-y-1.5">
                   <div className="text-xs font-medium text-muted-foreground">
                     {t(`${I18N}.import.metaTitle`)}
@@ -316,20 +216,20 @@ export function ConfigBackupGroup() {
                       <dt className="text-muted-foreground">
                         {t(`${I18N}.import.metaAppVersion`)}
                       </dt>
-                      <dd className="tabular-nums">{importPreview.appVersion}</dd>
+                      <dd className="tabular-nums">{imp.preview.appVersion}</dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt className="text-muted-foreground">
                         {t(`${I18N}.import.metaSourceMode`)}
                       </dt>
-                      <dd>{sourceModeLabel(importPreview.sourceMode)}</dd>
+                      <dd>{sourceModeLabel(imp.preview.sourceMode)}</dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt className="text-muted-foreground">
                         {t(`${I18N}.import.metaFingerprint`)}
                       </dt>
                       <dd className="max-w-56 truncate font-mono">
-                        {importPreview.deviceFingerprint}
+                        {imp.preview.deviceFingerprint}
                       </dd>
                     </div>
                   </dl>
@@ -337,19 +237,19 @@ export function ConfigBackupGroup() {
               )}
 
               <AlertDialogFooter>
-                <AlertDialogCancel onClick={closeImport} disabled={importBusy}>
+                <AlertDialogCancel onClick={imp.reset} disabled={imp.busy}>
                   {t(`${I18N}.import.cancelButton`)}
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={event => {
                     // Keep the dialog open to show the forced restarting state.
                     event.preventDefault()
-                    void handleConfirmImport()
+                    void imp.confirmImport()
                   }}
-                  disabled={importBusy}
+                  disabled={imp.busy}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  {importBusy ? t(`${I18N}.import.staging`) : t(`${I18N}.import.confirmButton`)}
+                  {imp.busy ? t(`${I18N}.import.staging`) : t(`${I18N}.import.confirmButton`)}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </>

@@ -204,6 +204,7 @@ export type {
   CommandError,
   ConfigCommandError,
   ConfigImportPreview,
+  ImportConfigStageResult,
   DaemonBootstrapFailure,
   DaemonConnectionPayload,
   DeviceMeta,

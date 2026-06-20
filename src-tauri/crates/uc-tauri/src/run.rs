@@ -376,7 +376,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             if matches!(payload.event(), PageLoadEvent::Finished) {}
         })
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        // Native save/open file dialogs for config import/export (issue #1110).
+        .plugin(tauri_plugin_dialog::init());
 
     let builder = if disable_single_instance {
         info!("UC_DISABLE_SINGLE_INSTANCE=1 set; skipping single-instance plugin registration");

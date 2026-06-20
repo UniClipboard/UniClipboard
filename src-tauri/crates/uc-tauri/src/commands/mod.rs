@@ -1,4 +1,5 @@
 pub mod autostart;
+pub mod config;
 pub mod error;
 pub mod quick_panel;
 pub mod restart;

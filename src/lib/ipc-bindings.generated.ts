@@ -407,6 +407,58 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<RelayProbeOutcome, CommandError>(__TAURI_INVOKE("probe_relay_url", { url, trace })),
 	/**
+	 *  Prompt for a save location and export the current configuration to an
+	 *  encrypted `.ucbundle` there.
+	 * 
+	 *  Pops a native save dialog (default name `uniclipboard-config.ucbundle`); if
+	 *  the user cancels, returns [`ConfigCommandError::Cancelled`]. Otherwise calls
+	 *  the daemon `POST /config/export` with the chosen `target_path` and the
+	 *  caller-supplied `password`, returning the absolute path the bundle landed
+	 *  at. Requires an unlocked session (the daemon enforces this; a locked session
+	 *  surfaces as a `Daemon { code: "LOCKED" }` error).
+	 */
+	exportConfigPackage: (password: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<ExportConfigResult, ConfigCommandError>(__TAURI_INVOKE("export_config_package", { password, trace })),
+	/**
+	 *  Show the native open dialog and return the chosen `.ucbundle` path.
+	 * 
+	 *  Returns `Some(absolute_path)` on selection, `None` when the user cancels.
+	 *  Separated from [`preview_config_import`] so the UI can drive
+	 *  "pick file → preview → confirm" as distinct steps.
+	 */
+	pickConfigBundlePath: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<string | null, ConfigCommandError>(__TAURI_INVOKE("pick_config_bundle_path", { trace })),
+	/**
+	 *  Decrypt only the bundle manifest at `source_path` and return its non-secret
+	 *  descriptive metadata for operator confirmation (app version, source mode,
+	 *  creation time, profile, device fingerprint).
+	 * 
+	 *  Read-only: stages nothing. The UI uses this to show the irreversible
+	 *  device-identity-move confirmation before [`import_config_package`].
+	 */
+	previewConfigImport: (password: string, sourcePath: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<ConfigImportPreview, ConfigCommandError>(__TAURI_INVOKE("preview_config_import", { password, sourcePath, trace })),
+	/**
+	 *  Validate the bundle at `source_path` and stage it for the next daemon boot
+	 *  to apply (`confirmed = true` is sent unconditionally — the caller is
+	 *  expected to have shown the device-identity-move confirmation already).
+	 * 
+	 *  This only stages: it does NOT restart anything. On success the frontend
+	 *  drives the restart flow (`restart_daemon` → `restart_app`) so the staged
+	 *  migration is applied on boot. Already-initialized targets are rejected by
+	 *  the daemon as `Daemon { code: "ALREADY_INITIALIZED" }`.
+	 */
+	importConfigPackage: (password: string, sourcePath: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<ImportConfigStageResult, ConfigCommandError>(__TAURI_INVOKE("import_config_package", { password, sourcePath, trace })),
+	/**
 	 *  调整 macOS 主窗口三色交通灯（close/min/zoom）按钮位置。
 	 * 
 	 *  `offset_x` / `offset_y` 相对系统给的标准位置偏移，**屏幕坐标系**：
@@ -425,6 +477,61 @@ export const commands = {
  *  Serializes to {"code": "...", "message": "..."} for frontend discriminated union handling.
  */
 export type CommandError = { code: "NotFound"; message: string } | { code: "InternalError"; message: string } | { code: "Timeout"; message: string } | { code: "Cancelled"; message: string } | { code: "ValidationError"; message: string } | { code: "Conflict"; message: string };
+
+/**
+ *  Typed error for the config import/export commands.
+ * 
+ *  Serializes to a discriminated union `{ kind, ... }` so the frontend (Unit 7)
+ *  can branch the import/export UX without scraping message strings. The
+ *  `Daemon` variant preserves the daemon's stable error `code` token
+ *  (`LOCKED` / `NOT_INITIALIZED` / `ALREADY_INITIALIZED` /
+ *  `INVALID_PASSWORD_OR_CORRUPT` / `INCOMPATIBLE_BUNDLE` /
+ *  `confirmation_required` / `IO` / `INTERNAL`) parsed from the canonical
+ *  `{ code, message }` error body, which is exactly what the daemon's config
+ *  endpoints emit. `message` is never logged with secrets — these come from the
+ *  daemon's already-redacted error text.
+ */
+export type ConfigCommandError = 
+/**
+ *  The user cancelled the native save/open file dialog. Not an error
+ *  condition the UI needs to surface as a failure.
+ */
+{ kind: "cancelled" } | 
+/**
+ *  The daemon rejected the request. `code` is the daemon's stable token the
+ *  frontend switches on; `status` is the HTTP status for coarse grouping.
+ */
+{ kind: "daemon"; status: number; code: string | null; message: string } | 
+/**
+ *  Transport / authorization / decode failure talking to the daemon, or a
+ *  local OS fault. No stable code; surface a generic failure to the user.
+ */
+{ kind: "internal"; message: string };
+
+/**
+ *  Descriptive (non-secret) metadata read from a bundle manifest by
+ *  [`preview_config_import`]. Local specta-typed mirror of the daemon-contract
+ *  `PreviewImportResponse`.
+ */
+export type ConfigImportPreview = {
+	/**  Application version string of the installation that produced the bundle. */
+	appVersion: string,
+	/**  Storage layout the bundle was produced under (`portable` / `installed`). */
+	sourceMode: string,
+	/**
+	 *  Bundle creation time, milliseconds since the Unix epoch. Exported to TS
+	 *  as `number` (well within `Number.MAX_SAFE_INTEGER`); see the project
+	 *  convention in `startup.rs` / `tests/specta_export.rs`.
+	 */
+	createdAtUnixMs: number,
+	/**  Profile the bundle's configuration belongs to. */
+	profileId: string,
+	/**
+	 *  Stable identity fingerprint of the producing device. Adopting this
+	 *  bundle makes the target device present itself under this same identity.
+	 */
+	deviceFingerprint: string,
+};
 
 /**
  *  Frontend-facing daemon-bootstrap failure payload. `detail` carries the
@@ -538,6 +645,29 @@ export type DownloadProgressSnapshot = {
 	 *  is `Idle`.
 	 */
 	date: string | null,
+};
+
+/**
+ *  Result of [`export_config_package`].
+ * 
+ *  Local specta-typed mirror of the daemon-contract `ExportConfigResponse`
+ *  (the contract crate derives serde/utoipa, not `specta::Type`; the Tauri
+ *  boundary owns its own wire types — same pattern as `settings.rs`).
+ */
+export type ExportConfigResult = {
+	/**  Absolute path the bundle was written to. */
+	path: string,
+};
+
+/**  Result of [`import_config_package`]. */
+export type ImportConfigStageResult = {
+	/**  Always `true` on success: the bundle was validated and staged. */
+	stagedOk: boolean,
+	/**
+	 *  `true` when applying the staged migration on the next boot will require
+	 *  the operator to re-enter their passphrase to unlock afterwards.
+	 */
+	unlockRequiredAfterApply: boolean,
 };
 
 /**

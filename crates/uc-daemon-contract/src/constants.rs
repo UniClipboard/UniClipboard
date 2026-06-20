@@ -139,6 +139,12 @@ pub mod http_route {
     pub const CLIPBOARD_CANCEL_TRANSFER: &str = "/clipboard/cancel-transfer";
     /// POST /lifecycle/restart — request a controlled restart/promotion (ADR-008 P5-L L8d-1)
     pub const LIFECYCLE_RESTART: &str = "/lifecycle/restart";
+    /// POST /config/export — export the current configuration to an encrypted `.ucbundle` (issue #1110)
+    pub const CONFIG_EXPORT: &str = "/config/export";
+    /// POST /config/import/preview — decrypt only the bundle manifest for operator confirmation (issue #1110)
+    pub const CONFIG_IMPORT_PREVIEW: &str = "/config/import/preview";
+    /// POST /config/import — validate + stage a configuration bundle for the next boot to apply (issue #1110)
+    pub const CONFIG_IMPORT: &str = "/config/import";
 }
 
 /// HTTP route paths for the v2 daemon REST endpoints (Slice4 P3 T3.2).

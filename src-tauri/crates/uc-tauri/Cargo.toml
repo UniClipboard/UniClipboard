@@ -34,6 +34,10 @@ tauri-plugin-updater = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
+# Native save/open file dialogs for config import/export (issue #1110). The
+# dialogs are driven from Rust commands (`app.dialog().file()`), not the JS
+# guest bindings, so no `@tauri-apps/plugin-dialog` npm package is needed.
+tauri-plugin-dialog = "2"
 url = "2"
 
 # Async

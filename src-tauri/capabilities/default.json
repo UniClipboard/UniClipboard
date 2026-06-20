@@ -19,6 +19,7 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "opener:default",
+    "dialog:default",
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",

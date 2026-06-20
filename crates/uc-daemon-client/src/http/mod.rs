@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod clipboard;
+pub mod config;
 pub mod diagnostics;
 pub mod enveloped;
 pub mod lifecycle;
@@ -14,6 +15,7 @@ pub mod upgrade;
 
 pub use analytics::DaemonAnalyticsClient;
 pub use clipboard::DaemonClipboardClient;
+pub use config::DaemonConfigClient;
 pub use diagnostics::DaemonDiagnosticsClient;
 pub use enveloped::DaemonRequestError;
 pub use lifecycle::DaemonLifecycleClient;

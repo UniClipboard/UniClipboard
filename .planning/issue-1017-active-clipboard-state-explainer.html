@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ActiveClipboardState · issue #1017 设计与功能讲解</title>
+<style>
+  :root{
+    --bg:#0b0e14; --bg2:#11151f; --panel:#151a26; --panel2:#1b2230;
+    --line:#252d3d; --line2:#33405a;
+    --ink:#e6edf3; --muted:#9aa7bd; --dim:#6b7890;
+    --accent:#7c9cff; --accent2:#5ad1c4; --violet:#b58cff;
+    --amber:#ffc861; --rose:#ff7a93; --green:#6fe3a0; --red:#ff6b6b;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#1a2236 0,var(--bg) 55%);color:var(--ink);font-family:var(--sans);line-height:1.7;font-size:15px}
+  a{color:var(--accent);text-decoration:none}
+  code,.mono{font-family:var(--mono);font-size:.86em}
+  .wrap{display:flex;max-width:1500px;margin:0 auto}
+
+  /* sidebar */
+  nav{position:sticky;top:0;align-self:flex-start;height:100vh;width:248px;flex:0 0 248px;
+      padding:26px 16px;border-right:1px solid var(--line);overflow-y:auto;background:rgba(10,13,20,.6);backdrop-filter:blur(6px)}
+  nav .brand{font-weight:700;font-size:15px;letter-spacing:.3px;margin-bottom:4px}
+  nav .brand b{color:var(--accent2)}
+  nav .sub{color:var(--dim);font-size:12px;margin-bottom:20px}
+  nav a{display:block;color:var(--muted);padding:6px 10px;border-radius:7px;font-size:13.5px;margin:1px 0;border-left:2px solid transparent}
+  nav a:hover{background:var(--panel);color:var(--ink)}
+  nav a.on{background:var(--panel2);color:#fff;border-left-color:var(--accent)}
+  nav .grp{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:16px 10px 4px}
+
+  main{flex:1;min-width:0;padding:40px 52px 120px}
+  section{margin-bottom:64px;scroll-margin-top:24px}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:.2px}
+  h2{font-size:23px;margin:0 0 18px;padding-bottom:10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:11px}
+  h2 .n{font-family:var(--mono);font-size:14px;color:var(--bg);background:var(--accent);border-radius:7px;padding:3px 9px;font-weight:700}
+  h3{font-size:17px;margin:26px 0 10px;color:#fff}
+  p{color:#cdd6e3}
+  .lead{font-size:16px;color:var(--muted)}
+  .muted{color:var(--muted)}
+  .dim{color:var(--dim)}
+
+  /* hero */
+  .hero{padding:30px 34px;border:1px solid var(--line2);border-radius:18px;
+        background:linear-gradient(135deg,rgba(124,156,255,.13),rgba(90,209,196,.06) 60%,transparent);margin-bottom:30px}
+  .hero .tag{display:inline-block;font-family:var(--mono);font-size:12px;color:var(--accent2);border:1px solid var(--line2);
+             border-radius:20px;padding:3px 12px;margin-bottom:14px}
+  .hero h1 .gradient{background:linear-gradient(90deg,var(--accent),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .oneliner{font-size:17px;color:#e6edf3;margin:12px 0 0;max-width:880px}
+  .oneliner b{color:var(--accent2)}
+
+  .stats{display:flex;gap:14px;flex-wrap:wrap;margin-top:24px}
+  .stat{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .stat .v{font-size:24px;font-weight:700;font-family:var(--mono)}
+  .stat .v.add{color:var(--green)} .stat .v.del{color:var(--rose)}
+  .stat .k{font-size:12px;color:var(--dim);margin-top:2px}
+
+  /* cards / grid */
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:1100px){.g3,.g4{grid-template-columns:1fr 1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:18px 20px}
+  .card.h{border-color:var(--line2)}
+  .card .ico{font-size:20px}
+  .card h3{margin-top:0}
+  .card.accent{border-left:3px solid var(--accent)}
+  .card.violet{border-left:3px solid var(--violet)}
+  .card.green{border-left:3px solid var(--green)}
+  .card.amber{border-left:3px solid var(--amber)}
+  .card.rose{border-left:3px solid var(--rose)}
+
+  /* badges */
+  .b{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:2px 8px;border-radius:6px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+  .b.blue{color:var(--accent);border-color:#3a4a7a;background:rgba(124,156,255,.08)}
+  .b.teal{color:var(--accent2);border-color:#2d6b63;background:rgba(90,209,196,.08)}
+  .b.violet{color:var(--violet);border-color:#5a4385;background:rgba(181,140,255,.08)}
+  .b.amber{color:var(--amber);border-color:#7a6028;background:rgba(255,200,97,.08)}
+  .b.green{color:var(--green);border-color:#2d6b48;background:rgba(111,227,160,.08)}
+  .b.red{color:var(--red);border-color:#7a3030;background:rgba(255,107,107,.08)}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:8px 0}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  tr:hover td{background:rgba(255,255,255,.015)}
+  td .mono{color:var(--accent2)}
+
+  /* invariant banner */
+  .inv{border:1px solid var(--line2);border-radius:14px;padding:0;overflow:hidden;background:var(--panel)}
+  .inv .top{background:linear-gradient(90deg,rgba(181,140,255,.16),rgba(124,156,255,.05));padding:16px 22px;font-size:18px;font-weight:600;display:flex;gap:10px;align-items:center}
+  .inv .chain{display:flex;align-items:center;gap:0;flex-wrap:wrap;padding:22px;justify-content:center}
+  .inv .node{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:12px 18px;text-align:center;min-width:150px}
+  .inv .node .t{font-weight:700;font-size:15px}
+  .inv .node .d{font-size:11.5px;color:var(--dim);margin-top:3px}
+  .inv .eq{font-size:26px;color:var(--violet);padding:0 14px;font-weight:300}
+  .inv .foot{padding:14px 22px;border-top:1px solid var(--line);color:var(--muted);font-size:13.5px}
+
+  /* flow diagram */
+  .flow{display:flex;flex-direction:column;gap:0}
+  .step{display:flex;gap:14px;position:relative}
+  .step .rail{flex:0 0 34px;display:flex;flex-direction:column;align-items:center}
+  .step .dot{width:30px;height:30px;border-radius:50%;background:var(--panel2);border:2px solid var(--accent);color:var(--accent);
+             display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;font-family:var(--mono);z-index:2}
+  .step .bar{width:2px;flex:1;background:var(--line2);margin:2px 0}
+  .step:last-child .bar{display:none}
+  .step .body{flex:1;padding-bottom:18px}
+  .step .ttl{font-weight:600}
+  .step .desc{color:var(--muted);font-size:13.5px;margin-top:2px}
+  .step.drop .dot{border-color:var(--rose);color:var(--rose)}
+  .step .out{margin-top:8px;display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--rose);
+             border:1px dashed #5a3340;border-radius:7px;padding:4px 10px;background:rgba(255,122,147,.05)}
+  .step .ok{color:var(--green);border-color:#2d5a40;background:rgba(111,227,160,.05)}
+
+  /* protocol frames */
+  .frame{display:flex;flex-wrap:wrap;gap:2px;margin:10px 0;font-family:var(--mono);font-size:12px}
+  .frame .f{background:var(--panel2);border:1px solid var(--line2);padding:8px 10px;border-radius:6px;text-align:center}
+  .frame .f .lbl{color:#fff;font-size:12px} .frame .f .sz{color:var(--dim);font-size:10.5px}
+  .frame .f.magic{border-color:#7a3030;background:rgba(255,107,107,.08)} .frame .f.magic .lbl{color:var(--red)}
+  .frame .f.len{border-color:#7a6028;background:rgba(255,200,97,.07)} .frame .f.len .lbl{color:var(--amber)}
+  .frame .f.body{border-color:#3a4a7a;background:rgba(124,156,255,.07);flex:1;min-width:120px} .frame .f.body .lbl{color:var(--accent)}
+  .frame .f.fin{border-color:var(--line)} .frame .f.fin .lbl{color:var(--dim)}
+
+  /* code */
+  pre{background:#0a0d13;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:#cdd6e3;margin:10px 0}
+  pre .c{color:var(--dim)} pre .k{color:var(--violet)} pre .s{color:var(--green)} pre .f{color:var(--accent2)} pre .n{color:var(--amber)}
+  .path{font-family:var(--mono);font-size:12px;color:var(--accent2);background:var(--bg2);border:1px solid var(--line);border-radius:5px;padding:1px 7px}
+
+  /* collapsible */
+  details{background:var(--panel);border:1px solid var(--line);border-radius:11px;margin:10px 0;overflow:hidden}
+  details[open]{border-color:var(--line2)}
+  summary{cursor:pointer;padding:14px 18px;font-weight:600;list-style:none;display:flex;align-items:center;gap:12px}
+  summary::-webkit-details-marker{display:none}
+  summary .id{font-family:var(--mono);font-size:12px;color:var(--bg);background:var(--violet);border-radius:6px;padding:2px 8px;font-weight:700}
+  summary .chev{margin-left:auto;color:var(--dim);transition:transform .2s}
+  details[open] summary .chev{transform:rotate(90deg)}
+  details .inner{padding:0 18px 18px;color:#cdd6e3;border-top:1px solid var(--line)}
+  details .inner .was{color:var(--rose)} details .inner .now{color:var(--green)}
+
+  .note{border-left:3px solid var(--accent);background:rgba(124,156,255,.05);padding:12px 16px;border-radius:0 9px 9px 0;margin:14px 0;font-size:14px;color:var(--muted)}
+  .note.warn{border-color:var(--amber);background:rgba(255,200,97,.05)}
+  .note.danger{border-color:var(--rose);background:rgba(255,122,147,.05)}
+  .kbd{font-family:var(--mono);font-size:12px;color:var(--amber)}
+  hr.soft{border:none;border-top:1px solid var(--line);margin:30px 0}
+  .pill-row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  ul.tight{margin:8px 0;padding-left:20px} ul.tight li{margin:4px 0;color:#cdd6e3}
+  .layer{border-radius:11px;padding:14px 18px;border:1px solid var(--line);margin:8px 0}
+  .layer .lh{display:flex;align-items:center;gap:10px;font-weight:700}
+  .layer.core{background:linear-gradient(90deg,rgba(90,209,196,.08),transparent);border-left:3px solid var(--accent2)}
+  .layer.app{background:linear-gradient(90deg,rgba(124,156,255,.08),transparent);border-left:3px solid var(--accent)}
+  .layer.infra{background:linear-gradient(90deg,rgba(181,140,255,.08),transparent);border-left:3px solid var(--violet)}
+  .layer.shell{background:linear-gradient(90deg,rgba(255,200,97,.07),transparent);border-left:3px solid var(--amber)}
+  .arrow-d{text-align:center;color:var(--dim);font-size:18px;margin:-2px 0}
+  .foot-note{color:var(--dim);font-size:12.5px;margin-top:40px;border-top:1px solid var(--line);padding-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav id="nav">
+  <div class="brand">Active<b>Clipboard</b>State</div>
+  <div class="sub">issue #1017 · 设计与功能讲解</div>
+  <div class="grp">概念</div>
+  <a href="#intro">① 它解决什么问题</a>
+  <a href="#model">② 核心模型 · LWW 寄存器</a>
+  <a href="#invariant">③ 黄金不变量</a>
+  <div class="grp">机制</div>
+  <a href="#arch">④ 架构分层</a>
+  <a href="#wire">⑤ 三层线格协议</a>
+  <a href="#inbound">⑥ 入站收敛流程</a>
+  <a href="#gates">⑦ 闸门矩阵</a>
+  <a href="#triggers">⑧ 四个触发源</a>
+  <a href="#pull">⑨ Pull 子系统</a>
+  <div class="grp">落地</div>
+  <a href="#persist">⑩ 持久化 · 条件 CAS</a>
+  <a href="#settings">⑪ 设置穿透</a>
+  <a href="#mobile">⑫ 移动端切换</a>
+  <a href="#decisions">⑬ 关键决策 D1–D12</a>
+  <a href="#files">⑭ 改动清单</a>
+</nav>
+
+<main>
+  <div class="hero">
+    <span class="tag">分支 active-clipboard-state  ·  24 atomic commits  ·  未 push</span>
+    <h1>跨设备「<span class="gradient">活动剪贴板</span>」状态同步</h1>
+    <p class="oneliner">把「<b>当前哪一条内容是活跃剪贴板</b>」建模成一个跨设备的 <b>LWW 寄存器</b>:本机把它写进 OS 剪贴板,远端广播一条轻量 state 消息来收敛;对端缺内容时再按需 <b>pull</b>(复用现有 V3 加密同步链路)。</p>
+    <div class="stats">
+      <div class="stat"><div class="v">90</div><div class="k">文件改动</div></div>
+      <div class="stat"><div class="v add">+9 819</div><div class="k">新增行</div></div>
+      <div class="stat"><div class="v del">−323</div><div class="k">删除行</div></div>
+      <div class="stat"><div class="v">24</div><div class="k">原子提交</div></div>
+      <div class="stat"><div class="v">2</div><div class="k">新增 ALPN</div></div>
+      <div class="stat"><div class="v">12</div><div class="k">锁定决策</div></div>
+    </div>
+  </div>
+
+  <!-- ① INTRO -->
+  <section id="intro">
+    <h2><span class="n">01</span> 它解决什么问题</h2>
+    <div class="grid g2">
+      <div class="card rose">
+        <h3>😖 之前的痛点</h3>
+        <ul class="tight">
+          <li>设备 A 上从历史里<b>恢复(restore)</b>了一条旧内容,设备 B 完全不知道 —— B 的剪贴板还停在别的东西上。</li>
+          <li>手机推上来的内容,如果电脑本地<b>已有这条</b>(重复命中),只是「跳过」,从不告诉其它设备「现在这条又被激活了」。</li>
+          <li>设备重连上线后,没有任何机制把「我现在的活跃剪贴板是什么」同步给对方。</li>
+          <li>没有一个统一的「<b>当前活跃内容是哪条</b>」的真相源,restore / resend / mobile 三条路径各做各的。</li>
+        </ul>
+      </div>
+      <div class="card green">
+        <h3>✅ 这个特性带来的</h3>
+        <ul class="tight">
+          <li>统一寄存器:任意时刻、任意设备都对「谁是活跃剪贴板」收敛到同一个值。</li>
+          <li>本机 restore → (可选)广播给对端,对端剪贴板跟着切过去。</li>
+          <li>对端上线 → 双向对称重放当前 register,自动追平。</li>
+          <li>对端「只收到通知但本地没这条内容」→ 按 content_hash 向消息发送方 <b>pull</b> 回来。</li>
+          <li>全程受 <b>per-device 收发闸门</b> + <b>锁定惰性</b> 约束,不破坏隐私与加密红线。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note">
+      <b>一句话类比:</b> 把整个设备群的剪贴板想象成一块共享白板上的「当前便签」。谁最新写了便签,大家都跟着看同一张。冲突时用「<span class="kbd">时间戳 + 设备名</span>」决定听谁的 —— 这就是 LWW(Last-Writer-Wins,后写者胜)。
+    </div>
+  </section>
+
+  <!-- ② MODEL -->
+  <section id="model">
+    <h2><span class="n">02</span> 核心模型 · LWW 寄存器</h2>
+    <p class="lead">整个特性的「心脏」是一个值对象 <code>ActiveClipboardState</code>(<span class="path">uc-core/src/clipboard/active_state.rs</span>)。它只有 4 个字段,但每个字段的角色都被精确定义。</p>
+
+    <div class="card h" style="margin:14px 0">
+      <table>
+        <tr><th>字段</th><th>类型</th><th>角色</th><th>是否参与跨设备比较</th></tr>
+        <tr><td><span class="mono">content_hash</span></td><td><code>String</code> <span class="dim">"blake3v1:&lt;hex&gt;"</span></td><td><b>跨设备身份键</b> —— 两台设备持相同内容算出相同值</td><td><span class="b green">✔ 身份键</span></td></tr>
+        <tr><td><span class="mono">entry_id</span></td><td><code>EntryId</code> (uuid v4)</td><td>本机本地句柄 —— <b>每台设备各自生成,跨设备永不相等</b></td><td><span class="b red">✘ 故意排除</span></td></tr>
+        <tr><td><span class="mono">activated_at_ms</span></td><td><code>i64</code> 墙钟毫秒</td><td><b>主 LWW 键</b> —— 「激活事件」发生的那一刻,与 created_at 无关</td><td><span class="b blue">✔ 主键</span></td></tr>
+        <tr><td><span class="mono">activated_by</span></td><td><code>DeviceId</code></td><td>LWW <b>平局破解</b> + 归属(谁激活的)</td><td><span class="b blue">✔ tiebreaker</span></td></tr>
+      </table>
+    </div>
+
+    <div class="grid g2">
+      <div class="card accent">
+        <h3><code>supersedes()</code> — 谁压过谁(LWW 序)</h3>
+        <pre><span class="k">fn</span> <span class="f">supersedes</span>(&self, cur) -> <span class="k">bool</span> {
+  <span class="k">match</span> self.activated_at_ms.cmp(&cur.activated_at_ms) {
+    Greater => <span class="n">true</span>,                 <span class="c">// ts 更大 → 胜</span>
+    Less    => <span class="n">false</span>,
+    Equal   => self.activated_by                <span class="c">// ts 相同 → 比设备名字典序</span>
+             &gt; cur.activated_by,
+  }
+}</pre>
+        <p class="muted" style="font-size:13.5px">迟到的旧 state(ts 更小)永远压不过对端正在用的新内容 —— 这是 LWW 天然的「保护对端」性质。</p>
+      </div>
+      <div class="card violet">
+        <h3><code>is_same_activation()</code> — 断环(loop-stop)</h3>
+        <pre><span class="k">fn</span> <span class="f">is_same_activation</span>(&self, o) -> <span class="k">bool</span> {
+  self.content_hash    == o.content_hash
+  && self.activated_at_ms == o.activated_at_ms
+  && self.activated_by    == o.activated_by
+}</pre>
+        <p class="muted" style="font-size:13.5px"><b>全键比较</b>(content_hash + ts + by),不看 entry_id。收到的 state 若就是已存的同一激活 → 已知,不再 apply、不再传播,防止 A→B→A 的广播回环。</p>
+      </div>
+    </div>
+    <div class="note warn">
+      <b>为什么身份键是 content_hash 而不是 entry_id?</b> 因为 <code>entry_id</code> 是每台设备各自生成的 UUID,<b>跨设备永不相等</b>。用它判断「本地是否已有这条」必然 miss。跨设备唯一稳定的键是内容哈希 —— 现有的同步去重也正是用它。
+    </div>
+  </section>
+
+  <!-- ③ INVARIANT -->
+  <section id="invariant">
+    <h2><span class="n">03</span> 黄金不变量</h2>
+    <p class="lead">整个实现顺序、整个审查结论,都围绕这一条铁律展开。它是理解一切流程的钥匙。</p>
+    <div class="inv">
+      <div class="top">🔒 register 前进 ⟺ OS 写入成功 ⟺ re-broadcast(同 LWW key)。三者同生同死。</div>
+      <div class="chain">
+        <div class="node"><div class="t">register 前进</div><div class="d">条件 CAS 胜出</div></div>
+        <div class="eq">⟺</div>
+        <div class="node"><div class="t">OS 写入成功</div><div class="d">真的写进了系统剪贴板</div></div>
+        <div class="eq">⟺</div>
+        <div class="node"><div class="t">re-broadcast</div><div class="d">用同一 key 广播下去</div></div>
+      </div>
+      <div class="foot">
+        反过来说:<b>pull 失败 / 写失败 / 设备锁定 / 被 receive 闸门拒绝 → OS 没写成 → 不前进、不传播。</b>
+        这条不变量逼出了实现顺序的硬约束 —— 必须<b>先合「写边界」PR</b>,否则广播 PR 单测全绿、整机却永远不收敛。
+      </div>
+    </div>
+    <div class="grid g3" style="margin-top:16px">
+      <div class="card amber"><h3>⚠️ 现实约束 #1</h3><p style="font-size:13.5px" class="muted">「OS 写成功」在 X11/Wayland 上只是 best-effort(set_selection 可被静默取消);入站 OS 写是 detached <code>tokio::spawn</code>,不阻塞 finalize。所以 strict 耦合<b>只用于新的 0xC3 路径</b>:register 前进 + re-broadcast 放进 spawned 写任务的成功分支里。</p></div>
+      <div class="card amber"><h3>⚠️ 现实约束 #2</h3><p style="font-size:13.5px" class="muted">LWW key = <code>(activated_at_ms, activated_by)</code>,身份键 = <code>content_hash</code>。断环必须用<b>全键相同</b>判定,不能只比 (entry_id, ts) —— 否则跨设备永远 miss。</p></div>
+      <div class="card amber"><h3>⚠️ 现实约束 #3</h3><p style="font-size:13.5px" class="muted">收敛保证范围<b>收窄到直连 / 星形拓扑</b>。presence 与 peer 地址只覆盖直连 peer,链式 A–B–C(A 不连 C)的非直连子树标为 best-effort,不保证。</p></div>
+    </div>
+  </section>
+
+  <!-- ④ ARCH -->
+  <section id="arch">
+    <h2><span class="n">04</span> 架构分层(六边形)</h2>
+    <p class="lead">严格遵循仓库的 hex 边界:<b>core 只定端口</b>,<b>application 写编排</b>,<b>infra 接 iroh/SQLite</b>,<b>bootstrap 装配</b>。下面是这个特性涉及的每一层。</p>
+
+    <div class="layer core">
+      <div class="lh"><span class="b teal">uc-core</span> 领域模型 + 端口契约(纯,无外部依赖)</div>
+      <div style="margin-top:10px" class="grid g4">
+        <div><b>值对象</b><br><span class="dim">ActiveClipboardState · DeviceId::try_new</span></div>
+        <div><b>Register 端口</b><br><span class="dim">Advance / Load / Reset</span></div>
+        <div><b>收发端口</b><br><span class="dim">Receiver(subscribe) · Dispatch</span></div>
+        <div><b>Pull 端口</b><br><span class="dim">PullServe · PullClient</span></div>
+      </div>
+    </div>
+    <div class="arrow-d">↓ 实现</div>
+    <div class="layer app">
+      <div class="lh"><span class="b blue">uc-application</span> 用例 / 编排(只依赖 core 端口)</div>
+      <div style="margin-top:10px" class="grid g4">
+        <div><b>入站收敛</b><br><span class="dim">ApplyInboundActiveClipboardState</span></div>
+        <div><b>三个 worker</b><br><span class="dim">RestoreBroadcast · PeerOnlineResync · (fanout)</span></div>
+        <div><b>Pull serve</b><br><span class="dim">decrypt→re-encrypt 链路</span></div>
+        <div><b>闸门 / reconcile</b><br><span class="dim">SendGate · ReceiveGate · Reconcile</span></div>
+      </div>
+    </div>
+    <div class="arrow-d">↓ 实现</div>
+    <div class="layer infra">
+      <div class="lh"><span class="b violet">uc-infra</span> 适配器(iroh P2P + Diesel SQLite)</div>
+      <div style="margin-top:10px" class="grid g4">
+        <div><b>单行表 repo</b><br><span class="dim">条件原子 UPSERT(LWW CAS)</span></div>
+        <div><b>0xC3 适配器</b><br><span class="dim">dispatch + receiver</span></div>
+        <div><b>0xC2 适配器</b><br><span class="dim">pull_client + pull_serve</span></div>
+        <div><b>线格编解码</b><br><span class="dim">wire.rs · pull_wire.rs(postcard)</span></div>
+      </div>
+    </div>
+    <div class="arrow-d">↓ 装配</div>
+    <div class="layer shell">
+      <div class="lh"><span class="b amber">uc-bootstrap</span> 组合根 + 前端 / daemon shell</div>
+      <div style="margin-top:10px" class="grid g4">
+        <div><b>ALPN 安装</b><br><span class="dim">space_setup.rs(spawn 前)</span></div>
+        <div><b>daemon worker</b><br><span class="dim">clipboard_watcher 接入</span></div>
+        <div><b>settings 穿透</b><br><span class="dim">sync_on_restore 8 层</span></div>
+        <div><b>前端开关</b><br><span class="dim">SyncSection.tsx</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑤ WIRE -->
+  <section id="wire">
+    <h2><span class="n">05</span> 三层线格协议</h2>
+    <p class="lead">同一个 iroh endpoint 上多路复用三种 magic / ALPN。0xC1 是<b>既有</b>的批量内容同步;这个特性<b>新增</b>了 0xC2(pull)和 0xC3(state),都做成独立 sibling ALPN,不动现有 0xC1 帧。</p>
+
+    <div class="grid g3">
+      <div class="card" style="border-top:3px solid var(--dim)">
+        <div class="pill-row"><span class="b">magic 0xC1</span><span class="b">既有</span></div>
+        <h3>批量内容同步</h3>
+        <p class="muted" style="font-size:13.5px">完整剪贴板内容(V3 加密信封)的推送通道。本特性<b>不改</b>它的帧,只复用它的 decrypt→encrypt 加密链路做 pull。</p>
+        <span class="dim mono" style="font-size:11px">clipboard_wire.rs</span>
+      </div>
+      <div class="card violet" style="border-top:3px solid var(--violet)">
+        <div class="pill-row"><span class="b violet">magic 0xC2</span><span class="b green">新增</span></div>
+        <h3>Active-clipboard Pull</h3>
+        <p class="muted" style="font-size:13.5px">按 content_hash 请求 / 响应一份 transfer 信封。请求→响应双向。</p>
+        <div class="dim" style="font-size:12px">ALPN <code>uniclipboard/active-clipboard-pull/0</code></div>
+        <span class="dim mono" style="font-size:11px">pull_wire.rs</span>
+      </div>
+      <div class="card accent" style="border-top:3px solid var(--accent)">
+        <div class="pill-row"><span class="b blue">magic 0xC3</span><span class="b green">新增</span></div>
+        <h3>Active-clipboard State</h3>
+        <p class="muted" style="font-size:13.5px">单向广播一条轻量「现在这条被激活了」观测。fire-and-forget,收敛靠 register。</p>
+        <div class="dim" style="font-size:12px">ALPN <code>uniclipboard/active-clipboard/0</code></div>
+        <span class="dim mono" style="font-size:11px">wire.rs</span>
+      </div>
+    </div>
+
+    <h3>0xC3 State 帧布局 <span class="b blue">单向</span></h3>
+    <div class="frame">
+      <div class="f magic"><div class="lbl">0xC3</div><div class="sz">magic · 1B</div></div>
+      <div class="f len"><div class="lbl">body_len</div><div class="sz">u32 BE · 4B · ≤4096</div></div>
+      <div class="f body"><div class="lbl">postcard( version=1 · content_hash · entry_id · activated_at_ms · activated_by )</div><div class="sz">body ≤ 4 KiB</div></div>
+      <div class="f fin"><div class="lbl">FIN</div><div class="sz">关写端</div></div>
+    </div>
+    <p class="muted" style="font-size:13.5px">硬上限 <code>MAX_BODY_SIZE = 4096</code>,长度在<b>分配前</b>校验(防恶意对端超分配);版本字节支持未来 v2 不破线格扩展;magic 不匹配直接 <code>BadMagic</code> 快速拒绝。</p>
+
+    <h3>0xC2 Pull 帧布局 <span class="b violet">请求 → 响应</span></h3>
+    <div class="frame">
+      <div class="f magic"><div class="lbl">0xC2</div><div class="sz">magic · 1B</div></div>
+      <div class="f len"><div class="lbl">hash_len</div><div class="sz">u16 BE · ≤1024</div></div>
+      <div class="f body"><div class="lbl">content_hash(UTF-8 校验)</div><div class="sz">请求体</div></div>
+      <div class="f fin"><div class="lbl">FIN</div></div>
+    </div>
+    <div class="frame">
+      <div class="f magic" style="border-color:var(--line2);background:var(--panel2)"><div class="lbl" style="color:#fff">status</div><div class="sz">1B</div></div>
+      <div class="f len"><div class="lbl">env_len</div><div class="sz">u32 BE · ≤16 MiB(仅 Ok)</div></div>
+      <div class="f body"><div class="lbl">envelope(transfer 加密字节)</div><div class="sz">仅 status=Ok 时存在</div></div>
+      <div class="f fin"><div class="lbl">FIN</div></div>
+    </div>
+    <div class="card" style="margin-top:8px">
+      <b style="font-size:13.5px">响应 status 字节</b>
+      <div class="pill-row" style="margin-top:8px">
+        <span class="b green">0x00 Ok — 带信封</span>
+        <span class="b amber">0x01 NotAvailable — 没这条 / 无法物化</span>
+        <span class="b red">0x02 Locked — 会话被锁,解不了</span>
+        <span class="b red">0x03 Internal — 构建信封内部错误</span>
+      </div>
+    </div>
+    <div class="note">
+      <b>边界硬化:</b> <code>DeviceId::try_new</code> 对来自 wire 的不可信输入做 ≤64 字节校验 —— 超长返回 <code>None</code>(不 panic、不截断),而内部可信路径的 <code>new()</code> 超长才 panic。这修了一个早期会被超长 <code>activated_by</code> 打 panic 的口子。
+    </div>
+  </section>
+
+  <!-- ⑥ INBOUND -->
+  <section id="inbound">
+    <h2><span class="n">06</span> 入站收敛流程</h2>
+    <p class="lead">收到对端一条 0xC3 state 后,<code>ApplyInboundActiveClipboardStateUseCase</code> 严格按顺序过 7 道关卡。任何一关不过都 <span class="b red">drop</span> —— 关键是被拒时<b>绝不前进 register</b>,避免被拒条目用它的 ts 压制后续合法条目。</p>
+
+    <div class="flow card h" style="padding:24px 26px">
+      <div class="step drop">
+        <div class="rail"><div class="dot">1</div><div class="bar"></div></div>
+        <div class="body"><div class="ttl">锁定检查</div><div class="desc">设备锁定 → 完全惰性:不读 register、不写 OS、不传播(锁定无法解密内容,见 D5)。</div><div class="out">锁定 → drop + log</div></div>
+      </div>
+      <div class="step drop">
+        <div class="rail"><div class="dot">2</div><div class="bar"></div></div>
+        <div class="body"><div class="ttl">LWW 比较</div><div class="desc">load 当前 register。<code>is_same_activation</code> → 已知,ignore;<code>!incoming.supersedes(cur)</code> → 更旧,ignore。<b>断环 + 收敛核心</b>。</div><div class="out">已知 / 更旧 → ignore</div></div>
+      </div>
+      <div class="step drop">
+        <div class="rail"><div class="dot">3</div><div class="bar"></div></div>
+        <div class="body"><div class="ttl">未来时间戳卫士</div><div class="desc">拒绝比本机墙钟超前 &gt; <code>300_000ms(300s)</code> 的激活,防止快钟设备钉死 register。</div><div class="out">超前 300s → drop + warn</div></div>
+      </div>
+      <div class="step drop">
+        <div class="rail"><div class="dot">4</div><div class="bar"></div></div>
+        <div class="body"><div class="ttl">Receive 闸门 · Stage 1(设备级)</div><div class="desc">查 peer 的 <code>receive_enabled</code>。被静音的 peer → 不写、<b>不前进 register</b>、不传播。repo 缺失则 fail-open(允许)。</div><div class="out">receive_enabled=false → drop</div></div>
+      </div>
+      <div class="step">
+        <div class="rail"><div class="dot" style="border-color:var(--violet);color:var(--violet)">5</div><div class="bar"></div></div>
+        <div class="body"><div class="ttl">本地内容查询 → 缺则 Pull</div>
+          <div class="desc"><b>有</b> content_hash 对应 entry → 继续。<b>没有</b> → 向消息发送方 pull(<code>10s</code> 硬超时)→ store。pull/store 任何失败(超时/离线/锁定/解密/存储)= <b>静默 drop,无重试,不前进</b>。</div>
+          <div class="out">pull 失败 → drop(D6:无 retry)</div>
+        </div>
+      </div>
+      <div class="step drop">
+        <div class="rail"><div class="dot">6</div><div class="bar"></div></div>
+        <div class="body"><div class="ttl">重构快照 + Receive 闸门 · Stage 2(内容类型级)</div><div class="desc">reconstruct(解密 + 物化 inline/blob)→ 推导内容类别 → 查 <code>receive_content_types</code>(每个类别都得 allowed)。重构失败或类型被禁 → drop。</div><div class="out">类型被禁 / 重构失败 → drop</div></div>
+      </div>
+      <div class="step">
+        <div class="rail"><div class="dot" style="border-color:var(--green);color:var(--green)">7</div></div>
+        <div class="body"><div class="ttl">分离写 OS → 条件 CAS → re-broadcast</div>
+          <div class="desc"><code>spawn</code> 一个 detached 任务:<code>coordinator.write(RemotePush)</code>(不阻塞入站循环)→ <b>写成功才</b> <code>advance_register</code>(SQL 层 CAS)→ <b>CAS 胜出才</b> 用同一 key fan-out re-broadcast。每一步失败都记日志、register 不前进。</div>
+          <div class="out ok">写成功 → register 前进 → re-broadcast ✓</div>
+        </div>
+      </div>
+    </div>
+    <div class="note danger">
+      <b>为什么 OS 写要 detached spawn?</b> 平台层写剪贴板可能粘住 1–3 秒。如果同步等它,会阻塞整个入站循环、也会拖死 mobile 的 HTTP finalize。所以写任务异步分离,而把「register 前进 + re-broadcast」精确放进它的<b>成功分支</b> —— 这样既不阻塞,又守住了黄金不变量。
+    </div>
+  </section>
+
+  <!-- ⑦ GATES -->
+  <section id="gates">
+    <h2><span class="n">07</span> 闸门矩阵</h2>
+    <p class="lead">隐私边界完全走 <b>per-device <code>MemberSyncPreferences</code></b>(审查发现全局 <code>auto_sync</code> 其实是「死配置」,全链路无人读)。每个触发源各自经过不同闸门。</p>
+
+    <div class="card h" style="margin:10px 0">
+      <table>
+        <tr><th>触发源</th><th>新功能开关</th><th>出站 (send)</th><th>入站 (receive)</th></tr>
+        <tr><td>History restore → 广播</td><td><span class="b amber">sync_on_restore</span> <span class="dim">默认 false</span></td><td><span class="b blue">send_enabled ∧ send_content_types</span></td><td>—</td></tr>
+        <tr><td>Mobile push → fan-out</td><td><span class="dim">不看 sync_on_restore</span></td><td><span class="b blue">send_enabled ∧ send_content_types</span></td><td>—</td></tr>
+        <tr><td>Peer-online resync</td><td>—</td><td><span class="b blue">send_enabled ∧ send_content_types</span></td><td>—</td></tr>
+        <tr><td>入站 0xC3 → 写 OS</td><td>—</td><td>—</td><td><span class="b green">receive_enabled ∧ receive_content_types</span></td></tr>
+        <tr><td>0xC2 pull-serve</td><td>—</td><td colspan="2"><span class="b violet">仅 member 指纹准入 · 不查 send 闸门</span></td></tr>
+      </table>
+    </div>
+
+    <div class="grid g2">
+      <div class="card green">
+        <h3>两级出站闸门 · SendGate</h3>
+        <ul class="tight">
+          <li><b>① send_enabled</b> — 先查(便宜):用户对该 peer 的全局静音。</li>
+          <li><b>② send_content_types</b> — 后查:快照的每个内容类别都必须在 allowed 列表里(AND-of-allowed)。</li>
+          <li>三个出站路径(入站 re-broadcast / restore 广播 / peer-online resync)<b>共用同一 fan-out</b>。</li>
+          <li>repo 缺失 / 出错 → <b>fail-open</b>,防止瞬时 roster 抖动压制同步。</li>
+        </ul>
+      </div>
+      <div class="card amber">
+        <h3>0xC2 pull-serve 的有意不对称</h3>
+        <p class="muted" style="font-size:13.5px">pull-serve <b>只看 member 指纹准入,不叠加 send 闸门</b>。也就是说:即便你把某 member 的 <code>send_enabled</code> 关了,它发来的 pull 请求<b>仍能拉到内容</b>。</p>
+        <p class="muted" style="font-size:13.5px">这是<b>有意接受</b>的口子(换实现简单 + pull 语义纯粹「成员按需取」),且送出的仍是 V3 加密信封、仍要 sender 处于 unlock。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑧ TRIGGERS -->
+  <section id="triggers">
+    <h2><span class="n">08</span> 四个触发源</h2>
+    <p class="lead">寄存器会在四种时机前进 / 广播。它们各有 debounce 与闸门,但都汇入同一个 <code>fan_out_active_state</code>。</p>
+    <div class="grid g2">
+      <div class="card accent">
+        <h3>🔁 本机 History Restore 广播</h3>
+        <div class="pill-row"><span class="b amber">debounce 300ms</span><span class="b">闸门 sync_on_restore + SendGate</span></div>
+        <p class="muted" style="font-size:13.5px">用户从历史里恢复一条 → <code>RestoreBroadcastWorker</code> 合并 300ms 内的连点(只发最后一条)→ <b>emit 时重读</b> <code>sync_on_restore</code>(允许用户在窗口内反悔,fail-closed)→ fan-out。</p>
+      </div>
+      <div class="card violet">
+        <h3>🟢 Peer-Online 对称重放</h3>
+        <div class="pill-row"><span class="b amber">debounce 1.5s</span><span class="b">闸门 SendGate</span></div>
+        <p class="muted" style="font-size:13.5px">presence 报告 peer 上线 → <code>PeerOnlineResyncWorker</code> 合并 1.5s 内的上线 burst → 把本机当前 register 重放给它。<b>双端各跑各的,靠 LWW 互相收敛</b>。</p>
+      </div>
+      <div class="card green">
+        <h3>📱 Mobile Push fan-out</h3>
+        <div class="pill-row"><span class="b">闸门 SendGate(不看 sync_on_restore)</span></div>
+        <p class="muted" style="font-size:13.5px">手机推内容上来 → 无论新内容还是重复命中,都盖一个新激活戳 + advance register + 按 send 闸门 fan-out。见 <a href="#mobile">⑫ 移动端切换</a>。</p>
+      </div>
+      <div class="card amber">
+        <h3>📥 入站 0xC3 re-broadcast</h3>
+        <div class="pill-row"><span class="b green">闸门 ReceiveGate(写) + SendGate(转发)</span></div>
+        <p class="muted" style="font-size:13.5px">收到对端 state、走完 <a href="#inbound">⑥ 入站流程</a>、OS 写成功、register CAS 胜出后,用同一 key 继续 fan-out 给其它 peer(星形拓扑下的传播)。</p>
+      </div>
+    </div>
+
+    <h3>另:启动 Reconcile(只读校准,不属于「前进」)</h3>
+    <div class="card rose">
+      <p class="muted" style="font-size:13.5px"><code>ReconcileActiveClipboardStateUseCase</code> 在启动时跑一次:读持久行(仅作 <b>untrusted 基线</b>)→ 读实际 OS 剪贴板 hash → 比对。<b>匹配则保留,不匹配 / 读错则清空</b>。它<b>绝不写 OS、绝不广播</b>(连 write/dispatch 端口都没注入)。这修了崩溃重启后盲信旧行的回归窗口。</p>
+    </div>
+  </section>
+
+  <!-- ⑨ PULL -->
+  <section id="pull">
+    <h2><span class="n">09</span> Pull 子系统(D3 / D4)</h2>
+    <p class="lead">当对端「收到通知但本地没这条内容」时,按 content_hash 向<b>消息发送方</b>拉取。这是整个特性最精巧的部分:它复用了现有的 V3 加密再发链路,而不是另造一套。</p>
+
+    <div class="grid g2">
+      <div class="card violet">
+        <h3>D4 · 为什么必须 decrypt → re-encrypt</h3>
+        <ul class="tight">
+          <li><b>落盘格式 ≠ wire 格式</b>:盘上是 <code>UCBL</code> / JSON EncryptedBlob;wire 是 <code>V3 'UC3\0'</code>(per-chunk AEAD,AAD = transfer_id‖chunk_index)。接收方硬拒非 V3 magic。</li>
+          <li>所以「免解密直发盘上密文」是事实错误。serve 必须:<b>读盘 → 解密物化明文 → 重编码 V3 → 用新 transfer_id 重新加密</b>。</li>
+          <li><b>硬约束:serve pull 要求 sender 处于 unlock</b> —— 锁定设备<b>服务不了 pull</b>(返回 NotUnlocked),反向印证了 D5「锁定全惰性」。</li>
+        </ul>
+      </div>
+      <div class="card accent">
+        <h3>D3 · blob 大文件必须中继重签 ticket</h3>
+        <ul class="tight">
+          <li>iroh 的 blob ticket 把 provider <b>钉死在签发节点</b>。B 若转发 A 的原 envelope,C 会去拨 A —— A 离线/不直连就失败。</li>
+          <li>所以中继节点 B 必须用<b>本机已物化的 blob 重新 issue_ticket(钉自己)+ 重编码 V3</b> 再发下游 C。</li>
+          <li><code>activated_by</code> 仅作 LWW tiebreaker / UI,<b>不</b>作 pull 目标 —— pull 永远向<b>消息 sender</b> 拉(sender 必在线、直连、已物化)。</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>serve_pull 的两条子路径</h3>
+    <div class="grid g2">
+      <div class="card">
+        <div class="pill-row"><span class="b green">inline / 小文本</span></div>
+        <p class="muted" style="font-size:13.5px">reconstruct → 直接取 inline 字节 → V3 frame → <code>cipher.encrypt</code>(新 transfer_id)。</p>
+      </div>
+      <div class="card">
+        <div class="pill-row"><span class="b blue">blob / 大图大文件</span></div>
+        <p class="muted" style="font-size:13.5px">reconstruct → 提取 file:// → <code>OutboundSyncPlanner(Resend)</code>(不受 max_file_size 限制)→ 在本设备 <b>重新发布得 self-pinned ticket</b> → V3 blob 引用 → encrypt。</p>
+      </div>
+    </div>
+    <div class="note warn">
+      <b>D6 · 收敛保证范围(已知局限):</b> pull 超时 10s、无重试。peer-online resync 是 presence 驱动,只覆盖直连 peer。链式 A–B–C 中若 pull 瞬时失败、或桥 B 在 broadcast→pull 窗口内离开,C 可能被永久饿死。<b>v1 把收敛保证收窄到直连 / 星形拓扑</b>,非直连子树标为 best-effort。
+    </div>
+  </section>
+
+  <!-- ⑩ PERSIST -->
+  <section id="persist">
+    <h2><span class="n">10</span> 持久化 · 条件 CAS</h2>
+    <div class="grid g2">
+      <div class="card violet">
+        <h3>单行表</h3>
+        <pre><span class="k">CREATE TABLE</span> active_clipboard_register (
+  id              <span class="k">INTEGER</span> <span class="k">PRIMARY KEY</span>
+                  <span class="k">CHECK</span> (id = <span class="n">1</span>),   <span class="c">-- 全表至多一行</span>
+  content_hash    <span class="k">TEXT</span>    <span class="k">NOT NULL</span>,
+  entry_id        <span class="k">TEXT</span>    <span class="k">NOT NULL</span>,
+  activated_at_ms <span class="k">BIGINT</span>  <span class="k">NOT NULL</span>,
+  activated_by    <span class="k">TEXT</span>    <span class="k">NOT NULL</span>
+);</pre>
+        <p class="muted" style="font-size:13px"><code>CHECK(id = 1)</code> 把它锁成单行寄存器 —— 整库只记「当前活跃的是哪一条」。</p>
+      </div>
+      <div class="card green">
+        <h3>advance() 的条件原子 CAS</h3>
+        <pre><span class="c">-- 同一 transaction 内</span>
+<span class="c">-- ① 读当前 (ts, by)  ② LWW 判断  ③ 仅胜者写</span>
+should_advance =
+  cur.is_none()
+  || row.ts &gt; cur.ts
+  || (row.ts == cur.ts
+      && row.by &gt; cur.by);   <span class="c">// 字典序</span>
+
+<span class="c">// loser 直接返回 false → 零行更新 → no-op</span></pre>
+        <p class="muted" style="font-size:13px"><b>LWW-loser 在比较阶段就 no-op</b>:零磁盘改写、零 re-broadcast。返回 <code>bool</code> 精确驱动「是否前进 / 是否广播」。</p>
+      </div>
+    </div>
+    <div class="note danger">
+      <b>刻意避开的反模式:</b> 设计文档明确<b>禁止</b> copy-paste 现有 <code>peer_address_repo</code> 那种无条件 <code>do_update()</code> LWW 覆盖 —— 那会让 loser 也写库、也触发广播,破坏黄金不变量。这里用「SELECT + 判断 + 条件 UPSERT」在同一事务里做 CAS。
+    </div>
+    <p class="muted" style="font-size:13.5px"><b>Reset 端口</b>:另有无条件 <code>reset()</code> 把寄存器清空(不受 LWW 制约,幂等),供启动 reconcile 在「行过期 / 读错」时清场用 —— 清空后任何新观测都能赢 LWW。</p>
+  </section>
+
+  <!-- ⑪ SETTINGS -->
+  <section id="settings">
+    <h2><span class="n">11</span> 设置穿透 · sync_on_restore</h2>
+    <p class="lead">一个布尔开关从 Rust 领域核心一路穿到前端 React,共 8 层。审查特别提示有两处历史上「静默丢字段」的点,这次必须接通。</p>
+    <div class="card h">
+      <table>
+        <tr><th>#</th><th>层</th><th>位置</th><th>角色</th></tr>
+        <tr><td>1</td><td>core model</td><td><span class="path">uc-core/settings/model.rs</span></td><td><code>SyncSettings.sync_on_restore: bool</code></td></tr>
+        <tr><td>2</td><td>core 默认</td><td><span class="path">settings/defaults.rs</span></td><td><span class="b amber">默认 false(opt-in)</span></td></tr>
+        <tr><td>3</td><td>daemon DTO</td><td><span class="path">uc-daemon-contract/.../settings.rs</span></td><td>传输契约字段</td></tr>
+        <tr><td>4</td><td>webserver 投影 ×2</td><td><span class="path">uc-webserver/api/projection/settings.rs</span></td><td>读 / 写两向投影</td></tr>
+        <tr><td>5</td><td>app facade patch</td><td><span class="path">facade/settings/models.rs</span></td><td><span class="b red">历史静默丢点 → 已接通</span></td></tr>
+        <tr><td>6</td><td>OpenAPI / TS 类型</td><td><span class="path">schema/openapi.json · types.gen.ts</span></td><td>生成的类型</td></tr>
+        <tr><td>7</td><td>TS patch builder</td><td><span class="path">src/api/daemon/settings.ts</span></td><td><span class="b red">历史静默丢点 → 已接通</span></td></tr>
+        <tr><td>8</td><td>前端开关 UI</td><td><span class="path">src/components/setting/SyncSection.tsx</span></td><td>「同步」区块的 Switch</td></tr>
+      </table>
+    </div>
+    <div class="note">默认 <b>关闭</b>:restore 历史条目<b>不会</b>自动向对端宣布激活,需用户在「同步」设置里显式打开。打开后仍受 per-device send 闸门约束。schema_version 维持 1(仅 serde-default,无 migration)。新增了一条 e2e 测试 <span class="path">tests/e2e/.../settings_sync_on_restore_smoke.rs</span> 走真实 daemon settings API round-trip。</div>
+  </section>
+
+  <!-- ⑫ MOBILE -->
+  <section id="mobile">
+    <h2><span class="n">12</span> 移动端切换(cutover)</h2>
+    <p class="lead">这是修复「手机推重复内容,其它设备永远收敛不到新激活」的关键。删掉了旧的 <code>MobileDuplicateRestorePort</code>,换成统一的 send-gated 0xC3 fan-out。</p>
+    <div class="grid g2">
+      <div class="card rose">
+        <h3>❌ 旧路径</h3>
+        <p class="muted" style="font-size:13.5px">手机推来的内容若本地<b>已有</b> → 当作「重复跳过」,<b>从不向对端广播激活</b> → 各设备卡在陈旧激活上,谁也不知道这条又被顶上来了。</p>
+      </div>
+      <div class="card green">
+        <h3>✅ 新路径 · MobileActivationAnnounceAdapter</h3>
+        <ul class="tight">
+          <li><b>新内容</b> → <code>announce_new</code>:直接盖激活戳 + advance + fan-out。</li>
+          <li><b>重复命中</b> → <code>announce_duplicate</code>:<b>先把内容重新写回 OS 剪贴板</b>(防粘到过期内容)→ 盖<b>新</b>激活 ts → fan-out。</li>
+          <li>两路都委托 <code>announce_local_activation(content_hash, entry_id, categories)</code>。</li>
+          <li>闸门:<b>不看 sync_on_restore</b>(这是主动激活,不是历史 restore),只受 per-device send 闸门。</li>
+        </ul>
+      </div>
+    </div>
+    <p class="muted" style="font-size:13.5px">在 <span class="path">apply_incoming.rs</span> 里,announce 只在 <code>Applied</code> / <code>DuplicateSkipped</code> 分支触发;<code>DecodeFailed</code> / <code>Buffered</code>(两步 PUT 中间态,没有 entry_id)分支都不触发。另有 <code>MobileInboundFanOutPort</code> 负责纯新内容的 eager 广播,fire-and-forget 不阻塞 HTTP 200。</p>
+  </section>
+
+  <!-- ⑬ DECISIONS -->
+  <section id="decisions">
+    <h2><span class="n">13</span> 关键决策 D1–D12</h2>
+    <p class="lead">设计经过「7 维度对抗审查」(raised 35 / confirmed 27,含 7 个 high)。很多决策是在审查中<b>被证伪后改写的</b> —— 展开看「原方案错在哪 / 新方案是什么」。</p>
+
+    <details open>
+      <summary><span class="id">D1</span> 寄存器更新点 = ClipboardWriteCoordinator,不是 watcher <span class="chev">▸</span></summary>
+      <div class="inner">
+        <p><span class="was">✗ 原方案:</span>挂在 watcher 的 on_clipboard_changed 上。审查证伪:入站/mobile 是 RemotePush,watcher 短路 return;restore 在 capture use case 是 Ok(None) —— 「单一观测点」根本不存在,照原文写两条主路径会<b>静默 no-op、单测还全绿</b>。</p>
+        <p><span class="now">✓ 新方案:</span>把 <code>entry_id + RegisterPort</code> 透传进「所有程序化写入的唯一边界」<code>ClipboardWriteCoordinator::write</code>,逐个 call-site(5 处)喂 entry_id。</p>
+      </div>
+    </details>
+    <details>
+      <summary><span class="id">D2</span> 闸门从死配置 auto_sync 改为 per-device MemberSyncPreferences <span class="chev">▸</span></summary>
+      <div class="inner">
+        <p><span class="was">✗ 原方案:</span>gate 在全局 <code>auto_sync</code> / content_types。审查全仓 grep:auto_sync <b>全链路无人读 = 死配置</b>(UI 还把它渲染成 "Sync Paused")。</p>
+        <p><span class="now">✓ 新方案:</span>出站走 <code>send_enabled / send_content_types</code>,入站走 <code>receive_enabled / receive_content_types</code>。入站被拒 → 整条丢弃,不写、不前进、不传播。</p>
+      </div>
+    </details>
+    <details>
+      <summary><span class="id">D3</span> blob 子路径逐跳重签 ticket <span class="chev">▸</span></summary>
+      <div class="inner"><p>ticket 钉死签发节点,转发原 envelope 会让下游拨到离线的原始 provider。中继节点必须用本机已物化的 blob 重新 issue_ticket(钉自己)+ 重编码 V3。pull 目标永远是<b>消息 sender</b>,不是 activated_by。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D4</span> pull 走 decrypt → re-encrypt(原「免解密直发」是事实错误)<span class="chev">▸</span></summary>
+      <div class="inner"><p><span class="was">✗</span> 落盘 UCBL ≠ wire V3,接收方硬拒非 V3。<span class="now">✓</span> 复用现成 <code>ResendEntry</code> 链路:reconstruct → encode V3 → 用新 transfer_id 加密。<b>serve 要求 unlock</b>,多一个失败模式(sender 锁定)。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D5</span> 砍掉 passive relay,锁定设备完全惰性 <span class="chev">▸</span></summary>
+      <div class="inner"><p>锁定设备收到 state:不更新 register、不写 OS、不 re-broadcast,纯丢弃 + log。与红线「传输=存储=master_key、锁定无法解密」一致,且被 D4 反向印证(锁定连 pull 都服务不了)。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D6</span> pull 失败不重试 + 收敛范围收窄 <span class="chev">▸</span></summary>
+      <div class="inner"><p>OS 没写成 → 不前进、不传播、记 log,无专门 retry。pull 超时 10s。收敛保证收窄到<b>直连 / 星形拓扑</b>,非直连子树 best-effort。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D7</span> Debounce <span class="chev">▸</span></summary>
+      <div class="inner"><p>出站 restore 广播合并 <b>~300ms</b>;peer-online resync 合并 <b>~1.5s</b>。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D8</span> 单行表 + 条件原子 UPSERT + 启动 reconcile <span class="chev">▸</span></summary>
+      <div class="inner"><p>register 前进必须是<b>单条条件语句</b>让 LWW-loser 在 SQL 层 no-op。<code>activated_at_ms</code> = 激活事件的 wall-clock(与 created_at 无关),dedup-resurface 必须重戳为 now。重启时持久行只作 untrusted 基线,启动读 OS hash reconcile,不盲信旧行。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D9</span> LWW 时钟 + 未来 ts 守卫 <span class="chev">▸</span></summary>
+      <div class="inner"><p>wall-clock ms(i64)+ activated_by 字典序 tiebreaker,全序。新增:拒绝比本机超前 &gt; <b>300s</b> 的 incoming ts,限制快钟设备压制真实激活。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D10</span> peer-online 对称收敛 <span class="chev">▸</span></summary>
+      <div class="inner"><p>检测到 peer 上线 → 本机把当前 register 发给它;两端各发、靠 LWW 互相收敛。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D11</span> resend 共存 <span class="chev">▸</span></summary>
+      <div class="inner"><p><code>ResendEntryUseCase</code> 不动、并存、不废弃。其 reconstruct/encode/encrypt 链路被 D4 复用。</p></div>
+    </details>
+    <details>
+      <summary><span class="id">D12</span> 线格协议:0xC3 state + 0xC2 pull 独立 sibling ALPN <span class="chev">▸</span></summary>
+      <div class="inner"><p>state ALPN <code>uniclipboard/active-clipboard/0</code> magic 0xC3;pull 独立 sibling ALPN,不动现有 0xC1 帧。威胁模型已知接受项:明文 content_hash 是 in-space 关联预言机,但现有 0xC1 已送同样的 hash,<b>不引入新暴露</b>。</p></div>
+    </details>
+  </section>
+
+  <!-- ⑭ FILES -->
+  <section id="files">
+    <h2><span class="n">14</span> 改动清单</h2>
+    <p class="lead">90 文件 / +9819 −323。按 hex 层归类的主要新增模块:</p>
+    <div class="grid g2">
+      <div class="card accent">
+        <h3>uc-core(端口 + 模型)</h3>
+        <ul class="tight">
+          <li><span class="path">clipboard/active_state.rs</span> 值对象(+147)</li>
+          <li><span class="path">ports/clipboard/active_clipboard/</span> register · receiver · dispatch · pull(+278)</li>
+          <li><span class="path">ids/device_id.rs</span> try_new 边界校验(+21)</li>
+          <li><span class="path">settings/model.rs · defaults.rs</span> sync_on_restore</li>
+        </ul>
+      </div>
+      <div class="card violet">
+        <h3>uc-infra(适配器 + 持久化)</h3>
+        <ul class="tight">
+          <li><span class="path">network/iroh/active_clipboard/</span> wire · pull_wire · dispatch/receiver/pull_client/pull_serve adapter(≈3300 行)</li>
+          <li><span class="path">db/repositories/active_clipboard_register_repo.rs</span> 条件 CAS(+384)</li>
+          <li><span class="path">migrations/...create_active_clipboard_register/</span> 单行表</li>
+          <li><span class="path">network/iroh/node.rs</span> ALPN accept 接线(+122)</li>
+        </ul>
+      </div>
+      <div class="card green">
+        <h3>uc-application(用例 + 闸门)</h3>
+        <ul class="tight">
+          <li><span class="path">usecases/clipboard_sync/active_state/</span> apply_inbound(+1254)· serve_pull(+788)· peer_online_resync(+608)· restore_broadcast(+362)· reconcile(+316)· fanout</li>
+          <li><span class="path">.../send_gate.rs · receive_gate.rs · snapshot_from_entry.rs</span></li>
+          <li><span class="path">facade/active_clipboard/</span> · <span class="path">facade/mobile_sync/activation_announce_adapter.rs</span></li>
+          <li><span class="path">usecases/mobile_sync/apply_incoming.rs</span> cutover</li>
+        </ul>
+      </div>
+      <div class="card amber">
+        <h3>shell / 前端 / 文档 / 测试</h3>
+        <ul class="tight">
+          <li><span class="path">uc-bootstrap/space_setup.rs</span> install ALPN(spawn 前)</li>
+          <li><span class="path">apps/daemon/.../clipboard_watcher.rs</span> 接入</li>
+          <li><span class="path">src/components/setting/SyncSection.tsx</span> + i18n + TS API</li>
+          <li><span class="path">tests/e2e/.../settings_sync_on_restore_smoke.rs</span> + daemon_api.rs</li>
+          <li><span class="path">docs-site/.../guides/settings.mdx</span>(中/英)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>24 个原子提交(写边界先行)</h3>
+    <div class="card h">
+      <table>
+        <tr><th>顺序</th><th>提交</th><th>说明</th></tr>
+        <tr><td>PR1</td><td><code>arch/impl/feat(clipboard)</code> register port + 单行表 + CAS</td><td>写边界先行(不变量写侧)</td></tr>
+        <tr><td>PR2</td><td><code>arch/impl/feat</code> 0xC3 ALPN + codec + install 穿透</td><td>state 线格</td></tr>
+        <tr><td>PR3</td><td><code>feat</code> 入站 receiver → receive 闸门 → register → re-broadcast</td><td>入站收敛端到端</td></tr>
+        <tr><td>PR4</td><td><code>feat(settings/clipboard)</code> restore 出 entry_id + sync_on_restore 8 层</td><td>本机 restore 广播</td></tr>
+        <tr><td>PR5</td><td><code>feat</code> peer-online resync + 启动 reconcile</td><td>对称收敛 + 重启校准</td></tr>
+        <tr><td>PR7</td><td><code>feat</code> mobile fan-out + 删 MobileDuplicateRestorePort</td><td>移动端 cutover</td></tr>
+        <tr><td>PR8</td><td><code>arch/impl/feat/test</code> 0xC2 pull serve + client(D3/D4)</td><td>pull 子系统</td></tr>
+        <tr><td>—</td><td><code>refactor</code> 分组进子目录 · 折叠 snapshot ports 进 Deps bundle</td><td>结构整理</td></tr>
+        <tr><td>—</td><td><code>fix</code> 0xC3 converge skip(重复 OS 重写失败时)· try_new 防 panic</td><td>实现期修复</td></tr>
+        <tr><td>—</td><td><code>docs</code> 设计决策记录(v2)+ settings 指南</td><td>文档</td></tr>
+      </table>
+    </div>
+    <div class="note warn">
+      <b>状态:</b> 8-PR 实现已全部完成(24 atomic commits),<b>本地未 push、未开 PR</b>;跨 crate 测试 0 失败。已知遗留:PR8 缺双节点 e2e。
+    </div>
+  </section>
+
+  <div class="foot-note">
+    本页基于分支 <code>active-clipboard-state</code> 对 <code>main</code> 的 diff(merge-base 7cc41509)、设计文档 <code>.planning/2026-06-19-issue-1017-active-clipboard-state-design.md</code> 及源码核对生成,用于设计与功能讲解。数值(300ms / 1.5s / 10s / 300s / 4096 / 16MiB / magic 0xC2·0xC3)均取自实现常量。
+  </div>
+</main>
+</div>
+
+<script>
+  // scroll-spy
+  const links=[...document.querySelectorAll('#nav a')];
+  const map=new Map(links.map(a=>[a.getAttribute('href').slice(1),a]));
+  const obs=new IntersectionObserver((es)=>{
+    es.forEach(e=>{if(e.isIntersecting){links.forEach(l=>l.classList.remove('on'));map.get(e.target.id)?.classList.add('on');}});
+  },{rootMargin:'-20% 0px -70% 0px'});
+  document.querySelectorAll('section').forEach(s=>obs.observe(s));
+</script>
+</body>
+</html>

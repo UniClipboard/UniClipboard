@@ -36,8 +36,8 @@ use uc_core::{
     ids::EntryId,
     ports::{
         clipboard::{
-            ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
-            ResolvedClipboardPayload,
+            ClipboardPayloadResolverPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
+            GetRepresentationPort, ResolvedClipboardPayload,
         },
         ClipboardSelectionRepositoryPort,
     },
@@ -70,6 +70,9 @@ pub(crate) struct RestoreClipboardEntryAsPlainTextUseCase {
     /// Optional active-clipboard register hook; see
     /// `RestoreClipboardSelectionUseCase`. `None` in tests.
     active_register: Option<LocalActiveRegisterAdvancer>,
+    /// Forward lookup of the entry's persisted snapshot hash; wired together
+    /// with `active_register`. See `RestoreClipboardSelectionUseCase`.
+    entry_snapshot_hash_lookup: Option<Arc<dyn GetEntrySnapshotHashPort>>,
     /// Optional restore-broadcast hook; see `RestoreClipboardSelectionUseCase`.
     /// `None` in tests / non-broadcasting contexts.
     restore_broadcast: Option<RestoreBroadcastTrigger>,
@@ -94,14 +97,22 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
             blob_store,
             mode,
             active_register: None,
+            entry_snapshot_hash_lookup: None,
             restore_broadcast: None,
         }
     }
 
-    /// Wire the active-clipboard register advancer. When set, a successful
-    /// plain-text restore advances the cross-device register (best-effort).
-    pub(crate) fn with_active_register(mut self, advancer: LocalActiveRegisterAdvancer) -> Self {
+    /// Wire the active-clipboard register advancer plus the persisted
+    /// snapshot-hash lookup. When set, a successful plain-text restore advances
+    /// the cross-device register with the entry's persisted identity
+    /// (best-effort). Both are wired together.
+    pub(crate) fn with_active_register(
+        mut self,
+        advancer: LocalActiveRegisterAdvancer,
+        entry_snapshot_hash_lookup: Arc<dyn GetEntrySnapshotHashPort>,
+    ) -> Self {
         self.active_register = Some(advancer);
+        self.entry_snapshot_hash_lookup = Some(entry_snapshot_hash_lookup);
         self
     }
 
@@ -132,21 +143,47 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
             }
         };
 
-        // Identity + category set of exactly what we narrowed to plain text and
-        // put on the OS clipboard — captured before the snapshot moves into the
-        // write boundary so the register reflects the bytes actually written.
-        let snapshot_hash = snapshot.snapshot_hash().to_string();
+        // Category set of what we narrowed to plain text and put on the OS
+        // clipboard — captured before the snapshot moves into the write
+        // boundary so the register advances only after the OS write succeeds.
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await?;
-        if let Some(advancer) = &self.active_register {
-            let state = advancer
-                .advance_local(snapshot_hash, entry_id.clone())
-                .await;
-            // Offer the activation to the broadcaster (gate lives there).
-            if let Some(trigger) = &self.restore_broadcast {
-                trigger.offer(state, categories);
+        if let (Some(advancer), Some(hash_lookup)) =
+            (&self.active_register, &self.entry_snapshot_hash_lookup)
+        {
+            // Advance the register with the entry's PERSISTED
+            // `clipboard_event.snapshot_hash` (the full-entry identity peers
+            // resolve by), not a hash recomputed from this plain-only snapshot.
+            // The OS holds plain text while the register points at the whole
+            // entry; a peer that pulls it materializes the full entry — the
+            // alternative (a plain-only hash) matches no persisted entry, so
+            // every pull would miss. A lookup miss / error leaves the register
+            // untouched — best-effort, the OS write already succeeded.
+            match hash_lookup.get_entry_snapshot_hash(entry_id).await {
+                Ok(Some(snapshot_hash)) => {
+                    let state = advancer
+                        .advance_local(snapshot_hash, entry_id.clone())
+                        .await;
+                    // Offer the activation to the broadcaster (gate lives there).
+                    if let Some(trigger) = &self.restore_broadcast {
+                        trigger.offer(state, categories);
+                    }
+                }
+                Ok(None) => {
+                    info!(
+                        entry_id = %entry_id,
+                        "restore_plain: no persisted snapshot_hash for entry; skipping active-register advance"
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        entry_id = %entry_id,
+                        error = %err,
+                        "restore_plain: snapshot_hash lookup failed; skipping active-register advance"
+                    );
+                }
             }
         }
 
@@ -276,17 +313,19 @@ mod tests {
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+    use uc_core::clipboard::ActiveClipboardState;
     use uc_core::clipboard::{
         ClipboardChangeOrigin, ClipboardEntry, ClipboardIntegrationMode, ClipboardRepositoryError,
         ClipboardSelection, ClipboardSelectionDecision, MimeType, PersistedClipboardRepresentation,
         SelectionPolicyVersion, SystemClipboardSnapshot,
     };
-    use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
+    use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
     use uc_core::ports::clipboard::{
-        ClipboardChangeOriginPort, ClipboardPayloadResolverPort, GetClipboardEntryPort,
+        ActiveClipboardRegisterError, AdvanceActiveClipboardPort, ClipboardChangeOriginPort,
+        ClipboardPayloadResolverPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
         GetRepresentationPort, PayloadResolveError, ResolvedClipboardPayload, SystemClipboardPort,
     };
-    use uc_core::ports::ClipboardSelectionRepositoryPort;
+    use uc_core::ports::{ClipboardSelectionRepositoryPort, ClockPort, DeviceIdentityPort};
     use uc_core::BlobId;
 
     fn make_rep(
@@ -485,6 +524,121 @@ mod tests {
             Arc::new(blob_reader),
             ClipboardIntegrationMode::Full,
         )
+    }
+
+    // ── active-clipboard register advance regression (issue #1017) ──────────
+    //
+    // The register must advance with the entry's PERSISTED snapshot hash (the
+    // value peers resolve content by via `find_entry_id_by_snapshot_hash`),
+    // never a hash recomputed from the materialized snapshot. The plain-text
+    // path narrows to a single rep, so a recompute would differ from the
+    // entry's persisted hash — the sharpest place to prove the lookup value is
+    // used verbatim.
+
+    /// Records every snapshot_hash handed to the register advance.
+    #[derive(Default)]
+    struct SpyRegister {
+        advanced: Mutex<Vec<String>>,
+    }
+    #[async_trait]
+    impl AdvanceActiveClipboardPort for SpyRegister {
+        async fn advance(
+            &self,
+            state: &ActiveClipboardState,
+        ) -> Result<bool, ActiveClipboardRegisterError> {
+            self.advanced
+                .lock()
+                .unwrap()
+                .push(state.snapshot_hash.clone());
+            Ok(true)
+        }
+    }
+
+    struct FixedClock;
+    impl ClockPort for FixedClock {
+        fn now_ms(&self) -> i64 {
+            1_000
+        }
+    }
+
+    struct FixedDevice;
+    impl DeviceIdentityPort for FixedDevice {
+        fn current_device_id(&self) -> DeviceId {
+            DeviceId::new("self")
+        }
+    }
+
+    /// Returns a fixed persisted hash regardless of `entry_id`.
+    struct FixedHashLookup(&'static str);
+    #[async_trait]
+    impl GetEntrySnapshotHashPort for FixedHashLookup {
+        async fn get_entry_snapshot_hash(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<String>, ClipboardRepositoryError> {
+            Ok(Some(self.0.to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn advances_register_with_persisted_hash_not_recompute() {
+        // The plain rep is "hi"; a recompute of the plain-only snapshot would
+        // hash *those bytes*, which cannot equal the distinctive persisted hash
+        // below. Asserting the register received the persisted value proves the
+        // advance reads the lookup, not the reconstructed snapshot.
+        const PERSISTED: &str =
+            "blake3v1:520d15b800000000000000000000000000000000000000000000000000000000";
+
+        let entry = make_entry("entry-1", "event-1");
+        let plain = make_rep("rep-plain", "text/plain", "text", b"hi");
+        let decision = make_selection("entry-1", "rep-plain", vec![]);
+
+        let mut entry_repo = MockEntryRepo::new();
+        entry_repo
+            .expect_get_entry()
+            .returning(move |_| Ok(Some(entry.clone())));
+        let mut selection_repo = MockSelectionRepo::new();
+        selection_repo
+            .expect_get_selection()
+            .returning(move |_| Ok(Some(decision.clone())));
+        let rep_repo = FakeRepRepo { reps: vec![plain] };
+        let mut resolver = MockResolver::new();
+        expect_inline_resolves(&mut resolver);
+        let blob_reader = MockBlobReader::new();
+        let (clipboard, _writes) = recording_system_clipboard();
+        let mut origin = MockChangeOrigin::new();
+        expect_permissive_origin(&mut origin);
+
+        let register = Arc::new(SpyRegister::default());
+        let advancer = LocalActiveRegisterAdvancer::new(
+            register.clone(),
+            Arc::new(FixedDevice),
+            Arc::new(FixedClock),
+        );
+        let uc = build_use_case(
+            entry_repo,
+            selection_repo,
+            rep_repo,
+            resolver,
+            blob_reader,
+            clipboard,
+            origin,
+        )
+        .with_active_register(advancer, Arc::new(FixedHashLookup(PERSISTED)));
+
+        let outcome = uc
+            .execute(&EntryId::from("entry-1"))
+            .await
+            .expect("execute should succeed");
+        assert_eq!(outcome, PlainRestoreOutcome::Done);
+
+        let advanced = register.advanced.lock().unwrap();
+        assert_eq!(
+            advanced.as_slice(),
+            &[PERSISTED.to_string()],
+            "register must advance with the entry's persisted snapshot_hash, \
+             not a hash recomputed from the plain-only snapshot"
+        );
     }
 
     /// 条目同时持有 plain + html 两份 rep，paste_rep 指向 plain：

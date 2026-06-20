@@ -195,6 +195,7 @@ impl ClipboardHistoryFacade {
             touch: _entry_touch,
             delete: entry_delete,
             find_by_snapshot_hash: _entry_find,
+            get_snapshot_hash: _entry_snapshot_hash,
         } = entry_ports;
         let ClipboardRepresentationPorts {
             get: rep_get,

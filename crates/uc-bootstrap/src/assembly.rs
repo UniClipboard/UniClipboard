@@ -451,7 +451,8 @@ fn create_infra_layer(
         save: entry_repo_arc.clone(),
         touch: entry_repo_arc.clone(),
         delete: entry_repo_arc.clone(),
-        find_by_snapshot_hash: entry_repo_arc,
+        find_by_snapshot_hash: entry_repo_arc.clone(),
+        get_snapshot_hash: entry_repo_arc,
     };
 
     let event_row_mapper = ClipboardEventRowMapper;

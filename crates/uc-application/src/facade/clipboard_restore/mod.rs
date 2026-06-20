@@ -107,6 +107,7 @@ impl ClipboardRestoreFacade {
             touch: entry_touch,
             delete: _entry_delete,
             find_by_snapshot_hash: _entry_find,
+            get_snapshot_hash: entry_snapshot_hash_lookup,
         } = entry_ports;
         let ClipboardRepresentationPorts {
             get: rep_get,
@@ -125,7 +126,10 @@ impl ClipboardRestoreFacade {
             blob_store.clone(),
             integration_mode,
         )
-        .with_active_register(register_advancer.clone());
+        .with_active_register(
+            register_advancer.clone(),
+            entry_snapshot_hash_lookup.clone(),
+        );
         let mut plain_uc = RestoreClipboardEntryAsPlainTextUseCase::new(
             entry_get,
             write_coordinator,
@@ -135,7 +139,7 @@ impl ClipboardRestoreFacade {
             blob_store,
             integration_mode,
         )
-        .with_active_register(register_advancer);
+        .with_active_register(register_advancer, entry_snapshot_hash_lookup);
         // Wire the restore-broadcast trigger into both paths when present, so a
         // successful restore that advanced the register also announces it
         // (subject to the broadcaster's gate). Shared trigger; cloning is cheap.

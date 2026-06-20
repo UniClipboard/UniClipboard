@@ -20,8 +20,8 @@ use uc_core::{
     ids::EntryId,
     ports::{
         clipboard::{
-            ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
-            UpdateRepresentationProcessingResultPort,
+            ClipboardPayloadResolverPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
+            GetRepresentationPort, UpdateRepresentationProcessingResultPort,
         },
         ClipboardSelectionRepositoryPort,
     },
@@ -49,6 +49,12 @@ pub(crate) struct RestoreClipboardSelectionUseCase {
     /// becomes the latest active clipboard state. `None` in tests / contexts
     /// that don't track active state.
     active_register: Option<LocalActiveRegisterAdvancer>,
+    /// Forward lookup of the entry's persisted cross-device snapshot hash.
+    /// Wired together with `active_register`: the register must advance with
+    /// the value peers resolve the content by (the persisted
+    /// `clipboard_event.snapshot_hash`), never a hash recomputed from the
+    /// reconstructed snapshot — the two diverge for file entries.
+    entry_snapshot_hash_lookup: Option<Arc<dyn GetEntrySnapshotHashPort>>,
     /// Optional restore-broadcast hook. When wired, a successful restore that
     /// advanced the register also offers the activation to the broadcast
     /// subsystem (which applies the `sync_on_restore` + per-device send gate
@@ -79,14 +85,23 @@ impl RestoreClipboardSelectionUseCase {
             blob_store,
             mode,
             active_register: None,
+            entry_snapshot_hash_lookup: None,
             restore_broadcast: None,
         }
     }
 
-    /// Wire the active-clipboard register advancer. When set, a successful
-    /// restore advances the cross-device register (best-effort).
-    pub(crate) fn with_active_register(mut self, advancer: LocalActiveRegisterAdvancer) -> Self {
+    /// Wire the active-clipboard register advancer plus the lookup that reads
+    /// the entry's persisted snapshot hash. When set, a successful restore
+    /// advances the cross-device register with the persisted identity
+    /// (best-effort). Both are wired together — the advance is meaningless
+    /// without the persisted hash to stamp it with.
+    pub(crate) fn with_active_register(
+        mut self,
+        advancer: LocalActiveRegisterAdvancer,
+        entry_snapshot_hash_lookup: Arc<dyn GetEntrySnapshotHashPort>,
+    ) -> Self {
         self.active_register = Some(advancer);
+        self.entry_snapshot_hash_lookup = Some(entry_snapshot_hash_lookup);
         self
     }
 
@@ -117,24 +132,50 @@ impl RestoreClipboardSelectionUseCase {
         )
         .await
         .map_err(map_build_snapshot_error)?;
-        // Capture the content identity and category set before the snapshot is
-        // moved into the write boundary; the register advances only after the
-        // OS write succeeds, keeping "register advanced ⟺ OS write succeeded".
-        let snapshot_hash = snapshot.snapshot_hash().to_string();
+        // Capture the category set before the snapshot is moved into the write
+        // boundary; the register advances only after the OS write succeeds,
+        // keeping "register advanced ⟺ OS write succeeded".
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await?;
-        if let Some(advancer) = &self.active_register {
-            let state = advancer
-                .advance_local(snapshot_hash, entry_id.clone())
-                .await;
-            // Offer the just-activated state to the broadcast subsystem. The
-            // gate (`sync_on_restore` + per-device send filter) lives in the
-            // broadcaster; here we only hand off the activation + its
-            // categories. Fire-and-forget — never fails the restore.
-            if let Some(trigger) = &self.restore_broadcast {
-                trigger.offer(state, categories);
+        if let (Some(advancer), Some(hash_lookup)) =
+            (&self.active_register, &self.entry_snapshot_hash_lookup)
+        {
+            // The register's cross-device identity must be the entry's PERSISTED
+            // `clipboard_event.snapshot_hash` — the value a peer resolves the
+            // content by (`find_entry_id_by_snapshot_hash`). Recomputing it from
+            // the reconstructed snapshot diverges for file entries (reconstruct
+            // emits a fresh `text/uri-list` whose hash differs from the captured
+            // file's), which would make every cross-device pull miss. A lookup
+            // miss / error leaves the register untouched — best-effort, the OS
+            // write already succeeded.
+            match hash_lookup.get_entry_snapshot_hash(entry_id).await {
+                Ok(Some(snapshot_hash)) => {
+                    let state = advancer
+                        .advance_local(snapshot_hash, entry_id.clone())
+                        .await;
+                    // Offer the just-activated state to the broadcast subsystem.
+                    // The gate (`sync_on_restore` + per-device send filter) lives
+                    // in the broadcaster; here we only hand off the activation +
+                    // its categories. Fire-and-forget — never fails the restore.
+                    if let Some(trigger) = &self.restore_broadcast {
+                        trigger.offer(state, categories);
+                    }
+                }
+                Ok(None) => {
+                    info!(
+                        entry_id = %entry_id,
+                        "restore: no persisted snapshot_hash for entry; skipping active-register advance"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        entry_id = %entry_id,
+                        error = %err,
+                        "restore: snapshot_hash lookup failed; skipping active-register advance"
+                    );
+                }
             }
         }
         Ok(())

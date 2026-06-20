@@ -19,7 +19,8 @@ use uc_core::clipboard::{ClipboardEntry, ClipboardRepositoryError, ClipboardSele
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
     DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
-    ListClipboardEntriesPort, SaveClipboardEntryPort, TouchClipboardEntryPort,
+    GetEntrySnapshotHashPort, ListClipboardEntriesPort, SaveClipboardEntryPort,
+    TouchClipboardEntryPort,
 };
 use uc_core::ports::ClipboardEntryStore;
 
@@ -255,6 +256,46 @@ where
             Ok(entry_id_str.map(EntryId::from))
         })
     }
+
+    /// Forward lookup mirroring [`Self::find_entry_id_by_snapshot_hash`]: resolve
+    /// `entry_id` to its event's persisted `snapshot_hash`. Two prepared
+    /// statements (entry → `event_id`, then `event_id` → `snapshot_hash`) for
+    /// the same reason as the reverse lookup — index-hit reads where a JOIN buys
+    /// nothing and would clash with the per-method DSL imports.
+    #[instrument(
+        name = "infra.sqlite.get_entry_snapshot_hash",
+        skip_all,
+        fields(
+            operation = "get_entry_snapshot_hash",
+            table = "clipboard_entry + clipboard_event",
+            entry_id = %entry_id,
+        )
+    )]
+    async fn get_entry_snapshot_hash(&self, entry_id: &EntryId) -> Result<Option<String>> {
+        let entry_id_str = entry_id.to_string();
+        self.executor.run(move |conn| {
+            let event_id_str: Option<String> = clipboard_entry::table
+                .filter(clipboard_entry::entry_id.eq(&entry_id_str))
+                .select(clipboard_entry::event_id)
+                .limit(1)
+                .first::<String>(conn)
+                .optional()?;
+
+            let event_id_str = match event_id_str {
+                Some(id) => id,
+                None => return Ok(None),
+            };
+
+            let snapshot_hash: Option<String> = clipboard_event::table
+                .filter(clipboard_event::event_id.eq(&event_id_str))
+                .select(clipboard_event::snapshot_hash)
+                .limit(1)
+                .first::<String>(conn)
+                .optional()?;
+
+            Ok(snapshot_hash)
+        })
+    }
 }
 
 // ---- Intent ports ------------------------------------------------------
@@ -375,6 +416,24 @@ where
     }
 }
 
+#[async_trait::async_trait]
+impl<E, ME, MS, RE> GetEntrySnapshotHashPort for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn get_entry_snapshot_hash(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<Option<String>, ClipboardRepositoryError> {
+        ClipboardEntryStore::get_entry_snapshot_hash(self, entry_id)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,5 +539,32 @@ mod tests {
         .await
         .expect("query ok");
         assert!(result.is_none(), "unknown hash must return None");
+    }
+
+    #[tokio::test]
+    async fn get_entry_snapshot_hash_returns_persisted_hash_for_existing_entry() {
+        let (repo, executor, _tempdir) = make_repo();
+        let hash = "blake3v1:520d15b800000000000000000000000000000000000000000000000000000000";
+        let entry_id = seed_event_and_entry(&executor, hash);
+
+        let actual = ClipboardEntryStore::get_entry_snapshot_hash(&repo, &EntryId::from(entry_id))
+            .await
+            .expect("query ok");
+        assert_eq!(
+            actual.as_deref(),
+            Some(hash),
+            "an existing entry must resolve to its event's persisted snapshot_hash \
+             (the inverse of find_entry_id_by_snapshot_hash)"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_entry_snapshot_hash_returns_none_for_missing_entry() {
+        let (repo, _executor, _tempdir) = make_repo();
+        let result =
+            ClipboardEntryStore::get_entry_snapshot_hash(&repo, &EntryId::from("entry-nope"))
+                .await
+                .expect("query ok");
+        assert!(result.is_none(), "unknown entry must return None");
     }
 }

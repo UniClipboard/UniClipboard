@@ -75,3 +75,19 @@ pub trait FindEntryIdBySnapshotHashPort: Send + Sync {
         snapshot_hash: &str,
     ) -> Result<Option<EntryId>, ClipboardRepositoryError>;
 }
+
+/// Resolve the persisted snapshot hash recorded for a given entry.
+#[async_trait]
+pub trait GetEntrySnapshotHashPort: Send + Sync {
+    /// Returns the `"blake3v1:<hex>"` snapshot hash persisted for `entry_id`'s
+    /// content identity, or `None` when no entry with `entry_id` exists. This
+    /// is the stored identity, the inverse of
+    /// [`FindEntryIdBySnapshotHashPort::find_entry_id_by_snapshot_hash`];
+    /// callers must not recompute it from a materialized snapshot, because a
+    /// rebuilt file snapshot hashes a different representation than the
+    /// captured original.
+    async fn get_entry_snapshot_hash(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<Option<String>, ClipboardRepositoryError>;
+}

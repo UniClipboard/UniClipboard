@@ -53,4 +53,22 @@ pub trait ClipboardEntryStore: Send + Sync {
     ) -> Result<Option<EntryId>> {
         Ok(None)
     }
+
+    /// Return the snapshot hash persisted for `entry_id`'s event (the
+    /// `"blake3v1:<hex>"` content identity recorded when the content was first
+    /// captured), or `None` when no entry with `entry_id` exists.
+    ///
+    /// Inverse of [`Self::find_entry_id_by_snapshot_hash`]: that resolves a
+    /// hash to an entry, this resolves an entry to its persisted hash. The
+    /// value is the stored identity, returned verbatim; it must never be
+    /// recomputed from a materialized snapshot, because rebuilding file
+    /// content yields a different representation — and thus a different hash —
+    /// than the captured original.
+    ///
+    /// Implementation note: a read-only join across `clipboard_entry` +
+    /// `clipboard_event`. Adapters without the join (in-memory test fakes) may
+    /// return `Ok(None)` unconditionally.
+    async fn get_entry_snapshot_hash(&self, _entry_id: &EntryId) -> Result<Option<String>> {
+        Ok(None)
+    }
 }

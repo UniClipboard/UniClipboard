@@ -17,11 +17,11 @@ use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
     AdvanceActiveClipboardPort, ClipboardChangeOriginPort, ClipboardPayloadResolverPort,
     ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
-    GetClipboardEntryPort, GetRepresentationByBlobIdPort, GetRepresentationPort,
-    ListClipboardEntriesPort, ListRepresentationsForEventPort, LoadActiveClipboardPort,
-    RepresentationCachePort, ResetActiveClipboardPort, SaveClipboardEntryPort, SpoolQueuePort,
-    SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
-    UpdateRepresentationProcessingResultPort,
+    GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationByBlobIdPort,
+    GetRepresentationPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
+    LoadActiveClipboardPort, RepresentationCachePort, ResetActiveClipboardPort,
+    SaveClipboardEntryPort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
+    ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
@@ -47,6 +47,10 @@ pub struct ClipboardEntryPorts {
     pub touch: Arc<dyn TouchClipboardEntryPort>,
     pub delete: Arc<dyn DeleteClipboardEntryPort>,
     pub find_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
+    /// Forward lookup of an entry's persisted cross-device snapshot hash. The
+    /// restore paths read this rather than recomputing it from the
+    /// reconstructed snapshot, which would diverge for file entries.
+    pub get_snapshot_hash: Arc<dyn GetEntrySnapshotHashPort>,
 }
 
 /// Clipboard representation intent ports facing the application layer.

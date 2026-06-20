@@ -43,8 +43,8 @@ use async_trait::async_trait;
 
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::{
-    is_plain_text_mime_or_format, ClipboardEntry, ClipboardSelectionDecision,
-    PersistedClipboardRepresentation,
+    is_file_mime_or_format, is_plain_text_mime_or_format, ClipboardEntry,
+    ClipboardSelectionDecision, PersistedClipboardRepresentation,
 };
 use uc_core::ids::{EntryId, EventId, RepresentationId};
 use uc_core::mobile_sync::LatestPasteRepresentation;
@@ -225,6 +225,15 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
                 return Ok(Some(self.materialize(entry.entry_id, rep).await?));
             }
             if rep_id == &paste_rep_id {
+                // File 是「二进制主体」类型: policy 把 text/uri-list rep 选成
+                // paste, 就代表这条 entry 的主体是文件。系统在复制文件时常一并
+                // 注入一条文件路径的 text/plain rep(落到 secondary), 若 plaintext
+                // 偏好继续往下扫到它, 就会把文件主体降级成一段纯文本路径 ——
+                // 消费方据此发出 type=Text 而非 type=File。这里在 paste rep 命中
+                // File 时立即返回, 守住主体类型不被附带文本抢占。
+                if is_file_mime_or_format(rep.mime_type.as_ref(), &rep.format_id) {
+                    return Ok(Some(self.materialize(entry.entry_id, rep).await?));
+                }
                 paste_rep_cached = Some(rep);
             }
         }
@@ -266,6 +275,7 @@ mod tests {
     //! | paste 是 image, 无 secondary | 直接用 paste rep |
     //! | format_id=text 但 mime=None | 视为 plaintext(走 format_id 兜底) |
     //! | paste rep 行缺失但 secondary 有 plaintext | 返回 plaintext secondary |
+    //! | paste 是 files(uri-list), secondary 有 text/plain | 守住 File, 不被降级 |
 
     use super::*;
 
@@ -927,5 +937,49 @@ mod tests {
         assert_eq!(out.format_id, FormatId::from("text"));
         assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("text/plain"));
         assert_eq!(out.bytes, b"hello".to_vec());
+    }
+
+    #[tokio::test]
+    async fn plain_text_pref_keeps_file_paste_over_plain_text_secondary() {
+        // 回归(文件→URL bug): 复制文件时同一条 entry 既有 files(text/uri-list)
+        // paste rep, 又有系统注入的文件路径 text/plain secondary。plaintext 偏好
+        // 必须守住 File 主体, 返回 files rep —— 否则 mobile-sync 出站把它降级成
+        // type=Text + 文件路径文本, iPhone 收到的就是一段 URL 而非真实文件。
+        let files = rep("r-files", "files", Some("text/uri-list"));
+        let plain = rep("r-plain", "text", Some("text/plain"));
+        let adapter = build_adapter(
+            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
+                "e1",
+                "r-files",
+                &["r-plain"],
+            )))),
+            Arc::new(FakeRepRepoById::new(vec![files, plain])),
+            Arc::new(FakeResolverById::new(vec![
+                (
+                    RepresentationId::from("r-files"),
+                    ResolvedClipboardPayload::Inline {
+                        mime: "text/uri-list".into(),
+                        bytes: b"file:///Users/Alice/note.pdf".to_vec(),
+                    },
+                ),
+                (
+                    RepresentationId::from("r-plain"),
+                    ResolvedClipboardPayload::Inline {
+                        mime: "text/plain".into(),
+                        bytes: b"/Users/Alice/note.pdf".to_vec(),
+                    },
+                ),
+            ])),
+            dummy_blob_reader(),
+        );
+        let out = adapter
+            .latest_plain_text_preferred_representation()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.format_id, FormatId::from("files"));
+        assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("text/uri-list"));
+        assert_eq!(out.bytes, b"file:///Users/Alice/note.pdf".to_vec());
     }
 }

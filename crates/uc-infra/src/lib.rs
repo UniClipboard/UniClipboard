@@ -5,6 +5,7 @@ pub mod app_version_state;
 pub mod blob;
 pub mod clipboard;
 pub mod config;
+pub mod config_migration;
 pub mod db;
 pub mod device;
 pub mod file_transfer;

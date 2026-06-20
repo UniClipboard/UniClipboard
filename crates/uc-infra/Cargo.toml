@@ -18,6 +18,9 @@ test-util = []
 [dependencies]
 # ===== Workspace crates =====
 uc-core = { path = "../uc-core" }
+# Directory-layout authority: config-migration reads `is_portable()` to record
+# the bundle's source storage mode.
+uc-app-paths = { path = "../uc-app-paths" }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -129,6 +132,10 @@ bytes = "1.7"
 # Cross-platform wrapper over getifaddrs / GetAdaptersAddresses; we only
 # read IPv4 addresses + interface name, no other features pulled in.
 network-interface = "2.0"
+# Config-migration bundle: pack/unpack the plaintext archive that gets sealed
+# inside a `.ucbundle`. Plain (uncompressed) tar — no compression layer, so the
+# AEAD ciphertext does not leak archive structure through compression ratios.
+tar = "0.4"
 
 [dependencies.uuid]
 version = "1.10.0"

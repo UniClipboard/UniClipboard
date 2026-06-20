@@ -5,7 +5,7 @@
 //!
 //! Run with: cargo test -p uc-e2e-tests -- --ignored
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use uc_e2e_tests::{get_session_token, TestCli, TestDaemon, TestProfile};
 
 struct ApiTestContext {
@@ -203,5 +203,79 @@ async fn test_settings_get_via_api() {
     assert!(
         body.get("data").is_some() || body.get("ts").is_some(),
         "settings response not in ApiEnvelope format: {body}"
+    );
+}
+
+/// issue #1017 PR4 — `sync_on_restore` round-trips through the LIVE daemon
+/// settings stack: a fresh profile defaults it to `false`; a `PUT /settings`
+/// that sets only `sync.syncOnRestore=true` is read back as `true` by a
+/// subsequent `GET /settings`.
+///
+/// This exercises the full daemon-contract DTO → webserver projection →
+/// persistence → readback path against a running daemon. The crate-level
+/// `settings_sync_on_restore_smoke` test covers the projection in isolation;
+/// this proves the apply branch carries the field end to end in the real
+/// process, and that a partial patch (other sync fields omitted) preserves
+/// them.
+#[tokio::test]
+#[ignore]
+async fn test_settings_sync_on_restore_round_trips_via_api() {
+    let ctx = setup_with_client("api-sync-on-restore").await;
+    let url = format!("{}/settings", ctx.daemon.base_url());
+
+    // 1. Fresh profile defaults sync_on_restore to false.
+    let before: Value = ctx
+        .client
+        .get(&url)
+        .header("Authorization", ctx.auth_header())
+        .send()
+        .await
+        .expect("settings get")
+        .json()
+        .await
+        .expect("settings json");
+    let before_data = before.get("data").unwrap_or(&before);
+    assert_eq!(
+        before_data
+            .pointer("/sync/syncOnRestore")
+            .and_then(Value::as_bool),
+        Some(false),
+        "fresh profile must default sync_on_restore=false; got {before_data}"
+    );
+
+    // 2. PUT a partial patch that sets only sync.syncOnRestore=true.
+    let put = ctx
+        .client
+        .put(&url)
+        .header("Authorization", ctx.auth_header())
+        .json(&json!({ "sync": { "syncOnRestore": true } }))
+        .send()
+        .await
+        .expect("settings put");
+    assert!(
+        put.status().is_success(),
+        "PUT /settings failed: {}",
+        put.status()
+    );
+
+    // 3. GET reads back true — proves the apply branch carries the field
+    //    through the live stack (not just the isolated projection).
+    let after: Value = ctx
+        .client
+        .get(&url)
+        .header("Authorization", ctx.auth_header())
+        .send()
+        .await
+        .expect("settings get after put")
+        .json()
+        .await
+        .expect("settings json after put");
+    let after_data = after.get("data").unwrap_or(&after);
+    assert_eq!(
+        after_data
+            .pointer("/sync/syncOnRestore")
+            .and_then(Value::as_bool),
+        Some(true),
+        "after PUT true, GET must read sync_on_restore=true; got {after_data}"
     );
 }

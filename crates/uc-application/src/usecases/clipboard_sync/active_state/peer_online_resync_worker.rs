@@ -49,9 +49,9 @@ use uc_core::ports::presence::{PresenceEvent, ReachabilityState};
 use uc_core::ports::PresencePort;
 use uc_core::MemberRepositoryPort;
 
-use super::active_state_fanout::send_active_state_to;
-use super::send_gate::MemberSendGate;
-use super::snapshot_from_entry::SnapshotReconstructor;
+use super::fanout::send_active_state_to;
+use super::super::send_gate::MemberSendGate;
+use super::super::snapshot_from_entry::SnapshotReconstructor;
 
 /// Debounce window for coalescing a burst of peer-online transitions into one
 /// resync per device (D7). Distinct from the restore broadcast's 300ms window:

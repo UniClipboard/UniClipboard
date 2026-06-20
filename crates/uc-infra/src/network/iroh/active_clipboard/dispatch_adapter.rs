@@ -2,7 +2,7 @@
 //!
 //! Each call resolves the target's stored address, opens a fresh iroh
 //! bi-stream on [`ACTIVE_CLIPBOARD_ALPN`], writes one
-//! [`ActiveClipboardWireMessage`] frame (per [`active_clipboard_wire`]), and
+//! [`ActiveClipboardWireMessage`] frame (per [`wire`]), and
 //! closes. There is no ack: active-clipboard state is a fire-and-forget
 //! last-writer-wins observation, matching the receiver side's no-ack accept
 //! handler. Concurrent fan-out to multiple peers is assembled by the
@@ -29,9 +29,9 @@ use uc_core::ports::{
     ActiveClipboardDispatchError, ActiveClipboardDispatchPort, PeerAddressRepositoryPort,
 };
 
-use super::active_clipboard_receiver_adapter::ACTIVE_CLIPBOARD_ALPN;
-use super::active_clipboard_wire::{self, ActiveClipboardWireMessage};
-use super::connect::connect_with_staggered_retry;
+use super::receiver_adapter::ACTIVE_CLIPBOARD_ALPN;
+use super::wire::{self, ActiveClipboardWireMessage};
+use super::super::connect::connect_with_staggered_retry;
 
 /// Sends one active-clipboard state observation to a single peer over the
 /// active-clipboard ALPN. Reuses the shared endpoint + `peer_addr_repo` so a
@@ -133,7 +133,7 @@ impl ActiveClipboardDispatchPort for IrohActiveClipboardDispatchAdapter {
             activated_at_ms: state.activated_at_ms,
             activated_by: state.activated_by.as_str().to_string(),
         };
-        active_clipboard_wire::write_frame(&mut send, &msg)
+        wire::write_frame(&mut send, &msg)
             .await
             .map_err(|err| ActiveClipboardDispatchError::Io(format!("frame write: {err}")))?;
         send.finish()
@@ -180,7 +180,7 @@ mod tests {
     use uc_core::ids::EntryId;
     use uc_core::ports::{PeerAddressError, PeerAddressRecord};
 
-    use super::super::active_clipboard_receiver_adapter::{
+    use super::super::receiver_adapter::{
         IrohActiveClipboardReceiverAdapter, ACTIVE_CLIPBOARD_ALPN,
     };
     use crate::security::Sha256IdentityFingerprintFactory;

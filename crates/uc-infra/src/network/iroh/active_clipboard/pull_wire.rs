@@ -2,7 +2,7 @@
 //!
 //! This is an independent sibling of the bulk clipboard codec
 //! ([`super::clipboard_wire`]) and the active-clipboard state codec
-//! ([`super::active_clipboard_wire`]). A pull is a single request → response
+//! ([`super::wire`]). A pull is a single request → response
 //! exchange on one bi-stream:
 //!
 //! ```text
@@ -39,7 +39,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// head of the stream. Distinct from the bulk clipboard codec
 /// ([`CLIPBOARD_MAGIC`](super::clipboard_wire::CLIPBOARD_MAGIC) = `0xC1`) and
 /// the active-clipboard state codec
-/// ([`ACTIVE_CLIPBOARD_MAGIC`](super::active_clipboard_wire::ACTIVE_CLIPBOARD_MAGIC) = `0xC3`)
+/// ([`ACTIVE_CLIPBOARD_MAGIC`](super::wire::ACTIVE_CLIPBOARD_MAGIC) = `0xC3`)
 /// so a mis-routed connection fails fast at the magic check.
 pub const ACTIVE_PULL_MAGIC: u8 = 0xC2;
 

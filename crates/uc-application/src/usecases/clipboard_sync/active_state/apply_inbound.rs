@@ -49,10 +49,10 @@ use uc_core::MemberRepositoryPort;
 
 use crate::clipboard_write::{ClipboardWriteCoordinator, ClipboardWriteIntent};
 
-use super::active_state_fanout::fan_out_active_state;
-use super::receive_gate::MemberReceiveGate;
-use super::send_gate::MemberSendGate;
-use super::snapshot_from_entry::SnapshotReconstructor;
+use super::fanout::fan_out_active_state;
+use super::super::receive_gate::MemberReceiveGate;
+use super::super::send_gate::MemberSendGate;
+use super::super::snapshot_from_entry::SnapshotReconstructor;
 
 /// The fixed space id of the single-space model. Active-clipboard state is
 /// only meaningful while that space is unlocked.

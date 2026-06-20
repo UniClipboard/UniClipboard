@@ -15,11 +15,11 @@ use uc_core::ports::clipboard::{
     LoadActiveClipboardPort, ResetActiveClipboardPort, SystemClipboardPort,
 };
 
-use crate::usecases::clipboard_sync::reconcile_active_state::{
+use crate::usecases::clipboard_sync::active_state::reconcile::{
     ReconcileActiveClipboardStateUseCase, ReconcileOutcome,
 };
 
-pub use crate::usecases::clipboard_sync::reconcile_active_state::ReconcileOutcome as ActiveClipboardReconcileOutcome;
+pub use crate::usecases::clipboard_sync::active_state::reconcile::ReconcileOutcome as ActiveClipboardReconcileOutcome;
 
 /// Dependencies for [`ActiveClipboardReconcileFacade`].
 pub struct ActiveClipboardReconcileDeps {

@@ -31,8 +31,8 @@ use uc_core::MemberRepositoryPort;
 
 use crate::clipboard_write::RestoreBroadcastRequest;
 
-use super::active_state_fanout::fan_out_active_state;
-use super::send_gate::MemberSendGate;
+use super::fanout::fan_out_active_state;
+use super::super::send_gate::MemberSendGate;
 
 /// Debounce window for coalescing rapid restores into one broadcast (D7).
 const RESTORE_BROADCAST_DEBOUNCE: Duration = Duration::from_millis(300);

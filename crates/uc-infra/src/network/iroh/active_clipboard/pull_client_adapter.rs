@@ -3,7 +3,7 @@
 //!
 //! Resolves the target peer's stored address, dials it on
 //! [`ACTIVE_CLIPBOARD_PULL_ALPN`], opens one bi-stream, writes the content-hash
-//! request (per [`active_clipboard_pull_wire`]), and awaits the holder's
+//! request (per [`pull_wire`]), and awaits the holder's
 //! response. The whole exchange is bounded by [`PULL_TIMEOUT`] (issue #1017
 //! D6, 10s); a peer that is unreachable or slow surfaces as
 //! [`ActiveClipboardPullClientError::Unreachable`].
@@ -31,9 +31,9 @@ use uc_core::ids::DeviceId;
 use uc_core::ports::clipboard::{ActiveClipboardPullClientError, ActiveClipboardPullClientPort};
 use uc_core::ports::PeerAddressRepositoryPort;
 
-use super::active_clipboard_pull_serve_adapter::ACTIVE_CLIPBOARD_PULL_ALPN;
-use super::active_clipboard_pull_wire::{self, PullResponse};
-use super::connect::connect_with_staggered_retry;
+use super::pull_serve_adapter::ACTIVE_CLIPBOARD_PULL_ALPN;
+use super::pull_wire::{self, PullResponse};
+use super::super::connect::connect_with_staggered_retry;
 
 /// Hard deadline on one pull exchange (dial + request + response). Issue #1017
 /// D6 fixes this at 10s: pull-fail (timeout, offline, holder locked) does not
@@ -154,14 +154,14 @@ impl IrohActiveClipboardPullClientAdapter {
             .await
             .map_err(|err| ActiveClipboardPullClientError::Io(format!("open_bi: {err}")))?;
 
-        active_clipboard_pull_wire::write_request(&mut send, content_hash)
+        pull_wire::write_request(&mut send, content_hash)
             .await
             .map_err(|err| ActiveClipboardPullClientError::Io(format!("request write: {err}")))?;
         send.finish()
             .map_err(|err| ActiveClipboardPullClientError::Io(format!("send.finish: {err}")))?;
 
         // 4. Read the response frame.
-        let response = active_clipboard_pull_wire::read_response(&mut recv)
+        let response = pull_wire::read_response(&mut recv)
             .await
             .map_err(|err| ActiveClipboardPullClientError::Io(format!("response read: {err}")))?;
 
@@ -207,7 +207,7 @@ mod tests {
     use uc_core::ports::{PeerAddressError, PeerAddressRecord};
     use uc_core::{MemberRepositoryPort, MemberSyncPreferences};
 
-    use super::super::active_clipboard_pull_serve_adapter::{
+    use super::super::pull_serve_adapter::{
         IrohActiveClipboardPullServeAdapter, ACTIVE_CLIPBOARD_PULL_ALPN,
     };
     use crate::security::Sha256IdentityFingerprintFactory;

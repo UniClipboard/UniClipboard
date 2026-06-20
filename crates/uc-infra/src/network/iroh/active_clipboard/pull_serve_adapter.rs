@@ -41,7 +41,7 @@ use uc_core::ports::clipboard::{ActiveClipboardPullServeError, ActiveClipboardPu
 use uc_core::ports::security::IdentityFingerprintFactoryPort;
 use uc_core::security::IdentityFingerprint;
 
-use super::active_clipboard_pull_wire::{self, PullResponse};
+use super::pull_wire::{self, PullResponse};
 
 /// ALPN identifier for the active-clipboard pull protocol. An independent
 /// sibling of the bulk clipboard / active-clipboard-state ALPNs so the Router
@@ -137,7 +137,7 @@ impl ProtocolHandler for IrohActiveClipboardPullServeHandler {
         // 3. Read the request frame. A codec failure (bad magic, over-long
         //    hash, non-UTF8) drops the connection — the field is untrusted
         //    peer input and the codec validates lengths before allocating.
-        let content_hash = match active_clipboard_pull_wire::read_request(&mut recv).await {
+        let content_hash = match pull_wire::read_request(&mut recv).await {
             Ok(h) => h,
             Err(err) => {
                 warn!(
@@ -179,7 +179,7 @@ impl ProtocolHandler for IrohActiveClipboardPullServeHandler {
         };
 
         // 5. Write the response frame, then close the send half.
-        if let Err(err) = active_clipboard_pull_wire::write_response(&mut send, &response).await {
+        if let Err(err) = pull_wire::write_response(&mut send, &response).await {
             warn!(
                 error = %err,
                 peer = %peer_device_id.as_str(),
@@ -265,7 +265,7 @@ mod tests {
     use uc_core::membership::{MembershipError, SpaceMember};
     use uc_core::MemberSyncPreferences;
 
-    use super::super::active_clipboard_pull_wire::{read_response, write_request, PullResponse};
+    use super::super::pull_wire::{read_response, write_request, PullResponse};
     use crate::security::Sha256IdentityFingerprintFactory;
 
     // ----- test doubles ------------------------------------------------------
@@ -397,7 +397,7 @@ mod tests {
         sender_seed: [u8; 32],
         receiver_addr: iroh::EndpointAddr,
         content_hash: &str,
-    ) -> Result<PullResponse, super::active_clipboard_pull_wire::PullWireError> {
+    ) -> Result<PullResponse, super::pull_wire::PullWireError> {
         let sender = bind_endpoint_with(sender_seed).await;
         wait_for_direct_addrs(&sender).await;
         let conn = sender

@@ -27,7 +27,7 @@ use uc_core::ids::DeviceId;
 use uc_core::ports::clipboard::ActiveClipboardDispatchPort;
 use uc_core::ports::PeerAddressRepositoryPort;
 
-use super::send_gate::MemberSendGate;
+use super::super::send_gate::MemberSendGate;
 
 /// Send `state` to a single `target` under the full outbound gate (issue
 /// #1017 D2): `send_enabled` ∧ `send_content_types` (the latter via

@@ -40,7 +40,7 @@ use uc_core::ports::security::IdentityFingerprintFactoryPort;
 use uc_core::ports::{ActiveClipboardReceiverPort, InboundActiveClipboardState};
 use uc_core::security::IdentityFingerprint;
 
-use super::active_clipboard_wire;
+use super::wire;
 
 /// ALPN identifier for the active-clipboard state protocol. An independent
 /// sibling of the bulk clipboard / presence / pairing ALPNs so the Router can
@@ -152,7 +152,7 @@ impl ProtocolHandler for IrohActiveClipboardReceiverHandler {
 
         // 3. Read the single state frame. Any codec-level failure drops the
         //    connection — fire-and-forget means there is nothing to ack.
-        let msg = match active_clipboard_wire::read_frame(&mut recv).await {
+        let msg = match wire::read_frame(&mut recv).await {
             Ok(m) => m,
             Err(err) => {
                 warn!(
@@ -263,7 +263,7 @@ mod tests {
     use uc_core::membership::{MembershipError, SpaceMember};
     use uc_core::MemberSyncPreferences;
 
-    use super::super::active_clipboard_wire::{write_frame, ActiveClipboardWireMessage};
+    use super::super::wire::{write_frame, ActiveClipboardWireMessage};
     use crate::security::Sha256IdentityFingerprintFactory;
 
     // ----- test doubles ------------------------------------------------------

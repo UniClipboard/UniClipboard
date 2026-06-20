@@ -49,13 +49,10 @@ use uc_core::ports::{
 use crate::pairing::{IrohPairingSessionAdapter, PAIRING_ALPN};
 use crate::rendezvous::{RendezvousClient, RendezvousPairingInvitationAdapter};
 
-use super::active_clipboard_dispatch_adapter::IrohActiveClipboardDispatchAdapter;
-use super::active_clipboard_pull_client_adapter::IrohActiveClipboardPullClientAdapter;
-use super::active_clipboard_pull_serve_adapter::{
-    IrohActiveClipboardPullServeAdapter, ACTIVE_CLIPBOARD_PULL_ALPN,
-};
-use super::active_clipboard_receiver_adapter::{
-    IrohActiveClipboardReceiverAdapter, ACTIVE_CLIPBOARD_ALPN,
+use super::active_clipboard::{
+    IrohActiveClipboardDispatchAdapter, IrohActiveClipboardPullClientAdapter,
+    IrohActiveClipboardPullServeAdapter, IrohActiveClipboardReceiverAdapter, ACTIVE_CLIPBOARD_ALPN,
+    ACTIVE_CLIPBOARD_PULL_ALPN,
 };
 use super::addr_filter::{apply_addr_filter, enumerate_local_lan_v4};
 use super::blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
@@ -829,7 +826,7 @@ impl IrohNodeBuilder {
     /// Must be called before [`spawn`](Self::spawn). Coexists with every
     /// other `install_*` — all ALPNs share a single router.
     ///
-    /// [`IrohActiveClipboardReceiverHandler`]: super::active_clipboard_receiver_adapter::IrohActiveClipboardReceiverHandler
+    /// [`IrohActiveClipboardReceiverHandler`]: super::active_clipboard::receiver_adapter::IrohActiveClipboardReceiverHandler
     pub fn install_active_clipboard(
         &mut self,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
@@ -873,7 +870,7 @@ impl IrohNodeBuilder {
     /// Must be called before [`spawn`](Self::spawn). Coexists with every other
     /// `install_*` — all ALPNs share a single router.
     ///
-    /// [`IrohActiveClipboardPullServeHandler`]: super::active_clipboard_pull_serve_adapter::IrohActiveClipboardPullServeHandler
+    /// [`IrohActiveClipboardPullServeHandler`]: super::active_clipboard::pull_serve_adapter::IrohActiveClipboardPullServeHandler
     pub fn install_active_clipboard_pull(
         &mut self,
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,

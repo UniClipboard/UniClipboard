@@ -43,19 +43,19 @@ use crate::facade::clipboard_inbound::{
     InboundClipboardApplyInput, InboundClipboardApplyOutcome, InboundClipboardApplyPort,
 };
 use crate::facade::clipboard_outbound::OutboundBlobPublishGateway;
-use crate::usecases::clipboard_sync::active_state_fanout::fan_out_active_state;
-use crate::usecases::clipboard_sync::apply_inbound_active_state::{
+use crate::usecases::clipboard_sync::active_state::fanout::fan_out_active_state;
+use crate::usecases::clipboard_sync::active_state::apply_inbound::{
     ActiveClipboardInboundHandle, ApplyInboundActiveClipboardStateUseCase,
     InboundPulledContentStore, InboundPulledContentStoreError,
 };
-use crate::usecases::clipboard_sync::peer_online_resync_worker::{
+use crate::usecases::clipboard_sync::active_state::peer_online_resync_worker::{
     PeerOnlineResyncHandle, PeerOnlineResyncWorker,
 };
-use crate::usecases::clipboard_sync::restore_broadcast_worker::{
+use crate::usecases::clipboard_sync::active_state::restore_broadcast_worker::{
     RestoreBroadcastHandle, RestoreBroadcastWorker,
 };
 use crate::usecases::clipboard_sync::send_gate::MemberSendGate;
-use crate::usecases::clipboard_sync::serve_pull::{
+use crate::usecases::clipboard_sync::active_state::serve_pull::{
     ActiveClipboardPullServeDeps, ActiveClipboardPullServeUseCase,
 };
 use crate::usecases::clipboard_sync::snapshot_from_entry::SnapshotReconstructor;
@@ -155,7 +155,7 @@ pub fn build_active_clipboard_pull_serve_port(
 }
 
 /// Re-exported handle so bootstrap can hold the spawned loop's lifetime.
-pub use crate::usecases::clipboard_sync::apply_inbound_active_state::ActiveClipboardInboundHandle as ActiveClipboardHandle;
+pub use crate::usecases::clipboard_sync::active_state::apply_inbound::ActiveClipboardInboundHandle as ActiveClipboardHandle;
 
 /// Thin facade over the inbound active-clipboard state use case plus the
 /// outbound origination workers — restore broadcast and peer-online resync
@@ -385,8 +385,8 @@ impl InboundPulledContentStore for PulledContentStore {
 
 /// Re-exported handle so bootstrap can hold the restore-broadcast worker's
 /// lifetime alongside the inbound loop handle.
-pub use crate::usecases::clipboard_sync::restore_broadcast_worker::RestoreBroadcastHandle as ActiveClipboardRestoreBroadcastHandle;
+pub use crate::usecases::clipboard_sync::active_state::restore_broadcast_worker::RestoreBroadcastHandle as ActiveClipboardRestoreBroadcastHandle;
 
 /// Re-exported handle so bootstrap can hold the peer-online resync worker's
 /// lifetime alongside the other active-clipboard worker handles.
-pub use crate::usecases::clipboard_sync::peer_online_resync_worker::PeerOnlineResyncHandle as ActiveClipboardPeerOnlineResyncHandle;
+pub use crate::usecases::clipboard_sync::active_state::peer_online_resync_worker::PeerOnlineResyncHandle as ActiveClipboardPeerOnlineResyncHandle;

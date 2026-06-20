@@ -1,0 +1,174 @@
+---
+title: Export & import config (move a device)
+description: Carry one device's clipboard history, settings, and pairings over to a freshly installed UniClipboard — without re-pairing.
+---
+
+In short: this **moves a whole device to another machine**.
+
+Under **Settings → Storage** you export your current device into a single
+encrypted file, then import it on another **fresh install** of UniClipboard.
+After it restarts, your clipboard history, settings, and pairings with other
+devices are all still there — **no re-pairing needed**.
+
+<Callout type="warn">
+  This is a *move*, not a *multi-machine backup*. Importing carries this
+  device's **identity** along with it: after import, the new machine
+  **becomes** your original device. So **do not bring the original device back
+  online** after the move — two devices sharing the same identity will fight
+  each other on the device network. See
+  [Move semantics](#move-semantics-why-you-cant-run-both-at-once).
+</Callout>
+
+## When to use it
+
+- **Switching from the portable build to the installer.** The portable build
+  (the no-install "green" build you can run off a USB stick) can't auto-update
+  in-app, so many people want to move to the installer for the long run. But
+  simply copying the portable `data` folder next to the installer **does not
+  work** — the installer never reads from there, and the two builds store keys
+  differently, so copying files won't carry them. This is exactly what
+  [issue #1110](https://github.com/UniClipboard/UniClipboard/issues/1110) is
+  about. Export / import does the switch cleanly, **including no re-pairing**.
+- **New computer.** Retiring an old machine — move the whole setup over.
+- **Backup / restore.** Keep an encrypted file as a snapshot and restore it on
+  a freshly installed machine if something goes wrong.
+
+> Terms like "portable / installer build" and "identity / NodeId" are
+> explained in plain words the first time they show up — read on if a term
+> is unfamiliar.
+
+## Three things to know first
+
+1. **The target machine must be brand-new and uninitialized.** That is, freshly
+   installed — it has never created a space and never joined one. If the target
+   is already in use, factory-reset it first, then import. See
+   [What if the target is already initialized](#what-if-the-target-is-already-initialized).
+2. **The machine must be unlocked when you export.** Unlocking is the step where
+   you type your sync passphrase to open your history. It's an authorization
+   gate — it stops someone from quietly exporting the identity and data off a
+   locked machine.
+3. **For the export password, just reuse your sync passphrase.** Export asks you
+   to set a password that encrypts the file; import asks for the same password.
+   Reusing your existing sync passphrase is simplest — then you only have one
+   secret to remember. You can set a separate dedicated password instead if you
+   prefer.
+
+## Export (on the device you're moving away from)
+
+1. Open **Settings → Storage**, find the **Config backup / migration** group,
+   and click **Export config**.
+2. Enter a password to encrypt the exported file — reusing your sync passphrase
+   is recommended.
+3. Choose where to save it.
+4. You get an encrypted `.ucbundle` file. It bundles your clipboard history,
+   settings, device identity, and key material — **all encrypted with the
+   password you just entered**. Without the password no one can open it.
+
+<Callout type="info">
+  Export requires the session to be unlocked. If you're on the lock screen,
+  unlock with your sync passphrase first, then export.
+</Callout>
+
+Transfer the `.ucbundle` file to the target machine (USB stick, cloud drive,
+LAN file transfer — anything works). The file itself is encrypted, so the
+transfer is safe to observe, but share the password through a separate channel
+and don't keep it next to the file.
+
+## Import (on the brand-new device)
+
+Precondition: the target is **brand-new and uninitialized** (see point 1 above).
+
+1. On the target machine, open **Settings → Storage → Config backup /
+   migration** and click **Import config**.
+2. Select the `.ucbundle` file.
+3. Enter the **same password** (the one you set during export).
+4. The screen shows the file's **source info** (version, source type, device
+   fingerprint) so you can **confirm once more**. Verify it and confirm.
+5. The app applies the config and **restarts automatically**. After the
+   restart, history, settings, and pairings are all there — **no re-pairing
+   needed**.
+
+<Callout type="info">
+  If the UI asks you to unlock after import, just enter your **sync
+  passphrase**. That's expected: when the export file used a separate custom
+  password rather than your sync passphrase, the system still needs your sync
+  passphrase to open your history afterward. If you exported with your sync
+  passphrase, it usually won't ask.
+</Callout>
+
+## Move semantics: why you can't run both at once
+
+UniClipboard identifies a device by a stable **identity** (technically a
+**NodeId**, a fixed public key). Pairings, trust, and who is allowed to receive
+whose content are all bound to this identity. Switching Wi-Fi, restarting, or
+changing IP doesn't affect it.
+
+Export / import **carries this identity along**. So it's not a "copy", it's a
+"move":
+
+- After import, the target machine **is** your original device — other devices
+  see them as the same device, which is why you don't have to re-pair.
+- Because there is only one identity, now living on two machines, **the original
+  and the new device must not be online at the same time**. Two devices with the
+  same NodeId on the device network will conflict and behave unpredictably.
+
+<Callout type="warn">
+  **Once moved, retire the original device.** After confirming the new machine
+  works, don't start UniClipboard on the original device again (or reset /
+  uninstall it). If what you actually want is "two independent machines, both
+  usable", add a second device through the normal
+  [pairing flow](./pairing) instead of importing.
+</Callout>
+
+## FAQ
+
+### What if the target is already initialized?
+
+Import requires the target to be **uninitialized**. If it has already created or
+joined a space, the import is rejected. **Factory-reset** the target first (this
+wipes its existing local history and keys), returning it to an uninitialized
+state, then import. The factory-reset entry point and its effects are described
+in [Troubleshooting — Emergency reset](../help/troubleshooting#emergency-reset-last-resort).
+
+<Callout type="warn">
+  A factory reset **wipes the target machine's existing clipboard history** and
+  can't be undone. Only do it once you're sure there's nothing on that machine
+  you want to keep.
+</Callout>
+
+### It asks me to unlock after import?
+
+Enter your **sync passphrase** to unlock, and your history shows up as usual.
+See the note at the end of [Import](#import-on-the-brand-new-device).
+
+### What if I type the wrong password?
+
+The file won't open and you get a "wrong password or corrupt file" message (the
+two aren't distinguished, to avoid leaking hints). Just re-enter the correct
+password — your data is never damaged.
+
+### Does this touch the data on the original device?
+
+No. Export only **reads and packages**; the original device's history,
+settings, and pairings are left untouched. The thing to watch out for is **not
+bringing the original device back online** after the move (see
+[Move semantics](#move-semantics-why-you-cant-run-both-at-once)).
+
+### How is this different from "pairing a new device"?
+
+- **Import = move.** Carry the same device to a new machine, keep the identity
+  and history, and retire the original.
+- **Pairing = add a new device.** Two machines with separate identities, both
+  online and working independently; a newly paired device only syncs from the
+  moment it joins and doesn't inherit old history. Use the
+  [pairing flow](./pairing) for that.
+
+## Next
+
+- [Pairing & sync](./pairing) — to keep several devices independent and online
+  at the same time, go this route.
+- [Install — Portable build](../getting-started/install#portable-build) — how the
+  portable and installer builds differ, and why copying the `data` folder
+  doesn't work.
+- [Troubleshooting — Emergency reset](../help/troubleshooting#emergency-reset-last-resort)
+  — how to factory-reset a target machine that's already initialized.

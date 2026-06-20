@@ -205,12 +205,19 @@ upgrades, if any, will be flagged in the release notes.
 
 ### Can I export or back up history?
 
-There's no user-facing export command yet. The hidden
-`uniclip dev dump-clipboard --limit N` exists for development purposes and
-may change. **For mirror backups, copy the data directory** — but
-remember the database is encrypted and needs the matching keyring KEK
-entry to be readable; a cross-machine restore still requires re-running
-`init` / `join` to bind the keyslot.
+Yes. The GUI offers **Export config** under **Settings → Storage → Config
+backup / migration**, which packages the current device's history, settings,
+identity, and key material into an encrypted `.ucbundle` file; **Import config**
+on a freshly installed machine restores it — pairings included, so no
+re-pairing. For the full steps, the precondition (the target must be
+uninitialized), and the "move" semantics, see
+[Export & import config](../guides/config-migration).
+
+Under the hood the hidden `uniclip dev dump-clipboard --limit N` still exists
+for development purposes and may change. Plain-copying the data directory for a
+mirror backup is **unreliable**: the database is encrypted, key storage differs
+across install forms, and copying files won't carry the identity — for a
+cross-machine restore use the export / import above.
 
 ## Platforms & versions
 

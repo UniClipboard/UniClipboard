@@ -10621,6 +10621,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
+ "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
  "tauri-plugin-opener",

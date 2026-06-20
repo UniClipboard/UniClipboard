@@ -32,6 +32,12 @@ const log = createLogger('config-backup')
 
 const I18N = 'settings.sections.storage.configBackup'
 
+/** Maps a bundle's recorded source mode to its translation key. */
+const SOURCE_MODE_LABEL_KEYS: Record<string, string> = {
+  portable: `${I18N}.import.metaSourcePortable`,
+  installed: `${I18N}.import.metaSourceInstalled`,
+}
+
 export function ConfigBackupGroup() {
   const { t } = useTranslation()
 
@@ -93,12 +99,8 @@ export function ConfigBackupGroup() {
     }
   }
 
-  const sourceModeLabelKeys: Record<string, string> = {
-    portable: `${I18N}.import.metaSourcePortable`,
-    installed: `${I18N}.import.metaSourceInstalled`,
-  }
   const sourceModeLabel = (mode: string) => {
-    const key = sourceModeLabelKeys[mode]
+    const key = SOURCE_MODE_LABEL_KEYS[mode]
     return key ? t(key) : mode
   }
 

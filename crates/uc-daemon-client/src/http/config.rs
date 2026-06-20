@@ -47,17 +47,14 @@ impl DaemonConfigClient {
     }
 
     /// `POST /config/export` — package the current configuration into an
-    /// encrypted `.ucbundle` at `target_path`. Requires an unlocked session.
-    /// Returns the absolute path the bundle was written to.
+    /// encrypted `.ucbundle` at `target_path`. Requires an unlocked session; the
+    /// bundle is sealed with the installation's own key material (no export
+    /// password). Returns the absolute path the bundle was written to.
     pub async fn export(
         &self,
-        password: String,
         target_path: String,
     ) -> Result<ExportConfigResponse, DaemonRequestError> {
-        let body = ExportConfigRequest {
-            password,
-            target_path,
-        };
+        let body = ExportConfigRequest { target_path };
         enveloped_request(
             &self.http,
             &self.connection_state,

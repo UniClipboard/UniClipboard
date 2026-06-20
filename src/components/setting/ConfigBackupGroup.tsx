@@ -62,8 +62,9 @@ export function ConfigBackupGroup() {
   const { t } = useTranslation()
 
   // ── Export state ─────────────────────────────────────────────────
-  const [exportOpen, setExportOpen] = useState(false)
-  const [exportPassword, setExportPassword] = useState('')
+  // Export takes no password: the daemon seals the bundle with the
+  // installation's own key material (opening it later needs the space
+  // passphrase), so the button goes straight to the save dialog.
   const [exporting, setExporting] = useState(false)
 
   // ── Import state ─────────────────────────────────────────────────
@@ -77,12 +78,10 @@ export function ConfigBackupGroup() {
 
   // ── Export handlers ──────────────────────────────────────────────
 
-  const handleExportConfirm = async () => {
+  const handleExport = async () => {
     setExporting(true)
     try {
-      const result = await commands.exportConfigPackage(exportPassword)
-      setExportOpen(false)
-      setExportPassword('')
+      const result = await commands.exportConfigPackage()
       toast.success(t(`${I18N}.export.success`))
       // Reveal the bundle so the user can find it immediately. A reveal
       // failure is non-fatal — the export already landed at `result.path`.
@@ -93,11 +92,7 @@ export function ConfigBackupGroup() {
       }
     } catch (error) {
       // Save dialog cancelled (the command pops it internally) — silent.
-      if (isCancelled(error)) {
-        setExportOpen(false)
-        setExportPassword('')
-        return
-      }
+      if (isCancelled(error)) return
       const cfg = asConfigError(error)
       if (cfg?.kind === 'daemon' && cfg.code === 'LOCKED') {
         toast.error(t(`${I18N}.export.lockedError`))
@@ -133,9 +128,6 @@ export function ConfigBackupGroup() {
     const cfg = asConfigError(error)
     if (cfg?.kind === 'daemon') {
       switch (cfg.code) {
-        case 'ALREADY_INITIALIZED':
-          toast.error(t(`${I18N}.import.alreadyInitializedError`))
-          return
         case 'INVALID_PASSWORD_OR_CORRUPT':
           toast.error(t(`${I18N}.import.invalidPasswordError`))
           return
@@ -211,15 +203,7 @@ export function ConfigBackupGroup() {
   return (
     <SettingGroup title={t(`${I18N}.label`)}>
       <SettingRow label={t(`${I18N}.export.label`)} description={t(`${I18N}.export.description`)}>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setExportPassword('')
-            setExportOpen(true)
-          }}
-          disabled={exporting}
-        >
+        <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
           {exporting ? t(`${I18N}.export.exporting`) : t(`${I18N}.export.button`)}
         </Button>
       </SettingRow>
@@ -229,54 +213,6 @@ export function ConfigBackupGroup() {
           {t(`${I18N}.import.button`)}
         </Button>
       </SettingRow>
-
-      {/* ── Export password dialog ── */}
-      <Dialog
-        open={exportOpen}
-        onOpenChange={open => {
-          if (exporting) return
-          setExportOpen(open)
-          if (!open) setExportPassword('')
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t(`${I18N}.export.passwordTitle`)}</DialogTitle>
-            <DialogDescription>{t(`${I18N}.export.passwordDescription`)}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="config-export-password">{t(`${I18N}.export.passwordLabel`)}</Label>
-            <Input
-              id="config-export-password"
-              type="password"
-              value={exportPassword}
-              onChange={e => setExportPassword(e.target.value)}
-              placeholder={t(`${I18N}.export.passwordPlaceholder`)}
-              disabled={exporting}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && exportPassword && !exporting) {
-                  void handleExportConfirm()
-                }
-              }}
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setExportOpen(false)
-                setExportPassword('')
-              }}
-              disabled={exporting}
-            >
-              {t(`${I18N}.import.cancelButton`)}
-            </Button>
-            <Button onClick={handleExportConfirm} disabled={exporting || !exportPassword}>
-              {exporting ? t(`${I18N}.export.exporting`) : t(`${I18N}.export.confirmButton`)}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ── Import password dialog ── */}
       <Dialog

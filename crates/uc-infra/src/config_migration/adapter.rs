@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tracing::{info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
 use uc_core::crypto::domain::Passphrase;
 use uc_core::ids::ProfileId;
@@ -22,6 +22,8 @@ use uc_core::ports::config_migration::{
     PreviewConfigImportPort, StageConfigImportPort, StagedConfigImport,
 };
 use uc_core::ports::{ClockPort, LocalIdentityPort, SecureStoragePort};
+
+use crate::security::crypto_model::KeySlotFile;
 
 use super::archive::{ArchiveError, BundleArchive};
 use super::bundle::{self, Argon2Params, BundleError};
@@ -34,9 +36,12 @@ use super::staging::{
     SETUP_STATUS_MEMBER, STAGING_DIR_NAME, UI_STATE_PREFIX,
 };
 
-/// Raw secure-storage entries collected for a bundle, paired with whether a KEK
-/// was among them.
-type CollectedSecrets = (Vec<(String, Vec<u8>)>, bool);
+/// Raw secure-storage entries collected for a bundle, paired with the
+/// current-profile KEK bytes when one was among them.
+///
+/// The KEK is surfaced separately (not just a presence flag) because the export
+/// both carries it inside the bundle *and* uses it as the bundle's own AEAD key.
+type CollectedSecrets = (Vec<(String, Vec<u8>)>, Option<Vec<u8>>);
 
 /// Filesystem inputs the adapter reads/writes. Resolved by the caller from the
 /// installation's path layout so this adapter never recomputes directory
@@ -150,16 +155,17 @@ impl ConfigMigrationAdapter {
     }
 
     /// Gather the secrets enumerated for the current profile from secure
-    /// storage. Returns the raw entries plus whether a KEK was present.
+    /// storage. Returns the raw entries plus the current-profile KEK bytes when
+    /// one was present.
     ///
-    /// Only the current-profile KEK is a credential-store secret here. The KEK
-    /// is re-derivable from the passphrase, so a missing KEK is not fatal — it
-    /// just means unlock will be required after apply. The iroh device identity
-    /// is *not* read here; it migrates as files (see
+    /// Only the current-profile KEK is a credential-store secret here. It is
+    /// read once and used twice by the export: as the bundle's own AEAD key and
+    /// as a carried secret so the target can auto-unlock after apply. The iroh
+    /// device identity is *not* read here; it migrates as files (see
     /// [`Self::collect_iroh_identity_files`]).
     fn collect_secrets(&self) -> Result<CollectedSecrets, ConfigMigrationError> {
         let mut entries = Vec::new();
-        let mut has_kek = false;
+        let mut kek = None;
 
         for spec in migratable_secret_keys(self.profile_id.inner()) {
             let value =
@@ -171,13 +177,13 @@ impl ConfigMigrationAdapter {
 
             if let Some(bytes) = value {
                 if matches!(spec.kind, MigratableSecretKind::ProfileKek) {
-                    has_kek = true;
+                    kek = Some(bytes.clone());
                 }
                 entries.push((spec.key, bytes));
             }
         }
 
-        Ok((entries, has_kek))
+        Ok((entries, kek))
     }
 
     /// Collect the iroh device-identity files as bundle members under
@@ -324,6 +330,42 @@ fn map_db_snapshot_err(err: DbSnapshotError) -> ConfigMigrationError {
     }
 }
 
+/// Extract the salt + Argon2 parameters from a serialized keyslot.
+///
+/// The KEK is `Argon2id(passphrase, keyslot.salt, keyslot.kdf)`. Sealing a
+/// bundle with the KEK and recording these same parameters in the bundle header
+/// is what lets a reader reproduce the KEK from the space passphrase via
+/// `bundle::open`. A keyslot that cannot be parsed, uses a non-Argon2id KDF, or
+/// carries a salt of unexpected length is an internal inconsistency (an
+/// initialized installation always has a well-formed V1 keyslot).
+fn parse_keyslot_kdf(
+    keyslot_bytes: &[u8],
+) -> Result<([u8; 16], Argon2Params), ConfigMigrationError> {
+    let keyslot: KeySlotFile =
+        serde_json::from_slice(keyslot_bytes).map_err(|_| ConfigMigrationError::Internal {
+            details: "keyslot could not be parsed for export".to_string(),
+        })?;
+    if keyslot.kdf.alg != "Argon2id" {
+        return Err(ConfigMigrationError::Internal {
+            details: "unsupported key-derivation algorithm in keyslot".to_string(),
+        });
+    }
+    let salt: [u8; 16] =
+        keyslot
+            .salt
+            .as_slice()
+            .try_into()
+            .map_err(|_| ConfigMigrationError::Internal {
+                details: "keyslot salt has unexpected length".to_string(),
+            })?;
+    let kdf = Argon2Params {
+        mem_kib: keyslot.kdf.params.mem_kib,
+        iters: keyslot.kdf.params.iters,
+        parallelism: keyslot.kdf.params.parallelism,
+    };
+    Ok((salt, kdf))
+}
+
 fn map_staging_err(err: StagingError) -> ConfigMigrationError {
     match err {
         StagingError::Io => ConfigMigrationError::Io {
@@ -338,11 +380,7 @@ fn map_staging_err(err: StagingError) -> ConfigMigrationError {
 #[async_trait]
 impl ExportConfigBundlePort for ConfigMigrationAdapter {
     #[instrument(skip_all, fields(profile = %self.profile_id.inner()))]
-    async fn export_bundle(
-        &self,
-        password: &Passphrase,
-        destination: &Path,
-    ) -> Result<PathBuf, ConfigMigrationError> {
+    async fn export_bundle(&self, destination: &Path) -> Result<PathBuf, ConfigMigrationError> {
         info!("starting config bundle export");
 
         // 1. Consistent db snapshot (blocking; sqlite + file IO).
@@ -356,15 +394,35 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
                 })?
                 .map_err(map_db_snapshot_err)?;
 
-        // 2. Secrets (optional current-profile KEK only; identity is files).
-        let (secret_entries, has_kek) = self.collect_secrets()?;
+        // 2. Secrets (current-profile KEK only; identity is files). The KEK both
+        //    encrypts this bundle and rides inside it for post-import
+        //    auto-unlock. An unlocked session that lacks its KEK is a degenerate
+        //    state we cannot seal from (the passphrase is never retained, so the
+        //    KEK cannot be re-derived here) — fail rather than emit a bundle no
+        //    passphrase can open.
+        let (secret_entries, kek) = self.collect_secrets()?;
+        let Some(kek_bytes) = kek else {
+            error!("export aborted: current-profile KEK absent from secure storage while unlocked");
+            return Err(ConfigMigrationError::Internal {
+                details: "key material unavailable for export".to_string(),
+            });
+        };
+        let kek_key: [u8; 32] = kek_bytes.as_slice().try_into().map_err(|_| {
+            error!("export aborted: KEK material has unexpected length");
+            ConfigMigrationError::Internal {
+                details: "key material has unexpected length".to_string(),
+            }
+        })?;
         let secrets_file = SecretsFile::from_raw(secret_entries);
 
         // 3. iroh device-identity files (migrated as files, not a secret).
         let iroh_identity_files = self.collect_iroh_identity_files()?;
 
-        // 4. Vault + settings files.
+        // 4. Vault + settings files. The keyslot is carried verbatim and also
+        //    parsed for the salt + KDF that derive the KEK from the passphrase,
+        //    so the sealed bundle's header lets `open` reproduce that KEK.
         let keyslot = Self::read_required(&self.paths.vault_dir.join("keyslot.json"))?;
+        let (bundle_salt, bundle_kdf) = parse_keyslot_kdf(&keyslot)?;
         let device_id = Self::read_required(&self.paths.vault_dir.join("device_id.txt"))?;
         // Setup-status marker (`vault/.setup_status`): on an initialized source
         // it should exist, but read it defensively (carry if present, skip if
@@ -437,12 +495,13 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
             })?,
         );
 
-        // 6. Tar → seal → write. Sealing (Argon2) is CPU-bound; run blocking.
+        // 6. Tar → seal → write. The bundle is sealed with the KEK directly
+        //    (no Argon2 here — the salt + KDF written to the header let `open`
+        //    re-derive the KEK from the passphrase). AEAD over the snapshot is
+        //    still CPU-bound, so run it blocking.
         let tar_bytes = archive.to_tar_bytes().map_err(map_archive_err)?;
-        let password_bytes = password.expose().to_string();
         let sealed = tokio::task::spawn_blocking(move || {
-            let password = Passphrase::from(password_bytes);
-            bundle::seal(&password, Argon2Params::production(), &tar_bytes)
+            bundle::seal_with_key(&kek_key, &bundle_salt, bundle_kdf, &tar_bytes)
         })
         .await
         .map_err(|_| ConfigMigrationError::Internal {
@@ -471,7 +530,7 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
             details: "bundle write task failed to run".to_string(),
         })??;
 
-        info!(has_kek, "config bundle export complete");
+        info!("config bundle export complete");
         Ok(final_path)
     }
 }

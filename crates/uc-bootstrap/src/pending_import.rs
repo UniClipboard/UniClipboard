@@ -19,6 +19,17 @@
 //! Together these let a portable→installer migration keep the same network
 //! identity without re-pairing.
 //!
+//! ## Replace semantics
+//!
+//! Applying overwrites whatever the target currently holds: the db, vault
+//! members, identity files, settings, and the KEK are all idempotent
+//! overwrites, so importing onto an already-initialized installation replaces it
+//! in place (no separate factory-reset step). When the db file is replaced, any
+//! stale SQLite `-wal`/`-shm` sidecars left by the previous installation are
+//! removed first — opening the freshly imported snapshot alongside an old WAL
+//! would corrupt it. This step runs on boot before any pool opens the db, so
+//! there is never a live writer to race.
+//!
 //! ## Crash-safety / idempotency (design doc §8)
 //!
 //! Order is fixed so a crash never leaves "db swapped but identity not written"
@@ -38,7 +49,7 @@
 //! staging area is preserved untouched so a newer build (or the user) can deal
 //! with it, never blocking boot.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tracing::{error, info};
@@ -153,8 +164,13 @@ pub fn apply_pending_import(
     info!("staged secrets written; copying staged files into live locations");
 
     // --- Step 2: copy file members into their live locations. ----------------
-    // Required members.
+    // Required members. The db snapshot is a clean single-file (`VACUUM INTO`),
+    // so after replacing the live db remove any stale `-wal`/`-shm` sidecars the
+    // previous installation left behind — opening the new snapshot alongside an
+    // old WAL would corrupt it (the replace path; on a fresh target there are
+    // none to remove).
     copy_member(&staging_dir, DB_MEMBER, db_path)?;
+    remove_stale_db_sidecars(db_path)?;
     copy_member(
         &staging_dir,
         KEYSLOT_MEMBER,
@@ -197,6 +213,27 @@ fn copy_member(staging_dir: &Path, member: &str, dest: &Path) -> Result<(), Pend
     let src = staging_dir.join(member);
     ensure_parent(dest)?;
     std::fs::copy(&src, dest).map_err(|_| PendingImportError::CopyMember)?;
+    Ok(())
+}
+
+/// Remove the SQLite `-wal` / `-shm` sidecars beside `db_path`, if present.
+///
+/// After replacing the live db with the imported snapshot, sidecars from the
+/// previous installation would otherwise be re-applied on top of the new db.
+/// Absence is the common (fresh-target) case and is not an error; a real
+/// removal failure is surfaced (consistent with `copy_member`) so the staging is
+/// preserved and the next boot retries rather than opening a mismatched db.
+fn remove_stale_db_sidecars(db_path: &Path) -> Result<(), PendingImportError> {
+    for suffix in ["-wal", "-shm"] {
+        let mut name = db_path.as_os_str().to_os_string();
+        name.push(suffix);
+        let sidecar = PathBuf::from(name);
+        match std::fs::remove_file(&sidecar) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(PendingImportError::CopyMember),
+        }
+    }
     Ok(())
 }
 
@@ -506,6 +543,51 @@ mod tests {
             &storage,
         )
         .expect("second apply must be a no-op");
+    }
+
+    #[test]
+    fn apply_replaces_existing_db_and_removes_stale_sidecars() {
+        // Replace semantics: importing onto an already-populated target
+        // overwrites the live db and clears the previous installation's stale
+        // SQLite sidecars (which would otherwise corrupt the fresh snapshot).
+        let dir = tempfile::tempdir().unwrap();
+        let data_root = dir.path();
+        seed_staging(data_root, true);
+
+        let storage: Arc<dyn SecureStoragePort> = Arc::new(TestSecureStorage::default());
+        let d = live_dests(data_root);
+
+        // Pre-existing live db + stale WAL/SHM sidecars from a prior install.
+        std::fs::create_dir_all(d.db_path.parent().unwrap()).unwrap();
+        std::fs::write(&d.db_path, b"OLD-DB-CONTENT").unwrap();
+        let wal = {
+            let mut n = d.db_path.as_os_str().to_os_string();
+            n.push("-wal");
+            std::path::PathBuf::from(n)
+        };
+        let shm = {
+            let mut n = d.db_path.as_os_str().to_os_string();
+            n.push("-shm");
+            std::path::PathBuf::from(n)
+        };
+        std::fs::write(&wal, b"STALE-WAL").unwrap();
+        std::fs::write(&shm, b"STALE-SHM").unwrap();
+
+        apply_pending_import(
+            data_root,
+            &d.db_path,
+            &d.vault_dir,
+            &d.settings_path,
+            &d.iroh_identity_dir,
+            &storage,
+        )
+        .expect("apply should replace the existing installation");
+
+        // Live db replaced by the staged snapshot.
+        assert_eq!(std::fs::read(&d.db_path).unwrap(), b"DBSNAPSHOT");
+        // Stale sidecars removed so the fresh snapshot is not corrupted.
+        assert!(!wal.exists(), "stale -wal must be removed on replace");
+        assert!(!shm.exists(), "stale -shm must be removed on replace");
     }
 
     #[test]

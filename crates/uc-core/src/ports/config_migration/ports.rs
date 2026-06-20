@@ -8,9 +8,9 @@
 //! * inspecting a bundle's descriptive metadata before committing to it;
 //! * staging a bundle so a subsequent restart can adopt it.
 //!
-//! None of these signatures expose how a bundle is packaged or protected. The
-//! password is an opaque operator secret; the bundle is referenced only by a
-//! filesystem location.
+//! None of these signatures expose how a bundle is packaged or protected. A
+//! password, where one is taken, is an opaque operator secret; the bundle is
+//! referenced only by a filesystem location.
 
 use std::path::{Path, PathBuf};
 
@@ -21,29 +21,26 @@ use crate::crypto::domain::Passphrase;
 use super::error::ConfigMigrationError;
 use super::model::{ConfigImportPreview, StagedConfigImport};
 
-/// Export the current installation's configuration into a password-protected
+/// Export the current installation's configuration into a self-protected
 /// bundle written to a destination path.
 ///
 /// Requires an unlocked, initialized installation; the unlocked session is the
 /// authorization gate for releasing the device identity and encrypted data.
 #[async_trait]
 pub trait ExportConfigBundlePort: Send + Sync {
-    /// Produce a configuration bundle protected by `password` and write it to
-    /// `destination`.
+    /// Produce a configuration bundle and write it to `destination`.
     ///
-    /// On success returns the path the bundle was written to (the producer
-    /// may normalize or finalize `destination`).
+    /// The bundle is protected by the installation's own key material, so no
+    /// separate export secret is taken; reading it back later requires the
+    /// space passphrase. On success returns the path the bundle was written to
+    /// (the producer may normalize or finalize `destination`).
     ///
     /// Returns:
     /// * [`ConfigMigrationError::Locked`] when the session is not unlocked;
     /// * [`ConfigMigrationError::NotInitialized`] when there is nothing to
     ///   export;
     /// * [`ConfigMigrationError::Io`] on write failure.
-    async fn export_bundle(
-        &self,
-        password: &Passphrase,
-        destination: &Path,
-    ) -> Result<PathBuf, ConfigMigrationError>;
+    async fn export_bundle(&self, destination: &Path) -> Result<PathBuf, ConfigMigrationError>;
 }
 
 /// Read a bundle's non-secret descriptive metadata without applying it.
@@ -72,16 +69,15 @@ pub trait PreviewConfigImportPort: Send + Sync {
 /// configuration.
 ///
 /// Staging validates the bundle and records the pending migration; it does not
-/// replace the live configuration. Requires an uninitialized target: this
-/// layer never overwrites or merges into an existing installation.
+/// touch the live configuration immediately. Applying on the next restart
+/// replaces whatever configuration the target currently holds, if any.
 #[async_trait]
 pub trait StageConfigImportPort: Send + Sync {
     /// Validate the bundle at `source` using `password` and record it as a
-    /// pending migration to be applied on the next restart.
+    /// pending migration to be applied on the next restart. Applying replaces
+    /// the target's existing configuration, if any.
     ///
     /// Returns:
-    /// * [`ConfigMigrationError::AlreadyInitialized`] when the target already
-    ///   holds configuration;
     /// * [`ConfigMigrationError::InvalidPasswordOrCorrupt`] when `password` is
     ///   wrong or the bundle is corrupt;
     /// * [`ConfigMigrationError::IncompatibleBundle`] when the bundle is too

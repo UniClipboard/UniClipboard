@@ -22,14 +22,6 @@ pub enum ConfigMigrationError {
     #[error("source installation is not initialized")]
     NotInitialized,
 
-    /// The target installation already holds configuration, so importing into
-    /// it is refused.
-    ///
-    /// A non-empty target must be reset to a clean state before an import can
-    /// proceed; this layer never overwrites or merges in place.
-    #[error("target installation is already initialized")]
-    AlreadyInitialized,
-
     /// The supplied password was wrong, or the bundle is corrupt.
     ///
     /// These two cases are intentionally indistinguishable to avoid revealing

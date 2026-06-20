@@ -31,15 +31,21 @@ pub use adapter::{ConfigMigrationAdapter, ConfigMigrationPaths};
 #[cfg(test)]
 mod tests {
     //! End-to-end adapter tests: export → preview → stage against real ports.
+    //!
+    //! The source is a *genuinely initialized* installation — a real `KeySlot`
+    //! and matching KEK produced by `DefaultSpaceAccessAdapter::initialize`. The
+    //! export seals the bundle with that KEK (no export password), so opening it
+    //! requires the space passphrase that derives the KEK ([`FIXTURE_PASSPHRASE`]).
 
     use std::sync::Arc;
 
     use uc_core::crypto::domain::Passphrase;
-    use uc_core::ids::ProfileId;
+    use uc_core::ids::{ProfileId, SpaceId};
     use uc_core::ports::config_migration::{
         ConfigMigrationError, ExportConfigBundlePort, PreviewConfigImportPort,
         StageConfigImportPort,
     };
+    use uc_core::ports::space::SpaceAccessStore;
     use uc_core::ports::{ClockPort, LocalIdentityPort, SecureStorageError, SecureStoragePort};
     use uc_core::security::IdentityFingerprint;
 
@@ -49,12 +55,20 @@ mod tests {
     };
     use super::{ConfigMigrationAdapter, ConfigMigrationPaths};
     use crate::db::pool::init_db_pool;
+    use crate::fs::key_slot_store::JsonKeySlotStore;
+    use crate::security::{
+        DefaultCurrentProfile, DefaultSpaceAccessAdapter, InMemorySession, KeyMaterialStore,
+    };
 
     use std::collections::HashMap;
     use std::sync::Mutex;
 
     type DbPool =
         diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::sqlite::SqliteConnection>>;
+
+    /// Space passphrase used to initialize the fixture. The KEK is derived from
+    /// it, so this same passphrase opens the exported bundle.
+    const FIXTURE_PASSPHRASE: &str = "space-passphrase";
 
     #[derive(Default)]
     struct InMemorySecureStorage {
@@ -109,7 +123,7 @@ mod tests {
         data_root: std::path::PathBuf,
     }
 
-    fn build_fixture() -> Fixture {
+    async fn build_fixture() -> Fixture {
         let dir = tempfile::tempdir().unwrap();
         let data_root = dir.path().join("data");
         let vault = data_root.join("vault");
@@ -119,8 +133,30 @@ mod tests {
         let db_path = data_root.join("uniclipboard.db");
         let pool: DbPool = init_db_pool(db_path.to_str().unwrap()).unwrap();
 
-        // Seed vault files + settings.
-        std::fs::write(vault.join("keyslot.json"), b"{\"version\":\"V1\"}").unwrap();
+        // Real initialization: writes a real `vault/keyslot.json` and stores a
+        // matching KEK (derived from FIXTURE_PASSPHRASE) in the backend. This is
+        // what makes "open the bundle with the passphrase" hold.
+        let secure_storage = Arc::new(InMemorySecureStorage::default());
+        {
+            let key_material = Arc::new(KeyMaterialStore::new(
+                secure_storage.clone(),
+                Arc::new(JsonKeySlotStore::new(vault.clone())),
+            ));
+            let space_access = DefaultSpaceAccessAdapter::new(
+                key_material,
+                Arc::new(DefaultCurrentProfile::new()),
+                Arc::new(InMemorySession::new()),
+            );
+            SpaceAccessStore::initialize(
+                &space_access,
+                &SpaceId::from("space"),
+                &Passphrase::from(FIXTURE_PASSPHRASE),
+            )
+            .await
+            .unwrap();
+        }
+
+        // Remaining vault files + settings (carried verbatim).
         std::fs::write(
             vault.join("device_id.txt"),
             b"550e8400-e29b-41d4-a716-446655440000",
@@ -138,13 +174,6 @@ mod tests {
         let iroh_identity_dir = data_root.join("iroh-identity");
         std::fs::create_dir_all(&iroh_identity_dir).unwrap();
         std::fs::write(iroh_identity_dir.join("iroh-identity_v1.bin"), [7u8; 32]).unwrap();
-
-        // Seed secrets: only the current-profile KEK is a credential-store
-        // secret now (the identity is files).
-        let secure_storage = Arc::new(InMemorySecureStorage::default());
-        secure_storage
-            .set("kek:v1:profile:default", &[9u8; 32])
-            .unwrap();
 
         let identity = IdentityFingerprint::from_raw_string("ABCDEFGHIJKLMNOP").unwrap();
 
@@ -179,13 +208,13 @@ mod tests {
 
     #[tokio::test]
     async fn export_then_preview_round_trips_manifest() {
-        let fx = build_fixture();
-        let password = Passphrase::from("space-passphrase");
+        let fx = build_fixture().await;
+        let password = Passphrase::from(FIXTURE_PASSPHRASE);
         let dest = fx.export_dir.join("config.ucbundle");
 
         let written = fx
             .adapter
-            .export_bundle(&password, &dest)
+            .export_bundle(&dest)
             .await
             .expect("export should succeed");
         assert_eq!(written, dest);
@@ -205,12 +234,9 @@ mod tests {
 
     #[tokio::test]
     async fn preview_with_wrong_password_is_invalid_or_corrupt() {
-        let fx = build_fixture();
+        let fx = build_fixture().await;
         let dest = fx.export_dir.join("config.ucbundle");
-        fx.adapter
-            .export_bundle(&Passphrase::from("right"), &dest)
-            .await
-            .unwrap();
+        fx.adapter.export_bundle(&dest).await.unwrap();
 
         let err = fx
             .adapter
@@ -225,10 +251,10 @@ mod tests {
 
     #[tokio::test]
     async fn stage_lays_out_staging_with_kek_and_no_unlock_required() {
-        let fx = build_fixture();
-        let password = Passphrase::from("pw");
+        let fx = build_fixture().await;
+        let password = Passphrase::from(FIXTURE_PASSPHRASE);
         let dest = fx.export_dir.join("config.ucbundle");
-        fx.adapter.export_bundle(&password, &dest).await.unwrap();
+        fx.adapter.export_bundle(&dest).await.unwrap();
 
         let staged = fx
             .adapter
@@ -280,36 +306,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_without_kek_requires_unlock_after_apply() {
-        let fx = build_fixture();
-        // Drop the KEK before export so the bundle carries no KEK secret.
+    async fn export_without_kek_in_storage_fails() {
+        // The KEK both seals the bundle and rides inside it; without it in
+        // storage there is nothing to seal with (the passphrase is never
+        // retained, so it cannot be re-derived here). Export must fail rather
+        // than emit a bundle no passphrase could open.
+        let fx = build_fixture().await;
         fx.secure_storage.delete("kek:v1:profile:default").unwrap();
 
-        let password = Passphrase::from("pw");
         let dest = fx.export_dir.join("config.ucbundle");
-        fx.adapter.export_bundle(&password, &dest).await.unwrap();
-
-        let staged = fx.adapter.stage_import(&password, &dest).await.unwrap();
-        assert!(staged.unlock_required_after_apply);
-
-        let layout = StagingLayout::new(&fx.data_root);
-        let marker: PendingImportMarker =
-            serde_json::from_slice(&std::fs::read(layout.marker_path()).unwrap()).unwrap();
-        assert!(!marker.has_kek);
+        let err = fx
+            .adapter
+            .export_bundle(&dest)
+            .await
+            .expect_err("export must fail without a KEK to seal with");
+        assert!(matches!(err, ConfigMigrationError::Internal { .. }));
+        assert!(!dest.exists(), "no bundle should be written on failure");
     }
 
     #[tokio::test]
     async fn export_succeeds_when_iroh_identity_dir_absent() {
-        let fx = build_fixture();
+        let fx = build_fixture().await;
         // Remove the identity directory entirely: the export must still succeed
         // (the directory is carried defensively, not required), producing a
         // bundle with no iroh-identity members.
         std::fs::remove_dir_all(fx.data_root.join("iroh-identity")).unwrap();
 
-        let password = Passphrase::from("pw");
+        let password = Passphrase::from(FIXTURE_PASSPHRASE);
         let dest = fx.export_dir.join("config.ucbundle");
         fx.adapter
-            .export_bundle(&password, &dest)
+            .export_bundle(&dest)
             .await
             .expect("export should succeed without identity files");
 

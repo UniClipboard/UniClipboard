@@ -48,20 +48,21 @@ beforeEach(() => {
 })
 
 describe('ConfigBackupGroup export', () => {
-  it('exports the config with the entered password and reveals the bundle', async () => {
+  it('exports the config in one click (no password) and reveals the bundle', async () => {
     const { revealPath } = await import('@/api/storage')
     const user = userEvent.setup()
     mockExport.mockResolvedValue({ path: '/home/test/uniclipboard-config.ucbundle' })
 
     render(<ConfigBackupGroup />)
 
+    // No export password dialog: the button goes straight to the save dialog
+    // (popped inside the command) and exports with the installation's own key.
     await user.click(screen.getByRole('button', { name: `${I18N}.export.button` }))
-    await user.type(screen.getByLabelText(`${I18N}.export.passwordLabel`), 'hunter2')
-    await user.click(screen.getByRole('button', { name: `${I18N}.export.confirmButton` }))
 
     await waitFor(() => {
-      expect(mockExport).toHaveBeenCalledWith('hunter2')
+      expect(mockExport).toHaveBeenCalledTimes(1)
     })
+    expect(mockExport).toHaveBeenCalledWith()
     expect(vi.mocked(revealPath)).toHaveBeenCalledWith('/home/test/uniclipboard-config.ucbundle')
   })
 })
@@ -106,7 +107,7 @@ describe('ConfigBackupGroup import', () => {
     expect(mockRestartApp).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the already-initialized message and stays on the confirm step', async () => {
+  it('surfaces a daemon error on confirm and stays on the confirm step', async () => {
     const { toast } = await import('@/components/ui/toast')
     const user = userEvent.setup()
     mockPick.mockResolvedValue('/home/test/source.ucbundle')
@@ -119,9 +120,9 @@ describe('ConfigBackupGroup import', () => {
     })
     mockImport.mockRejectedValue({
       kind: 'daemon',
-      status: 409,
-      code: 'ALREADY_INITIALIZED',
-      message: 'already initialized',
+      status: 400,
+      code: 'INVALID_PASSWORD_OR_CORRUPT',
+      message: 'invalid password or corrupt bundle',
     })
 
     render(<ConfigBackupGroup />)
@@ -134,7 +135,7 @@ describe('ConfigBackupGroup import', () => {
     await user.click(screen.getByRole('button', { name: `${I18N}.import.confirmButton` }))
 
     await waitFor(() => {
-      expect(vi.mocked(toast).error).toHaveBeenCalledWith(`${I18N}.import.alreadyInitializedError`)
+      expect(vi.mocked(toast).error).toHaveBeenCalledWith(`${I18N}.import.invalidPasswordError`)
     })
     expect(mockRestartDaemon).not.toHaveBeenCalled()
     // Still on the confirm step (warning copy remains visible).

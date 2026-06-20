@@ -6,9 +6,10 @@ description: Carry one device's clipboard history, settings, and pairings over t
 In short: this **moves a whole device to another machine**.
 
 Under **Settings → Storage** you export your current device into a single
-encrypted file, then import it on another **fresh install** of UniClipboard.
-After it restarts, your clipboard history, settings, and pairings with other
-devices are all still there — **no re-pairing needed**.
+encrypted file, then import it on another copy of UniClipboard (a fresh install
+is typical; importing onto a machine that's already in use replaces what's on
+it). After it restarts, your clipboard history, settings, and pairings with
+other devices are all still there — **no re-pairing needed**.
 
 <Callout type="warn">
   This is a *move*, not a *multi-machine backup*. Importing carries this
@@ -37,64 +38,55 @@ devices are all still there — **no re-pairing needed**.
 > explained in plain words the first time they show up — read on if a term
 > is unfamiliar.
 
-## Three things to know first
+## Two things to know first
 
-1. **The target machine must be brand-new and uninitialized.** That is, freshly
-   installed — it has never created a space and never joined one. If the target
-   is already in use, factory-reset it first, then import. See
-   [What if the target is already initialized](#what-if-the-target-is-already-initialized).
+1. **Import replaces the target machine's config.** Whatever space, history, and
+   pairings are on the target get overwritten by the imported ones. A brand-new
+   install is the typical case, but importing onto a machine that's already in
+   use works too — it just overwrites it. There's no separate "reset first"
+   step. See [What if the target is already in use](#what-if-the-target-is-already-in-use).
 2. **The machine must be unlocked when you export.** Unlocking is the step where
    you type your sync passphrase to open your history. It's an authorization
    gate — it stops someone from quietly exporting the identity and data off a
-   locked machine.
-3. **For the export password, just reuse your sync passphrase.** Export asks you
-   to set a password that encrypts the file; import asks for the same password.
-   Reusing your existing sync passphrase is simplest — then you only have one
-   secret to remember. You can set a separate dedicated password instead if you
-   prefer.
+   locked machine. There's no separate export password to set: the file is
+   sealed with your Space passphrase, so importing it later asks for that same
+   passphrase.
 
 ## Export (on the device you're moving away from)
 
 1. Open **Settings → Storage**, find the **Config backup / migration** group,
    and click **Export config**.
-2. Enter a password to encrypt the exported file — reusing your sync passphrase
-   is recommended.
-3. Choose where to save it.
-4. You get an encrypted `.ucbundle` file. It bundles your clipboard history,
-   settings, device identity, and key material — **all encrypted with the
-   password you just entered**. Without the password no one can open it.
+2. Choose where to save it. (No password prompt — see below.)
+3. You get an encrypted `.ucbundle` file. It bundles your clipboard history,
+   settings, device identity, and key material — **all encrypted with your Space
+   passphrase**. Without that passphrase no one can open it.
 
 <Callout type="info">
-  Export requires the session to be unlocked. If you're on the lock screen,
-  unlock with your sync passphrase first, then export.
+  Export requires the session to be unlocked, and it takes no separate
+  password: the file is sealed with your existing Space passphrase. If you're on
+  the lock screen, unlock with your sync passphrase first, then export.
 </Callout>
 
 Transfer the `.ucbundle` file to the target machine (USB stick, cloud drive,
 LAN file transfer — anything works). The file itself is encrypted, so the
-transfer is safe to observe, but share the password through a separate channel
-and don't keep it next to the file.
+transfer is safe to observe. Anyone who imports it needs your Space passphrase.
 
-## Import (on the brand-new device)
+## Import (on the new device)
 
-Precondition: the target is **brand-new and uninitialized** (see point 1 above).
+Importing **replaces** whatever is on this machine (see point 1 above). A
+brand-new install is the common case; an in-use machine works too — it gets
+overwritten.
 
 1. On the target machine, open **Settings → Storage → Config backup /
    migration** and click **Import config**.
 2. Select the `.ucbundle` file.
-3. Enter the **same password** (the one you set during export).
+3. Enter the **Space passphrase** of the device the file was exported from —
+   that's what unlocks it.
 4. The screen shows the file's **source info** (version, source type, device
    fingerprint) so you can **confirm once more**. Verify it and confirm.
 5. The app applies the config and **restarts automatically**. After the
    restart, history, settings, and pairings are all there — **no re-pairing
-   needed**.
-
-<Callout type="info">
-  If the UI asks you to unlock after import, just enter your **sync
-  passphrase**. That's expected: when the export file used a separate custom
-  password rather than your sync passphrase, the system still needs your sync
-  passphrase to open your history afterward. If you exported with your sync
-  passphrase, it usually won't ask.
-</Callout>
+   needed**, and it unlocks itself (the imported file carries the key).
 
 ## Move semantics: why you can't run both at once
 
@@ -122,30 +114,30 @@ Export / import **carries this identity along**. So it's not a "copy", it's a
 
 ## FAQ
 
-### What if the target is already initialized?
+### What if the target is already in use?
 
-Import requires the target to be **uninitialized**. If it has already created or
-joined a space, the import is rejected. **Factory-reset** the target first (this
-wipes its existing local history and keys), returning it to an uninitialized
-state, then import. The factory-reset entry point and its effects are described
-in [Troubleshooting — Emergency reset](../help/troubleshooting#emergency-reset-last-resort).
+That's fine — import **replaces** it. There's no "reset first" step: applying
+the imported config overwrites the target's existing space, history, keys, and
+identity in one go. You don't need to factory-reset it yourself.
 
 <Callout type="warn">
-  A factory reset **wipes the target machine's existing clipboard history** and
-  can't be undone. Only do it once you're sure there's nothing on that machine
-  you want to keep.
+  Because import overwrites in place, **the target machine's existing clipboard
+  history is replaced** and that can't be undone. Only import onto a machine
+  once you're sure there's nothing on it you want to keep. The confirmation
+  dialog spells this out before anything is changed.
 </Callout>
 
 ### It asks me to unlock after import?
 
-Enter your **sync passphrase** to unlock, and your history shows up as usual.
-See the note at the end of [Import](#import-on-the-brand-new-device).
+Usually it won't — the imported file carries the key, so after the restart it
+unlocks itself. If it ever does prompt, just enter the **Space passphrase** of
+the device the file came from, and your history shows up as usual.
 
-### What if I type the wrong password?
+### What if I type the wrong passphrase?
 
-The file won't open and you get a "wrong password or corrupt file" message (the
-two aren't distinguished, to avoid leaking hints). Just re-enter the correct
-password — your data is never damaged.
+The file won't open and you get a "wrong passphrase or corrupt file" message
+(the two aren't distinguished, to avoid leaking hints). Just re-enter the
+correct Space passphrase — your data is never damaged.
 
 ### Does this touch the data on the original device?
 
@@ -170,5 +162,3 @@ bringing the original device back online** after the move (see
 - [Install — Portable build](../getting-started/install#portable-build) — how the
   portable and installer builds differ, and why copying the `data` folder
   doesn't work.
-- [Troubleshooting — Emergency reset](../help/troubleshooting#emergency-reset-last-resort)
-  — how to factory-reset a target machine that's already initialized.

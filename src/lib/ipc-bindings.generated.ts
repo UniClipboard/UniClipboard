@@ -412,15 +412,17 @@ export const commands = {
 	 * 
 	 *  Pops a native save dialog (default name `uniclipboard-config.ucbundle`); if
 	 *  the user cancels, returns [`ConfigCommandError::Cancelled`]. Otherwise calls
-	 *  the daemon `POST /config/export` with the chosen `target_path` and the
-	 *  caller-supplied `password`, returning the absolute path the bundle landed
-	 *  at. Requires an unlocked session (the daemon enforces this; a locked session
-	 *  surfaces as a `Daemon { code: "LOCKED" }` error).
+	 *  the daemon `POST /config/export` with the chosen `target_path`, returning the
+	 *  absolute path the bundle landed at. No export password is taken — the daemon
+	 *  seals the bundle with the installation's own key material (opening it later
+	 *  needs the space passphrase). Requires an unlocked session (the daemon
+	 *  enforces this; a locked session surfaces as a `Daemon { code: "LOCKED" }`
+	 *  error).
 	 */
-	exportConfigPackage: (password: string, trace: {
+	exportConfigPackage: (trace: {
 	trace_id: string,
 	timestamp: number,
-} | null) => typedError<ExportConfigResult, ConfigCommandError>(__TAURI_INVOKE("export_config_package", { password, trace })),
+} | null) => typedError<ExportConfigResult, ConfigCommandError>(__TAURI_INVOKE("export_config_package", { trace })),
 	/**
 	 *  Show the native open dialog and return the chosen `.ucbundle` path.
 	 * 
@@ -451,8 +453,8 @@ export const commands = {
 	 * 
 	 *  This only stages: it does NOT restart anything. On success the frontend
 	 *  drives the restart flow (`restart_daemon` → `restart_app`) so the staged
-	 *  migration is applied on boot. Already-initialized targets are rejected by
-	 *  the daemon as `Daemon { code: "ALREADY_INITIALIZED" }`.
+	 *  migration is applied on boot. Applying replaces whatever configuration the
+	 *  target currently holds — there is no already-initialized rejection.
 	 */
 	importConfigPackage: (password: string, sourcePath: string, trace: {
 	trace_id: string,
@@ -484,9 +486,9 @@ export type CommandError = { code: "NotFound"; message: string } | { code: "Inte
  *  Serializes to a discriminated union `{ kind, ... }` so the frontend (Unit 7)
  *  can branch the import/export UX without scraping message strings. The
  *  `Daemon` variant preserves the daemon's stable error `code` token
- *  (`LOCKED` / `NOT_INITIALIZED` / `ALREADY_INITIALIZED` /
- *  `INVALID_PASSWORD_OR_CORRUPT` / `INCOMPATIBLE_BUNDLE` /
- *  `confirmation_required` / `IO` / `INTERNAL`) parsed from the canonical
+ *  (`LOCKED` / `NOT_INITIALIZED` / `INVALID_PASSWORD_OR_CORRUPT` /
+ *  `INCOMPATIBLE_BUNDLE` / `confirmation_required` / `IO` / `INTERNAL`) parsed
+ *  from the canonical
  *  `{ code, message }` error body, which is exactly what the daemon's config
  *  endpoints emit. `message` is never logged with secrets — these come from the
  *  daemon's already-redacted error text.

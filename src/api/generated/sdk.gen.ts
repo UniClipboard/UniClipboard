@@ -341,10 +341,12 @@ export const getClipboardThumbnail = <ThrowOnError extends boolean = false>(opti
 /**
  * POST /config/export
  *
- * Pack the current installation into a password-protected `.ucbundle` written
- * to `targetPath`. The facade enforces the preconditions (initialized +
- * unlocked) before any material is read. D14: session-JWT gated; the handler
- * MUST NOT log the request body (no password / path on any span here).
+ * Pack the current installation into an encrypted `.ucbundle` written to
+ * `targetPath`, sealed with the installation's own key material (no export
+ * password; opening it later requires the space passphrase). The facade
+ * enforces the preconditions (initialized + unlocked) before any material is
+ * read. D14: session-JWT gated; the handler MUST NOT log the request body (no
+ * path on any span here).
  */
 export const exportConfig = <ThrowOnError extends boolean = false>(options: Options<ExportConfigData, ThrowOnError>) => (options.client ?? client).post<ExportConfigResponses, ExportConfigErrors, ThrowOnError>({
     security: [{
@@ -363,11 +365,12 @@ export const exportConfig = <ThrowOnError extends boolean = false>(options: Opti
 /**
  * POST /config/import
  *
- * Validate a bundle and stage it for the next restart to apply on boot. The
- * facade enforces the precondition (target must be uninitialized). `confirmed`
- * must be `true` (the import is a device-identity move); a missing/invalid
- * body or `confirmed != true` is a 400. D14: session-JWT gated; the handler
- * MUST NOT log the request body.
+ * Validate a bundle and stage it for the next restart to apply on boot.
+ * Applying on the next boot replaces whatever configuration the target
+ * currently holds — there is no uninitialized precondition. `confirmed` must be
+ * `true` (the import is a device-identity move that overwrites in place); a
+ * missing/invalid body or `confirmed != true` is a 400. D14: session-JWT
+ * gated; the handler MUST NOT log the request body.
  */
 export const importConfig = <ThrowOnError extends boolean = false>(options: Options<ImportConfigData, ThrowOnError>) => (options.client ?? client).post<ImportConfigResponses, ImportConfigErrors, ThrowOnError>({
     security: [{

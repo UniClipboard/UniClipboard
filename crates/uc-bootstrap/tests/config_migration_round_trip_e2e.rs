@@ -2,9 +2,13 @@
 //! `stage_import` → boot-time `apply_pending_import` → landed-state assertions.
 //!
 //! The per-layer unit tests exercise each step against synthetic fakes; this
-//! test wires the *real* pipeline end to end through the seam the two rework
-//! units own:
+//! test wires the *real* pipeline end to end through the seam the rework units
+//! own:
 //!
+//! * the source is a genuinely initialized installation — a real `KeySlot` and a
+//!   matching KEK produced by `DefaultSpaceAccessAdapter::initialize`. The bundle
+//!   is sealed with that KEK (no export password), so opening it requires the
+//!   space passphrase that derives the KEK — the contract this exercises;
 //! * the iroh device identity migrates as 0600 *files* (not a credential-store
 //!   secret), so the same network identity survives a portable→installer move
 //!   without re-pairing;
@@ -23,24 +27,26 @@ use diesel::RunQueryDsl;
 
 use uc_bootstrap::pending_import::apply_pending_import;
 use uc_core::crypto::domain::Passphrase;
-use uc_core::ids::ProfileId;
+use uc_core::ids::{ProfileId, SpaceId};
 use uc_core::ports::config_migration::{
     ConfigMigrationError, ExportConfigBundlePort, StageConfigImportPort,
 };
+use uc_core::ports::space::SpaceAccessStore;
 use uc_core::ports::{LocalIdentityPort, SecureStoragePort};
 use uc_infra::config_migration::staging::StagingLayout;
 use uc_infra::config_migration::{ConfigMigrationAdapter, ConfigMigrationPaths};
 use uc_infra::db::pool::{init_db_pool, DbPool};
+use uc_infra::fs::key_slot_store::JsonKeySlotStore;
 use uc_infra::network::iroh::IrohIdentityStore;
-use uc_infra::security::Sha256IdentityFingerprintFactory;
+use uc_infra::security::{
+    DefaultCurrentProfile, DefaultSpaceAccessAdapter, InMemorySession, KeyMaterialStore,
+    Sha256IdentityFingerprintFactory,
+};
 use uc_infra::SystemClock;
 use uc_platform::file_secure_storage::FileSecureStorage;
 
 /// The single secure-storage key carried as a secret for the `default` profile.
 const KEK_KEY: &str = "kek:v1:profile:default";
-/// Raw KEK bytes seeded into the source backend; asserted byte-identical after
-/// the bridge into the target backend.
-const KEK_BYTES: [u8; 32] = [0xAB; 32];
 
 /// A device-identity file living in the source `iroh-identity/` directory. Its
 /// exact bytes must reappear in the target identity dir (proof the identity
@@ -48,7 +54,6 @@ const KEK_BYTES: [u8; 32] = [0xAB; 32];
 const IROH_IDENTITY_FILE: &str = "iroh-identity_v1.bin";
 const IROH_IDENTITY_BYTES: [u8; 32] = [0x5A; 32];
 
-const KEYSLOT_JSON: &[u8] = b"{\"version\":\"V1\"}";
 const DEVICE_ID_TXT: &[u8] = b"550e8400-e29b-41d4-a716-446655440000";
 const SETUP_STATUS_JSON: &[u8] = b"{\"has_completed\":true,\"space_id\":null}";
 const SETTINGS_JSON: &[u8] = b"{\"schema_version\":1}";
@@ -65,13 +70,18 @@ struct Source {
     vault_dir: std::path::PathBuf,
     settings_path: std::path::PathBuf,
     iroh_identity_dir: std::path::PathBuf,
+    /// Source keyring backend; holds the real KEK after init so the test can
+    /// compare it to what bridges into the target backend.
+    kek_storage: Arc<dyn SecureStoragePort>,
     adapter: ConfigMigrationAdapter,
 }
 
 /// Build the source installation: a real sqlite db with a committed probe row,
-/// real vault/settings files, an iroh identity file, and a `FileSecureStorage`
-/// keyring holding the KEK. Returns a fully-wired export adapter.
-fn build_source() -> Source {
+/// a *real* initialized keyslot + KEK (via `DefaultSpaceAccessAdapter`), real
+/// vault/settings files, and an iroh identity file. Returns a fully-wired export
+/// adapter. `passphrase` is the space passphrase the KEK is derived from — the
+/// same passphrase later opens the exported bundle.
+async fn build_source(passphrase: &Passphrase) -> Source {
     let dir = tempfile::tempdir().unwrap();
     let data_root = dir.path().join("source");
     let vault_dir = data_root.join("vault");
@@ -95,8 +105,33 @@ fn build_source() -> Source {
         .unwrap();
     }
 
-    // Vault + settings + identity files.
-    std::fs::write(vault_dir.join("keyslot.json"), KEYSLOT_JSON).unwrap();
+    // Source secure storage: a real file-backed keyring in its own dir. The real
+    // init flow writes the KEK here (under KEK_KEY) and the keyslot into the
+    // vault dir, so the two are mutually consistent. `with_base_dir` does not
+    // create the dir, so make it first (mirrors production keyring provisioning).
+    let kek_keyring_dir = data_root.join("keyring");
+    std::fs::create_dir_all(&kek_keyring_dir).unwrap();
+    let kek_storage: Arc<dyn SecureStoragePort> =
+        Arc::new(FileSecureStorage::with_base_dir(kek_keyring_dir));
+
+    // Real initialization: derives the KEK from `passphrase`, generates and wraps
+    // a master key, writes `vault/keyslot.json`, and stores the KEK in the
+    // keyring. This is what makes "open the bundle with the passphrase" hold.
+    {
+        let keyslot_store = Arc::new(JsonKeySlotStore::new(vault_dir.clone()));
+        let key_material = Arc::new(KeyMaterialStore::new(kek_storage.clone(), keyslot_store));
+        let session = Arc::new(InMemorySession::new());
+        let space_access = DefaultSpaceAccessAdapter::new(
+            key_material,
+            Arc::new(DefaultCurrentProfile::new()),
+            session,
+        );
+        SpaceAccessStore::initialize(&space_access, &SpaceId::from("space"), passphrase)
+            .await
+            .unwrap();
+    }
+
+    // Remaining vault + settings + identity files (carried verbatim).
     std::fs::write(vault_dir.join("device_id.txt"), DEVICE_ID_TXT).unwrap();
     std::fs::write(vault_dir.join(".setup_status"), SETUP_STATUS_JSON).unwrap();
     std::fs::write(data_root.join("settings.json"), SETTINGS_JSON).unwrap();
@@ -105,16 +140,6 @@ fn build_source() -> Source {
         IROH_IDENTITY_BYTES,
     )
     .unwrap();
-
-    // Source secure storage: a real file-backed keyring in its own dir holding
-    // the KEK. `IrohIdentityStore` reads from the identity dir's file backend
-    // to supply the manifest fingerprint. `with_base_dir` does not create the
-    // dir, so make it first (mirrors production wiring's keyring provisioning).
-    let kek_keyring_dir = data_root.join("keyring");
-    std::fs::create_dir_all(&kek_keyring_dir).unwrap();
-    let kek_storage: Arc<dyn SecureStoragePort> =
-        Arc::new(FileSecureStorage::with_base_dir(kek_keyring_dir));
-    kek_storage.set(KEK_KEY, &KEK_BYTES).unwrap();
 
     let local_identity: Arc<dyn LocalIdentityPort> = Arc::new(IrohIdentityStore::new(
         Arc::new(FileSecureStorage::with_base_dir(iroh_identity_dir.clone())),
@@ -131,7 +156,7 @@ fn build_source() -> Source {
 
     let settings_path = data_root.join("settings.json");
     let adapter = ConfigMigrationAdapter::new(
-        kek_storage,
+        kek_storage.clone(),
         pool,
         local_identity,
         Arc::new(SystemClock),
@@ -146,6 +171,7 @@ fn build_source() -> Source {
         vault_dir,
         settings_path,
         iroh_identity_dir,
+        kek_storage,
         adapter,
     }
 }
@@ -243,21 +269,31 @@ fn read_db_probe(db_path: &std::path::Path) -> Vec<String> {
 
 #[tokio::test]
 async fn export_stage_apply_round_trip_lands_db_vault_identity_and_kek() {
-    let src = build_source();
-    let tgt = build_target();
     let passphrase = Passphrase::from("correct horse battery staple");
+    let src = build_source(&passphrase).await;
+    let tgt = build_target();
 
-    // 1. Export the source installation into a sealed `.ucbundle`.
+    // Capture the source's real keyslot + KEK so the target can be compared
+    // byte-for-byte (they are generated, not fixed constants).
+    let source_keyslot = std::fs::read(src.vault_dir.join("keyslot.json")).unwrap();
+    let source_kek = src
+        .kek_storage
+        .get(KEK_KEY)
+        .unwrap()
+        .expect("source must hold a KEK after init");
+
+    // 1. Export the source installation into a sealed `.ucbundle` (no password).
     let bundle_path = src.data_root.join("exports").join("config.ucbundle");
     let written = src
         .adapter
-        .export_bundle(&passphrase, &bundle_path)
+        .export_bundle(&bundle_path)
         .await
         .expect("export should succeed");
     assert_eq!(written, bundle_path);
     assert!(bundle_path.exists(), "bundle file must be written");
 
-    // 2. Stage the bundle into the (empty) target data root.
+    // 2. Stage the bundle into the (empty) target data root, opening it with the
+    //    space passphrase that derives the KEK.
     let staged = tgt
         .adapter
         .stage_import(&passphrase, &bundle_path)
@@ -303,7 +339,8 @@ async fn export_stage_apply_round_trip_lands_db_vault_identity_and_kek() {
     // 4b. Vault members are byte-identical to the source.
     assert_eq!(
         std::fs::read(tgt.vault_dir.join("keyslot.json")).unwrap(),
-        KEYSLOT_JSON
+        source_keyslot,
+        "target keyslot must be byte-identical to the source's real keyslot"
     );
     assert_eq!(
         std::fs::read(tgt.vault_dir.join("device_id.txt")).unwrap(),
@@ -336,7 +373,7 @@ async fn export_stage_apply_round_trip_lands_db_vault_identity_and_kek() {
         .unwrap()
         .expect("KEK must be present in the target backend after apply");
     assert_eq!(
-        landed_kek, KEK_BYTES,
+        landed_kek, source_kek,
         "KEK bytes must be byte-identical after bridging into the target backend"
     );
 
@@ -352,19 +389,18 @@ async fn export_stage_apply_round_trip_lands_db_vault_identity_and_kek() {
 
     // Touch source-only fields so the helper struct stays meaningful.
     assert!(src.db_path.exists());
-    assert!(src.vault_dir.exists());
-    assert!(src.settings_path.exists());
     assert!(src.iroh_identity_dir.exists());
+    assert!(src.settings_path.exists());
 }
 
 #[tokio::test]
 async fn stage_import_with_wrong_passphrase_is_invalid_or_corrupt() {
-    let src = build_source();
+    let src = build_source(&Passphrase::from("right-passphrase")).await;
     let tgt = build_target();
 
     let bundle_path = src.data_root.join("exports").join("config.ucbundle");
     src.adapter
-        .export_bundle(&Passphrase::from("right-passphrase"), &bundle_path)
+        .export_bundle(&bundle_path)
         .await
         .expect("export should succeed");
 

@@ -58,8 +58,11 @@ impl ConfigMigrationFacade {
         Self { deps }
     }
 
-    /// Export the current installation's configuration into a password-protected
+    /// Export the current installation's configuration into a self-protected
     /// bundle written to `destination`.
+    ///
+    /// No export secret is taken: the bundle is sealed with the installation's
+    /// own key material, so reading it back later requires the space passphrase.
     ///
     /// Preconditions, checked in order before any material is read:
     /// 1. the installation must be initialized — otherwise
@@ -70,11 +73,7 @@ impl ConfigMigrationFacade {
     ///
     /// On success returns the path the bundle was written to.
     #[instrument(skip_all)]
-    pub async fn export_config(
-        &self,
-        password: &Passphrase,
-        destination: &Path,
-    ) -> Result<PathBuf, ConfigMigrationError> {
+    pub async fn export_config(&self, destination: &Path) -> Result<PathBuf, ConfigMigrationError> {
         if !self.is_initialized().await? {
             return Err(ConfigMigrationError::NotInitialized);
         }
@@ -82,10 +81,7 @@ impl ConfigMigrationFacade {
             return Err(ConfigMigrationError::Locked);
         }
 
-        self.deps
-            .export_bundle
-            .export_bundle(password, destination)
-            .await
+        self.deps.export_bundle.export_bundle(destination).await
     }
 
     /// Read the descriptive metadata of the bundle at `source`.
@@ -109,19 +105,16 @@ impl ConfigMigrationFacade {
     /// Validate the bundle at `source` and record it as a pending migration to
     /// be applied on the next restart.
     ///
-    /// Precondition: the target installation must be uninitialized — otherwise
-    /// [`ConfigMigrationError::AlreadyInitialized`]; this layer never overwrites
-    /// or merges into an existing installation.
+    /// No initialized-target precondition: applying on the next restart replaces
+    /// whatever configuration this installation currently holds. The import is a
+    /// device-identity move, so the authorization to overwrite is the explicit
+    /// confirmation enforced at the presentation boundary, not a gate here.
     #[instrument(skip_all)]
     pub async fn stage_import(
         &self,
         password: &Passphrase,
         source: &Path,
     ) -> Result<StagedConfigImport, ConfigMigrationError> {
-        if self.is_initialized().await? {
-            return Err(ConfigMigrationError::AlreadyInitialized);
-        }
-
         self.deps.stage_import.stage_import(password, source).await
     }
 
@@ -224,11 +217,7 @@ mod tests {
 
     #[async_trait]
     impl ExportConfigBundlePort for SpyMigrationPorts {
-        async fn export_bundle(
-            &self,
-            _password: &Passphrase,
-            destination: &Path,
-        ) -> Result<PathBuf, ConfigMigrationError> {
+        async fn export_bundle(&self, destination: &Path) -> Result<PathBuf, ConfigMigrationError> {
             *self.export_calls.lock().expect("export calls") += 1;
             Ok(destination.to_path_buf())
         }
@@ -290,7 +279,7 @@ mod tests {
         let facade = facade_with(false, true, ports.clone());
 
         let err = facade
-            .export_config(&password(), Path::new("/tmp/out.ucbundle"))
+            .export_config(Path::new("/tmp/out.ucbundle"))
             .await
             .expect_err("export should be refused");
 
@@ -304,7 +293,7 @@ mod tests {
         let facade = facade_with(true, false, ports.clone());
 
         let err = facade
-            .export_config(&password(), Path::new("/tmp/out.ucbundle"))
+            .export_config(Path::new("/tmp/out.ucbundle"))
             .await
             .expect_err("export should be refused");
 
@@ -318,7 +307,7 @@ mod tests {
         let facade = facade_with(true, true, ports.clone());
 
         let path = facade
-            .export_config(&password(), Path::new("/tmp/out.ucbundle"))
+            .export_config(Path::new("/tmp/out.ucbundle"))
             .await
             .expect("export should succeed");
 
@@ -338,7 +327,7 @@ mod tests {
         });
 
         let err = facade
-            .export_config(&password(), Path::new("/tmp/out.ucbundle"))
+            .export_config(Path::new("/tmp/out.ucbundle"))
             .await
             .expect_err("export should fail");
 
@@ -362,17 +351,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stage_refuses_when_already_initialized() {
+    async fn stage_proceeds_even_when_already_initialized() {
+        // Import is a replace: an already-initialized target is no longer a
+        // gate. Staging delegates regardless of initialized state; the boot-time
+        // apply overwrites the existing configuration.
         let ports = Arc::new(SpyMigrationPorts::default());
         let facade = facade_with(true, true, ports.clone());
 
-        let err = facade
+        let staged = facade
             .stage_import(&password(), Path::new("/tmp/in.ucbundle"))
             .await
-            .expect_err("stage should be refused");
+            .expect("stage should proceed and replace");
 
-        assert!(matches!(err, ConfigMigrationError::AlreadyInitialized));
-        assert_eq!(*ports.stage_calls.lock().expect("stage calls"), 0);
+        assert!(staged.unlock_required_after_apply);
+        assert_eq!(*ports.stage_calls.lock().expect("stage calls"), 1);
     }
 
     #[tokio::test]

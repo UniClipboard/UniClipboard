@@ -1153,17 +1153,13 @@
         "type": "object"
       },
       "ExportConfigRequest": {
-        "description": "Request body for `POST /config/export`.\n\n`password` protects the produced bundle (defaults to the space passphrase\nin the UI). `target_path` is the absolute destination the daemon writes the\n`.ucbundle` file to. The handler MUST never log this body.",
+        "description": "Request body for `POST /config/export`.\n\nNo export password is taken: the bundle is sealed with the installation's own\nkey material, so opening it later requires the space passphrase. `target_path`\nis the absolute destination the daemon writes the `.ucbundle` file to.",
         "properties": {
-          "password": {
-            "type": "string"
-          },
           "targetPath": {
             "type": "string"
           }
         },
         "required": [
-          "password",
           "targetPath"
         ],
         "type": "object"
@@ -5652,7 +5648,7 @@
     },
     "/config/export": {
       "post": {
-        "description": "Pack the current installation into a password-protected `.ucbundle` written\nto `targetPath`. The facade enforces the preconditions (initialized +\nunlocked) before any material is read. D14: session-JWT gated; the handler\nMUST NOT log the request body (no password / path on any span here).",
+        "description": "Pack the current installation into an encrypted `.ucbundle` written to\n`targetPath`, sealed with the installation's own key material (no export\npassword; opening it later requires the space passphrase). The facade\nenforces the preconditions (initialized + unlocked) before any material is\nread. D14: session-JWT gated; the handler MUST NOT log the request body (no\npath on any span here).",
         "operationId": "exportConfig",
         "requestBody": {
           "content": {
@@ -5722,7 +5718,7 @@
     },
     "/config/import": {
       "post": {
-        "description": "Validate a bundle and stage it for the next restart to apply on boot. The\nfacade enforces the precondition (target must be uninitialized). `confirmed`\nmust be `true` (the import is a device-identity move); a missing/invalid\nbody or `confirmed != true` is a 400. D14: session-JWT gated; the handler\nMUST NOT log the request body.",
+        "description": "Validate a bundle and stage it for the next restart to apply on boot.\nApplying on the next boot replaces whatever configuration the target\ncurrently holds — there is no uninitialized precondition. `confirmed` must be\n`true` (the import is a device-identity move that overwrites in place); a\nmissing/invalid body or `confirmed != true` is a 400. D14: session-JWT\ngated; the handler MUST NOT log the request body.",
         "operationId": "importConfig",
         "requestBody": {
           "content": {
@@ -5754,16 +5750,6 @@
               }
             },
             "description": "Confirmation missing/false, or invalid password / corrupt bundle"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Target installation is already initialized"
           },
           "422": {
             "content": {

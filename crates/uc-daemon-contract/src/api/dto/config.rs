@@ -10,13 +10,12 @@ use utoipa::ToSchema;
 
 /// Request body for `POST /config/export`.
 ///
-/// `password` protects the produced bundle (defaults to the space passphrase
-/// in the UI). `target_path` is the absolute destination the daemon writes the
-/// `.ucbundle` file to. The handler MUST never log this body.
+/// No export password is taken: the bundle is sealed with the installation's own
+/// key material, so opening it later requires the space passphrase. `target_path`
+/// is the absolute destination the daemon writes the `.ucbundle` file to.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportConfigRequest {
-    pub password: String,
     pub target_path: String,
 }
 

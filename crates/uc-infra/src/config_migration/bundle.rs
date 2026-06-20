@@ -213,6 +213,12 @@ fn derive_key(
 ///
 /// A fresh random salt and nonce are generated per call. The caller supplies the
 /// KDF cost parameters (production defaults via [`Argon2Params::production`]).
+///
+/// This is the passphrase-symmetric counterpart of [`open`]: the key is derived
+/// from `password` + the freshly-generated salt. When the AEAD key is already
+/// available pre-derived (e.g. the installation's KEK), use [`seal_with_key`]
+/// instead, passing the salt + KDF parameters that derive it from the
+/// passphrase so the same [`open`] path can reproduce it.
 pub fn seal(
     password: &Passphrase,
     kdf: Argon2Params,
@@ -227,6 +233,45 @@ pub fn seal(
         .try_fill_bytes(&mut nonce)
         .map_err(|_| BundleError::Crypto)?;
 
+    let mut key = derive_key(password, &salt, &kdf)?;
+    let out = finish_seal(&key, salt, kdf, nonce, archive);
+    key.zeroize();
+    out
+}
+
+/// Seal `archive` into a full `.ucbundle` byte stream using a pre-derived
+/// 32-byte AEAD `key` directly, recording `salt` + `kdf` in the (authenticated)
+/// header so a reader reproduces the same key via [`open`] from the matching
+/// passphrase.
+///
+/// Unlike [`seal`], no key derivation runs here: the caller supplies the key
+/// (e.g. the installation's KEK) together with the salt + KDF parameters that
+/// would derive it from the passphrase. `key` is borrowed and never zeroized by
+/// this function — its lifetime is the caller's to manage. A fresh random nonce
+/// is generated per call, so reusing the same `salt` across bundles does not
+/// reuse a keystream.
+pub fn seal_with_key(
+    key: &[u8; KEY_LEN],
+    salt: &[u8; SALT_LEN],
+    kdf: Argon2Params,
+    archive: &[u8],
+) -> Result<Vec<u8>, BundleError> {
+    let mut nonce = [0u8; NONCE_LEN];
+    OsRng
+        .try_fill_bytes(&mut nonce)
+        .map_err(|_| BundleError::Crypto)?;
+    finish_seal(key, *salt, kdf, nonce, archive)
+}
+
+/// Shared tail of both seal paths: build the header from the given parameters,
+/// AEAD-encrypt `archive` under `key`, and concatenate header + ciphertext.
+fn finish_seal(
+    key: &[u8; KEY_LEN],
+    salt: [u8; SALT_LEN],
+    kdf: Argon2Params,
+    nonce: [u8; NONCE_LEN],
+    archive: &[u8],
+) -> Result<Vec<u8>, BundleError> {
     let header = BundleHeader {
         format_ver: FORMAT_VER,
         kdf,
@@ -235,10 +280,7 @@ pub fn seal(
     };
     let aad = encode_header(&header);
 
-    let mut key = derive_key(password, &salt, &kdf)?;
-    let cipher = XChaCha20Poly1305::new_from_slice(&key).map_err(|_| BundleError::Crypto)?;
-    key.zeroize();
-
+    let cipher = XChaCha20Poly1305::new_from_slice(key).map_err(|_| BundleError::Crypto)?;
     let ciphertext = cipher
         .encrypt(
             XNonce::from_slice(&nonce),
@@ -307,6 +349,35 @@ mod tests {
 
         let opened = open(&pw, &bundle).unwrap();
         assert_eq!(opened, archive);
+    }
+
+    #[test]
+    fn seal_with_key_opens_with_the_matching_passphrase() {
+        // Mirrors the production export path: the bundle is sealed with a
+        // pre-derived key (the "KEK") plus the salt + KDF that derive it from a
+        // passphrase; `open` re-derives that key from the passphrase + header.
+        let pw = Passphrase::from("space passphrase");
+        let salt = [7u8; SALT_LEN];
+        let kdf = cheap();
+        let key = derive_key(&pw, &salt, &kdf).unwrap();
+        let archive = b"db snapshot + vault + secrets".to_vec();
+
+        let bundle = seal_with_key(&key, &salt, kdf, &archive).unwrap();
+        assert_eq!(&bundle[0..8], MAGIC);
+
+        let opened = open(&pw, &bundle).unwrap();
+        assert_eq!(opened, archive);
+    }
+
+    #[test]
+    fn seal_with_key_rejects_a_wrong_passphrase() {
+        let salt = [3u8; SALT_LEN];
+        let kdf = cheap();
+        let key = derive_key(&Passphrase::from("right"), &salt, &kdf).unwrap();
+        let bundle = seal_with_key(&key, &salt, kdf, b"payload").unwrap();
+
+        let err = open(&Passphrase::from("wrong"), &bundle).unwrap_err();
+        assert!(matches!(err, BundleError::InvalidOrCorrupt));
     }
 
     #[test]

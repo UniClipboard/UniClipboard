@@ -334,7 +334,10 @@ impl MobileSyncFacade {
                         as Arc<dyn MobileDuplicateRestorePort>
                 }),
             ),
-            get_latest_doc: GetLatestMobileSyncDocUseCase::new(snapshot_port.clone()),
+            get_latest_doc: GetLatestMobileSyncDocUseCase::new(
+                snapshot_port.clone(),
+                file_staging.clone(),
+            ),
             get_file: GetMobileSyncFileUseCase::new(snapshot_port, file_staging.clone()),
             file_staging,
             lan_lifecycle,

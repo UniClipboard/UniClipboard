@@ -119,6 +119,7 @@ mockall::mock! {
             bytes: Vec<u8>,
         ) -> Result<StagedFile, MobileFileStagingError>;
         async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError>;
+        async fn file_size(&self, uri: &str) -> Result<u64, MobileFileStagingError>;
         async fn begin_stage(
             &self,
             scope_id: &str,

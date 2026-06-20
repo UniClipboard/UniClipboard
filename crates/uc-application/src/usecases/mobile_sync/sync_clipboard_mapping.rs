@@ -203,6 +203,16 @@ fn parse_first_uri_filename(bytes: &[u8]) -> Option<String> {
     }
 }
 
+/// uri-list 首条非空非注释行(原始 URI 字符串,RFC 2483 风格:`#` 注释行 /
+/// 空行忽略)。File 出站取磁盘文件大小(stat)时用这条原始 URI。
+pub(super) fn first_uri_line(bytes: &[u8]) -> Option<String> {
+    let s = std::str::from_utf8(bytes).ok()?;
+    s.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
+}
+
 /// `url::Url::path_segments` 返回的已经是 percent-encoded 字符串(如
 /// `My%20Photo.png`)。手写一份小巧的 percent decode 避免引入
 /// `percent-encoding` 单独依赖 —— 上游 `url` 0.5 不再 re-export 它。

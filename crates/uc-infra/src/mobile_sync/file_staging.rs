@@ -158,6 +158,33 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
         Ok(bytes)
     }
 
+    async fn file_size(&self, uri: &str) -> Result<u64, MobileFileStagingError> {
+        // Same URI → path resolution as `read_by_uri`, but only stat the file
+        // (metadata) instead of reading its bytes — the cost is independent of
+        // the file size.
+        let parsed = url::Url::parse(uri).map_err(|e| {
+            MobileFileStagingError::Io(format!("URI parse failed for {uri:?}: {e}"))
+        })?;
+        let path = parsed.to_file_path().map_err(|_| {
+            MobileFileStagingError::Io(format!(
+                "URI is not a file:// URL or has no usable path: {uri:?}"
+            ))
+        })?;
+        let meta = tokio::fs::metadata(&path).await.map_err(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                debug!(
+                    uri = %uri,
+                    path = %path.display(),
+                    "mobile_sync staging: file_size path not found"
+                );
+                MobileFileStagingError::NotFound
+            } else {
+                MobileFileStagingError::Io(format!("stat {} failed: {err}", path.display()))
+            }
+        })?;
+        Ok(meta.len())
+    }
+
     async fn stage_file(
         &self,
         scope_id: &str,
@@ -611,6 +638,39 @@ mod tests {
         let fake_uri = url::Url::from_file_path(&fake_path).unwrap().to_string();
 
         let err = adapter.read_by_uri(&fake_uri).await.unwrap_err();
+        assert!(matches!(err, MobileFileStagingError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn file_size_returns_byte_count_without_reading_content() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let staged = adapter
+            .stage_file("scope-sz", "doc.pdf", "application/pdf", vec![0x42; 16])
+            .await
+            .expect("stage_file ok");
+
+        let size = adapter
+            .file_size(staged.uri.as_str())
+            .await
+            .expect("file_size ok");
+        assert_eq!(size, 16);
+    }
+
+    #[tokio::test]
+    async fn file_size_returns_not_found_for_missing_file() {
+        let tmp = TempDir::new().unwrap();
+        let adapter = make_adapter(tmp.path());
+
+        let fake_path = tmp
+            .path()
+            .join("mobile_inbound")
+            .join("phantom")
+            .join("missing.bin");
+        let fake_uri = url::Url::from_file_path(&fake_path).unwrap().to_string();
+
+        let err = adapter.file_size(&fake_uri).await.unwrap_err();
         assert!(matches!(err, MobileFileStagingError::NotFound));
     }
 

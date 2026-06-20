@@ -50,15 +50,20 @@ use std::sync::Arc;
 use thiserror::Error;
 use tracing::{debug, instrument, warn};
 
-use uc_core::ports::mobile_sync::{LatestClipboardSnapshotError, LatestClipboardSnapshotPort};
+use uc_core::ports::mobile_sync::{
+    LatestClipboardSnapshotError, LatestClipboardSnapshotPort, MobileFileStagingPort,
+};
 
 use crate::usecases::mobile_sync::clipboard_doc::{SyncClipboardItemType, SyncClipboardMeta};
 
-use super::sync_clipboard_mapping::{classify_for_sync, derive_data_name, profile_hash_for_sync};
+use super::sync_clipboard_mapping::{
+    classify_for_sync, derive_data_name, first_uri_line, profile_hash_for_sync,
+};
 
 /// 出站 `GET /SyncClipboard.json` 的应用层动作。
 pub(crate) struct GetLatestMobileSyncDocUseCase {
     snapshot_port: Arc<dyn LatestClipboardSnapshotPort>,
+    file_staging: Arc<dyn MobileFileStagingPort>,
 }
 
 #[derive(Debug, Error)]
@@ -75,8 +80,14 @@ pub enum GetLatestMobileSyncDocError {
 }
 
 impl GetLatestMobileSyncDocUseCase {
-    pub(crate) fn new(snapshot_port: Arc<dyn LatestClipboardSnapshotPort>) -> Self {
-        Self { snapshot_port }
+    pub(crate) fn new(
+        snapshot_port: Arc<dyn LatestClipboardSnapshotPort>,
+        file_staging: Arc<dyn MobileFileStagingPort>,
+    ) -> Self {
+        Self {
+            snapshot_port,
+            file_staging,
+        }
     }
 
     #[instrument(name = "mobile_sync.get_latest_doc", skip_all)]
@@ -90,39 +101,55 @@ impl GetLatestMobileSyncDocUseCase {
         let item_type = classify_for_sync(&rep);
         let data_name = derive_data_name(&rep, item_type);
 
-        let (text, has_data, size) = match (item_type, data_name.as_deref()) {
-            (SyncClipboardItemType::Text, _) => {
-                // SyncClipboard 协议下 Text 字段直接放 utf-8 内容。
-                // from_utf8_lossy 处理偶发的非 utf8 字节(rich-text 兜底
-                // 路径可能撞上),不让整条 GET 失败。
-                let text = String::from_utf8_lossy(&rep.bytes).into_owned();
-                let bytes_len = rep.bytes.len() as u64;
-                (text, false, bytes_len)
-            }
-            (SyncClipboardItemType::Image, Some(name))
-            | (SyncClipboardItemType::File, Some(name)) => {
-                // SyncClipboard 协议下,Image/File 的 `text` 字段约定为
-                // 文件名(纯展示用,客户端不解析)。
-                let bytes_len = rep.bytes.len() as u64;
-                (name.to_string(), true, bytes_len)
-            }
-            // classify_for_sync 永远不返回 Group;derive_data_name 永远在
-            // Image/File 分支返回 Some。两条 unreachable 兜底维持 enum
-            // 全覆盖编译期可验证, 真实命中则记录 warn 后退化成 Text 语义。
-            (SyncClipboardItemType::Image, None) | (SyncClipboardItemType::File, None) => {
-                warn!(
-                    item_type = ?item_type,
-                    "derive_data_name returned None for non-Text type; degrading to Text"
-                );
-                let text = String::from_utf8_lossy(&rep.bytes).into_owned();
-                (text, false, rep.bytes.len() as u64)
-            }
-            (SyncClipboardItemType::Group, _) => {
-                warn!("classify_for_sync produced Group unexpectedly; degrading to Text");
-                let text = String::from_utf8_lossy(&rep.bytes).into_owned();
-                (text, false, rep.bytes.len() as u64)
-            }
-        };
+        let (text, has_data, size) =
+            match (item_type, data_name.as_deref()) {
+                (SyncClipboardItemType::Text, _) => {
+                    // SyncClipboard 协议下 Text 字段直接放 utf-8 内容。
+                    // from_utf8_lossy 处理偶发的非 utf8 字节(rich-text 兜底
+                    // 路径可能撞上),不让整条 GET 失败。
+                    let text = String::from_utf8_lossy(&rep.bytes).into_owned();
+                    let bytes_len = rep.bytes.len() as u64;
+                    (text, false, bytes_len)
+                }
+                (SyncClipboardItemType::Image, Some(name)) => {
+                    // Image rep 内联携带真实图片字节,其长度即 payload 大小。
+                    // `text` 字段约定为文件名(纯展示用,客户端不解析)。
+                    (name.to_string(), true, rep.bytes.len() as u64)
+                }
+                (SyncClipboardItemType::File, Some(name)) => {
+                    // File rep 只携带 text/uri-list;payload 大小是磁盘文件的真实
+                    // 字节数(stat),不是 uri-list 文本长度。文件已删 / stat 失败
+                    // 时退化到 0 —— meta 仍可返回,下载阶段 get_file 会给出确切的
+                    // NotFound。`text` 字段约定为文件名(纯展示用)。
+                    let size = match first_uri_line(&rep.bytes) {
+                    Some(uri) => self.file_staging.file_size(&uri).await.unwrap_or_else(|err| {
+                        warn!(
+                            error = %err,
+                            "mobile_sync get_latest_doc: File size stat failed; degrading to 0"
+                        );
+                        0
+                    }),
+                    None => 0,
+                };
+                    (name.to_string(), true, size)
+                }
+                // classify_for_sync 永远不返回 Group;derive_data_name 永远在
+                // Image/File 分支返回 Some。两条 unreachable 兜底维持 enum
+                // 全覆盖编译期可验证, 真实命中则记录 warn 后退化成 Text 语义。
+                (SyncClipboardItemType::Image, None) | (SyncClipboardItemType::File, None) => {
+                    warn!(
+                        item_type = ?item_type,
+                        "derive_data_name returned None for non-Text type; degrading to Text"
+                    );
+                    let text = String::from_utf8_lossy(&rep.bytes).into_owned();
+                    (text, false, rep.bytes.len() as u64)
+                }
+                (SyncClipboardItemType::Group, _) => {
+                    warn!("classify_for_sync produced Group unexpectedly; degrading to Text");
+                    let text = String::from_utf8_lossy(&rep.bytes).into_owned();
+                    (text, false, rep.bytes.len() as u64)
+                }
+            };
 
         // SyncClipboard profile hash —— Text 直接 hash 内容,Image/File 需要把
         // 文件名也纳入 hash,与官方客户端的历史记录去重规则一致。
@@ -172,6 +199,7 @@ mod tests {
 
     use super::*;
 
+    use super::super::test_support::MockStaging;
     use async_trait::async_trait;
     use mockall::predicate::*;
     use sha2::{Digest, Sha256};
@@ -195,13 +223,33 @@ mod tests {
     fn build_uc_returning(
         rep: Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>,
     ) -> GetLatestMobileSyncDocUseCase {
+        // Non-File reps never call file_staging.file_size, so a bare mock with
+        // no expectation suffices (mockall panics if it is unexpectedly hit).
+        build_uc_with_staging(rep, MockStaging::new())
+    }
+
+    fn build_uc_with_staging(
+        rep: Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>,
+        staging: MockStaging,
+    ) -> GetLatestMobileSyncDocUseCase {
         let mut port = MockSnapPort::new();
         // use case 走 plaintext-preferred 入口; 这里 mock 该方法即可,
         // adapter 内部的"选哪条 rep"逻辑由 adapter 自己的单测覆盖。
         port.expect_latest_plain_text_preferred_representation()
             .times(1)
             .return_once(move || rep);
-        GetLatestMobileSyncDocUseCase::new(Arc::new(port))
+        GetLatestMobileSyncDocUseCase::new(Arc::new(port), Arc::new(staging))
+    }
+
+    /// Staging mock that answers `file_size` with a fixed byte count — File
+    /// reps now derive `meta.size` from the on-disk stat, not the uri-list len.
+    fn staging_with_size(size: u64) -> MockStaging {
+        let mut staging = MockStaging::new();
+        staging
+            .expect_file_size()
+            .times(1)
+            .returning(move |_| Ok(size));
+        staging
     }
 
     fn rep(
@@ -300,30 +348,38 @@ mod tests {
     #[tokio::test]
     async fn file_uri_list_extracts_last_segment() {
         let payload = b"file:///Users/Alice/Documents/note.pdf".to_vec();
-        let uc = build_uc_returning(Ok(Some(rep(
-            "entry-file-1",
-            "files",
-            Some("text/uri-list"),
-            payload.clone(),
-        ))));
+        // File size now comes from the on-disk stat (staging.file_size), not
+        // the uri-list text length.
+        let uc = build_uc_with_staging(
+            Ok(Some(rep(
+                "entry-file-1",
+                "files",
+                Some("text/uri-list"),
+                payload,
+            ))),
+            staging_with_size(1_048_576),
+        );
         let meta = uc.execute().await.unwrap();
         assert_eq!(meta.item_type, SyncClipboardItemType::File);
         assert!(meta.has_data);
         assert_eq!(meta.data_name.as_deref(), Some("note.pdf"));
         assert_eq!(meta.text, "note.pdf");
-        assert_eq!(meta.size, payload.len() as u64);
+        assert_eq!(meta.size, 1_048_576);
     }
 
     #[tokio::test]
     async fn file_uri_list_percent_decodes_filename() {
         // file:///path/My%20Photo.jpg → "My Photo.jpg"
         let payload = b"file:///tmp/My%20Photo.jpg".to_vec();
-        let uc = build_uc_returning(Ok(Some(rep(
-            "entry-file-2",
-            "files",
-            Some("text/uri-list"),
-            payload,
-        ))));
+        let uc = build_uc_with_staging(
+            Ok(Some(rep(
+                "entry-file-2",
+                "files",
+                Some("text/uri-list"),
+                payload,
+            ))),
+            staging_with_size(0),
+        );
         let meta = uc.execute().await.unwrap();
         assert_eq!(meta.data_name.as_deref(), Some("My Photo.jpg"));
     }
@@ -331,12 +387,15 @@ mod tests {
     #[tokio::test]
     async fn file_uri_list_skips_comments_and_blank_lines() {
         let payload = b"# comment\n\nfile:///tmp/keep.txt\nfile:///tmp/ignore.txt".to_vec();
-        let uc = build_uc_returning(Ok(Some(rep(
-            "entry-file-3",
-            "files",
-            Some("text/uri-list"),
-            payload,
-        ))));
+        let uc = build_uc_with_staging(
+            Ok(Some(rep(
+                "entry-file-3",
+                "files",
+                Some("text/uri-list"),
+                payload,
+            ))),
+            staging_with_size(0),
+        );
         let meta = uc.execute().await.unwrap();
         assert_eq!(meta.data_name.as_deref(), Some("keep.txt"));
     }
@@ -407,7 +466,10 @@ mod tests {
         // when mime is missing. Pin this contract — drives capture
         // pipeline parity (some platforms emit the rep with no explicit mime).
         let payload = b"file:///tmp/orphan.zip".to_vec();
-        let uc = build_uc_returning(Ok(Some(rep("entry-files-no-mime", "files", None, payload))));
+        let uc = build_uc_with_staging(
+            Ok(Some(rep("entry-files-no-mime", "files", None, payload))),
+            staging_with_size(0),
+        );
         let meta = uc.execute().await.unwrap();
         assert_eq!(meta.item_type, SyncClipboardItemType::File);
         assert_eq!(meta.data_name.as_deref(), Some("orphan.zip"));

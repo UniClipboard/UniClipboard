@@ -409,6 +409,18 @@ pub trait MobileFileStagingPort: Send + Sync {
     /// 协议默认 (`application/octet-stream`) 决定 wire mime。
     async fn read_by_uri(&self, uri: &str) -> Result<Vec<u8>, MobileFileStagingError>;
 
+    /// 按 `file:///...` URI 取文件字节数,只查 metadata 不读内容。
+    ///
+    /// 来源信任与错误形态同 [`Self::read_by_uri`](URI 不可解析为 path → `Io`;
+    /// 文件不存在 → `NotFound`;stat 失败 → `Io`),但代价与文件大小无关 ——
+    /// 不把内容读进内存。
+    ///
+    /// 默认实现回退到读取全部字节再取长度,仅作正确性兜底;真实 adapter 应
+    /// override 成纯 metadata 查询,避免在只需要大小时读盘内容。
+    async fn file_size(&self, uri: &str) -> Result<u64, MobileFileStagingError> {
+        Ok(self.read_by_uri(uri).await?.len() as u64)
+    }
+
     /// 开启一段"分块写入"的 staging 会话,返回一个不透明 [`StagingHandle`]
     /// 供后续 `append_stage_chunk` / `finalize_stage` / `abort_stage` 使用。
     ///

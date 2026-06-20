@@ -15,6 +15,7 @@ pub mod file_transfer_lifecycle;
 pub mod init;
 mod network_policy;
 pub mod non_gui_runtime;
+pub mod pending_import;
 pub mod space_setup;
 pub mod task_registry;
 pub mod tracing;

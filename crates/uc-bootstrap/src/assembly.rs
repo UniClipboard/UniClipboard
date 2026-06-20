@@ -93,6 +93,9 @@ pub enum WiringError {
     #[error("Secure storage initialization failed: {0}")]
     SecureStorageInit(String),
 
+    #[error("Applying staged config import failed: {0}")]
+    PendingImport(String),
+
     #[error("Clipboard initialization failed: {0}")]
     ClipboardInit(String),
 
@@ -953,19 +956,35 @@ pub fn wire_dependencies(
     let paths = resolve_app_paths(&platform_dirs, config)?;
 
     let db_path = paths.db_path;
-    let db_pool = create_db_pool(&db_path)?;
-    // Clone pool before infra layer consumes it — search bundle needs the same pool.
-    let db_pool_for_search = db_pool.clone();
-
     let vault_path = paths.vault_dir;
     let settings_path = paths.settings_path;
     let app_data_root = paths.app_data_root_dir.clone();
 
+    // Secure storage is created *before* the db pool so a staged config import
+    // (gap-3 bridge) can land secrets into the same backend the rest of wiring
+    // uses, and copy the db snapshot into place, before anything opens it.
     let secure_storage =
         uc_platform::secure_storage::create_default_secure_storage_in_app_data_root(
             app_data_root.clone(),
         )
         .map_err(|e| WiringError::SecureStorageInit(e.to_string()))?;
+
+    // Apply a pending staged import (if `pending-import.json` exists): write
+    // staged secrets into the current backend, then copy db/vault/settings into
+    // their live locations, then clear staging. Idempotent and crash-safe
+    // (secrets-first); the common no-marker case is a cheap existence check.
+    crate::pending_import::apply_pending_import(
+        &app_data_root,
+        &db_path,
+        &vault_path,
+        &settings_path,
+        &secure_storage,
+    )
+    .map_err(|e| WiringError::PendingImport(e.to_string()))?;
+
+    let db_pool = create_db_pool(&db_path)?;
+    // Clone pool before infra layer consumes it — search bundle needs the same pool.
+    let db_pool_for_search = db_pool.clone();
 
     let infra = create_infra_layer(
         db_pool,

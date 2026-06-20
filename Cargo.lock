@@ -10080,6 +10080,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
+ "diesel",
  "gethostname",
  "mockall 0.13.1",
  "sentry",

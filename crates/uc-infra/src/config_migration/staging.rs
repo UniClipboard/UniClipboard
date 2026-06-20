@@ -14,8 +14,10 @@
 //!   db/uniclipboard.db     # consistent snapshot to install as the live db
 //!   vault/keyslot.json     # keyslot to install into the vault dir
 //!   vault/device_id.txt
+//!   vault/.setup_status    # "is initialized" marker; copy back into vault dir
+//!   iroh-identity/*        # 0600 device-identity files; copy into identity dir
 //!   settings.json
-//!   secrets.json           # { "secrets": { "<key>": "<base64>" , ... } }
+//!   secrets.json           # { "secrets": { "<key>": "<base64>" , ... } }; KEK only
 //!   ui-state/*.json        # optional
 //! pending-import.json      # marker at the data root (sibling of import-staging/)
 //! ```
@@ -200,6 +202,16 @@ pub const DB_MEMBER: &str = "db/uniclipboard.db";
 /// Prefix for optional UI-state members.
 pub const UI_STATE_PREFIX: &str = "ui-state/";
 
+/// Prefix for iroh device-identity files.
+///
+/// The iroh identity is *not* a user secret kept in the credential store; it is
+/// persisted as `0600` files in a dedicated directory (a `FileSecureStorage`
+/// backend) so startup never prompts a keychain dialog. It therefore migrates
+/// as files (like `vault/`), not as a `secrets.json` entry: every file in the
+/// source identity directory is carried under this prefix and the boot step
+/// copies them back into the target identity directory.
+pub const IROH_IDENTITY_PREFIX: &str = "iroh-identity/";
+
 /// Resolve a staging-relative member to an absolute path under `data_root`'s
 /// staging directory. Used by tests and by the boot-time apply step.
 pub fn staged_member_path(data_root: &Path, member: &str) -> PathBuf {
@@ -212,17 +224,19 @@ mod tests {
 
     #[test]
     fn secrets_file_round_trips_base64() {
+        // Arbitrary key strings — this exercises the generic container; the only
+        // real secret carried today is the current-profile KEK.
         let file = SecretsFile::from_raw([
-            ("iroh-identity:v1".to_string(), vec![1u8, 2, 3]),
             ("kek:v1:profile:default".to_string(), vec![9u8, 8, 7]),
+            ("kek:v1:profile:other".to_string(), vec![1u8, 2, 3]),
         ]);
         let json = file.to_json_bytes().unwrap();
         let back: SecretsFile = serde_json::from_slice(&json).unwrap();
 
-        let id = back.secrets.get("iroh-identity:v1").unwrap();
-        assert_eq!(decode_secret_value(id).unwrap(), vec![1u8, 2, 3]);
         let kek = back.secrets.get("kek:v1:profile:default").unwrap();
         assert_eq!(decode_secret_value(kek).unwrap(), vec![9u8, 8, 7]);
+        let other = back.secrets.get("kek:v1:profile:other").unwrap();
+        assert_eq!(decode_secret_value(other).unwrap(), vec![1u8, 2, 3]);
     }
 
     #[test]

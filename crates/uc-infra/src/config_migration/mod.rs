@@ -44,8 +44,8 @@ mod tests {
     use uc_core::security::IdentityFingerprint;
 
     use super::staging::{
-        PendingImportMarker, SecretsFile, StagingLayout, DEVICE_ID_MEMBER, KEYSLOT_MEMBER,
-        SETUP_STATUS_MEMBER,
+        PendingImportMarker, SecretsFile, StagingLayout, DEVICE_ID_MEMBER, IROH_IDENTITY_PREFIX,
+        KEYSLOT_MEMBER, SETUP_STATUS_MEMBER,
     };
     use super::{ConfigMigrationAdapter, ConfigMigrationPaths};
     use crate::db::pool::init_db_pool;
@@ -133,9 +133,15 @@ mod tests {
         .unwrap();
         std::fs::write(data_root.join("settings.json"), b"{\"schema_version\":1}").unwrap();
 
-        // Seed secrets: device identity (32 bytes) + current-profile KEK.
+        // Seed the iroh device-identity directory with the 0600 files the
+        // FileSecureStorage backend persists (migrated as files, not a secret).
+        let iroh_identity_dir = data_root.join("iroh-identity");
+        std::fs::create_dir_all(&iroh_identity_dir).unwrap();
+        std::fs::write(iroh_identity_dir.join("iroh-identity_v1.bin"), [7u8; 32]).unwrap();
+
+        // Seed secrets: only the current-profile KEK is a credential-store
+        // secret now (the identity is files).
         let secure_storage = Arc::new(InMemorySecureStorage::default());
-        secure_storage.set("iroh-identity:v1", &[7u8; 32]).unwrap();
         secure_storage
             .set("kek:v1:profile:default", &[9u8; 32])
             .unwrap();
@@ -145,6 +151,7 @@ mod tests {
         let paths = ConfigMigrationPaths {
             db_path,
             vault_dir: vault,
+            iroh_identity_dir,
             settings_path: data_root.join("settings.json"),
             app_data_root: data_root.clone(),
         };
@@ -239,17 +246,28 @@ mod tests {
             serde_json::from_slice(&std::fs::read(layout.marker_path()).unwrap()).unwrap();
         assert!(marker.has_kek);
 
-        // Staged secrets carry both the identity and the KEK (base64).
+        // Staged secrets carry ONLY the KEK (base64); the iroh identity is no
+        // longer a secret — it migrates as files.
         let secrets_path = layout.staging_dir().join("secrets.json");
         let secrets: SecretsFile =
             serde_json::from_slice(&std::fs::read(secrets_path).unwrap()).unwrap();
-        assert!(secrets.secrets.contains_key("iroh-identity:v1"));
         assert!(secrets.secrets.contains_key("kek:v1:profile:default"));
+        assert!(!secrets.secrets.contains_key("iroh-identity:v1"));
+        assert_eq!(secrets.secrets.len(), 1);
 
         // Vault + db members landed in staging.
         assert!(layout.staging_dir().join(KEYSLOT_MEMBER).exists());
         assert!(layout.staging_dir().join(DEVICE_ID_MEMBER).exists());
         assert!(layout.staging_dir().join("db/uniclipboard.db").exists());
+
+        // The iroh device-identity files travel through the bundle into staging
+        // under the identity prefix, so a later apply restores the same network
+        // identity (no re-pairing).
+        let staged_identity = layout
+            .staging_dir()
+            .join(format!("{IROH_IDENTITY_PREFIX}iroh-identity_v1.bin"));
+        assert!(staged_identity.exists());
+        assert_eq!(std::fs::read(staged_identity).unwrap(), vec![7u8; 32]);
 
         // The setup-status marker travels through the bundle into staging so a
         // later apply keeps the installation flagged as initialized.
@@ -264,7 +282,7 @@ mod tests {
     #[tokio::test]
     async fn stage_without_kek_requires_unlock_after_apply() {
         let fx = build_fixture();
-        // Drop the KEK before export so the bundle carries identity only.
+        // Drop the KEK before export so the bundle carries no KEK secret.
         fx.secure_storage.delete("kek:v1:profile:default").unwrap();
 
         let password = Passphrase::from("pw");
@@ -281,16 +299,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn export_fails_when_device_identity_secret_missing() {
+    async fn export_succeeds_when_iroh_identity_dir_absent() {
         let fx = build_fixture();
-        // Remove the required identity secret.
-        fx.secure_storage.delete("iroh-identity:v1").unwrap();
+        // Remove the identity directory entirely: the export must still succeed
+        // (the directory is carried defensively, not required), producing a
+        // bundle with no iroh-identity members.
+        std::fs::remove_dir_all(fx.data_root.join("iroh-identity")).unwrap();
 
-        let err = fx
-            .adapter
-            .export_bundle(&Passphrase::from("pw"), &fx.export_dir.join("x.ucbundle"))
+        let password = Passphrase::from("pw");
+        let dest = fx.export_dir.join("config.ucbundle");
+        fx.adapter
+            .export_bundle(&password, &dest)
             .await
-            .unwrap_err();
-        assert!(matches!(err, ConfigMigrationError::Internal { .. }));
+            .expect("export should succeed without identity files");
+
+        fx.adapter.stage_import(&password, &dest).await.unwrap();
+        let layout = StagingLayout::new(&fx.data_root);
+        // No identity files reached staging.
+        assert!(!layout
+            .staging_dir()
+            .join(format!("{IROH_IDENTITY_PREFIX}iroh-identity_v1.bin"))
+            .exists());
     }
 }

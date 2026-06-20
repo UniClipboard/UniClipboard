@@ -30,8 +30,8 @@ use super::manifest::{BundleManifest, ManifestSourceMode, MANIFEST_MEMBER, MANIF
 use super::secret_keys::{migratable_secret_keys, MigratableSecretKind, SECRETS_MEMBER};
 use super::staging::{
     PendingImportMarker, SecretsFile, StagingError, StagingLayout, DB_MEMBER, DEVICE_ID_MEMBER,
-    KEYSLOT_MEMBER, PENDING_IMPORT_SCHEMA_VER, SETTINGS_MEMBER, SETUP_STATUS_MEMBER,
-    STAGING_DIR_NAME, UI_STATE_PREFIX,
+    IROH_IDENTITY_PREFIX, KEYSLOT_MEMBER, PENDING_IMPORT_SCHEMA_VER, SETTINGS_MEMBER,
+    SETUP_STATUS_MEMBER, STAGING_DIR_NAME, UI_STATE_PREFIX,
 };
 
 /// Raw secure-storage entries collected for a bundle, paired with whether a KEK
@@ -48,6 +48,11 @@ pub struct ConfigMigrationPaths {
     pub db_path: PathBuf,
     /// Vault directory holding `keyslot.json` and `device_id.txt`.
     pub vault_dir: PathBuf,
+    /// Directory holding the iroh device-identity files
+    /// (`<app_data>/iroh-identity[_<profile>]/`). Its contents are carried as
+    /// bundle files (not a credential-store secret), since production wiring
+    /// persists the identity to `0600` files there rather than the keychain.
+    pub iroh_identity_dir: PathBuf,
     /// User settings file (`settings.json`).
     pub settings_path: PathBuf,
     /// Data root: staging + marker + optional UI-state files live here.
@@ -146,6 +151,12 @@ impl ConfigMigrationAdapter {
 
     /// Gather the secrets enumerated for the current profile from secure
     /// storage. Returns the raw entries plus whether a KEK was present.
+    ///
+    /// Only the current-profile KEK is a credential-store secret here. The KEK
+    /// is re-derivable from the passphrase, so a missing KEK is not fatal — it
+    /// just means unlock will be required after apply. The iroh device identity
+    /// is *not* read here; it migrates as files (see
+    /// [`Self::collect_iroh_identity_files`]).
     fn collect_secrets(&self) -> Result<CollectedSecrets, ConfigMigrationError> {
         let mut entries = Vec::new();
         let mut has_kek = false;
@@ -158,28 +169,54 @@ impl ConfigMigrationAdapter {
                         details: "secure storage read failed while collecting secrets".to_string(),
                     })?;
 
-            match value {
-                Some(bytes) => {
-                    if matches!(spec.kind, MigratableSecretKind::ProfileKek) {
-                        has_kek = true;
-                    }
-                    entries.push((spec.key, bytes));
+            if let Some(bytes) = value {
+                if matches!(spec.kind, MigratableSecretKind::ProfileKek) {
+                    has_kek = true;
                 }
-                None => {
-                    if spec.required {
-                        // The device identity is non-derivable; without it the
-                        // migration would silently produce a new identity on the
-                        // target, which is exactly the failure mode this feature
-                        // exists to prevent.
-                        return Err(ConfigMigrationError::Internal {
-                            details: "a required device secret is missing".to_string(),
-                        });
-                    }
-                }
+                entries.push((spec.key, bytes));
             }
         }
 
         Ok((entries, has_kek))
+    }
+
+    /// Collect the iroh device-identity files as bundle members under
+    /// [`IROH_IDENTITY_PREFIX`].
+    ///
+    /// Defensive: an initialized source should have identity files, but a
+    /// missing or empty directory is not fatal — it is skipped rather than
+    /// failing the export. Only regular files at the directory's top level are
+    /// carried (the `FileSecureStorage` backend keeps flat `*.bin` files).
+    fn collect_iroh_identity_files(&self) -> Result<Vec<(String, Vec<u8>)>, ConfigMigrationError> {
+        let dir = &self.paths.iroh_identity_dir;
+        let read_dir = match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(_) => {
+                return Err(ConfigMigrationError::Io {
+                    details: "failed reading the device-identity directory".to_string(),
+                })
+            }
+        };
+
+        let mut files = Vec::new();
+        for entry in read_dir {
+            let entry = entry.map_err(|_| ConfigMigrationError::Io {
+                details: "failed enumerating the device-identity directory".to_string(),
+            })?;
+            let file_type = entry.file_type().map_err(|_| ConfigMigrationError::Io {
+                details: "failed inspecting a device-identity entry".to_string(),
+            })?;
+            if !file_type.is_file() {
+                continue;
+            }
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            let bytes = Self::read_required(&entry.path())?;
+            files.push((format!("{IROH_IDENTITY_PREFIX}{name}"), bytes));
+        }
+        Ok(files)
     }
 
     fn source_mode() -> ManifestSourceMode {
@@ -319,11 +356,14 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
                 })?
                 .map_err(map_db_snapshot_err)?;
 
-        // 2. Secrets (device identity + optional current-profile KEK).
+        // 2. Secrets (optional current-profile KEK only; identity is files).
         let (secret_entries, has_kek) = self.collect_secrets()?;
         let secrets_file = SecretsFile::from_raw(secret_entries);
 
-        // 3. Vault + settings files.
+        // 3. iroh device-identity files (migrated as files, not a secret).
+        let iroh_identity_files = self.collect_iroh_identity_files()?;
+
+        // 4. Vault + settings files.
         let keyslot = Self::read_required(&self.paths.vault_dir.join("keyslot.json"))?;
         let device_id = Self::read_required(&self.paths.vault_dir.join("device_id.txt"))?;
         // Setup-status marker (`vault/.setup_status`): on an initialized source
@@ -334,7 +374,7 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
         let setup_status = Self::read_optional(&self.paths.vault_dir.join(".setup_status"))?;
         let settings = Self::read_optional(&self.paths.settings_path)?;
 
-        // 4. Device fingerprint (human-confirmable identity) + timestamp.
+        // 5. Device fingerprint (human-confirmable identity) + timestamp.
         let fingerprint = self
             .local_identity
             .get_current_fingerprint()
@@ -346,7 +386,7 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
             .unwrap_or_default();
         let created_at_unix_ms = self.clock.now_ms();
 
-        // 5. Assemble the archive.
+        // 6. Assemble the archive.
         let mut archive = BundleArchive::new();
         archive.insert(DB_MEMBER, db_bytes);
         archive.insert(KEYSLOT_MEMBER, keyslot);
@@ -361,6 +401,9 @@ impl ExportConfigBundlePort for ConfigMigrationAdapter {
             SECRETS_MEMBER,
             secrets_file.to_json_bytes().map_err(map_staging_err)?,
         );
+        for (member, bytes) in iroh_identity_files {
+            archive.insert(member, bytes);
+        }
         for (name, path) in self.paths.ui_state_paths() {
             if let Some(bytes) = Self::read_optional(&path)? {
                 archive.insert(format!("{UI_STATE_PREFIX}{name}"), bytes);

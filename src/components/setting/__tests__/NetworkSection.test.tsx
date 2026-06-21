@@ -481,6 +481,7 @@ describe('NetworkSection — Phase 95 集成', () => {
       allowRelayFallback: true,
       allowOverlayNetworkAddrs: false,
       customRelayUrls: ['https://relay-a.example.com.', 'https://relay-b.example.com.'],
+      congestionController: 'cubic',
     })
   })
 

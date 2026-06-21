@@ -401,6 +401,14 @@
         ],
         "type": "object"
       },
+      "CongestionControllerDto": {
+        "description": "Algorithm for network flow control. Wire form: `\"cubic\"` | `\"bbr3\"`.",
+        "enum": [
+          "cubic",
+          "bbr3"
+        ],
+        "type": "string"
+      },
       "ConnectRequest": {
         "description": "Request body for `POST /auth/connect`.",
         "properties": {
@@ -2098,6 +2106,9 @@
           "allowRelayFallback": {
             "type": "boolean"
           },
+          "congestionController": {
+            "$ref": "#/components/schemas/CongestionControllerDto"
+          },
           "customRelayUrls": {
             "items": {
               "type": "string"
@@ -2120,6 +2131,14 @@
           "allowRelayFallback": {
             "nullable": true,
             "type": "boolean"
+          },
+          "congestionController": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CongestionControllerDto"
+              }
+            ],
+            "nullable": true
           },
           "customRelayUrls": {
             "items": {

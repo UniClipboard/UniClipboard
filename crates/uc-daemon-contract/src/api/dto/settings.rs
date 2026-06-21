@@ -871,6 +871,7 @@ mod network_dto_tests {
             dto.custom_relay_urls,
             vec!["https://relay.example.com.".to_string()]
         );
+        assert_eq!(dto.congestion_controller, CongestionControllerDto::Bbr3);
     }
 
     #[test]

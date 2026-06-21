@@ -251,6 +251,7 @@ impl Default for NetworkSettings {
             allow_relay_fallback: true,
             allow_overlay_network_addrs: false,
             custom_relay_urls: Vec::new(),
+            congestion_controller: CongestionController::default(),
         }
     }
 }

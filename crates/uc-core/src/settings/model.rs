@@ -236,6 +236,43 @@ pub struct FileSyncSettings {
     pub file_auto_cleanup: bool,
 }
 
+/// Algorithm used for network flow control.
+///
+/// Cubic works best on local networks; Bbr3 may perform better on
+/// long-distance or lossy links. Requires daemon restart to take effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CongestionController {
+    /// Loss-based algorithm, excellent on LAN and well-provisioned paths.
+    #[default]
+    Cubic,
+    /// Bandwidth-probing algorithm that avoids halving the congestion
+    /// window on sporadic loss; better for high-latency or lossy links.
+    Bbr3,
+}
+
+impl std::fmt::Display for CongestionController {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cubic => f.write_str("cubic"),
+            Self::Bbr3 => f.write_str("bbr3"),
+        }
+    }
+}
+
+impl std::str::FromStr for CongestionController {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "cubic" => Ok(Self::Cubic),
+            "bbr3" | "bbr" => Ok(Self::Bbr3),
+            other => Err(format!(
+                "unknown congestion controller: {other:?} (expected cubic or bbr3)"
+            )),
+        }
+    }
+}
+
 // ======================================================================
 // NetworkSettings —— LAN-only Mode（v0.7.0）的后端持久化字段
 //
@@ -290,6 +327,14 @@ pub struct NetworkSettings {
     /// `https://relay.example.com.`。修改后需重启 daemon 生效（iroh endpoint
     /// bind-time 常量）。
     pub custom_relay_urls: Vec<String>,
+
+    /// Algorithm for network flow control.
+    ///
+    /// `Cubic`（default）works best on local and well-provisioned networks;
+    /// `Bbr3` may perform better on long-distance or lossy links at the
+    /// cost of reduced throughput on LAN paths. Requires daemon restart.
+    #[serde(default)]
+    pub congestion_controller: CongestionController,
 }
 
 // ======================================================================

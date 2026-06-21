@@ -270,6 +270,11 @@ export type ClipboardStatsEnvelope = {
 };
 
 /**
+ * Algorithm for network flow control. Wire form: `"cubic"` | `"bbr3"`.
+ */
+export type CongestionControllerDto = 'cubic' | 'bbr3';
+
+/**
  * Request body for `POST /auth/connect`.
  */
 export type ConnectRequest = {
@@ -1369,6 +1374,7 @@ export type MobileSyncSettingsViewDto = {
 export type NetworkSettingsDto = {
     allowOverlayNetworkAddrs?: boolean;
     allowRelayFallback: boolean;
+    congestionController?: CongestionControllerDto;
     customRelayUrls?: Array<string>;
 };
 
@@ -1378,6 +1384,7 @@ export type NetworkSettingsDto = {
 export type NetworkSettingsPatchDto = {
     allowOverlayNetworkAddrs?: boolean | null;
     allowRelayFallback?: boolean | null;
+    congestionController?: CongestionControllerDto | null;
     customRelayUrls?: Array<string> | null;
 };
 

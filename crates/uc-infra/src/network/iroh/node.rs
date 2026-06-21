@@ -27,7 +27,7 @@ use iroh::endpoint::{presets, QuicTransportConfig, VarInt};
 use iroh::protocol::{Router, RouterBuilder};
 use iroh::{Endpoint, RelayMode, RelayUrl, TransportAddr};
 use iroh_mdns_address_lookup::MdnsAddressLookup;
-use noq_proto::congestion::Bbr3Config;
+use noq_proto::congestion::CubicConfig;
 use tracing::{debug, info, instrument, warn};
 
 use uc_core::file_transfer::OutboundProgressReporterPort;
@@ -283,28 +283,14 @@ fn log_publish_addrs(endpoint: &Endpoint, stage: &'static str) {
 /// (the project's quinn fork) `TransportConfig` surface.
 fn build_transport_config() -> QuicTransportConfig {
     QuicTransportConfig::builder()
-        // BBR over CUBIC: we're observing iroh emit "Congestion controller
-        // state reset" 3× per connection (path-validation churn) which slams
-        // the CUBIC CWND back to 10 MSS each time, forcing slow-start. Even
-        // once warmed up, on macOS Wi-Fi a single sporadic loss halves the
-        // window — visible in our blob-fetch traces as 1–3s stalls every
-        // 4 MB chunk after the first ~22 MB/s burst. BBR models bandwidth ×
-        // RTT directly instead of treating loss as a congestion signal, so
-        // it recovers from those stalls without giving back the rate it
-        // earned. The trade-off is BBR can be unfair to CUBIC flows on a
-        // shared bottleneck; that's a non-issue for our P2P single-flow
-        // direct UDP path.
-        .congestion_controller_factory(Arc::new({
-            let mut cfg = Bbr3Config::default();
-            // Default initial_window is ~131KB (clamp to 2×MAX_DATAGRAM_SIZE).
-            // On LAN (1ms RTT) this limits Startup throughput to ~131 MB/s in
-            // theory, but BBR3's bandwidth probe often locks at a much lower
-            // rate after exiting Startup. A 4MB initial window lets the Startup
-            // phase measure realistic LAN bandwidth before transitioning to
-            // ProbeBw, preventing the controller from getting stuck at <1 MB/s.
-            cfg.initial_window(4 * 1024 * 1024);
-            cfg
-        }))
+        // CUBIC over BBR3: noq-proto 1.0.0-rc.1's BBR3 implementation has a
+        // bandwidth-probe bug that locks throughput at ~2 MB/s even on
+        // loopback (p2p-bench: BBR3 = 2.36 MB/s vs CUBIC = 116 MB/s on the
+        // same 64MB transfer). Until upstream fixes BBR3, CUBIC gives us
+        // full LAN throughput. The earlier "path-validation churn resets
+        // CWND" concern (which motivated BBR) is mitigated by
+        // persistent_congestion_threshold=5 below.
+        .congestion_controller_factory(Arc::new(CubicConfig::default()))
         // QUIC flow-control sized for hole-punched cross-WAN BDP. iroh-blobs
         // opens a single bidi stream per blob fetch (`open_bi`), so the
         // stream window — not the connection window — is the per-transfer

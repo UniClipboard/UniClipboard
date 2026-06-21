@@ -27,8 +27,9 @@ a single machine. Values are read once at startup, so set them before launching
 
 | Variable              | Effect                                                                                                                                               |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UC_IROH_BIND_PORT`   | Pin the local iroh UDP port instead of letting the OS assign one — handy when you need a stable port to forward through a firewall or NAT.           |
-| `UC_IROH_PUBLIC_ADDR` | Advertise a specific public address for this node, for hosts behind static NAT or with a known public IP. Typically paired with `UC_IROH_BIND_PORT`. |
+| `UC_IROH_BIND_PORT`          | Pin the local iroh UDP port instead of letting the OS assign one — handy when you need a stable port to forward through a firewall or NAT.                                                    |
+| `UC_IROH_PUBLIC_ADDR`        | Advertise a specific public address for this node, for hosts behind static NAT or with a known public IP. Typically paired with `UC_IROH_BIND_PORT`.                                          |
+| `UC_CONGESTION_CONTROLLER`   | Override the QUIC congestion controller without opening the settings UI. Accepts `cubic` (default) or `bbr3`. Useful for quick A/B testing on headless nodes. Requires a daemon restart.      |
 
 ## Logging
 

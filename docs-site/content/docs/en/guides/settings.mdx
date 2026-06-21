@@ -123,8 +123,9 @@ For the underlying key model, see
 | LAN-only mode               | Force-disables encrypted relay; off-LAN peers become unreachable. Same-LAN first pairing continues to work via mDNS.                                                                                                                                                                           |
 | Allow overlay network addrs | When on, Tailscale CGNAT (`100.64.0.0/10`) and IPv6 ULA (`fd7a:115c:a1e0::/48`) addresses are included in invitations and the locally-advertised candidate set; when off, only physical NICs are. Clash TUN fake-ip (`198.18.0.0/15`) and IPv4 link-local are always filtered with no opt-out. |
 | Custom relay nodes          | One iroh relay URL per line. Empty = default relays; non-empty = use only those relay nodes.                                                                                                                                                                                                   |
+| Congestion controller       | Algorithm for network flow control. **CUBIC** (default) works best on local and well-provisioned networks; **BBR3** may perform better on long-distance or lossy links, at the cost of reduced LAN throughput.                                                                                 |
 
-Either change shows a banner saying the daemon needs to restart. Click
+Any change shows a banner saying the daemon needs to restart. Click
 `Restart now` to apply — only the background service restarts; the app
 window stays open. The system tray icon also reflects the LAN-only state
 at a glance.

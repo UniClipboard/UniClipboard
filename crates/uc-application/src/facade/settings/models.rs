@@ -789,6 +789,7 @@ mod network_settings_apply_patch_tests {
             allow_relay_fallback: allow,
             allow_overlay_network_addrs: false,
             custom_relay_urls: Vec::new(),
+            congestion_controller: Default::default(),
         };
         s
     }
@@ -799,6 +800,7 @@ mod network_settings_apply_patch_tests {
             allow_relay_fallback: true,
             allow_overlay_network_addrs: allow_overlay,
             custom_relay_urls: Vec::new(),
+            congestion_controller: Default::default(),
         };
         s
     }

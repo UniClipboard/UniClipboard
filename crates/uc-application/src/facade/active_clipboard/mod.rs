@@ -17,8 +17,9 @@ pub use reconcile::{
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc::UnboundedReceiver;
-use tracing::warn;
+use tokio::sync::{broadcast, mpsc::UnboundedReceiver};
+use tokio::task::JoinHandle;
+use tracing::{debug, instrument, warn};
 
 use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::ids::{DeviceId, EntryId};
@@ -26,7 +27,8 @@ use uc_core::ports::clipboard::{
     ActiveClipboardDispatchPort, ActiveClipboardPullClientPort, ActiveClipboardPullServePort,
     ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
     ClipboardSelectionRepositoryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
-    GetRepresentationPort, LoadActiveClipboardPort, UpdateRepresentationProcessingResultPort,
+    GetRepresentationPort, LoadActiveClipboardPort, TouchClipboardEntryPort,
+    UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::space::IsSpaceUnlockedPort;
@@ -38,14 +40,16 @@ use uc_core::{blob::ports::BlobReaderPort, MemberRepositoryPort};
 use crate::clipboard_write::{
     ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, RestoreBroadcastRequest,
 };
-use crate::facade::blob_transfer::BlobTransferFacade;
+use crate::facade::blob_transfer::{BlobTransferFacade, SharedHostEventEmitter};
 use crate::facade::clipboard_inbound::{
     InboundClipboardApplyInput, InboundClipboardApplyOutcome, InboundClipboardApplyPort,
 };
 use crate::facade::clipboard_outbound::OutboundBlobPublishGateway;
+use crate::facade::host_event::{ClipboardHostEvent, ClipboardOriginKind, HostEvent};
 use crate::usecases::clipboard_sync::active_state::apply_inbound::{
-    ActiveClipboardInboundHandle, ApplyInboundActiveClipboardStateUseCase,
-    InboundPulledContentStore, InboundPulledContentStoreError,
+    ActiveClipboardConvergedEvent, ActiveClipboardInboundHandle,
+    ApplyInboundActiveClipboardStateUseCase, InboundPulledContentStore,
+    InboundPulledContentStoreError,
 };
 use crate::usecases::clipboard_sync::active_state::fanout::fan_out_active_state;
 use crate::usecases::clipboard_sync::active_state::peer_online_resync_worker::{
@@ -128,6 +132,12 @@ pub struct ActiveClipboardDeps {
     /// convergence tail owns the register advance (coupled to OS-write
     /// success). Paired with `pull_client`.
     pub pull_apply: Option<Arc<dyn InboundClipboardApplyPort>>,
+    /// Resurfaces the converged entry in clipboard history.
+    pub touch_entry: Arc<dyn TouchClipboardEntryPort>,
+    /// Host event bus for notifying the frontend after a resurface.
+    pub host_event_emitter: SharedHostEventEmitter,
+    /// Wall clock for stamping the resurface time.
+    pub resurface_clock: Arc<dyn ClockPort>,
 }
 
 /// Dependencies for the standalone pull serve port
@@ -178,25 +188,19 @@ pub use crate::usecases::clipboard_sync::active_state::apply_inbound::ActiveClip
 /// (issue #1017).
 pub struct ActiveClipboardFacade {
     inbound_uc: Arc<ApplyInboundActiveClipboardStateUseCase>,
-    // Retained for the restore-broadcast worker (outbound origination). Same
-    // dispatch / roster / gate as the inbound re-broadcast path.
     dispatch: Arc<dyn ActiveClipboardDispatchPort>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
     member_repo: Arc<dyn MemberRepositoryPort>,
     settings: Arc<dyn SettingsPort>,
-    // Retained for the peer-online resync worker (outbound origination): on a
-    // peer-online presence transition it loads the register, reconstructs the
-    // activation's content category for the outbound gate, and resends the
-    // current state to that peer.
     presence: Arc<dyn PresencePort>,
     load_register: Arc<dyn LoadActiveClipboardPort>,
     reconstructor: SnapshotReconstructor,
-    // Outbound origination of a locally-stamped activation (mobile push). The
-    // advancer stamps `(now, this_device)`; the send gate enforces the full
-    // outbound gate (`send_enabled` ∧ `send_content_types`) per peer, shared
-    // with every other 0xC3 origination path.
     local_advancer: LocalActiveRegisterAdvancer,
     send_gate: MemberSendGate,
+    // Resurface deps — used by the converged-event subscriber worker.
+    touch_entry: Arc<dyn TouchClipboardEntryPort>,
+    host_event_emitter: SharedHostEventEmitter,
+    resurface_clock: Arc<dyn ClockPort>,
 }
 
 impl ActiveClipboardFacade {
@@ -208,6 +212,8 @@ impl ActiveClipboardFacade {
             Arc::clone(&deps.clock),
         );
         let send_gate = MemberSendGate::new(Arc::clone(&deps.member_repo));
+
+        let (converged_tx, _) = broadcast::channel::<ActiveClipboardConvergedEvent>(16);
 
         let mut inbound_uc = ApplyInboundActiveClipboardStateUseCase::new(
             deps.receiver,
@@ -222,12 +228,9 @@ impl ActiveClipboardFacade {
             Arc::clone(&deps.peer_addr_repo),
             Arc::clone(&deps.presence),
             deps.clock,
+            converged_tx,
         );
 
-        // Wire the inbound "content missing → pull" branch when both the pull
-        // client and the store-only apply path are present. The store decrypts
-        // the pulled envelope and persists it WITHOUT advancing the register —
-        // the inbound convergence tail owns the register advance (D6).
         if let (Some(pull_client), Some(pull_apply)) = (deps.pull_client, deps.pull_apply) {
             let store: Arc<dyn InboundPulledContentStore> = Arc::new(PulledContentStore {
                 cipher: Arc::clone(&deps.transfer_cipher),
@@ -248,6 +251,9 @@ impl ActiveClipboardFacade {
             reconstructor,
             local_advancer,
             send_gate,
+            touch_entry: deps.touch_entry,
+            host_event_emitter: deps.host_event_emitter,
+            resurface_clock: deps.resurface_clock,
         }
     }
 
@@ -334,6 +340,80 @@ impl ActiveClipboardFacade {
             Arc::clone(&self.member_repo),
         )
         .spawn()
+    }
+
+    /// Spawn a worker that subscribes to inbound convergence events and
+    /// resurfaces the converged entry in clipboard history (bumps
+    /// `active_time_ms` + notifies the frontend). Decouples history ordering
+    /// from the convergence use case.
+    pub fn spawn_resurface_worker(&self) -> ActiveClipboardResurfaceHandle {
+        let mut rx = self.inbound_uc.subscribe_converged();
+        let touch = Arc::clone(&self.touch_entry);
+        let bus = Arc::clone(&self.host_event_emitter);
+        let clock = Arc::clone(&self.resurface_clock);
+
+        let join = tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(event) => {
+                        resurface_entry(touch.as_ref(), &bus, clock.as_ref(), &event.entry_id)
+                            .await;
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        debug!(
+                            missed = n,
+                            "resurface worker lagged; some entries may not resurface immediately"
+                        );
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+
+        ActiveClipboardResurfaceHandle { join }
+    }
+}
+
+/// Handle owning the resurface worker. Drop or `abort()` to stop it.
+pub struct ActiveClipboardResurfaceHandle {
+    join: JoinHandle<()>,
+}
+
+impl ActiveClipboardResurfaceHandle {
+    pub fn abort(&self) {
+        self.join.abort();
+    }
+}
+
+impl Drop for ActiveClipboardResurfaceHandle {
+    fn drop(&mut self) {
+        self.join.abort();
+    }
+}
+
+#[instrument(name = "active_state.resurface", skip_all, fields(entry_id = %entry_id))]
+async fn resurface_entry(
+    touch: &dyn TouchClipboardEntryPort,
+    bus: &SharedHostEventEmitter,
+    clock: &dyn ClockPort,
+    entry_id: &EntryId,
+) {
+    let now_ms = clock.now_ms();
+    match touch.touch_entry(entry_id, now_ms).await {
+        Ok(true) => {
+            debug!("entry resurfaced");
+            bus.emit_or_warn(HostEvent::Clipboard(ClipboardHostEvent::NewContent {
+                entry_id: entry_id.as_ref().to_string(),
+                preview: "Clipboard restored".to_string(),
+                origin: ClipboardOriginKind::Remote,
+            }));
+        }
+        Ok(false) => {
+            debug!("touch_entry found no row (entry deleted?)");
+        }
+        Err(err) => {
+            warn!(error = %err, "touch_entry failed (best-effort, ignored)");
+        }
     }
 }
 

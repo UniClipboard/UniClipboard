@@ -64,6 +64,14 @@ const DEFAULT_SPACE_ID: &str = "space";
 /// comparison and pin the register, suppressing real later activations.
 const FUTURE_TIMESTAMP_TOLERANCE_MS: i64 = 300_000; // 300s
 
+/// Emitted when the inbound active-clipboard register advances successfully.
+/// External subscribers (e.g. a resurface worker) react to this; the
+/// convergence use case itself does not touch clipboard history ordering.
+#[derive(Debug, Clone)]
+pub(crate) struct ActiveClipboardConvergedEvent {
+    pub entry_id: EntryId,
+}
+
 /// Failure surface for storing a pulled transfer envelope locally.
 #[derive(Debug, Error)]
 pub(crate) enum InboundPulledContentStoreError {
@@ -143,6 +151,9 @@ pub(crate) struct ApplyInboundActiveClipboardStateUseCase {
     /// Decrypts + persists a pulled transfer envelope. Paired with
     /// `pull_client`; both are wired together or not at all.
     pulled_content_store: Option<Arc<dyn InboundPulledContentStore>>,
+    /// Domain event sender: fires after a successful register advance so
+    /// external subscribers can react (e.g. resurface the entry in history).
+    converged_tx: broadcast::Sender<ActiveClipboardConvergedEvent>,
 }
 
 impl ApplyInboundActiveClipboardStateUseCase {
@@ -160,6 +171,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
         presence: Arc<dyn PresencePort>,
         clock: Arc<dyn ClockPort>,
+        converged_tx: broadcast::Sender<ActiveClipboardConvergedEvent>,
     ) -> Self {
         Self {
             receiver,
@@ -177,7 +189,13 @@ impl ApplyInboundActiveClipboardStateUseCase {
             clock,
             pull_client: None,
             pulled_content_store: None,
+            converged_tx,
         }
+    }
+
+    /// Subscribe to convergence events.
+    pub(crate) fn subscribe_converged(&self) -> broadcast::Receiver<ActiveClipboardConvergedEvent> {
+        self.converged_tx.subscribe()
     }
 
     /// Wire the on-demand pull subsystem (issue #1017 PR8). When set, the
@@ -440,6 +458,7 @@ impl ApplyInboundActiveClipboardStateUseCase {
         let peer_addr_repo = Arc::clone(&self.peer_addr_repo);
         let presence = Arc::clone(&self.presence);
         let send_gate = self.send_gate.clone();
+        let converged_tx = self.converged_tx.clone();
 
         tokio::spawn(async move {
             // The active-clipboard write is a remote-originated push: use the
@@ -479,6 +498,12 @@ impl ApplyInboundActiveClipboardStateUseCase {
                     return;
                 }
             }
+
+            // Notify subscribers that this entry converged (e.g. resurface
+            // worker bumps active_time_ms + notifies the frontend).
+            let _ = converged_tx.send(ActiveClipboardConvergedEvent {
+                entry_id: state.entry_id.clone(),
+            });
 
             // Re-broadcast the converged state to every allowed peer through
             // the shared fan-out (full outbound gate: send_enabled ∧
@@ -812,6 +837,7 @@ mod tests {
             Arc::new(NoWriteClipboard),
             Arc::new(StubOrigin),
         ));
+        let (converged_tx, _) = broadcast::channel(16);
         let uc = ApplyInboundActiveClipboardStateUseCase::new(
             Arc::new(NoopReceiver),
             Arc::new(FixedUnlocked(unlocked)),
@@ -825,6 +851,7 @@ mod tests {
             Arc::new(EmptyPeerAddrRepo),
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(now_ms)),
+            converged_tx,
         );
         Harness {
             advance,
@@ -1161,6 +1188,7 @@ mod tests {
             Arc::new(OkWriteClipboard),
             Arc::new(StubOrigin),
         ));
+        let (converged_tx, _) = broadcast::channel(16);
         let mut uc = ApplyInboundActiveClipboardStateUseCase::new(
             Arc::new(NoopReceiver),
             Arc::new(FixedUnlocked(true)),
@@ -1176,6 +1204,7 @@ mod tests {
             peer_addr_repo,
             Arc::new(StaticPresence(ReachabilityState::Online)),
             Arc::new(FixedClock(1_000)),
+            converged_tx,
         );
         if let (Some(pull_client), Some(store)) = (pull_client, store) {
             uc = uc.with_pull(pull_client, store);

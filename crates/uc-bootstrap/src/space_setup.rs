@@ -47,10 +47,11 @@ use uc_application::clipboard_capture::CaptureClipboardUseCase;
 use uc_application::facade::{
     build_active_clipboard_pull_serve_port, ActiveClipboardDeps, ActiveClipboardFacade,
     ActiveClipboardHandle, ActiveClipboardPeerOnlineResyncHandle,
-    ActiveClipboardPullServeFacadeDeps, ActiveClipboardRestoreBroadcastHandle, BlobTransferDeps,
-    BlobTransferFacade, ClipboardSnapshotDeps, ClipboardSyncDeps, ClipboardSyncFacade, HostEvent,
-    HostEventBus, InboundClipboardApplyPort, IngestHandle, MemberRosterDeps, MemberRosterFacade,
-    SpaceSetupDeps, SpaceSetupFacade, TransferHostEvent,
+    ActiveClipboardPullServeFacadeDeps, ActiveClipboardRestoreBroadcastHandle,
+    ActiveClipboardResurfaceHandle, BlobTransferDeps, BlobTransferFacade, ClipboardSnapshotDeps,
+    ClipboardSyncDeps, ClipboardSyncFacade, HostEvent, HostEventBus, InboundClipboardApplyPort,
+    IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade,
+    TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
 use uc_application::{
@@ -151,6 +152,7 @@ pub struct SpaceSetupAssembly {
     /// (the sender side lives in the restore use cases). `None` for entry
     /// points that don't originate restore broadcasts. Aborted on shutdown
     /// like the inbound handle.
+    active_clipboard_resurface_handle: ActiveClipboardResurfaceHandle,
     restore_broadcast_handle: Option<ActiveClipboardRestoreBroadcastHandle>,
     /// 反向"传输进度"翻译 worker 的 join handle。订阅
     /// `IrohTransferProgressAdapter` 的 inbound 流,将每帧 progress 翻译
@@ -193,6 +195,7 @@ impl SpaceSetupAssembly {
         self.ingest_handle.abort();
         self.active_clipboard_inbound_handle.abort();
         self.active_clipboard_peer_online_resync_handle.abort();
+        self.active_clipboard_resurface_handle.abort();
         if let Some(handle) = &self.restore_broadcast_handle {
             handle.abort();
         }
@@ -695,6 +698,9 @@ pub async fn build_space_setup_assembly(
         transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
         pull_client: Some(active_clipboard_pull_client),
         pull_apply: Some(pull_store_apply),
+        touch_entry: Arc::clone(&deps.clipboard.entry_ports.touch),
+        host_event_emitter: Arc::clone(&wired.host_event_bus),
+        resurface_clock: Arc::clone(&deps.system.clock),
     }));
     let active_clipboard_inbound_handle = active_clipboard.spawn_inbound_loop();
     // Peer-online resync (issue #1017 PR5, D10). Subscribes to presence and,
@@ -704,6 +710,7 @@ pub async fn build_space_setup_assembly(
     // Same lifetime as the inbound loop — exits when the presence
     // subscription closes at router shutdown; aborted explicitly in `shutdown`.
     let active_clipboard_peer_online_resync_handle = active_clipboard.spawn_peer_online_resync();
+    let active_clipboard_resurface_handle = active_clipboard.spawn_resurface_worker();
 
     info!("Slice 2/3 SpaceSetupFacade + MemberRosterFacade + ClipboardSyncFacade + BlobTransferFacade assembled");
     Ok(SpaceSetupAssembly {
@@ -720,6 +727,7 @@ pub async fn build_space_setup_assembly(
         ingest_handle,
         active_clipboard_inbound_handle,
         active_clipboard_peer_online_resync_handle,
+        active_clipboard_resurface_handle,
         restore_broadcast_handle: None,
         outbound_progress_translator,
     })

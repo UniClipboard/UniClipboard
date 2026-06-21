@@ -38,7 +38,7 @@ pub use active_clipboard::{
     ActiveClipboardHandle, ActiveClipboardPeerOnlineResyncHandle,
     ActiveClipboardPullServeFacadeDeps, ActiveClipboardReconcileDeps,
     ActiveClipboardReconcileFacade, ActiveClipboardReconcileOutcome,
-    ActiveClipboardRestoreBroadcastHandle, ClipboardSnapshotDeps,
+    ActiveClipboardRestoreBroadcastHandle, ActiveClipboardResurfaceHandle, ClipboardSnapshotDeps,
 };
 pub use app_facade::{
     AppFacade, AppFacadeParts, AppPresenceEvent, AppPresenceSubscription,

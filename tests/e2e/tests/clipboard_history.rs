@@ -17,7 +17,7 @@
 //! Run with: cargo test -p uc-e2e-tests -- --ignored
 
 use serde_json::Value;
-use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
+use uc_e2e_tests::{get_session_token, TestCli, TestDaemon, TestProfile};
 
 // ── Shared test context ──────────────────────────────────────────────
 
@@ -119,50 +119,6 @@ async fn setup(name: &str) -> HistoryTestContext {
         client,
         session_token,
     }
-}
-
-// ── Auth helpers (mirrors daemon_api.rs) ─────────────────────────────
-
-async fn get_session_token(daemon: &TestDaemon, client: &reqwest::Client) -> String {
-    let file_token = read_daemon_file_token(daemon);
-
-    let resp = client
-        .post(format!("{}/auth/connect", daemon.base_url()))
-        .header("Authorization", format!("Bearer {file_token}"))
-        .json(&serde_json::json!({
-            "pid": std::process::id(),
-            "clientType": "cli"
-        }))
-        .send()
-        .await
-        .expect("auth/connect request");
-
-    assert!(
-        resp.status().is_success(),
-        "auth/connect failed with {}",
-        resp.status()
-    );
-
-    let body: Value = resp.json().await.expect("auth/connect json");
-    let data = body.get("data").unwrap_or(&body);
-    data.get("sessionToken")
-        .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("auth/connect response missing sessionToken: {body}"))
-        .to_string()
-}
-
-fn read_daemon_file_token(daemon: &TestDaemon) -> String {
-    let token_path = daemon.profile.data_dir().join(".daemon-token");
-    for _ in 0..20 {
-        if let Ok(token) = std::fs::read_to_string(&token_path) {
-            let trimmed = token.trim().to_string();
-            if !trimmed.is_empty() {
-                return trimmed;
-            }
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
-    panic!("daemon token not found at {:?}", token_path);
 }
 
 // ── Tests ────────────────────────────────────────────────────────────

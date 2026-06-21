@@ -78,10 +78,12 @@ impl TestDaemon {
         })
     }
 
-    /// Spawn and wait until the daemon reports healthy (or timeout).
+    /// Spawn and wait until the daemon reports healthy AND the `.daemon-token`
+    /// file is written (or timeout).
     pub async fn start(profile: TestProfile) -> Result<Self, String> {
         let mut daemon = Self::spawn(profile).map_err(|e| format!("spawn failed: {e}"))?;
         daemon.wait_healthy(Duration::from_secs(30)).await?;
+        daemon.wait_for_token(Duration::from_secs(10)).await?;
         Ok(daemon)
     }
 
@@ -114,6 +116,27 @@ impl TestDaemon {
                 ));
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
+    /// Poll until the `.daemon-token` file exists and is non-empty.
+    pub async fn wait_for_token(&self, timeout: Duration) -> Result<(), String> {
+        let token_path = self.profile.data_dir().join(".daemon-token");
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if let Ok(token) = std::fs::read_to_string(&token_path) {
+                if !token.trim().is_empty() {
+                    return Ok(());
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(format!(
+                    "daemon token not written within {}s at {:?}",
+                    timeout.as_secs(),
+                    token_path
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 

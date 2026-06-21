@@ -294,7 +294,17 @@ fn build_transport_config() -> QuicTransportConfig {
         // earned. The trade-off is BBR can be unfair to CUBIC flows on a
         // shared bottleneck; that's a non-issue for our P2P single-flow
         // direct UDP path.
-        .congestion_controller_factory(Arc::new(Bbr3Config::default()))
+        .congestion_controller_factory(Arc::new({
+            let mut cfg = Bbr3Config::default();
+            // Default initial_window is ~131KB (clamp to 2×MAX_DATAGRAM_SIZE).
+            // On LAN (1ms RTT) this limits Startup throughput to ~131 MB/s in
+            // theory, but BBR3's bandwidth probe often locks at a much lower
+            // rate after exiting Startup. A 4MB initial window lets the Startup
+            // phase measure realistic LAN bandwidth before transitioning to
+            // ProbeBw, preventing the controller from getting stuck at <1 MB/s.
+            cfg.initial_window(4 * 1024 * 1024);
+            cfg
+        }))
         // QUIC flow-control sized for hole-punched cross-WAN BDP. iroh-blobs
         // opens a single bidi stream per blob fetch (`open_bi`), so the
         // stream window — not the connection window — is the per-transfer

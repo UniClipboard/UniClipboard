@@ -149,6 +149,15 @@ pub struct NetworkSettingsView {
     pub allow_relay_fallback: bool,
     pub allow_overlay_network_addrs: bool,
     pub custom_relay_urls: Vec<String>,
+    pub congestion_controller: CongestionControllerView,
+}
+
+/// Mirror of `uc_core::settings::model::CongestionController` for the
+/// application layer view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CongestionControllerView {
+    Cubic,
+    Bbr3,
 }
 
 /// 快捷面板出现位置业务镜像。
@@ -271,6 +280,7 @@ pub struct NetworkSettingsPatch {
     pub allow_relay_fallback: Option<bool>,
     pub allow_overlay_network_addrs: Option<bool>,
     pub custom_relay_urls: Option<Vec<String>>,
+    pub congestion_controller: Option<CongestionControllerView>,
 }
 
 /// 快捷面板字段 patch 镜像 —— `None` = 不修改。
@@ -338,6 +348,24 @@ impl From<QuickPanelPositionView> for core::QuickPanelPosition {
         match value {
             QuickPanelPositionView::Center => Self::Center,
             QuickPanelPositionView::FollowCursor => Self::FollowCursor,
+        }
+    }
+}
+
+impl From<core::CongestionController> for CongestionControllerView {
+    fn from(value: core::CongestionController) -> Self {
+        match value {
+            core::CongestionController::Cubic => Self::Cubic,
+            core::CongestionController::Bbr3 => Self::Bbr3,
+        }
+    }
+}
+
+impl From<CongestionControllerView> for core::CongestionController {
+    fn from(value: CongestionControllerView) -> Self {
+        match value {
+            CongestionControllerView::Cubic => Self::Cubic,
+            CongestionControllerView::Bbr3 => Self::Bbr3,
         }
     }
 }
@@ -522,6 +550,7 @@ impl From<core::Settings> for SettingsView {
                 allow_relay_fallback: value.network.allow_relay_fallback,
                 allow_overlay_network_addrs: value.network.allow_overlay_network_addrs,
                 custom_relay_urls: value.network.custom_relay_urls,
+                congestion_controller: value.network.congestion_controller.into(),
             },
             quick_panel: QuickPanelSettingsView {
                 enabled: value.quick_panel.enabled,
@@ -680,6 +709,9 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = network.custom_relay_urls {
             existing.network.custom_relay_urls = normalize_relay_urls(v);
+        }
+        if let Some(v) = network.congestion_controller {
+            existing.network.congestion_controller = v.into();
         }
     }
 

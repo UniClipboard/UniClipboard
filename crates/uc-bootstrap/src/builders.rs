@@ -218,6 +218,7 @@ pub async fn build_daemon_lifecycle(
     let allow_relay_fallback = settings.network.allow_relay_fallback;
     let allow_overlay_network_addrs = settings.network.allow_overlay_network_addrs;
     let custom_relay_urls = settings.network.custom_relay_urls.clone();
+    let congestion_controller = settings.network.congestion_controller;
 
     // 【checker BLOCKER 4 — 单一取反点铁律】
     // `disable_relays` 的值**只能**通过 `relay_policy_to_iroh_config` 取得,
@@ -226,11 +227,13 @@ pub async fn build_daemon_lifecycle(
         allow_relay_fallback,
         allow_overlay_network_addrs,
         custom_relay_urls,
+        congestion_controller,
         None, // production 不 override rendezvous,使用默认 RENDEZVOUS_BASE_URL
     );
     // #900：从 env 读取直连可达性（固定 UDP 端口 + 广播公网地址）并写入。
     // 必须在 `build_space_setup_assembly`（首次 endpoint 快照/配对交换）之前。
     crate::network_policy::apply_iroh_direct_reachability_from_env(&mut iroh_config);
+    crate::network_policy::apply_congestion_controller_from_env(&mut iroh_config);
 
     tracing::info!(
         target: "settings.network",
@@ -238,11 +241,13 @@ pub async fn build_daemon_lifecycle(
         disable_relays = iroh_config.disable_relays,
         allow_overlay_network_addrs = iroh_config.allow_overlay_network_addrs,
         custom_relay_count = iroh_config.custom_relay_urls.len(),
-        "applying network settings: allow_relay_fallback={} → disable_relays={}, allow_overlay_network_addrs={}, custom_relay_count={}",
+        congestion_controller = %iroh_config.congestion_controller,
+        "applying network settings: allow_relay_fallback={} → disable_relays={}, allow_overlay_network_addrs={}, custom_relay_count={}, cc={}",
         allow_relay_fallback,
         iroh_config.disable_relays,
         iroh_config.allow_overlay_network_addrs,
         iroh_config.custom_relay_urls.len(),
+        iroh_config.congestion_controller,
     );
 
     let space_setup_assembly = build_space_setup_assembly(wired, iroh_config)

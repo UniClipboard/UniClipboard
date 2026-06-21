@@ -277,6 +277,17 @@ pub struct FileSyncSettingsDto {
     pub file_auto_cleanup: bool,
 }
 
+/// Algorithm for network flow control. Wire form: `"cubic"` | `"bbr3"`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CongestionControllerDto {
+    /// Loss-based; excellent LAN throughput.
+    #[default]
+    Cubic,
+    /// Bandwidth-probing; better for lossy/high-latency links.
+    Bbr3,
+}
+
 /// LAN-only Mode（v0.7.0）DTO 镜像。
 ///
 /// 反向命名规则（Pitfall 1）：业务正向语义 `allow_relay_fallback`，
@@ -297,6 +308,8 @@ pub struct NetworkSettingsDto {
     pub allow_overlay_network_addrs: bool,
     #[serde(default)]
     pub custom_relay_urls: Vec<String>,
+    #[serde(default)]
+    pub congestion_controller: CongestionControllerDto,
 }
 
 /// 快捷面板出现位置 DTO。wire form: `center` | `follow_cursor`。
@@ -458,6 +471,7 @@ pub struct NetworkSettingsPatchDto {
     pub allow_relay_fallback: Option<bool>,
     pub allow_overlay_network_addrs: Option<bool>,
     pub custom_relay_urls: Option<Vec<String>>,
+    pub congestion_controller: Option<CongestionControllerDto>,
 }
 
 /// 快捷面板字段 patch DTO 镜像 — `null` = 不修改。
@@ -662,6 +676,25 @@ impl From<core::NetworkSettings> for NetworkSettingsDto {
             allow_relay_fallback: value.allow_relay_fallback,
             allow_overlay_network_addrs: value.allow_overlay_network_addrs,
             custom_relay_urls: value.custom_relay_urls,
+            congestion_controller: value.congestion_controller.into(),
+        }
+    }
+}
+
+impl From<core::CongestionController> for CongestionControllerDto {
+    fn from(value: core::CongestionController) -> Self {
+        match value {
+            core::CongestionController::Cubic => Self::Cubic,
+            core::CongestionController::Bbr3 => Self::Bbr3,
+        }
+    }
+}
+
+impl From<CongestionControllerDto> for core::CongestionController {
+    fn from(value: CongestionControllerDto) -> Self {
+        match value {
+            CongestionControllerDto::Cubic => Self::Cubic,
+            CongestionControllerDto::Bbr3 => Self::Bbr3,
         }
     }
 }
@@ -789,11 +822,12 @@ mod network_dto_tests {
             allow_relay_fallback: true,
             allow_overlay_network_addrs: false,
             custom_relay_urls: Vec::new(),
+            congestion_controller: CongestionControllerDto::default(),
         };
         let json = serde_json::to_string(&dto).expect("serialize");
         assert_eq!(
             json,
-            r#"{"allowRelayFallback":true,"allowOverlayNetworkAddrs":false,"customRelayUrls":[]}"#
+            r#"{"allowRelayFallback":true,"allowOverlayNetworkAddrs":false,"customRelayUrls":[],"congestionController":"cubic"}"#
         );
     }
 
@@ -825,6 +859,7 @@ mod network_dto_tests {
             allow_relay_fallback: false,
             allow_overlay_network_addrs: true,
             custom_relay_urls: vec!["https://relay.example.com.".to_string()],
+            congestion_controller: core::CongestionController::Bbr3,
         };
         let dto: NetworkSettingsDto = core_value.into();
         assert!(

@@ -4,11 +4,11 @@ use uc_application::facade::settings as app_settings;
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::settings::{
-    ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto, GeneralSettingsDto,
-    KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto, QuickPanelPositionDto,
-    QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto, RuleEvaluationDto,
-    SecuritySettingsDto, SettingsDto, SettingsPatchDto, ShortcutKeyDto, SyncFrequencyDto,
-    SyncSettingsDto, ThemeDto, UpdateChannelDto,
+    CongestionControllerDto, ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto,
+    GeneralSettingsDto, KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto,
+    QuickPanelPositionDto, QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto,
+    RuleEvaluationDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto, ShortcutKeyDto,
+    SyncFrequencyDto, SyncSettingsDto, ThemeDto, UpdateChannelDto,
 };
 
 impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
@@ -89,6 +89,10 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                     allow_relay_fallback: network.allow_relay_fallback,
                     allow_overlay_network_addrs: network.allow_overlay_network_addrs,
                     custom_relay_urls: network.custom_relay_urls,
+                    congestion_controller: network.congestion_controller.map(|cc| {
+                        let core_cc: uc_core::settings::model::CongestionController = cc.into();
+                        app_settings::CongestionControllerView::from(core_cc)
+                    }),
                 }),
             quick_panel: self.quick_panel.map(|quick_panel| {
                 app_settings::QuickPanelSettingsPatch {
@@ -167,6 +171,11 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
                 allow_relay_fallback: self.network.allow_relay_fallback,
                 allow_overlay_network_addrs: self.network.allow_overlay_network_addrs,
                 custom_relay_urls: self.network.custom_relay_urls,
+                congestion_controller: {
+                    let core_cc: uc_core::settings::model::CongestionController =
+                        self.network.congestion_controller.into();
+                    CongestionControllerDto::from(core_cc)
+                },
             },
             quick_panel: QuickPanelSettingsDto {
                 enabled: self.quick_panel.enabled,

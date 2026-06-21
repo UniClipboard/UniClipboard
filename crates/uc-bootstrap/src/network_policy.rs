@@ -22,6 +22,8 @@
 
 use std::net::SocketAddr;
 
+use uc_core::settings::model::CongestionController;
+
 use crate::space_setup::IrohNodeConfig;
 
 /// 把业务侧 `Settings.network` 翻译为 infra 侧 `IrohNodeConfig`。
@@ -48,6 +50,7 @@ pub(crate) fn relay_policy_to_iroh_config(
     allow_relay_fallback: bool,
     allow_overlay_network_addrs: bool,
     custom_relay_urls: Vec<String>,
+    congestion_controller: CongestionController,
     rendezvous_base_url: Option<String>,
 ) -> IrohNodeConfig {
     IrohNodeConfig {
@@ -56,6 +59,7 @@ pub(crate) fn relay_policy_to_iroh_config(
         // ↓ 正向同名字段，直接搬运不取反。
         allow_overlay_network_addrs,
         custom_relay_urls,
+        congestion_controller,
         rendezvous_base_url,
         // 直连可达性（#900）来源于 env，不在本设置翻译点决定；由
         // `apply_iroh_direct_reachability_from_env` 在 daemon / CLI 入口处填充。
@@ -150,6 +154,34 @@ pub(crate) fn apply_iroh_direct_reachability_from_env(cfg: &mut IrohNodeConfig) 
     cfg.public_addr = reach.public_addr;
 }
 
+/// Override the congestion controller from `UC_CONGESTION_CONTROLLER` env.
+/// Invalid values are logged and ignored (keeps the settings-derived default).
+pub(crate) fn apply_congestion_controller_from_env(cfg: &mut IrohNodeConfig) {
+    if let Ok(raw) = std::env::var("UC_CONGESTION_CONTROLLER") {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        match trimmed.parse::<CongestionController>() {
+            Ok(cc) => {
+                tracing::info!(
+                    target: "settings.network",
+                    congestion_controller = %cc,
+                    "congestion controller overridden from env (UC_CONGESTION_CONTROLLER)",
+                );
+                cfg.congestion_controller = cc;
+            }
+            Err(err) => {
+                tracing::warn!(
+                    uc_congestion_controller = %raw,
+                    error = %err,
+                    "invalid UC_CONGESTION_CONTROLLER; ignoring (expected cubic or bbr3)",
+                );
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,7 +191,13 @@ mod tests {
     /// 单方向断言无法捕捉"代码错把恒等当取反"或"反向写漏"两类 bug。
     #[test]
     fn allow_true_means_disable_false() {
-        let cfg = relay_policy_to_iroh_config(true, false, Vec::new(), None);
+        let cfg = relay_policy_to_iroh_config(
+            true,
+            false,
+            Vec::new(),
+            CongestionController::default(),
+            None,
+        );
         assert!(!cfg.disable_relays, "allow=true MUST produce disable=false");
         assert!(cfg.rendezvous_base_url.is_none());
     }
@@ -167,7 +205,13 @@ mod tests {
     /// Pitfall 1 防御 truth-table（反向）：allow=false 必须导致 disable=true。
     #[test]
     fn allow_false_means_disable_true() {
-        let cfg = relay_policy_to_iroh_config(false, false, Vec::new(), None);
+        let cfg = relay_policy_to_iroh_config(
+            false,
+            false,
+            Vec::new(),
+            CongestionController::default(),
+            None,
+        );
         assert!(cfg.disable_relays, "allow=false MUST produce disable=true");
         assert!(cfg.rendezvous_base_url.is_none());
     }
@@ -175,21 +219,39 @@ mod tests {
     /// rendezvous override 透明传递（产线 None；集成测试 Some(url)）。
     #[test]
     fn rendezvous_override_passes_through() {
-        let cfg = relay_policy_to_iroh_config(true, false, Vec::new(), Some("http://test".into()));
+        let cfg = relay_policy_to_iroh_config(
+            true,
+            false,
+            Vec::new(),
+            CongestionController::default(),
+            Some("http://test".into()),
+        );
         assert_eq!(cfg.rendezvous_base_url, Some("http://test".into()));
     }
 
     /// allow_overlay_network_addrs 正向同名搬运（不取反）。
     #[test]
     fn overlay_addrs_true_passes_through() {
-        let cfg = relay_policy_to_iroh_config(true, true, Vec::new(), None);
+        let cfg = relay_policy_to_iroh_config(
+            true,
+            true,
+            Vec::new(),
+            CongestionController::default(),
+            None,
+        );
         assert!(cfg.allow_overlay_network_addrs);
     }
 
     /// allow_overlay_network_addrs=false 默认搬运。
     #[test]
     fn overlay_addrs_false_passes_through() {
-        let cfg = relay_policy_to_iroh_config(true, false, Vec::new(), None);
+        let cfg = relay_policy_to_iroh_config(
+            true,
+            false,
+            Vec::new(),
+            CongestionController::default(),
+            None,
+        );
         assert!(!cfg.allow_overlay_network_addrs);
     }
 
@@ -197,7 +259,13 @@ mod tests {
     /// 与 allow_overlay_network_addrs 无关。
     #[test]
     fn switches_are_independent() {
-        let cfg = relay_policy_to_iroh_config(false, true, Vec::new(), None);
+        let cfg = relay_policy_to_iroh_config(
+            false,
+            true,
+            Vec::new(),
+            CongestionController::default(),
+            None,
+        );
         assert!(cfg.disable_relays, "LAN-only on, overlay on");
         assert!(cfg.allow_overlay_network_addrs);
     }
@@ -209,6 +277,7 @@ mod tests {
             true,
             false,
             vec!["https://relay.example.com.".to_string()],
+            CongestionController::default(),
             None,
         );
         assert_eq!(
@@ -220,7 +289,13 @@ mod tests {
     /// settings 翻译点不负责直连可达性——两个字段恒为 None，由 env applier 填充。
     #[test]
     fn relay_policy_leaves_direct_reachability_unset() {
-        let cfg = relay_policy_to_iroh_config(true, false, Vec::new(), None);
+        let cfg = relay_policy_to_iroh_config(
+            true,
+            false,
+            Vec::new(),
+            CongestionController::default(),
+            None,
+        );
         assert_eq!(cfg.bind_port, None);
         assert_eq!(cfg.public_addr, None);
     }

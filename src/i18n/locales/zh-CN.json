@@ -389,6 +389,11 @@
             "unavailable": "当前运行环境未启用中继测试能力。"
           }
         },
+        "congestionController": {
+          "label": "拥塞控制算法",
+          "description": "网络流量控制算法。CUBIC 在局域网和带宽充足的网络上表现最佳；BBR3 在高延迟或丢包较多的远程链路上可能更好。修改后需重启生效。",
+          "recommended": "推荐"
+        },
         "restartBanner": {
           "message": "网络设置已更改，需要重启后台服务才能生效。",
           "errorMessage": "后台服务重启失败，请重试或手动重启应用。"

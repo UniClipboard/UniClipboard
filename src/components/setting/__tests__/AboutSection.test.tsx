@@ -96,6 +96,7 @@ const baseSetting: Settings = {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
     customRelayUrls: [],
+    congestionController: 'cubic',
   },
   quickPanel: {
     enabled: true,

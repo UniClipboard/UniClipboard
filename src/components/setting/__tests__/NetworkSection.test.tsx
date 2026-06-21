@@ -93,6 +93,7 @@ const baseSetting: Settings = {
     allowRelayFallback: true,
     allowOverlayNetworkAddrs: false,
     customRelayUrls: [],
+    congestionController: 'cubic',
   },
   quickPanel: {
     enabled: true,
@@ -221,6 +222,7 @@ describe('NetworkSection — Phase 95 集成', () => {
       allowRelayFallback: false,
       allowOverlayNetworkAddrs: false,
       customRelayUrls: [],
+      congestionController: 'cubic',
     })
   })
 
@@ -254,6 +256,7 @@ describe('NetworkSection — Phase 95 集成', () => {
       allowRelayFallback: false,
       allowOverlayNetworkAddrs: false,
       customRelayUrls: [],
+      congestionController: 'cubic',
     })
   })
 
@@ -398,6 +401,7 @@ describe('NetworkSection — Phase 95 集成', () => {
       allowRelayFallback: true,
       allowOverlayNetworkAddrs: true,
       customRelayUrls: [],
+      congestionController: 'cubic',
     })
   })
 
@@ -426,6 +430,7 @@ describe('NetworkSection — Phase 95 集成', () => {
       allowRelayFallback: false,
       allowOverlayNetworkAddrs: true,
       customRelayUrls: [],
+      congestionController: 'cubic',
     })
   })
 

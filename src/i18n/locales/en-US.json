@@ -398,6 +398,11 @@
             "unavailable": "Relay testing is not available in this runtime."
           }
         },
+        "congestionController": {
+          "label": "Congestion controller",
+          "description": "Algorithm for network flow control. CUBIC works best on local and well-provisioned networks; BBR3 may perform better on long-distance or lossy links. Takes effect after restart.",
+          "recommended": "recommended"
+        },
         "restartBanner": {
           "message": "Network settings changed. A background service restart is needed to apply.",
           "errorMessage": "Background service restart failed. Please retry or restart the app manually."

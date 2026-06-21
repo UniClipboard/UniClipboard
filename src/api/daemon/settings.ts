@@ -140,10 +140,13 @@ export interface FileSyncSettings {
  * `customRelayUrls` 为空时沿用 iroh 默认中继；非空时只使用这些自定义
  * relay URL。LAN-only 模式开启时该列表会保留但不生效。
  */
+export type CongestionController = 'cubic' | 'bbr3'
+
 export interface NetworkSettings {
   allowRelayFallback: boolean
   allowOverlayNetworkAddrs: boolean
   customRelayUrls: string[]
+  congestionController: CongestionController
 }
 
 /**

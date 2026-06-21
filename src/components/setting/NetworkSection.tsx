@@ -5,6 +5,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
+import type { CongestionController } from '@/types/setting'
 import { AllowOverlayAddrsDisclosure } from './AllowOverlayAddrsDisclosure'
 import { CustomRelayUrlsField } from './CustomRelayUrlsField'
 import { LanOnlyDisclosure } from './LanOnlyDisclosure'
@@ -71,11 +72,16 @@ const NetworkSection: React.FC = () => {
   const persistedAllowRelay = setting?.network?.allowRelayFallback ?? true
   const persistedAllowOverlay = setting?.network?.allowOverlayNetworkAddrs ?? false
   const persistedCustomRelayUrls = setting?.network?.customRelayUrls ?? []
+  const persistedCongestionController: CongestionController =
+    setting?.network?.congestionController ?? 'cubic'
 
   // 本地乐观 state（D-D2：切换后立即更新，不等 PUT 返回）
   const [allowRelayFallback, setAllowRelayFallback] = useState(persistedAllowRelay)
   const [allowOverlayNetworkAddrs, setAllowOverlayNetworkAddrs] = useState(persistedAllowOverlay)
   const [customRelayUrls, setCustomRelayUrls] = useState(persistedCustomRelayUrls)
+  const [congestionController, setCongestionController] = useState<CongestionController>(
+    persistedCongestionController
+  )
 
   // pending 状态（来自两个源：用户切换 / PUT 后 restartRequired；不跨 session）
   const [pending, setPending] = useState(false)
@@ -92,8 +98,9 @@ const NetworkSection: React.FC = () => {
       allowRelayFallback,
       allowOverlayNetworkAddrs,
       customRelayUrls: normalizeRelayUrls(customRelayUrls),
+      congestionController,
     }),
-    [allowRelayFallback, allowOverlayNetworkAddrs, customRelayUrls]
+    [allowRelayFallback, allowOverlayNetworkAddrs, customRelayUrls, congestionController]
   )
   const debouncedNetwork = useDebounce(networkDraft, 500)
 
@@ -103,6 +110,7 @@ const NetworkSection: React.FC = () => {
       setAllowRelayFallback(setting.network.allowRelayFallback)
       setAllowOverlayNetworkAddrs(setting.network.allowOverlayNetworkAddrs)
       setCustomRelayUrls(setting.network.customRelayUrls ?? [])
+      setCongestionController(setting.network.congestionController ?? 'cubic')
     }
   }, [setting])
 
@@ -116,6 +124,7 @@ const NetworkSection: React.FC = () => {
   const persistedAllowRelayRef = useRef(persistedAllowRelay)
   const persistedAllowOverlayRef = useRef(persistedAllowOverlay)
   const persistedCustomRelayUrlsRef = useRef(persistedCustomRelayUrls)
+  const persistedCongestionControllerRef = useRef(persistedCongestionController)
   const settingLoadedRef = useRef(!!setting)
   const tRef = useRef(t)
   const updateNetworkSettingRef = useRef(updateNetworkSetting)
@@ -123,6 +132,7 @@ const NetworkSection: React.FC = () => {
     persistedAllowRelayRef.current = persistedAllowRelay
     persistedAllowOverlayRef.current = persistedAllowOverlay
     persistedCustomRelayUrlsRef.current = persistedCustomRelayUrls
+    persistedCongestionControllerRef.current = persistedCongestionController
     settingLoadedRef.current = !!setting
     tRef.current = t
     updateNetworkSettingRef.current = updateNetworkSetting
@@ -137,6 +147,7 @@ const NetworkSection: React.FC = () => {
     const persistedRelay = persistedAllowRelayRef.current
     const persistedOverlay = persistedAllowOverlayRef.current
     const persistedCustom = persistedCustomRelayUrlsRef.current
+    const persistedCC = persistedCongestionControllerRef.current
     const tNow = tRef.current
     const updateNow = updateNetworkSettingRef.current
 
@@ -146,7 +157,8 @@ const NetworkSection: React.FC = () => {
       debouncedNetwork.customRelayUrls,
       persistedCustom
     )
-    if (!relayChanged && !overlayChanged && !customRelaysChanged) return
+    const ccChanged = debouncedNetwork.congestionController !== persistedCC
+    if (!relayChanged && !overlayChanged && !customRelaysChanged && !ccChanged) return
 
     const invalidRelayUrl = validateRelayUrls(debouncedNetwork.customRelayUrls)
     if (invalidRelayUrl) {
@@ -170,6 +182,7 @@ const NetworkSection: React.FC = () => {
         setAllowRelayFallback(persistedRelay)
         setAllowOverlayNetworkAddrs(persistedOverlay)
         setCustomRelayUrls(persistedCustom)
+        setCongestionController(persistedCC)
         setPending(false)
         const message = err instanceof Error ? err.message : String(err)
         const errorKey = customRelaysChanged
@@ -202,6 +215,15 @@ const NetworkSection: React.FC = () => {
   // ── Switch 切换 handler（Allow Overlay — 正向同名，不取反） ─────
   const handleAllowOverlaySwitchChange = (checked: boolean) => {
     setAllowOverlayNetworkAddrs(checked)
+    setPending(true)
+    setSaveError(null)
+    setRestartError(null)
+  }
+
+  // ── Select 切换 handler（Congestion Controller） ───────────────
+  const handleCongestionControllerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value as CongestionController
+    setCongestionController(value)
     setPending(true)
     setSaveError(null)
     setRestartError(null)
@@ -267,6 +289,24 @@ const NetworkSection: React.FC = () => {
           checked={allowOverlayNetworkAddrs}
           onCheckedChange={handleAllowOverlaySwitchChange}
         />
+      </SettingRow>
+      <SettingRow
+        label={t('settings.sections.network.congestionController.label')}
+        description={t('settings.sections.network.congestionController.description')}
+        experimentalKey="network.congestionController"
+      >
+        <select
+          id="congestion-controller-select"
+          aria-label={t('settings.sections.network.congestionController.label')}
+          value={congestionController}
+          onChange={handleCongestionControllerChange}
+          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+        >
+          <option value="cubic">
+            CUBIC ({t('settings.sections.network.congestionController.recommended')})
+          </option>
+          <option value="bbr3">BBR3</option>
+        </select>
       </SettingRow>
       <CustomRelayUrlsField value={customRelayUrls} onChange={handleCustomRelayUrlsChange} />
       {saveError && (

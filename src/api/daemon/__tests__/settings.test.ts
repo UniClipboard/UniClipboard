@@ -187,6 +187,7 @@ describe('反向命名审计 (Pitfall 1 fence)', () => {
       allowRelayFallback: true,
       allowOverlayNetworkAddrs: false,
       customRelayUrls: [],
+      congestionController: 'cubic',
     }
     const keys = Object.keys(sample)
     expect(keys).toContain('allowRelayFallback')

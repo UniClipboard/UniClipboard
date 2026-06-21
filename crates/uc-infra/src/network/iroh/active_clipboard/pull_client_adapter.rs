@@ -41,11 +41,6 @@ use super::pull_wire::{self, PullResponse};
 /// is the only bound that matters for liveness on the requesting side.
 const PULL_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Upper bound on waiting for the holder to close after we read the response.
-/// Mirrors the serve side's close barrier so neither end loses the final frame
-/// to a premature QUIC teardown.
-const CLOSE_BARRIER_TIMEOUT: Duration = Duration::from_secs(3);
-
 /// Requests one active-clipboard pull from a single peer over the pull ALPN.
 /// Reuses the shared endpoint + `peer_addr_repo` so a pull rides the same
 /// NAT/relay mapping presence already established.
@@ -165,10 +160,19 @@ impl IrohActiveClipboardPullClientAdapter {
             .await
             .map_err(|err| ActiveClipboardPullClientError::Io(format!("response read: {err}")))?;
 
-        // 5. Drain + close before dropping the connection so the holder's
-        //    teardown does not race our final read of the body.
-        let _ = tokio::time::timeout(CLOSE_BARRIER_TIMEOUT, connection.closed()).await;
-        drop(connection);
+        // 5. Actively close now that the full response frame is read. The
+        //    serve side waits on `connection.closed()` before tearing down (so
+        //    its teardown can't race our read); initiating the close from this
+        //    side resolves that barrier immediately. Previously this side *also*
+        //    waited on `connection.closed()`, so both ends sat idle until the
+        //    serve's 3s close-barrier timeout fired — a fixed ~3s tail on every
+        //    pull, which was the dominant cost of the #1017 restore lag (the
+        //    dial itself completes in ~10ms; the response is one small frame).
+        //    `read_response` has already consumed the whole framed body, so
+        //    closing here cannot truncate anything. Mirrors the asymmetric
+        //    teardown the bulk dispatch path already uses (responder waits,
+        //    requester closes).
+        connection.close(0u32.into(), b"pull-complete");
 
         match response {
             PullResponse::Envelope(bytes) => Ok(bytes),
@@ -390,6 +394,52 @@ mod tests {
         let hash = format!("blake3v1:{}", "7".repeat(64));
         let got = client.pull(&target, &hash).await.expect("pull succeeds");
         assert_eq!(got, envelope);
+
+        router.shutdown().await.ok();
+    }
+
+    /// Verdict 1b — the pull returns promptly, not after the serve side's 3s
+    /// close-barrier timeout. Both ends used to wait on `connection.closed()`,
+    /// so a successful pull against the real serve handler always burned the
+    /// full `CLOSE_BARRIER_TIMEOUT` (3s) before returning — the dominant cost of
+    /// the #1017 restore lag. The client now actively closes once the response
+    /// is read, resolving the serve barrier immediately. A 2s bound clears the
+    /// real exchange (low ms on loopback) by a wide margin while still failing
+    /// hard if the 3s standoff is reintroduced.
+    #[tokio::test]
+    async fn pull_returns_before_close_barrier_timeout() {
+        use std::time::Instant;
+
+        let requester_seed = [0x23u8; 32];
+        let serve_seed = [0x24u8; 32];
+
+        let envelope = vec![0x55, 0x43, 0x33, 0x00, 0x99];
+        let (serve_addr, router) = spawn_serve_for(
+            serve_seed,
+            requester_seed,
+            "requester-fast",
+            Ok(envelope.clone()),
+        )
+        .await;
+
+        let requester_endpoint = bind_endpoint_with(requester_seed).await;
+        wait_for_direct_addrs(&requester_endpoint).await;
+        let repo = Arc::new(MemRepo::default());
+        let target = DeviceId::new("holder");
+        seed_addr(&repo, &target, &serve_addr).await;
+
+        let client = IrohActiveClipboardPullClientAdapter::new(requester_endpoint, repo);
+        let hash = format!("blake3v1:{}", "5".repeat(64));
+
+        let started = Instant::now();
+        let got = client.pull(&target, &hash).await.expect("pull succeeds");
+        let elapsed = started.elapsed();
+
+        assert_eq!(got, envelope);
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "pull took {elapsed:?}; the close-barrier standoff (~3s) appears to be back",
+        );
 
         router.shutdown().await.ok();
     }

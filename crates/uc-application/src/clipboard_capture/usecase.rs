@@ -131,7 +131,7 @@ impl CaptureClipboardUseCase {
     /// 本地 capture 路径传 `None` 即可,内部按既有逻辑生成新 id。
     pub async fn execute_with_origin(
         &self,
-        snapshot: SystemClipboardSnapshot,
+        mut snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
     ) -> Result<Option<CaptureOutcome>> {
@@ -183,6 +183,25 @@ impl CaptureClipboardUseCase {
                 } => d,
                 _ => self.device_identity.current_device_id(),
             };
+            // Populate file_content_digests from LocalFile reps so that
+            // snapshot_hash() is based on file content (device-independent)
+            // rather than the text/uri-list path text (device-specific).
+            if snapshot.file_content_digests.is_empty() {
+                let digests: Vec<[u8; 32]> = snapshot
+                    .representations
+                    .iter()
+                    .filter(|r| {
+                        matches!(
+                            r.source(),
+                            uc_core::clipboard::ClipboardPayloadSource::LocalFile { .. }
+                        )
+                    })
+                    .map(|r| r.content_hash().bytes)
+                    .collect();
+                if !digests.is_empty() {
+                    snapshot.file_content_digests = digests;
+                }
+            }
             let snapshot_hash = {
                 let _guard = info_span!(
                     "clipboard.snapshot_hash",
@@ -682,6 +701,7 @@ mod tests {
         SystemClipboardSnapshot {
             ts_ms: 1_700_000_000_000,
             representations: reps,
+            file_content_digests: Vec::new(),
         }
     }
 

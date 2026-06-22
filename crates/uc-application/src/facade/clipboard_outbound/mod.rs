@@ -275,9 +275,13 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         let entry_id = EntryId::from(input.entry_id.as_str());
 
         let publish_files_start = Instant::now();
-        let mut blob_refs =
+        let (mut blob_refs, file_content_digests) =
             publish_file_blob_refs(self.blob_transfer.as_ref(), &plan.files, &entry_id).await?;
         let publish_files_ms = publish_files_start.elapsed().as_millis() as u64;
+
+        if !file_content_digests.is_empty() {
+            clipboard_intent.snapshot.file_content_digests = file_content_digests;
+        }
 
         let publish_inline_start = Instant::now();
         let mut image_blob_refs = publish_oversized_inline_blob_refs(
@@ -579,21 +583,19 @@ pub(crate) async fn publish_oversized_inline_blob_refs(
     Ok(blob_refs)
 }
 
+/// Returns `(blob_refs, file_content_digests)`.  The digests are the
+/// blake3 hashes of the actual file bytes (= `PlaintextHash` from the
+/// publish result).  The caller stores them on the snapshot so that
+/// `snapshot_hash()` uses file content instead of device-local paths.
 pub(crate) async fn publish_file_blob_refs(
     blob_transfer: &dyn OutboundBlobPublishGateway,
     files: &[FileSyncIntent],
     entry_id: &EntryId,
-) -> Result<Vec<V3BlobRef>, ClipboardOutboundError> {
+) -> Result<(Vec<V3BlobRef>, Vec<[u8; 32]>), ClipboardOutboundError> {
     let mut blob_refs = Vec::with_capacity(files.len());
+    let mut file_content_digests = Vec::with_capacity(files.len());
 
     for file in files {
-        // GH#487 P1: 流式 publish。旧路径先 `tokio::fs::read` 把整个文件读到
-        // `Vec<u8>`、再 `Bytes::from` 拷贝、再 `add_bytes` 在内存里算 BAO,
-        // 1GB 文件 RSS 峰值 ≈ 2GB,且这三步全部串联完成才轮到 dispatch ——
-        // 对端因此要等 ~11s 才拿到 envelope。新路径走 iroh-blobs `add_path`,
-        // 内部 reflink_or_copy_with_progress 把磁盘文件 stream 到 store(CoW
-        // FS 上零拷贝)+ 增量 BAO 编码,内存峰值与文件大小无关。`size_bytes`
-        // 改用 plan 透传的 `FileSyncIntent.size`(metadata 阶段已查过)。
         let publish_start = Instant::now();
         let result = blob_transfer
             .publish_blob_path(PublishBlobPathCommand {
@@ -613,6 +615,8 @@ pub(crate) async fn publish_file_blob_refs(
             "outbound: file blob published (streaming)"
         );
 
+        file_content_digests.push(*result.plaintext_hash.as_bytes());
+
         blob_refs.push(V3BlobRef {
             ticket: result.ticket,
             entry_id: result.entry_id,
@@ -623,7 +627,7 @@ pub(crate) async fn publish_file_blob_refs(
         });
     }
 
-    Ok(blob_refs)
+    Ok((blob_refs, file_content_digests))
 }
 
 #[cfg(test)]
@@ -699,6 +703,8 @@ mod tests {
                 snapshot: SystemClipboardSnapshot {
                     representations: Vec::new(),
                     ts_ms: 0,
+
+                    file_content_digests: Vec::new(),
                 },
                 origin: ClipboardChangeOrigin::LocalCapture,
             })

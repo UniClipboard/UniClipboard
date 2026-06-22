@@ -19,6 +19,21 @@ pub struct RepresentationHash(pub ContentHash);
 pub struct SystemClipboardSnapshot {
     pub ts_ms: i64,
     pub representations: Vec<ObservedClipboardRepresentation>,
+    /// blake3 digests of actual file content bytes, one per file in the
+    /// entry's file-list.  When non-empty, [`Self::snapshot_hash`] uses
+    /// these digests instead of hashing the `text/uri-list` representation's
+    /// inline bytes (which contain device-local file paths and therefore
+    /// differ across devices).
+    ///
+    /// Populated by:
+    /// - Sender capture: from `LocalFile` rep `content_hash()` values
+    /// - Sender outbound: from `PlaintextHash` returned by blob publish
+    /// - Receiver inbound: from `PlaintextHash` carried on the wire or
+    ///   returned by blob fetch
+    ///
+    /// Empty for text-only / image-only snapshots (no file-list rep).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_content_digests: Vec<[u8; 32]>,
 }
 
 /// 表示一条 rep 的负载来源。
@@ -503,13 +518,35 @@ impl SystemClipboardSnapshot {
     }
 
     pub fn snapshot_hash(&self) -> SnapshotHash {
+        // When file_content_digests are available, use them as the hash
+        // contribution for file-list reps instead of hashing the
+        // text/uri-list inline bytes (which contain device-local paths).
+        let has_file_digests = !self.file_content_digests.is_empty();
+
         let mut rep_hashes: Vec<[u8; 32]> = self
             .representations
             .iter()
-            .map(|r| r.content_hash().bytes)
+            .filter_map(|r| {
+                if has_file_digests && is_file_representation(r) {
+                    // Skip — file-list rep hash replaced by file_content_digests below
+                    None
+                } else {
+                    Some(r.content_hash().bytes)
+                }
+            })
             .collect();
 
-        // 顺序无关
+        if has_file_digests {
+            let mut file_hasher = blake3::Hasher::new();
+            file_hasher.update(b"file-content|");
+            let mut sorted_digests = self.file_content_digests.clone();
+            sorted_digests.sort_unstable();
+            for d in &sorted_digests {
+                file_hasher.update(d);
+            }
+            rep_hashes.push(*file_hasher.finalize().as_bytes());
+        }
+
         rep_hashes.sort_unstable();
 
         let mut hasher = blake3::Hasher::new();

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -26,6 +27,8 @@ use crate::facade::host_event::{HostEvent, HostEventBus, TransferHostEvent};
 use crate::usecases::blob_transfer::{
     FetchBlobInput, FetchBlobPathInput, FetchBlobUseCase, PublishBlobInput, PublishBlobUseCase,
 };
+
+const LIFECYCLE_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 /// 共享的 host event 总线。
 ///
@@ -345,45 +348,48 @@ impl BlobTransferFacade {
         let Some(facade) = self.file_transfer.as_ref() else {
             return;
         };
-        if let Err(err) = facade
-            .seed_receiver_context(SeedReceiverContext {
-                transfer_id: ctx.transfer_id.clone(),
-                entry_id: ctx.transfer_id.clone(),
-                origin_device_id: ctx.peer_id.clone(),
-                filename: ctx.filename.clone(),
-                cached_path,
-            })
-            .await
-        {
-            warn!(
-                transfer_id = %ctx.transfer_id,
-                error = %err,
-                "blob fetch: seed receiver context failed"
-            );
+        let input = SeedReceiverContext {
+            transfer_id: ctx.transfer_id.clone(),
+            entry_id: ctx.transfer_id.clone(),
+            origin_device_id: ctx.peer_id.clone(),
+            filename: ctx.filename.clone(),
+            cached_path,
+        };
+        if let Err(first_err) = facade.seed_receiver_context(input.clone()).await {
+            tokio::time::sleep(LIFECYCLE_RETRY_DELAY).await;
+            if let Err(retry_err) = facade.seed_receiver_context(input).await {
+                warn!(
+                    transfer_id = %ctx.transfer_id,
+                    first_error = %first_err,
+                    error = %retry_err,
+                    "blob fetch: seed receiver context failed after retry"
+                );
+            }
         }
     }
 
-    /// 调 `FileTransferFacade::start` 让 `Started` 事件落进 store。
-    /// 失败时只 warn,不让 fetch 主路径感知—— lifecycle 错误不应该
-    /// 阻塞 blob 拉取本身,projection 后续 sweep / reconcile 会继续兜底。
+    /// Record `Started` via `FileTransferFacade::start`. Retries once after
+    /// a short delay to tolerate transient SQLite lock contention.
     async fn start_lifecycle(&self, ctx: &FetchTransferContext) {
         let Some(facade) = self.file_transfer.as_ref() else {
             return;
         };
-        if let Err(err) = facade
-            .start(StartTransfer {
-                transfer_id: ctx.transfer_id.clone(),
-                peer_id: ctx.peer_id.clone(),
-                filename: ctx.filename.clone(),
-                file_size: ctx.total_bytes,
-            })
-            .await
-        {
-            warn!(
-                transfer_id = %ctx.transfer_id,
-                error = %err,
-                "blob fetch: start lifecycle failed"
-            );
+        let input = StartTransfer {
+            transfer_id: ctx.transfer_id.clone(),
+            peer_id: ctx.peer_id.clone(),
+            filename: ctx.filename.clone(),
+            file_size: ctx.total_bytes,
+        };
+        if let Err(first_err) = facade.start(input.clone()).await {
+            tokio::time::sleep(LIFECYCLE_RETRY_DELAY).await;
+            if let Err(retry_err) = facade.start(input).await {
+                warn!(
+                    transfer_id = %ctx.transfer_id,
+                    first_error = %first_err,
+                    error = %retry_err,
+                    "blob fetch: start lifecycle failed after retry"
+                );
+            }
         }
     }
 
@@ -391,18 +397,20 @@ impl BlobTransferFacade {
         let Some(facade) = self.file_transfer.as_ref() else {
             return;
         };
-        if let Err(err) = facade
-            .complete(CompleteTransfer {
-                transfer_id: ctx.transfer_id.clone(),
-                peer_id: ctx.peer_id.clone(),
-            })
-            .await
-        {
-            warn!(
-                transfer_id = %ctx.transfer_id,
-                error = %err,
-                "blob fetch: complete lifecycle failed"
-            );
+        let input = CompleteTransfer {
+            transfer_id: ctx.transfer_id.clone(),
+            peer_id: ctx.peer_id.clone(),
+        };
+        if let Err(first_err) = facade.complete(input.clone()).await {
+            tokio::time::sleep(LIFECYCLE_RETRY_DELAY).await;
+            if let Err(retry_err) = facade.complete(input).await {
+                warn!(
+                    transfer_id = %ctx.transfer_id,
+                    first_error = %first_err,
+                    error = %retry_err,
+                    "blob fetch: complete lifecycle failed after retry"
+                );
+            }
         }
     }
 
@@ -410,20 +418,22 @@ impl BlobTransferFacade {
         let Some(facade) = self.file_transfer.as_ref() else {
             return;
         };
-        if let Err(err) = facade
-            .fail(FailTransfer {
-                transfer_id: ctx.transfer_id.clone(),
-                peer_id: ctx.peer_id.clone(),
-                reason: FileTransferFailureReason::Unknown,
-                detail: Some(detail),
-            })
-            .await
-        {
-            warn!(
-                transfer_id = %ctx.transfer_id,
-                error = %err,
-                "blob fetch: fail lifecycle failed"
-            );
+        let input = FailTransfer {
+            transfer_id: ctx.transfer_id.clone(),
+            peer_id: ctx.peer_id.clone(),
+            reason: FileTransferFailureReason::Unknown,
+            detail: Some(detail),
+        };
+        if let Err(first_err) = facade.fail(input.clone()).await {
+            tokio::time::sleep(LIFECYCLE_RETRY_DELAY).await;
+            if let Err(retry_err) = facade.fail(input).await {
+                warn!(
+                    transfer_id = %ctx.transfer_id,
+                    first_error = %first_err,
+                    error = %retry_err,
+                    "blob fetch: fail lifecycle failed after retry"
+                );
+            }
         }
     }
 

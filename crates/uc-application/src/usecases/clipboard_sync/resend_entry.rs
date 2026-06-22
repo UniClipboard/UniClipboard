@@ -413,10 +413,13 @@ impl ResendEntryUseCase {
             });
         };
 
-        let mut blob_refs =
+        let (mut blob_refs, file_content_digests) =
             publish_file_blob_refs(self.blob_publisher.as_ref(), &plan.files, &cmd.entry_id)
                 .await
                 .map_err(map_outbound_publish_error)?;
+        if !file_content_digests.is_empty() {
+            clipboard_intent.snapshot.file_content_digests = file_content_digests;
+        }
         let mut image_blob_refs = publish_oversized_inline_blob_refs(
             self.blob_publisher.as_ref(),
             &mut clipboard_intent.snapshot,

@@ -160,14 +160,14 @@ impl ActiveClipboardPullServeUseCase {
             return Err(ActiveClipboardPullServeError::NotAvailable);
         };
 
-        let mut blob_refs = match publish_file_blob_refs(
+        let (mut blob_refs, file_content_digests) = match publish_file_blob_refs(
             self.blob_publisher.as_ref(),
             &plan.files,
             &entry_id,
         )
         .await
         {
-            Ok(refs) => refs,
+            Ok(result) => result,
             Err(err) => {
                 warn!(error = %err, "pull serve: file blob publish failed");
                 return Err(ActiveClipboardPullServeError::Internal(format!(
@@ -175,6 +175,9 @@ impl ActiveClipboardPullServeUseCase {
                 )));
             }
         };
+        if !file_content_digests.is_empty() {
+            clipboard_intent.snapshot.file_content_digests = file_content_digests;
+        }
         let mut image_blob_refs = match publish_oversized_inline_blob_refs(
             self.blob_publisher.as_ref(),
             &mut clipboard_intent.snapshot,

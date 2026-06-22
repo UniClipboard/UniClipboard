@@ -195,10 +195,11 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         // - `missing_files`:file_refs 阶段被取消的文件元数据,用于:
         //   (a) 在 file-list rep 中以 `uniclip-missing://` URI 占位;
         //   (b) 返回给上层做"是否 partial"判定。
-        // - `partial_cancel`:任一阶段触发了 cancel,后续不再发起新的 fetch。
+        // - `partial`: set when cancel or fetch error occurs; remaining blobs
+        //   are marked missing and no further fetches are attempted.
         let mut incomplete_rep_idxs: Vec<usize> = Vec::new();
         let mut missing_files: Vec<MissingFileRef> = Vec::new();
-        let mut partial_cancel = false;
+        let mut partial = false;
 
         // 1. Hydrate representation-bound blobs back into the snapshot.
         //
@@ -262,7 +263,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                         "materialize: representation-bound blob fetch cancelled, marking partial"
                     );
                     incomplete_rep_idxs.extend(pending_rep_idxs[loop_idx..].iter().copied());
-                    partial_cancel = true;
+                    partial = true;
                     break;
                 }
                 Err(e) => {
@@ -271,9 +272,11 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                         size_bytes = advertised_size,
                         representation_index = idx,
                         error = %e,
-                        "materialize: representation-bound blob fetch failed"
+                        "materialize: representation-bound blob fetch failed, marking partial"
                     );
-                    return Err(e);
+                    incomplete_rep_idxs.extend(pending_rep_idxs[loop_idx..].iter().copied());
+                    partial = true;
+                    break;
                 }
             };
 
@@ -295,10 +298,9 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             );
         }
 
-        // rep_refs 阶段 cancel 时不再发起任何 file_refs fetch:把所有 file_refs
-        // 标 missing,直接走 rewrite + finalize 路径(snapshot 里那些"未完成"的
-        // rep 由后面 incomplete_rep_idxs 的倒序 retain 移除)。
-        if partial_cancel {
+        // Rep-refs stage partial (cancel or error): skip all file_refs fetches,
+        // mark them missing, finalize via the partial path.
+        if partial {
             for blob_ref in file_refs.iter() {
                 missing_files.push(MissingFileRef {
                     filename: blob_ref
@@ -323,6 +325,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
 
         // 2. Free-standing files: existing cache_dir + file-list rewrite path.
         let mut local_paths = Vec::with_capacity(file_refs.len());
+        let mut file_content_digests: Vec<[u8; 32]> = Vec::with_capacity(file_refs.len());
         let mut used_names = HashSet::new();
         let blob_ref_total = file_refs.len();
 
@@ -383,51 +386,60 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             let filename = unique_filename(blob_ref.filename.as_deref(), idx, &mut used_names);
             let path = entry_dir.join(filename);
 
-            let fetched = match self
-                .fetcher
-                .fetch_blob_to_path(FetchBlobToPathCommand {
-                    ticket: blob_ref.ticket,
-                    entry_id: blob_ref.entry_id.clone(),
-                    target_path: path.clone(),
-                    transfer_context: Some(transfer_context),
-                })
-                .await
-            {
-                Ok(v) => v,
-                Err(e) if is_cancel_error(&e) => {
-                    // Cancel:当前 file 的 partial cleanup 由 BlobTransferFacade
-                    // 自己在 cancel arm 里做(facade.rs:789-796)。把当前 +
-                    // file_refs[idx+1..] 全收进 missing,break 走 finalize。
-                    warn!(
-                        idx,
-                        total = blob_ref_total,
-                        entry_id = %entry_id,
-                        "materialize: blob fetch cancelled, marking partial"
-                    );
-                    for remaining in &file_refs[idx..] {
-                        missing_files.push(MissingFileRef {
-                            filename: remaining
-                                .filename
-                                .clone()
-                                .unwrap_or_else(|| format!("blob-{}", remaining.entry_id.as_ref())),
-                            size_bytes: remaining.size_bytes,
-                        });
+            let fetched =
+                match self
+                    .fetcher
+                    .fetch_blob_to_path(FetchBlobToPathCommand {
+                        ticket: blob_ref.ticket,
+                        entry_id: blob_ref.entry_id.clone(),
+                        target_path: path.clone(),
+                        transfer_context: Some(transfer_context),
+                    })
+                    .await
+                {
+                    Ok(v) => v,
+                    Err(e) if is_cancel_error(&e) => {
+                        // Cancel:当前 file 的 partial cleanup 由 BlobTransferFacade
+                        // 自己在 cancel arm 里做(facade.rs:789-796)。把当前 +
+                        // file_refs[idx+1..] 全收进 missing,break 走 finalize。
+                        warn!(
+                            idx,
+                            total = blob_ref_total,
+                            entry_id = %entry_id,
+                            "materialize: blob fetch cancelled, marking partial"
+                        );
+                        for remaining in &file_refs[idx..] {
+                            missing_files.push(MissingFileRef {
+                                filename: remaining.filename.clone().unwrap_or_else(|| {
+                                    format!("blob-{}", remaining.entry_id.as_ref())
+                                }),
+                                size_bytes: remaining.size_bytes,
+                            });
+                        }
+                        partial = true;
+                        break;
                     }
-                    partial_cancel = true;
-                    break;
-                }
-                Err(e) => {
-                    warn!(
-                        idx,
-                        total = blob_ref_total,
-                        entry_id = %entry_id,
-                        size_bytes = advertised_size,
-                        error = %e,
-                        "materialize: blob fetch failed"
-                    );
-                    return Err(e);
-                }
-            };
+                    Err(e) => {
+                        warn!(
+                            idx,
+                            total = blob_ref_total,
+                            entry_id = %entry_id,
+                            size_bytes = advertised_size,
+                            error = %e,
+                            "materialize: blob fetch failed, marking partial"
+                        );
+                        for remaining in &file_refs[idx..] {
+                            missing_files.push(MissingFileRef {
+                                filename: remaining.filename.clone().unwrap_or_else(|| {
+                                    format!("blob-{}", remaining.entry_id.as_ref())
+                                }),
+                                size_bytes: remaining.size_bytes,
+                            });
+                        }
+                        partial = true;
+                        break;
+                    }
+                };
 
             info!(
                 idx,
@@ -437,14 +449,14 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 path = %path.display(),
                 "materialize: blob cached to local path (streaming)"
             );
+            file_content_digests.push(*fetched.plaintext_hash.as_bytes());
             local_paths.push(path);
             file_idx += 1;
         }
 
-        if partial_cancel {
-            // cancel 触发的 break 已把"当前 + file_refs[idx..]"全收进
-            // missing_files(用 indexed 访问而非 into_iter,保留 idx 后置访问能力)。
-            // 这里直接落 finalize_partial 出口。
+        if partial {
+            // The break collected current + remaining file_refs into
+            // missing_files. Finalize the partial entry.
             return Ok(finalize_partial(
                 snapshot,
                 &incomplete_rep_idxs,
@@ -452,6 +464,10 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 missing_files,
                 &from_device,
             ));
+        }
+
+        if !file_content_digests.is_empty() {
+            snapshot.file_content_digests = file_content_digests;
         }
 
         let uri_list = local_file_uri_list(&local_paths)?;

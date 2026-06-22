@@ -236,6 +236,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn decode_legacy_failed_offline_as_unreachable() {
+        let status = status_codec::decode("failed_offline").unwrap();
+        assert!(matches!(status, EntryDeliveryStatus::Unreachable));
+    }
+
+    #[test]
+    fn decode_new_unreachable_round_trips() {
+        let encoded = status_codec::encode(&EntryDeliveryStatus::Unreachable);
+        assert_eq!(encoded, "unreachable");
+        let decoded = status_codec::decode(encoded).unwrap();
+        assert!(matches!(decoded, EntryDeliveryStatus::Unreachable));
+    }
+
     #[tokio::test]
     async fn record_attempt_inserts_new_row() {
         let (repo, seed_exec, _tempdir) = make_repo();

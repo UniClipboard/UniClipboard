@@ -320,7 +320,7 @@ interface DeliveryRowProps {
 const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, entryId, action }) => {
   const { t } = useTranslation()
   const tone = renderStatusTone(target.status)
-  // 行级 resend 只在该 peer 处于 failed / pending 时出现 ——
+  // 行级 resend 只在该 peer 处于 failed / unreachable / pending 时出现 ——
   // delivered / duplicate 重试无意义,既不画按钮也不响应 action。
   const canResendThis =
     resendable &&

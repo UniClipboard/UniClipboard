@@ -379,14 +379,14 @@ async fn dispatch_returns_well_formed_outcome() {
 
     let data = &body["data"];
 
-    // contentHash should be present and non-empty
-    let content_hash = data
-        .get("contentHash")
+    // snapshotHash should be present and non-empty
+    let snapshot_hash = data
+        .get("snapshotHash")
         .and_then(|v| v.as_str())
         .unwrap_or("");
     assert!(
-        !content_hash.is_empty(),
-        "contentHash should be non-empty: {data}"
+        !snapshot_hash.is_empty(),
+        "snapshotHash should be non-empty: {data}"
     );
 
     // atMs should be a positive timestamp

@@ -635,6 +635,7 @@ fn empty_snapshot() -> SystemClipboardSnapshot {
     SystemClipboardSnapshot {
         ts_ms: chrono::Utc::now().timestamp_millis(),
         representations: Vec::new(),
+        file_content_digests: Vec::new(),
     }
 }
 

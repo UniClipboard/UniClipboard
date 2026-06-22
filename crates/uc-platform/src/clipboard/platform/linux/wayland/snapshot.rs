@@ -109,5 +109,6 @@ pub(super) fn build_from_offer<O: OfferLike>(
     Ok(SystemClipboardSnapshot {
         ts_ms: chrono::Utc::now().timestamp_millis(),
         representations: reps,
+        file_content_digests: Vec::new(),
     })
 }

@@ -24,6 +24,7 @@ use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
 const RAPID_DUPLICATE_WINDOW: Duration = Duration::from_millis(200);
 const VISIBLE_DUPLICATE_WINDOW: Duration = Duration::from_secs(2);
+const SOURCE_ENTRY_DEDUP_WINDOW: Duration = Duration::from_secs(30);
 const RECENT_INBOUND_MAX_RECORDS: u64 = 128;
 
 pub struct ApplyInboundClipboardUseCase {
@@ -37,6 +38,11 @@ pub struct ApplyInboundClipboardUseCase {
     /// 略长窗口去重：visible_key → entry_id。捕获"同一可见内容、不同
     /// snapshot_hash"的场景（peer 重发时扩展了 representations）。
     recent_visible_content: Cache<String, EntryId>,
+    /// 源端 entry_id 去重：sender blob_ref.entry_id → local entry_id。
+    /// dispatch（直推）和 active_state（拉取）两条通道为同一次文件复制
+    /// 发送不同 snapshot_hash 的 envelope，但 blob_ref.entry_id 始终指向
+    /// 源端同一条 entry。30 秒窗口覆盖大文件传输延迟。
+    recent_source_entries: Cache<String, EntryId>,
     /// Optional host-event emitter for surfacing the inbound entry to UI
     /// before the fetch+capture pipeline finishes. Wired only in daemon
     /// mode; tests / CLI leave it `None`.
@@ -68,6 +74,10 @@ impl ApplyInboundClipboardUseCase {
             recent_visible_content: Cache::builder()
                 .max_capacity(RECENT_INBOUND_MAX_RECORDS)
                 .time_to_live(VISIBLE_DUPLICATE_WINDOW)
+                .build(),
+            recent_source_entries: Cache::builder()
+                .max_capacity(RECENT_INBOUND_MAX_RECORDS)
+                .time_to_live(SOURCE_ENTRY_DEDUP_WINDOW)
                 .build(),
         }
     }
@@ -217,12 +227,36 @@ impl ApplyInboundClipboardUseCase {
             "inbound: decoded V3 envelope"
         );
 
+        // Early dedup by sender-side entry_id from blob refs.  dispatch and
+        // active_state send different snapshot_hashes for the same file copy,
+        // but blob_ref.entry_id always points to the same source entry.  By
+        // checking BEFORE the expensive blob download we save bandwidth and
+        // avoid the duplicate clipboard entry entirely.
+        for br in &blob_refs {
+            let src_id = br.entry_id.as_ref().to_string();
+            if let Some(existing) = self.recent_source_entries.get(&src_id) {
+                debug!(
+                    existing_entry_id = %existing,
+                    source_entry_id = %src_id,
+                    "inbound dropped: same source entry already applied recently"
+                );
+                return Ok(ApplyOutcome::DuplicateSkipped {
+                    snapshot_hash: input.snapshot_hash,
+                    existing_entry_id: existing,
+                });
+            }
+        }
+
         // Pre-allocate the receiver-side entry_id so the UI placeholder, the
         // blob-fetch progress events, and the eventual `clipboard.new_content`
         // all share the same id. Without this, the placeholder card couldn't
         // be linked to the final entry by id and we'd need a transfer_id →
         // entry_id remap on the frontend.
         let receiver_entry_id = EntryId::new();
+        let source_entry_ids: Vec<String> = blob_refs
+            .iter()
+            .map(|r| r.entry_id.as_ref().to_string())
+            .collect();
         let advertised_total_bytes: u64 = blob_refs.iter().map(|r| r.size_bytes).sum();
         // free-standing files 走 V3BlobRef.filename;rep-bound blobs (image /
         // 大二进制) 通常 filename 为 None,自动被 filter_map 跳过。
@@ -350,6 +384,10 @@ impl ApplyInboundClipboardUseCase {
                 visible_key,
                 entry_id.clone(),
             );
+            for src_id in &source_entry_ids {
+                self.recent_source_entries
+                    .insert(src_id.clone(), entry_id.clone());
+            }
             // Advance the active-clipboard register at capture-commit (D1
             // call-site: inbound apply). The OS write below is detached and
             // best-effort, so the register is intentionally decoupled from it

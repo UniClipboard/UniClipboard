@@ -165,6 +165,7 @@ pub fn decode_v3_bytes_to_snapshot_and_blob_refs(
         SystemClipboardSnapshot {
             ts_ms: payload.ts_ms,
             representations,
+            file_content_digests: Vec::new(),
         },
         blob_refs,
     ))
@@ -405,6 +406,7 @@ mod tests {
                 Some(MimeType("text/plain".to_string())),
                 text.as_bytes().to_vec(),
             )],
+            file_content_digests: Vec::new(),
         }
     }
 
@@ -450,6 +452,7 @@ mod tests {
                     b"\x00\x01\x02\xDE\xAD\xBE\xEF".to_vec(),
                 ),
             ],
+            file_content_digests: Vec::new(),
         };
         let (bytes, _) = encode_snapshot_to_v3_bytes(&original).expect("encode should succeed");
         let decoded = decode_v3_bytes_to_snapshot(&bytes).expect("decode should succeed");

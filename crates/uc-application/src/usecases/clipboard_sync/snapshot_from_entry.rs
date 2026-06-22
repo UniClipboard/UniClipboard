@@ -317,6 +317,7 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
     Ok(SystemClipboardSnapshot {
         ts_ms: chrono::Utc::now().timestamp_millis(),
         representations,
+        file_content_digests: Vec::new(),
     })
 }
 

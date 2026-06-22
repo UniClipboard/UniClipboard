@@ -104,6 +104,8 @@ mod tests {
                 SystemClipboardSnapshot {
                     representations: Vec::new(),
                     ts_ms: 0,
+
+                    file_content_digests: Vec::new(),
                 },
                 ClipboardChangeOrigin::LocalCapture,
                 Some(EntryId::from("entry-preset")),

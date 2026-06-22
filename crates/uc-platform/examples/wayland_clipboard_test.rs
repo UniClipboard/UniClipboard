@@ -54,6 +54,7 @@ fn main() -> anyhow::Result<()> {
             Some(MimeType("text/plain;charset=utf-8".into())),
             payload.clone().into_bytes(),
         )],
+        file_content_digests: Vec::new(),
     };
     eprintln!("[1/3] writing via WaylandClipboard: {payload:?}");
     clipboard.write_snapshot(write_snap)?;

@@ -27,6 +27,7 @@ impl SystemClipboardPort for NoopSystemClipboard {
         Ok(SystemClipboardSnapshot {
             ts_ms: 0,
             representations: Vec::new(),
+            file_content_digests: Vec::new(),
         })
     }
 

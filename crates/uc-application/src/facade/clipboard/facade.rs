@@ -1015,6 +1015,7 @@ mod tests {
                 Some(MimeType("text/plain".to_string())),
                 b"hello phase3".to_vec(),
             )],
+            file_content_digests: Vec::new(),
         };
         let outcome = facade
             .dispatch_snapshot(

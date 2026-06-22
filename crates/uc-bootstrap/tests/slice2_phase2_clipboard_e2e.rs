@@ -675,6 +675,7 @@ async fn sponsor_dispatch_lands_on_joiner_within_2s() {
             Some(MimeType("text/plain".to_string())),
             text.as_bytes().to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
     let expected_hash = snapshot.snapshot_hash().to_string();
     let outcome = sponsor
@@ -775,6 +776,7 @@ async fn repeat_dispatch_lands_twice_phase2_no_dedup() {
             Some(MimeType("text/plain".to_string())),
             fixture_text.as_bytes().to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
     let canonical_hash = build_snapshot().snapshot_hash().to_string();
     for attempt in 0..2 {

@@ -357,6 +357,7 @@ async fn dispatch_text(
             Some(MimeType("text/plain".to_string())),
             req.text.into_bytes(),
         )],
+        file_content_digests: Vec::new(),
     };
 
     let outcome = app

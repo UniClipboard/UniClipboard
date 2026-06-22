@@ -259,6 +259,7 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
                     return Ok(Some(SystemClipboardSnapshot {
                         ts_ms: chrono::Utc::now().timestamp_millis(),
                         representations: vec![observed],
+                        file_content_digests: Vec::new(),
                     }));
                 }
                 Err(err) => {

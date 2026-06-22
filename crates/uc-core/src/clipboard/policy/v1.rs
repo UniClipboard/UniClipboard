@@ -340,6 +340,7 @@ mod tests {
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![large_image, files],
+            file_content_digests: Vec::new(),
         };
 
         let policy = SelectRepresentationPolicyV1::new();
@@ -373,6 +374,7 @@ mod tests {
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![large_image, files],
+            file_content_digests: Vec::new(),
         };
 
         let policy = SelectRepresentationPolicyV1::new();
@@ -404,6 +406,7 @@ mod tests {
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![small_image, files],
+            file_content_digests: Vec::new(),
         };
 
         let policy = SelectRepresentationPolicyV1::new();

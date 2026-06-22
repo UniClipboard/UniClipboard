@@ -66,6 +66,7 @@ pub fn narrow_to_primary(
     Ok(SystemClipboardSnapshot {
         ts_ms,
         representations: vec![chosen],
+        file_content_digests: Vec::new(),
     })
 }
 
@@ -91,6 +92,8 @@ mod tests {
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![],
+
+            file_content_digests: Vec::new(),
         };
         let policy = SelectRepresentationPolicyV1::default();
         match narrow_to_primary(snapshot, &policy) {
@@ -104,6 +107,8 @@ mod tests {
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 1,
             representations: vec![rep("text", Some("text/plain"), b"hello")],
+
+            file_content_digests: Vec::new(),
         };
         let original_id = snapshot.representations[0].id.clone();
         let policy = SelectRepresentationPolicyV1::default();
@@ -128,6 +133,8 @@ mod tests {
         let snapshot = SystemClipboardSnapshot {
             ts_ms: 2,
             representations: vec![plain, html, image],
+
+            file_content_digests: Vec::new(),
         };
         let policy = SelectRepresentationPolicyV1::default();
         let narrowed = narrow_to_primary(snapshot, &policy).expect("policy narrow ok");
@@ -143,6 +150,7 @@ mod tests {
                 rep("text", Some("text/plain"), b"a"),
                 rep("html", Some("text/html"), b"<p>a</p>"),
             ],
+            file_content_digests: Vec::new(),
         };
         let policy = SelectRepresentationPolicyV1::default();
         let narrowed = narrow_to_primary(snapshot, &policy).expect("ok");

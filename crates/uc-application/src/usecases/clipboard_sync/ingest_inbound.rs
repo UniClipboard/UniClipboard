@@ -649,6 +649,7 @@ mod tests {
                 Some(MimeType("text/plain".to_string())),
                 b"hello text".to_vec(),
             )],
+            file_content_digests: Vec::new(),
         };
         let (envelope_bytes, _hash) =
             super::super::payload_codec::encode_snapshot_to_v3_bytes(&snapshot)

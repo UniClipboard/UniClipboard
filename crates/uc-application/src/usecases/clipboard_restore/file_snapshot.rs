@@ -29,5 +29,6 @@ pub(crate) fn build_file_snapshot(uri_list: &str) -> SystemClipboardSnapshot {
             Some(MimeType::uri_list()),
             uri_list.as_bytes().to_vec(),
         )],
+        file_content_digests: Vec::new(),
     }
 }

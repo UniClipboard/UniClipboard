@@ -364,6 +364,7 @@ mod tests {
             Ok(SystemClipboardSnapshot {
                 ts_ms: 0,
                 representations: vec![],
+                file_content_digests: Vec::new(),
             })
         }
         fn write_snapshot(&self, _snapshot: SystemClipboardSnapshot) -> anyhow::Result<()> {
@@ -390,6 +391,7 @@ mod tests {
         SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![rep],
+            file_content_digests: Vec::new(),
         }
     }
 
@@ -418,6 +420,7 @@ mod tests {
         SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![primary, secondary],
+            file_content_digests: Vec::new(),
         }
     }
 
@@ -433,6 +436,7 @@ mod tests {
         SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![rep],
+            file_content_digests: Vec::new(),
         }
     }
 
@@ -472,6 +476,7 @@ mod tests {
         SystemClipboardSnapshot {
             ts_ms: 0,
             representations: vec![rep],
+            file_content_digests: Vec::new(),
         }
     }
 

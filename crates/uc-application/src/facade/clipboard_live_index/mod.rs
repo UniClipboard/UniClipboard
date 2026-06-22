@@ -177,6 +177,8 @@ mod tests {
                 snapshot: Arc::new(SystemClipboardSnapshot {
                     representations: Vec::new(),
                     ts_ms: 0,
+
+                    file_content_digests: Vec::new(),
                 }),
             })
             .await

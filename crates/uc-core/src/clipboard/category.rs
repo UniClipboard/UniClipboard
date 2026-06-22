@@ -246,6 +246,7 @@ mod tests {
         SystemClipboardSnapshot {
             ts_ms: 0,
             representations: reps,
+            file_content_digests: Vec::new(),
         }
     }
 

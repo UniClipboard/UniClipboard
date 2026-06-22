@@ -415,6 +415,7 @@ mod tests {
                 Some(MimeType("text/plain".to_string())),
                 b"x".to_vec(),
             )],
+            file_content_digests: Vec::new(),
         }
     }
 

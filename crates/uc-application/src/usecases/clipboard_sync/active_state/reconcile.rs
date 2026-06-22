@@ -214,6 +214,7 @@ mod tests {
                 Some(MimeType("text/plain".to_string())),
                 text.as_bytes().to_vec(),
             )],
+            file_content_digests: Vec::new(),
         }
     }
 
@@ -231,6 +232,8 @@ mod tests {
                 FakeClipboard::Empty => Ok(SystemClipboardSnapshot {
                     ts_ms: 0,
                     representations: vec![],
+
+                    file_content_digests: Vec::new(),
                 }),
                 FakeClipboard::ReadError => Err(anyhow::anyhow!("clipboard unreadable")),
             }

@@ -55,6 +55,7 @@ fn main() -> anyhow::Result<()> {
             Some(MimeType("text/plain;charset=utf-8".into())),
             payload.clone().into_bytes(),
         )],
+        file_content_digests: Vec::new(),
     };
     eprintln!("[1/3] writing via X11Clipboard: {payload:?}");
     clipboard.write_snapshot(write_snap)?;

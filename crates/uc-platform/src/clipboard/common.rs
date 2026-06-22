@@ -751,6 +751,7 @@ impl CommonClipboardImpl {
             SystemClipboardSnapshot {
                 ts_ms: chrono::Utc::now().timestamp_millis(),
                 representations: reps,
+                file_content_digests: Vec::new(),
             },
             had_unreadable_format,
         ))
@@ -1028,6 +1029,7 @@ impl CommonClipboardImpl {
             let reduced = SystemClipboardSnapshot {
                 ts_ms,
                 representations: vec![chosen],
+                file_content_digests: Vec::new(),
             };
             return Self::write_snapshot(ctx, reduced);
         }

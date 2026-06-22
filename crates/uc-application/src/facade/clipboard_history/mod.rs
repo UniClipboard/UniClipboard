@@ -367,6 +367,7 @@ impl ClipboardHistoryFacade {
                 Some(MimeType("text/plain".to_string())),
                 bytes.clone(),
             )],
+            file_content_digests: Vec::new(),
         };
         let snapshot_hash = snapshot.snapshot_hash();
 

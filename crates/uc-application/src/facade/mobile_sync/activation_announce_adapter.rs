@@ -229,6 +229,7 @@ mod tests {
                 Some(MimeType("text/plain".to_string())),
                 b"hi".to_vec(),
             )],
+            file_content_digests: Vec::new(),
         }
     }
 

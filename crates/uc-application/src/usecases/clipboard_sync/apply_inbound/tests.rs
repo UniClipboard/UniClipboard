@@ -145,6 +145,7 @@ fn fixture_input(text: &str) -> (ApplyInboundInput, String) {
             Some(MimeType("text/plain".to_string())),
             text.as_bytes().to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
     let (plaintext, snapshot_hash) = encode_snapshot_to_v3_bytes(&snapshot).unwrap();
     (
@@ -376,6 +377,7 @@ async fn visible_duplicate_skipped_across_channel_representation_expansion() {
             Some(MimeType("text/plain".to_string())),
             visible_text.clone(),
         )],
+        file_content_digests: Vec::new(),
     };
     let second_snapshot = SystemClipboardSnapshot {
         ts_ms: 1_700_000_000_250,
@@ -399,6 +401,7 @@ async fn visible_duplicate_skipped_across_channel_representation_expansion() {
                 visible_text,
             ),
         ],
+        file_content_digests: Vec::new(),
     };
     let (first_input, first_hash) = fixture_input_from_snapshot(first_snapshot);
     let (second_input, second_hash) = fixture_input_from_snapshot(second_snapshot);
@@ -455,6 +458,7 @@ async fn visible_duplicate_window_expires() {
             Some(MimeType("text/plain".to_string())),
             b"expires".to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
     let second_snapshot = SystemClipboardSnapshot {
         ts_ms: 1_700_000_003_000,
@@ -464,6 +468,7 @@ async fn visible_duplicate_window_expires() {
             None,
             b"expires".to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
     let (first_input, _) = fixture_input_from_snapshot(first_snapshot);
     let (second_input, _) = fixture_input_from_snapshot(second_snapshot);
@@ -693,6 +698,7 @@ async fn materializes_blob_refs_before_capture_and_write() {
             Some(MimeType("text/uri-list".to_string())),
             b"file:///sender/original.txt\n".to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
     let blob_ref = V3BlobRef {
         ticket: BlobTicket::from_bytes(vec![9, 8, 7]),
@@ -776,6 +782,7 @@ async fn partial_materialize_persists_entry_but_skips_os_write() {
             Some(MimeType("text/uri-list".to_string())),
             b"file:///sender/big.iso\n".to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
     let blob_ref = V3BlobRef {
         ticket: BlobTicket::from_bytes(vec![5, 5, 5]),
@@ -859,6 +866,7 @@ async fn partial_materialize_does_not_register_dedup_entry() {
             Some(MimeType("text/uri-list".to_string())),
             b"file:///sender/retry.iso\n".to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
     let blob_ref = V3BlobRef {
         ticket: BlobTicket::from_bytes(vec![7, 7, 7]),
@@ -966,6 +974,7 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
             Some(MimeType("text/uri-list".to_string())),
             b"file:///sender/report.txt\n".to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
 
     let mut fetcher = MockBlobFetcher::new();
@@ -1047,6 +1056,7 @@ async fn file_cache_blob_materializer_inlines_representation_bound_blob_into_rep
             Some(MimeType("image/png".to_string())),
             Vec::new(),
         )],
+        file_content_digests: Vec::new(),
     };
 
     let mut fetcher = MockBlobFetcher::new();
@@ -1117,6 +1127,7 @@ async fn file_cache_blob_materializer_rejects_out_of_bounds_representation_index
             Some(MimeType("image/png".to_string())),
             Vec::new(),
         )],
+        file_content_digests: Vec::new(),
     };
 
     let mut fetcher = MockBlobFetcher::new();
@@ -1182,6 +1193,7 @@ async fn file_cache_blob_materializer_partial_on_cancel_mid_batch() {
             Some(MimeType("text/uri-list".to_string())),
             b"file:///sender/first.txt\r\nfile:///sender/second.iso\r\n".to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
 
     let mut fetcher = MockBlobFetcher::new();
@@ -1264,6 +1276,7 @@ async fn file_cache_blob_materializer_partial_on_cancel_first_file() {
             Some(MimeType("text/uri-list".to_string())),
             b"file:///sender/nothing.iso\r\n".to_vec(),
         )],
+        file_content_digests: Vec::new(),
     };
 
     let mut fetcher = MockBlobFetcher::new();
@@ -1318,6 +1331,7 @@ async fn file_cache_blob_materializer_partial_on_rep_cancel_no_files() {
             Some(MimeType("image/png".to_string())),
             Vec::new(),
         )],
+        file_content_digests: Vec::new(),
     };
 
     let mut fetcher = MockBlobFetcher::new();

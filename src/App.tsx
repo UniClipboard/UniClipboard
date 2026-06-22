@@ -1,5 +1,5 @@
 import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
@@ -14,6 +14,7 @@ import { useSearch } from '@/contexts/search-context'
 import { SearchProvider } from '@/contexts/SearchContext'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
+import { TitleBarSlotContext } from '@/contexts/titlebar-slot-context'
 import { UpdateProvider } from '@/contexts/UpdateContext'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
 import { usePlatform } from '@/hooks/usePlatform'
@@ -438,14 +439,16 @@ export default function App() {
   )
 }
 
-// TitleBar wrapper with search context
+// TitleBar wrapper with search context + slot context
 const TitleBarWithSearch = ({ isSetupActive }: { isSetupActive: boolean }) => {
   const { searchValue, setSearchValue } = useSearch()
+  const slotCtx = useContext(TitleBarSlotContext)
   return (
     <TitleBar
       searchValue={searchValue}
       onSearchChange={setSearchValue}
       isSetupActive={isSetupActive}
+      rightSlot={slotCtx?.rightSlot}
     />
   )
 }
@@ -489,14 +492,20 @@ export const AppContentWithBar = () => {
     unlockEncryptionSession().catch(err => console.warn('Post-setup auto-unlock failed:', err))
   }
 
-  const titleBar = useMemo(
-    () => (showCustomTitleBar ? <TitleBarWithSearch isSetupActive={isSetupActive} /> : null),
-    [showCustomTitleBar, isSetupActive]
-  )
+  const [rightSlot, setRightSlot] = useState<React.ReactNode>(null)
+  const slotValue = useMemo(() => ({ rightSlot, setRightSlot }), [rightSlot])
+
+  const titleBar = showCustomTitleBar ? (
+    <TitleBarSlotContext value={slotValue}>
+      <TitleBarWithSearch isSetupActive={isSetupActive} />
+    </TitleBarSlotContext>
+  ) : null
 
   return (
-    <WindowShell titleBar={titleBar}>
-      <AppContent isSetupActive={isSetupActive} onSetupComplete={handleSetupComplete} />
-    </WindowShell>
+    <TitleBarSlotContext value={slotValue}>
+      <WindowShell titleBar={titleBar}>
+        <AppContent isSetupActive={isSetupActive} onSetupComplete={handleSetupComplete} />
+      </WindowShell>
+    </TitleBarSlotContext>
   )
 }

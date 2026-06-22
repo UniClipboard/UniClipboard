@@ -16,6 +16,7 @@ interface TitleBarProps {
   searchValue?: string
   onSearchChange?: (value: string) => void
   isSetupActive?: boolean
+  rightSlot?: React.ReactNode
 }
 
 // macOS 三色交通灯相对系统标准位置的偏移，屏幕坐标系：正 X 向右、正 Y 向下。
@@ -64,6 +65,7 @@ export const TitleBar = ({
   searchValue = '',
   onSearchChange,
   isSetupActive = false,
+  rightSlot,
 }: TitleBarProps) => {
   const [isMaximized, setIsMaximized] = useState(false)
   const location = useLocation()
@@ -73,9 +75,8 @@ export const TitleBar = ({
   const { isWindows, isMac, isTauri } = usePlatform()
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
 
-  // Pages that show the search bar in the title bar
   const isDashboardPage = location.pathname === '/'
-  const isSearchPage = isDashboardPage || location.pathname === '/history'
+  const isSearchPage = isDashboardPage
   // Setup 页面隐藏 TitleBar 保持沉浸感
   const shouldHideTitleBar = isSetupActive
 
@@ -235,6 +236,11 @@ export const TitleBar = ({
             </div>
           ) : null}
         </div>
+        {rightSlot && (
+          <div className="relative z-10 flex items-center pr-2" data-tauri-drag-region="false">
+            {rightSlot}
+          </div>
+        )}
         {isWindows && (
           <div className="flex items-center h-full bg-transparent" data-tauri-drag-region="false">
             <TitleBarButton aria-label="最小化" onClick={handleMinimize}>

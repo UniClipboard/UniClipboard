@@ -1,18 +1,8 @@
-import {
-  Code,
-  Copy,
-  ExternalLink,
-  File,
-  FileText,
-  Image as ImageIcon,
-  MoreHorizontal,
-  Search,
-} from 'lucide-react'
+import { Code, Copy, ExternalLink, File, FileText, Image as ImageIcon, Search } from 'lucide-react'
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import { toast } from '@/components/ui/toast'
-import { useSearch } from '@/contexts/search-context'
 import { useClipboardEvents } from '@/hooks/useClipboardEvents'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import type {
@@ -29,14 +19,14 @@ import { copyToClipboard } from '@/store/slices/clipboardSlice'
 
 // ── Design tokens ───────────────────────────────────────────────
 
-const TYPE_THEME = {
-  text: { color: 'rgb(124,139,151)', bg: 'rgba(124,139,151,0.12)' },
-  code: { color: 'rgb(122,108,201)', bg: 'rgba(122,108,201,0.12)' },
-  link: { color: 'rgb(62,143,208)', bg: 'rgba(62,143,208,0.12)' },
-  image: { color: 'rgb(79,160,106)', bg: 'rgba(79,160,106,0.12)' },
-  file: { color: 'rgb(168,130,90)', bg: 'rgba(168,130,90,0.12)' },
-  unknown: { color: 'rgb(124,139,151)', bg: 'rgba(124,139,151,0.12)' },
-} as const
+const TYPE_COLOR: Record<string, string> = {
+  text: 'rgb(140,150,160)',
+  code: 'rgb(140,120,210)',
+  link: 'rgb(70,145,210)',
+  image: 'rgb(80,160,110)',
+  file: 'rgb(175,140,100)',
+  unknown: 'rgb(140,150,160)',
+}
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
   text: FileText,
@@ -74,34 +64,30 @@ function distributeToColumns<T>(items: T[], colCount: number): T[][] {
   return cols
 }
 
-// ── Card content renderers ──────────────────────────────────────
+// ── Content renderers ───────────────────────────────────────────
 
-const TextCardContent: React.FC<{ item: ClipboardTextItem }> = ({ item }) => {
+const TextContent: React.FC<{ item: ClipboardTextItem }> = ({ item }) => {
   const isMasked = /^[•·*]{6,}$/.test(item.display_text.trim())
   return (
-    <div className="mx-3 mb-1 rounded-[10px] bg-muted/50 border border-border/30 px-3 py-2.5">
-      <div className="text-[13px] leading-[1.6] text-foreground/90 line-clamp-3">
-        {isMasked ? (
-          <span className="tracking-[0.15em] text-muted-foreground select-none">
-            {item.display_text}
-          </span>
-        ) : (
-          item.display_text
-        )}
-      </div>
+    <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-4">
+      {isMasked ? (
+        <span className="tracking-[0.12em] text-muted-foreground/70 select-none">
+          {item.display_text}
+        </span>
+      ) : (
+        item.display_text
+      )}
     </div>
   )
 }
 
-const CodeCardContent: React.FC<{ item: ClipboardCodeItem }> = ({ item }) => (
-  <div className="mx-3 mb-1 rounded-[10px] overflow-hidden">
-    <pre className="bg-[#1e1b2e] px-3 py-2.5 text-[10.5px] leading-[1.65] text-[#d4ceeb] line-clamp-4 font-mono">
-      <code>{item.code}</code>
-    </pre>
-  </div>
+const CodeContent: React.FC<{ item: ClipboardCodeItem }> = ({ item }) => (
+  <pre className="rounded-lg bg-[#1a1726] px-3 py-2.5 text-[10.5px] leading-[1.6] text-[#c8c0e0] line-clamp-5 font-mono -mx-0.5">
+    <code>{item.code}</code>
+  </pre>
 )
 
-const LinkCardContent: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => {
+const LinkContent: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => {
   const url = item.urls[0] ?? ''
   const domain = item.domains[0] ?? ''
   let title = url
@@ -112,56 +98,44 @@ const LinkCardContent: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => {
     /* keep raw url */
   }
   return (
-    <div className="mx-3 mb-1 rounded-[10px] bg-muted/50 border border-border/30 px-3 py-2.5 space-y-1">
-      <div className="text-[12.5px] font-bold text-foreground/90 leading-snug line-clamp-2">
+    <div className="space-y-0.5">
+      <div className="text-[13px] font-medium text-foreground/85 leading-snug line-clamp-2">
         {title}
       </div>
-      <div
-        className="flex items-center gap-1 text-[11px] font-semibold"
-        style={{ color: TYPE_THEME.link.color }}
-      >
-        <ExternalLink className="size-[11px] shrink-0" />
+      <div className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+        <ExternalLink className="size-[10px] shrink-0" />
         <span className="truncate">{domain}</span>
       </div>
     </div>
   )
 }
 
-const ImageCardContent: React.FC<{ item: ClipboardImageItem }> = ({ item }) => (
-  <div className="mx-3 mb-1 rounded-[10px] overflow-hidden">
-    <div className="relative bg-muted/30 h-[110px]">
-      {item.thumbnail ? (
-        <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center">
-          <ImageIcon className="size-8 text-muted-foreground/30" />
-        </div>
-      )}
-      {item.width > 0 && item.height > 0 && (
-        <span className="absolute bottom-1.5 left-2 text-[10px] font-semibold text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-          {item.width}
-          <span className="opacity-60 mx-px">×</span>
-          {item.height}
-        </span>
-      )}
-    </div>
+const ImageContent: React.FC<{ item: ClipboardImageItem }> = ({ item }) => (
+  <div className="relative rounded-lg overflow-hidden bg-muted/20 -mx-0.5">
+    {item.thumbnail ? (
+      <img src={item.thumbnail} alt="" className="w-full object-cover max-h-[140px]" />
+    ) : (
+      <div className="h-[90px] flex items-center justify-center">
+        <ImageIcon className="size-7 text-muted-foreground/25" />
+      </div>
+    )}
+    {item.width > 0 && item.height > 0 && (
+      <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-white/80 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">
+        {item.width}×{item.height}
+      </span>
+    )}
   </div>
 )
 
-const FileCardContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
+const FileContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
   const name = item.file_names[0] ?? 'Unknown file'
   const size = item.file_sizes[0] ?? 0
   return (
-    <div className="mx-3 mb-1 rounded-[10px] bg-muted/50 border border-border/30 px-3 py-2.5 flex items-center gap-2.5">
-      <div
-        className="flex items-center justify-center size-8 rounded-lg shrink-0"
-        style={{ backgroundColor: TYPE_THEME.file.bg, color: TYPE_THEME.file.color }}
-      >
-        <File className="size-4" />
-      </div>
+    <div className="flex items-center gap-2">
+      <File className="size-4 text-muted-foreground/50 shrink-0" />
       <div className="min-w-0 flex-1">
-        <div className="text-[12.5px] font-bold text-foreground/90 truncate">{name}</div>
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-[12.5px] font-medium text-foreground/85 truncate">{name}</div>
+        <div className="text-[10.5px] text-muted-foreground/60">
           {getFileExtLabel(name)} · {formatFileSize(size)}
         </div>
       </div>
@@ -176,26 +150,25 @@ const HistoryCard: React.FC<{
   onCopy: (id: string) => void
 }> = ({ item, onCopy }) => {
   const { t } = useTranslation()
-  const theme = TYPE_THEME[item.type] ?? TYPE_THEME.unknown
+  const color = TYPE_COLOR[item.type] ?? TYPE_COLOR.unknown
   const TypeIcon = TYPE_ICONS[item.type] ?? FileText
-  const typeLabel = t(`history.type.${item.type}`, item.type)
 
   const content = (() => {
     if (!item.content) return null
     switch (item.type) {
       case 'text':
-        return <TextCardContent item={item.content as ClipboardTextItem} />
+        return <TextContent item={item.content as ClipboardTextItem} />
       case 'code':
-        return <CodeCardContent item={item.content as ClipboardCodeItem} />
+        return <CodeContent item={item.content as ClipboardCodeItem} />
       case 'link':
-        return <LinkCardContent item={item.content as ClipboardLinkItem} />
+        return <LinkContent item={item.content as ClipboardLinkItem} />
       case 'image':
-        return <ImageCardContent item={item.content as ClipboardImageItem} />
+        return <ImageContent item={item.content as ClipboardImageItem} />
       case 'file':
-        return <FileCardContent item={item.content as ClipboardFileItem} />
+        return <FileContent item={item.content as ClipboardFileItem} />
       default:
         return item.textPreview ? (
-          <div className="mx-3 mb-1 rounded-[10px] bg-muted/50 border border-border/30 px-3 py-2.5 text-[13px] text-muted-foreground line-clamp-3">
+          <div className="text-[13px] text-muted-foreground/70 line-clamp-3">
             {item.textPreview}
           </div>
         ) : null
@@ -203,47 +176,24 @@ const HistoryCard: React.FC<{
   })()
 
   return (
-    <div className="group rounded-xl border border-border/50 bg-card shadow-sm hover:shadow-md hover:border-border/80 transition-[shadow,border-color] duration-200 overflow-hidden">
-      {/* ① Type header */}
-      <div className="flex items-center gap-2 px-3 pt-3 pb-1.5">
-        <span
-          className="flex items-center justify-center size-6 rounded-md"
-          style={{ backgroundColor: theme.bg, color: theme.color }}
-        >
-          <TypeIcon className="size-3.5" />
+    <div className="group relative px-3.5 pt-3 pb-3 border-b-[3px] border-double border-border/30 hover:bg-muted/30 transition-colors duration-150">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <TypeIcon className="size-3" style={{ color }} />
+        <span className="text-[10.5px] font-medium" style={{ color }}>
+          {t(`history.type.${item.type}`, item.type)}
         </span>
-        <span className="text-[11px] font-bold tracking-wide" style={{ color: theme.color }}>
-          {typeLabel}
-        </span>
-        <div className="flex-1" />
-        {item.isFavorited && (
-          <span className="size-[7px] rounded-full bg-primary shadow-[0_0_0_2.5px] shadow-primary/15" />
-        )}
+        <span className="text-[10px] text-muted-foreground/40 ml-auto">{item.time}</span>
       </div>
 
-      {/* ② Content preview */}
       {content}
 
-      {/* ③ Footer */}
-      <div className="flex items-center px-3 pt-1.5 pb-2.5">
-        <span className="text-[11px] text-muted-foreground">{item.time}</span>
-        <div className="flex-1" />
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-          <button
-            type="button"
-            onClick={() => onCopy(item.id)}
-            className="flex items-center justify-center size-[26px] rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <Copy className="size-[13px]" />
-          </button>
-          <button
-            type="button"
-            className="flex items-center justify-center size-[26px] rounded-lg bg-muted/80 border border-border/40 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <MoreHorizontal className="size-[13px]" />
-          </button>
-        </div>
-      </div>
+      <button
+        type="button"
+        onClick={() => onCopy(item.id)}
+        className="absolute top-2.5 right-2.5 flex items-center justify-center size-6 rounded-md bg-card border border-border/50 text-muted-foreground shadow-sm opacity-0 group-hover:opacity-100 hover:text-foreground hover:border-border transition-all duration-150"
+      >
+        <Copy className="size-3" />
+      </button>
     </div>
   )
 }
@@ -253,8 +203,8 @@ const HistoryCard: React.FC<{
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
-  const { searchValue: searchQuery } = useSearch()
   const [activeFilter, setActiveFilter] = useState<Filter>(Filter.All)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useShortcutScope('clipboard')
   const { hasMore, handleLoadMore } = useClipboardEvents(activeFilter)
@@ -357,8 +307,23 @@ const HistoryPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* ── Filter tabs ────────────────────────────────────────── */}
-      <div className="shrink-0 flex items-center gap-1.5 px-5 py-2.5 border-b border-border/20">
+      {/* ── Toolbar: search + filters ──────────────────────────── */}
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-border/20">
+        {/* Search */}
+        <div className="flex items-center gap-1.5 bg-muted/40 rounded-lg px-2.5 h-7 w-48 focus-within:bg-muted/60 transition-colors">
+          <Search className="size-3.5 text-muted-foreground/50 shrink-0" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder={t('history.searchPlaceholder')}
+            className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/50 outline-none min-w-0"
+          />
+        </div>
+
+        <div className="w-px h-4 bg-border/30" />
+
+        {/* Filters */}
         {FILTER_TABS.map(tab => {
           const isActive = activeFilter === tab.key
           return (
@@ -367,21 +332,16 @@ const HistoryPage: React.FC = () => {
               type="button"
               onClick={() => setActiveFilter(tab.key)}
               className={cn(
-                'flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all duration-150',
+                'flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[12px] font-medium whitespace-nowrap transition-all duration-150',
                 isActive
-                  ? 'bg-primary text-primary-foreground shadow-[0_2px_8px_-1px] shadow-primary/30'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                  ? 'bg-foreground/8 text-foreground'
+                  : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40'
               )}
             >
               {tab.icon && <tab.icon className="size-3" />}
               {t(tab.labelKey)}
               {tab.key === Filter.All && totalCount > 0 && (
-                <span
-                  className={cn(
-                    'text-[10px] font-bold tabular-nums ml-0.5',
-                    isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/50'
-                  )}
-                >
+                <span className="text-[10px] tabular-nums text-muted-foreground/40 ml-0.5">
                   {totalCount}
                 </span>
               )}
@@ -390,24 +350,30 @@ const HistoryPage: React.FC = () => {
         })}
       </div>
 
-      {/* ── Card grid ──────────────────────────────────────────── */}
+      {/* ── Grid ───────────────────────────────────────────────── */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         {filteredItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3 pb-10">
-            <div className="size-12 rounded-2xl bg-muted/40 flex items-center justify-center">
-              <Search className="size-5 text-muted-foreground/40" />
+            <div className="size-12 rounded-2xl bg-muted/30 flex items-center justify-center">
+              <Search className="size-5 text-muted-foreground/30" />
             </div>
             <div className="text-center space-y-1">
               <p className="text-[13px] font-medium">{t('clipboard.content.noClipboardItems')}</p>
-              <p className="text-[12px] text-muted-foreground/60">
+              <p className="text-[12px] text-muted-foreground/50">
                 {t('clipboard.content.emptyDescription')}
               </p>
             </div>
           </div>
         ) : (
-          <div className="flex gap-3.5 px-5 pt-3.5 pb-5">
+          <div className="flex px-2 pt-1 pb-4">
             {columns.map((col, ci) => (
-              <div key={ci} className="flex-1 min-w-0 flex flex-col gap-3.5">
+              <div
+                key={ci}
+                className={cn(
+                  'flex-1 min-w-0 flex flex-col',
+                  ci > 0 && 'border-l-[3px] border-double border-border/20'
+                )}
+              >
                 {col.map(item => (
                   <HistoryCard key={item.id} item={item} onCopy={handleCopy} />
                 ))}

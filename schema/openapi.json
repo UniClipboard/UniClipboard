@@ -581,9 +581,8 @@
         "type": "object"
       },
       "DeliveryFailureReasonDto": {
-        "description": "Failure reason. i18n key convention: `delivery.failureReason.<variant>`.",
+        "description": "Failure reason. i18n key convention: `delivery.failureReason.<variant>`.\n\nNote: \"peer offline\" is NOT in this enum — it is represented as\n`EntryDeliveryStatusDto::Unreachable` (a separate status, not a failure).",
         "enum": [
-          "offline",
           "localPolicy",
           "peerRejected",
           "io",
@@ -777,6 +776,20 @@
               "tag": {
                 "enum": [
                   "duplicate"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "tag"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "tag": {
+                "enum": [
+                  "unreachable"
                 ],
                 "type": "string"
               }

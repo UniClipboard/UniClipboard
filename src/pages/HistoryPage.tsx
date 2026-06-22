@@ -2,6 +2,7 @@ import { LayoutGroup, m } from 'framer-motion'
 import { Code, ExternalLink, File, FileText, Image as ImageIcon, Search } from 'lucide-react'
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import Masonry from 'react-masonry-css'
 import { Filter } from '@/api/clipboardItems'
 import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
 import HistoryCard from '@/components/history/HistoryCard'
@@ -31,13 +32,9 @@ const FILTER_TABS: { key: Filter; labelKey: string; icon?: React.ElementType }[]
   { key: Filter.File, labelKey: 'history.filter.file', icon: File },
 ]
 
-// ── Helpers ─────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────
 
-function distributeToColumns<T>(items: T[], colCount: number): T[][] {
-  const cols: T[][] = Array.from({ length: colCount }, () => [])
-  items.forEach((item, i) => cols[i % colCount].push(item))
-  return cols
-}
+const MASONRY_BREAKPOINTS = { default: 3, 900: 2, 500: 1 }
 
 // ── Page ────────────────────────────────────────────────────────
 
@@ -119,8 +116,6 @@ const HistoryPage: React.FC = () => {
     if (idx <= 0) return filteredItems
     return [filteredItems[idx], ...filteredItems.slice(0, idx), ...filteredItems.slice(idx + 1)]
   }, [filteredItems, promotedId])
-
-  const columns = useMemo(() => distributeToColumns(orderedItems, 3), [orderedItems])
 
   // ── Infinite scroll ───────────────────────────────────────────
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -270,35 +265,29 @@ const HistoryPage: React.FC = () => {
           </div>
         ) : (
           <LayoutGroup>
-            <div className="flex px-2 pt-1 pb-4">
-              {columns.map((col, ci) => (
-                <div
-                  key={ci}
-                  className={cn(
-                    'flex-1 min-w-0 flex flex-col',
-                    ci > 0 && 'border-l-[3px] border-double border-border/20'
-                  )}
+            <Masonry
+              breakpointCols={MASONRY_BREAKPOINTS}
+              className="flex px-2 pt-1 pb-4 [&>div+div]:border-l-[3px] [&>div+div]:border-double [&>div+div]:border-border/20"
+              columnClassName="flex-1 min-w-0 flex flex-col"
+            >
+              {orderedItems.map(item => (
+                <m.div
+                  key={item.id}
+                  layoutId={item.id}
+                  layout
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 >
-                  {col.map(item => (
-                    <m.div
-                      key={item.id}
-                      layoutId={item.id}
-                      layout
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    >
-                      <HistoryCard
-                        item={item}
-                        isHovered={hoveredId === item.id}
-                        copySuccess={copySuccessId === item.id}
-                        isDeleting={deletingId === item.id}
-                        onCopy={handleCopy}
-                        onHoverChange={setHoveredId}
-                      />
-                    </m.div>
-                  ))}
-                </div>
+                  <HistoryCard
+                    item={item}
+                    isHovered={hoveredId === item.id}
+                    copySuccess={copySuccessId === item.id}
+                    isDeleting={deletingId === item.id}
+                    onCopy={handleCopy}
+                    onHoverChange={setHoveredId}
+                  />
+                </m.div>
               ))}
-            </div>
+            </Masonry>
           </LayoutGroup>
         )}
       </div>

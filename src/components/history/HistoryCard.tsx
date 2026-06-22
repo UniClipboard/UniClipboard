@@ -13,8 +13,10 @@ import {
   LoaderCircle,
   AlertCircle,
 } from 'lucide-react'
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { resolveResourceImageUrl } from '@/api/clipboardItems'
+import { getClipboardEntryResource } from '@/api/daemon/clipboard'
 import type {
   EntryDeliveryView,
   EntrySourceView,
@@ -209,22 +211,43 @@ const LinkContent: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => {
   )
 }
 
-const ImageContent: React.FC<{ item: ClipboardImageItem }> = ({ item }) => (
-  <div className="relative rounded-lg overflow-hidden bg-muted/20 -mx-0.5">
-    {item.thumbnail ? (
-      <img src={item.thumbnail} alt="" className="w-full object-cover max-h-[140px]" />
-    ) : (
-      <div className="h-[90px] flex items-center justify-center">
-        <ImageIcon className="size-7 text-muted-foreground/25" />
-      </div>
-    )}
-    {item.width > 0 && item.height > 0 && (
-      <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-white/80 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">
-        {item.width}×{item.height}
-      </span>
-    )}
-  </div>
-)
+// TODO: thumbnail endpoint has issues; using original image via resource API for now
+const ImageContent: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
+  item,
+  entryId,
+}) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getClipboardEntryResource(entryId)
+      .then(resource => {
+        if (cancelled || !resource) return
+        setImageUrl(resolveResourceImageUrl(resource))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [entryId])
+
+  return (
+    <div className="relative rounded-lg overflow-hidden bg-muted/20 -mx-0.5">
+      {imageUrl ? (
+        <img src={imageUrl} alt="" className="w-full object-contain" />
+      ) : (
+        <div className="h-[90px] flex items-center justify-center">
+          <ImageIcon className="size-7 text-muted-foreground/25" />
+        </div>
+      )}
+      {item.width > 0 && item.height > 0 && (
+        <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-white/80 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">
+          {item.width}×{item.height}
+        </span>
+      )}
+    </div>
+  )
+}
 
 const FileContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
   const name = item.file_names[0] ?? 'Unknown file'
@@ -281,7 +304,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       case 'link':
         return <LinkContent item={item.content as ClipboardLinkItem} />
       case 'image':
-        return <ImageContent item={item.content as ClipboardImageItem} />
+        return <ImageContent item={item.content as ClipboardImageItem} entryId={item.id} />
       case 'file':
         return <FileContent item={item.content as ClipboardFileItem} />
       default:

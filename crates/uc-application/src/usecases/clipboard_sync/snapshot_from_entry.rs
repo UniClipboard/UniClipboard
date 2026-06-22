@@ -36,10 +36,7 @@ use tracing::{debug, info, warn};
 
 use uc_core::{
     blob::ports::BlobReaderPort,
-    clipboard::{
-        ObservedClipboardRepresentation, PayloadAvailability, PersistedClipboardRepresentation,
-        SystemClipboardSnapshot,
-    },
+    clipboard::{ObservedClipboardRepresentation, PayloadAvailability, SystemClipboardSnapshot},
     ids::{EntryId, EventId, RepresentationId},
     ports::{
         clipboard::{
@@ -272,7 +269,7 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
     );
 
     Ok(SystemClipboardSnapshot {
-        ts_ms: chrono::Utc::now().timestamp_millis(),
+        ts_ms: entry.created_at_ms,
         representations,
         file_content_digests: Vec::new(),
     })

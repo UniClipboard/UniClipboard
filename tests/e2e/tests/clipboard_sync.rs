@@ -484,14 +484,14 @@ async fn paired_send_no_peers_online() {
             parsed
         );
 
-        // contentHash should be present and non-empty
-        let content_hash = parsed
-            .get("contentHash")
+        // snapshotHash should be present and non-empty
+        let snapshot_hash = parsed
+            .get("snapshotHash")
             .and_then(|v| v.as_str())
             .unwrap_or("");
         assert!(
-            !content_hash.is_empty(),
-            "contentHash should be non-empty: {}",
+            !snapshot_hash.is_empty(),
+            "snapshotHash should be non-empty: {}",
             parsed
         );
 
@@ -743,11 +743,11 @@ async fn paired_send_gate_excludes_muted_peer() {
     }
     assert!(
         muted
-            .get("contentHash")
+            .get("snapshotHash")
             .and_then(|v| v.as_str())
             .map(|h| !h.is_empty())
             .unwrap_or(false),
-        "muted send still encrypts + reports a contentHash: {muted}"
+        "muted send still encrypts + reports a snapshotHash: {muted}"
     );
 
     // Un-mute and dispatch again: Bob re-enters the fan-out and settles into

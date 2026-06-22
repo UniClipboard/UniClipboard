@@ -275,63 +275,45 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                 let dispatch_snapshot =
                     Arc::try_unwrap(outbound_snapshot).unwrap_or_else(|shared| (*shared).clone());
 
-                // File entries skip dispatch — active_state (LWW register +
-                // pull) is the sole delivery channel for files.  Sending the
-                // same large file through both channels produced duplicate
-                // clipboard entries because serve_pull reconstructs a
-                // snapshot whose hash cannot be guaranteed identical to the
-                // dispatch original (representation ordering, ts_ms, etc.).
-                // Text/image entries keep dispatch for real-time latency.
-                let is_file_entry = dispatch_snapshot.representations.iter().any(|r| {
-                    uc_core::clipboard::is_file_mime_or_format(r.mime.as_ref(), &r.format_id)
-                });
-
-                if !is_file_entry {
-                    let clipboard_outbound = Arc::clone(&self.clipboard_outbound);
-                    let entry_id_for_outbound = entry_id.to_string();
-                    tokio::spawn(
-                        async move {
-                            match clipboard_outbound
-                                .dispatch_capture(ClipboardOutboundInput {
-                                    entry_id: entry_id_for_outbound,
-                                    snapshot: dispatch_snapshot,
-                                    origin,
-                                })
-                                .await
-                            {
-                                Ok(ClipboardOutboundOutcome::Dispatched {
-                                    accepted,
-                                    duplicate,
-                                    offline,
-                                    errored,
-                                    pending,
-                                    blob_ref_count,
-                                }) => info!(
-                                    accepted,
-                                    duplicate,
-                                    offline,
-                                    errored,
-                                    pending,
-                                    blob_ref_count,
-                                    "Daemon outbound clipboard sync completed"
-                                ),
-                                Ok(ClipboardOutboundOutcome::Skipped { reason }) => {
-                                    debug!(reason, "Daemon outbound clipboard sync skipped");
-                                }
-                                Err(e) => warn!(
-                                    error = %e,
-                                    "Daemon outbound clipboard sync failed"
-                                ),
+                let clipboard_outbound = Arc::clone(&self.clipboard_outbound);
+                let entry_id_for_outbound = entry_id.to_string();
+                tokio::spawn(
+                    async move {
+                        match clipboard_outbound
+                            .dispatch_capture(ClipboardOutboundInput {
+                                entry_id: entry_id_for_outbound,
+                                snapshot: dispatch_snapshot,
+                                origin,
+                            })
+                            .await
+                        {
+                            Ok(ClipboardOutboundOutcome::Dispatched {
+                                accepted,
+                                duplicate,
+                                offline,
+                                errored,
+                                pending,
+                                blob_ref_count,
+                            }) => info!(
+                                accepted,
+                                duplicate,
+                                offline,
+                                errored,
+                                pending,
+                                blob_ref_count,
+                                "Daemon outbound clipboard sync completed"
+                            ),
+                            Ok(ClipboardOutboundOutcome::Skipped { reason }) => {
+                                debug!(reason, "Daemon outbound clipboard sync skipped");
                             }
+                            Err(e) => warn!(
+                                error = %e,
+                                "Daemon outbound clipboard sync failed"
+                            ),
                         }
-                        .in_current_span(),
-                    );
-                } else {
-                    debug!(
-                        entry_id = %entry_id,
-                        "watcher: file entry — skipping dispatch, active_state will deliver"
-                    );
-                }
+                    }
+                    .in_current_span(),
+                );
             }
             Ok(None) => {
                 // Dedup at use-case level (e.g. unsupported representation) — skip silently.

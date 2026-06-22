@@ -51,6 +51,8 @@ jobs:
           save-if: true
 
       - name: Check Rust workspace
+        env:
+          TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: cargo check --workspace --locked
 
   warmup-docs-bun:
@@ -110,5 +112,7 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb
 
       - name: Generate coverage report
+        env:
+          TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: |
           xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace

@@ -33,7 +33,7 @@
 //!
 //! `reconstruct_snapshot_from_entry` 已经把所有"无法物化"的情况收敛成
 //! [`BuildSnapshotError::PasteRepUnavailable`] / `PasteRepBlobFetchFailed` /
-//! `InvalidFileUri` / `NoFilePaths` / `NoRestorableRepresentations`,本用例
+//! `NoRestorableRepresentations`,本用例
 //! 全部映射成 [`ResendEntryError::EntryNotResendable`] + [`NotResendableReason::PayloadLost`]。
 //! 文件分支额外做了 on-disk 存在性校验(reconstruct 内 `path.exists()` →
 //! `PayloadResolveError::Lost`),所以"本机文件被 GC 但 payload_state 还没翻
@@ -480,8 +480,6 @@ fn map_build_snapshot_error(err: BuildSnapshotError, entry_id: &EntryId) -> Rese
         | BuildSnapshotError::PasteRepNotFound { .. }
         | BuildSnapshotError::PasteRepUnavailable(_)
         | BuildSnapshotError::PasteRepBlobFetchFailed { .. }
-        | BuildSnapshotError::InvalidFileUri { .. }
-        | BuildSnapshotError::NoFilePaths { .. }
         | BuildSnapshotError::NoRestorableRepresentations { .. } => {
             // `BuildSnapshotError::EntryNotFound` 自带 entry_id;其余 PayloadLost
             // 类变体没有 —— reconstruct helper 拿到的是同一 entry_id,这里直接

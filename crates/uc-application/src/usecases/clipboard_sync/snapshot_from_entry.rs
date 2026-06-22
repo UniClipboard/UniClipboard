@@ -29,7 +29,6 @@
 //! caller actually returns).
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use thiserror::Error;
@@ -38,8 +37,8 @@ use tracing::{debug, info, warn};
 use uc_core::{
     blob::ports::BlobReaderPort,
     clipboard::{
-        is_file_mime_or_format, ObservedClipboardRepresentation, PayloadAvailability,
-        PersistedClipboardRepresentation, SystemClipboardSnapshot,
+        ObservedClipboardRepresentation, PayloadAvailability, PersistedClipboardRepresentation,
+        SystemClipboardSnapshot,
     },
     ids::{EntryId, EventId, RepresentationId},
     ports::{
@@ -52,8 +51,6 @@ use uc_core::{
     },
     BlobId,
 };
-
-use crate::usecases::clipboard_restore::file_snapshot::{build_file_snapshot, build_path_list};
 
 /// Typed errors returned by [`reconstruct_snapshot_from_entry`].
 ///
@@ -91,16 +88,6 @@ pub(crate) enum BuildSnapshotError {
     #[error("Failed to fetch paste representation blob {blob_id}: {reason}")]
     PasteRepBlobFetchFailed { blob_id: BlobId, reason: String },
 
-    #[error("Failed to parse file URI for entry {entry_id} (rep {rep_id}): {reason}")]
-    InvalidFileUri {
-        entry_id: EntryId,
-        rep_id: RepresentationId,
-        reason: String,
-    },
-
-    #[error("No valid file paths found in entry {entry_id}")]
-    NoFilePaths { entry_id: EntryId },
-
     /// Defensive guard: every candidate rep was skipped. The paste-rep
     /// failure paths above should normally cover this, but a fully empty
     /// candidate list still surfaces here rather than silently returning an
@@ -120,10 +107,7 @@ pub(crate) enum BuildSnapshotError {
 /// 1. Look up entry + selection.
 /// 2. Collect candidate rep ids in `paste / primary / preview / secondary`
 ///    order and dedup, then load each [`PersistedClipboardRepresentation`].
-/// 3. If `paste_rep` is a file rep ([`is_file_mime_or_format`]), take the
-///    file branch: resolve the URI list, parse to local paths, validate
-///    on-disk existence, and emit a fresh `text/uri-list` snapshot.
-/// 4. Otherwise, pack every non-file candidate via
+/// 3. Pack every candidate (file and non-file alike) via
 ///    [`ClipboardPayloadResolverPort`] (Inline direct / BlobRef via
 ///    [`BlobReaderPort`] / Staged|Processing via cache+spool). Secondary
 ///    reps that fail to resolve are skipped with a warning; failure on
@@ -184,10 +168,6 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
         }
     }
 
-    // 文件分支：paste_rep 是文件类型（CF_HDROP / NSPasteboardTypeFileURL）时，
-    // 走专用的 file snapshot 路径。文件 rep 的语义与文本/图像表示不可混写在
-    // 同一个 NSPasteboardItem / clipboard item 中，平台层目前也仅支持文件单独
-    // 写入；同时 build_file_snapshot 会校验本地文件存在性。
     let paste_rep = candidates
         .iter()
         .find(|rep| rep.id == selection.selection.paste_rep_id)
@@ -196,23 +176,10 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
             rep_id: selection.selection.paste_rep_id.clone(),
         })?;
 
-    if is_file_rep(paste_rep) {
-        debug!(
-            entry_id = %entry_id,
-            paste_rep_id = %paste_rep.id,
-            "snapshot_from_entry.reconstruct: detected file entry, using file branch"
-        );
-        return build_file_branch(
-            payload_resolver,
-            blob_store,
-            rep_processing_repo,
-            entry_id,
-            paste_rep,
-        )
-        .await;
-    }
-
-    // 非文件分支：把所有非文件候选 rep 都打包成多 rep snapshot，paste_rep 居首。
+    // Unified branch: pack ALL candidate reps into a multi-rep snapshot,
+    // paste_rep first. File entries and non-file entries share the same path
+    // so the reconstructed V3 payload always includes every persisted rep,
+    // keeping snapshot_hash stable across dispatch / serve_pull / resend.
     // 每条 rep 通过 `ClipboardPayloadResolverPort` 取字节，由 resolver 负责按
     // payload_state 路由（Inline 直读已解密 inline_data / BlobReady 走 blob_store /
     // Staged|Processing 走 cache+spool）。
@@ -225,16 +192,6 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
     let mut paste_first = true;
     let mut packed_rep_ids: Vec<RepresentationId> = Vec::new();
     for rep in &candidates {
-        if is_file_rep(rep) {
-            debug!(
-                entry_id = %entry_id,
-                rep_id = %rep.id,
-                format_id = %rep.format_id,
-                "snapshot_from_entry.reconstruct: skipping file rep when paste_rep is non-file"
-            );
-            continue;
-        }
-
         let is_paste_rep = rep.id == paste_rep.id;
         let bytes = match payload_resolver.resolve(rep).await {
             Ok(ResolvedClipboardPayload::Inline { bytes, .. }) => bytes,
@@ -319,129 +276,6 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
         representations,
         file_content_digests: Vec::new(),
     })
-}
-
-fn is_file_rep(rep: &PersistedClipboardRepresentation) -> bool {
-    is_file_mime_or_format(rep.mime_type.as_ref(), &rep.format_id)
-}
-
-async fn build_file_branch(
-    payload_resolver: &dyn ClipboardPayloadResolverPort,
-    blob_store: &dyn BlobReaderPort,
-    rep_processing_repo: &dyn UpdateRepresentationProcessingResultPort,
-    entry_id: &EntryId,
-    rep: &PersistedClipboardRepresentation,
-) -> Result<SystemClipboardSnapshot, BuildSnapshotError> {
-    // 与非文件分支同样走 payload_resolver：file URI list 在文件较多时同样会
-    // 触发 inline_threshold，rep.inline_data 只剩 500-char 预览截断版，直接
-    // clone 会拿到不完整的 URI 列表 → 文件路径解析丢失。resolver 会按
-    // payload_state 正确路由（Inline / BlobReady / Staged|Processing）。
-    let bytes = match payload_resolver.resolve(rep).await {
-        Ok(ResolvedClipboardPayload::Inline { bytes, .. }) => bytes,
-        Ok(ResolvedClipboardPayload::BlobRef { blob_id, .. }) => blob_store
-            .get(&blob_id)
-            .await
-            .map_err(|err| BuildSnapshotError::PasteRepBlobFetchFailed {
-                blob_id,
-                reason: err.to_string(),
-            })?,
-        Err(resolver_err) => {
-            if let Some(blob_id) = &rep.blob_id {
-                blob_store.get(blob_id).await.map_err(|blob_err| {
-                    BuildSnapshotError::PasteRepBlobFetchFailed {
-                        blob_id: blob_id.clone(),
-                        reason: format!(
-                            "resolver failed ({resolver_err}); blob fallback also failed: {blob_err}"
-                        ),
-                    }
-                })?
-            } else {
-                // Mirror the non-file branch's stable-`Lost` invariant: an
-                // orphaned paste-rep (cache + spool double miss) with no
-                // blob fallback gets demoted before propagating, so the
-                // next attempt sees a stable `Lost` outcome.
-                if let PayloadResolveError::Orphaned { rep_id, state } = &resolver_err {
-                    demote_orphaned_to_lost(rep_processing_repo, rep_id, state).await;
-                }
-                return Err(BuildSnapshotError::PasteRepUnavailable(resolver_err));
-            }
-        }
-    };
-
-    let uri_string =
-        String::from_utf8(bytes).map_err(|err| BuildSnapshotError::InvalidFileUri {
-            entry_id: entry_id.clone(),
-            rep_id: rep.id.clone(),
-            reason: format!("URI list bytes are not valid UTF-8: {err}"),
-        })?;
-
-    let mut file_paths = Vec::new();
-    for line in uri_string.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if line.starts_with("file://") {
-            // 错误消息只暴露 entry_id / rep_id —— `line` 是 `file://...` URI，
-            // 含完整文件路径，属于用户私有 payload，禁止写入错误链 / 日志。
-            match url::Url::parse(line) {
-                Ok(url) => {
-                    let path =
-                        url.to_file_path()
-                            .map_err(|_| BuildSnapshotError::InvalidFileUri {
-                                entry_id: entry_id.clone(),
-                                rep_id: rep.id.clone(),
-                                reason: "URL could not be converted to a local file path"
-                                    .to_string(),
-                            })?;
-                    file_paths.push(path);
-                }
-                Err(e) => {
-                    return Err(BuildSnapshotError::InvalidFileUri {
-                        entry_id: entry_id.clone(),
-                        rep_id: rep.id.clone(),
-                        reason: e.to_string(),
-                    });
-                }
-            }
-        } else {
-            file_paths.push(PathBuf::from(line));
-        }
-    }
-
-    if file_paths.is_empty() {
-        return Err(BuildSnapshotError::NoFilePaths {
-            entry_id: entry_id.clone(),
-        });
-    }
-
-    // 本地源文件不存在 → 通过 `PayloadResolveError::Lost` 让上层（restore facade）
-    // 映射为 `PayloadUnavailable`（HTTP 410 Gone）+ warn 级日志，避免被当成
-    // 5xx 上报到 Sentry。reason 严禁携带文件路径或文件名——属于用户私有
-    // payload（uc-application §16.3）。
-    let missing_count = file_paths.iter().filter(|p| !p.exists()).count();
-    if missing_count > 0 {
-        return Err(BuildSnapshotError::PasteRepUnavailable(
-            PayloadResolveError::Lost {
-                rep_id: rep.id.clone(),
-                reason: format!(
-                    "{} of {} referenced file(s) no longer exist on disk",
-                    missing_count,
-                    file_paths.len()
-                ),
-            },
-        ));
-    }
-
-    let snapshot = build_file_snapshot(&build_path_list(&file_paths));
-
-    info!(
-        entry_id = %entry_id,
-        file_count = file_paths.len(),
-        "snapshot_from_entry.reconstruct(file): files validated and snapshot built"
-    );
-
-    Ok(snapshot)
 }
 
 /// Demote an orphaned representation (cache+spool double miss) to `Lost`.

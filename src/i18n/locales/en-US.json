@@ -1473,6 +1473,7 @@
       "delivered": "delivered",
       "duplicate": "delivered (duplicate)",
       "pending": "not attempted",
+      "unreachable": "peer offline",
       "failedWithReason": "failed · {{reason}}"
     },
     "summary": {
@@ -1480,6 +1481,7 @@
       "partial": "Partially synced",
       "syncing": "Syncing",
       "failed": "Sync failed",
+      "waiting": "Peer offline",
       "pending": "Awaiting sync"
     },
     "popover": {
@@ -1487,7 +1489,6 @@
       "ariaTrigger": "View per-device sync details"
     },
     "failureReason": {
-      "offline": "peer offline",
       "localPolicy": "blocked by local policy",
       "peerRejected": "peer rejected",
       "io": "network error",

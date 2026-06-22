@@ -65,7 +65,12 @@ pub enum EntryDeliveryStatusView {
     Pending,
     Delivered,
     Duplicate,
-    Failed { reason: DeliveryFailureReason },
+    /// Peer was unreachable (offline / dial failure). Not a fault — the peer
+    /// is simply not available right now.
+    Unreachable,
+    Failed {
+        reason: DeliveryFailureReason,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -280,6 +285,7 @@ fn map_status(status: &DomainDeliveryStatus) -> EntryDeliveryStatusView {
     match status {
         DomainDeliveryStatus::Delivered => EntryDeliveryStatusView::Delivered,
         DomainDeliveryStatus::Duplicate => EntryDeliveryStatusView::Duplicate,
+        DomainDeliveryStatus::Unreachable => EntryDeliveryStatusView::Unreachable,
         DomainDeliveryStatus::Failed { reason } => EntryDeliveryStatusView::Failed {
             reason: reason.clone(),
         },
@@ -555,13 +561,11 @@ mod tests {
             updated_at_ms: at,
         }
     }
-    fn failed_offline(entry: &str, target: DeviceId, at: i64) -> EntryDeliveryRecord {
+    fn unreachable_record(entry: &str, target: DeviceId, at: i64) -> EntryDeliveryRecord {
         EntryDeliveryRecord {
             entry_id: entry_id(entry),
             target_device_id: target,
-            status: DomainDeliveryStatus::Failed {
-                reason: DeliveryFailureReason::Offline,
-            },
+            status: DomainDeliveryStatus::Unreachable,
             reason_detail: None,
             updated_at_ms: at,
         }
@@ -733,7 +737,7 @@ mod tests {
         ]));
         let delivery = Arc::new(FakeDeliveryRepo::new(vec![
             delivered("e1", peer("p1"), 100),
-            failed_offline("e1", peer("p2"), 200),
+            unreachable_record("e1", peer("p2"), 200),
             // p3 不在 delivery 表 → 应合成 Pending
         ]));
         let uc = build_uc(entries, events, trusted, delivery);
@@ -748,12 +752,7 @@ mod tests {
             .collect();
         assert_eq!(by_target["p1"].status, EntryDeliveryStatusView::Delivered);
         assert_eq!(by_target["p1"].updated_at_ms, Some(100));
-        assert!(matches!(
-            by_target["p2"].status,
-            EntryDeliveryStatusView::Failed {
-                reason: DeliveryFailureReason::Offline
-            }
-        ));
+        assert_eq!(by_target["p2"].status, EntryDeliveryStatusView::Unreachable);
         assert_eq!(by_target["p2"].updated_at_ms, Some(200));
         assert_eq!(by_target["p3"].status, EntryDeliveryStatusView::Pending);
         assert_eq!(by_target["p3"].updated_at_ms, None);

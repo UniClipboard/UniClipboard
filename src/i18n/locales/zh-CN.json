@@ -1464,6 +1464,7 @@
       "delivered": "已接收",
       "duplicate": "已接收(去重)",
       "pending": "未尝试",
+      "unreachable": "对端离线",
       "failedWithReason": "失败 · {{reason}}"
     },
     "summary": {
@@ -1471,6 +1472,7 @@
       "partial": "部分同步",
       "syncing": "同步中",
       "failed": "同步失败",
+      "waiting": "对端离线",
       "pending": "等待同步"
     },
     "popover": {
@@ -1478,7 +1480,6 @@
       "ariaTrigger": "查看每台设备的同步详情"
     },
     "failureReason": {
-      "offline": "对端离线",
       "localPolicy": "本地策略阻断",
       "peerRejected": "对端拒收",
       "io": "网络错误",

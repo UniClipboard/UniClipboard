@@ -143,6 +143,7 @@ impl IntoApiDto<EntryDeliveryStatusDto> for EntryDeliveryStatusView {
             EntryDeliveryStatusView::Pending => EntryDeliveryStatusDto::Pending,
             EntryDeliveryStatusView::Delivered => EntryDeliveryStatusDto::Delivered,
             EntryDeliveryStatusView::Duplicate => EntryDeliveryStatusDto::Duplicate,
+            EntryDeliveryStatusView::Unreachable => EntryDeliveryStatusDto::Unreachable,
             EntryDeliveryStatusView::Failed { reason } => EntryDeliveryStatusDto::Failed {
                 reason: reason.into_api_dto(),
             },
@@ -153,7 +154,6 @@ impl IntoApiDto<EntryDeliveryStatusDto> for EntryDeliveryStatusView {
 impl IntoApiDto<DeliveryFailureReasonDto> for DeliveryFailureReason {
     fn into_api_dto(self) -> DeliveryFailureReasonDto {
         match self {
-            DeliveryFailureReason::Offline => DeliveryFailureReasonDto::Offline,
             DeliveryFailureReason::LocalPolicy => DeliveryFailureReasonDto::LocalPolicy,
             DeliveryFailureReason::PeerRejected => DeliveryFailureReasonDto::PeerRejected,
             DeliveryFailureReason::Io => DeliveryFailureReasonDto::Io,

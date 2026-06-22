@@ -62,14 +62,21 @@ pub enum EntryDeliveryStatusDto {
     Pending,
     Delivered,
     Duplicate,
-    Failed { reason: DeliveryFailureReasonDto },
+    /// Peer was unreachable (offline or dial failure). Not a fault — the peer
+    /// is simply not online right now.
+    Unreachable,
+    Failed {
+        reason: DeliveryFailureReasonDto,
+    },
 }
 
 /// Failure reason. i18n key convention: `delivery.failureReason.<variant>`.
+///
+/// Note: "peer offline" is NOT in this enum — it is represented as
+/// `EntryDeliveryStatusDto::Unreachable` (a separate status, not a failure).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum DeliveryFailureReasonDto {
-    Offline,
     LocalPolicy,
     PeerRejected,
     Io,

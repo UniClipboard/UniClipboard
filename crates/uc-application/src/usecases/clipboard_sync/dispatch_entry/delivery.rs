@@ -96,13 +96,11 @@ pub(crate) fn classify_dispatch_result(
             }
         }
         Ok((device_id, Err(ClipboardDispatchError::Offline))) => {
-            debug!(device_id = %device_id.as_str(), "dispatch → Offline");
+            debug!(device_id = %device_id.as_str(), "dispatch → Offline (unreachable)");
             let delivery_record = entry_id.map(|eid| EntryDeliveryRecord {
                 entry_id: eid.clone(),
                 target_device_id: device_id.clone(),
-                status: EntryDeliveryStatus::Failed {
-                    reason: DeliveryFailureReason::Offline,
-                },
+                status: EntryDeliveryStatus::Unreachable,
                 reason_detail: None,
                 updated_at_ms: now_ms,
             });
@@ -118,8 +116,11 @@ pub(crate) fn classify_dispatch_result(
         Ok((device_id, Err(err))) => {
             warn!(device_id = %device_id.as_str(), error = %err, "dispatch failed");
             let (failure_reason, reason_detail) = match &err {
-                // Offline is handled in the previous arm; kept for exhaustiveness.
-                ClipboardDispatchError::Offline => (DeliveryFailureReason::Offline, None),
+                // Offline is handled in the previous arm (Unreachable); this
+                // arm only fires for the non-Offline error variants.
+                ClipboardDispatchError::Offline => {
+                    unreachable!("Offline is matched in the dedicated arm above")
+                }
                 ClipboardDispatchError::LocalPolicyExceeded(s) => {
                     (DeliveryFailureReason::LocalPolicy, Some(s.clone()))
                 }
@@ -296,16 +297,14 @@ mod tests {
     }
 
     #[test]
-    fn offline_maps_to_failed_offline_and_offline_bucket() {
+    fn offline_maps_to_unreachable_record_and_offline_bucket() {
         let joined = Ok((dev("peer-a"), Err(ClipboardDispatchError::Offline)));
         let p = classify_dispatch_result(joined, Some(&eid()), 1);
         assert!(matches!(p.bucket, DispatchResultBucket::Offline));
         assert!(matches!(p.per_target.unwrap().outcome, Err(ref s) if s == "offline"));
         assert!(matches!(
             p.delivery_record.unwrap().status,
-            EntryDeliveryStatus::Failed {
-                reason: DeliveryFailureReason::Offline
-            }
+            EntryDeliveryStatus::Unreachable,
         ));
     }
 

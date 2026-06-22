@@ -1,7 +1,7 @@
 //! ADR-005 Stage 1a · user-initiated resend.
 //!
 //!补齐 desktop 缺失的"重发"能力:用户在 entry detail view 上看到对某 peer
-//! 是 `Failed { Offline }`,主动点重发。本用例**不引入新表、不新增 Port、
+//! 是 `Unreachable`(或 `Failed`),主动点重发。本用例**不引入新表、不新增 Port、
 //! 不自动触发**,候选集合由 [`EntryDeliveryRepositoryPort::list_by_entry`]
 //! 与 [`TrustedPeerRepositoryPort::list`] 在本调用内派生(差集),与 ADR
 //! §3.3 铁律 6 一致。
@@ -942,13 +942,11 @@ mod tests {
         }
     }
 
-    fn failed_offline_record(entry: &EntryId, target: &str, ms: i64) -> EntryDeliveryRecord {
+    fn unreachable_record(entry: &EntryId, target: &str, ms: i64) -> EntryDeliveryRecord {
         EntryDeliveryRecord {
             entry_id: entry.clone(),
             target_device_id: DeviceId::new(target),
-            status: EntryDeliveryStatus::Failed {
-                reason: uc_core::clipboard::DeliveryFailureReason::Offline,
-            },
+            status: EntryDeliveryStatus::Unreachable,
             reason_detail: None,
             updated_at_ms: ms,
         }
@@ -1113,7 +1111,7 @@ mod tests {
     }
 
     /// V5 — `target_filter = None`,3 个 trusted peer:peer-a Delivered、
-    /// peer-b Failed{Offline}、peer-c 从未尝试。差集 = {peer-b, peer-c}。
+    /// peer-b Unreachable、peer-c 从未尝试。差集 = {peer-b, peer-c}。
     /// dispatch 必须收到 `target_filter = Some([peer-b, peer-c])`(顺序与
     /// trusted_peer.list 一致),entry_id = Some。
     #[tokio::test]
@@ -1126,7 +1124,7 @@ mod tests {
         let (uc, entry_id) = build_uc(
             vec![
                 delivered_record(&entry, "peer-a", 50),
-                failed_offline_record(&entry, "peer-b", 60),
+                unreachable_record(&entry, "peer-b", 60),
             ],
             vec![
                 trusted(&local, "peer-a", 1),
@@ -1223,12 +1221,8 @@ mod tests {
             Ok(outcome)
         }));
         let (uc, entry_id) = build_uc(
-            // 既有一条 Failed{Offline} → 在 diff set 内,resend 会再发。
-            vec![failed_offline_record(
-                &EntryId::from("entry-1"),
-                "peer-b",
-                100,
-            )],
+            // 既有一条 Unreachable → 在 diff set 内,resend 会再发。
+            vec![unreachable_record(&EntryId::from("entry-1"), "peer-b", 100)],
             vec![trusted(&local, "peer-a", 1), trusted(&local, "peer-b", 2)],
             runner.clone(),
         );

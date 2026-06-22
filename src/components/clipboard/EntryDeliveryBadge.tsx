@@ -44,10 +44,9 @@ interface EntryDeliveryBadgeProps {
   delivery: EntryDeliveryView | null
 }
 
-type SyncSummary = 'synced' | 'syncing' | 'partial' | 'failed' | 'pending'
+type SyncSummary = 'synced' | 'syncing' | 'partial' | 'failed' | 'waiting' | 'pending'
 
 const FAILURE_REASON_KEYS: Record<DeliveryFailureReason, string> = {
-  offline: 'delivery.failureReason.offline',
   localPolicy: 'delivery.failureReason.localPolicy',
   peerRejected: 'delivery.failureReason.peerRejected',
   io: 'delivery.failureReason.io',
@@ -69,6 +68,7 @@ function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | n
   if (targets.length === 0) return null
   let delivered = 0
   let failed = 0
+  let unreachable = 0
   let pending = 0
   for (const t of targets) {
     switch (t.status.tag) {
@@ -79,15 +79,21 @@ function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | n
       case 'failed':
         failed += 1
         break
+      case 'unreachable':
+        unreachable += 1
+        break
       case 'pending':
         pending += 1
         break
     }
   }
+  if (delivered === targets.length) return 'synced'
   if (failed === targets.length) return 'failed'
   if (failed > 0) return 'partial'
-  if (delivered === targets.length) return 'synced'
+  if (unreachable > 0 && delivered > 0) return 'partial'
+  if (unreachable === targets.length) return 'waiting'
   if (delivered > 0 && pending > 0) return 'syncing'
+  if (unreachable > 0) return 'waiting'
   return 'pending'
 }
 
@@ -227,6 +233,13 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
           tone: 'text-destructive',
           spin: false,
         }
+      case 'waiting':
+        return {
+          Icon: CircleDashed,
+          label: t('delivery.summary.waiting'),
+          tone: 'text-muted-foreground/70',
+          spin: false,
+        }
       case 'pending':
         return {
           Icon: CircleDashed,
@@ -310,7 +323,10 @@ const DeliveryRow: React.FC<DeliveryRowProps> = ({ target, resendable, entryId, 
   // 行级 resend 只在该 peer 处于 failed / pending 时出现 ——
   // delivered / duplicate 重试无意义,既不画按钮也不响应 action。
   const canResendThis =
-    resendable && (target.status.tag === 'failed' || target.status.tag === 'pending')
+    resendable &&
+    (target.status.tag === 'failed' ||
+      target.status.tag === 'unreachable' ||
+      target.status.tag === 'pending')
 
   return (
     <li
@@ -435,6 +451,8 @@ const StatusIcon: React.FC<{ status: EntryDeliveryStatusView }> = ({ status }) =
       return <Check className="size-3" />
     case 'pending':
       return <CircleDashed className="size-3" />
+    case 'unreachable':
+      return <CircleDashed className="size-3" />
     case 'failed':
       return <X className="size-3" />
   }
@@ -451,6 +469,8 @@ function getStatusLabel(
       return t('delivery.status.duplicate')
     case 'pending':
       return t('delivery.status.pending')
+    case 'unreachable':
+      return t('delivery.status.unreachable')
     case 'failed':
       return t('delivery.status.failedWithReason', {
         reason: t(FAILURE_REASON_KEYS[status.reason]),
@@ -470,6 +490,8 @@ function renderStatusTone(status: EntryDeliveryStatusView): StatusTone {
     case 'duplicate':
       return { icon: 'text-emerald-500/70', label: 'text-muted-foreground' }
     case 'pending':
+      return { icon: 'text-muted-foreground/60', label: 'text-muted-foreground' }
+    case 'unreachable':
       return { icon: 'text-muted-foreground/60', label: 'text-muted-foreground' }
     case 'failed':
       return { icon: 'text-destructive', label: 'text-destructive' }

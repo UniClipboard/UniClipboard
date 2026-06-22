@@ -61,7 +61,7 @@ function mixedDelivery(): EntryDeliveryView {
     deliveries: [
       target('did_a1b2c3d4e5', null, { tag: 'delivered' }),
       target('did_f6g7h8i9j0', null, { tag: 'duplicate' }),
-      target('did_k1l2m3n4o5', null, { tag: 'failed', reason: 'offline' }, 'no route to host'),
+      target('did_k1l2m3n4o5', null, { tag: 'unreachable' }, 'no route to host'),
       target('did_p6q7r8s9t0', null, { tag: 'pending' }),
     ],
   }
@@ -145,6 +145,7 @@ describe('EntryDeliveryBadge', () => {
   it.each<[Exclude<EntryDeliveryView['deliveries'][number]['status']['tag'], 'failed'>, string]>([
     ['delivered', 'synced'],
     ['duplicate', 'synced'],
+    ['unreachable', 'waiting'],
     ['pending', 'pending'],
   ])('summarizes single %s peer as %s', (statusTag, summary) => {
     const delivery: EntryDeliveryView = {
@@ -167,8 +168,8 @@ describe('EntryDeliveryBadge', () => {
       entryId: 'entry-failed-all',
       source: { tag: 'local' },
       deliveries: [
-        target('did_a', null, { tag: 'failed', reason: 'offline' }),
-        target('did_b', null, { tag: 'failed', reason: 'io' }),
+        target('did_a', null, { tag: 'failed', reason: 'io' }),
+        target('did_b', null, { tag: 'failed', reason: 'internal' }),
       ],
     }
     render(<EntryDeliveryBadge delivery={delivery} />)
@@ -176,6 +177,22 @@ describe('EntryDeliveryBadge', () => {
     const trigger = screen.getByRole('button', { name: i18n.t('delivery.popover.ariaTrigger') })
     expect(trigger).toHaveAttribute('data-summary', 'failed')
     expect(trigger).toHaveTextContent(i18n.t('delivery.summary.failed'))
+  })
+
+  it('summarizes all-unreachable peers as waiting', () => {
+    const delivery: EntryDeliveryView = {
+      entryId: 'entry-waiting-all',
+      source: { tag: 'local' },
+      deliveries: [
+        target('did_a', null, { tag: 'unreachable' }),
+        target('did_b', null, { tag: 'unreachable' }),
+      ],
+    }
+    render(<EntryDeliveryBadge delivery={delivery} />)
+
+    const trigger = screen.getByRole('button', { name: i18n.t('delivery.popover.ariaTrigger') })
+    expect(trigger).toHaveAttribute('data-summary', 'waiting')
+    expect(trigger).toHaveTextContent(i18n.t('delivery.summary.waiting'))
   })
 
   it('summarizes delivered + pending as syncing', () => {
@@ -206,13 +223,7 @@ describe('EntryDeliveryBadge', () => {
     expect(screen.getByText(i18n.t('delivery.status.delivered'))).toBeInTheDocument()
     expect(screen.getByText(i18n.t('delivery.status.duplicate'))).toBeInTheDocument()
     expect(screen.getByText(i18n.t('delivery.status.pending'))).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        i18n.t('delivery.status.failedWithReason', {
-          reason: i18n.t('delivery.failureReason.offline'),
-        })
-      )
-    ).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('delivery.status.unreachable'))).toBeInTheDocument()
 
     // 截断后的 device id 渲染
     expect(screen.getByText('did_a1b2…')).toBeInTheDocument()
@@ -249,7 +260,7 @@ describe('EntryDeliveryBadge', () => {
         source: { tag: 'local' },
         deliveries: [
           target('did_ok_aaaaaa', 'Mac', { tag: 'delivered' }),
-          target('did_failed_bbbb', 'iPad', { tag: 'failed', reason: 'offline' }, 'unreachable'),
+          target('did_failed_bbbb', 'iPad', { tag: 'unreachable' }, 'unreachable'),
         ],
       }
     }
@@ -274,7 +285,7 @@ describe('EntryDeliveryBadge', () => {
       const delivery: EntryDeliveryView = {
         entryId: 'entry-from-other',
         source: { tag: 'remote', deviceId: 'did_other_xyz', deviceName: 'Other' },
-        deliveries: [target('did_local_self', 'Self', { tag: 'failed', reason: 'offline' })],
+        deliveries: [target('did_local_self', 'Self', { tag: 'unreachable' })],
       }
       render(<EntryDeliveryBadge delivery={delivery} />)
 
@@ -316,7 +327,7 @@ describe('EntryDeliveryBadge', () => {
       expect(button).toBeDisabled()
     })
 
-    it('renders per-peer Resend only for failed/pending peers', async () => {
+    it('renders per-peer Resend only for failed/unreachable/pending peers', async () => {
       const user = userEvent.setup()
       render(<EntryDeliveryBadge delivery={deliveryWithFailingPeer()} />)
 
@@ -325,7 +336,7 @@ describe('EntryDeliveryBadge', () => {
       })
       await user.hover(trigger)
 
-      // Failed peer 有按钮
+      // Unreachable peer 有按钮
       expect(
         await screen.findByRole('button', {
           name: i18n.t('delivery.resend.button.peerAria', { device: 'iPad' }),
@@ -439,10 +450,9 @@ describe('EntryDeliveryBadge', () => {
     })
   })
 
-  it('maps all five failure reasons to their i18n labels in popover', async () => {
+  it('maps all four failure reasons to their i18n labels in popover', async () => {
     const user = userEvent.setup()
     const reasons: ReadonlyArray<DeliveryFailureReason> = [
-      'offline',
       'localPolicy',
       'peerRejected',
       'io',

@@ -15,14 +15,19 @@ use crate::ids::{DeviceId, EntryId};
 /// 一条 entry 对单个对端的最新投递结果。
 ///
 /// `Delivered` / `Duplicate` 对用户视角都属于"对端已经持有这条内容",
-/// 但保留区分以便排障 / 后续策略需要。`Failed` 携带细分原因,文案与
-/// 决策都基于 `DeliveryFailureReason`。
+/// 但保留区分以便排障 / 后续策略需要。`Unreachable` 表示对端不可达
+/// (离线或拨号失败)——这不是故障,只是时机不对,后续上线时可自然
+/// 恢复;`Failed` 携带细分原因,代表需要关注或干预的真正失败。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryDeliveryStatus {
     /// 对端节点接收了 bytes(adapter 层 ack)。
     Delivered,
     /// 对端节点报告"已存在",通常因为对端从另一路径已收到同一内容。
     Duplicate,
+    /// 对端节点不可达(没有可用地址或拨号失败)。不属于故障——对端
+    /// 当前离线,下次上线时可重试送达。与 `Failed` 的区别:
+    /// `Unreachable` 是预期的临时状态,`Failed` 是需要关注的异常。
+    Unreachable,
     /// 投递失败,`reason` 给出失败类别。
     Failed { reason: DeliveryFailureReason },
 }
@@ -30,10 +35,11 @@ pub enum EntryDeliveryStatus {
 /// 失败原因的领域分类。每个变体对应 wire 层一类可识别的失败信号,
 /// 用于驱动 UI 文案与可能的恢复策略。变体集合与 wire 失败类型保持
 /// 1:1 对应,新增 wire 失败类型时同步扩展。
+///
+/// 注意:`Offline`(对端不可达)不在此枚举中——它已提升为独立的
+/// `EntryDeliveryStatus::Unreachable`,不属于"失败"语义。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeliveryFailureReason {
-    /// 对端节点不可达(没有可用地址或拨号失败)。
-    Offline,
     /// 本地策略在 wire 前拒绝(例如 payload 超过本地限制)。
     LocalPolicy,
     /// 对端在 wire 层显式拒绝(协议版本不兼容、header 不合法等)。

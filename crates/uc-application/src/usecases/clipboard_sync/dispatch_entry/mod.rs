@@ -2028,13 +2028,11 @@ mod tests {
 
         assert!(matches!(
             by_target["peer-off"].status,
-            EntryDeliveryStatus::Failed {
-                reason: DeliveryFailureReason::Offline
-            }
+            EntryDeliveryStatus::Unreachable,
         ));
         assert!(
             by_target["peer-off"].reason_detail.is_none(),
-            "Offline 无人类可读补充"
+            "Unreachable 无人类可读补充"
         );
 
         assert!(matches!(

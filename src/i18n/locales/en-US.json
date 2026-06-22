@@ -11,6 +11,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "history": "History",
     "devices": "Devices",
     "settings": "Settings",
     "updateAvailable": "Update available",
@@ -677,6 +678,28 @@
   "language": {
     "zh-CN": "简体中文",
     "en-US": "English"
+  },
+  "history": {
+    "title": "History",
+    "subtitle": "{{count}} items",
+    "searchPlaceholder": "Search clipboard…",
+    "loadMore": "Load more",
+    "filter": {
+      "all": "All",
+      "text": "Text",
+      "code": "Code",
+      "link": "Links",
+      "image": "Images",
+      "file": "Files"
+    },
+    "type": {
+      "text": "Text",
+      "code": "Code",
+      "link": "Link",
+      "image": "Image",
+      "file": "File",
+      "unknown": "Unknown"
+    }
   },
   "dashboard": {
     "logs": {

@@ -11,6 +11,7 @@
   },
   "nav": {
     "dashboard": "仪表板",
+    "history": "历史记录",
     "devices": "设备管理",
     "settings": "设置",
     "updateAvailable": "有新版本",
@@ -668,6 +669,28 @@
   "language": {
     "zh-CN": "简体中文",
     "en-US": "English"
+  },
+  "history": {
+    "title": "历史记录",
+    "subtitle": "{{count}} 项",
+    "searchPlaceholder": "搜索剪贴板…",
+    "loadMore": "加载更多",
+    "filter": {
+      "all": "全部",
+      "text": "文本",
+      "code": "代码",
+      "link": "链接",
+      "image": "图片",
+      "file": "文件"
+    },
+    "type": {
+      "text": "文本",
+      "code": "代码",
+      "link": "链接",
+      "image": "图片",
+      "file": "文件",
+      "unknown": "未知"
+    }
   },
   "dashboard": {
     "logs": {

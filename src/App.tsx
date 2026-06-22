@@ -30,6 +30,7 @@ import { reportError } from '@/observability/errors'
 import { SentryRoutes } from '@/observability/sentry'
 import DashboardPage from '@/pages/DashboardPage'
 import DevicesPage from '@/pages/DevicesPage'
+import HistoryPage from '@/pages/HistoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import SetupPage from '@/pages/SetupPage'
 import UnlockPage from '@/pages/UnlockPage'
@@ -404,6 +405,7 @@ const AppContent = ({
             }
           />
           <Route path="/devices" element={<DevicesPage />} />
+          <Route path="/history" element={<HistoryPage />} />
         </Route>
         <Route element={<SettingsFullLayout />}>
           <Route path="/settings" element={<SettingsPage />} />

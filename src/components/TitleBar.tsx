@@ -73,8 +73,9 @@ export const TitleBar = ({
   const { isWindows, isMac, isTauri } = usePlatform()
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
 
-  // 检测是否在 Dashboard 页面
+  // Pages that show the search bar in the title bar
   const isDashboardPage = location.pathname === '/'
+  const isSearchPage = isDashboardPage || location.pathname === '/history'
   // Setup 页面隐藏 TitleBar 保持沉浸感
   const shouldHideTitleBar = isSetupActive
 
@@ -205,14 +206,8 @@ export const TitleBar = ({
             }}
             tabIndex={-1}
           />
-          {isDashboardPage ? (
-            <div
-              className={cn(
-                'relative z-10 flex items-center w-64 max-w-xs',
-                'transition-all duration-200',
-                'opacity-0 pointer-events-none' /* MVP: search hidden - remove this line to restore */
-              )}
-            >
+          {isSearchPage ? (
+            <div className="relative z-10 flex items-center w-64 max-w-xs transition-all duration-200">
               <Search
                 className={cn(
                   'absolute left-2.5 size-3.5 transition-colors duration-200',

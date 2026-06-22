@@ -231,6 +231,12 @@ impl ActiveClipboardFacade {
             converged_tx,
         );
 
+        match (&deps.pull_client, &deps.pull_apply) {
+            (Some(_), None) | (None, Some(_)) => {
+                warn!("active clipboard: partial pull dependency — both pull_client and pull_apply must be provided together; pull disabled");
+            }
+            _ => {}
+        }
         if let (Some(pull_client), Some(pull_apply)) = (deps.pull_client, deps.pull_apply) {
             let store: Arc<dyn InboundPulledContentStore> = Arc::new(PulledContentStore {
                 cipher: Arc::clone(&deps.transfer_cipher),

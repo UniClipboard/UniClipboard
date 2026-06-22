@@ -1,6 +1,6 @@
 //! Outbound active-clipboard register port.
 //!
-//! Complement to [`ActiveClipboardReceiverPort`](super::active_clipboard_receiver::ActiveClipboardReceiverPort):
+//! Complement to [`ActiveClipboardReceiverPort`](super::receiver::ActiveClipboardReceiverPort):
 //! that port exposes the active-clipboard state observations arriving from
 //! peers, this one sends one such observation to a single reachable peer.
 //! Multi-target fan-out (selecting eligible peers, concurrency) is assembled

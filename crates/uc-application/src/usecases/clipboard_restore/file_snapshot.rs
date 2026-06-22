@@ -7,6 +7,7 @@ use uc_core::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipbo
 use uc_core::ids::{FormatId, RepresentationId};
 
 /// Build a newline-separated `text/uri-list`.
+#[allow(dead_code)]
 pub(crate) fn build_path_list(file_paths: &[PathBuf]) -> String {
     file_paths
         .iter()
@@ -20,6 +21,7 @@ pub(crate) fn build_path_list(file_paths: &[PathBuf]) -> String {
 }
 
 /// Build a `SystemClipboardSnapshot` with a `text/uri-list` representation.
+#[allow(dead_code)]
 pub(crate) fn build_file_snapshot(uri_list: &str) -> SystemClipboardSnapshot {
     SystemClipboardSnapshot {
         ts_ms: chrono::Utc::now().timestamp_millis(),

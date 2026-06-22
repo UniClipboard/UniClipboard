@@ -699,6 +699,12 @@
       "image": "Image",
       "file": "File",
       "unknown": "Unknown"
+    },
+    "detail": {
+      "capturedAt": "Captured",
+      "size": "Size",
+      "fileCount": "Files",
+      "urlCount": "URLs"
     }
   },
   "dashboard": {
@@ -790,6 +796,7 @@
       "loading": "Loading...",
       "actions": {
         "copy": "Copy",
+        "copied": "Copied",
         "favorite": "Favorite",
         "unfavorite": "Unfavorite",
         "delete": "Delete",

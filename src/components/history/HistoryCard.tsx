@@ -1,4 +1,6 @@
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   CheckCircle2,
   CircleDashed,
   Cloud,
@@ -32,6 +34,12 @@ import type {
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
+import { useAppSelector } from '@/store/hooks'
+import {
+  resolveEntryTransferStatus,
+  selectEntryTransferStatus,
+  selectTransferByEntryId,
+} from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
 
 // ── Design tokens ───────────────────────────────────────────────
@@ -253,13 +261,10 @@ const FileContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
   const name = item.file_names[0] ?? 'Unknown file'
   const size = item.file_sizes[0] ?? 0
   return (
-    <div className="flex items-center gap-2">
-      <File className="size-4 text-muted-foreground/50 shrink-0" />
-      <div className="min-w-0 flex-1">
-        <div className="text-[12.5px] font-medium text-foreground/85 truncate">{name}</div>
-        <div className="text-[10.5px] text-muted-foreground/60">
-          {getFileExtLabel(name)} - {formatFileSize(size)}
-        </div>
+    <div className="min-w-0">
+      <div className="text-[12.5px] font-medium text-foreground/85 truncate">{name}</div>
+      <div className="text-[10.5px] text-muted-foreground/60">
+        {getFileExtLabel(name)} - {formatFileSize(size)}
       </div>
     </div>
   )
@@ -273,6 +278,7 @@ interface HistoryCardProps {
   copySuccess: boolean
   isDeleting: boolean
   onCopy: (id: string) => void
+  onClick: (id: string) => void
   onHoverChange: (id: string | null) => void
 }
 
@@ -282,6 +288,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   copySuccess,
   isDeleting,
   onCopy,
+  onClick,
   onHoverChange,
 }) => {
   const { t } = useTranslation()
@@ -290,6 +297,27 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   const sizeLabel = useMemo(() => getContentSizeLabel(item), [item])
 
   const { delivery } = useEntryDelivery(item.id)
+
+  const isFileType = item.type === 'file'
+  const transfer = useAppSelector(state =>
+    isFileType ? selectTransferByEntryId(state, item.id) : undefined
+  )
+  const entryStatus = useAppSelector(state =>
+    isFileType ? selectEntryTransferStatus(state, item.id) : undefined
+  )
+  const effectiveStatus = isFileType ? resolveEntryTransferStatus(entryStatus, transfer) : undefined
+
+  const isTransferring = effectiveStatus === 'transferring'
+  const isPending = effectiveStatus === 'pending'
+
+  const percent =
+    transfer && transfer.totalBytes && transfer.totalBytes > 0
+      ? Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100)
+      : 0
+
+  const speedLabel = transfer?.bytesPerSecond
+    ? formatFileSize(transfer.bytesPerSecond) + '/s'
+    : null
 
   const handleMouseEnter = useCallback(() => onHoverChange(item.id), [item.id, onHoverChange])
   const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange])
@@ -316,27 +344,51 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
     }
   }, [item])
 
+  const handleClick = useCallback(() => onClick(item.id), [item.id, onClick])
+
+  const DirectionIcon = transfer?.direction === 'Sending' ? ArrowUpFromLine : ArrowDownToLine
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') handleClick()
+      }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
+        'cursor-pointer overflow-hidden',
         'group relative px-3.5 pt-3 pb-3 border-b-[3px] border-double transition-all duration-200',
         isDeleting
           ? 'bg-destructive/10 border-border/30 opacity-60 scale-[0.97]'
           : copySuccess
             ? 'bg-emerald-500/5 border-border/30'
-            : 'border-border/30 hover:bg-muted/30'
+            : isPending
+              ? 'border-border/20 bg-muted/10'
+              : 'border-border/30 hover:bg-muted/30'
       )}
     >
+      {/* Transfer progress overlay - card acts as an immersive progress bar */}
+      {isFileType && isTransferring && transfer && (
+        <div
+          className="absolute inset-0 z-0 bg-primary/8 transition-[width] duration-300 ease-out"
+          style={{ width: `${percent}%` }}
+        />
+      )}
+
       {/* Header */}
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <TypeIcon className="size-3 shrink-0" style={{ color }} />
-        <span className="text-[10.5px] font-medium" style={{ color }}>
+      <div className="relative z-10 flex items-center gap-1.5 mb-1.5">
+        <TypeIcon className={cn('size-3 shrink-0', isPending && 'opacity-50')} style={{ color }} />
+        <span
+          className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
+          style={{ color }}
+        >
           {t(`history.type.${item.type}`, item.type)}
         </span>
 
-        {sizeLabel && (
+        {sizeLabel && !isTransferring && (
           <>
             <span className="text-[9px] text-muted-foreground/25">-</span>
             <span className="text-[10px] tabular-nums text-muted-foreground/45">{sizeLabel}</span>
@@ -344,33 +396,77 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         )}
 
         <div className="ml-auto flex items-center gap-1.5">
-          {delivery && (
+          {isFileType && isTransferring ? (
             <>
-              <SourceIndicator source={delivery.source} />
-              <SyncIndicator delivery={delivery} />
+              <DirectionIcon className="size-2.5 text-primary/70" />
+              <span className="text-[10px] tabular-nums text-primary/80 font-medium">
+                {percent}%
+              </span>
+              {speedLabel && (
+                <>
+                  <span className="text-[9px] text-primary/30">-</span>
+                  <span className="text-[10px] tabular-nums text-primary/70">{speedLabel}</span>
+                </>
+              )}
+            </>
+          ) : isFileType && isPending ? (
+            <>
+              <LoaderCircle className="size-2.5 text-muted-foreground/40 animate-spin" />
+              <span className="text-[10px] text-muted-foreground/40">
+                {t('clipboard.transfer.pending')}
+              </span>
+            </>
+          ) : (
+            <>
+              {delivery && (
+                <>
+                  <SourceIndicator source={delivery.source} />
+                  <SyncIndicator delivery={delivery} />
+                </>
+              )}
+              <span className="text-[10px] text-muted-foreground/40">{item.time}</span>
             </>
           )}
-          <span className="text-[10px] text-muted-foreground/40">{item.time}</span>
         </div>
       </div>
 
-      {content}
+      <div className={cn('relative z-10', isPending && 'opacity-60')}>{content}</div>
 
-      {/* Copy button - visible on hover */}
+      {/* Transfer progress detail bar at bottom */}
+      {isFileType && isTransferring && transfer && (
+        <div className="relative z-10 mt-1.5 flex items-center gap-1.5">
+          <div className="h-px flex-1 bg-primary/15 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary/40 transition-[width] duration-300 ease-out"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+          <span className="text-[9px] tabular-nums text-primary/50 shrink-0">
+            {transfer.totalBytes
+              ? `${formatFileSize(transfer.bytesTransferred)} / ${formatFileSize(transfer.totalBytes)}`
+              : formatFileSize(transfer.bytesTransferred)}
+          </span>
+        </div>
+      )}
+
+      {/* Copy button - visible on hover, hidden during transfer */}
       <button
         type="button"
-        onClick={() => onCopy(item.id)}
+        onClick={e => {
+          e.stopPropagation()
+          onCopy(item.id)
+        }}
         className={cn(
-          'absolute top-2.5 right-2.5 flex items-center justify-center size-6 rounded-md bg-card border border-border/50 text-muted-foreground shadow-sm transition-all duration-150',
-          isHovered ? 'opacity-100' : 'opacity-0'
+          'absolute top-2.5 right-2.5 z-20 flex items-center justify-center size-6 rounded-md bg-card border border-border/50 text-muted-foreground shadow-sm transition-all duration-150',
+          isHovered && !isTransferring ? 'opacity-100' : 'opacity-0'
         )}
       >
         <Copy className="size-3" />
       </button>
 
       {/* Keyboard hint - visible on hover */}
-      {isHovered && (
-        <div className="absolute bottom-1 right-2.5 flex items-center gap-1.5 text-[9px] text-muted-foreground/30">
+      {isHovered && !isTransferring && !isPending && (
+        <div className="absolute bottom-1 right-2.5 z-20 flex items-center gap-1.5 text-[9px] text-muted-foreground/30">
           <kbd className="px-1 py-px rounded border border-border/30 bg-muted/30 font-mono">c</kbd>
           <span>copy</span>
           <kbd className="px-1 py-px rounded border border-border/30 bg-muted/30 font-mono">d</kbd>

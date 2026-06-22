@@ -6,10 +6,12 @@ import Masonry from 'react-masonry-css'
 import { Filter } from '@/api/clipboardItems'
 import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
 import HistoryCard from '@/components/history/HistoryCard'
+import HistoryDetailSheet from '@/components/history/HistoryDetailSheet'
 import { toast } from '@/components/ui/toast'
 import { useClipboardEvents } from '@/hooks/useClipboardEvents'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
+import { useTransferProgress } from '@/hooks/useTransferProgress'
 import type {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -19,7 +21,11 @@ import type {
 } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
+import {
+  copyToClipboard,
+  removeClipboardItem,
+  type PendingClipboardEntry,
+} from '@/store/slices/clipboardSlice'
 
 // ── Constants ───────────────────────────────────────────────────
 
@@ -36,6 +42,36 @@ const FILTER_TABS: { key: Filter; labelKey: string; icon?: React.ElementType }[]
 
 const MASONRY_BREAKPOINTS = { default: 3, 900: 2, 500: 1 }
 
+// ── Helpers ─────────────────────────────────────────────────────
+
+function formatBytesShort(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const k = 1024
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), units.length - 1)
+  const value = bytes / Math.pow(k, i)
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
+}
+
+function buildPendingPreview(
+  entry: PendingClipboardEntry,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string {
+  if (entry.totalBytes != null && entry.totalBytes > 0) {
+    return t('clipboard.transfer.incomingWithSize', { size: formatBytesShort(entry.totalBytes) })
+  }
+  return t('clipboard.transfer.incoming')
+}
+
+function buildPendingFileContent(entry: PendingClipboardEntry): ClipboardFileItem | null {
+  if (entry.filenames.length === 0) return null
+  const fileSizes: number[] =
+    entry.filenames.length === 1 && entry.totalBytes != null && entry.totalBytes > 0
+      ? [entry.totalBytes]
+      : entry.filenames.map(() => -1)
+  return { file_names: entry.filenames, file_sizes: fileSizes }
+}
+
 // ── Page ────────────────────────────────────────────────────────
 
 const HistoryPage: React.FC = () => {
@@ -48,13 +84,25 @@ const HistoryPage: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [promotedId, setPromotedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const deleteTargetRef = useRef<string | null>(null)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useShortcutScope('clipboard')
   const { hasMore, handleLoadMore } = useClipboardEvents(activeFilter)
 
+  // Activate file-transfer progress event listener for this page
+  useTransferProgress()
+
   const items = useAppSelector(state => state.clipboard.items)
+  const pendingItems = useAppSelector(state => state.clipboard.pendingItems)
+  const spaceMembers = useAppSelector(state => state.devices.spaceMembers)
+
+  const deviceNameByPeerId = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const m of spaceMembers) map[m.peerId] = m.deviceName
+    return map
+  }, [spaceMembers])
 
   const formatRelativeTime = useCallback(
     (timestamp: number): string => {
@@ -69,19 +117,36 @@ const HistoryPage: React.FC = () => {
     [t]
   )
 
-  const displayItems = useMemo<DisplayClipboardItem[]>(
-    () =>
-      items.map(entry => ({
-        id: entry.id,
-        type: entry.type,
-        content: entry.content,
-        time: formatRelativeTime(entry.activeTime),
-        activeTime: entry.activeTime,
-        isFavorited: entry.isFavorited,
-        isUnavailable: entry.isUnavailable,
-      })),
-    [items, formatRelativeTime]
-  )
+  const displayItems = useMemo<DisplayClipboardItem[]>(() => {
+    const realItems = items.map(entry => ({
+      id: entry.id,
+      type: entry.type,
+      content: entry.content,
+      time: formatRelativeTime(entry.activeTime),
+      activeTime: entry.activeTime,
+      isFavorited: entry.isFavorited,
+      isUnavailable: entry.isUnavailable,
+    }))
+
+    const realIds = new Set(realItems.map(it => it.id))
+    const pendingDisplayItems: DisplayClipboardItem[] = pendingItems.flatMap(p =>
+      realIds.has(p.entryId)
+        ? []
+        : [
+            {
+              id: p.entryId,
+              type: 'file' as const,
+              time: t('clipboard.time.justNow'),
+              activeTime: p.createdAt,
+              content: buildPendingFileContent(p),
+              device: deviceNameByPeerId[p.fromDevice],
+              textPreview: buildPendingPreview(p, t),
+            },
+          ]
+    )
+
+    return [...pendingDisplayItems, ...realItems]
+  }, [items, pendingItems, deviceNameByPeerId, formatRelativeTime, t])
 
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return displayItems
@@ -146,16 +211,18 @@ const HistoryPage: React.FC = () => {
 
   // ── Copy handler ──────────────────────────────────────────────
   const handleCopy = useCallback(
-    (id: string) => {
-      dispatch(copyToClipboard(id))
-        .unwrap()
-        .then(() => {
-          if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
-          setCopySuccessId(id)
-          setPromotedId(id)
-          copyTimerRef.current = setTimeout(() => setCopySuccessId(null), 1200)
-        })
-        .catch(() => toast.error(t('clipboard.errors.copyFailed')))
+    async (id: string): Promise<boolean> => {
+      try {
+        await dispatch(copyToClipboard(id)).unwrap()
+        if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+        setCopySuccessId(id)
+        setPromotedId(id)
+        copyTimerRef.current = setTimeout(() => setCopySuccessId(null), 1200)
+        return true
+      } catch {
+        toast.error(t('clipboard.errors.copyFailed'))
+        return false
+      }
     },
     [dispatch, t]
   )
@@ -201,6 +268,26 @@ const HistoryPage: React.FC = () => {
     },
     preventDefault: false,
   })
+
+  const selectedItem = useMemo(
+    () => orderedItems.find(it => it.id === selectedId) ?? null,
+    [orderedItems, selectedId]
+  )
+
+  const handleCardClick = useCallback((id: string) => setSelectedId(id), [])
+
+  const handleSheetDelete = useCallback(
+    async (id: string): Promise<boolean> => {
+      try {
+        await dispatch(removeClipboardItem(id)).unwrap()
+        return true
+      } catch {
+        toast.error(t('clipboard.errors.deleteFailed', 'Delete failed'))
+        return false
+      }
+    },
+    [dispatch, t]
+  )
 
   const totalCount = displayItems.length
 
@@ -283,6 +370,7 @@ const HistoryPage: React.FC = () => {
                     copySuccess={copySuccessId === item.id}
                     isDeleting={deletingId === item.id}
                     onCopy={handleCopy}
+                    onClick={handleCardClick}
                     onHoverChange={setHoveredId}
                   />
                 </m.div>
@@ -291,6 +379,16 @@ const HistoryPage: React.FC = () => {
           </LayoutGroup>
         )}
       </div>
+
+      <HistoryDetailSheet
+        item={selectedItem}
+        open={selectedId !== null}
+        onOpenChange={open => {
+          if (!open) setSelectedId(null)
+        }}
+        onCopy={handleCopy}
+        onDelete={handleSheetDelete}
+      />
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}

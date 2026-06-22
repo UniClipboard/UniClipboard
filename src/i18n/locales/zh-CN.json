@@ -690,6 +690,12 @@
       "image": "图片",
       "file": "文件",
       "unknown": "未知"
+    },
+    "detail": {
+      "capturedAt": "捕获时间",
+      "size": "大小",
+      "fileCount": "文件数",
+      "urlCount": "链接数"
     }
   },
   "dashboard": {
@@ -781,6 +787,7 @@
       "loading": "加载中...",
       "actions": {
         "copy": "复制",
+        "copied": "已复制",
         "favorite": "收藏",
         "unfavorite": "取消收藏",
         "delete": "删除",

@@ -1,8 +1,7 @@
-import { LayoutGroup, m } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Code, ExternalLink, File, FileText, Image as ImageIcon, Search } from 'lucide-react'
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import Masonry from 'react-masonry-css'
 import { Filter } from '@/api/clipboardItems'
 import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
 import HistoryCard from '@/components/history/HistoryCard'
@@ -38,9 +37,41 @@ const FILTER_TABS: { key: Filter; labelKey: string; icon?: React.ElementType }[]
   { key: Filter.File, labelKey: 'history.filter.file', icon: File },
 ]
 
-// ── Constants ──────────────────────────────────────────────────
+// ── Masonry distribution ──────────────────────────────────────
 
-const MASONRY_BREAKPOINTS = { default: 3, 900: 2, 500: 1 }
+const MASONRY_BREAKPOINTS: [number, number][] = [
+  [500, 1],
+  [750, 2],
+  [1050, 3],
+  [1400, 4],
+]
+const MASONRY_DEFAULT_COLS = 5
+
+function useColumnCount(): number {
+  const [cols, setCols] = useState(() => {
+    const w = window.innerWidth
+    for (const [bp, c] of MASONRY_BREAKPOINTS) {
+      if (w <= bp) return c
+    }
+    return MASONRY_DEFAULT_COLS
+  })
+  useEffect(() => {
+    const onResize = () => {
+      const w = window.innerWidth
+      let next = MASONRY_DEFAULT_COLS
+      for (const [bp, c] of MASONRY_BREAKPOINTS) {
+        if (w <= bp) {
+          next = c
+          break
+        }
+      }
+      setCols(next)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return cols
+}
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -87,6 +118,9 @@ const HistoryPage: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const deleteTargetRef = useRef<string | null>(null)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Stable Set of ids already rendered once; read during render to gate the
+  // entrance animation, mutated only in an effect (never during render).
+  const [seenIds] = useState(() => new Set<string>())
 
   useShortcutScope('clipboard')
   const { hasMore, handleLoadMore } = useClipboardEvents(activeFilter)
@@ -195,19 +229,30 @@ const HistoryPage: React.FC = () => {
     handleLoadMoreRef.current = handleLoadMore
   }, [handleLoadMore])
 
+  const checkShouldLoadMore = useCallback(() => {
+    const el = scrollRef.current
+    if (!el || !hasMoreRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = el
+    if (scrollHeight - scrollTop - clientHeight < 400) {
+      handleLoadMoreRef.current()
+    }
+  }, [])
+
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onScroll = () => {
-      if (!hasMoreRef.current) return
-      const { scrollTop, scrollHeight, clientHeight } = el
-      if (scrollHeight - scrollTop - clientHeight < 400) {
-        handleLoadMoreRef.current()
-      }
+    el.addEventListener('scroll', checkShouldLoadMore, { passive: true })
+    const observer = new ResizeObserver(checkShouldLoadMore)
+    observer.observe(el)
+    return () => {
+      el.removeEventListener('scroll', checkShouldLoadMore)
+      observer.disconnect()
     }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [checkShouldLoadMore])
+
+  useEffect(() => {
+    checkShouldLoadMore()
+  }, [orderedItems, checkShouldLoadMore])
 
   // ── Copy handler ──────────────────────────────────────────────
   const handleCopy = useCallback(
@@ -268,6 +313,21 @@ const HistoryPage: React.FC = () => {
     },
     preventDefault: false,
   })
+
+  const columnCount = useColumnCount()
+  const columns = useMemo(() => {
+    const cols: DisplayClipboardItem[][] = Array.from({ length: columnCount }, () => [])
+    for (let i = 0; i < orderedItems.length; i++) {
+      cols[i % columnCount].push(orderedItems[i])
+    }
+    return cols
+  }, [orderedItems, columnCount])
+
+  // Record rendered ids after commit so subsequent remounts (e.g. column
+  // shifts when a new item is prepended) skip the entrance animation.
+  useEffect(() => {
+    for (const item of orderedItems) seenIds.add(item.id)
+  }, [orderedItems, seenIds])
 
   const selectedItem = useMemo(
     () => orderedItems.find(it => it.id === selectedId) ?? null,
@@ -351,32 +411,39 @@ const HistoryPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <LayoutGroup>
-            <Masonry
-              breakpointCols={MASONRY_BREAKPOINTS}
-              className="flex px-2 pt-1 pb-4 [&>div+div]:border-l-[3px] [&>div+div]:border-double [&>div+div]:border-border/20"
-              columnClassName="flex-1 min-w-0 flex flex-col"
-            >
-              {orderedItems.map(item => (
-                <m.div
-                  key={item.id}
-                  layoutId={item.id}
-                  layout
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                >
-                  <HistoryCard
-                    item={item}
-                    isHovered={hoveredId === item.id}
-                    copySuccess={copySuccessId === item.id}
-                    isDeleting={deletingId === item.id}
-                    onCopy={handleCopy}
-                    onClick={handleCardClick}
-                    onHoverChange={setHoveredId}
-                  />
-                </m.div>
-              ))}
-            </Masonry>
-          </LayoutGroup>
+          <div className="flex px-2 pt-1 pb-4">
+            {columns.map((colItems, colIdx) => (
+              <div
+                key={colIdx}
+                className={cn(
+                  'flex-1 min-w-0 flex flex-col',
+                  colIdx > 0 && 'border-l-[3px] border-double border-border/20'
+                )}
+              >
+                {colItems.map(item => {
+                  const isNew = !seenIds.has(item.id)
+                  return (
+                    <m.div
+                      key={item.id}
+                      initial={isNew ? { opacity: 0, y: 16 } : false}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                    >
+                      <HistoryCard
+                        item={item}
+                        isHovered={hoveredId === item.id}
+                        copySuccess={copySuccessId === item.id}
+                        isDeleting={deletingId === item.id}
+                        onCopy={handleCopy}
+                        onClick={handleCardClick}
+                        onHoverChange={setHoveredId}
+                      />
+                    </m.div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

@@ -219,19 +219,31 @@ const LinkContent: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => {
   )
 }
 
+// Module-level cache of resolved image URLs, keyed by entryId. Survives card
+// remounts (e.g. when a new item shifts every card to a different column),
+// so the image initializes synchronously instead of flashing the placeholder
+// and re-fetching.
+const imageUrlCache = new Map<string, string>()
+
 // TODO: thumbnail endpoint has issues; using original image via resource API for now
 const ImageContent: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
   item,
   entryId,
 }) => {
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [imageUrl, setImageUrl] = useState<string | null>(() => imageUrlCache.get(entryId) ?? null)
 
   useEffect(() => {
+    if (imageUrlCache.has(entryId)) {
+      setImageUrl(imageUrlCache.get(entryId)!)
+      return
+    }
     let cancelled = false
     getClipboardEntryResource(entryId)
       .then(resource => {
         if (cancelled || !resource) return
-        setImageUrl(resolveResourceImageUrl(resource))
+        const url = resolveResourceImageUrl(resource)
+        imageUrlCache.set(entryId, url)
+        setImageUrl(url)
       })
       .catch(() => {})
     return () => {
@@ -371,10 +383,13 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       )}
     >
       {/* Transfer progress overlay - card acts as an immersive progress bar */}
-      {isFileType && isTransferring && transfer && (
+      {isFileType && (
         <div
-          className="absolute inset-0 z-0 bg-primary/8 transition-[width] duration-300 ease-out"
-          style={{ width: `${percent}%` }}
+          className={cn(
+            'absolute inset-0 z-0 bg-primary/8 transition-all duration-500 ease-out',
+            isTransferring && transfer ? 'opacity-100' : 'opacity-0'
+          )}
+          style={{ width: isTransferring && transfer ? `${percent}%` : '100%' }}
         />
       )}
 
@@ -432,20 +447,29 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
       <div className={cn('relative z-10', isPending && 'opacity-60')}>{content}</div>
 
-      {/* Transfer progress detail bar at bottom */}
-      {isFileType && isTransferring && transfer && (
-        <div className="relative z-10 mt-1.5 flex items-center gap-1.5">
-          <div className="h-px flex-1 bg-primary/15 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary/40 transition-[width] duration-300 ease-out"
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-          <span className="text-[9px] tabular-nums text-primary/50 shrink-0">
-            {transfer.totalBytes
-              ? `${formatFileSize(transfer.bytesTransferred)} / ${formatFileSize(transfer.totalBytes)}`
-              : formatFileSize(transfer.bytesTransferred)}
-          </span>
+      {/* Transfer progress detail bar at bottom — absolute so it never affects card height */}
+      {isFileType && (
+        <div
+          className={cn(
+            'absolute bottom-1.5 left-3.5 right-3.5 z-10 flex items-center gap-1.5 transition-opacity duration-500 ease-out',
+            isTransferring && transfer ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          )}
+        >
+          {transfer && (
+            <>
+              <div className="h-px flex-1 bg-primary/15 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary/40 transition-[width] duration-300 ease-out"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <span className="text-[9px] tabular-nums text-primary/50 shrink-0">
+                {transfer.totalBytes
+                  ? `${formatFileSize(transfer.bytesTransferred)} / ${formatFileSize(transfer.totalBytes)}`
+                  : formatFileSize(transfer.bytesTransferred)}
+              </span>
+            </>
+          )}
         </div>
       )}
 

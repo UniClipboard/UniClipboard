@@ -60,6 +60,14 @@ export function KeyRecorder({
   // appends one segment (VS Code style); Escape cancels.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Ignore auto-repeat events from a held key; only the initial press
+      // should record a segment (otherwise holding a key fabricates a second
+      // identical segment, i.e. an accidental double-tap chord).
+      if (e.repeat) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
       if (e.key === 'Escape') {
         e.preventDefault()
         onCancelRef.current()

@@ -34,6 +34,13 @@ pub const DEFAULT_QUICK_PANEL_SHORTCUT: &str = "ctrl+alt+v";
 /// 都通过它读取/写入用户自定义的快捷键。
 pub const QUICK_PANEL_SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";
 
+/// 单个 binding 最多包含的 chord 段数（leader + second）。
+///
+/// 与前端 `MAX_CHORD_SEGMENTS` 对齐。chord 运行时只支持两步契约，更长的
+/// 空格分隔输入在归一化/拆段时被截断到前两段，避免向 OS 注册器传入
+/// 永远不会触发的三段及以上 binding。
+pub const MAX_CHORD_SEGMENTS: usize = 2;
+
 /// 全局快捷键注册过程中可能发生的错误。
 ///
 /// 注：本错误是面向**协调层**的契约，shell 实现把底层（OS / 插件）错误
@@ -125,10 +132,13 @@ pub trait GlobalShortcutRegistry: Send + Sync {
 /// 接受的 accelerator 串一致（每段单独注册）；这不是与 Tauri 的绑定，而是
 /// 桌面层选择的"物理键串"约定 —— 未来其他 shell 想消费同一份归一化结果不
 /// 需要做二次转换。
+///
+/// 超过 [`MAX_CHORD_SEGMENTS`] 段的输入按两步 chord 契约截断到前两段。
 pub fn normalize_to_physical_keys(key: &str) -> String {
     key.split(' ')
         .map(str::trim)
         .filter(|seg| !seg.is_empty())
+        .take(MAX_CHORD_SEGMENTS)
         .map(normalize_single_combo)
         .collect::<Vec<_>>()
         .join(" ")
@@ -153,12 +163,15 @@ fn normalize_single_combo(combo: &str) -> String {
 }
 
 /// Split a (physical-key) binding into its chord segments. A single combo
-/// yields one segment; a two-step chord (space-separated) yields two.
+/// yields one segment; a two-step chord (space-separated) yields two. Inputs
+/// longer than [`MAX_CHORD_SEGMENTS`] are clamped to the first two segments to
+/// match the two-step chord runtime contract.
 pub fn chord_segments(binding: &str) -> Vec<String> {
     binding
         .split(' ')
         .map(str::trim)
         .filter(|seg| !seg.is_empty())
+        .take(MAX_CHORD_SEGMENTS)
         .map(str::to_string)
         .collect()
 }
@@ -310,6 +323,24 @@ mod tests {
             vec!["super+v".to_string(), "super+v".to_string()]
         );
         assert!(chord_segments("").is_empty());
+    }
+
+    #[test]
+    fn chord_segments_clamps_to_two() {
+        // 运行时只支持两步 chord，三段及以上输入截断到前两段。
+        assert_eq!(
+            chord_segments("a b c"),
+            vec!["a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[test]
+    fn normalize_clamps_multi_segment_to_two() {
+        // "a b c" 这类不受支持的多段值被限制到两段。
+        assert_eq!(
+            normalize_to_physical_keys("meta+a meta+b meta+c"),
+            "super+a super+b"
+        );
     }
 
     // ── resolve_shortcut_values ─────────────────────────────────────

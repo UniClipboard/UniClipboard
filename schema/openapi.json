@@ -7488,6 +7488,16 @@
             }
           },
           {
+            "description": "Comma-separated source device ids; restricts results to those origins.",
+            "in": "query",
+            "name": "sourceDevices",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
             "description": "Maximum results. Default 50, clamped to 200.",
             "in": "query",
             "name": "limit",

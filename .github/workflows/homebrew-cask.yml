@@ -129,9 +129,17 @@ jobs:
           git commit -m "$COMMIT_SUBJECT"
           git push --force origin "uniclipboard-${VERSION}"
 
-          # printf so the blank line renders as a real newline; gh --body keeps
-          # literal "\n" as backslash-n in the PR description otherwise.
-          PR_BODY="$(printf 'Adds the UniClipboard macOS GUI cask.\n\nRelease: https://github.com/UniClipboard/UniClipboard/releases/tag/v%s\n' "$VERSION")"
+          RELEASE_URL="https://github.com/UniClipboard/UniClipboard/releases/tag/v${VERSION}"
+          if [ "$IS_NEW" -eq 1 ]; then
+            INTRO="Adds the UniClipboard macOS GUI cask."
+            NEW_CASK_SECTION="$(printf '\nAdditionally, if adding a new cask:\n\n- [x] Named the cask according to the [token reference](https://docs.brew.sh/Cask-Cookbook#token-reference).\n- [ ] Checked the cask was not [already refused](https://github.com/search?q=repo%%3AHomebrew%%2Fhomebrew-cask+is%%3Aclosed+is%%3Aunmerged+uniclipboard&type=pullrequests).\n- [ ] `brew audit --cask --new uniclipboard` worked successfully.\n- [ ] `HOMEBREW_NO_INSTALL_FROM_API=1 brew install --cask uniclipboard` worked successfully.\n- [ ] `brew uninstall --cask uniclipboard` worked successfully.')"
+          else
+            INTRO="Updates uniclipboard to ${VERSION}."
+            NEW_CASK_SECTION=""
+          fi
+
+          PR_BODY="$(printf '%s\n\nRelease: %s\n\n-----\n\nAfter making any changes to a cask, existing or new, verify:\n\n- [x] The submission is for a [stable version](https://docs.brew.sh/Acceptable-Casks#stable-versions) or [documented exception](https://docs.brew.sh/Acceptable-Casks#but-there-is-no-stable-version).\n- [ ] `brew audit --cask --online uniclipboard` is error-free.\n- [x] `brew style --fix uniclipboard` reports no offenses.%s\n\n-----\n\n- [x] AI was used to generate or assist with generating this PR. This PR was created by the UniClipboard automated release CI. `brew style` passes in CI (macOS runner). Items left unchecked (`brew audit --cask --online/--new`, install/uninstall) require local macOS testing and will be verified by BrewTestBot.' \
+            "$INTRO" "$RELEASE_URL" "$NEW_CASK_SECTION")"
           gh pr create \
             --repo Homebrew/homebrew-cask \
             --head "${FORK_REPO%/*}:uniclipboard-${VERSION}" \

@@ -1,7 +1,7 @@
 //! `ClipboardWriteCoordinator` — single write boundary for all
 //! programmatic clipboard writes, with per-intent guard TTL handling so
 //! the daemon's clipboard watcher can attribute the change to the
-//! originating intent (LocalCapture / LocalRestore / RemotePush) and
+//! originating intent (LocalRestore / RemotePush) and
 //! avoid write-back loops.
 //!
 //! ## History
@@ -55,7 +55,6 @@ const DEFAULT_CIRCUIT_OPEN_DURATION: Duration = Duration::from_secs(30);
 /// inline literals. The budget is a GC backstop; the next watcher event is what
 /// consumes the record:
 /// - `LocalRestore`: content record + next-change fallback, local budget
-/// - `LocalCapture`: content record only, local budget
 /// - `RemotePush`: content record + next-change fallback, remote budget (OS re-encoding guard)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardWriteIntent {
@@ -63,8 +62,6 @@ pub enum ClipboardWriteIntent {
     LocalRestore,
     /// A remote push from a peer device arriving via inbound sync.
     RemotePush,
-    /// A local clipboard write triggered by a local app action (e.g., copy file).
-    LocalCapture,
 }
 
 /// Single write boundary for all programmatic clipboard writes.
@@ -220,8 +217,6 @@ impl ClipboardWriteCoordinator {
     /// - `LocalRestore`: records a `ByContent`/`Local` self-write under the local
     ///   budget, writes, then records a `ByNextChange`/`Local` fallback to cover
     ///   file URI/path rewrites that change bytes between write and watcher callback.
-    /// - `LocalCapture`: records a `ByContent`/`Local` self-write under the local
-    ///   budget, then writes. On error, attributes the change to unwind the record.
     /// - `RemotePush`: records a `ByContent`/`Remote` self-write under the remote
     ///   budget, writes, then records a `ByNextChange`/`Remote` fallback to guard
     ///   against OS re-encoding loopback (e.g., Windows DIB→PNG re-encode yields
@@ -276,7 +271,7 @@ impl ClipboardWriteCoordinator {
         async {
             // Arm a content-keyed self-write record before writing.
             match intent {
-                ClipboardWriteIntent::LocalRestore | ClipboardWriteIntent::LocalCapture => {
+                ClipboardWriteIntent::LocalRestore => {
                     self.clipboard_change_origin
                         .record_self_write(
                             SelfWriteMatch::ByContent(origin_guard_key.clone()),
@@ -353,7 +348,6 @@ impl ClipboardWriteCoordinator {
                         )
                         .await;
                 }
-                ClipboardWriteIntent::LocalCapture => {}
             }
 
             Ok(())

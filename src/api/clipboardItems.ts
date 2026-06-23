@@ -63,6 +63,20 @@ export enum Filter {
   File = 'file',
 }
 
+/**
+ * Map a content-type {@link Filter} to the backend search `contentTypes` param.
+ *
+ * Single source of truth shared by every search entry point (History page,
+ * quick panel) so the type-narrowing rules can't drift. Returns `undefined` for
+ * `All`/`Favorited` (no type filter). `Code` expands to `code,html` since html
+ * is treated as a form of code.
+ */
+export function filterToContentTypes(filter: Filter): string | undefined {
+  if (filter === Filter.All || filter === Filter.Favorited) return undefined
+  if (filter === Filter.Code) return 'code,html'
+  return filter
+}
+
 export interface ClipboardStats {
   total_items: number
   total_size: number

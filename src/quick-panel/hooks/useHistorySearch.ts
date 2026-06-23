@@ -1,11 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Filter } from '@/api/clipboardItems'
-import { querySearch } from '@/api/daemon/search'
-import type { SearchResultDto, SearchParams } from '@/api/daemon/search'
-import { createLogger } from '@/lib/logger'
+import { Filter, filterToContentTypes } from '@/api/clipboardItems'
+import type { SearchResultDto } from '@/api/daemon/search'
+import { useClipboardSearch } from '@/hooks/useClipboardSearch'
 import type { DisplayItem, TimeRangePreset } from '../types'
-
-const log = createLogger('use-history-search')
 
 /** Map backend contentType to frontend display type. */
 function mapContentTypeToDisplayType(ft: SearchResultDto['contentType']): DisplayItem['type'] {
@@ -93,16 +89,37 @@ export function useHistorySearch({
   timeRange,
   isAdvancedMode,
 }: UseHistorySearchProps): UseHistorySearchResult {
-  const [searchResults, setSearchResults] = useState<DisplayItem[] | null>(null)
-  const [isSearching, setIsSearching] = useState(false)
-  const [searchTotal, setSearchTotal] = useState<number | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
-
   // Determine if we need to call the server
   const hasQuery = searchQuery.trim().length > 0
   const hasTokens = tokens.length > 0
   const hasTimeFilter = timeRange !== 'all_time'
   const needsServerSearch = hasQuery || hasTokens || hasTimeFilter
+
+  // Build the query model from tokens + free text + filter/time controls.
+  const { keywords, contentTypes: tokenContentTypes, extensions } = parseTokens(tokens)
+  const trimmedQuery = searchQuery.trim()
+  const queryString = (trimmedQuery ? [...keywords, trimmedQuery] : keywords).join(' ')
+
+  // contentTypes: tokens win; otherwise (non-advanced) fall back to the filter.
+  let contentTypes: string | undefined
+  if (tokenContentTypes.length > 0) {
+    contentTypes = tokenContentTypes.join(',')
+  } else if (!isAdvancedMode) {
+    contentTypes = filterToContentTypes(activeFilter)
+  }
+
+  const { results, isSearching, total } = useClipboardSearch(
+    {
+      enabled: needsServerSearch,
+      query: queryString,
+      contentTypes,
+      extensions: extensions.length > 0 ? extensions.join(',') : undefined,
+      // TimeRangePreset values match backend timePreset directly ('all_time' → omit).
+      timePreset: timeRange !== 'all_time' ? timeRange : undefined,
+      limit: 50,
+    },
+    searchResultToDisplayItem
+  )
 
   // Apply local filter only (no search query, no advanced tokens, no time filter)
   const localFilteredItems = (() => {
@@ -119,87 +136,9 @@ export function useHistorySearch({
     return target ? items.filter(item => item.type === target) : items
   })()
 
-  const doSearch = useCallback(
-    async (
-      query: string,
-      advTokens: string[],
-      filter: Filter,
-      time: TimeRangePreset,
-      advanced: boolean,
-      signal: AbortSignal
-    ) => {
-      const { keywords, contentTypes: tokenFileTypes, extensions } = parseTokens(advTokens)
-
-      // Build query string: combine free-text + keyword tokens
-      const queryParts = [...keywords]
-      const trimmed = query.trim()
-      if (trimmed) queryParts.push(trimmed)
-      const queryString = queryParts.join(' ')
-
-      // Build contentTypes: from tokens or from active filter (values match backend directly)
-      let contentTypes: string | undefined
-      if (tokenFileTypes.length > 0) {
-        contentTypes = tokenFileTypes.join(',')
-      } else if (!advanced && filter !== Filter.All && filter !== Filter.Favorited) {
-        // Filter enum values match backend contentTypes directly;
-        // Code includes html (html is a form of code)
-        contentTypes = filter === Filter.Code ? 'code,html' : filter
-      }
-
-      const params: SearchParams = {
-        query: queryString,
-        contentTypes,
-        extensions: extensions.length > 0 ? extensions.join(',') : undefined,
-        // TimeRangePreset values match backend timePreset directly (except 'all_time' → omit)
-        timePreset: time !== 'all_time' ? time : undefined,
-        limit: 50,
-      }
-
-      return querySearch(params, signal)
-    },
-    []
-  )
-
-  useEffect(() => {
-    if (!needsServerSearch) {
-      setSearchResults(null)
-      setSearchTotal(null)
-      setIsSearching(false)
-      return
-    }
-
-    // Cancel previous request
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    setIsSearching(true)
-
-    doSearch(searchQuery, tokens, activeFilter, timeRange, isAdvancedMode, controller.signal)
-      .then(response => {
-        if (controller.signal.aborted) return
-        // ADR-008 §0.1: items + total now live inside the enveloped `data` payload.
-        setSearchResults(response.data.items.map(searchResultToDisplayItem))
-        setSearchTotal(response.data.total)
-        setIsSearching(false)
-      })
-      .catch(err => {
-        if (controller.signal.aborted) return
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        log.error({ err }, 'Search query failed')
-        setSearchResults([])
-        setSearchTotal(0)
-        setIsSearching(false)
-      })
-
-    return () => {
-      controller.abort()
-    }
-  }, [searchQuery, tokens, activeFilter, timeRange, isAdvancedMode, needsServerSearch, doSearch])
-
   return {
-    filteredItems: needsServerSearch ? (searchResults ?? items) : localFilteredItems,
+    filteredItems: needsServerSearch ? (results ?? items) : localFilteredItems,
     isSearching,
-    searchTotal,
+    searchTotal: total,
   }
 }

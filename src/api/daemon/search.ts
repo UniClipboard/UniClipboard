@@ -74,9 +74,23 @@ export interface SearchStatusResponse {
 
 // ── Query params ───────────────────────────────────────────────
 
+/**
+ * Time-range presets. Values match the backend `timePreset` query param
+ * directly; `all_time` is a UI-only sentinel meaning "no time filter" and must
+ * be omitted from the wire (see `querySearch`).
+ */
+export type TimeRangePreset =
+  | 'all_time'
+  | 'today'
+  | 'yesterday'
+  | 'last_7d'
+  | 'last_30d'
+  | 'this_week'
+  | 'this_month'
+
 export interface SearchParams {
   query: string
-  /** Content category filter (text, html, link, file, image, other). Sent as `fileTypes` to backend. */
+  /** Content category filter (text, html, link, file, image, other). */
   contentTypes?: string
   extensions?: string
   timePreset?: string

@@ -11,6 +11,7 @@ import {
   Laptop,
   Loader2,
   Search,
+  Smartphone,
 } from 'lucide-react'
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +29,7 @@ import {
 import { toast } from '@/components/ui/toast'
 import { useClipboardEvents } from '@/hooks/useClipboardEvents'
 import { useClipboardSearch } from '@/hooks/useClipboardSearch'
+import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
@@ -181,12 +183,34 @@ const HistoryPage: React.FC = () => {
   const items = useAppSelector(state => state.clipboard.items)
   const pendingItems = useAppSelector(state => state.clipboard.pendingItems)
   const spaceMembers = useAppSelector(state => state.devices.spaceMembers)
+  const mobileDevices = useMobileDeviceList()
 
   const deviceNameByPeerId = useMemo(() => {
     const map: Record<string, string> = {}
     for (const m of spaceMembers) map[m.peerId] = m.deviceName
     return map
   }, [spaceMembers])
+
+  // Source-filter options: P2P space members + mobile-sync devices. Mobile ids
+  // are prefixed to match the `mobile_sync:<id>` value stored as the clipboard
+  // event's source_device on the backend.
+  const sourceOptions = useMemo(
+    () => [
+      ...spaceMembers.map(m => ({ id: m.peerId, name: m.deviceName, kind: 'p2p' as const })),
+      ...mobileDevices.map(d => ({
+        id: `mobile_sync:${d.deviceId}`,
+        name: d.label,
+        kind: 'mobile' as const,
+      })),
+    ],
+    [spaceMembers, mobileDevices]
+  )
+
+  const sourceNameById = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const opt of sourceOptions) map[opt.id] = opt.name
+    return map
+  }, [sourceOptions])
 
   const formatRelativeTime = useCallback(
     (timestamp: number): string => {
@@ -478,8 +502,8 @@ const HistoryPage: React.FC = () => {
 
         {/* Time filter + search (right side) */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Source device */}
-          {spaceMembers.length > 0 && (
+          {/* Source device (P2P + mobile) */}
+          {sourceOptions.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -494,7 +518,7 @@ const HistoryPage: React.FC = () => {
                 >
                   <Laptop className="size-3" />
                   {sourceFilter
-                    ? (deviceNameByPeerId[sourceFilter] ?? t('history.source.label'))
+                    ? (sourceNameById[sourceFilter] ?? t('history.source.label'))
                     : t('history.source.all')}
                   <ChevronDown className="size-3 opacity-50" />
                 </button>
@@ -507,16 +531,21 @@ const HistoryPage: React.FC = () => {
                   {t('history.source.all')}
                   {sourceFilter === null && <Check className="size-3 text-primary" />}
                 </DropdownMenuItem>
-                {spaceMembers.map(member => (
+                {sourceOptions.map(opt => (
                   <DropdownMenuItem
-                    key={member.peerId}
-                    onClick={() => setSourceFilter(member.peerId)}
+                    key={opt.id}
+                    onClick={() => setSourceFilter(opt.id)}
                     className="flex items-center justify-between gap-2 text-[12px]"
                   >
-                    <span className="truncate">{member.deviceName}</span>
-                    {sourceFilter === member.peerId && (
-                      <Check className="size-3 text-primary shrink-0" />
-                    )}
+                    <span className="flex items-center gap-1.5 truncate">
+                      {opt.kind === 'mobile' ? (
+                        <Smartphone className="size-3 shrink-0 opacity-60" />
+                      ) : (
+                        <Laptop className="size-3 shrink-0 opacity-60" />
+                      )}
+                      <span className="truncate">{opt.name}</span>
+                    </span>
+                    {sourceFilter === opt.id && <Check className="size-3 text-primary shrink-0" />}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>

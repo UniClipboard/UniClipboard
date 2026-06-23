@@ -521,7 +521,9 @@ pub trait XxxCapabilityPort: Send + Sync {
 
 If the capability is very stable, naming it directly as `ClockPort` or `EncryptionPort` is fine — no need to force a `Capability` suffix.
 
-## 12. Case Study: `PairedDeviceRepositoryPort`
+## 12. Case Studies
+
+### 12.1 Anti-pattern: `PairedDeviceRepositoryPort`
 
 The current interface should not continue to be used as a direct use-case dependency:
 
@@ -554,6 +556,68 @@ The recommended approach:
 - `DeletePairedDevicePort`
 
 This ensures that adding "update field X" in the future does not drag all consumers down.
+
+### 12.2 Positive example: receiver-side file-transfer projection ports
+
+The receiver keeps a local projection of inbound file transfers, backed by a
+single Diesel-backed store. Instead of exposing that store as one
+`FileTransferProjectionRepositoryPort` with ~7 methods, `uc-core` exposes it as
+**five small intent ports**, split by responsibility direction
+(see `crates/uc-core/src/ports/file_transfer.rs`):
+
+```rust
+/// Command: write receiver-side projection rows.
+pub trait RecordReceiverTransferPort: Send + Sync {
+    async fn upsert_pending_transfer(&self, transfer: &PendingInboundTransfer) -> Result<(), FileTransferProjectionError>;
+    async fn link_transfer_to_entry(&self, transfer_id: &str, entry_id: &str, now_ms: i64) -> Result<bool, FileTransferProjectionError>;
+}
+
+/// Query: aggregate transfer status for a clipboard entry.
+pub trait GetEntryTransferSummaryPort: Send + Sync {
+    async fn get_entry_transfer_summary(&self, entry_id: &str) -> Result<Option<EntryTransferSummary>, FileTransferProjectionError>;
+}
+
+/// Query: resolve the entry a transfer belongs to.
+pub trait FindEntryIdForTransferPort: Send + Sync {
+    async fn get_entry_id_for_transfer(&self, transfer_id: &str) -> Result<Option<String>, FileTransferProjectionError>;
+}
+
+/// Query: list in-flight transfers that have exceeded their deadlines.
+pub trait ListExpiredInflightTransfersPort: Send + Sync {
+    async fn list_expired_inflight(&self, pending_cutoff_ms: i64, transferring_cutoff_ms: i64) -> Result<Vec<ExpiredInflightTransfer>, FileTransferProjectionError>;
+}
+
+/// Command: finalize in-flight transfers as failed.
+pub trait FailInflightTransfersPort: Send + Sync {
+    async fn mark_failed(&self, transfer_id: &str, reason: &str, now_ms: i64) -> Result<(), FileTransferProjectionError>;
+    async fn bulk_fail_inflight(&self, reason: &str, now_ms: i64) -> Result<Vec<ExpiredInflightTransfer>, FileTransferProjectionError>;
+}
+```
+
+Why this is the shape §11–§13 ask for:
+
+- **One adapter, many ports.** A single inner store implements all five traits;
+  the split lives entirely in the port layer, so there is no duplicated state or
+  "parallel old/new logic" — this is the §5.1 "larger low-level Store at the inner
+  layer" + §8.3 "same adapter injected into multiple small ports" pattern.
+- **Each consumer holds the minimal capability it needs.** The write path that
+  seeds pending rows depends only on `RecordReceiverTransferPort`; the UI status
+  query depends only on `GetEntryTransferSummaryPort`; the restart-cleanup sweep
+  depends only on `ListExpiredInflightTransfersPort` + `FailInflightTransfersPort`.
+  None of them is forced to know about the others.
+- **Query / command separation is explicit.** Read-only facets
+  (`Get…` / `Find…` / `List…`) are separated from mutation facets
+  (`Record…` / `Fail…`), so a read-side consumer can never accidentally reach a
+  mutating method.
+- **Adding a facet does not drag anyone down.** A future "pause transfer" command
+  becomes a new `PauseInflightTransfersPort`, not a seventh method on a shared
+  interface — exactly the outcome §12.1 was trying to reach by splitting
+  `PairedDeviceRepositoryPort`.
+
+Contrast the two case studies: §12.1 shows a fat repository that *still needs to
+be split*; §12.2 shows the same situation already split correctly. New
+repository-shaped capabilities should be born in the §12.2 shape rather than
+grown into the §12.1 shape and refactored later.
 
 ## 13. The Final Rule
 

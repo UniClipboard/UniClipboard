@@ -81,6 +81,28 @@ _Avoid_: synced、has delivery
 服务一个人」定位冲突。
 _Avoid_: eventual consistency、message queue、store-and-forward
 
+**ActiveClipboardState**：
+「Space 内当前哪一条内容是活跃剪贴板」的可复制轻量指针（`content_hash`、
+`activated_at_ms`、`activated_by`），用 LWW 在 **在线** 设备间收敛。跨设备身份是
+`content_hash`（BLAKE3 内容寻址、各设备稳定）而非 `entry_id`（每台设备本地随机
+UUID，不过线）；全序键是 `(activated_at_ms, activated_by)` 二元组，同 ms 以
+`activated_by` 字典序定序，相等即丢弃（loop safety 锚点）。`activated_by` 是**不可
+变的原始激活者**，re-broadcast 时原样透传。它复制的是**指针**（~100B），不是 entry 内容，
+因此与 **Transient sync semantics** 并不冲突：离线设备不会补收它错过的历史活跃态
+（无 store-and-forward），重新上线时只从 peer-online sync 取到 **当前** 值——这仍是
+transient 的。它是「当前活跃剪贴板」的 **唯一 SoT**：本机每个改变 OS 剪贴板内容的
+事件（capture / restore / mobile push / 入站内容 apply / 入站 state apply）都在末端
+更新它；但 **只有 restore 与 mobile-push 会广播指针**（restore 受 `sync_on_restore`
+门控），新复制靠现有内容 dispatch 收敛、不另发指针。手机（pull-only、非 iroh peer）
+不被推送，而是由桌面把 register 指向的 entry 作为 `GET /SyncClipboard.json` 的应答。
+_Avoid_: content sync、eventual consistency（指内容）、broadcast log
+
+**Passive 节点**：
+没有可写 OS 剪贴板的节点（如 headless server / VPS 中继）。入站 state 一律更新
+register + re-broadcast，但 **跳过 OS 写入**。它是 **节点形态**，与用户设置
+`sync_on_restore` 正交——后者只门控普通桌面的 **出站** restore 广播。
+_Avoid_: relay-only、server mode
+
 ### 关系
 
 - 一台设备以 `DeviceId` 立身，被接纳进 **Space** 后成为一条 **SpaceMember**
@@ -102,10 +124,18 @@ _Avoid_: eventual consistency、message queue、store-and-forward
 _Avoid_: clipboard state、current clip、selection、LWW key
 
 **snapshot_hash**：
-active-clipboard 寄存器与线格里一条内容的跨设备身份键（`blake3v1:<hex>`），两台
-设备持相同内容即算得同值。它 **就是** 该内容 **ClipboardEvent** 的 `snapshot_hash`
-（同一个 hash、同一个名字：持久层与同步路径共用，不是新立的量）。
-_Avoid_: entry_id、digest、checksum、transfer_id、blob 的 content_hash
+一条快照内容的跨设备身份键（wire 形如 `blake3v1:<hex>`）。它的「相等」由该快照
+**所有 representation 内容的无序集合** 决定——各 rep 的内容哈希排序后聚合，故与 rep
+顺序、与任何单条 rep 都无关：两台设备持相同内容即算得同值。对 file 类内容，参与
+身份的是 **文件真实字节的摘要**（`file_content_digests`），而非含设备本地路径的
+`text/uri-list` rep——这正是它对文件也能跨设备复现的前提（也是为何必须取持久化值、
+不得对 reconstruct 出的快照重算，详见 Flagged ambiguities）。它 **就是** 该内容
+**ClipboardEvent** 的 `snapshot_hash`（同一个 hash、同一个名字：寄存器 / 线格 / 持久
+层共用，不是新立的量）。注意两条独立版本线：wire 串前缀 `blake3v1:` 标的是 hash
+**算法** 版本，聚合时另有域分隔前缀 `snapshot-hash-v1|` 标的是 **快照聚合方案** 版本，
+二者各自演进。
+_Avoid_: entry_id、digest、checksum、transfer_id、blob 的 content_hash、单条
+representation 的 hash
 
 **activated_at_ms**：
 某内容「成为活跃剪贴板」那一刻的 wall-clock 毫秒，LWW 主键；与 entry 的
@@ -136,7 +166,10 @@ _Avoid_: download、resend、fetch、sync
   **snapshot_hash** 是内容身份，**activated_by** 只定序与归属
 - 对端缺内容时走 **Active-clipboard pull**，源端用 `snapshot_hash` 反查本机 entry——
   故凡写入 register 的 `snapshot_hash` 必须取该 entry 已持久化的 `snapshot_hash`，
-  不得对 reconstruct 出的快照重算（file 类内容重算会漂）
+  不得对 reconstruct 出的快照重算。因果链：捕获时 file 类内容的身份取自**文件真实
+  字节摘要**（`file_content_digests`）而非含本地路径的 `text/uri-list` rep；reconstruct
+  出的快照若就地重算，会退回去哈希带本地路径的 rep，得到与持久值 **背离的瞬态 hash**，
+  于是源端「按 `snapshot_hash` 反查本机 entry」必然落空，pull 取不到内容
 - active-clipboard 的投递同样遵循 **Transient sync semantics**（失败不重试）
 
 ## Language — 文件传输（接收侧）

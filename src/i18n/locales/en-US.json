@@ -551,6 +551,8 @@
         "reset": "Reset to default",
         "resetAll": "Reset All Shortcuts",
         "recording": "Press keys...",
+        "chordHint": "Press another combo for a second step (press the same combo twice for a \"double tap\"), or confirm",
+        "rerecord": "Re-record",
         "conflict": "Conflicts with: {{name}}",
         "confirmOverride": "Apply anyway (clears conflict)",
         "confirm": "Confirm",

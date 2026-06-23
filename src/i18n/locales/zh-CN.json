@@ -542,6 +542,8 @@
         "reset": "恢复默认",
         "resetAll": "重置所有快捷键",
         "recording": "请按快捷键...",
+        "chordHint": "可再按一个组合作为第二段（连按两次相同组合即\"双击\"），或直接确认",
+        "rerecord": "重录",
         "conflict": "与 {{name}} 冲突",
         "confirmOverride": "仍然应用（清除冲突）",
         "confirm": "确认",

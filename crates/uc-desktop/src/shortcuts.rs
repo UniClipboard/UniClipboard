@@ -112,19 +112,32 @@ pub trait GlobalShortcutRegistry: Send + Sync {
 
 /// 把前端快捷键字符串归一化为物理键格式。
 ///
-/// 输入示例：`"meta+ctrl+v"`、`"mod+shift+v"`、`"Cmd+Alt+V"`。
+/// 输入示例：`"meta+ctrl+v"`、`"mod+shift+v"`、`"Cmd+Alt+V"`，以及 VS Code 风格
+/// 的两段 chord（空格分隔）`"meta+ctrl+v meta+ctrl+v"`。
 ///
-/// 归一化规则：
+/// 归一化规则（逐段、每段逐 token）：
 ///   - `meta` / `super`（物理 Meta/Win/Cmd 键）→ `super`
 ///   - `mod` / `cmd` / `command`（**抽象**平台修饰键）→ macOS 上 `super`，
 ///     其他平台 `ctrl`
 ///   - 其余字段保留小写形式
 ///
-/// 输出格式恰好与 `tauri-plugin-global-shortcut` 接受的字符串一致；这
-/// 不是与 Tauri 的绑定，而是桌面层选择的"物理键串"约定 —— 未来其他
-/// shell 想消费同一份归一化结果不需要做二次转换。
+/// chord 的各段用单空格重新连接。输出格式恰好与 `tauri-plugin-global-shortcut`
+/// 接受的 accelerator 串一致（每段单独注册）；这不是与 Tauri 的绑定，而是
+/// 桌面层选择的"物理键串"约定 —— 未来其他 shell 想消费同一份归一化结果不
+/// 需要做二次转换。
 pub fn normalize_to_physical_keys(key: &str) -> String {
-    key.split('+')
+    key.split(' ')
+        .map(str::trim)
+        .filter(|seg| !seg.is_empty())
+        .map(normalize_single_combo)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// 把单个组合键（不含 chord 空格）归一化为物理键格式。
+fn normalize_single_combo(combo: &str) -> String {
+    combo
+        .split('+')
         .map(|part| match part.trim().to_lowercase().as_str() {
             "meta" | "super" => "super".to_string(),
             "mod" | "cmd" | "command" => if cfg!(target_os = "macos") {
@@ -137,6 +150,17 @@ pub fn normalize_to_physical_keys(key: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("+")
+}
+
+/// Split a (physical-key) binding into its chord segments. A single combo
+/// yields one segment; a two-step chord (space-separated) yields two.
+pub fn chord_segments(binding: &str) -> Vec<String> {
+    binding
+        .split(' ')
+        .map(str::trim)
+        .filter(|seg| !seg.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// 把一组前端快捷键字符串归一化、去空、转为可注册的物理键格式列表。
@@ -261,6 +285,31 @@ mod tests {
     #[test]
     fn normalize_preserves_unknown_parts() {
         assert_eq!(normalize_to_physical_keys("ctrl+alt+f1"), "ctrl+alt+f1");
+    }
+
+    #[test]
+    fn normalize_chord_sequence_normalizes_each_segment() {
+        // 两段 chord（空格分隔）逐段归一化，空格重新连接。
+        assert_eq!(
+            normalize_to_physical_keys("meta+ctrl+v meta+ctrl+v"),
+            "super+ctrl+v super+ctrl+v"
+        );
+        let mixed = normalize_to_physical_keys("mod+k mod+c");
+        if cfg!(target_os = "macos") {
+            assert_eq!(mixed, "super+k super+c");
+        } else {
+            assert_eq!(mixed, "ctrl+k ctrl+c");
+        }
+    }
+
+    #[test]
+    fn chord_segments_splits_one_or_two() {
+        assert_eq!(chord_segments("super+v"), vec!["super+v".to_string()]);
+        assert_eq!(
+            chord_segments("super+v super+v"),
+            vec!["super+v".to_string(), "super+v".to_string()]
+        );
+        assert!(chord_segments("").is_empty());
     }
 
     // ── resolve_shortcut_values ─────────────────────────────────────

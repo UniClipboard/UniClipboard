@@ -271,7 +271,15 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange])
 
   const content = useMemo(() => {
-    if (!item.content) return null
+    if (!item.content) {
+      // Search/pending rows carry only a text preview (no structured content);
+      // render it as a plain snippet so search hits aren't shown as blank cards.
+      return item.textPreview ? (
+        <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-4 break-words whitespace-pre-wrap">
+          {item.textPreview}
+        </div>
+      ) : null
+    }
     switch (item.type) {
       case 'text':
         return <TextContent item={item.content as ClipboardTextItem} />

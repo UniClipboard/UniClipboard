@@ -308,7 +308,16 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
   }, [open])
 
   const content = useMemo(() => {
-    if (!item?.content) return null
+    if (!item) return null
+    if (!item.content) {
+      // Search results carry only a preview (no structured content); show it so
+      // the detail body isn't blank. Copy/delete still work via `item.id`.
+      return item.textPreview ? (
+        <div className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-foreground/90">
+          {item.textPreview}
+        </div>
+      ) : null
+    }
     switch (item.type) {
       case 'text':
         return <DetailText item={item.content as ClipboardTextItem} entryId={item.id} />

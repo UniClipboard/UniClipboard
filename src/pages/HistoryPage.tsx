@@ -1,8 +1,17 @@
 import { m } from 'framer-motion'
-import { Code, ExternalLink, File, FileText, Image as ImageIcon, Search } from 'lucide-react'
+import {
+  Code,
+  ExternalLink,
+  File,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  Search,
+} from 'lucide-react'
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
+import { querySearch, type SearchResultDto } from '@/api/daemon/search'
 import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
 import HistoryCard from '@/components/history/HistoryCard'
 import HistoryDetailSheet from '@/components/history/HistoryDetailSheet'
@@ -11,13 +20,8 @@ import { useClipboardEvents } from '@/hooks/useClipboardEvents'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
-import type {
-  ClipboardCodeItem,
-  ClipboardFileItem,
-  ClipboardLinkItem,
-  ClipboardTextItem,
-  DisplayClipboardItem,
-} from '@/lib/clipboard-entry'
+import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
@@ -27,6 +31,26 @@ import {
 } from '@/store/slices/clipboardSlice'
 
 // ── Constants ───────────────────────────────────────────────────
+
+const log = createLogger('history-page')
+
+/** Map a search-index content category to the display item's render type. */
+function mapSearchContentType(ft: SearchResultDto['contentType']): DisplayClipboardItem['type'] {
+  switch (ft) {
+    case 'text':
+      return 'text'
+    case 'html':
+      return 'code'
+    case 'link':
+      return 'link'
+    case 'file':
+      return 'file'
+    case 'image':
+      return 'image'
+    case 'other':
+      return 'unknown'
+  }
+}
 
 const FILTER_TABS: { key: Filter; labelKey: string; icon?: React.ElementType }[] = [
   { key: Filter.All, labelKey: 'history.filter.all' },
@@ -110,6 +134,14 @@ const HistoryPage: React.FC = () => {
   const dispatch = useAppDispatch()
   const [activeFilter, setActiveFilter] = useState<Filter>(Filter.All)
   const [searchQuery, setSearchQuery] = useState('')
+  // `searchQuery` is the raw input value; `submittedQuery` is what was actually
+  // sent to the search engine. It is auto-submitted (debounced) as the user
+  // types, and submitted immediately on Enter. Clearing the input resets it.
+  const [submittedQuery, setSubmittedQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<DisplayClipboardItem[] | null>(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchAbortRef = useRef<AbortController | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [copySuccessId, setCopySuccessId] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -182,48 +214,90 @@ const HistoryPage: React.FC = () => {
     return [...pendingDisplayItems, ...realItems]
   }, [items, pendingItems, deviceNameByPeerId, formatRelativeTime, t])
 
-  const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return displayItems
-    const q = searchQuery.toLowerCase()
-    return displayItems.filter(item => {
-      if (!item.content) return false
-      switch (item.type) {
-        case 'text':
-          return (item.content as ClipboardTextItem).display_text.toLowerCase().includes(q)
-        case 'code':
-          return (item.content as ClipboardCodeItem).code.toLowerCase().includes(q)
-        case 'link': {
-          const l = item.content as ClipboardLinkItem
-          return (
-            l.urls.some(u => u.toLowerCase().includes(q)) ||
-            l.domains.some(d => d.toLowerCase().includes(q))
-          )
-        }
-        case 'file':
-          return (item.content as ClipboardFileItem).file_names.some(n =>
-            n.toLowerCase().includes(q)
-          )
-        default:
-          return false
-      }
-    })
-  }, [displayItems, searchQuery])
+  // ── Server-side search ────────────────────────────────────────
+  const isSearchActive = submittedQuery.trim().length > 0
+
+  // Auto-submit while typing (debounced); clearing the input drops straight
+  // back to browse mode. Enter bypasses the debounce via the input handler.
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (!q) {
+      setSubmittedQuery('')
+      return
+    }
+    const timer = setTimeout(() => setSubmittedQuery(q), 800)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  useEffect(() => {
+    const q = submittedQuery.trim()
+    searchAbortRef.current?.abort()
+    if (!q) {
+      setSearchResults(null)
+      setSearchLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    searchAbortRef.current = controller
+    setSearchLoading(true)
+
+    // Filter values map to backend params directly; Code also matches html.
+    let contentTypes: string | undefined
+    if (activeFilter === Filter.Code) contentTypes = 'code,html'
+    else if (activeFilter !== Filter.All && activeFilter !== Filter.Favorited)
+      contentTypes = activeFilter
+
+    querySearch({ query: q, contentTypes, limit: 100 }, controller.signal)
+      .then(response => {
+        if (controller.signal.aborted) return
+        const results: DisplayClipboardItem[] = response.data.items.map(r => ({
+          id: r.entryId,
+          type: mapSearchContentType(r.contentType),
+          time: formatRelativeTime(r.activeTimeMs),
+          activeTime: r.activeTimeMs,
+          content: null,
+          textPreview: r.textPreview ?? undefined,
+        }))
+        setSearchResults(results)
+        setSearchLoading(false)
+      })
+      .catch(err => {
+        if (controller.signal.aborted) return
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        log.error({ err }, 'History search failed')
+        setSearchResults([])
+        setSearchLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [submittedQuery, activeFilter, formatRelativeTime])
+
+  // In search mode show engine results; otherwise the browse (paginated) list.
+  const baseItems = useMemo<DisplayClipboardItem[]>(
+    () => (isSearchActive ? (searchResults ?? []) : displayItems),
+    [isSearchActive, searchResults, displayItems]
+  )
 
   const orderedItems = useMemo(() => {
-    if (!promotedId) return filteredItems
-    const idx = filteredItems.findIndex(it => it.id === promotedId)
-    if (idx <= 0) return filteredItems
-    return [filteredItems[idx], ...filteredItems.slice(0, idx), ...filteredItems.slice(idx + 1)]
-  }, [filteredItems, promotedId])
+    if (!promotedId) return baseItems
+    const idx = baseItems.findIndex(it => it.id === promotedId)
+    if (idx <= 0) return baseItems
+    return [baseItems[idx], ...baseItems.slice(0, idx), ...baseItems.slice(idx + 1)]
+  }, [baseItems, promotedId])
 
   // ── Infinite scroll ───────────────────────────────────────────
   const scrollRef = useRef<HTMLDivElement>(null)
   const hasMoreRef = useRef(hasMore)
   const handleLoadMoreRef = useRef(handleLoadMore)
+  const isSearchActiveRef = useRef(isSearchActive)
 
   useEffect(() => {
     hasMoreRef.current = hasMore
   }, [hasMore])
+
+  useEffect(() => {
+    isSearchActiveRef.current = isSearchActive
+  }, [isSearchActive])
 
   useEffect(() => {
     handleLoadMoreRef.current = handleLoadMore
@@ -231,7 +305,7 @@ const HistoryPage: React.FC = () => {
 
   const checkShouldLoadMore = useCallback(() => {
     const el = scrollRef.current
-    if (!el || !hasMoreRef.current) return
+    if (!el || !hasMoreRef.current || isSearchActiveRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = el
     if (scrollHeight - scrollTop - clientHeight < 400) {
       handleLoadMoreRef.current()
@@ -314,6 +388,20 @@ const HistoryPage: React.FC = () => {
     preventDefault: false,
   })
 
+  // CMD/Ctrl+F focuses the search box (works even while another input is focused).
+  useShortcut({
+    key: 'mod+f',
+    scope: 'clipboard',
+    handler: () => {
+      const el = searchInputRef.current
+      if (!el) return
+      el.focus()
+      el.select()
+    },
+    enableOnFormTags: true,
+    preventDefault: true,
+  })
+
   const columnCount = useColumnCount()
   const columns = useMemo(() => {
     const cols: DisplayClipboardItem[][] = Array.from({ length: columnCount }, () => [])
@@ -387,9 +475,22 @@ const HistoryPage: React.FC = () => {
         <div className="flex items-center gap-1.5 bg-muted/40 rounded-full px-3 h-7 w-48 shrink-0 focus-within:bg-muted/60 transition-colors">
           <Search className="size-3.5 text-muted-foreground/50 shrink-0" />
           <input
+            ref={searchInputRef}
             type="text"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                setSubmittedQuery(searchQuery.trim())
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                searchInputRef.current?.blur()
+              }
+            }}
             placeholder={t('history.searchPlaceholder')}
             className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/50 outline-none min-w-0"
           />
@@ -398,16 +499,38 @@ const HistoryPage: React.FC = () => {
 
       {/* ── Grid ───────────────────────────────────────────────── */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
-        {orderedItems.length === 0 ? (
+        {searchLoading && orderedItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3 pb-10">
+            <Loader2 className="size-5 text-muted-foreground/40 animate-spin" />
+            <p className="text-[12px] text-muted-foreground/50">
+              {t('clipboard.search.searching')}
+            </p>
+          </div>
+        ) : orderedItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3 pb-10">
             <div className="size-12 rounded-2xl bg-muted/30 flex items-center justify-center">
               <Search className="size-5 text-muted-foreground/30" />
             </div>
             <div className="text-center space-y-1">
-              <p className="text-[13px] font-medium">{t('clipboard.content.noClipboardItems')}</p>
-              <p className="text-[12px] text-muted-foreground/50">
-                {t('clipboard.content.emptyDescription')}
-              </p>
+              {isSearchActive ? (
+                <>
+                  <p className="text-[13px] font-medium">
+                    {t('clipboard.search.noResults', { query: submittedQuery })}
+                  </p>
+                  <p className="text-[12px] text-muted-foreground/50">
+                    {t('clipboard.search.noResultsSub')}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[13px] font-medium">
+                    {t('clipboard.content.noClipboardItems')}
+                  </p>
+                  <p className="text-[12px] text-muted-foreground/50">
+                    {t('clipboard.content.emptyDescription')}
+                  </p>
+                </>
+              )}
             </div>
           </div>
         ) : (

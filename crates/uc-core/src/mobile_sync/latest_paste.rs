@@ -23,6 +23,10 @@ pub struct LatestPasteRepresentation {
     /// 该 representation 所属的 clipboard entry id —— 仅用于日志 / 诊断。
     /// mobile sync 路由不暴露这个 id 给 iPhone 客户端。
     pub entry_id: EntryId,
+    /// 跨设备稳定的内容身份(`"blake3v1:<hex>"`)。在内容入库时算定、之后不再
+    /// 重算,因此即便 representation 字节被后续归一化(如图片重编码)改写,该值
+    /// 仍保持稳定 —— 与 `bytes` 的内容哈希不同,它不随字节变化。
+    pub snapshot_hash: String,
     pub format_id: FormatId,
     pub mime: Option<MimeType>,
     pub bytes: Vec<u8>,

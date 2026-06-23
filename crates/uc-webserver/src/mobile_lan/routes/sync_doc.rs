@@ -54,6 +54,18 @@ pub(super) struct SyncClipboardDoc {
     /// daemon 一定填(给 SyncClipboard 桌面端兼容用)。
     #[serde(default, alias = "Hash", skip_serializing_if = "Option::is_none")]
     hash: Option<String>,
+    /// 跨设备稳定的内容身份(`"blake3v1:<hex>"`)。附加可选字段:与 `hash`
+    /// (随服务字节变化)不同, 它在内容入库时算定、不随图片重编码等字节归一化
+    /// 改变, 客户端据此把"重编码前后"识别为同一条内容、避免重复建卡。响应侧
+    /// 有内容时一定填; 接收侧(PUT)不读 —— daemon 是该字段的唯一权威, 客户端
+    /// 即便上传也忽略。缺省即省略, 永不发 `null`。
+    #[serde(
+        rename = "contentId",
+        default,
+        alias = "ContentId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    content_id: Option<String>,
 }
 
 impl SyncClipboardDoc {
@@ -65,6 +77,7 @@ impl SyncClipboardDoc {
             has_data: false,
             size: 0,
             hash: None,
+            content_id: None,
         }
     }
 
@@ -82,6 +95,7 @@ impl SyncClipboardDoc {
             has_data: meta.has_data,
             size: meta.size,
             hash: meta.hash,
+            content_id: meta.content_id,
         }
     }
 
@@ -100,6 +114,9 @@ impl SyncClipboardDoc {
             has_data: self.has_data,
             size: self.size,
             hash: self.hash,
+            // daemon 是 content_id 的唯一权威:PUT 入站不采信客户端上传值,
+            // 稳定身份在落库时由 active register 自行算定。
+            content_id: None,
         })
     }
 }
@@ -196,5 +213,61 @@ pub(super) async fn put_sync_clipboard_json(
             Ok(StatusCode::OK)
         }
         Err(err) => Err(map_apply_error(err, "PUT /SyncClipboard.json")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn meta(content_id: Option<String>) -> SyncClipboardMeta {
+        SyncClipboardMeta {
+            item_type: SyncClipboardItemType::Image,
+            text: "image.png".to_string(),
+            data_name: Some("image.png".to_string()),
+            has_data: true,
+            size: 3,
+            hash: Some("ABC".to_string()),
+            content_id,
+        }
+    }
+
+    #[test]
+    fn content_id_serializes_as_camel_case_when_present() {
+        let doc = SyncClipboardDoc::from_meta(meta(Some("blake3v1:deadbeef".to_string())));
+        let json = serde_json::to_string(&doc).expect("serialize");
+        assert!(
+            json.contains("\"contentId\":\"blake3v1:deadbeef\""),
+            "expected contentId in {json}"
+        );
+        assert!(!json.contains("null"), "no null fields: {json}");
+    }
+
+    #[test]
+    fn content_id_omitted_when_absent() {
+        let doc = SyncClipboardDoc::from_meta(meta(None));
+        let json = serde_json::to_string(&doc).expect("serialize");
+        assert!(!json.contains("contentId"), "must omit when None: {json}");
+        assert!(!json.contains("null"), "never null: {json}");
+    }
+
+    #[test]
+    fn decode_without_content_id_is_none() {
+        // 向后兼容:不带 contentId 的文档照常反序列化,字段视为 None。
+        let doc: SyncClipboardDoc =
+            serde_json::from_str(r#"{"type":"Text","text":"hi","hasData":false}"#).expect("decode");
+        assert_eq!(doc.content_id, None);
+    }
+
+    #[test]
+    fn server_ignores_client_supplied_content_id_on_put() {
+        // 客户端即便上传 contentId, into_meta 也丢弃 —— daemon 是唯一权威。
+        let doc: SyncClipboardDoc = serde_json::from_str(
+            r#"{"type":"Text","text":"hi","hasData":false,"contentId":"blake3v1:client"}"#,
+        )
+        .expect("decode");
+        assert_eq!(doc.content_id.as_deref(), Some("blake3v1:client"));
+        let m = doc.into_meta().expect("into_meta");
+        assert_eq!(m.content_id, None);
     }
 }

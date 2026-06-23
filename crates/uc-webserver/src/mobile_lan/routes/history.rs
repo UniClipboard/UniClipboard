@@ -310,6 +310,7 @@ mod tests {
             has_data: true,
             size: 1184433,
             hash: Some("SERVER_RECOMPUTED_HASH".to_string()),
+            content_id: None,
         };
 
         assert!(current_profile_meta_matches_request(
@@ -513,6 +514,9 @@ pub(super) async fn post_history_record(
                 has_data: true,
                 size,
                 hash: Some(hash),
+                // History 入站经 put_sync_doc 落库;content_id 由 daemon 落库时
+                // 自行算定,入站不采信客户端值。
+                content_id: None,
             };
             facade
                 .put_sync_doc(meta, authed.device.device_id)
@@ -531,6 +535,8 @@ pub(super) async fn post_history_record(
                 has_data,
                 size: record.size,
                 hash: Some(hash),
+                // 同上:content_id 是 daemon 权威,入站不采信客户端值。
+                content_id: None,
             };
             facade
                 .put_sync_doc(meta, authed.device.device_id)

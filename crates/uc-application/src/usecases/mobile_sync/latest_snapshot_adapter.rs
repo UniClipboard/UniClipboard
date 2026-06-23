@@ -20,8 +20,10 @@
 //!   ↓ (BlobRef 分支) blob_reader.get(blob_id)
 //! Vec<u8>
 //!   ↓
-//! LatestPasteRepresentation { entry_id, format_id, mime, bytes }
+//! LatestPasteRepresentation { entry_id, snapshot_hash, format_id, mime, bytes }
 //! ```
+//! `snapshot_hash` 取自 active register 的当前值(跨设备稳定身份),与字节内容
+//! 哈希无关,上层据此序列化成 wire `contentId`。
 //!
 //! ## 边界与错误策略
 //!
@@ -99,8 +101,10 @@ impl LatestClipboardSnapshotAdapter {
     /// `Resolution`。
     async fn load_entry_and_selection(
         &self,
-    ) -> Result<Option<(ClipboardEntry, ClipboardSelectionDecision)>, LatestClipboardSnapshotError>
-    {
+    ) -> Result<
+        Option<(ClipboardEntry, ClipboardSelectionDecision, String)>,
+        LatestClipboardSnapshotError,
+    > {
         let state = self
             .ports
             .active_register_load
@@ -130,7 +134,9 @@ impl LatestClipboardSnapshotAdapter {
         let Some(decision) = selection else {
             return Ok(None);
         };
-        Ok(Some((entry, decision)))
+        // `snapshot_hash` 是该 entry 的跨设备稳定身份,随 active register 的
+        // 当前值一起读出,后续随材化结果带给上层序列化成 wire `contentId`。
+        Ok(Some((entry, decision, state.snapshot_hash)))
     }
 
     /// Step 3:按 (event_id, rep_id) 取出 representation,把 port 错统一翻成
@@ -155,6 +161,7 @@ impl LatestClipboardSnapshotAdapter {
     async fn materialize(
         &self,
         entry_id: EntryId,
+        snapshot_hash: String,
         rep: PersistedClipboardRepresentation,
     ) -> Result<LatestPasteRepresentation, LatestClipboardSnapshotError> {
         let format_id = rep.format_id.clone();
@@ -186,6 +193,7 @@ impl LatestClipboardSnapshotAdapter {
 
         Ok(LatestPasteRepresentation {
             entry_id,
+            snapshot_hash,
             format_id,
             mime,
             bytes,
@@ -198,7 +206,7 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
     async fn latest_paste_representation(
         &self,
     ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError> {
-        let Some((entry, decision)) = self.load_entry_and_selection().await? else {
+        let Some((entry, decision, snapshot_hash)) = self.load_entry_and_selection().await? else {
             return Ok(None);
         };
         let paste_rep_id = decision.selection.paste_rep_id.clone();
@@ -210,13 +218,15 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
             return Ok(None);
         };
 
-        Ok(Some(self.materialize(entry.entry_id, rep).await?))
+        Ok(Some(
+            self.materialize(entry.entry_id, snapshot_hash, rep).await?,
+        ))
     }
 
     async fn latest_plain_text_preferred_representation(
         &self,
     ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError> {
-        let Some((entry, decision)) = self.load_entry_and_selection().await? else {
+        let Some((entry, decision, snapshot_hash)) = self.load_entry_and_selection().await? else {
             return Ok(None);
         };
         let paste_rep_id = decision.selection.paste_rep_id.clone();
@@ -245,7 +255,9 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
                 continue;
             };
             if is_plain_text_mime_or_format(rep.mime_type.as_ref(), &rep.format_id) {
-                return Ok(Some(self.materialize(entry.entry_id, rep).await?));
+                return Ok(Some(
+                    self.materialize(entry.entry_id, snapshot_hash, rep).await?,
+                ));
             }
             if rep_id == &paste_rep_id {
                 paste_rep_cached = Some(rep);
@@ -257,7 +269,10 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
         let Some(paste_rep) = paste_rep_cached else {
             return Ok(None);
         };
-        Ok(Some(self.materialize(entry.entry_id, paste_rep).await?))
+        Ok(Some(
+            self.materialize(entry.entry_id, snapshot_hash, paste_rep)
+                .await?,
+        ))
     }
 }
 
@@ -650,6 +665,8 @@ mod tests {
         assert_eq!(out.format_id, FormatId::from("text"));
         assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("text/plain"));
         assert_eq!(out.bytes, b"hello".to_vec());
+        // 稳定身份取自 active register 的当前值(FakeSource::state_for)。
+        assert_eq!(out.snapshot_hash, "blake3v1:test");
     }
 
     #[tokio::test]

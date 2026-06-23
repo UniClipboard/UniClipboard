@@ -1,33 +1,4 @@
-![UniClipboard](https://socialify.git.ci/UniClipboard/UniClipboard/image?custom_description=A+privacy-first%2C+end-to-end+encrypted%2C+cross-device+clipboard+sync+built+with+Rust+and+Tauri.&description=1&font=KoHo&forks=1&issues=1&name=1&owner=1&pattern=Floating+Cogs&pulls=1&stargazers=1&theme=Auto)
-
-## Project Overview
-
-English | [简体中文](./README_ZH.md)
-
-> **Copy on one device. Paste on another — even across the internet.**
->
-> No cloud account. No third-party servers. Your clipboard never leaves your devices in a form anyone else can read.
-
-UniClipboard is a **privacy-first**, cross-device clipboard synchronization tool.
-It enables seamless and secure syncing of text, images, and files across multiple devices, whether on the same Wi-Fi or across different networks. Data is encrypted both in transit and at rest, and decrypted only on the user’s devices—neither servers nor the network layer can ever access plaintext data.
-
-<img width="990" height="660" alt="Image" src="https://github.com/user-attachments/assets/2dac767a-33fb-4ec3-b4e5-7e27005a9a96" />
-
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/367c7f45-579a-49b7-bc96-9ccc25cf5ad0" controls muted playsinline width="800"></video>
-  <br/>
-  <em>Desktop ↔ desktop — real-time, bidirectional clipboard sync between two computers.</em>
-</p>
-
-<details>
-  <summary><strong>Mobile companion</strong> — share a screenshot from your phone to your desktop. (click to expand)</summary>
-  <p align="center">
-    <video src="https://github.com/user-attachments/assets/29f4bf5d-8996-4602-8784-067fb919c671" controls muted playsinline width="800"></video>
-  </p>
-</details>
-
 <div align="center">
-  <br/>
 
   <a href="https://github.com/UniClipboard/UniClipboard/releases">
     <img
@@ -78,8 +49,60 @@ It enables seamless and secure syncing of text, images, and files across multipl
 
 </div>
 
+<p align="center">English | <a href="./README_ZH.md">简体中文</a></p>
+
+## Project Overview
+
+> **Copy on one device. Paste on another — even across the internet.**
+>
+> No cloud account. No third-party servers. Your clipboard never leaves your devices in a form anyone else can read.
+
+UniClipboard is a **privacy-first**, cross-device clipboard synchronization tool.
+It enables seamless and secure syncing of text, images, and files across multiple devices, whether on the same Wi-Fi or across different networks. Data is encrypted both in transit and at rest, and decrypted only on the user’s devices—neither servers nor the network layer can ever access plaintext data.
+
+<p align="center">
+  <img width="990" height="660" alt="UniClipboard desktop screenshot" src="https://github.com/user-attachments/assets/2dac767a-33fb-4ec3-b4e5-7e27005a9a96" />
+</p>
+
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/367c7f45-579a-49b7-bc96-9ccc25cf5ad0" controls muted playsinline width="800"></video>
+  <br/>
+  <em>Desktop ↔ desktop — real-time, bidirectional clipboard sync between two computers.</em>
+</p>
+
+<details>
+  <summary><strong>Mobile companion</strong> — share a screenshot from your phone to your desktop. (click to expand)</summary>
+  <p align="center">
+    <video src="https://github.com/user-attachments/assets/29f4bf5d-8996-4602-8784-067fb919c671" controls muted playsinline width="800"></video>
+  </p>
+</details>
+
 > [!WARNING]
 > UniClipboard is currently under active development and may have unstable or missing features. Feel free to try it out and provide feedback!
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+  - [Download from Releases](#download-from-releases)
+  - [One-line install script (Linux / macOS)](#one-line-install-script-linux--macos)
+  - [Linux](#linux)
+  - [Homebrew (macOS)](#homebrew-macos)
+  - [Build from Source](#build-from-source)
+- [Usage](#usage)
+  - [First Device (Create a Space)](#first-device-create-a-space)
+  - [Adding More Devices (Join via Invitation)](#adding-more-devices-join-via-invitation)
+  - [Pair a Mobile Device (companion)](#mobile-companion-lan)
+  - [Main Pages](#main-pages)
+- [Advanced Features](#advanced-features)
+  - [How it Works](#how-it-works)
+  - [Command-line Tool](#command-line-tool)
+  - [Privacy & Security](#privacy--security)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Community](#community)
 
 ## Features
 
@@ -330,20 +353,35 @@ uniclip status / start / stop   # Daemon lifecycle
 
 ## FAQ
 
-**Why not just use iCloud Universal Clipboard?**
+<details>
+  <summary><strong>Why not just use iCloud Universal Clipboard?</strong></summary>
+
 If you only use Apple devices, don't need history, and fully trust Apple's closed-source end-to-end encryption — iCloud is fine. The moment you add a Windows or Linux machine, want a searchable history, or want to verify the encryption yourself, you need something else.
+</details>
 
-**Why not a self-hosted clipboard sync (e.g. ClipCascade)?**
+<details>
+  <summary><strong>Why not a self-hosted clipboard sync (e.g. ClipCascade)?</strong></summary>
+
 Self-hosted means you have to run a server. UniClipboard works out of the box — direct P2P first, encrypted relay only as a fallback. You never have to operate any infrastructure.
+</details>
 
-**Does it work fully offline / LAN-only?**
+<details>
+  <summary><strong>Does it work fully offline / LAN-only?</strong></summary>
+
 Yes. Devices on the same Wi-Fi connect directly without going through the relay. Even if the relay is unreachable, devices on the same network keep syncing.
+</details>
 
-**Where does my clipboard history actually live?**
+<details>
+  <summary><strong>Where does my clipboard history actually live?</strong></summary>
+
 Only on your devices. Local storage is encrypted at rest with a key that never leaves the device's system keyring. No UniClipboard server ever receives or stores your clipboard content.
+</details>
 
-**Is there a mobile app?**
+<details>
+  <summary><strong>Is there a mobile app?</strong></summary>
+
 On iOS, yes — the **UniClipboard iOS App is now in TestFlight public beta**. Install TestFlight from the App Store, then open [testflight.apple.com/join/nyNQ8dQe](https://testflight.apple.com/join/nyNQ8dQe) to accept the invite and install the build. On Android, install the [**UniClipboard Android client**](https://github.com/UniClipboard/uc-android) — a fork of [SyncClipboard](https://github.com/Jeric-X/SyncClipboard) with APKs in [releases](https://github.com/UniClipboard/uc-android/releases/latest); any other SyncClipboard-compatible client also works. Either way, mobile runs as an **HTTP companion**: the desktop daemon exposes a SyncClipboard-compatible HTTP endpoint and the phone talks to it with a base URL + Basic Auth. It's bidirectional; on the LAN out of the box, or across networks via a server node (public HTTPS) or Tailscale. Mobile itself does no NAT traversal or relay. The bundled iOS Shortcut still works as a fallback. See the [Pair a Mobile Device](#mobile-companion-lan) section above.
+</details>
 
 ## Contributing
 
@@ -384,7 +422,7 @@ Join us to chat with other users and the dev team:
   </tr>
   <tr>
     <td align="center"><img src="./assets/qq-group-qrcode.jpg" alt="QQ Group QR Code" width="250" /></td>
-    <td align="center"><img src="./assets/wechat-group-qrcode.jpg" alt="WeChat Group QR Code" width="250" /></td>
+    <td align="center"><img src="./assets/wechat-group-qrcode.png" alt="WeChat Group QR Code" width="250" /></td>
   </tr>
 </table>
 

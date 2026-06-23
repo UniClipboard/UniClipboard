@@ -26,7 +26,7 @@ use uc_core::ports::clipboard::{
     SelfWriteAttribution, SelfWriteLedgerPort, SelfWriteMatch, SystemClipboardPort,
 };
 
-use super::timing::CLIPBOARD_ECHO_RTT_MAX;
+use super::timing::{LOCAL_ECHO_RTT_MAX, REMOTE_ECHO_RTT_MAX};
 
 /// Number of consecutive OS-write failures that trip the circuit.
 ///
@@ -50,13 +50,13 @@ const DEFAULT_CIRCUIT_OPEN_DURATION: Duration = Duration::from_secs(30);
 
 /// Represents the intent behind a programmatic clipboard write.
 ///
-/// Each variant arms a self-write record under the single echo budget defined
-/// in [`super::timing`] (`CLIPBOARD_ECHO_RTT_MAX`), never as inline literals.
-/// The budget is a GC backstop; the next watcher event is what consumes the
-/// record:
-/// - `LocalRestore`: content hash guard + one-shot next-origin override
-/// - `LocalCapture`: content hash guard (short-lived, local op)
-/// - `RemotePush`: content hash guard + one-shot next-origin override (OS re-encoding guard)
+/// Each variant arms a self-write record under a named echo budget from
+/// [`super::timing`] (`LOCAL_ECHO_RTT_MAX` / `REMOTE_ECHO_RTT_MAX`), never as
+/// inline literals. The budget is a GC backstop; the next watcher event is what
+/// consumes the record:
+/// - `LocalRestore`: content record + next-change fallback, local budget
+/// - `LocalCapture`: content record only, local budget
+/// - `RemotePush`: content record + next-change fallback, remote budget (OS re-encoding guard)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardWriteIntent {
     /// A local clipboard history restore (user clicked "restore" in history).
@@ -213,18 +213,20 @@ impl ClipboardWriteCoordinator {
     ///
     /// # Intent semantics
     ///
-    /// Every record uses the single echo budget from [`super::timing`]
-    /// (`CLIPBOARD_ECHO_RTT_MAX`), never inline, armed via
+    /// Each record uses a named echo budget from [`super::timing`]
+    /// (`LOCAL_ECHO_RTT_MAX` / `REMOTE_ECHO_RTT_MAX`), never inline, armed via
     /// `SelfWriteLedgerPort::record_self_write`.
     ///
-    /// - `LocalRestore`: records a `ByContent`/`Local` self-write, writes, then
-    ///   records a `ByNextChange`/`Local` fallback to cover file URI/path
-    ///   rewrites that change bytes between write and watcher callback.
-    /// - `LocalCapture`: records a `ByContent`/`Local` self-write, then writes.
-    ///   On error, attributes the change to unwind the record.
-    /// - `RemotePush`: records a `ByContent`/`Remote` self-write, writes, then
-    ///   records a `ByNextChange`/`Remote` fallback to guard against OS re-encoding
-    ///   loopback (e.g., Windows DIB→PNG re-encode yields bytes the content record won't match).
+    /// - `LocalRestore`: records a `ByContent`/`Local` self-write under the local
+    ///   budget, writes, then records a `ByNextChange`/`Local` fallback to cover
+    ///   file URI/path rewrites that change bytes between write and watcher callback.
+    /// - `LocalCapture`: records a `ByContent`/`Local` self-write under the local
+    ///   budget, then writes. On error, attributes the change to unwind the record.
+    /// - `RemotePush`: records a `ByContent`/`Remote` self-write under the remote
+    ///   budget, writes, then records a `ByNextChange`/`Remote` fallback to guard
+    ///   against OS re-encoding loopback (e.g., Windows DIB→PNG re-encode yields
+    ///   bytes the content record won't match). The remote budget is generous
+    ///   because that fallback is the sole suppression for a re-encoded echo.
     ///
     /// # Error handling
     ///
@@ -279,7 +281,7 @@ impl ClipboardWriteCoordinator {
                         .record_self_write(
                             SelfWriteMatch::ByContent(origin_guard_key.clone()),
                             SelfWriteAttribution::Local,
-                            CLIPBOARD_ECHO_RTT_MAX,
+                            LOCAL_ECHO_RTT_MAX,
                         )
                         .await;
                 }
@@ -288,7 +290,7 @@ impl ClipboardWriteCoordinator {
                         .record_self_write(
                             SelfWriteMatch::ByContent(origin_guard_key.clone()),
                             SelfWriteAttribution::Remote,
-                            CLIPBOARD_ECHO_RTT_MAX,
+                            REMOTE_ECHO_RTT_MAX,
                         )
                         .await;
                 }
@@ -334,7 +336,7 @@ impl ClipboardWriteCoordinator {
                         .record_self_write(
                             SelfWriteMatch::ByNextChange,
                             SelfWriteAttribution::Local,
-                            CLIPBOARD_ECHO_RTT_MAX,
+                            LOCAL_ECHO_RTT_MAX,
                         )
                         .await;
                 }
@@ -347,7 +349,7 @@ impl ClipboardWriteCoordinator {
                         .record_self_write(
                             SelfWriteMatch::ByNextChange,
                             SelfWriteAttribution::Remote,
-                            CLIPBOARD_ECHO_RTT_MAX,
+                            REMOTE_ECHO_RTT_MAX,
                         )
                         .await;
                 }

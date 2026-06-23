@@ -1,4 +1,4 @@
-//! Self-write echo attribution budget for [`ClipboardWriteCoordinator`].
+//! Self-write echo attribution budgets for [`ClipboardWriteCoordinator`].
 //!
 //! When the daemon writes to the OS clipboard (restore / inbound sync / file
 //! copy) the platform watcher fires a change event for that very write. To
@@ -11,48 +11,68 @@
 //! The authority for resolving a self-write echo is the **next watcher
 //! event**, not the clock: a content-keyed record is consumed the moment a
 //! change with the matching hash is observed, and a next-change record is
-//! consumed by the very next observed change. The window below does NOT decide
-//! attribution — it only garbage-collects a record whose echo never arrives (a
+//! consumed by the very next observed change. The windows below do NOT decide
+//! attribution — they only garbage-collect a record whose echo never arrives (a
 //! write may legitimately produce no clipboard event at all: identical content,
 //! or a failed write). Without the GC backstop a record left armed forever
 //! would eventually mis-attribute an unrelated user copy.
 //!
-//! ## One window, not two
+//! ## Two budgets, because the echoes are different physical quantities
 //!
-//! Local writes (restore / file copy) and remote pushes (inbound sync) both
-//! encode the SAME physical quantity — the worst-case round-trip latency for a
-//! programmatic write to come back as a watcher callback, including OS
-//! re-encoding (Windows PNG→DIB→PNG) and file URI/path rewrites. They used to
-//! carry two different windows (2s local, 60s remote) purely because remote
-//! pushes were rare and a longer backstop felt cheap; with consumption now
-//! firmly event-driven the backstop value is no longer load-bearing for
-//! correctness, so the two collapse into a single budget. Naming it once keeps
-//! us honest about the project rule against scattered timeout literals (mirrors
-//! the pattern in `uc-daemon-process::timing`).
+//! For a *content-keyed* record the backstop value is not load-bearing: the
+//! matching hash consumes it regardless of how much window remains. But the
+//! *next-change fallback* exists precisely for the case where the bytes change
+//! between write and echo, so the content hash provably cannot match — and there
+//! the time bound is the ONLY thing that recognises the echo as our own write.
+//! That case is asymmetric between local and remote:
+//!
+//! - **Local writes** (history restore / file copy) are not OS-re-encoded; at
+//!   most a file restore comes back with rewritten URI/path bytes, and that echo
+//!   returns fast. Kept short so a lingering record (a write that produced no
+//!   echo because identical content was already on the clipboard) cannot swallow
+//!   a user's deliberate identical re-copy for long.
+//! - **Remote pushes** (inbound sync) can be re-encoded by the platform (Windows
+//!   PNG→DIB→PNG) AND can be large/slow on a contended host. For a re-encoded
+//!   image the content record cannot match, so the next-change fallback is the
+//!   sole suppression; sizing it short risks bouncing the peer's image back as a
+//!   fresh local capture (re-broadcast loop). It must cover the worst-case
+//!   write→echo round-trip, not the typical one.
+//!
+//! Naming each budget once keeps us honest about the project rule against
+//! scattered timeout literals (mirrors the pattern in
+//! `uc-daemon-process::timing`). They are NOT derived from a shared base —
+//! deriving two unrelated worst-case latencies from each other would be fake
+//! coupling — so each is pinned independently.
 
 use std::time::Duration;
 
-/// Worst-case latency between a programmatic clipboard write and the watcher
-/// callback for that write, covering OS re-encoding and file URI/path rewrites
-/// that change the bytes between write and echo.
+/// Echo backstop for LOCAL programmatic writes (history restore / file copy).
 ///
-/// This is the single self-write echo budget for both local writes (restore /
-/// file copy) and remote pushes (inbound sync). It is a garbage-collection
-/// backstop, not an attribution authority: the next observed change consumes
-/// the armed record regardless of how much of this window remains (see the
-/// module docs). Sized generously so a slow echo (weak network, large image
-/// re-encode) is still recognised as our own write rather than re-broadcast; a
-/// genuine echo that somehow arrives later is backstopped by inbound idempotency.
-pub(crate) const CLIPBOARD_ECHO_RTT_MAX: Duration = Duration::from_secs(5);
+/// Local echoes are fast and never OS-re-encoded, so this only needs to outlast
+/// a same-process write→watcher round-trip. Kept short so a record whose echo
+/// never arrives (identical content already on the clipboard) does not swallow a
+/// user's deliberate identical re-copy. GC backstop only — see the module docs.
+pub(crate) const LOCAL_ECHO_RTT_MAX: Duration = Duration::from_secs(2);
+
+/// Echo backstop for REMOTE pushes (inbound sync).
+///
+/// Sized for the worst case the next-change fallback exists to cover: OS image
+/// re-encoding (Windows PNG→DIB→PNG) on a contended host, where the content
+/// record provably cannot match and this time-bounded fallback is the ONLY
+/// suppression. A re-encode echo that arrives after this window is mis-read as a
+/// fresh local capture and re-dispatched back to the sender, so the budget is
+/// generous on purpose. GC backstop only — see the module docs.
+pub(crate) const REMOTE_ECHO_RTT_MAX: Duration = Duration::from_secs(60);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Pin the echo budget so a change to it is a deliberate, reviewed act
+    /// Pin the echo budgets so a change to either is a deliberate, reviewed act
     /// rather than a silent drift.
     #[test]
-    fn budget_is_pinned() {
-        assert_eq!(CLIPBOARD_ECHO_RTT_MAX, Duration::from_secs(5));
+    fn budgets_are_pinned() {
+        assert_eq!(LOCAL_ECHO_RTT_MAX, Duration::from_secs(2));
+        assert_eq!(REMOTE_ECHO_RTT_MAX, Duration::from_secs(60));
     }
 }

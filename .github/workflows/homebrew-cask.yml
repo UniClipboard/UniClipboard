@@ -113,12 +113,14 @@ jobs:
           fi
           cp ../rendered/uniclipboard.rb Casks/u/uniclipboard.rb
 
+          # brew audit no longer accepts file paths; use brew style for local
+          # syntax/format checking. Full audit runs via BrewTestBot on the PR.
+          brew style Casks/u/uniclipboard.rb
+
           if [ "$IS_NEW" -eq 1 ]; then
-            brew audit --cask --new Casks/u/uniclipboard.rb
             COMMIT_SUBJECT="Add uniclipboard ${VERSION}"
             PR_TITLE="Add uniclipboard ${VERSION}"
           else
-            brew audit --cask Casks/u/uniclipboard.rb
             COMMIT_SUBJECT="Update uniclipboard to ${VERSION}"
             PR_TITLE="Update uniclipboard to ${VERSION}"
           fi

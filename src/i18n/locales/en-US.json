@@ -692,6 +692,16 @@
       "image": "Images",
       "file": "Files"
     },
+    "timeRange": {
+      "label": "Time range",
+      "all_time": "All time",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last_7d": "Last 7 days",
+      "last_30d": "Last 30 days",
+      "this_week": "This week",
+      "this_month": "This month"
+    },
     "type": {
       "text": "Text",
       "code": "Code",
@@ -757,6 +767,7 @@
   "clipboard": {
     "search": {
       "noResults": "No results for \"{{query}}\"",
+      "noResultsFiltered": "No items match the current filters",
       "noResultsSub": "Try a full word or a different keyword",
       "empty": "Your clipboard history is empty",
       "emptySub": "Copy something to get started",

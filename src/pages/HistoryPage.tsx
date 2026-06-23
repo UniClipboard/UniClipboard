@@ -1,5 +1,8 @@
 import { m } from 'framer-motion'
 import {
+  Check,
+  ChevronDown,
+  Clock,
   Code,
   ExternalLink,
   File,
@@ -10,18 +13,24 @@ import {
 } from 'lucide-react'
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Filter } from '@/api/clipboardItems'
-import { querySearch, type SearchResultDto } from '@/api/daemon/search'
+import { Filter, filterToContentTypes } from '@/api/clipboardItems'
+import { type SearchResultDto, type TimeRangePreset } from '@/api/daemon/search'
 import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
 import HistoryCard from '@/components/history/HistoryCard'
 import HistoryDetailSheet from '@/components/history/HistoryDetailSheet'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from '@/components/ui/toast'
 import { useClipboardEvents } from '@/hooks/useClipboardEvents'
+import { useClipboardSearch } from '@/hooks/useClipboardSearch'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
 import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
-import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
@@ -32,7 +41,16 @@ import {
 
 // ── Constants ───────────────────────────────────────────────────
 
-const log = createLogger('history-page')
+/** Time-range presets shown in the toolbar dropdown (order = display order). */
+const TIME_RANGES: TimeRangePreset[] = [
+  'all_time',
+  'today',
+  'yesterday',
+  'last_7d',
+  'last_30d',
+  'this_week',
+  'this_month',
+]
 
 /** Map a search-index content category to the display item's render type. */
 function mapSearchContentType(ft: SearchResultDto['contentType']): DisplayClipboardItem['type'] {
@@ -138,10 +156,8 @@ const HistoryPage: React.FC = () => {
   // sent to the search engine. It is auto-submitted (debounced) as the user
   // types, and submitted immediately on Enter. Clearing the input resets it.
   const [submittedQuery, setSubmittedQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<DisplayClipboardItem[] | null>(null)
-  const [searchLoading, setSearchLoading] = useState(false)
+  const [timeRange, setTimeRange] = useState<TimeRangePreset>('all_time')
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const searchAbortRef = useRef<AbortController | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [copySuccessId, setCopySuccessId] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -215,7 +231,11 @@ const HistoryPage: React.FC = () => {
   }, [items, pendingItems, deviceNameByPeerId, formatRelativeTime, t])
 
   // ── Server-side search ────────────────────────────────────────
-  const isSearchActive = submittedQuery.trim().length > 0
+  // Search mode is driven by the submitted query OR an active time filter. The
+  // content-type filter alone keeps browse mode (paginated via useClipboardEvents);
+  // in search mode it is applied as an additional contentTypes constraint.
+  const hasTimeFilter = timeRange !== 'all_time'
+  const isSearchActive = submittedQuery.trim().length > 0 || hasTimeFilter
 
   // Auto-submit while typing (debounced); clearing the input drops straight
   // back to browse mode. Enter bypasses the debounce via the input handler.
@@ -229,48 +249,29 @@ const HistoryPage: React.FC = () => {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  useEffect(() => {
-    const q = submittedQuery.trim()
-    searchAbortRef.current?.abort()
-    if (!q) {
-      setSearchResults(null)
-      setSearchLoading(false)
-      return
-    }
-    const controller = new AbortController()
-    searchAbortRef.current = controller
-    setSearchLoading(true)
+  // Map a raw search hit to a renderable history card.
+  const mapSearchResult = useCallback(
+    (r: SearchResultDto): DisplayClipboardItem => ({
+      id: r.entryId,
+      type: mapSearchContentType(r.contentType),
+      time: formatRelativeTime(r.activeTimeMs),
+      activeTime: r.activeTimeMs,
+      content: null,
+      textPreview: r.textPreview ?? undefined,
+    }),
+    [formatRelativeTime]
+  )
 
-    // Filter values map to backend params directly; Code also matches html.
-    let contentTypes: string | undefined
-    if (activeFilter === Filter.Code) contentTypes = 'code,html'
-    else if (activeFilter !== Filter.All && activeFilter !== Filter.Favorited)
-      contentTypes = activeFilter
-
-    querySearch({ query: q, contentTypes, limit: 100 }, controller.signal)
-      .then(response => {
-        if (controller.signal.aborted) return
-        const results: DisplayClipboardItem[] = response.data.items.map(r => ({
-          id: r.entryId,
-          type: mapSearchContentType(r.contentType),
-          time: formatRelativeTime(r.activeTimeMs),
-          activeTime: r.activeTimeMs,
-          content: null,
-          textPreview: r.textPreview ?? undefined,
-        }))
-        setSearchResults(results)
-        setSearchLoading(false)
-      })
-      .catch(err => {
-        if (controller.signal.aborted) return
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        log.error({ err }, 'History search failed')
-        setSearchResults([])
-        setSearchLoading(false)
-      })
-
-    return () => controller.abort()
-  }, [submittedQuery, activeFilter, formatRelativeTime])
+  const { results: searchResults, isSearching: searchLoading } = useClipboardSearch(
+    {
+      enabled: isSearchActive,
+      query: submittedQuery.trim(),
+      contentTypes: filterToContentTypes(activeFilter),
+      timePreset: hasTimeFilter ? timeRange : undefined,
+      limit: 100,
+    },
+    mapSearchResult
+  )
 
   // In search mode show engine results; otherwise the browse (paginated) list.
   const baseItems = useMemo<DisplayClipboardItem[]>(
@@ -471,29 +472,64 @@ const HistoryPage: React.FC = () => {
           })}
         </div>
 
-        {/* Search */}
-        <div className="flex items-center gap-1.5 bg-muted/40 rounded-full px-3 h-7 w-48 shrink-0 focus-within:bg-muted/60 transition-colors">
-          <Search className="size-3.5 text-muted-foreground/50 shrink-0" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                setSubmittedQuery(searchQuery.trim())
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                searchInputRef.current?.blur()
-              }
-            }}
-            placeholder={t('history.searchPlaceholder')}
-            className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/50 outline-none min-w-0"
-          />
+        {/* Time filter + search (right side) */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Time range */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={t('history.timeRange.label')}
+                className={cn(
+                  'flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-medium whitespace-nowrap transition-all duration-150',
+                  hasTimeFilter
+                    ? 'bg-foreground/8 text-foreground'
+                    : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40'
+                )}
+              >
+                <Clock className="size-3" />
+                {t(`history.timeRange.${timeRange}`)}
+                <ChevronDown className="size-3 opacity-50" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              {TIME_RANGES.map(range => (
+                <DropdownMenuItem
+                  key={range}
+                  onClick={() => setTimeRange(range)}
+                  className="flex items-center justify-between text-[12px]"
+                >
+                  {t(`history.timeRange.${range}`)}
+                  {timeRange === range && <Check className="size-3 text-primary" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Search */}
+          <div className="flex items-center gap-1.5 bg-muted/40 rounded-full px-3 h-7 w-48 focus-within:bg-muted/60 transition-colors">
+            <Search className="size-3.5 text-muted-foreground/50 shrink-0" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  setSubmittedQuery(searchQuery.trim())
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  searchInputRef.current?.blur()
+                }
+              }}
+              placeholder={t('history.searchPlaceholder')}
+              className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/50 outline-none min-w-0"
+            />
+          </div>
         </div>
       </div>
 
@@ -515,7 +551,9 @@ const HistoryPage: React.FC = () => {
               {isSearchActive ? (
                 <>
                   <p className="text-[13px] font-medium">
-                    {t('clipboard.search.noResults', { query: submittedQuery })}
+                    {submittedQuery.trim()
+                      ? t('clipboard.search.noResults', { query: submittedQuery })
+                      : t('clipboard.search.noResultsFiltered')}
                   </p>
                   <p className="text-[12px] text-muted-foreground/50">
                     {t('clipboard.search.noResultsSub')}

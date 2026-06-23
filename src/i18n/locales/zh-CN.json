@@ -683,6 +683,16 @@
       "image": "图片",
       "file": "文件"
     },
+    "timeRange": {
+      "label": "时间范围",
+      "all_time": "不限时间",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last_7d": "最近 7 天",
+      "last_30d": "最近 30 天",
+      "this_week": "本周",
+      "this_month": "本月"
+    },
     "type": {
       "text": "文本",
       "code": "代码",
@@ -748,6 +758,7 @@
   "clipboard": {
     "search": {
       "noResults": "未找到 \"{{query}}\" 的结果",
+      "noResultsFiltered": "没有符合筛选条件的记录",
       "noResultsSub": "尝试搜索完整单词或其他关键词",
       "empty": "剪贴板历史为空",
       "emptySub": "复制一些内容来开始使用吧",

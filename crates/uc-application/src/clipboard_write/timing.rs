@@ -9,8 +9,8 @@
 //! left armed forever would mis-attribute a later, unrelated user copy.
 //!
 //! These windows used to live as inline `Duration::from_secs(2 | 60)` literals
-//! spread across `coordinator.rs` (the local hash guard, the remote hash
-//! guard, and their two `set_next_origin` fallbacks). They all encode the SAME
+//! spread across `coordinator.rs` (the local and remote content guards, and
+//! their two next-change fallbacks). They all encode the SAME
 //! physical quantity — the worst-case round-trip latency for a programmatic
 //! write to come back as a watcher callback, including OS re-encoding
 //! (Windows PNG→DIB→PNG) and file URI/path rewrites. Naming the base once and

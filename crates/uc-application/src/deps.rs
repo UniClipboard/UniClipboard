@@ -15,13 +15,14 @@ use tokio::sync::mpsc;
 use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
-    AdvanceActiveClipboardPort, ClipboardChangeOriginPort, ClipboardPayloadResolverPort,
+    AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
     ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
     GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationByBlobIdPort,
     GetRepresentationPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
     LoadActiveClipboardPort, RepresentationCachePort, ResetActiveClipboardPort,
-    SaveClipboardEntryPort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
-    ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
+    SaveClipboardEntryPort, SelfWriteLedgerPort, SpoolQueuePort, SystemClipboardPort,
+    ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
+    UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
@@ -84,7 +85,7 @@ pub struct ClipboardPorts {
     pub representation_policy: Arc<dyn SelectRepresentationPolicyPort>,
     pub representation_cache: Arc<dyn RepresentationCachePort>,
     pub spool_queue: Arc<dyn SpoolQueuePort>,
-    pub clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+    pub clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
     pub worker_tx: mpsc::Sender<RepresentationId>,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
     /// Cross-device active-clipboard LWW register write port. Advanced by the

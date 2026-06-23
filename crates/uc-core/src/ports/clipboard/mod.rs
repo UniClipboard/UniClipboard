@@ -1,6 +1,5 @@
 mod active_clipboard;
 mod blob_migration_repo;
-mod clipboard_change_origin;
 mod clipboard_entry_repository;
 mod clipboard_event_repository;
 mod clipboard_selection_repository;
@@ -15,6 +14,7 @@ mod representation_normalizer;
 mod representation_repository;
 mod select_representation_policy;
 mod selection_resolver;
+mod self_write_ledger;
 mod spool_queue;
 mod sync_dispatch;
 mod sync_receiver;
@@ -28,7 +28,6 @@ pub use active_clipboard::{
     InboundActiveClipboardState, LoadActiveClipboardPort, ResetActiveClipboardPort,
 };
 pub use blob_migration_repo::{BlobMigrationRepoError, BlobMigrationRepoPort, MigrationRecord};
-pub use clipboard_change_origin::ClipboardChangeOriginPort;
 pub use clipboard_entry_repository::ClipboardEntryStore;
 pub use clipboard_event_repository::ClipboardEventRepositoryPort;
 pub use clipboard_selection_repository::ClipboardSelectionRepositoryPort;
@@ -54,6 +53,7 @@ pub use representation_normalizer::ClipboardRepresentationNormalizerPort;
 pub use representation_repository::{ClipboardRepresentationStore, ProcessingUpdateOutcome};
 pub use select_representation_policy::SelectRepresentationPolicyPort;
 pub use selection_resolver::SelectionResolverPort;
+pub use self_write_ledger::{SelfWriteAttribution, SelfWriteLedgerPort, SelfWriteMatch};
 pub use spool_queue::{SpoolQueuePort, SpoolRequest};
 pub use sync_dispatch::{
     ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, DispatchAck, SyncPayload,

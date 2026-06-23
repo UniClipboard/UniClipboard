@@ -720,19 +720,19 @@ mod tests {
     /// early-return paths; only the required methods are implemented).
     struct StubOrigin;
     #[async_trait]
-    impl uc_core::ports::clipboard::ClipboardChangeOriginPort for StubOrigin {
-        async fn set_next_origin(
+    impl uc_core::ports::clipboard::SelfWriteLedgerPort for StubOrigin {
+        async fn record_self_write(
             &self,
-            _origin: uc_core::ClipboardChangeOrigin,
+            _matching: uc_core::ports::clipboard::SelfWriteMatch,
+            _attribution: uc_core::ports::clipboard::SelfWriteAttribution,
             _ttl: std::time::Duration,
         ) {
         }
-        async fn consume_origin_for_snapshot_or_default(
+        async fn attribute_observed_change(
             &self,
             _snapshot_hash: &str,
-            default_origin: uc_core::ClipboardChangeOrigin,
         ) -> uc_core::ClipboardChangeOrigin {
-            default_origin
+            uc_core::ClipboardChangeOrigin::LocalCapture
         }
     }
 

@@ -465,7 +465,7 @@ impl MenuLabels {
                 settings: "设置",
                 check_update: "检查更新…",
                 restart: "重启",
-                lightweight: "轻量模式",
+                lightweight: "关闭窗口（后台继续运行）",
                 quit: "退出",
             },
             _ => Self {
@@ -473,7 +473,7 @@ impl MenuLabels {
                 settings: "Settings",
                 check_update: "Check for Updates…",
                 restart: "Restart",
-                lightweight: "Lightweight Mode",
+                lightweight: "Close Window (Keep Running)",
                 quit: "Quit",
             },
         }

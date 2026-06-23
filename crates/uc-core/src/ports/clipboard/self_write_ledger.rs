@@ -52,5 +52,13 @@ pub trait SelfWriteLedgerPort: Send + Sync {
     /// matched record is consumed. When nothing matches, the change is a
     /// genuine, unguarded event and resolves to
     /// [`ClipboardChangeOrigin::LocalCapture`].
+    ///
+    /// Codomain: the ledger only ever produces one of three values —
+    /// `LocalCapture` (no record matched), `LocalRestore` (a `Local`-attributed
+    /// record matched), or `RemotePush { from_device: None }` (a `Remote`-
+    /// attributed record matched). It never produces `Resend`, and never carries
+    /// a `from_device` — the ledger tracks only local-vs-remote attribution, not
+    /// peer identity. Consumers that need the originating device must source it
+    /// elsewhere.
     async fn attribute_observed_change(&self, snapshot_hash: &str) -> ClipboardChangeOrigin;
 }

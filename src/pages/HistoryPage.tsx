@@ -8,6 +8,7 @@ import {
   File,
   FileText,
   Image as ImageIcon,
+  Laptop,
   Loader2,
   Search,
 } from 'lucide-react'
@@ -157,6 +158,7 @@ const HistoryPage: React.FC = () => {
   // types, and submitted immediately on Enter. Clearing the input resets it.
   const [submittedQuery, setSubmittedQuery] = useState('')
   const [timeRange, setTimeRange] = useState<TimeRangePreset>('all_time')
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [copySuccessId, setCopySuccessId] = useState<string | null>(null)
@@ -235,7 +237,8 @@ const HistoryPage: React.FC = () => {
   // content-type filter alone keeps browse mode (paginated via useClipboardEvents);
   // in search mode it is applied as an additional contentTypes constraint.
   const hasTimeFilter = timeRange !== 'all_time'
-  const isSearchActive = submittedQuery.trim().length > 0 || hasTimeFilter
+  const hasSourceFilter = sourceFilter !== null
+  const isSearchActive = submittedQuery.trim().length > 0 || hasTimeFilter || hasSourceFilter
 
   // Auto-submit while typing (debounced); clearing the input drops straight
   // back to browse mode. Enter bypasses the debounce via the input handler.
@@ -267,6 +270,7 @@ const HistoryPage: React.FC = () => {
       enabled: isSearchActive,
       query: submittedQuery.trim(),
       contentTypes: filterToContentTypes(activeFilter),
+      sourceDevices: sourceFilter ?? undefined,
       timePreset: hasTimeFilter ? timeRange : undefined,
       limit: 100,
     },
@@ -474,6 +478,51 @@ const HistoryPage: React.FC = () => {
 
         {/* Time filter + search (right side) */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Source device */}
+          {spaceMembers.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t('history.source.label')}
+                  className={cn(
+                    'flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-medium whitespace-nowrap transition-all duration-150',
+                    hasSourceFilter
+                      ? 'bg-foreground/8 text-foreground'
+                      : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40'
+                  )}
+                >
+                  <Laptop className="size-3" />
+                  {sourceFilter
+                    ? (deviceNameByPeerId[sourceFilter] ?? t('history.source.label'))
+                    : t('history.source.all')}
+                  <ChevronDown className="size-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem
+                  onClick={() => setSourceFilter(null)}
+                  className="flex items-center justify-between text-[12px]"
+                >
+                  {t('history.source.all')}
+                  {sourceFilter === null && <Check className="size-3 text-primary" />}
+                </DropdownMenuItem>
+                {spaceMembers.map(member => (
+                  <DropdownMenuItem
+                    key={member.peerId}
+                    onClick={() => setSourceFilter(member.peerId)}
+                    className="flex items-center justify-between gap-2 text-[12px]"
+                  >
+                    <span className="truncate">{member.deviceName}</span>
+                    {sourceFilter === member.peerId && (
+                      <Check className="size-3 text-primary shrink-0" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
           {/* Time range */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -693,6 +693,10 @@
       "this_week": "本周",
       "this_month": "本月"
     },
+    "source": {
+      "label": "来源",
+      "all": "全部来源"
+    },
     "type": {
       "text": "文本",
       "code": "代码",

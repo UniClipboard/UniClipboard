@@ -702,6 +702,10 @@
       "this_week": "This week",
       "this_month": "This month"
     },
+    "source": {
+      "label": "Source",
+      "all": "All sources"
+    },
     "type": {
       "text": "Text",
       "code": "Code",

@@ -17,6 +17,8 @@ export interface UseClipboardSearchOptions {
   contentTypes?: string
   /** Backend `extensions` param (comma-separated), already resolved. */
   extensions?: string
+  /** Backend `sourceDevices` param (comma-separated device ids). */
+  sourceDevices?: string
   /** Backend `timePreset` param; omit (undefined) for no time filter. */
   timePreset?: string
   limit?: number
@@ -44,7 +46,8 @@ export function useClipboardSearch<T>(
   options: UseClipboardSearchOptions,
   mapResult: (dto: SearchResultDto) => T
 ): UseClipboardSearchResult<T> {
-  const { enabled, query, contentTypes, extensions, timePreset, limit, offset } = options
+  const { enabled, query, contentTypes, extensions, sourceDevices, timePreset, limit, offset } =
+    options
   const [results, setResults] = useState<T[] | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [total, setTotal] = useState<number | null>(null)
@@ -66,7 +69,10 @@ export function useClipboardSearch<T>(
     abortRef.current = controller
     setIsSearching(true)
 
-    querySearch({ query, contentTypes, extensions, timePreset, limit, offset }, controller.signal)
+    querySearch(
+      { query, contentTypes, extensions, sourceDevices, timePreset, limit, offset },
+      controller.signal
+    )
       .then(response => {
         if (controller.signal.aborted) return
         setResults(response.data.items.map(mapResultEvent))
@@ -83,7 +89,7 @@ export function useClipboardSearch<T>(
       })
 
     return () => controller.abort()
-  }, [enabled, query, contentTypes, extensions, timePreset, limit, offset])
+  }, [enabled, query, contentTypes, extensions, sourceDevices, timePreset, limit, offset])
 
   return { results, isSearching, total }
 }

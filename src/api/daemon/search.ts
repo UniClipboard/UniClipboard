@@ -93,6 +93,8 @@ export interface SearchParams {
   /** Content category filter (text, html, link, file, image, other). */
   contentTypes?: string
   extensions?: string
+  /** Comma-separated source device ids; restricts results to those origins. */
+  sourceDevices?: string
   timePreset?: string
   limit?: number
   offset?: number
@@ -120,6 +122,7 @@ export async function querySearch(
   }
   if (params.contentTypes) query.contentTypes = params.contentTypes
   if (params.extensions) query.extensions = params.extensions
+  if (params.sourceDevices) query.sourceDevices = params.sourceDevices
   if (params.timePreset) query.timePreset = params.timePreset
   if (params.limit != null) query.limit = params.limit
   if (params.offset != null) query.offset = params.offset

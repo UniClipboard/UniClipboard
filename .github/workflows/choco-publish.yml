@@ -67,8 +67,12 @@ jobs:
           $sha = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
           Write-Host "sha256=$sha"
 
-          # 与 release 自带 SHA256SUMS.txt(minisign 签名的可信源)交叉核对。
-          $sums = (Invoke-WebRequest -Uri "$base/SHA256SUMS.txt").Content
+          # Cross-check against the minisign-signed SHA256SUMS.txt shipped with the release.
+          # GitHub serves release assets as application/octet-stream; in PowerShell 7,
+          # Invoke-WebRequest returns .Content as byte[] for non-text content types, which
+          # breaks string -match. Read via RawContentStream to guarantee a string comparison.
+          $sumsStream = (Invoke-WebRequest -Uri "$base/SHA256SUMS.txt").RawContentStream
+          $sums = [System.Text.Encoding]::UTF8.GetString($sumsStream.ToArray())
           if ($sums -notmatch [Regex]::Escape($sha)) {
             Write-Error "下载的 $exe 的 sha256 未出现在 SHA256SUMS.txt,中止以防被篡改"
           }

@@ -102,8 +102,9 @@ jobs:
           git config user.name "UniClipboard Release Bot"
           git config user.email "release@uniclipboard.app"
           git remote add upstream https://github.com/Homebrew/homebrew-cask.git || true
-          git fetch upstream master
-          git checkout -B "uniclipboard-${VERSION}" upstream/master
+          DEFAULT_BRANCH=$(gh repo view Homebrew/homebrew-cask --json defaultBranchRef --jq '.defaultBranchRef.name')
+          git fetch upstream "$DEFAULT_BRANCH"
+          git checkout -B "uniclipboard-${VERSION}" "upstream/$DEFAULT_BRANCH"
 
           mkdir -p Casks/u
           IS_NEW=0
@@ -132,6 +133,6 @@ jobs:
           gh pr create \
             --repo Homebrew/homebrew-cask \
             --head "${FORK_REPO%/*}:uniclipboard-${VERSION}" \
-            --base master \
+            --base "$DEFAULT_BRANCH" \
             --title "$PR_TITLE" \
             --body "$PR_BODY"

@@ -48,10 +48,10 @@ use uc_application::facade::{
     build_active_clipboard_pull_serve_port, ActiveClipboardDeps, ActiveClipboardFacade,
     ActiveClipboardHandle, ActiveClipboardPeerOnlineResyncHandle,
     ActiveClipboardPullServeFacadeDeps, ActiveClipboardRestoreBroadcastHandle,
-    ActiveClipboardResurfaceHandle, BlobTransferDeps, BlobTransferFacade, ClipboardSnapshotDeps,
-    ClipboardSyncDeps, ClipboardSyncFacade, HostEvent, HostEventBus, InboundClipboardApplyPort,
-    IngestHandle, MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade,
-    TransferHostEvent,
+    ActiveClipboardResurfaceHandle, BlobTransferDeps, BlobTransferFacade, ClipboardLiveIndexDeps,
+    ClipboardLiveIndexPort, ClipboardLiveIndexer, ClipboardSnapshotDeps, ClipboardSyncDeps,
+    ClipboardSyncFacade, HostEvent, HostEventBus, InboundClipboardApplyPort, IngestHandle,
+    MemberRosterDeps, MemberRosterFacade, SpaceSetupDeps, SpaceSetupFacade, TransferHostEvent,
 };
 use uc_application::proof::HmacProofAdapter;
 use uc_application::{
@@ -648,6 +648,16 @@ pub async fn build_space_setup_assembly(
         blob.clone() as Arc<dyn uc_application::InboundBlobFetcher>,
         wired.file_cache_dir.clone(),
     ));
+    // Index pull-store entries for search too (same rationale as the main
+    // inbound path): content materialized via the 0xC2 pull should be findable.
+    let pull_store_indexer: Arc<dyn ClipboardLiveIndexPort> =
+        Arc::new(ClipboardLiveIndexer::new(ClipboardLiveIndexDeps {
+            clipboard_entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
+            representation_policy: Arc::clone(&deps.clipboard.representation_policy),
+            search_key_derivation: Arc::clone(&deps.search.search_key_derivation),
+            search_pipeline: Arc::clone(&deps.search.search_pipeline),
+            search_index: Arc::clone(&deps.search.search_index),
+        }));
     let pull_store_apply: Arc<dyn InboundClipboardApplyPort> = Arc::new(
         ApplyInboundClipboardUseCase::new(
             Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
@@ -657,7 +667,8 @@ pub async fn build_space_setup_assembly(
             Arc::new(NoopPullStoreWrite) as Arc<dyn ApplyInboundWrite>,
         )
         .with_blob_materializer(pull_store_materializer)
-        .with_host_event_emitter(Arc::clone(&wired.host_event_bus)),
+        .with_host_event_emitter(Arc::clone(&wired.host_event_bus))
+        .with_search_live_index(pull_store_indexer),
     );
 
     // Active-clipboard register convergence (issue #1017). The inbound worker

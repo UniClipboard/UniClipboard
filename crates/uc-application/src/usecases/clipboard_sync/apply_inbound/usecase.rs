@@ -13,6 +13,9 @@ use uc_core::ports::clipboard::{AdvanceActiveClipboardPort, FindEntryIdBySnapsho
 use uc_core::SystemClipboardSnapshot;
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
+use crate::facade::clipboard_live_index::{
+    ClipboardLiveIndexInput, ClipboardLiveIndexOutcome, ClipboardLiveIndexPort,
+};
 use crate::facade::host_event::{
     ClipboardHostEvent, ClipboardOriginKind, HostEvent, TransferHostEvent,
 };
@@ -52,6 +55,11 @@ pub struct ApplyInboundClipboardUseCase {
     /// write that trails it is best-effort and intentionally not gated on).
     /// `None` in tests / contexts that don't track active state.
     active_register: Option<Arc<dyn AdvanceActiveClipboardPort>>,
+    /// Optional search live-indexer. When wired, a freshly applied inbound
+    /// entry is indexed for full-text search (best-effort), so remote-origin
+    /// clipboard is searchable just like local captures. `None` in tests /
+    /// contexts without a search subsystem.
+    search_live_index: Option<Arc<dyn ClipboardLiveIndexPort>>,
 }
 
 impl ApplyInboundClipboardUseCase {
@@ -67,6 +75,7 @@ impl ApplyInboundClipboardUseCase {
             blob_materializer: None,
             host_event_emitter: None,
             active_register: None,
+            search_live_index: None,
             recent_snapshot_hashes: Cache::builder()
                 .max_capacity(RECENT_INBOUND_MAX_RECORDS)
                 .time_to_live(RAPID_DUPLICATE_WINDOW)
@@ -105,6 +114,41 @@ impl ApplyInboundClipboardUseCase {
     pub fn with_active_register(mut self, register: Arc<dyn AdvanceActiveClipboardPort>) -> Self {
         self.active_register = Some(register);
         self
+    }
+
+    /// Wire the search live-indexer. When set, a successfully applied inbound
+    /// entry is indexed for full-text search on a best-effort basis, so
+    /// remote-origin clipboard shows up in search like local captures.
+    pub fn with_search_live_index(mut self, index: Arc<dyn ClipboardLiveIndexPort>) -> Self {
+        self.search_live_index = Some(index);
+        self
+    }
+
+    /// Index a freshly applied inbound entry for search. Best-effort: the entry
+    /// is already persisted, so an index failure is logged and swallowed rather
+    /// than failing the inbound apply. Mirrors the OS-clipboard watcher's
+    /// live-index pass, but for remote-origin (P2P + mobile) entries.
+    async fn index_for_search(&self, entry_id: &EntryId, snapshot: Arc<SystemClipboardSnapshot>) {
+        let Some(index) = self.search_live_index.as_ref() else {
+            return;
+        };
+        match index
+            .index_capture(ClipboardLiveIndexInput {
+                entry_id: entry_id.as_ref().to_string(),
+                snapshot,
+            })
+            .await
+        {
+            Ok(ClipboardLiveIndexOutcome::Indexed) => {
+                debug!(entry_id = %entry_id, "inbound: indexed for search")
+            }
+            Ok(ClipboardLiveIndexOutcome::Skipped { reason }) => {
+                debug!(entry_id = %entry_id, reason, "inbound: search live index skipped")
+            }
+            Err(e) => {
+                warn!(error = %e, entry_id = %entry_id, "inbound: search live index failed (best-effort, ignored)")
+            }
+        }
     }
 
     /// Advance the active-clipboard register for a freshly applied inbound
@@ -399,6 +443,13 @@ impl ApplyInboundClipboardUseCase {
                 snapshot_for_write.ts_ms,
             )
             .await;
+
+            // Best-effort: index the applied entry so remote-origin clipboard
+            // (P2P + mobile) is searchable like local captures. The entry is
+            // already persisted, so indexing never gates the inbound apply.
+            self.index_for_search(&entry_id, Arc::new(snapshot_for_write.clone()))
+                .await;
+
             debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
             let write_port = Arc::clone(&self.write);
             let entry_id_for_write = entry_id.clone();

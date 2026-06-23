@@ -11,8 +11,8 @@ use uc_application::clipboard_write::LocalActiveRegisterAdvancer;
 use uc_application::deps::AppDeps;
 use uc_application::facade::{
     BlobTransferFacade, ClipboardCaptureFacade, ClipboardLiveIndexDeps, ClipboardLiveIndexFacade,
-    ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundFacade, ClipboardSyncFacade,
-    HostEventBus, InboundClipboardFacade,
+    ClipboardLiveIndexPort, ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundFacade,
+    ClipboardSyncFacade, HostEventBus, InboundClipboardFacade,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, FileCacheBlobMaterializer, InboundCapture as ApplyInboundCapture,
@@ -118,6 +118,17 @@ pub fn build_daemon_runtime_workers(
         input.blob_transfer_facade.clone(),
         input.file_cache_dir,
     ));
+    // Shared search live-indexer: indexes both OS-clipboard captures (via the
+    // watcher below) and remote-origin inbound entries (P2P + mobile, via
+    // ApplyInbound), so remote clipboard becomes searchable like local copies.
+    let search_live_indexer: Arc<dyn ClipboardLiveIndexPort> =
+        Arc::new(ClipboardLiveIndexer::new(ClipboardLiveIndexDeps {
+            clipboard_entry_repo: input.deps.clipboard.entry_ports.get.clone(),
+            representation_policy: input.deps.clipboard.representation_policy.clone(),
+            search_key_derivation: input.deps.search.search_key_derivation.clone(),
+            search_pipeline: input.deps.search.search_pipeline.clone(),
+            search_index: input.deps.search.search_index.clone(),
+        }));
     let apply_inbound_uc = Arc::new(
         ApplyInboundClipboardUseCase::new(
             input
@@ -131,7 +142,8 @@ pub fn build_daemon_runtime_workers(
         )
         .with_blob_materializer(blob_materializer)
         .with_host_event_emitter(input.host_event_bus)
-        .with_active_register(input.deps.clipboard.active_register.clone()),
+        .with_active_register(input.deps.clipboard.active_register.clone())
+        .with_search_live_index(Arc::clone(&search_live_indexer)),
     );
     let inbound_clipboard_facade = Arc::new(InboundClipboardFacade::new(apply_inbound_uc.clone()));
     let clipboard_outbound_facade = Arc::new(ClipboardOutboundFacade::new(ClipboardOutboundDeps {
@@ -177,14 +189,8 @@ pub fn build_daemon_runtime_workers(
         let local_clipboard = input.deps.clipboard.system_clipboard.clone();
         let clipboard_capture_facade =
             Arc::new(ClipboardCaptureFacade::new(apply_inbound_capture_uc));
-        let clipboard_live_index_facade = Arc::new(ClipboardLiveIndexFacade::new(Arc::new(
-            ClipboardLiveIndexer::new(ClipboardLiveIndexDeps {
-                clipboard_entry_repo: input.deps.clipboard.entry_ports.get.clone(),
-                representation_policy: input.deps.clipboard.representation_policy.clone(),
-                search_key_derivation: input.deps.search.search_key_derivation.clone(),
-                search_pipeline: input.deps.search.search_pipeline.clone(),
-                search_index: input.deps.search.search_index.clone(),
-            }),
+        let clipboard_live_index_facade = Arc::new(ClipboardLiveIndexFacade::new(Arc::clone(
+            &search_live_indexer,
         )));
         let clipboard_change_handler = Arc::new(DaemonClipboardChangeHandler::new(
             input.event_tx.clone(),

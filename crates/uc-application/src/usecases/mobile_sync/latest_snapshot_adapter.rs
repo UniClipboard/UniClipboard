@@ -1,13 +1,15 @@
 //! `LatestClipboardSnapshotAdapter` —— mobile sync 出站读路径的适配器。
 //!
-//! 把 `LatestClipboardSnapshotPort`(`uc-core`)对接到既有的 5 个 clipboard 通
-//! 路 port 上,组合产生"最近一条 entry 的 paste-priority rep + 字节"。
+//! 把 `LatestClipboardSnapshotPort`(`uc-core`)对接到既有的 clipboard 通路
+//! port 上,组合产生"当前活跃内容(active-clipboard register)的 paste-priority
+//! rep + 字节"。
 //!
 //! ## 数据流
 //!
 //! ```text
 //! latest_paste_representation()
-//!   ↓ list_entries(1, 0) — 取最新一条
+//!   ↓ active_register_load.load() — 取当前活跃内容的本地 entry_id
+//!   ↓ get_entry(entry_id) — 补出含 event_id 的 entry
 //! ClipboardEntry { entry_id, event_id }
 //!   ↓ get_selection(entry_id) — 拿 paste_rep_id
 //! ClipboardSelectionDecision.selection.paste_rep_id
@@ -49,22 +51,27 @@ use uc_core::clipboard::{
 use uc_core::ids::{EntryId, EventId, RepresentationId};
 use uc_core::mobile_sync::LatestPasteRepresentation;
 use uc_core::ports::clipboard::{
-    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, GetRepresentationPort,
-    ListClipboardEntriesPort, ResolvedClipboardPayload,
+    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, GetClipboardEntryPort,
+    GetRepresentationPort, LoadActiveClipboardPort, ResolvedClipboardPayload,
 };
 use uc_core::ports::mobile_sync::{LatestClipboardSnapshotError, LatestClipboardSnapshotPort};
 use uc_core::MimeType;
 
-/// 5 个 port 的捆绑,用于构造 [`LatestClipboardSnapshotAdapter`]。
+/// port 的捆绑,用于构造 [`LatestClipboardSnapshotAdapter`]。
 ///
-/// 单独抽出来是为了避免 `MobileSyncFacadeDeps` 字段直接挂 5 个并列 port,
+/// 单独抽出来是为了避免 `MobileSyncFacadeDeps` 字段直接挂一排并列 port,
 /// 拆分类型让"snapshot 这一路要用啥"在调用方一眼可见。
+///
+/// 出站读以 active-clipboard register 为锚:`active_register_load` 给出"当前
+/// 活跃内容"的本地 `entry_id`,`entry_repo` 据此补出含 `event_id` 的 entry,
+/// 后续 selection / representation / blob 物化链路与来源无关。
 ///
 /// `pub` 而非 `pub(crate)`:bootstrap 在 facade 装配点直接用本结构,
 /// 但因为本文件在 `pub(crate) mod latest_snapshot_adapter` 之下,只能
 /// 通过 facade 层 re-export 间接访问 —— 仍守住 §11.4 边界。
 pub struct MobileSyncSnapshotPorts {
-    pub entry_repo: Arc<dyn ListClipboardEntriesPort>,
+    pub active_register_load: Arc<dyn LoadActiveClipboardPort>,
+    pub entry_repo: Arc<dyn GetClipboardEntryPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     pub representation_repo: Arc<dyn GetRepresentationPort>,
     pub payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
@@ -80,21 +87,37 @@ impl LatestClipboardSnapshotAdapter {
         Self { ports }
     }
 
-    /// Step 1+2:取最新 entry 与对应的 selection decision。
+    /// Step 1+2:解析"当前活跃内容"的 entry 与对应的 selection decision。
     ///
-    /// 任一不存在(没 entry / 没 selection)→ `Ok(None)`,与现有 `NotFound` 翻
-    /// 译保持一致。port 层错误统一翻成 `Resolution`。
+    /// 锚点是 active-clipboard register:`load` 给出当前活跃内容的本地
+    /// `entry_id`(register 前进 ⟺ 内容已物化为本地 entry,故此 id 恒有效),
+    /// `get_entry` 据此补出含 `event_id` 的完整 entry 供下游 representation
+    /// 查询使用。
+    ///
+    /// 任一环节为空(register 未写过 / entry 已不存在 / 没有 selection)→
+    /// `Ok(None)`,与现有 `NotFound` 翻译保持一致。port 层错误统一翻成
+    /// `Resolution`。
     async fn load_entry_and_selection(
         &self,
     ) -> Result<Option<(ClipboardEntry, ClipboardSelectionDecision)>, LatestClipboardSnapshotError>
     {
-        let entries = self
+        let state = self
             .ports
-            .entry_repo
-            .list_entries(1, 0)
+            .active_register_load
+            .load()
             .await
             .map_err(|e| LatestClipboardSnapshotError::Resolution(e.to_string()))?;
-        let Some(entry) = entries.into_iter().next() else {
+        let Some(state) = state else {
+            return Ok(None);
+        };
+
+        let entry = self
+            .ports
+            .entry_repo
+            .get_entry(&state.entry_id)
+            .await
+            .map_err(|e| LatestClipboardSnapshotError::Resolution(e.to_string()))?;
+        let Some(entry) = entry else {
             return Ok(None);
         };
 
@@ -246,13 +269,15 @@ mod tests {
     //!
     //! | 输入 | 期望 |
     //! |---|---|
-    //! | entries 空 | Ok(None) |
-    //! | entries 有 + selection 空 | Ok(None) |
-    //! | entries 有 + selection 有 + rep 不存在 | Ok(None) |
+    //! | register 空 (load None) | Ok(None) |
+    //! | register 指向的 entry 不存在 (get_entry None) | Ok(None) |
+    //! | entry 有 + selection 空 | Ok(None) |
+    //! | entry 有 + selection 有 + rep 不存在 | Ok(None) |
     //! | inline 分支 | Ok(Some(...)) |
     //! | blob_ref 分支 + reader 成功 | Ok(Some(...)) |
     //! | inline mime 空串 | Ok(Some(.., mime=None)) |
-    //! | entry_repo 错 | Err(Resolution) |
+    //! | register load 错 | Err(Resolution) |
+    //! | get_entry 错 | Err(Resolution) |
     //! | resolver 错 | Err(Resolution) |
     //! | blob_reader 错 | Err(Resolution) |
     //!
@@ -274,44 +299,83 @@ mod tests {
     use std::sync::Mutex;
 
     use uc_core::clipboard::{
-        ClipboardEntry, ClipboardRepositoryError, ClipboardSelection, ClipboardSelectionDecision,
-        MimeType, PersistedClipboardRepresentation, SelectionPolicyVersion,
+        ActiveClipboardState, ClipboardEntry, ClipboardRepositoryError, ClipboardSelection,
+        ClipboardSelectionDecision, MimeType, PersistedClipboardRepresentation,
+        SelectionPolicyVersion,
     };
-    use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
-    use uc_core::ports::clipboard::PayloadResolveError;
+    use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
+    use uc_core::ports::clipboard::{ActiveClipboardRegisterError, PayloadResolveError};
     use uc_core::BlobId;
 
-    // ── Fake EntryRepo ───────────────────────────────────────────────────
-    #[derive(Default)]
-    struct FakeEntryRepo {
-        next: Mutex<Option<Result<Vec<ClipboardEntry>, ClipboardRepositoryError>>>,
+    // ── Fake source: active register load + entry get ────────────────────
+    //
+    // 出站读以 active register 为锚:`load()` 给出当前活跃内容的 `entry_id`,
+    // `get_entry()` 据此补出含 `event_id` 的 entry。两步合到一个 fake 里,按
+    // "是否有活跃内容 / entry 是否可取"一次配置;各方法只消费一次,二次调用
+    // panic 以暴露非预期的重复读。
+    struct FakeSource {
+        load: Mutex<Option<Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError>>>,
+        get: Mutex<Option<Result<Option<ClipboardEntry>, ClipboardRepositoryError>>>,
     }
-    impl FakeEntryRepo {
-        fn ok(entries: Vec<ClipboardEntry>) -> Self {
-            Self {
-                next: Mutex::new(Some(Ok(entries))),
-            }
+    impl FakeSource {
+        fn build(
+            load: Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError>,
+            get: Result<Option<ClipboardEntry>, ClipboardRepositoryError>,
+        ) -> Arc<Self> {
+            Arc::new(Self {
+                load: Mutex::new(Some(load)),
+                get: Mutex::new(Some(get)),
+            })
         }
-        fn err(msg: &str) -> Self {
-            Self {
-                next: Mutex::new(Some(Err(ClipboardRepositoryError::Storage(
-                    msg.to_string(),
-                )))),
-            }
+        fn state_for(entry_id: EntryId) -> ActiveClipboardState {
+            ActiveClipboardState::new("blake3v1:test", entry_id, 1, DeviceId::new("dev-test"))
+        }
+        /// 活跃内容存在且 entry 可取:`load` 指向 `e.entry_id`,`get_entry`
+        /// 返回该 entry。
+        fn with_entry(e: ClipboardEntry) -> Arc<Self> {
+            let state = Self::state_for(e.entry_id.clone());
+            Self::build(Ok(Some(state)), Ok(Some(e)))
+        }
+        /// register 从未写过 → `load` 返回 None。
+        fn empty() -> Arc<Self> {
+            Self::build(Ok(None), Ok(None))
+        }
+        /// register 指向一个已不存在的 entry → `load` Some,`get_entry` None。
+        fn entry_missing() -> Arc<Self> {
+            Self::build(Ok(Some(Self::state_for(EntryId::from("e1")))), Ok(None))
+        }
+        /// register load 自身失败。
+        fn load_err(msg: &str) -> Arc<Self> {
+            Self::build(
+                Err(ActiveClipboardRegisterError::Storage(msg.to_string())),
+                Ok(None),
+            )
+        }
+        /// load 成功但 entry 查询失败。
+        fn get_err(msg: &str) -> Arc<Self> {
+            Self::build(
+                Ok(Some(Self::state_for(EntryId::from("e1")))),
+                Err(ClipboardRepositoryError::Storage(msg.to_string())),
+            )
         }
     }
     #[async_trait]
-    impl ListClipboardEntriesPort for FakeEntryRepo {
-        async fn list_entries(
+    impl LoadActiveClipboardPort for FakeSource {
+        async fn load(&self) -> Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError> {
+            self.load.lock().unwrap().take().expect("load 被调用多次")
+        }
+    }
+    #[async_trait]
+    impl GetClipboardEntryPort for FakeSource {
+        async fn get_entry(
             &self,
-            _limit: usize,
-            _offset: usize,
-        ) -> Result<Vec<ClipboardEntry>, ClipboardRepositoryError> {
-            self.next
+            _entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError> {
+            self.get
                 .lock()
                 .unwrap()
                 .take()
-                .expect("list_entries 被调用多次")
+                .expect("get_entry 被调用多次")
         }
     }
 
@@ -451,14 +515,16 @@ mod tests {
     }
 
     fn build_adapter(
-        entry_repo: Arc<dyn ListClipboardEntriesPort>,
+        source: Arc<FakeSource>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         representation_repo: Arc<dyn GetRepresentationPort>,
         payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
         blob_reader: Arc<dyn BlobReaderPort>,
     ) -> LatestClipboardSnapshotAdapter {
+        // FakeSource 同时充当 register-load 与 entry-get 两条 port。
         LatestClipboardSnapshotAdapter::new(MobileSyncSnapshotPorts {
-            entry_repo,
+            active_register_load: source.clone(),
+            entry_repo: source,
             selection_repo,
             representation_repo,
             payload_resolver,
@@ -485,9 +551,10 @@ mod tests {
 
     // ── tests ────────────────────────────────────────────────────────────
     #[tokio::test]
-    async fn empty_entries_returns_none() {
+    async fn empty_register_returns_none() {
+        // active register 从未写过 → load() == None → NotFound 上游。
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![])),
+            FakeSource::empty(),
             dummy_selection_repo(),
             dummy_rep_repo(),
             dummy_resolver(),
@@ -501,9 +568,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn entry_missing_returns_none() {
+        // register 指向的 entry 已不存在(get_entry == None)→ None,而非错。
+        let adapter = build_adapter(
+            FakeSource::entry_missing(),
+            dummy_selection_repo(),
+            dummy_rep_repo(),
+            dummy_resolver(),
+            dummy_blob_reader(),
+        );
+        assert!(adapter
+            .latest_paste_representation()
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn register_load_error_propagates_as_resolution() {
+        let adapter = build_adapter(
+            FakeSource::load_err("simulated register read failure"),
+            dummy_selection_repo(),
+            dummy_rep_repo(),
+            dummy_resolver(),
+            dummy_blob_reader(),
+        );
+        let err = adapter.latest_paste_representation().await.unwrap_err();
+        assert!(matches!(err, LatestClipboardSnapshotError::Resolution(_)));
+    }
+
+    #[tokio::test]
     async fn missing_selection_returns_none() {
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(None)),
             dummy_rep_repo(),
             dummy_resolver(),
@@ -519,7 +616,7 @@ mod tests {
     #[tokio::test]
     async fn missing_representation_returns_none() {
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection("e1", "r1")))),
             Arc::new(FakeRepRepo::ok(None)),
             dummy_resolver(),
@@ -535,7 +632,7 @@ mod tests {
     #[tokio::test]
     async fn inline_path_round_trips_bytes_and_mime() {
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection("e1", "r1")))),
             Arc::new(FakeRepRepo::ok(Some(rep("r1", "text", Some("text/plain"))))),
             Arc::new(FakeResolver::ok(ResolvedClipboardPayload::Inline {
@@ -558,7 +655,7 @@ mod tests {
     #[tokio::test]
     async fn blob_ref_path_calls_reader_and_round_trips_bytes() {
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection("e1", "r1")))),
             Arc::new(FakeRepRepo::ok(Some(rep("r1", "image", Some("image/png"))))),
             Arc::new(FakeResolver::ok(ResolvedClipboardPayload::BlobRef {
@@ -581,7 +678,7 @@ mod tests {
     async fn empty_mime_string_falls_back_to_none() {
         // resolver 给空串 mime → 视作"无 mime",mapping 层走 Text 兜底。
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection("e1", "r1")))),
             Arc::new(FakeRepRepo::ok(Some(rep("r1", "text", None)))),
             Arc::new(FakeResolver::ok(ResolvedClipboardPayload::Inline {
@@ -601,7 +698,7 @@ mod tests {
     #[tokio::test]
     async fn entry_repo_error_propagates_as_resolution() {
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::err("sqlite simulated failure")),
+            FakeSource::get_err("sqlite simulated failure"),
             dummy_selection_repo(),
             dummy_rep_repo(),
             dummy_resolver(),
@@ -614,7 +711,7 @@ mod tests {
     #[tokio::test]
     async fn resolver_error_propagates_as_resolution() {
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection("e1", "r1")))),
             Arc::new(FakeRepRepo::ok(Some(rep("r1", "text", Some("text/plain"))))),
             Arc::new(FakeResolver::err("payload state lost")),
@@ -627,7 +724,7 @@ mod tests {
     #[tokio::test]
     async fn blob_reader_error_propagates_as_resolution() {
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection("e1", "r1")))),
             Arc::new(FakeRepRepo::ok(Some(rep("r1", "image", Some("image/png"))))),
             Arc::new(FakeResolver::ok(ResolvedClipboardPayload::BlobRef {
@@ -724,7 +821,7 @@ mod tests {
         // paste rep 本身就是 text/plain → 一次命中, 不需要扫 secondary。
         let plain = rep("r-plain", "text", Some("text/plain"));
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
                 "e1",
                 "r-plain",
@@ -757,7 +854,7 @@ mod tests {
         let rtf = rep("r-rtf", "rtf", Some("text/rtf"));
         let plain = rep("r-plain", "text", Some("text/plain"));
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
                 "e1",
                 "r-rtf",
@@ -799,7 +896,7 @@ mod tests {
         let html_paste = rep("r-html", "html", Some("text/html"));
         let html_alt = rep("r-html-alt", "html", Some("text/html"));
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
                 "e1",
                 "r-html",
@@ -831,7 +928,7 @@ mod tests {
         // 误判为 plaintext, 行为与 latest_paste_representation 一致。
         let img = rep("r-img", "image", Some("image/png"));
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
                 "e1",
                 "r-img",
@@ -863,7 +960,7 @@ mod tests {
         // 的 format_id 兜底分支, 仍然识别为 plaintext。
         let no_mime = rep("r-text-only", "text", None);
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
                 "e1",
                 "r-text-only",
@@ -903,7 +1000,7 @@ mod tests {
         // 模拟 paste 行被外部清理 / 还未落库的场景。
         let plain = rep("r-plain", "text", Some("text/plain"));
         let adapter = build_adapter(
-            Arc::new(FakeEntryRepo::ok(vec![entry("e1", "ev1")])),
+            FakeSource::with_entry(entry("e1", "ev1")),
             Arc::new(FakeSelectionRepo::ok(Some(selection_with_secondary(
                 "e1",
                 "r-missing-paste",

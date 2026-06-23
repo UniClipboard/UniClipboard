@@ -866,6 +866,28 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl uc_core::ports::clipboard::GetClipboardEntryPort for UnusedEntryRepo {
+        async fn get_entry(
+            &self,
+            _: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, uc_core::clipboard::ClipboardRepositoryError> {
+            unimplemented!("not used by facade-level happy-path tests")
+        }
+    }
+
+    #[async_trait]
+    impl uc_core::ports::clipboard::LoadActiveClipboardPort for UnusedEntryRepo {
+        async fn load(
+            &self,
+        ) -> Result<
+            Option<uc_core::clipboard::ActiveClipboardState>,
+            uc_core::ports::clipboard::ActiveClipboardRegisterError,
+        > {
+            unimplemented!("not used by facade-level happy-path tests")
+        }
+    }
+
     struct UnusedSelectionRepo;
     #[async_trait]
     impl ClipboardSelectionRepositoryPort for UnusedSelectionRepo {
@@ -985,7 +1007,8 @@ mod tests {
     }
 
     fn build_facade() -> MobileSyncFacade {
-        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn uc_core::ports::clipboard::GetClipboardEntryPort> =
+            Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1004,6 +1027,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
+                active_register_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),
@@ -1143,7 +1167,8 @@ mod tests {
         let repo = Arc::new(InMemoryDeviceRepo::default());
         repo.save(&direct_device).await.unwrap();
 
-        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn uc_core::ports::clipboard::GetClipboardEntryPort> =
+            Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1163,6 +1188,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
+                active_register_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),
@@ -1228,7 +1254,8 @@ mod tests {
         let repo = Arc::new(InMemoryDeviceRepo::default());
         repo.save(&direct_device).await.unwrap();
 
-        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn uc_core::ports::clipboard::GetClipboardEntryPort> =
+            Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1248,6 +1275,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
+                active_register_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),
@@ -1345,7 +1373,8 @@ mod tests {
     }
 
     fn build_facade_with_lifecycle(lifecycle: Arc<RecordingLanLifecycle>) -> MobileSyncFacade {
-        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn uc_core::ports::clipboard::GetClipboardEntryPort> =
+            Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1364,6 +1393,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
+                active_register_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),
@@ -1492,7 +1522,8 @@ mod tests {
             reason: "Address already in use (os error 48)".into(),
         });
 
-        let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(UnusedEntryRepo);
+        let entry_repo: Arc<dyn uc_core::ports::clipboard::GetClipboardEntryPort> =
+            Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
             Arc::new(UnusedEntryRepo)
                 as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -1513,6 +1544,7 @@ mod tests {
             incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
             file_staging: staging_unused(),
             snapshot_ports: MobileSyncSnapshotPorts {
+                active_register_load: Arc::new(UnusedEntryRepo),
                 entry_repo,
                 selection_repo: Arc::new(UnusedSelectionRepo),
                 representation_repo: Arc::new(UnusedRepRepo),

@@ -26,7 +26,7 @@ use uc_core::ports::clipboard::{
     SelfWriteAttribution, SelfWriteLedgerPort, SelfWriteMatch, SystemClipboardPort,
 };
 
-use super::timing::{CLIPBOARD_ECHO_RTT_MAX, SELF_WRITE_STALENESS_BACKSTOP};
+use super::timing::CLIPBOARD_ECHO_RTT_MAX;
 
 /// Number of consecutive OS-write failures that trip the circuit.
 ///
@@ -50,11 +50,13 @@ const DEFAULT_CIRCUIT_OPEN_DURATION: Duration = Duration::from_secs(30);
 
 /// Represents the intent behind a programmatic clipboard write.
 ///
-/// Each variant carries per-intent guard TTL semantics (windows defined in
-/// [`super::timing`], not as inline literals):
-/// - `LocalRestore`: `CLIPBOARD_ECHO_RTT_MAX` hash guard + one-shot next-origin override
-/// - `LocalCapture`: `CLIPBOARD_ECHO_RTT_MAX` hash guard (short-lived, local op)
-/// - `RemotePush`: `SELF_WRITE_STALENESS_BACKSTOP` hash guard + one-shot next-origin override (OS re-encoding guard)
+/// Each variant arms a self-write record under the single echo budget defined
+/// in [`super::timing`] (`CLIPBOARD_ECHO_RTT_MAX`), never as inline literals.
+/// The budget is a GC backstop; the next watcher event is what consumes the
+/// record:
+/// - `LocalRestore`: content hash guard + one-shot next-origin override
+/// - `LocalCapture`: content hash guard (short-lived, local op)
+/// - `RemotePush`: content hash guard + one-shot next-origin override (OS re-encoding guard)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardWriteIntent {
     /// A local clipboard history restore (user clicked "restore" in history).
@@ -211,9 +213,9 @@ impl ClipboardWriteCoordinator {
     ///
     /// # Intent semantics
     ///
-    /// All record windows come from [`super::timing`] (`CLIPBOARD_ECHO_RTT_MAX`
-    /// for local, `SELF_WRITE_STALENESS_BACKSTOP` for remote), never inline.
-    /// Both arm via `SelfWriteLedgerPort::record_self_write`.
+    /// Every record uses the single echo budget from [`super::timing`]
+    /// (`CLIPBOARD_ECHO_RTT_MAX`), never inline, armed via
+    /// `SelfWriteLedgerPort::record_self_write`.
     ///
     /// - `LocalRestore`: records a `ByContent`/`Local` self-write, writes, then
     ///   records a `ByNextChange`/`Local` fallback to cover file URI/path
@@ -286,7 +288,7 @@ impl ClipboardWriteCoordinator {
                         .record_self_write(
                             SelfWriteMatch::ByContent(origin_guard_key.clone()),
                             SelfWriteAttribution::Remote,
-                            SELF_WRITE_STALENESS_BACKSTOP,
+                            CLIPBOARD_ECHO_RTT_MAX,
                         )
                         .await;
                 }
@@ -345,7 +347,7 @@ impl ClipboardWriteCoordinator {
                         .record_self_write(
                             SelfWriteMatch::ByNextChange,
                             SelfWriteAttribution::Remote,
-                            SELF_WRITE_STALENESS_BACKSTOP,
+                            CLIPBOARD_ECHO_RTT_MAX,
                         )
                         .await;
                 }

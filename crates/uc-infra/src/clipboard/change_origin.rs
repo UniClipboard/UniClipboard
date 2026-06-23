@@ -6,6 +6,14 @@ use tracing::debug;
 use uc_core::ports::clipboard::{SelfWriteAttribution, SelfWriteLedgerPort, SelfWriteMatch};
 use uc_core::ClipboardChangeOrigin;
 
+/// In-memory [`SelfWriteLedgerPort`] implementation.
+///
+/// Attribution is event-driven: a content-keyed record is consumed the moment
+/// a change with the matching hash is observed, and the next-change fallback is
+/// consumed by the very next observed change. The per-record `expires_at` is a
+/// pure garbage-collection backstop — it reclaims a record whose echo never
+/// arrives (identical content, or a failed write), and never overrides the
+/// next-event consumption above.
 pub(crate) struct InMemorySelfWriteLedger {
     state: Mutex<OriginStore>,
 }

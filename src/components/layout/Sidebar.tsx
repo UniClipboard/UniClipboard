@@ -3,8 +3,7 @@ import {
   ArrowUpCircle,
   Bug,
   Check,
-  ClipboardList,
-  Home,
+  Layers,
   MessageSquare,
   Monitor,
   Settings,
@@ -207,8 +206,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       : null
 
   const navItems = [
-    { to: '/', icon: Home, label: t('nav.dashboard') },
-    { to: '/history', icon: ClipboardList, label: t('nav.history') },
+    { to: '/history', icon: Layers, label: t('nav.history') },
     { to: '/devices', icon: Monitor, label: t('nav.devices') },
   ]
 

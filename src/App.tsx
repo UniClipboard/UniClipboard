@@ -28,7 +28,6 @@ import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands, type DaemonBootstrapFailure } from '@/lib/ipc'
 import { reportError } from '@/observability/errors'
 import { SentryRoutes } from '@/observability/sentry'
-import DashboardPage from '@/pages/DashboardPage'
 import DevicesPage from '@/pages/DevicesPage'
 import HistoryPage from '@/pages/HistoryPage'
 import SettingsPage from '@/pages/SettingsPage'
@@ -396,16 +395,9 @@ const AppContent = ({
       <GlobalShortcuts />
       <SentryRoutes>
         <Route element={<AuthenticatedLayout />}>
-          <Route
-            path="/"
-            element={
-              <div className="w-full h-full">
-                <DashboardPage />
-              </div>
-            }
-          />
-          <Route path="/devices" element={<DevicesPage />} />
+          <Route path="/" element={<Navigate to="/history" replace />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/devices" element={<DevicesPage />} />
         </Route>
         <Route element={<SettingsFullLayout />}>
           <Route path="/settings" element={<SettingsPage />} />

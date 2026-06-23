@@ -1,5 +1,4 @@
 import React from 'react'
-import { usePlatform } from '@/hooks/usePlatform'
 import { cn } from '@/lib/utils'
 
 type InsetSurfaceProps = React.HTMLAttributes<HTMLDivElement>
@@ -8,8 +7,6 @@ type InsetSurfaceProps = React.HTMLAttributes<HTMLDivElement>
  * InsetSurface: A clean, minimal content container with a subtle 'elevated sheet' aesthetic.
  */
 const InsetSurface: React.FC<InsetSurfaceProps> = ({ className, children, ...props }) => {
-  const { isWindows } = usePlatform()
-
   return (
     <div
       className={cn(
@@ -17,8 +14,8 @@ const InsetSurface: React.FC<InsetSurfaceProps> = ({ className, children, ...pro
         'rounded-[1.25rem] bg-card text-card-foreground border border-border/40',
         // Dark mode specific depth shadow, light mode is kept clean
         'shadow-none dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)]',
-        // Platform specific material optimizations
-        isWindows && 'bg-card/90 backdrop-blur-xl',
+        // Opaque surface on every platform: a full-viewport backdrop-blur here
+        // pegged weak GPUs (Intel HD3000 / WebView2 on Windows). See issue #1129.
         className
       )}
       {...props}

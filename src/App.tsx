@@ -10,7 +10,6 @@ import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import StartupModals from '@/components/StartupModals'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
-import { useSearch } from '@/contexts/search-context'
 import { SearchProvider } from '@/contexts/SearchContext'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
@@ -439,18 +438,10 @@ export default function App() {
   )
 }
 
-// TitleBar wrapper with search context + slot context
+// TitleBar wrapper with slot context
 const TitleBarWithSearch = ({ isSetupActive }: { isSetupActive: boolean }) => {
-  const { searchValue, setSearchValue } = useSearch()
   const slotCtx = useContext(TitleBarSlotContext)
-  return (
-    <TitleBar
-      searchValue={searchValue}
-      onSearchChange={setSearchValue}
-      isSetupActive={isSetupActive}
-      rightSlot={slotCtx?.rightSlot}
-    />
-  )
+  return <TitleBar isSetupActive={isSetupActive} rightSlot={slotCtx?.rightSlot} />
 }
 
 // App content with WindowShell structure

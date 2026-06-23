@@ -1,9 +1,6 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Minus, Square, X, Search } from 'lucide-react'
+import { Minus, Square, X } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { useLocation } from 'react-router-dom'
-import { Input } from '@/components/ui/input'
 import { usePlatform } from '@/hooks/usePlatform'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -13,8 +10,6 @@ const log = createLogger('title-bar')
 
 interface TitleBarProps {
   className?: string
-  searchValue?: string
-  onSearchChange?: (value: string) => void
   isSetupActive?: boolean
   rightSlot?: React.ReactNode
 }
@@ -60,23 +55,13 @@ const TitleBarButton = ({
   </button>
 )
 
-export const TitleBar = ({
-  className,
-  searchValue = '',
-  onSearchChange,
-  isSetupActive = false,
-  rightSlot,
-}: TitleBarProps) => {
+export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleBarProps) => {
   const [isMaximized, setIsMaximized] = useState(false)
-  const location = useLocation()
-  const { t } = useTranslation()
 
   // 使用 usePlatform hook 获取平台信息
   const { isWindows, isMac, isTauri } = usePlatform()
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
 
-  const isDashboardPage = location.pathname === '/'
-  const isSearchPage = isDashboardPage
   // Setup 页面隐藏 TitleBar 保持沉浸感
   const shouldHideTitleBar = isSetupActive
 
@@ -156,8 +141,6 @@ export const TitleBar = ({
     }
   }
 
-  const [isSearchFocused, setIsSearchFocused] = useState(false)
-
   if (shouldHideTitleBar) {
     return null
   }
@@ -207,34 +190,6 @@ export const TitleBar = ({
             }}
             tabIndex={-1}
           />
-          {isSearchPage ? (
-            <div className="relative z-10 flex items-center w-64 max-w-xs transition-all duration-200">
-              <Search
-                className={cn(
-                  'absolute left-2.5 size-3.5 transition-colors duration-200',
-                  isSearchFocused ? 'text-primary' : 'text-muted-foreground'
-                )}
-              />
-              <Input
-                data-tauri-drag-region="false"
-                type="text"
-                value={searchValue}
-                onChange={e => onSearchChange?.(e.target.value)}
-                placeholder={t('header.searchPlaceholder')}
-                className={cn(
-                  'h-7 w-full pl-8 pr-2.5 py-1',
-                  'bg-muted/50 hover:bg-muted/70',
-                  'border border-border/50 rounded-lg text-sm',
-                  'focus-visible:bg-background focus-visible:border-primary/50',
-                  'transition-all duration-200',
-                  'focus-visible:ring-0 focus-visible:ring-offset-0',
-                  'placeholder:text-muted-foreground/50'
-                )}
-                onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setIsSearchFocused(false)}
-              />
-            </div>
-          ) : null}
         </div>
         {rightSlot && (
           <div className="relative z-10 flex items-center pr-2" data-tauri-drag-region="false">

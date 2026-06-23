@@ -166,6 +166,11 @@ pub struct ClipboardMeta {
     pub size: u64,
     /// SHA-256 hex. Optional on upload, always present in daemon responses.
     pub hash: Option<String>,
+    /// Server-assigned opaque cross-device identity (`blake3v1:<hex>`), stable
+    /// across server-side re-encodes. Present in GET responses; `None` on the
+    /// upload path and from a legacy server. Passed through verbatim — the sync
+    /// reducer dedups on it (see `uc_mobile_proto::sync_engine`).
+    pub content_id: Option<String>,
 }
 
 impl ClipboardMeta {
@@ -173,7 +178,7 @@ impl ClipboardMeta {
     /// [`ProtoClipboard::new`] so the `hash` empty/whitespace→omitted
     /// normalization (Swift `Clipboard.init`) is applied on upload.
     pub(crate) fn into_proto(self) -> ProtoClipboard {
-        ProtoClipboard::new(
+        let mut proto = ProtoClipboard::new(
             self.kind.into(),
             self.hash,
             self.text,
@@ -182,11 +187,18 @@ impl ClipboardMeta {
             // The FFI surface keeps `size` non-optional; the daemon/Swift
             // upload path always carries a size, so emit it.
             Some(self.size as i64),
-        )
+        );
+        // `ProtoClipboard::new` is the upload/observe constructor and leaves
+        // `content_id = None`; carry the (server-originated) identity through
+        // verbatim so a decoded server entry keeps it across the FFI into the
+        // sync reducer. Opaque — no normalization here.
+        proto.content_id = self.content_id;
+        proto
     }
 
     /// Map from a decoded wire document. The proto decoder already normalized
     /// `hash`; a degenerate negative `size` from a buggy peer clamps to 0.
+    /// `content_id` is passed through verbatim (no case-folding/normalization).
     pub(crate) fn from_proto(c: ProtoClipboard) -> Self {
         Self {
             kind: c.kind.into(),
@@ -195,6 +207,7 @@ impl ClipboardMeta {
             has_data: c.has_data,
             size: c.size.unwrap_or(0).max(0) as u64,
             hash: c.hash,
+            content_id: c.content_id,
         }
     }
 }
@@ -1475,6 +1488,7 @@ mod tests {
             has_data: true,
             size: 3,
             hash: None,
+            content_id: None,
         }
     }
 
@@ -1486,6 +1500,32 @@ mod tests {
             has_data: false,
             size: 2,
             hash: Some("AA".into()),
+            content_id: None,
+        }
+    }
+
+    // ── ClipboardMeta ⇄ proto content_id passthrough ──────────────────────
+
+    /// `content_id` crosses both directions verbatim — no case-folding /
+    /// normalization (unlike `hash`/`size`, which `into_proto`/`from_proto`
+    /// transform). Covers both the `Some` and `None` states.
+    #[test]
+    fn clipboard_meta_content_id_round_trips_verbatim() {
+        for cid in [Some("blake3v1:AbCd".to_string()), None] {
+            let meta = ClipboardMeta {
+                kind: ClipboardKind::Image,
+                text: "p.png".into(),
+                data_name: Some("p.png".into()),
+                has_data: true,
+                size: 10,
+                hash: Some("aabb".into()),
+                content_id: cid.clone(),
+            };
+            let proto = meta.clone().into_proto();
+            // Stored on the proto verbatim (case preserved).
+            assert_eq!(proto.content_id, cid);
+            // And comes back unchanged.
+            assert_eq!(ClipboardMeta::from_proto(proto).content_id, cid);
         }
     }
 

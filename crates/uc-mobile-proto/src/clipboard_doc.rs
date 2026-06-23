@@ -10,10 +10,16 @@
 //! rows) and A4 (long-text overflow).
 //!
 //! ## BYTE-CRITICAL invariants (checklist A2/A4 🔴)
-//! - JSON field names are exactly `type` / `hash` / `text` / `hasData` /
-//!   `dataName` / `size`, encoded in that order (struct declaration order).
-//!   `None` fields are **OMITTED ENTIRELY** — never serialized as `null`
+//! - JSON field names are exactly `type` / `hash` / `contentId` / `text` /
+//!   `hasData` / `dataName` / `size`, encoded in that order (struct declaration
+//!   order). `None` fields are **OMITTED ENTIRELY** — never serialized as `null`
 //!   (spec §3.1; Swift uses `encodeIfPresent`).
+//! - `contentId` is a SERVER-ORIGINATED, opaque cross-device identity string
+//!   (`blake3v1:<hex>`): present in `GET /SyncClipboard.json` responses, absent
+//!   on the client upload path (the device never computes it). It is compared
+//!   verbatim as a whole string — NOT normalized, NOT uppercased, NOT routed
+//!   through the `hash` case-folding path. A legacy server omits it entirely, so
+//!   decode tolerates the key being absent (`None`).
 //! - `type` enum raw values are `Text` / `Image` / `File` / `Group`.
 //! - Long-text overflow threshold is **10240 GRAPHEME CLUSTERS** (Swift
 //!   `String.count` semantics, UAX #29 extended grapheme clusters via
@@ -69,11 +75,12 @@ impl ClipboardKind {
 /// On-the-wire clipboard snapshot. Spec §3; mirrors `struct Clipboard` in
 /// `Clipboard.swift`.
 ///
-/// Field declaration order is the wire encode order (`type`, `hash`, `text`,
-/// `hasData`, `dataName`, `size`) — Swift's hand-written `encode(to:)` emits
-/// the keys in exactly this order, and serde serializes struct fields in
-/// declaration order. Optional fields use `skip_serializing_if` so `None` is
-/// omitted entirely, never written as `null` (spec §3.1, BYTE-CRITICAL).
+/// Field declaration order is the wire encode order (`type`, `hash`,
+/// `contentId`, `text`, `hasData`, `dataName`, `size`) — Swift's hand-written
+/// `encode(to:)` emits the keys in this order, and serde serializes struct
+/// fields in declaration order. Optional fields use `skip_serializing_if` so
+/// `None` is omitted entirely, never written as `null` (spec §3.1,
+/// BYTE-CRITICAL).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Clipboard {
     /// Content kind; wire key `type`.
@@ -88,6 +95,14 @@ pub struct Clipboard {
         skip_serializing_if = "Option::is_none"
     )]
     pub hash: Option<String>,
+    /// Server-assigned, opaque cross-device content identity (`blake3v1:<hex>`),
+    /// stable across server-side re-encodes (e.g. JPEG→PNG) where `hash`
+    /// changes. Present only in server responses; the device never computes it,
+    /// so the upload path leaves it `None` and the encoder omits the key. A
+    /// legacy server never sends it. Compared verbatim — see the BYTE-CRITICAL
+    /// note above; do NOT route it through `hash`'s case-folding.
+    #[serde(rename = "contentId", default, skip_serializing_if = "Option::is_none")]
+    pub content_id: Option<String>,
     /// Inline text (full text, or the §3.4 preview when overflowed). For
     /// non-text kinds this is the basename label per §3.3.
     pub text: String,
@@ -122,6 +137,8 @@ impl Clipboard {
         Self {
             kind,
             hash: normalize_hash(hash),
+            // The upload/observe constructor never carries a server identity.
+            content_id: None,
             text,
             has_data,
             data_name,
@@ -139,6 +156,7 @@ impl Clipboard {
         Self {
             kind: ClipboardKind::Text,
             hash: Some(sha256_hex_upper(text.as_bytes())),
+            content_id: None,
             text: text.to_string(),
             has_data: false,
             data_name: None,
@@ -178,6 +196,7 @@ pub fn publish_text(text: &str) -> (Clipboard, Option<Vec<u8>>) {
         let entry = Clipboard {
             kind: ClipboardKind::Text,
             hash: Some(hash),
+            content_id: None,
             text: preview,
             has_data: true,
             data_name: Some(data_name),
@@ -188,6 +207,7 @@ pub fn publish_text(text: &str) -> (Clipboard, Option<Vec<u8>>) {
     let entry = Clipboard {
         kind: ClipboardKind::Text,
         hash: Some(hash),
+        content_id: None,
         text: text.to_string(),
         has_data: false,
         data_name: None,
@@ -209,6 +229,7 @@ pub fn publish_image(bytes: &[u8], ext: &str) -> (Clipboard, Vec<u8>) {
     let entry = Clipboard {
         kind: ClipboardKind::Image,
         hash: Some(sha256_hex_upper(bytes)),
+        content_id: None,
         text: data_name.clone(),
         has_data: true,
         data_name: Some(data_name),
@@ -229,6 +250,7 @@ pub fn publish_file(name: &str, bytes: &[u8]) -> (Clipboard, Vec<u8>) {
     let entry = Clipboard {
         kind: ClipboardKind::File,
         hash: Some(sha256_hex_upper(bytes)),
+        content_id: None,
         text: safe.clone(),
         has_data: true,
         data_name: Some(safe),
@@ -855,5 +877,80 @@ mod tests {
         let json = r#"{"type":"Text","text":"x","hasData":false,"size":-1}"#;
         let entry = decode(json);
         assert_eq!(entry.size, Some(-1));
+    }
+
+    // ── contentId (server-originated cross-device identity) ─────────────
+
+    /// A server `contentId` decodes verbatim into `content_id` and survives a
+    /// re-encode round-trip under the wire key `contentId`.
+    #[test]
+    fn content_id_decodes_and_round_trips_verbatim() {
+        let data = r#"{
+  "type": "Image",
+  "hash": "4DD7CC4227AA3FB2FDAC2597CB4F88EAC6F69A10BC1994F6B87CF8890C345AFC",
+  "contentId": "blake3v1:deadBEEF0123",
+  "text": "photo.png",
+  "hasData": true,
+  "dataName": "photo.png",
+  "size": 184320
+}"#;
+        let entry = decode(data);
+        // Opaque: case preserved, NOT folded like `hash`.
+        assert_eq!(entry.content_id.as_deref(), Some("blake3v1:deadBEEF0123"));
+        let re = encode(&entry);
+        assert!(re.contains("\"contentId\":\"blake3v1:deadBEEF0123\""));
+        assert_eq!(decode(&re).content_id, entry.content_id);
+    }
+
+    /// `None` `content_id` is OMITTED, never serialized as `null` (spec §3.1).
+    #[test]
+    fn content_id_none_is_omitted_not_nullified() {
+        let (clip, _) = publish_text("hi");
+        assert_eq!(clip.content_id, None);
+        let re = encode(&clip);
+        assert!(!re.contains("contentId"), "absent key, got {re}");
+        assert!(!re.contains("null"));
+    }
+
+    /// Backward compatibility: a legacy server's JSON with no `contentId` key
+    /// decodes with `content_id == None` and is otherwise unchanged.
+    #[test]
+    fn legacy_fixture_without_content_id_decodes_to_none() {
+        let data = r#"{
+  "type": "Text",
+  "hash": "3F4E62D9F184380BAD1B0F94B5518DCBF35ACB79B34F6D6E34F3DAB16CD7BC8F",
+  "text": "Hello, SyncClipboard!",
+  "hasData": false,
+  "size": 21
+}"#;
+        let entry = decode(data);
+        assert_eq!(entry.content_id, None);
+        assert_eq!(entry.text, "Hello, SyncClipboard!");
+    }
+
+    /// Explicit JSON `null` for `contentId` decodes like an absent key.
+    #[test]
+    fn content_id_explicit_null_decodes_to_none() {
+        let json = r#"{"type":"Text","contentId":null,"text":"x","hasData":false}"#;
+        assert_eq!(decode(json).content_id, None);
+    }
+
+    /// Wire order with `contentId` present: it sits between `hash` and `text`
+    /// (Swift declaration order). Guards the field placement.
+    #[test]
+    fn encode_places_content_id_between_hash_and_text() {
+        let entry = Clipboard {
+            kind: ClipboardKind::Image,
+            hash: Some("AABB".into()),
+            content_id: Some("blake3v1:00".into()),
+            text: "p.png".into(),
+            has_data: true,
+            data_name: Some("p.png".into()),
+            size: Some(1),
+        };
+        let json = encode(&entry);
+        let pos = |k: &str| json.find(&format!("\"{k}\"")).expect("key present");
+        assert!(pos("hash") < pos("contentId"));
+        assert!(pos("contentId") < pos("text"));
     }
 }

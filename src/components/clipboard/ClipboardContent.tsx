@@ -11,7 +11,7 @@ import { useFileSyncNotifications } from '@/hooks/useFileSyncNotifications'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
-import type { ClipboardEntry, ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { captureUserIntent } from '@/observability/breadcrumbs'
@@ -89,19 +89,6 @@ function mapSearchContentType(ft: SearchResultDto['contentType']): DisplayClipbo
     case 'other':
       return 'unknown'
   }
-}
-
-/** Format relative time from ms timestamp. */
-function formatRelativeTime(
-  ms: number,
-  t: (key: string, opts?: Record<string, unknown>) => string
-): string {
-  const diffMs = Date.now() - ms
-  const diffMins = Math.round(diffMs / 60000)
-  if (diffMins < 1) return t('clipboard.time.justNow')
-  if (diffMins < 60) return t('clipboard.time.minutesAgo', { minutes: diffMins })
-  if (diffMins < 1440) return t('clipboard.time.hoursAgo', { hours: Math.floor(diffMins / 60) })
-  return t('clipboard.time.daysAgo', { days: Math.floor(diffMins / 1440) })
 }
 
 /** Compact byte formatter used only for placeholder card hint text. */
@@ -238,7 +225,6 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         const items: DisplayClipboardItem[] = response.data.items.map(r => ({
           id: r.entryId,
           type: mapSearchContentType(r.contentType),
-          time: formatRelativeTime(r.activeTimeMs, t),
           activeTime: r.activeTimeMs,
           content: null,
           textPreview: r.textPreview ?? undefined,
@@ -264,55 +250,25 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [copySuccess, setCopySuccess] = useState(false)
-  const [tick, setTick] = useState(0)
 
   const activeItemRef = useRef<HTMLDivElement>(null)
   // 用户的视觉锚是否还贴在列表顶部。初次进入、点击/键盘把 active 放到第一项、
   // auto-follow 跟到新顶 都会把它设为 true;一旦用户主动选了非第一项就转 false。
   // 用 ref 跟踪而不是对比上一帧 first id, 是因为 effect 还会被 filter 切换、
-  // reduxItems 引用变化、tick 等非用户事件触发, 那些不该改变锚。
+  // reduxItems 引用变化等非用户事件触发, 那些不该改变锚。
   const anchoredToTopRef = useRef(true)
-
-  // Periodic tick to force timestamp recalculation
-  useEffect(() => {
-    if (!reduxItems || reduxItems.length === 0) return
-
-    const now = Date.now()
-    const hasRecentItems = reduxItems.some(item => now - item.activeTime < 3600000)
-    const interval = hasRecentItems ? 30000 : 60000
-
-    const id = setInterval(() => {
-      setTick(t => t + 1)
-    }, interval)
-
-    return () => clearInterval(id)
-  }, [reduxItems])
-
-  // Browse rows are the domain entry plus a render-time relative-time label.
-  const convertToDisplayItem = useCallback(
-    (entry: ClipboardEntry): DisplayClipboardItem => ({
-      ...entry,
-      time: formatRelativeTime(entry.activeTime, t),
-    }),
-    [t]
-  )
 
   // Build display items: server search results or Redux browse items
   const clipboardItems = useMemo(() => {
-    // `tick` is never read in the body, but formatRelativeTime uses Date.now()
-    // to build the "minutes ago" labels — every tick must throw away the cached
-    // display items and recompute, otherwise timestamps freeze at the moment of
-    // the last dependency change. Reading tick explicitly tells react-doctor /
-    // exhaustive-deps it genuinely participates.
-    void tick
-
     // When a search query is active, use server-side results
     if (isSearchActive && searchResults !== null) {
       return searchResults
     }
 
-    // Browse mode: build from Redux state with local type filter
-    const realItems: DisplayClipboardItem[] = (reduxItems ?? []).map(convertToDisplayItem)
+    // Browse mode: render the domain entries directly. The relative-time label
+    // is no longer baked in here (each row derives it from `activeTime`), so
+    // entry identity stays stable across clock ticks — no per-tick rebuild.
+    const realItems: DisplayClipboardItem[] = reduxItems ?? []
 
     // Pending placeholder rows (inbound entries that have been announced but
     // not yet fetched + persisted). We surface them as 'file' so the
@@ -333,7 +289,6 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
             {
               id: p.entryId,
               type: 'file' as const,
-              time: t('clipboard.time.justNow'),
               activeTime: p.createdAt,
               // Synthesize a ClipboardFileItem from the V3-advertised filenames so
               // FilePreview renders the file card + progress overlay immediately,
@@ -371,17 +326,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     }
 
     return items
-  }, [
-    reduxItems,
-    pendingItems,
-    deviceNameByPeerId,
-    filter,
-    isSearchActive,
-    searchResults,
-    convertToDisplayItem,
-    t,
-    tick,
-  ])
+  }, [reduxItems, pendingItems, deviceNameByPeerId, filter, isSearchActive, searchResults, t])
 
   // Flat list for keyboard navigation
   const flatItems = useMemo(() => clipboardItems, [clipboardItems])

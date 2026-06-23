@@ -17,6 +17,7 @@ import {
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useRelativeTime } from '@/hooks/useRelativeTime'
 import type {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -138,6 +139,9 @@ function ClipboardItemRow({
   ...rest
 }: ClipboardItemRowProps & { ref?: React.Ref<HTMLDivElement> }) {
   const { t } = useTranslation()
+  // Relative-time label ticks on the app-wide shared clock (see useRelativeTime):
+  // only this span re-renders on a tick, not the whole list.
+  const relativeTime = useRelativeTime(item.activeTime)
   const Icon = FILE_EXT_ICON_MAP[getFileExt(item)] ?? typeIcons[item.type] ?? FileText
   const transfer = useAppSelector(state => selectTransferByEntryId(state, item.id))
   const entryStatus = useAppSelector(state => selectEntryTransferStatus(state, item.id))
@@ -291,7 +295,7 @@ function ClipboardItemRow({
         ) : (
           !isPending &&
           !isTransferring && (
-            <span className="text-xs text-muted-foreground shrink-0">{item.time}</span>
+            <span className="text-xs text-muted-foreground shrink-0">{relativeTime}</span>
           )
         )}
       </div>

@@ -8,7 +8,6 @@ function createFileItem(): DisplayClipboardItem {
   return {
     id: 'entry-files',
     type: 'file',
-    time: 'just now',
     activeTime: Date.now(),
     content: {
       file_names: ['first.zip', 'second.zip'],

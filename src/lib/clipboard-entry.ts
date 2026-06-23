@@ -77,17 +77,17 @@ export interface ClipboardEntry {
 /**
  * View model rendered by clipboard rows and the preview pane.
  *
- * Browse rows are a `ClipboardEntry` plus a formatted relative-time string
- * (locale- and tick-dependent, so it stays a render-time concern). Search
- * results and pending inbound placeholders synthesize partial items, hence
- * the optional fields.
+ * Browse rows are a `ClipboardEntry`; search results and pending inbound
+ * placeholders synthesize partial items, hence the optional fields. The
+ * relative-time label is no longer precomputed here — each row derives it
+ * from `activeTime` via the shared `useRelativeTime` clock, so a tick
+ * re-renders only the timestamp span instead of rebuilding the whole list
+ * (see issue #1129).
  */
 export interface DisplayClipboardItem {
   id: string
   type: ClipboardEntryType
   content: ClipboardEntryContent | null
-  /** Formatted relative-time label (e.g. "5 minutes ago"). */
-  time: string
   activeTime: number
   isFavorited?: boolean
   isUnavailable?: boolean

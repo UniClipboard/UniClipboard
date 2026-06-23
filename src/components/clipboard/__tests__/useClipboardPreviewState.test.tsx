@@ -27,7 +27,6 @@ function createFileItem(overrides: Partial<DisplayClipboardItem> = {}): DisplayC
   return {
     id: 'entry-file',
     type: 'file',
-    time: 'just now',
     activeTime: Date.now(),
     content: {
       file_names: ['uniclipboard-aarch64-apple-darwin.zip'],

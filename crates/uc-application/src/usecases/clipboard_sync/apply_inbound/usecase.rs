@@ -1,7 +1,6 @@
 //! `ApplyInboundClipboardUseCase` —— 入站剪贴板流程的编排主体。
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use moka::sync::Cache;
 use tracing::{debug, error, info, instrument, warn, Instrument};
@@ -20,11 +19,9 @@ use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_
 
 use super::materializer::InboundBlobMaterializer;
 use super::ports::{InboundCapture, InboundWrite};
+use super::timing::{RAPID_DUPLICATE_WINDOW, SOURCE_ENTRY_DEDUP_WINDOW, VISIBLE_DUPLICATE_WINDOW};
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
-const RAPID_DUPLICATE_WINDOW: Duration = Duration::from_millis(200);
-const VISIBLE_DUPLICATE_WINDOW: Duration = Duration::from_secs(2);
-const SOURCE_ENTRY_DEDUP_WINDOW: Duration = Duration::from_secs(30);
 const RECENT_INBOUND_MAX_RECORDS: u64 = 128;
 
 pub struct ApplyInboundClipboardUseCase {
@@ -32,16 +29,18 @@ pub struct ApplyInboundClipboardUseCase {
     capture: Arc<dyn InboundCapture>,
     write: Arc<dyn InboundWrite>,
     blob_materializer: Option<Arc<dyn InboundBlobMaterializer>>,
-    /// 短窗口去重：snapshot_hash → entry_id。过滤同一 peer 反复推送完全
-    /// 相同字节的回声帧。
+    /// Inbound idempotency, `snapshot_hash` → `entry_id`: collapses a peer
+    /// re-pushing byte-identical frames to one logical clip. TTL =
+    /// `RAPID_DUPLICATE_WINDOW` (see [`super::timing`]).
     recent_snapshot_hashes: Cache<String, EntryId>,
-    /// 略长窗口去重：visible_key → entry_id。捕获"同一可见内容、不同
-    /// snapshot_hash"的场景（peer 重发时扩展了 representations）。
+    /// Inbound idempotency, `visible_key` → `entry_id`: collapses "same visible
+    /// content, different `snapshot_hash`" (a peer re-sending with extended
+    /// representations). TTL = `VISIBLE_DUPLICATE_WINDOW` (see [`super::timing`]).
     recent_visible_content: Cache<String, EntryId>,
-    /// 源端 entry_id 去重：sender blob_ref.entry_id → local entry_id。
-    /// dispatch（直推）和 active_state（拉取）两条通道为同一次文件复制
-    /// 发送不同 snapshot_hash 的 envelope，但 blob_ref.entry_id 始终指向
-    /// 源端同一条 entry。30 秒窗口覆盖大文件传输延迟。
+    /// Inbound idempotency, sender `blob_ref.entry_id` → local `entry_id`:
+    /// dispatch (direct push) and active-state (pull) deliver one source file
+    /// copy under different snapshot hashes but a shared sender `entry_id`. TTL
+    /// = `SOURCE_ENTRY_DEDUP_WINDOW` (see [`super::timing`]).
     recent_source_entries: Cache<String, EntryId>,
     /// Optional host-event emitter for surfacing the inbound entry to UI
     /// before the fetch+capture pipeline finishes. Wired only in daemon

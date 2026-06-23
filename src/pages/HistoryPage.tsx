@@ -353,10 +353,38 @@ const HistoryPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* ── Toolbar: search + filters ──────────────────────────── */}
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-border/20">
+      {/* ── Toolbar: filters (left) + search (right) ───────────── */}
+      <div className="shrink-0 flex items-center justify-between gap-2 px-5 py-3 border-b border-border/20">
+        {/* Filters */}
+        <div className="flex items-center gap-2">
+          {FILTER_TABS.map(tab => {
+            const isActive = activeFilter === tab.key
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveFilter(tab.key)}
+                className={cn(
+                  'flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-medium whitespace-nowrap transition-all duration-150',
+                  isActive
+                    ? 'bg-foreground/8 text-foreground'
+                    : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40'
+                )}
+              >
+                {tab.icon && <tab.icon className="size-3" />}
+                {t(tab.labelKey)}
+                {tab.key === Filter.All && totalCount > 0 && (
+                  <span className="text-[10px] tabular-nums text-muted-foreground/40 ml-0.5">
+                    {totalCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
         {/* Search */}
-        <div className="flex items-center gap-1.5 bg-muted/40 rounded-lg px-2.5 h-7 w-48 focus-within:bg-muted/60 transition-colors">
+        <div className="flex items-center gap-1.5 bg-muted/40 rounded-full px-3 h-7 w-48 shrink-0 focus-within:bg-muted/60 transition-colors">
           <Search className="size-3.5 text-muted-foreground/50 shrink-0" />
           <input
             type="text"
@@ -366,34 +394,6 @@ const HistoryPage: React.FC = () => {
             className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/50 outline-none min-w-0"
           />
         </div>
-
-        <div className="w-px h-4 bg-border/30" />
-
-        {/* Filters */}
-        {FILTER_TABS.map(tab => {
-          const isActive = activeFilter === tab.key
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveFilter(tab.key)}
-              className={cn(
-                'flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[12px] font-medium whitespace-nowrap transition-all duration-150',
-                isActive
-                  ? 'bg-foreground/8 text-foreground'
-                  : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40'
-              )}
-            >
-              {tab.icon && <tab.icon className="size-3" />}
-              {t(tab.labelKey)}
-              {tab.key === Filter.All && totalCount > 0 && (
-                <span className="text-[10px] tabular-nums text-muted-foreground/40 ml-0.5">
-                  {totalCount}
-                </span>
-              )}
-            </button>
-          )
-        })}
       </div>
 
       {/* ── Grid ───────────────────────────────────────────────── */}

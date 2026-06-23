@@ -2,6 +2,7 @@ import { Inbox, Loader2, Search } from 'lucide-react'
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDefaultLayout } from 'react-resizable-panels'
+import { GroupedVirtuoso, type GroupedVirtuosoHandle } from 'react-virtuoso'
 import { Filter, copyFileToClipboard, openFileLocation } from '@/api/clipboardItems'
 import { querySearch } from '@/api/daemon/search'
 import type { SearchResultDto } from '@/api/daemon/search'
@@ -24,10 +25,9 @@ import {
 } from '@/store/slices/clipboardSlice'
 import { selectEntryTransferStatus } from '@/store/slices/fileTransferSlice'
 import ClipboardActionBar from './ClipboardActionBar'
-import ClipboardItemRow from './ClipboardItemRow'
+import ClipboardListRow from './ClipboardListRow'
 import ClipboardPreview from './ClipboardPreview'
 import DeleteConfirmDialog from './DeleteConfirmDialog'
-import FileContextMenu from './FileContextMenu'
 
 const log = createLogger('clipboard-content')
 
@@ -251,7 +251,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [copySuccess, setCopySuccess] = useState(false)
 
-  const activeItemRef = useRef<HTMLDivElement>(null)
+  const virtuosoRef = useRef<GroupedVirtuosoHandle>(null)
   // 用户的视觉锚是否还贴在列表顶部。初次进入、点击/键盘把 active 放到第一项、
   // auto-follow 跟到新顶 都会把它设为 true;一旦用户主动选了非第一项就转 false。
   // 用 ref 跟踪而不是对比上一帧 first id, 是因为 effect 还会被 filter 切换、
@@ -328,11 +328,14 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     return items
   }, [reduxItems, pendingItems, deviceNameByPeerId, filter, isSearchActive, searchResults, t])
 
-  // Flat list for keyboard navigation
-  const flatItems = useMemo(() => clipboardItems, [clipboardItems])
-
   // Date groups for rendering
   const dateGroups = useMemo(() => groupItemsByDate(clipboardItems, t), [clipboardItems, t])
+
+  // Flat list for keyboard navigation + virtualization. Derived from the
+  // groups (not raw clipboardItems) so a flat index maps 1:1 to the item the
+  // GroupedVirtuoso renders at that position.
+  const flatItems = useMemo(() => dateGroups.flatMap(g => g.items), [dateGroups])
+  const groupCounts = useMemo(() => dateGroups.map(g => g.items.length), [dateGroups])
 
   // Active item index in flat list
   const activeIndex = useMemo(() => {
@@ -388,9 +391,16 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     }
   }, [flatItems, activeItemId])
 
-  // Scroll active item into view
+  // Scroll active item into view. With virtualization the off-screen row has
+  // no DOM node to scrollIntoView, so we drive the scroller imperatively by
+  // the item's flat index (activeIndex is read fresh whenever activeItemId
+  // changes in the same render).
   useEffect(() => {
-    activeItemRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    if (activeIndex < 0) return
+    virtuosoRef.current?.scrollToIndex({ index: activeIndex, align: 'center', behavior: 'smooth' })
+    // Only re-scroll on an actual selection change; activeIndex is read fresh
+    // from the same render, so unrelated list shifts (e.g. a prepend) don't
+    // yank the viewport.
   }, [activeItemId])
 
   // Keyboard: Arrow Down
@@ -528,16 +538,26 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
     }
   }
 
-  const handleScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>) => {
-      if (!onLoadMore || !hasMore || loading || notReady) return
-      const target = event.currentTarget
-      const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
-      if (remaining <= 200) {
-        onLoadMore()
-      }
+  // Virtuoso fires this as the user approaches the end of the rendered range.
+  const handleEndReached = useCallback(() => {
+    if (!onLoadMore || !hasMore || loading || notReady) return
+    onLoadMore()
+  }, [hasMore, loading, notReady, onLoadMore])
+
+  // Stable per-row handlers so memoized ClipboardListRow children don't
+  // re-render on every parent render (selection / clock tick).
+  const handleRowCopy = useCallback((id: string) => void handleCopyItem(id), [handleCopyItem])
+  const handleRowOpenLocation = useCallback(
+    (id: string) => void handleOpenFileLocation(id),
+    [handleOpenFileLocation]
+  )
+  const handleRowDelete = useCallback(
+    (id: string) => {
+      selectItem(id)
+      captureUserIntent('delete_entry', { count: 1 })
+      setDeleteDialogOpen(true)
     },
-    [hasMore, loading, notReady, onLoadMore]
+    [selectItem]
   )
 
   return (
@@ -565,56 +585,44 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
           onLayoutChanged={onLayoutChanged}
           className={cn('flex-1 min-h-0', isWindows && 'overflow-hidden')}
         >
-          {/* Left panel: item list */}
+          {/* Left panel: virtualized item list. Only the rows in (and just
+              around) the viewport are mounted, so a long history no longer
+              janks weak machines on scroll/reconcile (issue #1129). */}
           <ResizablePanel id="clipboard-list" defaultSize="40%" minSize="25%" maxSize="60%">
-            <div
-              className={cn(
-                'h-full overflow-y-auto overflow-x-hidden no-scrollbar',
-                isWindows ? 'bg-transparent' : 'bg-muted/20'
+            <GroupedVirtuoso
+              ref={virtuosoRef}
+              style={{ height: '100%' }}
+              className={cn('no-scrollbar', isWindows ? 'bg-transparent' : 'bg-muted/20')}
+              groupCounts={groupCounts}
+              endReached={handleEndReached}
+              increaseViewportBy={300}
+              components={{
+                Header: () => <div className="h-3" />,
+                Footer: () => <div className="h-3" />,
+              }}
+              groupContent={index => (
+                <div className="bg-background px-6 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {dateGroups[index]?.label}
+                </div>
               )}
-              onScroll={handleScroll}
-            >
-              <div className="p-3 flex flex-col gap-0.5">
-                {dateGroups.map(group => (
-                  <div key={group.label}>
-                    <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {group.label}
-                    </div>
-                    {group.items.map(item => (
-                      <FileContextMenu
-                        key={`ctx-${item.id}`}
-                        itemId={item.id}
-                        itemType={item.type}
-                        transferStatus={{
-                          isStale: staleEntryIds.includes(item.id),
-                          hasMissingFiles:
-                            item.type === 'file'
-                              ? ((item.content as ClipboardFileItem | null)?.file_missing?.some(
-                                  Boolean
-                                ) ?? false)
-                              : false,
-                        }}
-                        onCopy={id => void handleCopyItem(id)}
-                        onDelete={id => {
-                          selectItem(id)
-                          captureUserIntent('delete_entry', { count: 1 })
-                          setDeleteDialogOpen(true)
-                        }}
-                        onOpenFileLocation={id => void handleOpenFileLocation(id)}
-                      >
-                        <ClipboardItemRow
-                          item={item}
-                          isActive={item.id === activeItemId}
-                          isStale={staleEntryIds.includes(item.id)}
-                          onClick={() => selectItem(item.id)}
-                          elementRef={item.id === activeItemId ? activeItemRef : undefined}
-                        />
-                      </FileContextMenu>
-                    ))}
+              itemContent={index => {
+                const item = flatItems[index]
+                if (!item) return null
+                return (
+                  <div className="px-3 pb-0.5">
+                    <ClipboardListRow
+                      item={item}
+                      isActive={item.id === activeItemId}
+                      isStale={staleEntryIds.includes(item.id)}
+                      onSelect={selectItem}
+                      onCopy={handleRowCopy}
+                      onDelete={handleRowDelete}
+                      onOpenFileLocation={handleRowOpenLocation}
+                    />
                   </div>
-                ))}
-              </div>
-            </div>
+                )
+              }}
+            />
           </ResizablePanel>
 
           <ResizableHandle />

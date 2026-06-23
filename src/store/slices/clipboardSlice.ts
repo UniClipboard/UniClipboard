@@ -32,6 +32,17 @@ export interface PendingClipboardEntry {
   createdAt: number
 }
 
+/**
+ * Upper bound on entries kept in memory from live `clipboard.new_content`
+ * events. A busy/churning clipboard would otherwise let `items` grow without
+ * limit for the whole session. The cap only trims the oldest tail on the
+ * live-prepend path; pagination (load-more) may legitimately grow past it and
+ * is left untouched. Set far above one page (PAGE_SIZE = 20) so ordinary
+ * browsing is never trimmed — combined with list virtualization this bounds
+ * both memory and per-update reconcile cost (issue #1129).
+ */
+const MAX_LIVE_ITEMS = 200
+
 interface ClipboardState {
   items: ClipboardEntry[]
   pendingItems: PendingClipboardEntry[]
@@ -202,6 +213,12 @@ const clipboardSlice = createSlice({
     prependItem: (state, action: PayloadAction<ClipboardEntry>) => {
       if (state.items.some(item => item.id === action.payload.id)) return
       state.items.unshift(action.payload)
+      // Bound live growth: drop the oldest tail once the in-memory list
+      // outgrows the cap. Older entries remain in the daemon and reappear via
+      // pagination/refresh.
+      if (state.items.length > MAX_LIVE_ITEMS) {
+        state.items.splice(MAX_LIVE_ITEMS)
+      }
     },
     removeItem: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(item => item.id !== action.payload)

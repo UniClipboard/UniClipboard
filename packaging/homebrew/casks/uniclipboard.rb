@@ -2,7 +2,7 @@ cask "uniclipboard" do
   arch arm: "aarch64", intel: "x64"
 
   version "__VERSION__"
-  sha256 arm: "__SHA256_ARM__",
+  sha256 arm:   "__SHA256_ARM__",
          intel: "__SHA256_INTEL__"
 
   url "https://github.com/UniClipboard/UniClipboard/releases/download/v#{version}/UniClipboard_#{version}_#{arch}.dmg",
@@ -16,7 +16,7 @@ cask "uniclipboard" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :monterey"
+  depends_on macos: :monterey
 
   app "UniClipboard.app"
 

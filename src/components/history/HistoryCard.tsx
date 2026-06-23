@@ -1,8 +1,6 @@
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
-  CheckCircle2,
-  CircleDashed,
   Cloud,
   Code,
   Copy,
@@ -13,17 +11,12 @@ import {
   Image as ImageIcon,
   Laptop,
   LoaderCircle,
-  AlertCircle,
 } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { resolveResourceImageUrl } from '@/api/clipboardItems'
 import { getClipboardEntryResource } from '@/api/daemon/clipboard'
-import type {
-  EntryDeliveryView,
-  EntrySourceView,
-  EntryDeliveryTargetView,
-} from '@/api/tauri-command/clipboard_delivery'
+import type { EntrySourceView } from '@/api/tauri-command/clipboard_delivery'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import type {
   ClipboardCodeItem,
@@ -100,63 +93,6 @@ function getContentSizeLabel(item: DisplayClipboardItem): string | null {
     default:
       return null
   }
-}
-
-type SyncSummary = 'synced' | 'syncing' | 'partial' | 'failed' | 'pending'
-
-function summarizeDelivery(targets: readonly EntryDeliveryTargetView[]): SyncSummary | null {
-  if (targets.length === 0) return null
-  let delivered = 0
-  let failed = 0
-  let pending = 0
-  for (const t of targets) {
-    switch (t.status.tag) {
-      case 'delivered':
-      case 'duplicate':
-        delivered += 1
-        break
-      case 'failed':
-        failed += 1
-        break
-      case 'pending':
-        pending += 1
-        break
-    }
-  }
-  if (failed === targets.length) return 'failed'
-  if (failed > 0) return 'partial'
-  if (delivered === targets.length) return 'synced'
-  if (delivered > 0 && pending > 0) return 'syncing'
-  return 'pending'
-}
-
-// ── Sync indicator ──────────────────────────────────────────────
-
-const SYNC_CONFIG: Record<SyncSummary, { icon: React.ElementType; color: string; spin?: boolean }> =
-  {
-    synced: { icon: CheckCircle2, color: 'text-emerald-500/70' },
-    syncing: { icon: LoaderCircle, color: 'text-sky-500/70', spin: true },
-    partial: { icon: AlertCircle, color: 'text-amber-500/70' },
-    failed: { icon: AlertCircle, color: 'text-destructive/70' },
-    pending: { icon: CircleDashed, color: 'text-muted-foreground/50' },
-  }
-
-const SyncIndicator: React.FC<{ delivery: EntryDeliveryView }> = ({ delivery }) => {
-  const { t } = useTranslation()
-  const { source, deliveries } = delivery
-
-  if (source.tag === 'historical') return null
-  const summary = summarizeDelivery(deliveries)
-  if (!summary) return null
-
-  const cfg = SYNC_CONFIG[summary]
-  const Icon = cfg.icon
-  return (
-    <Icon
-      className={cn('size-2.5', cfg.color, cfg.spin && 'animate-spin')}
-      aria-label={t(`delivery.summary.${summary}`)}
-    />
-  )
 }
 
 // ── Source indicator ─────────────────────────────────────────────
@@ -254,7 +190,7 @@ const ImageContent: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
   return (
     <div className="relative rounded-lg overflow-hidden bg-muted/20 -mx-0.5">
       {imageUrl ? (
-        <img src={imageUrl} alt="" className="w-full object-contain" />
+        <img src={imageUrl} alt="" className="w-full max-h-[260px] object-cover" />
       ) : (
         <div className="h-[90px] flex items-center justify-center">
           <ImageIcon className="size-7 text-muted-foreground/25" />
@@ -379,7 +315,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
             ? 'bg-emerald-500/5 border-border/30'
             : isPending
               ? 'border-border/20 bg-muted/10'
-              : 'border-border/30 hover:bg-muted/30'
+              : 'border-border/60 hover:bg-muted/30'
       )}
     >
       {/* Transfer progress overlay - card acts as an immersive progress bar */}
@@ -433,12 +369,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
             </>
           ) : (
             <>
-              {delivery && (
-                <>
-                  <SourceIndicator source={delivery.source} />
-                  <SyncIndicator delivery={delivery} />
-                </>
-              )}
+              {delivery && <SourceIndicator source={delivery.source} />}
               <span className="text-[10px] text-muted-foreground/40">{item.time}</span>
             </>
           )}

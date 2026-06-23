@@ -25,6 +25,8 @@ use uc_core::clipboard::ClipboardChangeOrigin;
 use uc_core::clipboard::SystemClipboardSnapshot;
 use uc_core::ports::clipboard::{ClipboardChangeOriginPort, SystemClipboardPort};
 
+use super::timing::{CLIPBOARD_ECHO_RTT_MAX, SELF_WRITE_STALENESS_BACKSTOP};
+
 /// Number of consecutive OS-write failures that trip the circuit.
 ///
 /// Chosen empirically against Sentry issue UNICLIPBOARD-RUST-F (35 minutes /
@@ -47,10 +49,11 @@ const DEFAULT_CIRCUIT_OPEN_DURATION: Duration = Duration::from_secs(30);
 
 /// Represents the intent behind a programmatic clipboard write.
 ///
-/// Each variant carries per-intent guard TTL semantics:
-/// - `LocalRestore`: 2-second hash guard + one-shot next-origin override
-/// - `LocalCapture`: 2-second hash guard (short-lived, local op)
-/// - `RemotePush`: 60-second hash guard + one-shot next-origin override (OS re-encoding guard)
+/// Each variant carries per-intent guard TTL semantics (windows defined in
+/// [`super::timing`], not as inline literals):
+/// - `LocalRestore`: `CLIPBOARD_ECHO_RTT_MAX` hash guard + one-shot next-origin override
+/// - `LocalCapture`: `CLIPBOARD_ECHO_RTT_MAX` hash guard (short-lived, local op)
+/// - `RemotePush`: `SELF_WRITE_STALENESS_BACKSTOP` hash guard + one-shot next-origin override (OS re-encoding guard)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardWriteIntent {
     /// A local clipboard history restore (user clicked "restore" in history).
@@ -207,13 +210,16 @@ impl ClipboardWriteCoordinator {
     ///
     /// # Intent semantics
     ///
-    /// - `LocalRestore`: registers a 2-second local snapshot hash guard, writes, then
-    ///   sets a one-shot `set_next_origin(LocalRestore, 2s)` to cover file URI/path
+    /// All guard windows come from [`super::timing`] (`CLIPBOARD_ECHO_RTT_MAX`
+    /// for local, `SELF_WRITE_STALENESS_BACKSTOP` for remote), never inline.
+    ///
+    /// - `LocalRestore`: registers a local snapshot hash guard, writes, then
+    ///   sets a one-shot `set_next_origin(LocalRestore, ..)` to cover file URI/path
     ///   rewrites that change bytes between write and watcher callback.
-    /// - `LocalCapture`: registers a 2-second local snapshot hash guard, then writes.
+    /// - `LocalCapture`: registers a local snapshot hash guard, then writes.
     ///   On error, consumes the guard to prevent stale state.
-    /// - `RemotePush`: registers a 60-second remote snapshot hash guard, writes, then
-    ///   sets a one-shot `set_next_origin(RemotePush, 60s)` to guard against OS re-encoding
+    /// - `RemotePush`: registers a remote snapshot hash guard, writes, then
+    ///   sets a one-shot `set_next_origin(RemotePush, ..)` to guard against OS re-encoding
     ///   loopback (e.g., Windows DIB→PNG re-encode produces a different hash than the guard).
     ///
     /// # Error handling
@@ -268,7 +274,7 @@ impl ClipboardWriteCoordinator {
                     self.clipboard_change_origin
                         .remember_local_snapshot_hash(
                             origin_guard_key.clone(),
-                            Duration::from_secs(2),
+                            CLIPBOARD_ECHO_RTT_MAX,
                         )
                         .await;
                 }
@@ -276,7 +282,7 @@ impl ClipboardWriteCoordinator {
                     self.clipboard_change_origin
                         .remember_remote_snapshot_hash(
                             origin_guard_key.clone(),
-                            Duration::from_secs(60),
+                            SELF_WRITE_STALENESS_BACKSTOP,
                         )
                         .await;
                 }
@@ -322,7 +328,7 @@ impl ClipboardWriteCoordinator {
                     self.clipboard_change_origin
                         .set_next_origin(
                             ClipboardChangeOrigin::LocalRestore,
-                            Duration::from_secs(2),
+                            CLIPBOARD_ECHO_RTT_MAX,
                         )
                         .await;
                 }
@@ -334,7 +340,7 @@ impl ClipboardWriteCoordinator {
                     self.clipboard_change_origin
                         .set_next_origin(
                             ClipboardChangeOrigin::remote_push_anonymous(),
-                            Duration::from_secs(60),
+                            SELF_WRITE_STALENESS_BACKSTOP,
                         )
                         .await;
                 }

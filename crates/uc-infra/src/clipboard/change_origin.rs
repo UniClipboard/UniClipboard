@@ -90,28 +90,6 @@ impl ClipboardChangeOriginPort for InMemoryClipboardChangeOrigin {
         state.next_origin = Some(OriginState { origin, expires_at });
     }
 
-    async fn consume_origin_or_default(
-        &self,
-        default_origin: ClipboardChangeOrigin,
-    ) -> ClipboardChangeOrigin {
-        let mut state = self.state.lock().await;
-        let now = Instant::now();
-        Self::prune_expired(&mut state, now);
-        if let Some(stored) = state.next_origin.take() {
-            if now <= stored.expires_at {
-                return stored.origin;
-            }
-        }
-        default_origin
-    }
-
-    async fn has_pending_origin(&self) -> bool {
-        let mut state = self.state.lock().await;
-        let now = Instant::now();
-        Self::prune_expired(&mut state, now);
-        state.next_origin.is_some() || !state.snapshot_origins.is_empty()
-    }
-
     async fn remember_remote_snapshot_hash(&self, snapshot_hash: String, ttl: Duration) {
         let now = Instant::now();
         let expires_at = now.checked_add(ttl).unwrap_or(now);

@@ -727,8 +727,9 @@ mod tests {
             _ttl: std::time::Duration,
         ) {
         }
-        async fn consume_origin_or_default(
+        async fn consume_origin_for_snapshot_or_default(
             &self,
+            _snapshot_hash: &str,
             default_origin: uc_core::ClipboardChangeOrigin,
         ) -> uc_core::ClipboardChangeOrigin {
             default_origin

@@ -212,8 +212,9 @@ mod tests {
     impl ClipboardChangeOriginPort for NoopOrigin {
         async fn set_next_origin(&self, _origin: ClipboardChangeOrigin, _ttl: Duration) {}
 
-        async fn consume_origin_or_default(
+        async fn consume_origin_for_snapshot_or_default(
             &self,
+            _snapshot_hash: &str,
             default_origin: ClipboardChangeOrigin,
         ) -> ClipboardChangeOrigin {
             default_origin

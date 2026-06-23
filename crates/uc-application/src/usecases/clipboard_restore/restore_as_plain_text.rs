@@ -441,11 +441,6 @@ mod tests {
         #[async_trait]
         impl ClipboardChangeOriginPort for ChangeOrigin {
             async fn set_next_origin(&self, origin: ClipboardChangeOrigin, ttl: Duration);
-            async fn consume_origin_or_default(
-                &self,
-                default_origin: ClipboardChangeOrigin,
-            ) -> ClipboardChangeOrigin;
-            async fn has_pending_origin(&self) -> bool;
             async fn remember_remote_snapshot_hash(&self, snapshot_hash: String, ttl: Duration);
             async fn remember_local_snapshot_hash(&self, snapshot_hash: String, ttl: Duration);
             async fn consume_origin_for_snapshot_or_default(

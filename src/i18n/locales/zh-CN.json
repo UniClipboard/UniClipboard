@@ -710,6 +710,17 @@
       "size": "大小",
       "fileCount": "文件数",
       "urlCount": "链接数"
+    },
+    "composite": {
+      "title": "搜索与筛选",
+      "dimension": {
+        "type": "类型",
+        "source": "来源",
+        "time": "时间"
+      },
+      "noMatches": "无匹配项",
+      "removeFilter": "移除筛选：{{filter}}",
+      "clearAll": "清除全部"
     }
   },
   "dashboard": {

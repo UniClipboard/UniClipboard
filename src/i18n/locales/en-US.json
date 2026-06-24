@@ -719,6 +719,17 @@
       "size": "Size",
       "fileCount": "Files",
       "urlCount": "URLs"
+    },
+    "composite": {
+      "title": "Search and filter",
+      "dimension": {
+        "type": "Type",
+        "source": "Source",
+        "time": "Time"
+      },
+      "noMatches": "No matches",
+      "removeFilter": "Remove filter: {{filter}}",
+      "clearAll": "Clear all"
     }
   },
   "dashboard": {

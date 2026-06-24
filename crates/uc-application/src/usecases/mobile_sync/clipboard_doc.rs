@@ -61,9 +61,12 @@ pub struct SyncClipboardMeta {
     /// SHA-256 hex —— daemon 在 PUT 时自己算后填进去。GET 路径上一定是
     /// `Some(...)`,shortcut 客户端不读它但保留以兼容 SyncClipboard 桌面端。
     pub hash: Option<String>,
-    /// 跨设备稳定的内容身份(`"blake3v1:<hex>"`),序列化为 wire `contentId`。
-    /// 与 `hash`(随服务字节变化的内容哈希)不同,它在内容入库时算定、不随后续
-    /// 字节归一化(如图片重编码)改变,客户端据此跨"重编码前后"归并同一条内容。
-    /// GET 路径有内容时为 `Some(...)`;无内容(空 profile)时为 `None`。
+    /// Stable cross-device content identity (`"blake3v1:<hex>"`), serialized to
+    /// the wire `contentId`. Unlike `hash` (a content hash that shifts with the
+    /// served bytes), it is computed once when the content is stored and does
+    /// NOT change under later byte normalization (e.g. image re-encoding), so a
+    /// client can merge the same content across "before/after re-encode". On the
+    /// GET path it is `Some(...)` when content exists, `None` for an empty
+    /// profile.
     pub content_id: Option<String>,
 }

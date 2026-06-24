@@ -227,11 +227,13 @@ pub(crate) async fn build_facade_with_seeded_device(
     .await
     .unwrap();
 
-    // P5a.6:facade 多了 3 个 deps —— `apply_inbound` / `incoming_buffer`
-    // / `snapshot_ports`。webserver 的路由测试只跑 401 / 404 / wire DTO
-    // 校验,从不需要"真捕获 + 真 OS 写"或"真读当前活跃内容",因此这里
-    // 用 NoOp 实现塞过编译。GET 路径下 NoOp active register 永远 `load() ==
-    // None`,routes.rs 测试断言"无内容"即建立在这条事实上。
+    // P5a.6: the facade gained 3 extra deps — `apply_inbound` /
+    // `incoming_buffer` / `snapshot_ports`. The webserver route tests only
+    // exercise 401 / 404 / wire-DTO validation and never need a "real capture +
+    // real OS write" or a "real read of the active content", so NoOp impls just
+    // satisfy compilation here. On the GET path the NoOp active register always
+    // returns `load() == None`, which is the fact the routes.rs tests' "no
+    // content" assertion rests on.
     let entry_repo: Arc<dyn uc_core::ports::clipboard::GetClipboardEntryPort> =
         Arc::new(NoopEntryRepo);
     let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(

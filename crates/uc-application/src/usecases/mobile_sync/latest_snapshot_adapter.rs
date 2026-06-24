@@ -1,45 +1,50 @@
-//! `LatestClipboardSnapshotAdapter` —— mobile sync 出站读路径的适配器。
+//! `LatestClipboardSnapshotAdapter` — adapter for the mobile-sync outbound read
+//! path.
 //!
-//! 把 `LatestClipboardSnapshotPort`(`uc-core`)对接到既有的 clipboard 通路
-//! port 上,组合产生"当前活跃内容(active-clipboard register)的 paste-priority
-//! rep + 字节"。
+//! Wires `LatestClipboardSnapshotPort` (`uc-core`) onto the existing clipboard
+//! pipeline ports, composing "the paste-priority rep + bytes of the currently
+//! active content (the active-clipboard register)".
 //!
-//! ## 数据流
+//! ## Data flow
 //!
 //! ```text
 //! latest_paste_representation()
-//!   ↓ active_register_load.load() — 取当前活跃内容的本地 entry_id
-//!   ↓ get_entry(entry_id) — 补出含 event_id 的 entry
+//!   ↓ active_register_load.load() — get the local entry_id of the active content
+//!   ↓ get_entry(entry_id) — fill in the entry (carries event_id)
 //! ClipboardEntry { entry_id, event_id }
-//!   ↓ get_selection(entry_id) — 拿 paste_rep_id
+//!   ↓ get_selection(entry_id) — get paste_rep_id
 //! ClipboardSelectionDecision.selection.paste_rep_id
 //!   ↓ get_representation(event_id, paste_rep_id)
 //! PersistedClipboardRepresentation { format_id, mime, inline_data | blob_id }
 //!   ↓ payload_resolver.resolve(rep)
 //! ResolvedClipboardPayload::Inline { mime, bytes } | BlobRef { mime, blob_id }
-//!   ↓ (BlobRef 分支) blob_reader.get(blob_id)
+//!   ↓ (BlobRef branch) blob_reader.get(blob_id)
 //! Vec<u8>
 //!   ↓
 //! LatestPasteRepresentation { entry_id, snapshot_hash, format_id, mime, bytes }
 //! ```
-//! `snapshot_hash` 取自 active register 的当前值(跨设备稳定身份),与字节内容
-//! 哈希无关,上层据此序列化成 wire `contentId`。
+//! `snapshot_hash` is taken from the active register's current value (the stable
+//! cross-device identity), independent of the byte-content hash; the upper layer
+//! serializes it to the wire `contentId`.
 //!
-//! ## 边界与错误策略
+//! ## Boundary & error policy
 //!
-//! - **任一中间步骤拿不到数据**(没 entry / 没 selection / 没 representation)
-//!   → 返回 `Ok(None)`,facade 端翻成 `NotFound` → 路由 404。
-//! - **底层 port 抛错**(repo 异常 / blob 读不出 / payload_state 损坏)→
-//!   返回 `Err(Resolution(...))`,路由 500。
-//! - 这条策略与 [`crate::usecases::mobile_sync::get_latest_doc`] /
-//!   [`crate::usecases::mobile_sync::get_file`] 已有的 NotFound vs Port 划分
-//!   完全配套 —— use case 层不再做"是 None 还是 Err"的二次判断。
+//! - **Any intermediate step yields no data** (no entry / no selection / no
+//!   representation) → return `Ok(None)`; the facade translates it to
+//!   `NotFound` → route 404.
+//! - **An underlying port errors** (repo failure / blob unreadable / corrupt
+//!   payload_state) → return `Err(Resolution(...))`, route 500.
+//! - This policy matches the existing NotFound-vs-Port split in
+//!   [`crate::usecases::mobile_sync::get_latest_doc`] /
+//!   [`crate::usecases::mobile_sync::get_file`] — the use-case layer no longer
+//!   re-decides "is it None or Err".
 //!
-//! ## 可见性
+//! ## Visibility
 //!
-//! `pub(crate)`。按 `uc-application/AGENTS.md` §11.4, adapter 不暴露给外部
-//! crate;bootstrap 在装配 `MobileSyncFacade` 时透过 `MobileSyncFacadeDeps`
-//! 把 5 个 port 传进来,facade 内部构造本 adapter 注给 use case。
+//! `pub(crate)`. Per `uc-application/AGENTS.md` §11.4, the adapter is not exposed
+//! to external crates; bootstrap passes the ports in via `MobileSyncFacadeDeps`
+//! when assembling `MobileSyncFacade`, and the facade constructs this adapter
+//! internally to inject into the use case.
 
 use std::sync::Arc;
 
@@ -59,18 +64,22 @@ use uc_core::ports::clipboard::{
 use uc_core::ports::mobile_sync::{LatestClipboardSnapshotError, LatestClipboardSnapshotPort};
 use uc_core::MimeType;
 
-/// port 的捆绑,用于构造 [`LatestClipboardSnapshotAdapter`]。
+/// Bundle of ports used to construct [`LatestClipboardSnapshotAdapter`].
 ///
-/// 单独抽出来是为了避免 `MobileSyncFacadeDeps` 字段直接挂一排并列 port,
-/// 拆分类型让"snapshot 这一路要用啥"在调用方一眼可见。
+/// Pulled out into its own type so `MobileSyncFacadeDeps` does not hang a whole
+/// row of parallel ports directly; the split makes "what this snapshot path
+/// needs" obvious at the call site.
 ///
-/// 出站读以 active-clipboard register 为锚:`active_register_load` 给出"当前
-/// 活跃内容"的本地 `entry_id`,`entry_repo` 据此补出含 `event_id` 的 entry,
-/// 后续 selection / representation / blob 物化链路与来源无关。
+/// The outbound read is anchored on the active-clipboard register:
+/// `active_register_load` gives the local `entry_id` of the "currently active
+/// content", `entry_repo` fills in the entry (carrying `event_id`) from it, and
+/// the downstream selection / representation / blob materialization chain is
+/// source-agnostic.
 ///
-/// `pub` 而非 `pub(crate)`:bootstrap 在 facade 装配点直接用本结构,
-/// 但因为本文件在 `pub(crate) mod latest_snapshot_adapter` 之下,只能
-/// 通过 facade 层 re-export 间接访问 —— 仍守住 §11.4 边界。
+/// `pub` rather than `pub(crate)`: bootstrap uses this struct directly at the
+/// facade assembly point, but since this file lives under
+/// `pub(crate) mod latest_snapshot_adapter` it is only reachable indirectly via
+/// the facade-layer re-export — still honoring the §11.4 boundary.
 pub struct MobileSyncSnapshotPorts {
     pub active_register_load: Arc<dyn LoadActiveClipboardPort>,
     pub entry_repo: Arc<dyn GetClipboardEntryPort>,
@@ -89,16 +98,18 @@ impl LatestClipboardSnapshotAdapter {
         Self { ports }
     }
 
-    /// Step 1+2:解析"当前活跃内容"的 entry 与对应的 selection decision。
+    /// Step 1+2: resolve the entry of the "currently active content" and its
+    /// corresponding selection decision.
     ///
-    /// 锚点是 active-clipboard register:`load` 给出当前活跃内容的本地
-    /// `entry_id`(register 前进 ⟺ 内容已物化为本地 entry,故此 id 恒有效),
-    /// `get_entry` 据此补出含 `event_id` 的完整 entry 供下游 representation
-    /// 查询使用。
+    /// The anchor is the active-clipboard register: `load` gives the local
+    /// `entry_id` of the active content (the register advances ⟺ the content was
+    /// materialized into a local entry, so this id is always valid), and
+    /// `get_entry` fills in the full entry (carrying `event_id`) from it for the
+    /// downstream representation lookup.
     ///
-    /// 任一环节为空(register 未写过 / entry 已不存在 / 没有 selection)→
-    /// `Ok(None)`,与现有 `NotFound` 翻译保持一致。port 层错误统一翻成
-    /// `Resolution`。
+    /// Any step yielding empty (register never written / entry no longer exists
+    /// / no selection) → `Ok(None)`, consistent with the existing `NotFound`
+    /// translation. Port-layer errors are uniformly translated to `Resolution`.
     async fn load_entry_and_selection(
         &self,
     ) -> Result<
@@ -134,8 +145,10 @@ impl LatestClipboardSnapshotAdapter {
         let Some(decision) = selection else {
             return Ok(None);
         };
-        // `snapshot_hash` 是该 entry 的跨设备稳定身份,随 active register 的
-        // 当前值一起读出,后续随材化结果带给上层序列化成 wire `contentId`。
+        // `snapshot_hash` is this entry's stable cross-device identity, read
+        // alongside the active register's current value; it is carried with the
+        // materialized result to the upper layer for serialization into the wire
+        // `contentId`.
         Ok(Some((entry, decision, state.snapshot_hash)))
     }
 
@@ -278,34 +291,36 @@ impl LatestClipboardSnapshotPort for LatestClipboardSnapshotAdapter {
 
 #[cfg(test)]
 mod tests {
-    //! 手写 fake 单测(避开 mockall 对 trait 带 `&'_ T` 的复杂签名诊断)。
+    //! Hand-written fake unit tests (avoiding mockall's awkward diagnostics for
+    //! trait signatures carrying `&'_ T`).
     //!
-    //! 覆盖矩阵:
+    //! Coverage matrix:
     //!
-    //! | 输入 | 期望 |
+    //! | input | expected |
     //! |---|---|
-    //! | register 空 (load None) | Ok(None) |
-    //! | register 指向的 entry 不存在 (get_entry None) | Ok(None) |
-    //! | entry 有 + selection 空 | Ok(None) |
-    //! | entry 有 + selection 有 + rep 不存在 | Ok(None) |
-    //! | inline 分支 | Ok(Some(...)) |
-    //! | blob_ref 分支 + reader 成功 | Ok(Some(...)) |
-    //! | inline mime 空串 | Ok(Some(.., mime=None)) |
-    //! | register load 错 | Err(Resolution) |
-    //! | get_entry 错 | Err(Resolution) |
-    //! | resolver 错 | Err(Resolution) |
-    //! | blob_reader 错 | Err(Resolution) |
+    //! | register empty (load None) | Ok(None) |
+    //! | register points at a missing entry (get_entry None) | Ok(None) |
+    //! | entry present + selection empty | Ok(None) |
+    //! | entry present + selection present + rep missing | Ok(None) |
+    //! | inline branch | Ok(Some(...)) |
+    //! | blob_ref branch + reader success | Ok(Some(...)) |
+    //! | inline mime empty string | Ok(Some(.., mime=None)) |
+    //! | register load error | Err(Resolution) |
+    //! | get_entry error | Err(Resolution) |
+    //! | resolver error | Err(Resolution) |
+    //! | blob_reader error | Err(Resolution) |
     //!
-    //! plaintext 偏好(latest_plain_text_preferred_representation)增量覆盖:
+    //! plaintext-preference (latest_plain_text_preferred_representation)
+    //! incremental coverage:
     //!
-    //! | 输入 | 期望 |
+    //! | input | expected |
     //! |---|---|
-    //! | paste 本身就是 text/plain | 直接用 paste, 不读 secondary |
-    //! | paste 是 text/rtf, secondary 有 text/plain | 切到 plaintext rep |
-    //! | paste 是 text/html, secondary 全是非 plaintext | 回退到 paste rep |
-    //! | paste 是 image, 无 secondary | 直接用 paste rep |
-    //! | format_id=text 但 mime=None | 视为 plaintext(走 format_id 兜底) |
-    //! | paste rep 行缺失但 secondary 有 plaintext | 返回 plaintext secondary |
+    //! | paste is itself text/plain | use paste directly, do not read secondary |
+    //! | paste is text/rtf, secondary has text/plain | switch to the plaintext rep |
+    //! | paste is text/html, secondary all non-plaintext | fall back to the paste rep |
+    //! | paste is image, no secondary | use the paste rep directly |
+    //! | format_id=text but mime=None | treated as plaintext (via the format_id fallback) |
+    //! | paste rep row missing but secondary has plaintext | return the plaintext secondary |
 
     use super::*;
 
@@ -324,10 +339,12 @@ mod tests {
 
     // ── Fake source: active register load + entry get ────────────────────
     //
-    // 出站读以 active register 为锚:`load()` 给出当前活跃内容的 `entry_id`,
-    // `get_entry()` 据此补出含 `event_id` 的 entry。两步合到一个 fake 里,按
-    // "是否有活跃内容 / entry 是否可取"一次配置;各方法只消费一次,二次调用
-    // panic 以暴露非预期的重复读。
+    // The outbound read is anchored on the active register: `load()` gives the
+    // `entry_id` of the currently active content, and `get_entry()` fills in the
+    // entry (carrying `event_id`) from it. Both steps are merged into one fake,
+    // configured once by "is there active content / is the entry fetchable"; each
+    // method is consumed only once, and a second call panics to expose an
+    // unexpected duplicate read.
     struct FakeSource {
         load: Mutex<Option<Result<Option<ActiveClipboardState>, ActiveClipboardRegisterError>>>,
         get: Mutex<Option<Result<Option<ClipboardEntry>, ClipboardRepositoryError>>>,
@@ -345,28 +362,29 @@ mod tests {
         fn state_for(entry_id: EntryId) -> ActiveClipboardState {
             ActiveClipboardState::new("blake3v1:test", entry_id, 1, DeviceId::new("dev-test"))
         }
-        /// 活跃内容存在且 entry 可取:`load` 指向 `e.entry_id`,`get_entry`
-        /// 返回该 entry。
+        /// Active content exists and the entry is fetchable: `load` points at
+        /// `e.entry_id` and `get_entry` returns that entry.
         fn with_entry(e: ClipboardEntry) -> Arc<Self> {
             let state = Self::state_for(e.entry_id.clone());
             Self::build(Ok(Some(state)), Ok(Some(e)))
         }
-        /// register 从未写过 → `load` 返回 None。
+        /// Register was never written → `load` returns None.
         fn empty() -> Arc<Self> {
             Self::build(Ok(None), Ok(None))
         }
-        /// register 指向一个已不存在的 entry → `load` Some,`get_entry` None。
+        /// Register points at an entry that no longer exists → `load` Some,
+        /// `get_entry` None.
         fn entry_missing() -> Arc<Self> {
             Self::build(Ok(Some(Self::state_for(EntryId::from("e1")))), Ok(None))
         }
-        /// register load 自身失败。
+        /// The register load itself fails.
         fn load_err(msg: &str) -> Arc<Self> {
             Self::build(
                 Err(ActiveClipboardRegisterError::Storage(msg.to_string())),
                 Ok(None),
             )
         }
-        /// load 成功但 entry 查询失败。
+        /// load succeeds but the entry lookup fails.
         fn get_err(msg: &str) -> Arc<Self> {
             Self::build(
                 Ok(Some(Self::state_for(EntryId::from("e1")))),
@@ -536,7 +554,7 @@ mod tests {
         payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
         blob_reader: Arc<dyn BlobReaderPort>,
     ) -> LatestClipboardSnapshotAdapter {
-        // FakeSource 同时充当 register-load 与 entry-get 两条 port。
+        // FakeSource doubles as both the register-load and entry-get ports.
         LatestClipboardSnapshotAdapter::new(MobileSyncSnapshotPorts {
             active_register_load: source.clone(),
             entry_repo: source,
@@ -567,7 +585,7 @@ mod tests {
     // ── tests ────────────────────────────────────────────────────────────
     #[tokio::test]
     async fn empty_register_returns_none() {
-        // active register 从未写过 → load() == None → NotFound 上游。
+        // active register never written → load() == None → NotFound upstream.
         let adapter = build_adapter(
             FakeSource::empty(),
             dummy_selection_repo(),
@@ -584,7 +602,8 @@ mod tests {
 
     #[tokio::test]
     async fn entry_missing_returns_none() {
-        // register 指向的 entry 已不存在(get_entry == None)→ None,而非错。
+        // register points at an entry that no longer exists (get_entry == None)
+        // → None, not an error.
         let adapter = build_adapter(
             FakeSource::entry_missing(),
             dummy_selection_repo(),
@@ -665,7 +684,8 @@ mod tests {
         assert_eq!(out.format_id, FormatId::from("text"));
         assert_eq!(out.mime.as_ref().map(|m| m.as_str()), Some("text/plain"));
         assert_eq!(out.bytes, b"hello".to_vec());
-        // 稳定身份取自 active register 的当前值(FakeSource::state_for)。
+        // Stable identity comes from the active register's current value
+        // (FakeSource::state_for).
         assert_eq!(out.snapshot_hash, "blake3v1:test");
     }
 

@@ -219,7 +219,8 @@ async fn put_text(text: String, json: bool, verbose: bool) -> i32 {
         has_data: false,
         size,
         hash: None,
-        // PUT/upload 路径:content_id 由 daemon 落库时算定,客户端不提供。
+        // PUT/upload path: content_id is assigned by the daemon at store time;
+        // the client never supplies it.
         content_id: None,
     };
 
@@ -321,7 +322,8 @@ async fn put_file(path: PathBuf, mime_override: Option<String>, json: bool, verb
         has_data: true,
         size,
         hash: None,
-        // PUT/upload 路径:content_id 由 daemon 落库时算定,客户端不提供。
+        // PUT/upload path: content_id is assigned by the daemon at store time;
+        // the client never supplies it.
         content_id: None,
     };
     let doc_outcome = match ctx.facade.put_sync_doc(meta, device).await {

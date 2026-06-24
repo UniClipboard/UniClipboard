@@ -54,11 +54,15 @@ pub(super) struct SyncClipboardDoc {
     /// daemon 一定填(给 SyncClipboard 桌面端兼容用)。
     #[serde(default, alias = "Hash", skip_serializing_if = "Option::is_none")]
     hash: Option<String>,
-    /// 跨设备稳定的内容身份(`"blake3v1:<hex>"`)。附加可选字段:与 `hash`
-    /// (随服务字节变化)不同, 它在内容入库时算定、不随图片重编码等字节归一化
-    /// 改变, 客户端据此把"重编码前后"识别为同一条内容、避免重复建卡。响应侧
-    /// 有内容时一定填; 接收侧(PUT)不读 —— daemon 是该字段的唯一权威, 客户端
-    /// 即便上传也忽略。缺省即省略, 永不发 `null`。
+    /// Stable cross-device content identity (`"blake3v1:<hex>"`). An optional
+    /// add-on field: unlike `hash` (which shifts with the served bytes), it is
+    /// computed once when the content is stored and does NOT change under byte
+    /// normalization such as image re-encoding, so a client can recognize
+    /// "before/after re-encode" as the same content and avoid duplicate cards.
+    /// On the response side it is always set when content exists; on the inbound
+    /// (PUT) side it is not read — the daemon is the sole authority for this
+    /// field and ignores any client-supplied value. Absent values are omitted,
+    /// never sent as `null`.
     #[serde(
         rename = "contentId",
         default,
@@ -114,8 +118,9 @@ impl SyncClipboardDoc {
             has_data: self.has_data,
             size: self.size,
             hash: self.hash,
-            // daemon 是 content_id 的唯一权威:PUT 入站不采信客户端上传值,
-            // 稳定身份在落库时由 active register 自行算定。
+            // The daemon is the sole authority for content_id: the PUT inbound
+            // path does not trust the client-supplied value; the stable identity
+            // is computed by the active register at store time.
             content_id: None,
         })
     }
@@ -253,7 +258,8 @@ mod tests {
 
     #[test]
     fn decode_without_content_id_is_none() {
-        // 向后兼容:不带 contentId 的文档照常反序列化,字段视为 None。
+        // Backward compatible: a document without contentId still deserializes,
+        // with the field treated as None.
         let doc: SyncClipboardDoc =
             serde_json::from_str(r#"{"type":"Text","text":"hi","hasData":false}"#).expect("decode");
         assert_eq!(doc.content_id, None);
@@ -261,7 +267,8 @@ mod tests {
 
     #[test]
     fn server_ignores_client_supplied_content_id_on_put() {
-        // 客户端即便上传 contentId, into_meta 也丢弃 —— daemon 是唯一权威。
+        // Even if the client uploads contentId, into_meta drops it — the daemon
+        // is the sole authority.
         let doc: SyncClipboardDoc = serde_json::from_str(
             r#"{"type":"Text","text":"hi","hasData":false,"contentId":"blake3v1:client"}"#,
         )

@@ -143,8 +143,10 @@ impl GetLatestMobileSyncDocUseCase {
             has_data,
             size,
             hash: Some(hash),
-            // 跨设备稳定身份直接取自 active register 的当前值(随 rep 一起读出),
-            // 与上面随字节变化的 `hash` 互补:重编码会改 `hash` 不改 `content_id`。
+            // Stable cross-device identity taken straight from the active
+            // register's current value (read alongside `rep`); complements the
+            // byte-dependent `hash` above: a re-encode changes `hash` but not
+            // `content_id`.
             content_id: Some(rep.snapshot_hash.clone()),
         })
     }

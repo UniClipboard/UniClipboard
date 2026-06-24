@@ -514,8 +514,9 @@ pub(super) async fn post_history_record(
                 has_data: true,
                 size,
                 hash: Some(hash),
-                // History 入站经 put_sync_doc 落库;content_id 由 daemon 落库时
-                // 自行算定,入站不采信客户端值。
+                // Inbound history is persisted via put_sync_doc; content_id is
+                // assigned by the daemon at store time and is NOT trusted from
+                // the client on inbound.
                 content_id: None,
             };
             facade
@@ -535,7 +536,8 @@ pub(super) async fn post_history_record(
                 has_data,
                 size: record.size,
                 hash: Some(hash),
-                // 同上:content_id 是 daemon 权威,入站不采信客户端值。
+                // Same as above: content_id is the daemon's authority and is
+                // NOT trusted from the client on inbound.
                 content_id: None,
             };
             facade

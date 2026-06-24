@@ -82,42 +82,6 @@ const FILTER_TABS: { key: Filter; labelKey: string; icon?: React.ElementType }[]
   { key: Filter.File, labelKey: 'history.filter.file', icon: File },
 ]
 
-// ── Masonry distribution ──────────────────────────────────────
-
-const MASONRY_BREAKPOINTS: [number, number][] = [
-  [500, 1],
-  [750, 2],
-  [1050, 3],
-  [1400, 4],
-]
-const MASONRY_DEFAULT_COLS = 5
-
-function useColumnCount(): number {
-  const [cols, setCols] = useState(() => {
-    const w = window.innerWidth
-    for (const [bp, c] of MASONRY_BREAKPOINTS) {
-      if (w <= bp) return c
-    }
-    return MASONRY_DEFAULT_COLS
-  })
-  useEffect(() => {
-    const onResize = () => {
-      const w = window.innerWidth
-      let next = MASONRY_DEFAULT_COLS
-      for (const [bp, c] of MASONRY_BREAKPOINTS) {
-        if (w <= bp) {
-          next = c
-          break
-        }
-      }
-      setCols(next)
-    }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  return cols
-}
-
 // ── Helpers ─────────────────────────────────────────────────────
 
 function formatBytesShort(bytes: number): string {
@@ -431,15 +395,6 @@ const HistoryPage: React.FC = () => {
     preventDefault: true,
   })
 
-  const columnCount = useColumnCount()
-  const columns = useMemo(() => {
-    const cols: DisplayClipboardItem[][] = Array.from({ length: columnCount }, () => [])
-    for (let i = 0; i < orderedItems.length; i++) {
-      cols[i % columnCount].push(orderedItems[i])
-    }
-    return cols
-  }, [orderedItems, columnCount])
-
   // Record rendered ids after commit so subsequent remounts (e.g. column
   // shifts when a new item is prepended) skip the entrance animation.
   useEffect(() => {
@@ -650,38 +605,29 @@ const HistoryPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="flex px-2 pt-1 pb-4">
-            {columns.map((colItems, colIdx) => (
-              <div
-                key={colIdx}
-                className={cn(
-                  'flex-1 min-w-0 flex flex-col',
-                  colIdx > 0 && 'border-l-[3px] border-double border-border/20'
-                )}
-              >
-                {colItems.map(item => {
-                  const isNew = !seenIds.has(item.id)
-                  return (
-                    <m.div
-                      key={item.id}
-                      initial={isNew ? { opacity: 0, y: 16 } : false}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    >
-                      <HistoryCard
-                        item={item}
-                        isHovered={hoveredId === item.id}
-                        copySuccess={copySuccessId === item.id}
-                        isDeleting={deletingId === item.id}
-                        onCopy={handleCopy}
-                        onClick={handleCardClick}
-                        onHoverChange={setHoveredId}
-                      />
-                    </m.div>
-                  )
-                })}
-              </div>
-            ))}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] items-start gap-x-3 gap-y-2 px-3 pt-2 pb-4">
+            {orderedItems.map(item => {
+              const isNew = !seenIds.has(item.id)
+              return (
+                <m.div
+                  key={item.id}
+                  initial={isNew ? { opacity: 0, y: 16 } : false}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  className="h-44 rounded-xl border border-border/40 bg-card/40 overflow-hidden"
+                >
+                  <HistoryCard
+                    item={item}
+                    isHovered={hoveredId === item.id}
+                    copySuccess={copySuccessId === item.id}
+                    isDeleting={deletingId === item.id}
+                    onCopy={handleCopy}
+                    onClick={handleCardClick}
+                    onHoverChange={setHoveredId}
+                  />
+                </m.div>
+              )
+            })}
           </div>
         )}
       </div>

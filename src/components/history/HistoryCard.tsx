@@ -162,10 +162,7 @@ const LinkContent: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => {
 const imageUrlCache = new Map<string, string>()
 
 // TODO: thumbnail endpoint has issues; using original image via resource API for now
-const ImageContent: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
-  item,
-  entryId,
-}) => {
+function useResourceImageUrl(entryId: string): string | null {
   const [imageUrl, setImageUrl] = useState<string | null>(() => imageUrlCache.get(entryId) ?? null)
 
   useEffect(() => {
@@ -187,32 +184,131 @@ const ImageContent: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
     }
   }, [entryId])
 
+  return imageUrl
+}
+
+// Immersive image card: the image fills the whole card as a background, with the
+// metadata (type, time) and pixel dimensions floated on top of legibility
+// gradients. Distinct from the header+content stack used by every other type.
+const ImageCard: React.FC<{ item: DisplayClipboardItem; imageItem: ClipboardImageItem }> = ({
+  item,
+  imageItem,
+}) => {
+  const { t } = useTranslation()
+  const imageUrl = useResourceImageUrl(item.id)
+
   return (
-    <div className="relative rounded-lg overflow-hidden bg-muted/20 -mx-0.5">
+    <>
       {imageUrl ? (
-        <img src={imageUrl} alt="" className="w-full max-h-[260px] object-cover" />
+        <img src={imageUrl} alt="" className="absolute inset-0 size-full object-cover" />
       ) : (
-        <div className="h-[90px] flex items-center justify-center">
-          <ImageIcon className="size-7 text-muted-foreground/25" />
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
+          <ImageIcon className="size-8 text-muted-foreground/25" />
         </div>
       )}
-      {item.width > 0 && item.height > 0 && (
-        <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-white/80 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">
-          {item.width}×{item.height}
+
+      {/* Legibility gradients behind the overlaid text */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/55 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 to-transparent" />
+
+      {/* Floated metadata header */}
+      <div className="absolute inset-x-3.5 top-3 z-10 flex items-center gap-1.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]">
+        <ImageIcon className="size-3 shrink-0 text-white/90" />
+        <span className="text-[10.5px] font-medium text-white/90">
+          {t('history.type.image', 'image')}
+        </span>
+        <span className="ml-auto text-[10px] text-white/75">{item.time}</span>
+      </div>
+
+      {/* Pixel dimensions badge */}
+      {imageItem.width > 0 && imageItem.height > 0 && (
+        <span className="absolute bottom-3 left-3.5 z-10 text-[11px] font-medium tabular-nums text-white/85 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">
+          {imageItem.width}×{imageItem.height}
         </span>
       )}
+    </>
+  )
+}
+
+// Per-type colors for the file glyph, so a file reads as "a PDF / ZIP / image"
+// from color alone — the strongest at-a-glance recognition cue (see DailyUI
+// file-upload patterns). Mid-tone fills keep white extension text legible.
+const FILE_TYPE_COLORS: { exts: string[]; color: string }[] = [
+  { exts: ['PDF'], color: 'rgb(212,88,82)' },
+  { exts: ['DOC', 'DOCX', 'RTF', 'TXT', 'MD', 'PAGES'], color: 'rgb(72,118,196)' },
+  { exts: ['XLS', 'XLSX', 'CSV', 'NUMBERS'], color: 'rgb(58,158,108)' },
+  { exts: ['PPT', 'PPTX', 'KEY'], color: 'rgb(218,138,72)' },
+  { exts: ['ZIP', 'RAR', '7Z', 'GZ', 'TAR'], color: 'rgb(176,142,96)' },
+  { exts: ['PNG', 'JPG', 'JPEG', 'GIF', 'SVG', 'WEBP', 'HEIC', 'BMP'], color: 'rgb(150,112,202)' },
+  { exts: ['MP4', 'MOV', 'AVI', 'MKV', 'WEBM'], color: 'rgb(92,120,210)' },
+  { exts: ['MP3', 'WAV', 'FLAC', 'AAC', 'M4A'], color: 'rgb(202,100,150)' },
+  // prettier-ignore
+  { exts: ['JS', 'TS', 'TSX', 'JSX', 'PY', 'RS', 'GO', 'JSON', 'HTML', 'CSS', 'SH'], color: 'rgb(110,120,136)' },
+]
+
+function fileTypeColor(ext: string): string {
+  const e = ext.toUpperCase()
+  for (const group of FILE_TYPE_COLORS) if (group.exts.includes(e)) return group.color
+  return 'rgb(140,150,160)'
+}
+
+// A document-shaped, color-coded tile with the extension lettered in — the
+// canonical "file" representation (folded corner + type color + extension).
+const FileGlyph: React.FC<{ ext: string; stacked?: boolean }> = ({ ext, stacked }) => {
+  const color = fileTypeColor(ext)
+  const label = ext.length > 4 ? ext.slice(0, 4) : ext
+  return (
+    <div className="relative shrink-0">
+      {/* Stacked-sheet hint for multi-file entries */}
+      {stacked && (
+        <div
+          aria-hidden
+          className="absolute -right-1 -top-1 h-12 w-10 rounded-md bg-muted-foreground/25"
+        />
+      )}
+      <div
+        className="relative flex h-12 w-10 items-center justify-center overflow-hidden rounded-md"
+        style={{ backgroundColor: color }}
+      >
+        {/* Folded top-right corner */}
+        <div className="absolute right-0 top-0 size-3 rounded-bl-md bg-black/20" />
+        <span className="px-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+          {label}
+        </span>
+      </div>
     </div>
   )
 }
 
+// File card body: a color-coded file glyph (left) anchors recognition, with the
+// name + size beside it — the standard, scannable file list-item composition.
 const FileContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
+  const count = item.file_names.length
   const name = item.file_names[0] ?? 'Unknown file'
-  const size = item.file_sizes[0] ?? 0
+  const primarySize = item.file_sizes[0] ?? -1
+  const ext = getFileExtLabel(name)
+  const totalSize = item.file_sizes.filter(s => s >= 0).reduce((a, b) => a + b, 0)
+
+  // Extension lives on the glyph, so meta only adds size / file count.
+  const meta =
+    count > 1
+      ? totalSize > 0
+        ? `${count} files · ${formatFileSize(totalSize)}`
+        : `${count} files`
+      : primarySize >= 0
+        ? formatFileSize(primarySize)
+        : ''
+
   return (
-    <div className="min-w-0">
-      <div className="text-[12.5px] font-medium text-foreground/85 truncate">{name}</div>
-      <div className="text-[10.5px] text-muted-foreground/60">
-        {getFileExtLabel(name)} - {formatFileSize(size)}
+    <div className="flex h-full items-center gap-3">
+      <FileGlyph ext={ext} stacked={count > 1} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium leading-snug text-foreground/85 line-clamp-2 break-all">
+          {name}
+        </div>
+        {meta && (
+          <div className="mt-1 text-[11px] tabular-nums text-muted-foreground/55">{meta}</div>
+        )}
       </div>
     </div>
   )
@@ -247,6 +343,9 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   const { delivery } = useEntryDelivery(item.id)
 
   const isFileType = item.type === 'file'
+  // Image entries with resolved content render as an immersive full-bleed card;
+  // image-type search/pending rows (no structured content) fall back to the stack.
+  const isImageCard = item.type === 'image' && !!item.content
   const transfer = useAppSelector(state =>
     isFileType ? selectTransferByEntryId(state, item.id) : undefined
   )
@@ -287,8 +386,6 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         return <CodeContent item={item.content as ClipboardCodeItem} />
       case 'link':
         return <LinkContent item={item.content as ClipboardLinkItem} />
-      case 'image':
-        return <ImageContent item={item.content as ClipboardImageItem} entryId={item.id} />
       case 'file':
         return <FileContent item={item.content as ClipboardFileItem} />
       default:
@@ -304,6 +401,12 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
   const DirectionIcon = transfer?.direction === 'Sending' ? ArrowUpFromLine : ArrowDownToLine
 
+  // Keyboard-hint chip styling: dark chips + light borders read over a photo,
+  // muted chips suit the opaque card surface of every other type.
+  const kbdClass = isImageCard
+    ? 'border-white/25 bg-black/45 text-white/90'
+    : 'border-border/30 bg-muted/30'
+
   return (
     <div
       role="button"
@@ -315,15 +418,15 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
-        'cursor-pointer overflow-hidden',
-        'group relative px-3.5 pt-3 pb-3 border-b-[3px] border-double transition-all duration-200',
+        'cursor-pointer overflow-hidden h-full group relative transition-all duration-200',
+        isImageCard ? '' : 'flex flex-col px-3.5 pt-3 pb-3',
         isDeleting
-          ? 'bg-destructive/10 border-border/30 opacity-60 scale-[0.97]'
+          ? 'bg-destructive/10 opacity-60 scale-[0.97]'
           : copySuccess
-            ? 'bg-emerald-500/5 border-border/30'
+            ? 'bg-emerald-500/5'
             : isPending
-              ? 'border-border/20 bg-muted/10'
-              : 'border-border/60 hover:bg-muted/30'
+              ? 'bg-muted/10'
+              : 'hover:bg-muted/30'
       )}
     >
       {/* Transfer progress overlay - card acts as an immersive progress bar */}
@@ -337,54 +440,72 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         />
       )}
 
-      {/* Header */}
-      <div className="relative z-10 flex items-center gap-1.5 mb-1.5">
-        <TypeIcon className={cn('size-3 shrink-0', isPending && 'opacity-50')} style={{ color }} />
-        <span
-          className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
-          style={{ color }}
-        >
-          {t(`history.type.${item.type}`, item.type)}
-        </span>
+      {isImageCard && <ImageCard item={item} imageItem={item.content as ClipboardImageItem} />}
 
-        {sizeLabel && !isTransferring && (
-          <>
-            <span className="text-[9px] text-muted-foreground/25">-</span>
-            <span className="text-[10px] tabular-nums text-muted-foreground/45">{sizeLabel}</span>
-          </>
-        )}
+      {!isImageCard && (
+        <>
+          {/* Header */}
+          <div className="relative z-10 flex items-center gap-1.5 mb-1.5">
+            <TypeIcon
+              className={cn('size-3 shrink-0', isPending && 'opacity-50')}
+              style={{ color }}
+            />
+            <span
+              className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
+              style={{ color }}
+            >
+              {t(`history.type.${item.type}`, item.type)}
+            </span>
 
-        <div className="ml-auto flex items-center gap-1.5">
-          {isFileType && isTransferring ? (
-            <>
-              <DirectionIcon className="size-2.5 text-primary/70" />
-              <span className="text-[10px] tabular-nums text-primary/80 font-medium">
-                {percent}%
-              </span>
-              {speedLabel && (
+            {sizeLabel && !isTransferring && (
+              <>
+                <span className="text-[9px] text-muted-foreground/25">-</span>
+                <span className="text-[10px] tabular-nums text-muted-foreground/45">
+                  {sizeLabel}
+                </span>
+              </>
+            )}
+
+            <div className="ml-auto flex items-center gap-1.5">
+              {isFileType && isTransferring ? (
                 <>
-                  <span className="text-[9px] text-primary/30">-</span>
-                  <span className="text-[10px] tabular-nums text-primary/70">{speedLabel}</span>
+                  <DirectionIcon className="size-2.5 text-primary/70" />
+                  <span className="text-[10px] tabular-nums text-primary/80 font-medium">
+                    {percent}%
+                  </span>
+                  {speedLabel && (
+                    <>
+                      <span className="text-[9px] text-primary/30">-</span>
+                      <span className="text-[10px] tabular-nums text-primary/70">{speedLabel}</span>
+                    </>
+                  )}
+                </>
+              ) : isFileType && isPending ? (
+                <>
+                  <LoaderCircle className="size-2.5 text-muted-foreground/40 animate-spin" />
+                  <span className="text-[10px] text-muted-foreground/40">
+                    {t('clipboard.transfer.pending')}
+                  </span>
+                </>
+              ) : (
+                <>
+                  {delivery && <SourceIndicator source={delivery.source} />}
+                  <span className="text-[10px] text-muted-foreground/40">{item.time}</span>
                 </>
               )}
-            </>
-          ) : isFileType && isPending ? (
-            <>
-              <LoaderCircle className="size-2.5 text-muted-foreground/40 animate-spin" />
-              <span className="text-[10px] text-muted-foreground/40">
-                {t('clipboard.transfer.pending')}
-              </span>
-            </>
-          ) : (
-            <>
-              {delivery && <SourceIndicator source={delivery.source} />}
-              <span className="text-[10px] text-muted-foreground/40">{item.time}</span>
-            </>
-          )}
-        </div>
-      </div>
+            </div>
+          </div>
 
-      <div className={cn('relative z-10', isPending && 'opacity-60')}>{content}</div>
+          <div
+            className={cn(
+              'relative z-10 flex-1 min-h-0 overflow-hidden',
+              isPending && 'opacity-60'
+            )}
+          >
+            {content}
+          </div>
+        </>
+      )}
 
       {/* Transfer progress detail bar at bottom — absolute so it never affects card height */}
       {isFileType && (
@@ -427,12 +548,20 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         <Copy className="size-3" />
       </button>
 
-      {/* Keyboard hint - visible on hover */}
+      {/* Keyboard hint - visible on hover. On image cards it sits over the photo,
+          so it needs a high-contrast treatment (light text + dark chips). */}
       {isHovered && !isTransferring && !isPending && (
-        <div className="absolute bottom-1 right-2.5 z-20 flex items-center gap-1.5 text-[9px] text-muted-foreground/30">
-          <kbd className="px-1 py-px rounded border border-border/30 bg-muted/30 font-mono">c</kbd>
+        <div
+          className={cn(
+            'absolute bottom-1 right-2.5 z-20 flex items-center gap-1.5 text-[9px]',
+            isImageCard
+              ? 'text-white/80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]'
+              : 'text-muted-foreground/30'
+          )}
+        >
+          <kbd className={cn('px-1 py-px rounded border font-mono', kbdClass)}>c</kbd>
           <span>copy</span>
-          <kbd className="px-1 py-px rounded border border-border/30 bg-muted/30 font-mono">d</kbd>
+          <kbd className={cn('px-1 py-px rounded border font-mono', kbdClass)}>d</kbd>
           <span>delete</span>
         </div>
       )}

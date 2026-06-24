@@ -381,9 +381,12 @@ impl ApplyInboundClipboardUseCase {
         }
 
         // 3. Persist via the same capture pipeline local copies use
-        // (D5: same schema). Cloning the snapshot lets us keep one for
-        // the OS write below; capture takes ownership of the original.
-        let snapshot_for_write = snapshot.clone();
+        // (D5: same schema). Capture takes ownership of the original, so we
+        // keep one clone behind an `Arc` for the downstream consumers (search
+        // live-index reads it, the background OS write owns it). Sharing via
+        // `Arc::clone` avoids a second multi-megabyte deep copy on the image
+        // path — same pattern the watcher uses between live-index and dispatch.
+        let snapshot_for_write = Arc::new(snapshot.clone());
         let entry_id = self
             .capture
             .capture(receiver_entry_id.clone(), input.from_device, snapshot)
@@ -447,7 +450,7 @@ impl ApplyInboundClipboardUseCase {
             // Best-effort: index the applied entry so remote-origin clipboard
             // (P2P + mobile) is searchable like local captures. The entry is
             // already persisted, so indexing never gates the inbound apply.
-            self.index_for_search(&entry_id, Arc::new(snapshot_for_write.clone()))
+            self.index_for_search(&entry_id, Arc::clone(&snapshot_for_write))
                 .await;
 
             debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
@@ -464,6 +467,12 @@ impl ApplyInboundClipboardUseCase {
             // hammering or many peers each pushing once).
             tokio::spawn(
                 async move {
+                    // The live-index pass above already awaited and dropped its
+                    // `Arc` clone, so this reclaims sole ownership without
+                    // copying. The fallback clone is unreachable in practice
+                    // (refcount is 1 here) and only guards a future second holder.
+                    let snapshot_for_write = Arc::try_unwrap(snapshot_for_write)
+                        .unwrap_or_else(|shared| (*shared).clone());
                     if let Err(e) = write_port.write(snapshot_for_write).await {
                         error!(
                             event = "inbound_os_write_failed",

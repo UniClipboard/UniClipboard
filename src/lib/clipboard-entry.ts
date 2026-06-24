@@ -27,6 +27,14 @@ export interface ClipboardFileItem {
   file_names: string[]
   file_sizes: number[]
   /**
+   * Per-file native local path, aligned with `file_names` by index. Decoded
+   * from the projection's `file://` URIs (received files materialize under the
+   * app cache dir). `null` for entries whose file URI couldn't be decoded or
+   * for `uniclip-missing://` placeholders. Absent for historical entries that
+   * predate this field. Backs the "open file location" action.
+   */
+  file_paths?: (string | null)[]
+  /**
    * Per-file missing flag, aligned with `file_names` / `file_sizes` by index.
    * `true` means the file never finished materializing when the entry was
    * persisted (the user cancelled the inbound transfer): it cannot be

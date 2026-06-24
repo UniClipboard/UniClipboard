@@ -744,6 +744,7 @@
     "errors": {
       "copyFailed": "复制到剪贴板失败",
       "openLocationFailed": "打开文件位置失败",
+      "fileLocationUnavailable": "该文件本地已不可用。",
       "loadDetailFailed": "加载详情失败",
       "unknown": "发生未知错误",
       "unavailableBadge": "内容已不可用",

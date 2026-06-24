@@ -9,8 +9,8 @@ import {
   getEntryDetail as daemonGetDetail,
 } from '@/api/daemon/clipboard'
 import { retryLifecycle } from '@/api/lifecycle'
+import { revealPath } from '@/api/storage'
 import { createLogger } from '@/lib/logger'
-import { invokeWithTrace } from '@/lib/tauri-command'
 
 const log = createLogger('clipboard-items')
 
@@ -261,16 +261,17 @@ export async function copyFileToClipboard(entryId: string): Promise<void> {
 }
 
 /**
- * Open the file location (containing folder) in the system file manager.
+ * Reveal a received file's local copy in the system file manager (opens the
+ * containing folder with the item selected).
  *
- * TODO(issue #698 follow-up): Rust `open_file_location` command 不存在 —
- * 调用会 runtime 报 "command not found"。同上待 daemon 化 / Rust 补 command。
+ * Received files materialize under the app cache dir
+ * (`<cache>/iroh-blobs/<entryId>/<filename>`). The daemon projection carries
+ * those `file://` URIs in `preview`, which `projectClipboardEntry` decodes into
+ * `ClipboardFileItem.file_paths`; callers resolve a concrete native path (see
+ * `firstRevealableFilePath`) and pass it here. Delegates to the native
+ * `reveal_path` command, which validates existence (404s when the file is gone)
+ * and is already used by the log/config-export flows.
  */
-export async function openFileLocation(entryId: string): Promise<void> {
-  try {
-    await invokeWithTrace('open_file_location', { entryId })
-  } catch (error) {
-    log.error({ err: error }, 'Failed to open file location')
-    throw error
-  }
+export async function openFileLocation(filePath: string): Promise<void> {
+  await revealPath(filePath)
 }

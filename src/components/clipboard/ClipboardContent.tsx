@@ -13,6 +13,7 @@ import { usePlatform } from '@/hooks/usePlatform'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
 import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { firstRevealableFilePath } from '@/lib/clipboard-utils'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { captureUserIntent } from '@/observability/breadcrumbs'
@@ -487,8 +488,15 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
   // Open file location in system file manager
   const handleOpenFileLocation = useCallback(
     async (itemId: string) => {
+      const path = firstRevealableFilePath(flatItems.find(it => it.id === itemId)?.content ?? null)
+      if (!path) {
+        toast.error(t('clipboard.errors.openLocationFailed'), {
+          description: t('clipboard.errors.fileLocationUnavailable'),
+        })
+        return
+      }
       try {
-        await openFileLocation(itemId)
+        await openFileLocation(path)
       } catch (err) {
         log.error({ err }, 'Open file location failed')
         toast.error(t('clipboard.errors.openLocationFailed'), {
@@ -496,7 +504,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
         })
       }
     },
-    [t]
+    [flatItems, t]
   )
 
   // Keyboard: C to copy (blocked for non-completed file entries)

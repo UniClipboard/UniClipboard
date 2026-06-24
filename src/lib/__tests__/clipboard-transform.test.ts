@@ -76,6 +76,7 @@ describe('projectClipboardEntry', () => {
       file_names: ['report.pdf', 'lost.bin'],
       file_sizes: [100, 42],
       file_missing: [false, true],
+      file_paths: ['/tmp/report.pdf', null],
     })
   })
 

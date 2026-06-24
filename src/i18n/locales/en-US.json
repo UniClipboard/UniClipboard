@@ -753,6 +753,7 @@
     "errors": {
       "copyFailed": "Failed to copy to clipboard",
       "openLocationFailed": "Failed to open file location",
+      "fileLocationUnavailable": "This file is no longer available locally.",
       "loadDetailFailed": "Failed to load details",
       "unknown": "An unknown error occurred",
       "unavailableBadge": "Content unavailable",

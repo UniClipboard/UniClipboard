@@ -48,7 +48,7 @@ tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Encryption
-sha2 = "0.10"
+sha2 = "0.11"
 base64 = "0.22"
 subtle = "2.5"
 
@@ -59,7 +59,7 @@ image = "0.25"
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 # Random number generation
-rand = "0.9"
+rand = "0.10"
 
 # Byte handling
 bytes = "1.7"
@@ -99,7 +99,7 @@ specta-typescript = { version = "=0.0.12", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
-mockall = "0.13"
+mockall = "0.14"
 tracing-subscriber = { version = "0.3", features = ["registry", "fmt", "env-filter"] }
 
 # Linux 上 keyring → dbus-secret-service → dbus → libdbus-sys。默认 libdbus-sys
@@ -153,7 +153,7 @@ libdbus-sys = { version = "0.2", features = ["vendored"] }
 #     * x11rb 0.13.x is the current stable line; the `xfixes` feature is
 #       what the watcher needs for selection-change notifications.
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { version = "0.38", features = ["event", "fs", "pipe"] }
+rustix = { version = "1.1", features = ["event", "fs", "pipe"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }

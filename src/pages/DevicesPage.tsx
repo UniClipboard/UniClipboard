@@ -73,6 +73,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toast'
+import type { PeerSnapshotPayloadItem, PeersChangedPayload } from '@/hooks/useDaemonEvents'
 import { useSetting } from '@/hooks/useSetting'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
@@ -84,6 +85,7 @@ import {
   clearSpaceMembersError,
   fetchLocalDeviceInfo,
   fetchSpaceMembers,
+  setSpaceMembers,
 } from '@/store/slices/devicesSlice'
 
 const log = createLogger('devices-page')
@@ -371,17 +373,21 @@ const DeviceTabs: React.FC = () => {
     const handler = (event: { topic: string; eventType: string; payload: unknown }) => {
       if (event.topic !== 'peers') return
       if (event.eventType === 'peers.changed') {
-        dispatch(fetchSpaceMembers())
+        // The event carries the full member snapshot (same source as
+        // GET /paired-devices), so apply it directly instead of firing a
+        // redundant HTTP refetch on every presence flip (issue #1129).
+        const payload = event.payload as PeersChangedPayload
+        dispatch(setSpaceMembers(payload.peers.map(peerSnapshotToMember)))
       }
     }
     const unsub = daemonWs.subscribe(['peers'], handler)
     return unsub
   }, [dispatch])
 
-  const handleSelectPeer = (peerId: string) => {
+  const handleSelectPeer = useCallback((peerId: string) => {
     setSelectedPeerId(peerId)
     setPeerDialogOpen(true)
-  }
+  }, [])
 
   const handleUnpairRequest = (peerId: string) => {
     setUnpairTargetId(peerId)
@@ -643,12 +649,7 @@ const PeerGrid: React.FC<PeerGridProps> = ({ peers, lanOnlyActive, onSelect, onA
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {peers.map(peer => (
-        <PeerCard
-          key={peer.peerId}
-          peer={peer}
-          lanOnlyActive={lanOnlyActive}
-          onSelect={() => onSelect(peer.peerId)}
-        />
+        <PeerCard key={peer.peerId} peer={peer} lanOnlyActive={lanOnlyActive} onSelect={onSelect} />
       ))}
       <AddCard
         label={t('devices.addDevice.title')}
@@ -664,7 +665,7 @@ const PeerGrid: React.FC<PeerGridProps> = ({ peers, lanOnlyActive, onSelect, onA
 interface PeerCardProps {
   peer: SpaceMember
   lanOnlyActive: boolean
-  onSelect: () => void
+  onSelect: (peerId: string) => void
 }
 
 type ChannelTone = 'emerald' | 'amber' | 'muted'
@@ -680,7 +681,7 @@ const CHANNEL_ICON: Record<
   outOfLan: { icon: WifiOff, tone: 'amber' },
 }
 
-const PeerCard: React.FC<PeerCardProps> = ({ peer, lanOnlyActive, onSelect }) => {
+const PeerCard = React.memo(({ peer, lanOnlyActive, onSelect }: PeerCardProps) => {
   const { t } = useTranslation()
   const Icon = getDeviceIcon(peer.deviceName)
   const kind = deriveBadgeKind(peer.channel ?? 'unknown', lanOnlyActive)
@@ -689,7 +690,7 @@ const PeerCard: React.FC<PeerCardProps> = ({ peer, lanOnlyActive, onSelect }) =>
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => onSelect(peer.peerId)}
       className="group relative flex w-full flex-col gap-4 overflow-hidden rounded-2xl border border-border/60 bg-card p-5 text-left transition-all hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       <div className="flex items-start justify-between">
@@ -736,7 +737,8 @@ const PeerCard: React.FC<PeerCardProps> = ({ peer, lanOnlyActive, onSelect }) =>
       </div>
     </button>
   )
-}
+})
+PeerCard.displayName = 'PeerCard'
 
 interface ChannelChipProps {
   icon: typeof Wifi
@@ -1022,6 +1024,25 @@ const useMobileDevices = (): UseMobileDevicesReturn => {
 // ────────────────────────────────────────────────────────────────
 // 辅助函数
 // ────────────────────────────────────────────────────────────────
+
+/**
+ * Project a `peers.changed` snapshot entry into the `SpaceMember` view model.
+ * Mirrors how `GET /paired-devices` projects the same daemon source: P2P peers
+ * never carry `lastSeenAtMs` (always null) and an empty `deviceName` collapses
+ * to "". Keeping the two paths identical means the WS fast-path produces byte-
+ * for-byte the same member list the HTTP refetch would have.
+ */
+function peerSnapshotToMember(p: PeerSnapshotPayloadItem): SpaceMember {
+  return {
+    peerId: p.peerId,
+    deviceName: p.deviceName ?? '',
+    pairingState: p.pairingState ?? 'Trusted',
+    lastSeenAtMs: null,
+    connected: p.connected,
+    channel: p.channel ?? 'unknown',
+    connectionAddress: p.connectionAddress ?? null,
+  }
+}
 
 function translateMobileSyncError(t: ReturnType<typeof useTranslation>['t'], err: unknown): string {
   if (isMobileSyncError(err)) {

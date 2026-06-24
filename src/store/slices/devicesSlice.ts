@@ -1,4 +1,4 @@
-import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
+import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import {
   getMemberSyncPreferences,
   updateMemberSyncPreferences as updateMemberSyncPreferencesApi,
@@ -26,6 +26,21 @@ interface DevicesState {
   // 每成员同步偏好（phase 4b PR-3：从 DeviceSyncSettings 切换到 MemberSyncPreferences）
   memberSyncPreferences: Record<string, MemberSyncPreferences>
   memberSyncPreferencesLoading: Record<string, boolean>
+}
+
+/** Field-wise equality so we can reuse a peer's object identity when a
+ * `peers.changed` snapshot leaves it unchanged — that keeps memoized
+ * `PeerCard`s from re-rendering when only a sibling peer flipped state. */
+function sameMember(a: SpaceMember, b: SpaceMember): boolean {
+  return (
+    a.peerId === b.peerId &&
+    a.deviceName === b.deviceName &&
+    a.pairingState === b.pairingState &&
+    a.lastSeenAtMs === b.lastSeenAtMs &&
+    a.connected === b.connected &&
+    a.channel === b.channel &&
+    a.connectionAddress === b.connectionAddress
+  )
 }
 
 const initialState: DevicesState = {
@@ -99,6 +114,22 @@ const devicesSlice = createSlice({
     clearSpaceMembersError: state => {
       state.spaceMembersError = null
     },
+    /**
+     * Replace the member list from a `peers.changed` WS snapshot, skipping the
+     * `GET /paired-devices` round-trip the event used to trigger. The snapshot
+     * is the full, authoritative member set (same source as the HTTP endpoint),
+     * so we replace wholesale — but reuse the previous object for any peer whose
+     * fields are unchanged so memoized cards don't needlessly re-render.
+     */
+    setSpaceMembers: (state, action: PayloadAction<SpaceMember[]>) => {
+      const prevById = new Map(state.spaceMembers.map(m => [m.peerId, m]))
+      state.spaceMembers = action.payload.map(next => {
+        const prev = prevById.get(next.peerId)
+        return prev && sameMember(prev, next) ? prev : next
+      })
+      state.spaceMembersLoading = false
+      state.spaceMembersError = null
+    },
   },
   extraReducers: builder => {
     // Local device info
@@ -165,5 +196,6 @@ const devicesSlice = createSlice({
   },
 })
 
-export const { clearLocalDeviceError, clearSpaceMembersError } = devicesSlice.actions
+export const { clearLocalDeviceError, clearSpaceMembersError, setSpaceMembers } =
+  devicesSlice.actions
 export default devicesSlice.reducer

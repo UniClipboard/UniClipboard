@@ -393,11 +393,13 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
 
   // Scroll active item into view. With virtualization the off-screen row has
   // no DOM node to scrollIntoView, so we drive the scroller imperatively by
-  // the item's flat index (activeIndex is read fresh whenever activeItemId
-  // changes in the same render).
+  // the item's flat index. `scrollIntoView` (vs `scrollToIndex`) keeps the
+  // original `block: 'nearest'` semantics: an already-visible row isn't
+  // scrolled, and an off-screen one only scrolls just enough — no forced
+  // centering (issue #1129 follow-up).
   useEffect(() => {
     if (activeIndex < 0) return
-    virtuosoRef.current?.scrollToIndex({ index: activeIndex, align: 'center', behavior: 'smooth' })
+    virtuosoRef.current?.scrollIntoView({ index: activeIndex, behavior: 'smooth' })
     // Only re-scroll on an actual selection change; activeIndex is read fresh
     // from the same render, so unrelated list shifts (e.g. a prepend) don't
     // yank the viewport.
@@ -601,8 +603,19 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
                 Footer: () => <div className="h-3" />,
               }}
               groupContent={index => (
-                <div className="bg-background px-6 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  {dateGroups[index]?.label}
+                // Opaque `bg-card` base so the sticky header occludes rows
+                // scrolling under it, plus the same `bg-muted/20` tint the list
+                // scroller carries (non-Windows) — together they match the list
+                // background exactly instead of reading as a different color.
+                <div className="bg-card">
+                  <div
+                    className={cn(
+                      'px-6 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground',
+                      !isWindows && 'bg-muted/20'
+                    )}
+                  >
+                    {dateGroups[index]?.label}
+                  </div>
                 </div>
               )}
               itemContent={index => {

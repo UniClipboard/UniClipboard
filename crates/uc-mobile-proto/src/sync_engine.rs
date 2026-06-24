@@ -249,11 +249,13 @@ pub fn plan_preamble(st: &mut SyncRuntimeState, snap: &PreambleSnapshot) -> Prea
             snap.persisted_synced_hash.as_deref(),
             st.last_synced_hash.as_deref(),
         );
-        let content_id_differs =
-            snap.persisted_synced_content_id.as_deref() != st.last_synced_content_id.as_deref();
+        let content_id_differs = nonempty_content_id(snap.persisted_synced_content_id.as_deref())
+            != nonempty_content_id(st.last_synced_content_id.as_deref());
         if hash_differs || content_id_differs {
             st.last_synced_hash = snap.persisted_synced_hash.as_deref().map(str::to_uppercase);
-            st.last_synced_content_id = snap.persisted_synced_content_id.clone();
+            st.last_synced_content_id =
+                nonempty_content_id(snap.persisted_synced_content_id.as_deref())
+                    .map(str::to_string);
         }
         PreambleProceed::ToNetwork
     };
@@ -374,8 +376,8 @@ pub fn plan_after_server_get(st: &SyncRuntimeState, snap: &ServerGetSnapshot) ->
 /// this comparison.
 fn is_already_synced(entry: &Clipboard, st: &SyncRuntimeState) -> bool {
     match (
-        entry.content_id.as_deref(),
-        st.last_synced_content_id.as_deref(),
+        nonempty_content_id(entry.content_id.as_deref()),
+        nonempty_content_id(st.last_synced_content_id.as_deref()),
     ) {
         (Some(a), Some(b)) => a == b,
         _ => hashes_equal(entry.hash.as_deref(), st.last_synced_hash.as_deref()),
@@ -385,7 +387,10 @@ fn is_already_synced(entry: &Clipboard, st: &SyncRuntimeState) -> bool {
 /// Server-has-new sub-plan (`processServerNew` 614-633).
 fn plan_server_new(st: &SyncRuntimeState, auto_apply: bool, entry: &Clipboard) -> ServerNewPlan {
     let entry_has_hash = entry.hash.as_deref().is_some_and(|h| !h.is_empty());
-    let already_staged = match (entry.content_id.as_deref(), st.staged_content_id.as_deref()) {
+    let already_staged = match (
+        nonempty_content_id(entry.content_id.as_deref()),
+        nonempty_content_id(st.staged_content_id.as_deref()),
+    ) {
         // Identity match: same staged content even if its `hash` drifted.
         (Some(a), Some(b)) => a == b,
         _ if entry_has_hash => st
@@ -413,12 +418,26 @@ fn plan_server_new(st: &SyncRuntimeState, auto_apply: bool, entry: &Clipboard) -
 /// `staged_entry == entry` check (a derived `PartialEq` would silently widen it
 /// to include the new field).
 fn clipboard_eq_ignoring_content_id(a: &Clipboard, b: &Clipboard) -> bool {
-    a.kind == b.kind
-        && a.hash == b.hash
-        && a.text == b.text
-        && a.has_data == b.has_data
-        && a.data_name == b.data_name
-        && a.size == b.size
+    // Destructure (no `..`) so a future `Clipboard` field forces a compile-time
+    // revisit here instead of being silently dropped from this equality.
+    let Clipboard {
+        kind,
+        hash,
+        content_id: _,
+        text,
+        has_data,
+        data_name,
+        size,
+    } = a;
+    (kind, hash, text, has_data, data_name, size)
+        == (
+            &b.kind,
+            &b.hash,
+            &b.text,
+            &b.has_data,
+            &b.data_name,
+            &b.size,
+        )
 }
 
 /// Push sub-decision (`maybePush` 691-729).
@@ -496,7 +515,7 @@ pub fn commit_apply(
 /// stays whatever the tick error handler sets ([`commit_tick_failure`]).
 pub fn commit_apply_failed(st: &mut SyncRuntimeState, entry: &Clipboard) {
     st.staged_server_hash = entry.hash.clone();
-    st.staged_content_id = entry.content_id.clone();
+    st.staged_content_id = nonempty_content_id(entry.content_id.as_deref()).map(str::to_string);
     st.staged_entry = Some(entry.clone());
 }
 
@@ -504,7 +523,7 @@ pub fn commit_apply_failed(st: &mut SyncRuntimeState, entry: &Clipboard) {
 /// and not already staged — stash the entry, surface `HasNewUnwritten`.
 pub fn commit_stage(st: &mut SyncRuntimeState, entry: &Clipboard) {
     st.staged_server_hash = entry.hash.clone();
-    st.staged_content_id = entry.content_id.clone();
+    st.staged_content_id = nonempty_content_id(entry.content_id.as_deref()).map(str::to_string);
     st.staged_entry = Some(entry.clone());
     st.state = SyncState::HasNewUnwritten;
 }
@@ -813,24 +832,34 @@ pub fn is_probe_conclusion_valid(report_epoch: u64, current_epoch: u64) -> bool 
 /// `advanceSynced` (839-849): a nil/empty hash is unverifiable — leave the hash
 /// watermark alone so the next tick re-evaluates. Otherwise store uppercased.
 ///
-/// `content_id` is the companion identity and is ALWAYS written here (the atomic
-/// same-write contract: the two watermark keys never diverge). Pass the server
-/// entry's `content_id` on the converged/apply paths (learns it), and `None` on
-/// the push paths (we changed the content but do not yet know its server
-/// identity — leaving a stale `content_id` would misjudge the next GET). Stored
-/// verbatim, never uppercased (opaque).
+/// `content_id` is the companion identity and is written here as a SINGLE atomic
+/// move with the hash: both watermark keys advance together or neither does. A
+/// nil/empty hash is unverifiable, so both keys are left untouched (never just
+/// the `content_id`) — that is the same-write contract the keys rely on. Pass
+/// the server entry's `content_id` on the converged/apply paths (learns it), and
+/// `None` on the push paths (we changed the content but do not yet know its
+/// server identity — leaving a stale `content_id` would misjudge the next GET).
+/// Stored verbatim, never uppercased (opaque); an empty `content_id` is treated
+/// as absent.
 fn advance_synced(st: &mut SyncRuntimeState, hash: Option<&str>, content_id: Option<&str>) {
     if let Some(h) = hash {
         if !h.is_empty() {
             st.last_synced_hash = Some(h.to_uppercase());
+            st.last_synced_content_id = nonempty_content_id(content_id).map(str::to_string);
         }
     }
-    st.last_synced_content_id = content_id.map(str::to_string);
 }
 
 /// `hash?.uppercased()` with empty treated as absent.
 fn upper_nonempty(hash: Option<&str>) -> Option<String> {
     hash.filter(|h| !h.is_empty()).map(str::to_uppercase)
+}
+
+/// An opaque `contentId` is meaningful only when non-empty. An empty string
+/// carries no cross-device identity, so it is treated as absent and dedup falls
+/// back to `hash` — mirroring how empty hashes are treated as absent.
+fn nonempty_content_id(id: Option<&str>) -> Option<&str> {
+    id.filter(|s| !s.is_empty())
 }
 
 /// Record an apply/push event and report whether the guard tripped, setting
@@ -1695,6 +1724,24 @@ mod tests {
         ));
     }
 
+    /// An empty `contentId` carries no identity: a `(Some(""), Some(""))` pair
+    /// must NOT short-circuit to "already synced" — it falls back to `hash`, so
+    /// distinct content with differing hashes is still server-new.
+    #[test]
+    fn empty_content_id_does_not_match_falls_back_to_hash() {
+        let st = SyncRuntimeState {
+            last_synced_hash: Some("A".into()),
+            last_synced_content_id: Some("".into()),
+            ..Default::default()
+        };
+        // Empty content_id on both sides → hash decides → B != A → server-new.
+        let snap = get_snap(Some(entry_cid("B", "")), Some("DEV"));
+        assert!(matches!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(_)
+        ));
+    }
+
     // --- contentId commit watermark ---------------------------------------
 
     /// Converged learns the server contentId (the §3 primary learning path).
@@ -1748,7 +1795,7 @@ mod tests {
         ));
     }
 
-    /// The §10-証伪#2 invariant: a silent-skip push freezes BOTH watermark keys
+    /// The §10 falsification #2 invariant: a silent-skip push freezes BOTH watermark keys
     /// (neither hash nor contentId moves).
     #[test]
     fn commit_push_silent_skip_freezes_both_watermarks() {

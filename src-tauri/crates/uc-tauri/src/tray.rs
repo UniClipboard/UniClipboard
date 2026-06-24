@@ -167,12 +167,13 @@ impl TrayState {
                     }
                 }
                 "tray.restart" => {
-                    // Fire-and-forget。`perform_restart` 内部走 graceful
+                    // Fire-and-forget。托盘"重启"是 daemon + GUI 的完整重启:
+                    // `perform_full_restart` 先重启 daemon、再走 graceful
                     // shutdown → `app.restart()`,后者调用 `process::exit`,
                     // 该 future 在 happy path 永不返回。
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        crate::commands::restart::perform_restart(&app).await;
+                        crate::commands::restart::perform_full_restart(&app).await;
                     });
                 }
                 "tray.lightweight" => {

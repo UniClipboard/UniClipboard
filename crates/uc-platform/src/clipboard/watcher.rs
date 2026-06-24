@@ -333,6 +333,14 @@ impl ClipboardWatcher {
         // suppress every further same-size frame until the size changes or the
         // stream goes quiet. The first two frames still pass, so a deliberate
         // pair of different same-size images is preserved.
+        // Burst-breaker state to commit *only* on a successful send, mirroring
+        // how `last_image_seen` / `last_meaningful` are committed below. A frame
+        // that never reaches downstream (e.g. `try_send` backpressure during the
+        // very storm this guards) must not advance the latch and then mute a
+        // later frame that did emit. The suppress path below still refreshes the
+        // latch inline before returning — exactly as the storm guard does — so a
+        // sustained burst stays muted regardless of send outcome.
+        let mut pending_image_burst: Option<ImageBurst> = None;
         if is_image && image_fingerprint.is_some() {
             if let Some(size) = snapshot.primary_image_size_bytes() {
                 match self.image_burst {
@@ -355,8 +363,8 @@ impl ClipboardWatcher {
                         }
                         // Second consecutive same-size read: latch now but still
                         // emit this one, so a genuine pair of same-size images
-                        // both pass before suppression begins.
-                        self.image_burst = Some(ImageBurst {
+                        // both pass before suppression begins. Committed on send.
+                        pending_image_burst = Some(ImageBurst {
                             at: now,
                             size,
                             latched: true,
@@ -364,8 +372,8 @@ impl ClipboardWatcher {
                     }
                     _ => {
                         // First image, or size changed / gap too long: (re)start
-                        // the burst tracking unlatched.
-                        self.image_burst = Some(ImageBurst {
+                        // the burst tracking unlatched. Committed on send.
+                        pending_image_burst = Some(ImageBurst {
                             at: now,
                             size,
                             latched: false,
@@ -442,10 +450,20 @@ impl ClipboardWatcher {
             if let Some(size) = image_size {
                 self.last_image_seen = Some((now, size));
             } else {
-                // A genuinely-new non-image copy ends any ongoing image burst,
-                // so drop the latch: a later same-size image must not be muted
-                // as if the storm were still running.
+                // A genuinely-new non-image copy ends any ongoing image storm,
+                // so drop the size latch: a later same-size image must not be
+                // muted as if the storm were still running.
                 self.last_image_seen = None;
+            }
+            // Commit the burst-breaker transition computed above now that the
+            // frame actually reached downstream. A successfully-emitted
+            // non-image copy also ends any ongoing decodable-image burst, so
+            // clear the latch — stale burst state must not mute a later
+            // same-size image within the old window.
+            if let Some(burst) = pending_image_burst {
+                self.image_burst = Some(burst);
+            } else if !is_image {
+                self.image_burst = None;
             }
             if let Some(key) = current_dedupe_key {
                 self.last_meaningful = Some((key, now));
@@ -912,6 +930,60 @@ mod tests {
     }
 
     #[test]
+    fn intervening_non_image_breaks_burst_breaker_latch() {
+        // A decodable same-size image burst latches the sub-second breaker; an
+        // intervening non-image copy (text) must clear that latch so a later,
+        // genuinely different same-size image within the old window still emits
+        // instead of being muted by stale burst state. The storm-guard latch is
+        // already cleared on a non-image emit; the fingerprint breaker must
+        // behave the same. (Uses decodable BMPs so the fp=Some breaker path
+        // runs, unlike `intervening_non_image_breaks_image_latch` which drives
+        // the fp=None storm guard.)
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        // Same dimensions => identical byte size; different RGB => distinct
+        // fingerprints, so these latch the breaker instead of key-deduping.
+        let a = encode(image::ImageFormat::Bmp, 8, 8, [10, 20, 30]);
+        let b = encode(image::ImageFormat::Bmp, 8, 8, [200, 100, 50]);
+        let c = encode(image::ImageFormat::Bmp, 8, 8, [40, 90, 140]);
+        w.emit_with_dedup_at(decodable_image(a), base); // emit, latch unlatched
+        w.emit_with_dedup_at(decodable_image(b), base + Duration::from_millis(100)); // emit, latches
+        w.emit_with_dedup_at(text("hello"), base + Duration::from_millis(200)); // emit, clears latch
+        w.emit_with_dedup_at(decodable_image(c), base + Duration::from_millis(300)); // emit, latch cleared
+        assert_eq!(
+            drain(&mut rx),
+            4,
+            "a non-image copy between same-size images must clear the burst-breaker latch"
+        );
+    }
+
+    #[test]
+    fn burst_breaker_latch_not_advanced_when_send_fails() {
+        // Burst state must only advance on a successful send, like every other
+        // dedup latch. A capacity-1 channel lets the first frame queue, then the
+        // next send fails (backpressure — exactly what a storm provokes). The
+        // failed frame must not advance the latch; once the channel drains, a
+        // following same-size frame must still emit rather than be muted by a
+        // latch set on a frame that never reached downstream.
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let mut w = ClipboardWatcher::new(Arc::new(StubClipboard), tx);
+        let base = Instant::now();
+        let a = encode(image::ImageFormat::Bmp, 8, 8, [10, 20, 30]);
+        let b = encode(image::ImageFormat::Bmp, 8, 8, [200, 100, 50]);
+        w.emit_with_dedup_at(decodable_image(a), base); // queues into the single slot
+        w.emit_with_dedup_at(decodable_image(b.clone()), base + Duration::from_millis(50)); // send fails
+        assert_eq!(drain(&mut rx), 1, "only the first frame was queued");
+        // `b` again (distinct fp from `a`, same size). Had the failed send
+        // latched the breaker, this would be suppressed; it must emit.
+        w.emit_with_dedup_at(decodable_image(b), base + Duration::from_millis(100));
+        assert_eq!(
+            drain(&mut rx),
+            1,
+            "a same-size frame after a failed send must still emit"
+        );
+    }
+
+    #[test]
     fn approx_same_image_size_absorbs_small_wobble() {
         // The #957 VBoxShCl wobble (2_753_070 vs 2_753_058) must read as the
         // same image; a >1% difference must read as a different one.
@@ -946,9 +1018,11 @@ mod tests {
                 base + Duration::from_millis(150 * i as u64),
             );
         }
-        assert!(
-            drain(&mut rx) <= 3,
-            "a near-same-size churning burst must stay collapsed despite byte-size wobble"
+        assert_eq!(
+            drain(&mut rx),
+            2,
+            "a near-same-size churning burst must collapse to exactly the first \
+             two emits despite byte-size wobble (third-and-later suppressed)"
         );
     }
 }

@@ -1,6 +1,22 @@
 name: Coverage
 
 on:
+  # Codecov needs a base report on the default branch to diff PRs against.
+  # Without this push trigger, merge commits on main carry no coverage and
+  # every PR falls back to "Missing Base Commit". See #641 regression.
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'apps/**'
+      - 'src-tauri/**'
+      - 'tests/e2e/**'
+      - 'vendor/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'clippy.toml'
+      - '.github/workflows/coverage.yml'
   pull_request:
     paths:
       - 'crates/**'

@@ -1,7 +1,19 @@
 name: Frontend Coverage
-run-name: 'Frontend coverage for ${{ github.head_ref }}'
+run-name: 'Frontend coverage for ${{ github.head_ref || github.ref_name }}'
 
 on:
+  # Codecov needs a base report on the default branch to diff PRs against.
+  # Without this push trigger, merge commits on main carry no coverage and
+  # every PR falls back to "Missing Base Commit". See #641 regression.
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'tsconfig*.json'
+      - 'vite.config.ts'
+      - '.github/workflows/frontend-coverage.yml'
   pull_request:
     paths:
       - 'src/**'

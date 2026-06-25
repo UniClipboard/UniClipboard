@@ -501,6 +501,7 @@ mod tests {
                 },
             )
             .await
+            .outcome
             .expect("dispatch succeeds");
         assert_eq!(ack, uc_core::ports::DispatchAck::Accepted);
 
@@ -551,7 +552,8 @@ mod tests {
                     ciphertext: Bytes::from_static(b"irrelevant"),
                 },
             )
-            .await;
+            .await
+            .outcome;
 
         match result {
             Err(uc_core::ports::ClipboardDispatchError::PeerRejected(msg)) => {
@@ -672,6 +674,7 @@ mod tests {
                         },
                     )
                     .await
+                    .outcome
                     .expect("concurrent dispatch ok");
                 assert_eq!(ack, uc_core::ports::DispatchAck::Accepted);
             }));

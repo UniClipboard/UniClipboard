@@ -56,7 +56,8 @@ pub use selection_resolver::SelectionResolverPort;
 pub use self_write_ledger::{SelfWriteAttribution, SelfWriteLedgerPort, SelfWriteMatch};
 pub use spool_queue::{SpoolQueuePort, SpoolRequest};
 pub use sync_dispatch::{
-    ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, DispatchAck, SyncPayload,
+    ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, DispatchAck, DispatchReport,
+    SyncPayload,
 };
 pub use sync_receiver::{ClipboardReceiverPort, InboundClipboard};
 pub use thumbnail_generator::{GeneratedThumbnail, ThumbnailGeneratorPort};

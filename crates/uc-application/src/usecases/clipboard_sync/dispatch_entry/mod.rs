@@ -104,13 +104,13 @@ use uc_core::clipboard::{
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::security::TransferCipherPort;
 use uc_core::ports::{
-    ClipboardDispatchError, ClipboardDispatchPort, ClockPort, DeviceIdentityPort, DispatchAck,
-    EntryDeliveryRepositoryPort, FirstSyncStatePort, LocalIdentityPort, PeerAddressRepositoryPort,
-    PresencePort, SettingsPort, SyncPayload,
+    ClipboardDispatchError, ClipboardDispatchPort, ClockPort, ConnectionChannel,
+    DeviceIdentityPort, DispatchAck, EntryDeliveryRepositoryPort, FirstSyncStatePort,
+    LocalIdentityPort, PeerAddressRepositoryPort, PresencePort, SettingsPort, SyncPayload,
 };
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::{
-    AnalyticsPort, FailureReason, PayloadSizeBucket, PayloadType, SyncFailureStage,
+    AnalyticsPort, FailureReason, PayloadSizeBucket, PayloadType, SyncFailureStage, TransportType,
 };
 
 /// One fanned-out peer's settled result: the device plus the wire outcome.
@@ -164,6 +164,20 @@ fn dispatch_failure_stage(err: &ClipboardDispatchError) -> SyncFailureStage {
         ClipboardDispatchError::Offline
         | ClipboardDispatchError::PeerRejected(_)
         | ClipboardDispatchError::Io(_) => SyncFailureStage::ImmediateSend,
+    }
+}
+
+/// Map the wire-observed [`ConnectionChannel`] to the analytics
+/// [`TransportType`] bucket. Keeps `uc-observability`'s telemetry vocabulary
+/// out of `uc-core` (the port returns the core channel; this application-layer
+/// boundary translates it). `Offline` collapses into `Unknown`: a dispatch
+/// that settled with no resolvable path is reported as an unresolved route,
+/// not a distinct offline transport.
+fn transport_type_from_channel(channel: ConnectionChannel) -> TransportType {
+    match channel {
+        ConnectionChannel::Direct => TransportType::P2pDirect,
+        ConnectionChannel::Relay => TransportType::Relay,
+        ConnectionChannel::Offline | ConnectionChannel::Unknown => TransportType::Unknown,
     }
 }
 
@@ -540,9 +554,10 @@ mod tests {
     use uc_core::clipboard::{DeliveryFailureReason, EntryDeliveryStatus};
     use uc_core::ports::security::{TransferCipherError, TransferCipherPort};
     use uc_core::ports::{
-        ClipboardHeader, ClockPort, DeviceIdentityPort, FirstSyncStateError, LocalIdentityError,
-        LocalIdentityPort, PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort,
-        PresenceError, PresenceEvent, PresencePort, ReachabilityState, SettingsPort,
+        ClipboardHeader, ClockPort, DeviceIdentityPort, DispatchReport, FirstSyncStateError,
+        LocalIdentityError, LocalIdentityPort, PeerAddressError, PeerAddressRecord,
+        PeerAddressRepositoryPort, PresenceError, PresenceEvent, PresencePort, ReachabilityState,
+        SettingsPort,
     };
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
@@ -598,7 +613,19 @@ mod tests {
                 target: &DeviceId,
                 header: &ClipboardHeader,
                 payload: SyncPayload,
-            ) -> Result<DispatchAck, ClipboardDispatchError>;
+            ) -> DispatchReport;
+        }
+    }
+
+    /// Wrap a wire outcome in a `DispatchReport` for mock returns. Fan-out /
+    /// delivery tests in this module assert on per-target outcome + delivery
+    /// records, not on `transport`; the channel→`TransportType` mapping is
+    /// exercised in the `per_peer` unit tests. A fixed `Direct` keeps these
+    /// returns explicit without implying anything about path selection.
+    fn dispatch_report(outcome: Result<DispatchAck, ClipboardDispatchError>) -> DispatchReport {
+        DispatchReport {
+            transport: ConnectionChannel::Direct,
+            outcome,
         }
     }
 
@@ -1014,12 +1041,12 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-a")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-b")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let uc = build_uc(
             repo,
@@ -1063,7 +1090,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-on")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         // Crucial: dispatch IS called for `peer-off` (no pre-filter). The
         // port returns `Offline`, and the outcome surfaces that — callers
         // can then decide whether to retry or surface to the user.
@@ -1071,7 +1098,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-off")), always(), always())
             .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+            .returning(|_, _, _| dispatch_report(Err(ClipboardDispatchError::Offline)));
 
         let uc = build_uc(
             repo,
@@ -1110,7 +1137,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-a")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let uc = build_uc(
             repo,
@@ -1151,7 +1178,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-b")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let uc = build_uc(
             repo,
@@ -1275,17 +1302,21 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-ok")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-off")), always(), always())
             .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+            .returning(|_, _, _| dispatch_report(Err(ClipboardDispatchError::Offline)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-rej")), always(), always())
             .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::PeerRejected("too big".to_string())));
+            .returning(|_, _, _| {
+                dispatch_report(Err(ClipboardDispatchError::PeerRejected(
+                    "too big".to_string(),
+                )))
+            });
 
         let uc = build_uc(
             repo,
@@ -1370,7 +1401,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-on")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         // No expect_dispatch for peer-mute → mockall would panic on call.
 
         let uc = build_uc(
@@ -1422,7 +1453,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-orphan")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let uc = build_uc(
             repo,
@@ -1489,7 +1520,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-on")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         // No expect_dispatch for peer-no-text → mockall would panic on call.
 
         let uc = build_uc(
@@ -1574,7 +1605,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-strict")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let uc = build_uc(
             repo,
@@ -1629,12 +1660,12 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-a")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-b")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::DuplicateIgnored));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::DuplicateIgnored)));
 
         let analytics = Arc::new(CapturingAnalyticsSink::default());
         let uc = build_uc_with_analytics(
@@ -1699,7 +1730,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-off")), always(), always())
             .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+            .returning(|_, _, _| dispatch_report(Err(ClipboardDispatchError::Offline)));
 
         let analytics = Arc::new(CapturingAnalyticsSink::default());
         let uc = build_uc_with_analytics(
@@ -1815,12 +1846,12 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-a")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-b")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let analytics = Arc::new(CapturingAnalyticsSink::default());
         let first_sync_state = Arc::new(InMemoryFirstSyncState::default());
@@ -1960,31 +1991,33 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-ok")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-dup")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::DuplicateIgnored));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::DuplicateIgnored)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-off")), always(), always())
             .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+            .returning(|_, _, _| dispatch_report(Err(ClipboardDispatchError::Offline)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-policy")), always(), always())
             .times(1)
             .returning(|_, _, _| {
-                Err(ClipboardDispatchError::LocalPolicyExceeded(
+                dispatch_report(Err(ClipboardDispatchError::LocalPolicyExceeded(
                     "too big".to_string(),
-                ))
+                )))
             });
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-io")), always(), always())
             .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::Io("broken pipe".to_string())));
+            .returning(|_, _, _| {
+                dispatch_report(Err(ClipboardDispatchError::Io("broken pipe".to_string())))
+            });
 
         let spy = Arc::new(SpyEntryDeliveryRepo::default());
         let uc = DispatchClipboardEntryUseCase::new(
@@ -2081,7 +2114,7 @@ mod tests {
         dispatch
             .expect_dispatch()
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let spy = Arc::new(SpyEntryDeliveryRepo::default());
         let uc = DispatchClipboardEntryUseCase::new(
@@ -2227,17 +2260,17 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-ok")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-dup")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::DuplicateIgnored));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::DuplicateIgnored)));
         dispatch
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-off")), always(), always())
             .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::Offline));
+            .returning(|_, _, _| dispatch_report(Err(ClipboardDispatchError::Offline)));
 
         let spy = Arc::new(SpyEntryDeliveryRepo::default());
         let (uc, recorder) = build_uc_with_emitter(repo, cipher, dispatch, Arc::clone(&spy));
@@ -2294,7 +2327,7 @@ mod tests {
         dispatch
             .expect_dispatch()
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let spy = Arc::new(SpyEntryDeliveryRepo::default());
         let (uc, recorder) = build_uc_with_emitter(repo, cipher, dispatch, Arc::clone(&spy));
@@ -2327,7 +2360,7 @@ mod tests {
         dispatch
             .expect_dispatch()
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let spy = Arc::new(SpyEntryDeliveryRepo::default());
         let uc = DispatchClipboardEntryUseCase::new(
@@ -2371,11 +2404,11 @@ mod tests {
             target: &DeviceId,
             _header: &ClipboardHeader,
             _payload: SyncPayload,
-        ) -> Result<DispatchAck, ClipboardDispatchError> {
+        ) -> DispatchReport {
             if target == &self.slow_device {
                 tokio::time::sleep(self.slow_delay).await;
             }
-            Ok(DispatchAck::Accepted)
+            dispatch_report(Ok(DispatchAck::Accepted))
         }
     }
 
@@ -2532,7 +2565,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-accept-only")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let uc = build_uc_with_presence_and_first_sync_state(
             repo,
@@ -2581,9 +2614,9 @@ mod tests {
             .with(eq(DeviceId::new("peer-rejecty")), always(), always())
             .times(2)
             .returning(|_, _, _| {
-                Err(ClipboardDispatchError::PeerRejected(
+                dispatch_report(Err(ClipboardDispatchError::PeerRejected(
                     "wire version mismatch".into(),
-                ))
+                )))
             });
 
         let uc = build_uc(

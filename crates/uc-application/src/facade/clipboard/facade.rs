@@ -475,9 +475,9 @@ mod tests {
     use mockall::predicate::*;
     use uc_core::ports::security::TransferCipherError;
     use uc_core::ports::{
-        ClipboardDispatchError, ClipboardHeader, DispatchAck, FirstSyncStateError,
-        InboundClipboard, LocalIdentityError, PeerAddressError, PeerAddressRecord, PresenceError,
-        PresenceEvent, ReachabilityState, SyncPayload,
+        ClipboardDispatchError, ClipboardHeader, ConnectionChannel, DispatchAck, DispatchReport,
+        FirstSyncStateError, InboundClipboard, LocalIdentityError, PeerAddressError,
+        PeerAddressRecord, PresenceError, PresenceEvent, ReachabilityState, SyncPayload,
     };
     use uc_core::security::IdentityFingerprint;
     use uc_core::settings::model::Settings;
@@ -546,7 +546,17 @@ mod tests {
                 target: &DeviceId,
                 header: &ClipboardHeader,
                 payload: SyncPayload,
-            ) -> Result<DispatchAck, ClipboardDispatchError>;
+            ) -> DispatchReport;
+        }
+    }
+
+    /// Wrap a wire outcome in a `DispatchReport` for mock returns. These
+    /// facade tests assert the sync funnel (attempted/succeeded/deferred), not
+    /// the `transport` bucket, so a fixed `Direct` keeps the return explicit.
+    fn dispatch_report(outcome: Result<DispatchAck, ClipboardDispatchError>) -> DispatchReport {
+        DispatchReport {
+            transport: ConnectionChannel::Direct,
+            outcome,
         }
     }
 
@@ -874,7 +884,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-a")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let (facade, _receiver) = build_facade(
             repo,
@@ -995,7 +1005,7 @@ mod tests {
             .with(eq(DeviceId::new("peer-a")), always(), always())
             .times(1)
             .withf(|_target, header, _payload| header.payload_version == 3)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let (facade, _receiver) = build_facade(
             repo,
@@ -1094,7 +1104,7 @@ mod tests {
             .expect_dispatch()
             .with(eq(DeviceId::new("peer-b")), always(), always())
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| dispatch_report(Ok(DispatchAck::Accepted)));
 
         let (facade, _receiver) = build_facade(
             repo,

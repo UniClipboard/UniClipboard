@@ -535,6 +535,13 @@ pub enum TransportType {
     P2pDirect,
     Relay,
     FallbackCloud,
+    /// The actual path could not be resolved at capture time — the
+    /// connection was still handshaking / path-switching, or no active
+    /// QUIC path was observable. Distinct from a concrete `P2pDirect` /
+    /// `Relay` verdict so the `unknown` share is visible as its own slice
+    /// (an elevated share is a data-quality signal worth investigating)
+    /// rather than silently miscounted as direct.
+    Unknown,
 }
 
 /// 失败原因（`sync_failed` 专用）。`Unknown` 占比是架构债务指标——
@@ -1251,6 +1258,10 @@ mod tests {
         assert_eq!(
             serde_json::to_value(TransportType::FallbackCloud).unwrap(),
             "fallback_cloud"
+        );
+        assert_eq!(
+            serde_json::to_value(TransportType::Unknown).unwrap(),
+            "unknown"
         );
 
         for (reason, expected) in [

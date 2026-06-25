@@ -22,7 +22,7 @@ use uc_application::facade::{
     ClipboardOutboundOutcome,
 };
 use uc_core::ids::EntryId;
-use uc_core::ports::{ClipboardChangeHandler, ClipboardChangeOriginPort};
+use uc_core::ports::{ClipboardChangeHandler, SelfWriteLedgerPort};
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
@@ -62,7 +62,7 @@ struct ClipboardNewContentPayload {
 /// the local user (LocalCapture), preventing write-back loops.
 pub struct DaemonClipboardChangeHandler {
     event_tx: broadcast::Sender<DaemonWsEvent>,
-    clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+    clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
     /// Gate that controls whether clipboard capture is active.
     /// When false, clipboard change events are silently dropped. Defers capture
     /// while encryption is still locked; the daemon opens the gate once it
@@ -82,7 +82,7 @@ impl DaemonClipboardChangeHandler {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         event_tx: broadcast::Sender<DaemonWsEvent>,
-        clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+        clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
         capture_gate: Arc<AtomicBool>,
         clipboard_capture: Arc<ClipboardCaptureFacade>,
         clipboard_live_index: Arc<ClipboardLiveIndexFacade>,
@@ -124,10 +124,7 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
         //    the daemon itself wrote to the OS clipboard during inbound sync.
         let origin = self
             .clipboard_change_origin
-            .consume_origin_for_snapshot_or_default(
-                &origin_guard_key,
-                ClipboardChangeOrigin::LocalCapture,
-            )
+            .attribute_observed_change(&origin_guard_key)
             .await;
 
         debug!(

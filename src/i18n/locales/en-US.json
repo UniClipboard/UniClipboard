@@ -552,6 +552,8 @@
         "reset": "Reset to default",
         "resetAll": "Reset All Shortcuts",
         "recording": "Press keys...",
+        "chordHint": "Press another combo for a second step (press the same combo twice for a \"double tap\"), or confirm",
+        "rerecord": "Re-record",
         "conflict": "Conflicts with: {{name}}",
         "confirmOverride": "Apply anyway (clears conflict)",
         "confirm": "Confirm",
@@ -806,6 +808,7 @@
     "errors": {
       "copyFailed": "Failed to copy to clipboard",
       "openLocationFailed": "Failed to open file location",
+      "fileLocationUnavailable": "This file is no longer available locally.",
       "loadDetailFailed": "Failed to load details",
       "unknown": "An unknown error occurred",
       "unavailableBadge": "Content unavailable",

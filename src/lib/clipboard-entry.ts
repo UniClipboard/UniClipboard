@@ -27,6 +27,14 @@ export interface ClipboardFileItem {
   file_names: string[]
   file_sizes: number[]
   /**
+   * Per-file native local path, aligned with `file_names` by index. Decoded
+   * from the projection's `file://` URIs (received files materialize under the
+   * app cache dir). `null` for entries whose file URI couldn't be decoded or
+   * for `uniclip-missing://` placeholders. Absent for historical entries that
+   * predate this field. Backs the "open file location" action.
+   */
+  file_paths?: (string | null)[]
+  /**
    * Per-file missing flag, aligned with `file_names` / `file_sizes` by index.
    * `true` means the file never finished materializing when the entry was
    * persisted (the user cancelled the inbound transfer): it cannot be
@@ -77,17 +85,17 @@ export interface ClipboardEntry {
 /**
  * View model rendered by clipboard rows and the preview pane.
  *
- * Browse rows are a `ClipboardEntry` plus a formatted relative-time string
- * (locale- and tick-dependent, so it stays a render-time concern). Search
- * results and pending inbound placeholders synthesize partial items, hence
- * the optional fields.
+ * Browse rows are a `ClipboardEntry`; search results and pending inbound
+ * placeholders synthesize partial items, hence the optional fields. The
+ * relative-time label is no longer precomputed here — each row derives it
+ * from `activeTime` via the shared `useRelativeTime` clock, so a tick
+ * re-renders only the timestamp span instead of rebuilding the whole list
+ * (see issue #1129).
  */
 export interface DisplayClipboardItem {
   id: string
   type: ClipboardEntryType
   content: ClipboardEntryContent | null
-  /** Formatted relative-time label (e.g. "5 minutes ago"). */
-  time: string
   activeTime: number
   isFavorited?: boolean
   isUnavailable?: boolean

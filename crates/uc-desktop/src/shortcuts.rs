@@ -34,6 +34,13 @@ pub const DEFAULT_QUICK_PANEL_SHORTCUT: &str = "ctrl+alt+v";
 /// 都通过它读取/写入用户自定义的快捷键。
 pub const QUICK_PANEL_SHORTCUT_SETTINGS_KEY: &str = "global.toggleQuickPanel";
 
+/// 单个 binding 最多包含的 chord 段数（leader + second）。
+///
+/// 与前端 `MAX_CHORD_SEGMENTS` 对齐。chord 运行时只支持两步契约，更长的
+/// 空格分隔输入在归一化/拆段时被截断到前两段，避免向 OS 注册器传入
+/// 永远不会触发的三段及以上 binding。
+pub const MAX_CHORD_SEGMENTS: usize = 2;
+
 /// 全局快捷键注册过程中可能发生的错误。
 ///
 /// 注：本错误是面向**协调层**的契约，shell 实现把底层（OS / 插件）错误
@@ -112,19 +119,35 @@ pub trait GlobalShortcutRegistry: Send + Sync {
 
 /// 把前端快捷键字符串归一化为物理键格式。
 ///
-/// 输入示例：`"meta+ctrl+v"`、`"mod+shift+v"`、`"Cmd+Alt+V"`。
+/// 输入示例：`"meta+ctrl+v"`、`"mod+shift+v"`、`"Cmd+Alt+V"`，以及 VS Code 风格
+/// 的两段 chord（空格分隔）`"meta+ctrl+v meta+ctrl+v"`。
 ///
-/// 归一化规则：
+/// 归一化规则（逐段、每段逐 token）：
 ///   - `meta` / `super`（物理 Meta/Win/Cmd 键）→ `super`
 ///   - `mod` / `cmd` / `command`（**抽象**平台修饰键）→ macOS 上 `super`，
 ///     其他平台 `ctrl`
 ///   - 其余字段保留小写形式
 ///
-/// 输出格式恰好与 `tauri-plugin-global-shortcut` 接受的字符串一致；这
-/// 不是与 Tauri 的绑定，而是桌面层选择的"物理键串"约定 —— 未来其他
-/// shell 想消费同一份归一化结果不需要做二次转换。
+/// chord 的各段用单空格重新连接。输出格式恰好与 `tauri-plugin-global-shortcut`
+/// 接受的 accelerator 串一致（每段单独注册）；这不是与 Tauri 的绑定，而是
+/// 桌面层选择的"物理键串"约定 —— 未来其他 shell 想消费同一份归一化结果不
+/// 需要做二次转换。
+///
+/// 超过 [`MAX_CHORD_SEGMENTS`] 段的输入按两步 chord 契约截断到前两段。
 pub fn normalize_to_physical_keys(key: &str) -> String {
-    key.split('+')
+    key.split(' ')
+        .map(str::trim)
+        .filter(|seg| !seg.is_empty())
+        .take(MAX_CHORD_SEGMENTS)
+        .map(normalize_single_combo)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// 把单个组合键（不含 chord 空格）归一化为物理键格式。
+fn normalize_single_combo(combo: &str) -> String {
+    combo
+        .split('+')
         .map(|part| match part.trim().to_lowercase().as_str() {
             "meta" | "super" => "super".to_string(),
             "mod" | "cmd" | "command" => if cfg!(target_os = "macos") {
@@ -137,6 +160,20 @@ pub fn normalize_to_physical_keys(key: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("+")
+}
+
+/// Split a (physical-key) binding into its chord segments. A single combo
+/// yields one segment; a two-step chord (space-separated) yields two. Inputs
+/// longer than [`MAX_CHORD_SEGMENTS`] are clamped to the first two segments to
+/// match the two-step chord runtime contract.
+pub fn chord_segments(binding: &str) -> Vec<String> {
+    binding
+        .split(' ')
+        .map(str::trim)
+        .filter(|seg| !seg.is_empty())
+        .take(MAX_CHORD_SEGMENTS)
+        .map(str::to_string)
+        .collect()
 }
 
 /// 把一组前端快捷键字符串归一化、去空、转为可注册的物理键格式列表。
@@ -261,6 +298,49 @@ mod tests {
     #[test]
     fn normalize_preserves_unknown_parts() {
         assert_eq!(normalize_to_physical_keys("ctrl+alt+f1"), "ctrl+alt+f1");
+    }
+
+    #[test]
+    fn normalize_chord_sequence_normalizes_each_segment() {
+        // 两段 chord（空格分隔）逐段归一化，空格重新连接。
+        assert_eq!(
+            normalize_to_physical_keys("meta+ctrl+v meta+ctrl+v"),
+            "super+ctrl+v super+ctrl+v"
+        );
+        let mixed = normalize_to_physical_keys("mod+k mod+c");
+        if cfg!(target_os = "macos") {
+            assert_eq!(mixed, "super+k super+c");
+        } else {
+            assert_eq!(mixed, "ctrl+k ctrl+c");
+        }
+    }
+
+    #[test]
+    fn chord_segments_splits_one_or_two() {
+        assert_eq!(chord_segments("super+v"), vec!["super+v".to_string()]);
+        assert_eq!(
+            chord_segments("super+v super+v"),
+            vec!["super+v".to_string(), "super+v".to_string()]
+        );
+        assert!(chord_segments("").is_empty());
+    }
+
+    #[test]
+    fn chord_segments_clamps_to_two() {
+        // 运行时只支持两步 chord，三段及以上输入截断到前两段。
+        assert_eq!(
+            chord_segments("a b c"),
+            vec!["a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[test]
+    fn normalize_clamps_multi_segment_to_two() {
+        // "a b c" 这类不受支持的多段值被限制到两段。
+        assert_eq!(
+            normalize_to_physical_keys("meta+a meta+b meta+c"),
+            "super+a super+b"
+        );
     }
 
     // ── resolve_shortcut_values ─────────────────────────────────────

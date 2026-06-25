@@ -13,6 +13,18 @@ describe('platform helpers', () => {
     expect(platform.reduceVisualEffects).toBe(true)
   })
 
+  it('为 Windows 开启低特效模式（WebView2 下 backdrop-filter 在弱 GPU 上过重，#1129）', () => {
+    const platform = detectPlatformInfo({
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edg/120.0',
+      platform: 'Win32',
+      isTauri: true,
+    })
+
+    expect(platform.isWindows).toBe(true)
+    expect(platform.reduceVisualEffects).toBe(true)
+  })
+
   it('不会把 Android 当作桌面 Linux', () => {
     const platform = detectPlatformInfo({
       userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',

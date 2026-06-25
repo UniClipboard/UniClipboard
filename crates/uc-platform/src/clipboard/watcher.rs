@@ -65,6 +65,44 @@ const FILE_DEDUP_WINDOW: Duration = Duration::from_millis(500);
 /// handle that case without the size proxy.
 const IMAGE_STORM_MAX_GAP: Duration = Duration::from_secs(5);
 
+/// Window for the content-independent image *burst breaker*, the second line of
+/// defence behind the decode-stable fingerprint (issue #957).
+///
+/// VirtualBox's shared clipboard (`VBoxShCl`) re-asserts CLIPBOARD ownership
+/// every ~150 ms and re-serializes the *same* image with non-deterministic
+/// bytes on every read. Excluding alpha from the fingerprint (the earlier #957
+/// fix) was not enough: the decoded pixels themselves still drift, so the
+/// fingerprint churns, the permanent `image:<fingerprint>` dedup fires at most
+/// once, and the storm revives — observed on 0.16.0 as 87 captures of one image
+/// in ~12 s. The size-based [`IMAGE_STORM_MAX_GAP`] latch can't backstop it
+/// because that latch is deliberately skipped while a fingerprint exists (it
+/// can't tell two same-size images apart).
+///
+/// This breaker catches the storm by *shape* rather than content: once two
+/// consecutive same-size decodable images arrive within this window, every
+/// further same-size image is suppressed until the size changes or the stream
+/// goes quiet. It only engages for images we *could* fingerprint, so the
+/// fp=None path keeps using the `IMAGE_STORM_MAX_GAP` latch unchanged.
+///
+/// The first two frames of any burst still pass — the breaker must observe the
+/// burst before it can latch — so a deliberate pair of different same-size
+/// images (the `different_images_of_equal_byte_size_both_emit_via_fingerprint`
+/// case) is preserved. The window is sub-second-scale and far below any human
+/// re-copy of two *different* same-size images, so collapsing only kicks in on
+/// the third-and-later frame of a genuine machine-driven storm.
+const IMAGE_BURST_BREAKER_WINDOW: Duration = Duration::from_millis(1500);
+
+/// Relative tolerance for treating two image byte sizes as the *same* image
+/// inside the burst breaker, as a percentage of the larger size.
+///
+/// VBoxShCl occasionally varies even the serialized byte *length* by a handful
+/// of bytes between re-reads of one image (issue #957: 2_753_070 vs 2_753_058,
+/// a 0.0004 % wobble). An exact-equality latch reads that wobble as a brand-new
+/// image, resets, and lets the storm leak a few extra frames before it
+/// re-latches. A small relative window absorbs the wobble while staying far
+/// below the gap to a genuinely different image.
+const IMAGE_BURST_SIZE_TOLERANCE_PERCENT: i64 = 1;
+
 /// How long a freshly-emitted text / rich-text key keeps suppressing a
 /// byte-identical re-read.
 ///
@@ -87,6 +125,16 @@ const IMAGE_STORM_MAX_GAP: Duration = Duration::from_secs(5);
 /// and resurfaces.
 const MEANINGFUL_REDEDUP_WINDOW: Duration = Duration::from_secs(2);
 
+/// State for the sub-second image [`IMAGE_BURST_BREAKER_WINDOW`] breaker.
+/// `latched` flips to true once a second consecutive same-size decodable image
+/// lands inside the window, after which further same-size frames are suppressed.
+#[derive(Clone, Copy)]
+struct ImageBurst {
+    at: Instant,
+    size: i64,
+    latched: bool,
+}
+
 pub struct ClipboardWatcher {
     local_clipboard: Arc<dyn SystemClipboardPort>,
     sender: PlatformEventSender,
@@ -100,6 +148,12 @@ pub struct ClipboardWatcher {
     /// when a non-image snapshot is emitted. Drives the [`IMAGE_STORM_MAX_GAP`]
     /// storm guard.
     last_image_seen: Option<(Instant, i64)>,
+    /// Sub-second burst-breaker state for *decodable* images whose fingerprint
+    /// churns (issue #957 / VBoxShCl). Reset when the image size changes or a
+    /// non-image snapshot is emitted. Drives the [`IMAGE_BURST_BREAKER_WINDOW`]
+    /// breaker, which engages only for images we could fingerprint (the fp=None
+    /// path stays on the [`IMAGE_STORM_MAX_GAP`] size latch).
+    image_burst: Option<ImageBurst>,
 }
 
 impl ClipboardWatcher {
@@ -110,6 +164,7 @@ impl ClipboardWatcher {
             last_meaningful: None,
             last_file_emit_time: None,
             last_image_seen: None,
+            image_burst: None,
         }
     }
 }
@@ -125,6 +180,15 @@ fn dedupe_key(snapshot: &SystemClipboardSnapshot) -> Option<String> {
 /// Returns true if any representation in the snapshot is a file representation.
 fn snapshot_has_files(snapshot: &SystemClipboardSnapshot) -> bool {
     snapshot.representations.iter().any(is_file_representation)
+}
+
+/// Whether two image byte sizes are close enough to be the same image for the
+/// [`IMAGE_BURST_BREAKER_WINDOW`] breaker — within
+/// [`IMAGE_BURST_SIZE_TOLERANCE_PERCENT`] of the larger. Integer math: sizes are
+/// capped at [`MAX_FINGERPRINT_DECODE_BYTES`] on the only path that calls this,
+/// so `a.max(b) * 100` cannot overflow `i64`.
+fn approx_same_image_size(a: i64, b: i64) -> bool {
+    (a - b).abs() * 100 <= a.max(b) * IMAGE_BURST_SIZE_TOLERANCE_PERCENT
 }
 
 /// Largest serialized image we will decode to fingerprint. Above this the
@@ -259,6 +323,66 @@ impl ClipboardWatcher {
             }
         }
 
+        // Sub-second burst breaker for decodable images whose fingerprint
+        // churns (issue #957 / VBoxShCl). The source re-serializes the same
+        // image with non-deterministic bytes every ~150 ms, so even the
+        // alpha-excluded fingerprint drifts and slips the permanent `image:`
+        // dedup above, while the size latch below never runs for it (that latch
+        // is fp=None-only). Collapse the storm by shape: once two consecutive
+        // same-size decodable images land within IMAGE_BURST_BREAKER_WINDOW,
+        // suppress every further same-size frame until the size changes or the
+        // stream goes quiet. The first two frames still pass, so a deliberate
+        // pair of different same-size images is preserved.
+        // Burst-breaker state to commit *only* on a successful send, mirroring
+        // how `last_image_seen` / `last_meaningful` are committed below. A frame
+        // that never reaches downstream (e.g. `try_send` backpressure during the
+        // very storm this guards) must not advance the latch and then mute a
+        // later frame that did emit. The suppress path below still refreshes the
+        // latch inline before returning — exactly as the storm guard does — so a
+        // sustained burst stays muted regardless of send outcome.
+        let mut pending_image_burst: Option<ImageBurst> = None;
+        if is_image && image_fingerprint.is_some() {
+            if let Some(size) = snapshot.primary_image_size_bytes() {
+                match self.image_burst {
+                    Some(prev)
+                        if approx_same_image_size(prev.size, size)
+                            && now.duration_since(prev.at) < IMAGE_BURST_BREAKER_WINDOW =>
+                    {
+                        if prev.latched {
+                            self.image_burst = Some(ImageBurst {
+                                at: now,
+                                size,
+                                latched: true,
+                            });
+                            debug!(
+                                size_bytes = size,
+                                elapsed_ms = now.duration_since(prev.at).as_millis(),
+                                "Suppressing churning-fingerprint image burst (sub-second breaker)"
+                            );
+                            return;
+                        }
+                        // Second consecutive same-size read: latch now but still
+                        // emit this one, so a genuine pair of same-size images
+                        // both pass before suppression begins. Committed on send.
+                        pending_image_burst = Some(ImageBurst {
+                            at: now,
+                            size,
+                            latched: true,
+                        });
+                    }
+                    _ => {
+                        // First image, or size changed / gap too long: (re)start
+                        // the burst tracking unlatched. Committed on send.
+                        pending_image_burst = Some(ImageBurst {
+                            at: now,
+                            size,
+                            latched: false,
+                        });
+                    }
+                }
+            }
+        }
+
         // Image storm guard (fallback for images we could NOT fingerprint): an
         // image-dominant snapshot whose image byte size matches the previous
         // image within `IMAGE_STORM_MAX_GAP` is treated as a re-read of the same
@@ -326,10 +450,20 @@ impl ClipboardWatcher {
             if let Some(size) = image_size {
                 self.last_image_seen = Some((now, size));
             } else {
-                // A genuinely-new non-image copy ends any ongoing image burst,
-                // so drop the latch: a later same-size image must not be muted
-                // as if the storm were still running.
+                // A genuinely-new non-image copy ends any ongoing image storm,
+                // so drop the size latch: a later same-size image must not be
+                // muted as if the storm were still running.
                 self.last_image_seen = None;
+            }
+            // Commit the burst-breaker transition computed above now that the
+            // frame actually reached downstream. A successfully-emitted
+            // non-image copy also ends any ongoing decodable-image burst, so
+            // clear the latch — stale burst state must not mute a later
+            // same-size image within the old window.
+            if let Some(burst) = pending_image_burst {
+                self.image_burst = Some(burst);
+            } else if !is_image {
+                self.image_burst = None;
             }
             if let Some(key) = current_dedupe_key {
                 self.last_meaningful = Some((key, now));
@@ -745,6 +879,150 @@ mod tests {
             drain(&mut rx),
             1,
             "an identical image must dedup permanently, not just within the text window"
+        );
+    }
+
+    #[test]
+    fn churning_fingerprint_image_burst_is_broken_sub_second() {
+        // The #957 0.16.0 recurrence: VBoxShCl hands us a *decodable* BMP whose
+        // decoded pixels churn on every ~150 ms re-read, so the (alpha-excluded)
+        // fingerprint differs each frame and slips the permanent fingerprint
+        // dedup, while the byte size stays constant. The sub-second burst
+        // breaker must collapse the storm even though every frame has a distinct
+        // fingerprint — only the first two frames pass before it latches.
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        for i in 0u8..16 {
+            // Same dimensions => identical byte size; different RGB => a
+            // distinct fingerprint every frame (the churn the breaker survives).
+            let bmp = encode(image::ImageFormat::Bmp, 8, 8, [i, 20, 30]);
+            w.emit_with_dedup_at(
+                decodable_image(bmp),
+                base + Duration::from_millis(150 * i as u64),
+            );
+        }
+        assert_eq!(
+            drain(&mut rx),
+            2,
+            "a churning-fingerprint same-size image storm must collapse to the first two emits"
+        );
+    }
+
+    #[test]
+    fn churning_fingerprint_images_beyond_burst_window_each_emit() {
+        // Same-size but genuinely different images spaced beyond the burst
+        // window are deliberate copies, not a storm: each must emit. Guards the
+        // breaker against swallowing real same-size copies made at human speed.
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        for i in 0u8..3 {
+            let bmp = encode(image::ImageFormat::Bmp, 8, 8, [i * 50, 20, 30]);
+            w.emit_with_dedup_at(
+                decodable_image(bmp),
+                base + (IMAGE_BURST_BREAKER_WINDOW + Duration::from_millis(1)) * i as u32,
+            );
+        }
+        assert_eq!(
+            drain(&mut rx),
+            3,
+            "same-size different images spaced beyond the burst window must all emit"
+        );
+    }
+
+    #[test]
+    fn intervening_non_image_breaks_burst_breaker_latch() {
+        // A decodable same-size image burst latches the sub-second breaker; an
+        // intervening non-image copy (text) must clear that latch so a later,
+        // genuinely different same-size image within the old window still emits
+        // instead of being muted by stale burst state. The storm-guard latch is
+        // already cleared on a non-image emit; the fingerprint breaker must
+        // behave the same. (Uses decodable BMPs so the fp=Some breaker path
+        // runs, unlike `intervening_non_image_breaks_image_latch` which drives
+        // the fp=None storm guard.)
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        // Same dimensions => identical byte size; different RGB => distinct
+        // fingerprints, so these latch the breaker instead of key-deduping.
+        let a = encode(image::ImageFormat::Bmp, 8, 8, [10, 20, 30]);
+        let b = encode(image::ImageFormat::Bmp, 8, 8, [200, 100, 50]);
+        let c = encode(image::ImageFormat::Bmp, 8, 8, [40, 90, 140]);
+        w.emit_with_dedup_at(decodable_image(a), base); // emit, latch unlatched
+        w.emit_with_dedup_at(decodable_image(b), base + Duration::from_millis(100)); // emit, latches
+        w.emit_with_dedup_at(text("hello"), base + Duration::from_millis(200)); // emit, clears latch
+        w.emit_with_dedup_at(decodable_image(c), base + Duration::from_millis(300)); // emit, latch cleared
+        assert_eq!(
+            drain(&mut rx),
+            4,
+            "a non-image copy between same-size images must clear the burst-breaker latch"
+        );
+    }
+
+    #[test]
+    fn burst_breaker_latch_not_advanced_when_send_fails() {
+        // Burst state must only advance on a successful send, like every other
+        // dedup latch. A capacity-1 channel lets the first frame queue, then the
+        // next send fails (backpressure — exactly what a storm provokes). The
+        // failed frame must not advance the latch; once the channel drains, a
+        // following same-size frame must still emit rather than be muted by a
+        // latch set on a frame that never reached downstream.
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let mut w = ClipboardWatcher::new(Arc::new(StubClipboard), tx);
+        let base = Instant::now();
+        let a = encode(image::ImageFormat::Bmp, 8, 8, [10, 20, 30]);
+        let b = encode(image::ImageFormat::Bmp, 8, 8, [200, 100, 50]);
+        w.emit_with_dedup_at(decodable_image(a), base); // queues into the single slot
+        w.emit_with_dedup_at(decodable_image(b.clone()), base + Duration::from_millis(50)); // send fails
+        assert_eq!(drain(&mut rx), 1, "only the first frame was queued");
+        // `b` again (distinct fp from `a`, same size). Had the failed send
+        // latched the breaker, this would be suppressed; it must emit.
+        w.emit_with_dedup_at(decodable_image(b), base + Duration::from_millis(100));
+        assert_eq!(
+            drain(&mut rx),
+            1,
+            "a same-size frame after a failed send must still emit"
+        );
+    }
+
+    #[test]
+    fn approx_same_image_size_absorbs_small_wobble() {
+        // The #957 VBoxShCl wobble (2_753_070 vs 2_753_058) must read as the
+        // same image; a >1% difference must read as a different one.
+        assert!(approx_same_image_size(2_753_070, 2_753_058));
+        assert!(approx_same_image_size(2_753_058, 2_753_070));
+        assert!(approx_same_image_size(1_000, 1_010)); // exactly 1%
+        assert!(!approx_same_image_size(1_000, 1_011)); // just over 1%
+        assert!(!approx_same_image_size(4_096, 8_192)); // clearly different
+    }
+
+    #[test]
+    fn churning_fingerprint_burst_tolerates_small_size_wobble() {
+        // VBoxShCl wobbles even the serialized byte length by a few bytes
+        // between re-reads (issue #957). The breaker's size tolerance must keep
+        // such a near-same-size churning burst collapsed instead of re-latching
+        // on every wobble. A 64x64 BMP is ~12 KB, so a few trailing bytes is
+        // well under the 1% tolerance.
+        let (mut w, mut rx) = watcher();
+        let base = Instant::now();
+        for i in 0u8..16 {
+            let mut bmp = encode(image::ImageFormat::Bmp, 64, 64, [i, 20, 30]);
+            // Trailing zero bytes the BMP decoder ignores: wobble the byte size
+            // a little (and churn the fingerprint via the RGB change) while
+            // keeping it decodable, so the fp=Some breaker path runs.
+            bmp.extend(std::iter::repeat(0u8).take((i % 3) as usize));
+            assert!(
+                stable_image_fingerprint(&bmp).is_some(),
+                "padded BMP must still decode so the fp=Some breaker path runs"
+            );
+            w.emit_with_dedup_at(
+                decodable_image(bmp),
+                base + Duration::from_millis(150 * i as u64),
+            );
+        }
+        assert_eq!(
+            drain(&mut rx),
+            2,
+            "a near-same-size churning burst must collapse to exactly the first \
+             two emits despite byte-size wobble (third-and-later suppressed)"
         );
     }
 }

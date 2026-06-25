@@ -33,6 +33,7 @@ export function projectClipboardEntry(dto: ClipboardEntryDto): ClipboardEntry {
       file_names: parsed.map(p => p.name),
       file_sizes: dto.fileSizes ?? [],
       file_missing: parsed.map(p => p.missing),
+      file_paths: parsed.map(p => p.path),
     }
   } else if (isImage) {
     type = 'image'

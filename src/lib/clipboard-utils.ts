@@ -1,6 +1,7 @@
 import type {
   ClipboardCodeItem,
   ClipboardEntry,
+  ClipboardEntryContent,
   ClipboardFileItem,
   ClipboardImageItem,
   ClipboardLinkItem,
@@ -41,6 +42,30 @@ function extractFileNameFromUri(uri: string): string {
 }
 
 /**
+ * Convert a `file://` URI back to a native filesystem path.
+ *
+ * The daemon projection carries received files as `file://` URIs (produced by
+ * Rust `Url::from_file_path`); the native `reveal_path` command expects a plain
+ * filesystem path, so we decode it here. Returns `null` for non-`file://` URIs
+ * (e.g. `uniclip-missing://` placeholders) or unparseable input.
+ *
+ * Windows note: `file:///C:/dir/f.txt` decodes to a pathname of `/C:/dir/f.txt`,
+ * so the leading slash before the drive letter is stripped. Received files always
+ * land under the local app cache dir, so UNC paths are not expected.
+ */
+export function fileUriToLocalPath(uri: string): string | null {
+  const trimmed = uri.trim()
+  if (!trimmed.toLowerCase().startsWith('file://')) return null
+  try {
+    let pathname = decodeURIComponent(new URL(trimmed).pathname)
+    if (/^\/[A-Za-z]:/.test(pathname)) pathname = pathname.slice(1)
+    return pathname || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Parse a newline-separated URI list into an array of human-readable filenames.
  */
 export function parseFileNamesFromUriList(uriList: string): string[] {
@@ -75,6 +100,8 @@ function isUniclipMissingUri(uri: string): boolean {
  */
 export function parseFileItemsFromUriList(uriList: string): Array<{
   name: string
+  /** Native local path decoded from a `file://` URI, or `null` when absent. */
+  path: string | null
   missing: boolean
 }> {
   return uriList.split('\n').flatMap(s => {
@@ -83,10 +110,29 @@ export function parseFileItemsFromUriList(uriList: string): Array<{
     return [
       {
         name: extractFileNameFromUri(trimmed),
+        path: fileUriToLocalPath(trimmed),
         missing: isUniclipMissingUri(trimmed),
       },
     ]
   })
+}
+
+/**
+ * First openable native path in a file entry's content, or `null` when the
+ * entry is not a file entry, has no decoded paths, or every file is missing
+ * (cancelled transfer). Backs the "open file location" action — revealing any
+ * one file opens the containing folder with it selected.
+ */
+export function firstRevealableFilePath(content: ClipboardEntryContent | null): string | null {
+  if (!content || !('file_paths' in content)) return null
+  const paths = content.file_paths
+  if (!paths) return null
+  const missing = content.file_missing
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i]
+    if (path && !missing?.[i]) return path
+  }
+  return null
 }
 
 /**

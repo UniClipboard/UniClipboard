@@ -164,7 +164,9 @@ mod tests {
 
     use uc_core::clipboard::ClipboardChangeOrigin;
     use uc_core::ids::{FormatId, RepresentationId};
-    use uc_core::ports::clipboard::{ClipboardChangeOriginPort, SystemClipboardPort};
+    use uc_core::ports::clipboard::{
+        SelfWriteAttribution, SelfWriteLedgerPort, SelfWriteMatch, SystemClipboardPort,
+    };
     use uc_core::{MimeType, ObservedClipboardRepresentation};
 
     /// Records how many times convergence (register advance + 0xC3 fan-out) ran.
@@ -209,14 +211,17 @@ mod tests {
     struct NoopOrigin;
 
     #[async_trait]
-    impl ClipboardChangeOriginPort for NoopOrigin {
-        async fn set_next_origin(&self, _origin: ClipboardChangeOrigin, _ttl: Duration) {}
-
-        async fn consume_origin_or_default(
+    impl SelfWriteLedgerPort for NoopOrigin {
+        async fn record_self_write(
             &self,
-            default_origin: ClipboardChangeOrigin,
-        ) -> ClipboardChangeOrigin {
-            default_origin
+            _matching: SelfWriteMatch,
+            _attribution: SelfWriteAttribution,
+            _ttl: Duration,
+        ) {
+        }
+
+        async fn attribute_observed_change(&self, _snapshot_hash: &str) -> ClipboardChangeOrigin {
+            ClipboardChangeOrigin::LocalCapture
         }
     }
 

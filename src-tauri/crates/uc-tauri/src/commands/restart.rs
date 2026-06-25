@@ -55,10 +55,10 @@ pub async fn restart_app(
 
 /// Graceful shutdown + `app.restart()`.
 ///
-/// Shared entry for the `restart_app` Tauri command and the tray "Restart"
-/// menu item. Does not return — `app.restart()` internally calls
-/// `std::process::exit`. Callers must therefore expect this future to never
-/// complete on the happy path.
+/// Shared entry for the `restart_app` Tauri command and the GUI half of
+/// [`perform_full_restart`]. Does not return — `app.restart()` internally
+/// calls `std::process::exit`. Callers must therefore expect this future to
+/// never complete on the happy path.
 pub(crate) async fn perform_restart(app: &tauri::AppHandle) {
     info!("restarting app for settings change");
 
@@ -74,6 +74,39 @@ pub(crate) async fn perform_restart(app: &tauri::AppHandle) {
     tokio::time::sleep(Duration::from_millis(SHUTDOWN_FRONTEND_GRACE_MS)).await;
 
     app.restart();
+}
+
+/// Restart **both** the daemon and the GUI process.
+///
+/// Shared entry for the tray "Restart" menu item. Mirrors the frontend
+/// full-restart sequence (`restart_daemon` → `restart_app`): the daemon is
+/// restarted first via [`restart_local_daemon`] so a freshly-spawned, healthy
+/// engine is already running by the time the replacement GUI bootstraps and
+/// reconnects, then the GUI process is replaced via [`perform_restart`].
+///
+/// Unlike the `restart_daemon` Tauri command we do **not** refresh the live
+/// `DaemonConnectionState` or clear the session-token cache here: the GUI is
+/// about to be torn down by `app.restart()`, so the new process bootstraps a
+/// fresh connection and mints a new JWT against the restarted daemon anyway.
+///
+/// A daemon-restart failure is logged but non-fatal — we still restart the
+/// GUI, whose bootstrap will attempt its own spawn/recovery and surface any
+/// error in the UI. Does not return on the happy path ([`perform_restart`]
+/// ends in `app.restart()` → `process::exit`).
+///
+/// [`restart_local_daemon`]: uc_desktop::daemon_probe::restart_local_daemon
+pub(crate) async fn perform_full_restart(app: &tauri::AppHandle) {
+    info!("full restart: restarting daemon before GUI");
+    match uc_desktop::daemon_probe::restart_local_daemon(env!("CARGO_PKG_VERSION")).await {
+        Ok(_) => info!("full restart: daemon restarted, proceeding to GUI restart"),
+        Err(error) => warn!(
+            %error,
+            "full restart: daemon restart failed; restarting GUI anyway — \
+             the new GUI bootstrap will retry spawn/recovery"
+        ),
+    }
+
+    perform_restart(app).await;
 }
 
 // ── restart_daemon ─────────────────────────────────────────────────────

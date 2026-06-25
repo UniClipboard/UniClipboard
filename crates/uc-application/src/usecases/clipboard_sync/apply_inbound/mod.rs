@@ -15,9 +15,11 @@
 //!    cache, spool, and (optional) search index all match the local
 //!    capture path's schema (D5 decision).
 //! 4. **OS clipboard write**: via `ClipboardWriteCoordinator` with
-//!    `RemotePush` intent — registers a 60s hash guard + one-shot
-//!    next-origin override so the daemon's own clipboard watcher doesn't
-//!    re-dispatch the just-written content (write-back loop defence).
+//!    `RemotePush` intent — arms a self-write echo record (a content hash
+//!    guard plus a one-shot next-origin override, under the coordinator's echo
+//!    budget) so the daemon's own clipboard watcher doesn't re-dispatch the
+//!    just-written content (write-back loop defence; distinct from the inbound
+//!    idempotency dedup in [`timing`]).
 //!    The **full** snapshot (every V3-decoded representation) is handed
 //!    to the coordinator; the platform layer internally decides whether
 //!    to atomically write multiple formats (Windows today) or to narrow
@@ -59,6 +61,7 @@ use uc_observability::FlowId;
 
 mod materializer;
 mod ports;
+mod timing;
 mod usecase;
 
 #[cfg(test)]

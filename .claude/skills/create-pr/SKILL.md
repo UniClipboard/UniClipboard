@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: Push the current branch and open a GitHub pull request against `main`. Use when the user says "create PR", "open PR", "make a PR", "提 PR", "开 PR", "打 PR", or otherwise asks to publish their committed work for review. Before pushing, the skill (1) verifies the current branch name actually reflects the change and proposes a rename if it doesn't, and (2) scans the PR's diff against `docs-site/` for docs that look stale and lists update candidates for the user to approve.
+description: Push the current branch and open a GitHub pull request against `main`. Use when the user says "create PR", "open PR", "make a PR", "提 PR", "开 PR", "打 PR", or otherwise asks to publish their committed work for review. Before pushing it gates the diff on four things — branch name accuracy, stale `docs-site/` docs, missing PostHog telemetry, and tracing-spec conformance — and surfaces each as a candidate list for the user to approve.
 user-invocable: true
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(grep:*), Bash(rg:*), Read, Edit, Write, AskUserQuestion
 ---
@@ -9,12 +9,14 @@ allowed-tools: Bash(git:*), Bash(gh:*), Bash(grep:*), Bash(rg:*), Read, Edit, Wr
 
 ## Purpose
 
-Opening a PR on this repo is mechanically simple (`gh pr create`) but two things consistently go wrong if rushed:
+Opening a PR on this repo is mechanically simple (`gh pr create`) but four things consistently go wrong if rushed:
 
 1. **The branch name doesn't describe the change.** Codenames like `agate-surgeon`, throwaways like `wip`, or repurposed branches like `fix-bug` survive into the merged history and make `git log --graph` useless. The branch name is the only summary that shows up in *every* future `git log` line for these commits — get it right before publishing.
 2. **`docs-site/` rots silently.** This repo ships its own user-facing docs (`docs-site/content/docs/{en,zh}/`). Code changes that touch user-visible behavior — CLI flags, settings, timeouts, file formats, error messages, supported environments — almost always have a paragraph somewhere in `docs-site/` that now lies. The PR author is the only person with the context to spot it; reviewers will miss it.
+3. **New user-facing flows ship without telemetry.** This repo has a structured PostHog event model (`crates/uc-observability/src/analytics/`, schema doc `docs/architecture/telemetry-events.md`). When a PR adds or changes an activation/reliability flow — pairing, sync, setup, update, mobile-sync — but doesn't `capture(Event::...)` the new milestone or failure path, the funnel silently goes blind. The author is the only one who knows the flow is new.
+4. **Tracing drifts from the spec.** The repo has a strict layered tracing spec (`docs/guides/tracing.md`): only the use-case layer owns spans, domain stays span-free, fields must be low-cardinality and privacy-safe, and log levels have defined meanings. New code routinely forgets a use-case span, logs at the wrong level, or leaks high-cardinality / clipboard data into a field.
 
-This skill enforces both checks *before* pushing, so the PR that lands on GitHub is already named correctly and either includes the docs update or has an explicit user decision to skip.
+This skill enforces all four checks *before* pushing, so the PR that lands on GitHub is already named correctly, has its docs/telemetry/tracing gaps either addressed or explicitly deferred with the user's sign-off.
 
 ## When to trigger
 
@@ -120,7 +122,74 @@ Don't fold docs edits into a fix/feat commit by amending — keep them as their 
 
 Both `en/` and `zh/` versions must be updated in lockstep when both exist — never ship a PR that updates only one language.
 
-### Step 4 — Build and open the PR
+### Step 4 — PostHog telemetry gap review
+
+**Gate first — skip cheaply.** Telemetry is only ever emitted from the use-case layer via `self.analytics.capture(Event::...)`; `uc-core` and infra never emit. So run this before reading anything:
+
+```bash
+git diff main...HEAD --name-only | grep -qE '^crates/uc-application/|mobile.sync' || echo SKIP_TELEMETRY
+```
+
+If it prints `SKIP_TELEMETRY`, state one line ("diff doesn't touch uc-application / mobile-sync — no telemetry surface") and go to Step 5. Do **not** read the spec docs for an unrelated diff.
+
+If the gate passes, the source of truth (not your memory) is:
+
+- **Event catalog** — `crates/uc-observability/src/analytics/events.rs` (the `Event` enum + its enumerable property types). The closed set of events that already exist.
+- **Schema doc** — `docs/architecture/telemetry-events.md`: §7 v1 event list, §12 roadmap of *planned-but-not-yet-emitted* events, §6 privacy contract.
+
+You don't need to read these end-to-end. Scan the diff for the **key positions** below; only when you're about to suggest a specific `Event::Variant` do you `rg '<Variant>' crates/uc-observability/src/analytics/events.rs` to confirm it exists (or check §12 if it's planned).
+
+Scan the diff for **key positions** where a milestone or failure outcome now happens but no `capture(...)` accompanies it:
+
+| Diff signal | Telemetry that's likely missing |
+| --- | --- |
+| New activation milestone (a setup step, pairing handshake completes, first sync/file succeeds) | An Activation event (`SetupStarted/Completed`, `Pairing*`, `FirstClipboardSync*`, …) |
+| New or changed sync / transfer outcome branch (success, failure, deferral) | A Reliability event (`SyncAttempted/Succeeded/Failed/Deferred`) with the right `failure_reason` / `defer_reason` enum |
+| New failure / error variant on a user-facing flow | The matching `*_failed` event + a new enum value in its reason type (reasons are closed enums in `events.rs`) |
+| New feature line (update lifecycle, mobile-sync, a new capability) | Check §12 roadmap — the event may already be specified there and just needs wiring |
+| A new use case that completes a user-visible action | Decide whether it's a funnel/reliability anchor worth an event at all (not everything is) |
+
+For each candidate, emit a one-line entry:
+
+```
+- <code file>:<line> — <flow> reaches <milestone/outcome> but emits no event. Suggest capture(Event::<Variant>{...}) (or: already specced in telemetry-events.md §<n>). Confidence: <high/low>.
+```
+
+**Privacy & double-count red lines** (from schema doc §6 and the existing call sites) — call these out if the diff violates them, they are bugs not suggestions:
+
+- Never put clipboard content, raw file names, full settings, or raw sizes into a property. Sizes go through `PayloadSizeBucket`; latency-sensitive durations (e.g. `sync_latency_ms`) report a precise `u32` while coarse durations use `LatencyBucket`; everything must stay low-cardinality.
+- Inbound-sync paths that write the *local* clipboard (e.g. a `RemotePush` origin) must **not** emit capture/DAU events — that double-counts. See the red-line comment around `clipboard_capture/usecase.rs`.
+- Event names and property values are **frozen once shipped** — never rename an existing variant; evolve with a `*_v2`.
+
+**Always show the candidate list to the user before adding any instrumentation.** If the diff has no telemetry-worthy surface, say so explicitly ("Scanned the uc-application diff; no new activation/reliability milestone, nothing to instrument"). Then ask: add now, or defer (and note it in the PR body)? Telemetry is normal code — if added, it belongs in the relevant `feat`/`fix` commit, **not** the docs commit.
+
+### Step 5 — Tracing / logging best-practice review
+
+**Gate first.** This step only applies to Rust changes:
+
+```bash
+git diff main...HEAD --name-only | grep -qE '\.rs$' || echo SKIP_TRACING
+```
+
+If `SKIP_TRACING`, say so in one line and go to Step 6.
+
+**Source of truth is the `tracing-best-practices` skill** (which itself encodes `docs/guides/tracing.md`). Don't restate its full checklist here — invoke/follow it against the diff's Rust files so the rules can't drift out of sync with this skill. The handful of checks that catch the most regressions on *this* repo:
+
+- **New use case with no span** — the use-case layer (`uc-application`) must wrap execution in one `usecase.<name>.execute` span via `.instrument(span)`. A new use case missing it is the most common gap.
+- **Span in the wrong layer** — a span created in `uc-core` (domain is zero-span), infra, or a Tauri command is a violation, not a gap.
+- **Wrong log level** — `info!` = use-case start/success + key business transition; `debug!` = infra detail; `warn!` = recoverable / user-input error; `error!` = unrecoverable / corruption. Flag clear mismatches only.
+- **Privacy / cardinality leak** — clipboard content, full settings, raw paths, blob contents, or gratuitous UUIDs in any span/log field. This is a bug, flag it high-confidence.
+- **New `Err(...)` branch or state transition with no breadcrumb** — flag *only* genuinely new failure/transition paths, mark `confidence: low`, and don't add speculative "might-need-it-later" logs (the spec forbids those).
+
+For each finding, emit:
+
+```
+- <file>:<line> — <which rule> — <what's wrong> → <suggested change>. Confidence: <high/low>.
+```
+
+Show the list to the user (or "tracing in this diff conforms — one use-case span, levels and fields look right"). Ask: apply now or defer? Applied tracing fixes go in the relevant code commit, not the docs commit.
+
+### Step 6 — Build and open the PR
 
 Title:
 
@@ -160,12 +229,13 @@ Add `--draft` if the user signaled the PR is incomplete.
 
 If `git push` reports the remote is ahead (someone pushed to your branch), **stop** — don't `--force` without confirmation. Ask the user what's on the remote and how they want to reconcile.
 
-### Step 5 — Report back
+### Step 7 — Report back
 
 Print the PR URL (`gh pr create` outputs it on success). Add a one-line recap:
 
 - Title used.
 - Whether docs were updated (and how many files), or the explicit "no docs changes" decision.
+- Telemetry/tracing outcome: gaps fixed, or the explicit "nothing to instrument / tracing conforms" / "deferred" decision.
 - Issue that will close on merge, if any.
 
 Stop there. Don't auto-request reviewers, add labels, or run any other workflow unless the user asks.
@@ -177,6 +247,9 @@ Stop there. Don't auto-request reviewers, add labels, or run any other workflow 
 - **Renaming the branch silently when an open PR exists for the old name.** That orphans the PR and confuses reviewers. Always check `gh pr list --head <old>` before renaming.
 - **Folding the docs commit into a code commit via `--amend`.** Past-tense `--amend` on already-pushed commits forces `--force-push`. Keep docs as a separate commit; it makes review easier anyway.
 - **Inventing facts about a referenced issue.** If the user says "closes #X", actually `gh issue view X` once — don't paraphrase the title from memory.
+- **Inventing an `Event` variant.** The `Event` enum in `events.rs` is a closed, frozen set. Before suggesting `capture(Event::Foo)`, confirm `Foo` exists (or that §12 of the schema doc specs it). Never propose renaming an existing variant.
+- **Auto-adding telemetry/tracing without asking.** Both reviews produce a *menu*. Adding a `capture(...)` or a span is a code change with privacy/cardinality implications — show the candidates and let the user decide; don't silently edit and fold it into an unrelated commit.
+- **Treating every diff as needing telemetry.** Infra refactors, UI tweaks, and `uc-core` changes usually have nothing to instrument. Say "nothing to instrument" rather than forcing a weak event.
 - **`gh pr create` without `--body` (interactive editor).** This skill runs non-interactively; always pass `--body` via heredoc.
 
 ## When this skill does *not* apply

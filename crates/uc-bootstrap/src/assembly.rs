@@ -31,7 +31,7 @@ use uc_core::config::AppConfig;
 use uc_core::ids::{ProfileId, RepresentationId};
 use uc_core::ports::blob::BlobReferenceRepositoryPort;
 use uc_core::ports::clipboard::{
-    ClipboardChangeOriginPort, ClipboardRepresentationNormalizerPort, RepresentationCachePort,
+    ClipboardRepresentationNormalizerPort, RepresentationCachePort, SelfWriteLedgerPort,
     SpoolQueuePort,
 };
 use uc_core::ports::*;
@@ -1425,7 +1425,7 @@ pub async fn resolve_pairing_device_name(settings: Arc<dyn SettingsPort>) -> Str
 /// and the now-deleted `sync_inbound` libp2p path).
 pub fn build_clipboard_write_coordinator(
     system_clipboard: Arc<dyn uc_core::ports::clipboard::SystemClipboardPort>,
-    clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+    clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
 ) -> Arc<uc_application::clipboard_write::ClipboardWriteCoordinator> {
     Arc::new(
         uc_application::clipboard_write::ClipboardWriteCoordinator::new(

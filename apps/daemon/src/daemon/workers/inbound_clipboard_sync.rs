@@ -8,13 +8,13 @@
 //!
 //! Write-back loop prevention:
 //! `ApplyInboundClipboardUseCase` routes the OS write through the
-//! daemon's shared `ClipboardWriteCoordinator`, which registers the
-//! 60-second `RemotePush` hash guard + one-shot next-origin override.
+//! daemon's shared `ClipboardWriteCoordinator`, which records a
+//! `RemotePush` self-write (content record + next-change fallback).
 //! The `ClipboardWatcherWorker` / `DaemonClipboardChangeHandler` on the
-//! same daemon process consume that guard via
-//! `ClipboardChangeOriginPort::consume_origin_for_snapshot_or_default`
+//! same daemon process attribute the echo via
+//! `SelfWriteLedgerPort::attribute_observed_change`
 //! and short-circuit the re-dispatch path — both workers share the
-//! same `Arc<dyn ClipboardChangeOriginPort>` instance wired in
+//! same `Arc<dyn SelfWriteLedgerPort>` instance wired in
 //! `entrypoint.rs`.
 //!
 //! Phase 3 scope:

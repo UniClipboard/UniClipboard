@@ -1,7 +1,7 @@
 //! `ClipboardWriteCoordinator` — single write boundary for all
 //! programmatic clipboard writes, with per-intent guard TTL handling so
 //! the daemon's clipboard watcher can attribute the change to the
-//! originating intent (LocalCapture / LocalRestore / RemotePush) and
+//! originating intent (LocalRestore / RemotePush) and
 //! avoid write-back loops.
 //!
 //! ## History
@@ -21,9 +21,12 @@ use std::time::{Duration, Instant};
 use tracing::Instrument;
 use tracing::{error, info, info_span, warn};
 
-use uc_core::clipboard::ClipboardChangeOrigin;
 use uc_core::clipboard::SystemClipboardSnapshot;
-use uc_core::ports::clipboard::{ClipboardChangeOriginPort, SystemClipboardPort};
+use uc_core::ports::clipboard::{
+    SelfWriteAttribution, SelfWriteLedgerPort, SelfWriteMatch, SystemClipboardPort,
+};
+
+use super::timing::{LOCAL_ECHO_RTT_MAX, REMOTE_ECHO_RTT_MAX};
 
 /// Number of consecutive OS-write failures that trip the circuit.
 ///
@@ -47,18 +50,18 @@ const DEFAULT_CIRCUIT_OPEN_DURATION: Duration = Duration::from_secs(30);
 
 /// Represents the intent behind a programmatic clipboard write.
 ///
-/// Each variant carries per-intent guard TTL semantics:
-/// - `LocalRestore`: 2-second hash guard + one-shot next-origin override
-/// - `LocalCapture`: 2-second hash guard (short-lived, local op)
-/// - `RemotePush`: 60-second hash guard + one-shot next-origin override (OS re-encoding guard)
+/// Each variant arms a self-write record under a named echo budget from
+/// [`super::timing`] (`LOCAL_ECHO_RTT_MAX` / `REMOTE_ECHO_RTT_MAX`), never as
+/// inline literals. The budget is a GC backstop; the next watcher event is what
+/// consumes the record:
+/// - `LocalRestore`: content record + next-change fallback, local budget
+/// - `RemotePush`: content record + next-change fallback, remote budget (OS re-encoding guard)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardWriteIntent {
     /// A local clipboard history restore (user clicked "restore" in history).
     LocalRestore,
     /// A remote push from a peer device arriving via inbound sync.
     RemotePush,
-    /// A local clipboard write triggered by a local app action (e.g., copy file).
-    LocalCapture,
 }
 
 /// Single write boundary for all programmatic clipboard writes.
@@ -75,7 +78,7 @@ pub enum ClipboardWriteIntent {
 /// all guard lifecycle operations.
 pub struct ClipboardWriteCoordinator {
     system_clipboard: Arc<dyn SystemClipboardPort>,
-    clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+    clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
     /// True while a `write()` call is in progress. Used by workers to detect
     /// genuinely concurrent clipboard writes, replacing the overly broad
     /// `has_pending_origin()` check that conflated attribution guards with
@@ -98,7 +101,7 @@ pub struct ClipboardWriteCoordinator {
 impl ClipboardWriteCoordinator {
     pub fn new(
         system_clipboard: Arc<dyn SystemClipboardPort>,
-        clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+        clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
     ) -> Self {
         Self::with_cooldown(
             system_clipboard,
@@ -113,7 +116,7 @@ impl ClipboardWriteCoordinator {
     /// `new` for normal construction.
     pub(crate) fn with_cooldown(
         system_clipboard: Arc<dyn SystemClipboardPort>,
-        clipboard_change_origin: Arc<dyn ClipboardChangeOriginPort>,
+        clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
         cooldown: Duration,
     ) -> Self {
         Self {
@@ -207,20 +210,24 @@ impl ClipboardWriteCoordinator {
     ///
     /// # Intent semantics
     ///
-    /// - `LocalRestore`: registers a 2-second local snapshot hash guard, writes, then
-    ///   sets a one-shot `set_next_origin(LocalRestore, 2s)` to cover file URI/path
-    ///   rewrites that change bytes between write and watcher callback.
-    /// - `LocalCapture`: registers a 2-second local snapshot hash guard, then writes.
-    ///   On error, consumes the guard to prevent stale state.
-    /// - `RemotePush`: registers a 60-second remote snapshot hash guard, writes, then
-    ///   sets a one-shot `set_next_origin(RemotePush, 60s)` to guard against OS re-encoding
-    ///   loopback (e.g., Windows DIB→PNG re-encode produces a different hash than the guard).
+    /// Each record uses a named echo budget from [`super::timing`]
+    /// (`LOCAL_ECHO_RTT_MAX` / `REMOTE_ECHO_RTT_MAX`), never inline, armed via
+    /// `SelfWriteLedgerPort::record_self_write`.
+    ///
+    /// - `LocalRestore`: records a `ByContent`/`Local` self-write under the local
+    ///   budget, writes, then records a `ByNextChange`/`Local` fallback to cover
+    ///   file URI/path rewrites that change bytes between write and watcher callback.
+    /// - `RemotePush`: records a `ByContent`/`Remote` self-write under the remote
+    ///   budget, writes, then records a `ByNextChange`/`Remote` fallback to guard
+    ///   against OS re-encoding loopback (e.g., Windows DIB→PNG re-encode yields
+    ///   bytes the content record won't match). The remote budget is generous
+    ///   because that fallback is the sole suppression for a re-encoded echo.
     ///
     /// # Error handling
     ///
-    /// On `write_snapshot` failure, the registered guard is consumed via
-    /// `consume_origin_for_snapshot_or_default` to prevent stale guard accumulation.
-    /// The `set_next_origin` call for `RemotePush` is NOT made on failure.
+    /// On `write_snapshot` failure, the just-armed content record is consumed via
+    /// `attribute_observed_change` to prevent stale record accumulation. The
+    /// `ByNextChange` fallback is NOT armed on failure.
     pub async fn write(
         &self,
         snapshot: SystemClipboardSnapshot,
@@ -262,21 +269,23 @@ impl ClipboardWriteCoordinator {
         }
 
         async {
-            // Register the appropriate hash guard before writing.
+            // Arm a content-keyed self-write record before writing.
             match intent {
-                ClipboardWriteIntent::LocalRestore | ClipboardWriteIntent::LocalCapture => {
+                ClipboardWriteIntent::LocalRestore => {
                     self.clipboard_change_origin
-                        .remember_local_snapshot_hash(
-                            origin_guard_key.clone(),
-                            Duration::from_secs(2),
+                        .record_self_write(
+                            SelfWriteMatch::ByContent(origin_guard_key.clone()),
+                            SelfWriteAttribution::Local,
+                            LOCAL_ECHO_RTT_MAX,
                         )
                         .await;
                 }
                 ClipboardWriteIntent::RemotePush => {
                     self.clipboard_change_origin
-                        .remember_remote_snapshot_hash(
-                            origin_guard_key.clone(),
-                            Duration::from_secs(60),
+                        .record_self_write(
+                            SelfWriteMatch::ByContent(origin_guard_key.clone()),
+                            SelfWriteAttribution::Remote,
+                            REMOTE_ECHO_RTT_MAX,
                         )
                         .await;
                 }
@@ -286,11 +295,10 @@ impl ClipboardWriteCoordinator {
             // writes start from a clean slate (and so outages surface in Seq/stdout
             // instead of being hidden in the `Err` bubbling back up the call chain).
             if let Err(err) = self.system_clipboard.write_snapshot(snapshot) {
+                // Unwind the just-armed content record so a later unrelated
+                // change is not mis-attributed to this failed write.
                 self.clipboard_change_origin
-                    .consume_origin_for_snapshot_or_default(
-                        &origin_guard_key,
-                        ClipboardChangeOrigin::LocalCapture,
-                    )
+                    .attribute_observed_change(&origin_guard_key)
                     .await;
                 // Record failure first so the error event below can include
                 // the post-increment count and `circuit_tripped` derived state.
@@ -318,27 +326,28 @@ impl ClipboardWriteCoordinator {
             match intent {
                 ClipboardWriteIntent::LocalRestore => {
                     // File restores can come back from the platform clipboard with rewritten
-                    // URI/path bytes, so the hash guard alone is not sufficient.
+                    // URI/path bytes, so the content record alone is not sufficient.
                     self.clipboard_change_origin
-                        .set_next_origin(
-                            ClipboardChangeOrigin::LocalRestore,
-                            Duration::from_secs(2),
+                        .record_self_write(
+                            SelfWriteMatch::ByNextChange,
+                            SelfWriteAttribution::Local,
+                            LOCAL_ECHO_RTT_MAX,
                         )
                         .await;
                 }
                 ClipboardWriteIntent::RemotePush => {
                     // Some platforms (e.g. Windows clipboard-rs) re-encode images (PNG→DIB→PNG),
-                    // producing different bytes than the original. The hash guard above won't match
-                    // the re-encoded content, so we set a one-shot origin override: the NEXT clipboard
-                    // change will be treated as RemotePush regardless of hash.
+                    // producing different bytes than the original. The content record above won't
+                    // match the re-encoded content, so we arm a next-change record: the NEXT
+                    // clipboard change is treated as RemotePush regardless of hash.
                     self.clipboard_change_origin
-                        .set_next_origin(
-                            ClipboardChangeOrigin::remote_push_anonymous(),
-                            Duration::from_secs(60),
+                        .record_self_write(
+                            SelfWriteMatch::ByNextChange,
+                            SelfWriteAttribution::Remote,
+                            REMOTE_ECHO_RTT_MAX,
                         )
                         .await;
                 }
-                ClipboardWriteIntent::LocalCapture => {}
             }
 
             Ok(())
@@ -389,20 +398,14 @@ mod tests {
     mock! {
         ChangeOrigin {}
         #[async_trait]
-        impl ClipboardChangeOriginPort for ChangeOrigin {
-            async fn set_next_origin(&self, origin: ClipboardChangeOrigin, ttl: Duration);
-            async fn consume_origin_or_default(
+        impl SelfWriteLedgerPort for ChangeOrigin {
+            async fn record_self_write(
                 &self,
-                default_origin: ClipboardChangeOrigin,
-            ) -> ClipboardChangeOrigin;
-            async fn has_pending_origin(&self) -> bool;
-            async fn remember_remote_snapshot_hash(&self, snapshot_hash: String, ttl: Duration);
-            async fn remember_local_snapshot_hash(&self, snapshot_hash: String, ttl: Duration);
-            async fn consume_origin_for_snapshot_or_default(
-                &self,
-                snapshot_hash: &str,
-                default_origin: ClipboardChangeOrigin,
-            ) -> ClipboardChangeOrigin;
+                matching: SelfWriteMatch,
+                attribution: SelfWriteAttribution,
+                ttl: Duration,
+            );
+            async fn attribute_observed_change(&self, snapshot_hash: &str) -> ClipboardChangeOrigin;
         }
     }
 
@@ -423,16 +426,10 @@ mod tests {
         // Origin port is exercised but its specific calls are not what we're
         // testing here — accept any call count, return defaults.
         let mut origin = MockChangeOrigin::new();
+        origin.expect_record_self_write().returning(|_, _, _| ());
         origin
-            .expect_remember_remote_snapshot_hash()
-            .returning(|_, _| ());
-        origin
-            .expect_remember_local_snapshot_hash()
-            .returning(|_, _| ());
-        origin
-            .expect_consume_origin_for_snapshot_or_default()
-            .returning(|_, default| default);
-        origin.expect_set_next_origin().returning(|_, _| ());
+            .expect_attribute_observed_change()
+            .returning(|_| ClipboardChangeOrigin::LocalCapture);
         origin
     }
 

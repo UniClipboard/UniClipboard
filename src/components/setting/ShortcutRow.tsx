@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRecorder } from '@/components/setting/KeyRecorder'
 import { Button } from '@/components/ui'
-import { formatShortcutParts } from '@/lib/shortcut-format'
+import { formatShortcutChord } from '@/lib/shortcut-format'
 import type { ShortcutKeyOverrides } from '@/shortcuts/conflicts'
 import type { ShortcutDefinition } from '@/shortcuts/definitions'
 
@@ -26,7 +26,7 @@ export function ShortcutRow({
 }: ShortcutRowProps) {
   const { t } = useTranslation()
   const [isRecording, setIsRecording] = useState(false)
-  const keyParts = formatShortcutParts(currentKey)
+  const chordSegments = formatShortcutChord(currentKey)
 
   const handleEdit = () => {
     setIsRecording(true)
@@ -72,14 +72,21 @@ export function ShortcutRow({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
-        <div className="flex items-center gap-0.5">
-          {keyParts.map((part, idx) => (
-            <span key={`${part}-${idx}`} className="flex items-center">
-              {idx > 0 && <span className="text-muted-foreground text-xs mx-0.5">+</span>}
-              <kbd className="bg-muted text-xs font-mono px-1.5 py-0.5 rounded border border-border/60 text-foreground">
-                {part}
-              </kbd>
-            </span>
+        <div className="flex items-center gap-1.5">
+          {chordSegments.map((parts, segIdx) => (
+            <div key={`seg-${segIdx}`} className="flex items-center gap-1.5">
+              {segIdx > 0 && <span className="text-muted-foreground text-xs">›</span>}
+              <div className="flex items-center gap-0.5">
+                {parts.map((part, idx) => (
+                  <span key={`${part}-${idx}`} className="flex items-center">
+                    {idx > 0 && <span className="text-muted-foreground text-xs mx-0.5">+</span>}
+                    <kbd className="bg-muted text-xs font-mono px-1.5 py-0.5 rounded border border-border/60 text-foreground">
+                      {part}
+                    </kbd>
+                  </span>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 

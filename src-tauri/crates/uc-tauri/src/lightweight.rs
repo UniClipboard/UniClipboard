@@ -6,7 +6,7 @@
 //! - **关窗** (window close) → hide to tray; intercepted in `run.rs`, never
 //!   reaches the exit handlers, daemon untouched.
 //! - **轻量模式** (tray "Lightweight") → GUI process exits, the daemon keeps
-//!   running. [`enter_lightweight_mode`] shows a one-time notification (so the
+//!   running. [`enter_lightweight_mode`] shows a reassurance notification (so the
 //!   user knows it is still alive) then `app.exit(0)`.
 //! - **重启** (restart) → GUI process exits and respawns; daemon keeps running.
 //! - **彻底退出** → GUI exits AND stops the connected daemon regardless of who
@@ -32,15 +32,11 @@
 //! [`QuitIntent::note_exit_requested`] to keep the daemon. A GUI crash or SIGKILL
 //! never reaches `Exit` cleanly, so the daemon still survives those.
 
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tracing::{info, warn};
-
-use crate::bootstrap::TauriAppRuntime;
 
 /// Process-wide exit state, read by `run.rs`'s `RunEvent::ExitRequested` /
 /// `RunEvent::Exit` handlers to decide whether to also stop the connected daemon.
@@ -116,31 +112,24 @@ pub fn request_full_quit(app: &AppHandle) {
     app.exit(0);
 }
 
-/// Tray "轻量模式": show the one-time discoverability notification, then exit
-/// the GUI process. The daemon keeps running (default [`QuitIntent`]).
+/// Tray "轻量模式": show the reassurance notification, then exit the GUI
+/// process. The daemon keeps running (default [`QuitIntent`]).
 pub fn enter_lightweight_mode(app: &AppHandle) {
-    let app_data_root = app
-        .state::<Arc<TauriAppRuntime>>()
-        .storage_paths()
-        .app_data_root_dir
-        .clone();
-    notify_lightweight_once(app, &app_data_root);
+    notify_lightweight(app);
     info!("entering lightweight mode — GUI exiting, daemon stays running");
     app.exit(0);
 }
 
-const LIGHTWEIGHT_FLAG_FILE: &str = "lightweight-notified.json";
-
-/// Send the one-time "still running in the background" notification
-/// (OQ-lightweight-discoverability). Bilingual (中 + EN). No-op once the
-/// per-profile flag file exists; deleting that file re-arms the notification
-/// (self-healing — it lives in `app_data_root`, NOT settings.json).
-pub fn notify_lightweight_once(app: &AppHandle, app_data_root: &Path) {
-    let flag = app_data_root.join(LIGHTWEIGHT_FLAG_FILE);
-    if flag.exists() {
-        return;
-    }
-
+/// Send the "still running in the background" notification EVERY time the user
+/// enters lightweight mode. Bilingual (中 + EN).
+///
+/// Showing it on every entry — not just once — is the fix for issue #1129: the
+/// GUI process exiting looked like a crash to users whose one-time toast had
+/// already been consumed on an earlier run, leaving zero on-screen trace of the
+/// still-running background daemon. The user explicitly invoked this menu item,
+/// so a notification per entry is expected feedback, not noise. A failed
+/// `.show()` degrades to a `warn!` and never blocks the exit.
+pub fn notify_lightweight(app: &AppHandle) {
     let result = app
         .notification()
         .builder()
@@ -152,27 +141,8 @@ pub fn notify_lightweight_once(app: &AppHandle, app_data_root: &Path) {
         .show();
 
     match result {
-        Ok(()) => {
-            mark_notified(app_data_root);
-            info!("lightweight-mode discoverability notification shown");
-        }
-        Err(error) => {
-            // Don't write the flag — retry next time so the user isn't left
-            // with zero on-screen trace of a running background process.
-            warn!(%error, "failed to show lightweight-mode notification");
-        }
-    }
-}
-
-/// Persist the "notification shown" flag atomically (temp + rename) so a torn
-/// write never corrupts it — at worst the notification shows once more.
-fn mark_notified(app_data_root: &Path) {
-    let flag = app_data_root.join(LIGHTWEIGHT_FLAG_FILE);
-    let tmp = app_data_root.join(format!("{LIGHTWEIGHT_FLAG_FILE}.tmp"));
-    let write =
-        std::fs::write(&tmp, b"{\"notified\":true}\n").and_then(|()| std::fs::rename(&tmp, &flag));
-    if let Err(error) = write {
-        warn!(%error, "failed to persist lightweight-notified flag");
+        Ok(()) => info!("lightweight-mode discoverability notification shown"),
+        Err(error) => warn!(%error, "failed to show lightweight-mode notification"),
     }
 }
 
@@ -237,22 +207,5 @@ mod tests {
         assert!(!exit_keeps_daemon(true, Some(0)));
         // None code (last window destroyed) → stop.
         assert!(!exit_keeps_daemon(false, None));
-    }
-
-    #[test]
-    fn mark_notified_writes_flag_and_leaves_no_temp() {
-        let dir = tempfile::tempdir().unwrap();
-        let flag = dir.path().join(LIGHTWEIGHT_FLAG_FILE);
-        assert!(!flag.exists());
-
-        mark_notified(dir.path());
-
-        assert!(flag.exists(), "flag file must exist after mark_notified");
-        assert!(
-            !dir.path()
-                .join(format!("{LIGHTWEIGHT_FLAG_FILE}.tmp"))
-                .exists(),
-            "atomic rename must not leave the temp file behind"
-        );
     }
 }

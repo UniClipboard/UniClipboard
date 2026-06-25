@@ -15,9 +15,9 @@
 //!
 //! 自写抑制：复用 `ClipboardWriteCoordinator` + `ClipboardWriteIntent::LocalRestore`。
 //! `origin_guard_key` 在仅含 plain rep 的 snapshot 上计算结果为 `text:<hash>`，
-//! 与 watcher 回声端口计算结果一致，hash 守卫稳定命中；即便遇到极端 hash miss，
-//! coordinator 的一次性 `set_next_origin(LocalRestore, 2s)` 兜底，watcher 不会
-//! 把这次恢复重新当作新条目落库。
+//! 与 watcher 回声端口计算结果一致，内容守卫（`SelfWriteMatch::ByContent`）稳定命中；
+//! 即便遇到极端 hash miss，coordinator 写成功后登记的 next-change 兜底记录
+//! （`SelfWriteMatch::ByNextChange`）兜底，watcher 不会把这次恢复重新当作新条目落库。
 //!
 //! payload 读取：必须通过 `ClipboardPayloadResolverPort.resolve()`——Staged 状态
 //! 下 `rep.inline_data` 是 normalizer 留下的 500 字符预览截断版，直接读会粘出
@@ -322,9 +322,10 @@ mod tests {
     };
     use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
     use uc_core::ports::clipboard::{
-        ActiveClipboardRegisterError, AdvanceActiveClipboardPort, ClipboardChangeOriginPort,
-        ClipboardPayloadResolverPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
-        GetRepresentationPort, PayloadResolveError, ResolvedClipboardPayload, SystemClipboardPort,
+        ActiveClipboardRegisterError, AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
+        GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationPort,
+        PayloadResolveError, ResolvedClipboardPayload, SelfWriteAttribution, SelfWriteLedgerPort,
+        SelfWriteMatch, SystemClipboardPort,
     };
     use uc_core::ports::{ClipboardSelectionRepositoryPort, ClockPort, DeviceIdentityPort};
     use uc_core::BlobId;
@@ -439,20 +440,14 @@ mod tests {
     mockall::mock! {
         ChangeOrigin {}
         #[async_trait]
-        impl ClipboardChangeOriginPort for ChangeOrigin {
-            async fn set_next_origin(&self, origin: ClipboardChangeOrigin, ttl: Duration);
-            async fn consume_origin_or_default(
+        impl SelfWriteLedgerPort for ChangeOrigin {
+            async fn record_self_write(
                 &self,
-                default_origin: ClipboardChangeOrigin,
-            ) -> ClipboardChangeOrigin;
-            async fn has_pending_origin(&self) -> bool;
-            async fn remember_remote_snapshot_hash(&self, snapshot_hash: String, ttl: Duration);
-            async fn remember_local_snapshot_hash(&self, snapshot_hash: String, ttl: Duration);
-            async fn consume_origin_for_snapshot_or_default(
-                &self,
-                snapshot_hash: &str,
-                default_origin: ClipboardChangeOrigin,
-            ) -> ClipboardChangeOrigin;
+                matching: SelfWriteMatch,
+                attribution: SelfWriteAttribution,
+                ttl: Duration,
+            );
+            async fn attribute_observed_change(&self, snapshot_hash: &str) -> ClipboardChangeOrigin;
         }
     }
 
@@ -482,10 +477,7 @@ mod tests {
     /// 细节（coordinator 自身已在 `clipboard_write/coordinator.rs` 测过），
     /// 这里只让所有相关方法以 default 行为通过。
     fn expect_permissive_origin(origin: &mut MockChangeOrigin) {
-        origin
-            .expect_remember_local_snapshot_hash()
-            .returning(|_, _| ());
-        origin.expect_set_next_origin().returning(|_, _| ());
+        origin.expect_record_self_write().returning(|_, _, _| ());
     }
 
     /// 用 mockall 把每次 `write_snapshot` 收到的 snapshot 累计起来供断言查阅，

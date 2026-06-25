@@ -85,3 +85,17 @@ export function formatShortcutParts(shortcut: string): string[] {
 
   return rawParts.map(formatKeyPart)
 }
+
+/**
+ * Format a shortcut value as chord segments. A binding is one or two key combos
+ * separated by a single space (VS Code style); each segment is formatted into
+ * its own display parts. A single combo yields a one-element array.
+ *
+ * e.g. `"meta+ctrl+v meta+ctrl+v"` → `[["⌘","⌃","V"], ["⌘","⌃","V"]]`
+ */
+export function formatShortcutChord(shortcut: string): string[][] {
+  return shortcut.split(' ').flatMap(seg => {
+    const trimmed = seg.trim()
+    return trimmed ? [formatShortcutParts(trimmed)] : []
+  })
+}

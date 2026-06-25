@@ -10,7 +10,7 @@
 //! `Coordinator` (not a `UseCase` / `Facade`), but it is one of the
 //! "明确 Coordinator" exceptions named in §18 because it genuinely
 //! coordinates a single write boundary across multiple downstream ports
-//! (`SystemClipboardPort` + `ClipboardChangeOriginPort`) and the guard
+//! (`SystemClipboardPort` + `SelfWriteLedgerPort`) and the guard
 //! lifecycle. Public visibility is required by external consumers (daemon
 //! workers, tauri runtime).
 
@@ -18,6 +18,7 @@ mod active_register;
 mod coordinator;
 mod primary_rep_selector;
 mod restore_broadcast;
+mod timing;
 
 pub use active_register::LocalActiveRegisterAdvancer;
 pub use coordinator::{ClipboardWriteCoordinator, ClipboardWriteIntent};

@@ -31,15 +31,28 @@ export interface EncryptionSessionFailedPayload {
   reason?: string
 }
 
-/** Payload for `peers.changed` events. */
+/**
+ * One peer entry in a `peers.changed` snapshot. Mirrors the daemon
+ * `PeerSnapshotDto` (camelCase wire): the full member record, not just the
+ * volatile presence fields, so the frontend can rebuild its member list from
+ * the event alone instead of refetching `/paired-devices`.
+ */
+export interface PeerSnapshotPayloadItem {
+  peerId: string
+  deviceName?: string | null
+  addresses?: string[]
+  isPaired?: boolean
+  connected: boolean
+  pairingState?: string
+  /** Phase 96 INDIC-01: 连接通道 4 态 wire 字符串。 */
+  channel?: 'direct' | 'relay' | 'offline' | 'unknown'
+  /** 当前活跃连接地址；直连=对端 IP:port，中转=relay 地址。 */
+  connectionAddress?: string | null
+}
+
+/** Payload for `peers.changed` events — a full snapshot of the peer list. */
 export interface PeersChangedPayload {
-  peers: Array<{
-    peerId: string
-    deviceName?: string | null
-    connected: boolean
-    /** Phase 96 INDIC-01: 连接通道 4 态 wire 字符串。 */
-    channel?: 'direct' | 'relay' | 'offline' | 'unknown'
-  }>
+  peers: PeerSnapshotPayloadItem[]
 }
 
 /** Payload for `peers.nameUpdated` events. */

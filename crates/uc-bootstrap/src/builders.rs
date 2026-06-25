@@ -21,7 +21,10 @@ use uc_application::deps::AppDeps;
 use uc_application::facade::ClipboardSyncFacade;
 use uc_core::config::AppConfig;
 
-use crate::assembly::{get_storage_paths, wire_dependencies, BackgroundRuntimeDeps};
+use crate::assembly::{
+    get_storage_paths, wire_dependencies, BackgroundRuntimeDeps, SharedRuntimeDeps,
+    SpaceSetupWiring,
+};
 use crate::space_setup::{build_space_setup_assembly, SpaceSetupAssembly};
 
 /// Context for CLI entry point. AppDeps + config, no background workers.
@@ -174,15 +177,17 @@ pub struct DaemonLifecycle {
 /// caller 必须在 tokio runtime 上下文中调用 —— `build_space_setup_assembly`
 /// 内部 `Endpoint::bind` 会 spawn magicsock / relay / STUN actor。
 pub async fn build_daemon_lifecycle(
-    wired: &crate::assembly::WiredDependencies,
+    deps: &AppDeps,
+    space_setup: &SpaceSetupWiring,
+    shared: &SharedRuntimeDeps,
 ) -> anyhow::Result<DaemonLifecycle> {
     // 启动期 reconcile:把 peer_addr_repo / trusted_peer_repo 中
     // member_repo 已不再持有的孤儿条目清掉,恢复设计意图的不变量
     // `peer_addr ⊆ member`、`trusted_peer ⊆ member`。失败只 log 不阻断
     // 启动 —— reconcile 是治理性的。
     if let Err(err) = crate::init::reconcile_peer_addresses(
-        Arc::clone(&wired.deps.device.member_repo),
-        Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&deps.device.member_repo),
+        Arc::clone(&space_setup.peer_addr_repo),
     )
     .await
     {
@@ -192,8 +197,8 @@ pub async fn build_daemon_lifecycle(
         );
     }
     if let Err(err) = crate::init::reconcile_trusted_peers(
-        Arc::clone(&wired.deps.device.member_repo),
-        Arc::clone(&wired.trusted_peer_repo),
+        Arc::clone(&deps.device.member_repo),
+        Arc::clone(&shared.trusted_peer_repo),
     )
     .await
     {
@@ -209,8 +214,7 @@ pub async fn build_daemon_lifecycle(
     // 兜底返回 `Settings::default()` (即 `allow_relay_fallback: true`)。
     // 故此处只需对剩余 Parse/IO 错误硬失败 —— LAN-only 信任锚点不容许脏
     // settings 撒谎。
-    let settings = wired
-        .deps
+    let settings = deps
         .settings
         .load()
         .await
@@ -250,7 +254,7 @@ pub async fn build_daemon_lifecycle(
         iroh_config.congestion_controller,
     );
 
-    let space_setup_assembly = build_space_setup_assembly(wired, iroh_config)
+    let space_setup_assembly = build_space_setup_assembly(deps, space_setup, shared, iroh_config)
         .await
         .map_err(|e| anyhow::anyhow!("Slice 1+ assembly build failed: {e}"))?;
 

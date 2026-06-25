@@ -645,9 +645,10 @@ pub async fn build_cli_app_runtime(
         iroh_config.congestion_controller,
     );
 
-    let assembly = build_space_setup_assembly(&wired, iroh_config)
-        .await
-        .map_err(|err| anyhow::anyhow!("failed to bind iroh endpoint: {err}"))?;
+    let assembly =
+        build_space_setup_assembly(&wired.deps, &wired.space_setup, &wired.shared, iroh_config)
+            .await
+            .map_err(|err| anyhow::anyhow!("failed to bind iroh endpoint: {err}"))?;
     let deps = &wired.deps;
 
     let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
@@ -677,7 +678,7 @@ pub async fn build_cli_app_runtime(
         clipboard_sync: assembly.clipboard_sync.clone(),
         blob_transfer: assembly.blob.clone(),
         entry_repo: deps.clipboard.entry_ports.get.clone(),
-        event_repo: wired.clipboard_event_reader_repo.clone(),
+        event_repo: wired.shared.clipboard_event_reader_repo.clone(),
         selection_repo: deps.clipboard.selection_repo.clone(),
         representation_repo: deps.clipboard.representation_ports.get.clone(),
         rep_processing_repo: deps
@@ -687,8 +688,8 @@ pub async fn build_cli_app_runtime(
             .clone(),
         payload_resolver: deps.clipboard.payload_resolver.clone(),
         blob_store: deps.storage.blob_store.clone(),
-        entry_delivery_repo: wired.entry_delivery_repo.clone(),
-        trusted_peer_repo: wired.trusted_peer_repo.clone(),
+        entry_delivery_repo: wired.shared.entry_delivery_repo.clone(),
+        trusted_peer_repo: wired.shared.trusted_peer_repo.clone(),
         device_identity: deps.device.device_identity.clone(),
     }));
 
@@ -703,7 +704,7 @@ pub async fn build_cli_app_runtime(
             blob_transfer: Some(assembly.blob.clone()),
             blob_transfer_port: Some(Arc::clone(&assembly.blob_transfer)),
             clipboard_outbound: Some(clipboard_outbound),
-            file_transfer: Some(wired.file_transfer_facade.clone()),
+            file_transfer: Some(wired.shared.file_transfer_facade.clone()),
             search_coordinator: Some(search_coordinator),
             mobile_sync_apply_inbound: Some(mobile_sync_apply_inbound),
             ..Default::default()

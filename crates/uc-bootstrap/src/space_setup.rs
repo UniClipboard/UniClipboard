@@ -80,7 +80,8 @@ use uc_infra::security::Sha256IdentityFingerprintFactory;
 use uc_platform::file_secure_storage::FileSecureStorage;
 use uc_platform::migrating_secure_storage::MigratingSecureStorage;
 
-use crate::assembly::WiredDependencies;
+use crate::assembly::{SharedRuntimeDeps, SpaceSetupWiring};
+use uc_application::deps::AppDeps;
 
 /// Output of [`build_space_setup_assembly`]. External callers keep the
 /// whole assembly alive for the process lifetime; they only dispatch
@@ -340,11 +341,11 @@ pub enum SpaceSetupAssemblyError {
 /// coexist until Slice 5 retires libp2p.
 #[instrument(skip_all)]
 pub async fn build_space_setup_assembly(
-    wired: &WiredDependencies,
+    deps: &AppDeps,
+    space_setup: &SpaceSetupWiring,
+    shared: &SharedRuntimeDeps,
     iroh_config: IrohNodeConfig,
 ) -> Result<SpaceSetupAssembly, SpaceSetupAssemblyError> {
-    let deps = &wired.deps;
-
     // IdentityFingerprintFactory is stateless — the one in SecurityPorts is
     // the same `Sha256IdentityFingerprintFactory` ZST, but we construct a
     // fresh one here rather than down-casting through `dyn` because
@@ -382,7 +383,7 @@ pub async fn build_space_setup_assembly(
     // 迁移代码保留至 1.0:确保跳版本升级 (e.g. 0.6.x → 0.7.5 跳过中间版本)
     // 仍能拾起残留的 keychain 条目;清理时机与 0.6.x EOL 对齐。
     let file_backend: Arc<dyn uc_core::ports::SecureStoragePort> = Arc::new(
-        FileSecureStorage::with_base_dir(wired.iroh_identity_dir.clone()),
+        FileSecureStorage::with_base_dir(space_setup.iroh_identity_dir.clone()),
     );
     let iroh_identity_storage: Arc<dyn uc_core::ports::SecureStoragePort> =
         Arc::new(MigratingSecureStorage::new(
@@ -409,7 +410,7 @@ pub async fn build_space_setup_assembly(
     // `Arc<dyn PresencePort>` 喂给 SpaceSetupDeps,facade 内部再构造
     // `EnsureReachableAllUseCase` 给 F1 hook 用。
     let presence: Arc<dyn PresencePort> = builder.install_presence(
-        Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&space_setup.peer_addr_repo),
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&deps.security.fingerprint),
         Arc::clone(&deps.system.clock),
@@ -417,7 +418,7 @@ pub async fn build_space_setup_assembly(
     // Phase 96 INDIC-01:连接通道单一真相源。复用同一 endpoint +
     // peer_addr_repo,纯读 adapter 不装 ALPN handler。
     let connection_channel: Arc<dyn ConnectionChannelPort> =
-        builder.install_connection_channel(Arc::clone(&wired.peer_addr_repo));
+        builder.install_connection_channel(Arc::clone(&space_setup.peer_addr_repo));
     // Slice 2 Phase 2 · T10:同一节点装第三个 ALPN(剪切板同步)。dispatch
     // 复用 endpoint + peer_addr_repo,与 presence 共享 NAT/relay 映射;
     // receiver handler 通过 `member_repo` 把 `Connection::remote_id()` 反查
@@ -426,7 +427,7 @@ pub async fn build_space_setup_assembly(
         dispatch: clipboard_dispatch,
         receiver: clipboard_receiver,
     } = builder.install_clipboard(
-        Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&space_setup.peer_addr_repo),
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&deps.security.fingerprint),
         Arc::clone(&presence),
@@ -444,7 +445,7 @@ pub async fn build_space_setup_assembly(
         dispatch: active_clipboard_dispatch,
         receiver: active_clipboard_receiver,
     } = builder.install_active_clipboard(
-        Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&space_setup.peer_addr_repo),
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&deps.security.fingerprint),
     );
@@ -458,7 +459,7 @@ pub async fn build_space_setup_assembly(
         reporter: outbound_progress_reporter,
         inbound_events: outbound_progress_events,
     } = builder.install_transfer_progress(
-        Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&space_setup.peer_addr_repo),
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&deps.security.fingerprint),
     );
@@ -466,7 +467,7 @@ pub async fn build_space_setup_assembly(
     // Slice 3 Phase 1:同一节点装第五个 ALPN(iroh-blobs)。BlobReference
     // 是 sqlite 仓储,不跟 router 绑定;这里只拿传输 port。
     let BlobHandlers { blob_transfer } = builder
-        .install_blobs(wired.iroh_blob_store_dir.clone())
+        .install_blobs(space_setup.iroh_blob_store_dir.clone())
         .await?;
 
     // Build the blob transfer facade now (before `spawn()`) so the
@@ -476,20 +477,20 @@ pub async fn build_space_setup_assembly(
     let blob = Arc::new(BlobTransferFacade::new(BlobTransferDeps {
         hash: Arc::clone(&deps.system.hash),
         blob_transfer: Arc::clone(&blob_transfer),
-        blob_reference: Arc::clone(&wired.blob_reference_repo),
+        blob_reference: Arc::clone(&space_setup.blob_reference_repo),
         // 共享同一根 host_event_bus —— daemon bootstrap 注册自己的 WS
         // emitter 之后, fetch_blob 自动开始向前端 fan-out progress 事件;
         // CLI 装配走同一 bus 但只挂着 logging emitter, 事件被静默打 log,
         // 不影响行为。状态切换(transferring / completed / failed)走
         // file_transfer lifecycle, 由 `FileTransferHostEventPublisher`
         // 统一发出。
-        host_event_emitter: Some(Arc::clone(&wired.host_event_bus)),
+        host_event_emitter: Some(Arc::clone(&shared.host_event_bus)),
         // 反向进度上报端口:接收端 fetch 进度通过新 ALPN 推回 sender。
         outbound_progress_reporter: Some(outbound_progress_reporter),
         // file_transfer lifecycle facade —— iroh 路径每次 fetch 通过它落
         // `Started` / `Completed` / `Failed` 事件,让 file_transfer 表的
         // 状态投影与 sweep / reconcile workers 真正发挥作用。
-        file_transfer: Some(Arc::clone(&wired.file_transfer_facade)),
+        file_transfer: Some(Arc::clone(&shared.file_transfer_facade)),
     }));
 
     // Install the active-clipboard pull ALPN (0xC2, issue #1017 PR8) as a
@@ -517,7 +518,7 @@ pub async fn build_space_setup_assembly(
     let ActiveClipboardPullHandlers {
         client: active_clipboard_pull_client,
     } = builder.install_active_clipboard_pull(
-        Arc::clone(&wired.peer_addr_repo),
+        Arc::clone(&space_setup.peer_addr_repo),
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&deps.security.fingerprint),
         active_clipboard_pull_serve,
@@ -531,7 +532,7 @@ pub async fn build_space_setup_assembly(
     // `StatusChanged`。任务跟 ingest_handle 同生命周期,shutdown 显式 abort。
     let outbound_progress_translator = spawn_outbound_progress_translator(
         outbound_progress_events,
-        Arc::clone(&wired.host_event_bus),
+        Arc::clone(&shared.host_event_bus),
     );
 
     // HMAC proof adapter verifies the joiner's ChallengeResponse against the
@@ -558,23 +559,23 @@ pub async fn build_space_setup_assembly(
         pairing_session: handlers.session,
         pairing_events: handlers.events,
         proof_port,
-        trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
-        peer_addr_repo: Arc::clone(&wired.peer_addr_repo),
+        trusted_peer_repo: Arc::clone(&shared.trusted_peer_repo),
+        peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
         presence: Arc::clone(&presence),
         // Switch-space 4 阶段重加密迁移依赖（commit 4 接入）。`blob_cipher`
         // 复用既有 `EncryptingClipboardEventWriter` /
         // `DecryptingClipboardRepresentationRepository` 同款 adapter Arc，
         // 共享 master_key session。
-        migration_state: Arc::clone(&wired.migration_state),
-        key_migration: Arc::clone(&wired.key_migration),
-        blob_migration_repo: Arc::clone(&wired.blob_migration_repo),
+        migration_state: Arc::clone(&space_setup.migration_state),
+        key_migration: Arc::clone(&space_setup.key_migration),
+        blob_migration_repo: Arc::clone(&space_setup.blob_migration_repo),
         blob_cipher: Arc::clone(&deps.security.blob_cipher),
         // Single facade covering both capture and identity transitions.
         // The capture sink + identity store are composed inside the
         // bootstrap so the application layer never wires them
         // separately. Sink is installed once; the gate inside the
         // wrapper handles enable/disable transitions.
-        analytics: Arc::clone(&wired.analytics_facade),
+        analytics: Arc::clone(&space_setup.analytics_facade),
     }));
 
     // Slice 2 Phase 1 · T9:roster 门面和 space_setup facade 共享同一组
@@ -583,8 +584,8 @@ pub async fn build_space_setup_assembly(
     // 能直接读到。Facade 本身是纯 thin wrapper,构造非常便宜。
     let roster = Arc::new(MemberRosterFacade::new(MemberRosterDeps {
         member_repo: Arc::clone(&deps.device.member_repo),
-        peer_addr_repo: Arc::clone(&wired.peer_addr_repo),
-        trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
+        peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
+        trusted_peer_repo: Arc::clone(&shared.trusted_peer_repo),
         local_identity: Arc::clone(&local_identity),
         presence: Arc::clone(&presence),
         connection_channel: Some(Arc::clone(&connection_channel)),
@@ -597,7 +598,7 @@ pub async fn build_space_setup_assembly(
     // 生命周期(随 `iroh_node.shutdown()` 自然退出 `RecvError::Closed`,
     // `SpaceSetupAssembly::shutdown` 显式 `abort()` 加速过程)。
     let clipboard_sync = Arc::new(ClipboardSyncFacade::new(ClipboardSyncDeps {
-        peer_addr_repo: Arc::clone(&wired.peer_addr_repo),
+        peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
         member_repo: Arc::clone(&deps.device.member_repo),
         presence: Arc::clone(&presence),
         transfer_cipher: Arc::clone(&deps.security.transfer_cipher),
@@ -609,10 +610,10 @@ pub async fn build_space_setup_assembly(
         clock: Arc::clone(&deps.system.clock),
         analytics: Arc::clone(&deps.analytics),
         first_sync_state: Arc::clone(&deps.first_sync_state),
-        entry_delivery_repo: Arc::clone(&wired.entry_delivery_repo),
+        entry_delivery_repo: Arc::clone(&shared.entry_delivery_repo),
         entry_repo: Arc::clone(&deps.clipboard.entry_ports.get),
-        event_repo: Arc::clone(&wired.clipboard_event_reader_repo),
-        trusted_peer_repo: Arc::clone(&wired.trusted_peer_repo),
+        event_repo: Arc::clone(&shared.clipboard_event_reader_repo),
+        trusted_peer_repo: Arc::clone(&shared.trusted_peer_repo),
         mobile_device_repo: Arc::clone(&deps.mobile_sync.devices.find_by_id),
         // Issue #747 Phase 5：与 blob_transfer / apply_inbound 共享同一根
         // host_event_bus。GUI 装配链路在 Tauri setup callback 中
@@ -621,7 +622,7 @@ pub async fn build_space_setup_assembly(
         // fan-out 完成、delivery 落盘后追发 `HostEvent::Delivery::
         // StatusChanged`,bus 把事件 fan-out 给所有已注册下游;CLI 装配
         // 走同一 bus,只挂着默认 logging emitter,emit 无副作用。
-        host_event_bus: Arc::clone(&wired.host_event_bus),
+        host_event_bus: Arc::clone(&shared.host_event_bus),
     }));
     let ingest_handle = clipboard_sync.spawn_ingest_loop();
 
@@ -646,7 +647,7 @@ pub async fn build_space_setup_assembly(
     ));
     let pull_store_materializer = Arc::new(FileCacheBlobMaterializer::new(
         blob.clone() as Arc<dyn uc_application::InboundBlobFetcher>,
-        wired.file_cache_dir.clone(),
+        shared.file_cache_dir.clone(),
     ));
     let pull_store_apply: Arc<dyn InboundClipboardApplyPort> = Arc::new(
         ApplyInboundClipboardUseCase::new(
@@ -657,7 +658,7 @@ pub async fn build_space_setup_assembly(
             Arc::new(NoopPullStoreWrite) as Arc<dyn ApplyInboundWrite>,
         )
         .with_blob_materializer(pull_store_materializer)
-        .with_host_event_emitter(Arc::clone(&wired.host_event_bus)),
+        .with_host_event_emitter(Arc::clone(&shared.host_event_bus)),
     );
 
     // Active-clipboard register convergence (issue #1017). The inbound worker
@@ -675,10 +676,10 @@ pub async fn build_space_setup_assembly(
         load_register: Arc::clone(&deps.clipboard.active_register_load),
         advance_register: Arc::clone(&deps.clipboard.active_register),
         member_repo: Arc::clone(&deps.device.member_repo),
-        peer_addr_repo: Arc::clone(&wired.peer_addr_repo),
+        peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
         presence: Arc::clone(&presence),
         entry_lookup: Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
-        coordinator: Arc::clone(&wired.clipboard_write_coordinator),
+        coordinator: Arc::clone(&shared.clipboard_write_coordinator),
         clock: Arc::clone(&deps.system.clock),
         device_identity: Arc::clone(&deps.device.device_identity),
         settings: Arc::clone(&deps.settings),
@@ -699,7 +700,7 @@ pub async fn build_space_setup_assembly(
         pull_client: Some(active_clipboard_pull_client),
         pull_apply: Some(pull_store_apply),
         touch_entry: Arc::clone(&deps.clipboard.entry_ports.touch),
-        host_event_emitter: Arc::clone(&wired.host_event_bus),
+        host_event_emitter: Arc::clone(&shared.host_event_bus),
         resurface_clock: Arc::clone(&deps.system.clock),
     }));
     let active_clipboard_inbound_handle = active_clipboard.spawn_inbound_loop();
@@ -719,7 +720,7 @@ pub async fn build_space_setup_assembly(
         clipboard_sync,
         blob,
         blob_transfer,
-        blob_reference: Arc::clone(&wired.blob_reference_repo),
+        blob_reference: Arc::clone(&space_setup.blob_reference_repo),
         presence,
         active_clipboard,
         active_clipboard_receiver,

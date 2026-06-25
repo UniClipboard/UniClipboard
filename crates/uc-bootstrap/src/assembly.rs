@@ -140,111 +140,116 @@ pub struct BackgroundRuntimeDeps {
         Arc<uc_application::clipboard_write::ClipboardWriteCoordinator>,
 }
 
-/// 进程级一次性装配产出的"持久"部分:进程内常驻的 deps 与旁路资源
-/// (repos、storage paths、shared adapters)。
-///
-/// 一次性消费的 [`BackgroundRuntimeDeps`] (含 blob worker receiver)
-/// 通过 [`wire_dependencies`] 的 tuple 返回值单独移交,不再
-/// 嵌在 `WiredDependencies` 里 —— 因为 mpsc `Receiver` 不可 Clone, 而
-/// `WiredDependencies` 需要被 standalone daemon binary 与 GUI shell
-/// 两种入口共用 (`build_process_runtime` clone fan-out 给两条 path)。
-///
-/// `Clone` 派生:所有字段都是 `Arc<dyn Port>` / `PathBuf` / Clone-able
-/// 嵌套 struct,clone 等价于一组 Arc::clone + PathBuf::clone,廉价。启动
-/// 期 GUI shell 把同一份 deps fan-out 给 TauriAppRuntime / daemon spawn /
-/// process handles —— 不是 reload 多次 clone, 但 fan-out 路径仍存在。
+/// P2P / iroh sync-engine assembly inputs. Sole consumer:
+/// [`crate::space_setup::build_space_setup_assembly`]. These ports/paths never
+/// flow through `AppDeps` — the `SpaceSetupFacade` they assemble lives in
+/// uc-application and is injected by this bundle at wire time, not by the
+/// AppFacade path.
 #[derive(Clone)]
-pub struct WiredDependencies {
-    pub deps: AppDeps,
-    /// System-clipboard wiring decision from [`create_platform_layer`] —
-    /// the composition root's single call on whether this process talks to
-    /// the real OS clipboard. Hosts gate their OS-clipboard-bound assembly
-    /// (e.g. the daemon's watcher worker) on this instead of re-probing.
-    pub system_clipboard_wiring: SystemClipboardWiring,
-    /// Shared host-event bus created at wire time, initially empty.
-    /// Callers (GUI bootstrap, non-GUI bootstrap, Tauri setup, daemon start)
-    /// `register` their own transport on this bus, so all consumers —
-    /// CoreRuntime, SetupOrchestrator, and FileTransferOrchestrator — fan
-    /// out into whatever transports are currently registered.
-    pub host_event_bus: Arc<uc_application::facade::HostEventBus>,
-    /// Trusted-peer repository surfaced at the bootstrap boundary so the
-    /// GUI / daemon builders can build the singleton `TrustPeerOrchestrator`
-    /// without threading it through `AppDeps` (which is retiring together
-    /// with uc-app). Scheduled to move into `uc-application` wiring
-    /// infrastructure once uc-app is gone.
-    pub trusted_peer_repo: Arc<dyn uc_core::TrustedPeerRepositoryPort>,
-    /// Slice 2 Phase 1 · T5：peer address 仓库，由
-    /// [`crate::space_setup::build_space_setup_assembly`] 注入 `SpaceSetupFacade`，
-    /// 用于配对完成后 best-effort 写对端传输地址 blob。跟
-    /// `trusted_peer_repo` 同样绕开 `AppDeps`：消费者在 uc-application 里。
+pub struct SpaceSetupWiring {
+    /// peer address repo — best-effort transport-address writes after pairing,
+    /// dialed by F1 `ensure_reachable_all`.
     pub peer_addr_repo: Arc<dyn uc_core::ports::PeerAddressRepositoryPort>,
-    /// Slice 3 Phase 1:iroh-blobs store 目录。由 `SpaceSetupAssembly`
-    /// 装配 iroh blob handler 时使用。
-    pub iroh_blob_store_dir: PathBuf,
-    /// Local cache directory for inbound blob materialization. The
-    /// active-clipboard pull store (issue #1017 PR8) reuses the same inbound
-    /// apply pipeline as the bulk path, whose blob materializer fetches
-    /// free-standing files into `<file_cache_dir>/iroh-blobs/<entry_id>/`.
-    pub file_cache_dir: PathBuf,
-    /// iroh 长期 Ed25519 设备身份的文件存储根目录(`<app_data>/iroh-identity[_<profile>]/`)。
-    ///
-    /// 与 KEK 的系统 keychain 隔离:iroh 设备身份是网络栈的"我是哪台机器"
-    /// 标识,**不是**用户秘密;不应跟用户口令派生密钥共用同一条 macOS
-    /// keychain 条目,否则启动期 `IrohNodeBuilder::bind` 会在用户没有任何
-    /// 操作前触发 keychain 弹窗(违反"只在用户解锁/初始化时访问 keychain"
-    /// 的边界规则)。
-    pub iroh_identity_dir: PathBuf,
-    /// Slice 3 Phase 1:明文 hash → 密文 digest 去重缓存。
+    /// plaintext-hash → ciphertext-digest dedupe cache (Slice 3 Phase 1).
     pub blob_reference_repo: Arc<dyn BlobReferenceRepositoryPort>,
-    /// Switch-space 重加密迁移：跨重启的阶段持久化 port，落地为
-    /// `.migration_state` 文件（与 `.setup_status` 同目录）。消费者
-    /// `SpaceSetupFacade::switch_space` / `try_resume_session`，所以同
-    /// `peer_addr_repo` 走 WiredDependencies 旁路而不是 AppDeps。
-    pub migration_state: Arc<dyn uc_core::ports::setup::MigrationStatePort>,
-    /// Switch-space 一次性 migration_key 的 keyring 管理 port。
-    pub key_migration: Arc<dyn uc_core::ports::security::KeyMigrationPort>,
-    /// Switch-space backup 表 + 主表 inline_data 批量读写 port。
+    /// switch-space backup table + main-table inline_data batch IO.
     pub blob_migration_repo: Arc<dyn uc_core::ports::clipboard::BlobMigrationRepoPort>,
-    /// 投递结果仓储:`ClipboardSyncFacade` 在 fan-out 完成时写、视图侧读。
-    /// 跟 `trusted_peer_repo` / `peer_addr_repo` 一样走 WiredDependencies 旁路,
-    /// 因为消费者在 uc-application 里。
-    pub entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort>,
-    /// `ClipboardEventRepositoryPort` 的读端口实例,与
-    /// `AppDeps.clipboard.clipboard_event_repo` 共享底层 Diesel impl,
-    /// 仅供视图层做"反查来源设备"使用。
-    pub clipboard_event_reader_repo: Arc<dyn uc_core::ports::ClipboardEventRepositoryPort>,
-    /// Mobile sync LAN 端点状态(单例)的具体类型旁路。
-    ///
-    /// daemon LAN listener 启停时需要调 inherent `set` / `clear`,这两个方法
-    /// 不在 `MobileSyncEndpointInfoPort` 上(只读契约 vs 写入事件,见
-    /// `MobileSyncPorts.endpoint_info` 的文档)。同一份 Arc 已经装入
-    /// `AppDeps.mobile_sync.endpoint_info`,daemon 写、facade 读,共享同一份
-    /// 内存,不会出现"两条路径看不到同一个 URL"的撕裂。
+    /// switch-space re-encryption migration stage persistence
+    /// (`.migration_state` file alongside `.setup_status`).
+    pub migration_state: Arc<dyn uc_core::ports::setup::MigrationStatePort>,
+    /// switch-space one-shot migration_key keyring management.
+    pub key_migration: Arc<dyn uc_core::ports::security::KeyMigrationPort>,
+    /// iroh-blobs store dir, used when assembling the iroh blob handler.
+    pub iroh_blob_store_dir: PathBuf,
+    /// iroh long-term Ed25519 device-identity file-store root
+    /// (`<app_data>/iroh-identity[_<profile>]/`). Isolated from the KEK's system
+    /// keychain: the device identity is "which machine am I", not a user secret,
+    /// so it lives in a file backend to avoid a startup keychain prompt during
+    /// `IrohNodeBuilder::bind`.
+    pub iroh_identity_dir: PathBuf,
+    /// Application-facing analytics entry point (pairing / switch-space events).
+    pub analytics_facade: Arc<dyn AnalyticsFacade>,
+}
+
+/// daemon main-loop-only bypass deps.
+#[derive(Clone)]
+pub struct DaemonRuntimeDeps {
+    /// Mobile-sync LAN endpoint-state singleton. **Concrete type**, not a trait
+    /// object: the daemon LAN listener calls inherent `set` / `clear` on it
+    /// (write side), which are not on the read-only `MobileSyncEndpointInfoPort`.
+    /// The same Arc is also coerced into `AppDeps.mobile_sync.endpoint_info`
+    /// (facade read side), sharing one allocation — daemon writes, facade reads
+    /// (ports.md §8.3 single-adapter-reuse).
     pub mobile_sync_endpoint_info:
         Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
-    /// Application-layer entry point for the 5 file-transfer lifecycle
-    /// actions + seed + link. Built alongside `file_transfer_lifecycle` from
-    /// the same store + publisher so events stay on a single timeline. Lives
-    /// on `WiredDependencies` (process-level, cloneable Arc) rather than on
-    /// `BackgroundRuntimeDeps` because the latter is for one-shot mpsc
-    /// receivers — the facade itself is shared by GUI shell, daemon-lifecycle
-    /// `MobileSyncFacade` 装配, and `build_space_setup_assembly` (iroh path).
+}
+
+/// Process-level handles shared by ≥2 assembly targets (space-setup,
+/// daemon-runtime, CLI-appfacade). Grouped into a named "shared" bundle rather
+/// than left top-level because "shared by multiple targets" is itself the
+/// meaningful boundary; mirrors the [`BackgroundRuntimeDeps`] precedent.
+#[derive(Clone)]
+pub struct SharedRuntimeDeps {
+    /// Shared host-event bus created at wire time, initially empty. Callers
+    /// register their own transport on it; all consumers fan out into whatever
+    /// transports are currently registered.
+    pub host_event_bus: Arc<uc_application::facade::HostEventBus>,
+    /// Delivery-result repo: `ClipboardSyncFacade` writes on fan-out completion,
+    /// the view side reads.
+    pub entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort>,
+    /// Read port over the same Diesel impl as
+    /// `AppDeps.clipboard.clipboard_event_repo`; the view layer resolves the
+    /// source device through it.
+    pub clipboard_event_reader_repo: Arc<dyn uc_core::ports::ClipboardEventRepositoryPort>,
+    /// Application entry point for the file-transfer lifecycle actions + seed +
+    /// link. Shared by daemon runtime, `MobileSyncFacade` assembly, and the iroh
+    /// blob path in `build_space_setup_assembly`.
     pub file_transfer_facade: Arc<uc_application::facade::FileTransferFacade>,
-    /// Application-facing analytics entry point. Composes the underlying
-    /// capture sink with the local identity persistence, so every consumer
-    /// in `uc-application` sees one trait instead of two ports plus the
-    /// sequencing rules between them. `LocalAnalyticsIdentity` lives under
-    /// `<app_data>/analytics/`, sharing storage with the global
-    /// EventContext set up by `compose_event_context`.
-    pub analytics_facade: Arc<dyn AnalyticsFacade>,
-    /// Single write boundary for all programmatic clipboard writes (the same
-    /// `Arc` carried on [`BackgroundRuntimeDeps`]). Threaded onto
-    /// `WiredDependencies` so `build_space_setup_assembly` can hand the
-    /// active-clipboard inbound worker the *shared* coordinator — a separate
-    /// instance would split the circuit-breaker + origin-guard state from the
-    /// restore/capture write path.
+    /// Single write boundary for all programmatic clipboard writes (guard
+    /// registration + write + cleanup-on-error). Shared so the active-clipboard
+    /// inbound worker and the restore/capture path keep one circuit-breaker +
+    /// origin-guard state.
     pub clipboard_write_coordinator:
         Arc<uc_application::clipboard_write::ClipboardWriteCoordinator>,
+    /// Local cache dir for inbound blob materialization
+    /// (`<file_cache_dir>/iroh-blobs/<entry_id>/`).
+    pub file_cache_dir: PathBuf,
+    /// Trusted-peer repository — pairing persist boundary (D19), roster trust
+    /// checks, dispatch target filtering, CLI resend source lookup. Read by
+    /// space-setup, daemon runtime, and the CLI AppFacade path, hence shared.
+    pub trusted_peer_repo: Arc<dyn uc_core::TrustedPeerRepositoryPort>,
+}
+
+/// 进程级一次性装配产出的"持久"部分:进程内常驻的 `deps` 与按消费者归类的
+/// 旁路 bundle(`space_setup` / `daemon_runtime` / `shared`)。
+///
+/// 一次性消费的 [`BackgroundRuntimeDeps`](含 blob worker receiver)通过
+/// [`wire_dependencies`] 的 tuple 返回值单独移交,不嵌在这里 —— 因为 mpsc
+/// `Receiver` 不可 Clone。
+///
+/// 只被 daemon 进程路径消费(`apps/daemon` process_bootstrap → host →
+/// bootstrap,加上 uc-bootstrap 的两个 assembler)。GUI/Tauri shell 走
+/// `build_gui_client_context` 的 daemon HTTP client 路径,**不**碰
+/// `WiredDependencies`;fan-out 是进程内 `ProcessRuntimeHandles` clone。
+///
+/// `Clone` 派生:所有字段都是 `Arc<dyn Port>` / `PathBuf` / Clone-able 嵌套
+/// bundle,clone 廉价。
+#[derive(Clone)]
+pub struct WiredDependencies {
+    /// 应用层 facade 装配输入(查询/历史/加密/搜索)。喂给
+    /// `build_app_facade_from_deps`;CLI 与 daemon 路径共用。
+    pub deps: AppDeps,
+    /// System-clipboard wiring decision from [`create_platform_layer`] — the
+    /// composition root's single call on whether this process talks to the real
+    /// OS clipboard. Hosts gate their OS-clipboard-bound assembly on this.
+    pub system_clipboard_wiring: SystemClipboardWiring,
+    /// P2P / iroh sync-engine assembly inputs (see [`SpaceSetupWiring`]).
+    pub space_setup: SpaceSetupWiring,
+    /// daemon main-loop-only bypass deps (see [`DaemonRuntimeDeps`]).
+    pub daemon_runtime: DaemonRuntimeDeps,
+    /// Process-level handles shared by ≥2 assembly targets (see
+    /// [`SharedRuntimeDeps`]).
+    pub shared: SharedRuntimeDeps,
 }
 
 /// Infrastructure layer implementations
@@ -417,6 +422,304 @@ fn is_v2_blob(path: &std::path::Path) -> bool {
             Ok(buf == UCBL_MAGIC)
         })
         .unwrap_or(false)
+}
+
+/// Secure storage backend + iroh device-identity dir, prepared *before* the db
+/// pool so a staged config import (gap-3 bridge) can land secrets into the same
+/// backend the rest of wiring uses and migrate the identity files into place
+/// before anything opens the db.
+struct SecureStoragePrelude {
+    secure_storage: Arc<dyn SecureStoragePort>,
+    iroh_identity_dir: PathBuf,
+}
+
+/// Build the [`SecureStoragePrelude`]: create the secure-storage backend, resolve
+/// and create the (profile-suffixed) iroh-identity dir, then apply any pending
+/// staged import. Runs ahead of the db pool. Idempotent and crash-safe
+/// (secrets-first); the common no-marker import case is a cheap existence check.
+fn build_secure_storage_prelude(
+    paths: &uc_application::facade::AppPaths,
+) -> WiringResult<SecureStoragePrelude> {
+    let app_data_root = paths.app_data_root_dir.clone();
+
+    let secure_storage =
+        uc_platform::secure_storage::create_default_secure_storage_in_app_data_root(
+            app_data_root.clone(),
+        )
+        .map_err(|e| WiringError::SecureStorageInit(e.to_string()))?;
+
+    // iroh device-identity dir (0600 files, profile-suffixed): the staged-import
+    // bridge migrates the identity as *files* here, and the config-migration
+    // adapter reads its fingerprint from this same dir. `create_dir_all` ensures
+    // `FileSecureStorage::with_base_dir` never fails on first identity write.
+    let iroh_identity_dir = apply_profile_suffix(app_data_root.join("iroh-identity"));
+    std::fs::create_dir_all(&iroh_identity_dir).map_err(|e| {
+        WiringError::SecureStorageInit(format!(
+            "failed to create iroh-identity dir {}: {e}",
+            iroh_identity_dir.display()
+        ))
+    })?;
+
+    // Apply a pending staged import (if `pending-import.json` exists): write
+    // staged secrets into the current backend, then copy db/vault/settings and
+    // the iroh-identity files into their live locations, then clear staging.
+    crate::pending_import::apply_pending_import(
+        &app_data_root,
+        &paths.db_path,
+        &paths.vault_dir,
+        &paths.settings_path,
+        &iroh_identity_dir,
+        &secure_storage,
+    )
+    .map_err(|e| WiringError::PendingImport(e.to_string()))?;
+
+    Ok(SecureStoragePrelude {
+        secure_storage,
+        iroh_identity_dir,
+    })
+}
+
+/// Wire the [`SpaceAccessPorts`] bundle: one `DefaultSpaceAccessAdapter` coerced
+/// into every narrow space-access intent port (ports.md §8.3 — the adapter
+/// implements the aggregate `SpaceAccessStore`, each intent-port impl delegates
+/// to it). The narrow bundle is the only space-access surface the application
+/// layer consumes.
+fn build_space_access_ports(
+    key_material: &Arc<KeyMaterialStore>,
+    current_profile: &Arc<dyn uc_core::ports::security::current_profile::CurrentProfilePort>,
+    session: &Arc<InMemorySession>,
+) -> SpaceAccessPorts {
+    let space_access_adapter = Arc::new(uc_infra::security::DefaultSpaceAccessAdapter::new(
+        key_material.clone(),
+        current_profile.clone(),
+        session.clone(),
+    ));
+    SpaceAccessPorts::from_adapter(space_access_adapter)
+}
+
+/// Search bundle (Phase 92): subkey-derivation port, sqlite index, tokenization
+/// pipeline. `search_pipeline` is kept as the concrete `Arc<SearchPipeline>`; it
+/// coerces to `Arc<dyn SearchPipelinePort>` at the `SearchPorts` literal.
+struct SearchAssembly {
+    search_index: Arc<dyn SearchIndexPort>,
+    search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
+    search_pipeline: Arc<SearchPipeline>,
+}
+
+/// Wire the [`SearchAssembly`]. Search only derives a subkey from space access.
+/// Takes its own `db_pool` clone (an independent pooled connection).
+fn build_search_assembly(
+    db_pool_for_search: DbPool,
+    space_access_ports: &SpaceAccessPorts,
+    current_profile: &Arc<dyn uc_core::ports::security::current_profile::CurrentProfilePort>,
+) -> SearchAssembly {
+    let search_key_derivation: Arc<dyn SearchKeyDerivationPort> =
+        Arc::new(HkdfSearchKeyDerivation::new(
+            space_access_ports.derive_subkey.clone(),
+            current_profile.clone(),
+        ));
+    let search_index: Arc<dyn SearchIndexPort> = Arc::new(SqliteSearchIndex::new(
+        db_pool_for_search,
+        current_profile.clone(),
+        search_key_derivation.clone(),
+    ));
+    let search_pipeline = Arc::new(SearchPipeline::new());
+    SearchAssembly {
+        search_index,
+        search_key_derivation,
+        search_pipeline,
+    }
+}
+
+/// Encryption decorators + cipher ports. `blob_cipher` is the business AEAD
+/// adapter shared by the decorators and the transfer cipher; all share the one
+/// process `InMemorySession`.
+struct CipherDecorators {
+    blob_cipher: Arc<dyn uc_core::ports::security::BlobCipherPort>,
+    transfer_cipher: Arc<dyn uc_core::ports::security::TransferCipherPort>,
+    encrypting_event_writer: Arc<dyn ClipboardEventWriterPort>,
+    decrypting_rep_repo: Arc<dyn ClipboardRepresentationStore>,
+    representation_ports: ClipboardRepresentationPorts,
+}
+
+/// Wire the [`CipherDecorators`]: blob/transfer cipher ports over the session,
+/// the encrypting event writer, and the decrypting representation repository
+/// (one concrete Arc coerced into each narrow intent port, ports.md §8.3).
+fn build_cipher_decorators(
+    session: &Arc<InMemorySession>,
+    clipboard_event_repo: &Arc<dyn ClipboardEventWriterPort>,
+    representation_repo: &Arc<dyn ClipboardRepresentationStore>,
+) -> CipherDecorators {
+    // BlobCipherPort — business AEAD adapter shared by the decorators.
+    let blob_cipher: Arc<dyn uc_core::ports::security::BlobCipherPort> =
+        Arc::new(uc_infra::security::BlobCipherAdapter::new(session.clone()));
+
+    // TransferCipherPort — uc-application clipboard_sync encrypts/decrypts V3
+    // network bytes through this port, sharing the same InMemorySession.
+    let transfer_cipher: Arc<dyn uc_core::ports::security::TransferCipherPort> = Arc::new(
+        uc_infra::clipboard::TransferCipherAdapter::new(session.clone()),
+    );
+
+    // Wrap ports with encryption decorators.
+    let encrypting_event_writer: Arc<dyn ClipboardEventWriterPort> = Arc::new(
+        EncryptingClipboardEventWriter::new(clipboard_event_repo.clone(), blob_cipher.clone()),
+    );
+
+    // Concrete decorator Arc: coerced into the legacy aggregate port and into
+    // each application-facing representation intent port. Reads decrypt;
+    // background workers keep the inner store via `infra.representation_repo`.
+    let decrypting_rep_repo_concrete = Arc::new(DecryptingClipboardRepresentationRepository::new(
+        representation_repo.clone(),
+        blob_cipher.clone(),
+    ));
+    let decrypting_rep_repo: Arc<dyn ClipboardRepresentationStore> =
+        decrypting_rep_repo_concrete.clone();
+    let representation_ports = ClipboardRepresentationPorts {
+        get: decrypting_rep_repo_concrete.clone(),
+        get_by_blob_id: decrypting_rep_repo_concrete.clone(),
+        list_for_event: decrypting_rep_repo_concrete.clone(),
+        update_processing_result: decrypting_rep_repo_concrete,
+    };
+
+    CipherDecorators {
+        blob_cipher,
+        transfer_cipher,
+        encrypting_event_writer,
+        decrypting_rep_repo,
+        representation_ports,
+    }
+}
+
+/// Background blob-processing components. `representation_cache` /
+/// `spool_manager` are concrete (BackgroundRuntimeDeps needs them by-value);
+/// `worker_rx` is the non-Clone receiving half of the worker channel.
+struct BlobProcessingAssembly {
+    representation_cache: Arc<RepresentationCache>,
+    representation_cache_port: Arc<dyn RepresentationCachePort>,
+    spool_manager: Arc<SpoolManager>,
+    spool_queue: Arc<dyn SpoolQueuePort>,
+    payload_resolver: Arc<dyn ClipboardPayloadResolverPort>,
+    worker_tx: mpsc::Sender<RepresentationId>,
+    worker_rx: mpsc::Receiver<RepresentationId>,
+    clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
+}
+
+/// Wire the [`BlobProcessingAssembly`]: representation cache, spool manager +
+/// durable queue, the worker channel, the self-write ledger, and the payload
+/// resolver. `spool_dir` is consumed to build the spool manager.
+fn build_blob_processing_assembly(
+    storage_config: &Arc<ClipboardStorageConfig>,
+    spool_dir: PathBuf,
+) -> WiringResult<BlobProcessingAssembly> {
+    let representation_cache = Arc::new(RepresentationCache::new(
+        storage_config.cache_max_entries,
+        storage_config.cache_max_bytes,
+    ));
+    let representation_cache_port: Arc<dyn RepresentationCachePort> = representation_cache.clone();
+
+    let spool_manager = Arc::new(
+        SpoolManager::new(spool_dir, storage_config.spool_max_bytes)
+            .map_err(|e| WiringError::BlobStorageInit(format!("Failed to create spool: {}", e)))?,
+    );
+
+    let (worker_tx, worker_rx) = mpsc::channel::<RepresentationId>(100);
+
+    // DurableSpoolQueue writes bytes to disk synchronously before returning,
+    // ensuring spool files survive process exits.
+    let spool_queue: Arc<dyn SpoolQueuePort> = Arc::new(DurableSpoolQueue::new(
+        spool_manager.clone(),
+        worker_tx.clone(),
+    ));
+
+    // Self-write ledger: a process-global OnceLock initialised here. Kept inside
+    // this bundle so the `clipboard_change_origin()` read never races ahead of
+    // `init_clipboard_change_origin`.
+    let origin_impl = new_in_memory_change_origin();
+    init_clipboard_change_origin(origin_impl.clone());
+    let clipboard_change_origin =
+        clipboard_change_origin().expect("clipboard_change_origin not initialized");
+
+    // Payload resolver for resolving staged/processing payloads.
+    let payload_resolver: Arc<dyn ClipboardPayloadResolverPort> =
+        Arc::new(ClipboardPayloadResolver::new(
+            representation_cache.clone(),
+            spool_manager.clone(),
+            worker_tx.clone(),
+        ));
+
+    Ok(BlobProcessingAssembly {
+        representation_cache,
+        representation_cache_port,
+        spool_manager,
+        spool_queue,
+        payload_resolver,
+        worker_tx,
+        worker_rx,
+        clipboard_change_origin,
+    })
+}
+
+/// Build the whole-installation config-migration facade (export / import preview
+/// / staged import). Assembled in the sync wiring context because its inputs
+/// (secure storage, db pool, local identity, filesystem layout, profile) are not
+/// reconstructable from the abstract `AppDeps` ports; the composed facade travels
+/// on `AppDeps.config_migration`.
+///
+/// The local-identity port reads the device fingerprint for the export manifest.
+/// The iroh identity lives in the *file* backend under
+/// `migration_paths.iroh_identity_dir` (a 0600 dir), NOT in `secure_storage`
+/// (Credential Manager / Keychain on installer builds), so it is bound to a
+/// `FileSecureStorage` there. Single-user mode pins the profile to `default`.
+fn build_config_migration_facade(
+    secure_storage: &Arc<dyn SecureStoragePort>,
+    db_pool_for_config_migration: DbPool,
+    clock: &Arc<dyn ClockPort>,
+    setup_status: &Arc<dyn SetupStatusPort>,
+    space_access_ports: &SpaceAccessPorts,
+    migration_paths: ConfigMigrationPaths,
+) -> Arc<ConfigMigrationFacade> {
+    let config_migration_profile = ProfileId::from("default");
+    let config_migration_local_identity: Arc<dyn LocalIdentityPort> =
+        Arc::new(IrohIdentityStore::new(
+            Arc::new(
+                uc_platform::file_secure_storage::FileSecureStorage::with_base_dir(
+                    migration_paths.iroh_identity_dir.clone(),
+                ),
+            ),
+            Arc::new(Sha256IdentityFingerprintFactory),
+        ));
+    let config_migration_adapter = Arc::new(ConfigMigrationAdapter::new(
+        secure_storage.clone(),
+        db_pool_for_config_migration,
+        config_migration_local_identity,
+        clock.clone(),
+        migration_paths,
+        config_migration_profile,
+    ));
+    Arc::new(ConfigMigrationFacade::new(ConfigMigrationDeps {
+        export_bundle: config_migration_adapter.clone(),
+        preview_import: config_migration_adapter.clone(),
+        stage_import: config_migration_adapter.clone(),
+        setup_status: setup_status.clone(),
+        is_unlocked: space_access_ports.is_unlocked.clone(),
+    }))
+}
+
+/// Compose the analytics facade over the gated capture sink plus a local
+/// identity store sharing the `<app_data>/analytics/` directory with
+/// `compose_event_context`. SpaceSetupFacade consumes the composed facade;
+/// capture-only facades keep talking to the bare sink.
+fn build_analytics_facade(
+    analytics_sink: &Arc<dyn uc_observability::analytics::AnalyticsPort>,
+    app_data_root: &PathBuf,
+) -> Arc<dyn AnalyticsFacade> {
+    let analytics_dir = app_data_root.join("analytics");
+    let analytics_identity: Arc<dyn AnalyticsIdentityPort> =
+        Arc::new(LocalAnalyticsIdentity::new(analytics_dir));
+    Arc::new(DefaultAnalyticsFacade::new(
+        analytics_sink.clone(),
+        analytics_identity,
+    ))
 }
 
 /// Create infrastructure layer implementations
@@ -996,49 +1299,20 @@ pub fn wire_dependencies(
     let platform_dirs = get_default_app_dirs()?;
     let paths = resolve_app_paths(&platform_dirs, config)?;
 
+    // Secure storage + iroh device-identity dir, prepared before the db pool so a
+    // staged config import (gap-3 bridge) can land secrets into the same backend
+    // and migrate the identity files into place before anything opens the db.
+    // Borrows `paths` (ahead of the `db_path`/`vault_dir`/`settings_path` moves
+    // below) so the prelude can read the live filesystem layout.
+    let SecureStoragePrelude {
+        secure_storage,
+        iroh_identity_dir,
+    } = build_secure_storage_prelude(&paths)?;
+
     let db_path = paths.db_path;
     let vault_path = paths.vault_dir;
     let settings_path = paths.settings_path;
     let app_data_root = paths.app_data_root_dir.clone();
-
-    // Secure storage is created *before* the db pool so a staged config import
-    // (gap-3 bridge) can land secrets into the same backend the rest of wiring
-    // uses, and copy the db snapshot into place, before anything opens it.
-    let secure_storage =
-        uc_platform::secure_storage::create_default_secure_storage_in_app_data_root(
-            app_data_root.clone(),
-        )
-        .map_err(|e| WiringError::SecureStorageInit(e.to_string()))?;
-
-    // iroh device-identity directory (0600 files, profile-suffixed). Computed
-    // here — ahead of the db pool — because the staged-import bridge migrates
-    // the identity as *files* into this dir (not as a secret), and the
-    // config-migration adapter below reads its fingerprint from this same dir.
-    // `apply_profile_suffix` matches the `iroh-blobs` rule for multi-profile dev
-    // isolation; `create_dir_all` ensures `FileSecureStorage::with_base_dir`
-    // never fails on first identity write.
-    let iroh_identity_dir = apply_profile_suffix(app_data_root.join("iroh-identity"));
-    std::fs::create_dir_all(&iroh_identity_dir).map_err(|e| {
-        WiringError::SecureStorageInit(format!(
-            "failed to create iroh-identity dir {}: {e}",
-            iroh_identity_dir.display()
-        ))
-    })?;
-
-    // Apply a pending staged import (if `pending-import.json` exists): write
-    // staged secrets into the current backend, then copy db/vault/settings and
-    // the iroh-identity files into their live locations, then clear staging.
-    // Idempotent and crash-safe (secrets-first); the common no-marker case is a
-    // cheap existence check.
-    crate::pending_import::apply_pending_import(
-        &app_data_root,
-        &db_path,
-        &vault_path,
-        &settings_path,
-        &iroh_identity_dir,
-        &secure_storage,
-    )
-    .map_err(|e| WiringError::PendingImport(e.to_string()))?;
 
     let db_pool = create_db_pool(&db_path)?;
     // Clone pool before infra layer consumes it — search bundle needs the same pool.
@@ -1065,131 +1339,70 @@ pub fn wire_dependencies(
         storage_config.clone(),
     )?;
 
-    // Space access——单一会话/密钥访问入口。adapter 自管 KeyMaterialStore +
-    // InMemorySession + CurrentProfilePort,V1 AEAD 走 v1_aead helper。adapter
-    // 用 `key_material.keyslot_exists()` 判断是否已初始化。
-    //
-    // One concrete adapter is coerced into each narrow space-access intent port
-    // (the adapter implements the aggregate `SpaceAccessStore` and every
-    // intent-port impl delegates to it, ports.md §8.3); the narrow bundle is
-    // the only space-access surface the application layer consumes.
-    let space_access_adapter = Arc::new(uc_infra::security::DefaultSpaceAccessAdapter::new(
-        infra.key_material.clone(),
-        platform.current_profile.clone(),
-        platform.session.clone(),
-    ));
-    let space_access_ports = SpaceAccessPorts::from_adapter(space_access_adapter);
+    // Space access — single session/key access entry. See
+    // `build_space_access_ports` for the §8.3 single-adapter-reuse rationale.
+    let space_access_ports = build_space_access_ports(
+        &infra.key_material,
+        &platform.current_profile,
+        &platform.session,
+    );
 
     // Wire the search bundle (Phase 92). Search only derives a subkey.
-    let search_key_derivation: Arc<dyn SearchKeyDerivationPort> =
-        Arc::new(HkdfSearchKeyDerivation::new(
-            space_access_ports.derive_subkey.clone(),
-            platform.current_profile.clone(),
-        ));
-    let search_index: Arc<dyn SearchIndexPort> = Arc::new(SqliteSearchIndex::new(
+    let SearchAssembly {
+        search_index,
+        search_key_derivation,
+        search_pipeline,
+    } = build_search_assembly(
         db_pool_for_search,
-        platform.current_profile.clone(),
-        search_key_derivation.clone(),
-    ));
-    let search_pipeline = Arc::new(SearchPipeline::new());
-
-    // BlobCipherPort——4 个 decorator 共享的业务 AEAD adapter。
-    let blob_cipher: Arc<dyn uc_core::ports::security::BlobCipherPort> = Arc::new(
-        uc_infra::security::BlobCipherAdapter::new(platform.session.clone()),
+        &space_access_ports,
+        &platform.current_profile,
     );
 
-    // TransferCipherPort——uc-application clipboard_sync 的 dispatch_entry /
-    // ingest_inbound 通过此 port 加解密 V3 网络字节,与 BlobCipherPort 共享
-    // 同一个 InMemorySession。
-    let transfer_cipher: Arc<dyn uc_core::ports::security::TransferCipherPort> = Arc::new(
-        uc_infra::clipboard::TransferCipherAdapter::new(platform.session.clone()),
+    // Encryption decorators over the clipboard event/representation repos, plus
+    // the blob/transfer cipher ports (all share the one InMemorySession).
+    let CipherDecorators {
+        blob_cipher,
+        transfer_cipher,
+        encrypting_event_writer,
+        decrypting_rep_repo,
+        representation_ports: clipboard_representation_ports,
+    } = build_cipher_decorators(
+        &platform.session,
+        &infra.clipboard_event_repo,
+        &infra.representation_repo,
     );
 
-    // Wrap ports with encryption decorators
-    let encrypting_event_writer: Arc<dyn ClipboardEventWriterPort> =
-        Arc::new(EncryptingClipboardEventWriter::new(
-            infra.clipboard_event_repo.clone(),
-            blob_cipher.clone(),
-        ));
-
-    // Concrete decorator Arc: coerced into the legacy aggregate port and into
-    // each application-facing representation intent port. Reads decrypt;
-    // background workers keep the inner store via `infra.representation_repo`.
-    let decrypting_rep_repo_concrete = Arc::new(DecryptingClipboardRepresentationRepository::new(
-        infra.representation_repo.clone(),
-        blob_cipher.clone(),
-    ));
-    let decrypting_rep_repo: Arc<dyn ClipboardRepresentationStore> =
-        decrypting_rep_repo_concrete.clone();
-    let clipboard_representation_ports = ClipboardRepresentationPorts {
-        get: decrypting_rep_repo_concrete.clone(),
-        get_by_blob_id: decrypting_rep_repo_concrete.clone(),
-        list_for_event: decrypting_rep_repo_concrete.clone(),
-        update_processing_result: decrypting_rep_repo_concrete,
-    };
-
-    // Create background processing components
-    let representation_cache = Arc::new(RepresentationCache::new(
-        storage_config.cache_max_entries,
-        storage_config.cache_max_bytes,
-    ));
-    let representation_cache_port: Arc<dyn RepresentationCachePort> = representation_cache.clone();
-
+    // Background blob-processing components (cache, spool, durable queue, payload
+    // resolver, self-write ledger, worker channel). `worker_rx` is not Clone and
+    // travels by-value to BackgroundRuntimeDeps; the rest fan out to AppDeps.
     let spool_dir = paths.spool_dir.clone();
-    let spool_manager = Arc::new(
-        SpoolManager::new(spool_dir.clone(), storage_config.spool_max_bytes)
-            .map_err(|e| WiringError::BlobStorageInit(format!("Failed to create spool: {}", e)))?,
-    );
-
-    let (worker_tx, worker_rx) = mpsc::channel::<RepresentationId>(100);
-
-    // DurableSpoolQueue writes bytes to disk synchronously before returning,
-    // ensuring spool files survive process exits.
-    let spool_queue: Arc<dyn SpoolQueuePort> = Arc::new(DurableSpoolQueue::new(
-        spool_manager.clone(),
-        worker_tx.clone(),
-    ));
-
-    let origin_impl = new_in_memory_change_origin();
-    init_clipboard_change_origin(origin_impl.clone());
-    let clipboard_change_origin =
-        clipboard_change_origin().expect("clipboard_change_origin not initialized");
+    let BlobProcessingAssembly {
+        representation_cache,
+        representation_cache_port,
+        spool_manager,
+        spool_queue,
+        payload_resolver,
+        worker_tx,
+        worker_rx,
+        clipboard_change_origin,
+    } = build_blob_processing_assembly(&storage_config, spool_dir.clone())?;
 
     // Extract the concrete file-transfer store before moving the rest of InfraLayer
-    // into AppDeps — it is not exposed through uc-app ports (the use cases see it
-    // as `Arc<dyn FileTransferEventStorePort>`), so it travels via BackgroundRuntimeDeps.
+    // into AppDeps — it is not exposed through the application ports (use cases see
+    // it as `Arc<dyn FileTransferEventStorePort>`), so it travels via
+    // BackgroundRuntimeDeps.
     let file_transfer_store_arc = Arc::clone(&infra.file_transfer_store);
 
-    // Clone the trusted-peer repository handle before moving `infra` into
-    // `AppDeps` below — the daemon-lifecycle builder (build_daemon_lifecycle) needs
-    // it to construct the `TrustPeerOrchestrator` singleton (D19). We do not
-    // thread it through `AppDeps` because uc-app is retiring (D13) and
-    // the repository is consumed solely by uc-application wiring.
-    let trusted_peer_repo_for_wiring = Arc::clone(&infra.trusted_peer_repo);
-    // Same pattern for `peer_addr_repo` — Slice 2 Phase 1 wiring consumer
-    // is `SpaceSetupFacade`, which lives in uc-application, not uc-app.
-    let peer_addr_repo_for_wiring = Arc::clone(&infra.peer_addr_repo);
-    let blob_reference_repo_for_wiring = Arc::clone(&infra.blob_reference_repo);
-    let entry_delivery_repo_for_wiring = Arc::clone(&infra.entry_delivery_repo);
-    let clipboard_event_reader_repo_for_wiring = Arc::clone(&infra.clipboard_event_reader_repo);
+    // iroh-blobs store dir + device-identity dir. The identity dir was resolved
+    // (and created) once near the secure-storage setup above so the staged-import
+    // bridge could migrate its files; reuse that single resolution here for
+    // `WiredDependencies` / space_setup instead of recomputing it (avoids divergence).
+    // The remaining bypass repos are `Arc::clone`d directly from `infra` at the
+    // `WiredDependencies` construction site below (infra retains ownership).
     let iroh_blob_store_dir_for_wiring =
         apply_profile_suffix(paths.app_data_root_dir.join("iroh-blobs"));
-    // iroh device-identity dir was resolved (and created) once near the
-    // secure-storage setup above so the staged-import bridge could migrate its
-    // files. Reuse that single resolution here for `WiredDependencies` /
-    // space_setup instead of recomputing it (avoids divergence).
     let iroh_identity_dir_for_wiring = iroh_identity_dir.clone();
 
-    // Switch-space migration ports for SpaceSetupFacade. Same WiredDependencies
-    // bypass pattern as `peer_addr_repo` — consumer lives in uc-application.
-    let migration_state_for_wiring = Arc::clone(&infra.migration_state);
-    let blob_migration_repo_for_wiring = Arc::clone(&infra.blob_migration_repo);
-    // Phase 3 子步骤 3:把 endpoint_info adapter 也通过旁路暴露给 daemon
-    // builder——daemon LAN listener 需要具体类型来调 inherent `set` / `clear`
-    // 写入面,trait object 拿不到这两个方法。同一份 Arc 已经通过 unsizing
-    // coercion 装入 `AppDeps.mobile_sync.endpoint_info`,daemon 写、facade
-    // 读,共享同一份内存。
-    let mobile_sync_endpoint_info_for_wiring = Arc::clone(&infra.mobile_sync_endpoint_info);
     // `key_migration` adapter consumes secure_storage from PlatformLayer,
     // so it's constructed here at wire_dependencies level rather than in
     // create_infra_layer.
@@ -1197,50 +1410,19 @@ pub fn wire_dependencies(
         uc_infra::security::DefaultKeyMigrationAdapter::new(Arc::clone(&platform.secure_storage)),
     );
 
-    // Create payload resolver for resolving staged/processing payloads
-    let payload_resolver: Arc<dyn ClipboardPayloadResolverPort> =
-        Arc::new(ClipboardPayloadResolver::new(
-            representation_cache.clone(),
-            spool_manager.clone(),
-            worker_tx.clone(),
-        ));
-
     let system_clipboard_wiring = platform.system_clipboard_wiring;
 
     // Whole-installation configuration migration (export / import preview /
-    // staged import). The adapter is assembled here because its inputs
-    // (`secure_storage`, the db pool, the local-identity port, the resolved
-    // filesystem layout, and the current profile) are only available in this
-    // synchronous wiring context — `build_app_facade_from_deps` sees only the
-    // abstract `AppDeps` ports and cannot reconstruct them. The composed facade
-    // therefore travels on `AppDeps` (see its `config_migration` field).
-    //
-    // The `local_identity` port reads the device fingerprint for the export
-    // manifest. The iroh identity lives in the *file* backend under
-    // `iroh_identity_dir` (a 0600 file dir), NOT in `platform.secure_storage`
-    // (Credential Manager / Keychain on installer builds). So bind it to a
-    // `FileSecureStorage` pointed at that dir — otherwise the fingerprint would
-    // read empty. This is best-effort (a missing identity only blanks the
-    // manifest fingerprint), so no `MigratingSecureStorage` is needed.
-    // `migratable_secret_keys` still enumerates the KEK from the current backend.
-    // Single-user mode pins the profile to `default` (the same value
-    // `DefaultCurrentProfile` and the pending-import bridge use); resolving it
-    // through the async `CurrentProfilePort` is impossible from this sync path.
-    let config_migration_profile = ProfileId::from("default");
-    let config_migration_local_identity: Arc<dyn LocalIdentityPort> =
-        Arc::new(IrohIdentityStore::new(
-            Arc::new(
-                uc_platform::file_secure_storage::FileSecureStorage::with_base_dir(
-                    iroh_identity_dir.clone(),
-                ),
-            ),
-            Arc::new(Sha256IdentityFingerprintFactory),
-        ));
-    let config_migration_adapter = Arc::new(ConfigMigrationAdapter::new(
-        platform.secure_storage.clone(),
+    // staged import). Assembled in the sync wiring context because its inputs
+    // (secure_storage, db pool, local-identity, filesystem layout, profile) are
+    // not reconstructable from the abstract `AppDeps` ports; the composed facade
+    // travels on `AppDeps.config_migration`.
+    let config_migration = build_config_migration_facade(
+        &platform.secure_storage,
         db_pool_for_config_migration,
-        config_migration_local_identity,
-        infra.clock.clone(),
+        &infra.clock,
+        &infra.setup_status,
+        &space_access_ports,
         ConfigMigrationPaths {
             db_path: db_path.clone(),
             vault_dir: vault_path.clone(),
@@ -1248,15 +1430,7 @@ pub fn wire_dependencies(
             app_data_root: app_data_root.clone(),
             iroh_identity_dir: iroh_identity_dir.clone(),
         },
-        config_migration_profile,
-    ));
-    let config_migration = Arc::new(ConfigMigrationFacade::new(ConfigMigrationDeps {
-        export_bundle: config_migration_adapter.clone(),
-        preview_import: config_migration_adapter.clone(),
-        stage_import: config_migration_adapter.clone(),
-        setup_status: infra.setup_status.clone(),
-        is_unlocked: space_access_ports.is_unlocked.clone(),
-    }));
+    );
 
     let deps = AppDeps {
         clipboard: ClipboardPorts {
@@ -1349,39 +1523,36 @@ pub fn wire_dependencies(
         deps.clipboard.clipboard_change_origin.clone(),
     );
 
-    // Compose the analytics facade over (a) the gated sink already on
-    // `deps.analytics` and (b) a local identity store that shares the
-    // `<app_data>/analytics/` directory with `compose_event_context`.
-    // SpaceSetupFacade consumes the composed facade; other facades that
-    // only need capture (`ClipboardFacade`, `MobileSyncFacade`) keep
-    // talking to the bare sink on `deps.analytics`.
-    let analytics_dir = app_data_root.join("analytics");
-    let analytics_identity: Arc<dyn AnalyticsIdentityPort> =
-        Arc::new(LocalAnalyticsIdentity::new(analytics_dir));
-    let analytics_facade: Arc<dyn AnalyticsFacade> = Arc::new(DefaultAnalyticsFacade::new(
-        Arc::clone(&deps.analytics),
-        analytics_identity,
-    ));
+    // Compose the analytics facade over the gated sink on `deps.analytics` plus a
+    // local identity store. SpaceSetupFacade consumes the composed facade;
+    // capture-only facades keep talking to the bare sink on `deps.analytics`.
+    let analytics_facade = build_analytics_facade(&deps.analytics, &app_data_root);
 
     let wired = WiredDependencies {
         deps,
         system_clipboard_wiring,
-        trusted_peer_repo: trusted_peer_repo_for_wiring,
-        peer_addr_repo: peer_addr_repo_for_wiring,
-        iroh_blob_store_dir: iroh_blob_store_dir_for_wiring,
-        iroh_identity_dir: iroh_identity_dir_for_wiring,
-        blob_reference_repo: blob_reference_repo_for_wiring,
-        migration_state: migration_state_for_wiring,
-        key_migration: key_migration_for_wiring,
-        blob_migration_repo: blob_migration_repo_for_wiring,
-        mobile_sync_endpoint_info: mobile_sync_endpoint_info_for_wiring,
-        entry_delivery_repo: entry_delivery_repo_for_wiring,
-        clipboard_event_reader_repo: clipboard_event_reader_repo_for_wiring,
-        host_event_bus,
-        file_transfer_facade,
-        analytics_facade,
-        clipboard_write_coordinator: Arc::clone(&clipboard_write_coordinator),
-        file_cache_dir: paths.file_cache_dir.clone(),
+        space_setup: SpaceSetupWiring {
+            peer_addr_repo: Arc::clone(&infra.peer_addr_repo),
+            blob_reference_repo: Arc::clone(&infra.blob_reference_repo),
+            blob_migration_repo: Arc::clone(&infra.blob_migration_repo),
+            migration_state: Arc::clone(&infra.migration_state),
+            key_migration: key_migration_for_wiring,
+            iroh_blob_store_dir: iroh_blob_store_dir_for_wiring,
+            iroh_identity_dir: iroh_identity_dir_for_wiring,
+            analytics_facade,
+        },
+        daemon_runtime: DaemonRuntimeDeps {
+            mobile_sync_endpoint_info: Arc::clone(&infra.mobile_sync_endpoint_info),
+        },
+        shared: SharedRuntimeDeps {
+            host_event_bus,
+            entry_delivery_repo: Arc::clone(&infra.entry_delivery_repo),
+            clipboard_event_reader_repo: Arc::clone(&infra.clipboard_event_reader_repo),
+            file_transfer_facade,
+            clipboard_write_coordinator: Arc::clone(&clipboard_write_coordinator),
+            file_cache_dir: paths.file_cache_dir.clone(),
+            trusted_peer_repo: Arc::clone(&infra.trusted_peer_repo),
+        },
     };
     let background = BackgroundRuntimeDeps {
         representation_cache,

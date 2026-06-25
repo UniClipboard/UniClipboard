@@ -1,7 +1,7 @@
 //! # uc-bootstrap — Sole Composition Root
 //!
 //! This crate is the single place allowed to depend on
-//! uc-core + uc-app + uc-infra + uc-platform simultaneously.
+//! uc-core + uc-application + uc-infra + uc-platform simultaneously.
 //! All entry points (GUI, CLI, daemon) depend on uc-bootstrap
 //! for dependency wiring and initialization.
 

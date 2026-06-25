@@ -47,12 +47,12 @@ pub struct DaemonBootstrapAssembly {
 pub async fn build_daemon_bootstrap_assembly(
     wired: &WiredDependencies,
 ) -> anyhow::Result<DaemonBootstrapAssembly> {
-    let lifecycle = build_daemon_lifecycle(wired).await?;
+    let lifecycle = build_daemon_lifecycle(&wired.deps, &wired.space_setup, &wired.shared).await?;
     let blob_transfer_facade = lifecycle.space_setup_assembly.blob.clone();
     Ok(DaemonBootstrapAssembly {
         clipboard_sync_facade: lifecycle.clipboard_sync_facade,
         blob_transfer_facade,
         space_setup_assembly: lifecycle.space_setup_assembly,
-        mobile_sync_endpoint_info: Arc::clone(&wired.mobile_sync_endpoint_info),
+        mobile_sync_endpoint_info: Arc::clone(&wired.daemon_runtime.mobile_sync_endpoint_info),
     })
 }

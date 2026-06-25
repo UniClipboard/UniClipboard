@@ -133,7 +133,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 
         let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
         let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
-        let file_transfer_facade = wired.file_transfer_facade.clone();
+        let file_transfer_facade = wired.shared.file_transfer_facade.clone();
 
         // Restore-broadcast channel (issue #1017 PR4): the restore use cases
         // (inside the AppFacade below) hold the sender; the active-clipboard
@@ -295,7 +295,7 @@ pub async fn start_in_process(
     space_setup_assembly.attach_restore_broadcast(restore_broadcast_rx);
 
     let deps = wired.deps;
-    let host_event_bus = wired.host_event_bus;
+    let host_event_bus = wired.shared.host_event_bus;
     let settings_port = deps.settings.clone();
     let runtime_controls = build_daemon_runtime_controls(run_mode);
 
@@ -311,9 +311,9 @@ pub async fn start_in_process(
         file_transfer_lifecycle,
         clipboard_write_coordinator: clipboard_write_coordinator.clone(),
         host_event_bus: host_event_bus.clone(),
-        entry_delivery_repo: wired.entry_delivery_repo.clone(),
-        clipboard_event_reader_repo: wired.clipboard_event_reader_repo.clone(),
-        trusted_peer_repo: wired.trusted_peer_repo.clone(),
+        entry_delivery_repo: wired.shared.entry_delivery_repo.clone(),
+        clipboard_event_reader_repo: wired.shared.clipboard_event_reader_repo.clone(),
+        trusted_peer_repo: wired.shared.trusted_peer_repo.clone(),
     })?;
 
     let search_assembly = build_daemon_search_assembly(&deps, runtime_controls.event_tx.clone());

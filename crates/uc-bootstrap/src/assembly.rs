@@ -141,12 +141,12 @@ pub struct BackgroundRuntimeDeps {
 }
 
 /// P2P / iroh sync-engine assembly inputs. Sole consumer:
-/// [`crate::space_setup::build_space_setup_assembly`]. These ports/paths never
+/// [`crate::space_setup::build_sync_engine_assembly`]. These ports/paths never
 /// flow through `AppDeps` — the `SpaceSetupFacade` they assemble lives in
 /// uc-application and is injected by this bundle at wire time, not by the
 /// AppFacade path.
 #[derive(Clone)]
-pub struct SpaceSetupWiring {
+pub struct SyncEngineDeps {
     /// peer address repo — best-effort transport-address writes after pairing,
     /// dialed by F1 `ensure_reachable_all`.
     pub peer_addr_repo: Arc<dyn uc_core::ports::PeerAddressRepositoryPort>,
@@ -203,7 +203,7 @@ pub struct SharedRuntimeDeps {
     pub clipboard_event_reader_repo: Arc<dyn uc_core::ports::ClipboardEventRepositoryPort>,
     /// Application entry point for the file-transfer lifecycle actions + seed +
     /// link. Shared by daemon runtime, `MobileSyncFacade` assembly, and the iroh
-    /// blob path in `build_space_setup_assembly`.
+    /// blob path in `build_sync_engine_assembly`.
     pub file_transfer_facade: Arc<uc_application::facade::FileTransferFacade>,
     /// Single write boundary for all programmatic clipboard writes (guard
     /// registration + write + cleanup-on-error). Shared so the active-clipboard
@@ -243,8 +243,8 @@ pub struct WiredDependencies {
     /// composition root's single call on whether this process talks to the real
     /// OS clipboard. Hosts gate their OS-clipboard-bound assembly on this.
     pub system_clipboard_wiring: SystemClipboardWiring,
-    /// P2P / iroh sync-engine assembly inputs (see [`SpaceSetupWiring`]).
-    pub space_setup: SpaceSetupWiring,
+    /// P2P / iroh sync-engine assembly inputs (see [`SyncEngineDeps`]).
+    pub space_setup: SyncEngineDeps,
     /// daemon main-loop-only bypass deps (see [`DaemonRuntimeDeps`]).
     pub daemon_runtime: DaemonRuntimeDeps,
     /// Process-level handles shared by ≥2 assembly targets (see
@@ -1290,7 +1290,7 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
 /// 在进程启动期被 `spawn_blob_processing_tasks` 消费一次后不复存在。
 ///
 /// Slice 4 P5b 起 libp2p adapter 已删除,旧的 `wire_dependencies_with_identity_store`
-/// 变体随之退场——iroh 栈走 `IrohIdentityStore`(由 `build_space_setup_assembly`
+/// 变体随之退场——iroh 栈走 `IrohIdentityStore`(由 `build_sync_engine_assembly`
 /// 构造,密钥落地 `SecureStoragePort`),不再需要 platform 层
 /// `IdentityStorePort` 兼容入口。
 pub fn wire_dependencies(
@@ -1531,7 +1531,7 @@ pub fn wire_dependencies(
     let wired = WiredDependencies {
         deps,
         system_clipboard_wiring,
-        space_setup: SpaceSetupWiring {
+        space_setup: SyncEngineDeps {
             peer_addr_repo: Arc::clone(&infra.peer_addr_repo),
             blob_reference_repo: Arc::clone(&infra.blob_reference_repo),
             blob_migration_repo: Arc::clone(&infra.blob_migration_repo),

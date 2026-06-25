@@ -42,7 +42,7 @@ use uc_infra::mobile_sync::{
 use uc_infra::network::iroh::{IrohRelayProbeAdapter, IrohRelayProbeError, IrohRelayProbeReport};
 
 use crate::assembly::get_storage_paths;
-use crate::space_setup::{build_space_setup_assembly, SpaceSetupAssembly};
+use crate::space_setup::{build_sync_engine_assembly, SyncEngineAssembly};
 use crate::task_registry::TaskRegistry;
 
 // ---------------------------------------------------------------------------
@@ -577,10 +577,10 @@ pub async fn build_cli_app_facade(
 /// CLI 进程内 application runtime。
 ///
 /// 业务命令只通过 `app_facade` 进入 application 层。需要 iroh 网络栈的
-/// 命令持有 `space_setup_assembly`,退出前调用 [`Self::shutdown`] 收口。
+/// 命令持有 `sync_engine_assembly`,退出前调用 [`Self::shutdown`] 收口。
 pub struct CliAppRuntime {
     pub app_facade: Arc<AppFacade>,
-    space_setup_assembly: Option<SpaceSetupAssembly>,
+    sync_engine_assembly: Option<SyncEngineAssembly>,
 }
 
 impl CliAppRuntime {
@@ -589,7 +589,7 @@ impl CliAppRuntime {
     }
 
     pub async fn shutdown(mut self) {
-        if let Some(assembly) = self.space_setup_assembly.take() {
+        if let Some(assembly) = self.sync_engine_assembly.take() {
             assembly.shutdown().await;
         }
     }
@@ -626,7 +626,7 @@ pub async fn build_cli_app_runtime(
         None,
     );
     // #900：从 env 读取直连可达性（固定 UDP 端口 + 广播公网地址）并写入。
-    // 必须在 `build_space_setup_assembly`（首次 endpoint 快照/配对交换）之前。
+    // 必须在 `build_sync_engine_assembly`（首次 endpoint 快照/配对交换）之前。
     crate::network_policy::apply_iroh_direct_reachability_from_env(&mut iroh_config);
     crate::network_policy::apply_congestion_controller_from_env(&mut iroh_config);
 
@@ -646,7 +646,7 @@ pub async fn build_cli_app_runtime(
     );
 
     let assembly =
-        build_space_setup_assembly(&wired.deps, &wired.space_setup, &wired.shared, iroh_config)
+        build_sync_engine_assembly(&wired.deps, &wired.space_setup, &wired.shared, iroh_config)
             .await
             .map_err(|err| anyhow::anyhow!("failed to bind iroh endpoint: {err}"))?;
     let deps = &wired.deps;
@@ -713,7 +713,7 @@ pub async fn build_cli_app_runtime(
 
     Ok(CliAppRuntime {
         app_facade,
-        space_setup_assembly: Some(assembly),
+        sync_engine_assembly: Some(assembly),
     })
 }
 

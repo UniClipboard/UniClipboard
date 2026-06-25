@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tokio::sync::Notify;
 use uc_application::facade::{AppFacade, UpgradeStatus};
-use uc_bootstrap::SpaceSetupAssembly;
+use uc_bootstrap::SyncEngineAssembly;
 use uc_core::ports::SettingsPort;
 
 use crate::daemon::app::DaemonApp;
@@ -22,7 +22,7 @@ pub struct DaemonRunLoopInput {
     pub daemon: DaemonApp,
     pub app_facade: Arc<AppFacade>,
     pub settings: Arc<dyn SettingsPort>,
-    pub space_setup_assembly: SpaceSetupAssembly,
+    pub sync_engine_assembly: SyncEngineAssembly,
     pub deferred_ready_notify: Arc<Notify>,
     pub clipboard_capture_gate: Arc<AtomicBool>,
 }
@@ -39,12 +39,12 @@ pub async fn run_daemon_main(input: DaemonRunLoopInput) -> anyhow::Result<()> {
         daemon,
         app_facade,
         settings,
-        space_setup_assembly,
+        sync_engine_assembly,
         deferred_ready_notify,
         clipboard_capture_gate,
     } = input;
 
-    let space_setup = space_setup_assembly.facade.clone();
+    let space_setup = sync_engine_assembly.facade.clone();
 
     // P1 thin 升级检测：启动期一次性比较 last_seen_version 游标 vs
     // 当前构建版本。结果一方面进 tracing 日志；另一方面，对全新
@@ -62,14 +62,14 @@ pub async fn run_daemon_main(input: DaemonRunLoopInput) -> anyhow::Result<()> {
     });
 
     // ORDERING (ADR-008 P5-L L8a) — these two awaits are SEQUENTIAL: the iroh
-    // teardown (`space_setup_assembly.shutdown()`, which drives
+    // teardown (`sync_engine_assembly.shutdown()`, which drives
     // `endpoint.close()`) runs strictly AFTER the run loop returns and strictly
     // BEFORE this task (`run_daemon_main`, spawned in `host.rs` and awaited via
     // `handle.wait()`) completes. That upholds the lock-after-iroh ordering: the
     // instance lock in `host.rs` is only dropped after `handle.wait()` completes,
     // hence after this iroh unbind. Keep these awaits ordered run-then-shutdown.
     let result = daemon.run().await;
-    space_setup_assembly.shutdown().await;
+    sync_engine_assembly.shutdown().await;
     result
 }
 

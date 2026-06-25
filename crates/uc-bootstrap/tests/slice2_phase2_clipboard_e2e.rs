@@ -501,7 +501,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
 
     // Clone the presence + local_identity handles before SpaceSetupDeps moves
     // them so MemberRosterFacade + ClipboardSyncFacade can share the same
-    // instances. Mirrors production wiring in `build_space_setup_assembly`.
+    // instances. Mirrors production wiring in `build_sync_engine_assembly`.
     let presence_for_roster = Arc::clone(&presence);
     let presence_for_clipboard = Arc::clone(&presence);
     let local_identity_for_roster = Arc::clone(&local_identity);

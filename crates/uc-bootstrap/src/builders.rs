@@ -22,10 +22,9 @@ use uc_application::facade::ClipboardSyncFacade;
 use uc_core::config::AppConfig;
 
 use crate::assembly::{
-    get_storage_paths, wire_dependencies, BackgroundRuntimeDeps, SharedRuntimeDeps,
-    SpaceSetupWiring,
+    get_storage_paths, wire_dependencies, BackgroundRuntimeDeps, SharedRuntimeDeps, SyncEngineDeps,
 };
-use crate::space_setup::{build_space_setup_assembly, SpaceSetupAssembly};
+use crate::space_setup::{build_sync_engine_assembly, SyncEngineAssembly};
 
 /// Context for CLI entry point. AppDeps + config, no background workers.
 /// Caller constructs CoreRuntime from deps as needed.
@@ -119,7 +118,7 @@ pub async fn build_cli_context_with_profile(
 
 /// CLI composition-root entry returning the full
 /// [`crate::assembly::WiredDependencies`] so the caller can hand it to
-/// [`crate::space_setup::build_space_setup_assembly`]; unlike
+/// [`crate::space_setup::build_sync_engine_assembly`]; unlike
 /// [`build_cli_context_with_profile`], this does not flatten to `AppDeps`
 /// and therefore preserves access to `trusted_peer_repo` and other ports
 /// the `SpaceSetupFacade` needs (pairing / roster / send / watch / blob 等
@@ -150,7 +149,7 @@ pub async fn build_slice1_cli_context(
 /// repos / blob worker), 由 caller 一次性 wire 后移交
 /// [`build_daemon_lifecycle`]。方案 C 后 daemon 在进程内只起一次, 装配
 /// 也只跑一次。本结构体的物理意义是 "async (tokio) 装配链路上需要 iroh
-/// bind 与 SpaceSetupAssembly 的那一段"。
+/// bind 与 SyncEngineAssembly 的那一段"。
 pub struct DaemonLifecycle {
     /// iroh-stack clipboard sync facade.
     /// daemon 的 `DaemonClipboardChangeHandler` 调
@@ -159,11 +158,11 @@ pub struct DaemonLifecycle {
     pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
     /// 完整 iroh assembly。持有 iroh node、pairing/presence/clipboard
     /// handler、auto-spawned ingest loop。daemon shutdown 调
-    /// `space_setup_assembly.shutdown()` 干净拆 router + abort ingest。
-    pub space_setup_assembly: SpaceSetupAssembly,
+    /// `sync_engine_assembly.shutdown()` 干净拆 router + abort ingest。
+    pub sync_engine_assembly: SyncEngineAssembly,
 }
 
-/// 装 daemon-lifecycle 资源 —— iroh node bind、SpaceSetupAssembly、startup
+/// 装 daemon-lifecycle 资源 —— iroh node bind、SyncEngineAssembly、startup
 /// reconcile。接受已 wire 好的进程级 [`WiredDependencies`] 作输入,**不**
 /// 再次跑 `wire_dependencies` —— sqlite pool / repos / settings / secure
 /// storage 在进程启动期 wire 一次后由 GUI shell 与 daemon-lifecycle 共用。
@@ -171,14 +170,14 @@ pub struct DaemonLifecycle {
 /// runtime 内执行)。
 ///
 /// `init::reconcile_*` 在每次 daemon 启动时跑(治理性、失败只 log),
-/// 与 `build_space_setup_assembly` 之前执行,确保 dispatch / presence /
+/// 与 `build_sync_engine_assembly` 之前执行,确保 dispatch / presence /
 /// 重新配对路径一上线就是干净状态。
 ///
-/// caller 必须在 tokio runtime 上下文中调用 —— `build_space_setup_assembly`
+/// caller 必须在 tokio runtime 上下文中调用 —— `build_sync_engine_assembly`
 /// 内部 `Endpoint::bind` 会 spawn magicsock / relay / STUN actor。
 pub async fn build_daemon_lifecycle(
     deps: &AppDeps,
-    space_setup: &SpaceSetupWiring,
+    space_setup: &SyncEngineDeps,
     shared: &SharedRuntimeDeps,
 ) -> anyhow::Result<DaemonLifecycle> {
     // 启动期 reconcile:把 peer_addr_repo / trusted_peer_repo 中
@@ -235,7 +234,7 @@ pub async fn build_daemon_lifecycle(
         None, // production 不 override rendezvous,使用默认 RENDEZVOUS_BASE_URL
     );
     // #900：从 env 读取直连可达性（固定 UDP 端口 + 广播公网地址）并写入。
-    // 必须在 `build_space_setup_assembly`（首次 endpoint 快照/配对交换）之前。
+    // 必须在 `build_sync_engine_assembly`（首次 endpoint 快照/配对交换）之前。
     crate::network_policy::apply_iroh_direct_reachability_from_env(&mut iroh_config);
     crate::network_policy::apply_congestion_controller_from_env(&mut iroh_config);
 
@@ -254,16 +253,16 @@ pub async fn build_daemon_lifecycle(
         iroh_config.congestion_controller,
     );
 
-    let space_setup_assembly = build_space_setup_assembly(deps, space_setup, shared, iroh_config)
+    let sync_engine_assembly = build_sync_engine_assembly(deps, space_setup, shared, iroh_config)
         .await
         .map_err(|e| anyhow::anyhow!("Slice 1+ assembly build failed: {e}"))?;
 
     // Same Arc the assembly holds — handed up so daemon entrypoint can
     // wire it into the two clipboard workers without unpacking the assembly.
-    let clipboard_sync_facade = Arc::clone(&space_setup_assembly.clipboard_sync);
+    let clipboard_sync_facade = Arc::clone(&sync_engine_assembly.clipboard_sync);
 
     Ok(DaemonLifecycle {
         clipboard_sync_facade,
-        space_setup_assembly,
+        sync_engine_assembly,
     })
 }

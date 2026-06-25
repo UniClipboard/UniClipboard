@@ -51,6 +51,6 @@ pub use non_gui_runtime::{
     NonGuiBundle,
 };
 pub use space_setup::{
-    build_space_setup_assembly, IrohNodeConfig, SpaceSetupAssembly, SpaceSetupAssemblyError,
+    build_sync_engine_assembly, IrohNodeConfig, SyncEngineAssembly, SyncEngineAssemblyError,
 };
 pub use tracing::init_tracing_subscriber;

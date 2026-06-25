@@ -3,7 +3,7 @@
 //! Assembles the pairing stack (rendezvous client + iroh session adapter +
 //! identity store + proof verifier) plus the pre-existing persistence /
 //! identity ports from [`WiredDependencies`] into a single
-//! [`SpaceSetupAssembly`] that external callers (Tauri commands, CLI, daemon)
+//! [`SyncEngineAssembly`] that external callers (Tauri commands, CLI, daemon)
 //! can drive through `Arc<SpaceSetupFacade>`.
 //!
 //! Everything iroh-specific stays inside
@@ -80,14 +80,14 @@ use uc_infra::security::Sha256IdentityFingerprintFactory;
 use uc_platform::file_secure_storage::FileSecureStorage;
 use uc_platform::migrating_secure_storage::MigratingSecureStorage;
 
-use crate::assembly::{SharedRuntimeDeps, SpaceSetupWiring};
+use crate::assembly::{SharedRuntimeDeps, SyncEngineDeps};
 use uc_application::deps::AppDeps;
 
-/// Output of [`build_space_setup_assembly`]. External callers keep the
+/// Output of [`build_sync_engine_assembly`]. External callers keep the
 /// whole assembly alive for the process lifetime; they only dispatch
 /// user-facing commands through [`Self::facade`] / [`Self::roster`] and
 /// run [`Self::shutdown`] once on exit.
-pub struct SpaceSetupAssembly {
+pub struct SyncEngineAssembly {
     pub facade: Arc<SpaceSetupFacade>,
     /// Slice 2 Phase 1 · T9:roster 查询门面(`list_with_presence` +
     /// `subscribe_presence_events`)。CLI `members` 命令从这里拿状态,
@@ -162,7 +162,7 @@ pub struct SpaceSetupAssembly {
     outbound_progress_translator: JoinHandle<()>,
 }
 
-impl SpaceSetupAssembly {
+impl SyncEngineAssembly {
     /// Spawn the outbound restore-broadcast worker on the active-clipboard
     /// facade and retain its handle for coordinated teardown. `rx` is the
     /// receiving end of the restore-broadcast channel whose sender the restore
@@ -326,7 +326,7 @@ impl ApplyInboundWrite for NoopPullStoreWrite {
 /// Failures during Slice 1 assembly. Bootstrap callers surface these as
 /// fatal startup errors — there is no useful retry here.
 #[derive(Debug, thiserror::Error)]
-pub enum SpaceSetupAssemblyError {
+pub enum SyncEngineAssemblyError {
     #[error(transparent)]
     IrohNode(#[from] IrohNodeError),
 }
@@ -340,12 +340,12 @@ pub enum SpaceSetupAssemblyError {
 /// keep holding their pre-existing `SetupFacade` alongside; the two
 /// coexist until Slice 5 retires libp2p.
 #[instrument(skip_all)]
-pub async fn build_space_setup_assembly(
+pub async fn build_sync_engine_assembly(
     deps: &AppDeps,
-    space_setup: &SpaceSetupWiring,
+    space_setup: &SyncEngineDeps,
     shared: &SharedRuntimeDeps,
     iroh_config: IrohNodeConfig,
-) -> Result<SpaceSetupAssembly, SpaceSetupAssemblyError> {
+) -> Result<SyncEngineAssembly, SyncEngineAssemblyError> {
     // IdentityFingerprintFactory is stateless — the one in SecurityPorts is
     // the same `Sha256IdentityFingerprintFactory` ZST, but we construct a
     // fresh one here rather than down-casting through `dyn` because
@@ -596,7 +596,7 @@ pub async fn build_space_setup_assembly(
     // 效;`transfer_cipher` 与已有 file_transfer 路径同享 V3 chunked
     // AEAD adapter。ingest 后台 loop 立刻起一次,与 receiver handler 同
     // 生命周期(随 `iroh_node.shutdown()` 自然退出 `RecvError::Closed`,
-    // `SpaceSetupAssembly::shutdown` 显式 `abort()` 加速过程)。
+    // `SyncEngineAssembly::shutdown` 显式 `abort()` 加速过程)。
     let clipboard_sync = Arc::new(ClipboardSyncFacade::new(ClipboardSyncDeps {
         peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
         member_repo: Arc::clone(&deps.device.member_repo),
@@ -667,7 +667,7 @@ pub async fn build_space_setup_assembly(
     // write → on success advance the register + re-broadcast the same-key
     // state to allowed peers. Spawned here with `ingest_handle`'s lifetime —
     // the loop exits when the receiver adapter's broadcast senders drop on
-    // router shutdown, and `SpaceSetupAssembly::shutdown` aborts it explicitly
+    // router shutdown, and `SyncEngineAssembly::shutdown` aborts it explicitly
     // to shave a tick off teardown.
     let active_clipboard = Arc::new(ActiveClipboardFacade::new(ActiveClipboardDeps {
         receiver: Arc::clone(&active_clipboard_receiver),
@@ -714,7 +714,7 @@ pub async fn build_space_setup_assembly(
     let active_clipboard_resurface_handle = active_clipboard.spawn_resurface_worker();
 
     info!("Slice 2/3 SpaceSetupFacade + MemberRosterFacade + ClipboardSyncFacade + BlobTransferFacade assembled");
-    Ok(SpaceSetupAssembly {
+    Ok(SyncEngineAssembly {
         facade,
         roster,
         clipboard_sync,

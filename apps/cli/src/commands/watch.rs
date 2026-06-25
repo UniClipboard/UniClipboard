@@ -2,7 +2,7 @@
 //! (Slice 2 Phase 2 · T11).
 //!
 //! Self-contained direct-mode command (no daemon). The backing
-//! `SpaceSetupAssembly` auto-spawns the ingest loop at construction
+//! `SyncEngineAssembly` auto-spawns the ingest loop at construction
 //! (Phase 2 · T10), so this command's job is purely to subscribe to the
 //! application-level notice broadcast and render each delivery until
 //! Ctrl-C.

@@ -18,14 +18,14 @@ use uc_application::facade::{
     DaemonLifecycleFacades, FileTransferFacade,
 };
 use uc_application::ApplyInboundClipboardUseCase;
-use uc_bootstrap::{build_mobile_sync_facade, SpaceSetupAssembly};
+use uc_bootstrap::{build_mobile_sync_facade, SyncEngineAssembly};
 use uc_core::ports::MobileLanLifecyclePort;
 
 /// 构造 daemon-lifecycle 装配输入。
 pub struct DaemonLifecycleFacadesInput<'a> {
     pub deps: &'a AppDeps,
     pub storage_paths: &'a AppPaths,
-    pub space_setup_assembly: &'a SpaceSetupAssembly,
+    pub sync_engine_assembly: &'a SyncEngineAssembly,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
     /// 进程级 file-transfer facade (来自 `BackgroundRuntimeDeps`)。
@@ -52,7 +52,7 @@ pub struct DaemonLifecycleFacadesInput<'a> {
     pub lan_lifecycle: Arc<dyn MobileLanLifecyclePort>,
     /// 进程级剪贴板写边界。移动端 PUT 去重命中时, 用这次上传的 snapshot
     /// 把内容写回系统剪贴板 (issue #1017 PR7 D1 call-site 4)。与
-    /// `space_setup_assembly.active_clipboard` 一起喂给 mobile_sync facade,
+    /// `sync_engine_assembly.active_clipboard` 一起喂给 mobile_sync facade,
     /// 装出 active-clipboard 收敛 adapter。
     pub clipboard_write_coordinator: Arc<ClipboardWriteCoordinator>,
 }
@@ -66,7 +66,7 @@ pub fn build_daemon_lifecycle_facades(
     let DaemonLifecycleFacadesInput {
         deps,
         storage_paths,
-        space_setup_assembly,
+        sync_engine_assembly,
         clipboard_sync,
         blob_transfer,
         file_transfer,
@@ -90,18 +90,18 @@ pub fn build_daemon_lifecycle_facades(
         // 走 `None`。
         Some(Arc::clone(&clipboard_outbound)),
         // active-clipboard 收敛 (issue #1017 PR7):写边界 + 进程级
-        // active-clipboard facade(由 SpaceSetupAssembly 装好)。两者一起让
+        // active-clipboard facade(由 SyncEngineAssembly 装好)。两者一起让
         // mobile_sync facade 在入站激活后盖本设备激活戳、前进跨设备 register、
         // 按 per-device send 闸门广播 0xC3 state(duplicate 命中先写回 OS)。
         Some(Arc::clone(&clipboard_write_coordinator)),
-        Some(Arc::clone(&space_setup_assembly.active_clipboard)),
+        Some(Arc::clone(&sync_engine_assembly.active_clipboard)),
     );
 
     let local_device_id = deps.device.device_identity.current_device_id().to_string();
 
     let facades = DaemonLifecycleFacades {
-        space_setup: Arc::clone(&space_setup_assembly.facade),
-        member_roster: Arc::clone(&space_setup_assembly.roster),
+        space_setup: Arc::clone(&sync_engine_assembly.facade),
+        member_roster: Arc::clone(&sync_engine_assembly.roster),
         clipboard_sync,
         blob_transfer,
         // commit D · 让 GUI / Tauri command / CLI 通过 AppFacade.resend_entry

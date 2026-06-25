@@ -303,7 +303,7 @@ struct Side {
     facade: Arc<SpaceSetupFacade>,
     /// T11:`MemberRosterFacade` 是本测试的主要断言面——用它的
     /// `list_with_presence()` 打印/比对 roster。真实 bootstrap
-    /// 在 `build_space_setup_assembly` 里同时构造二者;这里为保持与 slice1
+    /// 在 `build_sync_engine_assembly` 里同时构造二者;这里为保持与 slice1
     /// 测试同构,手工一起 new。
     roster: Arc<MemberRosterFacade>,
     iroh_node: IrohNode,
@@ -388,7 +388,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
     // Clone the presence + local_identity handles before moving into SpaceSetupDeps
     // so MemberRosterDeps can reuse them. All three Arcs (member_repo, local_identity,
     // presence) are shared between the two facades — mirrors production wiring in
-    // `build_space_setup_assembly` (`uc-bootstrap/src/space_setup.rs`).
+    // `build_sync_engine_assembly` (`uc-bootstrap/src/space_setup.rs`).
     let presence_for_roster = Arc::clone(&presence);
     let local_identity_for_roster = Arc::clone(&local_identity);
 

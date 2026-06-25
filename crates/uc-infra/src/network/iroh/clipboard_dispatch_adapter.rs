@@ -43,7 +43,7 @@ use uc_core::ports::{
 };
 
 use super::clipboard_wire::{self, AckCode, WireEncodeError};
-use super::conn_path::derive_path_from_addrs;
+use super::conn_path::{path_for, OnMissing};
 use super::connect::connect_with_staggered_retry;
 
 /// ALPN identifier for the Slice 2 clipboard sync protocol. Independent of
@@ -322,10 +322,9 @@ impl ClipboardDispatchPort for IrohClipboardDispatchAdapter {
         //    settles reflects the route the frame took (direct vs relay);
         //    `None` means the snapshot momentarily lags the just-settled
         //    dial, reported as Unknown.
-        let transport = match self.endpoint.remote_info(addr_id).await {
-            Some(info) => derive_path_from_addrs(info.addrs()).channel,
-            None => ConnectionChannel::Unknown,
-        };
+        let transport = path_for(&self.endpoint, addr_id, OnMissing::Unknown)
+            .await
+            .channel;
 
         // 6. Close the connection. Adapter owns the lifecycle — dropping
         //    here signals `Connection::closed` on the peer. The Q4

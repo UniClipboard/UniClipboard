@@ -1,19 +1,70 @@
-//! Shared derivation of the active connection path from an iroh
-//! `remote_info` address snapshot.
+//! Single owner of "given an iroh `EndpointId`, what connection path is this
+//! peer on right now?".
 //!
-//! Single source of truth for "is the peer's current QUIC path direct or
-//! relayed". Both the connection-channel adapter (UI polling via
-//! `path_for`) and the clipboard dispatch adapter (per-sync transport
-//! telemetry) feed a `remote_info().addrs()` iterator through here so they
-//! agree on the verdict instead of each re-deriving it. Pure functions over
-//! a borrowed `TransportAddrInfo` iterator — no endpoint required, so the
-//! truth-table is unit-testable without standing one up.
+//! [`path_for`] is the one place that probes `endpoint.remote_info(id)` and
+//! turns the snapshot into a [`ConnectionPath`] verdict (direct / relay /
+//! unknown / offline). Both the connection-channel adapter (UI polling) and
+//! the clipboard dispatch adapter (per-sync transport telemetry) call it, so
+//! the verdict — and the `remote_info` probe itself — lives here once instead
+//! of being re-derived at each site. The only thing the two callers vary is
+//! the [`OnMissing`] policy for "the endpoint has no `RemoteInfo` at all".
+//!
+//! The classification step [`derive_path_from_addrs`] is a pure function over
+//! a borrowed `TransportAddrInfo` iterator, kept private so the probe can't be
+//! bypassed; its IP truth-table is unit-testable without standing up an
+//! endpoint.
 
 use std::net::IpAddr;
 
-use iroh::TransportAddr;
+use iroh::{Endpoint, EndpointId, TransportAddr};
 
 use uc_core::ports::connection_channel::{ConnectionChannel, ConnectionPath};
+
+/// What [`path_for`] reports when `remote_info(id)` returns `None` — the
+/// endpoint has no [`iroh::endpoint::RemoteInfo`] for the peer at all. This is
+/// the *only* point the two callers legitimately diverge, so it is an explicit
+/// parameter rather than a default buried in each call site:
+///
+/// - [`OnMissing::Offline`] — UI device list: no `RemoteInfo` means magicsock
+///   has never observed this peer, so it is genuinely offline.
+/// - [`OnMissing::Unknown`] — post-dispatch telemetry probe: the send just
+///   succeeded, so the peer is reachable; a `None` only means the snapshot
+///   momentarily lags the just-settled dial, not "offline".
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum OnMissing {
+    Offline,
+    Unknown,
+}
+
+impl OnMissing {
+    fn channel(self) -> ConnectionChannel {
+        match self {
+            OnMissing::Offline => ConnectionChannel::Offline,
+            OnMissing::Unknown => ConnectionChannel::Unknown,
+        }
+    }
+}
+
+/// Probe `endpoint` for the peer's current [`ConnectionPath`].
+///
+/// Snapshots `remote_info(id)` once and classifies it via
+/// [`derive_path_from_addrs`]; falls back to `on_missing` when there is no
+/// `RemoteInfo` for the peer (see [`OnMissing`]). Cheap — `remote_info` is a
+/// snapshot read, not a watcher subscription — so callers sample it at the
+/// exact moment they care about (UI poll tick / right after a send settles).
+pub(crate) async fn path_for(
+    endpoint: &Endpoint,
+    id: EndpointId,
+    on_missing: OnMissing,
+) -> ConnectionPath {
+    match endpoint.remote_info(id).await {
+        Some(info) => derive_path_from_addrs(info.addrs()),
+        None => ConnectionPath {
+            channel: on_missing.channel(),
+            address: None,
+        },
+    }
+}
 
 /// Derive the active [`ConnectionPath`] from a peer's `remote_info` address
 /// snapshot.
@@ -23,7 +74,7 @@ use uc_core::ports::connection_channel::{ConnectionChannel, ConnectionPath};
 /// (relay is only a fallback candidate). Having a `RemoteInfo` but no
 /// `Active` path ⇒ `Unknown` (mid-handshake / probing); nothing known ⇒
 /// `Offline`.
-pub(crate) fn derive_path_from_addrs<'a, I>(addrs: I) -> ConnectionPath
+fn derive_path_from_addrs<'a, I>(addrs: I) -> ConnectionPath
 where
     I: IntoIterator<Item = &'a iroh::endpoint::TransportAddrInfo>,
 {

@@ -683,9 +683,11 @@
   },
   "history": {
     "title": "History",
-    "subtitle": "{{count}} items",
+    "subtitle_one": "{{count}} item",
+    "subtitle_other": "{{count}} items",
     "searchPlaceholder": "Search clipboard…",
     "loadMore": "Load more",
+    "unknownFile": "Unknown file",
     "filter": {
       "all": "All",
       "text": "Text",
@@ -720,7 +722,8 @@
       "capturedAt": "Captured",
       "size": "Size",
       "fileCount": "Files",
-      "urlCount": "URLs"
+      "urlCount": "URLs",
+      "fileMissing": "(missing)"
     },
     "composite": {
       "title": "Search and filter",

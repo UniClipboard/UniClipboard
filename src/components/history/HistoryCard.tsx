@@ -62,16 +62,19 @@ function getFileExtLabel(name: string): string {
   return name.split('.').pop()?.toUpperCase() || 'FILE'
 }
 
-function getContentSizeLabel(item: DisplayClipboardItem): string | null {
+function getContentSizeLabel(
+  item: DisplayClipboardItem,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string | null {
   if (!item.content) return null
   switch (item.type) {
     case 'text': {
       const text = (item.content as ClipboardTextItem).display_text
-      return `${text.length} chars`
+      return t('clipboard.preview.charactersCount', { count: text.length })
     }
     case 'code': {
       const code = (item.content as ClipboardCodeItem).code
-      return `${code.length} chars`
+      return t('clipboard.preview.charactersCount', { count: code.length })
     }
     case 'link': {
       const link = item.content as ClipboardLinkItem
@@ -86,10 +89,9 @@ function getContentSizeLabel(item: DisplayClipboardItem): string | null {
     case 'file': {
       const file = item.content as ClipboardFileItem
       const count = file.file_names.length
+      if (count > 1) return t('clipboard.preview.filesCount', { count })
       const totalSize = file.file_sizes.filter(s => s >= 0).reduce((a, b) => a + b, 0)
-      const sizeStr = totalSize > 0 ? formatFileSize(totalSize) : null
-      if (count > 1) return sizeStr ? `${count} files` : `${count} files`
-      return sizeStr
+      return totalSize > 0 ? formatFileSize(totalSize) : null
     }
     default:
       return null
@@ -160,7 +162,11 @@ const LinkContent: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => {
 // remounts (e.g. when a new item shifts every card to a different column),
 // so the image initializes synchronously instead of flashing the placeholder
 // and re-fetching.
-const imageUrlCache = new Map<string, string>()
+// `null` is a real, cached value: it records an entry that resolved to no image
+// so the hook stops re-fetching it on every card remount. Only deterministic
+// "no resource / unresolvable" outcomes are cached; thrown errors are not, so a
+// transient daemon hiccup can still be retried.
+const imageUrlCache = new Map<string, string | null>()
 
 // TODO: thumbnail endpoint has issues; using original image via resource API for now
 function useResourceImageUrl(entryId: string): string | null {
@@ -168,15 +174,14 @@ function useResourceImageUrl(entryId: string): string | null {
 
   useEffect(() => {
     if (imageUrlCache.has(entryId)) {
-      setImageUrl(imageUrlCache.get(entryId)!)
+      setImageUrl(imageUrlCache.get(entryId) ?? null)
       return
     }
     let cancelled = false
     getClipboardEntryResource(entryId)
       .then(resource => {
-        if (cancelled || !resource) return
-        const url = resolveResourceImageUrl(resource)
-        if (!url) return
+        if (cancelled) return
+        const url = resource ? resolveResourceImageUrl(resource) : null
         imageUrlCache.set(entryId, url)
         setImageUrl(url)
       })
@@ -286,8 +291,9 @@ const FileGlyph: React.FC<{ ext: string; stacked?: boolean }> = ({ ext, stacked 
 // File card body: a color-coded file glyph (left) anchors recognition, with the
 // name + size beside it — the standard, scannable file list-item composition.
 const FileContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
+  const { t } = useTranslation()
   const count = item.file_names.length
-  const name = item.file_names[0] ?? 'Unknown file'
+  const name = item.file_names[0] ?? t('history.unknownFile')
   const primarySize = item.file_sizes[0] ?? -1
   const ext = getFileExtLabel(name)
   const totalSize = item.file_sizes.filter(s => s >= 0).reduce((a, b) => a + b, 0)
@@ -296,8 +302,8 @@ const FileContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
   const meta =
     count > 1
       ? totalSize > 0
-        ? `${count} files · ${formatFileSize(totalSize)}`
-        : `${count} files`
+        ? `${t('clipboard.preview.filesCount', { count })} · ${formatFileSize(totalSize)}`
+        : t('clipboard.preview.filesCount', { count })
       : primarySize >= 0
         ? formatFileSize(primarySize)
         : ''
@@ -342,7 +348,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   const relativeTime = useRelativeTime(item.activeTime)
   const color = TYPE_COLOR[item.type] ?? TYPE_COLOR.unknown
   const TypeIcon = TYPE_ICONS[item.type] ?? FileText
-  const sizeLabel = useMemo(() => getContentSizeLabel(item), [item])
+  const sizeLabel = useMemo(() => getContentSizeLabel(item, t), [item, t])
 
   const { delivery } = useEntryDelivery(item.id)
 
@@ -540,13 +546,15 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       {/* Copy button - visible on hover, hidden during transfer */}
       <button
         type="button"
+        aria-label={t('clipboard.item.actions.copy')}
+        tabIndex={isHovered && !isTransferring ? 0 : -1}
         onClick={e => {
           e.stopPropagation()
           onCopy(item.id)
         }}
         className={cn(
           'absolute top-2.5 right-2.5 z-20 flex items-center justify-center size-6 rounded-md bg-card border border-border/50 text-muted-foreground shadow-sm transition-all duration-150',
-          isHovered && !isTransferring ? 'opacity-100' : 'opacity-0'
+          isHovered && !isTransferring ? 'opacity-100' : 'opacity-0 pointer-events-none'
         )}
       >
         <Copy className="size-3" />
@@ -564,9 +572,9 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
           )}
         >
           <kbd className={cn('px-1 py-px rounded border font-mono', kbdClass)}>c</kbd>
-          <span>copy</span>
+          <span>{t('clipboard.item.actions.copy')}</span>
           <kbd className={cn('px-1 py-px rounded border font-mono', kbdClass)}>d</kbd>
-          <span>delete</span>
+          <span>{t('clipboard.item.actions.delete')}</span>
         </div>
       )}
     </div>

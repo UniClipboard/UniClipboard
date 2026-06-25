@@ -674,9 +674,10 @@
   },
   "history": {
     "title": "历史记录",
-    "subtitle": "{{count}} 项",
+    "subtitle_other": "{{count}} 项",
     "searchPlaceholder": "搜索剪贴板…",
     "loadMore": "加载更多",
+    "unknownFile": "未知文件",
     "filter": {
       "all": "全部",
       "text": "文本",
@@ -711,7 +712,8 @@
       "capturedAt": "捕获时间",
       "size": "大小",
       "fileCount": "文件数",
-      "urlCount": "链接数"
+      "urlCount": "链接数",
+      "fileMissing": "（已丢失）"
     },
     "composite": {
       "title": "搜索与筛选",

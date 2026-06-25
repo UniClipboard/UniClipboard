@@ -48,7 +48,7 @@ function SuggestionPanel({
 
   return (
     <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-border/40 bg-popover text-popover-foreground shadow-lg">
-      <div id={panelId} aria-label={title} className="max-h-72 overflow-y-auto p-1">
+      <div id={panelId} role="listbox" aria-label={title} className="max-h-72 overflow-y-auto p-1">
         {options.map((opt, i) => {
           const Icon = opt.icon
           const active = i === highlightIndex
@@ -63,6 +63,8 @@ function SuggestionPanel({
                 id={opt.id}
                 ref={active ? activeRef : undefined}
                 type="button"
+                role="option"
+                aria-selected={active}
                 tabIndex={-1}
                 onMouseDown={e => e.preventDefault()}
                 onClick={() => onSelect(i)}

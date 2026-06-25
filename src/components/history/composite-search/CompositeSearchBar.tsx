@@ -111,6 +111,10 @@ function CompositeSearchBar({
 
   const clampedHighlight =
     highlight < 0 || options.length === 0 ? -1 : Math.min(highlight, options.length - 1)
+  // The suggestion panel is only mounted when there are options to show; the
+  // combobox ARIA attributes mirror that so AT only sees the popup when it
+  // actually exists.
+  const expanded = open && options.length > 0
 
   const handlers = { onContentFilterChange, onSourceFilterChange, onTimeRangeChange }
   const resetDimension = (dimension: Dimension) => resetDimensionValue(dimension, handlers)
@@ -250,7 +254,14 @@ function CompositeSearchBar({
         <input
           ref={inputRef}
           type="text"
+          role="combobox"
           aria-label={t('history.composite.title')}
+          aria-autocomplete="list"
+          aria-expanded={expanded}
+          aria-controls={expanded ? panelId : undefined}
+          aria-activedescendant={
+            expanded && clampedHighlight >= 0 ? options[clampedHighlight]?.id : undefined
+          }
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
@@ -282,7 +293,7 @@ function CompositeSearchBar({
           </button>
         )}
       </div>
-      {open && options.length > 0 && (
+      {expanded && (
         <SuggestionPanel
           panelId={panelId}
           title={t('history.composite.title')}

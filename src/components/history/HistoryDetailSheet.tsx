@@ -169,29 +169,36 @@ const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
   )
 }
 
-const DetailFile: React.FC<{ item: ClipboardFileItem }> = ({ item }) => (
-  <div className="space-y-2">
-    {item.file_names.map((name, i) => {
-      const size = item.file_sizes[i] ?? 0
-      const missing = item.file_missing?.[i] ?? false
-      return (
-        <div key={i} className="rounded-lg bg-muted/20 px-3 py-2.5">
-          <div className="flex items-center gap-1.5 mb-1">
-            <File className="size-3 text-muted-foreground/40 shrink-0" />
-            <span className="text-[10.5px] text-muted-foreground/50">
-              {getFileExtLabel(name)}
-              {size > 0 && ` - ${formatFileSize(size)}`}
-            </span>
-            {missing && <span className="text-[10px] text-destructive/70">(missing)</span>}
+const DetailFile: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
+  const { t } = useTranslation()
+  return (
+    <div className="space-y-2">
+      {item.file_names.map((name, i) => {
+        const size = item.file_sizes[i] ?? 0
+        const missing = item.file_missing?.[i] ?? false
+        return (
+          <div key={i} className="rounded-lg bg-muted/20 px-3 py-2.5">
+            <div className="flex items-center gap-1.5 mb-1">
+              <File className="size-3 text-muted-foreground/40 shrink-0" />
+              <span className="text-[10.5px] text-muted-foreground/50">
+                {getFileExtLabel(name)}
+                {size > 0 && ` - ${formatFileSize(size)}`}
+              </span>
+              {missing && (
+                <span className="text-[10px] text-destructive/70">
+                  {t('history.detail.fileMissing')}
+                </span>
+              )}
+            </div>
+            <div className="text-[12.5px] font-medium text-foreground/85 break-all leading-relaxed">
+              {name}
+            </div>
           </div>
-          <div className="text-[12.5px] font-medium text-foreground/85 break-all leading-relaxed">
-            {name}
-          </div>
-        </div>
-      )
-    })}
-  </div>
-)
+        )
+      })}
+    </div>
+  )
+}
 
 // ── Meta row ────────────────────────────────────────────────────
 
@@ -320,13 +327,19 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
     }
     switch (item.type) {
       case 'text':
-        return <DetailText item={item.content as ClipboardTextItem} entryId={item.id} />
+        return (
+          <DetailText key={item.id} item={item.content as ClipboardTextItem} entryId={item.id} />
+        )
       case 'code':
-        return <DetailCode item={item.content as ClipboardCodeItem} entryId={item.id} />
+        return (
+          <DetailCode key={item.id} item={item.content as ClipboardCodeItem} entryId={item.id} />
+        )
       case 'link':
         return <DetailLink item={item.content as ClipboardLinkItem} />
       case 'image':
-        return <DetailImage item={item.content as ClipboardImageItem} entryId={item.id} />
+        return (
+          <DetailImage key={item.id} item={item.content as ClipboardImageItem} entryId={item.id} />
+        )
       case 'file':
         return <DetailFile item={item.content as ClipboardFileItem} />
       default:
@@ -386,6 +399,7 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
               <Button
                 variant="outline"
                 size="sm"
+                aria-label={t('clipboard.item.actions.delete')}
                 className="text-destructive hover:text-destructive"
                 onClick={() => void handleDelete()}
               >

@@ -25,6 +25,9 @@ import {
 
 // ── Constants ───────────────────────────────────────────────────
 
+/** Search-mode page size; the window grows by this as the user scrolls. */
+const SEARCH_PAGE_SIZE = 100
+
 /** Map a search-index content category to the display item's render type. */
 function mapSearchContentType(ft: SearchResultDto['contentType']): DisplayClipboardItem['type'] {
   switch (ft) {
@@ -86,6 +89,10 @@ const HistoryPage: React.FC = () => {
   const [submittedQuery, setSubmittedQuery] = useState('')
   const [timeRange, setTimeRange] = useState<TimeRangePreset>('all_time')
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
+  // Search-mode pagination: the engine is queried for a growing window
+  // (`offset` stays 0, `limit` grows) so scrolling reveals more matches. Reset
+  // to one page whenever the query/filters change.
+  const [searchLimit, setSearchLimit] = useState(SEARCH_PAGE_SIZE)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [copySuccessId, setCopySuccessId] = useState<string | null>(null)
@@ -197,14 +204,24 @@ const HistoryPage: React.FC = () => {
     []
   )
 
-  const { results: searchResults, isSearching: searchLoading } = useClipboardSearch(
+  // Collapse the window back to one page whenever the search inputs change so a
+  // new query never inherits the previous query's expanded limit.
+  useEffect(() => {
+    setSearchLimit(SEARCH_PAGE_SIZE)
+  }, [submittedQuery, activeFilter, sourceFilter, timeRange])
+
+  const {
+    results: searchResults,
+    isSearching: searchLoading,
+    total: searchTotal,
+  } = useClipboardSearch(
     {
       enabled: isSearchActive,
       query: submittedQuery.trim(),
       contentTypes: filterToContentTypes(activeFilter),
       sourceDevices: sourceFilter ?? undefined,
       timePreset: hasTimeFilter ? timeRange : undefined,
-      limit: 100,
+      limit: searchLimit,
     },
     mapSearchResult
   )
@@ -227,6 +244,11 @@ const HistoryPage: React.FC = () => {
   const hasMoreRef = useRef(hasMore)
   const handleLoadMoreRef = useRef(handleLoadMore)
   const isSearchActiveRef = useRef(isSearchActive)
+  // Search-mode load-more reads these through refs so the scroll handler can stay
+  // a stable, dependency-free callback (same pattern as the browse-mode refs).
+  const searchTotalRef = useRef(searchTotal)
+  const searchLoadedRef = useRef(0)
+  const searchLoadingRef = useRef(searchLoading)
 
   useEffect(() => {
     hasMoreRef.current = hasMore
@@ -240,11 +262,26 @@ const HistoryPage: React.FC = () => {
     handleLoadMoreRef.current = handleLoadMore
   }, [handleLoadMore])
 
+  useEffect(() => {
+    searchTotalRef.current = searchTotal
+    searchLoadedRef.current = searchResults?.length ?? 0
+    searchLoadingRef.current = searchLoading
+  }, [searchTotal, searchResults, searchLoading])
+
   const checkShouldLoadMore = useCallback(() => {
     const el = scrollRef.current
-    if (!el || !hasMoreRef.current || isSearchActiveRef.current) return
+    if (!el) return
     const { scrollTop, scrollHeight, clientHeight } = el
-    if (scrollHeight - scrollTop - clientHeight < 400) {
+    if (scrollHeight - scrollTop - clientHeight >= 400) return
+    if (isSearchActiveRef.current) {
+      // Grow the search window while a fetch isn't already in flight and the
+      // engine reported more matches than we currently hold.
+      const total = searchTotalRef.current
+      if (!searchLoadingRef.current && total != null && searchLoadedRef.current < total) {
+        searchLoadingRef.current = true // guard against re-firing before state settles
+        setSearchLimit(n => n + SEARCH_PAGE_SIZE)
+      }
+    } else if (hasMoreRef.current) {
       handleLoadMoreRef.current()
     }
   }, [])

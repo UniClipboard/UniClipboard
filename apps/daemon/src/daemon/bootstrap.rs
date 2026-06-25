@@ -11,9 +11,7 @@
 use std::sync::Arc;
 
 use uc_application::facade::{BlobTransferFacade, ClipboardSyncFacade};
-use uc_bootstrap::assembly::WiredDependencies;
-use uc_bootstrap::builders::build_daemon_lifecycle;
-use uc_bootstrap::SyncEngineAssembly;
+use uc_bootstrap::{build_daemon_lifecycle, SyncEngineAssembly, WiredDependencies};
 
 /// daemon-lifecycle 装配结果。
 ///

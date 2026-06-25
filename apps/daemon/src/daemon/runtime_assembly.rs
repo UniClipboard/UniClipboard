@@ -18,8 +18,7 @@ use uc_application::{
     ApplyInboundClipboardUseCase, FileCacheBlobMaterializer, InboundCapture as ApplyInboundCapture,
     InboundWrite as ApplyInboundWrite,
 };
-use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
-use uc_bootstrap::SystemClipboardWiring;
+use uc_bootstrap::{FileTransferLifecycle, SystemClipboardWiring};
 use uc_core::ports::{ClipboardEventRepositoryPort, EntryDeliveryRepositoryPort};
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_webserver::api::types::DaemonWsEvent;

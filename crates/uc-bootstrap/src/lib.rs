@@ -33,10 +33,11 @@ pub use assembly::{
 };
 pub use background_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
 pub use builders::{build_daemon_lifecycle, DaemonLifecycle};
+pub use file_transfer_lifecycle::FileTransferLifecycle;
 pub use non_gui_runtime::{
     build_app_facade_from_deps, build_cli_app_runtime, build_mobile_sync_facade,
     resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,
     ClipboardRestoreAssembly,
 };
 pub use space_setup::SyncEngineAssembly;
-pub use tracing::init_tracing_subscriber;
+pub use tracing::{init_tracing_subscriber, install_panic_logging_hook};

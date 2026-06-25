@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use uc_application::facade::BlobTransferFacade;
-use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
+use uc_bootstrap::FileTransferLifecycle;
 
 use crate::daemon::service::{DaemonService, ServiceHealth};
 

@@ -27,8 +27,7 @@ use uc_application::facade::{
     ActiveClipboardReconcileDeps, ActiveClipboardReconcileFacade, AppFacade, AppPaths,
     ClipboardSnapshotDeps, FileTransferFacade,
 };
-use uc_bootstrap::assembly::WiredDependencies;
-use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
+use uc_bootstrap::{FileTransferLifecycle, WiredDependencies};
 
 use super::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
 use super::app_facade_assembly::{build_daemon_lifecycle_facades, DaemonLifecycleFacadesInput};

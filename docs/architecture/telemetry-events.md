@@ -385,7 +385,7 @@ pub struct SyncEventProps {
     pub direction: Direction,           // outbound | inbound
     pub payload_type: PayloadType,      // text | image | file
     pub payload_size_bucket: PayloadSizeBucket,
-    pub transport_type: TransportType,  // local | p2p_direct | relay | fallback_cloud
+    pub transport_type: TransportType,  // local | p2p_direct | relay | fallback_cloud | unknown
     pub peer_os: Option<Os>,            // 已知则填，不要因为缺失就丢事件
     pub sync_latency_ms: Option<u32>,   // 仅成功事件携带
     pub failure_reason: Option<FailureReason>,  // 仅失败事件携带
@@ -423,8 +423,42 @@ pub struct SyncDeferredProps {
 
 不带 `transport_type`：deferred 时本次没有真实发送，记录任何 transport 都是
 误导性数据。如果未来要标注"原计划的"transport，请单独命名字段以避免与
-`sync_attempted` / `sync_succeeded` / `sync_failed` 上"实际使用的"transport
-混淆。
+`sync_succeeded` / `sync_failed` 上"实际使用的"transport 混淆。
+
+#### transport_type 口径（实际连接路径 + unknown）
+
+`transport_type` 反映**本次发送实际走的连接路径**，由 dispatch adapter 在
+send/ack settle 后探测 iroh `remote_info` 的活跃 QUIC path 得出（IP 直连记
+`p2p_direct`，走 relay 记 `relay`）。在引入本口径之前该字段被硬编码为
+`p2p_direct`，PostHog 上的 transport 分布全是假数据；上线后才产生真实数据，
+**历史无法回填**。
+
+各事件携带的取值：
+
+- `sync_attempted`：恒为 `unknown`。它在 dial 之前固定 fire，此刻还没有任何
+  连接路径，不去猜测。
+- `sync_succeeded` / `sync_failed`：携带探测到的真实路径。失败也带——一次被
+  对端 `Rejected` 的发送仍然走过某条 path，归因到该 path。
+- `first_clipboard_sync_succeeded` / `first_file_sync_succeeded`：同 succeeded，
+  携带真实路径。
+
+`unknown` 表示**采集时刻无法解析出活跃路径**：dial 在建立任何 path 之前就失败
+（归 `Offline`），或快照恰好取在握手 / path 切换中途。它与具体的 `p2p_direct`
+/ `relay` 区分开，让 `unknown` 占比成为可见的独立切片——占比偏高是连接探测时
+机的数据质量信号，值得排查，而不是被静默并入 `p2p_direct`。
+
+底层 `ConnectionChannel` → `TransportType` 映射（application 层 `per_peer`）：
+
+| ConnectionChannel | TransportType |
+|-------------------|---------------|
+| `Direct`          | `p2p_direct`  |
+| `Relay`           | `relay`       |
+| `Unknown`         | `unknown`     |
+| `Offline`         | `unknown`     |
+
+dashboard 想看"直连 vs relay 分布"时，按 `sync_succeeded.transport_type` 分组即
+可（先剔除 `unknown` 切片，或单列观察其占比）。`local` / `fallback_cloud` 当前发
+送路径不产生，保留给未来的本机 / 云中转场景。
 
 ### 7.3 FailureReason 枚举（sync_failed 专用）
 

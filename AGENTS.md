@@ -9,11 +9,13 @@ Do not treat this file as a full memory dump. Read only the documents needed for
 ## Always Apply
 
 - Fix root causes, not symptoms.
+- Use the standard, established terminology of software engineering and computer science. If a metaphor or coined expression is unavoidable, also give the corresponding standard term; never invent new words for the sake of novelty.
 - Preserve single source of truth and clear ownership.
 - Do not keep parallel old/new logic without a removal plan.
 - Use repo-relative paths in tracked docs.
 - Use language identifiers on fenced code blocks.
 - When conversation is in Chinese, respond in natural Chinese.
+  - Do not mix Chinese and English within a Chinese reply, except for established proper nouns / technical terms (e.g. crate names, API identifiers, file paths) that have no natural Chinese equivalent.
 - **项目文档**（`docs/`、README、crate 级 `AGENTS.md`、`CONTRIBUTING*.md`）使用中文。此约定覆盖全局 `CLAUDE.md` 中"写文档用英文"的默认规则。
   - 引用外部规范（RFC、标准库 API 等）时，专有名词保留英文原文。
 - **代码注释**（`//` / `///` / `/* */` / doc comments）使用英文。存量中文注释不强制迁移，新增或修改注释时按英文撰写；踏到旧中文注释可顺手改成英文。

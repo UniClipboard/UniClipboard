@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
+use uc_core::blob::ports::{BlobContentIngestPort, BlobReaderPort, BlobWriterPort};
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
     AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
@@ -214,6 +214,10 @@ pub struct FileTransferPorts {
 pub struct StoragePorts {
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub blob_writer: Arc<dyn BlobWriterPort>,
+    /// Path-ingest view of the same blob writer that also surfaces the
+    /// content hash; used by capture to derive a file entry's snapshot
+    /// identity from device-independent file content.
+    pub blob_content_ingest: Arc<dyn BlobContentIngestPort>,
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub thumbnail_generator: Arc<dyn ThumbnailGeneratorPort>,
     pub file_transfer: FileTransferPorts,

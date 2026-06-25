@@ -642,7 +642,7 @@ pub(crate) async fn build_sync_engine_assembly(
         Arc::clone(&deps.device.device_identity),
         Arc::clone(&deps.clipboard.representation_cache),
         Arc::clone(&deps.clipboard.spool_queue),
-        Arc::clone(&deps.storage.blob_writer),
+        Arc::clone(&deps.storage.blob_content_ingest),
         Arc::clone(&deps.analytics),
     ));
     let pull_store_materializer = Arc::new(FileCacheBlobMaterializer::new(

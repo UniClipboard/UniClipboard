@@ -904,6 +904,7 @@ pub fn wire_dependencies(
         storage: StoragePorts {
             blob_store: platform.blob_store,
             blob_writer: platform.blob_writer,
+            blob_content_ingest: platform.blob_content_ingest,
             thumbnail_repo: infra.thumbnail_repo,
             thumbnail_generator: infra.thumbnail_generator,
             file_transfer: infra.file_transfer,

@@ -29,8 +29,10 @@ use uc_observability::analytics::{
 };
 use uc_observability::{stages, FlowId};
 
-use uc_core::blob::ports::BlobWriterPort;
+use uc_core::blob::ports::BlobContentIngestPort;
 use uc_core::clipboard::{ClipboardPayloadSource, PersistedClipboardRepresentation};
+
+use crate::facade::clipboard_outbound::extract_file_paths_from_snapshot;
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{
     FindEntryIdBySnapshotHashPort, RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort,
@@ -72,11 +74,15 @@ pub struct CaptureClipboardUseCase {
     device_identity: Arc<dyn DeviceIdentityPort>,
     representation_cache: Arc<dyn RepresentationCachePort>,
     spool_queue: Arc<dyn SpoolQueuePort>,
-    /// 用于把 path-backed `ObservedClipboardRepresentation` 同步物化进 blob 仓库。
-    /// 触发时机:capture 入口检测到 `ClipboardPayloadSource::LocalFile` 的 rep,
-    /// 调 `write_path_if_absent` 得到 `BlobId`,直接产出 `BlobReady` 状态的
-    /// `PersistedClipboardRepresentation`,绕过 normalizer / cache / spool 通路。
-    blob_writer: Arc<dyn BlobWriterPort>,
+    /// Materialize path-backed files into the blob store and recover their
+    /// content hash in one streaming pass. Used for two file-rep shapes:
+    /// - `ClipboardPayloadSource::LocalFile` reps → produce a `BlobReady`
+    ///   `PersistedClipboardRepresentation` (bypassing normalizer/cache/spool).
+    /// - file paths parsed out of an Inline `text/uri-list` rep (e.g. Windows
+    ///   file copy) → fill `file_content_digests` so the entry's snapshot
+    ///   identity is derived from device-independent file content rather than
+    ///   the device-local `text/uri-list` path text.
+    blob_ingest: Arc<dyn BlobContentIngestPort>,
     /// schema doc §12.1 · outbound 同步链路源头流量信号。
     /// 仅在 `ClipboardChangeOrigin::{LocalCapture, LocalRestore}` 路径 emit；
     /// `RemotePush` 严禁 emit（红线：与入站同步双计会污染 DAU 信号）。
@@ -95,7 +101,7 @@ impl CaptureClipboardUseCase {
         device_identity: Arc<dyn DeviceIdentityPort>,
         representation_cache: Arc<dyn RepresentationCachePort>,
         spool_queue: Arc<dyn SpoolQueuePort>,
-        blob_writer: Arc<dyn BlobWriterPort>,
+        blob_ingest: Arc<dyn BlobContentIngestPort>,
         analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
@@ -108,7 +114,7 @@ impl CaptureClipboardUseCase {
             device_identity,
             representation_cache,
             spool_queue,
-            blob_writer,
+            blob_ingest,
             analytics,
         }
     }
@@ -183,21 +189,14 @@ impl CaptureClipboardUseCase {
                 } => d,
                 _ => self.device_identity.current_device_id(),
             };
-            // Populate file_content_digests from LocalFile reps so that
-            // snapshot_hash() is based on file content (device-independent)
-            // rather than the text/uri-list path text (device-specific).
+            // Populate file_content_digests so snapshot_hash() is based on
+            // device-independent file *content* rather than the text/uri-list
+            // path text (device-specific). Skipped when already populated
+            // (RemotePush: the inbound materializer fills these from the wire
+            // before this capture runs).
             if snapshot.file_content_digests.is_empty() {
-                let digests: Vec<[u8; 32]> = snapshot
-                    .representations
-                    .iter()
-                    .filter(|r| {
-                        matches!(
-                            r.source(),
-                            uc_core::clipboard::ClipboardPayloadSource::LocalFile { .. }
-                        )
-                    })
-                    .map(|r| r.content_hash().bytes)
-                    .collect();
+                let digests =
+                    derive_file_content_digests(&snapshot, self.blob_ingest.as_ref()).await;
                 if !digests.is_empty() {
                     snapshot.file_content_digests = digests;
                 }
@@ -252,7 +251,7 @@ impl CaptureClipboardUseCase {
             // 3. Normalize representations.
             //
             // 分流:Inline source 走 normalizer 既有逻辑(inline / staged / staged_with_preview
-            // 决策);LocalFile source 调 BlobWriter.write_path_if_absent 同步物化到 blob 仓库,
+            // 决策);LocalFile source 调 BlobContentIngestPort.ingest_path 同步物化到 blob 仓库,
             // 直接产出 BlobReady 状态的 PersistedRep —— 绕过 representation_cache / spool_queue,
             // 因为它不需要"暂存字节等待异步物化"。
             //
@@ -264,15 +263,17 @@ impl CaptureClipboardUseCase {
                 for observed in &snapshot.representations {
                     match observed.source() {
                         ClipboardPayloadSource::LocalFile { path, size_bytes } => {
-                            let blob_id =
-                                self.blob_writer.write_path_if_absent(path).await.map_err(
-                                    |err| {
-                                        anyhow::anyhow!(
-                                            "LocalFile rep ingest into blob store failed (path={}): {err}",
-                                            path.display()
-                                        )
-                                    },
-                                )?;
+                            let blob_id = self
+                                .blob_ingest
+                                .ingest_path(path)
+                                .await
+                                .map(|ingested| ingested.blob_id)
+                                .map_err(|err| {
+                                    anyhow::anyhow!(
+                                        "LocalFile rep ingest into blob store failed (path={}): {err}",
+                                        path.display()
+                                    )
+                                })?;
                             info!(
                                 rep_id = %observed.id,
                                 blob_id = %blob_id,
@@ -625,6 +626,57 @@ async fn resurface_existing_entry(
     }
 }
 
+/// Derive `file_content_digests` for a freshly captured snapshot so that
+/// [`SystemClipboardSnapshot::snapshot_hash`] keys on device-independent file
+/// *content* rather than the device-local `text/uri-list` path text. Returns
+/// the digest list (empty when the snapshot carries no resolvable files).
+///
+/// Two file-rep shapes contribute:
+/// - `ClipboardPayloadSource::LocalFile` reps (e.g. macOS Finder copy): the
+///   content hash is already available from the rep without extra I/O.
+/// - Inline `text/uri-list` file reps (e.g. Windows file copy): the files live
+///   as path text, not `LocalFile` reps, so each referenced file is
+///   materialized via `blob_ingest` and its content hash collected. Without
+///   this, capture would store the uri-list path-text hash while dispatch
+///   sends the content hash, and the receiver would create two entries for one
+///   file.
+///
+/// `extract_file_paths_from_snapshot` is shared with the dispatch path so both
+/// resolve the same set of files (including macOS APFS file-reference
+/// resolution). A per-file ingest failure is skipped (warn) rather than
+/// dropping the whole capture; when every file fails the digest list is empty
+/// and snapshot identity falls back to the uri-list text.
+///
+/// The two shapes are mutually exclusive in practice (a snapshot carries either
+/// `LocalFile` reps or an inline uri-list rep), so the inline branch only runs
+/// when no `LocalFile` digests were found.
+async fn derive_file_content_digests(
+    snapshot: &SystemClipboardSnapshot,
+    blob_ingest: &dyn BlobContentIngestPort,
+) -> Vec<[u8; 32]> {
+    let mut digests: Vec<[u8; 32]> = snapshot
+        .representations
+        .iter()
+        .filter(|r| matches!(r.source(), ClipboardPayloadSource::LocalFile { .. }))
+        .map(|r| r.content_hash().bytes)
+        .collect();
+
+    if digests.is_empty() {
+        for path in extract_file_paths_from_snapshot(snapshot) {
+            match blob_ingest.ingest_path(&path).await {
+                Ok(ingested) => digests.push(ingested.content_hash.bytes),
+                Err(err) => warn!(
+                    error = %err,
+                    file = %path.display(),
+                    "capture: skipping unreadable clipboard file when deriving content identity"
+                ),
+            }
+        }
+    }
+
+    digests
+}
+
 /// schema doc §12.1 红线 · 把 `ClipboardChangeOrigin` 映射到 telemetry 的
 /// `CaptureOrigin`，并在入站同步路径返回 `None` 以阻断双计。
 ///
@@ -703,6 +755,116 @@ mod tests {
             representations: reps,
             file_content_digests: Vec::new(),
         }
+    }
+
+    /// Fake ingest whose content hash is keyed on the file *name*, so two
+    /// devices addressing the same file by different absolute paths produce
+    /// the same content hash — modelling identical bytes behind device-local
+    /// paths without touching the filesystem.
+    struct FakeIngestByName;
+
+    #[async_trait::async_trait]
+    impl BlobContentIngestPort for FakeIngestByName {
+        async fn ingest_path(
+            &self,
+            source_path: &std::path::Path,
+        ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+            let name = source_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            let mut bytes = [0u8; 32];
+            let nb = name.as_bytes();
+            let n = nb.len().min(32);
+            bytes[..n].copy_from_slice(&nb[..n]);
+            Ok(uc_core::blob::ports::IngestedBlob {
+                blob_id: uc_core::ids::BlobId::new(),
+                content_hash: uc_core::ContentHash::from(&bytes),
+                size_bytes: 0,
+            })
+        }
+    }
+
+    /// Core of the double-channel dedup fix: capture must derive a file
+    /// entry's identity from device-independent file *content*, not the
+    /// device-local `text/uri-list` path text. Two devices copying the same
+    /// file (different absolute paths, same content) must produce the same
+    /// `snapshot_hash` — otherwise the receiver creates two entries.
+    #[tokio::test]
+    async fn inline_uri_list_identity_is_device_independent() {
+        let blob_ingest = FakeIngestByName;
+
+        // Same file ("report.msi"), addressed by two device-local paths.
+        let snap_a = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///Users/alice/report.msi",
+        )]);
+        let snap_b = snapshot_with(vec![rep(
+            "files",
+            Some("text/uri-list"),
+            b"file:///home/bob/report.msi",
+        )]);
+
+        // Sanity: without content digests the bare uri-list snapshots hash
+        // differently (the bug) — identity leaks the device-local path text.
+        assert_ne!(
+            snap_a.snapshot_hash(),
+            snap_b.snapshot_hash(),
+            "bare uri-list identity must differ by device-local path text (pre-fix state)"
+        );
+
+        let mut a = snap_a.clone();
+        let mut b = snap_b.clone();
+        a.file_content_digests = derive_file_content_digests(&a, &blob_ingest).await;
+        b.file_content_digests = derive_file_content_digests(&b, &blob_ingest).await;
+
+        assert!(
+            !a.file_content_digests.is_empty(),
+            "capture must fill content digests for inline uri-list files"
+        );
+        assert_eq!(
+            a.file_content_digests, b.file_content_digests,
+            "same file content → same digests regardless of device-local path"
+        );
+        assert_eq!(
+            a.snapshot_hash(),
+            b.snapshot_hash(),
+            "content-based identity must be device-independent (fixes the double-entry split)"
+        );
+        assert_ne!(
+            a.snapshot_hash(),
+            snap_a.snapshot_hash(),
+            "filling content digests must move identity off the path-text hash"
+        );
+    }
+
+    /// A per-file ingest failure must be skipped (not abort the capture); when
+    /// every referenced file fails, the digest list is empty and identity
+    /// falls back to the uri-list text.
+    #[tokio::test]
+    async fn inline_uri_list_ingest_failure_is_skipped() {
+        struct AlwaysFails;
+        #[async_trait::async_trait]
+        impl BlobContentIngestPort for AlwaysFails {
+            async fn ingest_path(
+                &self,
+                _: &std::path::Path,
+            ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+                Err(anyhow::anyhow!("unreadable"))
+            }
+        }
+
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///Users/alice/report.msi",
+        )]);
+        let digests = derive_file_content_digests(&snap, &AlwaysFails).await;
+        assert!(
+            digests.is_empty(),
+            "all-files-failed must yield no digests (identity falls back to uri-list text)"
+        );
     }
 
     #[test]

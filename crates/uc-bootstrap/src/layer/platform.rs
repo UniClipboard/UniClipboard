@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
+use uc_core::blob::ports::{BlobContentIngestPort, BlobReaderPort, BlobWriterPort};
 use uc_core::ports::clipboard::ClipboardRepresentationNormalizerPort;
 use uc_core::ports::*;
 use uc_infra::blob::{BlobRepositoryPort, BlobStorePort, BlobWriter, FilesystemBlobStore};
@@ -58,6 +58,10 @@ pub struct PlatformLayer {
 
     // Blob writer
     pub blob_writer: Arc<dyn BlobWriterPort>,
+
+    // Path-ingest view of the same blob writer that also returns the content
+    // hash (used by capture to derive file snapshot identity).
+    pub blob_content_ingest: Arc<dyn BlobContentIngestPort>,
 
     // Blob store (encrypted) — exposed to use cases as a read-only port.
     pub blob_store: Arc<dyn BlobReaderPort>,
@@ -230,11 +234,16 @@ pub fn create_platform_layer(
     // read-side (BlobReaderPort). Both views point at the same concrete
     // EncryptedBlobStore instance.
     let encrypted_blob_store_for_writer: Arc<dyn BlobStorePort> = encrypted_blob_store.clone();
-    let blob_writer: Arc<dyn BlobWriterPort> = Arc::new(BlobWriter::new(
+    // One concrete BlobWriter, surfaced as both the write-side port and the
+    // content-ingest port (capture needs the content hash; other writers need
+    // only the BlobId). Both views point at the same instance.
+    let blob_writer_concrete = Arc::new(BlobWriter::new(
         encrypted_blob_store_for_writer,
         blob_repository,
         clock,
     ));
+    let blob_writer: Arc<dyn BlobWriterPort> = blob_writer_concrete.clone();
+    let blob_content_ingest: Arc<dyn BlobContentIngestPort> = blob_writer_concrete;
     let blob_store_reader: Arc<dyn BlobReaderPort> = encrypted_blob_store;
 
     let current_profile: Arc<dyn uc_core::ports::security::current_profile::CurrentProfilePort> =
@@ -248,6 +257,7 @@ pub fn create_platform_layer(
         device_identity,
         representation_normalizer,
         blob_writer,
+        blob_content_ingest,
         blob_store: blob_store_reader,
         session,
         current_profile,

@@ -43,7 +43,7 @@ use uc_infra::network::iroh::{IrohRelayProbeAdapter, IrohRelayProbeError, IrohRe
 
 use crate::assembly::get_storage_paths;
 use crate::space_setup::{build_sync_engine_assembly, SyncEngineAssembly};
-use crate::task_registry::TaskRegistry;
+use uc_core::task_registry::TaskRegistry;
 
 // ---------------------------------------------------------------------------
 // LoggingHostEventEmitter

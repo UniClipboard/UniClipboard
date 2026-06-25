@@ -13,12 +13,12 @@ use tracing::{info, warn};
 use tokio::sync::mpsc;
 use uc_application::deps::AppDeps;
 
-use crate::task_registry::TaskRegistry;
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
     ClipboardRepresentationStore, ThumbnailGeneratorPort, ThumbnailRepositoryPort,
 };
 use uc_core::ports::{ClockPort, ContentHashPort};
+use uc_core::task_registry::TaskRegistry;
 use uc_infra::blob::BlobWriterPort;
 use uc_infra::clipboard::{BackgroundBlobWorker, SpoolJanitor, SpoolScanner, StagedReconciler};
 

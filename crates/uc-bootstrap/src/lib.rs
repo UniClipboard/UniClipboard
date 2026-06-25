@@ -17,10 +17,7 @@ mod network_policy;
 pub mod non_gui_runtime;
 pub mod pending_import;
 pub mod space_setup;
-pub mod task_registry;
 pub mod tracing;
-
-pub use task_registry::TaskRegistry;
 
 // Slice 6 / Issue #549 — composition-root analytics 装配入口。
 // 详见模块 doc。`build_core` 在 `wire_dependencies` 之后调用一次。

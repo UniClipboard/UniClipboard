@@ -8,7 +8,7 @@ import {
   Image as ImageIcon,
   Trash2,
 } from 'lucide-react'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { resolveResourceImageUrl } from '@/api/clipboardItems'
 import { getEntryDetail, getClipboardEntryResource } from '@/api/daemon/clipboard'
@@ -107,8 +107,8 @@ const DetailCode: React.FC<{ item: ClipboardCodeItem; entryId: string }> = ({ it
 
 const DetailLink: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => (
   <div className="space-y-3">
-    {item.urls.map((url, i) => (
-      <div key={i} className="rounded-lg bg-muted/20 px-3 py-2.5">
+    {item.urls.map(url => (
+      <div key={url} className="rounded-lg bg-muted/20 px-3 py-2.5">
         <div className="flex items-center gap-1.5 mb-1">
           <ExternalLink className="size-3 text-muted-foreground/40 shrink-0" />
           <span className="text-[10.5px] text-muted-foreground/50">URL</span>
@@ -177,7 +177,7 @@ const DetailFile: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
         const size = item.file_sizes[i] ?? 0
         const missing = item.file_missing?.[i] ?? false
         return (
-          <div key={i} className="rounded-lg bg-muted/20 px-3 py-2.5">
+          <div key={name} className="rounded-lg bg-muted/20 px-3 py-2.5">
             <div className="flex items-center gap-1.5 mb-1">
               <File className="size-3 text-muted-foreground/40 shrink-0" />
               <span className="text-[10.5px] text-muted-foreground/50">
@@ -298,20 +298,32 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
     if (ok) onOpenChange(false)
   }, [item, onDelete, onOpenChange])
 
+  // Reset the transient "copied" badge as part of the close event rather than a
+  // prop-watching effect (avoids the no-adjust-state-on-prop-change pattern).
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next) setCopyDone(false)
+      onOpenChange(next)
+    },
+    [onOpenChange]
+  )
+
+  // Read the latest copy/delete handlers via useEffectEvent so the keydown
+  // listener subscribes once per open instead of re-subscribing every time the
+  // handler identity changes (e.g. when the selected item switches).
+  const onCopyKey = useEffectEvent(() => void handleCopy())
+  const onDeleteKey = useEffectEvent(() => void handleDelete())
+
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (e.key === 'c') void handleCopy()
-      if (e.key === 'd') void handleDelete()
+      if (e.key === 'c') onCopyKey()
+      if (e.key === 'd') onDeleteKey()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [open, handleCopy, handleDelete])
-
-  useEffect(() => {
-    if (!open) setCopyDone(false)
   }, [open])
 
   const content = useMemo(() => {
@@ -352,7 +364,7 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
   const CopyIcon = copyDone ? Check : Copy
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent side="right" className="w-[420px] sm:max-w-[420px] flex flex-col p-0">
         {item && (
           <>

@@ -254,10 +254,14 @@ const FILE_TYPE_COLORS: { exts: string[]; color: string }[] = [
   { exts: ['JS', 'TS', 'TSX', 'JSX', 'PY', 'RS', 'GO', 'JSON', 'HTML', 'CSS', 'SH'], color: 'rgb(110,120,136)' },
 ]
 
+// Flatten the ext→color groups into a single lookup map so resolving a file's
+// color is an O(1) Map.get instead of scanning every group's `exts` per call.
+const EXT_COLOR = new Map<string, string>(
+  FILE_TYPE_COLORS.flatMap(group => group.exts.map(ext => [ext, group.color] as const))
+)
+
 function fileTypeColor(ext: string): string {
-  const e = ext.toUpperCase()
-  for (const group of FILE_TYPE_COLORS) if (group.exts.includes(e)) return group.color
-  return 'rgb(140,150,160)'
+  return EXT_COLOR.get(ext.toUpperCase()) ?? 'rgb(140,150,160)'
 }
 
 // A document-shaped, color-coded tile with the extension lettered in — the

@@ -1,5 +1,5 @@
 import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
@@ -432,7 +432,7 @@ export default function App() {
 
 // TitleBar wrapper with slot context
 const TitleBarWithSearch = ({ isSetupActive }: { isSetupActive: boolean }) => {
-  const slotCtx = useContext(TitleBarSlotContext)
+  const slotCtx = use(TitleBarSlotContext)
   return <TitleBar isSetupActive={isSetupActive} rightSlot={slotCtx?.rightSlot} />
 }
 
@@ -478,11 +478,17 @@ export const AppContentWithBar = () => {
   const [rightSlot, setRightSlot] = useState<React.ReactNode>(null)
   const slotValue = useMemo(() => ({ rightSlot, setRightSlot }), [rightSlot])
 
-  const titleBar = showCustomTitleBar ? (
-    <TitleBarSlotContext value={slotValue}>
-      <TitleBarWithSearch isSetupActive={isSetupActive} />
-    </TitleBarSlotContext>
-  ) : null
+  // Memoize so WindowShell doesn't receive brand-new titleBar JSX every render
+  // (jsx-no-jsx-as-prop) — only rebuild when its inputs actually change.
+  const titleBar = useMemo(
+    () =>
+      showCustomTitleBar ? (
+        <TitleBarSlotContext value={slotValue}>
+          <TitleBarWithSearch isSetupActive={isSetupActive} />
+        </TitleBarSlotContext>
+      ) : null,
+    [showCustomTitleBar, slotValue, isSetupActive]
+  )
 
   return (
     <TitleBarSlotContext value={slotValue}>

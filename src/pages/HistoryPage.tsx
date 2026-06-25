@@ -386,7 +386,7 @@ const HistoryPage: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       {/* ── Toolbar: quick filters (left) + composite search (right) ─ */}
-      <div className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-3 border-b border-border/20">
+      <div className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-2 pt-3 pb-2">
         <FilterBar
           contentFilter={activeFilter}
           sourceFilter={sourceFilter}

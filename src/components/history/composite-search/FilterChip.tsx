@@ -19,7 +19,7 @@ interface FilterChipProps {
 function FilterChip({ icon: Icon, label, onActivate, onClear }: FilterChipProps) {
   const { t } = useTranslation()
   return (
-    <span className="inline-flex h-5 items-center gap-1 rounded-md bg-foreground/8 pl-1.5 pr-0.5 text-[11px] font-medium text-foreground">
+    <span className="inline-flex h-5 items-center gap-1 rounded-full bg-foreground/8 pl-2 pr-0.5 text-[11px] font-medium text-foreground">
       <button
         type="button"
         onMouseDown={e => e.preventDefault()}
@@ -34,7 +34,7 @@ function FilterChip({ icon: Icon, label, onActivate, onClear }: FilterChipProps)
         onMouseDown={e => e.preventDefault()}
         onClick={onClear}
         aria-label={t('history.composite.removeFilter', { filter: label })}
-        className="inline-flex size-4 items-center justify-center rounded text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground"
+        className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground"
       >
         <X className="size-2.5" />
       </button>

@@ -9,13 +9,12 @@ pub mod analytics;
 pub mod assembly;
 pub mod background_tasks;
 pub mod builders;
-mod correlation;
 pub mod file_transfer_lifecycle;
 mod network_policy;
 pub mod non_gui_runtime;
+pub mod observability;
 pub mod startup;
 pub mod sync_engine;
-pub mod tracing;
 
 // The top-level re-exports below ARE the crate's external contract: the symbols
 // daemon (apps/daemon) and the CLI dev-tools feature (apps/cli) consume. Keep
@@ -38,5 +37,5 @@ pub use non_gui_runtime::{
     resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,
     ClipboardRestoreAssembly,
 };
+pub use observability::tracing::{init_tracing_subscriber, install_panic_logging_hook};
 pub use sync_engine::SyncEngineAssembly;
-pub use tracing::{init_tracing_subscriber, install_panic_logging_hook};

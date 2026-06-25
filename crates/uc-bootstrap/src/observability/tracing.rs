@@ -36,7 +36,7 @@ use sentry::integrations::tracing::{
 use tracing_subscriber::filter::{filter_fn, FilterExt};
 use tracing_subscriber::prelude::*;
 
-use crate::correlation::{self, CorrelationLayer};
+use super::correlation::{self, CorrelationLayer};
 use uc_application::facade::AppPaths;
 use uc_infra::settings::repository::load_settings_snapshot;
 use uc_observability::redact::{is_sensitive_key, REDACTED_PLACEHOLDER};

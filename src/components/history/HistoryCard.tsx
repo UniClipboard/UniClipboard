@@ -18,6 +18,7 @@ import { resolveResourceImageUrl } from '@/api/clipboardItems'
 import { getClipboardEntryResource } from '@/api/daemon/clipboard'
 import type { EntrySourceView } from '@/api/tauri-command/clipboard_delivery'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
+import { useRelativeTime } from '@/hooks/useRelativeTime'
 import type {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -175,6 +176,7 @@ function useResourceImageUrl(entryId: string): string | null {
       .then(resource => {
         if (cancelled || !resource) return
         const url = resolveResourceImageUrl(resource)
+        if (!url) return
         imageUrlCache.set(entryId, url)
         setImageUrl(url)
       })
@@ -196,6 +198,7 @@ const ImageCard: React.FC<{ item: DisplayClipboardItem; imageItem: ClipboardImag
 }) => {
   const { t } = useTranslation()
   const imageUrl = useResourceImageUrl(item.id)
+  const relativeTime = useRelativeTime(item.activeTime)
 
   return (
     <>
@@ -217,7 +220,7 @@ const ImageCard: React.FC<{ item: DisplayClipboardItem; imageItem: ClipboardImag
         <span className="text-[10.5px] font-medium text-white/90">
           {t('history.type.image', 'image')}
         </span>
-        <span className="ml-auto text-[10px] text-white/75">{item.time}</span>
+        <span className="ml-auto text-[10px] text-white/75">{relativeTime}</span>
       </div>
 
       {/* Pixel dimensions badge */}
@@ -336,6 +339,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   onHoverChange,
 }) => {
   const { t } = useTranslation()
+  const relativeTime = useRelativeTime(item.activeTime)
   const color = TYPE_COLOR[item.type] ?? TYPE_COLOR.unknown
   const TypeIcon = TYPE_ICONS[item.type] ?? FileText
   const sizeLabel = useMemo(() => getContentSizeLabel(item), [item])
@@ -490,7 +494,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
               ) : (
                 <>
                   {delivery && <SourceIndicator source={delivery.source} />}
-                  <span className="text-[10px] text-muted-foreground/40">{item.time}</span>
+                  <span className="text-[10px] text-muted-foreground/40">{relativeTime}</span>
                 </>
               )}
             </div>

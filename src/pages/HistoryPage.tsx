@@ -131,25 +131,11 @@ const HistoryPage: React.FC = () => {
     [spaceMembers, mobileDevices]
   )
 
-  const formatRelativeTime = useCallback(
-    (timestamp: number): string => {
-      const diff = Date.now() - timestamp
-      const minutes = Math.floor(diff / 60000)
-      if (minutes < 1) return t('clipboard.time.justNow')
-      if (minutes < 60) return t('clipboard.time.minutesAgo', { minutes })
-      const hours = Math.floor(minutes / 60)
-      if (hours < 24) return t('clipboard.time.hoursAgo', { hours })
-      return t('clipboard.time.daysAgo', { days: Math.floor(hours / 24) })
-    },
-    [t]
-  )
-
   const displayItems = useMemo<DisplayClipboardItem[]>(() => {
     const realItems = items.map(entry => ({
       id: entry.id,
       type: entry.type,
       content: entry.content,
-      time: formatRelativeTime(entry.activeTime),
       activeTime: entry.activeTime,
       isFavorited: entry.isFavorited,
       isUnavailable: entry.isUnavailable,
@@ -163,7 +149,6 @@ const HistoryPage: React.FC = () => {
             {
               id: p.entryId,
               type: 'file' as const,
-              time: t('clipboard.time.justNow'),
               activeTime: p.createdAt,
               content: buildPendingFileContent(p),
               device: deviceNameByPeerId[p.fromDevice],
@@ -173,7 +158,7 @@ const HistoryPage: React.FC = () => {
     )
 
     return [...pendingDisplayItems, ...realItems]
-  }, [items, pendingItems, deviceNameByPeerId, formatRelativeTime, t])
+  }, [items, pendingItems, deviceNameByPeerId, t])
 
   // ── Server-side search ────────────────────────────────────────
   // Any active filter switches to the search engine. The browse LIST endpoint
@@ -205,12 +190,11 @@ const HistoryPage: React.FC = () => {
     (r: SearchResultDto): DisplayClipboardItem => ({
       id: r.entryId,
       type: mapSearchContentType(r.contentType),
-      time: formatRelativeTime(r.activeTimeMs),
       activeTime: r.activeTimeMs,
       content: null,
       textPreview: r.textPreview ?? undefined,
     }),
-    [formatRelativeTime]
+    []
   )
 
   const { results: searchResults, isSearching: searchLoading } = useClipboardSearch(

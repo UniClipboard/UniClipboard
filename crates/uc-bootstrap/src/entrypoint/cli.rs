@@ -9,7 +9,8 @@
 
 use uc_core::config::AppConfig;
 
-use crate::assembly::{get_storage_paths, wire_dependencies};
+use crate::assembly::wire_dependencies;
+use crate::layer::paths::get_storage_paths;
 use crate::wiring::deps::BackgroundRuntimeDeps;
 
 /// Shared core wiring for the CLI composition-root entry.

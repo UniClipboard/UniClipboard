@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 
 use uc_core::settings::model::CongestionController;
 
-use crate::sync_engine::IrohNodeConfig;
+use crate::subsystem::sync_engine::IrohNodeConfig;
 
 /// 把业务侧 `Settings.network` 翻译为 infra 侧 `IrohNodeConfig`。
 ///

@@ -131,7 +131,7 @@ pub struct BackgroundRuntimeDeps {
     /// later (Tauri webview, daemon WS). The 5 lifecycle actions
     /// (start/report_progress/complete/fail/cancel) live inside the
     /// `file_transfer_facade` carried on [`WiredDependencies`].
-    pub file_transfer_lifecycle: Arc<crate::file_transfer_lifecycle::FileTransferLifecycle>,
+    pub file_transfer_lifecycle: Arc<crate::subsystem::file_transfer::FileTransferLifecycle>,
     /// Single write boundary for all programmatic clipboard writes.
     /// Centralises guard-registration + write + cleanup-on-error.
     pub clipboard_write_coordinator:
@@ -139,7 +139,7 @@ pub struct BackgroundRuntimeDeps {
 }
 
 /// P2P / iroh sync-engine assembly inputs. Sole consumer:
-/// [`crate::sync_engine::build_sync_engine_assembly`]. These ports/paths never
+/// [`crate::subsystem::sync_engine::build_sync_engine_assembly`]. These ports/paths never
 /// flow through `AppDeps` — the `SpaceSetupFacade` they assemble lives in
 /// uc-application and is injected by this bundle at wire time, not by the
 /// AppFacade path.
@@ -325,7 +325,7 @@ struct InfraLayer {
     // assembly can pass it directly to `build_file_transfer_assembly`
     // (which casts it to `Arc<dyn FileTransferEventStorePort>` before
     // handing it to the publisher and use cases).
-    file_transfer_store: Arc<crate::file_transfer_lifecycle::FileTransferEventStore>,
+    file_transfer_store: Arc<crate::subsystem::file_transfer::FileTransferEventStore>,
 
     // Mobile sync 设备仓库 — narrow device-repository intent ports, all backed
     // by one `DieselMobileDeviceRepository` (cross-restart / cross-process
@@ -1417,7 +1417,7 @@ pub fn wire_dependencies(
             devices: infra.mobile_device_ports,
             endpoint_info: infra.mobile_sync_endpoint_info.clone(),
         },
-        analytics: crate::analytics::build_analytics_sink(),
+        analytics: crate::subsystem::analytics::build_analytics_sink(),
     };
 
     // Create shared host-event bus at wire time. The bus starts with the
@@ -1433,10 +1433,10 @@ pub fn wire_dependencies(
         Arc::new(crate::non_gui_runtime::LoggingHostEventEmitter) as Arc<dyn HostEventEmitterPort>,
     );
 
-    let crate::file_transfer_lifecycle::FileTransferAssembly {
+    let crate::subsystem::file_transfer::FileTransferAssembly {
         lifecycle: file_transfer_lifecycle,
         facade: file_transfer_facade,
-    } = crate::file_transfer_lifecycle::build_file_transfer_assembly(
+    } = crate::subsystem::file_transfer::build_file_transfer_assembly(
         Arc::clone(&file_transfer_store_arc),
         Arc::clone(&host_event_bus),
         deps.storage.file_transfer.clone(),

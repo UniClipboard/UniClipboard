@@ -42,7 +42,7 @@ use uc_infra::mobile_sync::{
 use uc_infra::network::iroh::{IrohRelayProbeAdapter, IrohRelayProbeError, IrohRelayProbeReport};
 
 use crate::assembly::get_storage_paths;
-use crate::sync_engine::{build_sync_engine_assembly, SyncEngineAssembly};
+use crate::subsystem::sync_engine::{build_sync_engine_assembly, SyncEngineAssembly};
 
 // ---------------------------------------------------------------------------
 // LoggingHostEventEmitter

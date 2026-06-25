@@ -28,7 +28,6 @@ use uc_application::facade::space_setup::{
     InitializeSpaceInput, RedeemPairingInvitationInput, SpaceSetupDeps, SpaceSetupFacade,
 };
 use uc_application::proof::HmacProofAdapter;
-use uc_bootstrap::IrohNodeConfig;
 use uc_core::ids::DeviceId;
 use uc_core::membership::{MemberRepositoryPort, MembershipError, SpaceMember};
 use uc_core::ports::pairing::PairingSessionPort;
@@ -40,6 +39,7 @@ use uc_core::ports::{
 use uc_core::settings::model::Settings;
 use uc_core::setup::SetupStatus;
 use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError, TrustedPeerRepositoryPort};
+use uc_infra::network::iroh::IrohNodeConfig;
 
 use uc_infra::fs::key_slot_store::JsonKeySlotStore;
 use uc_infra::network::iroh::{IrohIdentityStore, IrohNode, IrohNodeBuilder, PairingHandlers};

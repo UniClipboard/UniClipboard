@@ -75,7 +75,7 @@ use uc_infra::network::iroh::{
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
-pub use uc_infra::network::iroh::IrohNodeConfig;
+pub(crate) use uc_infra::network::iroh::IrohNodeConfig;
 use uc_infra::security::Sha256IdentityFingerprintFactory;
 use uc_platform::file_secure_storage::FileSecureStorage;
 use uc_platform::migrating_secure_storage::MigratingSecureStorage;
@@ -326,7 +326,7 @@ impl ApplyInboundWrite for NoopPullStoreWrite {
 /// Failures during Slice 1 assembly. Bootstrap callers surface these as
 /// fatal startup errors — there is no useful retry here.
 #[derive(Debug, thiserror::Error)]
-pub enum SyncEngineAssemblyError {
+pub(crate) enum SyncEngineAssemblyError {
     #[error(transparent)]
     IrohNode(#[from] IrohNodeError),
 }
@@ -340,7 +340,7 @@ pub enum SyncEngineAssemblyError {
 /// keep holding their pre-existing `SetupFacade` alongside; the two
 /// coexist until Slice 5 retires libp2p.
 #[instrument(skip_all)]
-pub async fn build_sync_engine_assembly(
+pub(crate) async fn build_sync_engine_assembly(
     deps: &AppDeps,
     space_setup: &SyncEngineDeps,
     shared: &SharedRuntimeDeps,

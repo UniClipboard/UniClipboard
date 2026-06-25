@@ -22,12 +22,12 @@ use uc_application::facade::{
     ClipboardHistoryFacade, ClipboardHistoryFacadeDeps, ClipboardOutboundDeps,
     ClipboardOutboundFacade, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
     ClipboardSyncFacade, DeviceFacade, DiagnosticsFacade, DiagnosticsFacadeDeps, EmitError,
-    EncryptionFacade, EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventBus,
-    HostEventEmitterPort, InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade,
-    LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade,
-    MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps,
-    SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade,
-    StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    EncryptionFacade, EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventEmitterPort,
+    InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps,
+    LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
+    MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps, SearchCoordinator,
+    SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade, StorageFacade,
+    StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -43,7 +43,6 @@ use uc_infra::network::iroh::{IrohRelayProbeAdapter, IrohRelayProbeError, IrohRe
 
 use crate::assembly::get_storage_paths;
 use crate::space_setup::{build_sync_engine_assembly, SyncEngineAssembly};
-use uc_core::task_registry::TaskRegistry;
 
 // ---------------------------------------------------------------------------
 // LoggingHostEventEmitter
@@ -54,7 +53,7 @@ use uc_core::task_registry::TaskRegistry;
 /// Always returns `Ok(())` — infallible by design. Inner event payloads are
 /// NOT logged because they may contain sensitive data (clipboard content,
 /// pairing codes/fingerprints, transfer file paths).
-pub struct LoggingHostEventEmitter;
+pub(crate) struct LoggingHostEventEmitter;
 
 impl HostEventEmitterPort for LoggingHostEventEmitter {
     fn emit(&self, event: HostEvent) -> Result<(), EmitError> {
@@ -123,47 +122,6 @@ fn map_relay_probe_error(err: IrohRelayProbeError) -> RelayProbeError {
         IrohRelayProbeError::Timeout => RelayProbeError::Timeout,
         IrohRelayProbeError::Other(msg) => RelayProbeError::Other(msg),
     }
-}
-
-// ---------------------------------------------------------------------------
-// NonGuiBundle
-// ---------------------------------------------------------------------------
-
-/// Flat bundle of bootstrap-built handles consumed by daemon entry points.
-///
-/// Replaces the retired `CoreRuntime` wrapper. Composition-root code
-/// destructures the bundle into independent locals (`deps`, `task_registry`,
-/// `lifecycle_status`, etc.) and feeds them into facade construction.
-pub struct NonGuiBundle {
-    pub deps: AppDeps,
-    pub storage_paths: AppPaths,
-    pub host_event_bus: Arc<HostEventBus>,
-    pub lifecycle_status: Arc<dyn LifecycleStatusGateway>,
-    pub task_registry: Arc<TaskRegistry>,
-    pub clipboard_integration_mode: ClipboardIntegrationMode,
-}
-
-/// Construct a [`NonGuiBundle`] for non-GUI entry points with an explicit
-/// shared host-event bus. Daemon uses this so its `DaemonApiEventEmitter`
-/// can be registered on the bus after construction.
-pub fn build_non_gui_bundle(
-    deps: AppDeps,
-    storage_paths: AppPaths,
-    host_event_bus: Arc<HostEventBus>,
-) -> anyhow::Result<NonGuiBundle> {
-    let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
-        Arc::new(InMemoryLifecycleStatus::new());
-    let task_registry = Arc::new(TaskRegistry::new());
-    let clipboard_integration_mode = resolve_clipboard_integration_mode();
-
-    Ok(NonGuiBundle {
-        deps,
-        storage_paths,
-        host_event_bus,
-        lifecycle_status,
-        task_registry,
-        clipboard_integration_mode,
-    })
 }
 
 /// `ClipboardRestoreFacade` 的可选装配输入。
@@ -531,47 +489,6 @@ pub fn build_app_facade_from_deps(
         })),
         mobile_sync: mobile_sync_facade,
     }))
-}
-
-/// Construct an [`AppFacade`] for CLI entry points.
-///
-/// CLI commands need a stable application-layer
-/// entry point per `uc-application/AGENTS.md` §11.4. This helper assembles
-/// the facade subset CLI cares about (encryption / settings / device /
-/// clipboard_history / search / lifecycle / storage / resource) and leaves
-/// the daemon-only fields (`space_setup`, `member_roster`, `clipboard_restore`)
-/// as `None`.
-///
-/// # Arguments
-///
-/// * `log_profile` — Log profile override (e.g., `Some(LogProfile::Cli)`).
-pub async fn build_cli_app_facade(
-    log_profile: Option<uc_observability::LogProfile>,
-) -> anyhow::Result<Arc<AppFacade>> {
-    let ctx = crate::builders::build_cli_context_with_profile(log_profile).await?;
-    let storage_paths = crate::assembly::get_storage_paths(&ctx.config)?;
-    let deps = ctx.deps;
-    let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
-        Arc::new(InMemoryLifecycleStatus::new());
-
-    let search_coordinator = Arc::new(SearchCoordinator::new(SearchCoordinatorDeps::new(
-        deps.search.search_index.clone(),
-        deps.search.search_key_derivation.clone(),
-        deps.search.search_pipeline.clone(),
-        deps.clipboard.entry_ports.list.clone(),
-        deps.clipboard.representation_ports.list_for_event.clone(),
-        deps.clipboard.selection_repo.clone(),
-    )));
-
-    Ok(build_app_facade_from_deps(
-        &deps,
-        &storage_paths,
-        lifecycle_status,
-        AppFacadeAssemblyOptions {
-            search_coordinator: Some(search_coordinator),
-            ..Default::default()
-        },
-    ))
 }
 
 /// CLI 进程内 application runtime。

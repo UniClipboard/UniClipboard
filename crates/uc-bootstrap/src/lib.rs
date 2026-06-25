@@ -9,7 +9,6 @@ pub mod analytics;
 pub mod assembly;
 pub mod background_tasks;
 pub mod builders;
-pub mod config;
 mod correlation;
 pub mod file_transfer_lifecycle;
 pub mod init;
@@ -19,31 +18,25 @@ pub mod pending_import;
 pub mod space_setup;
 pub mod tracing;
 
-// Slice 6 / Issue #549 — composition-root analytics 装配入口。
-// 详见模块 doc。`build_core` 在 `wire_dependencies` 之后调用一次。
-// `build_analytics_sink` 在 `wire_dependencies` 内被 AppDeps 构造点调用，
-// 装配 GatedAnalyticsSink 包装的 dev/release sink。
-pub use analytics::{build_analytics_sink, compose_event_context};
+// The top-level re-exports below ARE the crate's external contract: the symbols
+// daemon (apps/daemon) and the CLI dev-tools feature (apps/cli) consume. Keep
+// this list in sync with that contract — everything else stays crate-internal
+// (`pub(crate)`), reachable only within the composition root.
 
-// Re-export primary public items
+// Slice 6 / Issue #549 — composition-root analytics 装配入口。
+// `compose_event_context` 在 `wire_dependencies` 之后由各进程入口调用一次。
+pub use analytics::compose_event_context;
+
 pub use assembly::{
-    build_clipboard_write_coordinator, get_storage_paths, wire_dependencies, BackgroundRuntimeDeps,
-    SystemClipboardWiring, WiredDependencies, WiringError, WiringResult,
+    get_storage_paths, wire_dependencies, BackgroundRuntimeDeps, SystemClipboardWiring,
+    WiredDependencies, WiringError, WiringResult,
 };
 pub use background_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
-pub use builders::{
-    build_cli_context, build_cli_context_with_profile, build_cli_wiring_context,
-    build_daemon_lifecycle, build_slice1_cli_context, CliBootstrapContext, DaemonLifecycle,
-};
-pub use config::load_config;
-pub use init::{reconcile_peer_addresses, reconcile_trusted_peers};
+pub use builders::{build_daemon_lifecycle, DaemonLifecycle};
 pub use non_gui_runtime::{
-    build_app_facade_from_deps, build_cli_app_facade, build_cli_app_runtime,
-    build_mobile_sync_facade, build_non_gui_bundle, resolve_clipboard_integration_mode,
-    AppFacadeAssemblyOptions, CliAppRuntime, ClipboardRestoreAssembly, LoggingHostEventEmitter,
-    NonGuiBundle,
+    build_app_facade_from_deps, build_cli_app_runtime, build_mobile_sync_facade,
+    resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,
+    ClipboardRestoreAssembly,
 };
-pub use space_setup::{
-    build_sync_engine_assembly, IrohNodeConfig, SyncEngineAssembly, SyncEngineAssemblyError,
-};
+pub use space_setup::SyncEngineAssembly;
 pub use tracing::init_tracing_subscriber;

@@ -1500,7 +1500,7 @@ pub fn wire_dependencies(
 /// Centralises the guard-registration + write + cleanup-on-error pattern
 /// (previously duplicated across restore_clipboard_selection, copy_file_to_clipboard,
 /// and the now-deleted `sync_inbound` libp2p path).
-pub fn build_clipboard_write_coordinator(
+pub(crate) fn build_clipboard_write_coordinator(
     system_clipboard: Arc<dyn uc_core::ports::clipboard::SystemClipboardPort>,
     clipboard_change_origin: Arc<dyn SelfWriteLedgerPort>,
 ) -> Arc<uc_application::clipboard_write::ClipboardWriteCoordinator> {

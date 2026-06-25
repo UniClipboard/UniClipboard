@@ -21,7 +21,7 @@ use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 /// 设计取舍:reconcile 失败不会阻断 daemon 启动 —— 失败只 log warn,因为
 /// 干净的不变量是"nice to have",运行时即便残留几个孤儿,影响仍然只是
 /// "对 unpaired peer 多发几次失败 envelope",不会导致数据损坏。
-pub async fn reconcile_peer_addresses(
+pub(crate) async fn reconcile_peer_addresses(
     member_repo: Arc<dyn MemberRepositoryPort>,
     peer_addr_repo: Arc<dyn PeerAddressRepositoryPort>,
 ) -> anyhow::Result<()> {
@@ -92,7 +92,7 @@ pub async fn reconcile_peer_addresses(
 ///
 /// 跟 `reconcile_peer_addresses` 同样的失败策略:单条 / 整体失败都只 log,
 /// 不阻断 daemon 启动。
-pub async fn reconcile_trusted_peers(
+pub(crate) async fn reconcile_trusted_peers(
     member_repo: Arc<dyn MemberRepositoryPort>,
     trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
 ) -> anyhow::Result<()> {

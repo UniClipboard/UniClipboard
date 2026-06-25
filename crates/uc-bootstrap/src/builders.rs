@@ -5,7 +5,7 @@
 //! `ProcessRuntimeContext`) 住在 [`uc_desktop::bootstrap`]——本 crate
 //! 保持 shell-agnostic,只提供 composition-root 装配工具。
 //!
-//! CLI 入口 (`build_cli_context_with_profile` / `build_slice1_cli_context`)
+//! CLI 入口 (`build_cli_context_with_profile` / `build_cli_wiring_context`)
 //! 通过私有 `build_core()` 跑 tracing init + `wire_dependencies`,返回
 //! 各自的 context struct;CLI 不 spawn background workers,装出来的
 //! `BackgroundRuntimeDeps` 直接 drop。
@@ -26,14 +26,7 @@ use crate::assembly::{
 };
 use crate::space_setup::{build_sync_engine_assembly, SyncEngineAssembly};
 
-/// Context for CLI entry point. AppDeps + config, no background workers.
-/// Caller constructs CoreRuntime from deps as needed.
-pub struct CliBootstrapContext {
-    pub deps: AppDeps,
-    pub config: AppConfig,
-}
-
-/// Shared core wiring used by all three builders.
+/// Shared core wiring for the CLI composition-root entry.
 /// Initializes tracing, resolves config, wires dependencies, and registers the
 /// process-wide product analytics `EventContext`.
 ///
@@ -91,52 +84,12 @@ async fn build_core(
     Ok((config, wired, background))
 }
 
-/// Build CLI bootstrap context. Returns AppDeps for the caller to construct
-/// CoreRuntime as needed. No background workers are started.
-pub async fn build_cli_context() -> anyhow::Result<CliBootstrapContext> {
-    build_cli_context_with_profile(Some(uc_observability::LogProfile::Cli)).await
-}
-
-/// Build CLI bootstrap context with an explicit log profile override.
-///
-/// When `verbose` mode is active, callers pass `Some(LogProfile::Dev)` to
-/// get full console tracing. The default `build_cli_context()` uses `Cli`
-/// profile which suppresses console output.
-pub async fn build_cli_context_with_profile(
-    log_profile: Option<uc_observability::LogProfile>,
-) -> anyhow::Result<CliBootstrapContext> {
-    // CLI 不跑 background workers,装出来的 BackgroundRuntimeDeps 直接 drop。
-    let (config, wired, _background) = build_core(log_profile).await?;
-
-    // [Codex Review R1] Return AppDeps, not CoreRuntime.
-    // CLI entry point constructs CoreRuntime itself with appropriate emitter.
-    Ok(CliBootstrapContext {
-        deps: wired.deps,
-        config,
-    })
-}
-
 /// CLI composition-root entry returning the full
 /// [`crate::assembly::WiredDependencies`] so the caller can hand it to
-/// [`crate::space_setup::build_sync_engine_assembly`]; unlike
-/// [`build_cli_context_with_profile`], this does not flatten to `AppDeps`
-/// and therefore preserves access to `trusted_peer_repo` and other ports
-/// the `SpaceSetupFacade` needs (pairing / roster / send / watch / blob 等
-/// 需要 iroh 网络栈的 CLI 命令走这条路径)。
-pub async fn build_cli_wiring_context(
-    log_profile: Option<uc_observability::LogProfile>,
-) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
-    let (config, wired, _background) = build_core(log_profile).await?;
-    Ok((config, wired))
-}
-
-/// Backward-compatible alias for older Slice 1 callers.
-///
-/// Slice 1 CLI doesn't spawn the blob/spool workers — the
-/// [`BackgroundRuntimeDeps`] produced alongside is dropped here.
-/// and therefore preserves access to `trusted_peer_repo` and other Slice
-/// 1-only ports the `SpaceSetupFacade` needs.
-pub async fn build_slice1_cli_context(
+/// [`crate::space_setup::build_sync_engine_assembly`]. It preserves access to
+/// `trusted_peer_repo` and other ports the `SpaceSetupFacade` needs (pairing /
+/// roster / send / watch / blob 等需要 iroh 网络栈的 CLI 命令走这条路径)。
+pub(crate) async fn build_cli_wiring_context(
     log_profile: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
     let (config, wired, _background) = build_core(log_profile).await?;

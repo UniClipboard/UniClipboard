@@ -46,7 +46,6 @@ use uc_application::facade::{
     MemberRosterDeps, MemberRosterFacade,
 };
 use uc_application::proof::HmacProofAdapter;
-use uc_bootstrap::IrohNodeConfig;
 use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::membership::{MemberRepositoryPort, MembershipError, SpaceMember};
 use uc_core::ports::pairing::PairingSessionPort;
@@ -63,6 +62,7 @@ use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError, TrustedPeerRepository
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
+use uc_infra::network::iroh::IrohNodeConfig;
 
 use uc_infra::clipboard::TransferCipherAdapter;
 use uc_infra::fs::key_slot_store::JsonKeySlotStore;

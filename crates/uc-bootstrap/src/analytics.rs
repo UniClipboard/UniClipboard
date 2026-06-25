@@ -234,7 +234,7 @@ async fn read_space_id_hash(deps: &AppDeps) -> Option<String> {
 /// key 注入策略与 SENTRY_DSN 同位（见 `uc-bootstrap/src/tracing.rs:155-170`）：
 /// 运行时 env 让 dev / 自部署用户能覆盖；`option_env!` 让 CI release build
 /// 把 secret 烤进 binary（终端用户机器上没人会设这个 env）。
-pub fn build_analytics_sink() -> Arc<dyn AnalyticsPort> {
+pub(crate) fn build_analytics_sink() -> Arc<dyn AnalyticsPort> {
     let inner: Arc<dyn AnalyticsPort> = if cfg!(debug_assertions) {
         Arc::new(StdoutSink::new())
     } else {

@@ -80,7 +80,7 @@ use uc_infra::security::Sha256IdentityFingerprintFactory;
 use uc_platform::file_secure_storage::FileSecureStorage;
 use uc_platform::migrating_secure_storage::MigratingSecureStorage;
 
-use crate::assembly::{SharedRuntimeDeps, SyncEngineDeps};
+use crate::wiring::deps::{SharedRuntimeDeps, SyncEngineDeps};
 use uc_application::deps::AppDeps;
 
 /// Output of [`build_sync_engine_assembly`]. External callers keep the

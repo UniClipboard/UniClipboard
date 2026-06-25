@@ -1,7 +1,7 @@
 //! Daemon-lifecycle composition-root entry.
 //!
 //! [`build_daemon_lifecycle`] accepts already-wired
-//! [`crate::assembly::WiredDependencies`] as input and does **not** re-run
+//! [`crate::wiring::deps::WiredDependencies`] as input and does **not** re-run
 //! `wire_dependencies` — sqlite pool / repos / settings / secure storage are
 //! wired once at process start and shared between the GUI shell and the
 //! daemon lifecycle. This entry only binds the iroh node + `SyncEngineAssembly`
@@ -13,8 +13,8 @@ use std::sync::Arc;
 use uc_application::deps::AppDeps;
 use uc_application::facade::ClipboardSyncFacade;
 
-use crate::assembly::{SharedRuntimeDeps, SyncEngineDeps};
 use crate::subsystem::sync_engine::{build_sync_engine_assembly, SyncEngineAssembly};
+use crate::wiring::deps::{SharedRuntimeDeps, SyncEngineDeps};
 
 /// daemon-lifecycle 装配产出。
 ///
@@ -36,7 +36,7 @@ pub struct DaemonLifecycle {
 }
 
 /// 装 daemon-lifecycle 资源 —— iroh node bind、SyncEngineAssembly、startup
-/// reconcile。接受已 wire 好的进程级 [`crate::assembly::WiredDependencies`] 作输入,
+/// reconcile。接受已 wire 好的进程级 [`crate::wiring::deps::WiredDependencies`] 作输入,
 /// **不** 再次跑 `wire_dependencies` —— sqlite pool / repos / settings / secure
 /// storage 在进程启动期 wire 一次后由 GUI shell 与 daemon-lifecycle 共用。
 /// 本函数是 async/sync 装配链的边界点 (iroh `Endpoint::bind` 必须在 tokio

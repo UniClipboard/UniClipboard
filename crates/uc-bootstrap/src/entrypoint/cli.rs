@@ -9,7 +9,8 @@
 
 use uc_core::config::AppConfig;
 
-use crate::assembly::{get_storage_paths, wire_dependencies, BackgroundRuntimeDeps};
+use crate::assembly::{get_storage_paths, wire_dependencies};
+use crate::wiring::deps::BackgroundRuntimeDeps;
 
 /// Shared core wiring for the CLI composition-root entry.
 /// Initializes tracing, resolves config, wires dependencies, and registers the
@@ -29,7 +30,7 @@ async fn build_core(
     log_profile_override: Option<uc_observability::LogProfile>,
 ) -> anyhow::Result<(
     AppConfig,
-    crate::assembly::WiredDependencies,
+    crate::wiring::deps::WiredDependencies,
     BackgroundRuntimeDeps,
 )> {
     // Apply log profile override before tracing init
@@ -70,13 +71,13 @@ async fn build_core(
 }
 
 /// CLI composition-root entry returning the full
-/// [`crate::assembly::WiredDependencies`] so the caller can hand it to
+/// [`crate::wiring::deps::WiredDependencies`] so the caller can hand it to
 /// [`crate::subsystem::sync_engine::build_sync_engine_assembly`]. It preserves access to
 /// `trusted_peer_repo` and other ports the `SpaceSetupFacade` needs (pairing /
 /// roster / send / watch / blob 等需要 iroh 网络栈的 CLI 命令走这条路径)。
 pub(crate) async fn build_cli_wiring_context(
     log_profile: Option<uc_observability::LogProfile>,
-) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
+) -> anyhow::Result<(AppConfig, crate::wiring::deps::WiredDependencies)> {
     let (config, wired, _background) = build_core(log_profile).await?;
     Ok((config, wired))
 }

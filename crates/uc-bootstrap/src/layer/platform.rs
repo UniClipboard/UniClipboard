@@ -18,7 +18,6 @@ use uc_infra::device::LocalDeviceIdentity;
 use uc_infra::security::{EncryptedBlobStore, InMemorySession};
 use uc_platform::clipboard::{LocalClipboard, NoopSystemClipboard};
 
-use crate::assembly::is_v2_blob;
 use crate::wiring::deps::{WiringError, WiringResult};
 
 /// Platform layer implementations
@@ -242,4 +241,18 @@ pub fn create_platform_layer(
         session,
         current_profile,
     })
+}
+
+/// Check if a file starts with the UCBL binary format magic bytes.
+/// V2 blobs use magic [0x55, 0x43, 0x42, 0x4C] ("UCBL").
+fn is_v2_blob(path: &std::path::Path) -> bool {
+    const UCBL_MAGIC: [u8; 4] = [0x55, 0x43, 0x42, 0x4C];
+    std::fs::File::open(path)
+        .and_then(|mut f| {
+            use std::io::Read;
+            let mut buf = [0u8; 4];
+            f.read_exact(&mut buf)?;
+            Ok(buf == UCBL_MAGIC)
+        })
+        .unwrap_or(false)
 }

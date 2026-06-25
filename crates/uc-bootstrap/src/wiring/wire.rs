@@ -1,14 +1,15 @@
-//! # Pure Dependency Assembly
+//! # Dependency wiring
 //!
-//! This module contains all pure dependency construction functions that have
-//! zero Tauri imports. It is the heart of the `uc-bootstrap` composition root.
+//! The composition-root core: builds the infrastructure layer (DB pool, repos,
+//! encryption decorators, search, blob processing) into an `InfraLayer`, then
+//! `wire_dependencies` orchestrates it together with the platform layer
+//! ([`crate::layer::platform`]) and path resolution ([`crate::layer::paths`])
+//! into the `WiredDependencies` + `BackgroundRuntimeDeps` the process consumes.
 //!
-//! ## What lives here
-//!
-//! - `WiredDependencies` struct (output of the wiring process)
-//! - `BackgroundRuntimeDeps` struct (background worker dependencies)
-//! - All infrastructure and platform layer construction functions
-//! - `wire_dependencies`, `get_storage_paths`, etc.
+//! Infra construction stays co-located with `wire_dependencies` because the
+//! orchestrator consumes the `InfraLayer` (and the intermediate assembly DTOs)
+//! field-by-field; they are one cohesive wiring unit. The output bundle types
+//! live in [`crate::wiring::deps`].
 //!
 //! ## Architecture Principle
 //!
@@ -184,20 +185,6 @@ pub fn create_db_pool(db_path: &PathBuf) -> WiringResult<DbPool> {
 
     init_db_pool(db_url)
         .map_err(|e| WiringError::DatabaseInit(format!("Failed to initialize DB: {}", e)))
-}
-
-/// Check if a file starts with the UCBL binary format magic bytes.
-/// V2 blobs use magic [0x55, 0x43, 0x42, 0x4C] ("UCBL").
-pub(crate) fn is_v2_blob(path: &std::path::Path) -> bool {
-    const UCBL_MAGIC: [u8; 4] = [0x55, 0x43, 0x42, 0x4C];
-    std::fs::File::open(path)
-        .and_then(|mut f| {
-            use std::io::Read;
-            let mut buf = [0u8; 4];
-            f.read_exact(&mut buf)?;
-            Ok(buf == UCBL_MAGIC)
-        })
-        .unwrap_or(false)
 }
 
 /// Secure storage backend + iroh device-identity dir, prepared *before* the db

@@ -1,6 +1,6 @@
 //! Wiring output bundles.
 //!
-//! The data types produced by [`wire_dependencies`](crate::assembly::wire_dependencies):
+//! The data types produced by [`wire_dependencies`](crate::wiring::wire::wire_dependencies):
 //! the process-resident `WiredDependencies` plus the consumer-grouped bundles
 //! (`SyncEngineDeps` / `DaemonRuntimeDeps` / `SharedRuntimeDeps`) and the
 //! one-shot `BackgroundRuntimeDeps`. These carry no behavior — the wiring logic
@@ -160,7 +160,7 @@ pub struct SharedRuntimeDeps {
 /// 旁路 bundle(`space_setup` / `daemon_runtime` / `shared`)。
 ///
 /// 一次性消费的 [`BackgroundRuntimeDeps`](含 blob worker receiver)通过
-/// [`wire_dependencies`](crate::assembly::wire_dependencies) 的 tuple 返回值单独移交,不嵌在这里 —— 因为 mpsc
+/// [`wire_dependencies`](crate::wiring::wire::wire_dependencies) 的 tuple 返回值单独移交,不嵌在这里 —— 因为 mpsc
 /// `Receiver` 不可 Clone。
 ///
 /// 只被 daemon 进程路径消费(`apps/daemon` process_bootstrap → host →

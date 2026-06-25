@@ -5,10 +5,8 @@
 //! All entry points (GUI, CLI, daemon) depend on uc-bootstrap
 //! for dependency wiring and initialization.
 
-pub mod assembly;
 pub mod entrypoint;
 pub mod layer;
-mod network_policy;
 pub mod observability;
 pub mod startup;
 pub mod subsystem;
@@ -23,7 +21,6 @@ pub mod wiring;
 // `compose_event_context` 在 `wire_dependencies` 之后由各进程入口调用一次。
 pub use subsystem::analytics::compose_event_context;
 
-pub use assembly::wire_dependencies;
 pub use entrypoint::daemon::{build_daemon_lifecycle, DaemonLifecycle};
 pub use entrypoint::non_gui::{
     build_app_facade_from_deps, build_cli_app_runtime, build_mobile_sync_facade,
@@ -37,3 +34,4 @@ pub use subsystem::blob_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts
 pub use subsystem::file_transfer::FileTransferLifecycle;
 pub use subsystem::sync_engine::SyncEngineAssembly;
 pub use wiring::deps::{BackgroundRuntimeDeps, WiredDependencies, WiringError, WiringResult};
+pub use wiring::wire::wire_dependencies;

@@ -27,9 +27,8 @@ pub use analytics::{build_analytics_sink, compose_event_context};
 
 // Re-export primary public items
 pub use assembly::{
-    build_clipboard_write_coordinator, build_gui_client_context, get_storage_paths,
-    resolve_pairing_device_name, wire_dependencies, wire_gui_client_deps, BackgroundRuntimeDeps,
-    GuiClientDeps, SystemClipboardWiring, WiredDependencies, WiringError, WiringResult,
+    build_clipboard_write_coordinator, get_storage_paths, wire_dependencies, BackgroundRuntimeDeps,
+    SystemClipboardWiring, WiredDependencies, WiringError, WiringResult,
 };
 pub use background_tasks::{spawn_blob_processing_tasks, BlobProcessingPorts};
 pub use builders::{
@@ -37,10 +36,7 @@ pub use builders::{
     build_daemon_lifecycle, build_slice1_cli_context, CliBootstrapContext, DaemonLifecycle,
 };
 pub use config::load_config;
-pub use init::{
-    ensure_default_device_name, is_setup_complete, reconcile_peer_addresses,
-    reconcile_trusted_peers,
-};
+pub use init::{reconcile_peer_addresses, reconcile_trusted_peers};
 pub use non_gui_runtime::{
     build_app_facade_from_deps, build_cli_app_facade, build_cli_app_runtime,
     build_mobile_sync_facade, build_non_gui_bundle, resolve_clipboard_integration_mode,

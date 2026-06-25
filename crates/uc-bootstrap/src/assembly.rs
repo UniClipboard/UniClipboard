@@ -8,7 +8,7 @@
 //! - `WiredDependencies` struct (output of the wiring process)
 //! - `BackgroundRuntimeDeps` struct (background worker dependencies)
 //! - All infrastructure and platform layer construction functions
-//! - `wire_dependencies`, `get_storage_paths`, `resolve_pairing_device_name`, etc.
+//! - `wire_dependencies`, `get_storage_paths`, etc.
 //!
 //! ## Architecture Principle
 //!
@@ -16,8 +16,6 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-
-use tracing::info;
 
 use uc_application::deps::{
     AppDeps, ClipboardEntryPorts, ClipboardPorts, ClipboardRepresentationPorts, DevicePorts,
@@ -229,7 +227,7 @@ pub struct SharedRuntimeDeps {
 ///
 /// 只被 daemon 进程路径消费(`apps/daemon` process_bootstrap → host →
 /// bootstrap,加上 uc-bootstrap 的两个 assembler)。GUI/Tauri shell 走
-/// `build_gui_client_context` 的 daemon HTTP client 路径,**不**碰
+/// `uc_desktop::gui_wiring::build_gui_client_context` 的 daemon HTTP client 路径,**不**碰
 /// `WiredDependencies`;fan-out 是进程内 `ProcessRuntimeHandles` clone。
 ///
 /// `Clone` 派生:所有字段都是 `Arc<dyn Port>` / `PathBuf` / Clone-able 嵌套
@@ -1133,79 +1131,6 @@ pub fn get_storage_paths(
     resolve_app_paths(&platform_dirs, config)
 }
 
-/// File-backed / in-memory ports a pure-client GUI needs (ADR-008 P3-3 B2'-3).
-///
-/// Unlike [`WiredDependencies`], this carries ONLY the ports that do not touch
-/// the sqlite pool: settings + setup-status (file-backed), analytics, the
-/// stable device id, and the resolved storage paths. The external `uniclipd`
-/// daemon owns the sqlite pool, blob store, clipboard infra and the in-process
-/// `AppFacade`; a GUI that is a pure client of that daemon must never open the
-/// same database (split-brain), so it assembles only this subset.
-pub struct GuiClientDeps {
-    pub settings: Arc<dyn SettingsPort>,
-    pub setup_status: Arc<dyn SetupStatusPort>,
-    pub analytics: Arc<dyn uc_observability::analytics::AnalyticsPort>,
-    pub device_id: String,
-    pub storage_paths: uc_application::facade::AppPaths,
-}
-
-/// Assemble only the file-backed / in-memory ports a pure-client GUI needs,
-/// WITHOUT opening the sqlite pool, initialising secure storage, or building any
-/// blob / clipboard infra. See [`GuiClientDeps`] for the rationale.
-///
-/// All four ports here are file-backed or in-memory: settings (`settings.json`),
-/// setup-status (vault dir file), the device identity (app-data-root identity
-/// dir) and the analytics sink. They are the same files the daemon reads, so the
-/// GUI reading them concurrently is eventually-consistent and split-brain-free.
-pub fn wire_gui_client_deps(config: &AppConfig) -> WiringResult<GuiClientDeps> {
-    let platform_dirs = get_default_app_dirs()?;
-    let paths = resolve_app_paths(&platform_dirs, config)?;
-    let app_data_root = paths.app_data_root_dir.clone();
-
-    let settings: Arc<dyn SettingsPort> =
-        Arc::new(FileSettingsRepository::new(paths.settings_path.clone()));
-    let setup_status: Arc<dyn SetupStatusPort> = Arc::new(
-        FileSetupStatusRepository::with_defaults(paths.vault_dir.clone()),
-    );
-    // ADR-008 D20: a pure-client GUI is NOT an analytics sender — the daemon is
-    // the single authoritative PostHog sender. So the GUI client gets a Noop
-    // sink here (no in-process PostHog key, no device-level emission); the GUI
-    // shell replaces this with a daemon-forwarding sink once it has the daemon
-    // connection state (see `uc_tauri::run` / `analytics_forward`). Update events
-    // emitted by the GUI's Rust background tasks are forwarded to the daemon's
-    // `/analytics/capture`; the webview's UI events POST there directly.
-    let analytics: Arc<dyn uc_observability::analytics::AnalyticsPort> =
-        Arc::new(uc_observability::analytics::NoopAnalyticsSink);
-
-    let device_identity: Arc<dyn DeviceIdentityPort> = Arc::new(
-        LocalDeviceIdentity::load_or_create(app_data_root).map_err(|e| {
-            WiringError::SettingsInit(format!("Failed to create device identity: {}", e))
-        })?,
-    );
-    let device_id = device_identity.current_device_id().to_string();
-
-    Ok(GuiClientDeps {
-        settings,
-        setup_status,
-        analytics,
-        device_id,
-        storage_paths: paths,
-    })
-}
-
-/// Build the pure-client GUI runtime context (ADR-008 P3-3 B2'-3).
-///
-/// The client counterpart of [`build_process_runtime`](crate::build_process_runtime):
-/// initialises the tracing subscriber + panic hook (idempotent), then assembles
-/// only the file-backed ports via [`wire_gui_client_deps`]. It does NOT open the
-/// sqlite pool — the external `uniclipd` daemon owns all sqlite-backed state.
-pub fn build_gui_client_context() -> anyhow::Result<GuiClientDeps> {
-    crate::tracing::init_tracing_subscriber()?;
-    crate::tracing::install_panic_logging_hook();
-    let config = AppConfig::empty();
-    wire_gui_client_deps(&config).map_err(|e| anyhow::anyhow!("GUI client wiring failed: {}", e))
-}
-
 /// Build `AppPaths` from platform dirs and config overrides.
 pub fn resolve_app_paths(
     platform_dirs: &uc_core::app_dirs::AppDirs,
@@ -1567,25 +1492,6 @@ pub fn wire_dependencies(
         clipboard_write_coordinator,
     };
     Ok((wired, background))
-}
-
-const DEFAULT_PAIRING_DEVICE_NAME: &str = "Uniclipboard Device";
-
-pub async fn resolve_pairing_device_name(settings: Arc<dyn SettingsPort>) -> String {
-    match settings.load().await {
-        Ok(settings) => {
-            let name = settings.general.device_name.unwrap_or_default();
-            if name.trim().is_empty() {
-                DEFAULT_PAIRING_DEVICE_NAME.to_string()
-            } else {
-                name
-            }
-        }
-        Err(err) => {
-            info!(error = %err, "Failed to load settings for pairing device name");
-            DEFAULT_PAIRING_DEVICE_NAME.to_string()
-        }
-    }
 }
 
 /// Constructs a `ClipboardWriteCoordinator` — the single write boundary for all

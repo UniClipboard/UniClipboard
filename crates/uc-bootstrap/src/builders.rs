@@ -122,7 +122,7 @@ pub struct DaemonLifecycle {
 /// 本函数是 async/sync 装配链的边界点 (iroh `Endpoint::bind` 必须在 tokio
 /// runtime 内执行)。
 ///
-/// `init::reconcile_*` 在每次 daemon 启动时跑(治理性、失败只 log),
+/// `startup::reconcile::reconcile_*` 在每次 daemon 启动时跑(治理性、失败只 log),
 /// 与 `build_sync_engine_assembly` 之前执行,确保 dispatch / presence /
 /// 重新配对路径一上线就是干净状态。
 ///
@@ -137,7 +137,7 @@ pub async fn build_daemon_lifecycle(
     // member_repo 已不再持有的孤儿条目清掉,恢复设计意图的不变量
     // `peer_addr ⊆ member`、`trusted_peer ⊆ member`。失败只 log 不阻断
     // 启动 —— reconcile 是治理性的。
-    if let Err(err) = crate::init::reconcile_peer_addresses(
+    if let Err(err) = crate::startup::reconcile::reconcile_peer_addresses(
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&space_setup.peer_addr_repo),
     )
@@ -148,7 +148,7 @@ pub async fn build_daemon_lifecycle(
             "peer_addr reconcile failed at boot; daemon continues with whatever orphans remain"
         );
     }
-    if let Err(err) = crate::init::reconcile_trusted_peers(
+    if let Err(err) = crate::startup::reconcile::reconcile_trusted_peers(
         Arc::clone(&deps.device.member_repo),
         Arc::clone(&shared.trusted_peer_repo),
     )

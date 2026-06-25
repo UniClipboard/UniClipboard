@@ -25,7 +25,7 @@ use std::sync::Arc;
 use diesel::sql_query;
 use diesel::RunQueryDsl;
 
-use uc_bootstrap::pending_import::apply_pending_import;
+use uc_bootstrap::startup::pending_import::apply_pending_import;
 use uc_core::crypto::domain::Passphrase;
 use uc_core::ids::{ProfileId, SpaceId};
 use uc_core::ports::config_migration::{

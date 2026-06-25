@@ -461,7 +461,7 @@ fn build_secure_storage_prelude(
     // Apply a pending staged import (if `pending-import.json` exists): write
     // staged secrets into the current backend, then copy db/vault/settings and
     // the iroh-identity files into their live locations, then clear staging.
-    crate::pending_import::apply_pending_import(
+    crate::startup::pending_import::apply_pending_import(
         &app_data_root,
         &paths.db_path,
         &paths.vault_dir,

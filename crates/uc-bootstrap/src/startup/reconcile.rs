@@ -1,6 +1,9 @@
-//! Bootstrap initialization functions
+//! Startup-time reconciliation of persisted peer/trust state.
 //!
-//! This module contains initialization functions that run during application startup.
+//! Each daemon start runs these idempotent passes to repair invariants that
+//! a prior unpair/crash/older build may have left inconsistent. Failures are
+//! logged and never block startup — a clean invariant is nice-to-have, not
+//! load-bearing.
 
 use std::sync::Arc;
 use uc_core::ids::DeviceId;

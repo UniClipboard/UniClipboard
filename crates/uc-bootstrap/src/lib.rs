@@ -7,8 +7,8 @@
 
 pub mod assembly;
 pub mod builders;
+pub mod entrypoint;
 mod network_policy;
-pub mod non_gui_runtime;
 pub mod observability;
 pub mod startup;
 pub mod subsystem;
@@ -27,7 +27,7 @@ pub use assembly::{
     WiredDependencies, WiringError, WiringResult,
 };
 pub use builders::{build_daemon_lifecycle, DaemonLifecycle};
-pub use non_gui_runtime::{
+pub use entrypoint::non_gui::{
     build_app_facade_from_deps, build_cli_app_runtime, build_mobile_sync_facade,
     resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,
     ClipboardRestoreAssembly,

@@ -1430,7 +1430,8 @@ pub fn wire_dependencies(
         Arc::new(uc_application::facade::HostEventBus::new());
     host_event_bus.register(
         "logging",
-        Arc::new(crate::non_gui_runtime::LoggingHostEventEmitter) as Arc<dyn HostEventEmitterPort>,
+        Arc::new(crate::entrypoint::non_gui::LoggingHostEventEmitter)
+            as Arc<dyn HostEventEmitterPort>,
     );
 
     let crate::subsystem::file_transfer::FileTransferAssembly {

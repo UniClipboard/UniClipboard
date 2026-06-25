@@ -42,8 +42,13 @@ const HistoryPage: React.FC = () => {
         await dispatch(copyToClipboard(id)).unwrap()
         markCopied(id)
         return true
-      } catch {
-        toast.error(t('clipboard.errors.copyFailed'))
+      } catch (err) {
+        // `copyToClipboard` rejects with a specific, user-facing reason for
+        // unrecoverable failures (e.g. PAYLOAD_UNAVAILABLE → the entry's bytes
+        // are gone); surface it instead of flattening every failure into the
+        // generic copy-failed toast. Fall back to the generic text for opaque
+        // (non-string) errors.
+        toast.error(typeof err === 'string' ? err : t('clipboard.errors.copyFailed'))
         return false
       }
     },
@@ -146,6 +151,15 @@ const HistoryPage: React.FC = () => {
     [orderedItems, selectedId]
   )
 
+  // Drop hover/selection that point at entries no longer in the list (after a
+  // delete, filter switch, or search change) so the keyboard shortcuts and the
+  // detail sheet never act on — or render — a missing id.
+  useEffect(() => {
+    const ids = new Set(orderedItems.map(it => it.id))
+    if (hoveredId !== null && !ids.has(hoveredId)) setHoveredId(null)
+    if (selectedId !== null && !ids.has(selectedId)) setSelectedId(null)
+  }, [orderedItems, hoveredId, selectedId])
+
   const handleCardClick = useCallback((id: string) => setSelectedId(id), [])
 
   return (
@@ -196,7 +210,7 @@ const HistoryPage: React.FC = () => {
 
       <HistoryDetailSheet
         item={selectedItem}
-        open={selectedId !== null}
+        open={selectedItem !== null}
         onOpenChange={open => {
           if (!open) setSelectedId(null)
         }}

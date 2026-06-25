@@ -1,100 +1,20 @@
-//! # Scene-Specific Builders
+//! Daemon-lifecycle composition-root entry.
 //!
-//! Entry-point constructors for CLI runtime modes + daemon-lifecycle
-//!装配。进程级 runtime 入口 (`build_process_runtime` +
-//! `ProcessRuntimeContext`) 住在 [`uc_desktop::bootstrap`]——本 crate
-//! 保持 shell-agnostic,只提供 composition-root 装配工具。
-//!
-//! CLI 入口 (`build_cli_context_with_profile` / `build_cli_wiring_context`)
-//! 通过私有 `build_core()` 跑 tracing init + `wire_dependencies`,返回
-//! 各自的 context struct;CLI 不 spawn background workers,装出来的
-//! `BackgroundRuntimeDeps` 直接 drop。
-//!
-//! [`build_daemon_lifecycle`] 接受已有 [`crate::assembly::WiredDependencies`]
-//! 作输入,**不** 再次 wire —— sqlite pool / repos / settings 等跨 daemon
-//! reload 复用,daemon-lifecycle 只装 iroh node + space_setup + 启动期
-//! reconcile。
+//! [`build_daemon_lifecycle`] accepts already-wired
+//! [`crate::assembly::WiredDependencies`] as input and does **not** re-run
+//! `wire_dependencies` — sqlite pool / repos / settings / secure storage are
+//! wired once at process start and shared between the GUI shell and the
+//! daemon lifecycle. This entry only binds the iroh node + `SyncEngineAssembly`
+//! and runs the startup reconcile passes; it is the async/sync boundary of the
+//! assembly chain (iroh `Endpoint::bind` must run inside a tokio runtime).
 
 use std::sync::Arc;
 
 use uc_application::deps::AppDeps;
 use uc_application::facade::ClipboardSyncFacade;
-use uc_core::config::AppConfig;
 
-use crate::assembly::{
-    get_storage_paths, wire_dependencies, BackgroundRuntimeDeps, SharedRuntimeDeps, SyncEngineDeps,
-};
+use crate::assembly::{SharedRuntimeDeps, SyncEngineDeps};
 use crate::subsystem::sync_engine::{build_sync_engine_assembly, SyncEngineAssembly};
-
-/// Shared core wiring for the CLI composition-root entry.
-/// Initializes tracing, resolves config, wires dependencies, and registers the
-/// process-wide product analytics `EventContext`.
-///
-/// If `log_profile_override` is `Some`, the `UC_LOG_PROFILE` env var is set
-/// before tracing initialization so the subscriber picks up the desired profile.
-///
-/// ## Async because of `compose_event_context`
-///
-/// Slice 6 / Issue #549 起 `build_core` 转 async：装配 `EventContext` 必须在
-/// `wire_dependencies` 之后做，因为它要读 `member_repo` / `setup_status`
-/// 这两个 async port 才能算出 `active_device_count` 与 `space_id_hash`。把
-/// 装配点放在 composition root 内（一处调用）比让每个 entry 各自补一段
-/// `.await` 更不容易遗漏（例如未来再加一个 entry，自动也覆盖）。
-async fn build_core(
-    log_profile_override: Option<uc_observability::LogProfile>,
-) -> anyhow::Result<(
-    AppConfig,
-    crate::assembly::WiredDependencies,
-    BackgroundRuntimeDeps,
-)> {
-    // Apply log profile override before tracing init
-    if let Some(profile) = log_profile_override {
-        std::env::set_var("UC_LOG_PROFILE", profile.to_string());
-    }
-
-    // Idempotent -- safe to call multiple times
-    crate::observability::tracing::init_tracing_subscriber()?;
-
-    // 装 panic hook 把 panic 镜像到 jsonl(target = "panic")。必须在
-    // tracing init 之后,否则 hook 触发时 subscriber 还没接管 stderr,
-    // 等价于啥也没做。同样幂等,内部用 OnceLock 保证三个入口共用同一份。
-    crate::observability::tracing::install_panic_logging_hook();
-
-    let config = AppConfig::empty();
-
-    let (wired, background) = wire_dependencies(&config)
-        .map_err(|e| anyhow::anyhow!("Dependency wiring failed: {}", e))?;
-
-    // 注册进程级 product analytics `EventContext`。失败不阻断启动 —— analytics
-    // 是辅助通道，错误已在 compose 内 warn-log（见 `analytics.rs` 模块文档"失
-    // 败语义"）。`get_storage_paths` 重新解析了一次目录布局；它内部纯计算无
-    // IO，开销可忽略。
-    let storage_paths = get_storage_paths(&config)?;
-    // 旧 CLI 进程内路径不是临时 daemon residency → 永不抑制设备级 presence 事件
-    // （ADR-008 D20），保持 pre-P5 行为；P5-1/P5-2 会整体退役这条路径。
-    if let Err(err) =
-        crate::subsystem::analytics::compose_event_context(&wired.deps, &storage_paths, false).await
-    {
-        tracing::warn!(
-            error = %err,
-            "analytics: compose_event_context 失败，本次进程内事件 sink 将拿不到 EventContext 快照"
-        );
-    }
-
-    Ok((config, wired, background))
-}
-
-/// CLI composition-root entry returning the full
-/// [`crate::assembly::WiredDependencies`] so the caller can hand it to
-/// [`crate::subsystem::sync_engine::build_sync_engine_assembly`]. It preserves access to
-/// `trusted_peer_repo` and other ports the `SpaceSetupFacade` needs (pairing /
-/// roster / send / watch / blob 等需要 iroh 网络栈的 CLI 命令走这条路径)。
-pub(crate) async fn build_cli_wiring_context(
-    log_profile: Option<uc_observability::LogProfile>,
-) -> anyhow::Result<(AppConfig, crate::assembly::WiredDependencies)> {
-    let (config, wired, _background) = build_core(log_profile).await?;
-    Ok((config, wired))
-}
 
 /// daemon-lifecycle 装配产出。
 ///
@@ -116,8 +36,8 @@ pub struct DaemonLifecycle {
 }
 
 /// 装 daemon-lifecycle 资源 —— iroh node bind、SyncEngineAssembly、startup
-/// reconcile。接受已 wire 好的进程级 [`WiredDependencies`] 作输入,**不**
-/// 再次跑 `wire_dependencies` —— sqlite pool / repos / settings / secure
+/// reconcile。接受已 wire 好的进程级 [`crate::assembly::WiredDependencies`] 作输入,
+/// **不** 再次跑 `wire_dependencies` —— sqlite pool / repos / settings / secure
 /// storage 在进程启动期 wire 一次后由 GUI shell 与 daemon-lifecycle 共用。
 /// 本函数是 async/sync 装配链的边界点 (iroh `Endpoint::bind` 必须在 tokio
 /// runtime 内执行)。

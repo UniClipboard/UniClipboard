@@ -6,7 +6,6 @@
 //! for dependency wiring and initialization.
 
 pub mod assembly;
-pub mod builders;
 pub mod entrypoint;
 mod network_policy;
 pub mod observability;
@@ -26,7 +25,7 @@ pub use assembly::{
     get_storage_paths, wire_dependencies, BackgroundRuntimeDeps, SystemClipboardWiring,
     WiredDependencies, WiringError, WiringResult,
 };
-pub use builders::{build_daemon_lifecycle, DaemonLifecycle};
+pub use entrypoint::daemon::{build_daemon_lifecycle, DaemonLifecycle};
 pub use entrypoint::non_gui::{
     build_app_facade_from_deps, build_cli_app_runtime, build_mobile_sync_facade,
     resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,

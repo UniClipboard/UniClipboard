@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
+import { useShortcut } from '@/hooks/useShortcut'
 import { cn } from '@/lib/utils'
 import {
   applyDimensionValue,
@@ -171,7 +172,10 @@ function CompositeSearchBar({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault()
+      // Step down one level per press: close the panel first, then exit search
+      // entirely (drop every chip and the typed text), and finally blur.
       if (open) setOpen(false)
+      else if (hasContent) clearAll()
       else inputRef.current?.blur()
       return
     }
@@ -206,15 +210,29 @@ function CompositeSearchBar({
   }
 
   const hasContent = chips.length > 0 || buffer.length > 0
-  const clearAll = () => {
+  // `refocus` keeps the cursor in the box after a clear triggered from inside it
+  // (in-input Esc, clear button). A page-level Esc (focus elsewhere) passes
+  // refocus:false so clearing the filters never yanks focus into the input.
+  const clearAll = ({ refocus = true }: { refocus?: boolean } = {}) => {
     resetDimension('type')
     resetDimension('source')
     resetDimension('time')
     setBuffer('')
     onQueryChange('')
     setHighlight(-1)
-    inputRef.current?.focus()
+    if (refocus) inputRef.current?.focus()
   }
+
+  // Esc while focus is OUTSIDE the input (e.g. browsing the grid) still drops
+  // every filter. The in-input Esc path lives in handleKeyDown;
+  // enableOnFormTags:false stops the two from both firing while typing.
+  useShortcut({
+    key: 'esc',
+    scope: 'clipboard',
+    enabled: hasContent,
+    handler: () => clearAll({ refocus: false }),
+    enableOnFormTags: false,
+  })
 
   return (
     <div className="relative w-full">
@@ -253,7 +271,7 @@ function CompositeSearchBar({
           <button
             type="button"
             onMouseDown={e => e.preventDefault()}
-            onClick={clearAll}
+            onClick={() => clearAll()}
             aria-label={t('history.composite.clearAll')}
             className={cn(
               'inline-flex size-5 shrink-0 items-center justify-center rounded-full',

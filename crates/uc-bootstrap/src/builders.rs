@@ -24,7 +24,7 @@ use uc_core::config::AppConfig;
 use crate::assembly::{
     get_storage_paths, wire_dependencies, BackgroundRuntimeDeps, SharedRuntimeDeps, SyncEngineDeps,
 };
-use crate::space_setup::{build_sync_engine_assembly, SyncEngineAssembly};
+use crate::sync_engine::{build_sync_engine_assembly, SyncEngineAssembly};
 
 /// Shared core wiring for the CLI composition-root entry.
 /// Initializes tracing, resolves config, wires dependencies, and registers the
@@ -86,7 +86,7 @@ async fn build_core(
 
 /// CLI composition-root entry returning the full
 /// [`crate::assembly::WiredDependencies`] so the caller can hand it to
-/// [`crate::space_setup::build_sync_engine_assembly`]. It preserves access to
+/// [`crate::sync_engine::build_sync_engine_assembly`]. It preserves access to
 /// `trusted_peer_repo` and other ports the `SpaceSetupFacade` needs (pairing /
 /// roster / send / watch / blob 等需要 iroh 网络栈的 CLI 命令走这条路径)。
 pub(crate) async fn build_cli_wiring_context(

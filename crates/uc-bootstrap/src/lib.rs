@@ -15,7 +15,7 @@ pub mod init;
 mod network_policy;
 pub mod non_gui_runtime;
 pub mod pending_import;
-pub mod space_setup;
+pub mod sync_engine;
 pub mod tracing;
 
 // The top-level re-exports below ARE the crate's external contract: the symbols
@@ -39,5 +39,5 @@ pub use non_gui_runtime::{
     resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,
     ClipboardRestoreAssembly,
 };
-pub use space_setup::SyncEngineAssembly;
+pub use sync_engine::SyncEngineAssembly;
 pub use tracing::{init_tracing_subscriber, install_panic_logging_hook};

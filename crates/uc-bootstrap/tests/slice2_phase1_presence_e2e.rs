@@ -388,7 +388,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
     // Clone the presence + local_identity handles before moving into SpaceSetupDeps
     // so MemberRosterDeps can reuse them. All three Arcs (member_repo, local_identity,
     // presence) are shared between the two facades — mirrors production wiring in
-    // `build_sync_engine_assembly` (`uc-bootstrap/src/space_setup.rs`).
+    // `build_sync_engine_assembly` (`uc-bootstrap/src/sync_engine.rs`).
     let presence_for_roster = Arc::clone(&presence);
     let local_identity_for_roster = Arc::clone(&local_identity);
 

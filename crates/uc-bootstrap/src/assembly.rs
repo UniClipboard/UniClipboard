@@ -139,7 +139,7 @@ pub struct BackgroundRuntimeDeps {
 }
 
 /// P2P / iroh sync-engine assembly inputs. Sole consumer:
-/// [`crate::space_setup::build_sync_engine_assembly`]. These ports/paths never
+/// [`crate::sync_engine::build_sync_engine_assembly`]. These ports/paths never
 /// flow through `AppDeps` — the `SpaceSetupFacade` they assemble lives in
 /// uc-application and is injected by this bundle at wire time, not by the
 /// AppFacade path.

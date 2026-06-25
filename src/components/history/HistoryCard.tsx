@@ -62,6 +62,20 @@ function getFileExtLabel(name: string): string {
   return name.split('.').pop()?.toUpperCase() || 'FILE'
 }
 
+// Reduce a file entry's preview string (a bare file name, a native path, or a
+// `file://` URL) to its display file name: the last path segment, percent-decoded.
+// Search rows carry no structured file_names, so this recovers a name from the
+// preview the search index does keep.
+function fileNameFromPreview(preview: string): string {
+  const trimmed = preview.trim().replace(/[/\\]+$/, '')
+  const segment = trimmed.split(/[/\\]/).pop() ?? trimmed
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return segment
+  }
+}
+
 function getContentSizeLabel(
   item: DisplayClipboardItem,
   t: (key: string, opts?: Record<string, unknown>) => string
@@ -197,10 +211,12 @@ function useResourceImageUrl(entryId: string): string | null {
 // Immersive image card: the image fills the whole card as a background, with the
 // metadata (type, time) and pixel dimensions floated on top of legibility
 // gradients. Distinct from the header+content stack used by every other type.
-const ImageCard: React.FC<{ item: DisplayClipboardItem; imageItem: ClipboardImageItem }> = ({
-  item,
-  imageItem,
-}) => {
+const ImageCard: React.FC<{
+  item: DisplayClipboardItem
+  // Optional: search/filter rows carry no structured content. The thumbnail is
+  // fetched by entry id, so it's only the pixel-size badge that needs this.
+  imageItem?: ClipboardImageItem | null
+}> = ({ item, imageItem }) => {
   const { t } = useTranslation()
   const imageUrl = useResourceImageUrl(item.id)
   const relativeTime = useRelativeTime(item.activeTime)
@@ -229,7 +245,7 @@ const ImageCard: React.FC<{ item: DisplayClipboardItem; imageItem: ClipboardImag
       </div>
 
       {/* Pixel dimensions badge */}
-      {imageItem.width > 0 && imageItem.height > 0 && (
+      {imageItem && imageItem.width > 0 && imageItem.height > 0 && (
         <span className="absolute bottom-3 left-3.5 z-10 text-[11px] font-medium tabular-nums text-white/85 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">
           {imageItem.width}×{imageItem.height}
         </span>
@@ -357,9 +373,11 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   const { delivery } = useEntryDelivery(item.id)
 
   const isFileType = item.type === 'file'
-  // Image entries with resolved content render as an immersive full-bleed card;
-  // image-type search/pending rows (no structured content) fall back to the stack.
-  const isImageCard = item.type === 'image' && !!item.content
+  // Every image entry renders as an immersive full-bleed card. The thumbnail is
+  // fetched by entry id (see useResourceImageUrl), so search/filter rows that
+  // carry no structured content still show the image — only the pixel-size badge
+  // (which needs content) is omitted.
+  const isImageCard = item.type === 'image'
   const transfer = useAppSelector(state =>
     isFileType ? selectTransferByEntryId(state, item.id) : undefined
   )
@@ -385,8 +403,19 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
   const content = useMemo(() => {
     if (!item.content) {
-      // Search/pending rows carry only a text preview (no structured content);
-      // render it as a plain snippet so search hits aren't shown as blank cards.
+      // File-type search rows carry no structured content (the search index drops
+      // file_names/sizes), so synthesize a minimal file item from the preview —
+      // a filtered file then renders as a file card, not a raw path/URL line.
+      // Size and file count stay unknown in search mode.
+      if (item.type === 'file' && item.textPreview) {
+        return (
+          <FileContent
+            item={{ file_names: [fileNameFromPreview(item.textPreview)], file_sizes: [-1] }}
+          />
+        )
+      }
+      // Other search/pending rows carry only a text preview; render it as a plain
+      // snippet so search hits aren't shown as blank cards.
       return item.textPreview ? (
         <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-4 break-words whitespace-pre-wrap">
           {item.textPreview}
@@ -454,7 +483,9 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         />
       )}
 
-      {isImageCard && <ImageCard item={item} imageItem={item.content as ClipboardImageItem} />}
+      {isImageCard && (
+        <ImageCard item={item} imageItem={item.content as ClipboardImageItem | null} />
+      )}
 
       {!isImageCard && (
         <>

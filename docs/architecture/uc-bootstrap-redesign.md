@@ -1,8 +1,9 @@
 # uc-bootstrap 重新设计方案
 
-> 状态：执行中 —— **Phase 0 已完成（2026-06-25）**，Phase 1–4 待执行
-> 范围：`crates/uc-bootstrap`（组合根）的内部结构、公开表面、跨 crate 职责归属
-> 不改变任何对外可观察行为；所有阶段均为 `refactor:` / `arch:` 级别
+> 状态：执行中 —— **Phase 0–2 已完成（2026-06-25）**，Phase 3b–4 待执行
+> （**Phase 3a 经执行期核实取消**：correlation 是 Sentry-sink 专属逻辑，留 uc-bootstrap，见 §7 Phase 3）
+> 范围：`crates/uc-bootstrap`（组合根）的内部结构、公开表面
+> 不改变任何对外可观察行为；取消 Phase 3a 后所有阶段均为 crate 内 `refactor:` 级别
 
 ## 1. 背景与问题
 
@@ -24,9 +25,12 @@
 
 不属于本 crate：
 - GUI 装配 → 已属 `uc-desktop`
-- observability 的 **实现逻辑** → 应属 `uc-observability`
+- **sink-agnostic 的 observability 实现逻辑** → 属 `uc-observability`（console/json layer、profile、redact 等）
 - 业务 **启动编排** → 介于 wiring 与 use case 之间，**经决策留在本 crate** 的 `startup/` 子模块（务实：它在 wiring 之后用 wired ports 跑一次性协调，是组合根的合理延伸）
 - 所有迁移残留死代码 → 删
+
+仍属于本 crate（执行期 Phase 3a 核实修正）：
+- **Sentry-layer 组合**（含 `tracing.rs` 的 sentry `event_mapper` 与 `correlation.rs` 的 Sentry-sink 字段富化）→ 留本 crate。`correlation.rs` 直依赖 `sentry::protocol::*`，而 `uc-observability` 自述「stays sink-agnostic，Sentry layer 由 uc-bootstrap 组合」且 Cargo.toml 无 sentry 依赖；搬过去会破坏其 sink-agnostic 不变量。故 correlation 与 tracing co-locate 进本 crate 的 `observability/` 子目录。
 
 ### 2.2 硬约束
 
@@ -120,8 +124,8 @@
 | `non_gui_runtime.rs` (751) | `entrypoint/non_gui.rs` | 移动 |
 | `init.rs` (518) | `startup/reconcile.rs` | 删 2 个死函数；reconcile_* 进 startup/ |
 | `pending_import.rs` (665) | `startup/pending_import.rs` | 移动 |
-| `tracing.rs` (818) | `observability/tracing.rs` | 移动（correlation 引用改跨 crate） |
-| `correlation.rs` (334) | **`uc-observability`** | 跨 crate 搬迁（仅 tracing.rs 引用，8 处） |
+| `tracing.rs` (818) | `observability/tracing.rs` | 移动（Sentry layer 组合 + event_mapper） |
+| `correlation.rs` (334) | `observability/correlation.rs` | 移动（Sentry-sink 适配器，留本 crate 与 tracing co-locate；Phase 3a 取消跨 crate 搬迁） |
 | `config.rs` (47) | **删** | `load_config` 无调用方（全文件死代码）；整文件删除 |
 | `task_registry.rs` (7) | 删 | 消费方改用 `uc_core::TaskRegistry`（daemon 直依赖 uc-core，Option B） |
 | `lib.rs` (56) | `lib.rs` | 收窄 re-export 到 §4.1 |
@@ -152,8 +156,9 @@ uc-bootstrap/src/
   startup/            # ⑤ 启动编排（决策：留 bootstrap）
     reconcile.rs      #   ← init.rs 的 reconcile_*
     pending_import.rs #   ← pending_import.rs
-  observability/
-    tracing.rs        #   subscriber 装配（correlation 搬走后 use uc_observability::correlation）
+  observability/      # ⑥ Sentry-layer 组合（本 crate 拥有；uc-observability 保持 sink-agnostic）
+    tracing.rs        #   ← tracing.rs（subscriber + sentry layer 组合 + event_mapper）
+    correlation.rs    #   ← correlation.rs（Sentry-sink 字段富化，与 tracing co-locate）
 ```
 
 ## 7. 分阶段执行 plan
@@ -168,19 +173,20 @@ uc-bootstrap/src/
 - 提交：3 个原子 `refactor:` commit（drop TaskRegistry shim / remove GUI-client dead code / narrow public surface）。
 - DoD：✅ `cargo check --workspace` 绿；✅ 死代码符号全仓 `rg` 清零；✅ `cargo test -p uc-bootstrap -p uc-daemon` 绿（含 46 unit + 5 e2e target）。
 
-### Phase 1 — 契约边界稳定化（`refactor:`）
-- 把 daemon 的 6 处 ⚠️ 子模块路径 import 改走顶层 `uc_bootstrap::X`（前提：lib.rs 顶层 re-export 这 6 个符号）。
+### Phase 1 — 契约边界稳定化（`refactor:`）✅ 已完成 2026-06-25（commit 4bdc2a4a2）
+- 把 daemon 的 6 处 ⚠️ 子模块路径 import 改走顶层 `uc_bootstrap::X`（lib.rs 顶层补全 `FileTransferLifecycle` / `install_panic_logging_hook` re-export）。
 - 目的：让 `lib.rs` 成为 **唯一** 对外契约面，后续内部重组对 daemon/cli 完全透明。
-- DoD：外部对 uc_bootstrap 的引用全部经由顶层；`rg 'uc_bootstrap::(assembly|tracing|builders|file_transfer_lifecycle)::'` 在 apps/ + src-tauri/ 清零。
+- DoD：✅ `rg 'uc_bootstrap::(assembly|tracing|builders|file_transfer_lifecycle)::'` 在 apps/ + src-tauri/ 清零；✅ `cargo check --workspace` 绿；✅ `cargo test -p uc-bootstrap -p uc-daemon` 绿。
+- 残留（不阻塞，随后续 Phase 模块搬迁更新）：`tests/config_migration_round_trip_e2e.rs` 用 `pending_import::apply_pending_import`（非契约 helper，Phase 3b 随模块移动更新）；`uc-platform/src/clipboard/noop.rs` doc-comment 链接 `assembly::create_platform_layer`（Phase 4 拆 assembly 时顺手修）。
 
-### Phase 2 — `space_setup` → `sync_engine` 改名（`refactor:`）
-- 文件/模块 `space_setup.rs` → `subsystem/sync_engine.rs`（先不建子目录，或与 Phase 4 合并）；模块声明 + crate 内 6 处 `crate::space_setup::` 引用更新。
-- 不碰 `uc_application::facade::space_setup`、字段名 `space_setup`。
+### Phase 2 — `space_setup` → `sync_engine` 改名（`refactor:`）✅ 已完成 2026-06-25（commit 13f7d11de）
+- 文件/模块 `space_setup.rs` → `sync_engine.rs`（flat rename，**不建子目录**，subsystem/ 归位留 Phase 4）；模块声明 + crate 内 5 处 `crate::space_setup::` 引用 + 2 处 doc-link + 1 处 test 注释路径更新。
+- 不碰 `uc_application::facade::space_setup`、`SyncEngineDeps` 参数名 `space_setup`（角色标签）。
+- DoD：✅ `rg 'crate::space_setup|uc_bootstrap::space_setup|mod space_setup'` 清零；✅ 111 tests 绿（46 unit + 5 e2e slice + 58 daemon）。
 
-### Phase 3 — 跨 crate 职责归位（`arch:`）
-- **3a** `correlation.rs` 搬 `uc-observability`；`observability/tracing.rs` 改 `use uc_observability::correlation::...`（8 处引用，全在 tracing.rs）。
-- **3b** `init.rs` 剩余 reconcile_* + `pending_import.rs` 收进 `startup/` 子模块。
-- 注意：3a 跨 crate 边界移动 = `arch:`，与 3b 的 crate 内整理分开 commit。
+### Phase 3 — 启动编排归位（`refactor:`）
+- **3a** ❌ **取消**（执行期核实）：原计划把 `correlation.rs` 搬 `uc-observability`。核实发现 correlation 直依赖 `sentry::protocol::*`，是 Sentry-sink 适配器；而 `uc-observability` 自述 sink-agnostic 且无 sentry 依赖，搬过去会破坏其不变量。决策（用户确认 Option B）：correlation 留本 crate，Phase 4 随 `tracing.rs` 一起进 `observability/`。本 redesign 不再有任何 `arch:` 跨 crate 阶段。
+- **3b** `init.rs` 剩余 reconcile_* + `pending_import.rs` 收进 `startup/` 子模块（crate 内 `refactor:`）。
 
 ### Phase 4 — 拆 god module + 子目录归位（`refactor:`，小步切）
 - 逐子模块从 `assembly.rs` 抽出 → `layer/{infra,platform,paths}.rs`、`wiring/{deps,wire,network_policy}.rs`；其余模块移入 `subsystem/` `entrypoint/` `observability/`。
@@ -189,7 +195,8 @@ uc-bootstrap/src/
 
 ## 8. 不做什么（本质复杂度 / 反过度工程）
 
-- **不拆新 crate**：bootstrap 必然链接所有层，拆 crate 不会减依赖、只增协调成本。仅把 **确实不属于装配** 的 `correlation` 搬到已有的 `uc-observability`。
+- **不拆新 crate**：bootstrap 必然链接所有层，拆 crate 不会减依赖、只增协调成本。
+- **不把 `correlation` 搬出 bootstrap**（执行期 Phase 3a 推翻原设想）：它是 Sentry-sink 适配器（直依赖 `sentry::protocol::*`），属于本 crate 拥有的 Sentry-layer 组合；搬进 sink-agnostic 的 `uc-observability` 会破坏后者不变量。仅在本 crate 内把它与 `tracing.rs` 一起归入 `observability/`。
 - **不动 `wire_dependencies` 内的 bundle 字面量**：5 个 bundle 的字段装配是本质复杂度，Phase B（已完成）已收过。
 - **不强行把 startup 编排做成 use case**：经决策保留在 `startup/`（§2.1）。
 - **不重命名字段/参数 `space_setup`**：它是指向装配路径的角色标签，类型才表达内容。
@@ -199,6 +206,8 @@ uc-bootstrap/src/
 
 1. ✅ †标记符号终判（Phase 0）：`resolve_pairing_device_name` = 死（删）；`build_analytics_sink` = internal-only（降 `pub(crate)`）。另发现 7 个原 §4.2 符号实为死代码（§4.4 ‡）。
 2. ✅ Phase 0c `TaskRegistry` = Option B（daemon 直依赖 uc-core，删 shim + re-export）。
-3. ⏳ `layer/paths.rs` 与 `uc-app-paths`(directory-layout authority) 的真相源边界——是否存在重复逻辑，可否直接委托。（Phase 4 落地时核实）
-4. ⏳ 目标子目录划分（6 组）是否过度——可在 Phase 4 落地时按实际收敛。
-5. ⚠️ **新增教训**：契约核实必须含 `crates/uc-bootstrap/tests/`（集成测试是外部消费方），且"零外部 import"≠"非死代码"——需区分"有 crate 内调用方"(internal-only) 与"全仓零调用方"(dead)。
+3. ✅ **Phase 3a 跨 crate 搬迁 = 取消**（2026-06-25，用户确认 Option B）：`correlation.rs` 直依赖 `sentry::protocol::*`，是 Sentry-sink 适配器；`uc-observability` 自述 sink-agnostic（lib.rs doc）且 Cargo.toml 无 sentry 依赖。搬过去破坏其不变量。correlation 留本 crate，Phase 4 随 tracing.rs 进 `observability/`。redesign 不再有 `arch:` 阶段。
+4. ⏳ `layer/paths.rs` 与 `uc-app-paths`(directory-layout authority) 的真相源边界——是否存在重复逻辑，可否直接委托。（Phase 4 落地时核实）
+5. ⏳ 目标子目录划分（6 组）是否过度——可在 Phase 4 落地时按实际收敛。
+6. ⚠️ **教训**：契约核实必须含 `crates/uc-bootstrap/tests/`（集成测试是外部消费方），且"零外部 import"≠"非死代码"——需区分"有 crate 内调用方"(internal-only) 与"全仓零调用方"(dead)。
+7. ⚠️ **教训（Phase 3a）**：跨 crate 搬迁前必须核实目标 crate 的 **架构不变量** 与 **依赖图**——"逻辑上属于 observability"不等于"可放进 uc-observability"；Sentry 耦合 + sink-agnostic 红线使该搬迁不可行。

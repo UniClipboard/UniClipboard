@@ -5,3 +5,4 @@
 //! platform (clipboard / secure storage), and directory-path resolution.
 
 pub mod paths;
+pub mod platform;

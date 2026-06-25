@@ -17,9 +17,7 @@ use uc_core::ports::blob::BlobReferenceRepositoryPort;
 use uc_infra::clipboard::{RepresentationCache, SpoolManager};
 use uc_observability::analytics::AnalyticsFacade;
 
-// NOTE: SystemClipboardWiring moves to crate::layer::platform in Phase 4.5c;
-// it still lives in assembly until then.
-use crate::assembly::SystemClipboardWiring;
+use crate::layer::platform::SystemClipboardWiring;
 
 /// Result type for wiring operations
 pub type WiringResult<T> = Result<T, WiringError>;
@@ -178,7 +176,7 @@ pub struct WiredDependencies {
     /// `build_app_facade_from_deps`;CLI 与 daemon 路径共用。
     pub deps: AppDeps,
     /// System-clipboard wiring decision from
-    /// [`create_platform_layer`](crate::assembly::create_platform_layer) — the
+    /// [`create_platform_layer`](crate::layer::platform::create_platform_layer) — the
     /// composition root's single call on whether this process talks to the real
     /// OS clipboard. Hosts gate their OS-clipboard-bound assembly on this.
     pub system_clipboard_wiring: SystemClipboardWiring,

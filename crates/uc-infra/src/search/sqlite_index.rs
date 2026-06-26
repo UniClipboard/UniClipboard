@@ -1477,15 +1477,50 @@ mod tests {
         }
     }
 
+    /// Search-key derivation that always reports a locked encryption session,
+    /// modelling the runtime lock state for lock-contract assertions (§4.6).
+    struct LockedKey;
+    #[async_trait]
+    impl SearchKeyDerivationPort for LockedKey {
+        async fn derive_search_key(&self) -> Result<SearchKey, SearchError> {
+            Err(SearchError::SessionLocked)
+        }
+    }
+
     /// Build an index over a fresh migrated SQLite file. The returned pool shares
     /// the same database so assertions can read the active tables directly.
     fn make_index() -> (SqliteSearchIndex, DbPool, TempDir) {
+        make_index_with_key(Arc::new(FixedKey))
+    }
+
+    fn make_index_with_key(
+        key: Arc<dyn SearchKeyDerivationPort>,
+    ) -> (SqliteSearchIndex, DbPool, TempDir) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("search.sqlite");
         let pool = init_db_pool(path.to_str().unwrap()).unwrap();
-        let index =
-            SqliteSearchIndex::new(pool.clone(), Arc::new(FixedProfile), Arc::new(FixedKey));
+        let index = SqliteSearchIndex::new(pool.clone(), Arc::new(FixedProfile), key);
         (index, pool, dir)
+    }
+
+    fn filter_only_query() -> SearchQuery {
+        SearchQuery {
+            query_string: String::new(),
+            operator: QueryOperator::And,
+            time_range: None,
+            content_types: vec![],
+            extensions: vec![],
+            source_devices: vec![],
+            limit: 50,
+            offset: 0,
+        }
+    }
+
+    fn keyword_query(term: &str) -> SearchQuery {
+        SearchQuery {
+            query_string: term.to_string(),
+            ..filter_only_query()
+        }
     }
 
     fn make_doc(entry_id: &str, tags: Vec<TagId>) -> SearchDocument {
@@ -1585,6 +1620,40 @@ mod tests {
             .unwrap();
         index.remove_entry(&EntryId::from("e1")).await.unwrap();
         assert!(tag_rows(&pool).is_empty());
+    }
+
+    /// Lock contract (§4.6): a filter-only / empty browse never derives the
+    /// search key, so it returns results even while the encryption session is
+    /// locked. This is what lets the daemon serve browse without unlocking.
+    #[tokio::test]
+    async fn filter_only_browse_succeeds_when_session_locked() {
+        let (index, _pool, _dir) = make_index_with_key(Arc::new(LockedKey));
+        index
+            .index_entry(make_doc("e1", vec![]), vec![])
+            .await
+            .unwrap();
+
+        let page = index.search(filter_only_query()).await.unwrap();
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].entry_id.to_string(), "e1");
+    }
+
+    /// Lock contract (§4.6): a keyword search must derive the search key, which
+    /// is unavailable while locked, so it surfaces `SessionLocked` rather than
+    /// silently degrading to unkeyed or empty results.
+    #[tokio::test]
+    async fn keyword_search_rejected_when_session_locked() {
+        let (index, _pool, _dir) = make_index_with_key(Arc::new(LockedKey));
+        index
+            .index_entry(make_doc("e1", vec![]), vec![])
+            .await
+            .unwrap();
+
+        let err = index.search(keyword_query("hello")).await.unwrap_err();
+
+        assert!(matches!(err, SearchError::SessionLocked));
     }
 
     /// Read the render columns of one document row as `(file_names, link_urls,

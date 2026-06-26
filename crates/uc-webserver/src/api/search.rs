@@ -3,8 +3,12 @@
 //! All routes are protected by the auth_extractor + rate_limit middleware chain
 //! applied at the router level (see routes::router_l2_plus).
 //!
-//! Lock guard: every handler checks `app_facade.encryption.state().session_ready`
-//! and returns HTTP 423 with `session_locked` if the encryption session is not ready.
+//! Lock guard: the `status` and `rebuild` handlers require an unlocked
+//! encryption session and return HTTP 423 `session_locked` otherwise. The
+//! `query` handler instead delegates the lock decision to the search engine
+//! (§4.6): a filter-only browse (no keyword) needs no search key and is served
+//! while locked, whereas a keyword search derives the search key and surfaces
+//! `session_locked` (HTTP 423) when the session is locked.
 
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -138,7 +142,9 @@ pub fn router() -> Router<DaemonApiState> {
 /// GET /search/query
 ///
 /// Execute a structured search query against the local encrypted search index.
-/// Returns HTTP 423 if the encryption session is locked.
+/// The session-lock decision is query-type-aware (§4.6): filter-only browse is
+/// served while locked; a keyword search returns HTTP 423 when the session is
+/// locked (the engine cannot derive the search key).
 ///
 /// ADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of
 /// the envelope — they are folded INTO the `data` payload alongside the renamed
@@ -153,7 +159,7 @@ pub fn router() -> Router<DaemonApiState> {
     responses(
         (status = 200, description = "Search results page", body = SearchQueryEnvelope),
         (status = 400, description = "Invalid or malformed query", body = ApiErrorResponse),
-        (status = 423, description = "Encryption session is locked", body = ApiErrorResponse),
+        (status = 423, description = "Encryption session is locked (keyword search only; filter-only browse is served while locked)", body = ApiErrorResponse),
         (status = 503, description = "Search index not ready or unavailable", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
@@ -168,8 +174,9 @@ async fn search_query_handler(
     State(state): State<DaemonApiState>,
     Query(params): Query<SearchQueryParams>,
 ) -> Result<Json<ApiEnvelope<SearchQueryResultDto>>, ApiError> {
-    require_encryption_ready(&state).await?;
-
+    // No blanket lock guard here (§4.6): the engine derives the search key only
+    // for keyword queries, so filter-only browse is served while locked and a
+    // locked keyword search surfaces `session_locked` through `map_search_error`.
     let app = state.app_facade_or_error()?;
     let input = search_input_from_params(params);
     debug!(query = %input.query, "dispatching search query through app facade");

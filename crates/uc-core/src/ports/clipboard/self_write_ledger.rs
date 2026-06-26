@@ -11,7 +11,15 @@ pub enum SelfWriteMatch {
     /// Match the very next observed change regardless of its content. Used when
     /// the bytes may be re-encoded between write and observation, so a content
     /// key cannot be relied on.
-    ByNextChange,
+    ///
+    /// The carried key is the content guard key of the same write this fallback
+    /// backs — the key that write also armed as [`ByContent`]. It pairs the
+    /// fallback to its write so a content match can retire exactly the
+    /// now-redundant fallback (and not a concurrent write's), and so repeated
+    /// arms of one write coalesce instead of accumulating duplicate fallbacks.
+    /// The key never gates matching: consumption still resolves the next change
+    /// regardless of its hash.
+    ByNextChange(String),
 }
 
 /// What a matched self-write should attribute the observed change to.

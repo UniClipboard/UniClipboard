@@ -326,10 +326,12 @@ impl ClipboardWriteCoordinator {
             match intent {
                 ClipboardWriteIntent::LocalRestore => {
                     // File restores can come back from the platform clipboard with rewritten
-                    // URI/path bytes, so the content record alone is not sufficient.
+                    // URI/path bytes, so the content record alone is not sufficient. Pair the
+                    // fallback to this write via its guard key so a repeat write of the same
+                    // snapshot coalesces instead of leaving a stray fallback behind.
                     self.clipboard_change_origin
                         .record_self_write(
-                            SelfWriteMatch::ByNextChange,
+                            SelfWriteMatch::ByNextChange(origin_guard_key.clone()),
                             SelfWriteAttribution::Local,
                             LOCAL_ECHO_RTT_MAX,
                         )
@@ -339,10 +341,12 @@ impl ClipboardWriteCoordinator {
                     // Some platforms (e.g. Windows clipboard-rs) re-encode images (PNG→DIB→PNG),
                     // producing different bytes than the original. The content record above won't
                     // match the re-encoded content, so we arm a next-change record: the NEXT
-                    // clipboard change is treated as RemotePush regardless of hash.
+                    // clipboard change is treated as RemotePush regardless of hash. The guard key
+                    // pairs the fallback to this write so a duplicated push of the same snapshot
+                    // coalesces instead of leaking a fallback that would swallow a later copy.
                     self.clipboard_change_origin
                         .record_self_write(
-                            SelfWriteMatch::ByNextChange,
+                            SelfWriteMatch::ByNextChange(origin_guard_key.clone()),
                             SelfWriteAttribution::Remote,
                             REMOTE_ECHO_RTT_MAX,
                         )

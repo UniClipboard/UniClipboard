@@ -35,6 +35,12 @@ struct ContentRecord {
 /// did not resolve against a content record (covers bytes re-encoded between
 /// write and echo, where no content key can be relied on).
 struct NextChangeRecord {
+    /// Content guard key of the write this fallback backs. Pairs the fallback to
+    /// its write so a content match retires exactly the redundant one (not a
+    /// concurrent write's), and keys arm-time de-duplication. Never consulted
+    /// when the fallback is consumed by an unmatched change — consumption stays
+    /// content-agnostic to catch re-encoded echoes under an unknown hash.
+    guard_key: String,
     attribution: SelfWriteAttribution,
     expires_at: Instant,
 }
@@ -128,18 +134,34 @@ impl SelfWriteLedgerPort for InMemorySelfWriteLedger {
                 );
                 Self::remember_content_record(&mut state, snapshot_hash, attribution, expires_at);
             }
-            SelfWriteMatch::ByNextChange => {
+            SelfWriteMatch::ByNextChange(guard_key) => {
                 debug!(
                     ?attribution,
                     ttl_ms = ttl.as_millis(),
                     "self_write_ledger record next-change fallback"
                 );
-                state.next_changes.push_back(NextChangeRecord {
-                    attribution,
-                    expires_at,
-                });
-                while state.next_changes.len() > NEXT_CHANGE_MAX {
-                    state.next_changes.pop_front();
+                // De-duplicate by (guard_key, attribution). One write may arm
+                // its fallback more than once — the same snapshot written twice
+                // coalesces into a single OS echo, so a duplicate fallback would
+                // linger past that lone echo and swallow the next genuine change.
+                // Same key+attribution is the same write, so refreshing the
+                // existing record's backstop is correct; a different key (a
+                // concurrent write) keeps its own independent fallback.
+                if let Some(idx) = state
+                    .next_changes
+                    .iter()
+                    .position(|r| r.guard_key == guard_key && r.attribution == attribution)
+                {
+                    state.next_changes[idx].expires_at = expires_at;
+                } else {
+                    state.next_changes.push_back(NextChangeRecord {
+                        guard_key,
+                        attribution,
+                        expires_at,
+                    });
+                    while state.next_changes.len() > NEXT_CHANGE_MAX {
+                        state.next_changes.pop_front();
+                    }
                 }
             }
         }
@@ -156,17 +178,15 @@ impl SelfWriteLedgerPort for InMemorySelfWriteLedger {
             .position(|r| r.snapshot_hash == snapshot_hash)
         {
             if let Some(stored) = state.content_records.remove(idx) {
-                // The content match resolved this write's echo, so its paired
-                // next-change fallback is now redundant and would otherwise
-                // misclassify the next genuine user action. Same-attribution
-                // fallbacks are interchangeable, so dropping any one of the
-                // matching attribution is correct — and, unlike clearing the
-                // whole queue, it leaves a concurrent write's fallback intact.
-                if let Some(fidx) = state
-                    .next_changes
-                    .iter()
-                    .position(|r| r.attribution == stored.attribution)
-                {
+                // The content match resolved this write's echo, so the fallback
+                // paired to the SAME write is now redundant and would otherwise
+                // misclassify the next genuine user action. Match by guard_key
+                // (the paired write's content key), not merely attribution, so a
+                // concurrent write's independent fallback — which may still need
+                // to absorb a re-encoded echo — survives.
+                if let Some(fidx) = state.next_changes.iter().position(|r| {
+                    r.guard_key == snapshot_hash && r.attribution == stored.attribution
+                }) {
                     state.next_changes.remove(fidx);
                 }
                 debug!(
@@ -256,7 +276,7 @@ mod tests {
         let ledger = InMemorySelfWriteLedger::new();
         ledger
             .record_self_write(
-                SelfWriteMatch::ByNextChange,
+                SelfWriteMatch::ByNextChange("h1".into()),
                 SelfWriteAttribution::Remote,
                 LONG,
             )
@@ -286,7 +306,7 @@ mod tests {
             .await;
         ledger
             .record_self_write(
-                SelfWriteMatch::ByNextChange,
+                SelfWriteMatch::ByNextChange("h1".into()),
                 SelfWriteAttribution::Local,
                 LONG,
             )
@@ -321,7 +341,7 @@ mod tests {
             .await;
         ledger
             .record_self_write(
-                SelfWriteMatch::ByNextChange,
+                SelfWriteMatch::ByNextChange("h1".into()),
                 SelfWriteAttribution::Remote,
                 LONG,
             )
@@ -336,7 +356,7 @@ mod tests {
             .await;
         ledger
             .record_self_write(
-                SelfWriteMatch::ByNextChange,
+                SelfWriteMatch::ByNextChange("h2".into()),
                 SelfWriteAttribution::Remote,
                 LONG,
             )
@@ -352,6 +372,60 @@ mod tests {
         assert_eq!(
             ledger.attribute_observed_change("h2-reencoded").await,
             ClipboardChangeOrigin::remote_push_anonymous()
+        );
+    }
+
+    /// Regression: an inbound sync that writes the SAME snapshot twice (e.g. an
+    /// apply followed by an active-state rebroadcast) arms two content records
+    /// and two fallbacks under one attribution. The OS coalesces the two
+    /// identical writes into a single observed echo, so only one content match
+    /// fires. Under the old design the second fallback leaked and the next
+    /// genuine user copy — arbitrary unrelated content — was swallowed as a
+    /// RemotePush echo, producing zero capture entries.
+    #[tokio::test]
+    async fn double_write_same_content_does_not_leak_fallback() {
+        let ledger = InMemorySelfWriteLedger::new();
+        // First write of the snapshot: content guard + paired fallback.
+        ledger
+            .record_self_write(
+                SelfWriteMatch::ByContent("h".into()),
+                SelfWriteAttribution::Remote,
+                LONG,
+            )
+            .await;
+        ledger
+            .record_self_write(
+                SelfWriteMatch::ByNextChange("h".into()),
+                SelfWriteAttribution::Remote,
+                LONG,
+            )
+            .await;
+        // Second write of the IDENTICAL snapshot (same hash, same attribution).
+        ledger
+            .record_self_write(
+                SelfWriteMatch::ByContent("h".into()),
+                SelfWriteAttribution::Remote,
+                LONG,
+            )
+            .await;
+        ledger
+            .record_self_write(
+                SelfWriteMatch::ByNextChange("h".into()),
+                SelfWriteAttribution::Remote,
+                LONG,
+            )
+            .await;
+
+        // The OS merged both writes into one observed echo.
+        assert_eq!(
+            ledger.attribute_observed_change("h").await,
+            ClipboardChangeOrigin::remote_push_anonymous()
+        );
+        // A genuine, unrelated user copy must resolve to a fresh capture, NOT be
+        // eaten by a leaked fallback from the duplicated write.
+        assert_eq!(
+            ledger.attribute_observed_change("a-real-user-copy").await,
+            ClipboardChangeOrigin::LocalCapture
         );
     }
 

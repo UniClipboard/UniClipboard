@@ -141,12 +141,10 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
             .build(&pipeline_input, &search_key)
             .map_err(|err| ClipboardLiveIndexError::Internal(err.to_string()))?;
 
-        if postings.is_empty() {
-            return Ok(ClipboardLiveIndexOutcome::Skipped {
-                reason: "no_postings".to_string(),
-            });
-        }
-
+        // An entry with no postings (e.g. an image with no searchable text) is
+        // still indexed: the search index must hold every browsable entry, not
+        // just the full-text-searchable ones, otherwise browse and the `image`
+        // content-type filter would miss it.
         self.deps
             .search_index
             .index_entry(document, postings)

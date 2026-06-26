@@ -341,9 +341,10 @@ impl SearchCoordinator {
 
                 match deps.search_pipeline.build(&pipeline_input, &search_key) {
                     Ok((doc, postings)) => {
-                        if !postings.is_empty() {
-                            all_entries.push((doc, postings));
-                        }
+                        // Index every entry, including no-posting ones (e.g. an
+                        // image with no searchable text), so browse and the
+                        // content-type filter see the full set.
+                        all_entries.push((doc, postings));
                     }
                     Err(e) => {
                         warn!(

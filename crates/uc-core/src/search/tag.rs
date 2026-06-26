@@ -22,6 +22,12 @@ pub mod builtin {
     pub const LINK: &str = "link";
     /// User-marked favorite state.
     pub const FAVORITED: &str = "favorited";
+    /// Image-content tag: the entry is or contains an image — a pure bitmap, a
+    /// copied image file, or a multi-file selection that includes one. This is
+    /// orthogonal to `content_type`: a copied image file is physically a
+    /// `File`, but still carries the `image` tag so the image filter surfaces
+    /// it alongside pure bitmaps.
+    pub const IMAGE: &str = "image";
 }
 
 /// Stable identifier of a search tag.
@@ -47,6 +53,11 @@ impl TagId {
         Self::new(builtin::FAVORITED)
     }
 
+    /// The builtin `image` tag id.
+    pub fn image() -> Self {
+        Self::new(builtin::IMAGE)
+    }
+
     /// Borrow the id as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -54,7 +65,10 @@ impl TagId {
 
     /// True when this id is one of the reserved builtin ids.
     pub fn is_builtin(&self) -> bool {
-        matches!(self.0.as_str(), builtin::LINK | builtin::FAVORITED)
+        matches!(
+            self.0.as_str(),
+            builtin::LINK | builtin::FAVORITED | builtin::IMAGE
+        )
     }
 }
 
@@ -103,6 +117,10 @@ pub struct TaggableContent<'a> {
     pub uri_list: &'a [String],
     /// The entry's plain-text body, if any.
     pub plain_text: Option<&'a str>,
+    /// True when the entry carries any image representation — a pure bitmap or
+    /// an image file. Drives the builtin `image` tag, which is orthogonal to
+    /// `content_type` (a copied image file is physically a `File`).
+    pub has_image: bool,
 }
 
 /// A producer of exactly one tag: given content, decides whether the tag
@@ -135,8 +153,10 @@ mod tests {
     fn builtin_constructors_match_reserved_ids() {
         assert_eq!(TagId::link().as_str(), builtin::LINK);
         assert_eq!(TagId::favorited().as_str(), builtin::FAVORITED);
+        assert_eq!(TagId::image().as_str(), builtin::IMAGE);
         assert!(TagId::link().is_builtin());
         assert!(TagId::favorited().is_builtin());
+        assert!(TagId::image().is_builtin());
     }
 
     #[test]

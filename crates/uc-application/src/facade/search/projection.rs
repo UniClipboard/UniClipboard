@@ -12,52 +12,6 @@ use uc_core::search::document::ContentType;
 use uc_core::search::tag::{TagId, TagRule, TaggableContent};
 use uc_infra::search::text_extractor::SearchPipelineInput;
 
-/// Infer the physical `ContentType` from a primary MIME type string.
-///
-/// This is the single-valued "what data form is this?" dimension; the URL nature
-/// of a web link is carried separately by the derived `link` tag (see
-/// [`evaluate_tags`]), so a web-URL entry is physically `Text`.
-///
-/// Rules:
-/// - `image/*` => `Image`
-/// - `text/html` => `Html`
-/// - `text/plain` and related plain text => `Text`
-/// - `text/uri-list` containing `file://` paths => `File`; web-URL-only => `Text`
-/// - anything else => `Other`
-fn infer_physical_type(mime: &str, uri_list: &[String], has_file_paths: bool) -> ContentType {
-    let mime_lower = mime.to_lowercase();
-    if mime_lower.starts_with("image/") {
-        return ContentType::Image;
-    }
-    if mime_lower == "text/html" {
-        return ContentType::Html;
-    }
-    if mime_lower == "text/plain" || mime_lower.starts_with("text/plain;") {
-        return ContentType::Text;
-    }
-    // URI list: distinguish file paths from web URLs.
-    // Note: callers pre-extract file:// URIs into file_paths (so uri_list only has
-    // http/https URLs). has_file_paths signals that at least one file:// URI was found.
-    if mime_lower == "text/uri-list" || mime_lower == "file/uri-list" {
-        if has_file_paths || uri_list.iter().any(|u| u.trim().starts_with("file://")) {
-            return ContentType::File;
-        }
-        // Web-URL uri-list is textual content; the `link` tag captures its URL nature.
-        return ContentType::Text;
-    }
-    // Non-file URL — classify by content.
-    for uri in uri_list {
-        let trimmed = uri.trim();
-        if trimmed.starts_with("file://") {
-            return ContentType::File;
-        }
-        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-            return ContentType::Text;
-        }
-    }
-    ContentType::Other
-}
-
 /// A [`TagRule`] that marks content carrying one or more web URLs with the
 /// builtin `link` tag. The membership decision and the `linkUrls` render
 /// metadata share [`detect_link_urls`], so they stay in lock-step.
@@ -83,10 +37,41 @@ impl TagRule for LinkRule {
     }
 }
 
-/// The builtin tag rules evaluated for every entry. MVP holds a single
-/// [`LinkRule`]; user-defined rules are a later extension point.
+/// A [`TagRule`] that marks entries carrying image content with the builtin
+/// `image` tag.
+///
+/// Unlike `content_type` — which faithfully reflects the *paste* representation,
+/// so a copied image file (uri-list paste rep) is physically a `File` — this tag
+/// answers "does this entry contain an image?". It therefore surfaces both pure
+/// bitmaps and image files (a copied `.png`, or a multi-file selection that
+/// includes one) under the image filter, mirroring the way the `link` tag is
+/// orthogonal to the physical content type.
+struct ImageRule {
+    tag_id: TagId,
+}
+
+impl ImageRule {
+    fn new() -> Self {
+        Self {
+            tag_id: TagId::image(),
+        }
+    }
+}
+
+impl TagRule for ImageRule {
+    fn tag_id(&self) -> &TagId {
+        &self.tag_id
+    }
+
+    fn evaluate(&self, content: &TaggableContent<'_>) -> bool {
+        content.has_image
+    }
+}
+
+/// The builtin tag rules evaluated for every entry: [`LinkRule`] (web URLs) and
+/// [`ImageRule`] (image content). User-defined rules are a later extension point.
 fn builtin_rules() -> Vec<Box<dyn TagRule>> {
-    vec![Box::new(LinkRule::new())]
+    vec![Box::new(LinkRule::new()), Box::new(ImageRule::new())]
 }
 
 /// Evaluate `rules` against `content`, collecting the ids of the tags that apply.
@@ -151,6 +136,19 @@ struct SearchableContent {
     file_paths: Vec<String>,
     file_names: Vec<String>,
     text_preview: Option<String>,
+    /// True when any representation is an image. An image entry is browsable and
+    /// filterable even with no searchable text. This drives the derived `image`
+    /// tag — NOT the content_type: a copied image file keeps `content_type =
+    /// File` (faithful to its uri-list paste rep) and is surfaced under the
+    /// image filter via the tag instead.
+    has_image: bool,
+    /// True when a `text/html` representation is present. Tracked by MIME
+    /// presence (like `has_image`), not by captured bytes, so classification is
+    /// stable even when the html payload is later lost — matching the domain
+    /// category precedence in `uc_core::clipboard::category`.
+    has_html: bool,
+    /// True when a `text/plain` representation is present (MIME presence).
+    has_text: bool,
 }
 
 impl SearchableContent {
@@ -159,7 +157,14 @@ impl SearchableContent {
     /// seeds `text_preview`. Non-UTF-8 or empty payloads are ignored.
     fn ingest(&mut self, mime: &str, inline_bytes: Option<&[u8]>, is_preview: bool) {
         let mime = mime.to_lowercase();
-        if mime == "text/plain" || mime.starts_with("text/plain;") {
+        if mime.starts_with("image/") {
+            // Only the presence of an image rep matters here (not its bytes): it
+            // makes the entry browsable/filterable as an image even when no text
+            // is present (a pure screenshot or bitmap).
+            self.has_image = true;
+        } else if mime == "text/plain" || mime.starts_with("text/plain;") {
+            // Presence drives classification even if the payload is lost.
+            self.has_text = true;
             if let Ok(text) = std::str::from_utf8(inline_bytes.unwrap_or(&[])) {
                 if !text.is_empty() {
                     if is_preview {
@@ -169,6 +174,8 @@ impl SearchableContent {
                 }
             }
         } else if mime == "text/html" {
+            // Presence drives classification even if the payload is lost.
+            self.has_html = true;
             if let Ok(text) = std::str::from_utf8(inline_bytes.unwrap_or(&[])) {
                 if !text.is_empty() {
                     self.html_text = Some(text.to_string());
@@ -199,13 +206,48 @@ impl SearchableContent {
         }
     }
 
-    /// True when nothing searchable was gathered.
+    /// True when nothing indexable was gathered. An image-only entry is NOT
+    /// empty: it has no searchable text but must still be indexed so browse and
+    /// the `image` content-type filter can surface it.
     fn is_empty(&self) -> bool {
         self.plain_text.is_none()
             && self.html_text.is_none()
             && self.uri_list.is_empty()
             && self.file_paths.is_empty()
             && self.file_names.is_empty()
+            && !self.has_image
+    }
+
+    /// Classify the single-valued physical `content_type` over the *entire*
+    /// representation set, by precedence — never from one chosen representation.
+    ///
+    /// This mirrors the domain category precedence in
+    /// `uc_core::clipboard::category` (`file > image > rich_text > text`).
+    /// Deriving from a single "paste" representation is wrong because that rep is
+    /// picked for *paste fidelity* by the selection policy, not for
+    /// classification: a web-image copy carries both an `<img>` `text/html` rep
+    /// (which the policy ranks highest, to paste as rich text) and the actual
+    /// `image/*` bitmap — so paste-rep classification would call it `Html`, when
+    /// the user copied an image. Precedence over the set gets it right:
+    ///
+    /// - any `file://` path        => `File` (image files / multi-file selections;
+    ///   the image nature rides the derived `image` tag, not the type)
+    /// - else any image rep        => `Image` (pure bitmap, screenshot, web image)
+    /// - else `text/html`          => `Html` (rich text, no bitmap rep)
+    /// - else plain text / web URL => `Text` (URL nature rides the `link` tag)
+    /// - else                      => `Other`
+    fn content_type(&self) -> ContentType {
+        if !self.file_paths.is_empty() {
+            ContentType::File
+        } else if self.has_image {
+            ContentType::Image
+        } else if self.has_html {
+            ContentType::Html
+        } else if self.has_text || self.plain_text.is_some() || !self.uri_list.is_empty() {
+            ContentType::Text
+        } else {
+            ContentType::Other
+        }
     }
 
     /// Assemble the final `SearchPipelineInput`, or `None` if nothing
@@ -225,13 +267,19 @@ impl SearchableContent {
             return None;
         }
         let file_extensions = collect_extensions(&self.file_paths, &self.file_names);
-        let content_type =
-            infer_physical_type(&mime_type, &self.uri_list, !self.file_paths.is_empty());
+        // content_type is classified over the whole representation set by
+        // precedence (see `content_type`), not from the paste rep's MIME. The
+        // "this entry contains an image" property is carried separately by the
+        // derived `image` tag (see `ImageRule`), so the image filter surfaces
+        // both pure bitmaps and image files without the latter being
+        // misclassified or lost from the file filter.
+        let content_type = self.content_type();
         let mut tags = evaluate_tags(
             &TaggableContent {
                 content_type: content_type.clone(),
                 uri_list: &self.uri_list,
                 plain_text: self.plain_text.as_deref(),
+                has_image: self.has_image,
             },
             &builtin_rules(),
         );
@@ -406,13 +454,11 @@ mod tests {
             .expect("snapshot has searchable content")
     }
 
-    /// A browser copy carries both `text/plain` and `text/html`. The selection
-    /// policy ranks the html rep as the paste rep and the plain rep as the
-    /// preview rep, so content_type must follow the paste rep (`Html`) — the
-    /// preview rep would misread the rich text as `Text` and drop it from the
-    /// `html` filter.
+    /// A rich-text copy carries `text/plain` + `text/html` and no bitmap rep, so
+    /// the set-precedence classifier (file > image > html > text) lands on
+    /// `Html`. The preview text still comes from the plain (preview) rep.
     #[test]
-    fn content_type_follows_paste_rep_not_preview() {
+    fn rich_text_is_classified_as_html() {
         let plain = rep("text", "text/plain", b"hello world");
         let html = rep("html", "text/html", b"<p>hello world</p>");
         let plain_id = plain.id.clone();
@@ -435,42 +481,144 @@ mod tests {
             SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
                 .expect("snapshot has searchable content");
 
-        assert_eq!(
-            input.content_type,
-            ContentType::Html,
-            "content_type must derive from the paste (rich-text) representation"
-        );
-        assert_eq!(input.mime_type, "text/html");
+        assert_eq!(input.content_type, ContentType::Html);
         // Preview text still comes from the preview (plain) representation.
         assert_eq!(input.text_preview.as_deref(), Some("hello world"));
     }
 
+    /// A web-image copy (right-click → Copy Image) carries the actual `image/*`
+    /// bitmap AND a `text/html` `<img>` wrapper (which the selection policy ranks
+    /// as the paste rep, to paste as rich text) AND often a `text/plain` URL.
+    /// Classifying from the paste rep would call it `Html` ("code"); precedence
+    /// over the set — image beats html when there is no file — correctly lands on
+    /// `Image` with the `image` tag. This is the regression test for "web image
+    /// shows as code".
     #[test]
-    fn infer_physical_type_covers_the_five_values() {
+    fn web_image_copy_is_image_not_html() {
+        let image = rep("image", "image/png", b"\x89PNG\r\n\x1a\n");
+        let html = rep("html", "text/html", b"<img src=\"https://x.test/a.png\">");
+        let plain = rep("text", "text/plain", b"https://x.test/a.png");
+        let html_id = html.id.clone();
+        let plain_id = plain.id.clone();
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![image, html, plain],
+            file_content_digests: Vec::new(),
+        };
+        // The selection policy ranks the rich-text (html) rep as the paste rep.
+        let selection = ClipboardSelection {
+            primary_rep_id: html_id.clone(),
+            secondary_rep_ids: Vec::new(),
+            preview_rep_id: plain_id,
+            paste_rep_id: html_id,
+            policy_version: SelectionPolicyVersion::V1,
+        };
+
+        let input =
+            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
+                .expect("snapshot has searchable content");
+
         assert_eq!(
-            infer_physical_type("image/png", &[], false),
-            ContentType::Image
+            input.content_type,
+            ContentType::Image,
+            "a copied web image is an Image, never Html, even when the paste rep is the <img> html"
         );
-        assert_eq!(
-            infer_physical_type("text/html", &[], false),
-            ContentType::Html
+        assert!(input.tags.contains(&TagId::image()));
+    }
+
+    /// A pure image (image paste rep, no file rep) projects as `Image` and
+    /// carries the `image` tag, so browse and the image filter surface it.
+    /// Previously it gathered no searchable content and was dropped from the
+    /// index entirely.
+    #[test]
+    fn image_only_entry_projects_as_image_with_image_tag() {
+        let input = project_one("image", "image/png", b"\x89PNG\r\n\x1a\n");
+        assert_eq!(input.content_type, ContentType::Image);
+        assert!(
+            input.tags.contains(&TagId::image()),
+            "a pure bitmap carries the image tag"
         );
+    }
+
+    /// A copied image file carries both an `image/*` rep and a `text/uri-list`
+    /// file path; the paste rep is the file rep. content_type is faithful to the
+    /// paste rep (`File`) — a copied image file IS a file — while the derived
+    /// `image` tag carries its image nature so the image filter still surfaces
+    /// it and the file filter does not lose it.
+    #[test]
+    fn image_file_is_classified_as_file_with_image_tag() {
+        let image = rep("image", "image/png", b"\x89PNG\r\n\x1a\n");
+        let files = rep("files", "text/uri-list", b"file:///tmp/shot.png");
+        let files_id = files.id.clone();
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![image, files],
+            file_content_digests: Vec::new(),
+        };
+        let selection = ClipboardSelection {
+            primary_rep_id: files_id.clone(),
+            secondary_rep_ids: Vec::new(),
+            preview_rep_id: files_id.clone(),
+            paste_rep_id: files_id,
+            policy_version: SelectionPolicyVersion::V1,
+        };
+
+        let input =
+            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
+                .expect("snapshot has searchable content");
+
         assert_eq!(
-            infer_physical_type("text/plain", &[], false),
-            ContentType::Text
+            input.content_type,
+            ContentType::File,
+            "a copied image file is physically a File (faithful to the paste rep)"
         );
-        // A web-URL uri-list is physically Text (the `link` tag carries its URL nature).
-        assert_eq!(
-            infer_physical_type("text/uri-list", &["https://x.test".to_string()], false),
-            ContentType::Text
+        assert!(
+            input.tags.contains(&TagId::image()),
+            "the image nature is carried by the derived image tag"
         );
-        assert_eq!(
-            infer_physical_type("text/uri-list", &[], true),
-            ContentType::File
+        assert_eq!(input.file_names, vec!["shot.png".to_string()]);
+    }
+
+    /// A multi-file copy that includes one image (uri-list with several
+    /// file:// paths + an image rep) is a `File` with the full file list, plus
+    /// the `image` tag because it contains an image. This is the regression the
+    /// image-over-file priority got wrong: it would have shown a single broken
+    /// image card and dropped the entry from the file filter.
+    #[test]
+    fn multi_file_with_one_image_is_file_with_image_tag() {
+        let image = rep("image", "image/png", b"\x89PNG\r\n\x1a\n");
+        let files = rep(
+            "files",
+            "text/uri-list",
+            b"file:///tmp/notes.txt\nfile:///tmp/photo.png\n",
         );
+        let files_id = files.id.clone();
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![image, files],
+            file_content_digests: Vec::new(),
+        };
+        let selection = ClipboardSelection {
+            primary_rep_id: files_id.clone(),
+            secondary_rep_ids: Vec::new(),
+            preview_rep_id: files_id.clone(),
+            paste_rep_id: files_id,
+            policy_version: SelectionPolicyVersion::V1,
+        };
+
+        let input =
+            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
+                .expect("snapshot has searchable content");
+
+        assert_eq!(input.content_type, ContentType::File);
+        assert!(input.tags.contains(&TagId::image()));
         assert_eq!(
-            infer_physical_type("application/octet-stream", &[], false),
-            ContentType::Other
+            input.file_names,
+            vec!["notes.txt".to_string(), "photo.png".to_string()],
+            "the full multi-file list is preserved, not collapsed to one image"
         );
     }
 

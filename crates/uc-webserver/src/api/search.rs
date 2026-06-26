@@ -59,14 +59,17 @@ pub struct SearchQueryParams {
     pub from_ms: Option<i64>,
     /// Absolute range end (ms since epoch). Must be paired with `from_ms`.
     pub to_ms: Option<i64>,
-    /// Comma-separated file types (text, html, link, file, image, other).
+    /// Comma-separated file types (text, html, file, image, other). `image`
+    /// here is the physical type of a pure bitmap; copied image *files* are
+    /// `file` and matched via the `image` tag instead (see `tags`).
     pub content_types: Option<String>,
     /// Comma-separated file extensions (e.g. "md,txt").
     pub extensions: Option<String>,
     /// Comma-separated source device ids; restricts results to those origins.
     pub source_devices: Option<String>,
-    /// Comma-separated tag ids (e.g. "link,favorited"); restricts results to
-    /// entries carrying any of them. Custom tag ids require an unlocked session.
+    /// Comma-separated tag ids (e.g. "link,favorited,image"); restricts results
+    /// to entries carrying any of them. Custom tag ids require an unlocked
+    /// session.
     pub tags: Option<String>,
     /// Maximum results. Default 50, clamped to 200.
     #[serde(default = "default_limit")]
@@ -149,7 +152,7 @@ async fn encryption_session_ready(state: &DaemonApiState) -> Result<bool, ApiErr
 }
 
 /// True when the comma-separated `tags` query param carries any non-builtin
-/// (custom) tag id. Builtin ids are the reserved `link`/`favorited`.
+/// (custom) tag id. Builtin ids are the reserved `link`/`favorited`/`image`.
 fn query_has_custom_tag(raw: Option<&str>) -> bool {
     raw.map(|s| {
         s.split(',')
@@ -489,6 +492,8 @@ mod tests {
         // Builtin-only → false (filterable while locked).
         assert!(!query_has_custom_tag(Some("link")));
         assert!(!query_has_custom_tag(Some("link,favorited")));
+        assert!(!query_has_custom_tag(Some("image")));
+        assert!(!query_has_custom_tag(Some("link,favorited,image")));
         // Any custom id → true (requires an unlocked session).
         assert!(query_has_custom_tag(Some("project-x")));
         assert!(query_has_custom_tag(Some("link,project-x")));

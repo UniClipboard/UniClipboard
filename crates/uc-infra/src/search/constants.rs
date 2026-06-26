@@ -21,7 +21,15 @@
 ///   `link_urls`, `source_device`, `payload_state`). The bump forces a rebuild
 ///   so existing rows backfill the new columns (image dimensions and file sizes
 ///   stay lazy by design). See the `add_search_document_render_columns` migration.
-pub const CURRENT_INDEX_VERSION: &str = "search-v5";
+/// - `search-v6`: content_type is classified over the whole representation set by
+///   precedence (`file > image > html > text`) instead of from a single paste
+///   representation's MIME — the paste rep is chosen for paste fidelity, not
+///   classification (a web-image copy's paste rep is its `<img>` html, which
+///   mislabels it `Html`). The image nature moves to a derived `image` tag, so a
+///   copied image file is `File`+`image` while a web image / screenshot / pure
+///   bitmap is `Image`. The bump forces a rebuild so existing rows reclassify
+///   (no schema change).
+pub const CURRENT_INDEX_VERSION: &str = "search-v6";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;

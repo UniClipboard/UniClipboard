@@ -6,17 +6,23 @@
 use crate::ids::{EntryId, EventId};
 use serde::{Deserialize, Serialize};
 
-/// Top-level content-type classification used for search filtering (D-10 content_types).
+/// Physical content-type classification used for search filtering — the
+/// single-valued "what data form is this?" dimension.
+///
+/// Exactly one value per entry. Orthogonal to the multi-valued tag dimension
+/// (see [`crate::search::tag`]): a web URL is physically `Text` and additionally
+/// carries the derived `link` tag, rather than being its own content type.
+/// `html` is the `text/html` rich-text MIME — an independent data form, not a
+/// tag. `Other` is an internal-only fallback and is not exposed as a filter.
 ///
 /// Maps to stable backend enum values; frontend localizes display text independently.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentType {
     Text,
-    Html,
-    Link,
-    File,
     Image,
+    File,
+    Html,
     Other,
 }
 

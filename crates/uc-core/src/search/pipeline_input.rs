@@ -9,6 +9,7 @@
 
 use crate::ids::{EntryId, EventId};
 use crate::search::document::ContentType;
+use crate::search::tag::TagId;
 
 #[derive(Debug, Clone)]
 pub struct SearchPipelineInput {
@@ -17,6 +18,9 @@ pub struct SearchPipelineInput {
     pub active_time_ms: i64,
     pub captured_at_ms: i64,
     pub content_type: ContentType,
+    /// Derived tags (e.g. `link`) produced by evaluating tag rules over the
+    /// entry's content. Orthogonal to `content_type`; zero or more per entry.
+    pub tags: Vec<TagId>,
     pub mime_type: String,
     pub file_extensions: Vec<String>,
     pub plain_text: Option<String>,

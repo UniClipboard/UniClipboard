@@ -204,7 +204,6 @@ fn search_content_type_to_string(content_type: &ContentType) -> String {
     match content_type {
         ContentType::Text => "text",
         ContentType::Html => "html",
-        ContentType::Link => "link",
         ContentType::File => "file",
         ContentType::Image => "image",
         ContentType::Other => "other",
@@ -330,10 +329,11 @@ fn parse_content_types(raw: Option<&str>) -> Result<Vec<ContentType>, SearchFaca
         let content_type = match value {
             "text" => ContentType::Text,
             "html" => ContentType::Html,
-            "link" => ContentType::Link,
             "file" => ContentType::File,
             "image" => ContentType::Image,
             "other" => ContentType::Other,
+            // `link` is no longer a content_type; it is a derived tag filtered
+            // via the `tags` query parameter.
             unknown => {
                 return Err(SearchFacadeError::BadRequest(format!(
                     "invalid fileType: {unknown}"

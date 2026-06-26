@@ -3,23 +3,28 @@
 //!
 //! daemon 等外部入口不直接拼装搜索 pipeline 输入,统一从 application 调用。
 
+use uc_core::clipboard::link_utils::detect_link_urls;
 use uc_core::clipboard::{
     ClipboardEntry, ClipboardSelection, ClipboardSelectionDecision,
     PersistedClipboardRepresentation, SystemClipboardSnapshot,
 };
 use uc_core::search::document::ContentType;
+use uc_core::search::tag::{TagId, TagRule, TaggableContent};
 use uc_infra::search::text_extractor::SearchPipelineInput;
 
-/// Infer the `ContentType` from a primary MIME type string.
+/// Infer the physical `ContentType` from a primary MIME type string.
+///
+/// This is the single-valued "what data form is this?" dimension; the URL nature
+/// of a web link is carried separately by the derived `link` tag (see
+/// [`evaluate_tags`]), so a web-URL entry is physically `Text`.
 ///
 /// Rules:
-/// - `text/plain` and related plain text => `Text`
-/// - `text/html` => `Html`
-/// - non-file URL content (http/https scheme) => `Link`
-/// - `text/uri-list` containing `file://` paths => `File`
 /// - `image/*` => `Image`
+/// - `text/html` => `Html`
+/// - `text/plain` and related plain text => `Text`
+/// - `text/uri-list` containing `file://` paths => `File`; web-URL-only => `Text`
 /// - anything else => `Other`
-fn infer_content_type(mime: &str, uri_list: &[String], has_file_paths: bool) -> ContentType {
+fn infer_physical_type(mime: &str, uri_list: &[String], has_file_paths: bool) -> ContentType {
     let mime_lower = mime.to_lowercase();
     if mime_lower.starts_with("image/") {
         return ContentType::Image;
@@ -37,20 +42,60 @@ fn infer_content_type(mime: &str, uri_list: &[String], has_file_paths: bool) -> 
         if has_file_paths || uri_list.iter().any(|u| u.trim().starts_with("file://")) {
             return ContentType::File;
         }
-        // Only web URLs remain => Link
-        return ContentType::Link;
+        // Web-URL uri-list is textual content; the `link` tag captures its URL nature.
+        return ContentType::Text;
     }
-    // Non-file URL — classify by content
+    // Non-file URL — classify by content.
     for uri in uri_list {
         let trimmed = uri.trim();
-        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-            return ContentType::Link;
-        }
         if trimmed.starts_with("file://") {
             return ContentType::File;
         }
+        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            return ContentType::Text;
+        }
     }
     ContentType::Other
+}
+
+/// A [`TagRule`] that marks content carrying one or more web URLs with the
+/// builtin `link` tag. The membership decision and the `linkUrls` render
+/// metadata share [`detect_link_urls`], so they stay in lock-step.
+struct LinkRule {
+    tag_id: TagId,
+}
+
+impl LinkRule {
+    fn new() -> Self {
+        Self {
+            tag_id: TagId::link(),
+        }
+    }
+}
+
+impl TagRule for LinkRule {
+    fn tag_id(&self) -> &TagId {
+        &self.tag_id
+    }
+
+    fn evaluate(&self, content: &TaggableContent<'_>) -> bool {
+        !detect_link_urls(content.uri_list, content.plain_text).is_empty()
+    }
+}
+
+/// The builtin tag rules evaluated for every entry. MVP holds a single
+/// [`LinkRule`]; user-defined rules are a later extension point.
+fn builtin_rules() -> Vec<Box<dyn TagRule>> {
+    vec![Box::new(LinkRule::new())]
+}
+
+/// Evaluate `rules` against `content`, collecting the ids of the tags that apply.
+fn evaluate_tags(content: &TaggableContent<'_>, rules: &[Box<dyn TagRule>]) -> Vec<TagId> {
+    rules
+        .iter()
+        .filter(|rule| rule.evaluate(content))
+        .map(|rule| rule.tag_id().clone())
+        .collect()
 }
 
 /// Collect lowercased unique file extensions from a list of file paths.
@@ -168,13 +213,22 @@ impl SearchableContent {
         }
         let file_extensions = collect_extensions(&self.file_paths, &self.file_names);
         let content_type =
-            infer_content_type(&mime_type, &self.uri_list, !self.file_paths.is_empty());
+            infer_physical_type(&mime_type, &self.uri_list, !self.file_paths.is_empty());
+        let tags = evaluate_tags(
+            &TaggableContent {
+                content_type: content_type.clone(),
+                uri_list: &self.uri_list,
+                plain_text: self.plain_text.as_deref(),
+            },
+            &builtin_rules(),
+        );
         Some(SearchPipelineInput {
             entry_id: entry.entry_id.clone(),
             event_id: entry.event_id.clone(),
             active_time_ms: entry.active_time_ms,
             captured_at_ms: entry.created_at_ms,
             content_type,
+            tags,
             mime_type,
             file_extensions,
             plain_text: self.plain_text,
@@ -289,6 +343,27 @@ mod tests {
         ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0)
     }
 
+    /// Project a single-representation capture (all selection slots point at the
+    /// one rep) into its `SearchPipelineInput`.
+    fn project_one(fmt: &str, mime: &str, bytes: &[u8]) -> SearchPipelineInput {
+        let r = rep(fmt, mime, bytes);
+        let id = r.id.clone();
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![r],
+            file_content_digests: Vec::new(),
+        };
+        let selection = ClipboardSelection {
+            primary_rep_id: id.clone(),
+            secondary_rep_ids: Vec::new(),
+            preview_rep_id: id.clone(),
+            paste_rep_id: id,
+            policy_version: SelectionPolicyVersion::V1,
+        };
+        SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection)
+            .expect("snapshot has searchable content")
+    }
+
     /// A browser copy carries both `text/plain` and `text/html`. The selection
     /// policy ranks the html rep as the paste rep and the plain rep as the
     /// preview rep, so content_type must follow the paste rep (`Html`) — the
@@ -325,5 +400,69 @@ mod tests {
         assert_eq!(input.mime_type, "text/html");
         // Preview text still comes from the preview (plain) representation.
         assert_eq!(input.text_preview.as_deref(), Some("hello world"));
+    }
+
+    #[test]
+    fn infer_physical_type_covers_the_five_values() {
+        assert_eq!(
+            infer_physical_type("image/png", &[], false),
+            ContentType::Image
+        );
+        assert_eq!(
+            infer_physical_type("text/html", &[], false),
+            ContentType::Html
+        );
+        assert_eq!(
+            infer_physical_type("text/plain", &[], false),
+            ContentType::Text
+        );
+        // A web-URL uri-list is physically Text (the `link` tag carries its URL nature).
+        assert_eq!(
+            infer_physical_type("text/uri-list", &["https://x.test".to_string()], false),
+            ContentType::Text
+        );
+        assert_eq!(
+            infer_physical_type("text/uri-list", &[], true),
+            ContentType::File
+        );
+        assert_eq!(
+            infer_physical_type("application/octet-stream", &[], false),
+            ContentType::Other
+        );
+    }
+
+    #[test]
+    fn web_url_uri_list_is_text_with_link_tag() {
+        let input = project_one("files", "text/uri-list", b"https://example.com\n");
+        assert_eq!(input.content_type, ContentType::Text);
+        assert_eq!(input.tags, vec![TagId::link()]);
+    }
+
+    #[test]
+    fn plain_text_url_gets_link_tag() {
+        let input = project_one("text", "text/plain", b"https://example.com");
+        assert_eq!(input.content_type, ContentType::Text);
+        assert_eq!(input.tags, vec![TagId::link()]);
+    }
+
+    #[test]
+    fn prose_with_url_has_no_link_tag() {
+        let input = project_one("text", "text/plain", b"see https://example.com for more");
+        assert_eq!(input.content_type, ContentType::Text);
+        assert!(input.tags.is_empty());
+    }
+
+    #[test]
+    fn file_uri_list_is_file_without_link_tag() {
+        let input = project_one("files", "text/uri-list", b"file:///home/u/a.txt\n");
+        assert_eq!(input.content_type, ContentType::File);
+        assert!(input.tags.is_empty());
+    }
+
+    #[test]
+    fn plain_text_without_url_has_no_tags() {
+        let input = project_one("text", "text/plain", b"just some notes");
+        assert_eq!(input.content_type, ContentType::Text);
+        assert!(input.tags.is_empty());
     }
 }

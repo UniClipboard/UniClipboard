@@ -193,6 +193,7 @@ impl ClipboardHistoryFacade {
             list: entry_list,
             save: entry_save,
             touch: _entry_touch,
+            set_favorite: entry_set_favorite,
             delete: entry_delete,
             find_by_snapshot_hash: _entry_find,
             get_snapshot_hash: _entry_snapshot_hash,
@@ -238,7 +239,7 @@ impl ClipboardHistoryFacade {
             payload_resolver,
         );
 
-        let toggle_favorite_uc = ToggleFavoriteClipboardEntryUseCase::new(entry_get.clone());
+        let toggle_favorite_uc = ToggleFavoriteClipboardEntryUseCase::new(entry_set_favorite);
 
         let mut delete_uc = DeleteClipboardEntryUseCase::from_ports(
             entry_get.clone(),

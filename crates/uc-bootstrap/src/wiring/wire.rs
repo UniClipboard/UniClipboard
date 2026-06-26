@@ -516,6 +516,7 @@ fn create_infra_layer(
         list: entry_repo_arc.clone(),
         save: entry_repo_arc.clone(),
         touch: entry_repo_arc.clone(),
+        set_favorite: entry_repo_arc.clone(),
         delete: entry_repo_arc.clone(),
         find_by_snapshot_hash: entry_repo_arc.clone(),
         get_snapshot_hash: entry_repo_arc,

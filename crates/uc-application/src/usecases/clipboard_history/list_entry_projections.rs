@@ -343,7 +343,7 @@ impl ListClipboardEntryProjectionsUseCase {
                 content_type,
                 thumbnail_url,
                 is_encrypted: false,
-                is_favorited: false,
+                is_favorited: entry.is_favorited,
                 updated_at: captured_at,
                 active_time,
                 file_transfer_status,

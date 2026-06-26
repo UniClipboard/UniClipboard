@@ -20,8 +20,8 @@ use uc_core::ports::clipboard::{
     GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationByBlobIdPort,
     GetRepresentationPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
     LoadActiveClipboardPort, RepresentationCachePort, ResetActiveClipboardPort,
-    SaveClipboardEntryPort, SelfWriteLedgerPort, SpoolQueuePort, SystemClipboardPort,
-    ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
+    SaveClipboardEntryPort, SelfWriteLedgerPort, SetClipboardEntryFavoritePort, SpoolQueuePort,
+    SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
     UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
@@ -46,6 +46,7 @@ pub struct ClipboardEntryPorts {
     pub list: Arc<dyn ListClipboardEntriesPort>,
     pub save: Arc<dyn SaveClipboardEntryPort>,
     pub touch: Arc<dyn TouchClipboardEntryPort>,
+    pub set_favorite: Arc<dyn SetClipboardEntryFavoritePort>,
     pub delete: Arc<dyn DeleteClipboardEntryPort>,
     pub find_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
     /// Forward lookup of an entry's persisted cross-device snapshot hash. The

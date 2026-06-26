@@ -187,7 +187,12 @@ pub fn router() -> Router<DaemonApiState> {
 /// ADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of
 /// the envelope — they are folded INTO the `data` payload alongside the renamed
 /// `items` array (`SearchQueryResultDto`). The response is the canonical
-/// `ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).
+/// `ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore, state }, ts }`).
+///
+/// Index-not-ready handling is query-type-aware (§4.7): a filter-less browse
+/// degrades to a direct main-store read and returns HTTP 200 with
+/// `state: "degraded"`; a keyword or filtered query instead returns HTTP 503
+/// `index_rebuilding`.
 #[utoipa::path(
     get,
     path = "/search/query",
@@ -195,10 +200,10 @@ pub fn router() -> Router<DaemonApiState> {
     operation_id = "searchQuery",
     params(SearchQueryParams),
     responses(
-        (status = 200, description = "Search results page", body = SearchQueryEnvelope),
+        (status = 200, description = "Search results page (state ready or degraded)", body = SearchQueryEnvelope),
         (status = 400, description = "Invalid or malformed query", body = ApiErrorResponse),
         (status = 423, description = "Encryption session is locked (keyword search only; filter-only browse is served while locked)", body = ApiErrorResponse),
-        (status = 503, description = "Search index not ready or unavailable", body = ApiErrorResponse),
+        (status = 503, description = "Search index not ready, rebuilding, or unavailable", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
@@ -233,21 +238,24 @@ async fn search_query_handler(
     let result_count = page.items.len();
     let total = page.total;
     let has_more = page.has_more;
+    let state = page.state.clone();
     let items: Vec<SearchResultDto> = page.into_api_dto();
 
     info!(
         total,
         returned = result_count,
         has_more,
+        state = %state,
         "search query completed"
     );
 
-    // Fold `total`/`hasMore` into the payload (ADR-008 §0.1) and wrap in the
-    // canonical envelope.
+    // Fold `total`/`hasMore`/`state` into the payload (ADR-008 §0.1) and wrap in
+    // the canonical envelope.
     Ok(Json(ApiEnvelope::now(SearchQueryResultDto {
         items,
         total,
         has_more,
+        state,
     })))
 }
 
@@ -417,6 +425,15 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
                 details: None,
             },
         ),
+        E::IndexRebuilding => (
+            "index_rebuilding",
+            ApiError {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                code: "index_rebuilding".to_string(),
+                message: "search index is rebuilding; clear filters to browse".to_string(),
+                details: None,
+            },
+        ),
         E::IndexUnavailable => (
             "index_unavailable",
             ApiError {
@@ -455,6 +472,13 @@ fn map_search_error(op: &'static str, error: SearchFacadeError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_rebuilding_maps_to_503_index_rebuilding() {
+        let api = map_search_error("search_query", SearchFacadeError::IndexRebuilding);
+        assert_eq!(api.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(api.code, "index_rebuilding");
+    }
 
     #[test]
     fn query_has_custom_tag_detects_non_builtin_ids() {

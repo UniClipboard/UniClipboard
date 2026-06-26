@@ -63,6 +63,12 @@ export interface SearchQueryResultDto {
   items: SearchResultDto[]
   total: number
   hasMore: boolean
+  /**
+   * `'ready'` when served from the index, or `'degraded'` when the index was
+   * not ready and this filter-less browse was served from the main store
+   * (§4.7). Filtered/keyword queries surface an `index_rebuilding` error instead.
+   */
+  state: 'ready' | 'degraded'
 }
 
 export interface SearchQueryResponse {

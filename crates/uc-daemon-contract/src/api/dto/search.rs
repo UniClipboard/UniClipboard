@@ -42,6 +42,11 @@ pub struct SearchQueryResultDto {
     pub items: Vec<SearchResultDto>,
     pub total: u32,
     pub has_more: bool,
+    /// `"ready"` when served from the index, or `"degraded"` when the index was
+    /// not ready and this filter-less browse was served from the main store
+    /// (§4.7). Filtered/keyword queries never return `"degraded"` — they surface
+    /// an `index_rebuilding` error instead.
+    pub state: String,
 }
 
 /// A tag and its entry count for `GET /search/tags`. `is_builtin` marks the

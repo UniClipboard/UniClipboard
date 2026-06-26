@@ -69,6 +69,7 @@ diesel::table! {
         pinned -> Bool,
         deleted_at_ms -> Nullable<BigInt>,
         delivery_tracked -> Bool,
+        is_favorited -> Bool,
     }
 }
 

@@ -208,6 +208,7 @@ mod tests {
             total_size: 0,
             pinned: false,
             delivery_tracked: true,
+            is_favorited: false,
         };
         executor
             .run(move |conn| {

@@ -20,7 +20,7 @@ use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
     DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
     GetEntrySnapshotHashPort, ListClipboardEntriesPort, SaveClipboardEntryPort,
-    TouchClipboardEntryPort,
+    SetClipboardEntryFavoritePort, TouchClipboardEntryPort,
 };
 use uc_core::ports::ClipboardEntryStore;
 
@@ -172,6 +172,29 @@ where
             let affected = diesel::update(dsl::clipboard_entry)
                 .filter(dsl::entry_id.eq(entry_id.to_string()))
                 .set(dsl::active_time_ms.eq(active_time_ms))
+                .execute(conn)?;
+
+            Ok(affected > 0)
+        })
+    }
+
+    #[instrument(
+        name = "infra.sqlite.set_clipboard_entry_favorite",
+        skip_all,
+        fields(
+            operation = "set_favorite",
+            table = "clipboard_entry",
+            entry_id = %entry_id,
+            is_favorited = is_favorited,
+        )
+    )]
+    async fn set_favorite(&self, entry_id: &EntryId, is_favorited: bool) -> Result<bool> {
+        self.executor.run(|conn| {
+            use crate::db::schema::clipboard_entry::dsl;
+
+            let affected = diesel::update(dsl::clipboard_entry)
+                .filter(dsl::entry_id.eq(entry_id.to_string()))
+                .set(dsl::is_favorited.eq(is_favorited))
                 .execute(conn)?;
 
             Ok(affected > 0)
@@ -384,6 +407,25 @@ where
 }
 
 #[async_trait::async_trait]
+impl<E, ME, MS, RE> SetClipboardEntryFavoritePort for DieselClipboardEntryRepository<E, ME, MS, RE>
+where
+    E: DbExecutor,
+    ME: InsertMapper<ClipboardEntry, NewClipboardEntryRow>,
+    MS: InsertMapper<ClipboardSelectionDecision, NewClipboardSelectionRow>,
+    RE: RowMapper<ClipboardEntryRow, ClipboardEntry>,
+{
+    async fn set_favorite(
+        &self,
+        entry_id: &EntryId,
+        is_favorited: bool,
+    ) -> Result<bool, ClipboardRepositoryError> {
+        ClipboardEntryStore::set_favorite(self, entry_id, is_favorited)
+            .await
+            .map_err(to_repo_err)
+    }
+}
+
+#[async_trait::async_trait]
 impl<E, ME, MS, RE> DeleteClipboardEntryPort for DieselClipboardEntryRepository<E, ME, MS, RE>
 where
     E: DbExecutor,
@@ -496,6 +538,7 @@ mod tests {
             total_size: 0,
             pinned: false,
             delivery_tracked: false,
+            is_favorited: false,
         };
 
         executor
@@ -566,5 +609,67 @@ mod tests {
                 .await
                 .expect("query ok");
         assert!(result.is_none(), "unknown entry must return None");
+    }
+
+    #[tokio::test]
+    async fn set_favorite_persists_and_round_trips_through_get_entry() {
+        let (repo, executor, _tempdir) = make_repo();
+        let hash = "blake3v1:fa00000000000000000000000000000000000000000000000000000000000000";
+        let entry_id = EntryId::from(seed_event_and_entry(&executor, hash));
+
+        let before = ClipboardEntryStore::get_entry(&repo, &entry_id)
+            .await
+            .expect("query ok")
+            .expect("entry exists");
+        assert!(
+            !before.is_favorited,
+            "seeded entry defaults to not favorited"
+        );
+
+        let updated = ClipboardEntryStore::set_favorite(&repo, &entry_id, true)
+            .await
+            .expect("update ok");
+        assert!(
+            updated,
+            "setting favorite on an existing entry reports a row update"
+        );
+
+        let after = ClipboardEntryStore::get_entry(&repo, &entry_id)
+            .await
+            .expect("query ok")
+            .expect("entry exists");
+        assert!(
+            after.is_favorited,
+            "favorite flag must persist and round-trip"
+        );
+
+        let cleared = ClipboardEntryStore::set_favorite(&repo, &entry_id, false)
+            .await
+            .expect("update ok");
+        assert!(
+            cleared,
+            "clearing favorite on an existing entry still reports a row update"
+        );
+
+        let reloaded = ClipboardEntryStore::get_entry(&repo, &entry_id)
+            .await
+            .expect("query ok")
+            .expect("entry exists");
+        assert!(
+            !reloaded.is_favorited,
+            "cleared favorite flag must round-trip back to false"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_favorite_returns_false_for_missing_entry() {
+        let (repo, _executor, _tempdir) = make_repo();
+        let updated = ClipboardEntryStore::set_favorite(&repo, &EntryId::from("entry-nope"), true)
+            .await
+            .expect("update ok");
+        assert!(
+            !updated,
+            "favoriting an unknown entry must report no row update"
+        );
     }
 }

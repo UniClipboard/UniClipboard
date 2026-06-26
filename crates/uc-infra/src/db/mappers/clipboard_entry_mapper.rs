@@ -16,6 +16,7 @@ impl InsertMapper<ClipboardEntry, NewClipboardEntryRow> for ClipboardEntryRowMap
             total_size: domain.total_size,
             pinned: false, // TODO: implement
             delivery_tracked: domain.delivery_tracked,
+            is_favorited: domain.is_favorited,
         })
     }
 }
@@ -30,6 +31,7 @@ impl RowMapper<ClipboardEntryRow, ClipboardEntry> for ClipboardEntryRowMapper {
             row.title.clone(),
             row.total_size,
         )
-        .with_delivery_tracked(row.delivery_tracked))
+        .with_delivery_tracked(row.delivery_tracked)
+        .with_favorited(row.is_favorited))
     }
 }

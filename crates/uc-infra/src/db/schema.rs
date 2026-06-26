@@ -206,6 +206,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    search_entry_tag (profile_id, entry_id, tag_id) {
+        profile_id -> Text,
+        entry_id -> Text,
+        tag_id -> Text,
+    }
+}
+
+diesel::table! {
     search_posting (profile_id, term_tag, entry_id) {
         profile_id -> Text,
         term_tag -> Binary,
@@ -248,6 +256,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     space_member,
     trusted_peer,
     search_document,
+    search_entry_tag,
     search_index_meta,
     search_posting,
     t_device,

@@ -29,11 +29,11 @@ use uc_core::search::query::{QueryOperator, SearchQuery, TimeRangeFilter};
 use uc_core::search::result::{RebuildProgress, RebuildStage, SearchResult, SearchResultsPage};
 
 use crate::db::pool::DbPool;
-use crate::db::schema::{search_document, search_index_meta, search_posting};
+use crate::db::schema::{search_document, search_entry_tag, search_index_meta, search_posting};
 use crate::search::constants::CURRENT_INDEX_VERSION;
 use crate::search::rows::{
-    NewSearchDocumentRow, NewSearchIndexMetaRow, NewSearchPostingRow, SearchDocumentRow,
-    SearchIndexMetaRow,
+    NewSearchDocumentRow, NewSearchEntryTagRow, NewSearchIndexMetaRow, NewSearchPostingRow,
+    SearchDocumentRow, SearchIndexMetaRow,
 };
 use crate::search::search_key_derivation::term_tag;
 use crate::search::tokenizer::SearchTokenizer;
@@ -52,6 +52,7 @@ pub struct ActiveRebuild {
     pub profile_id: String,
     pub temp_document_table: String,
     pub temp_posting_table: String,
+    pub temp_entry_tag_table: String,
     pub target_version: String,
 }
 
@@ -74,6 +75,7 @@ impl ActiveRebuild {
             profile_id: profile_id.to_string(),
             temp_document_table: format!("tmp_search_document_rebuild_{safe_suffix}"),
             temp_posting_table: format!("tmp_search_posting_rebuild_{safe_suffix}"),
+            temp_entry_tag_table: format!("tmp_search_entry_tag_rebuild_{safe_suffix}"),
             target_version: CURRENT_INDEX_VERSION.to_string(),
         }
     }
@@ -240,6 +242,21 @@ impl SqliteSearchIndex {
                     .execute(tx)?;
             }
 
+            // 4. Replace tag membership rows for this entry (mirror of document.tags).
+            diesel::delete(
+                search_entry_tag::table
+                    .filter(search_entry_tag::profile_id.eq(profile_id))
+                    .filter(search_entry_tag::entry_id.eq(&entry_id_str)),
+            )
+            .execute(tx)?;
+
+            let tag_rows = NewSearchEntryTagRow::rows_for_document(profile_id, document);
+            if !tag_rows.is_empty() {
+                diesel::insert_into(search_entry_tag::table)
+                    .values(&tag_rows)
+                    .execute(tx)?;
+            }
+
             Ok(())
         })
         .map_err(|e| SearchError::Internal(format!("upsert_active_entry failed: {e}")))
@@ -270,6 +287,14 @@ impl SqliteSearchIndex {
                 search_document::table
                     .filter(search_document::profile_id.eq(profile_id))
                     .filter(search_document::entry_id.eq(&entry_id_str)),
+            )
+            .execute(tx)?;
+
+            // Delete tag membership for this entry (hard-delete consistency).
+            diesel::delete(
+                search_entry_tag::table
+                    .filter(search_entry_tag::profile_id.eq(profile_id))
+                    .filter(search_entry_tag::entry_id.eq(&entry_id_str)),
             )
             .execute(tx)?;
 
@@ -497,6 +522,17 @@ impl SqliteSearchIndex {
             post_table = state.temp_posting_table
         );
 
+        // Temp tag-membership table: same columns as search_entry_tag.
+        let create_entry_tag = format!(
+            "CREATE TABLE IF NOT EXISTS {tag_table} (
+                profile_id TEXT NOT NULL,
+                entry_id TEXT NOT NULL,
+                tag_id TEXT NOT NULL,
+                PRIMARY KEY (profile_id, entry_id, tag_id)
+            )",
+            tag_table = state.temp_entry_tag_table
+        );
+
         diesel::sql_query(&create_doc)
             .execute(conn)
             .map_err(|e| SearchError::Internal(format!("create temp doc table failed: {e}")))?;
@@ -504,6 +540,10 @@ impl SqliteSearchIndex {
         diesel::sql_query(&create_posting)
             .execute(conn)
             .map_err(|e| SearchError::Internal(format!("create temp posting table failed: {e}")))?;
+
+        diesel::sql_query(&create_entry_tag)
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("create temp tag table failed: {e}")))?;
 
         debug!(
             profile_id = %state.profile_id,
@@ -519,12 +559,16 @@ impl SqliteSearchIndex {
     fn drop_rebuild_tables(conn: &mut SqliteConnection, state: &ActiveRebuild) {
         let drop_doc = format!("DROP TABLE IF EXISTS {}", state.temp_document_table);
         let drop_posting = format!("DROP TABLE IF EXISTS {}", state.temp_posting_table);
+        let drop_entry_tag = format!("DROP TABLE IF EXISTS {}", state.temp_entry_tag_table);
 
         if let Err(e) = diesel::sql_query(&drop_doc).execute(conn) {
             warn!(table = %state.temp_document_table, error = %e, "failed to drop temp doc table");
         }
         if let Err(e) = diesel::sql_query(&drop_posting).execute(conn) {
             warn!(table = %state.temp_posting_table, error = %e, "failed to drop temp posting table");
+        }
+        if let Err(e) = diesel::sql_query(&drop_entry_tag).execute(conn) {
+            warn!(table = %state.temp_entry_tag_table, error = %e, "failed to drop temp tag table");
         }
     }
 
@@ -598,6 +642,32 @@ impl SqliteSearchIndex {
                 .map_err(|e| SearchError::Internal(format!("insert temp posting failed: {e}")))?;
         }
 
+        // Replace temp tag membership for this entry (mirror of document.tags).
+        let del_tags = format!(
+            "DELETE FROM {tag_table} WHERE profile_id = ? AND entry_id = ?",
+            tag_table = state.temp_entry_tag_table
+        );
+        diesel::sql_query(&del_tags)
+            .bind::<diesel::sql_types::Text, _>(profile_id)
+            .bind::<diesel::sql_types::Text, _>(&entry_id_str)
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("delete temp tags failed: {e}")))?;
+
+        for tag_row in NewSearchEntryTagRow::rows_for_document(profile_id, document) {
+            let insert_tag = format!(
+                "INSERT OR REPLACE INTO {tag_table}
+                 (profile_id, entry_id, tag_id)
+                 VALUES (?, ?, ?)",
+                tag_table = state.temp_entry_tag_table
+            );
+            diesel::sql_query(&insert_tag)
+                .bind::<diesel::sql_types::Text, _>(&tag_row.profile_id)
+                .bind::<diesel::sql_types::Text, _>(&tag_row.entry_id)
+                .bind::<diesel::sql_types::Text, _>(&tag_row.tag_id)
+                .execute(conn)
+                .map_err(|e| SearchError::Internal(format!("insert temp tag failed: {e}")))?;
+        }
+
         Ok(())
     }
 
@@ -635,17 +705,29 @@ impl SqliteSearchIndex {
             .execute(conn)
             .map_err(|e| SearchError::Internal(format!("delete_temp_entry doc failed: {e}")))?;
 
+        let del_tags = format!(
+            "DELETE FROM {tag_table} WHERE profile_id = ? AND entry_id = ?",
+            tag_table = state.temp_entry_tag_table
+        );
+        diesel::sql_query(&del_tags)
+            .bind::<diesel::sql_types::Text, _>(profile_id)
+            .bind::<diesel::sql_types::Text, _>(&entry_id_str)
+            .execute(conn)
+            .map_err(|e| SearchError::Internal(format!("delete_temp_entry tags failed: {e}")))?;
+
         Ok(())
     }
 
     /// Finalize the rebuild by copying temp rows into the active tables in one transaction.
     ///
-    /// Transaction sequence:
+    /// Transaction sequence (three-table atomic cutover):
     /// 1. Delete active `search_posting` rows for `profile_id`
     /// 2. Delete active `search_document` rows for `profile_id`
-    /// 3. INSERT ... SELECT from temp posting table
-    /// 4. INSERT ... SELECT from temp document table
-    /// 5. Update `search_index_meta`: version, unblock, completed_at_ms
+    /// 3. Delete active `search_entry_tag` rows for `profile_id`
+    /// 4. INSERT ... SELECT from temp posting table
+    /// 5. INSERT ... SELECT from temp document table
+    /// 6. INSERT ... SELECT from temp tag table
+    /// 7. Update `search_index_meta`: version, unblock, completed_at_ms
     fn finalize_rebuild(
         conn: &mut SqliteConnection,
         state: &ActiveRebuild,
@@ -665,7 +747,13 @@ impl SqliteSearchIndex {
             )
             .execute(tx)?;
 
-            // 3. Copy temp postings into active table.
+            // 3. Delete active tag membership for profile.
+            diesel::delete(
+                search_entry_tag::table.filter(search_entry_tag::profile_id.eq(profile_id)),
+            )
+            .execute(tx)?;
+
+            // 4. Copy temp postings into active table.
             let copy_postings = format!(
                 "INSERT INTO search_posting
                  SELECT profile_id, term_tag, entry_id, field_mask, term_freq
@@ -674,7 +762,7 @@ impl SqliteSearchIndex {
             );
             diesel::sql_query(&copy_postings).execute(tx)?;
 
-            // 4. Copy temp documents into active table.
+            // 5. Copy temp documents into active table.
             let copy_docs = format!(
                 "INSERT INTO search_document
                  SELECT profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
@@ -685,7 +773,16 @@ impl SqliteSearchIndex {
             );
             diesel::sql_query(&copy_docs).execute(tx)?;
 
-            // 5. Update meta: unblock and record version + completion timestamp.
+            // 6. Copy temp tag membership into active table.
+            let copy_tags = format!(
+                "INSERT INTO search_entry_tag
+                 SELECT profile_id, entry_id, tag_id
+                 FROM {tag_table}",
+                tag_table = state.temp_entry_tag_table
+            );
+            diesel::sql_query(&copy_tags).execute(tx)?;
+
+            // 7. Update meta: unblock and record version + completion timestamp.
             use crate::db::schema::search_index_meta::dsl;
             diesel::update(dsl::search_index_meta.filter(dsl::profile_id.eq(profile_id)))
                 .set((
@@ -1341,3 +1438,138 @@ fn resolve_time_range(filter: &TimeRangeFilter, now_ms: i64) -> (u64, u64) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Tests
 // ──────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::pool::init_db_pool;
+    use tempfile::{tempdir, TempDir};
+    use uc_core::ports::security::current_profile::CurrentProfileError;
+    use uc_core::search::document::ContentType;
+    use uc_core::search::key::SearchKey;
+    use uc_core::search::tag::TagId;
+
+    const TEST_PROFILE: &str = "default";
+
+    struct FixedProfile;
+    #[async_trait]
+    impl CurrentProfilePort for FixedProfile {
+        async fn current_profile(&self) -> Result<ProfileId, CurrentProfileError> {
+            Ok(ProfileId::from(TEST_PROFILE))
+        }
+    }
+
+    struct FixedKey;
+    #[async_trait]
+    impl SearchKeyDerivationPort for FixedKey {
+        async fn derive_search_key(&self) -> Result<SearchKey, SearchError> {
+            Ok(SearchKey([7u8; 32]))
+        }
+    }
+
+    /// Build an index over a fresh migrated SQLite file. The returned pool shares
+    /// the same database so assertions can read the active tables directly.
+    fn make_index() -> (SqliteSearchIndex, DbPool, TempDir) {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("search.sqlite");
+        let pool = init_db_pool(path.to_str().unwrap()).unwrap();
+        let index =
+            SqliteSearchIndex::new(pool.clone(), Arc::new(FixedProfile), Arc::new(FixedKey));
+        (index, pool, dir)
+    }
+
+    fn make_doc(entry_id: &str, tags: Vec<TagId>) -> SearchDocument {
+        SearchDocument {
+            entry_id: entry_id.into(),
+            event_id: format!("ev-{entry_id}").into(),
+            active_time_ms: 1,
+            captured_at_ms: 1,
+            content_type: ContentType::Text,
+            tags,
+            file_extensions: vec![],
+            mime_type: "text/plain".into(),
+            indexed_at_ms: 1,
+            index_version: CURRENT_INDEX_VERSION.to_string(),
+            text_preview: None,
+        }
+    }
+
+    /// Load all `(entry_id, tag_id)` membership rows for the test profile, sorted.
+    fn tag_rows(pool: &DbPool) -> Vec<(String, String)> {
+        use crate::db::schema::search_entry_tag::dsl;
+        let mut conn = pool.get().unwrap();
+        let mut rows = dsl::search_entry_tag
+            .filter(dsl::profile_id.eq(TEST_PROFILE))
+            .select((dsl::entry_id, dsl::tag_id))
+            .load::<(String, String)>(&mut conn)
+            .unwrap();
+        rows.sort();
+        rows
+    }
+
+    fn doc_ids(pool: &DbPool) -> Vec<String> {
+        let mut conn = pool.get().unwrap();
+        let mut ids = search_document::table
+            .filter(search_document::profile_id.eq(TEST_PROFILE))
+            .select(search_document::entry_id)
+            .load::<String>(&mut conn)
+            .unwrap();
+        ids.sort();
+        ids
+    }
+
+    #[tokio::test]
+    async fn index_entry_persists_tag_membership() {
+        let (index, pool, _dir) = make_index();
+        index
+            .index_entry(make_doc("e1", vec![TagId::link()]), vec![])
+            .await
+            .unwrap();
+        assert_eq!(tag_rows(&pool), vec![("e1".into(), "link".into())]);
+    }
+
+    #[tokio::test]
+    async fn rebuild_cutover_repopulates_tags_and_clears_stale() {
+        let (index, pool, _dir) = make_index();
+
+        // Pre-existing active entry simulates a prior-version index. The rebuild
+        // must drop it and repopulate from the supplied entries.
+        index
+            .index_entry(make_doc("stale", vec![TagId::link()]), vec![])
+            .await
+            .unwrap();
+
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        index
+            .rebuild(
+                vec![
+                    (make_doc("e1", vec![TagId::link()]), vec![]),
+                    (make_doc("e2", vec![]), vec![]),
+                ],
+                tx,
+            )
+            .await
+            .unwrap();
+
+        // Documents cut over: stale gone, e1/e2 present.
+        assert_eq!(doc_ids(&pool), vec!["e1".to_string(), "e2".to_string()]);
+        // Tags cut over alongside documents: only e1 carries `link`.
+        assert_eq!(tag_rows(&pool), vec![("e1".into(), "link".into())]);
+
+        // Meta unblocked and bumped to the current version.
+        let meta = index.get_index_meta().await.unwrap();
+        assert!(!meta.search_blocked);
+        assert_eq!(meta.index_version, CURRENT_INDEX_VERSION);
+    }
+
+    #[tokio::test]
+    async fn remove_entry_deletes_tag_membership() {
+        let (index, pool, _dir) = make_index();
+        index
+            .index_entry(make_doc("e1", vec![TagId::link()]), vec![])
+            .await
+            .unwrap();
+        index.remove_entry(&EntryId::from("e1")).await.unwrap();
+        assert!(tag_rows(&pool).is_empty());
+    }
+}

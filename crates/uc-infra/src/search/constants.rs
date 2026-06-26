@@ -13,7 +13,11 @@
 /// - `search-v3`: per-token prefix expansion (#580). Tokens whose length is in
 ///   `[3, 32]` and that are non-CJK are prefix-expanded regardless of field;
 ///   long opaque strings (>32 chars, no separators) are full-token only.
-pub const CURRENT_INDEX_VERSION: &str = "search-v3";
+/// - `search-v4`: derived-tag model. `content_type` drops `link` (now a derived
+///   tag) and adds `html`; tag membership is persisted in `search_entry_tag` and
+///   rebuilt alongside documents/postings. The bump forces a full rebuild so the
+///   tag table and reclassified `content_type` values are recomputed.
+pub const CURRENT_INDEX_VERSION: &str = "search-v4";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;

@@ -4,6 +4,7 @@
 //! postings are removed from the index entirely. No soft-delete timestamp field.
 
 use crate::ids::{EntryId, EventId};
+use crate::search::tag::TagId;
 use serde::{Deserialize, Serialize};
 
 /// Physical content-type classification used for search filtering — the
@@ -38,6 +39,11 @@ pub struct SearchDocument {
     pub active_time_ms: i64,
     pub captured_at_ms: i64,
     pub content_type: ContentType,
+    /// Derived tags (e.g. the builtin `link` rule) and mirrored user-state tags
+    /// (e.g. `favorited`) attached to this entry. Orthogonal to `content_type`:
+    /// zero or more per entry. Membership is persisted in a dedicated table, not
+    /// as a document column, so it can carry many ids per entry.
+    pub tags: Vec<TagId>,
     pub file_extensions: Vec<String>,
     pub mime_type: String,
     pub indexed_at_ms: i64,

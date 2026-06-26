@@ -68,6 +68,7 @@ impl SearchPipelinePort for SearchPipeline {
             active_time_ms: input.active_time_ms,
             captured_at_ms: input.captured_at_ms,
             content_type: input.content_type.clone(),
+            tags: input.tags.clone(),
             file_extensions: exts,
             mime_type: input.mime_type.clone(),
             indexed_at_ms: chrono::Utc::now().timestamp_millis(),

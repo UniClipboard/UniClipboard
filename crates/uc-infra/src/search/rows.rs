@@ -10,7 +10,7 @@
 //! - `file_type`: stored as `TEXT` using serde snake_case serialization.
 //! - `file_extensions`: stored as JSON array `TEXT` via `serde_json`.
 
-use crate::db::schema::{search_document, search_index_meta, search_posting};
+use crate::db::schema::{search_document, search_entry_tag, search_index_meta, search_posting};
 use crate::search::constants::CURRENT_INDEX_VERSION;
 use anyhow::Result;
 use diesel::prelude::*;
@@ -101,6 +101,10 @@ impl SearchDocumentRow {
             active_time_ms: self.active_time_ms,
             captured_at_ms: self.captured_at_ms,
             content_type,
+            // Tag membership lives in `search_entry_tag`, not on the document row.
+            // The read side hydrates it via a separate query when the search/filter
+            // path begins consuming tags; document-only reads carry an empty set.
+            tags: Vec::new(),
             file_extensions,
             mime_type: self.mime_type.clone(),
             indexed_at_ms: self.indexed_at_ms,
@@ -211,5 +215,80 @@ impl NewSearchIndexMetaRow {
 }
 
 // ──────────────────────────────────────────────
+// search_entry_tag
+// ──────────────────────────────────────────────
+
+/// Insertable row for `search_entry_tag` — one membership row per
+/// `(entry_id, tag_id)`.
+///
+/// Pure derived data: rebuilt from the entry's content rules and user-state, so
+/// the row carries nothing beyond the identity triple. `tag_id` stores the
+/// `TagId` as its transparent string form.
+#[derive(Debug, Clone, PartialEq, Eq, Insertable)]
+#[diesel(table_name = search_entry_tag)]
+pub struct NewSearchEntryTagRow {
+    pub profile_id: String,
+    pub entry_id: String,
+    pub tag_id: String,
+}
+
+impl NewSearchEntryTagRow {
+    /// Build membership rows for all of `document`'s tags, bound to `profile_id`.
+    ///
+    /// Returns an empty `Vec` when the document carries no tags.
+    pub fn rows_for_document(profile_id: &str, document: &SearchDocument) -> Vec<Self> {
+        document
+            .tags
+            .iter()
+            .map(|tag| Self {
+                profile_id: profile_id.to_string(),
+                entry_id: document.entry_id.to_string(),
+                tag_id: tag.as_str().to_string(),
+            })
+            .collect()
+    }
+}
+
+// ──────────────────────────────────────────────
 // Row-level unit tests
 // ──────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_core::search::document::ContentType;
+    use uc_core::search::tag::TagId;
+
+    fn doc_with_tags(entry_id: &str, tags: Vec<TagId>) -> SearchDocument {
+        SearchDocument {
+            entry_id: entry_id.into(),
+            event_id: "ev".into(),
+            active_time_ms: 0,
+            captured_at_ms: 0,
+            content_type: ContentType::Text,
+            tags,
+            file_extensions: vec![],
+            mime_type: "text/plain".into(),
+            indexed_at_ms: 0,
+            index_version: CURRENT_INDEX_VERSION.to_string(),
+            text_preview: None,
+        }
+    }
+
+    #[test]
+    fn entry_tag_rows_map_each_tag_to_a_row() {
+        let doc = doc_with_tags("e1", vec![TagId::link(), TagId::favorited()]);
+        let rows = NewSearchEntryTagRow::rows_for_document("p1", &doc);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].profile_id, "p1");
+        assert_eq!(rows[0].entry_id, "e1");
+        assert_eq!(rows[0].tag_id, "link");
+        assert_eq!(rows[1].tag_id, "favorited");
+    }
+
+    #[test]
+    fn entry_tag_rows_empty_when_document_has_no_tags() {
+        let doc = doc_with_tags("e1", vec![]);
+        assert!(NewSearchEntryTagRow::rows_for_document("p1", &doc).is_empty());
+    }
+}

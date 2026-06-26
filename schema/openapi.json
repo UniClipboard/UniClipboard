@@ -3255,8 +3255,39 @@
             },
             "type": "array"
           },
+          "fileNames": {
+            "description": "Display names of referenced files; empty when none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "linkUrls": {
+            "description": "Web URLs (http/https) carried by this entry; empty when none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "mimeType": {
             "type": "string"
+          },
+          "payloadState": {
+            "description": "`\"Lost\"` when the paste payload is unrecoverable, else `null`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceDevice": {
+            "description": "Originating device id, or `null` when the source is unknown.",
+            "nullable": true,
+            "type": "string"
+          },
+          "tags": {
+            "description": "Derived/user-state tag ids (e.g. `\"link\"`, `\"favorited\"`). The favorite\nmarker is expressed by the presence of `\"favorited\"`, not a separate flag.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "textPreview": {
             "nullable": true,
@@ -3267,8 +3298,11 @@
           "entryId",
           "contentType",
           "activeTimeMs",
+          "tags",
           "mimeType",
-          "fileExtensions"
+          "fileExtensions",
+          "fileNames",
+          "linkUrls"
         ],
         "type": "object"
       },
@@ -3307,6 +3341,49 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/SearchStatusData"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SearchTagDto": {
+        "description": "A tag and its entry count for `GET /search/tags`. `is_builtin` marks the\nreserved builtin tags (`link`/`favorited`); custom tags are present only in\nunlocked sessions (§4.6).",
+        "properties": {
+          "count": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "isBuiltin": {
+            "type": "boolean"
+          },
+          "tagId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tagId",
+          "count",
+          "isBuiltin"
+        ],
+        "type": "object"
+      },
+      "SearchTagsEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SearchTagDto"
+            },
+            "type": "array"
           },
           "ts": {
             "description": "Server time when the response was built (unix epoch milliseconds).",
@@ -7413,7 +7490,7 @@
     },
     "/search/query": {
       "get": {
-        "description": "Execute a structured search query against the local encrypted search index.\nReturns HTTP 423 if the encryption session is locked.\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).",
+        "description": "Execute a structured search query against the local encrypted search index.\nThe session-lock decision is query-type-aware (§4.6): filter-only browse is\nserved while locked; a keyword search returns HTTP 423 when the session is\nlocked (the engine cannot derive the search key).\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).",
         "operationId": "searchQuery",
         "parameters": [
           {
@@ -7498,6 +7575,16 @@
             }
           },
           {
+            "description": "Comma-separated tag ids (e.g. \"link,favorited\"); restricts results to\nentries carrying any of them. Custom tag ids require an unlocked session.",
+            "in": "query",
+            "name": "tags",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
             "description": "Maximum results. Default 50, clamped to 200.",
             "in": "query",
             "name": "limit",
@@ -7549,7 +7636,7 @@
                 }
               }
             },
-            "description": "Encryption session is locked"
+            "description": "Encryption session is locked (keyword search only; filter-only browse is served while locked)"
           },
           "500": {
             "content": {
@@ -7711,6 +7798,56 @@
           }
         ],
         "summary": "GET /search/status",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/search/tags": {
+      "get": {
+        "description": "List the tags present in the index with their entry counts. Builtin tags\n(link/favorited) are always listed (filter-only over the membership table,\nso no search key is needed); custom tags are listed only when the session is\nunlocked (§4.6).",
+        "operationId": "getSearchTags",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTagsEnvelope"
+                }
+              }
+            },
+            "description": "Tag list with entry counts"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Search index unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /search/tags",
         "tags": [
           "search"
         ]

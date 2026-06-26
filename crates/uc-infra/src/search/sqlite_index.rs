@@ -39,6 +39,18 @@ use crate::search::rows::{
 use crate::search::search_key_derivation::term_tag;
 use crate::search::tokenizer::SearchTokenizer;
 
+/// Owned, query-derived filter inputs shared by both search paths.
+///
+/// Built once before `spawn_blocking`. `content_types` are pre-encoded to their
+/// stored snake_case `file_type` strings; `extensions` are pre-lowercased.
+struct FilterParams {
+    content_types: Vec<String>,
+    tags: Vec<String>,
+    extensions: Vec<String>,
+    source_devices: Vec<String>,
+    time_range: Option<TimeRangeFilter>,
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Rebuild workspace state
 // ──────────────────────────────────────────────────────────────────────────────
@@ -528,38 +540,261 @@ impl SqliteSearchIndex {
         Ok(rows)
     }
 
-    /// Load all `search_document` rows for a profile (filter-only search path).
-    fn load_all_documents(
+    /// Resolve one page of the filter-only (no keyword) browse path entirely in
+    /// SQL: filtering, ordering, and pagination are pushed down so the whole
+    /// profile is never loaded into memory.
+    ///
+    /// Returns `(page rows, authoritative total, has_more)`.
+    ///
+    /// The same filter predicates feed both the `COUNT(*)` and the page query
+    /// (via the `apply_filters!` macro) so the total can never drift from the
+    /// rows. Ordering is `active_time_ms DESC`, served by
+    /// `idx_search_document_profile_active_time` (leading column), letting SQLite
+    /// stop after `offset + limit` rows without a temp-b-tree sort.
+    fn filter_only_page(
         conn: &mut SqliteConnection,
         profile_id: &str,
-    ) -> Result<Vec<SearchDocumentRow>, SearchError> {
-        use crate::db::schema::search_document::dsl;
+        filters: &FilterParams,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<SearchDocumentRow>, u32, bool), SearchError> {
+        use diesel::dsl::{count_star, sql};
+        use diesel::sql_types::{Bool, Text};
+        use diesel::sqlite::Sqlite;
 
-        let rows = dsl::search_document
-            .filter(dsl::profile_id.eq(profile_id))
-            .load::<SearchDocumentRow>(conn)
-            .map_err(|e| SearchError::Internal(format!("load_all_documents failed: {e}")))?;
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let time_bounds: Option<(i64, i64)> = filters.time_range.as_ref().map(|tr| {
+            let (from_ms, to_ms) = resolve_time_range(tr, now_ms);
+            (from_ms as i64, to_ms as i64)
+        });
+        // Encode the (already lowercased) query extensions as one JSON array so
+        // the predicate binds a single parameter and expands it with `json_each`.
+        let ext_json: Option<String> = if filters.extensions.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::to_string(&filters.extensions)
+                    .map_err(|e| SearchError::Internal(format!("extension encode failed: {e}")))?,
+            )
+        };
 
-        Ok(rows)
+        // Single source of truth for the WHERE clause, applied to both the count
+        // query and the page query so `total` and the rows can never diverge.
+        macro_rules! apply_filters {
+            ($q:expr) => {{
+                let mut q = $q;
+                if !filters.source_devices.is_empty() {
+                    q = q.filter(
+                        search_document::source_device.eq_any(filters.source_devices.clone()),
+                    );
+                }
+                if !filters.tags.is_empty() {
+                    // Tag membership (OR within the group) as an indexed subquery —
+                    // served by `idx_entry_tag_by_tag (profile_id, tag_id)`.
+                    let members = search_entry_tag::table
+                        .filter(search_entry_tag::profile_id.eq(profile_id))
+                        .filter(search_entry_tag::tag_id.eq_any(filters.tags.clone()))
+                        .select(search_entry_tag::entry_id);
+                    q = q.filter(search_document::entry_id.eq_any(members));
+                }
+                if let Some((from_ms, to_ms)) = time_bounds {
+                    q = q.filter(search_document::active_time_ms.between(from_ms, to_ms));
+                }
+                if !filters.content_types.is_empty() {
+                    q = q.filter(search_document::file_type.eq_any(filters.content_types.clone()));
+                }
+                if let Some(ref json) = ext_json {
+                    // Case-insensitive membership between the document's extension
+                    // array and the query's, both via `json_each`. `'[]'` (the
+                    // default) yields no rows → no match, as intended.
+                    q = q.filter(
+                        sql::<Bool>(
+                            "EXISTS (SELECT 1 \
+                               FROM json_each(search_document.file_extensions) AS de \
+                               JOIN json_each(",
+                        )
+                        .bind::<Text, _>(json.clone())
+                        .sql(") AS qe ON lower(de.value) = qe.value)"),
+                    );
+                }
+                q
+            }};
+        }
+
+        // Authoritative total over the full filtered set.
+        let total: i64 = apply_filters!(search_document::table
+            .filter(search_document::profile_id.eq(profile_id))
+            .select(count_star())
+            .into_boxed::<Sqlite>())
+        .first(conn)
+        .map_err(|e| SearchError::Internal(format!("filter-only count failed: {e}")))?;
+
+        // Page window — index-ordered, bounded by LIMIT/OFFSET.
+        let page_rows: Vec<SearchDocumentRow> = apply_filters!(search_document::table
+            .filter(search_document::profile_id.eq(profile_id))
+            .select(SearchDocumentRow::as_select())
+            .into_boxed::<Sqlite>())
+        .order(search_document::active_time_ms.desc())
+        .limit(limit as i64)
+        .offset(offset as i64)
+        .load(conn)
+        .map_err(|e| SearchError::Internal(format!("filter-only page load failed: {e}")))?;
+
+        let total = total as u32;
+        let has_more = total > (offset as u32) + (page_rows.len() as u32);
+        Ok((page_rows, total, has_more))
     }
 
-    /// Load the set of `event_id`s whose originating `source_device` is one of
-    /// `source_devices`. Used to restrict search results by provenance.
-    fn load_event_ids_for_sources(
+    /// Resolve one page of the keyword path: rank the bounded posting-candidate
+    /// set in memory (the candidate set is already restricted by term matches, so
+    /// this never scans the whole profile). Filters are applied in memory and
+    /// ordering keeps the hit-count tiebreak that the SQL path cannot express.
+    ///
+    /// Returns `(page rows, authoritative total, has_more)`.
+    fn term_page(
         conn: &mut SqliteConnection,
-        source_devices: &[String],
-    ) -> Result<HashSet<String>, SearchError> {
-        use crate::db::schema::clipboard_event::dsl;
+        profile_id: &str,
+        term_tags: &[Vec<u8>],
+        operator: &QueryOperator,
+        filters: &FilterParams,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<SearchDocumentRow>, u32, bool), SearchError> {
+        let hits = Self::query_candidate_hits(conn, profile_id, term_tags, operator)?;
+        if hits.is_empty() {
+            return Ok((vec![], 0, false));
+        }
 
-        let rows = dsl::clipboard_event
-            .filter(dsl::source_device.eq_any(source_devices))
-            .select(dsl::event_id)
-            .load::<String>(conn)
-            .map_err(|e| {
-                SearchError::Internal(format!("load_event_ids_for_sources failed: {e}"))
-            })?;
+        let candidate_ids: Vec<String> = hits.keys().cloned().collect();
+        let docs = Self::load_candidate_documents(conn, profile_id, &candidate_ids)?;
 
-        Ok(rows.into_iter().collect())
+        // Resolve the tag-membership restriction up front (None = unrestricted) so
+        // filtering completes before pagination and the total stays authoritative.
+        let tag_entry_ids: Option<HashSet<String>> = if filters.tags.is_empty() {
+            None
+        } else {
+            Some(Self::load_entry_ids_for_tags(
+                conn,
+                profile_id,
+                &filters.tags,
+            )?)
+        };
+        let source_set: Option<HashSet<&str>> = if filters.source_devices.is_empty() {
+            None
+        } else {
+            Some(filters.source_devices.iter().map(|s| s.as_str()).collect())
+        };
+        let now_ms = chrono::Utc::now().timestamp_millis();
+
+        let mut filtered: Vec<(SearchDocumentRow, u32)> = docs
+            .into_iter()
+            .filter_map(|doc| {
+                // Source-device filter — read the indexed `source_device` column
+                // directly (no clipboard_event JOIN).
+                if let Some(ref allowed) = source_set {
+                    match doc.source_device.as_deref() {
+                        Some(sd) if allowed.contains(sd) => {}
+                        _ => return None,
+                    }
+                }
+
+                // Tag filter (OR within the tag group).
+                if let Some(ref allowed) = tag_entry_ids {
+                    if !allowed.contains(&doc.entry_id) {
+                        return None;
+                    }
+                }
+
+                // Time range filter.
+                if let Some(ref tr) = filters.time_range {
+                    let (from_ms, to_ms) = resolve_time_range(tr, now_ms);
+                    if doc.active_time_ms < from_ms as i64 || doc.active_time_ms > to_ms as i64 {
+                        return None;
+                    }
+                }
+
+                // File type filter (pre-encoded snake_case strings).
+                if !filters.content_types.is_empty()
+                    && !filters.content_types.iter().any(|ft| *ft == doc.file_type)
+                {
+                    return None;
+                }
+
+                // Extension filter (case-insensitive).
+                if !filters.extensions.is_empty() {
+                    let doc_exts: Vec<String> =
+                        serde_json::from_str::<Vec<String>>(&doc.file_extensions)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|e| e.to_lowercase())
+                            .collect();
+                    if !filters.extensions.iter().any(|ext| doc_exts.contains(ext)) {
+                        return None;
+                    }
+                }
+
+                let hit_count = *hits.get(&doc.entry_id).unwrap_or(&0);
+                Some((doc, hit_count))
+            })
+            .collect();
+
+        // Sort: active_time_ms DESC, hit_count DESC, captured_at_ms DESC.
+        filtered.sort_by(|(a, a_hits), (b, b_hits)| {
+            b.active_time_ms
+                .cmp(&a.active_time_ms)
+                .then(b_hits.cmp(a_hits))
+                .then(b.captured_at_ms.cmp(&a.captured_at_ms))
+        });
+
+        let total = filtered.len() as u32;
+        let page_rows: Vec<SearchDocumentRow> = filtered
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(doc, _)| doc)
+            .collect();
+        let has_more = total > (offset as u32) + (page_rows.len() as u32);
+        Ok((page_rows, total, has_more))
+    }
+
+    /// Hydrate the page's tag membership from `search_entry_tag` and map each
+    /// row to a domain `SearchResult`. Shared tail of both search paths.
+    ///
+    /// Document rows carry an empty tag set; the membership is fetched here in one
+    /// batched query scoped to the page window (at most `limit` entries).
+    fn hydrate_results(
+        conn: &mut SqliteConnection,
+        profile_id: &str,
+        page_rows: Vec<SearchDocumentRow>,
+    ) -> Result<Vec<SearchResult>, SearchError> {
+        let page_entry_ids: Vec<String> =
+            page_rows.iter().map(|doc| doc.entry_id.clone()).collect();
+        let tags_by_entry = Self::load_tags_for_entries(conn, profile_id, &page_entry_ids)?;
+
+        let items = page_rows
+            .into_iter()
+            .filter_map(|doc| {
+                let tags = tags_by_entry
+                    .get(&doc.entry_id)
+                    .cloned()
+                    .unwrap_or_default();
+                let domain = doc.to_domain().ok()?;
+                Some(SearchResult {
+                    entry_id: domain.entry_id,
+                    content_type: domain.content_type,
+                    active_time_ms: domain.active_time_ms,
+                    tags,
+                    text_preview: domain.text_preview,
+                    mime_type: domain.mime_type,
+                    file_extensions: domain.file_extensions,
+                    file_names: domain.file_names,
+                    link_urls: domain.link_urls,
+                    source_device: domain.source_device,
+                    payload_state: domain.payload_state,
+                })
+            })
+            .collect();
+        Ok(items)
     }
 
     /// Load tag memberships for `entry_ids`, grouped by entry id.
@@ -1049,23 +1284,26 @@ impl SearchIndexPort for SqliteSearchIndex {
         };
 
         let operator = query.operator.clone();
-        let time_range = query.time_range.clone();
-        let content_types = query.content_types.clone();
-        let extensions = query
-            .extensions
+        // Pre-encode `content_type` to its stored snake_case string form once, so
+        // both the SQL push-down and the in-memory term path compare against the
+        // same representation as `file_type`.
+        let content_types = query
+            .content_types
             .iter()
-            .map(|e| e.to_lowercase())
-            .collect::<Vec<_>>();
-        let source_devices = query
-            .source_devices
-            .iter()
-            .map(|d| d.as_str().to_string())
-            .collect::<Vec<_>>();
-        let tags = query
-            .tags
-            .iter()
-            .map(|t| t.as_str().to_string())
-            .collect::<Vec<_>>();
+            .map(|ct| serde_json::to_string(ct).map(|s| s.trim_matches('"').to_string()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| SearchError::Internal(format!("content_type encode failed: {e}")))?;
+        let filters = FilterParams {
+            content_types,
+            tags: query.tags.iter().map(|t| t.as_str().to_string()).collect(),
+            extensions: query.extensions.iter().map(|e| e.to_lowercase()).collect(),
+            source_devices: query
+                .source_devices
+                .iter()
+                .map(|d| d.as_str().to_string())
+                .collect(),
+            time_range: query.time_range.clone(),
+        };
         let limit = query.limit as usize;
         let offset = query.offset as usize;
 
@@ -1095,181 +1333,30 @@ impl SearchIndexPort for SqliteSearchIndex {
                 return Err(SearchError::IndexNotReady);
             }
 
-            // 4. Load candidate documents.
-            // Filter-only path: load all documents (no term matching).
-            // Term path: resolve postings first, then load matching documents.
-            let (docs, hit_map): (Vec<SearchDocumentRow>, HashMap<String, u32>) = if is_filter_only
-            {
-                debug!("filter-only search — loading all documents");
-                let all_docs = Self::load_all_documents(&mut conn, &profile_id)?;
-                (all_docs, HashMap::new())
+            // 4. Resolve the current page of document rows + authoritative total.
+            //    Filter-only browse pushes filtering, ordering, and pagination
+            //    down to SQL so it never loads the whole profile into memory; the
+            //    keyword path ranks the bounded posting-candidate set in memory.
+            let (page_rows, total, has_more) = if is_filter_only {
+                debug!("filter-only search — SQL push-down");
+                Self::filter_only_page(&mut conn, &profile_id, &filters, limit, offset)?
             } else {
-                let hits =
-                    Self::query_candidate_hits(&mut conn, &profile_id, &term_tags, &operator)?;
-
-                if hits.is_empty() {
-                    debug!("search produced no candidate hits");
-                    return Ok(SearchResultsPage {
-                        items: vec![],
-                        total: 0,
-                        has_more: false,
-                    });
-                }
-
-                let candidate_ids: Vec<String> = hits.keys().cloned().collect();
-                let candidate_docs =
-                    Self::load_candidate_documents(&mut conn, &profile_id, &candidate_ids)?;
-                (candidate_docs, hits)
-            };
-
-            // 5. Apply filters: source device, time range, file type, extension.
-            // Resolve the allowed event_id set up front (None = no source
-            // restriction) so source filtering runs before pagination and the
-            // authoritative total count, keeping both correct.
-            let source_event_ids: Option<HashSet<String>> = if source_devices.is_empty() {
-                None
-            } else {
-                Some(Self::load_event_ids_for_sources(
-                    &mut conn,
-                    &source_devices,
-                )?)
-            };
-            // Resolve the allowed entry-id set for tag membership up front
-            // (None = no tag restriction) so tag filtering runs before
-            // pagination, keeping the authoritative total correct.
-            let tag_entry_ids: Option<HashSet<String>> = if tags.is_empty() {
-                None
-            } else {
-                Some(Self::load_entry_ids_for_tags(
+                Self::term_page(
                     &mut conn,
                     &profile_id,
-                    &tags,
-                )?)
+                    &term_tags,
+                    &operator,
+                    &filters,
+                    limit,
+                    offset,
+                )?
             };
-            let now_ms = chrono::Utc::now().timestamp_millis();
 
-            let filtered: Vec<(SearchDocumentRow, u32)> = docs
-                .into_iter()
-                .filter_map(|doc| {
-                    // Source-device filter.
-                    if let Some(ref allowed) = source_event_ids {
-                        if !allowed.contains(&doc.event_id) {
-                            return None;
-                        }
-                    }
+            // 5. Hydrate the page's tags from `search_entry_tag` and map to
+            //    domain results (shared by both paths).
+            let items = Self::hydrate_results(&mut conn, &profile_id, page_rows)?;
 
-                    // Tag filter (OR within the tag group).
-                    if let Some(ref allowed) = tag_entry_ids {
-                        if !allowed.contains(&doc.entry_id) {
-                            return None;
-                        }
-                    }
-
-                    // Time range filter.
-                    if let Some(ref tr) = time_range {
-                        let (from_ms, to_ms) = resolve_time_range(tr, now_ms);
-                        if doc.active_time_ms < from_ms as i64 || doc.active_time_ms > to_ms as i64
-                        {
-                            return None;
-                        }
-                    }
-
-                    // File type filter.
-                    if !content_types.is_empty() {
-                        let stored = &doc.file_type;
-                        let matches = content_types.iter().any(|ft| {
-                            let ft_str = serde_json::to_string(ft)
-                                .unwrap_or_default()
-                                .trim_matches('"')
-                                .to_string();
-                            ft_str == *stored
-                        });
-                        if !matches {
-                            return None;
-                        }
-                    }
-
-                    // Extension filter (case-insensitive).
-                    if !extensions.is_empty() {
-                        let doc_exts: Vec<String> =
-                            serde_json::from_str::<Vec<String>>(&doc.file_extensions)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .map(|e| e.to_lowercase())
-                                .collect();
-
-                        let matches = extensions.iter().any(|ext| doc_exts.contains(ext));
-                        if !matches {
-                            return None;
-                        }
-                    }
-
-                    let hit_count = *hit_map.get(&doc.entry_id).unwrap_or(&0);
-                    Some((doc, hit_count))
-                })
-                .collect();
-
-            // 7. Sort: active_time_ms DESC, hit_count DESC, captured_at_ms DESC.
-            let mut sorted = filtered;
-            sorted.sort_by(|(a, a_hits), (b, b_hits)| {
-                b.active_time_ms
-                    .cmp(&a.active_time_ms)
-                    .then(b_hits.cmp(a_hits))
-                    .then(b.captured_at_ms.cmp(&a.captured_at_ms))
-            });
-
-            // 8. Compute total before pagination — authoritative count for all matches.
-            let total = sorted.len() as u32;
-
-            // 9. Pagination.
-            let paginated: Vec<(SearchDocumentRow, u32)> =
-                sorted.into_iter().skip(offset).take(limit).collect();
-
-            // 10. has_more: true when remaining entries exist after the current page.
-            let has_more = total > (offset as u32) + (paginated.len() as u32);
-
-            // 11. Hydrate tags for the current page, then map to SearchResult.
-            // Document rows carry an empty tag set; membership lives in
-            // `search_entry_tag` and is fetched here in one batched query
-            // scoped to the page window (at most `limit` entries).
-            let page_entry_ids: Vec<String> = paginated
-                .iter()
-                .map(|(doc, _)| doc.entry_id.clone())
-                .collect();
-            let tags_by_entry =
-                Self::load_tags_for_entries(&mut conn, &profile_id, &page_entry_ids)?;
-
-            let items: Vec<SearchResult> = paginated
-                .into_iter()
-                .filter_map(|(doc, _)| {
-                    let tags = tags_by_entry
-                        .get(&doc.entry_id)
-                        .cloned()
-                        .unwrap_or_default();
-                    let domain = doc.to_domain().ok()?;
-                    Some(SearchResult {
-                        entry_id: domain.entry_id,
-                        content_type: domain.content_type,
-                        active_time_ms: domain.active_time_ms,
-                        tags,
-                        text_preview: domain.text_preview,
-                        mime_type: domain.mime_type,
-                        file_extensions: domain.file_extensions,
-                        file_names: domain.file_names,
-                        link_urls: domain.link_urls,
-                        source_device: domain.source_device,
-                        payload_state: domain.payload_state,
-                    })
-                })
-                .collect();
-
-            debug!(
-                candidates = hit_map.len(),
-                total,
-                returned = items.len(),
-                has_more,
-                "search completed"
-            );
+            debug!(total, returned = items.len(), has_more, "search completed");
 
             Ok(SearchResultsPage {
                 items,
@@ -2176,5 +2263,334 @@ mod tests {
 
         let meta = index.get_index_meta().await.unwrap();
         assert_eq!(meta.index_version, CURRENT_INDEX_VERSION);
+    }
+
+    // ── Phase 2: filter-only SQL push-down acceptance ──────────────────────
+
+    /// Bulk-insert `n` text documents straight into `search_document`, bypassing
+    /// the live index path, so push-down tests can reach large ordered datasets
+    /// cheaply. `active_time_ms` ascends with `i`, so higher `i` sorts first.
+    fn bulk_insert_text_docs(pool: &DbPool, n: usize) {
+        let mut conn = pool.get().unwrap();
+        let rows: Vec<NewSearchDocumentRow> = (0..n)
+            .map(|i| NewSearchDocumentRow {
+                profile_id: TEST_PROFILE.to_string(),
+                entry_id: format!("e{i:06}"),
+                event_id: format!("ev{i:06}"),
+                active_time_ms: i as i64,
+                captured_at_ms: i as i64,
+                file_type: "text".to_string(),
+                file_extensions: "[]".to_string(),
+                mime_type: "text/plain".to_string(),
+                indexed_at_ms: 0,
+                index_version: CURRENT_INDEX_VERSION.to_string(),
+                text_preview: None,
+                file_names: "[]".to_string(),
+                link_urls: "[]".to_string(),
+                source_device: None,
+                payload_state: None,
+            })
+            .collect();
+        // Chunk to stay well within SQLite's bound-variable limit.
+        for chunk in rows.chunks(400) {
+            diesel::insert_into(search_document::table)
+                .values(chunk)
+                .execute(&mut conn)
+                .unwrap();
+        }
+    }
+
+    /// Run `EXPLAIN QUERY PLAN` and return the joined `detail` column.
+    fn explain_query_plan(pool: &DbPool, sql: &str) -> String {
+        #[derive(QueryableByName)]
+        struct PlanRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            detail: String,
+        }
+        let mut conn = pool.get().unwrap();
+        diesel::sql_query(format!("EXPLAIN QUERY PLAN {sql}"))
+            .load::<PlanRow>(&mut conn)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.detail)
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    /// Structural gate: the dominant browse path (no filter) must be served by
+    /// `idx_search_document_profile_active_time` with no temp-b-tree sort, proving
+    /// the page is index-ordered and bounded — not a full-table load + sort.
+    #[tokio::test]
+    async fn filter_only_browse_is_index_served_not_full_scan() {
+        let (_index, pool, _dir) = make_index();
+        bulk_insert_text_docs(&pool, 500);
+
+        let plan = explain_query_plan(
+            &pool,
+            "SELECT * FROM search_document WHERE profile_id = 'default' \
+             ORDER BY active_time_ms DESC LIMIT 50 OFFSET 0",
+        );
+
+        assert!(
+            plan.contains("idx_search_document_profile_active_time"),
+            "browse should be served by the active-time index; plan: {plan}"
+        );
+        assert!(
+            !plan.contains("USE TEMP B-TREE"),
+            "browse ordering must be index-covered (no temp sort); plan: {plan}"
+        );
+    }
+
+    /// Structural gate: the tag-membership subquery is served by an index (not a
+    /// full `SCAN`) — the "tag JOIN index" the design calls for. With the
+    /// covering `(profile_id, tag_id, entry_id)` index in place, the planner
+    /// seeks matching tag rows without touching the table.
+    #[tokio::test]
+    async fn tag_filter_is_served_by_entry_tag_index() {
+        let (_index, pool, _dir) = make_index();
+        bulk_insert_text_docs(&pool, 500);
+        // Populate membership so the planner has a reason to seek selectively.
+        {
+            let mut conn = pool.get().unwrap();
+            let tags: Vec<NewSearchEntryTagRow> = (0..500)
+                .step_by(5)
+                .map(|i| NewSearchEntryTagRow {
+                    profile_id: TEST_PROFILE.to_string(),
+                    entry_id: format!("e{i:06}"),
+                    tag_id: "link".to_string(),
+                })
+                .collect();
+            diesel::insert_into(search_entry_tag::table)
+                .values(&tags)
+                .execute(&mut conn)
+                .unwrap();
+        }
+
+        let plan = explain_query_plan(
+            &pool,
+            "SELECT * FROM search_document WHERE profile_id = 'default' \
+             AND entry_id IN (SELECT entry_id FROM search_entry_tag \
+               WHERE profile_id = 'default' AND tag_id IN ('link')) \
+             ORDER BY active_time_ms DESC LIMIT 50",
+        );
+
+        // The membership lookup must be index-served, never a full table scan.
+        assert!(
+            !plan.contains("SCAN search_entry_tag"),
+            "tag membership must not full-scan search_entry_tag; plan: {plan}"
+        );
+        // The widened `(profile_id, tag_id, entry_id)` index lets the planner seek
+        // matching tag rows AND read entry_id straight from the index (covering).
+        assert!(
+            plan.contains("search_entry_tag USING COVERING INDEX"),
+            "tag membership should use a covering index seek; plan: {plan}"
+        );
+        // The outer browse order stays index-served by the active-time index.
+        assert!(
+            plan.contains("idx_search_document_profile_active_time"),
+            "outer query should use the active-time index; plan: {plan}"
+        );
+    }
+
+    /// The push-down returns the same ordered, paginated, authoritative-total
+    /// result the in-memory path used to — across page boundaries.
+    #[tokio::test]
+    async fn filter_only_pushdown_orders_and_paginates() {
+        let (index, pool, _dir) = make_index();
+        bulk_insert_text_docs(&pool, 120);
+
+        // Page 1: newest first (active_time desc → e000119 … e000070).
+        let p1 = {
+            let mut q = filter_only_query();
+            q.limit = 50;
+            q.offset = 0;
+            index.search(q).await.unwrap()
+        };
+        assert_eq!(p1.total, 120);
+        assert_eq!(p1.items.len(), 50);
+        assert!(p1.has_more);
+        assert_eq!(p1.items[0].entry_id.to_string(), "e000119");
+        assert_eq!(p1.items[49].entry_id.to_string(), "e000070");
+
+        // Page 2 continues without overlap, total unchanged.
+        let p2 = {
+            let mut q = filter_only_query();
+            q.limit = 50;
+            q.offset = 50;
+            index.search(q).await.unwrap()
+        };
+        assert_eq!(p2.total, 120);
+        assert_eq!(p2.items[0].entry_id.to_string(), "e000069");
+        assert!(p2.has_more);
+
+        // Final partial page: no more entries afterwards.
+        let p3 = {
+            let mut q = filter_only_query();
+            q.limit = 50;
+            q.offset = 100;
+            index.search(q).await.unwrap()
+        };
+        assert_eq!(p3.items.len(), 20);
+        assert!(!p3.has_more);
+        assert_eq!(p3.items[19].entry_id.to_string(), "e000000");
+    }
+
+    /// Source-device filtering reads the indexed `search_document.source_device`
+    /// column (no clipboard_event JOIN) and runs before the total/pagination.
+    #[tokio::test]
+    async fn filter_only_filters_by_source_device_column() {
+        let (index, _pool, _dir) = make_index();
+        let mut a = make_doc("e1", vec![]);
+        a.source_device = Some("dev-a".to_string());
+        let mut b = make_doc("e2", vec![]);
+        b.source_device = Some("dev-b".to_string());
+        index.index_entry(a, vec![]).await.unwrap();
+        index.index_entry(b, vec![]).await.unwrap();
+
+        let mut q = filter_only_query();
+        q.source_devices = vec![uc_core::ids::DeviceId::new("dev-a")];
+        let page = index.search(q).await.unwrap();
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].entry_id.to_string(), "e1");
+    }
+
+    /// Content-type filtering matches the stored snake_case `file_type`.
+    #[tokio::test]
+    async fn filter_only_filters_by_content_type() {
+        let (index, _pool, _dir) = make_index();
+        let mut img = make_doc("img", vec![]);
+        img.content_type = ContentType::Image;
+        index
+            .index_entry(make_doc("txt", vec![]), vec![])
+            .await
+            .unwrap();
+        index.index_entry(img, vec![]).await.unwrap();
+
+        let mut q = filter_only_query();
+        q.content_types = vec![ContentType::Image];
+        let page = index.search(q).await.unwrap();
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].entry_id.to_string(), "img");
+    }
+
+    /// Extension filtering is case-insensitive via `json_each` membership: a
+    /// stored upper-case extension matches a lower-case query extension.
+    #[tokio::test]
+    async fn filter_only_filters_by_extension_case_insensitively() {
+        let (index, _pool, _dir) = make_index();
+        let mut pdf = make_doc("pdf", vec![]);
+        pdf.file_extensions = vec!["PDF".to_string()];
+        let mut txt = make_doc("txt", vec![]);
+        txt.file_extensions = vec!["txt".to_string()];
+        index.index_entry(pdf, vec![]).await.unwrap();
+        index.index_entry(txt, vec![]).await.unwrap();
+
+        let mut q = filter_only_query();
+        q.extensions = vec!["pdf".to_string()];
+        let page = index.search(q).await.unwrap();
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].entry_id.to_string(), "pdf");
+    }
+
+    /// Absolute time-range filtering is pushed down as a `BETWEEN` predicate.
+    #[tokio::test]
+    async fn filter_only_filters_by_absolute_time_range() {
+        let (index, _pool, _dir) = make_index();
+        let mut old = make_doc("old", vec![]);
+        old.active_time_ms = 1_000;
+        let mut recent = make_doc("recent", vec![]);
+        recent.active_time_ms = 100_000;
+        index.index_entry(old, vec![]).await.unwrap();
+        index.index_entry(recent, vec![]).await.unwrap();
+
+        let mut q = filter_only_query();
+        q.time_range = Some(TimeRangeFilter::Absolute {
+            from_ms: 50_000,
+            to_ms: 200_000,
+        });
+        let page = index.search(q).await.unwrap();
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].entry_id.to_string(), "recent");
+    }
+
+    /// Manual P95 harness (excluded from CI). Seeds N=100k and prints browse +
+    /// tag-filtered latency percentiles. Targets: browse P95 ≤ 100ms, filtered
+    /// P95 ≤ 200ms. Run with:
+    ///   `cargo test -p uc-infra --lib filter_only_pushdown_p95 -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "perf harness; run manually with --ignored --nocapture"]
+    async fn filter_only_pushdown_p95_harness() {
+        use std::time::{Duration, Instant};
+
+        let (index, pool, _dir) = make_index();
+        let n = 100_000usize;
+        bulk_insert_text_docs(&pool, n);
+
+        // Tag every 10th entry `link` so the filtered measurement exercises the
+        // tag subquery against a realistic membership table.
+        {
+            let mut conn = pool.get().unwrap();
+            let tags: Vec<NewSearchEntryTagRow> = (0..n)
+                .step_by(10)
+                .map(|i| NewSearchEntryTagRow {
+                    profile_id: TEST_PROFILE.to_string(),
+                    entry_id: format!("e{i:06}"),
+                    tag_id: TagId::link().as_str().to_string(),
+                })
+                .collect();
+            for chunk in tags.chunks(400) {
+                diesel::insert_into(search_entry_tag::table)
+                    .values(chunk)
+                    .execute(&mut conn)
+                    .unwrap();
+            }
+        }
+
+        let p95 = |mut samples: Vec<Duration>| -> Duration {
+            samples.sort();
+            let idx = ((samples.len() as f64 * 0.95).ceil() as usize)
+                .saturating_sub(1)
+                .min(samples.len() - 1);
+            samples[idx]
+        };
+
+        let runs = 50;
+        let mut browse = Vec::with_capacity(runs);
+        for _ in 0..runs {
+            let q = filter_only_query();
+            let start = Instant::now();
+            let page = index.search(q).await.unwrap();
+            browse.push(start.elapsed());
+            assert_eq!(page.total, n as u32);
+        }
+
+        let mut filtered = Vec::with_capacity(runs);
+        for _ in 0..runs {
+            let mut q = filter_only_query();
+            q.tags = vec![TagId::link()];
+            let start = Instant::now();
+            let page = index.search(q).await.unwrap();
+            filtered.push(start.elapsed());
+            assert_eq!(page.total, (n / 10) as u32);
+        }
+
+        let browse_p95 = p95(browse);
+        let filtered_p95 = p95(filtered);
+        println!("N={n} browse P95 = {browse_p95:?} | filtered(link) P95 = {filtered_p95:?}");
+
+        // Generous ceilings so the harness flags only gross regressions; the
+        // documented targets are browse ≤ 100ms / filtered ≤ 200ms.
+        assert!(
+            browse_p95 <= Duration::from_millis(500),
+            "browse P95 {browse_p95:?} far over target (≤100ms)"
+        );
+        assert!(
+            filtered_p95 <= Duration::from_millis(1000),
+            "filtered P95 {filtered_p95:?} far over target (≤200ms)"
+        );
     }
 }

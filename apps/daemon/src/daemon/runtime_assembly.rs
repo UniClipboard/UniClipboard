@@ -127,6 +127,7 @@ pub fn build_daemon_runtime_workers(
             search_key_derivation: input.deps.search.search_key_derivation.clone(),
             search_pipeline: input.deps.search.search_pipeline.clone(),
             search_index: input.deps.search.search_index.clone(),
+            event_repo: input.clipboard_event_reader_repo.clone(),
         }));
     let apply_inbound_uc = Arc::new(
         ApplyInboundClipboardUseCase::new(

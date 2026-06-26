@@ -38,6 +38,14 @@ pub struct SearchDocumentRow {
     pub indexed_at_ms: i64,
     pub index_version: String,
     pub text_preview: Option<String>,
+    /// JSON array of file display names (e.g. `["a.txt"]`); `'[]'` when none.
+    pub file_names: String,
+    /// JSON array of http/https URLs; `'[]'` when none.
+    pub link_urls: String,
+    /// Originating device id, or `NULL` when the source is unknown.
+    pub source_device: Option<String>,
+    /// `"Lost"` when the paste payload is unrecoverable, else `NULL`.
+    pub payload_state: Option<String>,
 }
 
 /// Insertable row for `search_document`.
@@ -55,6 +63,10 @@ pub struct NewSearchDocumentRow {
     pub indexed_at_ms: i64,
     pub index_version: String,
     pub text_preview: Option<String>,
+    pub file_names: String,
+    pub link_urls: String,
+    pub source_device: Option<String>,
+    pub payload_state: Option<String>,
 }
 
 impl NewSearchDocumentRow {
@@ -67,6 +79,8 @@ impl NewSearchDocumentRow {
         let content_type_json = serde_json::to_string(&document.content_type)?;
         let file_type = content_type_json.trim_matches('"').to_string();
         let file_extensions = serde_json::to_string(&document.file_extensions)?;
+        let file_names = serde_json::to_string(&document.file_names)?;
+        let link_urls = serde_json::to_string(&document.link_urls)?;
 
         Ok(Self {
             profile_id: profile_id.to_string(),
@@ -80,6 +94,10 @@ impl NewSearchDocumentRow {
             indexed_at_ms: document.indexed_at_ms,
             index_version: document.index_version.clone(),
             text_preview: document.text_preview.clone(),
+            file_names,
+            link_urls,
+            source_device: document.source_device.clone(),
+            payload_state: document.payload_state.clone(),
         })
     }
 }
@@ -94,6 +112,8 @@ impl SearchDocumentRow {
         let content_type_json = format!("\"{}\"", self.file_type);
         let content_type: ContentType = serde_json::from_str(&content_type_json)?;
         let file_extensions: Vec<String> = serde_json::from_str(&self.file_extensions)?;
+        let file_names: Vec<String> = serde_json::from_str(&self.file_names)?;
+        let link_urls: Vec<String> = serde_json::from_str(&self.link_urls)?;
 
         Ok(SearchDocument {
             entry_id: self.entry_id.clone().into(),
@@ -110,6 +130,10 @@ impl SearchDocumentRow {
             indexed_at_ms: self.indexed_at_ms,
             index_version: self.index_version.clone(),
             text_preview: self.text_preview.clone(),
+            file_names,
+            link_urls,
+            source_device: self.source_device.clone(),
+            payload_state: self.payload_state.clone(),
         })
     }
 }
@@ -272,6 +296,10 @@ mod tests {
             indexed_at_ms: 0,
             index_version: CURRENT_INDEX_VERSION.to_string(),
             text_preview: None,
+            file_names: vec![],
+            link_urls: vec![],
+            source_device: None,
+            payload_state: None,
         }
     }
 

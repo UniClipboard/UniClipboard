@@ -202,6 +202,10 @@ diesel::table! {
         indexed_at_ms -> BigInt,
         index_version -> Text,
         text_preview -> Nullable<Text>,
+        file_names -> Text,
+        link_urls -> Text,
+        source_device -> Nullable<Text>,
+        payload_state -> Nullable<Text>,
     }
 }
 

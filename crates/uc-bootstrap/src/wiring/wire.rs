@@ -870,6 +870,7 @@ pub fn wire_dependencies(
             system_clipboard: platform.system_clipboard,
             entry_ports: infra.clipboard_entry_ports,
             clipboard_event_repo: encrypting_event_writer,
+            clipboard_event_reader_repo: infra.clipboard_event_reader_repo.clone(),
             representation_store: decrypting_rep_repo,
             representation_ports: clipboard_representation_ports,
             representation_normalizer: platform.representation_normalizer,

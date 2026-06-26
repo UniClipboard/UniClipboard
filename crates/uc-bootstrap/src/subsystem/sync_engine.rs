@@ -658,6 +658,7 @@ pub(crate) async fn build_sync_engine_assembly(
             search_key_derivation: Arc::clone(&deps.search.search_key_derivation),
             search_pipeline: Arc::clone(&deps.search.search_pipeline),
             search_index: Arc::clone(&deps.search.search_index),
+            event_repo: Arc::clone(&shared.clipboard_event_reader_repo),
         }));
     let pull_store_apply: Arc<dyn InboundClipboardApplyPort> = Arc::new(
         ApplyInboundClipboardUseCase::new(

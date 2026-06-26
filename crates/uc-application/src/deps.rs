@@ -76,6 +76,10 @@ pub struct ClipboardPorts {
     pub system_clipboard: Arc<dyn SystemClipboardPort>,
     pub entry_ports: ClipboardEntryPorts,
     pub clipboard_event_repo: Arc<dyn ClipboardEventWriterPort>,
+    /// Read port over the same clipboard-event store as `clipboard_event_repo`.
+    /// Exposes read-only lookups such as the originating device of an event,
+    /// used to populate the search index's `source_device` render column.
+    pub clipboard_event_reader_repo: Arc<dyn ClipboardEventRepositoryPort>,
     /// Inner representation store (the full aggregate surface). Threaded by the
     /// composition root to the background payload workers only; the application
     /// layer depends on `representation_ports` instead.

@@ -53,6 +53,21 @@ pub struct SearchDocument {
     /// Optional truncated preview for UI rendering (populated by Phase 89 use case).
     /// Truncation logic lives in the use case, not here.
     pub text_preview: Option<String>,
+    /// Display names of the files this entry references (from a `file://`
+    /// uri-list). Empty when the entry carries no files. Capture-time stable, so
+    /// it is mirrored as an index render column rather than fetched lazily.
+    pub file_names: Vec<String>,
+    /// Web URLs (http/https) carried by this entry, sharing the detection
+    /// contract with the `link` tag so render and filter stay consistent. Empty
+    /// when none. Capture-time stable.
+    pub link_urls: Vec<String>,
+    /// Originating device id, resolved from the clipboard event. `None` when the
+    /// event is unknown (source untrusted). Used for render and match decisions.
+    pub source_device: Option<String>,
+    /// Marker for an unrecoverable paste payload: `Some("Lost")` when the paste
+    /// representation is permanently lost, `None` otherwise. Live indexing writes
+    /// the healthy default; rebuild backfills the authoritative value.
+    pub payload_state: Option<String>,
 }
 
 /// One row per `(term_tag, entry_id)` pair in the inverted index.

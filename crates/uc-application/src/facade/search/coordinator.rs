@@ -5,7 +5,9 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
-use uc_core::ports::clipboard::{ListClipboardEntriesPort, ListRepresentationsForEventPort};
+use uc_core::ports::clipboard::{
+    ClipboardEventRepositoryPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
+};
 use uc_core::ports::search::SearchPipelinePort;
 use uc_core::ports::{ClipboardSelectionRepositoryPort, SearchIndexPort, SearchKeyDerivationPort};
 use uc_core::search::{RebuildProgress, RebuildStage, SearchError};
@@ -57,6 +59,9 @@ pub struct SearchCoordinatorDeps {
     pub clipboard_entry_repo: Arc<dyn ListClipboardEntriesPort>,
     pub representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+    /// Resolves the originating device of each entry's event for the
+    /// `source_device` render column (same lookup as the live index path).
+    pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     pub current_index_version: String,
 }
 
@@ -68,6 +73,7 @@ impl SearchCoordinatorDeps {
         clipboard_entry_repo: Arc<dyn ListClipboardEntriesPort>,
         representation_repo: Arc<dyn ListRepresentationsForEventPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+        event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     ) -> Self {
         Self {
             search_index,
@@ -76,6 +82,7 @@ impl SearchCoordinatorDeps {
             clipboard_entry_repo,
             representation_repo,
             selection_repo,
+            event_repo,
             current_index_version: CURRENT_INDEX_VERSION.to_string(),
         }
     }
@@ -324,17 +331,35 @@ impl SearchCoordinator {
                     }
                 };
 
-                let pipeline_input =
-                    match SearchProjectionBuilder::build_from_persisted(entry, &selection, &reps) {
-                        Some(input) => input,
-                        None => {
-                            debug!(
-                                entry_id = %entry.entry_id,
-                                "search coordinator: no searchable content for entry, skipping"
-                            );
-                            continue;
-                        }
-                    };
+                // Resolve the originating device from the event store — the same
+                // lookup the live index path uses, so the two stay in parity.
+                let source_device = match deps.event_repo.get_source_device(&entry.event_id).await {
+                    Ok(device) => device.map(|d| d.to_string()),
+                    Err(e) => {
+                        debug!(
+                            error = %e,
+                            entry_id = %entry.entry_id,
+                            "search coordinator: failed to resolve source device, indexing without it"
+                        );
+                        None
+                    }
+                };
+
+                let pipeline_input = match SearchProjectionBuilder::build_from_persisted(
+                    entry,
+                    &selection,
+                    &reps,
+                    source_device,
+                ) {
+                    Some(input) => input,
+                    None => {
+                        debug!(
+                            entry_id = %entry.entry_id,
+                            "search coordinator: no searchable content for entry, skipping"
+                        );
+                        continue;
+                    }
+                };
 
                 match deps.search_pipeline.build(&pipeline_input, &search_key) {
                     Ok((doc, postings)) => {

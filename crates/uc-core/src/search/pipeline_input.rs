@@ -29,4 +29,15 @@ pub struct SearchPipelineInput {
     pub file_paths: Vec<String>,
     pub file_names: Vec<String>,
     pub text_preview: Option<String>,
+    /// Web URLs (http/https) to mirror as the `link_urls` render column. Shares
+    /// the [`crate::clipboard::link_utils::detect_link_urls`] contract with the
+    /// `link` tag rule so render and filter stay in lock-step. Empty when none.
+    pub link_urls: Vec<String>,
+    /// Originating device id resolved from the clipboard event, or `None` when
+    /// the source is unknown/untrusted. Resolved by the caller (async) before
+    /// building this input, since the projection builder itself is synchronous.
+    pub source_device: Option<String>,
+    /// `Some("Lost")` when the paste representation is permanently lost,
+    /// `None` otherwise. Derived from the paste representation's availability.
+    pub payload_state: Option<String>,
 }

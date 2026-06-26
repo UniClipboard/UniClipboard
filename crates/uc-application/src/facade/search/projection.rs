@@ -5,7 +5,7 @@
 
 use uc_core::clipboard::link_utils::detect_link_urls;
 use uc_core::clipboard::{
-    ClipboardEntry, ClipboardSelection, ClipboardSelectionDecision,
+    ClipboardEntry, ClipboardSelection, ClipboardSelectionDecision, PayloadAvailability,
     PersistedClipboardRepresentation, SystemClipboardSnapshot,
 };
 use uc_core::search::document::ContentType;
@@ -96,6 +96,14 @@ fn evaluate_tags(content: &TaggableContent<'_>, rules: &[Box<dyn TagRule>]) -> V
         .filter(|rule| rule.evaluate(content))
         .map(|rule| rule.tag_id().clone())
         .collect()
+}
+
+/// Marker mirrored into the `payload_state` render column: `Some("Lost")` only
+/// when the paste representation is permanently lost, `None` for every healthy
+/// state. Mirrors the list projection's `paste_rep_state_to_payload_state` so
+/// list and search render the same "this entry can no longer be pasted" signal.
+fn payload_state_marker(state: &PayloadAvailability) -> Option<String> {
+    matches!(state, PayloadAvailability::Lost).then(|| "Lost".to_string())
 }
 
 /// Collect lowercased unique file extensions from a list of file paths.
@@ -202,11 +210,16 @@ impl SearchableContent {
 
     /// Assemble the final `SearchPipelineInput`, or `None` if nothing
     /// searchable was gathered. `mime_type` is resolved by the caller from its
-    /// own source (live snapshot vs persisted reps).
+    /// own source (live snapshot vs persisted reps). `source_device` and
+    /// `payload_state` are likewise resolved by the caller — the former requires
+    /// an async port lookup, the latter differs between the live (healthy
+    /// default) and rebuild (authoritative) paths.
     fn into_pipeline_input(
         self,
         entry: &ClipboardEntry,
         mime_type: String,
+        source_device: Option<String>,
+        payload_state: Option<String>,
     ) -> Option<SearchPipelineInput> {
         if self.is_empty() {
             return None;
@@ -222,6 +235,9 @@ impl SearchableContent {
             },
             &builtin_rules(),
         );
+        // Same detection contract as the `link` rule above, so the render column
+        // and the tag never disagree on what counts as a link.
+        let link_urls = detect_link_urls(&self.uri_list, self.plain_text.as_deref());
         Some(SearchPipelineInput {
             entry_id: entry.entry_id.clone(),
             event_id: entry.event_id.clone(),
@@ -237,6 +253,9 @@ impl SearchableContent {
             file_paths: self.file_paths,
             file_names: self.file_names,
             text_preview: self.text_preview,
+            link_urls,
+            source_device,
+            payload_state,
         })
     }
 }
@@ -250,7 +269,12 @@ impl SearchProjectionBuilder {
     /// Build a `SearchPipelineInput` from a live clipboard capture event.
     ///
     /// Called immediately after a successful `CaptureClipboardUseCase` so the
-    /// live `SystemClipboardSnapshot` is still available.
+    /// live `SystemClipboardSnapshot` is still available. `source_device` is the
+    /// originating device id resolved by the caller (`None` when unknown).
+    ///
+    /// `payload_state` is left at the healthy default (`None`): a freshly
+    /// captured payload is always available, and the authoritative state is
+    /// backfilled by rebuild if it later becomes lost.
     ///
     /// Returns `None` when the snapshot contains no searchable content (no plain
     /// text, HTML, URL, file path, or file name segments).
@@ -258,6 +282,7 @@ impl SearchProjectionBuilder {
         entry: &ClipboardEntry,
         snapshot: &SystemClipboardSnapshot,
         selection: &ClipboardSelection,
+        source_device: Option<String>,
     ) -> Option<SearchPipelineInput> {
         let preview_rep_id = &selection.preview_rep_id;
 
@@ -279,19 +304,24 @@ impl SearchProjectionBuilder {
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| "application/octet-stream".to_string());
 
-        content.into_pipeline_input(entry, mime_type)
+        content.into_pipeline_input(entry, mime_type, source_device, None)
     }
 
     /// Build a `SearchPipelineInput` from persisted clipboard data.
     ///
     /// Called during rebuild when only the stored representations (not the original
-    /// live snapshot) are available.
+    /// live snapshot) are available. `source_device` is resolved by the caller
+    /// from the same clipboard event as the live path, so the two stay in parity.
+    ///
+    /// `payload_state` is the authoritative value derived from the paste
+    /// representation: `Some("Lost")` when its payload is permanently lost.
     ///
     /// Returns `None` when the persisted data contains no searchable content.
     pub fn build_from_persisted(
         entry: &ClipboardEntry,
         selection: &ClipboardSelectionDecision,
         reps: &[PersistedClipboardRepresentation],
+        source_device: Option<String>,
     ) -> Option<SearchPipelineInput> {
         let preview_rep_id = &selection.selection.preview_rep_id;
 
@@ -310,16 +340,19 @@ impl SearchProjectionBuilder {
             content.text_preview = entry.title.clone();
         }
 
-        // Determine the mime type from the paste representation — the content's
-        // primary data form (see `build_from_capture` for why preview is wrong).
-        let mime_type = reps
+        // Locate the paste representation once: it drives both the mime type
+        // (content's primary data form — see `build_from_capture` for why preview
+        // is wrong) and the authoritative payload_state.
+        let paste_rep = reps
             .iter()
-            .find(|r| r.id == selection.selection.paste_rep_id)
+            .find(|r| r.id == selection.selection.paste_rep_id);
+        let mime_type = paste_rep
             .and_then(|r| r.mime_type.as_ref())
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| "application/octet-stream".to_string());
+        let payload_state = paste_rep.and_then(|r| payload_state_marker(&r.payload_state));
 
-        content.into_pipeline_input(entry, mime_type)
+        content.into_pipeline_input(entry, mime_type, source_device, payload_state)
     }
 }
 
@@ -360,7 +393,7 @@ mod tests {
             paste_rep_id: id,
             policy_version: SelectionPolicyVersion::V1,
         };
-        SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection)
+        SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
             .expect("snapshot has searchable content")
     }
 
@@ -389,8 +422,9 @@ mod tests {
             policy_version: SelectionPolicyVersion::V1,
         };
 
-        let input = SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection)
-            .expect("snapshot has searchable content");
+        let input =
+            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
+                .expect("snapshot has searchable content");
 
         assert_eq!(
             input.content_type,
@@ -464,5 +498,175 @@ mod tests {
         let input = project_one("text", "text/plain", b"just some notes");
         assert_eq!(input.content_type, ContentType::Text);
         assert!(input.tags.is_empty());
+    }
+
+    /// A uri-list carrying both a `file://` path and a web URL populates the
+    /// `file_names` and `link_urls` render columns; live capture writes the
+    /// healthy `payload_state` default and passes `source_device` through. The
+    /// `link_urls` column shares the `link` tag's detection contract, so a
+    /// populated column implies the tag is present.
+    #[test]
+    fn capture_populates_render_metadata() {
+        let r = rep(
+            "files",
+            "text/uri-list",
+            b"file:///home/u/report.pdf\nhttps://example.com\n",
+        );
+        let id = r.id.clone();
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![r],
+            file_content_digests: Vec::new(),
+        };
+        let selection = ClipboardSelection {
+            primary_rep_id: id.clone(),
+            secondary_rep_ids: Vec::new(),
+            preview_rep_id: id.clone(),
+            paste_rep_id: id,
+            policy_version: SelectionPolicyVersion::V1,
+        };
+
+        let input = SearchProjectionBuilder::build_from_capture(
+            &entry(),
+            &snapshot,
+            &selection,
+            Some("dev-x".to_string()),
+        )
+        .expect("snapshot has searchable content");
+
+        assert_eq!(input.file_names, vec!["report.pdf".to_string()]);
+        assert_eq!(input.link_urls, vec!["https://example.com".to_string()]);
+        assert_eq!(input.source_device.as_deref(), Some("dev-x"));
+        assert_eq!(input.payload_state, None, "live capture is healthy");
+        assert!(input.tags.contains(&TagId::link()));
+    }
+
+    fn persisted(
+        rep_id: &RepresentationId,
+        fmt: &str,
+        mime: &str,
+        bytes: &[u8],
+    ) -> PersistedClipboardRepresentation {
+        PersistedClipboardRepresentation::new(
+            rep_id.clone(),
+            FormatId::from(fmt),
+            Some(MimeType(mime.to_string())),
+            bytes.len() as i64,
+            Some(bytes.to_vec()),
+            None,
+        )
+    }
+
+    /// Rebuild derives the authoritative `payload_state` from the paste
+    /// representation: `Some("Lost")` when its payload is permanently lost, even
+    /// though the searchable content comes from a healthy preview representation.
+    #[test]
+    fn persisted_payload_state_surfaces_lost() {
+        let preview = persisted(&RepresentationId::new(), "text", "text/plain", b"hello");
+        let paste = PersistedClipboardRepresentation::new_with_state(
+            RepresentationId::new(),
+            FormatId::from("html"),
+            Some(MimeType("text/html".to_string())),
+            10,
+            None,
+            None,
+            PayloadAvailability::Lost,
+            None,
+        )
+        .expect("lost state is valid without inline data");
+        let preview_id = preview.id.clone();
+        let paste_id = paste.id.clone();
+        let e = entry();
+        let decision = ClipboardSelectionDecision::new(
+            e.entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: paste_id.clone(),
+                secondary_rep_ids: Vec::new(),
+                preview_rep_id: preview_id,
+                paste_rep_id: paste_id,
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+
+        let input =
+            SearchProjectionBuilder::build_from_persisted(&e, &decision, &[preview, paste], None)
+                .expect("preview supplies searchable content");
+
+        assert_eq!(input.payload_state.as_deref(), Some("Lost"));
+        assert_eq!(input.content_type, ContentType::Html);
+    }
+
+    /// A healthy paste representation leaves `payload_state` unset.
+    #[test]
+    fn persisted_payload_state_healthy_is_none() {
+        let rep_id = RepresentationId::new();
+        let r = persisted(&rep_id, "text", "text/plain", b"hello");
+        let e = entry();
+        let decision = ClipboardSelectionDecision::new(
+            e.entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: rep_id.clone(),
+                secondary_rep_ids: Vec::new(),
+                preview_rep_id: rep_id.clone(),
+                paste_rep_id: rep_id,
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+
+        let input = SearchProjectionBuilder::build_from_persisted(&e, &decision, &[r], None)
+            .expect("inline text is searchable");
+
+        assert_eq!(input.payload_state, None);
+    }
+
+    /// The live and rebuild paths must derive identical render metadata from the
+    /// same content and the same `source_device` lookup, so a rebuilt index row
+    /// renders the same card as the live-indexed one (§4.5 parity).
+    #[test]
+    fn live_and_rebuild_render_parity() {
+        let bytes = b"file:///home/u/a.txt\nhttps://example.com\n";
+        let rep_id = RepresentationId::new();
+        let e = entry();
+        let make_selection = || ClipboardSelection {
+            primary_rep_id: rep_id.clone(),
+            secondary_rep_ids: Vec::new(),
+            preview_rep_id: rep_id.clone(),
+            paste_rep_id: rep_id.clone(),
+            policy_version: SelectionPolicyVersion::V1,
+        };
+
+        let observed = ObservedClipboardRepresentation::new(
+            rep_id.clone(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            bytes.to_vec(),
+        );
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![observed],
+            file_content_digests: Vec::new(),
+        };
+        let live = SearchProjectionBuilder::build_from_capture(
+            &e,
+            &snapshot,
+            &make_selection(),
+            Some("dev-1".to_string()),
+        )
+        .expect("live snapshot is searchable");
+
+        let stored = persisted(&rep_id, "files", "text/uri-list", bytes);
+        let decision = ClipboardSelectionDecision::new(e.entry_id.clone(), make_selection());
+        let rebuilt = SearchProjectionBuilder::build_from_persisted(
+            &e,
+            &decision,
+            &[stored],
+            Some("dev-1".to_string()),
+        )
+        .expect("persisted reps are searchable");
+
+        assert_eq!(live.file_names, rebuilt.file_names);
+        assert_eq!(live.link_urls, rebuilt.link_urls);
+        assert_eq!(live.source_device, rebuilt.source_device);
+        assert_eq!(live.content_type, rebuilt.content_type);
     }
 }

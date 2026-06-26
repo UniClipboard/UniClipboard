@@ -17,7 +17,11 @@
 ///   tag) and adds `html`; tag membership is persisted in `search_entry_tag` and
 ///   rebuilt alongside documents/postings. The bump forces a full rebuild so the
 ///   tag table and reclassified `content_type` values are recomputed.
-pub const CURRENT_INDEX_VERSION: &str = "search-v4";
+/// - `search-v5`: render columns on `search_document` (`file_names`,
+///   `link_urls`, `source_device`, `payload_state`). The bump forces a rebuild
+///   so existing rows backfill the new columns (image dimensions and file sizes
+///   stay lazy by design). See the `add_search_document_render_columns` migration.
+pub const CURRENT_INDEX_VERSION: &str = "search-v5";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;

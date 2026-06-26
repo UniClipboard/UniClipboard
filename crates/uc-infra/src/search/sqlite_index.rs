@@ -504,6 +504,10 @@ impl SqliteSearchIndex {
                 indexed_at_ms INTEGER NOT NULL,
                 index_version TEXT NOT NULL,
                 text_preview TEXT,
+                file_names TEXT NOT NULL DEFAULT '[]',
+                link_urls TEXT NOT NULL DEFAULT '[]',
+                source_device TEXT,
+                payload_state TEXT,
                 PRIMARY KEY (profile_id, entry_id)
             )",
             doc_table = state.temp_document_table
@@ -604,8 +608,9 @@ impl SqliteSearchIndex {
         let insert_doc = format!(
             "INSERT OR REPLACE INTO {doc_table}
              (profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
-              file_type, file_extensions, mime_type, indexed_at_ms, index_version, text_preview)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              file_type, file_extensions, mime_type, indexed_at_ms, index_version, text_preview,
+              file_names, link_urls, source_device, payload_state)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             doc_table = state.temp_document_table
         );
         diesel::sql_query(&insert_doc)
@@ -620,6 +625,10 @@ impl SqliteSearchIndex {
             .bind::<diesel::sql_types::BigInt, _>(doc_row.indexed_at_ms)
             .bind::<diesel::sql_types::Text, _>(&doc_row.index_version)
             .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.text_preview)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.file_names)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.link_urls)
+            .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.source_device)
+            .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.payload_state)
             .execute(conn)
             .map_err(|e| SearchError::Internal(format!("insert temp doc failed: {e}")))?;
 
@@ -767,7 +776,8 @@ impl SqliteSearchIndex {
                 "INSERT INTO search_document
                  SELECT profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
                         file_type, file_extensions, mime_type, indexed_at_ms,
-                        index_version, text_preview
+                        index_version, text_preview,
+                        file_names, link_urls, source_device, payload_state
                  FROM {doc_table}",
                 doc_table = state.temp_document_table
             );
@@ -1491,6 +1501,10 @@ mod tests {
             indexed_at_ms: 1,
             index_version: CURRENT_INDEX_VERSION.to_string(),
             text_preview: None,
+            file_names: vec![],
+            link_urls: vec![],
+            source_device: None,
+            payload_state: None,
         }
     }
 
@@ -1571,5 +1585,72 @@ mod tests {
             .unwrap();
         index.remove_entry(&EntryId::from("e1")).await.unwrap();
         assert!(tag_rows(&pool).is_empty());
+    }
+
+    /// Read the render columns of one document row as `(file_names, link_urls,
+    /// source_device, payload_state)`. `file_names`/`link_urls` come back as the
+    /// stored JSON-array strings.
+    fn render_cols(
+        pool: &DbPool,
+        entry_id: &str,
+    ) -> (String, String, Option<String>, Option<String>) {
+        let mut conn = pool.get().unwrap();
+        search_document::table
+            .filter(search_document::profile_id.eq(TEST_PROFILE))
+            .filter(search_document::entry_id.eq(entry_id))
+            .select((
+                search_document::file_names,
+                search_document::link_urls,
+                search_document::source_device,
+                search_document::payload_state,
+            ))
+            .first::<(String, String, Option<String>, Option<String>)>(&mut conn)
+            .unwrap()
+    }
+
+    fn doc_with_render(entry_id: &str) -> SearchDocument {
+        let mut doc = make_doc(entry_id, vec![TagId::link()]);
+        doc.file_names = vec!["a.txt".to_string()];
+        doc.link_urls = vec!["https://example.com".to_string()];
+        doc.source_device = Some("dev-1".to_string());
+        doc.payload_state = Some("Lost".to_string());
+        doc
+    }
+
+    /// The live index path (`upsert_active_entry`, diesel `replace_into`) writes
+    /// every render column.
+    #[tokio::test]
+    async fn index_entry_persists_render_columns() {
+        let (index, pool, _dir) = make_index();
+        index
+            .index_entry(doc_with_render("e1"), vec![])
+            .await
+            .unwrap();
+
+        let (file_names, link_urls, source_device, payload_state) = render_cols(&pool, "e1");
+        assert_eq!(file_names, r#"["a.txt"]"#);
+        assert_eq!(link_urls, r#"["https://example.com"]"#);
+        assert_eq!(source_device.as_deref(), Some("dev-1"));
+        assert_eq!(payload_state.as_deref(), Some("Lost"));
+    }
+
+    /// The rebuild path (temp table DDL + `insert_temp_entry` binds + the
+    /// `INSERT … SELECT` cutover) must carry the render columns through unchanged
+    /// — the v5 "fields survive rebuild" gate.
+    #[tokio::test]
+    async fn rebuild_preserves_render_columns() {
+        let (index, pool, _dir) = make_index();
+
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        index
+            .rebuild(vec![(doc_with_render("e1"), vec![])], tx)
+            .await
+            .unwrap();
+
+        let (file_names, link_urls, source_device, payload_state) = render_cols(&pool, "e1");
+        assert_eq!(file_names, r#"["a.txt"]"#);
+        assert_eq!(link_urls, r#"["https://example.com"]"#);
+        assert_eq!(source_device.as_deref(), Some("dev-1"));
+        assert_eq!(payload_state.as_deref(), Some("Lost"));
     }
 }

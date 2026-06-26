@@ -11,3 +11,9 @@ pub mod tracing;
 /// Sentry-sink correlation enrichment, consumed only by `tracing`'s
 /// `event_mapper`.
 mod correlation;
+
+/// Default host-event transport (`LoggingHostEventEmitter`) for non-GUI / CLI
+/// processes, pre-registered on the shared host-event bus at wire time. Lives
+/// here — below the entrypoint layer — so the common wiring root stays
+/// independent of any specific scenario entrypoint.
+pub(crate) mod host_event;

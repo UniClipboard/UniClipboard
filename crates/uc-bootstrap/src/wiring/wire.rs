@@ -936,7 +936,7 @@ pub fn wire_dependencies(
         Arc::new(uc_application::facade::HostEventBus::new());
     host_event_bus.register(
         "logging",
-        Arc::new(crate::entrypoint::non_gui::LoggingHostEventEmitter)
+        Arc::new(crate::observability::host_event::LoggingHostEventEmitter)
             as Arc<dyn HostEventEmitterPort>,
     );
 
@@ -963,7 +963,7 @@ pub fn wire_dependencies(
     let wired = WiredDependencies {
         deps,
         system_clipboard_wiring,
-        space_setup: SyncEngineDeps {
+        sync_engine: SyncEngineDeps {
             peer_addr_repo: Arc::clone(&infra.peer_addr_repo),
             blob_reference_repo: Arc::clone(&infra.blob_reference_repo),
             blob_migration_repo: Arc::clone(&infra.blob_migration_repo),

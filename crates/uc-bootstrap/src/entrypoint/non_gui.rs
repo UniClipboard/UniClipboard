@@ -1,13 +1,11 @@
 //! # Non-GUI Runtime Helpers
 //!
-//! Provides [`LoggingHostEventEmitter`] and [`build_non_gui_bundle()`] for
-//! non-GUI entry points (daemon, CLI). D16-2 retired the legacy `CoreRuntime`
-//! wrapper; helpers here now return a flat [`NonGuiBundle`] that the caller
-//! destructures into independent locals.
+//! Provides [`build_non_gui_bundle()`] for non-GUI entry points (daemon, CLI).
+//! D16-2 retired the legacy `CoreRuntime` wrapper; helpers here now return a
+//! flat [`NonGuiBundle`] that the caller destructures into independent locals.
 //!
-//! [`LoggingHostEventEmitter`] logs event type names via `tracing::debug!`
-//! without printing inner payloads (which may contain sensitive data like
-//! clipboard content, pairing codes, or file paths).
+//! The default host-event transport for these processes,
+//! `LoggingHostEventEmitter`, lives in `crate::observability::host_event`.
 
 use std::sync::Arc;
 
@@ -21,13 +19,12 @@ use uc_application::facade::{
     ActiveClipboardFacade, AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade,
     ClipboardHistoryFacade, ClipboardHistoryFacadeDeps, ClipboardOutboundDeps,
     ClipboardOutboundFacade, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
-    ClipboardSyncFacade, DeviceFacade, DiagnosticsFacade, DiagnosticsFacadeDeps, EmitError,
-    EncryptionFacade, EncryptionFacadeDeps, FileTransferFacade, HostEvent, HostEventEmitterPort,
-    InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps,
-    LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
-    MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps, SearchCoordinator,
-    SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade, StorageFacade,
-    StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    ClipboardSyncFacade, DeviceFacade, DiagnosticsFacade, DiagnosticsFacadeDeps, EncryptionFacade,
+    EncryptionFacadeDeps, FileTransferFacade, InMemoryLifecycleStatus, IncomingMobileBuffer,
+    LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade,
+    MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade,
+    ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps,
+    SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -43,37 +40,6 @@ use uc_infra::network::iroh::{IrohRelayProbeAdapter, IrohRelayProbeError, IrohRe
 
 use crate::layer::paths::get_storage_paths;
 use crate::subsystem::sync_engine::{build_sync_engine_assembly, SyncEngineAssembly};
-
-// ---------------------------------------------------------------------------
-// LoggingHostEventEmitter
-// ---------------------------------------------------------------------------
-
-/// Event emitter that logs event type names via `tracing::debug!`.
-///
-/// Always returns `Ok(())` — infallible by design. Inner event payloads are
-/// NOT logged because they may contain sensitive data (clipboard content,
-/// pairing codes/fingerprints, transfer file paths).
-pub(crate) struct LoggingHostEventEmitter;
-
-impl HostEventEmitterPort for LoggingHostEventEmitter {
-    fn emit(&self, event: HostEvent) -> Result<(), EmitError> {
-        match event {
-            HostEvent::Clipboard(_) => {
-                tracing::debug!(event_type = "clipboard", "host event (non-gui)");
-            }
-            HostEvent::Transfer(_) => {
-                tracing::debug!(event_type = "transfer", "host event (non-gui)");
-            }
-            HostEvent::Delivery(_) => {
-                // delivery 事件不包含明文,可直接打 event_type;后续如要细化
-                // 子状态(Delivered / Failed)再扩展,目前只关心"事件经过了
-                // emitter"这一可观测性事实。
-                tracing::debug!(event_type = "delivery", "host event (non-gui)");
-            }
-        }
-        Ok(())
-    }
-}
 
 // ---------------------------------------------------------------------------
 // IrohRelayDiagnosticAdapter
@@ -563,7 +529,7 @@ pub async fn build_cli_app_runtime(
     );
 
     let assembly =
-        build_sync_engine_assembly(&wired.deps, &wired.space_setup, &wired.shared, iroh_config)
+        build_sync_engine_assembly(&wired.deps, &wired.sync_engine, &wired.shared, iroh_config)
             .await
             .map_err(|err| anyhow::anyhow!("failed to bind iroh endpoint: {err}"))?;
     let deps = &wired.deps;

@@ -126,9 +126,11 @@ pub struct DaemonRuntimeDeps {
 /// meaningful boundary; mirrors the [`BackgroundRuntimeDeps`] precedent.
 #[derive(Clone)]
 pub struct SharedRuntimeDeps {
-    /// Shared host-event bus created at wire time, initially empty. Callers
-    /// register their own transport on it; all consumers fan out into whatever
-    /// transports are currently registered.
+    /// Shared host-event bus created at wire time with the "logging" emitter
+    /// already registered (event type names → `tracing::debug`), so non-GUI /
+    /// CLI processes have a sensible default transport. Callers register their
+    /// own transports on top; all consumers fan out into whatever transports
+    /// are currently registered.
     pub host_event_bus: Arc<uc_application::facade::HostEventBus>,
     /// Delivery-result repo: `ClipboardSyncFacade` writes on fan-out completion,
     /// the view side reads.
@@ -157,7 +159,7 @@ pub struct SharedRuntimeDeps {
 }
 
 /// 进程级一次性装配产出的"持久"部分:进程内常驻的 `deps` 与按消费者归类的
-/// 旁路 bundle(`space_setup` / `daemon_runtime` / `shared`)。
+/// 旁路 bundle(`sync_engine` / `daemon_runtime` / `shared`)。
 ///
 /// 一次性消费的 [`BackgroundRuntimeDeps`](含 blob worker receiver)通过
 /// [`wire_dependencies`](crate::wiring::wire::wire_dependencies) 的 tuple 返回值单独移交,不嵌在这里 —— 因为 mpsc
@@ -181,7 +183,7 @@ pub struct WiredDependencies {
     /// OS clipboard. Hosts gate their OS-clipboard-bound assembly on this.
     pub system_clipboard_wiring: SystemClipboardWiring,
     /// P2P / iroh sync-engine assembly inputs (see [`SyncEngineDeps`]).
-    pub space_setup: SyncEngineDeps,
+    pub sync_engine: SyncEngineDeps,
     /// daemon main-loop-only bypass deps (see [`DaemonRuntimeDeps`]).
     pub daemon_runtime: DaemonRuntimeDeps,
     /// Process-level handles shared by ≥2 assembly targets (see

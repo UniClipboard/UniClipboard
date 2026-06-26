@@ -45,7 +45,7 @@ pub struct DaemonBootstrapAssembly {
 pub async fn build_daemon_bootstrap_assembly(
     wired: &WiredDependencies,
 ) -> anyhow::Result<DaemonBootstrapAssembly> {
-    let lifecycle = build_daemon_lifecycle(&wired.deps, &wired.space_setup, &wired.shared).await?;
+    let lifecycle = build_daemon_lifecycle(&wired.deps, &wired.sync_engine, &wired.shared).await?;
     let blob_transfer_facade = lifecycle.sync_engine_assembly.blob.clone();
     Ok(DaemonBootstrapAssembly {
         clipboard_sync_facade: lifecycle.clipboard_sync_facade,

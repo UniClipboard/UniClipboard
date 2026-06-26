@@ -792,7 +792,8 @@
       "empty": "Your clipboard history is empty",
       "emptySub": "Copy something to get started",
       "resultsCount": "results",
-      "searching": "Searching…"
+      "searching": "Searching…",
+      "degraded": "Search index is rebuilding — showing a recent browse. Filters and keyword search resume shortly."
     },
     "content": {
       "filterCondition": "Filter condition:",

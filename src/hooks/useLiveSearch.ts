@@ -68,7 +68,9 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
   const { encryptionReady } = useEncryptionSessionState()
 
   const [items, setItems] = useState<DisplayClipboardItem[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  // Start loading when enabled so the first paint shows a spinner, not a
+  // flash of the empty state before the base query resolves.
+  const [isLoading, setIsLoading] = useState(enabled)
   const [total, setTotal] = useState<number | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [state, setState] = useState<'ready' | 'degraded'>('ready')
@@ -83,9 +85,15 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
   }, [query, contentTypes, tags, sourceDevices, extensions, timeRange, pageSize])
 
   // Base query: (re)seed the list from the engine on model/window/refetch change.
+  // Re-runs on `encryptionReady` too, so unlocking refetches (a keyword search is
+  // rejected while locked and is skipped until then).
   useEffect(() => {
     abortRef.current?.abort()
-    if (!enabled) {
+    // A keyword search is rejected (423) while the session is locked; skip it and
+    // show nothing until unlock. Filter-less/filter-only browse stays allowed
+    // while locked (it may come back degraded), so it still runs.
+    const keywordWhileLocked = query.trim().length > 0 && !encryptionReady
+    if (!enabled || keywordWhileLocked) {
       setItems([])
       setTotal(null)
       setHasMore(false)
@@ -132,6 +140,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     return () => controller.abort()
   }, [
     enabled,
+    encryptionReady,
     query,
     contentTypes,
     tags,

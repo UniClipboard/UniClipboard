@@ -2,13 +2,12 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 
 interface UseHistoryInfiniteScrollArgs {
-  isSearchActive: boolean
+  /** Whether the engine reported more matches than the current window holds. */
   hasMore: boolean
-  handleLoadMore: () => void
-  searchTotal: number | null
-  searchLoadedCount: number
-  searchLoading: boolean
-  growSearchWindow: () => void
+  /** Whether a window fetch is already in flight (guards against re-firing). */
+  isLoading: boolean
+  /** Grow the live-list window by one page. */
+  loadMore: () => void
   /** Re-checked after this list changes (a prepend can leave the viewport short). */
   items: DisplayClipboardItem[]
 }
@@ -17,65 +16,40 @@ interface UseHistoryInfiniteScrollArgs {
  * Infinite-scroll driver for the history grid. The scroll handler stays a
  * stable, dependency-free callback that reads every dynamic value through refs,
  * so the scroll/resize listeners subscribe once instead of re-binding on each
- * render. In search mode it grows the engine window; in browse mode it asks the
- * paginated list for the next page.
+ * render. Browse and search share one window now, so it just grows the live
+ * list whenever the viewport nears the bottom and more matches remain.
  */
 export function useHistoryInfiniteScroll({
-  isSearchActive,
   hasMore,
-  handleLoadMore,
-  searchTotal,
-  searchLoadedCount,
-  searchLoading,
-  growSearchWindow,
+  isLoading,
+  loadMore,
   items,
 }: UseHistoryInfiniteScrollArgs) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const hasMoreRef = useRef(hasMore)
-  const handleLoadMoreRef = useRef(handleLoadMore)
-  const isSearchActiveRef = useRef(isSearchActive)
-  const searchTotalRef = useRef(searchTotal)
-  const searchLoadedRef = useRef(searchLoadedCount)
-  const searchLoadingRef = useRef(searchLoading)
-  const growSearchWindowRef = useRef(growSearchWindow)
+  const isLoadingRef = useRef(isLoading)
+  const loadMoreRef = useRef(loadMore)
 
   useEffect(() => {
     hasMoreRef.current = hasMore
   }, [hasMore])
 
   useEffect(() => {
-    isSearchActiveRef.current = isSearchActive
-  }, [isSearchActive])
+    isLoadingRef.current = isLoading
+  }, [isLoading])
 
   useEffect(() => {
-    handleLoadMoreRef.current = handleLoadMore
-  }, [handleLoadMore])
-
-  useEffect(() => {
-    growSearchWindowRef.current = growSearchWindow
-  }, [growSearchWindow])
-
-  useEffect(() => {
-    searchTotalRef.current = searchTotal
-    searchLoadedRef.current = searchLoadedCount
-    searchLoadingRef.current = searchLoading
-  }, [searchTotal, searchLoadedCount, searchLoading])
+    loadMoreRef.current = loadMore
+  }, [loadMore])
 
   const checkShouldLoadMore = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
     const { scrollTop, scrollHeight, clientHeight } = el
     if (scrollHeight - scrollTop - clientHeight >= 400) return
-    if (isSearchActiveRef.current) {
-      // Grow the search window while a fetch isn't already in flight and the
-      // engine reported more matches than we currently hold.
-      const total = searchTotalRef.current
-      if (!searchLoadingRef.current && total != null && searchLoadedRef.current < total) {
-        searchLoadingRef.current = true // guard against re-firing before state settles
-        growSearchWindowRef.current()
-      }
-    } else if (hasMoreRef.current) {
-      handleLoadMoreRef.current()
+    if (hasMoreRef.current && !isLoadingRef.current) {
+      isLoadingRef.current = true // guard against re-firing before isLoading settles
+      loadMoreRef.current()
     }
   }, [])
 

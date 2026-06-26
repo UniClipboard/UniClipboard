@@ -782,7 +782,8 @@
       "empty": "剪贴板历史为空",
       "emptySub": "复制一些内容来开始使用吧",
       "resultsCount": "条结果",
-      "searching": "搜索中…"
+      "searching": "搜索中…",
+      "degraded": "搜索索引正在重建,暂时显示最近的浏览结果。过滤与关键词搜索稍后恢复。"
     },
     "content": {
       "filterCondition": "筛选条件:",

@@ -153,6 +153,32 @@ export function isImageContentType(contentType: string): boolean {
   return contentType === 'image' || contentType.startsWith('image/')
 }
 
+/** File-name extensions the daemon can decode and serve as an image preview. */
+const IMAGE_FILE_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'tiff',
+  'tif',
+  'heic',
+  'avif',
+  'svg',
+  'ico',
+])
+
+/**
+ * Whether a file name looks like an image by its extension. An image *file* is
+ * physically a `file` entry (not `image`), but its card/detail can still show a
+ * thumbnail; this is the client-side cue for when to attempt that.
+ */
+export function isImageFileName(name: string): boolean {
+  const ext = name.split('.').pop()?.toLowerCase()
+  return ext ? IMAGE_FILE_EXTENSIONS.has(ext) : false
+}
+
 /**
  * Check whether a MIME content type represents a file (URI list).
  */

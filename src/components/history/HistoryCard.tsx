@@ -27,6 +27,7 @@ import type {
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
+import { isImageFileName } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/store/hooks'
 import {
@@ -343,6 +344,49 @@ const FileContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
   )
 }
 
+// A single image file (faithful `content_type=File`, but the file IS an image)
+// renders with a real thumbnail in place of the lettered glyph — a preview reads
+// better than a "PNG" tile. The thumbnail is fetched by entry id; the daemon
+// serves the image representation's bytes (see GetEntryResourceUseCase). Falls
+// back to the file glyph until the image resolves (or if it can't).
+const ImageFileContent: React.FC<{ item: ClipboardFileItem; entryId: string }> = ({
+  item,
+  entryId,
+}) => {
+  const imageUrl = useResourceImageUrl(entryId)
+  const name = item.file_names[0] ?? ''
+  const primarySize = item.file_sizes[0] ?? -1
+
+  return (
+    <div className="flex h-full items-center gap-3">
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          className="size-12 shrink-0 rounded-md object-cover ring-1 ring-black/5 dark:ring-white/10"
+        />
+      ) : (
+        <FileGlyph ext={getFileExtLabel(name)} />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium leading-snug text-foreground/85 line-clamp-2 break-all">
+          {name}
+        </div>
+        {primarySize >= 0 && (
+          <div className="mt-1 text-[11px] tabular-nums text-muted-foreground/55">
+            {formatFileSize(primarySize)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** A file entry that is exactly one image file — the case that renders a card thumbnail. */
+function isSingleImageFile(item: ClipboardFileItem): boolean {
+  return item.file_names.length === 1 && isImageFileName(item.file_names[0] ?? '')
+}
+
 // ── Card ────────────────────────────────────────────────────────
 
 interface HistoryCardProps {
@@ -408,10 +452,14 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       // a filtered file then renders as a file card, not a raw path/URL line.
       // Size and file count stay unknown in search mode.
       if (item.type === 'file' && item.textPreview) {
-        return (
-          <FileContent
-            item={{ file_names: [fileNameFromPreview(item.textPreview)], file_sizes: [-1] }}
-          />
+        const fileItem: ClipboardFileItem = {
+          file_names: [fileNameFromPreview(item.textPreview)],
+          file_sizes: [-1],
+        }
+        return isSingleImageFile(fileItem) ? (
+          <ImageFileContent item={fileItem} entryId={item.id} />
+        ) : (
+          <FileContent item={fileItem} />
         )
       }
       // Other search/pending rows carry only a text preview; render it as a plain
@@ -429,8 +477,14 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         return <CodeContent item={item.content as ClipboardCodeItem} />
       case 'link':
         return <LinkContent item={item.content as ClipboardLinkItem} />
-      case 'file':
-        return <FileContent item={item.content as ClipboardFileItem} />
+      case 'file': {
+        const fileItem = item.content as ClipboardFileItem
+        return isSingleImageFile(fileItem) ? (
+          <ImageFileContent item={fileItem} entryId={item.id} />
+        ) : (
+          <FileContent item={fileItem} />
+        )
+      }
       default:
         return item.textPreview ? (
           <div className="text-[13px] text-muted-foreground/70 line-clamp-3">

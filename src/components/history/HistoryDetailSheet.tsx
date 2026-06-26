@@ -31,6 +31,7 @@ import type {
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
+import { isImageFileName } from '@/lib/clipboard-utils'
 import { formatFileSize } from '@/utils'
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -126,14 +127,16 @@ const DetailLink: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => (
   </div>
 )
 
-// TODO: thumbnail endpoint has issues; using original image via resource API
-const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
-  item,
-  entryId,
-}) => {
+// Resolve an entry's image bytes to a render URL by entry id. `enabled` gates
+// the fetch so non-image entries don't hit the resource endpoint. The daemon
+// serves the entry's image representation (a pure bitmap, or an image file's
+// materialized blob) — see GetEntryResourceUseCase.
+// TODO: thumbnail endpoint has issues; using original image via resource API.
+function useResourceImageUrl(entryId: string, enabled: boolean): string | null {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
     getClipboardEntryResource(entryId)
       .then(resource => {
@@ -144,7 +147,16 @@ const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
     return () => {
       cancelled = true
     }
-  }, [entryId])
+  }, [entryId, enabled])
+
+  return imageUrl
+}
+
+const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
+  item,
+  entryId,
+}) => {
+  const imageUrl = useResourceImageUrl(entryId, true)
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -169,10 +181,23 @@ const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
   )
 }
 
-const DetailFile: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
+const DetailFile: React.FC<{ item: ClipboardFileItem; entryId: string }> = ({ item, entryId }) => {
   const { t } = useTranslation()
+  // An image file (or a multi-file selection that includes one) is physically a
+  // file, but previewing the image reads better than a bare file list — fetch a
+  // thumbnail when any file is an image (the daemon resolves the image rep).
+  const hasImage = item.file_names.some(isImageFileName)
+  const imageUrl = useResourceImageUrl(entryId, hasImage)
+
   return (
     <div className="space-y-2">
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt=""
+          className="mb-1 max-h-60 w-full rounded-lg object-contain bg-muted/20 ring-1 ring-black/5 dark:ring-white/10"
+        />
+      )}
       {item.file_names.map((name, i) => {
         const size = item.file_sizes[i] ?? 0
         const missing = item.file_missing?.[i] ?? false
@@ -353,7 +378,9 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
           <DetailImage key={item.id} item={item.content as ClipboardImageItem} entryId={item.id} />
         )
       case 'file':
-        return <DetailFile item={item.content as ClipboardFileItem} />
+        return (
+          <DetailFile key={item.id} item={item.content as ClipboardFileItem} entryId={item.id} />
+        )
       default:
         return item.textPreview ? (
           <div className="text-[13px] text-muted-foreground/70">{item.textPreview}</div>

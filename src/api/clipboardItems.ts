@@ -68,12 +68,23 @@ export enum Filter {
  *
  * Single source of truth shared by every search entry point (History page,
  * quick panel) so the type-narrowing rules can't drift. Returns `undefined` for
- * `All`/`Favorited`/`Link` (those are not content types — `link`/`favorited`
- * are tags, see {@link filterToTags}). `Code` maps to `html` (html is now its
- * own content type; the legacy `code` content type was dropped).
+ * `All`/`Favorited`/`Link`/`Image` (those are not physical content types —
+ * `link`/`favorited`/`image` are tags, see {@link filterToTags}). `Code` maps
+ * to `html` (html is now its own content type; the legacy `code` content type
+ * was dropped).
+ *
+ * `Image` is a tag, not a content type: a copied image *file* is physically a
+ * `file`, and a pure bitmap is physically `image`, but both carry the `image`
+ * tag — so filtering by the tag surfaces every image while the `file` filter
+ * still finds image files.
  */
 export function filterToContentTypes(filter: Filter): string | undefined {
-  if (filter === Filter.All || filter === Filter.Favorited || filter === Filter.Link) {
+  if (
+    filter === Filter.All ||
+    filter === Filter.Favorited ||
+    filter === Filter.Link ||
+    filter === Filter.Image
+  ) {
     return undefined
   }
   if (filter === Filter.Code) return 'html'
@@ -82,12 +93,13 @@ export function filterToContentTypes(filter: Filter): string | undefined {
 
 /**
  * Map a {@link Filter} to the backend search `tags` param, or `undefined` when
- * the filter is not tag-based. `link`/`favorited` are derived/user-state tags
- * filtered via the `tags` query parameter (not `contentTypes`).
+ * the filter is not tag-based. `link`/`favorited`/`image` are derived or
+ * user-state tags filtered via the `tags` query parameter (not `contentTypes`).
  */
 export function filterToTags(filter: Filter): string | undefined {
   if (filter === Filter.Link) return 'link'
   if (filter === Filter.Favorited) return 'favorited'
+  if (filter === Filter.Image) return 'image'
   return undefined
 }
 

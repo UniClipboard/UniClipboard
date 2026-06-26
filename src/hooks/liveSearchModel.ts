@@ -12,12 +12,13 @@
  * ## Live-patch vs. refetch
  * A new entry can only be slotted into the current list client-side when every
  * active filter dimension is judgeable from a `DisplayClipboardItem` alone.
- * Content-type and tag (link / favorited) are; a keyword query (no full text on
- * the item), a source-device filter (no source on the item), a time-range
- * preset (would have to duplicate the backend's preset→range parsing) and an
- * extension filter (no extensions on the item) are not. When any non-judgeable
- * dimension is active, `useLiveSearch` refetches the base query instead of
- * patching (§4.8 fallback).
+ * Content-type and the `link` / `favorited` tags are; a keyword query (no full
+ * text on the item), a source-device filter (no source on the item), a
+ * time-range preset (would have to duplicate the backend's preset→range
+ * parsing), an extension filter (no extensions on the item) and the `image`
+ * tag (a copied image *file* projects as a `file` item, indistinguishable from
+ * a plain file) are not. When any non-judgeable dimension is active,
+ * `useLiveSearch` refetches the base query instead of patching (§4.8 fallback).
  */
 import type { TimeRangePreset } from '@/api/daemon/search'
 import type { ClipboardEntryType, DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -73,16 +74,28 @@ export function displayTypeToContentType(type: ClipboardEntryType): string {
 }
 
 /**
+ * Builtin tags whose membership is reliably derivable from a
+ * `DisplayClipboardItem` alone: `link` (its display type) and `favorited` (its
+ * flag). `image` is deliberately absent — a copied image *file* projects as a
+ * `file` display item, indistinguishable from a plain file client-side, so the
+ * server must decide. Custom tags are likewise non-judgeable.
+ */
+const CLIENT_JUDGEABLE_TAGS = new Set(['link', 'favorited'])
+
+/**
  * Whether a freshly-arrived entry can be slotted into the current list purely
  * client-side. False when a keyword query, source, time-range, or extension
- * filter is active (none judgeable from a `DisplayClipboardItem`) — the caller
- * refetches the base query instead.
+ * filter is active, or when a non-client-judgeable tag (`image` / custom) is
+ * active (none judgeable from a `DisplayClipboardItem`) — the caller refetches
+ * the base query instead.
  */
 export function canPatchLive(model: LiveSearchQueryModel): boolean {
+  const tagsJudgeable = splitCsv(model.tags).every(tag => CLIENT_JUDGEABLE_TAGS.has(tag))
   return (
     model.query.trim().length === 0 &&
     !model.sourceDevices &&
     !model.extensions &&
+    tagsJudgeable &&
     (model.timeRange === undefined || model.timeRange === 'all_time')
   )
 }

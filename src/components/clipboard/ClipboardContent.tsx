@@ -3,9 +3,14 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDefaultLayout } from 'react-resizable-panels'
 import { GroupedVirtuoso, type GroupedVirtuosoHandle } from 'react-virtuoso'
-import { Filter, copyFileToClipboard, openFileLocation } from '@/api/clipboardItems'
+import {
+  Filter,
+  copyFileToClipboard,
+  filterToContentTypes,
+  filterToTags,
+  openFileLocation,
+} from '@/api/clipboardItems'
 import { querySearch } from '@/api/daemon/search'
-import type { SearchResultDto } from '@/api/daemon/search'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { toast } from '@/components/ui/toast'
 import { useFileSyncNotifications } from '@/hooks/useFileSyncNotifications'
@@ -13,6 +18,7 @@ import { usePlatform } from '@/hooks/usePlatform'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
 import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { searchResultToDisplayItem } from '@/lib/clipboard-transform'
 import { firstRevealableFilePath } from '@/lib/clipboard-utils'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
@@ -72,24 +78,6 @@ function groupItemsByDate(items: DisplayClipboardItem[], t: (key: string) => str
     groups.push({ label: t('clipboard.dateGroup.yesterday'), items: yesterday })
   if (earlier.length > 0) groups.push({ label: t('clipboard.dateGroup.earlier'), items: earlier })
   return groups
-}
-
-/** Map backend contentType to frontend display type. */
-function mapSearchContentType(ft: SearchResultDto['contentType']): DisplayClipboardItem['type'] {
-  switch (ft) {
-    case 'text':
-      return 'text'
-    case 'html':
-      return 'code'
-    case 'link':
-      return 'link'
-    case 'file':
-      return 'file'
-    case 'image':
-      return 'image'
-    case 'other':
-      return 'unknown'
-  }
 }
 
 /** Compact byte formatter used only for placeholder card hint text. */
@@ -204,17 +192,17 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
 
     setSearchLoading(true)
 
-    // Filter/timeRange values match backend params directly;
-    // Code includes html (html is a form of code)
-    let contentTypes: string | undefined
-    if (filter === Filter.Code) contentTypes = 'code,html'
-    else if (filter !== Filter.All && filter !== Filter.Favorited) contentTypes = filter
+    // `link`/`favorited` filter via the tag dimension; `code` maps to the html
+    // content type (see filterToContentTypes / filterToTags).
+    const contentTypes = filterToContentTypes(filter)
+    const tags = filterToTags(filter)
     const timePreset = timeRange !== 'all_time' ? timeRange : undefined
 
     querySearch(
       {
         query: searchQuery,
         contentTypes,
+        tags,
         timePreset,
         limit: 50,
       },
@@ -223,13 +211,7 @@ const ClipboardContent: React.FC<ClipboardContentProps> = ({
       .then(response => {
         if (controller.signal.aborted) return
         // ADR-008 §0.1: items + total now live inside the enveloped `data` payload.
-        const items: DisplayClipboardItem[] = response.data.items.map(r => ({
-          id: r.entryId,
-          type: mapSearchContentType(r.contentType),
-          activeTime: r.activeTimeMs,
-          content: null,
-          textPreview: r.textPreview ?? undefined,
-        }))
+        const items: DisplayClipboardItem[] = response.data.items.map(searchResultToDisplayItem)
         setSearchResults(items)
         setSearchTotal(response.data.total)
         setSearchLoading(false)

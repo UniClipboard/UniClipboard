@@ -15,6 +15,11 @@ export interface UseClipboardSearchOptions {
   query: string
   /** Backend `contentTypes` param (comma-separated), already resolved. */
   contentTypes?: string
+  /** Backend `tags` param (comma-separated tag ids), already resolved. */
+  tags?: string
+  /** Bump to force a refetch of the current page without changing the query
+   * model — e.g. on a realtime clipboard event (§4.8). */
+  refetchNonce?: number
   /** Backend `extensions` param (comma-separated), already resolved. */
   extensions?: string
   /** Backend `sourceDevices` param (comma-separated device ids). */
@@ -46,8 +51,18 @@ export function useClipboardSearch<T>(
   options: UseClipboardSearchOptions,
   mapResult: (dto: SearchResultDto) => T
 ): UseClipboardSearchResult<T> {
-  const { enabled, query, contentTypes, extensions, sourceDevices, timePreset, limit, offset } =
-    options
+  const {
+    enabled,
+    query,
+    contentTypes,
+    tags,
+    refetchNonce,
+    extensions,
+    sourceDevices,
+    timePreset,
+    limit,
+    offset,
+  } = options
   const [results, setResults] = useState<T[] | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [total, setTotal] = useState<number | null>(null)
@@ -70,7 +85,7 @@ export function useClipboardSearch<T>(
     setIsSearching(true)
 
     querySearch(
-      { query, contentTypes, extensions, sourceDevices, timePreset, limit, offset },
+      { query, contentTypes, tags, extensions, sourceDevices, timePreset, limit, offset },
       controller.signal
     )
       .then(response => {
@@ -89,7 +104,18 @@ export function useClipboardSearch<T>(
       })
 
     return () => controller.abort()
-  }, [enabled, query, contentTypes, extensions, sourceDevices, timePreset, limit, offset])
+  }, [
+    enabled,
+    query,
+    contentTypes,
+    tags,
+    refetchNonce,
+    extensions,
+    sourceDevices,
+    timePreset,
+    limit,
+    offset,
+  ])
 
   return { results, isSearching, total }
 }

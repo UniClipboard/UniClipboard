@@ -1,17 +1,16 @@
-import { Filter, filterToContentTypes } from '@/api/clipboardItems'
+import { Filter, filterToContentTypes, filterToTags } from '@/api/clipboardItems'
 import type { SearchResultDto } from '@/api/daemon/search'
 import { useClipboardSearch } from '@/hooks/useClipboardSearch'
 import type { DisplayItem, TimeRangePreset } from '../types'
 
-/** Map backend contentType to frontend display type. */
+/** Map backend contentType to frontend display type. `link` lives in the tag
+ * dimension, not here. */
 function mapContentTypeToDisplayType(ft: SearchResultDto['contentType']): DisplayItem['type'] {
   switch (ft) {
     case 'text':
       return 'text'
     case 'html':
       return 'code'
-    case 'link':
-      return 'link'
     case 'file':
       return 'file'
     case 'image':
@@ -22,14 +21,15 @@ function mapContentTypeToDisplayType(ft: SearchResultDto['contentType']): Displa
 }
 
 function searchResultToDisplayItem(r: SearchResultDto): DisplayItem {
+  // `link` is a derived tag: a text entry carrying web URLs shows as a link.
+  let type = mapContentTypeToDisplayType(r.contentType)
+  if (type === 'text' && r.linkUrls.length > 0) type = 'link'
   return {
     id: r.entryId,
-    type: mapContentTypeToDisplayType(r.contentType),
+    type,
     preview: r.textPreview ?? '',
     activeTime: r.activeTimeMs,
-    // TODO: SearchResultDto 暂不返回 payload_state, 搜索结果里 Lost 的 entry
-    // 不会灰显。等后端搜索 API 透出 payload_state 后再接通。
-    isUnavailable: false,
+    isUnavailable: r.payloadState === 'Lost',
   }
 }
 
@@ -102,10 +102,12 @@ export function useHistorySearch({
 
   // contentTypes: tokens win; otherwise (non-advanced) fall back to the filter.
   let contentTypes: string | undefined
+  let tags: string | undefined
   if (tokenContentTypes.length > 0) {
     contentTypes = tokenContentTypes.join(',')
   } else if (!isAdvancedMode) {
     contentTypes = filterToContentTypes(activeFilter)
+    tags = filterToTags(activeFilter)
   }
 
   const { results, isSearching, total } = useClipboardSearch(
@@ -113,6 +115,7 @@ export function useHistorySearch({
       enabled: needsServerSearch,
       query: queryString,
       contentTypes,
+      tags,
       extensions: extensions.length > 0 ? extensions.join(',') : undefined,
       // TimeRangePreset values match backend timePreset directly ('all_time' → omit).
       timePreset: timeRange !== 'all_time' ? timeRange : undefined,

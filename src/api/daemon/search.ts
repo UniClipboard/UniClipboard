@@ -34,12 +34,22 @@ import { daemonClient } from './client'
 
 export interface SearchResultDto {
   entryId: string
-  /** Content category (text/html/link/file/image/other). */
-  contentType: 'text' | 'html' | 'link' | 'file' | 'image' | 'other'
+  /** Physical content category (text/html/file/image/other). `link` is a tag. */
+  contentType: 'text' | 'html' | 'file' | 'image' | 'other'
   activeTimeMs: number
+  /** Derived/user-state tag ids (e.g. 'link', 'favorited'). */
+  tags: string[]
   textPreview: string | null
   mimeType: string
   fileExtensions: string[]
+  /** Display names of referenced files; empty when none. */
+  fileNames: string[]
+  /** Web URLs (http/https) carried by this entry; empty when none. */
+  linkUrls: string[]
+  /** Originating device id, or null when the source is unknown. */
+  sourceDevice: string | null
+  /** 'Lost' when the paste payload is unrecoverable, else null. */
+  payloadState: string | null
 }
 
 /**
@@ -90,8 +100,11 @@ export type TimeRangePreset =
 
 export interface SearchParams {
   query: string
-  /** Content category filter (text, html, link, file, image, other). */
+  /** Content category filter (text, html, file, image, other). */
   contentTypes?: string
+  /** Comma-separated tag ids (e.g. 'link', 'favorited'). Custom tags require an
+   * unlocked session. */
+  tags?: string
   extensions?: string
   /** Comma-separated source device ids; restricts results to those origins. */
   sourceDevices?: string
@@ -121,6 +134,7 @@ export async function querySearch(
     query: params.query,
   }
   if (params.contentTypes) query.contentTypes = params.contentTypes
+  if (params.tags) query.tags = params.tags
   if (params.extensions) query.extensions = params.extensions
   if (params.sourceDevices) query.sourceDevices = params.sourceDevices
   if (params.timePreset) query.timePreset = params.timePreset

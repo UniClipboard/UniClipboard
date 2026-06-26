@@ -1,34 +1,17 @@
-import { useCallback, useEffect, useMemo, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Filter, filterToContentTypes } from '@/api/clipboardItems'
-import { type SearchResultDto, type TimeRangePreset } from '@/api/daemon/search'
+import { Filter, filterToContentTypes, filterToTags } from '@/api/clipboardItems'
+import { type TimeRangePreset } from '@/api/daemon/search'
 import { useClipboardEvents } from '@/hooks/useClipboardEvents'
 import { useClipboardSearch } from '@/hooks/useClipboardSearch'
 import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
 import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { searchResultToDisplayItem } from '@/lib/clipboard-transform'
 import { useAppSelector } from '@/store/hooks'
 import { type PendingClipboardEntry } from '@/store/slices/clipboardSlice'
 
 /** Search-mode page size; the window grows by this as the user scrolls. */
 const SEARCH_PAGE_SIZE = 100
-
-/** Map a search-index content category to the display item's render type. */
-function mapSearchContentType(ft: SearchResultDto['contentType']): DisplayClipboardItem['type'] {
-  switch (ft) {
-    case 'text':
-      return 'text'
-    case 'html':
-      return 'code'
-    case 'link':
-      return 'link'
-    case 'file':
-      return 'file'
-    case 'image':
-      return 'image'
-    case 'other':
-      return 'unknown'
-  }
-}
 
 function formatBytesShort(bytes: number): string {
   if (bytes <= 0) return '0 B'
@@ -180,11 +163,29 @@ export function useHistoryData() {
   // must go through search — only that path actually narrows results. Browse
   // mode (with live insertion + infinite scroll) is reserved for the unfiltered
   // view; clearing every filter returns to it.
-  const hasTypeFilter = state.activeFilter !== Filter.All && state.activeFilter !== Filter.Favorited
+  // A content-type filter (text/image/file/html) or a tag filter (link/favorited)
+  // both narrow only through the search engine; either one activates search.
+  const hasTypeFilter = filterToContentTypes(state.activeFilter) !== undefined
+  const hasTagFilter = filterToTags(state.activeFilter) !== undefined
   const hasTimeFilter = state.timeRange !== 'all_time'
   const hasSourceFilter = state.sourceFilter !== null
   const isSearchActive =
-    state.submittedQuery.trim().length > 0 || hasTypeFilter || hasTimeFilter || hasSourceFilter
+    state.submittedQuery.trim().length > 0 ||
+    hasTypeFilter ||
+    hasTagFilter ||
+    hasTimeFilter ||
+    hasSourceFilter
+
+  // §4.8 realtime: browse `items` update on every clipboard WS event (new /
+  // deleted / favorited / payload-lost — all dispatched to Redux by
+  // `useClipboardEvents`). While searching we don't read those items, but their
+  // reference change is a reliable "something happened" signal, so bump a nonce
+  // to refetch the current search page and keep the filtered list live.
+  const [searchRefetchNonce, setSearchRefetchNonce] = useState(0)
+  useEffect(() => {
+    if (!isSearchActive) return
+    setSearchRefetchNonce(n => n + 1)
+  }, [items, isSearchActive])
 
   // Auto-submit while typing (debounced); clearing the input drops straight back
   // to browse mode. Enter bypasses the debounce via `actions.submitQuery`.
@@ -198,18 +199,6 @@ export function useHistoryData() {
     return () => clearTimeout(timer)
   }, [state.searchQuery])
 
-  // Map a raw search hit to a renderable history card.
-  const mapSearchResult = useCallback(
-    (r: SearchResultDto): DisplayClipboardItem => ({
-      id: r.entryId,
-      type: mapSearchContentType(r.contentType),
-      activeTime: r.activeTimeMs,
-      content: null,
-      textPreview: r.textPreview ?? undefined,
-    }),
-    []
-  )
-
   const {
     results: searchResults,
     isSearching: searchLoading,
@@ -219,11 +208,13 @@ export function useHistoryData() {
       enabled: isSearchActive,
       query: state.submittedQuery.trim(),
       contentTypes: filterToContentTypes(state.activeFilter),
+      tags: filterToTags(state.activeFilter),
       sourceDevices: state.sourceFilter ?? undefined,
       timePreset: hasTimeFilter ? state.timeRange : undefined,
       limit: state.searchLimit,
+      refetchNonce: searchRefetchNonce,
     },
-    mapSearchResult
+    searchResultToDisplayItem
   )
 
   const { hasMore, handleLoadMore } = useClipboardEvents(state.activeFilter)

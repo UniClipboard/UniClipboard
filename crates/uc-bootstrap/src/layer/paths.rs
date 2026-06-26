@@ -87,7 +87,7 @@ pub fn resolve_app_paths(
 
 pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
     let profile = match std::env::var("UC_PROFILE") {
-        Ok(value) if !value.is_empty() => value.replace('/', "_").replace('\\', "_"),
+        Ok(value) if !value.is_empty() => sanitize_profile(&value),
         _ => return path,
     };
 
@@ -99,4 +99,21 @@ pub fn apply_profile_suffix(path: PathBuf) -> PathBuf {
     let mut updated = path;
     updated.set_file_name(format!("{file_name}_{profile}"));
     updated
+}
+
+/// Normalize a `UC_PROFILE` value into a filesystem-safe suffix.
+///
+/// Maps every character that is invalid in a Windows filename
+/// (`< > : " / \ | ? *` and ASCII control characters) to `_`, so the profile
+/// can be safely appended to a file name on any platform. Other platforms only
+/// reject `/` (and the NUL byte), so this is a superset of their constraints.
+fn sanitize_profile(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect()
 }

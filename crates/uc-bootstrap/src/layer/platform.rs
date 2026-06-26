@@ -102,7 +102,18 @@ pub fn create_platform_layer(
     //
     // Inside a graphical session, a real init failure stays a hard error —
     // degrading there would mask a genuine platform bug.
-    let system_clipboard_wiring = if std::env::var_os("UC_DISABLE_SYSTEM_CLIPBOARD").is_some() {
+    // Parse the opt-out as a boolean-like flag (documented contract is
+    // `UC_DISABLE_SYSTEM_CLIPBOARD=1`): only truthy values opt out, so a
+    // leftover `0` / `false` in the environment keeps the real adapter.
+    let disable_system_clipboard = std::env::var("UC_DISABLE_SYSTEM_CLIPBOARD")
+        .ok()
+        .is_some_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        });
+    let system_clipboard_wiring = if disable_system_clipboard {
         tracing::info!(
             "UC_DISABLE_SYSTEM_CLIPBOARD set; substituting NoopSystemClipboard \
              (any clipboard capture / write is a no-op)"

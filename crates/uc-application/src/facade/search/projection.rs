@@ -213,11 +213,14 @@ impl SearchProjectionBuilder {
             content.ingest(mime, rep.inline_bytes(), rep.id == *preview_rep_id);
         }
 
-        // Determine the mime type from the preview representation.
+        // Determine the mime type from the paste representation — the content's
+        // primary data form. The preview representation prefers plain text, so a
+        // rich-text entry (text/plain + text/html) would otherwise be misread as
+        // `text` and dropped from the `html` filter.
         let mime_type = snapshot
             .representations
             .iter()
-            .find(|r| r.id == *preview_rep_id)
+            .find(|r| r.id == selection.paste_rep_id)
             .and_then(|r| r.mime.as_ref())
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| "application/octet-stream".to_string());
@@ -253,14 +256,74 @@ impl SearchProjectionBuilder {
             content.text_preview = entry.title.clone();
         }
 
-        // Determine the mime type from the preview representation.
+        // Determine the mime type from the paste representation — the content's
+        // primary data form (see `build_from_capture` for why preview is wrong).
         let mime_type = reps
             .iter()
-            .find(|r| r.id == *preview_rep_id)
+            .find(|r| r.id == selection.selection.paste_rep_id)
             .and_then(|r| r.mime_type.as_ref())
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| "application/octet-stream".to_string());
 
         content.into_pipeline_input(entry, mime_type)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_core::clipboard::{ObservedClipboardRepresentation, SelectionPolicyVersion};
+    use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
+    use uc_core::MimeType;
+
+    fn rep(fmt: &str, mime: &str, bytes: &[u8]) -> ObservedClipboardRepresentation {
+        ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from(fmt),
+            Some(MimeType(mime.to_string())),
+            bytes.to_vec(),
+        )
+    }
+
+    fn entry() -> ClipboardEntry {
+        ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0)
+    }
+
+    /// A browser copy carries both `text/plain` and `text/html`. The selection
+    /// policy ranks the html rep as the paste rep and the plain rep as the
+    /// preview rep, so content_type must follow the paste rep (`Html`) — the
+    /// preview rep would misread the rich text as `Text` and drop it from the
+    /// `html` filter.
+    #[test]
+    fn content_type_follows_paste_rep_not_preview() {
+        let plain = rep("text", "text/plain", b"hello world");
+        let html = rep("html", "text/html", b"<p>hello world</p>");
+        let plain_id = plain.id.clone();
+        let html_id = html.id.clone();
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![plain, html],
+            file_content_digests: Vec::new(),
+        };
+        let selection = ClipboardSelection {
+            primary_rep_id: html_id.clone(),
+            secondary_rep_ids: Vec::new(),
+            preview_rep_id: plain_id,
+            paste_rep_id: html_id,
+            policy_version: SelectionPolicyVersion::V1,
+        };
+
+        let input = SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection)
+            .expect("snapshot has searchable content");
+
+        assert_eq!(
+            input.content_type,
+            ContentType::Html,
+            "content_type must derive from the paste (rich-text) representation"
+        );
+        assert_eq!(input.mime_type, "text/html");
+        // Preview text still comes from the preview (plain) representation.
+        assert_eq!(input.text_preview.as_deref(), Some("hello world"));
     }
 }

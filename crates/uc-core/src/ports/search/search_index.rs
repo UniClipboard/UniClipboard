@@ -5,6 +5,7 @@
 //! anyhow::Error internally but MUST map to SearchError at method return.
 
 use crate::ids::EntryId;
+use crate::search::tag::SearchTagCount;
 use crate::search::{
     RebuildProgress, SearchDocument, SearchError, SearchIndexMeta, SearchPosting, SearchQuery,
     SearchResultsPage,
@@ -52,4 +53,29 @@ pub trait SearchIndexPort: Send + Sync {
 
     /// Read-only projection of search_index_meta (index_version, search_blocked, timestamps).
     async fn get_index_meta(&self) -> Result<SearchIndexMeta, SearchError>;
+
+    /// Mirror an entry's favorited user-state into its tag membership.
+    ///
+    /// `favorited = true` records the builtin favorited tag for the entry;
+    /// `false` removes it. Idempotent: repeating the same value is a no-op. The
+    /// favorited tag's authoritative source is the entry's user-state held
+    /// elsewhere; this keeps the derived membership consistent with it without a
+    /// full re-index. Adapters that do not maintain tag membership keep the
+    /// default no-op.
+    async fn set_entry_favorite_tag(
+        &self,
+        entry_id: &EntryId,
+        favorited: bool,
+    ) -> Result<(), SearchError> {
+        let _ = (entry_id, favorited);
+        Ok(())
+    }
+
+    /// List every tag present in the index with the count of entries carrying
+    /// it. Filter-only over the membership table: it needs no search key and is
+    /// available while the session is locked. Lock-based visibility of custom
+    /// tags is the caller's responsibility (§4.6).
+    async fn list_tags(&self) -> Result<Vec<SearchTagCount>, SearchError> {
+        Ok(Vec::new())
+    }
 }

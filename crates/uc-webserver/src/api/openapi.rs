@@ -43,6 +43,7 @@ use crate::api::dto::mobile_sync::{
 use crate::api::dto::pairing::UnpairDeviceRequest;
 use crate::api::dto::search::{
     SearchQueryResultDto, SearchRebuildAcceptedData, SearchResultDto, SearchStatusData,
+    SearchTagDto,
 };
 use crate::api::dto::settings::{
     CongestionControllerDto, ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto,
@@ -84,8 +85,8 @@ use uc_daemon_contract::api::dto::envelope::{
     MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope, PresenceRefreshEnvelope,
     PreviewImportEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope, ResendEnvelope,
     RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
-    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SessionTokenEnvelope,
-    SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
+    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
+    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
     SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
     SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
     StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
@@ -157,6 +158,7 @@ impl Modify for ContractMeta {
         crate::api::search::search_query_handler,
         crate::api::search::search_status_handler,
         crate::api::search::search_rebuild_handler,
+        crate::api::search::search_tags_handler,
         // ── storage ────────────────────────────────────────────────
         crate::api::storage::get_storage_stats_handler,
         crate::api::storage::clear_cache_handler,
@@ -265,10 +267,12 @@ impl Modify for ContractMeta {
             SearchQueryEnvelope,
             SearchStatusEnvelope,
             SearchRebuildEnvelope,
+            SearchTagsEnvelope,
             SearchQueryResultDto,
             SearchStatusData,
             SearchRebuildAcceptedData,
             SearchResultDto,
+            SearchTagDto,
             // ── storage ────────────────────────────────────────────
             StorageStatsEnvelope,
             ClearCacheEnvelope,

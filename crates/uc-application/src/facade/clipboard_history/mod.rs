@@ -239,7 +239,10 @@ impl ClipboardHistoryFacade {
             payload_resolver,
         );
 
-        let toggle_favorite_uc = ToggleFavoriteClipboardEntryUseCase::new(entry_set_favorite);
+        let mut toggle_favorite_uc = ToggleFavoriteClipboardEntryUseCase::new(entry_set_favorite);
+        if let Some(idx) = search_index.clone() {
+            toggle_favorite_uc = toggle_favorite_uc.with_search_mirror(idx);
+        }
 
         let mut delete_uc = DeleteClipboardEntryUseCase::from_ports(
             entry_get.clone(),

@@ -126,6 +126,8 @@ pub mod http_route {
     pub const SEARCH_STATUS: &str = "/search/status";
     /// POST /search/rebuild — trigger manual search index rebuild (Phase 92)
     pub const SEARCH_REBUILD: &str = "/search/rebuild";
+    /// GET /search/tags — list tags present in the index with entry counts
+    pub const SEARCH_TAGS: &str = "/search/tags";
     /// GET /upgrade/status — detect upgrade by comparing version cursor to
     /// the running build (P1 thin upgrade detection).
     pub const UPGRADE_STATUS: &str = "/upgrade/status";

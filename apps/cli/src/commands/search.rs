@@ -30,9 +30,12 @@ pub struct SearchQueryArgs {
     /// End of absolute time range, in milliseconds since epoch
     #[arg(long = "to-ms")]
     to_ms: Option<i64>,
-    /// Filter by content type (text, html, link, file, image, other); repeatable
+    /// Filter by content type (text, html, file, image, other); repeatable
     #[arg(long = "type")]
     content_types: Vec<String>,
+    /// Filter by tag (link, favorited, or a custom tag id); repeatable
+    #[arg(long = "tag")]
+    tags: Vec<String>,
     /// Filter by file extension, for example md or txt; repeatable
     #[arg(long = "ext")]
     extensions: Vec<String>,
@@ -88,6 +91,7 @@ pub async fn run(
                 from_ms: query.from_ms,
                 to_ms: query.to_ms,
                 content_types: query.content_types,
+                tags: query.tags,
                 extensions: query.extensions,
                 limit: query.limit,
                 offset: query.offset,

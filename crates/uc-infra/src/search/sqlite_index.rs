@@ -27,6 +27,7 @@ use uc_core::search::document::{SearchDocument, SearchIndexMeta, SearchPosting};
 use uc_core::search::error::SearchError;
 use uc_core::search::query::{QueryOperator, SearchQuery, TimeRangeFilter};
 use uc_core::search::result::{RebuildProgress, RebuildStage, SearchResult, SearchResultsPage};
+use uc_core::search::tag::{SearchTagCount, TagId};
 
 use crate::db::pool::DbPool;
 use crate::db::schema::{search_document, search_entry_tag, search_index_meta, search_posting};
@@ -303,6 +304,85 @@ impl SqliteSearchIndex {
         .map_err(|e| SearchError::Internal(format!("delete_active_entry failed: {e}")))
     }
 
+    /// Add or remove only the favorited tag membership row for `entry_id` in the
+    /// active table, leaving all rule-derived tags (e.g. `link`) untouched.
+    /// Idempotent in both directions.
+    fn set_active_favorite_tag(
+        conn: &mut SqliteConnection,
+        profile_id: &str,
+        entry_id: &EntryId,
+        favorited: bool,
+    ) -> Result<(), SearchError> {
+        let entry_id_str = entry_id.to_string();
+        let favorited_tag = TagId::favorited().as_str().to_string();
+        if favorited {
+            diesel::insert_or_ignore_into(search_entry_tag::table)
+                .values(NewSearchEntryTagRow {
+                    profile_id: profile_id.to_string(),
+                    entry_id: entry_id_str,
+                    tag_id: favorited_tag,
+                })
+                .execute(conn)
+                .map_err(|e| {
+                    SearchError::Internal(format!("set_active_favorite_tag insert failed: {e}"))
+                })?;
+        } else {
+            diesel::delete(
+                search_entry_tag::table
+                    .filter(search_entry_tag::profile_id.eq(profile_id))
+                    .filter(search_entry_tag::entry_id.eq(&entry_id_str))
+                    .filter(search_entry_tag::tag_id.eq(&favorited_tag)),
+            )
+            .execute(conn)
+            .map_err(|e| {
+                SearchError::Internal(format!("set_active_favorite_tag delete failed: {e}"))
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Mirror `set_active_favorite_tag` into the rebuild temp tag table, so a
+    /// favorite toggle during a rebuild survives cutover. Only the favorited row
+    /// is touched.
+    fn set_temp_favorite_tag(
+        conn: &mut SqliteConnection,
+        state: &ActiveRebuild,
+        entry_id: &EntryId,
+        favorited: bool,
+    ) -> Result<(), SearchError> {
+        let profile_id = &state.profile_id;
+        let entry_id_str = entry_id.to_string();
+        let favorited_tag = TagId::favorited().as_str().to_string();
+        if favorited {
+            let insert_tag = format!(
+                "INSERT OR REPLACE INTO {tag_table} (profile_id, entry_id, tag_id) VALUES (?, ?, ?)",
+                tag_table = state.temp_entry_tag_table
+            );
+            diesel::sql_query(&insert_tag)
+                .bind::<diesel::sql_types::Text, _>(profile_id)
+                .bind::<diesel::sql_types::Text, _>(&entry_id_str)
+                .bind::<diesel::sql_types::Text, _>(&favorited_tag)
+                .execute(conn)
+                .map_err(|e| {
+                    SearchError::Internal(format!("set_temp_favorite_tag insert failed: {e}"))
+                })?;
+        } else {
+            let del_tag = format!(
+                "DELETE FROM {tag_table} WHERE profile_id = ? AND entry_id = ? AND tag_id = ?",
+                tag_table = state.temp_entry_tag_table
+            );
+            diesel::sql_query(&del_tag)
+                .bind::<diesel::sql_types::Text, _>(profile_id)
+                .bind::<diesel::sql_types::Text, _>(&entry_id_str)
+                .bind::<diesel::sql_types::Text, _>(&favorited_tag)
+                .execute(conn)
+                .map_err(|e| {
+                    SearchError::Internal(format!("set_temp_favorite_tag delete failed: {e}"))
+                })?;
+        }
+        Ok(())
+    }
+
     // ─── Search helpers ───────────────────────────────────────────────────────
 
     /// Update `search_index_meta.search_blocked = true` for `profile_id`.
@@ -478,6 +558,55 @@ impl SqliteSearchIndex {
             .map_err(|e| {
                 SearchError::Internal(format!("load_event_ids_for_sources failed: {e}"))
             })?;
+
+        Ok(rows.into_iter().collect())
+    }
+
+    /// Load tag memberships for `entry_ids`, grouped by entry id.
+    ///
+    /// Document rows do not carry tags (membership lives in `search_entry_tag`);
+    /// the read side hydrates the current page's tags with this single batched
+    /// query. Entries with no tags are absent from the map.
+    fn load_tags_for_entries(
+        conn: &mut SqliteConnection,
+        profile_id: &str,
+        entry_ids: &[String],
+    ) -> Result<HashMap<String, Vec<TagId>>, SearchError> {
+        use crate::db::schema::search_entry_tag::dsl;
+
+        if entry_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows: Vec<(String, String)> = dsl::search_entry_tag
+            .filter(dsl::profile_id.eq(profile_id))
+            .filter(dsl::entry_id.eq_any(entry_ids))
+            .select((dsl::entry_id, dsl::tag_id))
+            .load::<(String, String)>(conn)
+            .map_err(|e| SearchError::Internal(format!("load_tags_for_entries failed: {e}")))?;
+
+        let mut map: HashMap<String, Vec<TagId>> = HashMap::new();
+        for (entry_id, tag_id) in rows {
+            map.entry(entry_id).or_default().push(TagId::new(tag_id));
+        }
+        Ok(map)
+    }
+
+    /// Load the set of entry ids carrying any of `tag_ids` (OR semantics).
+    /// Used to restrict search results by tag membership before pagination.
+    fn load_entry_ids_for_tags(
+        conn: &mut SqliteConnection,
+        profile_id: &str,
+        tag_ids: &[String],
+    ) -> Result<HashSet<String>, SearchError> {
+        use crate::db::schema::search_entry_tag::dsl;
+
+        let rows = dsl::search_entry_tag
+            .filter(dsl::profile_id.eq(profile_id))
+            .filter(dsl::tag_id.eq_any(tag_ids))
+            .select(dsl::entry_id)
+            .load::<String>(conn)
+            .map_err(|e| SearchError::Internal(format!("load_entry_ids_for_tags failed: {e}")))?;
 
         Ok(rows.into_iter().collect())
     }
@@ -932,6 +1061,11 @@ impl SearchIndexPort for SqliteSearchIndex {
             .iter()
             .map(|d| d.as_str().to_string())
             .collect::<Vec<_>>();
+        let tags = query
+            .tags
+            .iter()
+            .map(|t| t.as_str().to_string())
+            .collect::<Vec<_>>();
         let limit = query.limit as usize;
         let offset = query.offset as usize;
 
@@ -1000,6 +1134,18 @@ impl SearchIndexPort for SqliteSearchIndex {
                     &source_devices,
                 )?)
             };
+            // Resolve the allowed entry-id set for tag membership up front
+            // (None = no tag restriction) so tag filtering runs before
+            // pagination, keeping the authoritative total correct.
+            let tag_entry_ids: Option<HashSet<String>> = if tags.is_empty() {
+                None
+            } else {
+                Some(Self::load_entry_ids_for_tags(
+                    &mut conn,
+                    &profile_id,
+                    &tags,
+                )?)
+            };
             let now_ms = chrono::Utc::now().timestamp_millis();
 
             let filtered: Vec<(SearchDocumentRow, u32)> = docs
@@ -1008,6 +1154,13 @@ impl SearchIndexPort for SqliteSearchIndex {
                     // Source-device filter.
                     if let Some(ref allowed) = source_event_ids {
                         if !allowed.contains(&doc.event_id) {
+                            return None;
+                        }
+                    }
+
+                    // Tag filter (OR within the tag group).
+                    if let Some(ref allowed) = tag_entry_ids {
+                        if !allowed.contains(&doc.entry_id) {
                             return None;
                         }
                     }
@@ -1075,18 +1228,37 @@ impl SearchIndexPort for SqliteSearchIndex {
             // 10. has_more: true when remaining entries exist after the current page.
             let has_more = total > (offset as u32) + (paginated.len() as u32);
 
-            // 11. Map to SearchResult.
+            // 11. Hydrate tags for the current page, then map to SearchResult.
+            // Document rows carry an empty tag set; membership lives in
+            // `search_entry_tag` and is fetched here in one batched query
+            // scoped to the page window (at most `limit` entries).
+            let page_entry_ids: Vec<String> = paginated
+                .iter()
+                .map(|(doc, _)| doc.entry_id.clone())
+                .collect();
+            let tags_by_entry =
+                Self::load_tags_for_entries(&mut conn, &profile_id, &page_entry_ids)?;
+
             let items: Vec<SearchResult> = paginated
                 .into_iter()
                 .filter_map(|(doc, _)| {
+                    let tags = tags_by_entry
+                        .get(&doc.entry_id)
+                        .cloned()
+                        .unwrap_or_default();
                     let domain = doc.to_domain().ok()?;
                     Some(SearchResult {
                         entry_id: domain.entry_id,
                         content_type: domain.content_type,
                         active_time_ms: domain.active_time_ms,
+                        tags,
                         text_preview: domain.text_preview,
                         mime_type: domain.mime_type,
                         file_extensions: domain.file_extensions,
+                        file_names: domain.file_names,
+                        link_urls: domain.link_urls,
+                        source_device: domain.source_device,
+                        payload_state: domain.payload_state,
                     })
                 })
                 .collect();
@@ -1381,6 +1553,79 @@ impl SearchIndexPort for SqliteSearchIndex {
         .await
         .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
     }
+
+    #[instrument(
+        name = "search_index.set_entry_favorite_tag",
+        level = "debug",
+        skip(self),
+        fields(entry_id = %entry_id, favorited)
+    )]
+    async fn set_entry_favorite_tag(
+        &self,
+        entry_id: &EntryId,
+        favorited: bool,
+    ) -> Result<(), SearchError> {
+        let profile_id = self.current_profile_id().await?.into_inner();
+        let pool = self.pool.clone();
+        let entry_id = entry_id.clone();
+        let maybe_rebuild = self.active_rebuild_for_profile(&profile_id).await;
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
+
+            Self::ensure_meta_row(&mut conn, &profile_id)?;
+
+            // 1. Always update the active table first. Only the favorited row is
+            //    touched, leaving rule-derived tags (e.g. `link`) intact.
+            Self::set_active_favorite_tag(&mut conn, &profile_id, &entry_id, favorited)?;
+
+            // 2. Mirror into the rebuild temp table when a rebuild is active so
+            //    the toggle survives cutover (best-effort, like index/remove).
+            if let Some(rebuild_state) = maybe_rebuild {
+                if let Err(e) =
+                    Self::set_temp_favorite_tag(&mut conn, &rebuild_state, &entry_id, favorited)
+                {
+                    warn!(error = %e, "failed to mirror favorite tag into rebuild temp tables (best-effort)");
+                }
+            }
+
+            Ok(())
+        })
+        .await
+        .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
+    }
+
+    #[instrument(name = "search_index.list_tags", level = "debug", skip(self))]
+    async fn list_tags(&self) -> Result<Vec<SearchTagCount>, SearchError> {
+        let profile_id = self.current_profile_id().await?.into_inner();
+        let pool = self.pool.clone();
+
+        tokio::task::spawn_blocking(move || {
+            use crate::db::schema::search_entry_tag::dsl;
+            let mut conn = pool
+                .get()
+                .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
+
+            let rows: Vec<(String, i64)> = dsl::search_entry_tag
+                .filter(dsl::profile_id.eq(&profile_id))
+                .group_by(dsl::tag_id)
+                .select((dsl::tag_id, diesel::dsl::count_star()))
+                .load::<(String, i64)>(&mut conn)
+                .map_err(|e| SearchError::Internal(format!("list_tags failed: {e}")))?;
+
+            Ok(rows
+                .into_iter()
+                .map(|(tag_id, count)| SearchTagCount {
+                    tag_id: TagId::new(tag_id),
+                    count: count.max(0) as u32,
+                })
+                .collect())
+        })
+        .await
+        .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1509,6 +1754,7 @@ mod tests {
             operator: QueryOperator::And,
             time_range: None,
             content_types: vec![],
+            tags: vec![],
             extensions: vec![],
             source_devices: vec![],
             limit: 50,
@@ -1575,6 +1821,143 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(tag_rows(&pool), vec![("e1".into(), "link".into())]);
+    }
+
+    #[tokio::test]
+    async fn search_hydrates_tags_and_render_metadata() {
+        let (index, _pool, _dir) = make_index();
+        let mut doc = make_doc("e1", vec![TagId::link(), TagId::favorited()]);
+        doc.file_names = vec!["a.txt".to_string()];
+        doc.link_urls = vec!["https://example.com".to_string()];
+        doc.source_device = Some("dev-1".to_string());
+        doc.payload_state = Some("Lost".to_string());
+        index.index_entry(doc, vec![]).await.unwrap();
+
+        let page = index.search(filter_only_query()).await.unwrap();
+        assert_eq!(page.total, 1);
+        let result = &page.items[0];
+        assert_eq!(result.entry_id.to_string(), "e1");
+
+        // Tags are hydrated from `search_entry_tag`, not the document row.
+        let mut tags: Vec<String> = result.tags.iter().map(|t| t.to_string()).collect();
+        tags.sort();
+        assert_eq!(tags, vec!["favorited".to_string(), "link".to_string()]);
+
+        // Render metadata carried through from the document row.
+        assert_eq!(result.file_names, vec!["a.txt".to_string()]);
+        assert_eq!(result.link_urls, vec!["https://example.com".to_string()]);
+        assert_eq!(result.source_device.as_deref(), Some("dev-1"));
+        assert_eq!(result.payload_state.as_deref(), Some("Lost"));
+    }
+
+    #[tokio::test]
+    async fn search_filters_by_tag_membership() {
+        let (index, _pool, _dir) = make_index();
+        index
+            .index_entry(make_doc("e1", vec![TagId::link()]), vec![])
+            .await
+            .unwrap();
+        index
+            .index_entry(make_doc("e2", vec![]), vec![])
+            .await
+            .unwrap();
+
+        // No tag filter → both entries.
+        let all = index.search(filter_only_query()).await.unwrap();
+        assert_eq!(all.total, 2);
+
+        // Filter by the link tag → only the entry that carries it.
+        let linked = index
+            .search(SearchQuery {
+                tags: vec![TagId::link()],
+                ..filter_only_query()
+            })
+            .await
+            .unwrap();
+        assert_eq!(linked.total, 1);
+        assert_eq!(linked.items[0].entry_id.to_string(), "e1");
+
+        // Filter by a tag no entry carries → empty.
+        let none = index
+            .search(SearchQuery {
+                tags: vec![TagId::favorited()],
+                ..filter_only_query()
+            })
+            .await
+            .unwrap();
+        assert_eq!(none.total, 0);
+    }
+
+    #[tokio::test]
+    async fn set_favorite_tag_adds_and_removes_only_favorited_row() {
+        let (index, pool, _dir) = make_index();
+        // The entry already carries a rule-derived `link` tag.
+        index
+            .index_entry(make_doc("e1", vec![TagId::link()]), vec![])
+            .await
+            .unwrap();
+
+        // Favoriting adds the favorited row, leaving `link` intact.
+        index
+            .set_entry_favorite_tag(&EntryId::from("e1"), true)
+            .await
+            .unwrap();
+        assert_eq!(
+            tag_rows(&pool),
+            vec![
+                ("e1".into(), "favorited".into()),
+                ("e1".into(), "link".into()),
+            ]
+        );
+
+        // Idempotent: favoriting again does not duplicate the row.
+        index
+            .set_entry_favorite_tag(&EntryId::from("e1"), true)
+            .await
+            .unwrap();
+        assert_eq!(
+            tag_rows(&pool),
+            vec![
+                ("e1".into(), "favorited".into()),
+                ("e1".into(), "link".into()),
+            ]
+        );
+
+        // Unfavoriting removes only the favorited row; `link` survives.
+        index
+            .set_entry_favorite_tag(&EntryId::from("e1"), false)
+            .await
+            .unwrap();
+        assert_eq!(tag_rows(&pool), vec![("e1".into(), "link".into())]);
+    }
+
+    #[tokio::test]
+    async fn list_tags_reports_distinct_entry_counts_per_tag() {
+        let (index, _pool, _dir) = make_index();
+        index
+            .index_entry(make_doc("e1", vec![TagId::link()]), vec![])
+            .await
+            .unwrap();
+        index
+            .index_entry(make_doc("e2", vec![TagId::link()]), vec![])
+            .await
+            .unwrap();
+        index
+            .index_entry(make_doc("e3", vec![]), vec![])
+            .await
+            .unwrap();
+        index
+            .set_entry_favorite_tag(&EntryId::from("e1"), true)
+            .await
+            .unwrap();
+
+        let mut tags = index.list_tags().await.unwrap();
+        tags.sort_by(|a, b| a.tag_id.as_str().cmp(b.tag_id.as_str()));
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].tag_id, TagId::favorited());
+        assert_eq!(tags[0].count, 1);
+        assert_eq!(tags[1].tag_id, TagId::link());
+        assert_eq!(tags[1].count, 2);
     }
 
     #[tokio::test]

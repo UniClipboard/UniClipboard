@@ -119,6 +119,14 @@ pub trait TagRule: Send + Sync {
     fn evaluate(&self, content: &TaggableContent<'_>) -> bool;
 }
 
+/// A tag and how many entries currently carry it — the unit of a tag listing
+/// (e.g. for a filter sidebar). `count` is the number of distinct entries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchTagCount {
+    pub tag_id: TagId,
+    pub count: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

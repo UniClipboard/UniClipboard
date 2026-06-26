@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 use uc_core::ports::SearchIndexPort;
+use uc_core::search::tag::SearchTagCount;
 use uc_core::search::{SearchError, SearchIndexMeta, SearchQuery, SearchResultsPage};
 
 pub(crate) struct SearchClipboardEntriesUseCase {
@@ -40,5 +41,9 @@ impl SearchClipboardEntriesUseCase {
 
     pub(crate) async fn index_meta(&self) -> Result<SearchIndexMeta, SearchError> {
         self.search_index.get_index_meta().await
+    }
+
+    pub(crate) async fn list_tags(&self) -> Result<Vec<SearchTagCount>, SearchError> {
+        self.search_index.list_tags().await
     }
 }

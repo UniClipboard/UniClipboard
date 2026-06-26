@@ -227,7 +227,7 @@ impl SearchableContent {
         let file_extensions = collect_extensions(&self.file_paths, &self.file_names);
         let content_type =
             infer_physical_type(&mime_type, &self.uri_list, !self.file_paths.is_empty());
-        let tags = evaluate_tags(
+        let mut tags = evaluate_tags(
             &TaggableContent {
                 content_type: content_type.clone(),
                 uri_list: &self.uri_list,
@@ -235,6 +235,15 @@ impl SearchableContent {
             },
             &builtin_rules(),
         );
+        // `favorited` is user-state, not a content rule, so it cannot come from
+        // `builtin_rules`. Mirror the entry's persisted favorite flag into the
+        // tag set: a live capture of a fresh entry carries `false`, while rebuild
+        // backfills the authoritative value from the entry's stored state. This
+        // is the rebuild leg of the favorited tag mirror (the toggle use case
+        // owns the write-through leg).
+        if entry.is_favorited {
+            tags.push(TagId::favorited());
+        }
         // Same detection contract as the `link` rule above, so the render column
         // and the tag never disagree on what counts as a link.
         let link_urls = detect_link_urls(&self.uri_list, self.plain_text.as_deref());
@@ -617,6 +626,54 @@ mod tests {
             .expect("inline text is searchable");
 
         assert_eq!(input.payload_state, None);
+    }
+
+    /// Rebuild leg of the favorited mirror: a persisted entry whose stored
+    /// favorite flag is set carries the `favorited` tag; an unfavorited entry
+    /// does not.
+    #[test]
+    fn persisted_favorited_entry_carries_favorited_tag() {
+        let fav_rep_id = RepresentationId::new();
+        let fav_rep = persisted(&fav_rep_id, "text", "text/plain", b"hello");
+        let favorited = entry().with_favorited(true);
+        let fav_dec = ClipboardSelectionDecision::new(
+            favorited.entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: fav_rep_id.clone(),
+                secondary_rep_ids: Vec::new(),
+                preview_rep_id: fav_rep_id.clone(),
+                paste_rep_id: fav_rep_id,
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+        let fav_input =
+            SearchProjectionBuilder::build_from_persisted(&favorited, &fav_dec, &[fav_rep], None)
+                .expect("inline text is searchable");
+        assert!(
+            fav_input.tags.contains(&TagId::favorited()),
+            "a persisted favorited entry carries the favorited tag"
+        );
+
+        let plain_rep_id = RepresentationId::new();
+        let plain_rep = persisted(&plain_rep_id, "text", "text/plain", b"hello");
+        let plain = entry();
+        let plain_dec = ClipboardSelectionDecision::new(
+            plain.entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: plain_rep_id.clone(),
+                secondary_rep_ids: Vec::new(),
+                preview_rep_id: plain_rep_id.clone(),
+                paste_rep_id: plain_rep_id,
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+        let plain_input =
+            SearchProjectionBuilder::build_from_persisted(&plain, &plain_dec, &[plain_rep], None)
+                .expect("inline text is searchable");
+        assert!(
+            !plain_input.tags.contains(&TagId::favorited()),
+            "an unfavorited entry carries no favorited tag"
+        );
     }
 
     /// The live and rebuild paths must derive identical render metadata from the

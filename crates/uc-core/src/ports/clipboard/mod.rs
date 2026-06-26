@@ -35,7 +35,7 @@ pub use delivery::EntryDeliveryRepositoryPort;
 pub use entry_intents::{
     DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
     GetEntrySnapshotHashPort, ListClipboardEntriesPort, SaveClipboardEntryPort,
-    TouchClipboardEntryPort,
+    SetClipboardEntryFavoritePort, TouchClipboardEntryPort,
 };
 pub use local_clipboard::SystemClipboardPort;
 pub use payload_resolver::{

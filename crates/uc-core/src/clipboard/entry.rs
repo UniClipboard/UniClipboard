@@ -15,6 +15,11 @@ pub struct ClipboardEntry {
     /// `false` 表示"历史 entry,投递信息未知",视图不应把它合成为 `Pending`;
     /// `true` 表示"新机制下创建的 entry,缺失投递行就意味着尚未尝试"。
     pub delivery_tracked: bool,
+    /// Whether the user has marked this entry as a favorite.
+    ///
+    /// A user-state flag (not derived from content). Defaults to `false` on
+    /// capture; persisted independently and toggled by an explicit user action.
+    pub is_favorited: bool,
 }
 
 impl ClipboardEntry {
@@ -41,6 +46,7 @@ impl ClipboardEntry {
             title,
             total_size,
             delivery_tracked: true,
+            is_favorited: false,
         }
     }
 
@@ -60,6 +66,7 @@ impl ClipboardEntry {
             title,
             total_size,
             delivery_tracked: true,
+            is_favorited: false,
         }
     }
 
@@ -68,6 +75,13 @@ impl ClipboardEntry {
     /// - 测试模拟 historical entry (建于追踪机制启用前)
     pub fn with_delivery_tracked(mut self, tracked: bool) -> Self {
         self.delivery_tracked = tracked;
+        self
+    }
+
+    /// Override the favorite flag. Used when rebuilding an entry from storage
+    /// to restore the persisted value; constructors default it to `false`.
+    pub fn with_favorited(mut self, is_favorited: bool) -> Self {
+        self.is_favorited = is_favorited;
         self
     }
 }

@@ -56,6 +56,19 @@ pub trait TouchClipboardEntryPort: Send + Sync {
     ) -> Result<bool, ClipboardRepositoryError>;
 }
 
+/// Set the favorite flag of an existing entry.
+#[async_trait]
+pub trait SetClipboardEntryFavoritePort: Send + Sync {
+    /// Sets the entry's favorite flag to `is_favorited`. Returns `true` when a
+    /// row was updated, `false` when no entry with `entry_id` exists.
+    /// Idempotent with respect to the stored value.
+    async fn set_favorite(
+        &self,
+        entry_id: &EntryId,
+        is_favorited: bool,
+    ) -> Result<bool, ClipboardRepositoryError>;
+}
+
 /// Delete a clipboard entry.
 #[async_trait]
 pub trait DeleteClipboardEntryPort: Send + Sync {

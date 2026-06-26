@@ -236,6 +236,7 @@ impl ClipboardHistoryFacade {
             entry_get.clone(),
             selection_repo.clone(),
             rep_get.clone(),
+            rep_list_for_event.clone(),
             payload_resolver,
         );
 

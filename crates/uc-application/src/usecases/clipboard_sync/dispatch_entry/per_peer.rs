@@ -24,15 +24,18 @@ use std::time::Instant;
 use tracing::warn;
 use uc_core::ids::DeviceId;
 use uc_core::ports::{
-    ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, FirstSyncStatePort,
-    PresencePort, ReachabilityState, SyncPayload,
+    ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, DispatchReport,
+    FirstSyncStatePort, PresencePort, ReachabilityState, SyncPayload,
 };
 use uc_observability::analytics::{
     AnalyticsPort, Direction, Event, PayloadSizeBucket, PayloadType, SyncDeferReason,
     SyncDeferredProps, SyncEventProps, TransportType,
 };
 
-use super::{dispatch_failure_stage, map_dispatch_error_to_failure_reason, PeerDispatchResult};
+use super::{
+    dispatch_failure_stage, map_dispatch_error_to_failure_reason, transport_type_from_channel,
+    PeerDispatchResult,
+};
 
 pub(crate) struct PerPeerDispatcher {
     clipboard_dispatch: Arc<dyn ClipboardDispatchPort>,
@@ -68,7 +71,9 @@ impl PerPeerDispatcher {
             direction: Direction::Outbound,
             payload_type,
             payload_size_bucket,
-            transport_type: TransportType::P2pDirect,
+            // `sync_attempted` fires BEFORE any dial, so no connection path
+            // exists yet — report `Unknown` rather than guessing a route.
+            transport_type: TransportType::Unknown,
             peer_os: None,
             sync_latency_ms: None,
             failure_reason: None,
@@ -125,18 +130,22 @@ impl PerPeerDispatcher {
         }
 
         let started_at = Instant::now();
-        let result = self
+        let DispatchReport { transport, outcome } = self
             .clipboard_dispatch
             .dispatch(&device_id, &header, payload)
             .await;
         let duration_ms = started_at.elapsed().as_millis().min(u32::MAX as u128) as u32;
+        // Translate the path the adapter actually used (probed post-settle)
+        // into the analytics bucket. `Unknown` when no active path resolved —
+        // e.g. a dial failure or a mid-handshake snapshot.
+        let transport_type = transport_type_from_channel(transport);
 
-        let event = match &result {
+        let event = match &outcome {
             Ok(_) => Event::SyncSucceeded(SyncEventProps {
                 direction: Direction::Outbound,
                 payload_type,
                 payload_size_bucket,
-                transport_type: TransportType::P2pDirect,
+                transport_type,
                 peer_os: None,
                 sync_latency_ms: Some(duration_ms),
                 failure_reason: None,
@@ -146,14 +155,14 @@ impl PerPeerDispatcher {
                 direction: Direction::Outbound,
                 payload_type,
                 payload_size_bucket,
-                transport_type: TransportType::P2pDirect,
+                transport_type,
                 peer_os: None,
                 sync_latency_ms: None,
                 failure_reason: Some(map_dispatch_error_to_failure_reason(err)),
                 failure_stage: Some(dispatch_failure_stage(err)),
             }),
         };
-        let is_ok = result.is_ok();
+        let is_ok = outcome.is_ok();
         self.analytics.capture(event);
 
         // First-success funnel: fires the generic clipboard event and (if
@@ -163,7 +172,7 @@ impl PerPeerDispatcher {
                 Ok(true) => self.analytics.capture(Event::FirstClipboardSyncSucceeded {
                     direction: Direction::Outbound,
                     peer_os: None,
-                    transport_type: TransportType::P2pDirect,
+                    transport_type,
                     duration_ms,
                 }),
                 Ok(false) => {}
@@ -176,7 +185,7 @@ impl PerPeerDispatcher {
                 match self.first_sync_state.mark_first_file_sync_succeeded().await {
                     Ok(true) => self.analytics.capture(Event::FirstFileSyncSucceeded {
                         peer_os: None,
-                        transport_type: TransportType::P2pDirect,
+                        transport_type,
                         payload_size_bucket,
                     }),
                     Ok(false) => {}
@@ -188,7 +197,7 @@ impl PerPeerDispatcher {
             }
         }
 
-        (device_id, result)
+        (device_id, outcome)
     }
 }
 
@@ -197,7 +206,7 @@ mod tests {
     use super::super::test_support::*;
     use super::*;
 
-    use uc_core::ports::DispatchAck;
+    use uc_core::ports::{ConnectionChannel, DispatchAck};
     use uc_observability::analytics::{FailureReason, SyncFailureStage};
 
     fn header() -> Arc<ClipboardHeader> {
@@ -206,6 +215,16 @@ mod tests {
 
     fn bucket() -> PayloadSizeBucket {
         PayloadSizeBucket::from_bytes(11)
+    }
+
+    /// Build a `DispatchReport` with an explicit connection path so the test
+    /// drives the channel→`TransportType` mapping under assertion (the whole
+    /// point of this funnel — see `transport_type_from_channel`).
+    fn report(
+        transport: ConnectionChannel,
+        outcome: Result<DispatchAck, ClipboardDispatchError>,
+    ) -> DispatchReport {
+        DispatchReport { transport, outcome }
     }
 
     /// Online (Unknown) peer + accepting dispatch: `sync_attempted` fires
@@ -217,7 +236,7 @@ mod tests {
         dispatch
             .expect_dispatch()
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| report(ConnectionChannel::Direct, Ok(DispatchAck::Accepted)));
 
         let analytics = Arc::new(CapturingAnalyticsSink::default());
         let dispatcher = PerPeerDispatcher::new(
@@ -242,10 +261,15 @@ mod tests {
 
         let events = analytics.events();
         assert_eq!(events.len(), 2, "got {events:?}");
-        assert!(matches!(events[0], Event::SyncAttempted(_)));
+        match &events[0] {
+            // attempted fires before the dial → no path resolved yet.
+            Event::SyncAttempted(p) => assert_eq!(p.transport_type, TransportType::Unknown),
+            other => panic!("expected SyncAttempted, got {other:?}"),
+        }
         match &events[1] {
             Event::SyncSucceeded(p) => {
                 assert_eq!(p.direction, Direction::Outbound);
+                // Direct channel maps to the P2pDirect bucket.
                 assert_eq!(p.transport_type, TransportType::P2pDirect);
                 assert!(p.sync_latency_ms.is_some());
                 assert!(p.failure_reason.is_none());
@@ -301,10 +325,12 @@ mod tests {
     #[tokio::test]
     async fn dispatch_one_failure_fires_failed_without_latency() {
         let mut dispatch = MockDispatch::new();
-        dispatch
-            .expect_dispatch()
-            .times(1)
-            .returning(|_, _, _| Err(ClipboardDispatchError::PeerRejected("nope".to_string())));
+        dispatch.expect_dispatch().times(1).returning(|_, _, _| {
+            report(
+                ConnectionChannel::Relay,
+                Err(ClipboardDispatchError::PeerRejected("nope".to_string())),
+            )
+        });
 
         let analytics = Arc::new(CapturingAnalyticsSink::default());
         let dispatcher = PerPeerDispatcher::new(
@@ -336,6 +362,8 @@ mod tests {
         match &events[1] {
             Event::SyncFailed(p) => {
                 assert!(p.sync_latency_ms.is_none());
+                // A failure still rode a path — attribute it (Relay here).
+                assert_eq!(p.transport_type, TransportType::Relay);
                 assert_eq!(p.failure_reason, Some(FailureReason::NetworkError));
                 assert_eq!(p.failure_stage, Some(SyncFailureStage::ImmediateSend));
             }
@@ -351,7 +379,7 @@ mod tests {
         dispatch
             .expect_dispatch()
             .times(1)
-            .returning(|_, _, _| Ok(DispatchAck::Accepted));
+            .returning(|_, _, _| report(ConnectionChannel::Direct, Ok(DispatchAck::Accepted)));
 
         let analytics = Arc::new(CapturingAnalyticsSink::default());
         let dispatcher = PerPeerDispatcher::new(
@@ -389,5 +417,59 @@ mod tests {
             (1, 1, 1),
             "got {events:?}"
         );
+        // The first-success funnel also carries the resolved path.
+        let first_file_transport = events.iter().find_map(|e| match e {
+            Event::FirstFileSyncSucceeded { transport_type, .. } => Some(*transport_type),
+            _ => None,
+        });
+        assert_eq!(first_file_transport, Some(TransportType::P2pDirect));
+    }
+
+    /// The channel→`TransportType` mapping reaches `sync_succeeded` for every
+    /// non-direct path: `Relay` stays `Relay`, while both `Unknown` (mid-
+    /// handshake) and `Offline` (no resolvable path) collapse to `Unknown` so
+    /// the dashboard never miscounts an unresolved route as direct.
+    #[tokio::test]
+    async fn dispatch_one_maps_each_channel_to_its_transport_bucket() {
+        let cases = [
+            (ConnectionChannel::Relay, TransportType::Relay),
+            (ConnectionChannel::Unknown, TransportType::Unknown),
+            (ConnectionChannel::Offline, TransportType::Unknown),
+        ];
+
+        for (channel, expected) in cases {
+            let mut dispatch = MockDispatch::new();
+            dispatch
+                .expect_dispatch()
+                .times(1)
+                .returning(move |_, _, _| report(channel, Ok(DispatchAck::Accepted)));
+
+            let analytics = Arc::new(CapturingAnalyticsSink::default());
+            let dispatcher = PerPeerDispatcher::new(
+                Arc::new(dispatch),
+                Arc::new(StaticPresence(ReachabilityState::Unknown)),
+                analytics.clone(),
+                Arc::new(AllMarkedFirstSyncState),
+            );
+
+            let _ = dispatcher
+                .dispatch_one(
+                    dev("peer-x"),
+                    header(),
+                    sync_payload(),
+                    PayloadType::Text,
+                    bucket(),
+                )
+                .await;
+
+            let events = analytics.events();
+            match &events[1] {
+                Event::SyncSucceeded(p) => assert_eq!(
+                    p.transport_type, expected,
+                    "channel {channel:?} should map to {expected:?}"
+                ),
+                other => panic!("expected SyncSucceeded, got {other:?}"),
+            }
+        }
     }
 }

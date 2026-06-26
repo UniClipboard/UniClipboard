@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 
 use crate::ids::DeviceId;
+use crate::ports::ConnectionChannel;
 
 /// Wire-neutral clipboard header carried alongside the ciphertext payload.
 ///
@@ -104,11 +105,29 @@ pub enum ClipboardDispatchError {
     Internal(String),
 }
 
+/// Outcome of a single dispatch attempt paired with the connection path
+/// actually used to reach the peer.
+///
+/// `transport` is observed when the dispatch settles, so it reflects the
+/// path that carried — or attempted to carry — this frame. It is
+/// [`ConnectionChannel::Unknown`] when no active path could be resolved:
+/// the dial failed before any path established, or the snapshot was taken
+/// mid-handshake. `outcome` carries the same wire ack / failure as before;
+/// pairing the two lets the caller attribute both success and failure to
+/// the path that produced it.
+#[derive(Debug)]
+pub struct DispatchReport {
+    pub transport: ConnectionChannel,
+    pub outcome: Result<DispatchAck, ClipboardDispatchError>,
+}
+
 /// Single-target, single-stream dispatch primitive.
 ///
-/// Each call opens a fresh iroh bi-stream on the clipboard ALPN, writes
+/// Each call opens a fresh bi-stream on the clipboard channel, writes
 /// magic + header + payload, reads the peer's one-byte ack, and closes.
-/// Concurrent fan-out is the caller's responsibility.
+/// Concurrent fan-out is the caller's responsibility. The returned
+/// [`DispatchReport`] reports both the wire outcome and the connection
+/// path that served this attempt.
 #[async_trait]
 pub trait ClipboardDispatchPort: Send + Sync {
     async fn dispatch(
@@ -116,5 +135,5 @@ pub trait ClipboardDispatchPort: Send + Sync {
         target: &DeviceId,
         header: &ClipboardHeader,
         payload: SyncPayload,
-    ) -> Result<DispatchAck, ClipboardDispatchError>;
+    ) -> DispatchReport;
 }

@@ -1,5 +1,14 @@
 import { m } from 'framer-motion'
-import { ArrowUpCircle, Bug, Check, Home, MessageSquare, Monitor, Settings, X } from 'lucide-react'
+import {
+  ArrowUpCircle,
+  Bug,
+  Check,
+  Layers,
+  MessageSquare,
+  Monitor,
+  Settings,
+  X,
+} from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -197,7 +206,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       : null
 
   const navItems = [
-    { to: '/', icon: Home, label: t('nav.dashboard') },
+    { to: '/history', icon: Layers, label: t('nav.history') },
     { to: '/devices', icon: Monitor, label: t('nav.devices') },
   ]
 

@@ -11,21 +11,18 @@ the history database — see
 
 ## Where to search
 
-| Surface              | Status / when to use it                                                                                                    |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Quick Panel          | **Primary entry.** Live filtering, advanced syntax, keyboard-first. See [Quick Panel](./quick-panel#advanced-search--mode) |
-| `uniclip search` CLI | Scripts, SSH, remote sessions. See [CLI — Search](../cli/reference#search)                                                 |
-| Dashboard search box | Placeholder — **not wired up in the current build**. The input doesn't reach the query pipeline yet                        |
-
-<Callout type="info">
-  The dashboard search box will be hooked into the same query service in a later release. Until
-  then, drive search from the Quick Panel — it uses exactly the same parameters as the CLI.
-</Callout>
+| Surface              | Status / when to use it                                                                                                                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| History page         | **Primary in-app surface.** The History view is the landing page; its search box mixes free text with content-type / source-device / time filters, all wired to the query service described below. |
+| Quick Panel          | Global hotkey, keyboard-first quick access. Live filtering, advanced syntax. See [Quick Panel](./quick-panel#advanced-search--mode)                                                                |
+| `uniclip search` CLI | Scripts, SSH, remote sessions. See [CLI — Search](../cli/reference#search)                                                                                                                         |
 
 ## Query syntax
 
-The Quick Panel's advanced search and the CLI go through the same
-parser, so the rules below apply to both.
+The Quick Panel's advanced search, the History search box, and the CLI
+share one parser, so the token rules below apply across all three —
+except the source-device filter, which only the History box exposes
+(called out below).
 
 ### Substring matching
 
@@ -75,6 +72,14 @@ uniclip search "report" \
     --from-ms 1710000000000 \
     --to-ms 1710100000000
 ```
+
+### Source-device filter
+
+Narrow results to clips that arrived from one device — a paired computer
+or a mobile-sync phone. In the History search box, pick a device from the
+filter bar or type `from:` and choose from the list. This filter lives in
+the History view only; the Quick Panel and `uniclip search` have no source
+equivalent.
 
 ### What's **not** supported
 

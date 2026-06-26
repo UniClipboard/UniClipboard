@@ -74,11 +74,27 @@ export interface SearchStatusResponse {
 
 // ── Query params ───────────────────────────────────────────────
 
+/**
+ * Time-range presets. Values match the backend `timePreset` query param
+ * directly; `all_time` is a UI-only sentinel meaning "no time filter" and must
+ * be omitted from the wire (see `querySearch`).
+ */
+export type TimeRangePreset =
+  | 'all_time'
+  | 'today'
+  | 'yesterday'
+  | 'last_7d'
+  | 'last_30d'
+  | 'this_week'
+  | 'this_month'
+
 export interface SearchParams {
   query: string
-  /** Content category filter (text, html, link, file, image, other). Sent as `fileTypes` to backend. */
+  /** Content category filter (text, html, link, file, image, other). */
   contentTypes?: string
   extensions?: string
+  /** Comma-separated source device ids; restricts results to those origins. */
+  sourceDevices?: string
   timePreset?: string
   limit?: number
   offset?: number
@@ -106,6 +122,7 @@ export async function querySearch(
   }
   if (params.contentTypes) query.contentTypes = params.contentTypes
   if (params.extensions) query.extensions = params.extensions
+  if (params.sourceDevices) query.sourceDevices = params.sourceDevices
   if (params.timePreset) query.timePreset = params.timePreset
   if (params.limit != null) query.limit = params.limit
   if (params.offset != null) query.offset = params.offset

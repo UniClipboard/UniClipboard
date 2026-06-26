@@ -5,6 +5,7 @@ use thiserror::Error;
 mod coordinator;
 mod projection;
 
+use uc_core::ids::DeviceId;
 use uc_core::ports::SearchIndexPort;
 use uc_core::search::{ContentType, QueryOperator, SearchError, SearchQuery, TimeRangeFilter};
 
@@ -25,6 +26,8 @@ pub struct SearchQueryInput {
     pub to_ms: Option<i64>,
     pub content_types: Option<String>,
     pub extensions: Option<String>,
+    /// Comma-separated source device ids; restricts results to those origins.
+    pub source_devices: Option<String>,
     pub limit: u32,
     pub offset: u32,
 }
@@ -232,6 +235,7 @@ fn parse_search_query(input: SearchQueryInput) -> Result<SearchQuery, SearchFaca
         time_range: parse_time_range(&input)?,
         content_types: parse_content_types(input.content_types.as_deref())?,
         extensions: parse_extensions(input.extensions.as_deref()),
+        source_devices: parse_source_devices(input.source_devices.as_deref()),
         limit: input.limit.min(200),
         offset: input.offset,
     })
@@ -348,6 +352,17 @@ fn parse_extensions(raw: Option<&str>) -> Vec<String> {
     raw.split(',')
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn parse_source_devices(raw: Option<&str>) -> Vec<DeviceId> {
+    let Some(raw) = raw else {
+        return Vec::new();
+    };
+    raw.split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(DeviceId::new)
         .collect()
 }
 

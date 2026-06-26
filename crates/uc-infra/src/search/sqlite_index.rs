@@ -10,7 +10,7 @@
 //!
 //! Phase 92 will wire this adapter into daemon routes.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -438,6 +438,25 @@ impl SqliteSearchIndex {
         Ok(rows)
     }
 
+    /// Load the set of `event_id`s whose originating `source_device` is one of
+    /// `source_devices`. Used to restrict search results by provenance.
+    fn load_event_ids_for_sources(
+        conn: &mut SqliteConnection,
+        source_devices: &[String],
+    ) -> Result<HashSet<String>, SearchError> {
+        use crate::db::schema::clipboard_event::dsl;
+
+        let rows = dsl::clipboard_event
+            .filter(dsl::source_device.eq_any(source_devices))
+            .select(dsl::event_id)
+            .load::<String>(conn)
+            .map_err(|e| {
+                SearchError::Internal(format!("load_event_ids_for_sources failed: {e}"))
+            })?;
+
+        Ok(rows.into_iter().collect())
+    }
+
     // ─── Rebuild helpers ──────────────────────────────────────────────────────
 
     /// Create the two temp tables (`tmp_search_document_rebuild_*` and
@@ -801,6 +820,11 @@ impl SearchIndexPort for SqliteSearchIndex {
             .iter()
             .map(|e| e.to_lowercase())
             .collect::<Vec<_>>();
+        let source_devices = query
+            .source_devices
+            .iter()
+            .map(|d| d.as_str().to_string())
+            .collect::<Vec<_>>();
         let limit = query.limit as usize;
         let offset = query.offset as usize;
 
@@ -857,12 +881,30 @@ impl SearchIndexPort for SqliteSearchIndex {
                 (candidate_docs, hits)
             };
 
-            // 5. Apply filters: time range, file type, extension.
+            // 5. Apply filters: source device, time range, file type, extension.
+            // Resolve the allowed event_id set up front (None = no source
+            // restriction) so source filtering runs before pagination and the
+            // authoritative total count, keeping both correct.
+            let source_event_ids: Option<HashSet<String>> = if source_devices.is_empty() {
+                None
+            } else {
+                Some(Self::load_event_ids_for_sources(
+                    &mut conn,
+                    &source_devices,
+                )?)
+            };
             let now_ms = chrono::Utc::now().timestamp_millis();
 
             let filtered: Vec<(SearchDocumentRow, u32)> = docs
                 .into_iter()
                 .filter_map(|doc| {
+                    // Source-device filter.
+                    if let Some(ref allowed) = source_event_ids {
+                        if !allowed.contains(&doc.event_id) {
+                            return None;
+                        }
+                    }
+
                     // Time range filter.
                     if let Some(ref tr) = time_range {
                         let (from_ms, to_ms) = resolve_time_range(tr, now_ms);

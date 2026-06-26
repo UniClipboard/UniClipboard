@@ -1,5 +1,5 @@
 import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter as Router, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import { daemonClient } from '@/api/daemon/client'
 import { signalLifecycleReady } from '@/api/daemon/lifecycle'
@@ -10,10 +10,10 @@ import { GlobalShortcuts } from '@/components/GlobalShortcuts'
 import StartupModals from '@/components/StartupModals'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
-import { useSearch } from '@/contexts/search-context'
 import { SearchProvider } from '@/contexts/SearchContext'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
+import { TitleBarSlotContext } from '@/contexts/titlebar-slot-context'
 import { UpdateProvider } from '@/contexts/UpdateContext'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
 import { usePlatform } from '@/hooks/usePlatform'
@@ -28,8 +28,8 @@ import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands, type DaemonBootstrapFailure } from '@/lib/ipc'
 import { reportError } from '@/observability/errors'
 import { SentryRoutes } from '@/observability/sentry'
-import DashboardPage from '@/pages/DashboardPage'
 import DevicesPage from '@/pages/DevicesPage'
+import HistoryPage from '@/pages/HistoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import SetupPage from '@/pages/SetupPage'
 import UnlockPage from '@/pages/UnlockPage'
@@ -395,14 +395,8 @@ const AppContent = ({
       <GlobalShortcuts />
       <SentryRoutes>
         <Route element={<AuthenticatedLayout />}>
-          <Route
-            path="/"
-            element={
-              <div className="w-full h-full">
-                <DashboardPage />
-              </div>
-            }
-          />
+          <Route path="/" element={<Navigate to="/history" replace />} />
+          <Route path="/history" element={<HistoryPage />} />
           <Route path="/devices" element={<DevicesPage />} />
         </Route>
         <Route element={<SettingsFullLayout />}>
@@ -436,16 +430,10 @@ export default function App() {
   )
 }
 
-// TitleBar wrapper with search context
+// TitleBar wrapper with slot context
 const TitleBarWithSearch = ({ isSetupActive }: { isSetupActive: boolean }) => {
-  const { searchValue, setSearchValue } = useSearch()
-  return (
-    <TitleBar
-      searchValue={searchValue}
-      onSearchChange={setSearchValue}
-      isSetupActive={isSetupActive}
-    />
-  )
+  const slotCtx = use(TitleBarSlotContext)
+  return <TitleBar isSetupActive={isSetupActive} rightSlot={slotCtx?.rightSlot} />
 }
 
 // App content with WindowShell structure
@@ -487,14 +475,26 @@ export const AppContentWithBar = () => {
     unlockEncryptionSession().catch(err => console.warn('Post-setup auto-unlock failed:', err))
   }
 
+  const [rightSlot, setRightSlot] = useState<React.ReactNode>(null)
+  const slotValue = useMemo(() => ({ rightSlot, setRightSlot }), [rightSlot])
+
+  // Memoize so WindowShell doesn't receive brand-new titleBar JSX every render
+  // (jsx-no-jsx-as-prop) — only rebuild when its inputs actually change.
   const titleBar = useMemo(
-    () => (showCustomTitleBar ? <TitleBarWithSearch isSetupActive={isSetupActive} /> : null),
-    [showCustomTitleBar, isSetupActive]
+    () =>
+      showCustomTitleBar ? (
+        <TitleBarSlotContext value={slotValue}>
+          <TitleBarWithSearch isSetupActive={isSetupActive} />
+        </TitleBarSlotContext>
+      ) : null,
+    [showCustomTitleBar, slotValue, isSetupActive]
   )
 
   return (
-    <WindowShell titleBar={titleBar}>
-      <AppContent isSetupActive={isSetupActive} onSetupComplete={handleSetupComplete} />
-    </WindowShell>
+    <TitleBarSlotContext value={slotValue}>
+      <WindowShell titleBar={titleBar}>
+        <AppContent isSetupActive={isSetupActive} onSetupComplete={handleSetupComplete} />
+      </WindowShell>
+    </TitleBarSlotContext>
   )
 }

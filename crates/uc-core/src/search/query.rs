@@ -1,5 +1,6 @@
 //! SearchQuery domain model — structured input for `SearchIndexPort::search()`.
 
+use crate::ids::DeviceId;
 use crate::search::document::ContentType;
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +47,9 @@ pub struct SearchQuery {
     pub content_types: Vec<ContentType>,
     /// File extension filter (e.g. `["md", "txt"]`). Empty means no restriction.
     pub extensions: Vec<String>,
+    /// Source-device filter. Restricts results to entries that originated from
+    /// one of the listed devices. Empty means no source restriction.
+    pub source_devices: Vec<DeviceId>,
     /// Maximum number of results to return.
     pub limit: u32,
     /// Offset for pagination.

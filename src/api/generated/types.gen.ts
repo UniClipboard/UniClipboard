@@ -4486,6 +4486,10 @@ export type SearchQueryData = {
          */
         extensions?: string | null;
         /**
+         * Comma-separated source device ids; restricts results to those origins.
+         */
+        sourceDevices?: string | null;
+        /**
          * Maximum results. Default 50, clamped to 200.
          */
         limit?: number;

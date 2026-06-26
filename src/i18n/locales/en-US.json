@@ -11,6 +11,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "history": "History",
     "devices": "Devices",
     "settings": "Settings",
     "updateAvailable": "Update available",
@@ -680,6 +681,62 @@
     "zh-CN": "简体中文",
     "en-US": "English"
   },
+  "history": {
+    "title": "History",
+    "subtitle_one": "{{count}} item",
+    "subtitle_other": "{{count}} items",
+    "searchPlaceholder": "Search clipboard…",
+    "loadMore": "Load more",
+    "unknownFile": "Unknown file",
+    "filter": {
+      "all": "All",
+      "text": "Text",
+      "code": "Code",
+      "link": "Links",
+      "image": "Images",
+      "file": "Files"
+    },
+    "timeRange": {
+      "label": "Time range",
+      "all_time": "All time",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last_7d": "Last 7 days",
+      "last_30d": "Last 30 days",
+      "this_week": "This week",
+      "this_month": "This month"
+    },
+    "source": {
+      "label": "Source",
+      "all": "All sources"
+    },
+    "type": {
+      "text": "Text",
+      "code": "Code",
+      "link": "Link",
+      "image": "Image",
+      "file": "File",
+      "unknown": "Unknown"
+    },
+    "detail": {
+      "capturedAt": "Captured",
+      "size": "Size",
+      "fileCount": "Files",
+      "urlCount": "URLs",
+      "fileMissing": "(missing)"
+    },
+    "composite": {
+      "title": "Search and filter",
+      "dimension": {
+        "type": "Type",
+        "source": "Source",
+        "time": "Time"
+      },
+      "noMatches": "No matches",
+      "removeFilter": "Remove filter: {{filter}}",
+      "clearAll": "Clear all"
+    }
+  },
   "dashboard": {
     "logs": {
       "loadingClipboard": "Loading clipboard records and statistics...",
@@ -730,6 +787,7 @@
   "clipboard": {
     "search": {
       "noResults": "No results for \"{{query}}\"",
+      "noResultsFiltered": "No items match the current filters",
       "noResultsSub": "Try a full word or a different keyword",
       "empty": "Your clipboard history is empty",
       "emptySub": "Copy something to get started",
@@ -770,6 +828,7 @@
       "loading": "Loading...",
       "actions": {
         "copy": "Copy",
+        "copied": "Copied",
         "favorite": "Favorite",
         "unfavorite": "Unfavorite",
         "delete": "Delete",

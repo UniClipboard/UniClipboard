@@ -11,6 +11,7 @@
   },
   "nav": {
     "dashboard": "仪表板",
+    "history": "历史记录",
     "devices": "设备管理",
     "settings": "设置",
     "updateAvailable": "有新版本",
@@ -671,6 +672,61 @@
     "zh-CN": "简体中文",
     "en-US": "English"
   },
+  "history": {
+    "title": "历史记录",
+    "subtitle_other": "{{count}} 项",
+    "searchPlaceholder": "搜索剪贴板…",
+    "loadMore": "加载更多",
+    "unknownFile": "未知文件",
+    "filter": {
+      "all": "全部",
+      "text": "文本",
+      "code": "代码",
+      "link": "链接",
+      "image": "图片",
+      "file": "文件"
+    },
+    "timeRange": {
+      "label": "时间范围",
+      "all_time": "不限时间",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last_7d": "最近 7 天",
+      "last_30d": "最近 30 天",
+      "this_week": "本周",
+      "this_month": "本月"
+    },
+    "source": {
+      "label": "来源",
+      "all": "全部来源"
+    },
+    "type": {
+      "text": "文本",
+      "code": "代码",
+      "link": "链接",
+      "image": "图片",
+      "file": "文件",
+      "unknown": "未知"
+    },
+    "detail": {
+      "capturedAt": "捕获时间",
+      "size": "大小",
+      "fileCount": "文件数",
+      "urlCount": "链接数",
+      "fileMissing": "（已丢失）"
+    },
+    "composite": {
+      "title": "搜索与筛选",
+      "dimension": {
+        "type": "类型",
+        "source": "来源",
+        "time": "时间"
+      },
+      "noMatches": "无匹配项",
+      "removeFilter": "移除筛选：{{filter}}",
+      "clearAll": "清除全部"
+    }
+  },
   "dashboard": {
     "logs": {
       "loadingClipboard": "开始加载剪贴板记录和统计数据...",
@@ -721,6 +777,7 @@
   "clipboard": {
     "search": {
       "noResults": "未找到 \"{{query}}\" 的结果",
+      "noResultsFiltered": "没有符合筛选条件的记录",
       "noResultsSub": "尝试搜索完整单词或其他关键词",
       "empty": "剪贴板历史为空",
       "emptySub": "复制一些内容来开始使用吧",
@@ -761,6 +818,7 @@
       "loading": "加载中...",
       "actions": {
         "copy": "复制",
+        "copied": "已复制",
         "favorite": "收藏",
         "unfavorite": "取消收藏",
         "delete": "删除",

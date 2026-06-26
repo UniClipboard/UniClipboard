@@ -1363,6 +1363,7 @@ mod tests {
                 },
             )
             .await
+            .outcome
             .expect_err("no peer_addr → Offline");
         assert!(
             matches!(offline_err, uc_core::ports::ClipboardDispatchError::Offline),

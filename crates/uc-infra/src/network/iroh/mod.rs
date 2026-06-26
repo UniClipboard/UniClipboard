@@ -10,6 +10,7 @@ pub mod blobs;
 pub mod clipboard_dispatch_adapter;
 pub mod clipboard_receiver_adapter;
 pub mod clipboard_wire;
+mod conn_path;
 mod connect;
 pub mod connection_channel_adapter;
 pub mod identity_store;

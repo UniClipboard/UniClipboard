@@ -57,6 +57,8 @@ pub struct SearchQueryParams {
     pub content_types: Option<String>,
     /// Comma-separated file extensions (e.g. "md,txt").
     pub extensions: Option<String>,
+    /// Comma-separated source device ids; restricts results to those origins.
+    pub source_devices: Option<String>,
     /// Maximum results. Default 50, clamped to 200.
     #[serde(default = "default_limit")]
     pub limit: u32,
@@ -82,6 +84,7 @@ fn search_input_from_params(params: SearchQueryParams) -> SearchQueryInput {
         to_ms: params.to_ms,
         content_types: params.content_types,
         extensions: params.extensions,
+        source_devices: params.source_devices,
         limit: params.limit,
         offset: params.offset,
     }

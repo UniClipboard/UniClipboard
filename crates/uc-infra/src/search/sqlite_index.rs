@@ -1653,4 +1653,76 @@ mod tests {
         assert_eq!(source_device.as_deref(), Some("dev-1"));
         assert_eq!(payload_state.as_deref(), Some("Lost"));
     }
+
+    /// End-to-end upgrade from a pre-v5 on-disk database (not a fresh one): an
+    /// old row written before the render columns existed must survive the
+    /// `ALTER TABLE ADD COLUMN` migration and then get its render columns
+    /// backfilled by the version-mismatch rebuild. Reverting and re-applying the
+    /// real migration also exercises its down/up reversibility.
+    #[tokio::test]
+    async fn upgrade_from_pre_render_schema_backfills_render_columns() {
+        use crate::db::pool::MIGRATIONS;
+        use diesel_migrations::MigrationHarness;
+
+        let (index, pool, _dir) = make_index();
+
+        // 1. Roll back the render-columns migration so `search_document` looks
+        //    like the v4-era schema (original 11 columns, no render columns).
+        {
+            let mut conn = pool.get().unwrap();
+            conn.revert_last_migration(MIGRATIONS)
+                .expect("down.sql drops the render columns");
+        }
+
+        // 2. Seed a row the pre-v5 code path would have written: only the
+        //    original columns are set, and the index is at the old version.
+        {
+            let mut conn = pool.get().unwrap();
+            diesel::sql_query(
+                "INSERT INTO search_document
+                 (profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
+                  file_type, file_extensions, mime_type, indexed_at_ms, index_version, text_preview)
+                 VALUES (?, 'old1', 'ev-old1', 1, 1, 'text', '[]', 'text/plain', 1, 'search-v4', 'old')",
+            )
+            .bind::<diesel::sql_types::Text, _>(TEST_PROFILE)
+            .execute(&mut conn)
+            .unwrap();
+            diesel::sql_query(
+                "UPDATE search_index_meta SET index_version = 'search-v4' WHERE profile_id = ?",
+            )
+            .bind::<diesel::sql_types::Text, _>(TEST_PROFILE)
+            .execute(&mut conn)
+            .unwrap();
+        }
+
+        // 3. Upgrade: re-apply the migration. ADD COLUMN runs against a populated
+        //    table — the old row must survive and pick up column defaults.
+        {
+            let mut conn = pool.get().unwrap();
+            conn.run_pending_migrations(MIGRATIONS)
+                .expect("up.sql re-adds the render columns");
+        }
+        assert_eq!(
+            render_cols(&pool, "old1"),
+            ("[]".to_string(), "[]".to_string(), None, None),
+            "old row survives ADD COLUMN with defaults"
+        );
+
+        // 4. The version-mismatch rebuild reprojects from the main store with the
+        //    v5 code, backfilling render columns onto what were old rows.
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        index
+            .rebuild(vec![(doc_with_render("old1"), vec![])], tx)
+            .await
+            .unwrap();
+
+        let (file_names, link_urls, source_device, payload_state) = render_cols(&pool, "old1");
+        assert_eq!(file_names, r#"["a.txt"]"#);
+        assert_eq!(link_urls, r#"["https://example.com"]"#);
+        assert_eq!(source_device.as_deref(), Some("dev-1"));
+        assert_eq!(payload_state.as_deref(), Some("Lost"));
+
+        let meta = index.get_index_meta().await.unwrap();
+        assert_eq!(meta.index_version, CURRENT_INDEX_VERSION);
+    }
 }

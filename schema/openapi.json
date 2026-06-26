@@ -3193,6 +3193,10 @@
             },
             "type": "array"
           },
+          "state": {
+            "description": "`\"ready\"` when served from the index, or `\"degraded\"` when the index was\nnot ready and this filter-less browse was served from the main store\n(§4.7). Filtered/keyword queries never return `\"degraded\"` — they surface\nan `index_rebuilding` error instead.",
+            "type": "string"
+          },
           "total": {
             "format": "int32",
             "minimum": 0,
@@ -3202,7 +3206,8 @@
         "required": [
           "items",
           "total",
-          "hasMore"
+          "hasMore",
+          "state"
         ],
         "type": "object"
       },
@@ -7490,7 +7495,7 @@
     },
     "/search/query": {
       "get": {
-        "description": "Execute a structured search query against the local encrypted search index.\nThe session-lock decision is query-type-aware (§4.6): filter-only browse is\nserved while locked; a keyword search returns HTTP 423 when the session is\nlocked (the engine cannot derive the search key).\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).",
+        "description": "Execute a structured search query against the local encrypted search index.\nThe session-lock decision is query-type-aware (§4.6): filter-only browse is\nserved while locked; a keyword search returns HTTP 423 when the session is\nlocked (the engine cannot derive the search key).\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore, state }, ts }`).\n\nIndex-not-ready handling is query-type-aware (§4.7): a filter-less browse\ndegrades to a direct main-store read and returns HTTP 200 with\n`state: \"degraded\"`; a keyword or filtered query instead returns HTTP 503\n`index_rebuilding`.",
         "operationId": "searchQuery",
         "parameters": [
           {
@@ -7616,7 +7621,7 @@
                 }
               }
             },
-            "description": "Search results page"
+            "description": "Search results page (state ready or degraded)"
           },
           "400": {
             "content": {
@@ -7656,7 +7661,7 @@
                 }
               }
             },
-            "description": "Search index not ready or unavailable"
+            "description": "Search index not ready, rebuilding, or unavailable"
           }
         },
         "security": [

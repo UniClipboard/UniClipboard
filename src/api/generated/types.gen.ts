@@ -1998,6 +1998,13 @@ export type SearchQueryEnvelope = {
 export type SearchQueryResultDto = {
     hasMore: boolean;
     items: Array<SearchResultDto>;
+    /**
+     * `"ready"` when served from the index, or `"degraded"` when the index was
+     * not ready and this filter-less browse was served from the main store
+     * (§4.7). Filtered/keyword queries never return `"degraded"` — they surface
+     * an `index_rebuilding` error instead.
+     */
+    state: string;
     total: number;
 };
 
@@ -4575,7 +4582,7 @@ export type SearchQueryErrors = {
      */
     500: ApiErrorResponse;
     /**
-     * Search index not ready or unavailable
+     * Search index not ready, rebuilding, or unavailable
      */
     503: ApiErrorResponse;
 };
@@ -4584,7 +4591,7 @@ export type SearchQueryError = SearchQueryErrors[keyof SearchQueryErrors];
 
 export type SearchQueryResponses = {
     /**
-     * Search results page
+     * Search results page (state ready or degraded)
      */
     200: SearchQueryEnvelope;
 };

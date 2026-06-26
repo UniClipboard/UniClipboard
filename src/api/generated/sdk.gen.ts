@@ -897,7 +897,12 @@ export const refreshPresence = <ThrowOnError extends boolean = false>(options?: 
  * ADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of
  * the envelope — they are folded INTO the `data` payload alongside the renamed
  * `items` array (`SearchQueryResultDto`). The response is the canonical
- * `ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).
+ * `ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore, state }, ts }`).
+ *
+ * Index-not-ready handling is query-type-aware (§4.7): a filter-less browse
+ * degrades to a direct main-store read and returns HTTP 200 with
+ * `state: "degraded"`; a keyword or filtered query instead returns HTTP 503
+ * `index_rebuilding`.
  */
 export const searchQuery = <ThrowOnError extends boolean = false>(options: Options<SearchQueryData, ThrowOnError>) => (options.client ?? client).get<SearchQueryResponses, SearchQueryErrors, ThrowOnError>({
     security: [{

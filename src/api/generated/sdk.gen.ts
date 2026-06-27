@@ -131,8 +131,15 @@ export const dispatchClipboardText = <ThrowOnError extends boolean = false>(opti
 /**
  * GET /clipboard/entries?limit=50&offset=0
  *
+ * **Deprecated.** Browsing has moved to the unified search endpoint
+ * (`GET /search/query` with an empty query). This list endpoint is kept only
+ * for the CLI compatibility window and is removed in a later phase. New callers
+ * MUST use search.
+ *
  * Lists clipboard entries with pagination. Returns camelCase entry projections.
  * Populates `linkDomains` from `linkUrls`. Limit is clamped to 1000.
+ *
+ * @deprecated
  */
 export const listClipboardEntries = <ThrowOnError extends boolean = false>(options?: Options<ListClipboardEntriesData, ThrowOnError>) => (options?.client ?? client).get<ListClipboardEntriesResponses, ListClipboardEntriesErrors, ThrowOnError>({
     security: [{

@@ -4540,7 +4540,9 @@ export type SearchQueryData = {
          */
         toMs?: number | null;
         /**
-         * Comma-separated file types (text, html, link, file, image, other).
+         * Comma-separated file types (text, html, file, image, other). `image`
+         * here is the physical type of a pure bitmap; copied image *files* are
+         * `file` and matched via the `image` tag instead (see `tags`).
          */
         contentTypes?: string | null;
         /**
@@ -4552,8 +4554,9 @@ export type SearchQueryData = {
          */
         sourceDevices?: string | null;
         /**
-         * Comma-separated tag ids (e.g. "link,favorited"); restricts results to
-         * entries carrying any of them. Custom tag ids require an unlocked session.
+         * Comma-separated tag ids (e.g. "link,favorited,image"); restricts results
+         * to entries carrying any of them. Custom tag ids require an unlocked
+         * session.
          */
         tags?: string | null;
         /**

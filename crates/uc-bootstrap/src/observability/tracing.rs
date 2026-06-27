@@ -75,14 +75,15 @@ static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 /// Recovery: drop an entry once upstream cuts its own log volume, or once we
 /// gain per-target quota controls on the Sentry side.
 const SENTRY_MUTED_TARGET_PREFIXES: &[&str] = &[
-    "iroh",            // transport + net_report (QAD spam) + magicsock / relay actor
-    "noq_",            // forked quinn sub-crates: noq_proto / noq_udp
-    "netwatch",        // host route/interface monitor (macOS AF_ROUTE rib parse spam)
-    "hickory",         // DNS resolver behind pkarr + relay URL resolution
-    "pkarr",           // public-key DNS publish / resolve
-    "portmapper",      // UPnP / IGD / PCP port mapping
-    "swarm_discovery", // mDNS LAN discovery backend
-    "igd_next",        // UPnP / IGD discovery loop
+    "iroh",                     // transport + net_report (QAD spam) + magicsock / relay actor
+    "noq_",                     // forked quinn sub-crates: noq_proto / noq_udp
+    "netwatch",                 // host route/interface monitor (macOS AF_ROUTE rib parse spam)
+    "hickory",                  // DNS resolver behind pkarr + relay URL resolution
+    "pkarr",                    // public-key DNS publish / resolve
+    "portmapper",               // UPnP / IGD / PCP port mapping
+    "swarm_discovery",          // mDNS LAN discovery backend
+    "igd_next",                 // UPnP / IGD discovery loop
+    "uniclipboard.deprecation", // deprecated-endpoint usage signal: local log only, not a Sentry alert
 ];
 
 /// Returns `true` when a tracing `target` is allowed to reach Sentry.

@@ -5007,7 +5007,8 @@
     },
     "/clipboard/entries": {
       "get": {
-        "description": "Lists clipboard entries with pagination. Returns camelCase entry projections.\nPopulates `linkDomains` from `linkUrls`. Limit is clamped to 1000.",
+        "deprecated": true,
+        "description": "**Deprecated.** Browsing has moved to the unified search endpoint\n(`GET /search/query` with an empty query). This list endpoint is kept only\nfor the CLI compatibility window and is removed in a later phase. New callers\nMUST use search.\n\nLists clipboard entries with pagination. Returns camelCase entry projections.\nPopulates `linkDomains` from `linkUrls`. Limit is clamped to 1000.",
         "operationId": "listClipboardEntries",
         "parameters": [
           {
@@ -7550,7 +7551,7 @@
             }
           },
           {
-            "description": "Comma-separated file types (text, html, link, file, image, other).",
+            "description": "Comma-separated file types (text, html, file, image, other). `image`\nhere is the physical type of a pure bitmap; copied image *files* are\n`file` and matched via the `image` tag instead (see `tags`).",
             "in": "query",
             "name": "contentTypes",
             "required": false,
@@ -7580,7 +7581,7 @@
             }
           },
           {
-            "description": "Comma-separated tag ids (e.g. \"link,favorited\"); restricts results to\nentries carrying any of them. Custom tag ids require an unlocked session.",
+            "description": "Comma-separated tag ids (e.g. \"link,favorited,image\"); restricts results\nto entries carrying any of them. Custom tag ids require an unlocked\nsession.",
             "in": "query",
             "name": "tags",
             "required": false,

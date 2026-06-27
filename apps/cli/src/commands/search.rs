@@ -72,11 +72,24 @@ pub async fn run(
 
     match subcommand {
         None => {
-            let Some(query_string) = query.query else {
-                ui::error(
-                    "Missing search query. Run `uniclip search <query>`, or `search status` / `search rebuild`.",
-                );
-                return exit_codes::EXIT_ERROR;
+            // An empty query browses; a filter alone (e.g. `--tag favorited`) is
+            // enough to narrow it. Only a bare `search` with no query and no
+            // filter is rejected, so the user is still guided to a query or the
+            // status/rebuild subcommands.
+            let has_filter = !query.tags.is_empty()
+                || !query.content_types.is_empty()
+                || !query.extensions.is_empty()
+                || query.from_ms.is_some()
+                || query.to_ms.is_some();
+            let query_string = match query.query {
+                Some(q) => q,
+                None if has_filter => String::new(),
+                None => {
+                    ui::error(
+                        "Missing search query. Run `uniclip search <query>`, narrow with `--tag`/`--type`/`--ext`, or `search status` / `search rebuild`.",
+                    );
+                    return exit_codes::EXIT_ERROR;
+                }
             };
 
             if query.from_ms.is_some() != query.to_ms.is_some() {

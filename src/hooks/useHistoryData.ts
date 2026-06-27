@@ -159,6 +159,10 @@ export function useHistoryData() {
   // Merge incoming-transfer placeholders (Redux overlay, still owned by the
   // event reducer) ahead of the real entries from the engine.
   const baseItems = useMemo<DisplayClipboardItem[]>(() => {
+    // Pending placeholders only belong in the unfiltered browse view; a narrowed
+    // query/filter set must show exactly what the engine returned, or unrelated
+    // inbound file placeholders leak into results the backend would exclude.
+    if (isSearchActive) return live.items
     const realIds = new Set(live.items.map(it => it.id))
     const pendingDisplayItems: DisplayClipboardItem[] = pendingItems.flatMap(p =>
       realIds.has(p.entryId)
@@ -175,7 +179,7 @@ export function useHistoryData() {
           ]
     )
     return [...pendingDisplayItems, ...live.items]
-  }, [live.items, pendingItems, deviceNameByPeerId, t])
+  }, [isSearchActive, live.items, pendingItems, deviceNameByPeerId, t])
 
   const actions = useMemo(
     () => ({

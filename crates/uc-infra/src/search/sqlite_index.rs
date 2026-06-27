@@ -724,7 +724,17 @@ impl SqliteSearchIndex {
                 if !filters.extensions.is_empty() {
                     let doc_exts: Vec<String> =
                         serde_json::from_str::<Vec<String>>(&doc.file_extensions)
-                            .unwrap_or_default()
+                            .unwrap_or_else(|e| {
+                                // A malformed stored row must not silently match
+                                // nothing without a trace; the index data needs
+                                // repair (a rebuild reserializes it).
+                                tracing::warn!(
+                                    entry_id = %doc.entry_id,
+                                    error = %e,
+                                    "search row has unparseable file_extensions; treating as empty"
+                                );
+                                Vec::new()
+                            })
                             .into_iter()
                             .map(|e| e.to_lowercase())
                             .collect();
@@ -773,13 +783,20 @@ impl SqliteSearchIndex {
 
         let items = page_rows
             .into_iter()
-            .filter_map(|doc| {
+            .map(|doc| {
                 let tags = tags_by_entry
                     .get(&doc.entry_id)
                     .cloned()
                     .unwrap_or_default();
-                let domain = doc.to_domain().ok()?;
-                Some(SearchResult {
+                // Propagate decode failures: silently dropping a row would make
+                // `items` shorter than the already-counted `total`/`has_more`.
+                let domain = doc.to_domain().map_err(|e| {
+                    SearchError::Internal(format!(
+                        "failed to decode search row {}: {e}",
+                        doc.entry_id
+                    ))
+                })?;
+                Ok(SearchResult {
                     entry_id: domain.entry_id,
                     content_type: domain.content_type,
                     active_time_ms: domain.active_time_ms,
@@ -793,7 +810,7 @@ impl SqliteSearchIndex {
                     payload_state: domain.payload_state,
                 })
             })
-            .collect();
+            .collect::<Result<Vec<SearchResult>, SearchError>>()?;
         Ok(items)
     }
 

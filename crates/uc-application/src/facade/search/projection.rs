@@ -173,15 +173,20 @@ impl SearchableContent {
                     self.plain_text = Some(text.to_string());
                 }
             }
-        } else if mime == "text/html" {
+        } else if mime == "text/html" || mime.starts_with("text/html;") {
             // Presence drives classification even if the payload is lost.
+            // Match parameterized variants too (e.g. `text/html; charset=utf-8`).
             self.has_html = true;
             if let Ok(text) = std::str::from_utf8(inline_bytes.unwrap_or(&[])) {
                 if !text.is_empty() {
                     self.html_text = Some(text.to_string());
                 }
             }
-        } else if mime == "text/uri-list" || mime == "file/uri-list" {
+        } else if mime == "text/uri-list"
+            || mime.starts_with("text/uri-list;")
+            || mime == "file/uri-list"
+            || mime.starts_with("file/uri-list;")
+        {
             if let Ok(text) = std::str::from_utf8(inline_bytes.unwrap_or(&[])) {
                 for line in text.lines() {
                     let line = line.trim();

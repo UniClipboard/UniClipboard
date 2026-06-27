@@ -4,6 +4,7 @@ import { useClipboardEventStream } from '@/hooks/useClipboardEventStream'
 import { useEncryptionSessionState } from '@/hooks/useEncryptionSessionState'
 import type { ClipboardEntry, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { searchResultToDisplayItem } from '@/lib/clipboard-transform'
+import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import {
   canPatchLive,
@@ -11,7 +12,9 @@ import {
   patchLiveItem,
   prependLiveItem,
   removeLiveItem,
+  shouldRefetchOnSearchStatus,
   type LiveSearchQueryModel,
+  type SearchStatusEventPayload,
 } from './liveSearchModel'
 
 const log = createLogger('use-live-search')
@@ -190,6 +193,30 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     onRemoteInvalidate,
     onDeleted,
   })
+
+  // The degraded banner is driven by the last query's `state`. While the index
+  // rebuilds, a filter-less browse is served degraded (§4.7) and new local
+  // entries are slotted in client-side without a refetch — so nothing re-queries
+  // when the rebuild finishes, and the banner would otherwise persist forever.
+  // Track the latest `state` in a ref so the WS handler can read it without
+  // re-subscribing on every query.
+  const stateRef = useRef(state)
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
+
+  // Subscribe to the search-index status stream and, once the index reports
+  // `ready` again while we are showing the degraded view, refetch the current
+  // window so it upgrades to the index-backed result (clearing the banner and
+  // restoring filter/keyword search).
+  useEffect(() => {
+    if (!enabled) return
+    return daemonWs.subscribe<SearchStatusEventPayload>(['search'], event => {
+      if (shouldRefetchOnSearchStatus(event.payload, stateRef.current)) {
+        setRefetchNonce(n => n + 1)
+      }
+    })
+  }, [enabled])
 
   const growWindow = useCallback(() => setLimit(value => value + pageSize), [pageSize])
   const removeItem = useCallback((id: string) => setItems(prev => removeLiveItem(prev, id)), [])

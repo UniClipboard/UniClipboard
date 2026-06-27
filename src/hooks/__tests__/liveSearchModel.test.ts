@@ -8,6 +8,7 @@ import {
   patchLiveItem,
   prependLiveItem,
   removeLiveItem,
+  shouldRefetchOnSearchStatus,
   type LiveSearchQueryModel,
 } from '../liveSearchModel'
 
@@ -162,5 +163,29 @@ describe('patchLiveItem', () => {
   it('returns the same reference when the id is absent', () => {
     const items = [makeItem({ id: 'a', type: 'text' })]
     expect(patchLiveItem(items, 'missing', { isFavorited: true })).toBe(items)
+  })
+})
+
+describe('shouldRefetchOnSearchStatus', () => {
+  it('refetches when the index becomes ready while showing the degraded view', () => {
+    // The exact regression: a rebuild finishes (index → ready) while the browse
+    // is degraded; without this refetch the banner would persist forever.
+    expect(shouldRefetchOnSearchStatus({ state: 'ready' }, 'degraded')).toBe(true)
+  })
+
+  it('reads the legacy `status` key too (older daemon builds)', () => {
+    expect(shouldRefetchOnSearchStatus({ status: 'ready' }, 'degraded')).toBe(true)
+  })
+
+  it('does not refetch when the current view is already ready', () => {
+    // The index becoming ready while we are not degraded has nothing to clear.
+    expect(shouldRefetchOnSearchStatus({ state: 'ready' }, 'ready')).toBe(false)
+  })
+
+  it('does not refetch on non-ready status updates', () => {
+    expect(shouldRefetchOnSearchStatus({ state: 'rebuilding' }, 'degraded')).toBe(false)
+    expect(shouldRefetchOnSearchStatus({ state: 'unavailable' }, 'degraded')).toBe(false)
+    expect(shouldRefetchOnSearchStatus(undefined, 'degraded')).toBe(false)
+    expect(shouldRefetchOnSearchStatus({}, 'degraded')).toBe(false)
   })
 })

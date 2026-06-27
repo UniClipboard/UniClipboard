@@ -31,7 +31,11 @@ pub const STATUS_UNAVAILABLE: &str = "unavailable";
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchStatusSnapshot {
-    pub status: String,
+    /// Index availability: "ready" / "rebuilding" / "unavailable". Named `state`
+    /// (not `status`) to match `SearchStatusData.state`, so the WS `search` topic
+    /// carries the index status under one key for both the on-subscribe snapshot
+    /// and incremental coordinator updates (a single wire shape, not two).
+    pub state: String,
     pub reason: Option<String>,
 }
 
@@ -131,7 +135,7 @@ impl SearchCoordinator {
     pub async fn status_snapshot(&self) -> SearchStatusSnapshot {
         let state = self.state.lock().await;
         SearchStatusSnapshot {
-            status: state.status.clone(),
+            state: state.status.clone(),
             reason: state.reason.clone(),
         }
     }
@@ -140,7 +144,7 @@ impl SearchCoordinator {
         let snapshot = self.status_snapshot().await;
         let meta = self.deps.search_index.get_index_meta().await?;
         Ok(SearchStatusView {
-            state: snapshot.status,
+            state: snapshot.state,
             reason: snapshot.reason,
             last_rebuild_started_at_ms: meta.last_rebuild_started_at_ms,
             last_rebuild_completed_at_ms: meta.last_rebuild_completed_at_ms,
@@ -425,7 +429,7 @@ fn emit_status_snapshot(
     reason: Option<&str>,
 ) {
     let snapshot = SearchStatusSnapshot {
-        status: status.to_string(),
+        state: status.to_string(),
         reason: reason.map(|r| r.to_string()),
     };
     let _ = event_tx.send(SearchCoordinatorEvent::Status(snapshot));

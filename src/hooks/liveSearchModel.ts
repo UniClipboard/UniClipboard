@@ -100,6 +100,35 @@ export function canPatchLive(model: LiveSearchQueryModel): boolean {
   )
 }
 
+/**
+ * Payload of a `search` topic status event (`search.status_snapshot`). The
+ * daemon reports the index availability under `state` (`'ready'` /
+ * `'rebuilding'` / `'unavailable'`); older daemon builds emitted incremental
+ * updates under `status`, so both keys are read for version tolerance.
+ */
+export interface SearchStatusEventPayload {
+  state?: string
+  status?: string
+  reason?: string | null
+}
+
+/**
+ * Whether a search-index status event should trigger a refetch of the current
+ * window. The degraded browse banner is driven by the last query's `state`; a
+ * filter-less browse served while the index rebuilds keeps patching in new
+ * entries client-side and never re-queries, so the banner persists until the
+ * index becomes ready *and* we re-issue the query. Returns true exactly when the
+ * index just reported `ready` while the current view is still `degraded` — the
+ * refetch then upgrades it to the index-backed result and clears the banner.
+ */
+export function shouldRefetchOnSearchStatus(
+  payload: SearchStatusEventPayload | undefined,
+  currentState: 'ready' | 'degraded'
+): boolean {
+  const indexStatus = payload?.state ?? payload?.status
+  return indexStatus === 'ready' && currentState === 'degraded'
+}
+
 function splitCsv(value: string | undefined): string[] {
   if (!value) return []
   return value

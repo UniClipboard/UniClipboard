@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Clock, Laptop } from 'lucide-react'
+import { Check, ChevronDown, Clock, Laptop, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
@@ -73,10 +73,29 @@ function FilterBar({
             key={opt.id}
             type="button"
             onClick={() => toggleType(opt.value)}
-            className={cn(PILL_BASE, opt.isActive ? PILL_ACTIVE : PILL_IDLE)}
+            aria-label={
+              opt.isActive ? t('history.composite.removeFilter', { filter: opt.label }) : undefined
+            }
+            className={cn(
+              PILL_BASE,
+              opt.isActive ? PILL_ACTIVE : PILL_IDLE,
+              opt.isActive && 'group relative'
+            )}
           >
-            <Icon className="size-3" />
-            {opt.label}
+            <span
+              className={cn(
+                'flex items-center gap-1 transition-opacity',
+                opt.isActive && 'group-hover:opacity-0'
+              )}
+            >
+              <Icon className="size-3" />
+              {opt.label}
+            </span>
+            {opt.isActive && (
+              <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                <X className="size-3.5" />
+              </span>
+            )}
           </button>
         )
       })}

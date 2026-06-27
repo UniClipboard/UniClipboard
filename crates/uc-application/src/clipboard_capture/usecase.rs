@@ -681,8 +681,14 @@ async fn derive_file_content_digests(
         let paths = extract_file_paths_from_snapshot(snapshot);
         extracted_paths = paths.len();
         for path in paths {
-            match blob_ingest.ingest_path(&path).await {
-                Ok(ingested) => digests.push(ingested.content_hash.bytes),
+            // Identity only: hash the file's content (device-independent) without
+            // materializing/encrypting a blob into local storage. The actual
+            // file bytes for transfer are published lazily by the (spawned,
+            // non-blocking) dispatch path, so a synchronous ingest here would
+            // both stall the capture loop on large files and produce an
+            // orphaned blob this entry never references.
+            match blob_ingest.hash_path(&path).await {
+                Ok(content_hash) => digests.push(content_hash.bytes),
                 Err(err) => warn!(
                     error = %err,
                     file = %path.display(),
@@ -797,12 +803,8 @@ mod tests {
     /// paths without touching the filesystem.
     struct FakeIngestByName;
 
-    #[async_trait::async_trait]
-    impl BlobContentIngestPort for FakeIngestByName {
-        async fn ingest_path(
-            &self,
-            source_path: &std::path::Path,
-        ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+    impl FakeIngestByName {
+        fn name_hash(source_path: &std::path::Path) -> uc_core::ContentHash {
             let name = source_path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -811,11 +813,28 @@ mod tests {
             let nb = name.as_bytes();
             let n = nb.len().min(32);
             bytes[..n].copy_from_slice(&nb[..n]);
+            uc_core::ContentHash::from(&bytes)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl BlobContentIngestPort for FakeIngestByName {
+        async fn ingest_path(
+            &self,
+            source_path: &std::path::Path,
+        ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
             Ok(uc_core::blob::ports::IngestedBlob {
                 blob_id: uc_core::ids::BlobId::new(),
-                content_hash: uc_core::ContentHash::from(&bytes),
+                content_hash: Self::name_hash(source_path),
                 size_bytes: 0,
             })
+        }
+
+        async fn hash_path(
+            &self,
+            source_path: &std::path::Path,
+        ) -> anyhow::Result<uc_core::ContentHash> {
+            Ok(Self::name_hash(source_path))
         }
     }
 
@@ -885,6 +904,10 @@ mod tests {
                 &self,
                 _: &std::path::Path,
             ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+                Err(anyhow::anyhow!("unreadable"))
+            }
+
+            async fn hash_path(&self, _: &std::path::Path) -> anyhow::Result<uc_core::ContentHash> {
                 Err(anyhow::anyhow!("unreadable"))
             }
         }

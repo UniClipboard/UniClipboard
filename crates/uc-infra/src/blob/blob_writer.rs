@@ -189,6 +189,30 @@ where
     async fn ingest_path(&self, source_path: &Path) -> Result<IngestedBlob> {
         self.ingest_path_inner(source_path).await
     }
+
+    async fn hash_path(&self, source_path: &Path) -> Result<ContentHash> {
+        let span = debug_span!(
+            "infra.blob.hash_path",
+            source_path = %source_path.display(),
+        );
+        let source = source_path.to_path_buf();
+        async move {
+            // Stream the file to compute its ContentHash without loading it into
+            // memory or writing any blob — identity only, no materialization.
+            let (content_id, file_size) =
+                tokio::task::spawn_blocking(move || stream_hash_file(&source))
+                    .await
+                    .context("hash join failed")??;
+            debug!(
+                content_hash = %content_id,
+                file_size,
+                "Computed content hash for path (identity only, no materialization)"
+            );
+            Ok(content_id)
+        }
+        .instrument(span)
+        .await
+    }
 }
 
 /// 对 `path` 流式做 blake3 哈希,返回 (ContentHash, file_size_bytes)。

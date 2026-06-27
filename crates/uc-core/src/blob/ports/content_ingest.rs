@@ -44,4 +44,14 @@ pub trait BlobContentIngestPort: Send + Sync {
     ///   and an equivalent `blob_id`; data is written only once per content
     ///   hash, even across distinct source paths.
     async fn ingest_path(&self, source_path: &Path) -> anyhow::Result<IngestedBlob>;
+
+    /// Compute the device-independent content hash of the file at `source_path`
+    /// without writing it to storage.
+    ///
+    /// Streams the file to derive its blake3 `ContentHash` with bounded memory,
+    /// so the call is suitable for arbitrarily large files; no blob is
+    /// materialized and the source file is left untouched. For identical bytes
+    /// this returns the same `content_hash` value that [`Self::ingest_path`]
+    /// surfaces, without paying the storage write.
+    async fn hash_path(&self, source_path: &Path) -> anyhow::Result<ContentHash>;
 }

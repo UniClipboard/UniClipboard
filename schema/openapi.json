@@ -3360,7 +3360,7 @@
         "type": "object"
       },
       "SearchTagDto": {
-        "description": "A tag and its entry count for `GET /search/tags`. `is_builtin` marks the\nreserved builtin tags (`link`/`favorited`); custom tags are present only in\nunlocked sessions (§4.6).",
+        "description": "A tag and its entry count for `GET /search/tags`. `is_builtin` marks the\nreserved builtin tags (`link`/`favorited`/`image`); custom tags are present\nonly in unlocked sessions (§4.6).",
         "properties": {
           "count": {
             "format": "int32",
@@ -7811,7 +7811,7 @@
     },
     "/search/tags": {
       "get": {
-        "description": "List the tags present in the index with their entry counts. Builtin tags\n(link/favorited) are always listed (filter-only over the membership table,\nso no search key is needed); custom tags are listed only when the session is\nunlocked (§4.6).",
+        "description": "List the tags present in the index with their entry counts. Builtin tags\n(link/favorited/image) are always listed (filter-only over the membership\ntable, so no search key is needed); custom tags are listed only when the\nsession is unlocked (§4.6).",
         "operationId": "getSearchTags",
         "responses": {
           "200": {

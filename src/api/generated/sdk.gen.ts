@@ -964,9 +964,9 @@ export const getSearchStatus = <ThrowOnError extends boolean = false>(options?: 
  * GET /search/tags
  *
  * List the tags present in the index with their entry counts. Builtin tags
- * (link/favorited) are always listed (filter-only over the membership table,
- * so no search key is needed); custom tags are listed only when the session is
- * unlocked (§4.6).
+ * (link/favorited/image) are always listed (filter-only over the membership
+ * table, so no search key is needed); custom tags are listed only when the
+ * session is unlocked (§4.6).
  */
 export const getSearchTags = <ThrowOnError extends boolean = false>(options?: Options<GetSearchTagsData, ThrowOnError>) => (options?.client ?? client).get<GetSearchTagsResponses, GetSearchTagsErrors, ThrowOnError>({
     security: [{

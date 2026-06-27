@@ -50,8 +50,8 @@ pub struct SearchQueryResultDto {
 }
 
 /// A tag and its entry count for `GET /search/tags`. `is_builtin` marks the
-/// reserved builtin tags (`link`/`favorited`); custom tags are present only in
-/// unlocked sessions (§4.6).
+/// reserved builtin tags (`link`/`favorited`/`image`); custom tags are present
+/// only in unlocked sessions (§4.6).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchTagDto {

@@ -2120,8 +2120,8 @@ export type SearchStatusEnvelope = {
 
 /**
  * A tag and its entry count for `GET /search/tags`. `is_builtin` marks the
- * reserved builtin tags (`link`/`favorited`); custom tags are present only in
- * unlocked sessions (§4.6).
+ * reserved builtin tags (`link`/`favorited`/`image`); custom tags are present
+ * only in unlocked sessions (§4.6).
  */
 export type SearchTagDto = {
     count: number;

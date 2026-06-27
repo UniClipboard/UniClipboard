@@ -38,6 +38,7 @@ impl ToggleFavoriteClipboardEntryUseCase {
     /// Persist `is_favorited` for the entry. Returns `Ok(true)` when the entry
     /// exists and the flag was stored, `Ok(false)` when no entry matches
     /// `entry_id`, and `Err` on repository failures.
+    #[tracing::instrument(name = "usecase.toggle_favorite_clipboard_entry.execute", skip(self))]
     pub(crate) async fn execute(
         &self,
         entry_id: &EntryId,

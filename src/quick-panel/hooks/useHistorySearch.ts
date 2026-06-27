@@ -1,35 +1,41 @@
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Filter, filterToContentTypes, filterToTags } from '@/api/clipboardItems'
-import type { SearchResultDto } from '@/api/daemon/search'
-import { useClipboardSearch } from '@/hooks/useClipboardSearch'
+import { type LiveSearchQueryModel } from '@/hooks/liveSearchModel'
+import { useEncryptionSessionState } from '@/hooks/useEncryptionSessionState'
+import { useLiveSearch } from '@/hooks/useLiveSearch'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { DisplayItem, TimeRangePreset } from '../types'
 
-/** Map backend contentType to frontend display type. `link` lives in the tag
- * dimension, not here. */
-function mapContentTypeToDisplayType(ft: SearchResultDto['contentType']): DisplayItem['type'] {
-  switch (ft) {
-    case 'text':
-      return 'text'
-    case 'html':
-      return 'code'
-    case 'file':
-      return 'file'
-    case 'image':
-      return 'image'
-    case 'other':
-      return 'unknown'
+/** Quick-panel list cap. The launcher has no infinite scroll, so this is the
+ * hard ceiling rather than a growing window (matches the old browse/search). */
+const PAGE_SIZE = 50
+
+/**
+ * Derive the single-line preview the launcher rows show. The unified live list
+ * carries structured `content` (the search index drops image dimensions — those
+ * are LAZY, resolved by entry id — so an image row falls back to a localized
+ * "Image" label instead of a dimension string).
+ */
+function panelPreview(item: DisplayClipboardItem, imageLabel: string): string {
+  const c = item.content
+  if (c) {
+    if ('urls' in c) return c.urls[0] ?? ''
+    if ('file_names' in c) return c.file_names[0] ?? ''
+    if ('code' in c) return c.code
+    if ('display_text' in c) return c.display_text
   }
+  if (item.type === 'image') return item.textPreview?.trim() || imageLabel
+  return item.textPreview ?? ''
 }
 
-function searchResultToDisplayItem(r: SearchResultDto): DisplayItem {
-  // `link` is a derived tag: a text entry carrying web URLs shows as a link.
-  let type = mapContentTypeToDisplayType(r.contentType)
-  if (type === 'text' && r.linkUrls.length > 0) type = 'link'
+function toDisplayItem(item: DisplayClipboardItem, imageLabel: string): DisplayItem {
   return {
-    id: r.entryId,
-    type,
-    preview: r.textPreview ?? '',
-    activeTime: r.activeTimeMs,
-    isUnavailable: r.payloadState === 'Lost',
+    id: item.id,
+    type: item.type,
+    preview: panelPreview(item, imageLabel),
+    activeTime: item.activeTime,
+    isUnavailable: item.isUnavailable ?? false,
   }
 }
 
@@ -67,7 +73,6 @@ function parseTokens(tokens: string[]): {
 }
 
 interface UseHistorySearchProps {
-  items: DisplayItem[]
   searchQuery: string
   tokens: string[]
   activeFilter: Filter
@@ -77,28 +82,42 @@ interface UseHistorySearchProps {
 
 interface UseHistorySearchResult {
   filteredItems: DisplayItem[]
+  /** A narrowed view (query/token/time/filter) is loading. Drives the spinner. */
   isSearching: boolean
   searchTotal: number | null
+  /** Plain browse is loading (no narrowing yet). */
+  loading: boolean
+  isLocked: boolean
+  /** Optimistically drop an entry after the user deletes it. */
+  removeItem: (id: string) => void
+  /** Re-issue the current query (used to refresh on every panel re-open). */
+  refetch: () => void
 }
 
+/**
+ * Quick-panel data layer: browse and search are one engine path via
+ * {@link useLiveSearch} (an empty query browses, any filter narrows), replacing
+ * the old split of `useClipboardCollection` (list endpoint) plus a separate
+ * server-search executor. Returns the launcher's simplified {@link DisplayItem}
+ * view model.
+ */
 export function useHistorySearch({
-  items,
   searchQuery,
   tokens,
   activeFilter,
   timeRange,
   isAdvancedMode,
 }: UseHistorySearchProps): UseHistorySearchResult {
-  // Determine if we need to call the server
-  const hasQuery = searchQuery.trim().length > 0
-  const hasTokens = tokens.length > 0
-  const hasTimeFilter = timeRange !== 'all_time'
-  const needsServerSearch = hasQuery || hasTokens || hasTimeFilter
+  const { t } = useTranslation()
+  const { isLocked } = useEncryptionSessionState()
 
   // Build the query model from tokens + free text + filter/time controls.
   const { keywords, contentTypes: tokenContentTypes, extensions } = parseTokens(tokens)
   const trimmedQuery = searchQuery.trim()
   const queryString = (trimmedQuery ? [...keywords, trimmedQuery] : keywords).join(' ')
+  // Pre-join to a stable string so the memo deps stay primitive (the array would
+  // be a fresh reference every render and re-issue the query in a loop).
+  const extensionsStr = extensions.length > 0 ? extensions.join(',') : undefined
 
   // contentTypes: tokens win; otherwise (non-advanced) fall back to the filter.
   let contentTypes: string | undefined
@@ -110,38 +129,41 @@ export function useHistorySearch({
     tags = filterToTags(activeFilter)
   }
 
-  const { results, isSearching, total } = useClipboardSearch(
-    {
-      enabled: needsServerSearch,
+  const model = useMemo<LiveSearchQueryModel>(
+    () => ({
       query: queryString,
       contentTypes,
       tags,
-      extensions: extensions.length > 0 ? extensions.join(',') : undefined,
-      // TimeRangePreset values match backend timePreset directly ('all_time' → omit).
-      timePreset: timeRange !== 'all_time' ? timeRange : undefined,
-      limit: 50,
-    },
-    searchResultToDisplayItem
+      extensions: extensionsStr,
+      // TimeRangePreset values match the backend timePreset directly.
+      timeRange,
+    }),
+    [queryString, contentTypes, tags, extensionsStr, timeRange]
   )
 
-  // Apply local filter only (no search query, no advanced tokens, no time filter)
-  const localFilteredItems = (() => {
-    if (needsServerSearch) return items // won't be used
-    if (activeFilter === Filter.All) return items
-    const typeMap: Record<string, string> = {
-      [Filter.Text]: 'text',
-      [Filter.Image]: 'image',
-      [Filter.Link]: 'link',
-      [Filter.File]: 'file',
-      [Filter.Code]: 'code',
-    }
-    const target = typeMap[activeFilter]
-    return target ? items.filter(item => item.type === target) : items
-  })()
+  const live = useLiveSearch({ model, pageSize: PAGE_SIZE })
+
+  const imageLabel = t('history.type.image')
+  const filteredItems = useMemo(
+    () => live.items.map(item => toDisplayItem(item, imageLabel)),
+    [live.items, imageLabel]
+  )
+
+  // A narrowed view (keyword, advanced token, time filter, or content filter)
+  // shows the "searching" spinner; plain browse shows the "loading" spinner.
+  const narrowed =
+    trimmedQuery.length > 0 ||
+    tokens.length > 0 ||
+    timeRange !== 'all_time' ||
+    activeFilter !== Filter.All
 
   return {
-    filteredItems: needsServerSearch ? (results ?? items) : localFilteredItems,
-    isSearching,
-    searchTotal: total,
+    filteredItems,
+    isSearching: live.isLoading && narrowed,
+    searchTotal: live.total,
+    loading: live.isLoading && !narrowed,
+    isLocked,
+    removeItem: live.removeItem,
+    refetch: live.refetch,
   }
 }

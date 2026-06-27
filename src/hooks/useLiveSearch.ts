@@ -44,6 +44,8 @@ export interface UseLiveSearchResult {
   state: 'ready' | 'degraded'
   /** Grow the window by one page (infinite scroll). */
   growWindow: () => void
+  /** Re-issue the current query (freshness on demand; e.g. on panel re-open). */
+  refetch: () => void
   /** Optimistically drop an entry (user delete) before the next refetch. */
   removeItem: (id: string) => void
   /** Optimistically patch an entry in place (favorite toggle, payload lost). */
@@ -218,7 +220,18 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     })
   }, [enabled])
 
+  // D8 resync: the WS auto-resubscribes topics after a reconnect, but events
+  // missed during the outage are not replayed. Re-issue the query so the window
+  // reconciles to a fresh snapshot (querySearch is idempotent).
+  useEffect(() => {
+    if (!enabled) return
+    return daemonWs.onReconnect(() => {
+      if (encryptionReady) setRefetchNonce(n => n + 1)
+    })
+  }, [enabled, encryptionReady])
+
   const growWindow = useCallback(() => setLimit(value => value + pageSize), [pageSize])
+  const refetch = useCallback(() => setRefetchNonce(n => n + 1), [])
   const removeItem = useCallback((id: string) => setItems(prev => removeLiveItem(prev, id)), [])
   const patchItem = useCallback(
     (id: string, patch: Partial<DisplayClipboardItem>) =>
@@ -226,5 +239,5 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     []
   )
 
-  return { items, isLoading, total, hasMore, state, growWindow, removeItem, patchItem }
+  return { items, isLoading, total, hasMore, state, growWindow, refetch, removeItem, patchItem }
 }

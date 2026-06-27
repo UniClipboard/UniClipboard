@@ -57,6 +57,15 @@ use uc_core::{
 pub struct CaptureOutcome {
     pub entry_id: EntryId,
     pub deduplicated: bool,
+    /// The `snapshot_hash` persisted on this entry — its cross-device identity.
+    ///
+    /// Consumers that advertise this capture to peers (e.g. the
+    /// active-clipboard register) MUST reuse this value rather than recomputing
+    /// a hash from a separate, pre-digest copy of the snapshot. Recomputing on a
+    /// copy that never had `file_content_digests` populated yields the
+    /// device-local `text/uri-list` path hash, which diverges from the dispatch
+    /// path's content-based hash and makes the receiver dedup into two entries.
+    pub snapshot_hash: String,
 }
 
 /// Capture clipboard content and create persistent entries.
@@ -209,6 +218,10 @@ impl CaptureClipboardUseCase {
                 .entered();
                 snapshot.snapshot_hash()
             };
+            // Keep the canonical hash string before `snapshot_hash` is moved
+            // into the event below, so the outcome can carry the exact identity
+            // this entry is persisted under (see `CaptureOutcome::snapshot_hash`).
+            let snapshot_hash_str = snapshot_hash.to_string();
 
             // Local-capture dedup: if this exact content already exists,
             // resurface the existing entry (bump it to the top of history)
@@ -220,11 +233,10 @@ impl CaptureClipboardUseCase {
             // error we degrade to the prior no-dedup behavior (create a new
             // entry) rather than propagating.
             if origin == ClipboardChangeOrigin::LocalCapture {
-                let hash_str = snapshot_hash.to_string();
                 if let Some(existing) = resurface_existing_entry(
                     self.find_entry_by_snapshot_hash.as_ref(),
                     self.touch_entry.as_ref(),
-                    &hash_str,
+                    &snapshot_hash_str,
                     captured_at_ms,
                 )
                 .await
@@ -236,6 +248,7 @@ impl CaptureClipboardUseCase {
                     return Ok(Some(CaptureOutcome {
                         entry_id: existing,
                         deduplicated: true,
+                        snapshot_hash: snapshot_hash_str,
                     }));
                 }
             }
@@ -477,6 +490,7 @@ impl CaptureClipboardUseCase {
             Ok(Some(CaptureOutcome {
                 entry_id,
                 deduplicated: false,
+                snapshot_hash: snapshot_hash_str,
             }))
         }
         .instrument(root)

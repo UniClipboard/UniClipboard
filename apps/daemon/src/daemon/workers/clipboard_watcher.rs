@@ -193,11 +193,16 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
                 // clipboard state — advance the cross-device register (the
                 // RemotePush echo and LocalRestore paths short-circuit before
                 // here, so this only fires for real local captures).
+                //
+                // Advertise the SAME `snapshot_hash` the capture use case
+                // persisted on the entry, not a recompute on `outbound_snapshot`.
+                // `outbound_snapshot` is a clone taken before capture ran, so it
+                // never has `file_content_digests` populated; hashing it yields
+                // the device-local `text/uri-list` path hash, which diverges from
+                // the dispatch path's content-based hash and makes the receiver
+                // dedup a file copy into two entries.
                 self.active_register
-                    .advance_local(
-                        outbound_snapshot.snapshot_hash().to_string(),
-                        entry_id.clone(),
-                    )
+                    .advance_local(captured.snapshot_hash.clone(), entry_id.clone())
                     .await;
 
                 let payload = ClipboardNewContentPayload {

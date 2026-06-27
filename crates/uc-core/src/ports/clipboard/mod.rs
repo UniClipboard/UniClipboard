@@ -33,9 +33,9 @@ pub use clipboard_event_repository::ClipboardEventRepositoryPort;
 pub use clipboard_selection_repository::ClipboardSelectionRepositoryPort;
 pub use delivery::EntryDeliveryRepositoryPort;
 pub use entry_intents::{
-    DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
-    GetEntrySnapshotHashPort, ListClipboardEntriesPort, SaveClipboardEntryPort,
-    TouchClipboardEntryPort,
+    CheckEntryAvailabilityPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
+    GetClipboardEntryPort, GetEntrySnapshotHashPort, ListClipboardEntriesPort,
+    ReplaceEntryContentPort, SaveClipboardEntryPort, TouchClipboardEntryPort,
 };
 pub use local_clipboard::SystemClipboardPort;
 pub use payload_resolver::{

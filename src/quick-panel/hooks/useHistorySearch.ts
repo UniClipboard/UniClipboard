@@ -39,28 +39,58 @@ function toDisplayItem(item: DisplayClipboardItem, imageLabel: string): DisplayI
   }
 }
 
+/** The `type:` token vocabulary mirrors the quick-filter chips ({@link Filter}),
+ * so each value resolves through the same content-type/tag split the chips use. */
+const TYPE_TOKEN_TO_FILTER: Record<string, Filter> = {
+  text: Filter.Text,
+  image: Filter.Image,
+  link: Filter.Link,
+  code: Filter.Code,
+  file: Filter.File,
+  favorited: Filter.Favorited,
+}
+
+/**
+ * Map a `type:<value>` token onto the backend search contract. Known values are
+ * routed through {@link filterToContentTypes}/{@link filterToTags} so the token
+ * DSL and the chips stay on one contract: `link`/`image`/`favorited` are tags,
+ * `code` is the `html` content type. Unknown values pass through as a raw
+ * content type so the backend can still match or reject them.
+ */
+function classifyTypeToken(value: string): { contentType?: string; tag?: string } {
+  const filter = TYPE_TOKEN_TO_FILTER[value]
+  if (filter) {
+    return { contentType: filterToContentTypes(filter), tag: filterToTags(filter) }
+  }
+  return { contentType: value }
+}
+
 /**
  * Extract search parameters from advanced mode tokens.
- * Tokens can be: `type:text`, `ext:md`, or plain keywords.
- * `type:` values are passed directly as backend contentTypes (no mapping needed).
+ * Tokens can be: `type:text`, `ext:md`, or plain keywords. `type:` values share
+ * the quick-filter vocabulary and are normalized into the tag/content-type
+ * contract (see {@link classifyTypeToken}).
  */
 function parseTokens(tokens: string[]): {
   keywords: string[]
   contentTypes: string[]
+  tags: string[]
   extensions: string[]
 } {
   const keywords: string[] = []
   const contentTypes: string[] = []
+  const tags: string[] = []
   const extensions: string[] = []
 
   for (const token of tokens) {
     const lower = token.toLowerCase()
     if (lower.startsWith('type:')) {
       const value = lower.slice(5)
-      // code includes html (html is a form of code)
-      if (value === 'code') {
-        contentTypes.push('code', 'html')
-      } else if (value) contentTypes.push(value)
+      if (value) {
+        const { contentType, tag } = classifyTypeToken(value)
+        if (contentType) contentTypes.push(contentType)
+        if (tag) tags.push(tag)
+      }
     } else if (lower.startsWith('ext:')) {
       const value = lower.slice(4)
       if (value) extensions.push(value)
@@ -69,7 +99,7 @@ function parseTokens(tokens: string[]): {
     }
   }
 
-  return { keywords, contentTypes, extensions }
+  return { keywords, contentTypes, tags, extensions }
 }
 
 interface UseHistorySearchProps {
@@ -112,18 +142,26 @@ export function useHistorySearch({
   const { isLocked } = useEncryptionSessionState()
 
   // Build the query model from tokens + free text + filter/time controls.
-  const { keywords, contentTypes: tokenContentTypes, extensions } = parseTokens(tokens)
+  const {
+    keywords,
+    contentTypes: tokenContentTypes,
+    tags: tokenTags,
+    extensions,
+  } = parseTokens(tokens)
   const trimmedQuery = searchQuery.trim()
   const queryString = (trimmedQuery ? [...keywords, trimmedQuery] : keywords).join(' ')
   // Pre-join to a stable string so the memo deps stay primitive (the array would
   // be a fresh reference every render and re-issue the query in a loop).
   const extensionsStr = extensions.length > 0 ? extensions.join(',') : undefined
 
-  // contentTypes: tokens win; otherwise (non-advanced) fall back to the filter.
+  // Tokens win; otherwise (non-advanced) fall back to the quick filter. Tokens
+  // now carry both dimensions (`type:link`/`type:image` resolve to tags), so a
+  // token in either bucket suppresses the chip fallback.
   let contentTypes: string | undefined
   let tags: string | undefined
-  if (tokenContentTypes.length > 0) {
-    contentTypes = tokenContentTypes.join(',')
+  if (tokenContentTypes.length > 0 || tokenTags.length > 0) {
+    contentTypes = tokenContentTypes.length > 0 ? tokenContentTypes.join(',') : undefined
+    tags = tokenTags.length > 0 ? tokenTags.join(',') : undefined
   } else if (!isAdvancedMode) {
     contentTypes = filterToContentTypes(activeFilter)
     tags = filterToTags(activeFilter)

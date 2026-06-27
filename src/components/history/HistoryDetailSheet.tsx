@@ -23,6 +23,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
+import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import type {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -302,6 +303,14 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
   const { t } = useTranslation()
   const { delivery } = useEntryDelivery(open ? (item?.id ?? null) : null)
   const [copyDone, setCopyDone] = useState(false)
+
+  // Push a modal layer while the sheet is open so the page-scoped grid shortcuts
+  // (c copy / d delete) are suspended in favor of this sheet's own handlers.
+  // Escape is handled explicitly below (capture phase) — not via this layer or
+  // Radix's default — so it closes the sheet without clearing the history
+  // filters.
+  useShortcutLayer({ layer: 'modal', scope: 'modal', enabled: open })
+
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const TypeIcon = item ? (TYPE_ICONS[item.type] ?? FileText) : FileText
@@ -338,6 +347,7 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
   // handler identity changes (e.g. when the selected item switches).
   const onCopyKey = useEffectEvent(() => void handleCopy())
   const onDeleteKey = useEffectEvent(() => void handleDelete())
+  const onCloseKey = useEffectEvent(() => handleOpenChange(false))
 
   useEffect(() => {
     if (!open) return
@@ -349,6 +359,23 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
+  }, [open])
+
+  // Own Escape entirely while the sheet is open: close it (same as the X button)
+  // and swallow the event in the capture phase so it never reaches the history
+  // page's Esc-clears-filters shortcut or the search input's own onKeyDown.
+  // Radix's built-in Esc-to-close is disabled via onEscapeKeyDown on the content,
+  // making this listener the single Escape owner.
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      onCloseKey()
+    }
+    document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
   }, [open])
 
   const content = useMemo(() => {
@@ -392,7 +419,11 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="w-[420px] sm:max-w-[420px] flex flex-col p-0">
+      <SheetContent
+        side="right"
+        className="w-[420px] sm:max-w-[420px] flex flex-col p-0"
+        onEscapeKeyDown={e => e.preventDefault()}
+      >
         {item && (
           <>
             {/* Header */}

@@ -558,7 +558,8 @@ mod assembly_smoke_tests {
         // `/diagnostics/log-export` POST: +2 paths, +3 operations → 59 / 66.
         // Config migration (issue #1110) added `POST /config/export`,
         // `POST /config/import/preview`, and `POST /config/import`: +3 paths,
-        // +3 operations → 62 / 69.)
+        // +3 operations → 62 / 69. The unified-search work added
+        // `GET /search/tags`: +1 path, +1 operation → 63 / 70.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -567,8 +568,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            62,
-            "expected exactly 62 path templates, found {}: {:?}",
+            63,
+            "expected exactly 63 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -582,8 +583,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 69,
-            "expected exactly 69 operations across all paths, found {operation_count}"
+            operation_count, 70,
+            "expected exactly 70 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

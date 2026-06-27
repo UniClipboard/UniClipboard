@@ -27,7 +27,6 @@ export { getEncryptionState, unlockEncryption, lockEncryption } from './encrypti
 export type { EncryptionStateResponse } from './encryption'
 export {
   getClipboardEntries,
-  getClipboardEntry,
   deleteClipboardEntry,
   restoreClipboardEntry,
   toggleFavorite,

@@ -660,9 +660,13 @@ async fn derive_file_content_digests(
         .filter(|r| matches!(r.source(), ClipboardPayloadSource::LocalFile { .. }))
         .map(|r| r.content_hash().bytes)
         .collect();
+    let local_file_digests = digests.len();
 
+    let mut extracted_paths = 0usize;
     if digests.is_empty() {
-        for path in extract_file_paths_from_snapshot(snapshot) {
+        let paths = extract_file_paths_from_snapshot(snapshot);
+        extracted_paths = paths.len();
+        for path in paths {
             match blob_ingest.ingest_path(&path).await {
                 Ok(ingested) => digests.push(ingested.content_hash.bytes),
                 Err(err) => warn!(
@@ -673,6 +677,22 @@ async fn derive_file_content_digests(
             }
         }
     }
+
+    // Diagnostic for the dual-entry file-sync bug: when this returns empty for a
+    // file copy, the entry's `snapshot_hash` falls back to the device-local
+    // `text/uri-list` path text, which diverges from the dispatch path's
+    // content-based hash and makes the receiver create a second entry. The three
+    // counts pin which stage produced no digest on the next repro: no `LocalFile`
+    // rep AND no extractable inline path (`extracted_uri_list_paths = 0`) means
+    // the file rep was not recognised / not a parseable `file:` URL; a non-zero
+    // path count with `derived_digests = 0` means every `ingest_path` failed
+    // (each logs its own warn above).
+    debug!(
+        local_file_digests,
+        extracted_uri_list_paths = extracted_paths,
+        derived_digests = digests.len(),
+        "capture: derived file content digests for snapshot identity"
+    );
 
     digests
 }

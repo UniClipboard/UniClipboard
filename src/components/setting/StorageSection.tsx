@@ -18,8 +18,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSetting } from '@/hooks/useSetting'
 import { createLogger } from '@/lib/logger'
-import { useAppDispatch } from '@/store/hooks'
-import { resetItems } from '@/store/slices/clipboardSlice'
 import type { RetentionRule } from '@/types/setting'
 import ClearHistoryDialog from './ClearHistoryDialog'
 import { ConfigBackupGroup } from './ConfigBackupGroup'
@@ -263,7 +261,6 @@ function StorageUsageBar({
 
 const StorageSection: React.FC = () => {
   const { t } = useTranslation()
-  const dispatch = useAppDispatch()
   const { setting, error, updateRetentionPolicy } = useSetting()
 
   // Retention policy state
@@ -449,7 +446,8 @@ const StorageSection: React.FC = () => {
     setClearingHistory(true)
     try {
       await storageApi.clearAllClipboardHistory()
-      dispatch(resetItems())
+      // The history view re-queries via useLiveSearch on next mount; no Redux
+      // browse list to reset anymore.
       await loadStats()
     } catch (err) {
       log.error({ err }, 'Failed to clear history')

@@ -35,8 +35,8 @@ use uc_core::clipboard::{ClipboardPayloadSource, PersistedClipboardRepresentatio
 use crate::facade::clipboard_outbound::extract_file_paths_from_snapshot;
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{
-    FindEntryIdBySnapshotHashPort, RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort,
-    SpoolRequest, TouchClipboardEntryPort,
+    FindEntryIdBySnapshotHashPort, ReplaceEntryContentPort, RepresentationCachePort,
+    SaveClipboardEntryPort, SpoolQueuePort, SpoolRequest, TouchClipboardEntryPort,
 };
 use uc_core::ports::{
     ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort, DeviceIdentityPort,
@@ -44,7 +44,7 @@ use uc_core::ports::{
 };
 use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
-    ObservedClipboardRepresentation, PayloadAvailability, SystemClipboardSnapshot,
+    ObservedClipboardRepresentation, PayloadAvailability, SnapshotHash, SystemClipboardSnapshot,
 };
 
 /// Result of a capture attempt.
@@ -66,6 +66,18 @@ pub struct CaptureOutcome {
     /// device-local `text/uri-list` path hash, which diverges from the dispatch
     /// path's content-based hash and makes the receiver dedup into two entries.
     pub snapshot_hash: String,
+}
+
+/// How a captured snapshot is committed to storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitMode {
+    /// Persist as a brand-new entry under the resolved `entry_id`.
+    Create,
+    /// Replace the content of the existing entry identified by the resolved
+    /// `entry_id` in place — reusing its identity and sticky state. Used by the
+    /// inbound upgrade path when a completed delivery supersedes a partial entry
+    /// that already carries the same content hash.
+    Replace,
 }
 
 /// Capture clipboard content and create persistent entries.
@@ -92,6 +104,19 @@ pub struct CaptureClipboardUseCase {
     ///   identity is derived from device-independent file content rather than
     ///   the device-local `text/uri-list` path text.
     blob_ingest: Arc<dyn BlobContentIngestPort>,
+    /// Transactional entry-replace used by [`CommitMode::Replace`]. Swaps the
+    /// content behind an existing entry_id in place (FK-safe cascade, sticky
+    /// state preserved) instead of inserting a new entry. Only the inbound
+    /// upgrade path drives the `Replace` mode; local capture always `Create`s.
+    replace_entry: Arc<dyn ReplaceEntryContentPort>,
+    /// Shared per-identity write coordinator. When wired, a *local* capture
+    /// serializes its "resurface-or-create by content hash" section on the lock
+    /// for that hash so it cannot race an inbound apply of the same content into
+    /// two entries (R5-F3). Inbound captures do NOT lock here — the inbound use
+    /// case already holds the same per-identity lock around the call, so locking
+    /// again would deadlock on the non-reentrant mutex. `None` skips locking
+    /// (prior behavior; harmless when no concurrent same-content writer exists).
+    coordinator: Option<Arc<crate::entry_identity::EntryIdentityCoordinator>>,
     /// schema doc §12.1 · outbound 同步链路源头流量信号。
     /// 仅在 `ClipboardChangeOrigin::{LocalCapture, LocalRestore}` 路径 emit；
     /// `RemotePush` 严禁 emit（红线：与入站同步双计会污染 DAU 信号）。
@@ -111,6 +136,7 @@ impl CaptureClipboardUseCase {
         representation_cache: Arc<dyn RepresentationCachePort>,
         spool_queue: Arc<dyn SpoolQueuePort>,
         blob_ingest: Arc<dyn BlobContentIngestPort>,
+        replace_entry: Arc<dyn ReplaceEntryContentPort>,
         analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
@@ -124,8 +150,22 @@ impl CaptureClipboardUseCase {
             representation_cache,
             spool_queue,
             blob_ingest,
+            replace_entry,
+            coordinator: None,
             analytics,
         }
+    }
+
+    /// Share the per-identity write coordinator so a local capture serializes
+    /// its hash-keyed resurface-or-create against inbound apply of the same
+    /// content (R5-F3). Without it, local capture does not lock (prior
+    /// behavior).
+    pub fn with_entry_identity_coordinator(
+        mut self,
+        coordinator: Arc<crate::entry_identity::EntryIdentityCoordinator>,
+    ) -> Self {
+        self.coordinator = Some(coordinator);
+        self
     }
 
     /// Execute the clipboard capture workflow with a pre-captured snapshot.
@@ -133,10 +173,16 @@ impl CaptureClipboardUseCase {
     /// Called from the daemon's clipboard change callback — the snapshot is
     /// already read by the platform layer, avoiding a redundant OS read.
     pub async fn execute(&self, snapshot: SystemClipboardSnapshot) -> Result<EntryId> {
-        self.execute_with_origin(snapshot, ClipboardChangeOrigin::LocalCapture, None)
-            .await?
-            .map(|outcome| outcome.entry_id)
-            .ok_or_else(|| anyhow::anyhow!("local capture should always persist an entry"))
+        self.execute_with_origin(
+            snapshot,
+            ClipboardChangeOrigin::LocalCapture,
+            None,
+            None,
+            CommitMode::Create,
+        )
+        .await?
+        .map(|outcome| outcome.entry_id)
+        .ok_or_else(|| anyhow::anyhow!("local capture should always persist an entry"))
     }
 
     /// `preset_entry_id` 让上层在 capture 之前预先决定本次产物的 entry_id。
@@ -144,11 +190,22 @@ impl CaptureClipboardUseCase {
     /// 但 UI 进度卡片必须在 fetch 之前就能挂上;预设 entry_id 让占位卡片和最终
     /// entry 共享同一个 id,前端无需做 transfer_id → entry_id 的合并。
     /// 本地 capture 路径传 `None` 即可,内部按既有逻辑生成新 id。
+    /// `authoritative_hash` overrides the persisted cross-device identity.
+    /// Local captures pass `None` and let the snapshot hash itself; inbound
+    /// (`RemotePush`) passes `Some(wire_hash)` so the entry is stored under the
+    /// exact identity the sender advertised. The latter MUST NOT be recomputed
+    /// from the materialized snapshot — for a cancelled transfer the file rep is
+    /// a `uniclip-missing://` placeholder (no `file_content_digests`) and for a
+    /// completed one it carries receiver-rewritten local paths; both hash
+    /// differently from the wire identity and would fork the entry, breaking
+    /// dedup against every other channel that carries the same wire hash.
     pub async fn execute_with_origin(
         &self,
         mut snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
+        authoritative_hash: Option<SnapshotHash>,
+        commit_mode: CommitMode,
     ) -> Result<Option<CaptureOutcome>> {
         // Root span: all pipeline stages are children of clipboard.flow.
         // The origin field distinguishes local capture from remote push.
@@ -210,18 +267,36 @@ impl CaptureClipboardUseCase {
                     snapshot.file_content_digests = digests;
                 }
             }
-            let snapshot_hash = {
-                let _guard = info_span!(
-                    "clipboard.snapshot_hash",
-                    representation_count = snapshot.representations.len(),
-                )
-                .entered();
-                snapshot.snapshot_hash()
+            let snapshot_hash = match authoritative_hash {
+                // Inbound: persist the sender's wire identity verbatim (F-4).
+                Some(wire_hash) => wire_hash,
+                // Local capture: the snapshot is authoritative for its own hash.
+                None => {
+                    let _guard = info_span!(
+                        "clipboard.snapshot_hash",
+                        representation_count = snapshot.representations.len(),
+                    )
+                    .entered();
+                    snapshot.snapshot_hash()
+                }
             };
             // Keep the canonical hash string before `snapshot_hash` is moved
             // into the event below, so the outcome can carry the exact identity
             // this entry is persisted under (see `CaptureOutcome::snapshot_hash`).
             let snapshot_hash_str = snapshot_hash.to_string();
+
+            // Serialize the resurface-or-create section against any other writer
+            // of this same content (R5-F3). Only a *local* capture locks here:
+            // an inbound (`RemotePush`) capture is already inside the inbound use
+            // case's per-identity lock for this hash, so locking the same
+            // (non-reentrant) mutex again would deadlock. The guard is held
+            // across persist and dropped when this async block returns.
+            let _identity_guard = match (&self.coordinator, origin) {
+                (Some(coordinator), ClipboardChangeOrigin::LocalCapture) => {
+                    Some(coordinator.lock(&snapshot_hash_str).await)
+                }
+                _ => None,
+            };
 
             // Local-capture dedup: if this exact content already exists,
             // resurface the existing entry (bump it to the top of history)
@@ -346,13 +421,18 @@ impl CaptureClipboardUseCase {
                 );
             }
 
-            async {
-                self.event_writer
-                    .insert_event(&new_event, &normalized_reps)
-                    .await
+            // Create commits the event as a standalone insert here; Replace
+            // defers the event insert into the transactional entry-replace below
+            // so the old event/reps and the new ones swap atomically.
+            if commit_mode == CommitMode::Create {
+                async {
+                    self.event_writer
+                        .insert_event(&new_event, &normalized_reps)
+                        .await
+                }
+                .instrument(info_span!(stages::PERSIST_EVENT))
+                .await?;
             }
-            .instrument(info_span!(stages::PERSIST_EVENT))
-            .await?;
 
             // Cache representations for immediate access by the background blob worker.
             // This must happen before persist_entry so the worker gets a cache hit
@@ -447,25 +527,44 @@ impl CaptureClipboardUseCase {
                 .await?;
             }
 
-            // 6. entry_repo.insert_entry — bytes are durable by this point.
+            // 6. Persist the entry — bytes are durable by this point. Create
+            //    inserts a fresh entry; Replace swaps the content behind the
+            //    existing entry_id in one transaction (event/reps/selection +
+            //    cascade), reusing its identity and sticky state.
             async {
-                let created_at_ms = SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(|e| anyhow::anyhow!("Failed to get system time: {}", e))?
-                    .as_millis() as i64;
+                let title = Self::generate_title(&snapshot);
                 let total_size = snapshot.total_size_bytes();
-
-                let new_entry = ClipboardEntry::new(
-                    entry_id.clone(),
-                    event_id.clone(),
-                    created_at_ms,
-                    Self::generate_title(&snapshot),
-                    total_size,
-                );
-                self.save_entry
-                    .save_entry_and_selection(&new_entry, &new_selection)
-                    .await
-                    .map_err(anyhow::Error::from)
+                match commit_mode {
+                    CommitMode::Create => {
+                        let created_at_ms = SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .map_err(|e| anyhow::anyhow!("Failed to get system time: {}", e))?
+                            .as_millis() as i64;
+                        let new_entry = ClipboardEntry::new(
+                            entry_id.clone(),
+                            event_id.clone(),
+                            created_at_ms,
+                            title,
+                            total_size,
+                        );
+                        self.save_entry
+                            .save_entry_and_selection(&new_entry, &new_selection)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                    CommitMode::Replace => self
+                        .replace_entry
+                        .replace_entry_content(
+                            &entry_id,
+                            &new_event,
+                            &normalized_reps,
+                            &new_selection,
+                            title,
+                            total_size,
+                        )
+                        .await
+                        .map_err(anyhow::Error::from),
+                }
             }
             .instrument(info_span!(stages::PERSIST_ENTRY))
             .await?;

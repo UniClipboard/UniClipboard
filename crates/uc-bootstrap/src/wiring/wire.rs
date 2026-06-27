@@ -51,8 +51,9 @@ use uc_infra::db::mappers::{
 use uc_infra::db::pool::{init_db_pool, DbPool};
 use uc_infra::db::repositories::{
     DieselBlobMigrationRepository, DieselBlobReferenceRepository, DieselBlobRepository,
-    DieselClipboardEntryRepository, DieselClipboardEventRepository,
-    DieselClipboardRepresentationRepository, DieselClipboardSelectionRepository,
+    DieselClipboardEntryReplaceRepository, DieselClipboardEntryRepository,
+    DieselClipboardEventRepository, DieselClipboardRepresentationRepository,
+    DieselClipboardSelectionRepository, DieselEntryAvailabilityRepository,
     DieselFileTransferRepository, DieselMobileDeviceRepository, DieselPeerAddressRepository,
     DieselSpaceMemberRepository, DieselThumbnailRepository, DieselTrustedPeerRepository,
 };
@@ -511,6 +512,16 @@ fn create_infra_layer(
     // (the intent-port impls delegate to it), but no consumer needs the wide
     // trait object, so it is not exposed through the ports bundle.
     let entry_repo_arc = Arc::new(entry_repo);
+    // Availability (DB reps + filesystem) and transactional entry-replace are
+    // separate adapters over the same executor; the inbound upgrade path uses
+    // them to turn a partial entry into a complete one in place.
+    let entry_availability_repo: Arc<dyn uc_core::ports::clipboard::CheckEntryAvailabilityPort> =
+        Arc::new(DieselEntryAvailabilityRepository::new(Arc::clone(
+            &db_executor,
+        )));
+    let entry_replace_repo: Arc<dyn uc_core::ports::clipboard::ReplaceEntryContentPort> = Arc::new(
+        DieselClipboardEntryReplaceRepository::new(Arc::clone(&db_executor)),
+    );
     let clipboard_entry_ports = ClipboardEntryPorts {
         get: entry_repo_arc.clone(),
         list: entry_repo_arc.clone(),
@@ -519,6 +530,8 @@ fn create_infra_layer(
         delete: entry_repo_arc.clone(),
         find_by_snapshot_hash: entry_repo_arc.clone(),
         get_snapshot_hash: entry_repo_arc,
+        availability: entry_availability_repo,
+        replace_content: entry_replace_repo,
     };
 
     let event_row_mapper = ClipboardEventRowMapper;
@@ -868,6 +881,10 @@ pub fn wire_dependencies(
             clipboard: platform.clipboard,
             system_clipboard: platform.system_clipboard,
             entry_ports: infra.clipboard_entry_ports,
+            // Single shared per-identity write coordinator: inbound apply and
+            // local capture serialize "find entry by hash → create/replace/skip"
+            // on it so the same content never lands as two entries.
+            entry_identity_coordinator: Arc::new(uc_application::EntryIdentityCoordinator::new()),
             clipboard_event_repo: encrypting_event_writer,
             representation_store: decrypting_rep_repo,
             representation_ports: clipboard_representation_ports,

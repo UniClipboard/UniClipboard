@@ -15,13 +15,13 @@ use tokio::sync::mpsc;
 use uc_core::blob::ports::{BlobContentIngestPort, BlobReaderPort, BlobWriterPort};
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
-    AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
+    AdvanceActiveClipboardPort, CheckEntryAvailabilityPort, ClipboardPayloadResolverPort,
     ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
     GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationByBlobIdPort,
     GetRepresentationPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
-    LoadActiveClipboardPort, RepresentationCachePort, ResetActiveClipboardPort,
-    SaveClipboardEntryPort, SelfWriteLedgerPort, SpoolQueuePort, SystemClipboardPort,
-    ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
+    LoadActiveClipboardPort, ReplaceEntryContentPort, RepresentationCachePort,
+    ResetActiveClipboardPort, SaveClipboardEntryPort, SelfWriteLedgerPort, SpoolQueuePort,
+    SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
     UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
@@ -52,6 +52,13 @@ pub struct ClipboardEntryPorts {
     /// restore paths read this rather than recomputing it from the
     /// reconstructed snapshot, which would diverge for file entries.
     pub get_snapshot_hash: Arc<dyn GetEntrySnapshotHashPort>,
+    /// Live availability query (DB reps + filesystem). The inbound dedup routes
+    /// a hash match to either "already held → skip" or "partial → upgrade in
+    /// place" by asking whether the matched entry is fully available.
+    pub availability: Arc<dyn CheckEntryAvailabilityPort>,
+    /// Transactional in-place entry-content replace (reuses entry_id, preserves
+    /// sticky state). Drives the inbound partial→complete upgrade.
+    pub replace_content: Arc<dyn ReplaceEntryContentPort>,
 }
 
 /// Clipboard representation intent ports facing the application layer.
@@ -74,6 +81,10 @@ pub struct ClipboardPorts {
     pub clipboard: Arc<dyn PlatformClipboardPort>,
     pub system_clipboard: Arc<dyn SystemClipboardPort>,
     pub entry_ports: ClipboardEntryPorts,
+    /// Per-identity (snapshot_hash) write coordinator. Shared by inbound apply
+    /// and local capture so "find entry by hash → create / replace / skip"
+    /// serializes across every writer of the same content (no double-create).
+    pub entry_identity_coordinator: Arc<crate::entry_identity::EntryIdentityCoordinator>,
     pub clipboard_event_repo: Arc<dyn ClipboardEventWriterPort>,
     /// Inner representation store (the full aggregate surface). Threaded by the
     /// composition root to the background payload workers only; the application

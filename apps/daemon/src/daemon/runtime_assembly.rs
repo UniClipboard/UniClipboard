@@ -95,24 +95,32 @@ pub struct DaemonRuntimeWorkers {
 pub fn build_daemon_runtime_workers(
     input: DaemonRuntimeAssemblyInput<'_>,
 ) -> anyhow::Result<DaemonRuntimeWorkers> {
-    let apply_inbound_capture_uc = Arc::new(CaptureClipboardUseCase::new(
-        input.deps.clipboard.entry_ports.save.clone(),
-        input.deps.clipboard.entry_ports.touch.clone(),
-        input
-            .deps
-            .clipboard
-            .entry_ports
-            .find_by_snapshot_hash
-            .clone(),
-        input.deps.clipboard.clipboard_event_repo.clone(),
-        input.deps.clipboard.representation_policy.clone(),
-        input.deps.clipboard.representation_normalizer.clone(),
-        input.deps.device.device_identity.clone(),
-        input.deps.clipboard.representation_cache.clone(),
-        input.deps.clipboard.spool_queue.clone(),
-        input.deps.storage.blob_content_ingest.clone(),
-        input.deps.analytics.clone(),
-    ));
+    let apply_inbound_capture_uc = Arc::new(
+        CaptureClipboardUseCase::new(
+            input.deps.clipboard.entry_ports.save.clone(),
+            input.deps.clipboard.entry_ports.touch.clone(),
+            input
+                .deps
+                .clipboard
+                .entry_ports
+                .find_by_snapshot_hash
+                .clone(),
+            input.deps.clipboard.clipboard_event_repo.clone(),
+            input.deps.clipboard.representation_policy.clone(),
+            input.deps.clipboard.representation_normalizer.clone(),
+            input.deps.device.device_identity.clone(),
+            input.deps.clipboard.representation_cache.clone(),
+            input.deps.clipboard.spool_queue.clone(),
+            input.deps.storage.blob_content_ingest.clone(),
+            input.deps.clipboard.entry_ports.replace_content.clone(),
+            input.deps.analytics.clone(),
+        )
+        // Shared so the OS-clipboard watcher's local capture (this same
+        // instance, reused below) serializes with inbound apply on a per-content
+        // lock — preventing a local copy and an inbound delivery of the same
+        // content from creating two entries (R5-F3).
+        .with_entry_identity_coordinator(input.deps.clipboard.entry_identity_coordinator.clone()),
+    );
     let blob_materializer = Arc::new(FileCacheBlobMaterializer::new(
         input.blob_transfer_facade.clone(),
         input.file_cache_dir,
@@ -142,7 +150,9 @@ pub fn build_daemon_runtime_workers(
         .with_blob_materializer(blob_materializer)
         .with_host_event_emitter(input.host_event_bus)
         .with_active_register(input.deps.clipboard.active_register.clone())
-        .with_search_live_index(Arc::clone(&search_live_indexer)),
+        .with_search_live_index(Arc::clone(&search_live_indexer))
+        .with_check_entry_availability(input.deps.clipboard.entry_ports.availability.clone())
+        .with_entry_identity_coordinator(input.deps.clipboard.entry_identity_coordinator.clone()),
     );
     let inbound_clipboard_facade = Arc::new(InboundClipboardFacade::new(apply_inbound_uc.clone()));
     let clipboard_outbound_facade = Arc::new(ClipboardOutboundFacade::new(ClipboardOutboundDeps {

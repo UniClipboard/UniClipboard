@@ -49,8 +49,17 @@ impl ClipboardCapturePort for CaptureClipboardUseCase {
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
     ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
+        // Local-capture facade: the snapshot is authoritative for its own hash.
+        // Inbound (`RemotePush`) never reaches here — it persists through the
+        // `InboundCapture` port, which supplies the wire identity (F-4).
         let outcome = self
-            .execute_with_origin(snapshot, origin, preset_entry_id)
+            .execute_with_origin(
+                snapshot,
+                origin,
+                preset_entry_id,
+                None,
+                crate::clipboard_capture::CommitMode::Create,
+            )
             .await
             .map_err(|err| ClipboardCaptureFacadeError::Internal(err.to_string()))?;
         Ok(outcome.map(|outcome| CapturedClipboardEntryView {

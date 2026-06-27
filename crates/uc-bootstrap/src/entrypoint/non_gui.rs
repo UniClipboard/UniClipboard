@@ -123,19 +123,23 @@ pub struct ClipboardRestoreAssembly {
 ///
 /// daemon 入口仍走自己的 enhanced 装配(`runtime_assembly.rs`),不受影响。
 fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseCase> {
-    let capture_uc = Arc::new(CaptureClipboardUseCase::new(
-        deps.clipboard.entry_ports.save.clone(),
-        deps.clipboard.entry_ports.touch.clone(),
-        deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
-        deps.clipboard.clipboard_event_repo.clone(),
-        deps.clipboard.representation_policy.clone(),
-        deps.clipboard.representation_normalizer.clone(),
-        deps.device.device_identity.clone(),
-        deps.clipboard.representation_cache.clone(),
-        deps.clipboard.spool_queue.clone(),
-        deps.storage.blob_content_ingest.clone(),
-        deps.analytics.clone(),
-    ));
+    let capture_uc = Arc::new(
+        CaptureClipboardUseCase::new(
+            deps.clipboard.entry_ports.save.clone(),
+            deps.clipboard.entry_ports.touch.clone(),
+            deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
+            deps.clipboard.clipboard_event_repo.clone(),
+            deps.clipboard.representation_policy.clone(),
+            deps.clipboard.representation_normalizer.clone(),
+            deps.device.device_identity.clone(),
+            deps.clipboard.representation_cache.clone(),
+            deps.clipboard.spool_queue.clone(),
+            deps.storage.blob_content_ingest.clone(),
+            deps.clipboard.entry_ports.replace_content.clone(),
+            deps.analytics.clone(),
+        )
+        .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
+    );
     let capture: Arc<dyn ApplyInboundCapture> = capture_uc;
     let write: Arc<dyn ApplyInboundWrite> = Arc::new(NoopInboundWrite);
     Arc::new(
@@ -144,7 +148,9 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
             capture,
             write,
         )
-        .with_active_register(deps.clipboard.active_register.clone()),
+        .with_active_register(deps.clipboard.active_register.clone())
+        .with_check_entry_availability(deps.clipboard.entry_ports.availability.clone())
+        .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
     )
 }
 

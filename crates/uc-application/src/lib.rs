@@ -3,6 +3,7 @@
 pub mod clipboard_capture;
 pub mod clipboard_write;
 pub mod deps;
+pub mod entry_identity;
 pub mod facade;
 pub mod file_sync;
 pub mod sync_planner;
@@ -18,6 +19,7 @@ pub use deps::{
 // `InboundClipboardSyncWorker` (T8). Lives inside `usecases::clipboard_sync`
 // (which is `pub(crate)`) so Phase 2 internals stay encapsulated; we
 // re-export only the small public surface here.
+pub use entry_identity::EntryIdentityCoordinator;
 pub use usecases::clipboard_sync::{
     ApplyInboundClipboardUseCase, ApplyInboundError, ApplyInboundInput, ApplyOutcome,
     FileCacheBlobMaterializer, InboundBlobFetcher, InboundBlobMaterializer, InboundCapture,

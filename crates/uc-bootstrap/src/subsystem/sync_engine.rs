@@ -632,19 +632,23 @@ pub(crate) async fn build_sync_engine_assembly(
     // active-clipboard convergence tail owns the register advance (coupled to
     // OS-write success), so a capture-commit advance here would race it with a
     // newer reconstruct timestamp and starve the correct same-key advance.
-    let pull_store_capture = Arc::new(CaptureClipboardUseCase::new(
-        Arc::clone(&deps.clipboard.entry_ports.save),
-        Arc::clone(&deps.clipboard.entry_ports.touch),
-        Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
-        Arc::clone(&deps.clipboard.clipboard_event_repo),
-        Arc::clone(&deps.clipboard.representation_policy),
-        Arc::clone(&deps.clipboard.representation_normalizer),
-        Arc::clone(&deps.device.device_identity),
-        Arc::clone(&deps.clipboard.representation_cache),
-        Arc::clone(&deps.clipboard.spool_queue),
-        Arc::clone(&deps.storage.blob_content_ingest),
-        Arc::clone(&deps.analytics),
-    ));
+    let pull_store_capture = Arc::new(
+        CaptureClipboardUseCase::new(
+            Arc::clone(&deps.clipboard.entry_ports.save),
+            Arc::clone(&deps.clipboard.entry_ports.touch),
+            Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
+            Arc::clone(&deps.clipboard.clipboard_event_repo),
+            Arc::clone(&deps.clipboard.representation_policy),
+            Arc::clone(&deps.clipboard.representation_normalizer),
+            Arc::clone(&deps.device.device_identity),
+            Arc::clone(&deps.clipboard.representation_cache),
+            Arc::clone(&deps.clipboard.spool_queue),
+            Arc::clone(&deps.storage.blob_content_ingest),
+            Arc::clone(&deps.clipboard.entry_ports.replace_content),
+            Arc::clone(&deps.analytics),
+        )
+        .with_entry_identity_coordinator(Arc::clone(&deps.clipboard.entry_identity_coordinator)),
+    );
     let pull_store_materializer = Arc::new(FileCacheBlobMaterializer::new(
         blob.clone() as Arc<dyn uc_application::InboundBlobFetcher>,
         shared.file_cache_dir.clone(),
@@ -669,7 +673,9 @@ pub(crate) async fn build_sync_engine_assembly(
         )
         .with_blob_materializer(pull_store_materializer)
         .with_host_event_emitter(Arc::clone(&shared.host_event_bus))
-        .with_search_live_index(pull_store_indexer),
+        .with_search_live_index(pull_store_indexer)
+        .with_check_entry_availability(Arc::clone(&deps.clipboard.entry_ports.availability))
+        .with_entry_identity_coordinator(Arc::clone(&deps.clipboard.entry_identity_coordinator)),
     );
 
     // Active-clipboard register convergence (issue #1017). The inbound worker
@@ -690,6 +696,7 @@ pub(crate) async fn build_sync_engine_assembly(
         peer_addr_repo: Arc::clone(&space_setup.peer_addr_repo),
         presence: Arc::clone(&presence),
         entry_lookup: Arc::clone(&deps.clipboard.entry_ports.find_by_snapshot_hash),
+        availability: Some(Arc::clone(&deps.clipboard.entry_ports.availability)),
         coordinator: Arc::clone(&shared.clipboard_write_coordinator),
         clock: Arc::clone(&deps.system.clock),
         device_identity: Arc::clone(&deps.device.device_identity),

@@ -885,7 +885,9 @@ pub fn wire_dependencies(
             // Single shared per-identity write coordinator: inbound apply and
             // local capture serialize "find entry by hash → create/replace/skip"
             // on it so the same content never lands as two entries.
-            entry_identity_coordinator: Arc::new(uc_application::EntryIdentityCoordinator::new()),
+            entry_identity_coordinator: Arc::new(
+                uc_application::deps::EntryIdentityCoordinator::new(),
+            ),
             clipboard_event_repo: encrypting_event_writer,
             clipboard_event_reader_repo: infra.clipboard_event_reader_repo.clone(),
             representation_store: decrypting_rep_repo,

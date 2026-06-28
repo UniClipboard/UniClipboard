@@ -91,6 +91,11 @@ describe('matchesFilter', () => {
     expect(matchesFilter(makeItem({ id: 'b', type: 'text' }), m)).toBe(false)
   })
 
+  it('matches the link tag against content tags', () => {
+    const m = model({ tags: 'link' })
+    expect(matchesFilter(makeItem({ id: 'a', type: 'text', contentTags: ['link'] }), m)).toBe(true)
+  })
+
   it('matches the favorited tag against the isFavorited flag', () => {
     const m = model({ tags: 'favorited' })
     expect(matchesFilter(makeItem({ id: 'a', type: 'text', isFavorited: true }), m)).toBe(true)

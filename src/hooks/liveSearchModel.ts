@@ -138,7 +138,7 @@ function splitCsv(value: string | undefined): string[] {
 }
 
 function tagMatches(tag: string, item: DisplayClipboardItem): boolean {
-  if (tag === 'link') return item.type === 'link'
+  if (tag === 'link') return item.contentTags?.includes('link') || item.type === 'link'
   if (tag === 'favorited') return item.isFavorited === true
   // Custom tags aren't derivable from a DisplayItem; treat as non-matching so a
   // new entry is never optimistically shown under a tag it may not carry.

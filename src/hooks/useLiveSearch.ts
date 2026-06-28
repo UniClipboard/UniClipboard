@@ -175,6 +175,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
       const display: DisplayClipboardItem = {
         id: entry.id,
         type: entry.type,
+        contentTags: entry.contentTags,
         content: entry.content,
         activeTime: entry.activeTime,
         isFavorited: entry.isFavorited,

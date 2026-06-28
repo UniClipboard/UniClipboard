@@ -24,6 +24,7 @@ import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import { useRelativeTime } from '@/hooks/useRelativeTime'
 import type {
   ClipboardCodeItem,
+  ClipboardEntryTag,
   ClipboardFileItem,
   ClipboardImageItem,
   ClipboardLinkItem,
@@ -58,6 +59,19 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   image: ImageIcon,
   file: File,
   unknown: FileText,
+}
+
+const TAG_STYLE: Record<ClipboardEntryTag, { text: string; border: string; background: string }> = {
+  code: {
+    text: TYPE_COLOR.code,
+    border: 'rgba(140,120,210,0.28)',
+    background: 'rgba(140,120,210,0.08)',
+  },
+  link: {
+    text: TYPE_COLOR.link,
+    border: 'rgba(70,145,210,0.28)',
+    background: 'rgba(70,145,210,0.08)',
+  },
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -624,8 +638,9 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 }) => {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime(item.activeTime)
-  const color = TYPE_COLOR[item.type] ?? TYPE_COLOR.unknown
-  const TypeIcon = TYPE_ICONS[item.type] ?? FileText
+  const headerType = item.contentTags?.length ? 'text' : item.type
+  const color = TYPE_COLOR[headerType] ?? TYPE_COLOR.unknown
+  const TypeIcon = TYPE_ICONS[headerType] ?? FileText
   const sizeLabel = useMemo(() => getContentSizeLabel(item, t), [item, t])
 
   const { delivery } = useEntryDelivery(item.id)
@@ -779,8 +794,24 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
           className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
           style={{ color }}
         >
-          {codeLanguage ?? t(`history.type.${item.type}`, item.type)}
+          {item.contentTags?.length
+            ? t('history.type.text', 'text')
+            : (codeLanguage ?? t(`history.type.${item.type}`, item.type))}
         </span>
+
+        {item.contentTags?.map(tag => (
+          <span
+            key={tag}
+            className="rounded border px-1 py-0 text-[9px] font-medium leading-[1.25]"
+            style={{
+              backgroundColor: TAG_STYLE[tag].background,
+              borderColor: TAG_STYLE[tag].border,
+              color: TAG_STYLE[tag].text,
+            }}
+          >
+            {t(`history.type.${tag}`, tag)}
+          </span>
+        ))}
 
         {sizeLabel && !isTransferring && (
           <>

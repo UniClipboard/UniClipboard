@@ -56,6 +56,8 @@ export interface ClipboardCodeItem {
 
 export type ClipboardEntryType = 'text' | 'image' | 'link' | 'code' | 'file' | 'unknown'
 
+export type ClipboardEntryTag = 'link' | 'code'
+
 export type ClipboardEntryContent =
   | ClipboardTextItem
   | ClipboardImageItem
@@ -67,6 +69,11 @@ export interface ClipboardEntry {
   id: string
   /** Display type; discriminates how `content` should be interpreted. */
   type: ClipboardEntryType
+  /**
+   * Cross-cutting presentation tags for textual content. `link` and `code` are
+   * tags over text, while `type` remains the renderer discriminator.
+   */
+  contentTags?: ClipboardEntryTag[]
   content: ClipboardEntryContent | null
   /** Capture timestamp (epoch ms). */
   createdAt: number
@@ -95,6 +102,7 @@ export interface ClipboardEntry {
 export interface DisplayClipboardItem {
   id: string
   type: ClipboardEntryType
+  contentTags?: ClipboardEntryTag[]
   content: ClipboardEntryContent | null
   activeTime: number
   isFavorited?: boolean

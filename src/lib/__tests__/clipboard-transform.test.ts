@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ClipboardEntryDto } from '@/api/daemon/clipboard'
-import { projectClipboardEntry } from '../clipboard-transform'
+import type { SearchResultDto } from '@/api/daemon/search'
+import { projectClipboardEntry, searchResultToDisplayItem } from '../clipboard-transform'
 import { getItemPreview } from '../clipboard-utils'
 
 function makeDto(overrides: Partial<ClipboardEntryDto> = {}): ClipboardEntryDto {
@@ -90,10 +91,23 @@ describe('projectClipboardEntry', () => {
     )
 
     expect(entry.type).toBe('link')
+    expect(entry.contentTags).toEqual(['link'])
     expect(entry.content).toEqual({
       urls: ['https://example.com/a'],
       domains: ['example.com'],
     })
+  })
+
+  it('marks HTML text entries with the code tag', () => {
+    const entry = projectClipboardEntry(
+      makeDto({
+        preview: '<pre>let x = 1</pre>',
+        contentType: 'text/html',
+      })
+    )
+
+    expect(entry.type).toBe('text')
+    expect(entry.contentTags).toEqual(['code'])
   })
 
   it('maps payloadState=Lost to isUnavailable so the row can grey out', () => {
@@ -110,5 +124,50 @@ describe('projectClipboardEntry', () => {
 
   it('defaults isUnavailable to false when daemon omits payloadState', () => {
     expect(projectClipboardEntry(makeDto()).isUnavailable).toBe(false)
+  })
+})
+
+function makeSearchResult(overrides: Partial<SearchResultDto> = {}): SearchResultDto {
+  return {
+    entryId: 'result-1',
+    contentType: 'text',
+    activeTimeMs: 1,
+    tags: [],
+    textPreview: 'hello',
+    mimeType: 'text/plain',
+    fileExtensions: [],
+    fileNames: [],
+    linkUrls: [],
+    sourceDevice: null,
+    payloadState: null,
+    ...overrides,
+  }
+}
+
+describe('searchResultToDisplayItem', () => {
+  it('keeps link search results tagged as links', () => {
+    const item = searchResultToDisplayItem(
+      makeSearchResult({
+        tags: ['link'],
+        textPreview: 'https://example.com/a',
+        linkUrls: ['https://example.com/a'],
+      })
+    )
+
+    expect(item.type).toBe('link')
+    expect(item.contentTags).toEqual(['link'])
+  })
+
+  it('marks HTML search results with the code tag', () => {
+    const item = searchResultToDisplayItem(
+      makeSearchResult({
+        contentType: 'html',
+        textPreview: '<pre>let x = 1</pre>',
+        mimeType: 'text/html',
+      })
+    )
+
+    expect(item.type).toBe('code')
+    expect(item.contentTags).toEqual(['code'])
   })
 })

@@ -3,7 +3,7 @@ import { Loader2, Search } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import HistoryCard from '@/components/history/HistoryCard'
-import type { ClipboardTextItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 
 interface HistoryGridProps {
@@ -28,20 +28,16 @@ interface HistoryGridProps {
 
 /**
  * Per-type row height in a single-column list: a few controlled tiers rather
- * than a masonry. Short types (link/file/short text) stay compact; code and long
- * text get a standard row; images get a taller preview row.
+ * than a masonry. Text rows are capped at the two-line preview height; code and
+ * the icon/glyph types (link/file/image/unknown) get a slightly taller row.
  */
 function rowHeightClass(item: DisplayClipboardItem): string {
   switch (item.type) {
-    case 'code':
-      return 'h-24'
-    case 'text': {
-      const text =
-        (item.content as ClipboardTextItem | null)?.display_text ?? item.textPreview ?? ''
-      return text.length > 80 || text.includes('\n') ? 'h-32' : 'h-20'
-    }
+    case 'text':
+      // Body is line-clamped to two lines, so the row is sized to exactly that.
+      return 'h-20'
     default:
-      // link, file, image, unknown — compact row (thumbnail/glyph + title)
+      // code, link, file, image, unknown — compact row (thumbnail/glyph + title)
       return 'h-24'
   }
 }
@@ -121,9 +117,6 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
                   isActive && 'bg-primary/[0.06]'
                 )}
               >
-                {isActive && (
-                  <span aria-hidden className="absolute inset-y-0 left-0 z-30 w-0.5 bg-primary" />
-                )}
                 <HistoryCard
                   item={item}
                   isHovered={hoveredId === item.id}

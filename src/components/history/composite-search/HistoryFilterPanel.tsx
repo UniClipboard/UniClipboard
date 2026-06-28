@@ -33,15 +33,12 @@ function PanelRow({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'relative flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors',
+        'flex w-full items-center gap-2 rounded-[1.25rem] px-2.5 py-1.5 text-left text-[13px] transition-colors',
         active
           ? 'bg-primary/10 font-medium text-foreground'
           : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
       )}
     >
-      {active && (
-        <span aria-hidden className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary" />
-      )}
       <Icon className={cn('size-3.5 shrink-0', active ? 'text-primary' : 'opacity-70')} />
       <span className="truncate">{label}</span>
     </button>

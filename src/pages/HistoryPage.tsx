@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import ClipboardActionBar from '@/components/clipboard/ClipboardActionBar'
 import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
@@ -6,33 +6,70 @@ import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
 import { CompositeSearchBar, HistoryFilterPanel } from '@/components/history/composite-search'
 import HistoryGrid from '@/components/history/HistoryGrid'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { useTitleBarSlot } from '@/contexts/titlebar-slot-context'
 import { useHistoryController } from '@/hooks/useHistoryController'
+import { usePlatform } from '@/hooks/usePlatform'
 
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
+  const { isMac } = usePlatform()
+  const { setRightSlot } = useTitleBarSlot()
   const c = useHistoryController()
+
+  // The composite search box is shared between the in-page top bar (non-mac) and
+  // the window title bar (mac). Memoized so its element reference only changes
+  // when an input prop actually changes — required because injecting it into the
+  // title bar slot re-renders the app root, which would otherwise loop.
+  const searchBox = useMemo(
+    () => (
+      <CompositeSearchBar
+        contentFilter={c.filter.activeFilter}
+        sourceFilter={c.filter.sourceFilter}
+        timeRange={c.filter.timeRange}
+        onContentFilterChange={c.filterActions.setContentFilter}
+        onSourceFilterChange={c.filterActions.setSourceFilter}
+        onTimeRangeChange={c.filterActions.setTimeRange}
+        onQueryChange={c.filterActions.setQuery}
+        onQuerySubmit={text => c.filterActions.submitQuery(text.trim())}
+        sourceOptions={c.sourceOptions}
+        totalCount={c.browseCount}
+        inputRef={c.searchInputRef}
+      />
+    ),
+    [
+      c.filter.activeFilter,
+      c.filter.sourceFilter,
+      c.filter.timeRange,
+      c.filterActions,
+      c.sourceOptions,
+      c.browseCount,
+      c.searchInputRef,
+    ]
+  )
+
+  // On mac, hoist just the search box into the otherwise-empty title bar drag
+  // region (no heading); on other platforms it stays in the in-page top bar.
+  const titleBarContent = useMemo(
+    () => (isMac ? <div className="w-80 max-w-full">{searchBox}</div> : null),
+    [isMac, searchBox]
+  )
+
+  useEffect(() => {
+    if (!isMac) return
+    setRightSlot(titleBarContent)
+    return () => setRightSlot(null)
+  }, [isMac, titleBarContent, setRightSlot])
 
   return (
     <div className="flex flex-col h-full">
       {/* ── Top bar: page heading (left) + composite search (right) ─ */}
-      <div className="shrink-0 flex items-center gap-3 border-b border-border/60 px-4 pt-3 pb-2.5">
-        <h1 className="shrink-0 text-sm font-semibold text-foreground">{t(c.viewLabelKey)}</h1>
-        <div className="ml-auto w-80 max-w-full">
-          <CompositeSearchBar
-            contentFilter={c.filter.activeFilter}
-            sourceFilter={c.filter.sourceFilter}
-            timeRange={c.filter.timeRange}
-            onContentFilterChange={c.filterActions.setContentFilter}
-            onSourceFilterChange={c.filterActions.setSourceFilter}
-            onTimeRangeChange={c.filterActions.setTimeRange}
-            onQueryChange={c.filterActions.setQuery}
-            onQuerySubmit={text => c.filterActions.submitQuery(text.trim())}
-            sourceOptions={c.sourceOptions}
-            totalCount={c.browseCount}
-            inputRef={c.searchInputRef}
-          />
+      {/* On mac this whole row moves into the window title bar (see above). */}
+      {!isMac && (
+        <div className="shrink-0 flex items-center gap-3 border-b border-border/60 px-4 pt-3 pb-2.5">
+          <h1 className="shrink-0 text-sm font-semibold text-foreground">{t(c.viewLabelKey)}</h1>
+          <div className="ml-auto w-80 max-w-full">{searchBox}</div>
         </div>
-      </div>
+      )}
 
       {/* ── Degraded notice: index rebuilding, browse served from main store ─ */}
       {c.indexState === 'degraded' && (

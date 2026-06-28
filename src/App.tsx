@@ -391,7 +391,7 @@ const AppContent = ({
   }
 
   return (
-    <ShortcutProvider>
+    <>
       <GlobalShortcuts />
       <SentryRoutes>
         <Route element={<AuthenticatedLayout />}>
@@ -406,7 +406,7 @@ const AppContent = ({
       </SentryRoutes>
       <Toaster />
       <StartupModals />
-    </ShortcutProvider>
+    </>
   )
 }
 
@@ -492,9 +492,15 @@ export const AppContentWithBar = () => {
 
   return (
     <TitleBarSlotContext value={slotValue}>
-      <WindowShell titleBar={titleBar}>
-        <AppContent isSetupActive={isSetupActive} onSetupComplete={handleSetupComplete} />
-      </WindowShell>
+      {/* ShortcutProvider wraps the whole shell (title bar + content) so the
+          composite search box hoisted into the mac title bar slot still resolves
+          the shortcut context — React context follows the render tree, and the
+          slot renders inside the title bar, above AppContent. */}
+      <ShortcutProvider>
+        <WindowShell titleBar={titleBar}>
+          <AppContent isSetupActive={isSetupActive} onSetupComplete={handleSetupComplete} />
+        </WindowShell>
+      </ShortcutProvider>
     </TitleBarSlotContext>
   )
 }

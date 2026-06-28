@@ -23,6 +23,11 @@ import {
 import FilterChip from './FilterChip'
 import SuggestionPanel, { type PanelOption } from './SuggestionPanel'
 
+// Chips shown while the bar is collapsed (blurred). The rest collapse into a
+// `+N` badge so the single row never wraps past the title bar's fixed height;
+// focusing the bar floats it open and reveals every chip.
+const COLLAPSED_CHIP_LIMIT = 2
+
 interface CompositeSearchBarProps {
   /** Current content-type selection (maps to `activeFilter`). */
   contentFilter: Filter
@@ -81,6 +86,9 @@ function CompositeSearchBar({
 
   const current = { type: contentFilter, tag: tagFilter, source: sourceFilter, time: timeRange }
   const chips = buildChips({ t, sourceOptions, tagOptions, current })
+  // Collapsed shows a capped slice; floating open (focused) shows them all.
+  const visibleChips = open ? chips : chips.slice(0, COLLAPSED_CHIP_LIMIT)
+  const hiddenChipCount = chips.length - visibleChips.length
   const parsed = parseBuffer(buffer)
 
   // Token mode (`type:` …) narrows to one dimension; otherwise the panel shows
@@ -138,9 +146,9 @@ function CompositeSearchBar({
     setBuffer('')
     onQueryChange('')
     setHighlight(-1)
-    // Close so the freshly-filtered results are visible; focus stays in the
-    // input, and arrowing or typing re-opens the panel to add more filters.
-    setOpen(false)
+    // Stay open so filters can be stacked without the bar collapsing after each
+    // pick; the user dismisses it by blurring (Esc / clicking away).
+    setOpen(true)
     inputRef.current?.focus()
   }
 
@@ -254,10 +262,22 @@ function CompositeSearchBar({
   })
 
   return (
-    <div className="relative w-full">
-      <div className="flex min-h-7 flex-wrap items-center gap-1.5 rounded-2xl bg-muted/40 px-3 py-1 transition-colors focus-within:bg-muted/60">
+    // `min-h-7` reserves the collapsed row's height so the bar floating open
+    // (absolute) never collapses the title-bar slot it lives in.
+    <div className="relative min-h-7 w-full">
+      <div
+        className={cn(
+          'flex min-h-7 items-center gap-1.5 rounded-2xl border py-1 pl-3 transition-colors',
+          // Focused: float above the title bar and wrap every chip onto as many
+          // rows as needed; `pr-9` reserves the lane for the pinned clear button.
+          // Collapsed: stay one clipped row of fixed height.
+          open
+            ? 'absolute inset-x-0 top-0 z-40 flex-wrap border-border bg-popover pr-9 shadow-md'
+            : 'relative flex-nowrap overflow-hidden border-border/60 bg-muted/70 pr-3 focus-within:border-border focus-within:bg-muted'
+        )}
+      >
         <Search className="size-3.5 shrink-0 text-muted-foreground/50" />
-        {chips.map(chip => (
+        {visibleChips.map(chip => (
           <FilterChip
             key={chip.dimension}
             icon={chip.icon}
@@ -266,6 +286,20 @@ function CompositeSearchBar({
             onClear={() => resetDimension(chip.dimension)}
           />
         ))}
+        {!open && hiddenChipCount > 0 && (
+          <button
+            type="button"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => {
+              setOpen(true)
+              inputRef.current?.focus()
+            }}
+            aria-label={t('history.composite.moreFilters', { count: hiddenChipCount })}
+            className="inline-flex h-5 shrink-0 items-center rounded-full bg-foreground/8 px-2 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            +{hiddenChipCount}
+          </button>
+        )}
         <input
           ref={inputRef}
           type="text"
@@ -286,9 +320,11 @@ function CompositeSearchBar({
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
           placeholder={chips.length === 0 ? t('history.searchPlaceholder') : ''}
-          className="min-w-[6rem] flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50"
+          className="min-w-0 flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50"
         />
-        {totalCount > 0 && (
+        {/* Count only in the collapsed browse row (no chips); when open the bar
+            wraps and the clear button is pinned, so the count is dropped. */}
+        {totalCount > 0 && !open && chips.length === 0 && (
           <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/40">
             {t('history.subtitle', { count: totalCount })}
           </span>
@@ -301,23 +337,28 @@ function CompositeSearchBar({
             aria-label={t('history.composite.clearAll')}
             className={cn(
               'inline-flex size-5 shrink-0 items-center justify-center rounded-full',
-              'text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground'
+              'text-muted-foreground/60 hover:bg-foreground/10 hover:text-foreground',
+              // Open: pin to the floating bar's top-right so wrapping chips can't
+              // push it onto a second row.
+              open && 'absolute right-2.5 top-1.5'
             )}
           >
             <X className="size-3" />
           </button>
         )}
+        {/* Inside the floating bar so the panel anchors to its real bottom edge,
+            staying clear of the chips no matter how many rows they wrap onto. */}
+        {expanded && (
+          <SuggestionPanel
+            panelId={panelId}
+            title={t('history.composite.title')}
+            options={options}
+            highlightIndex={clampedHighlight}
+            onSelect={selectOption}
+            onHighlight={setHighlight}
+          />
+        )}
       </div>
-      {expanded && (
-        <SuggestionPanel
-          panelId={panelId}
-          title={t('history.composite.title')}
-          options={options}
-          highlightIndex={clampedHighlight}
-          onSelect={selectOption}
-          onHighlight={setHighlight}
-        />
-      )}
     </div>
   )
 }

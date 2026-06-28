@@ -727,6 +727,7 @@
       },
       "noMatches": "无匹配项",
       "removeFilter": "移除筛选：{{filter}}",
+      "moreFilters": "展开其余 {{count}} 个筛选",
       "clearAll": "清除全部"
     }
   },

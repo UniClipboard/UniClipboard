@@ -737,6 +737,7 @@
       },
       "noMatches": "No matches",
       "removeFilter": "Remove filter: {{filter}}",
+      "moreFilters": "Show {{count}} more filters",
       "clearAll": "Clear all"
     }
   },

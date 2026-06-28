@@ -756,7 +756,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   const source = delivery ? describeSource(delivery.source, t) : null
 
   const actionBtnClass =
-    'flex size-6 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground'
+    'flex size-6 items-center justify-center rounded-lg text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground'
 
   return (
     <div
@@ -905,7 +905,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       {/* ── Action layer (hover): copy / favorite / delete as one aligned group ── */}
       <div
         className={cn(
-          'absolute bottom-1.5 right-2 z-20 flex items-center gap-0.5 rounded-lg border border-border/40 bg-card/95 p-0.5 shadow-sm backdrop-blur transition-opacity duration-150',
+          'absolute bottom-1.5 right-2 z-20 flex items-center gap-0.5 rounded-xl border border-border/40 bg-card/95 p-0.5 shadow-sm backdrop-blur transition-opacity duration-150',
           isHovered && !isTransferring && !isPending
             ? 'opacity-100'
             : 'pointer-events-none opacity-0'

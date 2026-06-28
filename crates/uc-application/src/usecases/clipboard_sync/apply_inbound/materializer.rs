@@ -27,6 +27,21 @@ use crate::facade::blob_transfer::{
 };
 use crate::usecases::clipboard_sync::payload_codec::V3BlobRef;
 
+/// Maximum number of bytes that a single representation-bound blob may contribute
+/// as inline bytes in the clipboard snapshot forwarded to the OS clipboard write.
+///
+/// Reps exceeding this threshold are *not* inlined into the snapshot (their rep
+/// slot is removed). The entry itself is still stored — just without the oversized
+/// rep content. This acts as a defense-in-depth guard against the Windows DIBV5
+/// encode OOM path: a 64 MB PNG would decode to ~260 MB RGBA and produce a
+/// ~260 MB DIBV5 buffer; with 9 simultaneous large reps the peak climbs to
+/// several GB. `LARGE_PNG_BYTES` (4 MB) in `windows.rs` handles the normal
+/// multi-rep case; this cap catches extreme individual reps that slip through.
+///
+/// 64 MB is intentionally generous — a 4K screenshot PNG is typically 5–15 MB,
+/// so this only fires for genuinely unusual payloads.
+const MAX_REP_INLINE_BYTES: usize = 64 * 1024 * 1024; // 64 MB
+
 /// 判断 fetcher 返回的 anyhow 错误是否来自 `BlobTransferError::Cancelled`。
 /// 仅 `BlobTransferFacade` 这一条生产路径保留 thiserror chain;mock 路径
 /// 若想模拟 cancel,可以 `Err(anyhow::Error::from(BlobTransferError::Cancelled))`。
@@ -188,16 +203,27 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         let batch_total = rep_refs.len() + file_refs.len();
         let mut batch_idx = 0usize;
 
-        // 收集 partial cancel 时的"未完成"轨迹:
-        // - `incomplete_rep_idxs`:rep_refs 阶段被取消的 representation index,
-        //   退出循环后从 snapshot.representations 中倒序移除,避免把声明了但
-        //   没有真实 bytes 的 rep 落库后导致 renderer 渲染失败。
-        // - `missing_files`:file_refs 阶段被取消的文件元数据,用于:
-        //   (a) 在 file-list rep 中以 `uniclip-missing://` URI 占位;
-        //   (b) 返回给上层做"是否 partial"判定。
-        // - `partial`: set when cancel or fetch error occurs; remaining blobs
+        // Collect state for two distinct "skip" scenarios:
+        //
+        // `incomplete_rep_idxs`: rep indices that were not fetched due to a
+        //   cancel or fetch error. Set alongside `partial = true`. Reps are
+        //   removed from the snapshot so the partial entry does not carry
+        //   empty-bytes stubs that would cause the renderer to fail.
+        //
+        // `size_exceeded_rep_idxs`: rep indices whose fetched bytes exceeded
+        //   MAX_REP_INLINE_BYTES. These reps are *not* inlined into the
+        //   snapshot (to prevent OOM in the downstream Windows DIBV5 encode
+        //   path) but `partial` is NOT set — the entry is stored normally
+        //   without the oversized rep content.
+        //
+        // `missing_files`: file-ref metadata for file_refs cancelled mid-fetch.
+        //   Used for (a) uniclip-missing:// URI placeholders and (b) signalling
+        //   partial state to the caller.
+        //
+        // `partial`: set when a cancel or fetch error occurs; remaining blobs
         //   are marked missing and no further fetches are attempted.
         let mut incomplete_rep_idxs: Vec<usize> = Vec::new();
+        let mut size_exceeded_rep_idxs: Vec<usize> = Vec::new();
         let mut missing_files: Vec<MissingFileRef> = Vec::new();
         let mut partial = false;
 
@@ -281,13 +307,40 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             };
 
             let usize_idx = idx as usize;
+            let fetched_len = fetched.plaintext.len();
+
+            // Defense-in-depth cap: do not inline extremely large blobs into the
+            // snapshot that will be forwarded to the OS clipboard write. The Windows
+            // DIBV5 encode path (png_to_dibv5) allocates pixel_w × pixel_h × 4 bytes
+            // per rep; with multiple oversized reps the cumulative peak can exceed
+            // available memory. The per-rep encode strategy in windows.rs
+            // (LARGE_PNG_BYTES / PngEncodeSlot::Large) handles the normal multi-rep
+            // case; this cap is a last-resort guard for individually extreme payloads.
+            //
+            // The entry is still stored — only the oversized rep is absent from the
+            // inlined snapshot. `partial` is NOT set (a missing rep is not a transfer
+            // failure; the entry is complete enough to be usable).
+            if fetched_len > MAX_REP_INLINE_BYTES {
+                warn!(
+                    entry_id = %entry_id,
+                    representation_index = idx,
+                    fetched_bytes = fetched_len,
+                    cap_bytes = MAX_REP_INLINE_BYTES,
+                    mime = blob_ref.mime.as_deref().unwrap_or(""),
+                    "materialize: rep-bound blob exceeds per-rep byte cap; \
+                     skipping inline to prevent OOM in OS clipboard write \
+                     (entry is still stored without this rep)"
+                );
+                size_exceeded_rep_idxs.push(usize_idx);
+                continue;
+            }
+
             let rep_count = snapshot.representations.len();
             let rep = snapshot.representations.get_mut(usize_idx).ok_or_else(|| {
                 anyhow!(
                     "materialize: representation_index {idx} out of bounds (snapshot has {rep_count} reps)"
                 )
             })?;
-            let fetched_len = fetched.plaintext.len();
             rep.set_inline_bytes(fetched.plaintext.to_vec())
                 .map_err(|err| anyhow!("materialize: failed to set inline bytes: {err}"))?;
             info!(
@@ -295,6 +348,27 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 representation_index = idx,
                 bytes_written = fetched_len,
                 "materialize: blob inlined back into representation"
+            );
+        }
+
+        // Remove size-exceeded reps from the snapshot. These reps were not
+        // inlined (bytes too large for safe clipboard write) so their slot in
+        // `snapshot.representations` still holds the pre-fetch placeholder.
+        // Removing them prevents empty-rep stubs from reaching the DB or the
+        // clipboard writer. `partial` is intentionally NOT set.
+        if !size_exceeded_rep_idxs.is_empty() {
+            let mut sorted = size_exceeded_rep_idxs.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            for &i in sorted.iter().rev() {
+                if i < snapshot.representations.len() {
+                    snapshot.representations.remove(i);
+                }
+            }
+            info!(
+                removed_rep_count = sorted.len(),
+                "materialize: removed oversized rep-bound reps from snapshot \
+                 (entry stored without them; not marked partial)"
             );
         }
 

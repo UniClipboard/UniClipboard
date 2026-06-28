@@ -117,6 +117,11 @@ The index may be in a "rebuilding" state.
 Occasionally the index drifts out of sync with history (most often
 when the process was `SIGKILL`-ed mid-write).
 
+An interrupted rebuild now resumes automatically the next time the
+daemon starts (for example when you reopen the app), so a manual
+rebuild is usually only needed when you'd rather not wait for a
+restart.
+
 - **GUI**: that `Rebuild` button. After clicking, the state shifts to
   "Rebuilding" and the UI polls every 2 s until completion.
 - **CLI**: `uniclip search rebuild` is synchronous — it doesn't return

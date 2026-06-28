@@ -3248,6 +3248,12 @@
             "format": "int64",
             "type": "integer"
           },
+          "charCount": {
+            "description": "Full character count of the entry's primary text content, so the UI shows\nthe real total length rather than the capped `text_preview` length. `null`\nfor entries with no inline text (image / file / payload lost).",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
           "contentType": {
             "type": "string"
           },
@@ -3360,7 +3366,7 @@
         "type": "object"
       },
       "SearchTagDto": {
-        "description": "A tag and its entry count for `GET /search/tags`. `is_builtin` marks the\nreserved builtin tags (`link`/`favorited`/`image`); custom tags are present\nonly in unlocked sessions (§4.6).",
+        "description": "A tag and its entry count for `GET /search/tags`. `is_builtin` marks the\nreserved builtin tags (`link`/`code`/`favorited`/`image`); custom tags are present\nonly in unlocked sessions (§4.6).",
         "properties": {
           "count": {
             "format": "int32",
@@ -7811,7 +7817,7 @@
     },
     "/search/tags": {
       "get": {
-        "description": "List the tags present in the index with their entry counts. Builtin tags\n(link/favorited/image) are always listed (filter-only over the membership\ntable, so no search key is needed); custom tags are listed only when the\nsession is unlocked (§4.6).",
+        "description": "List the tags present in the index with their entry counts. Builtin tags\n(link/code/favorited/image) are always listed (filter-only over the membership\ntable, so no search key is needed); custom tags are listed only when the\nsession is unlocked (§4.6).",
         "operationId": "getSearchTags",
         "responses": {
           "200": {

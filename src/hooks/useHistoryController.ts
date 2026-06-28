@@ -6,6 +6,7 @@ import { useCopyFeedback } from '@/hooks/useCopyFeedback'
 import { useDeleteFlow } from '@/hooks/useDeleteFlow'
 import { useHistoryData } from '@/hooks/useHistoryData'
 import { useHistoryInfiniteScroll } from '@/hooks/useHistoryInfiniteScroll'
+import { useSearchTags } from '@/hooks/useSearchTags'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
@@ -32,6 +33,7 @@ export function useHistoryController() {
   useTransferProgress()
 
   const data = useHistoryData()
+  const searchableTags = useSearchTags()
 
   // Per-card interaction state (small + render-driving).
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -189,24 +191,27 @@ export function useHistoryController() {
 
   // Heading reflects the active quick view / content-type filter ("收藏",
   // "文本", …), falling back to "全部" while unfiltered.
-  const viewLabelKey =
-    data.filter.activeFilter === Filter.All
-      ? 'history.filter.all'
-      : data.filter.activeFilter === Filter.Favorited
-        ? 'history.filter.favorited'
-        : `history.type.${data.filter.activeFilter}`
+  const viewLabel =
+    data.filter.tagFilter !== null
+      ? t(`history.type.${data.filter.tagFilter}`, { defaultValue: data.filter.tagFilter })
+      : data.filter.activeFilter === Filter.All
+        ? t('history.filter.all')
+        : data.filter.activeFilter === Filter.Favorited
+          ? t('history.filter.favorited')
+          : t(`history.type.${data.filter.activeFilter}`)
 
   return {
     // Filter / search register (shared by the search bar and the filter panel).
     filter: data.filter,
     filterActions: data.actions,
     sourceOptions: data.sourceOptions,
+    searchableTags,
     browseCount: data.browseCount,
     indexState: data.indexState,
     isSearchActive: data.isSearchActive,
     searchLoading: data.searchLoading,
     searchInputRef,
-    viewLabelKey,
+    viewLabel,
 
     // List region.
     items: orderedItems,

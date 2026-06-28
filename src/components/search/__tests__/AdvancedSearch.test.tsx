@@ -4,6 +4,44 @@ import { describe, expect, it, vi } from 'vitest'
 import AdvancedSearch from '../AdvancedSearch'
 
 describe('AdvancedSearch', () => {
+  it('offers only physical content types for type tokens', () => {
+    render(
+      <AdvancedSearch
+        value="type:"
+        onValueChange={vi.fn()}
+        isAdvanced
+        onAdvancedChange={vi.fn()}
+        tokens={[]}
+        onTokensChange={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('type:text')).toBeInTheDocument()
+    expect(screen.getByText('type:image')).toBeInTheDocument()
+    expect(screen.getByText('type:file')).toBeInTheDocument()
+    expect(screen.queryByText('type:code')).not.toBeInTheDocument()
+    expect(screen.queryByText('type:link')).not.toBeInTheDocument()
+  })
+
+  it('offers searchable tags after # and commits the selected tag token', () => {
+    const onTokensChange = vi.fn()
+
+    render(
+      <AdvancedSearch
+        value="#"
+        onValueChange={vi.fn()}
+        isAdvanced
+        onAdvancedChange={vi.fn()}
+        tokens={[]}
+        onTokensChange={onTokensChange}
+      />
+    )
+
+    fireEvent.click(screen.getByText('#link'))
+
+    expect(onTokensChange).toHaveBeenCalledWith(['#link'])
+  })
+
   it('enters advanced mode when full-width colon is entered', () => {
     const onAdvancedChange = vi.fn()
     const onValueChange = vi.fn()

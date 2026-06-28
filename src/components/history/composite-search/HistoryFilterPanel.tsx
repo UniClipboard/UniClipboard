@@ -2,17 +2,21 @@ import { Clock, LayoutGrid, MonitorSmartphone, Star, type LucideIcon } from 'luc
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
+import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { buildCandidates, DIMENSION_LABEL_KEYS, type SourceOption } from './composite-search-model'
 
 interface HistoryFilterPanelProps {
   contentFilter: Filter
   sourceFilter: string | null
+  tagFilter: string | null
   timeRange: TimeRangePreset
   onContentFilterChange: (filter: Filter) => void
+  onTagFilterChange: (tag: string | null) => void
   onSourceFilterChange: (id: string | null) => void
   onTimeRangeChange: (preset: TimeRangePreset) => void
   sourceOptions: SourceOption[]
+  tagOptions: SearchTagOption[]
 }
 
 /** A single clickable filter row: icon + label with an active highlight. */
@@ -74,31 +78,26 @@ function PanelSection({ title, children }: { title?: string; children: React.Rea
 function HistoryFilterPanel({
   contentFilter,
   sourceFilter,
+  tagFilter,
   timeRange,
   onContentFilterChange,
+  onTagFilterChange,
   onSourceFilterChange,
   onTimeRangeChange,
   sourceOptions,
+  tagOptions,
 }: HistoryFilterPanelProps) {
   const { t } = useTranslation()
-  const current = { type: contentFilter, source: sourceFilter, time: timeRange }
-  const typeCandidates = buildCandidates('type', '', { t, sourceOptions, current })
-  const sourceCandidates = buildCandidates('source', '', { t, sourceOptions, current })
-  const timeCandidates = buildCandidates('time', '', { t, sourceOptions, current })
-
-  // Split the content-type candidates into the two groups users reason about:
-  // physical content types (text/image/file) and cross-cutting tags (link/code).
-  // Both still drive the same `contentFilter` register — link already filters via
-  // the backend `tags` param, code via the `html` content type — so this is a
-  // presentation grouping, not a new filter dimension.
-  const byValue = new Map(typeCandidates.map(c => [c.value, c]))
-  const pick = (filters: Filter[]) =>
-    filters.flatMap(f => {
-      const c = byValue.get(f)
-      return c ? [c] : []
-    })
-  const typeRows = pick([Filter.Text, Filter.Image, Filter.File])
-  const tagRows = pick([Filter.Link, Filter.Code])
+  const current = { type: contentFilter, tag: tagFilter, source: sourceFilter, time: timeRange }
+  const typeCandidates = buildCandidates('type', '', { t, sourceOptions, tagOptions, current })
+  const tagCandidates = buildCandidates('tag', '', {
+    t,
+    sourceOptions,
+    tagOptions,
+    current,
+  }).filter(opt => opt.value !== Filter.Favorited)
+  const sourceCandidates = buildCandidates('source', '', { t, sourceOptions, tagOptions, current })
+  const timeCandidates = buildCandidates('time', '', { t, sourceOptions, tagOptions, current })
 
   return (
     <aside className="no-scrollbar w-44 shrink-0 overflow-y-auto border-r border-border/60 bg-muted/20 px-2 py-3">
@@ -119,7 +118,7 @@ function HistoryFilterPanel({
       </PanelSection>
 
       <PanelSection title={t(DIMENSION_LABEL_KEYS.type)}>
-        {typeRows.map(opt => (
+        {typeCandidates.map(opt => (
           <PanelRow
             key={opt.id}
             icon={opt.icon}
@@ -131,13 +130,13 @@ function HistoryFilterPanel({
       </PanelSection>
 
       <PanelSection title={t('history.composite.dimension.tag')}>
-        {tagRows.map(opt => (
+        {tagCandidates.map(opt => (
           <PanelRow
             key={opt.id}
             icon={opt.icon}
             label={opt.label}
             active={opt.isActive}
-            onClick={() => onContentFilterChange(opt.value as Filter)}
+            onClick={() => onTagFilterChange(opt.value)}
           />
         ))}
       </PanelSection>

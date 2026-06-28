@@ -68,10 +68,105 @@ impl TagRule for ImageRule {
     }
 }
 
-/// The builtin tag rules evaluated for every entry: [`LinkRule`] (web URLs) and
-/// [`ImageRule`] (image content). User-defined rules are a later extension point.
+/// A [`TagRule`] that marks entries carrying rich text / HTML with the builtin
+/// `code` tag. Plain-text snippets that look like source code also carry this
+/// tag, matching the history card's best-effort code presentation.
+struct CodeRule {
+    tag_id: TagId,
+}
+
+impl CodeRule {
+    fn new() -> Self {
+        Self {
+            tag_id: TagId::code(),
+        }
+    }
+}
+
+impl TagRule for CodeRule {
+    fn tag_id(&self) -> &TagId {
+        &self.tag_id
+    }
+
+    fn evaluate(&self, content: &TaggableContent<'_>) -> bool {
+        content.content_type == ContentType::Html || looks_like_code(content.plain_text)
+    }
+}
+
+fn looks_like_code(text: Option<&str>) -> bool {
+    let Some(text) = text else {
+        return false;
+    };
+    let trimmed = text.trim();
+    if trimmed.len() < 12 {
+        return false;
+    }
+
+    let lines: Vec<&str> = trimmed.lines().take(12).collect();
+    let has_code_keyword = [
+        "function ",
+        "const ",
+        "let ",
+        "var ",
+        "return ",
+        "class ",
+        "interface ",
+        "import ",
+        "export ",
+        "async ",
+        "await ",
+        "def ",
+        "from ",
+        "fn ",
+        "pub ",
+        "impl ",
+        "struct ",
+        "func ",
+        "package ",
+        "SELECT ",
+        "INSERT INTO ",
+        "UPDATE ",
+        "DELETE FROM ",
+        "CREATE TABLE ",
+    ]
+    .iter()
+    .any(|keyword| trimmed.contains(keyword));
+    let has_code_punctuation = trimmed.contains('{')
+        || trimmed.contains('}')
+        || trimmed.contains("=>")
+        || trimmed.contains("->")
+        || trimmed.contains("::")
+        || trimmed.contains("</")
+        || trimmed.contains("/>")
+        || trimmed.contains("#include");
+    let indented_lines = lines
+        .iter()
+        .filter(|line| line.starts_with("  ") || line.starts_with('\t'))
+        .count();
+    let assignment_like = trimmed.contains(" = ")
+        || trimmed.contains(": ")
+        || trimmed.contains(" := ")
+        || trimmed.contains("==")
+        || trimmed.contains("!=");
+    let comment_like = lines.iter().any(|line| {
+        let s = line.trim_start();
+        s.starts_with("//") || s.starts_with("/*") || s.starts_with("# ") || s.starts_with("-- ")
+    });
+
+    (has_code_keyword && (has_code_punctuation || assignment_like || indented_lines > 0))
+        || (has_code_punctuation && indented_lines > 0)
+        || (comment_like && (has_code_keyword || has_code_punctuation))
+}
+
+/// The builtin tag rules evaluated for every entry: [`LinkRule`] (web URLs),
+/// [`ImageRule`] (image content), and [`CodeRule`] (HTML/source-like text).
+/// User-defined rules are a later extension point.
 fn builtin_rules() -> Vec<Box<dyn TagRule>> {
-    vec![Box::new(LinkRule::new()), Box::new(ImageRule::new())]
+    vec![
+        Box::new(LinkRule::new()),
+        Box::new(ImageRule::new()),
+        Box::new(CodeRule::new()),
+    ]
 }
 
 /// Evaluate `rules` against `content`, collecting the ids of the tags that apply.
@@ -136,6 +231,11 @@ struct SearchableContent {
     file_paths: Vec<String>,
     file_names: Vec<String>,
     text_preview: Option<String>,
+    /// Full character count of the preview representation's plain text — the same
+    /// source `text_preview` is truncated from. Set alongside `text_preview` so
+    /// the count always matches the displayed text; `None` for entries with no
+    /// inline plain text.
+    char_count: Option<i64>,
     /// True when any representation is an image. An image entry is browsable and
     /// filterable even with no searchable text. This drives the derived `image`
     /// tag — NOT the content_type: a copied image file keeps `content_type =
@@ -169,6 +269,7 @@ impl SearchableContent {
                 if !text.is_empty() {
                     if is_preview {
                         self.text_preview = Some(text.chars().take(200).collect());
+                        self.char_count = Some(text.chars().count() as i64);
                     }
                     self.plain_text = Some(text.to_string());
                 }
@@ -315,6 +416,7 @@ impl SearchableContent {
             file_paths: self.file_paths,
             file_names: self.file_names,
             text_preview: self.text_preview,
+            char_count: self.char_count,
             link_urls,
             source_device,
             payload_state,
@@ -487,8 +589,46 @@ mod tests {
                 .expect("snapshot has searchable content");
 
         assert_eq!(input.content_type, ContentType::Html);
+        assert!(
+            input.tags.contains(&TagId::code()),
+            "rich text carries the code tag"
+        );
         // Preview text still comes from the preview (plain) representation.
         assert_eq!(input.text_preview.as_deref(), Some("hello world"));
+        // Short text: the char count equals the (untruncated) preview length.
+        assert_eq!(input.char_count, Some(11));
+    }
+
+    /// `text_preview` is capped at 200 chars, but `char_count` must carry the
+    /// FULL length so the UI shows the real total instead of a stuck "200". This
+    /// is the regression test for "history card always shows 200 characters".
+    #[test]
+    fn long_text_reports_full_char_count_despite_truncated_preview() {
+        let body = "x".repeat(250);
+        let plain = rep("text", "text/plain", body.as_bytes());
+        let plain_id = plain.id.clone();
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 1,
+            representations: vec![plain],
+            file_content_digests: Vec::new(),
+        };
+        let selection = ClipboardSelection {
+            primary_rep_id: plain_id.clone(),
+            secondary_rep_ids: Vec::new(),
+            preview_rep_id: plain_id.clone(),
+            paste_rep_id: plain_id,
+            policy_version: SelectionPolicyVersion::V1,
+        };
+
+        let input =
+            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
+                .expect("snapshot has searchable content");
+
+        // Preview is truncated to 200 chars...
+        assert_eq!(input.text_preview.as_deref().map(str::len), Some(200));
+        // ...but the char count reflects the full 250-character text.
+        assert_eq!(input.char_count, Some(250));
     }
 
     /// A web-image copy (right-click → Copy Image) carries the actual `image/*`
@@ -639,6 +779,34 @@ mod tests {
         let input = project_one("text", "text/plain", b"https://example.com");
         assert_eq!(input.content_type, ContentType::Text);
         assert_eq!(input.tags, vec![TagId::link()]);
+    }
+
+    #[test]
+    fn plain_text_code_snippet_gets_code_tag() {
+        let input = project_one(
+            "text",
+            "text/plain",
+            b"function greet(name) {\n  return `hello ${name}`;\n}",
+        );
+        assert_eq!(input.content_type, ContentType::Text);
+        assert!(
+            input.tags.contains(&TagId::code()),
+            "plain code text should be searchable through the code tag"
+        );
+    }
+
+    #[test]
+    fn prose_with_programming_words_has_no_code_tag() {
+        let input = project_one(
+            "text",
+            "text/plain",
+            b"Please return the signed form after the meeting and let me know.",
+        );
+        assert_eq!(input.content_type, ContentType::Text);
+        assert!(
+            !input.tags.contains(&TagId::code()),
+            "ordinary prose should not be searchable through the code tag"
+        );
     }
 
     #[test]

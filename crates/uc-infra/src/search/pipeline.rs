@@ -74,6 +74,7 @@ impl SearchPipelinePort for SearchPipeline {
             indexed_at_ms: chrono::Utc::now().timestamp_millis(),
             index_version: CURRENT_INDEX_VERSION.to_string(),
             text_preview: extracted.text_preview,
+            char_count: input.char_count,
             file_names: input.file_names.clone(),
             link_urls: input.link_urls.clone(),
             source_device: input.source_device.clone(),

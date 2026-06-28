@@ -47,7 +47,7 @@ function SuggestionPanel({
   }, [highlightIndex])
 
   return (
-    <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-border/40 bg-popover text-popover-foreground shadow-lg">
+    <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-border/40 bg-popover text-popover-foreground shadow-lg">
       <div id={panelId} role="listbox" aria-label={title} className="max-h-72 overflow-y-auto p-1">
         {options.map((opt, i) => {
           const Icon = opt.icon
@@ -70,7 +70,7 @@ function SuggestionPanel({
                 onClick={() => onSelect(i)}
                 onMouseEnter={() => onHighlight(i)}
                 className={cn(
-                  'flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px]',
+                  'flex h-8 w-full items-center gap-2 rounded-xl px-2 text-left text-[12px]',
                   active ? 'bg-foreground/8 text-foreground' : 'text-muted-foreground'
                 )}
               >

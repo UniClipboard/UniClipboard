@@ -53,6 +53,11 @@ pub struct SearchDocument {
     /// Optional truncated preview for UI rendering (populated by Phase 89 use case).
     /// Truncation logic lives in the use case, not here.
     pub text_preview: Option<String>,
+    /// Full character count of the entry's primary text content, mirrored as a
+    /// render column so the UI can show the real total length next to the
+    /// truncated `text_preview`. `None` for entries with no inline text (image /
+    /// file / payload not inline). Capture-time stable.
+    pub char_count: Option<i64>,
     /// Display names of the files this entry references (from a `file://`
     /// uri-list). Empty when the entry carries no files. Capture-time stable, so
     /// it is mirrored as an index render column rather than fetched lazily.

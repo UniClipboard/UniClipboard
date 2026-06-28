@@ -28,6 +28,8 @@ pub mod builtin {
     /// `File`, but still carries the `image` tag so the image filter surfaces
     /// it alongside pure bitmaps.
     pub const IMAGE: &str = "image";
+    /// Code/rich-text tag: the entry carries rich text / HTML content.
+    pub const CODE: &str = "code";
 }
 
 /// Stable identifier of a search tag.
@@ -58,6 +60,11 @@ impl TagId {
         Self::new(builtin::IMAGE)
     }
 
+    /// The builtin `code` tag id.
+    pub fn code() -> Self {
+        Self::new(builtin::CODE)
+    }
+
     /// Borrow the id as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -67,7 +74,7 @@ impl TagId {
     pub fn is_builtin(&self) -> bool {
         matches!(
             self.0.as_str(),
-            builtin::LINK | builtin::FAVORITED | builtin::IMAGE
+            builtin::LINK | builtin::FAVORITED | builtin::IMAGE | builtin::CODE
         )
     }
 }
@@ -154,9 +161,11 @@ mod tests {
         assert_eq!(TagId::link().as_str(), builtin::LINK);
         assert_eq!(TagId::favorited().as_str(), builtin::FAVORITED);
         assert_eq!(TagId::image().as_str(), builtin::IMAGE);
+        assert_eq!(TagId::code().as_str(), builtin::CODE);
         assert!(TagId::link().is_builtin());
         assert!(TagId::favorited().is_builtin());
         assert!(TagId::image().is_builtin());
+        assert!(TagId::code().is_builtin());
     }
 
     #[test]

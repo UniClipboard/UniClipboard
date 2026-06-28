@@ -2044,6 +2044,12 @@ export type SearchRebuildEnvelope = {
  */
 export type SearchResultDto = {
     activeTimeMs: number;
+    /**
+     * Full character count of the entry's primary text content, so the UI shows
+     * the real total length rather than the capped `text_preview` length. `null`
+     * for entries with no inline text (image / file / payload lost).
+     */
+    charCount?: number | null;
     contentType: string;
     entryId: string;
     fileExtensions: Array<string>;
@@ -2120,7 +2126,7 @@ export type SearchStatusEnvelope = {
 
 /**
  * A tag and its entry count for `GET /search/tags`. `is_builtin` marks the
- * reserved builtin tags (`link`/`favorited`/`image`); custom tags are present
+ * reserved builtin tags (`link`/`code`/`favorited`/`image`); custom tags are present
  * only in unlocked sessions (§4.6).
  */
 export type SearchTagDto = {

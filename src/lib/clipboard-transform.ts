@@ -144,11 +144,19 @@ export function searchResultToDisplayItem(r: SearchResultDto): DisplayClipboardI
       content = null
       break
     case 'code':
-      content = r.textPreview != null ? { code: r.textPreview } : null
+      content =
+        r.textPreview != null ? { code: r.textPreview, char_count: r.charCount ?? undefined } : null
       break
     case 'text':
       content =
-        r.textPreview != null ? { display_text: r.textPreview, has_detail: false, size: 0 } : null
+        r.textPreview != null
+          ? {
+              display_text: r.textPreview,
+              has_detail: false,
+              size: 0,
+              char_count: r.charCount ?? undefined,
+            }
+          : null
       break
     default:
       content = null

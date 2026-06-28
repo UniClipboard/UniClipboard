@@ -134,6 +134,7 @@ function makeSearchResult(overrides: Partial<SearchResultDto> = {}): SearchResul
     activeTimeMs: 1,
     tags: [],
     textPreview: 'hello',
+    charCount: null,
     mimeType: 'text/plain',
     fileExtensions: [],
     fileNames: [],

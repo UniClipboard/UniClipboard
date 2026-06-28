@@ -152,7 +152,7 @@ async fn encryption_session_ready(state: &DaemonApiState) -> Result<bool, ApiErr
 }
 
 /// True when the comma-separated `tags` query param carries any non-builtin
-/// (custom) tag id. Builtin ids are the reserved `link`/`favorited`/`image`.
+/// (custom) tag id.
 fn query_has_custom_tag(raw: Option<&str>) -> bool {
     raw.map(|s| {
         s.split(',')
@@ -265,7 +265,7 @@ async fn search_query_handler(
 /// GET /search/tags
 ///
 /// List the tags present in the index with their entry counts. Builtin tags
-/// (link/favorited/image) are always listed (filter-only over the membership
+/// (link/code/favorited/image) are always listed (filter-only over the membership
 /// table, so no search key is needed); custom tags are listed only when the
 /// session is unlocked (§4.6).
 #[utoipa::path(
@@ -491,9 +491,9 @@ mod tests {
         assert!(!query_has_custom_tag(Some("  ,  ")));
         // Builtin-only → false (filterable while locked).
         assert!(!query_has_custom_tag(Some("link")));
-        assert!(!query_has_custom_tag(Some("link,favorited")));
+        assert!(!query_has_custom_tag(Some("link,code,favorited")));
         assert!(!query_has_custom_tag(Some("image")));
-        assert!(!query_has_custom_tag(Some("link,favorited,image")));
+        assert!(!query_has_custom_tag(Some("link,code,favorited,image")));
         // Any custom id → true (requires an unlocked session).
         assert!(query_has_custom_tag(Some("project-x")));
         assert!(query_has_custom_tag(Some("link,project-x")));

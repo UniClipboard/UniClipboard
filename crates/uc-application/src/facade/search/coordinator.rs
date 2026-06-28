@@ -567,6 +567,7 @@ fn pipeline_input_to_search_result(input: SearchPipelineInput) -> SearchResult {
         active_time_ms: input.active_time_ms,
         tags: input.tags,
         text_preview: input.text_preview,
+        char_count: input.char_count,
         mime_type: input.mime_type,
         file_extensions: input.file_extensions,
         file_names: input.file_names,

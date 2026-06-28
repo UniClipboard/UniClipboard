@@ -26,6 +26,7 @@ impl IntoApiDto<Vec<SearchResultDto>> for SearchPageView {
                 active_time_ms: result.active_time_ms,
                 tags: result.tags,
                 text_preview: result.text_preview,
+                char_count: result.char_count,
                 mime_type: result.mime_type,
                 file_extensions: result.file_extensions,
                 file_names: result.file_names,

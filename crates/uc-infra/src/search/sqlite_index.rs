@@ -802,6 +802,7 @@ impl SqliteSearchIndex {
                     active_time_ms: domain.active_time_ms,
                     tags,
                     text_preview: domain.text_preview,
+                    char_count: domain.char_count,
                     mime_type: domain.mime_type,
                     file_extensions: domain.file_extensions,
                     file_names: domain.file_names,
@@ -889,6 +890,7 @@ impl SqliteSearchIndex {
                 link_urls TEXT NOT NULL DEFAULT '[]',
                 source_device TEXT,
                 payload_state TEXT,
+                char_count INTEGER,
                 PRIMARY KEY (profile_id, entry_id)
             )",
             doc_table = state.temp_document_table
@@ -990,8 +992,8 @@ impl SqliteSearchIndex {
             "INSERT OR REPLACE INTO {doc_table}
              (profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
               file_type, file_extensions, mime_type, indexed_at_ms, index_version, text_preview,
-              file_names, link_urls, source_device, payload_state)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              file_names, link_urls, source_device, payload_state, char_count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             doc_table = state.temp_document_table
         );
         diesel::sql_query(&insert_doc)
@@ -1010,6 +1012,7 @@ impl SqliteSearchIndex {
             .bind::<diesel::sql_types::Text, _>(&doc_row.link_urls)
             .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.source_device)
             .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.payload_state)
+            .bind::<diesel::sql_types::Nullable<diesel::sql_types::BigInt>, _>(doc_row.char_count)
             .execute(conn)
             .map_err(|e| SearchError::Internal(format!("insert temp doc failed: {e}")))?;
 
@@ -1158,7 +1161,7 @@ impl SqliteSearchIndex {
                  SELECT profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
                         file_type, file_extensions, mime_type, indexed_at_ms,
                         index_version, text_preview,
-                        file_names, link_urls, source_device, payload_state
+                        file_names, link_urls, source_device, payload_state, char_count
                  FROM {doc_table}",
                 doc_table = state.temp_document_table
             );
@@ -1890,6 +1893,7 @@ mod tests {
             link_urls: vec![],
             source_device: None,
             payload_state: None,
+            char_count: None,
         }
     }
 
@@ -2306,6 +2310,7 @@ mod tests {
                 link_urls: "[]".to_string(),
                 source_device: None,
                 payload_state: None,
+                char_count: None,
             })
             .collect();
         // Chunk to stay well within SQLite's bound-variable limit.

@@ -127,6 +127,9 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
 
   const isLargeText =
     item.type === 'text' && isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
+  // Code renders as an editor-like pane that fills the available height and owns
+  // its own scrolling, so it skips the auto-height ScrollArea wrapper.
+  const fillsParent = isLargeText || item.type === 'code'
 
   const content = (
     <PreviewContent
@@ -150,7 +153,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
       />
 
       <div className="relative flex-1 min-h-0">
-        {isLargeText ? (
+        {fillsParent ? (
           <div className="absolute inset-0">{content}</div>
         ) : (
           <ScrollArea className="h-full [&_[data-slot=scroll-area-viewport]>div]:!block">

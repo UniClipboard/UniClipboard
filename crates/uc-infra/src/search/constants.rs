@@ -29,7 +29,14 @@
 ///   copied image file is `File`+`image` while a web image / screenshot / pure
 ///   bitmap is `Image`. The bump forces a rebuild so existing rows reclassify
 ///   (no schema change).
-pub const CURRENT_INDEX_VERSION: &str = "search-v6";
+/// - `search-v7`: the derived `code` tag covers rich text / HTML and plain-text
+///   snippets that look like source code. The bump forces existing plain-text
+///   code rows to backfill the tag.
+/// - `search-v8`: adds the `char_count` render column — the full character count
+///   of an entry's primary text content, so the UI shows the real total length
+///   instead of the capped `text_preview` length. The rebuild backfills it for
+///   existing rows (see the `add_search_document_char_count` migration).
+pub const CURRENT_INDEX_VERSION: &str = "search-v8";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;

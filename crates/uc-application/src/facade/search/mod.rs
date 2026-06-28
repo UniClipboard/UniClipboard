@@ -61,6 +61,10 @@ pub struct SearchResultView {
     /// Tag ids as transparent strings (e.g. `"link"`, `"favorited"`).
     pub tags: Vec<String>,
     pub text_preview: Option<String>,
+    /// Full character count of the entry's primary text content, so the UI can
+    /// show the real total length instead of the capped preview length. `None`
+    /// for entries with no inline text.
+    pub char_count: Option<i64>,
     pub mime_type: String,
     pub file_extensions: Vec<String>,
     pub file_names: Vec<String>,
@@ -276,6 +280,7 @@ fn search_page_to_view(page: uc_core::search::SearchResultsPage, state: &str) ->
                 active_time_ms: item.active_time_ms,
                 tags: item.tags.iter().map(|t| t.to_string()).collect(),
                 text_preview: item.text_preview,
+                char_count: item.char_count,
                 mime_type: item.mime_type,
                 file_extensions: item.file_extensions,
                 file_names: item.file_names,

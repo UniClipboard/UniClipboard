@@ -4,6 +4,7 @@ import { Filter } from '@/api/clipboardItems'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { unlockEncryptionSession } from '@/api/security'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useSearchTags } from '@/hooks/useSearchTags'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -90,6 +91,7 @@ const ClipboardHistoryPanel: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRangePreset>('all_time')
   const [isAdvancedMode, setIsAdvancedMode] = useState(false)
   const [tokens, setTokens] = useState<string[]>([])
+  const searchableTags = useSearchTags()
 
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
@@ -534,6 +536,7 @@ const ClipboardHistoryPanel: React.FC = () => {
           setIsAdvancedMode={setIsAdvancedMode}
           tokens={tokens}
           setTokens={setTokens}
+          searchableTags={searchableTags}
           onKeyDown={handleKeyDown}
           focusSearchInput={focusSearchInput}
         />

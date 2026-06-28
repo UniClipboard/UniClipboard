@@ -60,4 +60,16 @@ describe('setup i18n keys', () => {
       'The pairing daemon is unavailable. Start the desktop service and try again'
     )
   })
+
+  it('contains display labels for every built-in history tag', async () => {
+    await i18n.changeLanguage('zh-CN')
+    expect(i18n.t('history.type.link')).toBe('链接')
+    expect(i18n.t('history.type.code')).toBe('代码')
+    expect(i18n.t('history.type.favorited')).toBe('收藏')
+
+    await i18n.changeLanguage('en-US')
+    expect(i18n.t('history.type.link')).toBe('Link')
+    expect(i18n.t('history.type.code')).toBe('Code')
+    expect(i18n.t('history.type.favorited')).toBe('Favorites')
+  })
 })

@@ -25,13 +25,16 @@ const HistoryPage: React.FC = () => {
       <CompositeSearchBar
         contentFilter={c.filter.activeFilter}
         sourceFilter={c.filter.sourceFilter}
+        tagFilter={c.filter.tagFilter}
         timeRange={c.filter.timeRange}
         onContentFilterChange={c.filterActions.setContentFilter}
+        onTagFilterChange={c.filterActions.setTagFilter}
         onSourceFilterChange={c.filterActions.setSourceFilter}
         onTimeRangeChange={c.filterActions.setTimeRange}
         onQueryChange={c.filterActions.setQuery}
         onQuerySubmit={text => c.filterActions.submitQuery(text.trim())}
         sourceOptions={c.sourceOptions}
+        tagOptions={c.searchableTags}
         totalCount={c.browseCount}
         inputRef={c.searchInputRef}
       />
@@ -39,9 +42,11 @@ const HistoryPage: React.FC = () => {
     [
       c.filter.activeFilter,
       c.filter.sourceFilter,
+      c.filter.tagFilter,
       c.filter.timeRange,
       c.filterActions,
       c.sourceOptions,
+      c.searchableTags,
       c.browseCount,
       c.searchInputRef,
     ]
@@ -66,7 +71,7 @@ const HistoryPage: React.FC = () => {
       {/* On mac this whole row moves into the window title bar (see above). */}
       {!isMac && (
         <div className="shrink-0 flex items-center gap-3 border-b border-border/60 px-4 pt-3 pb-2.5">
-          <h1 className="shrink-0 text-sm font-semibold text-foreground">{t(c.viewLabelKey)}</h1>
+          <h1 className="shrink-0 text-sm font-semibold text-foreground">{c.viewLabel}</h1>
           <div className="ml-auto w-80 max-w-full">{searchBox}</div>
         </div>
       )}
@@ -83,11 +88,14 @@ const HistoryPage: React.FC = () => {
         <HistoryFilterPanel
           contentFilter={c.filter.activeFilter}
           sourceFilter={c.filter.sourceFilter}
+          tagFilter={c.filter.tagFilter}
           timeRange={c.filter.timeRange}
           onContentFilterChange={c.filterActions.setContentFilter}
+          onTagFilterChange={c.filterActions.setTagFilter}
           onSourceFilterChange={c.filterActions.setSourceFilter}
           onTimeRangeChange={c.filterActions.setTimeRange}
           sourceOptions={c.sourceOptions}
+          tagOptions={c.searchableTags}
         />
         <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
           {/* List */}

@@ -29,6 +29,12 @@ pub struct SearchPipelineInput {
     pub file_paths: Vec<String>,
     pub file_names: Vec<String>,
     pub text_preview: Option<String>,
+    /// Full character count of the entry's primary text content (the same source
+    /// that seeds the truncated `text_preview`). `Some` only for text-bearing
+    /// entries; `None` when no inline text is available (image / file / payload
+    /// not inline), since the true length is then unknown. Lets the UI show the
+    /// real total length rather than the capped preview length.
+    pub char_count: Option<i64>,
     /// Web URLs (http/https) to mirror as the `link_urls` render column. Shares
     /// the [`crate::clipboard::link_utils::detect_link_urls`] contract with the
     /// `link` tag rule so render and filter stay in lock-step. Empty when none.

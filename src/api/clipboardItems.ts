@@ -68,10 +68,9 @@ export enum Filter {
  *
  * Single source of truth shared by every search entry point (History page,
  * quick panel) so the type-narrowing rules can't drift. Returns `undefined` for
- * `All`/`Favorited`/`Link`/`Image` (those are not physical content types —
- * `link`/`favorited`/`image` are tags, see {@link filterToTags}). `Code` maps
- * to `html` (html is now its own content type; the legacy `code` content type
- * was dropped).
+ * `All`/`Favorited`/`Link`/`Code`/`Image` (those are not physical content
+ * types — `link`/`code`/`favorited`/`image` are tags, see
+ * {@link filterToTags}).
  *
  * `Image` is a tag, not a content type: a copied image *file* is physically a
  * `file`, and a pure bitmap is physically `image`, but both carry the `image`
@@ -83,21 +82,22 @@ export function filterToContentTypes(filter: Filter): string | undefined {
     filter === Filter.All ||
     filter === Filter.Favorited ||
     filter === Filter.Link ||
+    filter === Filter.Code ||
     filter === Filter.Image
   ) {
     return undefined
   }
-  if (filter === Filter.Code) return 'html'
   return filter
 }
 
 /**
  * Map a {@link Filter} to the backend search `tags` param, or `undefined` when
- * the filter is not tag-based. `link`/`favorited`/`image` are derived or
+ * the filter is not tag-based. `link`/`code`/`favorited`/`image` are derived or
  * user-state tags filtered via the `tags` query parameter (not `contentTypes`).
  */
 export function filterToTags(filter: Filter): string | undefined {
   if (filter === Filter.Link) return 'link'
+  if (filter === Filter.Code) return 'code'
   if (filter === Filter.Favorited) return 'favorited'
   if (filter === Filter.Image) return 'image'
   return undefined

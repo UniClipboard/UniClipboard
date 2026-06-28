@@ -101,12 +101,16 @@ function getContentSizeLabel(
   if (!item.content) return null
   switch (item.type) {
     case 'text': {
-      const text = (item.content as ClipboardTextItem).display_text
-      return t('clipboard.preview.charactersCount', { count: text.length })
+      const textItem = item.content as ClipboardTextItem
+      // `display_text` is a preview capped at 200 chars; prefer the real total
+      // character count when the backend supplied it.
+      const count = textItem.char_count ?? textItem.display_text.length
+      return t('clipboard.preview.charactersCount', { count })
     }
     case 'code': {
-      const code = (item.content as ClipboardCodeItem).code
-      return t('clipboard.preview.charactersCount', { count: code.length })
+      const codeItem = item.content as ClipboardCodeItem
+      const count = codeItem.char_count ?? codeItem.code.length
+      return t('clipboard.preview.charactersCount', { count })
     }
     case 'link': {
       const link = item.content as ClipboardLinkItem

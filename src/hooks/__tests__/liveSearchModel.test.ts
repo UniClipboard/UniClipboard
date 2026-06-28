@@ -58,7 +58,7 @@ describe('canPatchLive', () => {
     // Custom tags are likewise non-judgeable.
     expect(canPatchLive(model({ tags: 'project-x' }))).toBe(false)
     // The judgeable builtin tags still allow patching.
-    expect(canPatchLive(model({ tags: 'link,favorited' }))).toBe(true)
+    expect(canPatchLive(model({ tags: 'link,code,favorited' }))).toBe(true)
   })
 })
 
@@ -94,6 +94,11 @@ describe('matchesFilter', () => {
   it('matches the link tag against content tags', () => {
     const m = model({ tags: 'link' })
     expect(matchesFilter(makeItem({ id: 'a', type: 'text', contentTags: ['link'] }), m)).toBe(true)
+  })
+
+  it('matches the code tag against content tags', () => {
+    const m = model({ tags: 'code' })
+    expect(matchesFilter(makeItem({ id: 'a', type: 'text', contentTags: ['code'] }), m)).toBe(true)
   })
 
   it('matches the favorited tag against the isFavorited flag', () => {

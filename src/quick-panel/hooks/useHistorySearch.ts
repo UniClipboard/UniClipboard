@@ -39,23 +39,18 @@ function toDisplayItem(item: DisplayClipboardItem, imageLabel: string): DisplayI
   }
 }
 
-/** The `type:` token vocabulary mirrors the quick-filter chips ({@link Filter}),
- * so each value resolves through the same content-type/tag split the chips use. */
+/** The `type:` token vocabulary only contains physical content types. Tags are
+ * entered with `#tag` tokens. */
 const TYPE_TOKEN_TO_FILTER: Record<string, Filter> = {
   text: Filter.Text,
   image: Filter.Image,
-  link: Filter.Link,
-  code: Filter.Code,
   file: Filter.File,
-  favorited: Filter.Favorited,
 }
 
 /**
  * Map a `type:<value>` token onto the backend search contract. Known values are
- * routed through {@link filterToContentTypes}/{@link filterToTags} so the token
- * DSL and the chips stay on one contract: `link`/`image`/`favorited` are tags,
- * `code` is the `html` content type. Unknown values pass through as a raw
- * content type so the backend can still match or reject them.
+ * routed through {@link filterToContentTypes}. Unknown values pass through as a
+ * raw content type so the backend can still match or reject them.
  */
 function classifyTypeToken(value: string): { contentType?: string; tag?: string } {
   const filter = TYPE_TOKEN_TO_FILTER[value]
@@ -67,11 +62,9 @@ function classifyTypeToken(value: string): { contentType?: string; tag?: string 
 
 /**
  * Extract search parameters from advanced mode tokens.
- * Tokens can be: `type:text`, `ext:md`, or plain keywords. `type:` values share
- * the quick-filter vocabulary and are normalized into the tag/content-type
- * contract (see {@link classifyTypeToken}).
+ * Tokens can be: `type:text`, `#link`, `ext:md`, or plain keywords.
  */
-function parseTokens(tokens: string[]): {
+export function parseTokens(tokens: string[]): {
   keywords: string[]
   contentTypes: string[]
   tags: string[]
@@ -91,6 +84,9 @@ function parseTokens(tokens: string[]): {
         if (contentType) contentTypes.push(contentType)
         if (tag) tags.push(tag)
       }
+    } else if (lower.startsWith('#')) {
+      const value = lower.slice(1)
+      if (value) tags.push(value)
     } else if (lower.startsWith('ext:')) {
       const value = lower.slice(4)
       if (value) extensions.push(value)

@@ -24,6 +24,7 @@
  */
 
 import {
+  getSearchTags as getSearchTagsSdk,
   searchQuery,
   getSearchStatus as getSearchStatusSdk,
   rebuildSearchIndex,
@@ -40,6 +41,12 @@ export interface SearchResultDto {
   /** Derived/user-state tag ids (e.g. 'link', 'favorited'). */
   tags: string[]
   textPreview: string | null
+  /**
+   * Full character count of the entry's primary text content. `textPreview` is
+   * capped at 200 chars, so this carries the real total length for the card's
+   * size label. `null` for entries with no inline text (image / file / lost).
+   */
+  charCount: number | null
   mimeType: string
   fileExtensions: string[]
   /** Display names of referenced files; empty when none. */
@@ -85,6 +92,17 @@ export interface SearchStatusData {
 
 export interface SearchStatusResponse {
   data: SearchStatusData
+  ts: number
+}
+
+export interface SearchTagDto {
+  tagId: string
+  count: number
+  isBuiltin: boolean
+}
+
+export interface SearchTagsResponse {
+  data: SearchTagDto[]
   ts: number
 }
 
@@ -169,6 +187,14 @@ export async function getSearchStatus(): Promise<SearchStatusResponse> {
   // as-is, bridged to the hand-written `SearchStatusResponse` shape.
   const envelope = await daemonClient.callSdk(() => getSearchStatusSdk({ throwOnError: true }))
   return envelope as unknown as SearchStatusResponse
+}
+
+/**
+ * List searchable tag ids present in the index.
+ */
+export async function getSearchTags(): Promise<SearchTagsResponse> {
+  const envelope = await daemonClient.callSdk(() => getSearchTagsSdk({ throwOnError: true }))
+  return envelope as unknown as SearchTagsResponse
 }
 
 /**

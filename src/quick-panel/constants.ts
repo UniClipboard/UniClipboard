@@ -26,11 +26,4 @@ export const quickCardClassName =
  * so the keyboard cycle order always matches what the menu shows. Intentionally
  * omits Filter.Favorited — it isn't surfaced in the quick panel.
  */
-export const QUICK_FILTER_ORDER: Filter[] = [
-  Filter.All,
-  Filter.Text,
-  Filter.Image,
-  Filter.Link,
-  Filter.File,
-  Filter.Code,
-]
+export const QUICK_FILTER_ORDER: Filter[] = [Filter.All, Filter.Text, Filter.Image, Filter.File]

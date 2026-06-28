@@ -206,6 +206,7 @@ diesel::table! {
         link_urls -> Text,
         source_device -> Nullable<Text>,
         payload_state -> Nullable<Text>,
+        char_count -> Nullable<BigInt>,
     }
 }
 

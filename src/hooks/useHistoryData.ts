@@ -50,12 +50,14 @@ interface SearchState {
   activeFilter: Filter
   searchQuery: string
   submittedQuery: string
+  tagFilter: string | null
   timeRange: TimeRangePreset
   sourceFilter: string | null
 }
 
 type SearchAction =
   | { type: 'setContentFilter'; value: Filter }
+  | { type: 'setTagFilter'; value: string | null }
   | { type: 'setSourceFilter'; value: string | null }
   | { type: 'setTimeRange'; value: TimeRangePreset }
   | { type: 'setQuery'; value: string }
@@ -65,6 +67,7 @@ const INITIAL_STATE: SearchState = {
   activeFilter: Filter.All,
   searchQuery: '',
   submittedQuery: '',
+  tagFilter: null,
   timeRange: 'all_time',
   sourceFilter: null,
 }
@@ -73,6 +76,8 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
   switch (action.type) {
     case 'setContentFilter':
       return { ...state, activeFilter: action.value }
+    case 'setTagFilter':
+      return { ...state, tagFilter: action.value }
     case 'setSourceFilter':
       return { ...state, sourceFilter: action.value }
     case 'setTimeRange':
@@ -127,6 +132,7 @@ export function useHistoryData() {
     state.submittedQuery.trim().length > 0 ||
     filterToContentTypes(state.activeFilter) !== undefined ||
     filterToTags(state.activeFilter) !== undefined ||
+    state.tagFilter !== null ||
     state.timeRange !== 'all_time' ||
     state.sourceFilter !== null
 
@@ -147,11 +153,12 @@ export function useHistoryData() {
     () => ({
       query: state.submittedQuery.trim(),
       contentTypes: filterToContentTypes(state.activeFilter),
-      tags: filterToTags(state.activeFilter),
+      tags:
+        [filterToTags(state.activeFilter), state.tagFilter].filter(Boolean).join(',') || undefined,
       sourceDevices: state.sourceFilter ?? undefined,
       timeRange: state.timeRange,
     }),
-    [state.submittedQuery, state.activeFilter, state.sourceFilter, state.timeRange]
+    [state.submittedQuery, state.activeFilter, state.tagFilter, state.sourceFilter, state.timeRange]
   )
 
   const live = useLiveSearch({ model, pageSize: PAGE_SIZE })
@@ -184,6 +191,7 @@ export function useHistoryData() {
   const actions = useMemo(
     () => ({
       setContentFilter: (value: Filter) => dispatch({ type: 'setContentFilter', value }),
+      setTagFilter: (value: string | null) => dispatch({ type: 'setTagFilter', value }),
       setSourceFilter: (value: string | null) => dispatch({ type: 'setSourceFilter', value }),
       setTimeRange: (value: TimeRangePreset) => dispatch({ type: 'setTimeRange', value }),
       setQuery: (value: string) => dispatch({ type: 'setQuery', value }),
@@ -197,6 +205,7 @@ export function useHistoryData() {
       activeFilter: state.activeFilter,
       searchQuery: state.searchQuery,
       submittedQuery: state.submittedQuery,
+      tagFilter: state.tagFilter,
       timeRange: state.timeRange,
       sourceFilter: state.sourceFilter,
     },

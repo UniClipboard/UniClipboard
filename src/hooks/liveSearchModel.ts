@@ -12,7 +12,7 @@
  * ## Live-patch vs. refetch
  * A new entry can only be slotted into the current list client-side when every
  * active filter dimension is judgeable from a `DisplayClipboardItem` alone.
- * Content-type and the `link` / `favorited` tags are; a keyword query (no full
+ * Content-type and the `link` / `code` / `favorited` tags are; a keyword query (no full
  * text on the item), a source-device filter (no source on the item), a
  * time-range preset (would have to duplicate the backend's preset→range
  * parsing), an extension filter (no extensions on the item) and the `image`
@@ -75,12 +75,12 @@ export function displayTypeToContentType(type: ClipboardEntryType): string {
 
 /**
  * Builtin tags whose membership is reliably derivable from a
- * `DisplayClipboardItem` alone: `link` (its display type) and `favorited` (its
- * flag). `image` is deliberately absent — a copied image *file* projects as a
- * `file` display item, indistinguishable from a plain file client-side, so the
- * server must decide. Custom tags are likewise non-judgeable.
+ * `DisplayClipboardItem` alone: `link` / `code` (content tags) and `favorited`
+ * (its flag). `image` is deliberately absent — a copied image *file* projects
+ * as a `file` display item, indistinguishable from a plain file client-side, so
+ * the server must decide. Custom tags are likewise non-judgeable.
  */
-const CLIENT_JUDGEABLE_TAGS = new Set(['link', 'favorited'])
+const CLIENT_JUDGEABLE_TAGS = new Set(['link', 'code', 'favorited'])
 
 /**
  * Whether a freshly-arrived entry can be slotted into the current list purely
@@ -139,6 +139,7 @@ function splitCsv(value: string | undefined): string[] {
 
 function tagMatches(tag: string, item: DisplayClipboardItem): boolean {
   if (tag === 'link') return item.contentTags?.includes('link') || item.type === 'link'
+  if (tag === 'code') return item.contentTags?.includes('code') || item.type === 'code'
   if (tag === 'favorited') return item.isFavorited === true
   // Custom tags aren't derivable from a DisplayItem; treat as non-matching so a
   // new entry is never optimistically shown under a tag it may not carry.

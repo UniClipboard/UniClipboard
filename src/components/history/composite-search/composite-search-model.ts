@@ -17,13 +17,15 @@ import {
   ExternalLink,
   File,
   FileText,
+  Hash,
   Image as ImageIcon,
   Laptop,
   Smartphone,
   type LucideIcon,
 } from 'lucide-react'
 import { Filter } from '@/api/clipboardItems'
-import type { TimeRangePreset } from '@/api/daemon/search'
+import type { SearchTagDto, TimeRangePreset } from '@/api/daemon/search'
+import { mergeSearchTagOptions, type SearchTagOption } from '@/lib/search-tags'
 
 /** A selectable source device (P2P space member or mobile-sync device). */
 export interface SourceOption {
@@ -32,8 +34,8 @@ export interface SourceOption {
   kind: 'p2p' | 'mobile'
 }
 
-/** The three filter dimensions the box can build. */
-export type Dimension = 'type' | 'source' | 'time'
+/** The filter dimensions the box can build. */
+export type Dimension = 'type' | 'tag' | 'source' | 'time'
 
 /**
  * English syntax-key prefix typed by keyboard users (decision: fixed English
@@ -42,6 +44,7 @@ export type Dimension = 'type' | 'source' | 'time'
  */
 export const SYNTAX_KEYS: Record<Dimension, string> = {
   type: 'type',
+  tag: '#',
   source: 'from',
   time: 'time',
 }
@@ -53,14 +56,8 @@ const PREFIX_TO_DIMENSION: Record<string, Dimension> = {
   time: 'time',
 }
 
-/** Content-type filters offered as `type:` candidates (All/Favorited excluded). */
-const TYPE_FILTERS: readonly Filter[] = [
-  Filter.Text,
-  Filter.Code,
-  Filter.Link,
-  Filter.Image,
-  Filter.File,
-]
+/** Physical content-type filters offered as `type:` candidates. */
+const TYPE_FILTERS: readonly Filter[] = [Filter.Text, Filter.Image, Filter.File]
 
 /** Time presets offered as `time:` candidates (`all_time` == no filter, excluded). */
 const TIME_PRESETS: readonly TimeRangePreset[] = [
@@ -84,6 +81,7 @@ const TYPE_ICONS: Record<string, LucideIcon> = {
 /** Default ("cleared") value of each dimension — clearing a chip resets to this. */
 export const DIMENSION_DEFAULTS = {
   type: Filter.All,
+  tag: null,
   source: null,
   time: 'all_time' as TimeRangePreset,
 } as const
@@ -91,6 +89,7 @@ export const DIMENSION_DEFAULTS = {
 /** State setters a dimension value dispatches into (the History page's state). */
 export interface DimensionHandlers {
   onContentFilterChange: (filter: Filter) => void
+  onTagFilterChange: (tag: string | null) => void
   onSourceFilterChange: (id: string | null) => void
   onTimeRangeChange: (preset: TimeRangePreset) => void
 }
@@ -103,6 +102,7 @@ export function applyDimensionValue(
   h: DimensionHandlers
 ): void {
   if (dimension === 'type') h.onContentFilterChange(value as Filter)
+  else if (dimension === 'tag') h.onTagFilterChange(value)
   else if (dimension === 'source') h.onSourceFilterChange(value)
   else h.onTimeRangeChange(value as TimeRangePreset)
 }
@@ -110,6 +110,7 @@ export function applyDimensionValue(
 /** Reset a dimension to its default (no filter). */
 export function resetDimensionValue(dimension: Dimension, h: DimensionHandlers): void {
   if (dimension === 'type') h.onContentFilterChange(DIMENSION_DEFAULTS.type)
+  else if (dimension === 'tag') h.onTagFilterChange(DIMENSION_DEFAULTS.tag)
   else if (dimension === 'source') h.onSourceFilterChange(DIMENSION_DEFAULTS.source)
   else h.onTimeRangeChange(DIMENSION_DEFAULTS.time)
 }
@@ -131,6 +132,12 @@ export type ParsedBuffer =
  */
 export function parseBuffer(buffer: string): ParsedBuffer {
   const lead = buffer.replace(/^\s+/, '')
+  const tagMatch = /^#([\s\S]*)$/.exec(lead)
+  if (tagMatch) {
+    const rest = tagMatch[1]
+    const committed = /\s$/.test(rest) && rest.trim().length > 0
+    return { kind: 'token', dimension: 'tag', partial: rest.trim(), committed }
+  }
   const match = /^([a-zA-Z]+):([\s\S]*)$/.exec(lead)
   if (match) {
     const dimension = PREFIX_TO_DIMENSION[match[1].toLowerCase()]
@@ -157,6 +164,10 @@ export interface CandidateItem {
   isActive: boolean
 }
 
+export function searchableTagsToOptions(tags: SearchTagDto[]): SearchTagOption[] {
+  return mergeSearchTagOptions(tags)
+}
+
 export interface ChipData {
   dimension: Dimension
   label: string
@@ -168,6 +179,7 @@ type Translate = (key: string, opts?: Record<string, unknown>) => string
 /** Current selection snapshot, mirrored from the History page's state. */
 export interface FilterSnapshot {
   type: Filter
+  tag: string | null
   source: string | null
   time: TimeRangePreset
 }
@@ -175,12 +187,14 @@ export interface FilterSnapshot {
 /** i18n keys for each dimension's group header in the suggestion panel. */
 export const DIMENSION_LABEL_KEYS: Record<Dimension, string> = {
   type: 'history.composite.dimension.type',
+  tag: 'history.composite.dimension.tag',
   source: 'history.composite.dimension.source',
   time: 'history.composite.dimension.time',
 }
 
 const DIMENSION_ICONS: Record<Dimension, LucideIcon> = {
   type: FileText,
+  tag: Hash,
   source: Laptop,
   time: Clock,
 }
@@ -203,17 +217,19 @@ export interface SyntaxSuggestion {
 export function buildSyntaxSuggestions(partial: string, t: Translate): SyntaxSuggestion[] {
   const needle = partial.trimStart().toLowerCase()
   if (!needle) return []
-  return (['type', 'source', 'time'] as const).flatMap(dimension =>
-    SYNTAX_KEYS[dimension].startsWith(needle)
-      ? [
-          {
-            dimension,
-            label: t(DIMENSION_LABEL_KEYS[dimension]),
-            hint: `${SYNTAX_KEYS[dimension]}:`,
-            icon: DIMENSION_ICONS[dimension],
-          },
-        ]
-      : []
+  return (['type', 'tag', 'source', 'time'] as const).flatMap(dimension =>
+    dimension === 'tag' && needle !== '#'
+      ? []
+      : SYNTAX_KEYS[dimension].startsWith(needle)
+        ? [
+            {
+              dimension,
+              label: t(DIMENSION_LABEL_KEYS[dimension]),
+              hint: dimension === 'tag' ? SYNTAX_KEYS[dimension] : `${SYNTAX_KEYS[dimension]}:`,
+              icon: DIMENSION_ICONS[dimension],
+            },
+          ]
+        : []
   )
 }
 
@@ -227,7 +243,12 @@ function matches(partial: string, ...haystacks: string[]): boolean {
 export function buildCandidates(
   dimension: Dimension,
   partial: string,
-  ctx: { t: Translate; sourceOptions: SourceOption[]; current: FilterSnapshot }
+  ctx: {
+    t: Translate
+    sourceOptions: SourceOption[]
+    current: FilterSnapshot
+    tagOptions: SearchTagOption[]
+  }
 ): CandidateItem[] {
   switch (dimension) {
     case 'type':
@@ -242,6 +263,22 @@ export function buildCandidates(
                 label,
                 icon: TYPE_ICONS[filter] ?? FileText,
                 isActive: ctx.current.type === filter,
+              },
+            ]
+          : []
+      })
+    case 'tag':
+      return ctx.tagOptions.flatMap(tag => {
+        const label = ctx.t(`history.type.${tag.id}`, { defaultValue: tag.id })
+        return matches(partial, tag.id, label)
+          ? [
+              {
+                id: `cand-tag-${tag.id}`,
+                dimension,
+                value: tag.id,
+                label,
+                icon: TYPE_ICONS[tag.id] ?? Hash,
+                isActive: ctx.current.tag === tag.id,
               },
             ]
           : []
@@ -288,10 +325,16 @@ export function buildCandidates(
  */
 export function buildAllCandidates(
   partial: string,
-  ctx: { t: Translate; sourceOptions: SourceOption[]; current: FilterSnapshot }
+  ctx: {
+    t: Translate
+    sourceOptions: SourceOption[]
+    current: FilterSnapshot
+    tagOptions: SearchTagOption[]
+  }
 ): CandidateItem[] {
   return [
     ...buildCandidates('type', partial, ctx),
+    ...buildCandidates('tag', partial, ctx),
     ...buildCandidates('source', partial, ctx),
     ...buildCandidates('time', partial, ctx),
   ]
@@ -302,14 +345,23 @@ export function buildChips(ctx: {
   t: Translate
   sourceOptions: SourceOption[]
   current: FilterSnapshot
+  tagOptions: SearchTagOption[]
 }): ChipData[] {
   const chips: ChipData[] = []
-  const { type, source, time } = ctx.current
+  const { type, tag, source, time } = ctx.current
   if (type !== Filter.All && type !== Filter.Favorited) {
     chips.push({
       dimension: 'type',
       label: ctx.t(`history.type.${type}`),
       icon: TYPE_ICONS[type] ?? FileText,
+    })
+  }
+  if (tag !== null) {
+    const opt = ctx.tagOptions.find(o => o.id === tag)
+    chips.push({
+      dimension: 'tag',
+      label: ctx.t(`history.type.${tag}`, { defaultValue: tag }),
+      icon: TYPE_ICONS[opt?.id ?? tag] ?? Hash,
     })
   }
   if (source !== null) {

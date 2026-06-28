@@ -715,6 +715,7 @@
       "text": "Text",
       "code": "Code",
       "link": "Link",
+      "favorited": "Favorites",
       "image": "Image",
       "file": "File",
       "unknown": "Unknown"

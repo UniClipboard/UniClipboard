@@ -14,6 +14,12 @@ export interface ClipboardTextItem {
   /** Whether full content is available for detail fetch (preview is truncated). */
   has_detail: boolean
   size: number
+  /**
+   * Full character count of the text content. `display_text` is a preview capped
+   * at 200 chars, so the card's size label reads this when present and falls back
+   * to `display_text.length` otherwise. Absent when the count is unknown.
+   */
+  char_count?: number
 }
 
 export interface ClipboardImageItem {
@@ -52,6 +58,12 @@ export interface ClipboardLinkItem {
 
 export interface ClipboardCodeItem {
   code: string
+  /**
+   * Full character count of the code content. `code` may be a preview capped at
+   * 200 chars, so the card's size label reads this when present and falls back to
+   * `code.length` otherwise. Absent when the count is unknown.
+   */
+  char_count?: number
 }
 
 export type ClipboardEntryType = 'text' | 'image' | 'link' | 'code' | 'file' | 'unknown'

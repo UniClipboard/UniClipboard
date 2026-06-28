@@ -23,6 +23,10 @@ pub struct SearchResult {
     pub tags: Vec<TagId>,
     /// Truncated preview (~80 chars) — truncation logic lives in Phase 89 use case, not here.
     pub text_preview: Option<String>,
+    /// Full character count of the entry's primary text content, so the UI can
+    /// render the real total length rather than the capped `text_preview` length.
+    /// `None` when the entry carries no inline text (image / file / payload lost).
+    pub char_count: Option<i64>,
     pub mime_type: String,
     pub file_extensions: Vec<String>,
     /// Display names of referenced files (from a `file://` uri-list); empty when none.

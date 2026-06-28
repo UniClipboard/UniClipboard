@@ -1,10 +1,11 @@
 import { AnimatePresence, LayoutGroup, m } from 'framer-motion'
-import { Zap, X, File } from 'lucide-react'
+import { Zap, X, File, Hash } from 'lucide-react'
 import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { defaultSearchTagOptions, type SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 
 // Shared Search Constants
-const TYPE_SUGGESTIONS = ['text', 'image', 'link', 'file', 'code']
+const TYPE_SUGGESTIONS = ['text', 'image', 'file']
 const EXT_SUGGESTIONS = ['txt', 'md', 'jpg', 'png', 'pdf', 'ts', 'js', 'json', 'rs', 'go']
 
 export interface AdvancedSearchProps {
@@ -21,6 +22,7 @@ export interface AdvancedSearchProps {
   className?: string
   inputRef?: React.Ref<HTMLInputElement>
   onKeyDown?: (e: KeyboardEvent) => void
+  tagOptions?: SearchTagOption[]
 }
 
 function setInputNodeRef(
@@ -52,6 +54,7 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
   className,
   inputRef: externalInputRef,
   onKeyDown: externalOnKeyDown,
+  tagOptions = defaultSearchTagOptions(),
 }) => {
   const inputRef = useRef<HTMLInputElement | null>(
     null
@@ -82,6 +85,10 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
       const q = lastWord.slice(5)
       return TYPE_SUGGESTIONS.flatMap(s => (s.startsWith(q) ? [`type:${s}`] : []))
     }
+    if (lastWord.startsWith('#')) {
+      const q = lastWord.slice(1).toLowerCase()
+      return tagOptions.flatMap(tag => (tag.id.toLowerCase().startsWith(q) ? [`#${tag.id}`] : []))
+    }
     if (lastWord.startsWith('ext:')) {
       const q = lastWord.slice(4)
       return EXT_SUGGESTIONS.flatMap(s => (s.startsWith(q) ? [`ext:${s}`] : []))
@@ -90,8 +97,9 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
     const prefixSuggestions = []
     if (!hasTypeToken && 'type:'.startsWith(lastWord)) prefixSuggestions.push('type:')
     if (!hasExtToken && 'ext:'.startsWith(lastWord)) prefixSuggestions.push('ext:')
+    if ('#'.startsWith(lastWord)) prefixSuggestions.push('#')
     return prefixSuggestions
-  }, [value, isAdvanced, tokens])
+  }, [value, isAdvanced, tokens, tagOptions])
 
   const addToken = useCallback(
     (token: string) => {
@@ -115,7 +123,10 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
 
   const applySuggestion = useCallback(
     (val: string) => {
-      if (val.includes(':') && val.split(':')[1].length > 0) {
+      if (
+        (val.includes(':') && val.split(':')[1].length > 0) ||
+        (val.startsWith('#') && val.length > 1)
+      ) {
         addToken(val)
       } else {
         onValueChange(val)
@@ -137,9 +148,17 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
         onValueChange('')
         return
       }
+      if (!isAdvanced && newVal === '#') {
+        onAdvancedChange(true)
+        onValueChange('#')
+        return
+      }
       if (isAdvanced && newVal.endsWith(' ')) {
         const trimmed = newVal.trim()
-        if (trimmed.includes(':') && trimmed.split(':')[1].length > 0) {
+        if (
+          (trimmed.includes(':') && trimmed.split(':')[1].length > 0) ||
+          (trimmed.startsWith('#') && trimmed.length > 1)
+        ) {
           addToken(trimmed)
           return
         }
@@ -350,7 +369,9 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
                     : 'text-foreground hover:bg-muted'
                 )}
               >
-                {suggestion.includes('type:') ? (
+                {suggestion.startsWith('#') ? (
+                  <Hash className="size-3.5 opacity-70" />
+                ) : suggestion.includes('type:') ? (
                   <Zap className="size-3.5 opacity-70" />
                 ) : (
                   <File className="size-3.5 opacity-70" />

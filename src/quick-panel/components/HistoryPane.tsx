@@ -23,6 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { quickCardClassName, QUICK_FILTER_ORDER } from '../constants'
 import type { DisplayItem, TimeRangePreset } from '../types'
@@ -57,6 +58,7 @@ interface HistoryPaneProps {
   setIsAdvancedMode: (v: boolean) => void
   tokens: string[]
   setTokens: (t: string[]) => void
+  searchableTags: SearchTagOption[]
   onKeyDown: (e: KeyboardEvent) => void
   focusSearchInput: () => void
 }
@@ -102,6 +104,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     setIsAdvancedMode,
     tokens,
     setTokens,
+    searchableTags,
     onKeyDown,
     focusSearchInput,
   }) => {
@@ -182,6 +185,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 onAdvancedChange={setIsAdvancedMode}
                 tokens={tokens}
                 onTokensChange={setTokens}
+                tagOptions={searchableTags}
                 placeholder={t('searchPlaceholder')}
                 advancedPlaceholder={t('advancedPlaceholder')}
                 inputRef={searchInputRef}

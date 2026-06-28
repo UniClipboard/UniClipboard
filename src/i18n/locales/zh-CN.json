@@ -705,6 +705,7 @@
       "text": "文本",
       "code": "代码",
       "link": "链接",
+      "favorited": "收藏",
       "image": "图片",
       "file": "文件",
       "unknown": "未知"

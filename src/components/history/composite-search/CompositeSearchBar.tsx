@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
 import { useShortcut } from '@/hooks/useShortcut'
+import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import {
   applyDimensionValue,
@@ -27,9 +28,12 @@ interface CompositeSearchBarProps {
   contentFilter: Filter
   /** Current source-device id, or null for all (maps to `sourceFilter`). */
   sourceFilter: string | null
+  /** Current tag id, or null for all tags. */
+  tagFilter: string | null
   /** Current time preset (maps to `timeRange`). */
   timeRange: TimeRangePreset
   onContentFilterChange: (filter: Filter) => void
+  onTagFilterChange: (tag: string | null) => void
   onSourceFilterChange: (id: string | null) => void
   onTimeRangeChange: (preset: TimeRangePreset) => void
   /** Free-text query (debounced into a search by the parent). */
@@ -37,6 +41,7 @@ interface CompositeSearchBarProps {
   /** Submit the given query text immediately (Enter). */
   onQuerySubmit: (text: string) => void
   sourceOptions: SourceOption[]
+  tagOptions: SearchTagOption[]
   /** Browse-list size, shown as a muted count. */
   totalCount: number
   /** Shared with the parent so CMD/Ctrl+F can focus the input. */
@@ -53,13 +58,16 @@ interface CompositeSearchBarProps {
 function CompositeSearchBar({
   contentFilter,
   sourceFilter,
+  tagFilter,
   timeRange,
   onContentFilterChange,
+  onTagFilterChange,
   onSourceFilterChange,
   onTimeRangeChange,
   onQueryChange,
   onQuerySubmit,
   sourceOptions,
+  tagOptions,
   totalCount,
   inputRef,
 }: CompositeSearchBarProps) {
@@ -71,8 +79,8 @@ function CompositeSearchBar({
   const [highlight, setHighlight] = useState(-1)
   const panelId = useId()
 
-  const current = { type: contentFilter, source: sourceFilter, time: timeRange }
-  const chips = buildChips({ t, sourceOptions, current })
+  const current = { type: contentFilter, tag: tagFilter, source: sourceFilter, time: timeRange }
+  const chips = buildChips({ t, sourceOptions, tagOptions, current })
   const parsed = parseBuffer(buffer)
 
   // Token mode (`type:` …) narrows to one dimension; otherwise the panel shows
@@ -81,12 +89,13 @@ function CompositeSearchBar({
   // "pick a category first" detour.
   const inToken = parsed.kind === 'token'
   const candidates: CandidateItem[] = inToken
-    ? buildCandidates(parsed.dimension, parsed.partial, { t, sourceOptions, current })
-    : buildAllCandidates(buffer, { t, sourceOptions, current })
+    ? buildCandidates(parsed.dimension, parsed.partial, { t, sourceOptions, tagOptions, current })
+    : buildAllCandidates(buffer, { t, sourceOptions, tagOptions, current })
 
   // Syntax-prefix hints (e.g. typing `t` suggests `type:`) lead the list in
   // free-text mode so the keyboard token syntax stays discoverable.
-  const syntaxSuggestions = inToken ? [] : buildSyntaxSuggestions(buffer, t)
+  const syntaxSuggestions =
+    inToken || buffer.trimStart().startsWith('#') ? [] : buildSyntaxSuggestions(buffer, t)
 
   const options: PanelOption[] = [
     ...syntaxSuggestions.map(s => ({
@@ -116,7 +125,12 @@ function CompositeSearchBar({
   // actually exists.
   const expanded = open && options.length > 0
 
-  const handlers = { onContentFilterChange, onSourceFilterChange, onTimeRangeChange }
+  const handlers = {
+    onContentFilterChange,
+    onTagFilterChange,
+    onSourceFilterChange,
+    onTimeRangeChange,
+  }
   const resetDimension = (dimension: Dimension) => resetDimensionValue(dimension, handlers)
 
   const applyCandidate = (c: CandidateItem) => {
@@ -141,7 +155,7 @@ function CompositeSearchBar({
 
   // Commit a fully-typed token like `type:image ` into its chip.
   const tryCommit = (dimension: Dimension, partial: string) => {
-    const cands = buildCandidates(dimension, partial, { t, sourceOptions, current })
+    const cands = buildCandidates(dimension, partial, { t, sourceOptions, tagOptions, current })
     const exact =
       cands.find(c => c.value.toLowerCase() === partial.toLowerCase()) ??
       (cands.length === 1 ? cands[0] : undefined)
@@ -219,6 +233,7 @@ function CompositeSearchBar({
   // refocus:false so clearing the filters never yanks focus into the input.
   const clearAll = ({ refocus = true }: { refocus?: boolean } = {}) => {
     resetDimension('type')
+    resetDimension('tag')
     resetDimension('source')
     resetDimension('time')
     setBuffer('')

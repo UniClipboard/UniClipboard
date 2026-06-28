@@ -46,6 +46,9 @@ pub struct SearchDocumentRow {
     pub source_device: Option<String>,
     /// `"Lost"` when the paste payload is unrecoverable, else `NULL`.
     pub payload_state: Option<String>,
+    /// Full character count of the entry's primary text content, or `NULL` when
+    /// the entry carries no inline text.
+    pub char_count: Option<i64>,
 }
 
 /// Insertable row for `search_document`.
@@ -67,6 +70,7 @@ pub struct NewSearchDocumentRow {
     pub link_urls: String,
     pub source_device: Option<String>,
     pub payload_state: Option<String>,
+    pub char_count: Option<i64>,
 }
 
 impl NewSearchDocumentRow {
@@ -98,6 +102,7 @@ impl NewSearchDocumentRow {
             link_urls,
             source_device: document.source_device.clone(),
             payload_state: document.payload_state.clone(),
+            char_count: document.char_count,
         })
     }
 }
@@ -134,6 +139,7 @@ impl SearchDocumentRow {
             link_urls,
             source_device: self.source_device.clone(),
             payload_state: self.payload_state.clone(),
+            char_count: self.char_count,
         })
     }
 }
@@ -300,6 +306,7 @@ mod tests {
             link_urls: vec![],
             source_device: None,
             payload_state: None,
+            char_count: None,
         }
     }
 

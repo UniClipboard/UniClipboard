@@ -241,7 +241,9 @@ mod tests {
                         total_size: 10,
                         pinned: true,
                         delivery_tracked: true,
-                        is_favorited: false,
+                        // Seeded true so the replacement test proves favorite
+                        // state survives like the other sticky columns.
+                        is_favorited: true,
                     })
                     .execute(conn)?;
                 for rep_id in ["r1", "r2"] {
@@ -352,12 +354,13 @@ mod tests {
         executor
             .run(|conn| {
                 // Entry kept its id + sticky fields; content pointer updated.
-                let (event_id, created, active, title, total, pinned): (
+                let (event_id, created, active, title, total, pinned, is_favorited): (
                     String,
                     i64,
                     i64,
                     Option<String>,
                     i64,
+                    bool,
                     bool,
                 ) = clipboard_entry::table
                     .filter(clipboard_entry::entry_id.eq("e1"))
@@ -368,12 +371,14 @@ mod tests {
                         clipboard_entry::title,
                         clipboard_entry::total_size,
                         clipboard_entry::pinned,
+                        clipboard_entry::is_favorited,
                     ))
                     .first(conn)?;
                 assert_eq!(event_id, "new-ev", "entry re-pointed at the new event");
                 assert_eq!(created, 2222, "created_at_ms preserved");
                 assert_eq!(active, 1111, "active_time_ms preserved");
                 assert!(pinned, "pinned preserved");
+                assert!(is_favorited, "is_favorited preserved");
                 assert_eq!(title.as_deref(), Some("new title"), "title updated");
                 assert_eq!(total, 99, "total_size updated");
 

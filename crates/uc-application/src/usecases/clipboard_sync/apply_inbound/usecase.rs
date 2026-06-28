@@ -343,7 +343,12 @@ impl ApplyInboundClipboardUseCase {
         // all share the same id. Without this, the placeholder card couldn't
         // be linked to the final entry by id and we'd need a transfer_id →
         // entry_id remap on the frontend.
-        let receiver_entry_id = EntryId::new();
+        //
+        // For the in-place upgrade path (hash matched a *partial* entry), reuse
+        // that entry's id: the completed content is persisted under `existing`
+        // below, so the IncomingPending card and the final entry must share it —
+        // a fresh id would strand the pending card on a different entry.
+        let receiver_entry_id = existing.clone().unwrap_or_else(EntryId::new);
         let advertised_total_bytes: u64 = blob_refs.iter().map(|r| r.size_bytes).sum();
         // free-standing files 走 V3BlobRef.filename;rep-bound blobs (image /
         // 大二进制) 通常 filename 为 None,自动被 filter_map 跳过。

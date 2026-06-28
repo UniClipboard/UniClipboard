@@ -371,14 +371,23 @@ impl ApplyInboundActiveClipboardStateUseCase {
 
     /// Whether `entry_id` is fully held locally. With no availability port
     /// wired, a hash match is treated as held (prior converge-on-match
-    /// behavior). A transient availability error degrades to "held" so a flaky
-    /// query never turns a real local entry into a spurious pull.
+    /// behavior). An availability-query error degrades to "unavailable" so a
+    /// flaky query can never converge a partial `uniclip-missing://` placeholder
+    /// to the OS clipboard; the worst case is a redundant pull of content we
+    /// already hold, which is strictly safer than writing a placeholder.
     async fn is_entry_available(&self, entry_id: &EntryId) -> bool {
         match &self.availability {
-            Some(availability) => availability
-                .is_entry_available(entry_id)
-                .await
-                .unwrap_or(true),
+            Some(availability) => match availability.is_entry_available(entry_id).await {
+                Ok(is_available) => is_available,
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        entry_id = %entry_id,
+                        "active state inbound: availability check failed; treating entry as unavailable"
+                    );
+                    false
+                }
+            },
             None => true,
         }
     }

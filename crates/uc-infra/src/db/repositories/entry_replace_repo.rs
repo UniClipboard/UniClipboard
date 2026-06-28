@@ -69,10 +69,15 @@ where
             .map(|rep| RepresentationRowMapper.to_row(&(rep, &new_event.event_id)))
             .collect::<Result<Vec<_>>>()
             .map_err(to_repo_err)?;
-        let new_selection_row = ClipboardSelectionRowMapper
+        let mut new_selection_row = ClipboardSelectionRowMapper
             .to_row(new_selection)
             .map_err(to_repo_err)?;
         let entry_id_str = entry_id.to_string();
+        // Bind the selection to the authoritative entry_id. The port contract
+        // requires `new_selection` to reference `entry_id`; force it here so a
+        // mismatched decision can never attach selection to a different entry
+        // inside the transaction (which deletes selection by `entry_id_str`).
+        new_selection_row.entry_id = entry_id_str.clone();
 
         self.executor
             .run(move |conn| {

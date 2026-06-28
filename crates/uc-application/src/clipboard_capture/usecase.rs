@@ -357,15 +357,15 @@ impl CaptureClipboardUseCase {
                                 .await
                                 .map(|ingested| ingested.blob_id)
                                 .map_err(|err| {
+                                    // No path in the message: a clipboard file
+                                    // path is user content.
                                     anyhow::anyhow!(
-                                        "LocalFile rep ingest into blob store failed (path={}): {err}",
-                                        path.display()
+                                        "LocalFile rep ingest into blob store failed: {err}"
                                     )
                                 })?;
                             info!(
                                 rep_id = %observed.id,
                                 blob_id = %blob_id,
-                                file_path = %path.display(),
                                 file_size = size_bytes,
                                 "Ingested LocalFile rep into blob store as BlobReady"
                             );
@@ -374,8 +374,8 @@ impl CaptureClipboardUseCase {
                                 observed.format_id.clone(),
                                 observed.mime.clone(),
                                 *size_bytes as i64,
-                                None,           // inline_data
-                                Some(blob_id),  // blob_id ⇒ payload_state=BlobReady
+                                None,          // inline_data
+                                Some(blob_id), // blob_id ⇒ payload_state=BlobReady
                             ));
                         }
                         ClipboardPayloadSource::Inline(_) => {
@@ -447,9 +447,7 @@ impl CaptureClipboardUseCase {
                             // 上游 BlobWriter ingest 阶段会被产出 BlobReady 状态,不会
                             // 走到 Staged 分支。
                             if let Some(bytes) = observed.inline_bytes() {
-                                self.representation_cache
-                                    .put(&rep.id, bytes.to_vec())
-                                    .await;
+                                self.representation_cache.put(&rep.id, bytes.to_vec()).await;
                             }
                         }
                     }
@@ -744,21 +742,21 @@ async fn resurface_existing_entry(
 /// *content* rather than the device-local `text/uri-list` path text. Returns
 /// the digest list (empty when the snapshot carries no resolvable files).
 ///
-/// Two file-rep shapes contribute:
-/// - `ClipboardPayloadSource::LocalFile` reps (e.g. macOS Finder copy): the
-///   content hash is already available from the rep without extra I/O.
+/// Two file-rep shapes contribute, both resolved to file paths and hashed via
+/// the fallible [`BlobContentIngestPort::hash_path`] (never a rep's
+/// `content_hash()`, which `panic!`s on a stream-hash error):
+/// - `ClipboardPayloadSource::LocalFile` reps (e.g. macOS Finder copy): the path
+///   is carried directly on the rep.
 /// - Inline `text/uri-list` file reps (e.g. Windows file copy): the files live
-///   as path text, not `LocalFile` reps, so each referenced file is
-///   materialized via `blob_ingest` and its content hash collected. Without
-///   this, capture would store the uri-list path-text hash while dispatch
-///   sends the content hash, and the receiver would create two entries for one
-///   file.
+///   as path text, not `LocalFile` reps. Without hashing them, capture would
+///   store the uri-list path-text hash while dispatch sends the content hash,
+///   and the receiver would create two entries for one file.
 ///
 /// `extract_file_paths_from_snapshot` is shared with the dispatch path so both
 /// resolve the same set of files (including macOS APFS file-reference
-/// resolution). A per-file ingest failure is skipped (warn) rather than
-/// dropping the whole capture; when every file fails the digest list is empty
-/// and snapshot identity falls back to the uri-list text.
+/// resolution). On *any* per-file hash failure the whole digest list is
+/// discarded (not just the failed file) so identity never keys on a partial
+/// subset; it then falls back to the uri-list path text.
 ///
 /// The two shapes are mutually exclusive in practice (a snapshot carries either
 /// `LocalFile` reps or an inline uri-list rep), so the inline branch only runs
@@ -767,45 +765,66 @@ async fn derive_file_content_digests(
     snapshot: &SystemClipboardSnapshot,
     blob_ingest: &dyn BlobContentIngestPort,
 ) -> Vec<[u8; 32]> {
-    let mut digests: Vec<[u8; 32]> = snapshot
+    // Identity contributors as file paths. `LocalFile` reps (e.g. macOS Finder
+    // copy) carry the path directly; an inline `text/uri-list` rep (e.g. Windows
+    // file copy) carries them as path text. The two shapes are mutually
+    // exclusive in practice, so the inline extraction only runs when no
+    // `LocalFile` rep is present.
+    let local_file_paths: Vec<_> = snapshot
         .representations
         .iter()
-        .filter(|r| matches!(r.source(), ClipboardPayloadSource::LocalFile { .. }))
-        .map(|r| r.content_hash().bytes)
+        .filter_map(|r| match r.source() {
+            ClipboardPayloadSource::LocalFile { path, .. } => Some(path.clone()),
+            ClipboardPayloadSource::Inline(_) => None,
+        })
         .collect();
-    let local_file_digests = digests.len();
-
+    let local_file_digests = local_file_paths.len();
     let mut extracted_paths = 0usize;
-    if digests.is_empty() {
-        let paths = extract_file_paths_from_snapshot(snapshot);
-        extracted_paths = paths.len();
-        for path in paths {
-            // Identity only: hash the file's content (device-independent) without
-            // materializing/encrypting a blob into local storage. The actual
-            // file bytes for transfer are published lazily by the (spawned,
-            // non-blocking) dispatch path, so a synchronous ingest here would
-            // both stall the capture loop on large files and produce an
-            // orphaned blob this entry never references.
-            match blob_ingest.hash_path(&path).await {
-                Ok(content_hash) => digests.push(content_hash.bytes),
-                Err(err) => warn!(
-                    error = %err,
-                    file = %path.display(),
-                    "capture: skipping unreadable clipboard file when deriving content identity"
-                ),
+    let paths = if local_file_paths.is_empty() {
+        let extracted = extract_file_paths_from_snapshot(snapshot);
+        extracted_paths = extracted.len();
+        extracted
+    } else {
+        local_file_paths
+    };
+
+    // Identity only: hash each file's content (device-independent) without
+    // materializing/encrypting a blob into local storage. The actual file bytes
+    // for transfer are published lazily by the (spawned, non-blocking) dispatch
+    // path, so a synchronous ingest here would both stall the capture loop on
+    // large files and orphan a blob this entry never references. `hash_path` is
+    // fallible, so an unreadable or deleted copied file degrades to a fallback
+    // identity instead of panicking — a `LocalFile` rep's `content_hash()` would
+    // `panic!` on a stream-hash error.
+    let mut digests: Vec<[u8; 32]> = Vec::with_capacity(paths.len());
+    let mut had_hash_failure = false;
+    for path in &paths {
+        match blob_ingest.hash_path(path).await {
+            Ok(content_hash) => digests.push(content_hash.bytes),
+            Err(err) => {
+                had_hash_failure = true;
+                // No path in the field: a clipboard file path is user content.
+                warn!(error = %err, "capture: could not derive complete file-set identity");
             }
         }
+    }
+    // A partial file-set identity (some files hashed, some failed) would key the
+    // snapshot on a strict subset, colliding with a different copy that contains
+    // only those files. Discard everything on any failure so identity
+    // deterministically falls back to the `text/uri-list` path text.
+    if had_hash_failure {
+        digests.clear();
     }
 
     // Diagnostic for the dual-entry file-sync bug: when this returns empty for a
     // file copy, the entry's `snapshot_hash` falls back to the device-local
     // `text/uri-list` path text, which diverges from the dispatch path's
-    // content-based hash and makes the receiver create a second entry. The three
+    // content-based hash and makes the receiver create a second entry. The
     // counts pin which stage produced no digest on the next repro: no `LocalFile`
     // rep AND no extractable inline path (`extracted_uri_list_paths = 0`) means
     // the file rep was not recognised / not a parseable `file:` URL; a non-zero
-    // path count with `derived_digests = 0` means every `ingest_path` failed
-    // (each logs its own warn above).
+    // path count with `derived_digests = 0` means at least one `hash_path` failed
+    // and the partial set was discarded (each failure logs its own warn above).
     debug!(
         local_file_digests,
         extracted_uri_list_paths = extracted_paths,

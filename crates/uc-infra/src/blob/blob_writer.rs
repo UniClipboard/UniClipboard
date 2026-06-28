@@ -42,10 +42,10 @@ where
     /// Shared core for both `BlobWriterPort::write_path_if_absent` (which
     /// discards everything but the `BlobId`) and `BlobContentIngestPort::ingest_path`.
     async fn ingest_path_inner(&self, source_path: &Path) -> Result<IngestedBlob> {
-        let span = debug_span!(
-            "infra.blob.ingest_path",
-            source_path = %source_path.display(),
-        );
+        // No source_path field: a clipboard file path is user content (it can
+        // carry usernames / sensitive filenames). The inner logs identify the
+        // op by blob_id and size instead.
+        let span = debug_span!("infra.blob.ingest_path");
         let source = source_path.to_path_buf();
 
         async move {

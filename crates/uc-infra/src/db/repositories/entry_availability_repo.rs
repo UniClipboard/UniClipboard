@@ -127,6 +127,11 @@ fn file_list_is_fully_present(bytes: &[u8]) -> bool {
             if !path_is_readable_regular_file(&path) {
                 return false;
             }
+        } else if line.starts_with("file://") {
+            // A `file://` line we cannot parse/convert to a local path: we can't
+            // confirm the file is present, so treat the list as unavailable
+            // rather than converging possibly-stale content.
+            return false;
         }
         // Non-file URIs (http/data/custom) are not local files and impose no
         // local-availability requirement.

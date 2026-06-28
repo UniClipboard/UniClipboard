@@ -690,6 +690,7 @@
     "unknownFile": "Unknown file",
     "filter": {
       "all": "All",
+      "favorited": "Favorites",
       "text": "Text",
       "code": "Code",
       "link": "Links",
@@ -729,6 +730,7 @@
       "title": "Search and filter",
       "dimension": {
         "type": "Type",
+        "tag": "Tag",
         "source": "Source",
         "time": "Time"
       },
@@ -809,8 +811,12 @@
         "convertingItem": "Converting to display item:"
       }
     },
+    "source": {
+      "local": "This device"
+    },
     "errors": {
       "copyFailed": "Failed to copy to clipboard",
+      "favoriteFailed": "Failed to update favorite status",
       "openLocationFailed": "Failed to open file location",
       "fileLocationUnavailable": "This file is no longer available locally.",
       "loadDetailFailed": "Failed to load details",

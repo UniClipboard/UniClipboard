@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
   Cloud,
@@ -11,6 +12,8 @@ import {
   Image as ImageIcon,
   Laptop,
   LoaderCircle,
+  Star,
+  Trash2,
 } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -95,12 +98,9 @@ function getContentSizeLabel(
       const link = item.content as ClipboardLinkItem
       return link.domains[0] ?? null
     }
-    case 'image': {
-      const img = item.content as ClipboardImageItem
-      if (img.width > 0 && img.height > 0) return `${img.width}×${img.height}`
-      if (img.size > 0) return formatFileSize(img.size)
+    case 'image':
+      // Resolution is shown in the image card's title now, not the header aux.
       return null
-    }
     case 'file': {
       const file = item.content as ClipboardFileItem
       const count = file.file_names.length
@@ -121,10 +121,25 @@ const SOURCE_CONFIG: Record<EntrySourceView['tag'], { icon: React.ElementType; c
   historical: { icon: History, color: 'text-muted-foreground/30' },
 }
 
-const SourceIndicator: React.FC<{ source: EntrySourceView }> = ({ source }) => {
+// Resolve an entry's source into a small icon + optional device label for the
+// card header. `local` reads "本机"; `remote` shows the peer's device name
+// (falling back to a truncated id); `historical` carries an icon only.
+function describeSource(
+  source: EntrySourceView,
+  t: (key: string) => string
+): { Icon: React.ElementType; color: string; label: string | null } {
   const cfg = SOURCE_CONFIG[source.tag]
-  const Icon = cfg.icon
-  return <Icon className={cn('size-2.5', cfg.color)} />
+  if (source.tag === 'remote') {
+    return {
+      Icon: cfg.icon,
+      color: cfg.color,
+      label: source.deviceName ?? source.deviceId.slice(0, 6),
+    }
+  }
+  if (source.tag === 'local') {
+    return { Icon: cfg.icon, color: cfg.color, label: t('clipboard.source.local') }
+  }
+  return { Icon: cfg.icon, color: cfg.color, label: null }
 }
 
 // ── Content renderers ───────────────────────────────────────────
@@ -132,7 +147,7 @@ const SourceIndicator: React.FC<{ source: EntrySourceView }> = ({ source }) => {
 const TextContent: React.FC<{ item: ClipboardTextItem }> = ({ item }) => {
   const isMasked = /^[•·*]{6,}$/.test(item.display_text.trim())
   return (
-    <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-4">
+    <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-2">
       {isMasked ? (
         <span className="tracking-[0.12em] text-muted-foreground/70 select-none">
           {item.display_text}
@@ -151,7 +166,7 @@ const TextContent: React.FC<{ item: ClipboardTextItem }> = ({ item }) => {
 // theme-aware syntax tinting. The gutter alone reads as "this is code"; the
 // tint just adds depth without a hard surface boundary.
 
-const CODE_PREVIEW_LINES = 8
+const CODE_PREVIEW_LINES = 3
 
 // Keywords shared across the languages we're likely to see on a clipboard. The
 // tint is decorative, so an over-broad set (a Python `def` highlighted in a JS
@@ -402,49 +417,51 @@ function useResourceImageUrl(entryId: string): string | null {
   return imageUrl
 }
 
-// Immersive image card: the image fills the whole card as a background, with the
-// metadata (type, time) and pixel dimensions floated on top of legibility
-// gradients. Distinct from the header+content stack used by every other type.
-const ImageCard: React.FC<{
-  item: DisplayClipboardItem
-  // Optional: search/filter rows carry no structured content. The thumbnail is
-  // fetched by entry id, so it's only the pixel-size badge that needs this.
-  imageItem?: ClipboardImageItem | null
-}> = ({ item, imageItem }) => {
+// Image body for the shared card frame: a small thumbnail (left) beside a title,
+// mirroring the file-card composition. A pure bitmap has no filename, so the
+// title is the localized type label with the pixel resolution in parentheses —
+// e.g. "图片 (1920×1080)". The thumbnail is fetched by entry id, so search/filter
+// rows that carry no structured content still preview (resolution then omitted).
+const ImageContent: React.FC<{ entryId: string; imageItem?: ClipboardImageItem | null }> = ({
+  entryId,
+  imageItem,
+}) => {
   const { t } = useTranslation()
-  const imageUrl = useResourceImageUrl(item.id)
-  const relativeTime = useRelativeTime(item.activeTime)
+  const imageUrl = useResourceImageUrl(entryId)
+  // The browse projection often omits pixel dimensions, so fall back to reading
+  // them off the loaded thumbnail (naturalWidth/Height) — same approach as the
+  // detail preview.
+  const [loadedDims, setLoadedDims] = useState<{ w: number; h: number } | null>(null)
+  const label = t('history.type.image', 'image')
+  const width = loadedDims?.w ?? (imageItem && imageItem.width > 0 ? imageItem.width : 0)
+  const height = loadedDims?.h ?? (imageItem && imageItem.height > 0 ? imageItem.height : 0)
+  const title = width > 0 && height > 0 ? `${label} (${width}×${height})` : label
 
   return (
-    <>
+    <div className="flex h-full items-center gap-3">
       {imageUrl ? (
-        <img src={imageUrl} alt="" className="absolute inset-0 size-full object-cover" />
+        <img
+          src={imageUrl}
+          alt=""
+          onLoad={e =>
+            setLoadedDims({
+              w: e.currentTarget.naturalWidth,
+              h: e.currentTarget.naturalHeight,
+            })
+          }
+          className="size-12 shrink-0 rounded-md object-cover ring-1 ring-black/5 dark:ring-white/10"
+        />
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
-          <ImageIcon className="size-8 text-muted-foreground/25" />
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted/30">
+          <ImageIcon className="size-5 text-muted-foreground/30" />
         </div>
       )}
-
-      {/* Legibility gradients behind the overlaid text */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/55 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 to-transparent" />
-
-      {/* Floated metadata header */}
-      <div className="absolute inset-x-3.5 top-3 z-10 flex items-center gap-1.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]">
-        <ImageIcon className="size-3 shrink-0 text-white/90" />
-        <span className="text-[10.5px] font-medium text-white/90">
-          {t('history.type.image', 'image')}
-        </span>
-        <span className="ml-auto text-[10px] text-white/75">{relativeTime}</span>
+      <div className="min-w-0 flex-1">
+        <div className="line-clamp-2 break-all text-[13px] font-medium leading-snug text-foreground/85">
+          {title}
+        </div>
       </div>
-
-      {/* Pixel dimensions badge */}
-      {imageItem && imageItem.width > 0 && imageItem.height > 0 && (
-        <span className="absolute bottom-3 left-3.5 z-10 text-[11px] font-medium tabular-nums text-white/85 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]">
-          {imageItem.width}×{imageItem.height}
-        </span>
-      )}
-    </>
+    </div>
   )
 }
 
@@ -588,6 +605,8 @@ interface HistoryCardProps {
   copySuccess: boolean
   isDeleting: boolean
   onCopy: (id: string) => void
+  onDelete: (id: string) => void
+  onToggleFavorite: (id: string, current: boolean) => void
   onClick: (id: string) => void
   onHoverChange: (id: string | null) => void
 }
@@ -598,6 +617,8 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   copySuccess,
   isDeleting,
   onCopy,
+  onDelete,
+  onToggleFavorite,
   onClick,
   onHoverChange,
 }) => {
@@ -610,11 +631,8 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   const { delivery } = useEntryDelivery(item.id)
 
   const isFileType = item.type === 'file'
-  // Every image entry renders as an immersive full-bleed card. The thumbnail is
-  // fetched by entry id (see useResourceImageUrl), so search/filter rows that
-  // carry no structured content still show the image — only the pixel-size badge
-  // (which needs content) is omitted.
-  const isImageCard = item.type === 'image'
+  const isFavorited = item.isFavorited ?? false
+  const isUnavailable = item.isUnavailable ?? false
   // Code keeps the shared card frame; only its header label swaps the generic
   // "code" for an inferred language (when detectable), and its body renders as
   // line-numbered, tinted code via CodeContent.
@@ -651,6 +669,13 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange])
 
   const content = useMemo(() => {
+    // Image previews are fetched by entry id, so they render the same way whether
+    // or not structured content is present (search rows carry none).
+    if (item.type === 'image') {
+      return (
+        <ImageContent entryId={item.id} imageItem={item.content as ClipboardImageItem | null} />
+      )
+    }
     if (!item.content) {
       // File-type search rows carry no structured content (the search index drops
       // file_names/sizes), so synthesize a minimal file item from the preview —
@@ -675,7 +700,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       // Other search/pending rows carry only a text preview; render it as a plain
       // snippet so search hits aren't shown as blank cards.
       return item.textPreview ? (
-        <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-4 break-words whitespace-pre-wrap">
+        <div className="text-[13px] leading-[1.55] text-foreground/85 line-clamp-2 break-words whitespace-pre-wrap">
           {item.textPreview}
         </div>
       ) : null
@@ -708,11 +733,11 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
 
   const DirectionIcon = transfer?.direction === 'Sending' ? ArrowUpFromLine : ArrowDownToLine
 
-  // Keyboard-hint chip styling: dark chips + light borders read over a photo,
-  // muted chips suit the opaque card surface of every other type.
-  const kbdClass = isImageCard
-    ? 'border-white/25 bg-black/45 text-white/90'
-    : 'border-border/30 bg-muted/30'
+  // Source meta (icon + device label) for the header's right cluster.
+  const source = delivery ? describeSource(delivery.source, t) : null
+
+  const actionBtnClass =
+    'flex size-6 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground'
 
   return (
     <div
@@ -725,18 +750,18 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
-        'cursor-pointer overflow-hidden h-full group relative transition-all duration-200',
-        isImageCard ? '' : 'flex flex-col px-3.5 pt-3 pb-3',
+        'group relative flex h-full cursor-pointer flex-col overflow-hidden px-3.5 py-2.5 transition-all duration-200',
         isDeleting
           ? 'bg-destructive/10 opacity-60 scale-[0.97]'
           : copySuccess
             ? 'bg-emerald-500/5'
             : isPending
               ? 'bg-muted/10'
-              : 'hover:bg-muted/30'
+              : 'hover:bg-muted/40',
+        isUnavailable && 'opacity-55'
       )}
     >
-      {/* Transfer progress overlay - card acts as an immersive progress bar */}
+      {/* Transfer progress overlay — card acts as an immersive progress bar */}
       {isFileType && (
         <div
           className={cn(
@@ -747,76 +772,76 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         />
       )}
 
-      {isImageCard && (
-        <ImageCard item={item} imageItem={item.content as ClipboardImageItem | null} />
-      )}
+      {/* ── Meta layer: type · aux (left) · source / time / status (right) ── */}
+      <div className="relative z-10 mb-1.5 flex items-center gap-1.5">
+        <TypeIcon className={cn('size-3 shrink-0', isPending && 'opacity-50')} style={{ color }} />
+        <span
+          className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
+          style={{ color }}
+        >
+          {codeLanguage ?? t(`history.type.${item.type}`, item.type)}
+        </span>
 
-      {!isImageCard && (
-        <>
-          {/* Header */}
-          <div className="relative z-10 flex items-center gap-1.5 mb-1.5">
-            <TypeIcon
-              className={cn('size-3 shrink-0', isPending && 'opacity-50')}
-              style={{ color }}
-            />
-            <span
-              className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
-              style={{ color }}
-            >
-              {codeLanguage ?? t(`history.type.${item.type}`, item.type)}
+        {sizeLabel && !isTransferring && (
+          <>
+            <span className="text-[9px] text-muted-foreground/25">·</span>
+            <span className="truncate text-[10px] tabular-nums text-muted-foreground/45">
+              {sizeLabel}
             </span>
+          </>
+        )}
 
-            {sizeLabel && !isTransferring && (
-              <>
-                <span className="text-[9px] text-muted-foreground/25">-</span>
-                <span className="text-[10px] tabular-nums text-muted-foreground/45">
-                  {sizeLabel}
-                </span>
-              </>
-            )}
-
-            <div className="ml-auto flex items-center gap-1.5">
-              {isFileType && isTransferring ? (
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {isUnavailable && (
+            <AlertTriangle
+              className="size-2.5 text-amber-500/70"
+              aria-label={t('clipboard.errors.unavailableBadge')}
+            />
+          )}
+          {isFavorited && <Star className="size-2.5 fill-amber-400 text-amber-400" />}
+          {isFileType && isTransferring ? (
+            <>
+              <DirectionIcon className="size-2.5 text-primary/70" />
+              <span className="text-[10px] font-medium tabular-nums text-primary/80">
+                {percent}%
+              </span>
+              {speedLabel && (
                 <>
-                  <DirectionIcon className="size-2.5 text-primary/70" />
-                  <span className="text-[10px] tabular-nums text-primary/80 font-medium">
-                    {percent}%
-                  </span>
-                  {speedLabel && (
-                    <>
-                      <span className="text-[9px] text-primary/30">-</span>
-                      <span className="text-[10px] tabular-nums text-primary/70">{speedLabel}</span>
-                    </>
-                  )}
-                </>
-              ) : isFileType && isPending ? (
-                <>
-                  <LoaderCircle className="size-2.5 text-muted-foreground/40 animate-spin" />
-                  <span className="text-[10px] text-muted-foreground/40">
-                    {t('clipboard.transfer.pending')}
-                  </span>
-                </>
-              ) : (
-                <>
-                  {delivery && <SourceIndicator source={delivery.source} />}
-                  <span className="text-[10px] text-muted-foreground/40">{relativeTime}</span>
+                  <span className="text-[9px] text-primary/30">·</span>
+                  <span className="text-[10px] tabular-nums text-primary/70">{speedLabel}</span>
                 </>
               )}
-            </div>
-          </div>
+            </>
+          ) : isFileType && isPending ? (
+            <>
+              <LoaderCircle className="size-2.5 animate-spin text-muted-foreground/40" />
+              <span className="text-[10px] text-muted-foreground/40">
+                {t('clipboard.transfer.pending')}
+              </span>
+            </>
+          ) : (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/45">
+              {source?.Icon && <source.Icon className={cn('size-2.5', source.color)} />}
+              {source?.label && (
+                <>
+                  <span className="max-w-[7rem] truncate">{source.label}</span>
+                  <span className="text-muted-foreground/25">·</span>
+                </>
+              )}
+              <span className="tabular-nums">{relativeTime}</span>
+            </span>
+          )}
+        </div>
+      </div>
 
-          <div
-            className={cn(
-              'relative z-10 flex-1 min-h-0 overflow-hidden',
-              isPending && 'opacity-60'
-            )}
-          >
-            {content}
-          </div>
-        </>
-      )}
+      {/* ── Content layer ── */}
+      <div
+        className={cn('relative z-10 min-h-0 flex-1 overflow-hidden', isPending && 'opacity-60')}
+      >
+        {content}
+      </div>
 
-      {/* Transfer progress detail bar at bottom — absolute so it never affects card height */}
+      {/* Transfer progress detail bar — absolute so it never affects card height */}
       {isFileType && (
         <div
           className={cn(
@@ -826,13 +851,13 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         >
           {transfer && (
             <>
-              <div className="h-px flex-1 bg-primary/15 rounded-full overflow-hidden">
+              <div className="h-px flex-1 overflow-hidden rounded-full bg-primary/15">
                 <div
                   className="h-full bg-primary/40 transition-[width] duration-300 ease-out"
                   style={{ width: `${percent}%` }}
                 />
               </div>
-              <span className="text-[9px] tabular-nums text-primary/50 shrink-0">
+              <span className="shrink-0 text-[9px] tabular-nums text-primary/50">
                 {transfer.totalBytes
                   ? `${formatFileSize(transfer.bytesTransferred)} / ${formatFileSize(transfer.totalBytes)}`
                   : formatFileSize(transfer.bytesTransferred)}
@@ -842,40 +867,54 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         </div>
       )}
 
-      {/* Copy button - visible on hover, hidden during transfer */}
-      <button
-        type="button"
-        aria-label={t('clipboard.item.actions.copy')}
-        tabIndex={isHovered && !isTransferring ? 0 : -1}
-        onClick={e => {
-          e.stopPropagation()
-          onCopy(item.id)
-        }}
+      {/* ── Action layer (hover): copy / favorite / delete as one aligned group ── */}
+      <div
         className={cn(
-          'absolute top-2.5 right-2.5 z-20 flex items-center justify-center size-6 rounded-md bg-card border border-border/50 text-muted-foreground shadow-sm transition-all duration-150',
-          isHovered && !isTransferring ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          'absolute bottom-1.5 right-2 z-20 flex items-center gap-0.5 rounded-lg border border-border/40 bg-card/95 p-0.5 shadow-sm backdrop-blur transition-opacity duration-150',
+          isHovered && !isTransferring && !isPending
+            ? 'opacity-100'
+            : 'pointer-events-none opacity-0'
         )}
       >
-        <Copy className="size-3" />
-      </button>
-
-      {/* Keyboard hint - visible on hover. On image cards it sits over the photo,
-          so it needs a high-contrast treatment (light text + dark chips). */}
-      {isHovered && !isTransferring && !isPending && (
-        <div
-          className={cn(
-            'absolute bottom-1 right-2.5 z-20 flex items-center gap-1.5 text-[9px]',
-            isImageCard
-              ? 'text-white/80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]'
-              : 'text-muted-foreground/30'
-          )}
+        <button
+          type="button"
+          aria-label={t('clipboard.item.actions.copy')}
+          tabIndex={isHovered ? 0 : -1}
+          onClick={e => {
+            e.stopPropagation()
+            onCopy(item.id)
+          }}
+          className={actionBtnClass}
         >
-          <kbd className={cn('px-1 py-px rounded border font-mono', kbdClass)}>c</kbd>
-          <span>{t('clipboard.item.actions.copy')}</span>
-          <kbd className={cn('px-1 py-px rounded border font-mono', kbdClass)}>d</kbd>
-          <span>{t('clipboard.item.actions.delete')}</span>
-        </div>
-      )}
+          <Copy className="size-3" />
+        </button>
+        <button
+          type="button"
+          aria-label={t(
+            isFavorited ? 'clipboard.item.actions.unfavorite' : 'clipboard.item.actions.favorite'
+          )}
+          tabIndex={isHovered ? 0 : -1}
+          onClick={e => {
+            e.stopPropagation()
+            onToggleFavorite(item.id, isFavorited)
+          }}
+          className={actionBtnClass}
+        >
+          <Star className={cn('size-3', isFavorited && 'fill-amber-400 text-amber-400')} />
+        </button>
+        <button
+          type="button"
+          aria-label={t('clipboard.item.actions.delete')}
+          tabIndex={isHovered ? 0 : -1}
+          onClick={e => {
+            e.stopPropagation()
+            onDelete(item.id)
+          }}
+          className={cn(actionBtnClass, 'hover:bg-destructive/10 hover:text-destructive')}
+        >
+          <Trash2 className="size-3" />
+        </button>
+      </div>
     </div>
   )
 }

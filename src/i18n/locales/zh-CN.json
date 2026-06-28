@@ -680,6 +680,7 @@
     "unknownFile": "未知文件",
     "filter": {
       "all": "全部",
+      "favorited": "收藏",
       "text": "文本",
       "code": "代码",
       "link": "链接",
@@ -719,6 +720,7 @@
       "title": "搜索与筛选",
       "dimension": {
         "type": "类型",
+        "tag": "标签",
         "source": "来源",
         "time": "时间"
       },
@@ -799,8 +801,12 @@
         "convertingItem": "转换为显示项目:"
       }
     },
+    "source": {
+      "local": "本机"
+    },
     "errors": {
       "copyFailed": "复制到剪贴板失败",
+      "favoriteFailed": "更新收藏状态失败",
       "openLocationFailed": "打开文件位置失败",
       "fileLocationUnavailable": "该文件本地已不可用。",
       "loadDetailFailed": "加载详情失败",

@@ -118,7 +118,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
 
   if (!item) {
     return (
-      <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 bg-muted/5 text-muted-foreground">
+      <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 bg-card text-muted-foreground">
         <Clipboard className="size-10 text-muted-foreground/20" />
         <span className="text-sm font-medium opacity-50">{t('clipboard.preview.selectItem')}</span>
       </div>
@@ -141,10 +141,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   )
 
   return (
-    <div
-      className="flex flex-1 min-h-0 flex-col bg-background/20 backdrop-blur-sm"
-      data-testid="clipboard-detail"
-    >
+    <div className="flex flex-1 min-h-0 flex-col bg-card" data-testid="clipboard-detail">
       <ClipboardPreviewInfo
         item={item}
         preview={preview}
@@ -163,7 +160,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
       </div>
 
       {(effectiveStatus === 'transferring' || actions) && (
-        <div className="flex min-h-[64px] shrink-0 items-center justify-between bg-background/40 px-6 py-4 backdrop-blur-xl">
+        <div className="flex min-h-[64px] shrink-0 items-center justify-between bg-card px-6 py-4">
           <div className="mr-8 min-w-0 flex-1">
             {effectiveStatus === 'transferring' && transfer && transfer.status === 'active' && (
               <div className="max-w-[280px]">

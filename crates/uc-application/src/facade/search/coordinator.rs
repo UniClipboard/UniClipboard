@@ -23,6 +23,11 @@ pub const REASON_INITIAL_BACKFILL: &str = "initial_backfill";
 pub const REASON_VERSION_MISMATCH: &str = "version_mismatch";
 pub const REASON_MANUAL_REBUILD: &str = "manual_rebuild";
 pub const REASON_REBUILD_FAILED_WAITING: &str = "rebuild_failed_waiting_for_retry";
+/// A prior rebuild set the persisted blocked flag but never cleared it — the
+/// process exited (or the rebuild failed) between marking blocked and finalizing.
+/// Startup resumes by rebuilding rather than leaving the index permanently
+/// unavailable, since the blocked flag has no retry driver of its own.
+pub const REASON_INTERRUPTED_REBUILD: &str = "interrupted_rebuild";
 
 pub const STATUS_READY: &str = "ready";
 pub const STATUS_REBUILDING: &str = "rebuilding";
@@ -263,8 +268,15 @@ impl SearchCoordinator {
         }
 
         if meta.search_blocked {
-            warn!("search coordinator: index is blocked at startup, marking unavailable");
-            self.set_state(STATUS_UNAVAILABLE, Some(REASON_REBUILD_FAILED_WAITING))
+            // The blocked flag is sticky: a rebuild sets it before doing work and
+            // only clears it on successful finalize, so a rebuild interrupted
+            // mid-flight (process killed, crash, or hard failure) leaves it true
+            // forever. Nothing else drives a retry, so resume by rebuilding here
+            // instead of dead-ending at `unavailable` until a manual rebuild.
+            warn!(
+                "search coordinator: index left blocked by an interrupted rebuild, resuming rebuild"
+            );
+            self.trigger_rebuild_locked(REASON_INTERRUPTED_REBUILD)
                 .await;
             return;
         }
@@ -579,12 +591,16 @@ fn pipeline_input_to_search_result(input: SearchPipelineInput) -> SearchResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
     use uc_core::clipboard::{
         ClipboardSelection, ClipboardSelectionDecision, ObservedClipboardRepresentation,
         PersistedClipboardRepresentation, SelectionPolicyVersion,
     };
     use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
-    use uc_core::search::document::ContentType;
+    use uc_core::search::document::{ContentType, SearchDocument, SearchIndexMeta, SearchPosting};
+    use uc_core::search::key::SearchKey;
+    use uc_core::search::query::SearchQuery;
     use uc_core::search::tag::TagId;
     use uc_core::MimeType;
 
@@ -749,5 +765,140 @@ mod tests {
         assert_eq!(page.items.len(), 2);
         assert!(page.has_more, "page of 2 over 3 entries has a next page");
         assert_eq!(page.total, 2, "total is a lower bound of offset + page len");
+    }
+
+    // ── Startup resume of an interrupted rebuild ─────────────────────────────
+
+    /// Records whether `rebuild` ran and serves a caller-configured meta row.
+    struct FakeSearchIndex {
+        meta: SearchIndexMeta,
+        rebuild_called: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl SearchIndexPort for FakeSearchIndex {
+        async fn index_entry(
+            &self,
+            _document: SearchDocument,
+            _postings: Vec<SearchPosting>,
+        ) -> Result<(), SearchError> {
+            Ok(())
+        }
+
+        async fn remove_entry(&self, _entry_id: &EntryId) -> Result<(), SearchError> {
+            Ok(())
+        }
+
+        async fn search(&self, _query: SearchQuery) -> Result<SearchResultsPage, SearchError> {
+            Err(SearchError::IndexNotReady)
+        }
+
+        async fn rebuild(
+            &self,
+            _entries: Vec<(SearchDocument, Vec<SearchPosting>)>,
+            _progress_tx: mpsc::Sender<RebuildProgress>,
+        ) -> Result<(), SearchError> {
+            self.rebuild_called.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn get_index_meta(&self) -> Result<SearchIndexMeta, SearchError> {
+            Ok(self.meta.clone())
+        }
+    }
+
+    struct FakeKeyDerivation;
+
+    #[async_trait::async_trait]
+    impl SearchKeyDerivationPort for FakeKeyDerivation {
+        async fn derive_search_key(&self) -> Result<SearchKey, SearchError> {
+            Ok(SearchKey([0u8; 32]))
+        }
+    }
+
+    /// Unused in the zero-entry resume test (no entries are projected), but
+    /// required to satisfy the coordinator's port bound.
+    struct FakePipeline;
+
+    impl SearchPipelinePort for FakePipeline {
+        fn build_document(&self, _input: &SearchPipelineInput) -> SearchDocument {
+            unreachable!("no entries projected in this test")
+        }
+
+        fn build_postings(
+            &self,
+            _input: &SearchPipelineInput,
+            _search_key: &SearchKey,
+        ) -> anyhow::Result<Vec<SearchPosting>> {
+            unreachable!("no entries projected in this test")
+        }
+
+        fn build(
+            &self,
+            _input: &SearchPipelineInput,
+            _search_key: &SearchKey,
+        ) -> anyhow::Result<(SearchDocument, Vec<SearchPosting>)> {
+            unreachable!("no entries projected in this test")
+        }
+    }
+
+    /// A sticky `search_blocked` flag left behind by an interrupted rebuild must
+    /// not dead-end at `unavailable`: startup resumes by rebuilding so the index
+    /// self-heals without a manual trigger. Regression for the "rebuilding banner
+    /// never clears" stuck state (the blocked flag has no retry driver of its own).
+    #[tokio::test]
+    async fn startup_resumes_rebuild_when_index_left_blocked() {
+        let rebuild_called = Arc::new(AtomicBool::new(false));
+        let index = FakeSearchIndex {
+            meta: SearchIndexMeta {
+                index_version: CURRENT_INDEX_VERSION.to_string(),
+                search_blocked: true,
+                last_rebuild_started_at_ms: Some(2_000),
+                // A prior rebuild completed, so the initial-backfill branch is
+                // skipped and the blocked branch is the one under test.
+                last_rebuild_completed_at_ms: Some(1_000),
+            },
+            rebuild_called: Arc::clone(&rebuild_called),
+        };
+
+        let rep_id = RepresentationId::new();
+        let deps = SearchCoordinatorDeps::new(
+            Arc::new(index),
+            Arc::new(FakeKeyDerivation),
+            Arc::new(FakePipeline),
+            // No entries: the resumed rebuild finalizes immediately to an empty,
+            // ready index, so the pipeline build path is never reached.
+            Arc::new(FakeEntryRepo { entries: vec![] }),
+            Arc::new(FakeRepRepo {
+                rep_id: rep_id.clone(),
+            }),
+            Arc::new(FakeSelectionRepo { rep_id }),
+            Arc::new(FakeEventRepo),
+        );
+        let coordinator = SearchCoordinator::new(deps);
+
+        coordinator.startup_evaluation().await;
+
+        // The rebuild runs on a spawned task; wait for it to flip state to ready.
+        let mut ready = false;
+        for _ in 0..200 {
+            if coordinator.status_snapshot().await.state == STATUS_READY {
+                ready = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
+        assert!(
+            rebuild_called.load(Ordering::SeqCst),
+            "a blocked index at startup must trigger a rebuild, not dead-end at unavailable"
+        );
+        assert!(
+            ready,
+            "the resumed rebuild must drive the index back to ready"
+        );
+        let snapshot = coordinator.status_snapshot().await;
+        assert_eq!(snapshot.state, STATUS_READY);
+        assert_eq!(snapshot.reason, None);
     }
 }

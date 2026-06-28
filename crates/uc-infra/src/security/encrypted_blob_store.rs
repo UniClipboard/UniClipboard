@@ -150,9 +150,12 @@ impl BlobStorePort for EncryptedBlobStore {
         // 加密。这里先把源文件整文件读进内存再走 put() —— 与 capture-side 调用方约定:
         // 加密 store 启用时,path-backed ingest 的"任意大小"语义降级为"内存里能放得下",
         // 流式 AEAD 重构属于独立 phase。
-        let bytes = tokio::fs::read(source_path)
-            .await
-            .with_context(|| format!("failed to read {} for encryption", source_path.display()))?;
+        // No source path in the error context: a clipboard file path is user
+        // content (usernames / sensitive filenames) and would leak through the
+        // propagated error chain. Correlate by blob_id instead.
+        let bytes = tokio::fs::read(source_path).await.with_context(|| {
+            format!("failed to read source file for encryption (blob {blob_id})")
+        })?;
         // Hash the exact plaintext buffer that gets compressed+encrypted below,
         // in the same read pass — no second read of the source can observe a
         // rewritten file, so the recorded identity matches the stored blob.

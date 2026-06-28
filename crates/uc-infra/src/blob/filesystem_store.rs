@@ -98,9 +98,9 @@ impl BlobStorePort for FilesystemBlobStore {
                     tokio::task::spawn_blocking(move || copy_and_hash(&copy_source, &copy_dest))
                         .await
                         .context("blob copy join failed")?
-                        .with_context(|| {
-                            format!("failed to copy {} -> {}", source.display(), dest.display())
-                        })?
+                        // No source path in the context: it is user content. The
+                        // dest path is our own blob-store location (blob_id).
+                        .with_context(|| format!("failed to copy source into blob {blob_id}"))?
                 }
             };
 

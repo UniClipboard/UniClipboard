@@ -81,18 +81,27 @@ where
             );
 
             // 2. 按权威 hash 去重:已有同内容 blob → 丢弃刚落盘的副本,复用既有记录。
-            if let Some(existing) = self.blob_repo.find_by_hash(&content_hash).await? {
-                debug!(
-                    content_hash = %content_hash,
-                    blob_id = %existing.blob_id,
-                    "Path ingest: dedup hit, dropping freshly written blob and reusing existing"
-                );
-                self.discard_blob(&blob_id, "dedup hit").await;
-                return Ok(IngestedBlob {
-                    blob_id: existing.blob_id,
-                    content_hash,
-                    size_bytes,
-                });
+            //    blob 此刻已落盘但尚无 DB 记录,因此每一条 post-write 失败退出路径都必须
+            //    先 discard,否则会留下无记录引用的孤儿 blob。
+            match self.blob_repo.find_by_hash(&content_hash).await {
+                Ok(Some(existing)) => {
+                    debug!(
+                        content_hash = %content_hash,
+                        blob_id = %existing.blob_id,
+                        "Path ingest: dedup hit, dropping freshly written blob and reusing existing"
+                    );
+                    self.discard_blob(&blob_id, "dedup hit").await;
+                    return Ok(IngestedBlob {
+                        blob_id: existing.blob_id,
+                        content_hash,
+                        size_bytes,
+                    });
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    self.discard_blob(&blob_id, "dedup lookup failed").await;
+                    return Err(err);
+                }
             }
 
             let created_at_ms = self.clock.now_ms();
@@ -106,10 +115,12 @@ where
                 compressed_size,
             );
 
-            if let Err(err) = self.blob_repo.insert_blob(&record).await {
-                if let Some(existing) = self.blob_repo.find_by_hash(&content_hash).await? {
+            if let Err(insert_err) = self.blob_repo.insert_blob(&record).await {
+                // Insert most likely lost the content_hash UNIQUE race with a
+                // concurrent ingest; reuse the winner's record if it is present.
+                if let Ok(Some(existing)) = self.blob_repo.find_by_hash(&content_hash).await {
                     debug!(
-                        error = %err,
+                        error = %insert_err,
                         content_hash = %content_hash,
                         "Path ingest insert raced with existing blob; dropping freshly written blob and returning existing record",
                     );
@@ -120,7 +131,10 @@ where
                         size_bytes,
                     });
                 }
-                return Err(err);
+                // No existing record (or the re-check itself errored): the stored
+                // blob has no owning row, so drop it before surfacing the error.
+                self.discard_blob(&blob_id, "insert failed").await;
+                return Err(insert_err);
             }
             Ok(IngestedBlob {
                 blob_id,

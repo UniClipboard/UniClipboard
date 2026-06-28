@@ -18,8 +18,9 @@ const STREAM_BUF_LEN: usize = 64 * 1024;
 /// Stream `path` through blake3, returning `(ContentHash, byte_size)` without
 /// loading the file into memory.
 pub(crate) fn stream_hash_file(path: &Path) -> Result<(ContentHash, u64)> {
-    let mut file = std::fs::File::open(path)
-        .with_context(|| format!("failed to open {} for hashing", path.display()))?;
+    // No path in the error context: `path` may be a clipboard source file, whose
+    // name is user content and would leak through the propagated error chain.
+    let mut file = std::fs::File::open(path).context("failed to open file for hashing")?;
     let mut hasher = blake3::Hasher::new();
     let mut buf = [0u8; STREAM_BUF_LEN];
     let mut total: u64 = 0;
@@ -43,10 +44,16 @@ pub(crate) fn stream_hash_file(path: &Path) -> Result<(ContentHash, u64)> {
 /// blob even if the source is rewritten right after this returns. The bytes are
 /// flushed and fsync'd before returning.
 pub(crate) fn copy_and_hash(source: &Path, dest: &Path) -> Result<(ContentHash, u64)> {
-    let mut src = std::fs::File::open(source)
-        .with_context(|| format!("failed to open {} for copy+hash", source.display()))?;
-    let mut out = std::fs::File::create(dest)
-        .with_context(|| format!("failed to create {} for copy+hash", dest.display()))?;
+    // No source path in the error context: it is user content. The dest path is
+    // our own blob-store location (a blob_id), so it is safe to surface.
+    let mut src =
+        std::fs::File::open(source).context("failed to open source file for copy+hash")?;
+    let mut out = std::fs::File::create(dest).with_context(|| {
+        format!(
+            "failed to create blob file {} for copy+hash",
+            dest.display()
+        )
+    })?;
     let mut hasher = blake3::Hasher::new();
     let mut buf = [0u8; STREAM_BUF_LEN];
     let mut total: u64 = 0;

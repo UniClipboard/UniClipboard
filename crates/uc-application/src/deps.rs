@@ -20,9 +20,9 @@ use uc_core::ports::clipboard::{
     GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationByBlobIdPort,
     GetRepresentationPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
     LoadActiveClipboardPort, ReplaceEntryContentPort, RepresentationCachePort,
-    ResetActiveClipboardPort, SaveClipboardEntryPort, SelfWriteLedgerPort, SpoolQueuePort,
-    SystemClipboardPort, ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
-    UpdateRepresentationProcessingResultPort,
+    ResetActiveClipboardPort, SaveClipboardEntryPort, SelfWriteLedgerPort,
+    SetClipboardEntryFavoritePort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
+    ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
@@ -46,6 +46,7 @@ pub struct ClipboardEntryPorts {
     pub list: Arc<dyn ListClipboardEntriesPort>,
     pub save: Arc<dyn SaveClipboardEntryPort>,
     pub touch: Arc<dyn TouchClipboardEntryPort>,
+    pub set_favorite: Arc<dyn SetClipboardEntryFavoritePort>,
     pub delete: Arc<dyn DeleteClipboardEntryPort>,
     pub find_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
     /// Forward lookup of an entry's persisted cross-device snapshot hash. The
@@ -86,6 +87,10 @@ pub struct ClipboardPorts {
     /// serializes across every writer of the same content (no double-create).
     pub entry_identity_coordinator: Arc<crate::entry_identity::EntryIdentityCoordinator>,
     pub clipboard_event_repo: Arc<dyn ClipboardEventWriterPort>,
+    /// Read port over the same clipboard-event store as `clipboard_event_repo`.
+    /// Exposes read-only lookups such as the originating device of an event,
+    /// used to populate the search index's `source_device` render column.
+    pub clipboard_event_reader_repo: Arc<dyn ClipboardEventRepositoryPort>,
     /// Inner representation store (the full aggregate surface). Threaded by the
     /// composition root to the background payload workers only; the application
     /// layer depends on `representation_ports` instead.

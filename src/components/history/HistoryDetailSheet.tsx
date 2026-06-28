@@ -23,6 +23,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
+import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import type {
   ClipboardCodeItem,
   ClipboardFileItem,
@@ -31,6 +32,7 @@ import type {
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
+import { isImageFileName } from '@/lib/clipboard-utils'
 import { formatFileSize } from '@/utils'
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -126,14 +128,16 @@ const DetailLink: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => (
   </div>
 )
 
-// TODO: thumbnail endpoint has issues; using original image via resource API
-const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
-  item,
-  entryId,
-}) => {
+// Resolve an entry's image bytes to a render URL by entry id. `enabled` gates
+// the fetch so non-image entries don't hit the resource endpoint. The daemon
+// serves the entry's image representation (a pure bitmap, or an image file's
+// materialized blob) — see GetEntryResourceUseCase.
+// TODO: thumbnail endpoint has issues; using original image via resource API.
+function useResourceImageUrl(entryId: string, enabled: boolean): string | null {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
     getClipboardEntryResource(entryId)
       .then(resource => {
@@ -144,7 +148,16 @@ const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
     return () => {
       cancelled = true
     }
-  }, [entryId])
+  }, [entryId, enabled])
+
+  return imageUrl
+}
+
+const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
+  item,
+  entryId,
+}) => {
+  const imageUrl = useResourceImageUrl(entryId, true)
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -169,10 +182,23 @@ const DetailImage: React.FC<{ item: ClipboardImageItem; entryId: string }> = ({
   )
 }
 
-const DetailFile: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
+const DetailFile: React.FC<{ item: ClipboardFileItem; entryId: string }> = ({ item, entryId }) => {
   const { t } = useTranslation()
+  // An image file (or a multi-file selection that includes one) is physically a
+  // file, but previewing the image reads better than a bare file list — fetch a
+  // thumbnail when any file is an image (the daemon resolves the image rep).
+  const hasImage = item.file_names.some(isImageFileName)
+  const imageUrl = useResourceImageUrl(entryId, hasImage)
+
   return (
     <div className="space-y-2">
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt=""
+          className="mb-1 max-h-60 w-full rounded-lg object-contain bg-muted/20 ring-1 ring-black/5 dark:ring-white/10"
+        />
+      )}
       {item.file_names.map((name, i) => {
         const size = item.file_sizes[i] ?? 0
         const missing = item.file_missing?.[i] ?? false
@@ -277,6 +303,14 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
   const { t } = useTranslation()
   const { delivery } = useEntryDelivery(open ? (item?.id ?? null) : null)
   const [copyDone, setCopyDone] = useState(false)
+
+  // Push a modal layer while the sheet is open so the page-scoped grid shortcuts
+  // (c copy / d delete) are suspended in favor of this sheet's own handlers.
+  // Escape is handled explicitly below (capture phase) — not via this layer or
+  // Radix's default — so it closes the sheet without clearing the history
+  // filters.
+  useShortcutLayer({ layer: 'modal', scope: 'modal', enabled: open })
+
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const TypeIcon = item ? (TYPE_ICONS[item.type] ?? FileText) : FileText
@@ -313,6 +347,7 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
   // handler identity changes (e.g. when the selected item switches).
   const onCopyKey = useEffectEvent(() => void handleCopy())
   const onDeleteKey = useEffectEvent(() => void handleDelete())
+  const onCloseKey = useEffectEvent(() => handleOpenChange(false))
 
   useEffect(() => {
     if (!open) return
@@ -324,6 +359,23 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
+  }, [open])
+
+  // Own Escape entirely while the sheet is open: close it (same as the X button)
+  // and swallow the event in the capture phase so it never reaches the history
+  // page's Esc-clears-filters shortcut or the search input's own onKeyDown.
+  // Radix's built-in Esc-to-close is disabled via onEscapeKeyDown on the content,
+  // making this listener the single Escape owner.
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      onCloseKey()
+    }
+    document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
   }, [open])
 
   const content = useMemo(() => {
@@ -353,7 +405,9 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
           <DetailImage key={item.id} item={item.content as ClipboardImageItem} entryId={item.id} />
         )
       case 'file':
-        return <DetailFile item={item.content as ClipboardFileItem} />
+        return (
+          <DetailFile key={item.id} item={item.content as ClipboardFileItem} entryId={item.id} />
+        )
       default:
         return item.textPreview ? (
           <div className="text-[13px] text-muted-foreground/70">{item.textPreview}</div>
@@ -365,7 +419,11 @@ const HistoryDetailSheet: React.FC<HistoryDetailSheetProps> = ({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="w-[420px] sm:max-w-[420px] flex flex-col p-0">
+      <SheetContent
+        side="right"
+        className="w-[420px] sm:max-w-[420px] flex flex-col p-0"
+        onEscapeKeyDown={e => e.preventDefault()}
+      >
         {item && (
           <>
             {/* Header */}

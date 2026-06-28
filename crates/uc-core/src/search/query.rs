@@ -2,6 +2,7 @@
 
 use crate::ids::DeviceId;
 use crate::search::document::ContentType;
+use crate::search::tag::TagId;
 use serde::{Deserialize, Serialize};
 
 /// Top-level boolean operator joining tokenized query terms.
@@ -45,6 +46,10 @@ pub struct SearchQuery {
     pub time_range: Option<TimeRangeFilter>,
     /// Multi-select file type filter. Empty slice means no type restriction.
     pub content_types: Vec<ContentType>,
+    /// Derived/user-state tag filter (e.g. `link`, `favorited`). Empty means no
+    /// tag restriction. Tags within this group are OR-combined; the group is
+    /// AND-combined with the other filters.
+    pub tags: Vec<TagId>,
     /// File extension filter (e.g. `["md", "txt"]`). Empty means no restriction.
     pub extensions: Vec<String>,
     /// Source-device filter. Restricts results to entries that originated from

@@ -69,6 +69,7 @@ diesel::table! {
         pinned -> Bool,
         deleted_at_ms -> Nullable<BigInt>,
         delivery_tracked -> Bool,
+        is_favorited -> Bool,
     }
 }
 
@@ -201,6 +202,18 @@ diesel::table! {
         indexed_at_ms -> BigInt,
         index_version -> Text,
         text_preview -> Nullable<Text>,
+        file_names -> Text,
+        link_urls -> Text,
+        source_device -> Nullable<Text>,
+        payload_state -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    search_entry_tag (profile_id, entry_id, tag_id) {
+        profile_id -> Text,
+        entry_id -> Text,
+        tag_id -> Text,
     }
 }
 
@@ -247,6 +260,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     space_member,
     trusted_peer,
     search_document,
+    search_entry_tag,
     search_index_meta,
     search_posting,
     t_device,

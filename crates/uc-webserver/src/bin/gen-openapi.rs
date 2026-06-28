@@ -51,8 +51,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Config migration (issue #1110) added `POST /config/export`,
 /// `POST /config/import/preview`, and `POST /config/import`: +3 paths,
 /// +3 operations → 62 / 69.
-const EXPECTED_PATHS: usize = 62;
-const EXPECTED_OPERATIONS: usize = 69;
+/// Unified search (tag model) added `GET /search/tags`: +1 path,
+/// +1 operation → 63 / 70.
+const EXPECTED_PATHS: usize = 63;
+const EXPECTED_OPERATIONS: usize = 70;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

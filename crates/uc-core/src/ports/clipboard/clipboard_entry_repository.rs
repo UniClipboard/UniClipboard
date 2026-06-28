@@ -21,6 +21,16 @@ pub trait ClipboardEntryStore: Send + Sync {
         Ok(false)
     }
 
+    /// Set the favorite flag of an existing entry.
+    /// 设置已存在条目的收藏标记。
+    ///
+    /// Returns `true` when a row was updated, `false` when no entry with
+    /// `entry_id` exists. Idempotent: setting the same value again still
+    /// reports `true` as long as the row exists.
+    async fn set_favorite(&self, _entry_id: &EntryId, _is_favorited: bool) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Delete a clipboard entry.
     /// 删除剪贴板条目。
     ///

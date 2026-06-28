@@ -527,6 +527,7 @@ fn create_infra_layer(
         list: entry_repo_arc.clone(),
         save: entry_repo_arc.clone(),
         touch: entry_repo_arc.clone(),
+        set_favorite: entry_repo_arc.clone(),
         delete: entry_repo_arc.clone(),
         find_by_snapshot_hash: entry_repo_arc.clone(),
         get_snapshot_hash: entry_repo_arc,
@@ -886,6 +887,7 @@ pub fn wire_dependencies(
             // on it so the same content never lands as two entries.
             entry_identity_coordinator: Arc::new(uc_application::EntryIdentityCoordinator::new()),
             clipboard_event_repo: encrypting_event_writer,
+            clipboard_event_reader_repo: infra.clipboard_event_reader_repo.clone(),
             representation_store: decrypting_rep_repo,
             representation_ports: clipboard_representation_ports,
             representation_normalizer: platform.representation_normalizer,

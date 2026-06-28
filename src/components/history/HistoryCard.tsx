@@ -27,6 +27,7 @@ import type {
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
+import { isImageFileName } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/store/hooks'
 import {
@@ -143,11 +144,204 @@ const TextContent: React.FC<{ item: ClipboardTextItem }> = ({ item }) => {
   )
 }
 
-const CodeContent: React.FC<{ item: ClipboardCodeItem }> = ({ item }) => (
-  <pre className="rounded-lg bg-[#1a1726] px-3 py-2.5 text-[10.5px] leading-[1.6] text-[#c8c0e0] line-clamp-5 font-mono -mx-0.5">
-    <code>{item.code}</code>
-  </pre>
-)
+// ── Code content ────────────────────────────────────────────────
+//
+// A code entry keeps the shared card frame (header + theme `bg-card`, no editor
+// chrome), but its body is rendered as code: a line-number gutter plus light,
+// theme-aware syntax tinting. The gutter alone reads as "this is code"; the
+// tint just adds depth without a hard surface boundary.
+
+const CODE_PREVIEW_LINES = 8
+
+// Keywords shared across the languages we're likely to see on a clipboard. The
+// tint is decorative, so an over-broad set (a Python `def` highlighted in a JS
+// snippet) is harmless; the goal is "this reads as code", not a real grammar.
+const CODE_KEYWORDS = new Set([
+  'abstract',
+  'as',
+  'async',
+  'await',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'def',
+  'default',
+  'do',
+  'elif',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'false',
+  'final',
+  'finally',
+  'fn',
+  'for',
+  'from',
+  'func',
+  'function',
+  'if',
+  'impl',
+  'import',
+  'in',
+  'interface',
+  'let',
+  'match',
+  'mut',
+  'new',
+  'nil',
+  'none',
+  'null',
+  'package',
+  'pass',
+  'private',
+  'protected',
+  'pub',
+  'public',
+  'return',
+  'self',
+  'static',
+  'struct',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'trait',
+  'true',
+  'try',
+  'type',
+  'typeof',
+  'undefined',
+  'use',
+  'val',
+  'var',
+  'void',
+  'where',
+  'while',
+  'with',
+  'yield',
+])
+
+type CodeTone = 'comment' | 'string' | 'number' | 'keyword'
+
+interface CodeSeg {
+  text: string
+  tone?: CodeTone
+}
+
+// Theme-aware tints: a deeper hue in light mode, a brighter one in dark, so the
+// code stays legible on `bg-card` either way. Comments reuse the semantic muted
+// token; the keyword violet echoes the `code` type color (rgb(140,120,210)).
+const TONE_CLASS: Record<CodeTone, string> = {
+  comment: 'text-muted-foreground/50 italic',
+  string: 'text-emerald-600 dark:text-emerald-400',
+  number: 'text-amber-600 dark:text-amber-400',
+  keyword: 'text-violet-600 dark:text-violet-400',
+}
+
+// Lines whose first non-space run is a comment opener are tinted whole. `#`/`--`
+// require a trailing space so CSS ids and decrement operators aren't mistaken
+// for comments; `*` catches block-comment continuation lines.
+const FULL_LINE_COMMENT_RE = /^(?:\/\/|#\s|--\s|\*|<!--)/
+
+// One ordered alternation, scanned left-to-right: inline comment, then string,
+// then number, then identifier. Leftmost-match semantics mean a `//` inside a
+// string is consumed by the string rule (it starts earlier), so we never mistint
+// `"http://"`. Block-comment state isn't carried across lines — the preview is
+// line-sliced and tinting is decorative, so an unclosed `/*` only tints its own
+// line.
+const CODE_TOKEN_RE =
+  /(\/\/.*$|\/\*.*?(?:\*\/|$))|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d[\w.]*)|([A-Za-z_$][\w$]*)/g
+
+function tokenizeCodeLine(line: string): CodeSeg[] {
+  if (FULL_LINE_COMMENT_RE.test(line.trimStart())) {
+    return [{ text: line, tone: 'comment' }]
+  }
+  const segs: CodeSeg[] = []
+  let last = 0
+  CODE_TOKEN_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = CODE_TOKEN_RE.exec(line)) !== null) {
+    if (m.index > last) segs.push({ text: line.slice(last, m.index) })
+    if (m[1]) segs.push({ text: m[1], tone: 'comment' })
+    else if (m[2]) segs.push({ text: m[2], tone: 'string' })
+    else if (m[3]) segs.push({ text: m[3], tone: 'number' })
+    else segs.push(CODE_KEYWORDS.has(m[4]) ? { text: m[4], tone: 'keyword' } : { text: m[4] })
+    last = m.index + m[0].length
+  }
+  if (last < line.length) segs.push({ text: line.slice(last) })
+  return segs
+}
+
+// Best-effort language label shown in the card header (replacing the generic
+// "code" label). We persist only the raw code string, so infer from a few
+// signature patterns and return null when nothing matches confidently — the
+// header then falls back to the localized type label. Order is significant:
+// more specific signatures are tested first.
+function detectCodeLanguage(code: string): string | null {
+  const s = code.slice(0, 1500)
+  const has = (re: RegExp) => re.test(s)
+  if (has(/^\s*<\?php/)) return 'PHP'
+  if (has(/^#!\s*\/.*\b(?:bash|zsh|sh)\b/m) || has(/\b(?:fi|esac|elif)\b/)) return 'Shell'
+  if (has(/\bfn\s+\w+/) && has(/\b(?:let\s+mut|impl|pub\s+fn|->\s*\w)/)) return 'Rust'
+  if (has(/\bfunc\s+\w+/) && has(/\bpackage\s+\w+/)) return 'Go'
+  if (has(/\bdef\s+\w+\s*\(/) || has(/^\s*(?:from\s+\w+\s+import|import\s+\w+)/m)) return 'Python'
+  if (has(/:\s*(?:string|number|boolean|void|unknown|any)\b/) || has(/\binterface\s+\w+/)) {
+    return 'TypeScript'
+  }
+  if (has(/\b(?:public|private|protected)\s+(?:static\s+)?(?:class|void|int|String)\b/))
+    return 'Java'
+  if (has(/#include\s*[<"]/)) return 'C++'
+  if (has(/^\s*(?:SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|CREATE\s+TABLE)\b/im)) return 'SQL'
+  if (has(/^\s*[{[]/) && has(/"\w+"\s*:/) && !has(/\bfunction\b|=>/)) return 'JSON'
+  if (has(/<\/[a-z][\w-]*>/i) && has(/<[a-z][\w-]*[\s/>]/i)) return 'HTML'
+  if (has(/[.#]?[\w-]+\s*\{[^}]*:[^}]*;/)) return 'CSS'
+  if (has(/=>/) || has(/\b(?:const|let|var|function)\b/)) return 'JavaScript'
+  return null
+}
+
+// Code body for the shared card frame: a line-number gutter beside theme-tinted
+// code. No background block or divider — it sits directly on `bg-card` under the
+// standard header, so there's no header/body seam. Long lines clip (no wrap) and
+// the body is clipped to `CODE_PREVIEW_LINES` like the text card's line-clamp.
+const CodeContent: React.FC<{ item: ClipboardCodeItem }> = ({ item }) => {
+  const rows = useMemo(() => {
+    const trimmed = item.code.replace(/\s+$/, '')
+    const allLines = trimmed.length === 0 ? [''] : trimmed.split('\n')
+    return allLines
+      .slice(0, CODE_PREVIEW_LINES)
+      .map((line, i) => ({ num: i + 1, segs: tokenizeCodeLine(line) }))
+  }, [item.code])
+
+  return (
+    <div className="flex h-full font-mono text-[11px] leading-[1.55]">
+      <div className="shrink-0 select-none pr-2.5 text-right tabular-nums text-muted-foreground/25">
+        {rows.map(row => (
+          <div key={`ln-${row.num}`}>{row.num}</div>
+        ))}
+      </div>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        {rows.map(row => (
+          <div key={`cl-${row.num}`} className="overflow-hidden whitespace-pre text-foreground/85">
+            {row.segs.length === 0
+              ? ' '
+              : row.segs.map((seg, j) => (
+                  <span
+                    key={`s-${row.num}-${j}`}
+                    className={seg.tone ? TONE_CLASS[seg.tone] : undefined}
+                  >
+                    {seg.text}
+                  </span>
+                ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const LinkContent: React.FC<{ item: ClipboardLinkItem }> = ({ item }) => {
   const url = item.urls[0] ?? ''
@@ -343,6 +537,49 @@ const FileContent: React.FC<{ item: ClipboardFileItem }> = ({ item }) => {
   )
 }
 
+// A single image file (faithful `content_type=File`, but the file IS an image)
+// renders with a real thumbnail in place of the lettered glyph — a preview reads
+// better than a "PNG" tile. The thumbnail is fetched by entry id; the daemon
+// serves the image representation's bytes (see GetEntryResourceUseCase). Falls
+// back to the file glyph until the image resolves (or if it can't).
+const ImageFileContent: React.FC<{ item: ClipboardFileItem; entryId: string }> = ({
+  item,
+  entryId,
+}) => {
+  const imageUrl = useResourceImageUrl(entryId)
+  const name = item.file_names[0] ?? ''
+  const primarySize = item.file_sizes[0] ?? -1
+
+  return (
+    <div className="flex h-full items-center gap-3">
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          className="size-12 shrink-0 rounded-md object-cover ring-1 ring-black/5 dark:ring-white/10"
+        />
+      ) : (
+        <FileGlyph ext={getFileExtLabel(name)} />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium leading-snug text-foreground/85 line-clamp-2 break-all">
+          {name}
+        </div>
+        {primarySize >= 0 && (
+          <div className="mt-1 text-[11px] tabular-nums text-muted-foreground/55">
+            {formatFileSize(primarySize)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** A file entry that is exactly one image file — the case that renders a card thumbnail. */
+function isSingleImageFile(item: ClipboardFileItem): boolean {
+  return item.file_names.length === 1 && isImageFileName(item.file_names[0] ?? '')
+}
+
 // ── Card ────────────────────────────────────────────────────────
 
 interface HistoryCardProps {
@@ -378,6 +615,18 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
   // carry no structured content still show the image — only the pixel-size badge
   // (which needs content) is omitted.
   const isImageCard = item.type === 'image'
+  // Code keeps the shared card frame; only its header label swaps the generic
+  // "code" for an inferred language (when detectable), and its body renders as
+  // line-numbered, tinted code via CodeContent.
+  const codeLanguage = useMemo(
+    () =>
+      item.type === 'code'
+        ? detectCodeLanguage(
+            (item.content as ClipboardCodeItem | null)?.code ?? item.textPreview ?? ''
+          )
+        : null,
+    [item]
+  )
   const transfer = useAppSelector(state =>
     isFileType ? selectTransferByEntryId(state, item.id) : undefined
   )
@@ -408,11 +657,20 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       // a filtered file then renders as a file card, not a raw path/URL line.
       // Size and file count stay unknown in search mode.
       if (item.type === 'file' && item.textPreview) {
-        return (
-          <FileContent
-            item={{ file_names: [fileNameFromPreview(item.textPreview)], file_sizes: [-1] }}
-          />
+        const fileItem: ClipboardFileItem = {
+          file_names: [fileNameFromPreview(item.textPreview)],
+          file_sizes: [-1],
+        }
+        return isSingleImageFile(fileItem) ? (
+          <ImageFileContent item={fileItem} entryId={item.id} />
+        ) : (
+          <FileContent item={fileItem} />
         )
+      }
+      // Code-type search rows keep the code treatment, synthesizing a code item
+      // from the preview (the search index drops structured content too).
+      if (item.type === 'code' && item.textPreview) {
+        return <CodeContent item={{ code: item.textPreview }} />
       }
       // Other search/pending rows carry only a text preview; render it as a plain
       // snippet so search hits aren't shown as blank cards.
@@ -429,8 +687,14 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         return <CodeContent item={item.content as ClipboardCodeItem} />
       case 'link':
         return <LinkContent item={item.content as ClipboardLinkItem} />
-      case 'file':
-        return <FileContent item={item.content as ClipboardFileItem} />
+      case 'file': {
+        const fileItem = item.content as ClipboardFileItem
+        return isSingleImageFile(fileItem) ? (
+          <ImageFileContent item={fileItem} entryId={item.id} />
+        ) : (
+          <FileContent item={fileItem} />
+        )
+      }
       default:
         return item.textPreview ? (
           <div className="text-[13px] text-muted-foreground/70 line-clamp-3">
@@ -499,7 +763,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
               className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
               style={{ color }}
             >
-              {t(`history.type.${item.type}`, item.type)}
+              {codeLanguage ?? t(`history.type.${item.type}`, item.type)}
             </span>
 
             {sizeLabel && !isTransferring && (

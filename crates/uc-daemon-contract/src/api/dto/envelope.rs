@@ -34,7 +34,9 @@ use crate::api::dto::mobile_sync::{
     RegisterMobileDeviceResultDto, RotateMobilePasswordResultDto, UpdateMobileDeviceResultDto,
     UpdateMobileSyncSettingsResultDto,
 };
-use crate::api::dto::search::{SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData};
+use crate::api::dto::search::{
+    SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData, SearchTagDto,
+};
 use crate::api::dto::settings::{RelayProbeOutcomeDto, SettingsDto, SettingsUpdateResultDto};
 use crate::api::dto::storage::{ClearCacheResponse, StorageStatsDto};
 use crate::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
@@ -110,6 +112,7 @@ use crate::api::types::{
     SearchStatusEnvelope = ApiEnvelope<SearchStatusData>,
     SearchRebuildEnvelope = ApiEnvelope<SearchRebuildAcceptedData>,
     SearchQueryEnvelope = ApiEnvelope<SearchQueryResultDto>,
+    SearchTagsEnvelope = ApiEnvelope<Vec<SearchTagDto>>,
     // ── storage ────────────────────────────────────────────────────
     StorageStatsEnvelope = ApiEnvelope<StorageStatsDto>,
     ClearCacheEnvelope = ApiEnvelope<ClearCacheResponse>,

@@ -31,7 +31,6 @@ import {
   getClipboardStats as getClipboardStatsSdk,
   getClipboardEntryResource as getClipboardEntryResourceSdk,
 } from '@/api/generated/sdk.gen'
-import type { ListClipboardEntriesData } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
 
 // ── Response types matching Rust DTOs ──────────────────────────
@@ -154,29 +153,6 @@ export async function getClipboardEntries(
     listClipboardEntriesSdk({ query: { limit, offset }, throwOnError: true })
   )
   return { status: 'ready', entries: data as unknown as ClipboardEntryDto[] }
-}
-
-/**
- * Fetch a single clipboard entry projection by ID.
- *
- * 通过 ID 获取单个剪贴板条目投影。
- *
- * @param id Entry ID.
- * @returns The entry projection, or null if not found or not ready.
- * @throws {DaemonApiError} On HTTP errors or session failures.
- */
-export async function getClipboardEntry(id: string): Promise<ClipboardEntryDto | null> {
-  // This intentionally uses the LIST endpoint with an `?id` filter (NOT the
-  // path-param GET, which returns full text detail). The generated
-  // `ListClipboardEntriesData.query` type only declares `limit`/`offset`, so the
-  // `id` filter is cast at the boundary — the daemon still honors it on the wire.
-  const data = await daemonClient.callEnveloped(() =>
-    listClipboardEntriesSdk({
-      query: { id } as unknown as NonNullable<ListClipboardEntriesData['query']>,
-      throwOnError: true,
-    })
-  )
-  return (data as unknown as ClipboardEntryDto[])?.[0] ?? null
 }
 
 /**

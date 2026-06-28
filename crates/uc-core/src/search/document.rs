@@ -4,19 +4,26 @@
 //! postings are removed from the index entirely. No soft-delete timestamp field.
 
 use crate::ids::{EntryId, EventId};
+use crate::search::tag::TagId;
 use serde::{Deserialize, Serialize};
 
-/// Top-level content-type classification used for search filtering (D-10 content_types).
+/// Physical content-type classification used for search filtering — the
+/// single-valued "what data form is this?" dimension.
+///
+/// Exactly one value per entry. Orthogonal to the multi-valued tag dimension
+/// (see [`crate::search::tag`]): a web URL is physically `Text` and additionally
+/// carries the derived `link` tag, rather than being its own content type.
+/// `html` is the `text/html` rich-text MIME — an independent data form, not a
+/// tag. `Other` is an internal-only fallback and is not exposed as a filter.
 ///
 /// Maps to stable backend enum values; frontend localizes display text independently.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentType {
     Text,
-    Html,
-    Link,
-    File,
     Image,
+    File,
+    Html,
     Other,
 }
 
@@ -32,6 +39,11 @@ pub struct SearchDocument {
     pub active_time_ms: i64,
     pub captured_at_ms: i64,
     pub content_type: ContentType,
+    /// Derived tags (e.g. the builtin `link` rule) and mirrored user-state tags
+    /// (e.g. `favorited`) attached to this entry. Orthogonal to `content_type`:
+    /// zero or more per entry. Membership is persisted in a dedicated table, not
+    /// as a document column, so it can carry many ids per entry.
+    pub tags: Vec<TagId>,
     pub file_extensions: Vec<String>,
     pub mime_type: String,
     pub indexed_at_ms: i64,
@@ -41,6 +53,21 @@ pub struct SearchDocument {
     /// Optional truncated preview for UI rendering (populated by Phase 89 use case).
     /// Truncation logic lives in the use case, not here.
     pub text_preview: Option<String>,
+    /// Display names of the files this entry references (from a `file://`
+    /// uri-list). Empty when the entry carries no files. Capture-time stable, so
+    /// it is mirrored as an index render column rather than fetched lazily.
+    pub file_names: Vec<String>,
+    /// Web URLs (http/https) carried by this entry, sharing the detection
+    /// contract with the `link` tag so render and filter stay consistent. Empty
+    /// when none. Capture-time stable.
+    pub link_urls: Vec<String>,
+    /// Originating device id, resolved from the clipboard event. `None` when the
+    /// event is unknown (source untrusted). Used for render and match decisions.
+    pub source_device: Option<String>,
+    /// Marker for an unrecoverable paste payload: `Some("Lost")` when the paste
+    /// representation is permanently lost, `None` otherwise. Live indexing writes
+    /// the healthy default; rebuild backfills the authoritative value.
+    pub payload_state: Option<String>,
 }
 
 /// One row per `(term_tag, entry_id)` pair in the inverted index.

@@ -1,34 +1,16 @@
-import { useCallback, useEffect, useMemo, useReducer } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Filter, filterToContentTypes } from '@/api/clipboardItems'
-import { type SearchResultDto, type TimeRangePreset } from '@/api/daemon/search'
-import { useClipboardEvents } from '@/hooks/useClipboardEvents'
-import { useClipboardSearch } from '@/hooks/useClipboardSearch'
+import { Filter, filterToContentTypes, filterToTags } from '@/api/clipboardItems'
+import { type TimeRangePreset } from '@/api/daemon/search'
+import { type LiveSearchQueryModel } from '@/hooks/liveSearchModel'
+import { useLiveSearch } from '@/hooks/useLiveSearch'
 import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
 import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { useAppSelector } from '@/store/hooks'
 import { type PendingClipboardEntry } from '@/store/slices/clipboardSlice'
 
-/** Search-mode page size; the window grows by this as the user scrolls. */
-const SEARCH_PAGE_SIZE = 100
-
-/** Map a search-index content category to the display item's render type. */
-function mapSearchContentType(ft: SearchResultDto['contentType']): DisplayClipboardItem['type'] {
-  switch (ft) {
-    case 'text':
-      return 'text'
-    case 'html':
-      return 'code'
-    case 'link':
-      return 'link'
-    case 'file':
-      return 'file'
-    case 'image':
-      return 'image'
-    case 'other':
-      return 'unknown'
-  }
-}
+/** Live-list page size; the window grows by this as the user scrolls. */
+const PAGE_SIZE = 100
 
 function formatBytesShort(bytes: number): string {
   if (bytes <= 0) return '0 B'
@@ -60,9 +42,9 @@ function buildPendingFileContent(entry: PendingClipboardEntry): ClipboardFileIte
 
 // ── Search/filter state ─────────────────────────────────────────
 // `searchQuery` is the raw input value; `submittedQuery` is what was actually
-// sent to the engine (debounced while typing, immediate on Enter). The search
-// window (`searchLimit`) collapses back to one page on any filter/query change
-// — handled inside the reducer so it never needs a chained state-update effect.
+// sent to the engine (debounced while typing, immediate on Enter). The list
+// window is owned by `useLiveSearch` and collapses back to one page whenever the
+// query model changes, so no `searchLimit` lives here anymore.
 
 interface SearchState {
   activeFilter: Filter
@@ -70,7 +52,6 @@ interface SearchState {
   submittedQuery: string
   timeRange: TimeRangePreset
   sourceFilter: string | null
-  searchLimit: number
 }
 
 type SearchAction =
@@ -79,7 +60,6 @@ type SearchAction =
   | { type: 'setTimeRange'; value: TimeRangePreset }
   | { type: 'setQuery'; value: string }
   | { type: 'submitQuery'; value: string }
-  | { type: 'growWindow' }
 
 const INITIAL_STATE: SearchState = {
   activeFilter: Filter.All,
@@ -87,38 +67,34 @@ const INITIAL_STATE: SearchState = {
   submittedQuery: '',
   timeRange: 'all_time',
   sourceFilter: null,
-  searchLimit: SEARCH_PAGE_SIZE,
 }
 
 function searchReducer(state: SearchState, action: SearchAction): SearchState {
   switch (action.type) {
     case 'setContentFilter':
-      return { ...state, activeFilter: action.value, searchLimit: SEARCH_PAGE_SIZE }
+      return { ...state, activeFilter: action.value }
     case 'setSourceFilter':
-      return { ...state, sourceFilter: action.value, searchLimit: SEARCH_PAGE_SIZE }
+      return { ...state, sourceFilter: action.value }
     case 'setTimeRange':
-      return { ...state, timeRange: action.value, searchLimit: SEARCH_PAGE_SIZE }
+      return { ...state, timeRange: action.value }
     case 'setQuery':
       return { ...state, searchQuery: action.value }
     case 'submitQuery':
-      return { ...state, submittedQuery: action.value, searchLimit: SEARCH_PAGE_SIZE }
-    case 'growWindow':
-      return { ...state, searchLimit: state.searchLimit + SEARCH_PAGE_SIZE }
+      return { ...state, submittedQuery: action.value }
   }
 }
 
 /**
- * History data layer: owns the search/filter register, runs the debounced search
- * engine query (or the browse list in its absence), and exposes the unified item
- * list plus the source-filter options. Keeping this out of the page component
- * collapses a dozen related useState calls into one reducer and lets the page
- * focus on interaction + layout.
+ * History data layer: owns the search/filter register and drives the unified
+ * live browse/search list (`useLiveSearch`). Browse and search are one engine
+ * path now — an empty query browses, any filter narrows — so there is no second
+ * Redux-backed list and no mode switch; the `isSearchActive` flag only drives UI
+ * affordances (empty-state copy, the result count), not a data source.
  */
 export function useHistoryData() {
   const { t } = useTranslation()
   const [state, dispatch] = useReducer(searchReducer, INITIAL_STATE)
 
-  const items = useAppSelector(s => s.clipboard.items)
   const pendingItems = useAppSelector(s => s.clipboard.pendingItems)
   const spaceMembers = useAppSelector(s => s.devices.spaceMembers)
   const mobileDevices = useMobileDeviceList()
@@ -144,17 +120,50 @@ export function useHistoryData() {
     [spaceMembers, mobileDevices]
   )
 
-  const displayItems = useMemo<DisplayClipboardItem[]>(() => {
-    const realItems = items.map(entry => ({
-      id: entry.id,
-      type: entry.type,
-      content: entry.content,
-      activeTime: entry.activeTime,
-      isFavorited: entry.isFavorited,
-      isUnavailable: entry.isUnavailable,
-    }))
+  // "Search active" = the user narrowed the view in any way (keyword, content
+  // type, tag, time, or source). Drives empty-state copy and the result count
+  // only; both browse and search read the same `useLiveSearch` list.
+  const isSearchActive =
+    state.submittedQuery.trim().length > 0 ||
+    filterToContentTypes(state.activeFilter) !== undefined ||
+    filterToTags(state.activeFilter) !== undefined ||
+    state.timeRange !== 'all_time' ||
+    state.sourceFilter !== null
 
-    const realIds = new Set(realItems.map(it => it.id))
+  // Auto-submit while typing (debounced); clearing the input drops straight back
+  // to browse mode. Enter bypasses the debounce via `actions.submitQuery`.
+  useEffect(() => {
+    const q = state.searchQuery.trim()
+    if (!q) {
+      dispatch({ type: 'submitQuery', value: '' })
+      return
+    }
+    const timer = setTimeout(() => dispatch({ type: 'submitQuery', value: q }), 800)
+    return () => clearTimeout(timer)
+  }, [state.searchQuery])
+
+  // ── Unified live browse/search list ───────────────────────────
+  const model = useMemo<LiveSearchQueryModel>(
+    () => ({
+      query: state.submittedQuery.trim(),
+      contentTypes: filterToContentTypes(state.activeFilter),
+      tags: filterToTags(state.activeFilter),
+      sourceDevices: state.sourceFilter ?? undefined,
+      timeRange: state.timeRange,
+    }),
+    [state.submittedQuery, state.activeFilter, state.sourceFilter, state.timeRange]
+  )
+
+  const live = useLiveSearch({ model, pageSize: PAGE_SIZE })
+
+  // Merge incoming-transfer placeholders (Redux overlay, still owned by the
+  // event reducer) ahead of the real entries from the engine.
+  const baseItems = useMemo<DisplayClipboardItem[]>(() => {
+    // Pending placeholders only belong in the unfiltered browse view; a narrowed
+    // query/filter set must show exactly what the engine returned, or unrelated
+    // inbound file placeholders leak into results the backend would exclude.
+    if (isSearchActive) return live.items
+    const realIds = new Set(live.items.map(it => it.id))
     const pendingDisplayItems: DisplayClipboardItem[] = pendingItems.flatMap(p =>
       realIds.has(p.entryId)
         ? []
@@ -169,70 +178,8 @@ export function useHistoryData() {
             },
           ]
     )
-
-    return [...pendingDisplayItems, ...realItems]
-  }, [items, pendingItems, deviceNameByPeerId, t])
-
-  // ── Server-side search ────────────────────────────────────────
-  // Any active filter switches to the search engine. The browse LIST endpoint
-  // does NOT honor the content-type/source/time filters (see clipboardSlice:
-  // `filter` is dropped before the request), so a content-type selection alone
-  // must go through search — only that path actually narrows results. Browse
-  // mode (with live insertion + infinite scroll) is reserved for the unfiltered
-  // view; clearing every filter returns to it.
-  const hasTypeFilter = state.activeFilter !== Filter.All && state.activeFilter !== Filter.Favorited
-  const hasTimeFilter = state.timeRange !== 'all_time'
-  const hasSourceFilter = state.sourceFilter !== null
-  const isSearchActive =
-    state.submittedQuery.trim().length > 0 || hasTypeFilter || hasTimeFilter || hasSourceFilter
-
-  // Auto-submit while typing (debounced); clearing the input drops straight back
-  // to browse mode. Enter bypasses the debounce via `actions.submitQuery`.
-  useEffect(() => {
-    const q = state.searchQuery.trim()
-    if (!q) {
-      dispatch({ type: 'submitQuery', value: '' })
-      return
-    }
-    const timer = setTimeout(() => dispatch({ type: 'submitQuery', value: q }), 800)
-    return () => clearTimeout(timer)
-  }, [state.searchQuery])
-
-  // Map a raw search hit to a renderable history card.
-  const mapSearchResult = useCallback(
-    (r: SearchResultDto): DisplayClipboardItem => ({
-      id: r.entryId,
-      type: mapSearchContentType(r.contentType),
-      activeTime: r.activeTimeMs,
-      content: null,
-      textPreview: r.textPreview ?? undefined,
-    }),
-    []
-  )
-
-  const {
-    results: searchResults,
-    isSearching: searchLoading,
-    total: searchTotal,
-  } = useClipboardSearch(
-    {
-      enabled: isSearchActive,
-      query: state.submittedQuery.trim(),
-      contentTypes: filterToContentTypes(state.activeFilter),
-      sourceDevices: state.sourceFilter ?? undefined,
-      timePreset: hasTimeFilter ? state.timeRange : undefined,
-      limit: state.searchLimit,
-    },
-    mapSearchResult
-  )
-
-  const { hasMore, handleLoadMore } = useClipboardEvents(state.activeFilter)
-
-  // In search mode show engine results; otherwise the browse (paginated) list.
-  const baseItems = useMemo<DisplayClipboardItem[]>(
-    () => (isSearchActive ? (searchResults ?? []) : displayItems),
-    [isSearchActive, searchResults, displayItems]
-  )
+    return [...pendingDisplayItems, ...live.items]
+  }, [isSearchActive, live.items, pendingItems, deviceNameByPeerId, t])
 
   const actions = useMemo(
     () => ({
@@ -245,8 +192,6 @@ export function useHistoryData() {
     []
   )
 
-  const growSearchWindow = useCallback(() => dispatch({ type: 'growWindow' }), [])
-
   return {
     filter: {
       activeFilter: state.activeFilter,
@@ -258,14 +203,15 @@ export function useHistoryData() {
     actions,
     sourceOptions,
     baseItems,
-    /** Browse-list length (shown in the search bar even while searching). */
-    browseCount: displayItems.length,
+    /** Match count for the current query (total history count while browsing). */
+    browseCount: live.total ?? live.items.length,
     isSearchActive,
-    searchLoading,
-    searchTotal,
-    searchLoadedCount: searchResults?.length ?? 0,
-    hasMore,
-    handleLoadMore,
-    growSearchWindow,
+    searchLoading: live.isLoading,
+    hasMore: live.hasMore,
+    handleLoadMore: live.growWindow,
+    /** Index availability for the current query: `degraded` while rebuilding. */
+    indexState: live.state,
+    /** Optimistically drop an entry after the user deletes it. */
+    removeItem: live.removeItem,
   }
 }

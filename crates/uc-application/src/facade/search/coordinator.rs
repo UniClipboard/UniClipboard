@@ -5,11 +5,17 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
-use uc_core::ports::clipboard::{ListClipboardEntriesPort, ListRepresentationsForEventPort};
+use uc_core::clipboard::ClipboardEntry;
+use uc_core::ports::clipboard::{
+    ClipboardEventRepositoryPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
+};
 use uc_core::ports::search::SearchPipelinePort;
 use uc_core::ports::{ClipboardSelectionRepositoryPort, SearchIndexPort, SearchKeyDerivationPort};
-use uc_core::search::{RebuildProgress, RebuildStage, SearchError};
+use uc_core::search::{
+    RebuildProgress, RebuildStage, SearchError, SearchResult, SearchResultsPage,
+};
 use uc_infra::search::constants::CURRENT_INDEX_VERSION;
+use uc_infra::search::text_extractor::SearchPipelineInput;
 
 use crate::facade::search::{SearchProjectionBuilder, SearchStatusView};
 
@@ -25,7 +31,11 @@ pub const STATUS_UNAVAILABLE: &str = "unavailable";
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchStatusSnapshot {
-    pub status: String,
+    /// Index availability: "ready" / "rebuilding" / "unavailable". Named `state`
+    /// (not `status`) to match `SearchStatusData.state`, so the WS `search` topic
+    /// carries the index status under one key for both the on-subscribe snapshot
+    /// and incremental coordinator updates (a single wire shape, not two).
+    pub state: String,
     pub reason: Option<String>,
 }
 
@@ -57,6 +67,9 @@ pub struct SearchCoordinatorDeps {
     pub clipboard_entry_repo: Arc<dyn ListClipboardEntriesPort>,
     pub representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+    /// Resolves the originating device of each entry's event for the
+    /// `source_device` render column (same lookup as the live index path).
+    pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     pub current_index_version: String,
 }
 
@@ -68,6 +81,7 @@ impl SearchCoordinatorDeps {
         clipboard_entry_repo: Arc<dyn ListClipboardEntriesPort>,
         representation_repo: Arc<dyn ListRepresentationsForEventPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
+        event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     ) -> Self {
         Self {
             search_index,
@@ -76,6 +90,7 @@ impl SearchCoordinatorDeps {
             clipboard_entry_repo,
             representation_repo,
             selection_repo,
+            event_repo,
             current_index_version: CURRENT_INDEX_VERSION.to_string(),
         }
     }
@@ -120,7 +135,7 @@ impl SearchCoordinator {
     pub async fn status_snapshot(&self) -> SearchStatusSnapshot {
         let state = self.state.lock().await;
         SearchStatusSnapshot {
-            status: state.status.clone(),
+            state: state.status.clone(),
             reason: state.reason.clone(),
         }
     }
@@ -129,11 +144,38 @@ impl SearchCoordinator {
         let snapshot = self.status_snapshot().await;
         let meta = self.deps.search_index.get_index_meta().await?;
         Ok(SearchStatusView {
-            state: snapshot.status,
+            state: snapshot.state,
             reason: snapshot.reason,
             last_rebuild_started_at_ms: meta.last_rebuild_started_at_ms,
             last_rebuild_completed_at_ms: meta.last_rebuild_completed_at_ms,
         })
+    }
+
+    /// Project a page of entries directly from the main store, bypassing the
+    /// search index — the §4.7 degraded browse fallback.
+    ///
+    /// When the index is not ready (blocked / version mismatch / rebuilding) a
+    /// filter-less browse is still served by re-deriving the same projection the
+    /// index would hold, so cards render identically (content_type, tags, render
+    /// metadata) — just sourced live instead of from the index. `total`/`has_more`
+    /// are entry-page bounds: `has_more` reflects whether more entries follow this
+    /// window; `total` is a lower bound (offset + entries on this page) because the
+    /// main store exposes no count, which is acceptable for the transient degraded
+    /// view.
+    pub async fn browse_projection(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<SearchResultsPage, SearchError> {
+        project_browse_page(
+            self.deps.clipboard_entry_repo.as_ref(),
+            self.deps.representation_repo.as_ref(),
+            self.deps.selection_repo.as_ref(),
+            self.deps.event_repo.as_ref(),
+            limit,
+            offset,
+        )
+        .await
     }
 
     #[instrument(name = "search.request_manual_rebuild", level = "info", skip(self))]
@@ -289,58 +331,24 @@ impl SearchCoordinator {
             let batch_len = batch.len();
 
             for entry in &batch {
-                let reps = match deps
-                    .representation_repo
-                    .get_representations_for_event(&entry.event_id)
-                    .await
+                let pipeline_input = match project_persisted_entry(
+                    deps.representation_repo.as_ref(),
+                    deps.selection_repo.as_ref(),
+                    deps.event_repo.as_ref(),
+                    entry,
+                )
+                .await
                 {
-                    Ok(r) => r,
-                    Err(e) => {
-                        debug!(
-                            error = %e,
-                            entry_id = %entry.entry_id,
-                            "search coordinator: failed to load reps for entry, skipping"
-                        );
-                        continue;
-                    }
+                    Some(input) => input,
+                    None => continue,
                 };
-
-                let selection = match deps.selection_repo.get_selection(&entry.entry_id).await {
-                    Ok(Some(sel)) => sel,
-                    Ok(None) => {
-                        debug!(
-                            entry_id = %entry.entry_id,
-                            "search coordinator: no selection for entry, skipping"
-                        );
-                        continue;
-                    }
-                    Err(e) => {
-                        debug!(
-                            error = %e,
-                            entry_id = %entry.entry_id,
-                            "search coordinator: failed to get selection for entry, skipping"
-                        );
-                        continue;
-                    }
-                };
-
-                let pipeline_input =
-                    match SearchProjectionBuilder::build_from_persisted(entry, &selection, &reps) {
-                        Some(input) => input,
-                        None => {
-                            debug!(
-                                entry_id = %entry.entry_id,
-                                "search coordinator: no searchable content for entry, skipping"
-                            );
-                            continue;
-                        }
-                    };
 
                 match deps.search_pipeline.build(&pipeline_input, &search_key) {
                     Ok((doc, postings)) => {
-                        if !postings.is_empty() {
-                            all_entries.push((doc, postings));
-                        }
+                        // Index every entry, including no-posting ones (e.g. an
+                        // image with no searchable text), so browse and the
+                        // content-type filter see the full set.
+                        all_entries.push((doc, postings));
                     }
                     Err(e) => {
                         warn!(
@@ -421,7 +429,7 @@ fn emit_status_snapshot(
     reason: Option<&str>,
 ) {
     let snapshot = SearchStatusSnapshot {
-        status: status.to_string(),
+        state: status.to_string(),
         reason: reason.map(|r| r.to_string()),
     };
     let _ = event_tx.send(SearchCoordinatorEvent::Status(snapshot));
@@ -449,4 +457,297 @@ fn rebuild_stage_to_string(stage: RebuildStage) -> String {
         RebuildStage::Failed => "failed",
     }
     .to_string()
+}
+
+/// Re-derive one persisted entry's `SearchPipelineInput` from the main store,
+/// the shared core of both the rebuild loop and the §4.7 degraded browse read.
+/// Returns `None` (skip the entry) when its representations or selection are
+/// missing or it carries no searchable content; a source-device lookup failure
+/// degrades to `None` source rather than skipping the entry, matching the live
+/// index path.
+async fn project_persisted_entry(
+    representation_repo: &dyn ListRepresentationsForEventPort,
+    selection_repo: &dyn ClipboardSelectionRepositoryPort,
+    event_repo: &dyn ClipboardEventRepositoryPort,
+    entry: &ClipboardEntry,
+) -> Option<SearchPipelineInput> {
+    let reps = match representation_repo
+        .get_representations_for_event(&entry.event_id)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            debug!(
+                error = %e,
+                entry_id = %entry.entry_id,
+                "search projection: failed to load reps for entry, skipping"
+            );
+            return None;
+        }
+    };
+
+    let selection = match selection_repo.get_selection(&entry.entry_id).await {
+        Ok(Some(sel)) => sel,
+        Ok(None) => {
+            debug!(
+                entry_id = %entry.entry_id,
+                "search projection: no selection for entry, skipping"
+            );
+            return None;
+        }
+        Err(e) => {
+            debug!(
+                error = %e,
+                entry_id = %entry.entry_id,
+                "search projection: failed to get selection for entry, skipping"
+            );
+            return None;
+        }
+    };
+
+    // Resolve the originating device from the event store — the same lookup the
+    // live index path uses, so the two stay in parity.
+    let source_device = match event_repo.get_source_device(&entry.event_id).await {
+        Ok(device) => device.map(|d| d.to_string()),
+        Err(e) => {
+            debug!(
+                error = %e,
+                entry_id = %entry.entry_id,
+                "search projection: failed to resolve source device, projecting without it"
+            );
+            None
+        }
+    };
+
+    SearchProjectionBuilder::build_from_persisted(entry, &selection, &reps, source_device)
+}
+
+/// Build a degraded browse page (§4.7) directly from the main store. Extracted
+/// as a free function (over the read ports it needs) so it can be unit-tested
+/// without standing up a full `SearchCoordinator`.
+async fn project_browse_page(
+    entry_repo: &dyn ListClipboardEntriesPort,
+    representation_repo: &dyn ListRepresentationsForEventPort,
+    selection_repo: &dyn ClipboardSelectionRepositoryPort,
+    event_repo: &dyn ClipboardEventRepositoryPort,
+    limit: usize,
+    offset: usize,
+) -> Result<SearchResultsPage, SearchError> {
+    let entries = entry_repo
+        .list_entries(limit, offset)
+        .await
+        .map_err(|e| SearchError::Internal(format!("degraded browse: list entries failed: {e}")))?;
+    // `has_more` tracks entry-page bounds (entries skipped for missing content
+    // still consumed an offset slot, so paginate on entries, not projections).
+    let has_more = entries.len() == limit;
+    let total = (offset + entries.len()) as u32;
+
+    let mut items = Vec::with_capacity(entries.len());
+    for entry in &entries {
+        if let Some(input) =
+            project_persisted_entry(representation_repo, selection_repo, event_repo, entry).await
+        {
+            items.push(pipeline_input_to_search_result(input));
+        }
+    }
+
+    Ok(SearchResultsPage {
+        items,
+        total,
+        has_more,
+    })
+}
+
+/// Map a freshly re-derived `SearchPipelineInput` to a `SearchResult` so a
+/// degraded browse row carries the same fields a search hit would.
+fn pipeline_input_to_search_result(input: SearchPipelineInput) -> SearchResult {
+    SearchResult {
+        entry_id: input.entry_id,
+        content_type: input.content_type,
+        active_time_ms: input.active_time_ms,
+        tags: input.tags,
+        text_preview: input.text_preview,
+        mime_type: input.mime_type,
+        file_extensions: input.file_extensions,
+        file_names: input.file_names,
+        link_urls: input.link_urls,
+        source_device: input.source_device,
+        payload_state: input.payload_state,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_core::clipboard::{
+        ClipboardSelection, ClipboardSelectionDecision, ObservedClipboardRepresentation,
+        PersistedClipboardRepresentation, SelectionPolicyVersion,
+    };
+    use uc_core::ids::{DeviceId, EntryId, EventId, FormatId, RepresentationId};
+    use uc_core::search::document::ContentType;
+    use uc_core::search::tag::TagId;
+    use uc_core::MimeType;
+
+    /// Returns the supplied entries verbatim (already windowed by the test).
+    struct FakeEntryRepo {
+        entries: Vec<ClipboardEntry>,
+    }
+
+    #[async_trait::async_trait]
+    impl ListClipboardEntriesPort for FakeEntryRepo {
+        async fn list_entries(
+            &self,
+            limit: usize,
+            offset: usize,
+        ) -> Result<Vec<ClipboardEntry>, uc_core::clipboard::ClipboardRepositoryError> {
+            let end = (offset + limit).min(self.entries.len());
+            let start = offset.min(end);
+            Ok(self.entries[start..end].to_vec())
+        }
+    }
+
+    /// Returns one `text/plain` representation under a shared rep id for every
+    /// event, so the shared selection's rep ids always resolve.
+    struct FakeRepRepo {
+        rep_id: RepresentationId,
+    }
+
+    #[async_trait::async_trait]
+    impl ListRepresentationsForEventPort for FakeRepRepo {
+        async fn get_representations_for_event(
+            &self,
+            _event_id: &EventId,
+        ) -> Result<
+            Vec<PersistedClipboardRepresentation>,
+            uc_core::clipboard::ClipboardRepositoryError,
+        > {
+            Ok(vec![PersistedClipboardRepresentation::new(
+                self.rep_id.clone(),
+                FormatId::from("text"),
+                Some(MimeType("text/plain".to_string())),
+                5,
+                Some(b"hello".to_vec()),
+                None,
+            )])
+        }
+    }
+
+    /// Points preview/paste at the shared rep id for any entry.
+    struct FakeSelectionRepo {
+        rep_id: RepresentationId,
+    }
+
+    #[async_trait::async_trait]
+    impl ClipboardSelectionRepositoryPort for FakeSelectionRepo {
+        async fn get_selection(
+            &self,
+            entry_id: &EntryId,
+        ) -> anyhow::Result<Option<ClipboardSelectionDecision>> {
+            Ok(Some(ClipboardSelectionDecision::new(
+                entry_id.clone(),
+                ClipboardSelection {
+                    primary_rep_id: self.rep_id.clone(),
+                    secondary_rep_ids: Vec::new(),
+                    preview_rep_id: self.rep_id.clone(),
+                    paste_rep_id: self.rep_id.clone(),
+                    policy_version: SelectionPolicyVersion::V1,
+                },
+            )))
+        }
+
+        async fn delete_selection(&self, _entry_id: &EntryId) -> anyhow::Result<()> {
+            unimplemented!("not used by browse projection")
+        }
+    }
+
+    /// Source device is unknown for the degraded fallback path under test.
+    struct FakeEventRepo;
+
+    #[async_trait::async_trait]
+    impl ClipboardEventRepositoryPort for FakeEventRepo {
+        async fn get_representation(
+            &self,
+            _id: &EventId,
+            _representation_id: &str,
+        ) -> anyhow::Result<ObservedClipboardRepresentation> {
+            unimplemented!("not used by browse projection")
+        }
+
+        async fn get_source_device(&self, _event_id: &EventId) -> anyhow::Result<Option<DeviceId>> {
+            Ok(None)
+        }
+    }
+
+    fn entry(favorited: bool) -> ClipboardEntry {
+        let e = ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0);
+        if favorited {
+            e.with_favorited(true)
+        } else {
+            e
+        }
+    }
+
+    /// The degraded browse projection reads the main store, re-derives the same
+    /// projection the index would hold (physical `content_type` + the favorited
+    /// mirror tag), and reports entry-page bounds — so a filter-less browse keeps
+    /// working while the index is not ready (§4.7).
+    #[tokio::test]
+    async fn browse_projection_reads_main_store_with_parity_fields() {
+        let rep_id = RepresentationId::new();
+        let entry_repo = FakeEntryRepo {
+            entries: vec![entry(true), entry(false)],
+        };
+        let rep_repo = FakeRepRepo {
+            rep_id: rep_id.clone(),
+        };
+        let sel_repo = FakeSelectionRepo {
+            rep_id: rep_id.clone(),
+        };
+        let event_repo = FakeEventRepo;
+
+        // limit 5 over 2 entries => no further page.
+        let page = project_browse_page(&entry_repo, &rep_repo, &sel_repo, &event_repo, 5, 0)
+            .await
+            .expect("degraded browse projects without error");
+
+        assert_eq!(page.items.len(), 2);
+        assert!(!page.has_more, "2 of 2 entries fit in a page of 5");
+        assert_eq!(page.total, 2);
+
+        // Both rows are plain text re-derived through the single projection
+        // authority.
+        assert!(page
+            .items
+            .iter()
+            .all(|r| r.content_type == ContentType::Text));
+        // The first entry is favorited, so its mirror tag is present; the second
+        // is not.
+        assert!(page.items[0].tags.contains(&TagId::favorited()));
+        assert!(!page.items[1].tags.contains(&TagId::favorited()));
+    }
+
+    /// A short page (fewer entries than the limit) reports `has_more = false`,
+    /// while a full page reports `has_more = true` so the caller keeps paging.
+    #[tokio::test]
+    async fn browse_projection_reports_has_more_on_full_pages() {
+        let rep_id = RepresentationId::new();
+        let entry_repo = FakeEntryRepo {
+            entries: vec![entry(false), entry(false), entry(false)],
+        };
+        let rep_repo = FakeRepRepo {
+            rep_id: rep_id.clone(),
+        };
+        let sel_repo = FakeSelectionRepo {
+            rep_id: rep_id.clone(),
+        };
+        let event_repo = FakeEventRepo;
+
+        let page = project_browse_page(&entry_repo, &rep_repo, &sel_repo, &event_repo, 2, 0)
+            .await
+            .expect("degraded browse projects without error");
+
+        assert_eq!(page.items.len(), 2);
+        assert!(page.has_more, "page of 2 over 3 entries has a next page");
+        assert_eq!(page.total, 2, "total is a lower bound of offset + page len");
+    }
 }

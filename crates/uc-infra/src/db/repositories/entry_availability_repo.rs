@@ -267,6 +267,7 @@ mod tests {
                         total_size: 0,
                         pinned: false,
                         delivery_tracked: true,
+                        is_favorited: false,
                     })
                     .execute(conn)?;
                 diesel::insert_into(crate::db::schema::clipboard_snapshot_representation::table)

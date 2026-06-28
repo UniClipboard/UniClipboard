@@ -1,12 +1,10 @@
 import { listen } from '@tauri-apps/api/event'
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { Filter } from '@/api/clipboardItems'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { unlockEncryptionSession } from '@/api/security'
-import { useClipboardCollection } from '@/hooks/useClipboardCollection'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useThemeSync } from '@/hooks/useThemeSync'
-import { getItemPreview } from '@/lib/clipboard-utils'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
@@ -15,7 +13,7 @@ import ClipboardPreviewPane from './ClipboardPreviewPane'
 import HistoryPane from './components/HistoryPane'
 import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS, QUICK_FILTER_ORDER } from './constants'
 import { useHistorySearch } from './hooks/useHistorySearch'
-import type { DisplayItem, PreviewAction, PreviewState, TimeRangePreset } from './types'
+import type { PreviewAction, PreviewState, TimeRangePreset } from './types'
 
 const log = createLogger('clipboard-history-panel')
 
@@ -86,7 +84,6 @@ function previewReducer(state: PreviewState, action: PreviewAction): PreviewStat
 const ClipboardHistoryPanel: React.FC = () => {
   useThemeSync()
 
-  const { items, loading, isLocked, reload } = useClipboardCollection()
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const [activeFilter, setActiveFilter] = useState<Filter>(Filter.All)
@@ -123,26 +120,14 @@ const ClipboardHistoryPanel: React.FC = () => {
   const historyLockedWidth = previewState.historyLockedWidth
   const previewFocusSource = previewState.focusSource
 
-  const displayItems = useMemo<DisplayItem[]>(
-    () =>
-      items.map(item => ({
-        id: item.id,
-        type: item.type,
-        preview: getItemPreview(item),
-        activeTime: item.activeTime,
-        isUnavailable: item.isUnavailable,
-      })),
-    [items]
-  )
-
-  const { filteredItems, isSearching, searchTotal } = useHistorySearch({
-    items: displayItems,
-    searchQuery: debouncedSearchQuery,
-    tokens,
-    activeFilter,
-    timeRange,
-    isAdvancedMode,
-  })
+  const { filteredItems, isSearching, searchTotal, loading, isLocked, removeItem, refetch } =
+    useHistorySearch({
+      searchQuery: debouncedSearchQuery,
+      tokens,
+      activeFilter,
+      timeRange,
+      isAdvancedMode,
+    })
 
   const clearPreviewTimer = useCallback(() => {
     if (previewTimerRef.current) {
@@ -180,7 +165,9 @@ const ClipboardHistoryPanel: React.FC = () => {
       setIsKeyboardNav(true)
       setHasPointerMovedSinceShow(false)
       setPreviewTargetId(null)
-      void reload()
+      // Refresh on every re-open so the panel shows the latest clipboard even if
+      // the filters were already at their defaults (no model change to trigger it).
+      refetch()
 
       finalizeTimer = setTimeout(() => {
         finalizeTimer = null
@@ -200,7 +187,7 @@ const ClipboardHistoryPanel: React.FC = () => {
       }
       unlistenPrepare.then(fn => fn())
     }
-  }, [clearPreviewTimer, reload])
+  }, [clearPreviewTimer, refetch])
 
   useEffect(() => {
     void setQuickPanelLayout(uiScale, previewExpanded).catch(() => {})
@@ -226,12 +213,13 @@ const ClipboardHistoryPanel: React.FC = () => {
     try {
       await unlockEncryptionSession()
       setUnlocking(false)
-      void reload()
+      // The live list re-queries itself once the session reports ready (the
+      // base query effect re-runs on `encryptionReady`), so no manual reload.
     } catch (err) {
       setUnlocking(false)
       setUnlockError(err instanceof Error ? err.message : String(err))
     }
-  }, [reload])
+  }, [])
 
   useEffect(() => {
     if (isLocked) closePreview(false)
@@ -385,12 +373,12 @@ const ClipboardHistoryPanel: React.FC = () => {
         const nextIndex = remainingItems.length > 0 ? Math.min(index, remainingItems.length - 1) : 0
         setSelectedIndex(nextIndex)
         setPreviewTargetId(remainingItems[nextIndex]?.id ?? null)
-        void reload()
+        removeItem(item.id)
       } catch (err) {
         log.error({ err }, 'Failed to delete clipboard entry')
       }
     },
-    [clearPreviewTimer, filteredItems, reload]
+    [clearPreviewTimer, filteredItems, removeItem]
   )
 
   const handleSearchChange = useCallback((value: string) => {

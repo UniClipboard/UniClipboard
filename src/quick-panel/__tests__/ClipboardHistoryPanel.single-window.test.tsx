@@ -14,33 +14,33 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 vi.mock('@/hooks/useThemeSync', () => ({ useThemeSync: vi.fn() }))
 
-vi.mock('@/hooks/useClipboardCollection', () => ({
-  useClipboardCollection: vi.fn(() => ({
-    items: [
+// The panel now sources its list from the unified live browse/search hook; mock
+// it directly with the launcher's simplified DisplayItem shape (these tests
+// exercise the preview pane, not the data layer).
+vi.mock('../hooks/useHistorySearch', () => ({
+  useHistorySearch: vi.fn(() => ({
+    filteredItems: [
       {
         id: 'entry-1',
         type: 'text',
-        content: { display_text: 'Preview title', has_detail: true, size: 13 },
-        createdAt: 1710000000000,
-        updatedAt: 1710000000000,
+        preview: 'Preview title',
         activeTime: Date.now(),
-        isFavorited: false,
         isUnavailable: false,
       },
       {
         id: 'entry-2',
         type: 'text',
-        content: { display_text: 'Second preview title', has_detail: true, size: 19 },
-        createdAt: 1710000001000,
-        updatedAt: 1710000001000,
+        preview: 'Second preview title',
         activeTime: Date.now() - 1000,
-        isFavorited: false,
         isUnavailable: false,
       },
     ],
+    isSearching: false,
+    searchTotal: 2,
     loading: false,
     isLocked: false,
-    reload: vi.fn(),
+    removeItem: vi.fn(),
+    refetch: vi.fn(),
   })),
 }))
 

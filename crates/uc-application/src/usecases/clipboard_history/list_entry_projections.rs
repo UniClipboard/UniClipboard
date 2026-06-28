@@ -3,7 +3,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tracing::{debug, warn};
-use uc_core::clipboard::link_utils::{is_all_urls, is_single_url, parse_uri_list};
+use uc_core::clipboard::link_utils::{detect_link_urls as detect_web_urls, parse_uri_list};
 use uc_core::clipboard::PayloadAvailability;
 use uc_core::network::protocol::MIME_IMAGE_PREFIX;
 use uc_core::ports::clipboard::{GetRepresentationPort, ListClipboardEntriesPort};
@@ -58,36 +58,24 @@ pub(crate) struct ListClipboardEntryProjectionsUseCase {
     max_limit: usize,
 }
 
+/// Detect web (http/https) URLs carried by a representation, delegating to the
+/// uc-core single contract so the list projection and the search `link` tag
+/// agree on what counts as a link (§4.5). Returns `None` when no web URL is
+/// present or the data is not URL-bearing text.
 fn detect_link_urls(content_type: &str, inline_data: Option<&[u8]>) -> Option<Vec<String>> {
     let full_text = inline_data.and_then(|d| std::str::from_utf8(d).ok())?;
     let ct = content_type.to_ascii_lowercase();
-
-    if ct.starts_with("text/uri-list") {
-        let urls: Vec<String> = parse_uri_list(full_text)
-            .into_iter()
-            .filter(|u| !u.starts_with("file://"))
-            .collect();
-        if urls.is_empty() {
-            None
-        } else {
-            Some(urls)
-        }
+    let urls = if ct.starts_with("text/uri-list") {
+        detect_web_urls(&parse_uri_list(full_text), None)
     } else if ct.starts_with("text/plain") {
-        if is_all_urls(full_text) {
-            let urls: Vec<String> = full_text
-                .lines()
-                .map(|l| l.trim())
-                .filter(|l| !l.is_empty())
-                .map(|l| l.to_string())
-                .collect();
-            Some(urls)
-        } else if is_single_url(full_text) {
-            Some(vec![full_text.trim().to_string()])
-        } else {
-            None
-        }
+        detect_web_urls(&[], Some(full_text))
     } else {
+        Vec::new()
+    };
+    if urls.is_empty() {
         None
+    } else {
+        Some(urls)
     }
 }
 
@@ -343,7 +331,7 @@ impl ListClipboardEntryProjectionsUseCase {
                 content_type,
                 thumbnail_url,
                 is_encrypted: false,
-                is_favorited: false,
+                is_favorited: entry.is_favorited,
                 updated_at: captured_at,
                 active_time,
                 file_transfer_status,
@@ -404,6 +392,17 @@ mod tests {
         let body = "file:///tmp/a\nfile:///tmp/b\n";
         let urls = detect_link_urls("text/uri-list", Some(body.as_bytes()));
         assert_eq!(urls, None);
+    }
+
+    #[test]
+    fn detect_link_urls_keeps_only_web_urls_matching_search_contract() {
+        // After unifying on the uc-core contract, uri-list detection keeps only
+        // web (http/https) URLs — file:// and other schemes (ftp, mailto, …) are
+        // dropped — so the list projection's `linkUrls` and the search `link`
+        // tag agree on what counts as a link (§4.5 parity).
+        let body = "file:///home/u/a.txt\nftp://host/x\nhttps://example.com\n";
+        let urls = detect_link_urls("text/uri-list", Some(body.as_bytes()));
+        assert_eq!(urls, Some(vec!["https://example.com".to_string()]));
     }
 
     #[test]

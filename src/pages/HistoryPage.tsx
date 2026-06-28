@@ -62,11 +62,12 @@ const HistoryPage: React.FC = () => {
     async (id: string) => {
       try {
         await dispatch(removeClipboardItem(id)).unwrap()
+        data.removeItem(id)
       } catch {
         toast.error(t('clipboard.errors.deleteFailed', 'Delete failed'))
       }
     },
-    [dispatch, t]
+    [dispatch, t, data.removeItem]
   )
 
   const { deleteDialogOpen, setDeleteDialogOpen, deletingId, requestDelete, confirmDelete } =
@@ -76,13 +77,14 @@ const HistoryPage: React.FC = () => {
     async (id: string): Promise<boolean> => {
       try {
         await dispatch(removeClipboardItem(id)).unwrap()
+        data.removeItem(id)
         return true
       } catch {
         toast.error(t('clipboard.errors.deleteFailed', 'Delete failed'))
         return false
       }
     },
-    [dispatch, t]
+    [dispatch, t, data.removeItem]
   )
 
   // Float the just-copied entry to the front of the list.
@@ -95,13 +97,9 @@ const HistoryPage: React.FC = () => {
   }, [data.baseItems, promotedId])
 
   const scrollRef = useHistoryInfiniteScroll({
-    isSearchActive: data.isSearchActive,
     hasMore: data.hasMore,
-    handleLoadMore: data.handleLoadMore,
-    searchTotal: data.searchTotal,
-    searchLoadedCount: data.searchLoadedCount,
-    searchLoading: data.searchLoading,
-    growSearchWindow: data.growSearchWindow,
+    isLoading: data.searchLoading,
+    loadMore: data.handleLoadMore,
     items: orderedItems,
   })
 
@@ -191,6 +189,13 @@ const HistoryPage: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* ── Degraded notice: index rebuilding, browse served from main store ─ */}
+      {data.indexState === 'degraded' && (
+        <div className="shrink-0 mx-2 mb-2 rounded-md bg-amber-500/10 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+          {t('clipboard.search.degraded')}
+        </div>
+      )}
 
       {/* ── Grid ───────────────────────────────────────────────── */}
       <HistoryGrid

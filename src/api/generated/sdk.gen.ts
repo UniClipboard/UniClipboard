@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AcknowledgeUpgradeData, AcknowledgeUpgradeErrors, AcknowledgeUpgradeResponses, AuthConnectData, AuthConnectErrors, AuthConnectResponses, CancelClipboardTransferData, CancelClipboardTransferErrors, CancelClipboardTransferResponses, CaptureUiEventData, CaptureUiEventResponses, ClearClipboardHistoryData, ClearClipboardHistoryErrors, ClearClipboardHistoryResponses, ClearStorageCacheData, ClearStorageCacheErrors, ClearStorageCacheResponses, DeleteClipboardEntryData, DeleteClipboardEntryErrors, DeleteClipboardEntryResponses, DispatchClipboardTextData, DispatchClipboardTextErrors, DispatchClipboardTextResponses, ExportConfigData, ExportConfigErrors, ExportConfigResponses, ExportLogsData, ExportLogsErrors, ExportLogsResponses, FactoryResetSpaceData, FactoryResetSpaceErrors, FactoryResetSpaceResponses, GetClipboardBlobData, GetClipboardBlobErrors, GetClipboardBlobResponses, GetClipboardEntryData, GetClipboardEntryDeliveryData, GetClipboardEntryDeliveryErrors, GetClipboardEntryDeliveryResponses, GetClipboardEntryErrors, GetClipboardEntryFileData, GetClipboardEntryFileErrors, GetClipboardEntryFileResponses, GetClipboardEntryResourceData, GetClipboardEntryResourceErrors, GetClipboardEntryResourceResponses, GetClipboardEntryResponses, GetClipboardStatsData, GetClipboardStatsErrors, GetClipboardStatsResponses, GetClipboardThumbnailData, GetClipboardThumbnailErrors, GetClipboardThumbnailResponses, GetDebugStatusData, GetDebugStatusErrors, GetDebugStatusResponses, GetEncryptionStateData, GetEncryptionStateErrors, GetEncryptionStateResponses, GetHealthData, GetHealthResponses, GetLifecycleStatusData, GetLifecycleStatusErrors, GetLifecycleStatusResponses, GetLocalDeviceInfoData, GetLocalDeviceInfoErrors, GetLocalDeviceInfoResponses, GetMemberSyncPreferencesData, GetMemberSyncPreferencesErrors, GetMemberSyncPreferencesResponses, GetMobileSyncSettingsData, GetMobileSyncSettingsErrors, GetMobileSyncSettingsResponses, GetSearchStatusData, GetSearchStatusErrors, GetSearchStatusResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetStatusData, GetStatusResponses, GetStorageStatsData, GetStorageStatsErrors, GetStorageStatsResponses, GetUpgradeStatusData, GetUpgradeStatusErrors, GetUpgradeStatusResponses, ImportConfigData, ImportConfigErrors, ImportConfigResponses, ListClipboardEntriesData, ListClipboardEntriesErrors, ListClipboardEntriesResponses, ListMobileDevicesData, ListMobileDevicesErrors, ListMobileDevicesResponses, ListMobileLanInterfacesData, ListMobileLanInterfacesErrors, ListMobileLanInterfacesResponses, ListPairedDevicesData, ListPairedDevicesErrors, ListPairedDevicesResponses, ListPeersData, ListPeersErrors, ListPeersResponses, LockEncryptionSessionData, LockEncryptionSessionErrors, LockEncryptionSessionResponses, PreviewConfigImportData, PreviewConfigImportErrors, PreviewConfigImportResponses, ProbeRelayUrlData, ProbeRelayUrlErrors, ProbeRelayUrlResponses, RebuildSearchIndexData, RebuildSearchIndexErrors, RebuildSearchIndexResponses, RefreshPresenceData, RefreshPresenceErrors, RefreshPresenceResponses, RegisterMobileDeviceData, RegisterMobileDeviceErrors, RegisterMobileDeviceResponses, RequestLifecycleRestartData, RequestLifecycleRestartErrors, RequestLifecycleRestartResponses, ResendClipboardEntryData, ResendClipboardEntryErrors, ResendClipboardEntryResponses, RestoreClipboardEntryData, RestoreClipboardEntryErrors, RestoreClipboardEntryResponses, RetryLifecycleData, RetryLifecycleErrors, RetryLifecycleResponses, RevokeMobileDeviceData, RevokeMobileDeviceErrors, RevokeMobileDeviceResponses, RotateMobilePasswordData, RotateMobilePasswordErrors, RotateMobilePasswordResponses, SearchQueryData, SearchQueryErrors, SearchQueryResponses, SetupV2CancelData, SetupV2CancelErrors, SetupV2CancelResponses, SetupV2GetMigrationProgressData, SetupV2GetMigrationProgressErrors, SetupV2GetMigrationProgressResponses, SetupV2GetStateData, SetupV2GetStateErrors, SetupV2GetStateResponses, SetupV2InitializeData, SetupV2InitializeErrors, SetupV2InitializeResponses, SetupV2IssueInvitationData, SetupV2IssueInvitationErrors, SetupV2IssueInvitationResponses, SetupV2RedeemData, SetupV2RedeemErrors, SetupV2RedeemResponses, SetupV2ResetData, SetupV2ResetErrors, SetupV2ResetResponses, SetupV2SwitchSpaceData, SetupV2SwitchSpaceErrors, SetupV2SwitchSpaceResponses, SignalLifecycleReadyData, SignalLifecycleReadyResponses, ToggleClipboardEntryFavoriteData, ToggleClipboardEntryFavoriteErrors, ToggleClipboardEntryFavoriteResponses, UnlockEncryptionSessionData, UnlockEncryptionSessionErrors, UnlockEncryptionSessionResponses, UnlockSpaceWithPassphraseData, UnlockSpaceWithPassphraseErrors, UnlockSpaceWithPassphraseResponses, UnpairDeviceData, UnpairDeviceErrors, UnpairDeviceResponses, UpdateDebugModeData, UpdateDebugModeErrors, UpdateDebugModeResponses, UpdateMemberSyncPreferencesData, UpdateMemberSyncPreferencesErrors, UpdateMemberSyncPreferencesResponses, UpdateMobileDeviceData, UpdateMobileDeviceErrors, UpdateMobileDeviceResponses, UpdateMobileSyncSettingsData, UpdateMobileSyncSettingsErrors, UpdateMobileSyncSettingsResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, VerifyKeychainAccessData, VerifyKeychainAccessErrors, VerifyKeychainAccessResponses, WebsocketUpgradeData, WebsocketUpgradeErrors } from './types.gen';
+import type { AcknowledgeUpgradeData, AcknowledgeUpgradeErrors, AcknowledgeUpgradeResponses, AuthConnectData, AuthConnectErrors, AuthConnectResponses, CancelClipboardTransferData, CancelClipboardTransferErrors, CancelClipboardTransferResponses, CaptureUiEventData, CaptureUiEventResponses, ClearClipboardHistoryData, ClearClipboardHistoryErrors, ClearClipboardHistoryResponses, ClearStorageCacheData, ClearStorageCacheErrors, ClearStorageCacheResponses, DeleteClipboardEntryData, DeleteClipboardEntryErrors, DeleteClipboardEntryResponses, DispatchClipboardTextData, DispatchClipboardTextErrors, DispatchClipboardTextResponses, ExportConfigData, ExportConfigErrors, ExportConfigResponses, ExportLogsData, ExportLogsErrors, ExportLogsResponses, FactoryResetSpaceData, FactoryResetSpaceErrors, FactoryResetSpaceResponses, GetClipboardBlobData, GetClipboardBlobErrors, GetClipboardBlobResponses, GetClipboardEntryData, GetClipboardEntryDeliveryData, GetClipboardEntryDeliveryErrors, GetClipboardEntryDeliveryResponses, GetClipboardEntryErrors, GetClipboardEntryFileData, GetClipboardEntryFileErrors, GetClipboardEntryFileResponses, GetClipboardEntryResourceData, GetClipboardEntryResourceErrors, GetClipboardEntryResourceResponses, GetClipboardEntryResponses, GetClipboardStatsData, GetClipboardStatsErrors, GetClipboardStatsResponses, GetClipboardThumbnailData, GetClipboardThumbnailErrors, GetClipboardThumbnailResponses, GetDebugStatusData, GetDebugStatusErrors, GetDebugStatusResponses, GetEncryptionStateData, GetEncryptionStateErrors, GetEncryptionStateResponses, GetHealthData, GetHealthResponses, GetLifecycleStatusData, GetLifecycleStatusErrors, GetLifecycleStatusResponses, GetLocalDeviceInfoData, GetLocalDeviceInfoErrors, GetLocalDeviceInfoResponses, GetMemberSyncPreferencesData, GetMemberSyncPreferencesErrors, GetMemberSyncPreferencesResponses, GetMobileSyncSettingsData, GetMobileSyncSettingsErrors, GetMobileSyncSettingsResponses, GetSearchStatusData, GetSearchStatusErrors, GetSearchStatusResponses, GetSearchTagsData, GetSearchTagsErrors, GetSearchTagsResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetStatusData, GetStatusResponses, GetStorageStatsData, GetStorageStatsErrors, GetStorageStatsResponses, GetUpgradeStatusData, GetUpgradeStatusErrors, GetUpgradeStatusResponses, ImportConfigData, ImportConfigErrors, ImportConfigResponses, ListClipboardEntriesData, ListClipboardEntriesErrors, ListClipboardEntriesResponses, ListMobileDevicesData, ListMobileDevicesErrors, ListMobileDevicesResponses, ListMobileLanInterfacesData, ListMobileLanInterfacesErrors, ListMobileLanInterfacesResponses, ListPairedDevicesData, ListPairedDevicesErrors, ListPairedDevicesResponses, ListPeersData, ListPeersErrors, ListPeersResponses, LockEncryptionSessionData, LockEncryptionSessionErrors, LockEncryptionSessionResponses, PreviewConfigImportData, PreviewConfigImportErrors, PreviewConfigImportResponses, ProbeRelayUrlData, ProbeRelayUrlErrors, ProbeRelayUrlResponses, RebuildSearchIndexData, RebuildSearchIndexErrors, RebuildSearchIndexResponses, RefreshPresenceData, RefreshPresenceErrors, RefreshPresenceResponses, RegisterMobileDeviceData, RegisterMobileDeviceErrors, RegisterMobileDeviceResponses, RequestLifecycleRestartData, RequestLifecycleRestartErrors, RequestLifecycleRestartResponses, ResendClipboardEntryData, ResendClipboardEntryErrors, ResendClipboardEntryResponses, RestoreClipboardEntryData, RestoreClipboardEntryErrors, RestoreClipboardEntryResponses, RetryLifecycleData, RetryLifecycleErrors, RetryLifecycleResponses, RevokeMobileDeviceData, RevokeMobileDeviceErrors, RevokeMobileDeviceResponses, RotateMobilePasswordData, RotateMobilePasswordErrors, RotateMobilePasswordResponses, SearchQueryData, SearchQueryErrors, SearchQueryResponses, SetupV2CancelData, SetupV2CancelErrors, SetupV2CancelResponses, SetupV2GetMigrationProgressData, SetupV2GetMigrationProgressErrors, SetupV2GetMigrationProgressResponses, SetupV2GetStateData, SetupV2GetStateErrors, SetupV2GetStateResponses, SetupV2InitializeData, SetupV2InitializeErrors, SetupV2InitializeResponses, SetupV2IssueInvitationData, SetupV2IssueInvitationErrors, SetupV2IssueInvitationResponses, SetupV2RedeemData, SetupV2RedeemErrors, SetupV2RedeemResponses, SetupV2ResetData, SetupV2ResetErrors, SetupV2ResetResponses, SetupV2SwitchSpaceData, SetupV2SwitchSpaceErrors, SetupV2SwitchSpaceResponses, SignalLifecycleReadyData, SignalLifecycleReadyResponses, ToggleClipboardEntryFavoriteData, ToggleClipboardEntryFavoriteErrors, ToggleClipboardEntryFavoriteResponses, UnlockEncryptionSessionData, UnlockEncryptionSessionErrors, UnlockEncryptionSessionResponses, UnlockSpaceWithPassphraseData, UnlockSpaceWithPassphraseErrors, UnlockSpaceWithPassphraseResponses, UnpairDeviceData, UnpairDeviceErrors, UnpairDeviceResponses, UpdateDebugModeData, UpdateDebugModeErrors, UpdateDebugModeResponses, UpdateMemberSyncPreferencesData, UpdateMemberSyncPreferencesErrors, UpdateMemberSyncPreferencesResponses, UpdateMobileDeviceData, UpdateMobileDeviceErrors, UpdateMobileDeviceResponses, UpdateMobileSyncSettingsData, UpdateMobileSyncSettingsErrors, UpdateMobileSyncSettingsResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, VerifyKeychainAccessData, VerifyKeychainAccessErrors, VerifyKeychainAccessResponses, WebsocketUpgradeData, WebsocketUpgradeErrors } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -131,8 +131,15 @@ export const dispatchClipboardText = <ThrowOnError extends boolean = false>(opti
 /**
  * GET /clipboard/entries?limit=50&offset=0
  *
+ * **Deprecated.** Browsing has moved to the unified search endpoint
+ * (`GET /search/query` with an empty query). This list endpoint is kept only
+ * for the CLI compatibility window and is removed in a later phase. New callers
+ * MUST use search.
+ *
  * Lists clipboard entries with pagination. Returns camelCase entry projections.
  * Populates `linkDomains` from `linkUrls`. Limit is clamped to 1000.
+ *
+ * @deprecated
  */
 export const listClipboardEntries = <ThrowOnError extends boolean = false>(options?: Options<ListClipboardEntriesData, ThrowOnError>) => (options?.client ?? client).get<ListClipboardEntriesResponses, ListClipboardEntriesErrors, ThrowOnError>({
     security: [{
@@ -890,12 +897,19 @@ export const refreshPresence = <ThrowOnError extends boolean = false>(options?: 
  * GET /search/query
  *
  * Execute a structured search query against the local encrypted search index.
- * Returns HTTP 423 if the encryption session is locked.
+ * The session-lock decision is query-type-aware (§4.6): filter-only browse is
+ * served while locked; a keyword search returns HTTP 423 when the session is
+ * locked (the engine cannot derive the search key).
  *
  * ADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of
  * the envelope — they are folded INTO the `data` payload alongside the renamed
  * `items` array (`SearchQueryResultDto`). The response is the canonical
- * `ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).
+ * `ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore, state }, ts }`).
+ *
+ * Index-not-ready handling is query-type-aware (§4.7): a filter-less browse
+ * degrades to a direct main-store read and returns HTTP 200 with
+ * `state: "degraded"`; a keyword or filtered query instead returns HTTP 503
+ * `index_rebuilding`.
  */
 export const searchQuery = <ThrowOnError extends boolean = false>(options: Options<SearchQueryData, ThrowOnError>) => (options.client ?? client).get<SearchQueryResponses, SearchQueryErrors, ThrowOnError>({
     security: [{
@@ -943,6 +957,24 @@ export const getSearchStatus = <ThrowOnError extends boolean = false>(options?: 
             type: 'apiKey'
         }, { name: 'Authorization', type: 'apiKey' }],
     url: '/search/status',
+    ...options
+});
+
+/**
+ * GET /search/tags
+ *
+ * List the tags present in the index with their entry counts. Builtin tags
+ * (link/favorited/image) are always listed (filter-only over the membership
+ * table, so no search key is needed); custom tags are listed only when the
+ * session is unlocked (§4.6).
+ */
+export const getSearchTags = <ThrowOnError extends boolean = false>(options?: Options<GetSearchTagsData, ThrowOnError>) => (options?.client ?? client).get<GetSearchTagsResponses, GetSearchTagsErrors, ThrowOnError>({
+    security: [{
+            in: 'query',
+            name: 'auth',
+            type: 'apiKey'
+        }, { name: 'Authorization', type: 'apiKey' }],
+    url: '/search/tags',
     ...options
 });
 

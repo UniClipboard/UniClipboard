@@ -1998,6 +1998,13 @@ export type SearchQueryEnvelope = {
 export type SearchQueryResultDto = {
     hasMore: boolean;
     items: Array<SearchResultDto>;
+    /**
+     * `"ready"` when served from the index, or `"degraded"` when the index was
+     * not ready and this filter-less browse was served from the main store
+     * (§4.7). Filtered/keyword queries never return `"degraded"` — they surface
+     * an `index_rebuilding` error instead.
+     */
+    state: string;
     total: number;
 };
 
@@ -2040,7 +2047,28 @@ export type SearchResultDto = {
     contentType: string;
     entryId: string;
     fileExtensions: Array<string>;
+    /**
+     * Display names of referenced files; empty when none.
+     */
+    fileNames: Array<string>;
+    /**
+     * Web URLs (http/https) carried by this entry; empty when none.
+     */
+    linkUrls: Array<string>;
     mimeType: string;
+    /**
+     * `"Lost"` when the paste payload is unrecoverable, else `null`.
+     */
+    payloadState?: string | null;
+    /**
+     * Originating device id, or `null` when the source is unknown.
+     */
+    sourceDevice?: string | null;
+    /**
+     * Derived/user-state tag ids (e.g. `"link"`, `"favorited"`). The favorite
+     * marker is expressed by the presence of `"favorited"`, not a separate flag.
+     */
+    tags: Array<string>;
     textPreview?: string | null;
 };
 
@@ -2084,6 +2112,40 @@ export type SearchStatusData = {
  */
 export type SearchStatusEnvelope = {
     data: SearchStatusData;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * A tag and its entry count for `GET /search/tags`. `is_builtin` marks the
+ * reserved builtin tags (`link`/`favorited`/`image`); custom tags are present
+ * only in unlocked sessions (§4.6).
+ */
+export type SearchTagDto = {
+    count: number;
+    isBuiltin: boolean;
+    tagId: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type SearchTagsEnvelope = {
+    data: Array<SearchTagDto>;
     /**
      * Server time when the response was built (unix epoch milliseconds).
      */
@@ -4478,7 +4540,9 @@ export type SearchQueryData = {
          */
         toMs?: number | null;
         /**
-         * Comma-separated file types (text, html, link, file, image, other).
+         * Comma-separated file types (text, html, file, image, other). `image`
+         * here is the physical type of a pure bitmap; copied image *files* are
+         * `file` and matched via the `image` tag instead (see `tags`).
          */
         contentTypes?: string | null;
         /**
@@ -4489,6 +4553,12 @@ export type SearchQueryData = {
          * Comma-separated source device ids; restricts results to those origins.
          */
         sourceDevices?: string | null;
+        /**
+         * Comma-separated tag ids (e.g. "link,favorited,image"); restricts results
+         * to entries carrying any of them. Custom tag ids require an unlocked
+         * session.
+         */
+        tags?: string | null;
         /**
          * Maximum results. Default 50, clamped to 200.
          */
@@ -4507,7 +4577,7 @@ export type SearchQueryErrors = {
      */
     400: ApiErrorResponse;
     /**
-     * Encryption session is locked
+     * Encryption session is locked (keyword search only; filter-only browse is served while locked)
      */
     423: ApiErrorResponse;
     /**
@@ -4515,7 +4585,7 @@ export type SearchQueryErrors = {
      */
     500: ApiErrorResponse;
     /**
-     * Search index not ready or unavailable
+     * Search index not ready, rebuilding, or unavailable
      */
     503: ApiErrorResponse;
 };
@@ -4524,7 +4594,7 @@ export type SearchQueryError = SearchQueryErrors[keyof SearchQueryErrors];
 
 export type SearchQueryResponses = {
     /**
-     * Search results page
+     * Search results page (state ready or degraded)
      */
     200: SearchQueryEnvelope;
 };
@@ -4600,6 +4670,35 @@ export type GetSearchStatusResponses = {
 };
 
 export type GetSearchStatusResponse = GetSearchStatusResponses[keyof GetSearchStatusResponses];
+
+export type GetSearchTagsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/search/tags';
+};
+
+export type GetSearchTagsErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Search index unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetSearchTagsError = GetSearchTagsErrors[keyof GetSearchTagsErrors];
+
+export type GetSearchTagsResponses = {
+    /**
+     * Tag list with entry counts
+     */
+    200: SearchTagsEnvelope;
+};
+
+export type GetSearchTagsResponse = GetSearchTagsResponses[keyof GetSearchTagsResponses];
 
 export type GetSettingsData = {
     body?: never;

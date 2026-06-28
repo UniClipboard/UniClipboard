@@ -241,6 +241,7 @@ mod tests {
                         total_size: 10,
                         pinned: true,
                         delivery_tracked: true,
+                        is_favorited: false,
                     })
                     .execute(conn)?;
                 for rep_id in ["r1", "r2"] {

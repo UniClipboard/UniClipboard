@@ -3193,6 +3193,10 @@
             },
             "type": "array"
           },
+          "state": {
+            "description": "`\"ready\"` when served from the index, or `\"degraded\"` when the index was\nnot ready and this filter-less browse was served from the main store\n(§4.7). Filtered/keyword queries never return `\"degraded\"` — they surface\nan `index_rebuilding` error instead.",
+            "type": "string"
+          },
           "total": {
             "format": "int32",
             "minimum": 0,
@@ -3202,7 +3206,8 @@
         "required": [
           "items",
           "total",
-          "hasMore"
+          "hasMore",
+          "state"
         ],
         "type": "object"
       },
@@ -3255,8 +3260,39 @@
             },
             "type": "array"
           },
+          "fileNames": {
+            "description": "Display names of referenced files; empty when none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "linkUrls": {
+            "description": "Web URLs (http/https) carried by this entry; empty when none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "mimeType": {
             "type": "string"
+          },
+          "payloadState": {
+            "description": "`\"Lost\"` when the paste payload is unrecoverable, else `null`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "sourceDevice": {
+            "description": "Originating device id, or `null` when the source is unknown.",
+            "nullable": true,
+            "type": "string"
+          },
+          "tags": {
+            "description": "Derived/user-state tag ids (e.g. `\"link\"`, `\"favorited\"`). The favorite\nmarker is expressed by the presence of `\"favorited\"`, not a separate flag.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "textPreview": {
             "nullable": true,
@@ -3267,8 +3303,11 @@
           "entryId",
           "contentType",
           "activeTimeMs",
+          "tags",
           "mimeType",
-          "fileExtensions"
+          "fileExtensions",
+          "fileNames",
+          "linkUrls"
         ],
         "type": "object"
       },
@@ -3307,6 +3346,49 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/SearchStatusData"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SearchTagDto": {
+        "description": "A tag and its entry count for `GET /search/tags`. `is_builtin` marks the\nreserved builtin tags (`link`/`favorited`/`image`); custom tags are present\nonly in unlocked sessions (§4.6).",
+        "properties": {
+          "count": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "isBuiltin": {
+            "type": "boolean"
+          },
+          "tagId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tagId",
+          "count",
+          "isBuiltin"
+        ],
+        "type": "object"
+      },
+      "SearchTagsEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SearchTagDto"
+            },
+            "type": "array"
           },
           "ts": {
             "description": "Server time when the response was built (unix epoch milliseconds).",
@@ -4925,7 +5007,8 @@
     },
     "/clipboard/entries": {
       "get": {
-        "description": "Lists clipboard entries with pagination. Returns camelCase entry projections.\nPopulates `linkDomains` from `linkUrls`. Limit is clamped to 1000.",
+        "deprecated": true,
+        "description": "**Deprecated.** Browsing has moved to the unified search endpoint\n(`GET /search/query` with an empty query). This list endpoint is kept only\nfor the CLI compatibility window and is removed in a later phase. New callers\nMUST use search.\n\nLists clipboard entries with pagination. Returns camelCase entry projections.\nPopulates `linkDomains` from `linkUrls`. Limit is clamped to 1000.",
         "operationId": "listClipboardEntries",
         "parameters": [
           {
@@ -7413,7 +7496,7 @@
     },
     "/search/query": {
       "get": {
-        "description": "Execute a structured search query against the local encrypted search index.\nReturns HTTP 423 if the encryption session is locked.\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore }, ts }`).",
+        "description": "Execute a structured search query against the local encrypted search index.\nThe session-lock decision is query-type-aware (§4.6): filter-only browse is\nserved while locked; a keyword search returns HTTP 423 when the session is\nlocked (the engine cannot derive the search key).\n\nADR-008 wire change: `total`/`hasMore` are no longer top-level siblings of\nthe envelope — they are folded INTO the `data` payload alongside the renamed\n`items` array (`SearchQueryResultDto`). The response is the canonical\n`ApiEnvelope<SearchQueryResultDto>` (`{ data: { items, total, hasMore, state }, ts }`).\n\nIndex-not-ready handling is query-type-aware (§4.7): a filter-less browse\ndegrades to a direct main-store read and returns HTTP 200 with\n`state: \"degraded\"`; a keyword or filtered query instead returns HTTP 503\n`index_rebuilding`.",
         "operationId": "searchQuery",
         "parameters": [
           {
@@ -7468,7 +7551,7 @@
             }
           },
           {
-            "description": "Comma-separated file types (text, html, link, file, image, other).",
+            "description": "Comma-separated file types (text, html, file, image, other). `image`\nhere is the physical type of a pure bitmap; copied image *files* are\n`file` and matched via the `image` tag instead (see `tags`).",
             "in": "query",
             "name": "contentTypes",
             "required": false,
@@ -7491,6 +7574,16 @@
             "description": "Comma-separated source device ids; restricts results to those origins.",
             "in": "query",
             "name": "sourceDevices",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated tag ids (e.g. \"link,favorited,image\"); restricts results\nto entries carrying any of them. Custom tag ids require an unlocked\nsession.",
+            "in": "query",
+            "name": "tags",
             "required": false,
             "schema": {
               "nullable": true,
@@ -7529,7 +7622,7 @@
                 }
               }
             },
-            "description": "Search results page"
+            "description": "Search results page (state ready or degraded)"
           },
           "400": {
             "content": {
@@ -7549,7 +7642,7 @@
                 }
               }
             },
-            "description": "Encryption session is locked"
+            "description": "Encryption session is locked (keyword search only; filter-only browse is served while locked)"
           },
           "500": {
             "content": {
@@ -7569,7 +7662,7 @@
                 }
               }
             },
-            "description": "Search index not ready or unavailable"
+            "description": "Search index not ready, rebuilding, or unavailable"
           }
         },
         "security": [
@@ -7711,6 +7804,56 @@
           }
         ],
         "summary": "GET /search/status",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/search/tags": {
+      "get": {
+        "description": "List the tags present in the index with their entry counts. Builtin tags\n(link/favorited/image) are always listed (filter-only over the membership\ntable, so no search key is needed); custom tags are listed only when the\nsession is unlocked (§4.6).",
+        "operationId": "getSearchTags",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTagsEnvelope"
+                }
+              }
+            },
+            "description": "Tag list with entry counts"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Search index unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /search/tags",
         "tags": [
           "search"
         ]

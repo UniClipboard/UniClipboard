@@ -141,6 +141,7 @@ pub use search::{
     SearchCoordinatorEvent, SearchFacade, SearchFacadeDeps, SearchFacadeError, SearchPageView,
     SearchProjectionBuilder, SearchQueryInput, SearchRebuildAcceptedView,
     SearchRebuildProgressView, SearchResultView, SearchStatusSnapshot, SearchStatusView,
+    SearchTagView,
 };
 // Note: `RelayDiagnosticPort` is intentionally NOT re-exported here. The port
 // trait stays under `crate::facade::settings::relay_diagnostic` and is reached

@@ -28,6 +28,8 @@ pub struct SearchQueryRequest {
     pub from_ms: Option<i64>,
     pub to_ms: Option<i64>,
     pub content_types: Vec<String>,
+    /// Tag ids (e.g. "link", "favorited"); custom tags require an unlocked session.
+    pub tags: Vec<String>,
     pub extensions: Vec<String>,
     pub limit: u32,
     pub offset: u32,
@@ -94,6 +96,9 @@ impl DaemonSearchClient {
         }
         if !request.content_types.is_empty() {
             params.push(("contentTypes", request.content_types.join(",")));
+        }
+        if !request.tags.is_empty() {
+            params.push(("tags", request.tags.join(",")));
         }
         if !request.extensions.is_empty() {
             params.push(("extensions", request.extensions.join(",")));

@@ -13,9 +13,20 @@ pub struct SearchResultDto {
     pub entry_id: String,
     pub content_type: String,
     pub active_time_ms: i64,
+    /// Derived/user-state tag ids (e.g. `"link"`, `"favorited"`). The favorite
+    /// marker is expressed by the presence of `"favorited"`, not a separate flag.
+    pub tags: Vec<String>,
     pub text_preview: Option<String>,
     pub mime_type: String,
     pub file_extensions: Vec<String>,
+    /// Display names of referenced files; empty when none.
+    pub file_names: Vec<String>,
+    /// Web URLs (http/https) carried by this entry; empty when none.
+    pub link_urls: Vec<String>,
+    /// Originating device id, or `null` when the source is unknown.
+    pub source_device: Option<String>,
+    /// `"Lost"` when the paste payload is unrecoverable, else `null`.
+    pub payload_state: Option<String>,
 }
 
 /// Folded payload for `GET /search/query` (ADR-008 §0.1).
@@ -31,6 +42,22 @@ pub struct SearchQueryResultDto {
     pub items: Vec<SearchResultDto>,
     pub total: u32,
     pub has_more: bool,
+    /// `"ready"` when served from the index, or `"degraded"` when the index was
+    /// not ready and this filter-less browse was served from the main store
+    /// (§4.7). Filtered/keyword queries never return `"degraded"` — they surface
+    /// an `index_rebuilding` error instead.
+    pub state: String,
+}
+
+/// A tag and its entry count for `GET /search/tags`. `is_builtin` marks the
+/// reserved builtin tags (`link`/`favorited`/`image`); custom tags are present
+/// only in unlocked sessions (§4.6).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchTagDto {
+    pub tag_id: String,
+    pub count: u32,
+    pub is_builtin: bool,
 }
 
 /// Search index availability snapshot — the `ApiEnvelope` payload for

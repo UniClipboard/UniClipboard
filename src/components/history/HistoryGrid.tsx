@@ -1,7 +1,7 @@
 import { Loader2, Search } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Virtuoso } from 'react-virtuoso'
+import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuoso'
 import HistoryGridRow from '@/components/history/HistoryGridRow'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 
@@ -11,6 +11,8 @@ interface HistoryGridProps {
   seenIds: Set<string>
   /** Currently previewed entry; its row gets the active highlight. */
   selectedId: string | null
+  listRef?: React.RefObject<VirtuosoHandle | null>
+  restoreStateFrom?: StateSnapshot | null
   isSearchActive: boolean
   submittedQuery: string
   searchLoading: boolean
@@ -24,6 +26,7 @@ interface HistoryGridProps {
   onToggleFavorite: (id: string, current: boolean) => void
   onCardClick: (id: string) => void
   onHoverChange: (id: string | null) => void
+  onScrollStateRestored?: () => void
 }
 
 /**
@@ -35,6 +38,8 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   items,
   seenIds,
   selectedId,
+  listRef,
+  restoreStateFrom,
   isSearchActive,
   submittedQuery,
   searchLoading,
@@ -48,6 +53,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   onToggleFavorite,
   onCardClick,
   onHoverChange,
+  onScrollStateRestored,
 }) => {
   const { t } = useTranslation()
 
@@ -87,11 +93,16 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
         </div>
       ) : (
         <Virtuoso
+          ref={listRef}
           data={items}
           style={{ height: '100%' }}
           className="no-scrollbar flex-1 min-h-0"
           computeItemKey={(_index, item) => item.id}
+          restoreStateFrom={restoreStateFrom ?? undefined}
           increaseViewportBy={{ top: 240, bottom: 480 }}
+          itemsRendered={() => {
+            if (restoreStateFrom) onScrollStateRestored?.()
+          }}
           endReached={() => {
             if (hasMore && !searchLoading) onLoadMore()
           }}

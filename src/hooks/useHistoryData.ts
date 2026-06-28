@@ -2,6 +2,11 @@ import { useEffect, useMemo, useReducer } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter, filterToContentTypes, filterToTags } from '@/api/clipboardItems'
 import { type TimeRangePreset } from '@/api/daemon/search'
+import {
+  readHistorySessionSnapshot,
+  writeHistorySessionSnapshot,
+  type HistoryLiveSnapshot,
+} from '@/hooks/historySessionSnapshot'
 import { type LiveSearchQueryModel } from '@/hooks/liveSearchModel'
 import { useLiveSearch } from '@/hooks/useLiveSearch'
 import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
@@ -72,6 +77,10 @@ const INITIAL_STATE: SearchState = {
   sourceFilter: null,
 }
 
+function getInitialSearchState(): SearchState {
+  return readHistorySessionSnapshot()?.searchState ?? INITIAL_STATE
+}
+
 function searchReducer(state: SearchState, action: SearchAction): SearchState {
   switch (action.type) {
     case 'setContentFilter':
@@ -98,7 +107,7 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
  */
 export function useHistoryData() {
   const { t } = useTranslation()
-  const [state, dispatch] = useReducer(searchReducer, INITIAL_STATE)
+  const [state, dispatch] = useReducer(searchReducer, undefined, getInitialSearchState)
 
   const pendingItems = useAppSelector(s => s.clipboard.pendingItems)
   const spaceMembers = useAppSelector(s => s.devices.spaceMembers)
@@ -161,7 +170,9 @@ export function useHistoryData() {
     [state.submittedQuery, state.activeFilter, state.tagFilter, state.sourceFilter, state.timeRange]
   )
 
-  const live = useLiveSearch({ model, pageSize: PAGE_SIZE })
+  const initialLiveSnapshot: HistoryLiveSnapshot | null = readHistorySessionSnapshot()?.live ?? null
+  const live = useLiveSearch({ model, initialSnapshot: initialLiveSnapshot, pageSize: PAGE_SIZE })
+  const previousSnapshot = readHistorySessionSnapshot()
 
   // Merge incoming-transfer placeholders (Redux overlay, still owned by the
   // event reducer) ahead of the real entries from the engine.
@@ -200,6 +211,28 @@ export function useHistoryData() {
     []
   )
 
+  const liveSnapshot = useMemo<HistoryLiveSnapshot>(
+    () => ({
+      model,
+      items: live.items,
+      total: live.total,
+      hasMore: live.hasMore,
+      state: live.state,
+    }),
+    [model, live.items, live.total, live.hasMore, live.state]
+  )
+
+  useEffect(() => {
+    if (live.items.length === 0) return
+    writeHistorySessionSnapshot({
+      searchState: state,
+      live: liveSnapshot,
+      selectedId: previousSnapshot?.selectedId ?? null,
+      seenIds: previousSnapshot?.seenIds ?? [],
+      scrollState: previousSnapshot?.scrollState ?? null,
+    })
+  }, [live.items.length, liveSnapshot, previousSnapshot, state])
+
   return {
     filter: {
       activeFilter: state.activeFilter,
@@ -212,6 +245,7 @@ export function useHistoryData() {
     actions,
     sourceOptions,
     baseItems,
+    liveSnapshot,
     /** Match count for the current query (total history count while browsing). */
     browseCount: live.total ?? live.items.length,
     isSearchActive,

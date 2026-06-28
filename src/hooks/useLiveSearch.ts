@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { querySearch } from '@/api/daemon/search'
+import type { HistoryLiveSnapshot } from '@/hooks/historySessionSnapshot'
 import { useClipboardEventStream } from '@/hooks/useClipboardEventStream'
 import { useEncryptionSessionState } from '@/hooks/useEncryptionSessionState'
 import type { ClipboardEntry, DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -27,6 +28,8 @@ export interface UseLiveSearchOptions {
   enabled?: boolean
   /** The resolved query/filter model; an empty `query` with no filters browses. */
   model: LiveSearchQueryModel
+  /** Last in-memory snapshot for the same model, used to avoid a blank remount. */
+  initialSnapshot?: HistoryLiveSnapshot | null
   /** Page size; {@link UseLiveSearchResult.growWindow} grows the window by this. */
   pageSize?: number
 }
@@ -52,6 +55,17 @@ export interface UseLiveSearchResult {
   patchItem: (id: string, patch: Partial<DisplayClipboardItem>) => void
 }
 
+function sameModel(a: LiveSearchQueryModel, b: LiveSearchQueryModel): boolean {
+  return (
+    a.query === b.query &&
+    a.contentTypes === b.contentTypes &&
+    a.tags === b.tags &&
+    a.sourceDevices === b.sourceDevices &&
+    a.extensions === b.extensions &&
+    a.timeRange === b.timeRange
+  )
+}
+
 /**
  * Unified live browse/search list (Phase 3B).
  *
@@ -68,17 +82,30 @@ export interface UseLiveSearchResult {
  * `notReady` flag.
  */
 export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResult {
-  const { enabled = true, model, pageSize = DEFAULT_PAGE_SIZE } = options
+  const { enabled = true, model, initialSnapshot = null, pageSize = DEFAULT_PAGE_SIZE } = options
   const { query, contentTypes, tags, sourceDevices, extensions, timeRange } = model
   const { encryptionReady } = useEncryptionSessionState()
+  const canUseInitialSnapshot =
+    enabled &&
+    initialSnapshot !== null &&
+    sameModel(initialSnapshot.model, model) &&
+    (model.query.trim().length === 0 || encryptionReady)
 
-  const [items, setItems] = useState<DisplayClipboardItem[]>([])
+  const [items, setItems] = useState<DisplayClipboardItem[]>(() =>
+    canUseInitialSnapshot ? initialSnapshot.items : []
+  )
   // Start loading when enabled so the first paint shows a spinner, not a
   // flash of the empty state before the base query resolves.
   const [isLoading, setIsLoading] = useState(enabled)
-  const [total, setTotal] = useState<number | null>(null)
-  const [hasMore, setHasMore] = useState(false)
-  const [state, setState] = useState<'ready' | 'degraded'>('ready')
+  const [total, setTotal] = useState<number | null>(() =>
+    canUseInitialSnapshot ? initialSnapshot.total : null
+  )
+  const [hasMore, setHasMore] = useState(() =>
+    canUseInitialSnapshot ? initialSnapshot.hasMore : false
+  )
+  const [state, setState] = useState<'ready' | 'degraded'>(() =>
+    canUseInitialSnapshot ? initialSnapshot.state : 'ready'
+  )
   const [limit, setLimit] = useState(pageSize)
   const [refetchNonce, setRefetchNonce] = useState(0)
 
@@ -99,7 +126,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     // while locked (it may come back degraded), so it still runs.
     const keywordWhileLocked = query.trim().length > 0 && !encryptionReady
     if (!enabled || keywordWhileLocked) {
-      setItems([])
+      if (!canUseInitialSnapshot) setItems([])
       setTotal(null)
       setHasMore(false)
       setState('ready')
@@ -154,6 +181,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     timeRange,
     limit,
     refetchNonce,
+    canUseInitialSnapshot,
   ])
 
   // Realtime: a new local entry is slotted in (when the current filters are

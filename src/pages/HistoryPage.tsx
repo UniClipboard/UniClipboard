@@ -105,6 +105,8 @@ const HistoryPage: React.FC = () => {
                 items={c.items}
                 seenIds={c.seenIds}
                 selectedId={c.selectedId}
+                listRef={c.listRef}
+                restoreStateFrom={c.scrollState}
                 isSearchActive={c.isSearchActive}
                 submittedQuery={c.filter.submittedQuery}
                 searchLoading={c.searchLoading}
@@ -118,6 +120,7 @@ const HistoryPage: React.FC = () => {
                 onToggleFavorite={c.handleToggleFavorite}
                 onCardClick={c.handleCardClick}
                 onHoverChange={c.setHoveredId}
+                onScrollStateRestored={() => c.setScrollState(null)}
               />
             </div>
           </ResizablePanel>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { StateSnapshot, VirtuosoHandle } from 'react-virtuoso'
 import { favoriteClipboardItem, Filter, unfavoriteClipboardItem } from '@/api/clipboardItems'
 import { toast } from '@/components/ui/toast'
 import { useCopyFeedback } from '@/hooks/useCopyFeedback'
@@ -11,6 +12,11 @@ import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
 import { useAppDispatch } from '@/store/hooks'
 import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
+import {
+  readHistorySessionSnapshot,
+  updateHistorySessionSelection,
+  writeHistorySessionSnapshot,
+} from './historySessionSnapshot'
 
 /**
  * Orchestration layer for the History page: owns the state shared across the
@@ -33,13 +39,25 @@ export function useHistoryController() {
 
   const data = useHistoryData()
   const searchableTags = useSearchTags()
+  const initialSnapshot = readHistorySessionSnapshot()
 
   // Per-card interaction state (small + render-driving).
   const [hoveredId, setHoveredId] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => initialSnapshot?.selectedId ?? null
+  )
   // Stable Set of ids already rendered once; read during render to gate the
   // entrance animation, mutated only in an effect (never during render).
-  const [seenIds] = useState(() => new Set<string>())
+  const [seenIds] = useState(() => new Set<string>(initialSnapshot?.seenIds ?? []))
+  const [scrollState, setScrollState] = useState<StateSnapshot | null>(
+    () => initialSnapshot?.scrollState ?? null
+  )
+  const listRef = useRef<VirtuosoHandle>(null)
+  const latestSnapshotRef = useRef({
+    searchState: data.filter,
+    live: data.liveSnapshot,
+    selectedId,
+  })
   // Optimistic favorite overrides keyed by entry id: the live list does not
   // re-fetch on toggle, so a flip is reflected here immediately and reverted if
   // the backend call fails.
@@ -175,6 +193,33 @@ export function useHistoryController() {
 
   const handleCardClick = useCallback((id: string) => setSelectedId(id), [])
 
+  useEffect(() => {
+    if (selectedId !== null) updateHistorySessionSelection(selectedId)
+  }, [selectedId])
+
+  useEffect(() => {
+    latestSnapshotRef.current = {
+      searchState: data.filter,
+      live: data.liveSnapshot,
+      selectedId,
+    }
+  }, [data.filter, data.liveSnapshot, selectedId])
+
+  useEffect(() => {
+    return () => {
+      listRef.current?.getState(nextScrollState => {
+        const latest = latestSnapshotRef.current
+        writeHistorySessionSnapshot({
+          searchState: latest.searchState,
+          live: latest.live,
+          selectedId: latest.selectedId,
+          seenIds: Array.from(seenIds),
+          scrollState: nextScrollState,
+        })
+      })
+    }
+  }, [seenIds])
+
   // Heading reflects the active quick view / content-type filter ("收藏",
   // "文本", …), falling back to "全部" while unfiltered.
   const viewLabel =
@@ -202,6 +247,9 @@ export function useHistoryController() {
     // List region.
     items: orderedItems,
     seenIds,
+    listRef,
+    scrollState,
+    setScrollState,
     hasMore: data.hasMore,
     handleLoadMore: data.handleLoadMore,
     hoveredId,

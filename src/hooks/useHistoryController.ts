@@ -5,7 +5,6 @@ import { toast } from '@/components/ui/toast'
 import { useCopyFeedback } from '@/hooks/useCopyFeedback'
 import { useDeleteFlow } from '@/hooks/useDeleteFlow'
 import { useHistoryData } from '@/hooks/useHistoryData'
-import { useHistoryInfiniteScroll } from '@/hooks/useHistoryInfiniteScroll'
 import { useSearchTags } from '@/hooks/useSearchTags'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
@@ -117,13 +116,6 @@ export function useHistoryController() {
     return [base[idx], ...base.slice(0, idx), ...base.slice(idx + 1)]
   }, [data.baseItems, promotedId, favoriteOverrides])
 
-  const scrollRef = useHistoryInfiniteScroll({
-    hasMore: data.hasMore,
-    isLoading: data.searchLoading,
-    loadMore: data.handleLoadMore,
-    items: orderedItems,
-  })
-
   // ── Hover keyboard shortcuts ──────────────────────────────────
   useShortcut({
     key: 'c',
@@ -158,12 +150,6 @@ export function useHistoryController() {
     enableOnFormTags: true,
     preventDefault: true,
   })
-
-  // Record rendered ids after commit so subsequent remounts (e.g. row shifts
-  // when a new item is prepended) skip the entrance animation.
-  useEffect(() => {
-    for (const item of orderedItems) seenIds.add(item.id)
-  }, [orderedItems, seenIds])
 
   const selectedItem = useMemo(
     () => orderedItems.find(it => it.id === selectedId) ?? null,
@@ -216,7 +202,8 @@ export function useHistoryController() {
     // List region.
     items: orderedItems,
     seenIds,
-    scrollRef,
+    hasMore: data.hasMore,
+    handleLoadMore: data.handleLoadMore,
     hoveredId,
     setHoveredId,
     selectedId,

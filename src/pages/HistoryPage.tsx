@@ -102,7 +102,6 @@ const HistoryPage: React.FC = () => {
           <ResizablePanel id="history-list" defaultSize="42%" minSize="30%" maxSize="65%">
             <div className="flex h-full min-w-0 flex-col">
               <HistoryGrid
-                scrollRef={c.scrollRef}
                 items={c.items}
                 seenIds={c.seenIds}
                 selectedId={c.selectedId}
@@ -112,6 +111,8 @@ const HistoryPage: React.FC = () => {
                 hoveredId={c.hoveredId}
                 copySuccessId={c.copySuccessId}
                 deletingId={c.deletingId}
+                hasMore={c.hasMore}
+                onLoadMore={c.handleLoadMore}
                 onCopy={c.handleCopy}
                 onDelete={c.requestDelete}
                 onToggleFavorite={c.handleToggleFavorite}

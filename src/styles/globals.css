@@ -102,11 +102,23 @@
 
   --chart-5: oklch(0.424 0.199 265.638);
 
+  /* Latin first, then OS-native CJK per platform (PingFang on macOS, YaHei on
+     Windows), with the bundled Noto Sans SC as the final CJK fallback for Linux
+     and any host missing both. Per-glyph fallback keeps Latin on Inter/Segoe
+     while CJK resolves to the crisp, hinted system font on each OS. */
   --font-sans:
-    'Inter Variable', 'Segoe UI', 'Noto Sans SC Variable', 'Microsoft YaHei', system-ui, sans-serif;
+    'Inter Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC Variable', system-ui, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
-  --font-chinese: 'Noto Sans SC Variable', 'Microsoft YaHei', system-ui, sans-serif;
+  /* Same CJK fallback chain as --font-sans so code/text preview cards render
+     CJK in the exact UI font (not the OS monospace SimSun/etc.); Latin/digits
+     stay monospace for code alignment. */
+  --font-mono:
+    'JetBrains Mono', 'Consolas', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC Variable', monospace;
+  --font-chinese:
+    'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC Variable', system-ui,
+    sans-serif;
   --radius: 0.35rem;
   --shadow-color: hsl(240 30% 25%);
   --shadow-opacity: 0.12;
@@ -204,8 +216,11 @@
 
 @theme inline {
   --font-sans:
-    'Inter Variable', 'Segoe UI', 'Noto Sans SC Variable', 'Microsoft YaHei', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+    'Inter Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC Variable', system-ui, sans-serif;
+  --font-mono:
+    'JetBrains Mono', 'Consolas', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC Variable', monospace;
   --font-serif: Georgia, serif;
   --radius: 0.35rem;
   --tracking-tighter: calc(var(--tracking-normal) - 0.05em);

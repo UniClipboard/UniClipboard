@@ -17,14 +17,15 @@ import { usePlatform } from '@/hooks/usePlatform'
 
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
-  const { isMac } = usePlatform()
+  const { isMac, isWindows } = usePlatform()
   const { setRightSlot } = useTitleBarSlot()
   const c = useHistoryController()
 
-  // The composite search box is shared between the in-page top bar (non-mac) and
-  // the window title bar (mac). Memoized so its element reference only changes
-  // when an input prop actually changes — required because injecting it into the
-  // title bar slot re-renders the app root, which would otherwise loop.
+  // The composite search box is shared between the in-page top bar (other
+  // platforms) and the window title bar (mac/windows). Memoized so its element
+  // reference only changes when an input prop actually changes — required because
+  // injecting it into the title bar slot re-renders the app root, which would
+  // otherwise loop.
   const searchBox = useMemo(
     () => (
       <CompositeSearchBar
@@ -57,24 +58,26 @@ const HistoryPage: React.FC = () => {
     ]
   )
 
-  // On mac, hoist just the search box into the otherwise-empty title bar drag
-  // region (no heading); on other platforms it stays in the in-page top bar.
+  // On mac and windows, hoist just the search box into the title bar (no page
+  // heading there); on other platforms it stays in the in-page top bar.
+  const hoistSearchToTitleBar = isMac || isWindows
   const titleBarContent = useMemo(
-    () => (isMac ? <div className="w-80 max-w-full">{searchBox}</div> : null),
-    [isMac, searchBox]
+    () => (hoistSearchToTitleBar ? <div className="w-80 max-w-full">{searchBox}</div> : null),
+    [hoistSearchToTitleBar, searchBox]
   )
 
   useEffect(() => {
-    if (!isMac) return
+    if (!hoistSearchToTitleBar) return
     setRightSlot(titleBarContent)
     return () => setRightSlot(null)
-  }, [isMac, titleBarContent, setRightSlot])
+  }, [hoistSearchToTitleBar, titleBarContent, setRightSlot])
 
   return (
     <div className="flex flex-col h-full">
       {/* ── Top bar: page heading (left) + composite search (right) ─ */}
-      {/* On mac this whole row moves into the window title bar (see above). */}
-      {!isMac && (
+      {/* On mac/windows this row is hidden; the search box is hoisted into the
+          window title bar instead (see above). */}
+      {!hoistSearchToTitleBar && (
         <div className="shrink-0 flex items-center gap-3 border-b border-border/60 px-4 pt-3 pb-2.5">
           <h1 className="shrink-0 text-sm font-semibold text-foreground">{c.viewLabel}</h1>
           <div className="ml-auto w-80 max-w-full">{searchBox}</div>

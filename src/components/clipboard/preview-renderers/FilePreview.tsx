@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { isImageFileName } from '@/lib/clipboard-utils'
@@ -165,6 +166,13 @@ const FilePreview: React.FC<FilePreviewProps> = ({
   const { t } = useTranslation()
   const fileItem = item.content
 
+  // Resolve the image preview to a token-free `blob:` object URL up front (hook
+  // must run before any early return). Null unless the entry actually has an
+  // image descriptor.
+  const imageObjectUrl = useBlobImageObjectUrl(
+    preview?.contentType === 'image' ? (preview.imageBlobPath ?? null) : null
+  )
+
   if (!fileItem || !('file_names' in fileItem)) {
     return null
   }
@@ -174,12 +182,11 @@ const FilePreview: React.FC<FilePreviewProps> = ({
   const isSingleFile = fileNames.length === 1
   const singleFileName = fileNames[0] ?? ''
   const isImageFileGroup = fileNames.length > 1 && fileNames.every(name => isImageFileName(name))
-  const imageUrl =
+  // Layout selection is synchronous (descriptor presence); the `<img src>`
+  // itself fills in once `imageObjectUrl` resolves, so the hero/grid layout
+  // never flickers through the plain file-card while bytes load.
+  const hasSingleImage =
     isSingleFile && isImageFileName(singleFileName) && preview?.contentType === 'image'
-      ? (preview.imageUrl ?? null)
-      : null
-  const groupImageUrl =
-    isImageFileGroup && preview?.contentType === 'image' ? (preview.imageUrl ?? null) : null
   const percent =
     transfer && transfer.totalBytes && transfer.totalBytes > 0
       ? Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100)
@@ -199,7 +206,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
       </div>
     )
 
-    if (imageUrl) {
+    if (hasSingleImage) {
       return (
         <div className="flex min-h-full flex-col items-center justify-center gap-6 p-8">
           <div className="relative flex w-full max-w-5xl items-center justify-center overflow-hidden rounded-lg bg-muted/10 p-2">
@@ -209,11 +216,19 @@ const FilePreview: React.FC<FilePreviewProps> = ({
               percent={percent}
               isHero
             />
-            <img
-              src={imageUrl}
-              alt={title}
-              className="relative z-10 max-h-[60vh] max-w-full rounded-md object-contain shadow-2xl ring-1 ring-black/5 dark:ring-white/10"
-            />
+            {imageObjectUrl ? (
+              <img
+                src={imageObjectUrl}
+                alt={title}
+                className="relative z-10 max-h-[60vh] max-w-full rounded-md object-contain shadow-2xl ring-1 ring-black/5 dark:ring-white/10"
+              />
+            ) : (
+              // imageObjectUrl is null while the blob loads and stays null if the
+              // fetch fails; show a muted placeholder instead of a broken <img>.
+              <div className="relative z-10 flex aspect-[4/3] w-full max-w-md items-center justify-center rounded-md bg-background/40">
+                <ImageIcon className="size-12 text-muted-foreground/30" />
+              </div>
+            )}
           </div>
 
           <div className="flex w-full max-w-4xl flex-col items-center gap-3 text-center">
@@ -313,7 +328,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({
           {fileNames.map((name, index) => {
             const thumbnailUrl =
               getLocalImageUrl(getImageFilePath(fileItem.file_paths, index)) ??
-              (index === 0 ? groupImageUrl : null)
+              (index === 0 ? imageObjectUrl : null)
             return (
               <div
                 key={`${name}-${index}`}

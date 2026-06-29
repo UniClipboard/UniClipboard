@@ -1,38 +1,48 @@
 import { useEffect, useState } from 'react'
-import { resolveResourceImageUrl } from '@/api/clipboardItems'
+import { getResourceImageUrl } from '@/api/clipboardItems'
 import { getClipboardEntryResource } from '@/api/daemon/clipboard'
+import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
 
-const imageUrlCache = new Map<string, string | null>()
+/**
+ * Cache the (token-free) image descriptor per entry so scrolling a virtualized
+ * list back to a row doesn't re-hit the daemon for its resource metadata. The
+ * descriptor is a `data:` URL or a daemon blob path — cheap strings, no bytes.
+ * The actual image bytes are cached separately (and LRU-bounded) by
+ * {@link useBlobImageObjectUrl}.
+ */
+const descriptorCache = new Map<string, string | null>()
 
 export function useResourceImageUrl(entryId: string): string | null {
-  const [imageUrl, setImageUrl] = useState<string | null>(() => imageUrlCache.get(entryId) ?? null)
+  const [descriptor, setDescriptor] = useState<string | null>(
+    () => descriptorCache.get(entryId) ?? null
+  )
 
   useEffect(() => {
-    if (imageUrlCache.has(entryId)) {
-      setImageUrl(imageUrlCache.get(entryId) ?? null)
+    const cached = descriptorCache.get(entryId)
+    if (cached !== undefined) {
+      setDescriptor(cached)
       return
     }
     // Row reuse (virtualized list) can hand this hook a new entry id; drop the
-    // previous entry's image immediately so a stale thumbnail never lingers
-    // while the new fetch is in flight.
-    setImageUrl(null)
+    // previous descriptor immediately so a stale thumbnail never lingers while
+    // the new resource lookup is in flight.
+    setDescriptor(null)
     let cancelled = false
     getClipboardEntryResource(entryId)
       .then(resource => {
         if (cancelled) return
-        const url = resource ? resolveResourceImageUrl(resource) : null
-        imageUrlCache.set(entryId, url)
-        setImageUrl(url)
+        const next = resource ? getResourceImageUrl(resource) : null
+        descriptorCache.set(entryId, next)
+        setDescriptor(next)
       })
       .catch(() => {
-        // Clear on failure too — an unhandled rejection must not leave the prior
-        // row's image stuck on this entry. Not cached, so a remount can retry.
-        if (!cancelled) setImageUrl(null)
+        // Don't cache failures, so a remount can retry.
+        if (!cancelled) setDescriptor(null)
       })
     return () => {
       cancelled = true
     }
   }, [entryId])
 
-  return imageUrl
+  return useBlobImageObjectUrl(descriptor)
 }

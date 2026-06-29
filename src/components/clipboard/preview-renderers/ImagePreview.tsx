@@ -1,6 +1,7 @@
 import { Image as ImageIcon, ImageDown, Loader2 } from 'lucide-react'
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
 import type { ClipboardImageItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { formatFileSize } from '@/utils/formatters'
@@ -14,7 +15,7 @@ interface ImagePreviewProps {
 
 const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageDimensions }) => {
   const { t } = useTranslation()
-  const imageUrl = preview?.contentType === 'image' ? (preview.imageUrl ?? null) : null
+  const imageBlobPath = preview?.contentType === 'image' ? (preview.imageBlobPath ?? null) : null
 
   // D6 (ADR-008 P3-d): originals above the inline threshold are not auto-pulled.
   // Reveal the `<img>` (and its blob fetch) only after an explicit click, reset
@@ -27,6 +28,10 @@ const ImagePreview: React.FC<ImagePreviewProps> = ({ loading, preview, setImageD
     setRevealedLargeImage(false)
   }
   const gateLargeImage = preview?.requiresExplicitLoad === true && !revealedLargeImage
+
+  // Resolve to a token-free `blob:` object URL; gated large images don't fetch
+  // until revealed, preserving the D6 on-demand contract.
+  const imageUrl = useBlobImageObjectUrl(imageBlobPath, !gateLargeImage)
 
   if (gateLargeImage) {
     return (

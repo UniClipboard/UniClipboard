@@ -92,7 +92,7 @@ vi.mock('@/api/daemon/clipboard', () => ({
 
 vi.mock('@/api/daemon/client', () => ({
   daemonClient: {
-    blobUrl: vi.fn((path: string) => `http://127.0.0.1:12345${path}?auth=Session+test`),
+    fetchBlob: vi.fn(),
     callSdk: vi.fn().mockResolvedValue({ data: [], ts: 1710000000000 }),
   },
 }))

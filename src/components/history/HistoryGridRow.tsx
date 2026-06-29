@@ -1,5 +1,6 @@
 import { m } from 'framer-motion'
 import React, { useEffect } from 'react'
+import { HISTORY_ENTRY_ANIMATION } from '@/components/history/history-entry-animation'
 import HistoryCard from '@/components/history/HistoryCard'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
@@ -52,9 +53,9 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
 
     return (
       <m.div
-        initial={isNew ? { opacity: 0, y: 16 } : false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        initial={isNew ? HISTORY_ENTRY_ANIMATION.initial : false}
+        animate={HISTORY_ENTRY_ANIMATION.animate}
+        transition={HISTORY_ENTRY_ANIMATION.transition}
         className={cn(
           rowHeightClass(item),
           'relative overflow-hidden transition-colors',

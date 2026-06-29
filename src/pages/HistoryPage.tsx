@@ -1,9 +1,14 @@
+import { m } from 'framer-motion'
 import React, { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import ClipboardActionBar from '@/components/clipboard/ClipboardActionBar'
 import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
 import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
 import { CompositeSearchBar, HistoryFilterPanel } from '@/components/history/composite-search'
+import {
+  HISTORY_ENTRY_ANIMATION,
+  HISTORY_PREVIEW_ENTRY_TRANSITION,
+} from '@/components/history/history-entry-animation'
 import HistoryGrid from '@/components/history/HistoryGrid'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { useTitleBarSlot } from '@/contexts/titlebar-slot-context'
@@ -129,7 +134,13 @@ const HistoryPage: React.FC = () => {
 
           {/* Preview */}
           <ResizablePanel id="history-preview" defaultSize="58%" minSize="35%">
-            <div className="flex h-full min-w-0 flex-col">
+            <m.div
+              data-testid="history-preview-motion"
+              initial={HISTORY_ENTRY_ANIMATION.initial}
+              animate={HISTORY_ENTRY_ANIMATION.animate}
+              transition={HISTORY_PREVIEW_ENTRY_TRANSITION}
+              className="flex h-full min-w-0 flex-col"
+            >
               <ClipboardPreview
                 item={c.selectedItem}
                 actions={
@@ -145,7 +156,7 @@ const HistoryPage: React.FC = () => {
                   />
                 }
               />
-            </div>
+            </m.div>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

@@ -62,6 +62,11 @@ pub struct SearchDocument {
     /// uri-list). Empty when the entry carries no files. Capture-time stable, so
     /// it is mirrored as an index render column rather than fetched lazily.
     pub file_names: Vec<String>,
+    /// Local filesystem paths of the files this entry references, decoded from a
+    /// `file://` uri-list and aligned with `file_names` by index. Empty when the
+    /// entry carries no resolvable local files. Capture-time stable, so it is
+    /// mirrored as an index render column rather than fetched lazily.
+    pub file_paths: Vec<String>,
     /// Web URLs (http/https) carried by this entry, sharing the detection
     /// contract with the `link` tag so render and filter stay consistent. Empty
     /// when none. Capture-time stable.

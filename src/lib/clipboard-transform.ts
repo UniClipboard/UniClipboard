@@ -141,7 +141,13 @@ export function searchResultToDisplayItem(r: SearchResultDto): DisplayClipboardI
       content = { urls: r.linkUrls, domains: r.linkUrls.map(extractDomainFromUrl) }
       break
     case 'file':
-      content = { file_names: r.fileNames, file_sizes: r.fileNames.map(() => -1) }
+      content = {
+        file_names: r.fileNames,
+        file_sizes: r.fileNames.map(() => -1),
+        // Local paths captured at index time (search-v9), aligned with fileNames.
+        // Empty when no file resolves to a local path; backs "open file location".
+        file_paths: r.filePaths,
+      }
       break
     case 'image':
       // ImageCard resolves the thumbnail by entry id; no structured content.

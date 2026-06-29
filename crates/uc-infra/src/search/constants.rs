@@ -36,7 +36,11 @@
 ///   of an entry's primary text content, so the UI shows the real total length
 ///   instead of the capped `text_preview` length. The rebuild backfills it for
 ///   existing rows (see the `add_search_document_char_count` migration).
-pub const CURRENT_INDEX_VERSION: &str = "search-v8";
+/// - `search-v9`: adds the `file_paths` render column — the local filesystem
+///   paths of an entry's referenced files (aligned with `file_names`), so a
+///   row can resolve a file's on-disk location without a lazy fetch. The
+///   rebuild backfills it (see the `add_search_document_file_paths` migration).
+pub const CURRENT_INDEX_VERSION: &str = "search-v9";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;

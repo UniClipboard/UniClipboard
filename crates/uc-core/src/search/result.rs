@@ -31,6 +31,9 @@ pub struct SearchResult {
     pub file_extensions: Vec<String>,
     /// Display names of referenced files (from a `file://` uri-list); empty when none.
     pub file_names: Vec<String>,
+    /// Local filesystem paths of referenced files (decoded from a `file://`
+    /// uri-list), aligned with `file_names` by index; empty when none.
+    pub file_paths: Vec<String>,
     /// Web URLs (http/https) carried by this entry, sharing the `link` tag's
     /// detection contract; empty when none.
     pub link_urls: Vec<String>,

@@ -583,6 +583,7 @@ fn pipeline_input_to_search_result(input: SearchPipelineInput) -> SearchResult {
         mime_type: input.mime_type,
         file_extensions: input.file_extensions,
         file_names: input.file_names,
+        file_paths: input.file_paths,
         link_urls: input.link_urls,
         source_device: input.source_device,
         payload_state: input.payload_state,

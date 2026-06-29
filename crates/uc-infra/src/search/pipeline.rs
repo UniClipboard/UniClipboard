@@ -76,6 +76,7 @@ impl SearchPipelinePort for SearchPipeline {
             text_preview: extracted.text_preview,
             char_count: input.char_count,
             file_names: input.file_names.clone(),
+            file_paths: input.file_paths.clone(),
             link_urls: input.link_urls.clone(),
             source_device: input.source_device.clone(),
             payload_state: input.payload_state.clone(),

@@ -43,7 +43,12 @@ const QuickPanelApp: React.FC = () => {
       clearFinalizeTimer()
       void commands
         .setQuickPanelLayout(readStoredUiScale(), false)
-        .then(() => commands.finalizeQuickPanelShow())
+        .then(() => {
+          // A newer prepare-show may have arrived during the IPC hop; if so this
+          // request is stale and the newer one will finalize itself.
+          if (nextShowRequestIdRef.current !== requestId) return
+          return commands.finalizeQuickPanelShow()
+        })
         .catch(err => {
           log.warn({ err }, 'failed to finalize quick panel show')
         })

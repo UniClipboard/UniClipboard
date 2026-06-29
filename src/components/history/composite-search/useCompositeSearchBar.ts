@@ -248,8 +248,8 @@ export function useCompositeSearchBar({
     clearAll,
     openOnFocus: suggestionActivation === 'focus',
     openFilters: () => {
-      setBuffer('')
-      onQueryChange('')
+      // Only surface the suggestion panel; keep any active text query intact so
+      // reaching for a filter doesn't wipe what the user already typed.
       setHighlight(-1)
       setOpen(true)
       inputRef.current?.focus()

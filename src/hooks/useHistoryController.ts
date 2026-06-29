@@ -10,6 +10,7 @@ import { useSearchTags } from '@/hooks/useSearchTags'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
+import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
 import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
@@ -18,6 +19,8 @@ import {
   updateHistorySessionSelection,
   writeHistorySessionSnapshot,
 } from './historySessionSnapshot'
+
+const log = createLogger('history-controller')
 
 /**
  * Orchestration layer for the History page: owns the state shared across the
@@ -42,7 +45,13 @@ export function useHistoryController() {
   // submenu has names to show even when the user lands here before ever
   // opening the Devices page (which is the only other fetch site). Idempotent.
   useEffect(() => {
-    void dispatch(fetchSpaceMembers())
+    // Surface transport failures instead of letting them masquerade as an empty
+    // device list (which would silently hide the "send to device" submenu).
+    dispatch(fetchSpaceMembers())
+      .unwrap()
+      .catch(err => {
+        log.warn({ err }, 'failed to prime paired-device list')
+      })
   }, [dispatch])
 
   const data = useHistoryData()

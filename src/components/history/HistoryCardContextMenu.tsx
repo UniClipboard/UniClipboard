@@ -95,9 +95,10 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
           <ContextMenuShortcut>F</ContextMenuShortcut>
         </ContextMenuItem>
 
-        {/* Send — dispatch to a peer (or all) without touching the local clipboard. */}
+        {/* Send — dispatch to a peer (or all) without touching the local clipboard.
+            Unavailable entries (payload lost) can't be resent, so gate it like copy. */}
         <ContextMenuSub>
-          <ContextMenuSubTrigger disabled={sendInFlight}>
+          <ContextMenuSubTrigger disabled={sendInFlight || isUnavailable}>
             {sendInFlight ? (
               <Loader2 className="mr-2 size-4 animate-spin" />
             ) : (

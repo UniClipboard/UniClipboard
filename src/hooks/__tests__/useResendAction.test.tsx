@@ -1,5 +1,5 @@
 /**
- * 跨 hook 实例的 in-flight 共享契约 —— FileContextMenu 与 EntryDeliveryBadge
+ * 跨 hook 实例的 in-flight 共享契约 —— 右键菜单与 EntryDeliveryBadge
  * 都各自调 `useResendAction()`,任一实例发起的请求必须立刻让另一实例的
  * 按钮 disable,否则用户能在右键菜单 + popover 上对同一 entry 各点一次,
  * 触发并发 IPC。
@@ -42,7 +42,7 @@ beforeEach(() => {
 
 describe('useResendAction — shared in-flight store', () => {
   it('marks the same entry in-flight across independent hook instances', async () => {
-    // 两个独立 renderHook —— 模拟 FileContextMenu 与 EntryDeliveryBadge
+    // 两个独立 renderHook —— 模拟右键菜单与 EntryDeliveryBadge
     // 同时挂载,各自调用 useResendAction()。
     const { result: instanceA } = renderHook(() => useResendAction())
     const { result: instanceB } = renderHook(() => useResendAction())

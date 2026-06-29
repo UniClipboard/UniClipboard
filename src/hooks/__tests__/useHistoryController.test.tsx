@@ -133,6 +133,7 @@ describe('useHistoryController', () => {
         tagFilter: null,
         timeRange: 'all_time',
         sourceFilter: null,
+        extensionFilter: null,
       },
       live: {
         model: { query: '', timeRange: 'all_time' },

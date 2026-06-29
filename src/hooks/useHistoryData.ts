@@ -8,8 +8,8 @@ import {
   type HistoryLiveSnapshot,
 } from '@/hooks/historySessionSnapshot'
 import { type LiveSearchQueryModel } from '@/hooks/liveSearchModel'
+import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
 import { useLiveSearch } from '@/hooks/useLiveSearch'
-import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
 import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { useAppSelector } from '@/store/hooks'
 import { type PendingClipboardEntry } from '@/store/slices/clipboardSlice'
@@ -58,12 +58,14 @@ interface SearchState {
   tagFilter: string | null
   timeRange: TimeRangePreset
   sourceFilter: string | null
+  extensionFilter: string | null
 }
 
 type SearchAction =
   | { type: 'setContentFilter'; value: Filter }
   | { type: 'setTagFilter'; value: string | null }
   | { type: 'setSourceFilter'; value: string | null }
+  | { type: 'setExtensionFilter'; value: string | null }
   | { type: 'setTimeRange'; value: TimeRangePreset }
   | { type: 'setQuery'; value: string }
   | { type: 'submitQuery'; value: string }
@@ -75,10 +77,12 @@ const INITIAL_STATE: SearchState = {
   tagFilter: null,
   timeRange: 'all_time',
   sourceFilter: null,
+  extensionFilter: null,
 }
 
 function getInitialSearchState(): SearchState {
-  return readHistorySessionSnapshot()?.searchState ?? INITIAL_STATE
+  const snapshot = readHistorySessionSnapshot()?.searchState
+  return snapshot ? { ...INITIAL_STATE, ...snapshot } : INITIAL_STATE
 }
 
 function searchReducer(state: SearchState, action: SearchAction): SearchState {
@@ -89,6 +93,8 @@ function searchReducer(state: SearchState, action: SearchAction): SearchState {
       return { ...state, tagFilter: action.value }
     case 'setSourceFilter':
       return { ...state, sourceFilter: action.value }
+    case 'setExtensionFilter':
+      return { ...state, extensionFilter: action.value }
     case 'setTimeRange':
       return { ...state, timeRange: action.value }
     case 'setQuery':
@@ -111,28 +117,13 @@ export function useHistoryData() {
 
   const pendingItems = useAppSelector(s => s.clipboard.pendingItems)
   const spaceMembers = useAppSelector(s => s.devices.spaceMembers)
-  const mobileDevices = useMobileDeviceList()
+  const sourceOptions = useHistorySourceOptions()
 
   const deviceNameByPeerId = useMemo(() => {
     const map: Record<string, string> = {}
     for (const m of spaceMembers) map[m.peerId] = m.deviceName
     return map
   }, [spaceMembers])
-
-  // Source-filter options: P2P space members + mobile-sync devices. Mobile ids
-  // are prefixed to match the `mobile_sync:<id>` value stored as the clipboard
-  // event's source_device on the backend.
-  const sourceOptions = useMemo(
-    () => [
-      ...spaceMembers.map(m => ({ id: m.peerId, name: m.deviceName, kind: 'p2p' as const })),
-      ...mobileDevices.map(d => ({
-        id: `mobile_sync:${d.deviceId}`,
-        name: d.label,
-        kind: 'mobile' as const,
-      })),
-    ],
-    [spaceMembers, mobileDevices]
-  )
 
   // "Search active" = the user narrowed the view in any way (keyword, content
   // type, tag, time, or source). Drives empty-state copy and the result count
@@ -143,7 +134,8 @@ export function useHistoryData() {
     filterToTags(state.activeFilter) !== undefined ||
     state.tagFilter !== null ||
     state.timeRange !== 'all_time' ||
-    state.sourceFilter !== null
+    state.sourceFilter !== null ||
+    state.extensionFilter !== null
 
   // Auto-submit while typing (debounced); clearing the input drops straight back
   // to browse mode. Enter bypasses the debounce via `actions.submitQuery`.
@@ -165,9 +157,17 @@ export function useHistoryData() {
       tags:
         [filterToTags(state.activeFilter), state.tagFilter].filter(Boolean).join(',') || undefined,
       sourceDevices: state.sourceFilter ?? undefined,
+      extensions: state.extensionFilter ?? undefined,
       timeRange: state.timeRange,
     }),
-    [state.submittedQuery, state.activeFilter, state.tagFilter, state.sourceFilter, state.timeRange]
+    [
+      state.submittedQuery,
+      state.activeFilter,
+      state.tagFilter,
+      state.sourceFilter,
+      state.extensionFilter,
+      state.timeRange,
+    ]
   )
 
   const initialLiveSnapshot: HistoryLiveSnapshot | null = readHistorySessionSnapshot()?.live ?? null
@@ -204,6 +204,7 @@ export function useHistoryData() {
       setContentFilter: (value: Filter) => dispatch({ type: 'setContentFilter', value }),
       setTagFilter: (value: string | null) => dispatch({ type: 'setTagFilter', value }),
       setSourceFilter: (value: string | null) => dispatch({ type: 'setSourceFilter', value }),
+      setExtensionFilter: (value: string | null) => dispatch({ type: 'setExtensionFilter', value }),
       setTimeRange: (value: TimeRangePreset) => dispatch({ type: 'setTimeRange', value }),
       setQuery: (value: string) => dispatch({ type: 'setQuery', value }),
       submitQuery: (value: string) => dispatch({ type: 'submitQuery', value }),
@@ -241,6 +242,7 @@ export function useHistoryData() {
       tagFilter: state.tagFilter,
       timeRange: state.timeRange,
       sourceFilter: state.sourceFilter,
+      extensionFilter: state.extensionFilter,
     },
     actions,
     sourceOptions,

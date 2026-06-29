@@ -734,7 +734,8 @@
         "type": "Type",
         "tag": "Tag",
         "source": "Source",
-        "time": "Time"
+        "time": "Time",
+        "extension": "Extension"
       },
       "noMatches": "No matches",
       "removeFilter": "Remove filter: {{filter}}",

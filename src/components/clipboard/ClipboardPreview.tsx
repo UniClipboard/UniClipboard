@@ -119,7 +119,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
 
   if (!item) {
     return (
-      <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 bg-card text-muted-foreground">
+      <div className="flex h-full flex-1 min-h-0 flex-col items-center justify-center gap-3 bg-card text-muted-foreground">
         <Clipboard className="size-10 text-muted-foreground/20" />
         <span className="text-sm font-medium opacity-50">{t('clipboard.preview.selectItem')}</span>
       </div>
@@ -145,7 +145,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   )
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col bg-card" data-testid="clipboard-detail">
+    <div className="flex h-full flex-1 min-h-0 flex-col bg-card" data-testid="clipboard-detail">
       <ClipboardPreviewInfo
         item={item}
         preview={preview}

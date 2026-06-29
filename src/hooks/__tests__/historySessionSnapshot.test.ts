@@ -33,6 +33,7 @@ describe('historySessionSnapshot', () => {
         tagFilter: null,
         timeRange: 'all_time',
         sourceFilter: null,
+        extensionFilter: null,
       },
       live: {
         model: { query: '' },
@@ -71,6 +72,7 @@ describe('historySessionSnapshot', () => {
         tagFilter: null,
         timeRange: 'all_time',
         sourceFilter: null,
+        extensionFilter: null,
       },
       live: {
         model: { query: '' },

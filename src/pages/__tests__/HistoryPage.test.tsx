@@ -125,6 +125,7 @@ function makeControllerState(
       submittedQuery: '',
       tagFilter: null,
       timeRange: null,
+      extensionFilter: null,
     },
     filterActions: {
       setContentFilter: vi.fn(),
@@ -132,6 +133,7 @@ function makeControllerState(
       setSourceFilter: vi.fn(),
       setTagFilter: vi.fn(),
       setTimeRange: vi.fn(),
+      setExtensionFilter: vi.fn(),
       submitQuery: vi.fn(),
     },
     handleCardClick: vi.fn(),

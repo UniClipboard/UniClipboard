@@ -724,7 +724,8 @@
         "type": "类型",
         "tag": "标签",
         "source": "来源",
-        "time": "时间"
+        "time": "时间",
+        "extension": "扩展名"
       },
       "noMatches": "无匹配项",
       "removeFilter": "移除筛选：{{filter}}",

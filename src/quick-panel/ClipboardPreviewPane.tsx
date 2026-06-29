@@ -1,127 +1,20 @@
-import { File, ImageDown, Loader2 } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import EntryDeliveryBadge from '@/components/clipboard/EntryDeliveryBadge'
-import VirtualizedText from '@/components/clipboard/VirtualizedText'
-import { useClipboardPreview } from './useClipboardPreview'
+import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 
 interface ClipboardPreviewPaneProps {
-  entryId: string | null
+  item: DisplayClipboardItem | null
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-const ClipboardPreviewPane: React.FC<ClipboardPreviewPaneProps> = ({ entryId }) => {
+function ClipboardPreviewPane({ item }: ClipboardPreviewPaneProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'previewPanel' })
-  const { preview, loading, error, delivery } = useClipboardPreview(entryId)
   const isMac = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
 
-  // D6 (ADR-008 P3-d): originals above the inline threshold are not auto-pulled.
-  // Reveal the `<img>` (and thus the blob fetch) only after an explicit click,
-  // resetting whenever the selected entry changes. Adjust the state during render
-  // rather than in an effect, so the gate never flashes a stale frame on change.
-  const [revealedLargeImage, setRevealedLargeImage] = useState(false)
-  const [prevEntryId, setPrevEntryId] = useState(entryId)
-  if (entryId !== prevEntryId) {
-    setPrevEntryId(entryId)
-    setRevealedLargeImage(false)
-  }
-  const gateLargeImage = preview?.requiresExplicitLoad === true && !revealedLargeImage
-
-  const isLargeText =
-    preview?.contentType === 'text' &&
-    preview.textContent != null &&
-    preview.textContent.length > 50_000
-
   return (
-    <div className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-background/95 shadow-xl backdrop-blur-xl">
-      <div
-        className="flex items-center gap-3 border-b border-border/50 px-3 py-2"
-        data-testid="quick-panel-titlebar"
-      >
-        <span className="shrink-0 text-[12px] font-medium text-foreground">{t('title')}</span>
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
-          <EntryDeliveryBadge delivery={delivery} />
-          {preview && (
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-              {formatBytes(preview.sizeBytes)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div
-        className={
-          isLargeText ? 'flex-1 min-h-0 px-3 py-2' : 'scrollbar-thin flex-1 overflow-auto px-3 py-2'
-        }
-        data-testid="quick-panel-preview-area"
-      >
-        {loading ? (
-          <div className="flex h-full items-center justify-center" aria-live="polite">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : error ? (
-          <div className="flex h-full items-center justify-center text-[12px] text-destructive">
-            {t('error')}
-          </div>
-        ) : preview ? (
-          preview.contentType === 'image' ? (
-            <div className="flex h-full items-center justify-center">
-              {gateLargeImage ? (
-                <div className="flex flex-col items-center gap-2 text-center">
-                  <span className="text-[12px] font-medium text-foreground">
-                    {t('largeImageTitle')}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {t('largeImageHint', { size: formatBytes(preview.sizeBytes) })}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setRevealedLargeImage(true)}
-                    className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-muted/50"
-                  >
-                    <ImageDown className="size-3.5" />
-                    {t('loadLargeImage')}
-                  </button>
-                </div>
-              ) : preview.imageUrl ? (
-                <img
-                  src={preview.imageUrl}
-                  className="max-h-full max-w-full rounded-md object-contain"
-                  alt={t('imageAlt')}
-                />
-              ) : (
-                <span className="text-[12px] text-muted-foreground">{t('imageUnavailable')}</span>
-              )}
-            </div>
-          ) : preview.contentType === 'file' && preview.fileNames ? (
-            <div className="flex flex-col gap-2">
-              {preview.fileNames.map((name, i) => (
-                <div
-                  key={`${name}-${i}`}
-                  className="flex items-center gap-2 text-[12px] text-foreground"
-                >
-                  <File className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{name}</span>
-                </div>
-              ))}
-            </div>
-          ) : isLargeText ? (
-            <VirtualizedText text={preview.textContent!} className="scrollbar-thin h-full" />
-          ) : (
-            <pre className="cursor-text whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground select-text">
-              {preview.textContent}
-            </pre>
-          )
-        ) : (
-          <div className="flex h-full items-center justify-center text-[12px] text-muted-foreground">
-            {t('empty')}
-          </div>
-        )}
+    <div className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-card text-card-foreground shadow-xl backdrop-blur-xl">
+      <div className="min-h-0 flex-1" data-testid="quick-panel-preview-area">
+        <ClipboardPreview item={item} />
       </div>
 
       <div className="flex items-center justify-start border-t border-border/50 px-3 py-1.5 text-[11px] text-muted-foreground">

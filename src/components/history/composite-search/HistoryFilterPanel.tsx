@@ -11,10 +11,12 @@ interface HistoryFilterPanelProps {
   sourceFilter: string | null
   tagFilter: string | null
   timeRange: TimeRangePreset
+  extensionFilter: string | null
   onContentFilterChange: (filter: Filter) => void
   onTagFilterChange: (tag: string | null) => void
   onSourceFilterChange: (id: string | null) => void
   onTimeRangeChange: (preset: TimeRangePreset) => void
+  onExtensionFilterChange: (extension: string | null) => void
   sourceOptions: SourceOption[]
   tagOptions: SearchTagOption[]
 }
@@ -80,15 +82,23 @@ function HistoryFilterPanel({
   sourceFilter,
   tagFilter,
   timeRange,
+  extensionFilter,
   onContentFilterChange,
   onTagFilterChange,
   onSourceFilterChange,
   onTimeRangeChange,
+  onExtensionFilterChange,
   sourceOptions,
   tagOptions,
 }: HistoryFilterPanelProps) {
   const { t } = useTranslation()
-  const current = { type: contentFilter, tag: tagFilter, source: sourceFilter, time: timeRange }
+  const current = {
+    type: contentFilter,
+    tag: tagFilter,
+    source: sourceFilter,
+    time: timeRange,
+    extension: extensionFilter,
+  }
   const typeCandidates = buildCandidates('type', '', { t, sourceOptions, tagOptions, current })
   const tagCandidates = buildCandidates('tag', '', {
     t,
@@ -98,6 +108,12 @@ function HistoryFilterPanel({
   }).filter(opt => opt.value !== Filter.Favorited)
   const sourceCandidates = buildCandidates('source', '', { t, sourceOptions, tagOptions, current })
   const timeCandidates = buildCandidates('time', '', { t, sourceOptions, tagOptions, current })
+  const extensionCandidates = buildCandidates('extension', '', {
+    t,
+    sourceOptions,
+    tagOptions,
+    current,
+  })
 
   return (
     <aside className="no-scrollbar w-44 shrink-0 overflow-y-auto border-r border-border/60 bg-muted/20 px-2 py-3">
@@ -177,6 +193,18 @@ function HistoryFilterPanel({
             label={opt.label}
             active={opt.isActive}
             onClick={() => onTimeRangeChange(opt.value as TimeRangePreset)}
+          />
+        ))}
+      </PanelSection>
+
+      <PanelSection title={t(DIMENSION_LABEL_KEYS.extension)}>
+        {extensionCandidates.map(opt => (
+          <PanelRow
+            key={opt.id}
+            icon={opt.icon}
+            label={opt.label}
+            active={opt.isActive}
+            onClick={() => onExtensionFilterChange(opt.isActive ? null : opt.value)}
           />
         ))}
       </PanelSection>

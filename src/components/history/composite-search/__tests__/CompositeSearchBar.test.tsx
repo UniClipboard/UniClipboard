@@ -27,10 +27,12 @@ function renderSearchBar(overrides: Partial<React.ComponentProps<typeof Composit
     sourceFilter: null,
     tagFilter: null,
     timeRange: 'all_time' as TimeRangePreset,
+    extensionFilter: null,
     onContentFilterChange: vi.fn(),
     onTagFilterChange: vi.fn(),
     onSourceFilterChange: vi.fn(),
     onTimeRangeChange: vi.fn(),
+    onExtensionFilterChange: vi.fn(),
     onQueryChange: vi.fn(),
     onQuerySubmit: vi.fn(),
     sourceOptions: [{ id: 'device-1', name: 'MacBook', kind: 'p2p' }],
@@ -73,6 +75,7 @@ describe('CompositeSearchBar', () => {
       sourceFilter: 'device-1',
       tagFilter: 'code',
       timeRange: 'today',
+      extensionFilter: 'md',
     })
 
     await user.click(screen.getByRole('button', { name: 'history.composite.clearAll' }))
@@ -81,6 +84,7 @@ describe('CompositeSearchBar', () => {
     expect(props.onTagFilterChange).toHaveBeenCalledWith(null)
     expect(props.onSourceFilterChange).toHaveBeenCalledWith(null)
     expect(props.onTimeRangeChange).toHaveBeenCalledWith('all_time')
+    expect(props.onExtensionFilterChange).toHaveBeenCalledWith(null)
     expect(props.onQueryChange).toHaveBeenCalledWith('')
   })
 })
@@ -93,10 +97,12 @@ function renderFilterPanel(
     sourceFilter: null,
     tagFilter: null,
     timeRange: 'all_time' as TimeRangePreset,
+    extensionFilter: null,
     onContentFilterChange: vi.fn(),
     onTagFilterChange: vi.fn(),
     onSourceFilterChange: vi.fn(),
     onTimeRangeChange: vi.fn(),
+    onExtensionFilterChange: vi.fn(),
     sourceOptions: [],
     tagOptions: [],
     ...overrides,

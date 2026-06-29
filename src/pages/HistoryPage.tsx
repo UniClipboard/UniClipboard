@@ -32,10 +32,12 @@ const HistoryPage: React.FC = () => {
         sourceFilter={c.filter.sourceFilter}
         tagFilter={c.filter.tagFilter}
         timeRange={c.filter.timeRange}
+        extensionFilter={c.filter.extensionFilter}
         onContentFilterChange={c.filterActions.setContentFilter}
         onTagFilterChange={c.filterActions.setTagFilter}
         onSourceFilterChange={c.filterActions.setSourceFilter}
         onTimeRangeChange={c.filterActions.setTimeRange}
+        onExtensionFilterChange={c.filterActions.setExtensionFilter}
         onQueryChange={c.filterActions.setQuery}
         onQuerySubmit={text => c.filterActions.submitQuery(text.trim())}
         sourceOptions={c.sourceOptions}
@@ -49,6 +51,7 @@ const HistoryPage: React.FC = () => {
       c.filter.sourceFilter,
       c.filter.tagFilter,
       c.filter.timeRange,
+      c.filter.extensionFilter,
       c.filterActions,
       c.sourceOptions,
       c.searchableTags,
@@ -95,10 +98,12 @@ const HistoryPage: React.FC = () => {
           sourceFilter={c.filter.sourceFilter}
           tagFilter={c.filter.tagFilter}
           timeRange={c.filter.timeRange}
+          extensionFilter={c.filter.extensionFilter}
           onContentFilterChange={c.filterActions.setContentFilter}
           onTagFilterChange={c.filterActions.setTagFilter}
           onSourceFilterChange={c.filterActions.setSourceFilter}
           onTimeRangeChange={c.filterActions.setTimeRange}
+          onExtensionFilterChange={c.filterActions.setExtensionFilter}
           sourceOptions={c.sourceOptions}
           tagOptions={c.searchableTags}
         />

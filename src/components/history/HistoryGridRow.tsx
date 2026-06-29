@@ -2,6 +2,7 @@ import { m } from 'framer-motion'
 import React, { useEffect } from 'react'
 import { HISTORY_ENTRY_ANIMATION } from '@/components/history/history-entry-animation'
 import HistoryCard from '@/components/history/HistoryCard'
+import HistoryCardContextMenu from '@/components/history/HistoryCardContextMenu'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 
@@ -63,17 +64,24 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
           isActive && 'bg-primary/[0.06]'
         )}
       >
-        <HistoryCard
+        <HistoryCardContextMenu
           item={item}
-          isHovered={isHovered}
-          copySuccess={copySuccess}
-          isDeleting={isDeleting}
           onCopy={onCopy}
-          onDelete={onDelete}
           onToggleFavorite={onToggleFavorite}
-          onClick={onClick}
-          onHoverChange={onHoverChange}
-        />
+          onDelete={onDelete}
+        >
+          <HistoryCard
+            item={item}
+            isHovered={isHovered}
+            copySuccess={copySuccess}
+            isDeleting={isDeleting}
+            onCopy={onCopy}
+            onDelete={onDelete}
+            onToggleFavorite={onToggleFavorite}
+            onClick={onClick}
+            onHoverChange={onHoverChange}
+          />
+        </HistoryCardContextMenu>
       </m.div>
     )
   }

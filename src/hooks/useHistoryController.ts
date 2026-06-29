@@ -12,6 +12,7 @@ import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
 import { useAppDispatch } from '@/store/hooks'
 import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
+import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
 import {
   readHistorySessionSnapshot,
   updateHistorySessionSelection,
@@ -36,6 +37,13 @@ export function useHistoryController() {
   useShortcutScope('clipboard')
   // Activate the file-transfer progress event listener for this page.
   useTransferProgress()
+
+  // Prime the paired-device list so the row context menu's "send to device"
+  // submenu has names to show even when the user lands here before ever
+  // opening the Devices page (which is the only other fetch site). Idempotent.
+  useEffect(() => {
+    void dispatch(fetchSpaceMembers())
+  }, [dispatch])
 
   const data = useHistoryData()
   const searchableTags = useSearchTags()

@@ -874,10 +874,17 @@
       "size": "Size",
       "dimensions": "Dimensions",
       "filesCount": "{{count}} files",
+      "imageFilesAriaLabel": "Image files",
+      "imagesCount": "{{count}} images",
       "sourceDevice": "Source device"
     },
     "contextMenu": {
       "copy": "Copy",
+      "favorite": "Favorite",
+      "unfavorite": "Unfavorite",
+      "send": "Send to",
+      "sendAll": "All devices",
+      "sendNoDevices": "No paired devices",
       "fileDeleted": "File deleted",
       "openFileLocation": "Open File Location",
       "resend": "Resend",

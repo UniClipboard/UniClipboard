@@ -32,17 +32,17 @@ hold focus indefinitely.
 
 The panel is meant to be driven entirely by keyboard. The full set:
 
-| Key                      | Action                                        |
-| ------------------------ | --------------------------------------------- |
-| `↑` / `↓`                | Move selection                                |
-| `Enter`                  | Paste the selected item into the previous app |
-| Hold `Option` / `Alt`    | Request plain-text paste                      |
-| `Esc`                    | Close without pasting                         |
-| `Alt + Backspace`        | Remove the selected item from history         |
-| `Cmd` / `Ctrl` + `1`–`9` | Jump to items 1–9                             |
-| `Cmd` / `Ctrl` + `0`     | Jump to item 10                               |
-| Just type                | Live substring filter (case-insensitive)      |
-| Type `type:` `#` `from:` `ext:` `time:` | Add a filter chip inline (see Filtering) |
+| Key                                     | Action                                        |
+| --------------------------------------- | --------------------------------------------- |
+| `↑` / `↓`                               | Move selection                                |
+| `Enter`                                 | Paste the selected item into the previous app |
+| Hold `Option` / `Alt`                   | Request plain-text paste                      |
+| `Esc`                                   | Close without pasting                         |
+| `Alt + Backspace`                       | Remove the selected item from history         |
+| `Cmd` / `Ctrl` + `1`–`9`                | Jump to items 1–9                             |
+| `Cmd` / `Ctrl` + `0`                    | Jump to item 10                               |
+| Just type                               | Live substring filter (case-insensitive)      |
+| Type `type:` `#` `from:` `ext:` `time:` | Add a filter chip inline (see Filtering)      |
 
 `Enter` simulates a system paste, so the receiving app sees what looks
 like a regular Cmd/Ctrl+V — rich text and files land at the highest
@@ -60,12 +60,12 @@ multi-format paste.
 When an item is selected, the right pane renders it in the format
 matching its content type:
 
-| Representation | Preview                                                   |
-| -------------- | --------------------------------------------------------- |
-| Plain text     | Monospace; virtualized scrolling for large text (> 50 KB) |
-| Link           | Extracted domain plus the full URL                        |
-| Image          | Embedded thumbnail, fit-to-area, with dimensions          |
-| Code / HTML    | Same renderer as plain text (no syntax highlighting yet)  |
+| Representation | Preview                                                                     |
+| -------------- | --------------------------------------------------------------------------- |
+| Plain text     | Monospace; virtualized scrolling for large text (> 50 KB)                   |
+| Link           | Extracted domain plus the full URL                                          |
+| Image          | Embedded thumbnail, fit-to-area, with dimensions                            |
+| Code / HTML    | Same renderer as plain text (no syntax highlighting yet)                    |
 | File           | Filenames with icons; image files render a thumbnail; multi-file row-by-row |
 
 Images larger than 8 MB aren't pulled automatically — the pane shows a
@@ -147,12 +147,12 @@ Combinations that are unlikely to clash with system or IDE shortcuts:
 
 ## When to use the panel vs. the main window
 
-| What you want                                      | Best surface                                             |
-| -------------------------------------------------- | -------------------------------------------------------- |
-| Paste a recent item right now                      | Quick Panel                                              |
+| What you want                                      | Best surface                                                        |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| Paste a recent item right now                      | Quick Panel                                                         |
 | Find something from days ago across devices        | Quick Panel filters (type / source / time), or CLI `uniclip search` |
-| Long sessions of triage, bulk delete, export       | Main window (Dashboard)                                  |
-| Configure filters or per-device content-type rules | [Devices](./devices) / [Settings](../guides/settings)    |
+| Long sessions of triage, bulk delete, export       | Main window (Dashboard)                                             |
+| Configure filters or per-device content-type rules | [Devices](./devices) / [Settings](../guides/settings)               |
 
 ## Troubleshooting
 

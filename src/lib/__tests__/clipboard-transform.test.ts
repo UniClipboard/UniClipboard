@@ -138,6 +138,7 @@ function makeSearchResult(overrides: Partial<SearchResultDto> = {}): SearchResul
     mimeType: 'text/plain',
     fileExtensions: [],
     fileNames: [],
+    filePaths: [],
     linkUrls: [],
     sourceDevice: null,
     payloadState: null,
@@ -170,5 +171,22 @@ describe('searchResultToDisplayItem', () => {
 
     expect(item.type).toBe('code')
     expect(item.contentTags).toEqual(['code'])
+  })
+
+  it('maps file search results to file content carrying names and local paths', () => {
+    const item = searchResultToDisplayItem(
+      makeSearchResult({
+        contentType: 'file',
+        mimeType: 'text/uri-list',
+        fileNames: ['report.pdf'],
+        filePaths: ['/tmp/report.pdf'],
+      })
+    )
+
+    expect(item.type).toBe('file')
+    expect(item.content).toMatchObject({
+      file_names: ['report.pdf'],
+      file_paths: ['/tmp/report.pdf'],
+    })
   })
 })

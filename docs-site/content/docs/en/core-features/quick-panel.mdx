@@ -32,17 +32,17 @@ hold focus indefinitely.
 
 The panel is meant to be driven entirely by keyboard. The full set:
 
-| Key                      | Action                                        |
-| ------------------------ | --------------------------------------------- |
-| `↑` / `↓`                | Move selection                                |
-| `Enter`                  | Paste the selected item into the previous app |
-| Hold `Option` / `Alt`    | Request plain-text paste                      |
-| `Esc`                    | Close without pasting                         |
-| `Alt + Backspace`        | Remove the selected item from history         |
-| `Cmd` / `Ctrl` + `1`–`9` | Jump to items 1–9                             |
-| `Cmd` / `Ctrl` + `0`     | Jump to item 10                               |
-| Just type                | Live substring filter (case-insensitive)      |
-| `:` at start of search   | Switch to advanced search (see below)         |
+| Key                                     | Action                                        |
+| --------------------------------------- | --------------------------------------------- |
+| `↑` / `↓`                               | Move selection                                |
+| `Enter`                                 | Paste the selected item into the previous app |
+| Hold `Option` / `Alt`                   | Request plain-text paste                      |
+| `Esc`                                   | Close without pasting                         |
+| `Alt + Backspace`                       | Remove the selected item from history         |
+| `Cmd` / `Ctrl` + `1`–`9`                | Jump to items 1–9                             |
+| `Cmd` / `Ctrl` + `0`                    | Jump to item 10                               |
+| Just type                               | Live substring filter (case-insensitive)      |
+| Type `type:` `#` `from:` `ext:` `time:` | Add a filter chip inline (see Filtering)      |
 
 `Enter` simulates a system paste, so the receiving app sees what looks
 like a regular Cmd/Ctrl+V — rich text and files land at the highest
@@ -60,13 +60,13 @@ multi-format paste.
 When an item is selected, the right pane renders it in the format
 matching its content type:
 
-| Representation | Preview                                                   |
-| -------------- | --------------------------------------------------------- |
-| Plain text     | Monospace; virtualized scrolling for large text (> 50 KB) |
-| Link           | Extracted domain plus the full URL                        |
-| Image          | Embedded thumbnail, fit-to-area, with dimensions          |
-| Code / HTML    | Same renderer as plain text (no syntax highlighting yet)  |
-| File           | List of filenames with icons; multi-file shown row-by-row |
+| Representation | Preview                                                                     |
+| -------------- | --------------------------------------------------------------------------- |
+| Plain text     | Monospace; virtualized scrolling for large text (> 50 KB)                   |
+| Link           | Extracted domain plus the full URL                                          |
+| Image          | Embedded thumbnail, fit-to-area, with dimensions                            |
+| Code / HTML    | Same renderer as plain text (no syntax highlighting yet)                    |
+| File           | Filenames with icons; image files render a thumbnail; multi-file row-by-row |
 
 Images larger than 8 MB aren't pulled automatically — the pane shows a
 **Load image** button instead, so a big original never blocks the
@@ -75,40 +75,39 @@ preview. Click it to fetch the full image on demand.
 The preview is **read-only**. To put the item back on the system
 clipboard or paste it, return to the list and hit `Enter`.
 
-## Type and time filters
+## Filtering
 
-Two filter controls live above the list. They stack — applying both
-narrows the result.
+The search box is a composite filter bar. Type to match by substring,
+and layer **structured filters** that show up as removable chips. Five
+dimensions are available:
 
-- **Type chips**: All / Text / Image / Link / File / Code
-- **Time dropdown**: Today, Yesterday, Last 7 days, Last 30 days, This
-  week, This month, or All time
+- **Type** — Text / Image / File (legacy `Link` / `Code` chips still
+  resolve).
+- **Tag** — semantic tags such as `link` or `code`.
+- **Source** — the device an item was captured on.
+- **Extension** — file extension, for file payloads.
+- **Time** — Today, Yesterday, Last 7 days, Last 30 days, This week, or
+  This month.
 
-Filters are in-memory only and **don't persist** across panel
-sessions — every reopen starts at "All". The panel is a use-and-throw
-surface, not a workbench.
-
-## Advanced search (`:` mode)
-
-Type `:` at the start of the search box to switch into advanced mode,
-where filter conditions go inline with the query:
+Add a chip two ways: click the **filter button** at the end of the box
+and pick a value, or type its prefix and choose from the suggestions:
 
 ```text
-:type:image 2026
-:type:code ext:ts useEffect
-:ext:pdf report
+type:image
+#link
+from:<device>
+ext:pdf
+time:last_7d
 ```
 
-Supported tokens:
+Chips stack — multiple filters are AND-ed — and each has an ✕ to clear
+it. Plain words outside a chip match as a substring; quoted phrases,
+boolean operators, and regex are **not** supported (see
+[Full-text search — Query syntax](./search#query-syntax)).
 
-- `type:<text|image|link|file|code>` — restrict by content type
-  (equivalent to clicking a type chip).
-- `ext:<extension>` — restrict by file extension (only meaningful for
-  file payloads).
-- Any other token is a substring filter; multiple tokens are AND-ed.
-
-Quoted phrases, boolean operators, and regex are **not** supported —
-see [Full-text search — Query syntax](./search#query-syntax).
+Filters are in-memory only and **don't persist** across panel
+sessions — every reopen starts unfiltered. The panel is a use-and-throw
+surface, not a workbench.
 
 <Callout type="info">
   The CLI equivalent is `uniclip search` with `--type`, `--ext`, `--from-ms`, and `--to-ms`. See
@@ -148,12 +147,12 @@ Combinations that are unlikely to clash with system or IDE shortcuts:
 
 ## When to use the panel vs. the main window
 
-| What you want                                      | Best surface                                             |
-| -------------------------------------------------- | -------------------------------------------------------- |
-| Paste a recent item right now                      | Quick Panel                                              |
-| Find something from days ago across devices        | Quick Panel `:` advanced search, or CLI `uniclip search` |
-| Long sessions of triage, bulk delete, export       | Main window (Dashboard)                                  |
-| Configure filters or per-device content-type rules | [Devices](./devices) / [Settings](../guides/settings)    |
+| What you want                                      | Best surface                                                        |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| Paste a recent item right now                      | Quick Panel                                                         |
+| Find something from days ago across devices        | Quick Panel filters (type / source / time), or CLI `uniclip search` |
+| Long sessions of triage, bulk delete, export       | Main window (Dashboard)                                             |
+| Configure filters or per-device content-type rules | [Devices](./devices) / [Settings](../guides/settings)               |
 
 ## Troubleshooting
 

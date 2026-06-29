@@ -49,6 +49,9 @@ pub struct SearchDocumentRow {
     /// Full character count of the entry's primary text content, or `NULL` when
     /// the entry carries no inline text.
     pub char_count: Option<i64>,
+    /// JSON array of local filesystem paths (e.g. `["/tmp/a.txt"]`); `'[]'` when
+    /// none. Aligned with `file_names` by index.
+    pub file_paths: String,
 }
 
 /// Insertable row for `search_document`.
@@ -71,6 +74,7 @@ pub struct NewSearchDocumentRow {
     pub source_device: Option<String>,
     pub payload_state: Option<String>,
     pub char_count: Option<i64>,
+    pub file_paths: String,
 }
 
 impl NewSearchDocumentRow {
@@ -84,6 +88,7 @@ impl NewSearchDocumentRow {
         let file_type = content_type_json.trim_matches('"').to_string();
         let file_extensions = serde_json::to_string(&document.file_extensions)?;
         let file_names = serde_json::to_string(&document.file_names)?;
+        let file_paths = serde_json::to_string(&document.file_paths)?;
         let link_urls = serde_json::to_string(&document.link_urls)?;
 
         Ok(Self {
@@ -103,6 +108,7 @@ impl NewSearchDocumentRow {
             source_device: document.source_device.clone(),
             payload_state: document.payload_state.clone(),
             char_count: document.char_count,
+            file_paths,
         })
     }
 }
@@ -118,6 +124,7 @@ impl SearchDocumentRow {
         let content_type: ContentType = serde_json::from_str(&content_type_json)?;
         let file_extensions: Vec<String> = serde_json::from_str(&self.file_extensions)?;
         let file_names: Vec<String> = serde_json::from_str(&self.file_names)?;
+        let file_paths: Vec<String> = serde_json::from_str(&self.file_paths)?;
         let link_urls: Vec<String> = serde_json::from_str(&self.link_urls)?;
 
         Ok(SearchDocument {
@@ -136,6 +143,7 @@ impl SearchDocumentRow {
             index_version: self.index_version.clone(),
             text_preview: self.text_preview.clone(),
             file_names,
+            file_paths,
             link_urls,
             source_device: self.source_device.clone(),
             payload_state: self.payload_state.clone(),
@@ -303,6 +311,7 @@ mod tests {
             index_version: CURRENT_INDEX_VERSION.to_string(),
             text_preview: None,
             file_names: vec![],
+            file_paths: vec![],
             link_urls: vec![],
             source_device: None,
             payload_state: None,

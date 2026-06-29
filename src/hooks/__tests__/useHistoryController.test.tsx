@@ -115,7 +115,9 @@ vi.mock('@/hooks/useDeleteFlow', () => ({
 }))
 
 vi.mock('@/store/hooks', () => ({
-  useAppDispatch: () => vi.fn(),
+  // Async-thunk dispatches are unwrapped (`.unwrap()`) to surface failures, so
+  // the mock returns an unwrappable handle rather than a bare value.
+  useAppDispatch: () => vi.fn(() => ({ unwrap: () => Promise.resolve() })),
 }))
 
 describe('useHistoryController', () => {
@@ -133,6 +135,7 @@ describe('useHistoryController', () => {
         tagFilter: null,
         timeRange: 'all_time',
         sourceFilter: null,
+        extensionFilter: null,
       },
       live: {
         model: { query: '', timeRange: 'all_time' },

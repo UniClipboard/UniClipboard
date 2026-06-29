@@ -2046,7 +2046,7 @@ export type SearchResultDto = {
     activeTimeMs: number;
     /**
      * Full character count of the entry's primary text content, so the UI shows
-     * the real total length rather than the capped `text_preview` length. `null`
+     * the real total length rather than the capped `textPreview` length. `null`
      * for entries with no inline text (image / file / payload lost).
      */
     charCount?: number | null;
@@ -2057,6 +2057,11 @@ export type SearchResultDto = {
      * Display names of referenced files; empty when none.
      */
     fileNames: Array<string>;
+    /**
+     * Local filesystem paths of referenced files, aligned with `file_names` by
+     * index; empty when none.
+     */
+    filePaths: Array<string>;
     /**
      * Web URLs (http/https) carried by this entry; empty when none.
      */

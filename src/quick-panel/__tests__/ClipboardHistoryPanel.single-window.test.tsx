@@ -13,6 +13,8 @@ vi.mock('@tauri-apps/api/event', () => ({
 }))
 
 vi.mock('@/hooks/useThemeSync', () => ({ useThemeSync: vi.fn() }))
+vi.mock('@/hooks/useHistorySourceOptions', () => ({ useHistorySourceOptions: () => [] }))
+vi.mock('@/hooks/useShortcut', () => ({ useShortcut: vi.fn() }))
 
 // The panel now sources its list from the unified live browse/search hook; mock
 // it directly with the launcher's simplified DisplayItem shape (these tests
@@ -35,6 +37,22 @@ vi.mock('../hooks/useHistorySearch', () => ({
         isUnavailable: false,
       },
     ],
+    previewItems: [
+      {
+        id: 'entry-1',
+        type: 'text',
+        content: { display_text: 'Preview title', has_detail: false, size: 13 },
+        activeTime: Date.now(),
+        isUnavailable: false,
+      },
+      {
+        id: 'entry-2',
+        type: 'text',
+        content: { display_text: 'Second preview title', has_detail: false, size: 20 },
+        activeTime: Date.now() - 1000,
+        isUnavailable: false,
+      },
+    ],
     isSearching: false,
     searchTotal: 2,
     loading: false,
@@ -47,6 +65,7 @@ vi.mock('../hooks/useHistorySearch', () => ({
 vi.mock('@/api/daemon', () => ({
   restoreClipboardEntry: vi.fn(),
   deleteClipboardEntry: vi.fn(),
+  getEncryptionState: vi.fn().mockResolvedValue({ initialized: false, sessionReady: false }),
 }))
 
 vi.mock('@/api/security', () => ({
@@ -74,12 +93,13 @@ vi.mock('@/api/daemon/clipboard', () => ({
 vi.mock('@/api/daemon/client', () => ({
   daemonClient: {
     blobUrl: vi.fn((path: string) => `http://127.0.0.1:12345${path}?auth=Session+test`),
+    callSdk: vi.fn().mockResolvedValue({ data: [], ts: 1710000000000 }),
   },
 }))
 
 vi.mock('../ClipboardPreviewPane', () => ({
-  default: ({ entryId }: { entryId: string | null }) =>
-    entryId ? <div>{`Preview for ${entryId}`}</div> : <div data-testid="preview-empty" />,
+  default: ({ item }: { item: { id: string } | null }) =>
+    item ? <div>{`Preview for ${item.id}`}</div> : <div data-testid="preview-empty" />,
 }))
 
 function deferred() {

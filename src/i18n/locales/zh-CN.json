@@ -724,7 +724,8 @@
         "type": "类型",
         "tag": "标签",
         "source": "来源",
-        "time": "时间"
+        "time": "时间",
+        "extension": "扩展名"
       },
       "noMatches": "无匹配项",
       "removeFilter": "移除筛选：{{filter}}",
@@ -864,10 +865,17 @@
       "size": "大小",
       "dimensions": "分辨率",
       "filesCount": "{{count}} 个文件",
+      "imageFilesAriaLabel": "图片文件",
+      "imagesCount": "{{count}} 张图片",
       "sourceDevice": "来源设备"
     },
     "contextMenu": {
       "copy": "复制",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
+      "send": "发送到",
+      "sendAll": "所有设备",
+      "sendNoDevices": "暂无已配对设备",
       "fileDeleted": "文件已删除",
       "openFileLocation": "打开文件位置",
       "resend": "重发",

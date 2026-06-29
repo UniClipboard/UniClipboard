@@ -66,6 +66,7 @@ describe('useHistoryData', () => {
         tagFilter: null,
         timeRange: 'all_time',
         sourceFilter: null,
+        extensionFilter: null,
       },
       live: {
         model: { query: '', timeRange: 'all_time' },
@@ -99,6 +100,7 @@ describe('useHistoryData', () => {
             mimeType: 'text/plain',
             fileExtensions: [],
             fileNames: [],
+            filePaths: [],
             linkUrls: [],
             sourceDevice: null,
             payloadState: null,
@@ -135,6 +137,7 @@ describe('useHistoryData', () => {
             mimeType: 'text/plain',
             fileExtensions: [],
             fileNames: [],
+            filePaths: [],
             linkUrls: [],
             sourceDevice: null,
             payloadState: null,

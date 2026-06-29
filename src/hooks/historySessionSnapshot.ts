@@ -13,6 +13,7 @@ export interface HistorySearchStateSnapshot {
   tagFilter: string | null
   timeRange: TimeRangePreset
   sourceFilter: string | null
+  extensionFilter: string | null
 }
 
 export interface HistoryLiveSnapshot {

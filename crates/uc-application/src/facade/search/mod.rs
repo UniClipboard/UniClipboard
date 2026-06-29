@@ -68,6 +68,9 @@ pub struct SearchResultView {
     pub mime_type: String,
     pub file_extensions: Vec<String>,
     pub file_names: Vec<String>,
+    /// Local filesystem paths of referenced files, aligned with `file_names` by
+    /// index; empty when none.
+    pub file_paths: Vec<String>,
     pub link_urls: Vec<String>,
     pub source_device: Option<String>,
     pub payload_state: Option<String>,
@@ -284,6 +287,7 @@ fn search_page_to_view(page: uc_core::search::SearchResultsPage, state: &str) ->
                 mime_type: item.mime_type,
                 file_extensions: item.file_extensions,
                 file_names: item.file_names,
+                file_paths: item.file_paths,
                 link_urls: item.link_urls,
                 source_device: item.source_device,
                 payload_state: item.payload_state,

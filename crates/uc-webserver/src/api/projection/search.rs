@@ -30,6 +30,7 @@ impl IntoApiDto<Vec<SearchResultDto>> for SearchPageView {
                 mime_type: result.mime_type,
                 file_extensions: result.file_extensions,
                 file_names: result.file_names,
+                file_paths: result.file_paths,
                 link_urls: result.link_urls,
                 source_device: result.source_device,
                 payload_state: result.payload_state,

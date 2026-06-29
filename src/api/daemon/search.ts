@@ -51,6 +51,8 @@ export interface SearchResultDto {
   fileExtensions: string[]
   /** Display names of referenced files; empty when none. */
   fileNames: string[]
+  /** Local filesystem paths of referenced files, aligned with fileNames by index; empty when none. */
+  filePaths: string[]
   /** Web URLs (http/https) carried by this entry; empty when none. */
   linkUrls: string[]
   /** Originating device id, or null when the source is unknown. */

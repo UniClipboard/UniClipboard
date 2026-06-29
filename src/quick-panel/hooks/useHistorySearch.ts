@@ -39,79 +39,18 @@ function toDisplayItem(item: DisplayClipboardItem, imageLabel: string): DisplayI
   }
 }
 
-/** The `type:` token vocabulary. New entry is via physical content types
- * (`text`/`image`/`file`); `link`/`code` are kept as legacy aliases so
- * previously-typed or saved `type:link` / `type:code` tokens still resolve to
- * their tag filters instead of falling through as raw content types. */
-const TYPE_TOKEN_TO_FILTER: Record<string, Filter> = {
-  text: Filter.Text,
-  image: Filter.Image,
-  file: Filter.File,
-  link: Filter.Link,
-  code: Filter.Code,
-}
-
-/**
- * Map a `type:<value>` token onto the backend search contract. Known values are
- * routed through {@link filterToContentTypes}. Unknown values pass through as a
- * raw content type so the backend can still match or reject them.
- */
-function classifyTypeToken(value: string): { contentType?: string; tag?: string } {
-  const filter = TYPE_TOKEN_TO_FILTER[value]
-  if (filter) {
-    return { contentType: filterToContentTypes(filter), tag: filterToTags(filter) }
-  }
-  return { contentType: value }
-}
-
-/**
- * Extract search parameters from advanced mode tokens.
- * Tokens can be: `type:text`, `#link`, `ext:md`, or plain keywords.
- */
-export function parseTokens(tokens: string[]): {
-  keywords: string[]
-  contentTypes: string[]
-  tags: string[]
-  extensions: string[]
-} {
-  const keywords: string[] = []
-  const contentTypes: string[] = []
-  const tags: string[] = []
-  const extensions: string[] = []
-
-  for (const token of tokens) {
-    const lower = token.toLowerCase()
-    if (lower.startsWith('type:')) {
-      const value = lower.slice(5)
-      if (value) {
-        const { contentType, tag } = classifyTypeToken(value)
-        if (contentType) contentTypes.push(contentType)
-        if (tag) tags.push(tag)
-      }
-    } else if (lower.startsWith('#')) {
-      const value = lower.slice(1)
-      if (value) tags.push(value)
-    } else if (lower.startsWith('ext:')) {
-      const value = lower.slice(4)
-      if (value) extensions.push(value)
-    } else if (token.trim()) {
-      keywords.push(token.trim())
-    }
-  }
-
-  return { keywords, contentTypes, tags, extensions }
-}
-
 interface UseHistorySearchProps {
   searchQuery: string
-  tokens: string[]
   activeFilter: Filter
+  tagFilter: string | null
+  sourceFilter: string | null
+  extensionFilter: string | null
   timeRange: TimeRangePreset
-  isAdvancedMode: boolean
 }
 
 interface UseHistorySearchResult {
   filteredItems: DisplayItem[]
+  previewItems: DisplayClipboardItem[]
   /** A narrowed view (query/token/time/filter) is loading. Drives the spinner. */
   isSearching: boolean
   searchTotal: number | null
@@ -133,50 +72,29 @@ interface UseHistorySearchResult {
  */
 export function useHistorySearch({
   searchQuery,
-  tokens,
   activeFilter,
+  tagFilter,
+  sourceFilter,
+  extensionFilter,
   timeRange,
-  isAdvancedMode,
 }: UseHistorySearchProps): UseHistorySearchResult {
   const { t } = useTranslation()
   const { isLocked } = useEncryptionSessionState()
 
-  // Build the query model from tokens + free text + filter/time controls.
-  const {
-    keywords,
-    contentTypes: tokenContentTypes,
-    tags: tokenTags,
-    extensions,
-  } = parseTokens(tokens)
   const trimmedQuery = searchQuery.trim()
-  const queryString = (trimmedQuery ? [...keywords, trimmedQuery] : keywords).join(' ')
-  // Pre-join to a stable string so the memo deps stay primitive (the array would
-  // be a fresh reference every render and re-issue the query in a loop).
-  const extensionsStr = extensions.length > 0 ? extensions.join(',') : undefined
-
-  // Tokens win; otherwise (non-advanced) fall back to the quick filter. Tokens
-  // now carry both dimensions (`type:link`/`type:image` resolve to tags), so a
-  // token in either bucket suppresses the chip fallback.
-  let contentTypes: string | undefined
-  let tags: string | undefined
-  if (tokenContentTypes.length > 0 || tokenTags.length > 0) {
-    contentTypes = tokenContentTypes.length > 0 ? tokenContentTypes.join(',') : undefined
-    tags = tokenTags.length > 0 ? tokenTags.join(',') : undefined
-  } else if (!isAdvancedMode) {
-    contentTypes = filterToContentTypes(activeFilter)
-    tags = filterToTags(activeFilter)
-  }
+  const tags = [filterToTags(activeFilter), tagFilter].filter(Boolean).join(',') || undefined
 
   const model = useMemo<LiveSearchQueryModel>(
     () => ({
-      query: queryString,
-      contentTypes,
+      query: trimmedQuery,
+      contentTypes: filterToContentTypes(activeFilter),
       tags,
-      extensions: extensionsStr,
+      sourceDevices: sourceFilter ?? undefined,
+      extensions: extensionFilter ?? undefined,
       // TimeRangePreset values match the backend timePreset directly.
       timeRange,
     }),
-    [queryString, contentTypes, tags, extensionsStr, timeRange]
+    [trimmedQuery, activeFilter, tags, sourceFilter, extensionFilter, timeRange]
   )
 
   const live = useLiveSearch({ model, pageSize: PAGE_SIZE })
@@ -191,12 +109,15 @@ export function useHistorySearch({
   // shows the "searching" spinner; plain browse shows the "loading" spinner.
   const narrowed =
     trimmedQuery.length > 0 ||
-    tokens.length > 0 ||
     timeRange !== 'all_time' ||
-    activeFilter !== Filter.All
+    activeFilter !== Filter.All ||
+    tagFilter !== null ||
+    sourceFilter !== null ||
+    extensionFilter !== null
 
   return {
     filteredItems,
+    previewItems: live.items,
     isSearching: live.isLoading && narrowed,
     searchTotal: live.total,
     loading: live.isLoading && !narrowed,

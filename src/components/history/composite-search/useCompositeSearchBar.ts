@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
 import { readHistorySessionSnapshot } from '@/hooks/historySessionSnapshot'
-import { useShortcut } from '@/hooks/useShortcut'
 import type { SearchTagOption } from '@/lib/search-tags'
 import {
   applyDimensionValue,
@@ -31,12 +30,19 @@ export interface CompositeSearchBarProps {
   onTagFilterChange: (tag: string | null) => void
   onSourceFilterChange: (id: string | null) => void
   onTimeRangeChange: (preset: TimeRangePreset) => void
+  extensionFilter: string | null
+  onExtensionFilterChange: (extension: string | null) => void
   onQueryChange: (text: string) => void
   onQuerySubmit: (text: string) => void
   sourceOptions: SourceOption[]
   tagOptions: SearchTagOption[]
   totalCount: number
   inputRef: React.RefObject<HTMLInputElement | null>
+  onUnhandledKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  clearShortcutEnabled?: boolean
+  suggestionActivation?: 'focus' | 'intentional'
+  showFilterPanelButton?: boolean
+  className?: string
 }
 
 export function useCompositeSearchBar({
@@ -48,11 +54,15 @@ export function useCompositeSearchBar({
   onTagFilterChange,
   onSourceFilterChange,
   onTimeRangeChange,
+  extensionFilter,
+  onExtensionFilterChange,
   onQueryChange,
   onQuerySubmit,
   sourceOptions,
   tagOptions,
   inputRef,
+  onUnhandledKeyDown,
+  suggestionActivation = 'focus',
 }: CompositeSearchBarProps) {
   const { t } = useTranslation()
   // Seed the text buffer from the restored session query so the box reflects an
@@ -65,7 +75,13 @@ export function useCompositeSearchBar({
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(-1)
   const panelId = useId()
-  const current = { type: contentFilter, tag: tagFilter, source: sourceFilter, time: timeRange }
+  const current = {
+    type: contentFilter,
+    tag: tagFilter,
+    source: sourceFilter,
+    time: timeRange,
+    extension: extensionFilter,
+  }
   const chips = buildChips({ t, sourceOptions, tagOptions, current })
   const parsed = parseBuffer(buffer)
   const inToken = parsed.kind === 'token'
@@ -95,11 +111,13 @@ export function useCompositeSearchBar({
   const clampedHighlight =
     highlight < 0 || options.length === 0 ? -1 : Math.min(highlight, options.length - 1)
   const expanded = open && options.length > 0
+  const suggestionsHandleKeys = expanded || suggestionActivation === 'focus'
   const handlers: DimensionHandlers = {
     onContentFilterChange,
     onTagFilterChange,
     onSourceFilterChange,
     onTimeRangeChange,
+    onExtensionFilterChange,
   }
   const resetDimension = (dimension: Dimension) => resetDimensionValue(dimension, handlers)
 
@@ -108,7 +126,7 @@ export function useCompositeSearchBar({
     setBuffer('')
     onQueryChange('')
     setHighlight(-1)
-    setOpen(true)
+    setOpen(suggestionActivation === 'focus')
     inputRef.current?.focus()
   }
 
@@ -133,10 +151,10 @@ export function useCompositeSearchBar({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value
+    const p = parseBuffer(next)
     setBuffer(next)
     setHighlight(-1)
-    setOpen(true)
-    const p = parseBuffer(next)
+    setOpen(suggestionActivation === 'focus' || p.kind === 'token')
     if (p.kind === 'query') {
       onQueryChange(next)
     } else {
@@ -160,6 +178,7 @@ export function useCompositeSearchBar({
     resetDimension('tag')
     resetDimension('source')
     resetDimension('time')
+    resetDimension('extension')
     setBuffer('')
     onQueryChange('')
     setHighlight(-1)
@@ -179,7 +198,11 @@ export function useCompositeSearchBar({
       resetDimension(chips[chips.length - 1].dimension)
       return
     }
-    if (options.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    if (
+      suggestionsHandleKeys &&
+      options.length > 0 &&
+      (e.key === 'ArrowDown' || e.key === 'ArrowUp')
+    ) {
       e.preventDefault()
       setOpen(true)
       const delta = e.key === 'ArrowDown' ? 1 : -1
@@ -189,6 +212,10 @@ export function useCompositeSearchBar({
       return
     }
     if (e.key === 'Enter') {
+      if (suggestionActivation === 'intentional' && !expanded) {
+        onUnhandledKeyDown?.(e)
+        return
+      }
       e.preventDefault()
       if (clampedHighlight >= 0) {
         selectOption(clampedHighlight)
@@ -198,16 +225,10 @@ export function useCompositeSearchBar({
         onQuerySubmit(buffer)
         setOpen(false)
       }
+      return
     }
+    onUnhandledKeyDown?.(e)
   }
-
-  useShortcut({
-    key: 'esc',
-    scope: 'clipboard',
-    enabled: hasContent,
-    handler: () => clearAll({ refocus: false }),
-    enableOnFormTags: false,
-  })
 
   return {
     t,
@@ -225,6 +246,14 @@ export function useCompositeSearchBar({
     handleInputChange,
     handleKeyDown,
     clearAll,
+    openOnFocus: suggestionActivation === 'focus',
+    openFilters: () => {
+      // Only surface the suggestion panel; keep any active text query intact so
+      // reaching for a filter doesn't wipe what the user already typed.
+      setHighlight(-1)
+      setOpen(true)
+      inputRef.current?.focus()
+    },
     seedDimension,
     resetDimension,
     selectOption,

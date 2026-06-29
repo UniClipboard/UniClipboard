@@ -1,3 +1,4 @@
+import { convertFileSrc } from '@tauri-apps/api/core'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -8,11 +9,14 @@ import {
   Image as ImageIcon,
   Layers,
   Loader2,
+  Images,
   XCircle,
 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
+import { isImageFileName } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
 import {
   type EntryTransferStatus,
@@ -36,6 +40,7 @@ interface FilePreviewProps {
   effectiveStatus: EntryTransferStatus['status'] | undefined
   entryStatus: EntryTransferStatus | undefined
   item: DisplayClipboardItem
+  preview: ClipboardPreviewData | null
   transfer: TransferProgressInfo | undefined
 }
 
@@ -136,10 +141,25 @@ function getFileIcon(name: string) {
   return File
 }
 
+function getKnownTotalSize(fileSizes: number[]): number | null {
+  const knownSizes = fileSizes.filter(size => size >= 0)
+  if (knownSizes.length === 0) return null
+  return knownSizes.reduce((sum, size) => sum + size, 0)
+}
+
+function getLocalImageUrl(path: string | null): string | null {
+  return path ? convertFileSrc(path) : null
+}
+
+function getImageFilePath(itemPaths: (string | null)[] | undefined, index: number): string | null {
+  return itemPaths?.[index] ?? null
+}
+
 const FilePreview: React.FC<FilePreviewProps> = ({
   effectiveStatus,
   entryStatus,
   item,
+  preview,
   transfer,
 }) => {
   const { t } = useTranslation()
@@ -152,12 +172,75 @@ const FilePreview: React.FC<FilePreviewProps> = ({
   const fileNames = fileItem.file_names
   const fileSizes = fileItem.file_sizes
   const isSingleFile = fileNames.length === 1
+  const singleFileName = fileNames[0] ?? ''
+  const isImageFileGroup = fileNames.length > 1 && fileNames.every(name => isImageFileName(name))
+  const imageUrl =
+    isSingleFile && isImageFileName(singleFileName) && preview?.contentType === 'image'
+      ? (preview.imageUrl ?? null)
+      : null
+  const groupImageUrl =
+    isImageFileGroup && preview?.contentType === 'image' ? (preview.imageUrl ?? null) : null
   const percent =
     transfer && transfer.totalBytes && transfer.totalBytes > 0
       ? Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100)
       : 0
 
   if (isSingleFile) {
+    const title = singleFileName
+    const fileMeta = (
+      <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
+        {fileSizes[0] >= 0 && <span className="tabular-nums">{formatFileSize(fileSizes[0])}</span>}
+        {item.device && (
+          <>
+            <span className="text-xs opacity-20">•</span>
+            <span className="text-xs uppercase tracking-tighter opacity-70">{item.device}</span>
+          </>
+        )}
+      </div>
+    )
+
+    if (imageUrl) {
+      return (
+        <div className="flex min-h-full flex-col items-center justify-center gap-6 p-8">
+          <div className="relative flex w-full max-w-5xl items-center justify-center overflow-hidden rounded-lg bg-muted/10 p-2">
+            <ProgressOverlay
+              effectiveStatus={effectiveStatus}
+              transfer={transfer}
+              percent={percent}
+              isHero
+            />
+            <img
+              src={imageUrl}
+              alt={title}
+              className="relative z-10 max-h-[60vh] max-w-full rounded-md object-contain shadow-2xl ring-1 ring-black/5 dark:ring-white/10"
+            />
+          </div>
+
+          <div className="flex w-full max-w-4xl flex-col items-center gap-3 text-center">
+            <h3 className="max-w-full break-all text-lg font-semibold leading-snug text-foreground/90">
+              {title}
+            </h3>
+            {fileMeta}
+            <StatusBadge effectiveStatus={effectiveStatus} transfer={transfer} />
+          </div>
+
+          {effectiveStatus === 'failed' && entryStatus?.reason && (
+            <div className="flex max-w-sm items-start gap-2 rounded-xl border border-destructive/10 bg-destructive/5 px-4 py-3 text-xs text-destructive/80">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>{entryStatus.reason}</span>
+            </div>
+          )}
+
+          {effectiveStatus === 'cancelled' && (
+            <div className="flex max-w-sm items-start gap-2 rounded-xl border border-border/20 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+              <XCircle size={14} className="mt-0.5 shrink-0" />
+              <span>{getCancelReasonText(t, entryStatus?.reason)}</span>
+            </div>
+          )}
+        </div>
+      )
+    }
+
     return (
       <div className="flex h-full flex-col items-center justify-center gap-y-10 p-8">
         <div className="relative w-full max-w-sm">
@@ -172,27 +255,15 @@ const FilePreview: React.FC<FilePreviewProps> = ({
             <div className="relative z-10 flex flex-col items-center p-10 text-center">
               <div className="relative mb-8">
                 <div className="relative flex size-24 items-center justify-center rounded-[1.75rem] bg-gradient-to-br from-primary/10 to-primary/5 text-primary">
-                  {React.createElement(getFileIcon(fileNames[0]), { size: 40 })}
+                  {React.createElement(getFileIcon(title), { size: 40 })}
                 </div>
               </div>
 
               <div className="mb-8 w-full space-y-2">
-                <h3 className="truncate px-4 text-lg font-semibold tracking-tight text-foreground/90">
-                  {fileNames[0]}
+                <h3 className="break-all px-4 text-lg font-semibold leading-snug text-foreground/90">
+                  {title}
                 </h3>
-                <div className="flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
-                  {fileSizes[0] >= 0 && (
-                    <span className="tabular-nums">{formatFileSize(fileSizes[0])}</span>
-                  )}
-                  {item.device && (
-                    <>
-                      <span className="text-xs opacity-20">•</span>
-                      <span className="text-xs uppercase tracking-tighter opacity-70">
-                        {item.device}
-                      </span>
-                    </>
-                  )}
-                </div>
+                {fileMeta}
               </div>
 
               <StatusBadge effectiveStatus={effectiveStatus} transfer={transfer} />
@@ -213,6 +284,74 @@ const FilePreview: React.FC<FilePreviewProps> = ({
             <span>{getCancelReasonText(t, entryStatus?.reason)}</span>
           </div>
         )}
+      </div>
+    )
+  }
+
+  if (isImageFileGroup) {
+    const totalSize = getKnownTotalSize(fileSizes)
+    return (
+      <div className="space-y-6 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-muted-foreground">
+            <span>{t('clipboard.preview.imagesCount', { count: fileNames.length })}</span>
+            {totalSize != null && (
+              <>
+                <span className="text-xs opacity-25">•</span>
+                <span className="tabular-nums">{formatFileSize(totalSize)}</span>
+              </>
+            )}
+          </div>
+          <StatusBadge effectiveStatus={effectiveStatus} transfer={transfer} />
+        </div>
+
+        <div
+          role="list"
+          aria-label={t('clipboard.preview.imageFilesAriaLabel')}
+          className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4"
+        >
+          {fileNames.map((name, index) => {
+            const thumbnailUrl =
+              getLocalImageUrl(getImageFilePath(fileItem.file_paths, index)) ??
+              (index === 0 ? groupImageUrl : null)
+            return (
+              <div
+                key={`${name}-${index}`}
+                role="listitem"
+                className="relative overflow-hidden rounded-lg border border-border/40 bg-muted/10"
+              >
+                <ProgressOverlay
+                  effectiveStatus={effectiveStatus}
+                  transfer={transfer}
+                  percent={percent}
+                />
+                <div className="relative z-10 flex aspect-[4/3] items-center justify-center bg-background/40 p-2">
+                  {thumbnailUrl ? (
+                    <img
+                      src={thumbnailUrl}
+                      alt={name}
+                      className="max-h-full max-w-full rounded-md object-contain shadow-lg ring-1 ring-black/5 dark:ring-white/10"
+                    />
+                  ) : (
+                    <div className="flex size-16 items-center justify-center rounded-xl bg-primary/10 text-primary/70">
+                      <Images size={28} />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1 p-3">
+                  <div className="break-all text-sm font-semibold leading-snug text-foreground/85">
+                    {name}
+                  </div>
+                  {fileSizes[index] != null && fileSizes[index] >= 0 && (
+                    <div className="text-[11px] font-medium tabular-nums text-muted-foreground/60">
+                      {formatFileSize(fileSizes[index])}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
     )
   }

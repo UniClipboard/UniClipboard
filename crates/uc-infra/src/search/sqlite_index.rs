@@ -806,6 +806,7 @@ impl SqliteSearchIndex {
                     mime_type: domain.mime_type,
                     file_extensions: domain.file_extensions,
                     file_names: domain.file_names,
+                    file_paths: domain.file_paths,
                     link_urls: domain.link_urls,
                     source_device: domain.source_device,
                     payload_state: domain.payload_state,
@@ -891,6 +892,7 @@ impl SqliteSearchIndex {
                 source_device TEXT,
                 payload_state TEXT,
                 char_count INTEGER,
+                file_paths TEXT NOT NULL DEFAULT '[]',
                 PRIMARY KEY (profile_id, entry_id)
             )",
             doc_table = state.temp_document_table
@@ -992,8 +994,8 @@ impl SqliteSearchIndex {
             "INSERT OR REPLACE INTO {doc_table}
              (profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
               file_type, file_extensions, mime_type, indexed_at_ms, index_version, text_preview,
-              file_names, link_urls, source_device, payload_state, char_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              file_names, link_urls, source_device, payload_state, char_count, file_paths)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             doc_table = state.temp_document_table
         );
         diesel::sql_query(&insert_doc)
@@ -1013,6 +1015,7 @@ impl SqliteSearchIndex {
             .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.source_device)
             .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.payload_state)
             .bind::<diesel::sql_types::Nullable<diesel::sql_types::BigInt>, _>(doc_row.char_count)
+            .bind::<diesel::sql_types::Text, _>(&doc_row.file_paths)
             .execute(conn)
             .map_err(|e| SearchError::Internal(format!("insert temp doc failed: {e}")))?;
 
@@ -1161,7 +1164,8 @@ impl SqliteSearchIndex {
                  SELECT profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
                         file_type, file_extensions, mime_type, indexed_at_ms,
                         index_version, text_preview,
-                        file_names, link_urls, source_device, payload_state, char_count
+                        file_names, link_urls, source_device, payload_state, char_count,
+                        file_paths
                  FROM {doc_table}",
                 doc_table = state.temp_document_table
             );
@@ -1890,6 +1894,7 @@ mod tests {
             index_version: CURRENT_INDEX_VERSION.to_string(),
             text_preview: None,
             file_names: vec![],
+            file_paths: vec![],
             link_urls: vec![],
             source_device: None,
             payload_state: None,
@@ -2171,6 +2176,7 @@ mod tests {
     fn doc_with_render(entry_id: &str) -> SearchDocument {
         let mut doc = make_doc(entry_id, vec![TagId::link()]);
         doc.file_names = vec!["a.txt".to_string()];
+        doc.file_paths = vec!["/tmp/a.txt".to_string()];
         doc.link_urls = vec!["https://example.com".to_string()];
         doc.source_device = Some("dev-1".to_string());
         doc.payload_state = Some("Lost".to_string());
@@ -2192,6 +2198,16 @@ mod tests {
         assert_eq!(link_urls, r#"["https://example.com"]"#);
         assert_eq!(source_device.as_deref(), Some("dev-1"));
         assert_eq!(payload_state.as_deref(), Some("Lost"));
+
+        // file_paths rides the same live-index column write (manual-SQL bind order).
+        let mut conn = pool.get().unwrap();
+        let file_paths: String = search_document::table
+            .filter(search_document::profile_id.eq(TEST_PROFILE))
+            .filter(search_document::entry_id.eq("e1"))
+            .select(search_document::file_paths)
+            .first::<String>(&mut conn)
+            .unwrap();
+        assert_eq!(file_paths, r#"["/tmp/a.txt"]"#);
     }
 
     /// The rebuild path (temp table DDL + `insert_temp_entry` binds + the
@@ -2212,6 +2228,16 @@ mod tests {
         assert_eq!(link_urls, r#"["https://example.com"]"#);
         assert_eq!(source_device.as_deref(), Some("dev-1"));
         assert_eq!(payload_state.as_deref(), Some("Lost"));
+
+        // file_paths must survive the temp-table DDL + INSERT…SELECT cutover.
+        let mut conn = pool.get().unwrap();
+        let file_paths: String = search_document::table
+            .filter(search_document::profile_id.eq(TEST_PROFILE))
+            .filter(search_document::entry_id.eq("e1"))
+            .select(search_document::file_paths)
+            .first::<String>(&mut conn)
+            .unwrap();
+        assert_eq!(file_paths, r#"["/tmp/a.txt"]"#);
     }
 
     /// End-to-end upgrade from a pre-v5 on-disk database (not a fresh one): an
@@ -2311,6 +2337,7 @@ mod tests {
                 source_device: None,
                 payload_state: None,
                 char_count: None,
+                file_paths: "[]".to_string(),
             })
             .collect();
         // Chunk to stay well within SQLite's bound-variable limit.

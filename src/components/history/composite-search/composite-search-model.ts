@@ -16,6 +16,7 @@ import {
   Code,
   ExternalLink,
   File,
+  FileCode,
   FileText,
   Hash,
   Image as ImageIcon,
@@ -35,7 +36,7 @@ export interface SourceOption {
 }
 
 /** The filter dimensions the box can build. */
-export type Dimension = 'type' | 'tag' | 'source' | 'time'
+export type Dimension = 'type' | 'tag' | 'source' | 'time' | 'extension'
 
 /**
  * English syntax-key prefix typed by keyboard users (decision: fixed English
@@ -47,6 +48,7 @@ export const SYNTAX_KEYS: Record<Dimension, string> = {
   tag: '#',
   source: 'from',
   time: 'time',
+  extension: 'ext',
 }
 
 /** Reverse map: typed prefix (lowercased) -> dimension. */
@@ -54,6 +56,7 @@ const PREFIX_TO_DIMENSION: Record<string, Dimension> = {
   type: 'type',
   from: 'source',
   time: 'time',
+  ext: 'extension',
 }
 
 /** Physical content-type filters offered as `type:` candidates. */
@@ -68,6 +71,9 @@ const TIME_PRESETS: readonly TimeRangePreset[] = [
   'this_week',
   'this_month',
 ]
+
+/** File extensions offered as `ext:` candidates. */
+const EXTENSION_FILTERS = ['txt', 'md', 'jpg', 'png', 'pdf', 'ts', 'js', 'json', 'rs', 'go']
 
 /** Per-content-type glyphs, mirroring the old filter-tab icons. */
 const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -84,6 +90,7 @@ export const DIMENSION_DEFAULTS = {
   tag: null,
   source: null,
   time: 'all_time' as TimeRangePreset,
+  extension: null,
 } as const
 
 /** State setters a dimension value dispatches into (the History page's state). */
@@ -92,6 +99,7 @@ export interface DimensionHandlers {
   onTagFilterChange: (tag: string | null) => void
   onSourceFilterChange: (id: string | null) => void
   onTimeRangeChange: (preset: TimeRangePreset) => void
+  onExtensionFilterChange: (extension: string | null) => void
 }
 
 /** Apply a raw candidate value to its dimension's state. Single dispatch point
@@ -104,7 +112,8 @@ export function applyDimensionValue(
   if (dimension === 'type') h.onContentFilterChange(value as Filter)
   else if (dimension === 'tag') h.onTagFilterChange(value)
   else if (dimension === 'source') h.onSourceFilterChange(value)
-  else h.onTimeRangeChange(value as TimeRangePreset)
+  else if (dimension === 'time') h.onTimeRangeChange(value as TimeRangePreset)
+  else h.onExtensionFilterChange(value)
 }
 
 /** Reset a dimension to its default (no filter). */
@@ -112,7 +121,8 @@ export function resetDimensionValue(dimension: Dimension, h: DimensionHandlers):
   if (dimension === 'type') h.onContentFilterChange(DIMENSION_DEFAULTS.type)
   else if (dimension === 'tag') h.onTagFilterChange(DIMENSION_DEFAULTS.tag)
   else if (dimension === 'source') h.onSourceFilterChange(DIMENSION_DEFAULTS.source)
-  else h.onTimeRangeChange(DIMENSION_DEFAULTS.time)
+  else if (dimension === 'time') h.onTimeRangeChange(DIMENSION_DEFAULTS.time)
+  else h.onExtensionFilterChange(DIMENSION_DEFAULTS.extension)
 }
 
 // ── Buffer parsing ──────────────────────────────────────────────
@@ -182,6 +192,7 @@ export interface FilterSnapshot {
   tag: string | null
   source: string | null
   time: TimeRangePreset
+  extension: string | null
 }
 
 /** i18n keys for each dimension's group header in the suggestion panel. */
@@ -190,6 +201,7 @@ export const DIMENSION_LABEL_KEYS: Record<Dimension, string> = {
   tag: 'history.composite.dimension.tag',
   source: 'history.composite.dimension.source',
   time: 'history.composite.dimension.time',
+  extension: 'history.composite.dimension.extension',
 }
 
 const DIMENSION_ICONS: Record<Dimension, LucideIcon> = {
@@ -197,6 +209,7 @@ const DIMENSION_ICONS: Record<Dimension, LucideIcon> = {
   tag: Hash,
   source: Laptop,
   time: Clock,
+  extension: FileCode,
 }
 
 export interface SyntaxSuggestion {
@@ -217,7 +230,7 @@ export interface SyntaxSuggestion {
 export function buildSyntaxSuggestions(partial: string, t: Translate): SyntaxSuggestion[] {
   const needle = partial.trimStart().toLowerCase()
   if (!needle) return []
-  return (['type', 'tag', 'source', 'time'] as const).flatMap(dimension =>
+  return (['type', 'tag', 'source', 'time', 'extension'] as const).flatMap(dimension =>
     dimension === 'tag' && needle !== '#'
       ? []
       : SYNTAX_KEYS[dimension].startsWith(needle)
@@ -314,6 +327,22 @@ export function buildCandidates(
             ]
           : []
       })
+    case 'extension':
+      return EXTENSION_FILTERS.flatMap(ext => {
+        const label = `.${ext}`
+        return matches(partial, ext, label)
+          ? [
+              {
+                id: `cand-extension-${ext}`,
+                dimension,
+                value: ext,
+                label,
+                icon: FileCode,
+                isActive: ctx.current.extension === ext,
+              },
+            ]
+          : []
+      })
   }
 }
 
@@ -337,6 +366,7 @@ export function buildAllCandidates(
     ...buildCandidates('tag', partial, ctx),
     ...buildCandidates('source', partial, ctx),
     ...buildCandidates('time', partial, ctx),
+    ...buildCandidates('extension', partial, ctx),
   ]
 }
 
@@ -348,7 +378,7 @@ export function buildChips(ctx: {
   tagOptions: SearchTagOption[]
 }): ChipData[] {
   const chips: ChipData[] = []
-  const { type, tag, source, time } = ctx.current
+  const { type, tag, source, time, extension } = ctx.current
   if (type !== Filter.All && type !== Filter.Favorited) {
     chips.push({
       dimension: 'type',
@@ -377,6 +407,13 @@ export function buildChips(ctx: {
       dimension: 'time',
       label: ctx.t(`history.timeRange.${time}`),
       icon: Clock,
+    })
+  }
+  if (extension !== null) {
+    chips.push({
+      dimension: 'extension',
+      label: `.${extension}`,
+      icon: FileCode,
     })
   }
   return chips

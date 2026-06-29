@@ -3249,7 +3249,7 @@
             "type": "integer"
           },
           "charCount": {
-            "description": "Full character count of the entry's primary text content, so the UI shows\nthe real total length rather than the capped `text_preview` length. `null`\nfor entries with no inline text (image / file / payload lost).",
+            "description": "Full character count of the entry's primary text content, so the UI shows\nthe real total length rather than the capped `textPreview` length. `null`\nfor entries with no inline text (image / file / payload lost).",
             "format": "int64",
             "nullable": true,
             "type": "integer"
@@ -3268,6 +3268,13 @@
           },
           "fileNames": {
             "description": "Display names of referenced files; empty when none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "filePaths": {
+            "description": "Local filesystem paths of referenced files, aligned with `file_names` by\nindex; empty when none.",
             "items": {
               "type": "string"
             },
@@ -3313,6 +3320,7 @@
           "mimeType",
           "fileExtensions",
           "fileNames",
+          "filePaths",
           "linkUrls"
         ],
         "type": "object"

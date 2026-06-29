@@ -25,6 +25,9 @@ pub struct SearchResultDto {
     pub file_extensions: Vec<String>,
     /// Display names of referenced files; empty when none.
     pub file_names: Vec<String>,
+    /// Local filesystem paths of referenced files, aligned with `file_names` by
+    /// index; empty when none.
+    pub file_paths: Vec<String>,
     /// Web URLs (http/https) carried by this entry; empty when none.
     pub link_urls: Vec<String>,
     /// Originating device id, or `null` when the source is unknown.

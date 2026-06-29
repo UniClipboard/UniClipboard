@@ -207,6 +207,7 @@ diesel::table! {
         source_device -> Nullable<Text>,
         payload_state -> Nullable<Text>,
         char_count -> Nullable<BigInt>,
+        file_paths -> Text,
     }
 }
 

@@ -8,7 +8,13 @@ import {
 } from '../composite-search-model'
 
 const t = (key: string) => key
-const current: FilterSnapshot = { type: Filter.All, tag: null, source: null, time: 'all_time' }
+const current: FilterSnapshot = {
+  type: Filter.All,
+  tag: null,
+  source: null,
+  time: 'all_time',
+  extension: null,
+}
 
 describe('composite search model', () => {
   it('parses # as a tag token', () => {
@@ -22,6 +28,15 @@ describe('composite search model', () => {
       kind: 'token',
       dimension: 'tag',
       partial: 'lin',
+      committed: false,
+    })
+  })
+
+  it('parses ext as a shared extension token', () => {
+    expect(parseBuffer('ext:md')).toEqual({
+      kind: 'token',
+      dimension: 'extension',
+      partial: 'md',
       committed: false,
     })
   })

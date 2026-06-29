@@ -69,4 +69,37 @@ describe('HistoryCard', () => {
     expect(screen.getByText('text')).toBeInTheDocument()
     expect(screen.getByText('link')).toBeInTheDocument()
   })
+
+  it('renders a file card with filename and formatted size', () => {
+    renderCard({
+      id: 'file-entry',
+      type: 'file',
+      content: {
+        file_names: ['report.pdf'],
+        file_sizes: [2048],
+      },
+      activeTime: 1,
+    } as DisplayClipboardItem)
+
+    expect(screen.getByText('file')).toBeInTheDocument()
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    expect(screen.getAllByText('2.00 KB').length).toBeGreaterThan(0)
+  })
+
+  it('renders code preview lines with line numbers', () => {
+    renderCard({
+      id: 'code-preview-entry',
+      type: 'code',
+      content: {
+        code: 'const value = 1\nreturn value',
+      },
+      activeTime: 1,
+    } as DisplayClipboardItem)
+
+    expect(screen.getByText('JavaScript')).toBeInTheDocument()
+    expect(screen.getByText('const')).toBeInTheDocument()
+    expect(screen.getByText('return')).toBeInTheDocument()
+    expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('2')).toBeInTheDocument()
+  })
 })

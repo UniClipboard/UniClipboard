@@ -393,6 +393,19 @@
   z-index: 9999;
 }
 
+/* Windows typography: resolve CJK glyphs to the OS-native Microsoft YaHei
+   instead of the bundled Noto Sans SC variable webfont. Under WebView2's
+   DirectWrite, the variable webfont lacks the small-size TrueType hinting that
+   YaHei ships with, so Chinese text looks soft/blurry at UI sizes (13-14px);
+   `-webkit-font-smoothing` is a no-op on Windows, so font selection is the only
+   effective lever. Latin glyphs still fall to Inter/Segoe UI via per-glyph
+   fallback. */
+html[data-uc-platform='windows'] {
+  --font-sans:
+    'Inter Variable', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-chinese: 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+}
+
 /* Linux WebKit 低特效模式：优先保证响应速度与稳定渲染。 */
 html[data-uc-low-effects='true'] {
   --shadow-2xs: none;

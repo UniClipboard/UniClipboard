@@ -75,6 +75,7 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
           effectiveStatus={effectiveStatus}
           entryStatus={entryStatus}
           item={item}
+          preview={preview}
           transfer={transfer}
         />
       )

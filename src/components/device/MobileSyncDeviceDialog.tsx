@@ -830,8 +830,7 @@ const QrPlaceholder: React.FC = () => {
 }
 
 type EditErrorDispatch =
-  | { kind: 'field'; field: FieldErrorKey; message: string }
-  | { kind: 'form'; message: string }
+  { kind: 'field'; field: FieldErrorKey; message: string } | { kind: 'form'; message: string }
 
 function classifyEditError(
   t: ReturnType<typeof useTranslation>['t'],

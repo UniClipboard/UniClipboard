@@ -114,13 +114,7 @@ export interface SearchTagsResponse {
  * be omitted from the wire (see `querySearch`).
  */
 export type TimeRangePreset =
-  | 'all_time'
-  | 'today'
-  | 'yesterday'
-  | 'last_7d'
-  | 'last_30d'
-  | 'this_week'
-  | 'this_month'
+  'all_time' | 'today' | 'yesterday' | 'last_7d' | 'last_30d' | 'this_week' | 'this_month'
 
 export interface SearchParams {
   query: string

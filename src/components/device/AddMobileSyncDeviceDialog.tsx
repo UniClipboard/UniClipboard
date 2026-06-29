@@ -267,8 +267,7 @@ const AddMobileSyncDeviceDialogInner: React.FC<Props> = ({ open, onOpenChange, o
 }
 
 type RegisterErrorDispatch =
-  | { kind: 'field'; field: FieldErrorKey; message: string }
-  | { kind: 'form'; message: string }
+  { kind: 'field'; field: FieldErrorKey; message: string } | { kind: 'form'; message: string }
 
 // 把后端 typed error 分流到具体字段或 form-level banner。映射规则:
 // LABEL_*  → label;USERNAME_*  → username;PASSWORD_TOO_*  → password。

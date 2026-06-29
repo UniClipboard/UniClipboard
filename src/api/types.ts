@@ -20,12 +20,7 @@ export interface LifecycleStatusEnvelope {
 // CommandError serialization uses serde `tag = "code", content = "message"`.
 // 在前端表现为 { code: string, message: string } 判别联合。
 export type CommandErrorCode =
-  | 'NotFound'
-  | 'InternalError'
-  | 'Timeout'
-  | 'Cancelled'
-  | 'ValidationError'
-  | 'Conflict'
+  'NotFound' | 'InternalError' | 'Timeout' | 'Cancelled' | 'ValidationError' | 'Conflict'
 
 export interface CommandError {
   code: CommandErrorCode

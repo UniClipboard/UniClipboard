@@ -15,26 +15,33 @@ import { getBlobImageObjectUrl } from '@/api/daemon/blob-image-cache'
  * @returns The resolved object URL / data URL, or `null` while pending or gated.
  */
 export function useBlobImageObjectUrl(descriptor: string | null, enabled = true): string | null {
-  const [url, setUrl] = useState<string | null>(null)
+  // Track the descriptor the resolved URL belongs to so a changed descriptor
+  // invalidates the old URL during the same render (before the effect runs),
+  // instead of painting one stale frame of the previous entry's image.
+  const [resolved, setResolved] = useState<{ descriptor: string | null; url: string | null }>({
+    descriptor: null,
+    url: null,
+  })
+
+  const url =
+    !descriptor || !enabled
+      ? null
+      : descriptor.startsWith('data:')
+        ? descriptor
+        : resolved.descriptor === descriptor
+          ? resolved.url
+          : null
 
   useEffect(() => {
-    if (!descriptor || !enabled) {
-      setUrl(null)
-      return
-    }
-    if (descriptor.startsWith('data:')) {
-      setUrl(descriptor)
-      return
-    }
+    if (!descriptor || !enabled || descriptor.startsWith('data:')) return
 
     let cancelled = false
-    setUrl(null)
     getBlobImageObjectUrl(descriptor)
-      .then(resolved => {
-        if (!cancelled) setUrl(resolved)
+      .then(objectUrl => {
+        if (!cancelled) setResolved({ descriptor, url: objectUrl })
       })
       .catch(() => {
-        if (!cancelled) setUrl(null)
+        if (!cancelled) setResolved({ descriptor, url: null })
       })
     return () => {
       cancelled = true

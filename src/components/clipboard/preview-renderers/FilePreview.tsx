@@ -216,11 +216,19 @@ const FilePreview: React.FC<FilePreviewProps> = ({
               percent={percent}
               isHero
             />
-            <img
-              src={imageObjectUrl ?? undefined}
-              alt={title}
-              className="relative z-10 max-h-[60vh] max-w-full rounded-md object-contain shadow-2xl ring-1 ring-black/5 dark:ring-white/10"
-            />
+            {imageObjectUrl ? (
+              <img
+                src={imageObjectUrl}
+                alt={title}
+                className="relative z-10 max-h-[60vh] max-w-full rounded-md object-contain shadow-2xl ring-1 ring-black/5 dark:ring-white/10"
+              />
+            ) : (
+              // imageObjectUrl is null while the blob loads and stays null if the
+              // fetch fails; show a muted placeholder instead of a broken <img>.
+              <div className="relative z-10 flex aspect-[4/3] w-full max-w-md items-center justify-center rounded-md bg-background/40">
+                <ImageIcon className="size-12 text-muted-foreground/30" />
+              </div>
+            )}
           </div>
 
           <div className="flex w-full max-w-4xl flex-col items-center gap-3 text-center">

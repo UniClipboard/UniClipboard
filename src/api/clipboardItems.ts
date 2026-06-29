@@ -164,8 +164,10 @@ export async function fetchClipboardResourceText(
   resource: ClipboardEntryResource
 ): Promise<string> {
   try {
-    // Use inline data when available (small content stored directly)
-    if (resource.inlineData) {
+    // Use inline data when available (small content stored directly). Check for
+    // null explicitly so an empty-string payload ('') decodes to '' instead of
+    // falling through to the "neither inlineData nor url" error.
+    if (resource.inlineData !== null) {
       const bytes = Uint8Array.from(atob(resource.inlineData), c => c.charCodeAt(0))
       return new TextDecoder('utf-8').decode(bytes)
     }

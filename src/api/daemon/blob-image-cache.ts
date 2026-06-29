@@ -14,6 +14,30 @@ const MAX_ENTRIES = 128
 const cache = new Map<string, string>()
 /** path -> in-flight fetch, so concurrent callers share one request. */
 const inFlight = new Map<string, Promise<string | null>>()
+/**
+ * Bumped on every {@link clearBlobImageCache}. A fetch started before a teardown
+ * carries the generation it began under; if it resolves afterward it revokes its
+ * own object URL instead of repopulating the just-cleared cache.
+ */
+let cacheGeneration = 0
+
+async function fetchAndCache(path: string, generation: number): Promise<string | null> {
+  try {
+    const blob = await daemonClient.fetchBlob(path)
+    const objectUrl = URL.createObjectURL(blob)
+    // If the cache was cleared while this fetch was in flight, don't
+    // resurrect it — revoke the freshly created URL and report no result.
+    if (generation !== cacheGeneration) {
+      URL.revokeObjectURL(objectUrl)
+      return null
+    }
+    touch(path, objectUrl)
+    return objectUrl
+  } catch (err) {
+    log.error({ err, path }, 'failed to fetch blob image')
+    return null
+  }
+}
 
 function touch(path: string, objectUrl: string): void {
   // Re-insert to move this key to the most-recently-used end.
@@ -51,19 +75,10 @@ export async function getBlobImageObjectUrl(path: string): Promise<string | null
   const existing = inFlight.get(path)
   if (existing) return existing
 
-  const promise = (async () => {
-    try {
-      const blob = await daemonClient.fetchBlob(path)
-      const objectUrl = URL.createObjectURL(blob)
-      touch(path, objectUrl)
-      return objectUrl
-    } catch (err) {
-      log.error({ err, path }, 'failed to fetch blob image')
-      return null
-    } finally {
-      inFlight.delete(path)
-    }
-  })()
+  const promise = fetchAndCache(path, cacheGeneration).finally(() => {
+    // Only clear the slot we own; a clear()/refetch may have replaced it.
+    if (inFlight.get(path) === promise) inFlight.delete(path)
+  })
   inFlight.set(path, promise)
   return promise
 }
@@ -73,6 +88,7 @@ export async function getBlobImageObjectUrl(path: string): Promise<string | null
  * so the pinned image bytes are released.
  */
 export function clearBlobImageCache(): void {
+  cacheGeneration += 1
   for (const objectUrl of cache.values()) {
     URL.revokeObjectURL(objectUrl)
   }

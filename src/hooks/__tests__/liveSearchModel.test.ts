@@ -50,15 +50,18 @@ describe('canPatchLive', () => {
     expect(canPatchLive(model({ timeRange: 'today' }))).toBe(false)
   })
 
-  it('refuses live patching under the image tag (an image file is not client-judgeable)', () => {
-    // A copied image file projects as a `file` display item, so the image tag
-    // can't be judged client-side — defer to a server refetch.
+  it('refuses live patching under the image or code tag (not client-judgeable)', () => {
+    // A copied image file projects as a `file` display item, and source-like
+    // plain text is tagged `code` only by the server — neither can be judged
+    // client-side, so defer to a server refetch.
     expect(canPatchLive(model({ tags: 'image' }))).toBe(false)
     expect(canPatchLive(model({ tags: 'link,image' }))).toBe(false)
+    expect(canPatchLive(model({ tags: 'code' }))).toBe(false)
+    expect(canPatchLive(model({ tags: 'link,code' }))).toBe(false)
     // Custom tags are likewise non-judgeable.
     expect(canPatchLive(model({ tags: 'project-x' }))).toBe(false)
     // The judgeable builtin tags still allow patching.
-    expect(canPatchLive(model({ tags: 'link,code,favorited' }))).toBe(true)
+    expect(canPatchLive(model({ tags: 'link,favorited' }))).toBe(true)
   })
 })
 

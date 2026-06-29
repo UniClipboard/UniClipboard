@@ -48,7 +48,7 @@ describe('CompositeSearchBar', () => {
     const user = userEvent.setup()
     const props = renderSearchBar()
 
-    const input = screen.getByRole('textbox', { name: 'history.composite.title' })
+    const input = screen.getByRole('combobox', { name: 'history.composite.title' })
     await user.type(input, 'release notes{Enter}')
 
     expect(props.onQueryChange).toHaveBeenLastCalledWith('release notes')
@@ -59,7 +59,7 @@ describe('CompositeSearchBar', () => {
     const user = userEvent.setup()
     const props = renderSearchBar()
 
-    await user.type(screen.getByRole('textbox'), 'type:image{Enter}')
+    await user.type(screen.getByRole('combobox'), 'type:image{Enter}')
 
     expect(props.onContentFilterChange).toHaveBeenCalledWith(Filter.Image)
     expect(props.onQuerySubmit).not.toHaveBeenCalled()

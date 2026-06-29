@@ -39,12 +39,16 @@ function toDisplayItem(item: DisplayClipboardItem, imageLabel: string): DisplayI
   }
 }
 
-/** The `type:` token vocabulary only contains physical content types. Tags are
- * entered with `#tag` tokens. */
+/** The `type:` token vocabulary. New entry is via physical content types
+ * (`text`/`image`/`file`); `link`/`code` are kept as legacy aliases so
+ * previously-typed or saved `type:link` / `type:code` tokens still resolve to
+ * their tag filters instead of falling through as raw content types. */
 const TYPE_TOKEN_TO_FILTER: Record<string, Filter> = {
   text: Filter.Text,
   image: Filter.Image,
   file: Filter.File,
+  link: Filter.Link,
+  code: Filter.Code,
 }
 
 /**

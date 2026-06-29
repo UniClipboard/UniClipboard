@@ -103,22 +103,16 @@ fn looks_like_code(text: Option<&str>) -> bool {
     }
 
     let lines: Vec<&str> = trimmed.lines().take(12).collect();
+    // Keep this list free of words that appear in ordinary prose ("return",
+    // "from", …): a single common word must not be enough to tag a note as code.
     let has_code_keyword = [
         "function ",
         "const ",
-        "let ",
-        "var ",
-        "return ",
-        "class ",
         "interface ",
         "import ",
         "export ",
-        "async ",
-        "await ",
         "def ",
-        "from ",
         "fn ",
-        "pub ",
         "impl ",
         "struct ",
         "func ",
@@ -143,8 +137,9 @@ fn looks_like_code(text: Option<&str>) -> bool {
         .iter()
         .filter(|line| line.starts_with("  ") || line.starts_with('\t'))
         .count();
+    // `": "` is intentionally excluded — it is far more common in prose
+    // ("Notes: …") than the punctuation/operators below that signal real code.
     let assignment_like = trimmed.contains(" = ")
-        || trimmed.contains(": ")
         || trimmed.contains(" := ")
         || trimmed.contains("==")
         || trimmed.contains("!=");
@@ -797,10 +792,13 @@ mod tests {
 
     #[test]
     fn prose_with_programming_words_has_no_code_tag() {
+        // The colon + "from"/"return" once tripped the heuristic (`": "` counted
+        // as assignment-like, "from"/"return" as code keywords). Ordinary notes
+        // must not be tagged as code.
         let input = project_one(
             "text",
             "text/plain",
-            b"Please return the signed form after the meeting and let me know.",
+            b"Notes from today: please return the signed form after the meeting.",
         );
         assert_eq!(input.content_type, ContentType::Text);
         assert!(

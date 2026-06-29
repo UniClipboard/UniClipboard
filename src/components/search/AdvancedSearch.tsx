@@ -148,9 +148,12 @@ const AdvancedSearch: React.FC<AdvancedSearchProps> = ({
         onValueChange('')
         return
       }
-      if (!isAdvanced && newVal === '#') {
+      if (!isAdvanced && newVal.startsWith('#')) {
+        // Any leading `#` is tag syntax — switch to advanced and preserve the
+        // full value so a pasted `#code` parses as a tag token instead of a
+        // literal search string. (`parseTokens` ignores an empty tag value.)
         onAdvancedChange(true)
-        onValueChange('#')
+        onValueChange(newVal)
         return
       }
       if (isAdvanced && newVal.endsWith(' ')) {

@@ -49,6 +49,6 @@ describe('composite search model', () => {
       tagOptions,
     }).map(c => c.value)
 
-    expect(values).toEqual(['link', 'code', 'favorited'])
+    expect(values).toEqual(['link', 'code', 'favorited', 'image'])
   })
 })

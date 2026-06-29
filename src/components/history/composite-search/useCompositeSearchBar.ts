@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
+import { readHistorySessionSnapshot } from '@/hooks/historySessionSnapshot'
 import { useShortcut } from '@/hooks/useShortcut'
 import type { SearchTagOption } from '@/lib/search-tags'
 import {
@@ -54,7 +55,13 @@ export function useCompositeSearchBar({
   inputRef,
 }: CompositeSearchBarProps) {
   const { t } = useTranslation()
-  const [buffer, setBuffer] = useState('')
+  // Seed the text buffer from the restored session query so the box reflects an
+  // active text filter after navigation/session restore (the data layer restores
+  // `searchQuery`, but the buffer is otherwise local and would start empty —
+  // leaving the list filtered while the box looks blank and Escape/clear inert).
+  const [buffer, setBuffer] = useState(
+    () => readHistorySessionSnapshot()?.searchState.searchQuery ?? ''
+  )
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(-1)
   const panelId = useId()
@@ -106,7 +113,10 @@ export function useCompositeSearchBar({
   }
 
   const seedDimension = (dimension: Dimension) => {
-    setBuffer(`${SYNTAX_KEYS[dimension]}:`)
+    // The tag dimension's syntax key (`#`) is the whole prefix; the others take a
+    // trailing colon (`type:`). Seeding `#:` would make `parseBuffer` treat `:`
+    // as the partial tag text and surface no useful matches.
+    setBuffer(dimension === 'tag' ? SYNTAX_KEYS.tag : `${SYNTAX_KEYS[dimension]}:`)
     setHighlight(-1)
     onQueryChange('')
     inputRef.current?.focus()

@@ -59,4 +59,36 @@ describe('historySessionSnapshot', () => {
     expect(snapshot?.seenIds).toHaveLength(HISTORY_SESSION_ITEM_CAP)
     expect(snapshot?.scrollState?.scrollTop).toBe(120)
   })
+
+  it('drops selection and scroll when the selected entry falls outside the capped window', () => {
+    clearHistorySessionSnapshot()
+
+    writeHistorySessionSnapshot({
+      searchState: {
+        activeFilter: Filter.All,
+        searchQuery: '',
+        submittedQuery: '',
+        tagFilter: null,
+        timeRange: 'all_time',
+        sourceFilter: null,
+      },
+      live: {
+        model: { query: '' },
+        items: Array.from({ length: HISTORY_SESSION_ITEM_CAP + 20 }, (_value, index) =>
+          makeItem(index)
+        ),
+        total: HISTORY_SESSION_ITEM_CAP + 20,
+        hasMore: true,
+        state: 'ready',
+      },
+      // Selected an entry past the cap — it won't survive the window trim.
+      selectedId: `entry-${HISTORY_SESSION_ITEM_CAP + 5}`,
+      seenIds: [],
+      scrollState: { ranges: [], scrollTop: 5000 },
+    })
+
+    const snapshot = readHistorySessionSnapshot()
+    expect(snapshot?.selectedId).toBeNull()
+    expect(snapshot?.scrollState).toBeNull()
+  })
 })

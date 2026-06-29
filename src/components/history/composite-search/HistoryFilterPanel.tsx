@@ -136,7 +136,9 @@ function HistoryFilterPanel({
             icon={opt.icon}
             label={opt.label}
             active={opt.isActive}
-            onClick={() => onTagFilterChange(opt.value)}
+            // Unlike source/time, the tag group has no "all" row; clicking the
+            // active tag toggles it back off so the filter can return to null.
+            onClick={() => onTagFilterChange(opt.isActive ? null : opt.value)}
           />
         ))}
       </PanelSection>

@@ -18,7 +18,7 @@ pub struct SearchResultDto {
     pub tags: Vec<String>,
     pub text_preview: Option<String>,
     /// Full character count of the entry's primary text content, so the UI shows
-    /// the real total length rather than the capped `text_preview` length. `null`
+    /// the real total length rather than the capped `textPreview` length. `null`
     /// for entries with no inline text (image / file / payload lost).
     pub char_count: Option<i64>,
     pub mime_type: String,

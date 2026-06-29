@@ -35,23 +35,26 @@ function buildInfoRows(
 
   if (item.type === 'text' && item.content) {
     const textItem = item.content as ClipboardTextItem
-    const text =
-      preview?.contentType === 'text' ? (preview.textContent ?? '') : textItem.display_text
+    // Prefer the loaded full text; otherwise the indexed `char_count` (the true
+    // length) rather than the capped preview, which would under-report.
+    const fullText = preview?.contentType === 'text' ? preview.textContent : null
+    const charCount =
+      fullText != null ? fullText.length : (textItem.char_count ?? textItem.display_text.length)
     rows.push({
       id: 'text-chars',
-      value: t('clipboard.preview.charactersCount', { count: text.length }),
+      value: t('clipboard.preview.charactersCount', { count: charCount }),
     })
     if (textItem.size > 0) rows.push({ id: 'text-size', value: formatFileSize(textItem.size) })
   }
 
   if (item.type === 'code' && item.content) {
-    const code =
-      preview?.contentType === 'text'
-        ? (preview.textContent ?? (item.content as ClipboardCodeItem).code)
-        : (item.content as ClipboardCodeItem).code
+    const codeItem = item.content as ClipboardCodeItem
+    const fullCode = preview?.contentType === 'text' ? preview.textContent : null
+    const charCount =
+      fullCode != null ? fullCode.length : (codeItem.char_count ?? codeItem.code.length)
     rows.push({
       id: 'code-chars',
-      value: t('clipboard.preview.charactersCount', { count: code.length }),
+      value: t('clipboard.preview.charactersCount', { count: charCount }),
     })
   }
 

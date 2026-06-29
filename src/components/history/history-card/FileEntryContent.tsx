@@ -14,10 +14,13 @@ function FileEntryContent({ item }: FileEntryContentProps) {
   const name = item.file_names[0] ?? t('history.unknownFile')
   const primarySize = item.file_sizes[0] ?? -1
   const ext = getFileExtLabel(name)
-  const totalSize = item.file_sizes.filter(s => s >= 0).reduce((a, b) => a + b, 0)
+  // Gate the size label on whether ANY size is known, not on a non-zero total —
+  // a known combined size of exactly 0 still renders as `0 B` rather than hiding.
+  const knownSizes = item.file_sizes.filter(s => s >= 0)
+  const totalSize = knownSizes.reduce((a, b) => a + b, 0)
   const meta =
     count > 1
-      ? totalSize > 0
+      ? knownSizes.length > 0
         ? `${t('clipboard.preview.filesCount', { count })} · ${formatFileSize(totalSize)}`
         : t('clipboard.preview.filesCount', { count })
       : primarySize >= 0

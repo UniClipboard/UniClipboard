@@ -106,7 +106,11 @@ function entryTags({
 }): ClipboardEntryTag[] {
   const out: ClipboardEntryTag[] = []
   if (hasLink || tags.includes('link')) out.push('link')
-  if (contentType === 'html' || contentType === 'text/html') out.push('code')
+  // Honor the backend `code` tag too: source-like plain text is tagged `code`
+  // server-side even though its MIME type is text/plain, so deriving `code` only
+  // from HTML would drop the code pill on those hits.
+  if (contentType === 'html' || contentType === 'text/html' || tags.includes('code'))
+    out.push('code')
   return out
 }
 

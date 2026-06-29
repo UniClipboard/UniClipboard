@@ -38,15 +38,19 @@ export function readHistorySessionSnapshot(): HistorySessionSnapshot | null {
 }
 
 export function writeHistorySessionSnapshot(next: HistorySessionSnapshot): void {
+  const cappedItems = next.live?.items.slice(0, HISTORY_SESSION_ITEM_CAP) ?? []
+  // A selection that points past the capped window can't be restored: the
+  // restore would clear the missing selection, auto-select the first row, and
+  // the saved scroll offset would no longer anchor on the right entry. Drop the
+  // selection and scroll together in that case so restore starts consistent.
+  const selectionInWindow =
+    next.selectedId === null || cappedItems.some(it => it.id === next.selectedId)
   snapshot = {
     ...next,
-    live: next.live
-      ? {
-          ...next.live,
-          items: next.live.items.slice(0, HISTORY_SESSION_ITEM_CAP),
-        }
-      : null,
+    live: next.live ? { ...next.live, items: cappedItems } : null,
     seenIds: next.seenIds.slice(0, HISTORY_SESSION_ITEM_CAP),
+    selectedId: selectionInWindow ? next.selectedId : null,
+    scrollState: selectionInWindow ? next.scrollState : null,
   }
 }
 

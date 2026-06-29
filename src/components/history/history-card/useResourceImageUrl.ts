@@ -12,6 +12,10 @@ export function useResourceImageUrl(entryId: string): string | null {
       setImageUrl(imageUrlCache.get(entryId) ?? null)
       return
     }
+    // Row reuse (virtualized list) can hand this hook a new entry id; drop the
+    // previous entry's image immediately so a stale thumbnail never lingers
+    // while the new fetch is in flight.
+    setImageUrl(null)
     let cancelled = false
     getClipboardEntryResource(entryId)
       .then(resource => {
@@ -20,7 +24,11 @@ export function useResourceImageUrl(entryId: string): string | null {
         imageUrlCache.set(entryId, url)
         setImageUrl(url)
       })
-      .catch(() => {})
+      .catch(() => {
+        // Clear on failure too — an unhandled rejection must not leave the prior
+        // row's image stuck on this entry. Not cached, so a remount can retry.
+        if (!cancelled) setImageUrl(null)
+      })
     return () => {
       cancelled = true
     }

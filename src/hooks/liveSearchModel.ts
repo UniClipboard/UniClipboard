@@ -12,12 +12,14 @@
  * ## Live-patch vs. refetch
  * A new entry can only be slotted into the current list client-side when every
  * active filter dimension is judgeable from a `DisplayClipboardItem` alone.
- * Content-type and the `link` / `code` / `favorited` tags are; a keyword query (no full
+ * Content-type and the `link` / `favorited` tags are; a keyword query (no full
  * text on the item), a source-device filter (no source on the item), a
  * time-range preset (would have to duplicate the backend's preset→range
- * parsing), an extension filter (no extensions on the item) and the `image`
- * tag (a copied image *file* projects as a `file` item, indistinguishable from
- * a plain file) are not. When any non-judgeable dimension is active,
+ * parsing), an extension filter (no extensions on the item), the `code` tag
+ * (client derives it from HTML only, but the backend also tags source-like
+ * plain text) and the `image` tag (a copied image *file* projects as a `file`
+ * item, indistinguishable from a plain file) are not. When any non-judgeable
+ * dimension is active,
  * `useLiveSearch` refetches the base query instead of patching (§4.8 fallback).
  */
 import type { TimeRangePreset } from '@/api/daemon/search'
@@ -75,12 +77,16 @@ export function displayTypeToContentType(type: ClipboardEntryType): string {
 
 /**
  * Builtin tags whose membership is reliably derivable from a
- * `DisplayClipboardItem` alone: `link` / `code` (content tags) and `favorited`
- * (its flag). `image` is deliberately absent — a copied image *file* projects
- * as a `file` display item, indistinguishable from a plain file client-side, so
- * the server must decide. Custom tags are likewise non-judgeable.
+ * `DisplayClipboardItem` alone: `link` (a content tag) and `favorited` (its
+ * flag). `code` is deliberately absent — local inserts derive `code` only from
+ * HTML (`projectClipboardEntry`), but the backend also tags source-like plain
+ * text, so a freshly-arrived plain-text entry the server would tag `code`
+ * arrives untagged and would be wrongly dropped from an active `#code` view.
+ * `image` is absent for the same reason — a copied image *file* projects as a
+ * `file` display item, indistinguishable from a plain file client-side, so the
+ * server must decide. Custom tags are likewise non-judgeable.
  */
-const CLIENT_JUDGEABLE_TAGS = new Set(['link', 'code', 'favorited'])
+const CLIENT_JUDGEABLE_TAGS = new Set(['link', 'favorited'])
 
 /**
  * Whether a freshly-arrived entry can be slotted into the current list purely

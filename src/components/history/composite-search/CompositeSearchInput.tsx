@@ -97,7 +97,9 @@ function CompositeSearchInput({
         <input
           ref={inputRef}
           type="text"
+          role="combobox"
           aria-label={title}
+          aria-expanded={expanded}
           aria-autocomplete="list"
           aria-controls={expanded ? panelId : undefined}
           aria-activedescendant={

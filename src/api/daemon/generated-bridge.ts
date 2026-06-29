@@ -8,7 +8,7 @@
  * - Sets the generated client's `baseUrl` from the daemon connection config.
  * - Injects auth as the `?auth=Session <token>` QUERY param via a request
  *   interceptor (the daemon authenticates via query param, NOT a header —
- *   see `client.ts` `sendRequest`/`blobUrl`).
+ *   see `client.ts` `sendRequest`/`fetchBlob`).
  * - Normalizes the thrown error so a 401 is observable downstream: with
  *   `throwOnError: true` the generated client throws the *parsed error body*
  *   (not an object carrying the Response), so an error interceptor re-wraps it

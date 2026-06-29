@@ -170,17 +170,14 @@ export async function fetchClipboardResourceText(
       return new TextDecoder('utf-8').decode(bytes)
     }
 
-    // Fall back to URL fetch for blob-backed content
+    // Fall back to URL fetch for blob-backed content. Route through the daemon
+    // client so the session token is refreshed (pre-emptive + 401 retry) and
+    // never baked into a URL — see `fetchBlob`.
     if (!resource.url) {
       throw new Error('Resource has neither inlineData nor url')
     }
-    const resolvedUrl = daemonClient.blobUrl(resource.url!) ?? resource.url!
-    const response = await fetch(resolvedUrl)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch clipboard resource: ${response.status}`)
-    }
-    const buffer = await response.arrayBuffer()
-    return new TextDecoder('utf-8').decode(buffer)
+    const blob = await daemonClient.fetchBlob(resource.url)
+    return blob.text()
   } catch (error) {
     log.error({ err: error }, 'Failed to fetch clipboard resource text')
     throw error
@@ -188,7 +185,10 @@ export async function fetchClipboardResourceText(
 }
 
 /**
- * Get a displayable image URL from a clipboard resource.
+ * Get a token-free image descriptor for a clipboard resource: a `data:` URL for
+ * inline content, or the daemon blob path for blob-backed content (which the
+ * caller resolves to a `blob:` object URL via {@link useBlobImageObjectUrl} so
+ * no short-lived session token ends up in `<img src>`).
  */
 export function getResourceImageUrl(resource: ClipboardEntryResource): string | null {
   if (resource.url) {
@@ -198,16 +198,6 @@ export function getResourceImageUrl(resource: ClipboardEntryResource): string | 
     return `data:${resource.mimeType};base64,${resource.inlineData}`
   }
   return null
-}
-
-/**
- * Resolve a clipboard image resource into a displayable <img src> URL.
- */
-export function resolveResourceImageUrl(resource: ClipboardEntryResource): string | null {
-  const rawUrl = getResourceImageUrl(resource)
-  if (!rawUrl) return null
-  if (rawUrl.startsWith('data:')) return rawUrl
-  return daemonClient.blobUrl(rawUrl) ?? rawUrl
 }
 
 /**

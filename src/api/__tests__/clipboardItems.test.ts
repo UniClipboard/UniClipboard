@@ -3,7 +3,7 @@ import {
   getClipboardStats,
   favoriteClipboardItem,
   unfavoriteClipboardItem,
-  resolveResourceImageUrl,
+  getResourceImageUrl,
   syncClipboardItems,
 } from '@/api/clipboardItems'
 
@@ -15,7 +15,7 @@ vi.mock('@/api/lifecycle', () => ({
 
 vi.mock('@/api/daemon/client', () => ({
   daemonClient: {
-    blobUrl: vi.fn((path: string) => `http://127.0.0.1:12345${path}?auth=Session+test`),
+    fetchBlob: vi.fn(),
     request: vi.fn(),
   },
 }))
@@ -79,8 +79,8 @@ describe('syncClipboardItems', () => {
   })
 })
 
-describe('resolveResourceImageUrl', () => {
-  it('keeps inline data URLs unchanged', () => {
+describe('getResourceImageUrl', () => {
+  it('builds an inline data URL from inline content', () => {
     const resource = {
       blobId: null,
       mimeType: 'image/png',
@@ -89,10 +89,10 @@ describe('resolveResourceImageUrl', () => {
       inlineData: 'iVBORw0KGgo=',
     }
 
-    expect(resolveResourceImageUrl(resource)).toBe('data:image/png;base64,iVBORw0KGgo=')
+    expect(getResourceImageUrl(resource)).toBe('data:image/png;base64,iVBORw0KGgo=')
   })
 
-  it('upgrades daemon blob paths to authenticated daemon URLs', () => {
+  it('returns the token-free daemon blob path for blob-backed content', () => {
     const resource = {
       blobId: 'blob-1',
       mimeType: 'image/png',
@@ -101,8 +101,6 @@ describe('resolveResourceImageUrl', () => {
       inlineData: null,
     }
 
-    expect(resolveResourceImageUrl(resource)).toBe(
-      'http://127.0.0.1:12345/clipboard/blobs/blob-1?auth=Session+test'
-    )
+    expect(getResourceImageUrl(resource)).toBe('/clipboard/blobs/blob-1')
   })
 })

@@ -292,28 +292,55 @@ class DaemonClient {
   }
 
   /**
-   * Build a full daemon URL for binary resource access with session auth.
-   * Suitable for use in <img src> without JavaScript fetch.
+   * Fetch a binary daemon resource (blob) with session auth, sharing the same
+   * pre-emptive refresh + one-shot 401 retry as {@link request}. Unlike
+   * `request`, the body is returned as a {@link Blob} (no JSON parsing).
    *
-   * 构建带 session 认证的 daemon 二进制资源完整 URL。
-   * 适用于 <img src> 等无法设置请求头的场景。
+   * Use this — not a token-bearing URL embedded in `<img src>` — so the caller
+   * can wrap the bytes in a stable `blob:` object URL. A session token has a
+   * 300s TTL; baking it into a URL that outlives the token (cached thumbnail,
+   * long-mounted `<img>`) produced periodic 401s with no retry path, since the
+   * browser image loader can't refresh on 401 the way this method does.
    *
-   * @param path API path (e.g. "/clipboard/blobs/abc-123").
-   * @returns Full URL string with ?auth= query param, or null if client not ready.
+   * 以 session 认证拉取 daemon 二进制资源，与 {@link request} 共用过期预刷新 +
+   * 401 单次重试，但返回 {@link Blob}。调用方应据此生成稳定的 object URL，
+   * 避免把 300s 短期 token 烧进 `<img src>` 导致周期性 401。
+   *
+   * @param endpoint API path (e.g. "/clipboard/blobs/abc-123").
+   * @param options Optional AbortSignal.
+   * @returns The response body as a {@link Blob}.
+   * @throws {DaemonApiError} On HTTP errors (after one refresh + retry on 401).
    */
-  blobUrl(path: string): string | null {
-    if (!this.config || !this.session?.token) return null
-    if (
-      path.startsWith('data:') ||
-      path.startsWith('blob:') ||
-      path.startsWith('http://') ||
-      path.startsWith('https://')
-    ) {
-      return path
+  async fetchBlob(endpoint: string, options: { signal?: AbortSignal } = {}): Promise<Blob> {
+    if (!this.config) {
+      throw new DaemonApiError(
+        DaemonErrorCode.INTERNAL_ERROR,
+        'DaemonClient not initialized — call initialize() first'
+      )
     }
-    const url = new URL(`${this.config.baseUrl}${path}`)
-    url.searchParams.set('auth', `Session ${this.session.token}`)
-    return url.toString()
+
+    // Pre-emptive refresh if session is expired.
+    if (isSessionExpired(this.session)) {
+      await this.refreshSession()
+    }
+
+    let response = await this.sendRequest(endpoint, { method: 'GET', signal: options.signal })
+
+    // Auto-retry once on 401 (session may have been invalidated server-side).
+    if (response.status === 401) {
+      this.session = null
+      await this.refreshSession()
+      response = await this.sendRequest(endpoint, { method: 'GET', signal: options.signal })
+    }
+
+    if (!response.ok) {
+      throw new DaemonApiError(
+        mapStatusToErrorCode(response.status),
+        `${response.status} on ${endpoint}`
+      )
+    }
+
+    return response.blob()
   }
 
   /**

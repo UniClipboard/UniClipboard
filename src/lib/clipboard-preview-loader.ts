@@ -1,4 +1,4 @@
-import { fetchClipboardResourceText, resolveResourceImageUrl } from '@/api/clipboardItems'
+import { fetchClipboardResourceText, getResourceImageUrl } from '@/api/clipboardItems'
 import { getClipboardEntryDetail, getClipboardEntryResource } from '@/api/daemon/clipboard'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { INLINE_PREVIEW_MAX_BYTES } from '@/lib/clipboard-preview-constants'
@@ -12,14 +12,14 @@ export async function loadClipboardPreview(entryId: string): Promise<ClipboardPr
 
   if (resource.mimeType === 'image' || resource.mimeType.startsWith('image/')) {
     // D6 (ADR-008 P3-d): keep originals above the inline threshold off the
-    // auto-load path. We still resolve the (auth-bearing) URL — that's just a
-    // string, no bytes are pulled — but flag it so consumers gate the `<img>`
-    // mount behind an explicit user action.
+    // auto-load path. We only resolve the token-free descriptor here — no bytes
+    // are pulled — and flag large originals so consumers gate the `<img>` mount
+    // (and its blob fetch) behind an explicit user action.
     return {
       entryId,
       contentType: 'image',
       sizeBytes: resource.sizeBytes,
-      imageUrl: resolveResourceImageUrl(resource) ?? undefined,
+      imageBlobPath: getResourceImageUrl(resource) ?? undefined,
       requiresExplicitLoad: resource.sizeBytes > INLINE_PREVIEW_MAX_BYTES,
     }
   }

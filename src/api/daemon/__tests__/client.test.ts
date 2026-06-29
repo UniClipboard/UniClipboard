@@ -33,6 +33,10 @@ function mockFetchSequence(responses: Array<{ ok: boolean; status: number; body:
       status: resp.status,
       json: () => Promise.resolve(resp.body),
       text: () => Promise.resolve(JSON.stringify(resp.body)),
+      blob: () =>
+        Promise.resolve(
+          new Blob([typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body)])
+        ),
     })
   }
   vi.stubGlobal('fetch', fetchMock)
@@ -66,29 +70,43 @@ describe('DaemonClient', () => {
     })
   })
 
-  describe('blobUrl', () => {
-    it('returns non-daemon urls unchanged', async () => {
+  describe('fetchBlob', () => {
+    it('fetches binary content with the session auth query param', async () => {
       daemonClient.initialize(TEST_CONFIG)
       await daemonClient.refreshSession()
+      mockFetchSequence([{ ok: true, status: 200, body: 'image-bytes' }])
 
-      expect(daemonClient.blobUrl('data:image/png;base64,abc')).toBe('data:image/png;base64,abc')
-      expect(daemonClient.blobUrl('blob:http://localhost/preview-1')).toBe(
-        'blob:http://localhost/preview-1'
-      )
-      expect(daemonClient.blobUrl('https://cdn.example.com/image.png')).toBe(
-        'https://cdn.example.com/image.png'
-      )
-      expect(daemonClient.blobUrl('http://cdn.example.com/image.png')).toBe(
-        'http://cdn.example.com/image.png'
-      )
+      const blob = await daemonClient.fetchBlob('/clipboard/blobs/blob-1')
+
+      expect(blob).toBeInstanceOf(Blob)
+      const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>
+      const requestedUrl = String(fetchMock.mock.calls[0][0])
+      expect(requestedUrl).toContain('/clipboard/blobs/blob-1')
+      expect(requestedUrl).toContain('auth=Session+jwt-abc')
     })
 
-    it('adds auth only for relative daemon resource paths', async () => {
+    it('refreshes the session and retries once on 401', async () => {
       daemonClient.initialize(TEST_CONFIG)
       await daemonClient.refreshSession()
+      mockFetchSequence([
+        { ok: false, status: 401, body: { error: 'expired' } },
+        { ok: true, status: 200, body: 'image-bytes' },
+      ])
 
-      expect(daemonClient.blobUrl('/clipboard/blobs/blob-1')).toBe(
-        'http://127.0.0.1:9999/clipboard/blobs/blob-1?auth=Session+jwt-abc'
+      const blob = await daemonClient.fetchBlob('/clipboard/blobs/blob-1')
+
+      expect(blob).toBeInstanceOf(Blob)
+      const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('throws a DaemonApiError on non-401 HTTP errors', async () => {
+      daemonClient.initialize(TEST_CONFIG)
+      await daemonClient.refreshSession()
+      mockFetchSequence([{ ok: false, status: 410, body: { error: 'gone' } }])
+
+      await expect(daemonClient.fetchBlob('/clipboard/blobs/blob-1')).rejects.toBeInstanceOf(
+        DaemonApiError
       )
     })
   })

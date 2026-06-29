@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -8,12 +8,18 @@ vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: vi.fn((path: string) => `asset://localhost/${encodeURIComponent(path)}`),
 }))
 
+// Resolve daemon blob paths to a deterministic object URL so `<img src>` is
+// assertable without standing up the real fetch + URL.createObjectURL path.
+vi.mock('@/api/daemon/blob-image-cache', () => ({
+  getBlobImageObjectUrl: vi.fn(async (path: string) => `blob:mock-${path}`),
+}))
+
 const previewMock = vi.hoisted((): { value: ClipboardPreviewData | null } => ({
   value: {
     entryId: 'image-file-entry',
     contentType: 'image',
     sizeBytes: 2048,
-    imageUrl: 'http://127.0.0.1:12345/clipboard/blobs/blob-image?auth=Session+test',
+    imageBlobPath: '/clipboard/blobs/blob-image',
   },
 }))
 
@@ -71,17 +77,17 @@ describe('ClipboardPreview', () => {
       entryId: 'image-file-entry',
       contentType: 'image',
       sizeBytes: 2048,
-      imageUrl: 'http://127.0.0.1:12345/clipboard/blobs/blob-image?auth=Session+test',
+      imageBlobPath: '/clipboard/blobs/blob-image',
     }
   })
 
-  it('renders a direct image preview with filename for image files', () => {
+  it('renders a direct image preview with filename for image files', async () => {
     render(<ClipboardPreview item={createImageFileItem()} />)
 
-    const image = screen.getByRole('img', { name: 'screenshot.png' })
-    expect(image).toHaveAttribute(
-      'src',
-      'http://127.0.0.1:12345/clipboard/blobs/blob-image?auth=Session+test'
+    // The `<img>` resolves its object URL asynchronously via the cache hook.
+    const image = await screen.findByRole('img', { name: 'screenshot.png' })
+    await waitFor(() =>
+      expect(image).toHaveAttribute('src', 'blob:mock-/clipboard/blobs/blob-image')
     )
     expect(image.closest('.max-w-sm')).not.toBeInTheDocument()
     expect(screen.getByText('screenshot.png')).toBeInTheDocument()

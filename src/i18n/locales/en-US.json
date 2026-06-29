@@ -539,6 +539,7 @@
         "actions": {
           "goSettings": "Go to settings",
           "toggleQuickPanel": "Toggle quick panel",
+          "favoriteClipboardItem": "Favorite current clipboard item",
           "zoomIn": "Zoom in",
           "zoomOut": "Zoom out"
         },
@@ -886,6 +887,8 @@
     "actionBar": {
       "title": "Clipboard History",
       "copy": "Copy",
+      "favorite": "Favorite",
+      "unfavorite": "Unfavorite",
       "delete": "Delete"
     },
     "notification": {

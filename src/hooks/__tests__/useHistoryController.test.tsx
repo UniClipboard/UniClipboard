@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
+import { useShortcut } from '@/hooks/useShortcut'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import {
   clearHistorySessionSnapshot,
@@ -8,6 +9,11 @@ import {
   writeHistorySessionSnapshot,
 } from '../historySessionSnapshot'
 import { useHistoryController } from '../useHistoryController'
+
+const clipboardItemsApi = vi.hoisted(() => ({
+  favoriteClipboardItem: vi.fn(() => Promise.resolve(true)),
+  unfavoriteClipboardItem: vi.fn(() => Promise.resolve(true)),
+}))
 
 const items: DisplayClipboardItem[] = [
   {
@@ -23,6 +29,15 @@ const items: DisplayClipboardItem[] = [
     activeTime: 2,
   },
 ]
+
+vi.mock('@/api/clipboardItems', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/api/clipboardItems')>()
+  return {
+    ...actual,
+    favoriteClipboardItem: clipboardItemsApi.favoriteClipboardItem,
+    unfavoriteClipboardItem: clipboardItemsApi.unfavoriteClipboardItem,
+  }
+})
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -71,9 +86,7 @@ vi.mock('@/hooks/useSearchTags', () => ({
   useSearchTags: () => [],
 }))
 
-vi.mock('@/hooks/useShortcut', () => ({
-  useShortcut: vi.fn(),
-}))
+vi.mock('@/hooks/useShortcut', () => ({ useShortcut: vi.fn() }))
 
 vi.mock('@/hooks/useShortcutScope', () => ({
   useShortcutScope: vi.fn(),
@@ -142,5 +155,29 @@ describe('useHistoryController', () => {
     await waitFor(() => {
       expect(readHistorySessionSnapshot()?.selectedId).toBe('entry-2')
     })
+  })
+
+  it('registers a shortcut to favorite the selected preview entry', async () => {
+    const { result } = renderHook(() => useHistoryController())
+
+    await waitFor(() => {
+      expect(result.current.selectedItem?.id).toBe('entry-1')
+    })
+
+    const shortcutConfigs = vi.mocked(useShortcut).mock.calls.map(([config]) => config)
+    const favoriteShortcut = [...shortcutConfigs]
+      .reverse()
+      .find(config => config.id === 'clipboard.favorite' && config.scope === 'clipboard')
+
+    expect(favoriteShortcut).toBeDefined()
+
+    await act(async () => {
+      await favoriteShortcut?.handler()
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedItem?.isFavorited).toBe(true)
+    })
+    expect(clipboardItemsApi.favoriteClipboardItem).toHaveBeenCalledWith('entry-1')
   })
 })

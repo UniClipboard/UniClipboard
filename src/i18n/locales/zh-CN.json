@@ -530,6 +530,7 @@
         "actions": {
           "goSettings": "前往设置",
           "toggleQuickPanel": "切换快捷面板",
+          "favoriteClipboardItem": "收藏当前剪贴板项目",
           "zoomIn": "放大界面",
           "zoomOut": "缩小界面"
         },
@@ -876,6 +877,8 @@
     "actionBar": {
       "title": "剪贴板历史",
       "copy": "复制",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
       "delete": "删除"
     },
     "notification": {

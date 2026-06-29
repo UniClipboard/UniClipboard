@@ -59,15 +59,18 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       ? Math.round((transfer.bytesTransferred / transfer.totalBytes) * 100)
       : 0
 
-  const handleMouseEnter = useCallback(() => onHoverChange(item.id), [item.id, onHoverChange])
-  const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange])
-  const handleClick = useCallback(() => onClick(item.id), [item.id, onClick])
-
   // Reveal the action bar on keyboard focus too, not just mouse hover — its
   // buttons are otherwise untabbable, so keyboard users could never reach
   // copy/favorite/delete. Tracked locally (separate from the parent's hover
   // selection) so it doesn't disturb the hover-driven keyboard shortcuts.
   const [focusWithin, setFocusWithin] = useState(false)
+  const handleMouseEnter = useCallback(() => onHoverChange(item.id), [item.id, onHoverChange])
+  const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange])
+  const handleClick = useCallback(() => onClick(item.id), [item.id, onClick])
+  const handleActionComplete = useCallback(() => {
+    setFocusWithin(false)
+    onHoverChange(null)
+  }, [onHoverChange])
   const handleFocus = useCallback(() => setFocusWithin(true), [])
   const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false)
@@ -126,6 +129,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
         onCopy={onCopy}
         onDelete={onDelete}
         onToggleFavorite={onToggleFavorite}
+        onActionComplete={handleActionComplete}
       />
     </div>
   )

@@ -1,4 +1,5 @@
 import { Copy, Star, Trash2 } from 'lucide-react'
+import type { MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +14,7 @@ interface HistoryCardActionsProps {
   onCopy: (id: string) => void
   onDelete: (id: string) => void
   onToggleFavorite: (id: string, current: boolean) => void
+  onActionComplete: () => void
 }
 
 function HistoryCardActions({
@@ -21,11 +23,18 @@ function HistoryCardActions({
   onCopy,
   onDelete,
   onToggleFavorite,
+  onActionComplete,
 }: HistoryCardActionsProps) {
   const { t } = useTranslation()
   const { isHovered, isTransferring, isPending, isFavorited } = state
   const actionBtnClass =
     'flex size-6 items-center justify-center rounded-lg text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground'
+  const runAction = (e: MouseEvent<HTMLButtonElement>, action: () => void) => {
+    e.stopPropagation()
+    action()
+    e.currentTarget.blur()
+    onActionComplete()
+  }
 
   return (
     <div
@@ -38,10 +47,7 @@ function HistoryCardActions({
         type="button"
         aria-label={t('clipboard.item.actions.copy')}
         tabIndex={isHovered ? 0 : -1}
-        onClick={e => {
-          e.stopPropagation()
-          onCopy(itemId)
-        }}
+        onClick={e => runAction(e, () => onCopy(itemId))}
         className={actionBtnClass}
       >
         <Copy className="size-3" />
@@ -52,10 +58,7 @@ function HistoryCardActions({
           isFavorited ? 'clipboard.item.actions.unfavorite' : 'clipboard.item.actions.favorite'
         )}
         tabIndex={isHovered ? 0 : -1}
-        onClick={e => {
-          e.stopPropagation()
-          onToggleFavorite(itemId, isFavorited)
-        }}
+        onClick={e => runAction(e, () => onToggleFavorite(itemId, isFavorited))}
         className={actionBtnClass}
       >
         <Star className={cn('size-3', isFavorited && 'fill-amber-400 text-amber-400')} />
@@ -64,10 +67,7 @@ function HistoryCardActions({
         type="button"
         aria-label={t('clipboard.item.actions.delete')}
         tabIndex={isHovered ? 0 : -1}
-        onClick={e => {
-          e.stopPropagation()
-          onDelete(itemId)
-        }}
+        onClick={e => runAction(e, () => onDelete(itemId))}
         className={cn(actionBtnClass, 'hover:bg-destructive/10 hover:text-destructive')}
       >
         <Trash2 className="size-3" />

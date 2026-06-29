@@ -134,6 +134,11 @@ export function useHistoryController() {
     return [base[idx], ...base.slice(0, idx), ...base.slice(idx + 1)]
   }, [data.baseItems, promotedId, favoriteOverrides])
 
+  const selectedItem = useMemo(
+    () => orderedItems.find(it => it.id === selectedId) ?? null,
+    [orderedItems, selectedId]
+  )
+
   // ── Hover keyboard shortcuts ──────────────────────────────────
   useShortcut({
     key: 'c',
@@ -155,6 +160,18 @@ export function useHistoryController() {
     preventDefault: false,
   })
 
+  useShortcut({
+    key: 'f',
+    id: 'clipboard.favorite',
+    scope: 'clipboard',
+    enabled: selectedItem !== null,
+    handler: () => {
+      if (!selectedItem) return
+      void handleToggleFavorite(selectedItem.id, selectedItem.isFavorited === true)
+    },
+    preventDefault: false,
+  })
+
   // CMD/Ctrl+F focuses the search box (works even while another input is focused).
   useShortcut({
     key: 'mod+f',
@@ -168,11 +185,6 @@ export function useHistoryController() {
     enableOnFormTags: true,
     preventDefault: true,
   })
-
-  const selectedItem = useMemo(
-    () => orderedItems.find(it => it.id === selectedId) ?? null,
-    [orderedItems, selectedId]
-  )
 
   // Keep hover/selection valid and the preview pane populated:
   // - drop a hover/selection that points at an entry no longer in the list

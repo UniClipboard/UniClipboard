@@ -14,7 +14,7 @@ import {
 const log = createLogger('shortcuts-section')
 
 /** Display order for shortcut scopes */
-const SCOPE_ORDER: ShortcutScope[] = ['global']
+const SCOPE_ORDER: ShortcutScope[] = ['global', 'clipboard']
 
 const ShortcutsSection: React.FC = () => {
   const { t } = useTranslation()

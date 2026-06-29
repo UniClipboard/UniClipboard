@@ -1,4 +1,6 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import HistoryCard from '@/components/history/HistoryCard'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -38,6 +40,31 @@ function renderCard(item: DisplayClipboardItem) {
       onHoverChange={noop}
     />
   )
+}
+
+function renderInteractiveCard(item: DisplayClipboardItem, onCopy = vi.fn()) {
+  const onCardClick = vi.fn()
+
+  function InteractiveCard() {
+    const [hoveredId, setHoveredId] = useState<string | null>(item.id)
+
+    return (
+      <HistoryCard
+        item={item}
+        isHovered={hoveredId === item.id}
+        copySuccess={false}
+        isDeleting={false}
+        onCopy={onCopy}
+        onDelete={noop}
+        onToggleFavorite={noop}
+        onClick={onCardClick}
+        onHoverChange={setHoveredId}
+      />
+    )
+  }
+
+  render(<InteractiveCard />)
+  return { onCardClick, onCopy }
 }
 
 describe('HistoryCard', () => {
@@ -101,5 +128,26 @@ describe('HistoryCard', () => {
     expect(screen.getByText('return')).toBeInTheDocument()
     expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('2')).toBeInTheDocument()
+  })
+
+  it('hides the hover actions after clicking an action button', async () => {
+    const user = userEvent.setup()
+    const { onCardClick, onCopy } = renderInteractiveCard({
+      id: 'copy-entry',
+      type: 'text',
+      content: { display_text: 'copy me', char_count: 7 },
+      activeTime: 1,
+    } as DisplayClipboardItem)
+
+    const copyButton = screen.getByRole('button', { name: 'clipboard.item.actions.copy' })
+
+    expect(copyButton.parentElement).toHaveClass('opacity-100')
+
+    await user.click(copyButton)
+
+    expect(onCopy).toHaveBeenCalledWith('copy-entry')
+    expect(onCardClick).not.toHaveBeenCalled()
+    expect(copyButton).toHaveAttribute('tabindex', '-1')
+    expect(copyButton.parentElement).toHaveClass('opacity-0')
   })
 })

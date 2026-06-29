@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
 import CompositeSearchBar from '../CompositeSearchBar'
+import HistoryFilterPanel from '../HistoryFilterPanel'
 
 vi.mock('@/hooks/useShortcut', () => ({
   useShortcut: vi.fn(),
@@ -81,5 +82,44 @@ describe('CompositeSearchBar', () => {
     expect(props.onSourceFilterChange).toHaveBeenCalledWith(null)
     expect(props.onTimeRangeChange).toHaveBeenCalledWith('all_time')
     expect(props.onQueryChange).toHaveBeenCalledWith('')
+  })
+})
+
+function renderFilterPanel(
+  overrides: Partial<React.ComponentProps<typeof HistoryFilterPanel>> = {}
+) {
+  const props: React.ComponentProps<typeof HistoryFilterPanel> = {
+    contentFilter: Filter.Favorited,
+    sourceFilter: null,
+    tagFilter: null,
+    timeRange: 'all_time' as TimeRangePreset,
+    onContentFilterChange: vi.fn(),
+    onTagFilterChange: vi.fn(),
+    onSourceFilterChange: vi.fn(),
+    onTimeRangeChange: vi.fn(),
+    sourceOptions: [],
+    tagOptions: [],
+    ...overrides,
+  }
+
+  render(<HistoryFilterPanel {...props} />)
+  return props
+}
+
+describe('HistoryFilterPanel', () => {
+  it('uses a restrained selected-row treatment', () => {
+    renderFilterPanel()
+
+    const selectedRow = screen.getByRole('button', {
+      name: 'history.filter.favorited',
+      pressed: true,
+    })
+    const selectedIcon = selectedRow.querySelector('svg')
+
+    expect(selectedRow.className).toContain('bg-muted/50')
+    expect(selectedRow.className).toContain('text-foreground')
+    expect(selectedRow.className).not.toContain('bg-primary')
+    expect(selectedRow.className).not.toContain('font-medium')
+    expect(selectedIcon).toHaveClass('text-muted-foreground')
   })
 })

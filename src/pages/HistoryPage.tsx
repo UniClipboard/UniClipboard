@@ -147,8 +147,17 @@ const HistoryPage: React.FC = () => {
                   <ClipboardActionBar
                     hasActiveItem={c.selectedItem !== null}
                     copySuccess={c.copySuccessId !== null && c.copySuccessId === c.selectedId}
+                    isFavorited={c.selectedItem?.isFavorited === true}
                     onCopy={() => {
                       if (c.selectedId) c.handleCopy(c.selectedId)
+                    }}
+                    onToggleFavorite={() => {
+                      if (c.selectedItem) {
+                        c.handleToggleFavorite(
+                          c.selectedItem.id,
+                          c.selectedItem.isFavorited === true
+                        )
+                      }
                     }}
                     onDelete={() => {
                       if (c.selectedId) c.requestDelete(c.selectedId)

@@ -12,6 +12,20 @@ vi.mock('@/api/daemon/diagnostics', () => ({
   updateDebugMode: vi.fn(),
 }))
 
+vi.mock('framer-motion', async () => {
+  const ReactModule = await import('react')
+  return {
+    m: {
+      div: ({
+        children,
+        layoutId,
+        ...props
+      }: React.HTMLAttributes<HTMLDivElement> & { layoutId?: string }) =>
+        ReactModule.createElement('div', { ...props, 'data-layout-id': layoutId }, children),
+    },
+  }
+})
+
 const mockUpdateDebugMode = vi.mocked(updateDebugMode)
 
 beforeAll(() => {
@@ -145,7 +159,50 @@ function renderSidebar(state: UpdateState, setting: Settings = baseSetting) {
   )
 }
 
+function renderSidebarAt(pathname: string) {
+  return render(
+    <SettingContext.Provider
+      value={{
+        setting: baseSetting,
+        loading: false,
+        error: null,
+        reloadSetting: vi.fn(),
+        updateSetting: vi.fn(),
+        updateGeneralSetting: vi.fn(),
+        updateAutostart: vi.fn(),
+        updateSyncSetting: vi.fn(),
+        updateSecuritySetting: vi.fn(),
+        updateRetentionPolicy: vi.fn(),
+        updateKeyboardShortcuts: vi.fn(),
+        updateFileSyncSetting: vi.fn(),
+        updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+        updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
+      }}
+    >
+      <UpdateContext.Provider
+        value={buildUpdateValue({ phase: 'idle', info: null, downloaded: 0, total: null })}
+      >
+        <MemoryRouter initialEntries={[pathname]}>
+          <Sidebar />
+        </MemoryRouter>
+      </UpdateContext.Provider>
+    </SettingContext.Provider>
+  )
+}
+
 describe('Sidebar update indicator', () => {
+  it('keeps primary navigation highlight on a lightweight CSS path', () => {
+    renderSidebarAt('/devices')
+
+    expect(document.querySelector('[data-layout-id="sidebar-nav-top"]')).not.toBeInTheDocument()
+
+    const movingHighlight = document.querySelector('aside > div:first-of-type > div[aria-hidden]')
+    expect(movingHighlight).toHaveClass('transition-transform')
+    expect(movingHighlight).toHaveClass('left-2')
+    expect(movingHighlight).not.toHaveClass('-translate-x-1/2')
+    expect(movingHighlight).toHaveStyle({ transform: 'translateY(3.25rem)' })
+  })
+
   it('shows the amber "available" icon when an update is available', async () => {
     renderSidebar({
       phase: 'available',

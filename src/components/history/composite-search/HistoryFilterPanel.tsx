@@ -39,11 +39,11 @@ function PanelRow({
       className={cn(
         'flex w-full items-center gap-2 rounded-[1.25rem] px-2.5 py-1.5 text-left text-[13px] transition-colors',
         active
-          ? 'bg-primary/10 font-medium text-foreground'
+          ? 'bg-muted/50 text-foreground ring-1 ring-border/50'
           : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
       )}
     >
-      <Icon className={cn('size-3.5 shrink-0', active ? 'text-primary' : 'opacity-70')} />
+      <Icon className={cn('size-3.5 shrink-0', active ? 'text-muted-foreground' : 'opacity-70')} />
       <span className="truncate">{label}</span>
     </button>
   )

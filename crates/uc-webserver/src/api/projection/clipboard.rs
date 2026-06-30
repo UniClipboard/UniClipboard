@@ -42,6 +42,7 @@ impl IntoApiDto<EntryProjectionResponseDto> for EntryProjectionView {
             active_time: self.active_time,
             file_transfer_status: self.file_transfer_status,
             file_transfer_reason: self.file_transfer_reason,
+            content_tags: self.content_tags,
             link_urls: self.link_urls,
             link_domains: self.link_domains,
             file_sizes: self.file_sizes,

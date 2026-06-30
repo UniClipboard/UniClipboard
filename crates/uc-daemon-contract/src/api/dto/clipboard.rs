@@ -29,6 +29,8 @@ pub struct EntryProjectionResponseDto {
     pub file_transfer_status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_transfer_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content_tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_urls: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]

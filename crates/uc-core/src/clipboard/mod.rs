@@ -21,7 +21,9 @@ mod thumbnail;
 mod timestamp;
 
 pub use active_state::ActiveClipboardState;
-pub use category::{ClipboardContentCategory, ClipboardContentCategorySet};
+pub use category::{
+    ClipboardContentCategory, ClipboardContentCategorySet, ClipboardEntryContentCategory,
+};
 pub use change::*;
 pub use delivery::{
     DeliveryFailureReason, EntryDeliveryError, EntryDeliveryRecord, EntryDeliveryStatus,

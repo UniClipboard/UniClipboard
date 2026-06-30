@@ -539,6 +539,7 @@ mod tests {
             pinned: false,
             delivery_tracked: false,
             is_favorited: false,
+            content_category: "text".into(),
         };
 
         executor

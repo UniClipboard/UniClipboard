@@ -43,8 +43,9 @@ use uc_core::ports::{
     SelectRepresentationPolicyPort,
 };
 use uc_core::{
-    ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
-    ObservedClipboardRepresentation, PayloadAvailability, SnapshotHash, SystemClipboardSnapshot,
+    ClipboardChangeOrigin, ClipboardEntry, ClipboardEntryContentCategory, ClipboardEvent,
+    ClipboardSelectionDecision, ObservedClipboardRepresentation, PayloadAvailability, SnapshotHash,
+    SystemClipboardSnapshot,
 };
 
 /// Result of a capture attempt.
@@ -532,6 +533,7 @@ impl CaptureClipboardUseCase {
             async {
                 let title = Self::generate_title(&snapshot);
                 let total_size = snapshot.total_size_bytes();
+                let content_category = ClipboardEntryContentCategory::from_snapshot(&snapshot);
                 match commit_mode {
                     CommitMode::Create => {
                         let created_at_ms = SystemTime::now()
@@ -544,7 +546,8 @@ impl CaptureClipboardUseCase {
                             created_at_ms,
                             title,
                             total_size,
-                        );
+                        )
+                        .with_content_category(content_category);
                         self.save_entry
                             .save_entry_and_selection(&new_entry, &new_selection)
                             .await
@@ -559,6 +562,7 @@ impl CaptureClipboardUseCase {
                             &new_selection,
                             title,
                             total_size,
+                            content_category,
                         )
                         .await
                         .map_err(anyhow::Error::from),

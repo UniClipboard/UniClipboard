@@ -1,3 +1,4 @@
+use crate::clipboard::ClipboardEntryContentCategory;
 use crate::ids::{EntryId, EventId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8,6 +9,7 @@ pub struct ClipboardEntry {
     pub active_time_ms: i64,
     pub title: Option<String>,
     pub total_size: i64,
+    pub content_category: ClipboardEntryContentCategory,
     /// 该 entry 是否纳入了"投递状态"追踪体系。
     ///
     /// 投递状态(`EntryDeliveryRecord`)是后续引入的功能,系统升级前已存在的
@@ -45,6 +47,7 @@ impl ClipboardEntry {
             active_time_ms: created_at_ms,
             title,
             total_size,
+            content_category: ClipboardEntryContentCategory::Other,
             delivery_tracked: true,
             is_favorited: false,
         }
@@ -65,6 +68,7 @@ impl ClipboardEntry {
             active_time_ms,
             title,
             total_size,
+            content_category: ClipboardEntryContentCategory::Other,
             delivery_tracked: true,
             is_favorited: false,
         }
@@ -82,6 +86,11 @@ impl ClipboardEntry {
     /// to restore the persisted value; constructors default it to `false`.
     pub fn with_favorited(mut self, is_favorited: bool) -> Self {
         self.is_favorited = is_favorited;
+        self
+    }
+
+    pub fn with_content_category(mut self, category: ClipboardEntryContentCategory) -> Self {
+        self.content_category = category;
         self
     }
 }

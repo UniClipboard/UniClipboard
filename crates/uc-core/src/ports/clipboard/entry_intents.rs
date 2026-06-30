@@ -124,9 +124,9 @@ pub trait ReplaceEntryContentPort: Send + Sync {
     /// current event, representations, selection, thumbnails, delivery and
     /// transfer associations, then rebuild them from the supplied event,
     /// representations and selection. The entry keeps its `entry_id`, and its
-    /// sticky state — `pinned`, `active_time_ms`, `created_at_ms` — is
-    /// preserved; only its content pointer (`event_id`), `title` and
-    /// `total_size` are updated to the new event.
+    /// sticky user state — `pinned`, `active_time_ms`, `created_at_ms` — is
+    /// preserved; its content pointer (`event_id`), `title`, `total_size`, and
+    /// persisted content category are updated to the new event.
     ///
     /// The whole operation is one transaction: on any failure nothing changes.
     /// `new_event` carries the authoritative content identity (`snapshot_hash`)
@@ -143,6 +143,7 @@ pub trait ReplaceEntryContentPort: Send + Sync {
         new_selection: &ClipboardSelectionDecision,
         new_title: Option<String>,
         new_total_size: i64,
+        new_content_category: crate::clipboard::ClipboardEntryContentCategory,
     ) -> Result<(), ClipboardRepositoryError>;
 }
 

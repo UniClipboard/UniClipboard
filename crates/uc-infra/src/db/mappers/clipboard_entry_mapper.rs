@@ -1,7 +1,7 @@
 use crate::db::models::clipboard_entry::{ClipboardEntryRow, NewClipboardEntryRow};
 use crate::db::ports::{InsertMapper, RowMapper};
 use anyhow::Result;
-use uc_core::clipboard::ClipboardEntry;
+use uc_core::clipboard::{ClipboardEntry, ClipboardEntryContentCategory};
 
 pub struct ClipboardEntryRowMapper;
 
@@ -17,6 +17,7 @@ impl InsertMapper<ClipboardEntry, NewClipboardEntryRow> for ClipboardEntryRowMap
             pinned: false, // TODO: implement
             delivery_tracked: domain.delivery_tracked,
             is_favorited: domain.is_favorited,
+            content_category: domain.content_category.as_db_str().to_string(),
         })
     }
 }
@@ -32,6 +33,9 @@ impl RowMapper<ClipboardEntryRow, ClipboardEntry> for ClipboardEntryRowMapper {
             row.total_size,
         )
         .with_delivery_tracked(row.delivery_tracked)
-        .with_favorited(row.is_favorited))
+        .with_favorited(row.is_favorited)
+        .with_content_category(ClipboardEntryContentCategory::from_db_str(
+            &row.content_category,
+        )))
     }
 }

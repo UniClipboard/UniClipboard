@@ -2,6 +2,7 @@
 
 pub mod clipboard_capture;
 pub mod clipboard_write;
+pub(crate) mod content_tags;
 pub mod deps;
 // §11.4.3 — internal write-coordination primitive; never exposed at the crate
 // root. The shared `EntryIdentityCoordinator` is reachable only through the

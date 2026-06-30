@@ -106,7 +106,14 @@ uniclip search "report" \
     --limit 20 --detailed
 uniclip search "report" \
     --from-ms 1710000000000 --to-ms 1710100000000
+uniclip search "report" \
+    --source-device "Laptop"             # only clips from that device
 ```
+
+`--source-device` filters by the device a clip arrived from. It accepts a
+device name (case-insensitive) or a device id and is repeatable; run
+`uniclip members` to see the available names. `--detailed` (and `--json`)
+output includes each result's `source` device id.
 
 `rebuild` blocks until the rebuild finishes; useful when scripting a
 diagnostic snapshot.

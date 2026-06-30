@@ -15,6 +15,10 @@ const clipboardItemsApi = vi.hoisted(() => ({
   unfavoriteClipboardItem: vi.fn(() => Promise.resolve(true)),
 }))
 
+const historyDataState = vi.hoisted(() => ({
+  baseItems: [] as DisplayClipboardItem[],
+}))
+
 const items: DisplayClipboardItem[] = [
   {
     id: 'entry-1',
@@ -64,15 +68,15 @@ vi.mock('@/hooks/useHistoryData', () => ({
       submitQuery: vi.fn(),
     },
     sourceOptions: [],
-    baseItems: items,
+    baseItems: historyDataState.baseItems,
     liveSnapshot: {
       model: { query: '', timeRange: 'all_time' },
-      items,
-      total: items.length,
+      items: historyDataState.baseItems,
+      total: historyDataState.baseItems.length,
       hasMore: false,
       state: 'ready',
     },
-    browseCount: items.length,
+    browseCount: historyDataState.baseItems.length,
     indexState: 'ready',
     isSearchActive: false,
     searchLoading: false,
@@ -123,6 +127,7 @@ vi.mock('@/store/hooks', () => ({
 describe('useHistoryController', () => {
   beforeEach(() => {
     clearHistorySessionSnapshot()
+    historyDataState.baseItems = items
     vi.clearAllMocks()
   })
 
@@ -182,5 +187,48 @@ describe('useHistoryController', () => {
       expect(result.current.selectedItem?.isFavorited).toBe(true)
     })
     expect(clipboardItemsApi.favoriteClipboardItem).toHaveBeenCalledWith('entry-1')
+  })
+
+  it('keeps the active row on the first card when a newer card is prepended', async () => {
+    const { result, rerender } = renderHook(() => useHistoryController())
+
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('entry-1')
+    })
+
+    const incoming: DisplayClipboardItem = {
+      id: 'entry-new',
+      type: 'text',
+      content: { display_text: 'new', has_detail: false, size: 3 },
+      activeTime: 3,
+    }
+
+    await act(async () => {
+      historyDataState.baseItems = [incoming, ...items]
+      rerender()
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('entry-new')
+    })
+    expect(result.current.selectedItem?.id).toBe('entry-new')
+  })
+
+  it('keeps the selected id when existing cards are only reordered', async () => {
+    const { result, rerender } = renderHook(() => useHistoryController())
+
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('entry-1')
+    })
+
+    await act(async () => {
+      historyDataState.baseItems = [items[1], items[0]]
+      rerender()
+    })
+
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('entry-1')
+    })
+    expect(result.current.selectedItem?.id).toBe('entry-1')
   })
 })

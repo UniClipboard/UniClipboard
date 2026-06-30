@@ -63,6 +63,8 @@ export function useHistoryController() {
   const [selectedId, setSelectedId] = useState<string | null>(
     () => initialSnapshot?.selectedId ?? null
   )
+  const previousFirstItemIdRef = useRef<string | null>(null)
+  const previousItemIdsRef = useRef<Set<string>>(new Set())
   // Stable Set of ids already rendered once; read during render to gate the
   // entrance animation, mutated only in an effect (never during render).
   const [seenIds] = useState(() => new Set<string>(initialSnapshot?.seenIds ?? []))
@@ -210,13 +212,29 @@ export function useHistoryController() {
   //   master-detail preview is never blank while there is something to show.
   useEffect(() => {
     const ids = new Set(orderedItems.map(it => it.id))
+    const firstItemId = orderedItems[0]?.id ?? null
+    const previousFirstItemId = previousFirstItemIdRef.current
+    const previousItemIds = previousItemIdsRef.current
+    previousFirstItemIdRef.current = firstItemId
+    previousItemIdsRef.current = ids
+
     if (hoveredId !== null && !ids.has(hoveredId)) setHoveredId(null)
     if (selectedId !== null && !ids.has(selectedId)) {
       setSelectedId(null)
       return
     }
-    if (selectedId === null && orderedItems.length > 0) {
-      setSelectedId(orderedItems[0].id)
+    if (firstItemId === null) return
+    if (selectedId === null) {
+      setSelectedId(firstItemId)
+      return
+    }
+    if (
+      previousFirstItemId !== null &&
+      selectedId === previousFirstItemId &&
+      firstItemId !== previousFirstItemId &&
+      !previousItemIds.has(firstItemId)
+    ) {
+      setSelectedId(firstItemId)
     }
   }, [orderedItems, hoveredId, selectedId])
 

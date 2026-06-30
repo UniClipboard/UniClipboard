@@ -172,6 +172,37 @@
     background-color: rgb(100 116 139);
   }
 
+  .scrollbar-code {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.45) transparent;
+  }
+
+  .scrollbar-code::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .scrollbar-code::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-code::-webkit-scrollbar-thumb {
+    min-width: 48px;
+    min-height: 48px;
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-color: rgb(148 163 184 / 0.38);
+    background-clip: padding-box;
+  }
+
+  .scrollbar-code::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(203 213 225 / 0.62);
+  }
+
+  .scrollbar-code::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   /* 隐藏滚动条但保留功能 */
   .no-scrollbar {
     -ms-overflow-style: none;

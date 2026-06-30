@@ -519,8 +519,10 @@ async fn decode_failed_on_truncated_envelope() {
     };
 
     let mut repo = MockEntryRepo::new();
+    // Decode runs before the dedup query, so an undecodable frame is dropped
+    // without ever touching the entry store.
     repo.expect_find_entry_id_by_snapshot_hash()
-        .times(1)
+        .times(0)
         .returning(|_| Ok(None));
     let capture = MockCapture::new();
     let write = MockWrite::new();
@@ -549,8 +551,10 @@ async fn execute_records_incoming_flow_id_on_span() {
     };
 
     let mut repo = MockEntryRepo::new();
+    // flow_id is recorded on the span before decode; the frame is undecodable,
+    // so the dedup query is never reached.
     repo.expect_find_entry_id_by_snapshot_hash()
-        .times(1)
+        .times(0)
         .returning(|_| Ok(None));
     let capture = MockCapture::new();
     let write = MockWrite::new();
@@ -1436,4 +1440,189 @@ async fn happy_path_emits_incoming_pending_then_new_content() {
         }
         other => panic!("event[1] must be NewContent, got {other:?}"),
     }
+}
+
+// ── Layer ② upgrade routing: partial → complete in place ─────────────────
+
+/// Availability fake reporting a fixed verdict for any entry id.
+struct FakeAvailability {
+    available: bool,
+}
+
+#[async_trait]
+impl uc_core::ports::clipboard::CheckEntryAvailabilityPort for FakeAvailability {
+    async fn is_entry_available(
+        &self,
+        _entry_id: &EntryId,
+    ) -> std::result::Result<bool, ClipboardRepositoryError> {
+        Ok(self.available)
+    }
+}
+
+/// One inbound file delivery (uri-list rep + a single free-file blob ref).
+fn file_blob_input() -> ApplyInboundInput {
+    let original = SystemClipboardSnapshot {
+        ts_ms: 1_700_000_000_000,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/payload.bin\n".to_vec(),
+        )],
+        file_content_digests: Vec::new(),
+    };
+    let blob_ref = V3BlobRef {
+        ticket: BlobTicket::from_bytes(vec![1, 2, 3]),
+        entry_id: EntryId::from("sender-entry"),
+        filename: Some("payload.bin".to_string()),
+        mime: Some("application/octet-stream".to_string()),
+        size_bytes: 10,
+        representation_index: None,
+    };
+    let (plaintext, snapshot_hash) =
+        encode_snapshot_with_blob_refs_to_v3_bytes(&original, &[blob_ref]).unwrap();
+    ApplyInboundInput {
+        from_device: DeviceId::new("peer-up"),
+        snapshot_hash,
+        plaintext,
+        flow_id: None,
+    }
+}
+
+/// Core of the three-entry fix: a hash match against a *partial* entry plus a
+/// *complete* delivery upgrades the existing entry in place — capture is driven
+/// under the partial's id (not a fresh one), and the outcome reuses that id.
+#[tokio::test]
+async fn partial_match_is_upgraded_in_place_by_complete_delivery() {
+    let input = file_blob_input();
+    let partial_id = EntryId::from("partial-entry");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning({
+            let id = partial_id.clone();
+            move |_| Ok(Some(id.clone()))
+        });
+
+    let mut materializer = MockBlobMaterializer::new();
+    materializer.expect_materialize().times(1).returning(
+        |_from_device, _receiver_entry_id, mut snapshot, _| {
+            snapshot.representations[0]
+                .set_inline_bytes(b"file:///local/cache/payload.bin\n".to_vec())
+                .unwrap();
+            Ok(MaterializeResult::complete(snapshot))
+        },
+    );
+
+    // The replace route drives capture under the existing partial id (via the
+    // `replace_with_identity` default → `capture`); the mock echoes that id back
+    // so the outcome reuses it.
+    let mut capture = MockCapture::new();
+    capture
+        .expect_capture()
+        .withf({
+            let id = partial_id.clone();
+            move |preset, _from_device, _snapshot| *preset == id
+        })
+        .times(1)
+        .returning(|preset, _, _| Ok(Some(preset)));
+
+    let mut write = MockWrite::new();
+    write.expect_write().times(1).returning(|_| Ok(()));
+
+    let uc = build_with_blob_materializer(repo, capture, write, materializer)
+        .with_check_entry_availability(Arc::new(FakeAvailability { available: false }));
+    let outcome = uc.execute(input).await.expect("upgrade path ok");
+    assert_eq!(
+        outcome,
+        ApplyOutcome::Applied {
+            entry_id: partial_id
+        },
+        "a completing delivery must upgrade the partial entry in place, reusing its id"
+    );
+}
+
+/// A hash match that is fully available is skipped *before* any download —
+/// neither materialize nor capture runs.
+#[tokio::test]
+async fn available_match_is_skipped_before_download() {
+    let input = file_blob_input();
+    let held_id = EntryId::from("held-entry");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning({
+            let id = held_id.clone();
+            move |_| Ok(Some(id.clone()))
+        });
+
+    // Materializer present but must never run (skip happens pre-download).
+    let mut materializer = MockBlobMaterializer::new();
+    materializer.expect_materialize().times(0);
+    let capture = MockCapture::new(); // capture must not be called
+    let mut write = MockWrite::new();
+    write.expect_write().times(0);
+
+    let uc = build_with_blob_materializer(repo, capture, write, materializer)
+        .with_check_entry_availability(Arc::new(FakeAvailability { available: true }));
+    let outcome = uc.execute(input).await.expect("skip path ok");
+    assert_eq!(
+        outcome,
+        ApplyOutcome::DuplicateSkipped {
+            snapshot_hash: file_blob_input().snapshot_hash,
+            existing_entry_id: held_id,
+        }
+    );
+}
+
+/// A partial delivery must NOT replace an existing partial entry (no thrashing
+/// between two placeholders): the existing one is kept and the delivery skipped.
+#[tokio::test]
+async fn partial_delivery_does_not_replace_existing_partial() {
+    let input = file_blob_input();
+    let partial_id = EntryId::from("partial-entry");
+
+    let mut repo = MockEntryRepo::new();
+    repo.expect_find_entry_id_by_snapshot_hash()
+        .times(1)
+        .returning({
+            let id = partial_id.clone();
+            move |_| Ok(Some(id.clone()))
+        });
+
+    let mut materializer = MockBlobMaterializer::new();
+    materializer.expect_materialize().times(1).returning(
+        |_from_device, _receiver_entry_id, mut snapshot, _| {
+            snapshot.representations[0]
+                .set_inline_bytes(
+                    b"uniclip-missing:///payload.bin?size=10&reason=cancelled".to_vec(),
+                )
+                .unwrap();
+            Ok(MaterializeResult {
+                snapshot,
+                missing: vec![super::materializer::MissingFileRef {
+                    filename: "payload.bin".to_string(),
+                    size_bytes: 10,
+                }],
+                partial: true,
+            })
+        },
+    );
+
+    let capture = MockCapture::new(); // must not be called
+    let mut write = MockWrite::new();
+    write.expect_write().times(0);
+
+    let uc = build_with_blob_materializer(repo, capture, write, materializer)
+        .with_check_entry_availability(Arc::new(FakeAvailability { available: false }));
+    let outcome = uc.execute(input).await.expect("partial-vs-partial skip ok");
+    assert_eq!(
+        outcome,
+        ApplyOutcome::DuplicateSkipped {
+            snapshot_hash: file_blob_input().snapshot_hash,
+            existing_entry_id: partial_id,
+        }
+    );
 }

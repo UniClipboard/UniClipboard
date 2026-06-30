@@ -18,10 +18,10 @@ use tokio::sync::broadcast;
 use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::ids::DeviceId;
 use uc_core::ports::{
-    ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, ClockPort, DispatchAck,
-    FirstSyncStateError, FirstSyncStatePort, LocalIdentityError, LocalIdentityPort,
-    PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort, PresenceError, PresenceEvent,
-    PresencePort, ReachabilityState, SettingsPort, SyncPayload,
+    ClipboardDispatchPort, ClipboardHeader, ClockPort, DispatchReport, FirstSyncStateError,
+    FirstSyncStatePort, LocalIdentityError, LocalIdentityPort, PeerAddressError, PeerAddressRecord,
+    PeerAddressRepositoryPort, PresenceError, PresenceEvent, PresencePort, ReachabilityState,
+    SettingsPort, SyncPayload,
 };
 use uc_core::security::IdentityFingerprint;
 use uc_core::settings::model::Settings;
@@ -69,7 +69,7 @@ mockall::mock! {
             target: &DeviceId,
             header: &ClipboardHeader,
             payload: SyncPayload,
-        ) -> Result<DispatchAck, ClipboardDispatchError>;
+        ) -> DispatchReport;
     }
 }
 

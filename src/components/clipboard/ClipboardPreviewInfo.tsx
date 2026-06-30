@@ -1,12 +1,9 @@
-import { Database, Files, Globe, Hash, Layers, Maximize, Type } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
 import type {
-  ClipboardCodeItem,
   ClipboardFileItem,
   ClipboardImageItem,
-  ClipboardLinkItem,
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
@@ -23,7 +20,6 @@ interface ClipboardPreviewInfoProps {
 
 interface InfoRow {
   id: string
-  icon: React.ElementType
   value: React.ReactNode
 }
 
@@ -33,31 +29,20 @@ function buildInfoRows(
   imageDimensions: { width: number; height: number } | null,
   t: (key: string, options?: Record<string, unknown>) => string
 ): InfoRow[] {
-  const rows: InfoRow[] = [{ id: 'type', icon: Layers, value: t('header.filters.' + item.type) }]
+  const rows: InfoRow[] = [{ id: 'type', value: t('header.filters.' + item.type) }]
 
-  if (item.type === 'text' && item.content) {
+  if ((item.type === 'text' || item.type === 'richtext') && item.content) {
     const textItem = item.content as ClipboardTextItem
-    const text =
-      preview?.contentType === 'text' ? (preview.textContent ?? '') : textItem.display_text
+    // Prefer the loaded full text; otherwise the indexed `char_count` (the true
+    // length) rather than the capped preview, which would under-report.
+    const fullText = preview?.contentType === 'text' ? preview.textContent : null
+    const charCount =
+      fullText != null ? fullText.length : (textItem.char_count ?? textItem.display_text.length)
     rows.push({
       id: 'text-chars',
-      icon: Type,
-      value: t('clipboard.preview.charactersCount', { count: text.length }),
+      value: t('clipboard.preview.charactersCount', { count: charCount }),
     })
-    if (textItem.size > 0)
-      rows.push({ id: 'text-size', icon: Database, value: formatFileSize(textItem.size) })
-  }
-
-  if (item.type === 'code' && item.content) {
-    const code =
-      preview?.contentType === 'text'
-        ? (preview.textContent ?? (item.content as ClipboardCodeItem).code)
-        : (item.content as ClipboardCodeItem).code
-    rows.push({
-      id: 'code-chars',
-      icon: Type,
-      value: t('clipboard.preview.charactersCount', { count: code.length }),
-    })
+    if (textItem.size > 0) rows.push({ id: 'text-size', value: formatFileSize(textItem.size) })
   }
 
   if (item.type === 'image' && item.content) {
@@ -65,41 +50,33 @@ function buildInfoRows(
     const dims =
       imageDimensions ??
       (imageItem.width > 0 ? { width: imageItem.width, height: imageItem.height } : null)
-    if (dims)
-      rows.push({ id: 'image-dims', icon: Maximize, value: `${dims.width} × ${dims.height}` })
-    if (imageItem.size > 0)
-      rows.push({ id: 'image-size', icon: Database, value: formatFileSize(imageItem.size) })
+    if (dims) rows.push({ id: 'image-dims', value: `${dims.width} × ${dims.height}` })
+    if (imageItem.size > 0) rows.push({ id: 'image-size', value: formatFileSize(imageItem.size) })
   }
 
   if (item.type === 'file' && item.content) {
     const fileItem = item.content as ClipboardFileItem
     rows.push({
       id: 'file-count',
-      icon: Files,
       value: t('clipboard.preview.filesCount', { count: fileItem.file_names.length }),
     })
     const knownSizes = fileItem.file_sizes.filter(size => size >= 0)
     if (knownSizes.length > 0) {
       const totalSize = knownSizes.reduce((sum, size) => sum + size, 0)
-      rows.push({ id: 'file-size', icon: Database, value: formatFileSize(totalSize) })
+      rows.push({ id: 'file-size', value: formatFileSize(totalSize) })
     }
-  }
-
-  if (item.type === 'link' && item.content) {
-    const linkItem = item.content as ClipboardLinkItem
-    const uniqueDomains = [...new Set(linkItem.domains.filter(Boolean))]
-    if (uniqueDomains.length > 0)
-      rows.push({ id: 'link-domain', icon: Globe, value: uniqueDomains[0] })
-    rows.push({
-      id: 'link-chars',
-      icon: Hash,
-      value: t('clipboard.preview.charactersCount', { count: linkItem.urls[0]?.length ?? 0 }),
-    })
   }
 
   return rows
 }
 
+/**
+ * Lightweight meta strip atop the preview pane: a single dot-separated line of
+ * facts (type · size · dims …) on the same `bg-card` surface as the body, with
+ * the delivery badge pinned right. No background block or divider — the preview
+ * reads as one continuous surface, with hierarchy carried by type scale and
+ * spacing rather than rules.
+ */
 const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
   imageDimensions,
   item,
@@ -115,15 +92,13 @@ const ClipboardPreviewInfo: React.FC<ClipboardPreviewInfoProps> = ({
   if (rows.length === 0 && !delivery) return null
 
   return (
-    <div className="shrink-0 overflow-hidden bg-muted/10 px-6 py-3">
-      <div className="flex items-center gap-6">
-        {rows.map(row => (
-          <div key={row.id} className="group flex shrink-0 items-center gap-2">
-            <row.icon className="size-3.5 text-muted-foreground/20 transition-colors group-hover:text-primary/50" />
-            <span className="text-[11px] font-semibold tabular-nums text-muted-foreground/60">
-              {row.value}
-            </span>
-          </div>
+    <div className="shrink-0 px-6 pt-4 pb-2">
+      <div className="flex items-center gap-2 text-[11px] font-medium tabular-nums text-muted-foreground/55">
+        {rows.map((row, i) => (
+          <React.Fragment key={row.id}>
+            {i > 0 && <span className="text-muted-foreground/25">·</span>}
+            <span className="shrink-0">{row.value}</span>
+          </React.Fragment>
         ))}
         {delivery && (
           <div className="ml-auto">

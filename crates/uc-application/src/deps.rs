@@ -12,17 +12,17 @@
 
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use uc_core::blob::ports::{BlobReaderPort, BlobWriterPort};
+use uc_core::blob::ports::{BlobContentIngestPort, BlobReaderPort, BlobWriterPort};
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
-    AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
+    AdvanceActiveClipboardPort, CheckEntryAvailabilityPort, ClipboardPayloadResolverPort,
     ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
     GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationByBlobIdPort,
     GetRepresentationPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
-    LoadActiveClipboardPort, RepresentationCachePort, ResetActiveClipboardPort,
-    SaveClipboardEntryPort, SelfWriteLedgerPort, SpoolQueuePort, SystemClipboardPort,
-    ThumbnailGeneratorPort, ThumbnailRepositoryPort, TouchClipboardEntryPort,
-    UpdateRepresentationProcessingResultPort,
+    LoadActiveClipboardPort, ReplaceEntryContentPort, RepresentationCachePort,
+    ResetActiveClipboardPort, SaveClipboardEntryPort, SelfWriteLedgerPort,
+    SetClipboardEntryFavoritePort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
+    ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
@@ -36,6 +36,15 @@ use uc_core::ports::*;
 use uc_core::MemberRepositoryPort;
 use uc_observability::analytics::AnalyticsPort;
 
+// §11.4.3 — the `entry_identity` module is `pub(crate)`, but its coordinator is
+// held by the `pub` `ClipboardPorts` field below and threaded into `pub` use-case
+// builders. Re-export it from this composition module so it stays reachable for
+// the composition root (`uc_application::deps::EntryIdentityCoordinator`) without
+// leaking the business submodule at the crate root; this also lifts the type's
+// effective visibility back to crate-external, keeping those `pub` signatures off
+// the `private_interfaces` lint (E0446).
+pub use crate::entry_identity::EntryIdentityCoordinator;
+
 /// Clipboard entry intent ports.
 ///
 /// The composition root coerces the single Diesel entry adapter into each of
@@ -46,12 +55,20 @@ pub struct ClipboardEntryPorts {
     pub list: Arc<dyn ListClipboardEntriesPort>,
     pub save: Arc<dyn SaveClipboardEntryPort>,
     pub touch: Arc<dyn TouchClipboardEntryPort>,
+    pub set_favorite: Arc<dyn SetClipboardEntryFavoritePort>,
     pub delete: Arc<dyn DeleteClipboardEntryPort>,
     pub find_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
     /// Forward lookup of an entry's persisted cross-device snapshot hash. The
     /// restore paths read this rather than recomputing it from the
     /// reconstructed snapshot, which would diverge for file entries.
     pub get_snapshot_hash: Arc<dyn GetEntrySnapshotHashPort>,
+    /// Live availability query (DB reps + filesystem). The inbound dedup routes
+    /// a hash match to either "already held → skip" or "partial → upgrade in
+    /// place" by asking whether the matched entry is fully available.
+    pub availability: Arc<dyn CheckEntryAvailabilityPort>,
+    /// Transactional in-place entry-content replace (reuses entry_id, preserves
+    /// sticky state). Drives the inbound partial→complete upgrade.
+    pub replace_content: Arc<dyn ReplaceEntryContentPort>,
 }
 
 /// Clipboard representation intent ports facing the application layer.
@@ -74,7 +91,15 @@ pub struct ClipboardPorts {
     pub clipboard: Arc<dyn PlatformClipboardPort>,
     pub system_clipboard: Arc<dyn SystemClipboardPort>,
     pub entry_ports: ClipboardEntryPorts,
+    /// Per-identity (snapshot_hash) write coordinator. Shared by inbound apply
+    /// and local capture so "find entry by hash → create / replace / skip"
+    /// serializes across every writer of the same content (no double-create).
+    pub entry_identity_coordinator: Arc<EntryIdentityCoordinator>,
     pub clipboard_event_repo: Arc<dyn ClipboardEventWriterPort>,
+    /// Read port over the same clipboard-event store as `clipboard_event_repo`.
+    /// Exposes read-only lookups such as the originating device of an event,
+    /// used to populate the search index's `source_device` render column.
+    pub clipboard_event_reader_repo: Arc<dyn ClipboardEventRepositoryPort>,
     /// Inner representation store (the full aggregate surface). Threaded by the
     /// composition root to the background payload workers only; the application
     /// layer depends on `representation_ports` instead.
@@ -214,6 +239,10 @@ pub struct FileTransferPorts {
 pub struct StoragePorts {
     pub blob_store: Arc<dyn BlobReaderPort>,
     pub blob_writer: Arc<dyn BlobWriterPort>,
+    /// Path-ingest view of the same blob writer that also surfaces the
+    /// content hash; used by capture to derive a file entry's snapshot
+    /// identity from device-independent file content.
+    pub blob_content_ingest: Arc<dyn BlobContentIngestPort>,
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub thumbnail_generator: Arc<dyn ThumbnailGeneratorPort>,
     pub file_transfer: FileTransferPorts,

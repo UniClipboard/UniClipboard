@@ -1,3 +1,4 @@
+use crate::clipboard::ClipboardEntryContentCategory;
 use crate::ids::{EntryId, EventId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8,6 +9,7 @@ pub struct ClipboardEntry {
     pub active_time_ms: i64,
     pub title: Option<String>,
     pub total_size: i64,
+    pub content_category: ClipboardEntryContentCategory,
     /// 该 entry 是否纳入了"投递状态"追踪体系。
     ///
     /// 投递状态(`EntryDeliveryRecord`)是后续引入的功能,系统升级前已存在的
@@ -15,6 +17,11 @@ pub struct ClipboardEntry {
     /// `false` 表示"历史 entry,投递信息未知",视图不应把它合成为 `Pending`;
     /// `true` 表示"新机制下创建的 entry,缺失投递行就意味着尚未尝试"。
     pub delivery_tracked: bool,
+    /// Whether the user has marked this entry as a favorite.
+    ///
+    /// A user-state flag (not derived from content). Defaults to `false` on
+    /// capture; persisted independently and toggled by an explicit user action.
+    pub is_favorited: bool,
 }
 
 impl ClipboardEntry {
@@ -40,7 +47,9 @@ impl ClipboardEntry {
             active_time_ms: created_at_ms,
             title,
             total_size,
+            content_category: ClipboardEntryContentCategory::Other,
             delivery_tracked: true,
+            is_favorited: false,
         }
     }
 
@@ -59,7 +68,9 @@ impl ClipboardEntry {
             active_time_ms,
             title,
             total_size,
+            content_category: ClipboardEntryContentCategory::Other,
             delivery_tracked: true,
+            is_favorited: false,
         }
     }
 
@@ -68,6 +79,18 @@ impl ClipboardEntry {
     /// - 测试模拟 historical entry (建于追踪机制启用前)
     pub fn with_delivery_tracked(mut self, tracked: bool) -> Self {
         self.delivery_tracked = tracked;
+        self
+    }
+
+    /// Override the favorite flag. Used when rebuilding an entry from storage
+    /// to restore the persisted value; constructors default it to `false`.
+    pub fn with_favorited(mut self, is_favorited: bool) -> Self {
+        self.is_favorited = is_favorited;
+        self
+    }
+
+    pub fn with_content_category(mut self, category: ClipboardEntryContentCategory) -> Self {
+        self.content_category = category;
         self
     }
 }

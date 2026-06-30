@@ -58,9 +58,51 @@ export enum Filter {
   Favorited = 'favorited',
   Text = 'text',
   Image = 'image',
+  RichText = 'richtext',
   Link = 'link',
   Code = 'code',
   File = 'file',
+}
+
+/**
+ * Map a content-type {@link Filter} to the backend search `contentTypes` param.
+ *
+ * Single source of truth shared by every search entry point (History page,
+ * quick panel) so the type-narrowing rules can't drift. Returns `undefined` for
+ * `All`/`Favorited`/`Link`/`Code`/`Image` (those are not physical content
+ * types — `link`/`code`/`favorited`/`image` are tags, see
+ * {@link filterToTags}).
+ *
+ * `Image` is a tag, not a content type: a copied image *file* is physically a
+ * `file`, and a pure bitmap is physically `image`, but both carry the `image`
+ * tag — so filtering by the tag surfaces every image while the `file` filter
+ * still finds image files.
+ */
+export function filterToContentTypes(filter: Filter): string | undefined {
+  if (
+    filter === Filter.All ||
+    filter === Filter.Favorited ||
+    filter === Filter.Link ||
+    filter === Filter.Code ||
+    filter === Filter.Image
+  ) {
+    return undefined
+  }
+  if (filter === Filter.RichText) return 'html'
+  return filter
+}
+
+/**
+ * Map a {@link Filter} to the backend search `tags` param, or `undefined` when
+ * the filter is not tag-based. `link`/`code`/`favorited`/`image` are derived or
+ * user-state tags filtered via the `tags` query parameter (not `contentTypes`).
+ */
+export function filterToTags(filter: Filter): string | undefined {
+  if (filter === Filter.Link) return 'link'
+  if (filter === Filter.Code) return 'code'
+  if (filter === Filter.Favorited) return 'favorited'
+  if (filter === Filter.Image) return 'image'
+  return undefined
 }
 
 export interface ClipboardStats {
@@ -124,23 +166,22 @@ export async function fetchClipboardResourceText(
   resource: ClipboardEntryResource
 ): Promise<string> {
   try {
-    // Use inline data when available (small content stored directly)
-    if (resource.inlineData) {
+    // Use inline data when available (small content stored directly). Check for
+    // null explicitly so an empty-string payload ('') decodes to '' instead of
+    // falling through to the "neither inlineData nor url" error.
+    if (resource.inlineData !== null) {
       const bytes = Uint8Array.from(atob(resource.inlineData), c => c.charCodeAt(0))
       return new TextDecoder('utf-8').decode(bytes)
     }
 
-    // Fall back to URL fetch for blob-backed content
+    // Fall back to URL fetch for blob-backed content. Route through the daemon
+    // client so the session token is refreshed (pre-emptive + 401 retry) and
+    // never baked into a URL — see `fetchBlob`.
     if (!resource.url) {
       throw new Error('Resource has neither inlineData nor url')
     }
-    const resolvedUrl = daemonClient.blobUrl(resource.url!) ?? resource.url!
-    const response = await fetch(resolvedUrl)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch clipboard resource: ${response.status}`)
-    }
-    const buffer = await response.arrayBuffer()
-    return new TextDecoder('utf-8').decode(buffer)
+    const blob = await daemonClient.fetchBlob(resource.url)
+    return blob.text()
   } catch (error) {
     log.error({ err: error }, 'Failed to fetch clipboard resource text')
     throw error
@@ -148,7 +189,10 @@ export async function fetchClipboardResourceText(
 }
 
 /**
- * Get a displayable image URL from a clipboard resource.
+ * Get a token-free image descriptor for a clipboard resource: a `data:` URL for
+ * inline content, or the daemon blob path for blob-backed content (which the
+ * caller resolves to a `blob:` object URL via {@link useBlobImageObjectUrl} so
+ * no short-lived session token ends up in `<img src>`).
  */
 export function getResourceImageUrl(resource: ClipboardEntryResource): string | null {
   if (resource.url) {
@@ -158,16 +202,6 @@ export function getResourceImageUrl(resource: ClipboardEntryResource): string | 
     return `data:${resource.mimeType};base64,${resource.inlineData}`
   }
   return null
-}
-
-/**
- * Resolve a clipboard image resource into a displayable <img src> URL.
- */
-export function resolveResourceImageUrl(resource: ClipboardEntryResource): string | null {
-  const rawUrl = getResourceImageUrl(resource)
-  if (!rawUrl) return null
-  if (rawUrl.startsWith('data:')) return rawUrl
-  return daemonClient.blobUrl(rawUrl) ?? rawUrl
 }
 
 /**

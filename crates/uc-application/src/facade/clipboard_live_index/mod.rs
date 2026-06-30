@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use tracing::debug;
 use uc_core::ids::EntryId;
-use uc_core::ports::clipboard::GetClipboardEntryPort;
+use uc_core::ports::clipboard::{ClipboardEventRepositoryPort, GetClipboardEntryPort};
 use uc_core::ports::search::SearchPipelinePort;
 use uc_core::ports::{SearchIndexPort, SearchKeyDerivationPort, SelectRepresentationPolicyPort};
 use uc_core::SystemClipboardSnapshot;
@@ -47,6 +47,9 @@ pub struct ClipboardLiveIndexDeps {
     pub search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
     pub search_pipeline: Arc<dyn SearchPipelinePort>,
     pub search_index: Arc<dyn SearchIndexPort>,
+    /// Resolves the originating device of a capture's event for the
+    /// `source_device` render column (live/rebuild use the same lookup).
+    pub event_repo: Arc<dyn ClipboardEventRepositoryPort>,
 }
 
 pub struct ClipboardLiveIndexer {
@@ -87,10 +90,31 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
             .select(input.snapshot.as_ref())
             .map_err(|err| ClipboardLiveIndexError::Internal(err.to_string()))?;
 
+        // Resolve the originating device from the event store, mirroring the
+        // rebuild path. A missing event or lookup error degrades to "unknown
+        // source" rather than failing the index write.
+        let source_device = match self
+            .deps
+            .event_repo
+            .get_source_device(&entry.event_id)
+            .await
+        {
+            Ok(device) => device.map(|d| d.to_string()),
+            Err(err) => {
+                debug!(
+                    error = %err,
+                    entry_id = %entry_id,
+                    "search: failed to resolve source device, indexing without it"
+                );
+                None
+            }
+        };
+
         let Some(pipeline_input) = SearchProjectionBuilder::build_from_capture(
             &entry,
             input.snapshot.as_ref(),
             &selection,
+            source_device,
         ) else {
             return Ok(ClipboardLiveIndexOutcome::Skipped {
                 reason: "no_searchable_content".to_string(),
@@ -117,12 +141,10 @@ impl ClipboardLiveIndexPort for ClipboardLiveIndexer {
             .build(&pipeline_input, &search_key)
             .map_err(|err| ClipboardLiveIndexError::Internal(err.to_string()))?;
 
-        if postings.is_empty() {
-            return Ok(ClipboardLiveIndexOutcome::Skipped {
-                reason: "no_postings".to_string(),
-            });
-        }
-
+        // An entry with no postings (e.g. an image with no searchable text) is
+        // still indexed: the search index must hold every browsable entry, not
+        // just the full-text-searchable ones, otherwise browse and the `image`
+        // content-type filter would miss it.
         self.deps
             .search_index
             .index_entry(document, postings)

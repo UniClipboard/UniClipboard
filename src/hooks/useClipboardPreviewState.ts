@@ -47,8 +47,9 @@ export function useClipboardPreviewState(item: DisplayClipboardItem | null): Cli
     const shouldLoadPreview =
       item.type === 'image' ||
       item.type === 'file' ||
-      item.type === 'code' ||
-      (item.type === 'text' && (item.content as ClipboardTextItem).has_detail)
+      item.contentTags?.includes('code') === true ||
+      ((item.type === 'text' || item.type === 'richtext') &&
+        (item.content as ClipboardTextItem).has_detail)
 
     if (!shouldLoadPreview) return
 

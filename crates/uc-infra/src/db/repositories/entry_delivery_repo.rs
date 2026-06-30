@@ -208,6 +208,8 @@ mod tests {
             total_size: 0,
             pinned: false,
             delivery_tracked: true,
+            is_favorited: false,
+            content_category: "text".into(),
         };
         executor
             .run(move |conn| {

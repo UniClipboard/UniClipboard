@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use crate::{
     ids::{FormatId, RepresentationId},
-    ContentHash, MimeClass, MimeType,
+    ContentHash, HashAlgorithm, MimeClass, MimeType,
 };
 use serde::{Deserialize, Serialize};
 
@@ -76,6 +76,27 @@ impl std::ops::Deref for SnapshotHash {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl SnapshotHash {
+    /// Parse the canonical wire form `"<alg>:<hex>"` (as produced by the
+    /// `Display` impl) back into a `SnapshotHash`, returning `None` for any
+    /// malformed input.
+    ///
+    /// Unlike `ContentHash`'s `From<String>`, this never panics, so it is the
+    /// safe way to reconstruct a cross-device identity from untrusted wire
+    /// bytes. Only the `blake3v1` algorithm with a 32-byte digest is accepted.
+    pub fn parse(s: &str) -> Option<Self> {
+        let (alg, hex_part) = s.split_once(':')?;
+        if alg != "blake3v1" {
+            return None;
+        }
+        let bytes: [u8; 32] = hex::decode(hex_part).ok()?.try_into().ok()?;
+        Some(SnapshotHash(ContentHash {
+            alg: HashAlgorithm::Blake3V1,
+            bytes,
+        }))
     }
 }
 
@@ -599,5 +620,33 @@ impl SystemClipboardSnapshot {
     pub fn origin_guard_key(&self) -> String {
         self.meaningful_origin_key()
             .unwrap_or_else(|| self.snapshot_hash().to_string())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_hash_tests {
+    use super::*;
+
+    #[test]
+    fn parse_round_trips_display_form() {
+        let original = SnapshotHash(ContentHash::from(&[7u8; 32]));
+        assert_eq!(SnapshotHash::parse(&original.to_string()), Some(original));
+    }
+
+    #[test]
+    fn parse_rejects_malformed_without_panicking() {
+        // Wrong digest length — the short stub form some inbound tests use.
+        assert_eq!(SnapshotHash::parse("blake3v1:00"), None);
+        // Missing algorithm separator.
+        assert_eq!(SnapshotHash::parse("deadbeef"), None);
+        // Unknown algorithm.
+        assert_eq!(SnapshotHash::parse("sha256:00"), None);
+        // Right nominal length but non-hex body.
+        assert_eq!(
+            SnapshotHash::parse(&format!("blake3v1:{}", "zz".repeat(32))),
+            None
+        );
+        // Empty input.
+        assert_eq!(SnapshotHash::parse(""), None);
     }
 }

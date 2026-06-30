@@ -6,7 +6,7 @@
 //!
 //! Slice 4 P5c: 历史上还持有 `NetworkControlPort` 用于 A1/A2 后调
 //! `start_network` (F1) + `on_shutdown` 调 `stop_network` (F2),已退役——
-//! iroh router 由 `SpaceSetupAssembly` 直接驱动,libp2p 兼容路径整体下线。
+//! iroh router 由 `SyncEngineAssembly` 直接驱动,libp2p 兼容路径整体下线。
 //! F1 hook 保留(改名 `auto_prime_presence`),只跑 `ensure_reachable_all`;
 //! F2 不再触碰网络层。
 //!
@@ -770,7 +770,7 @@ impl SpaceSetupFacade {
     /// F2 · Tear down facade-owned background work cleanly on app exit.
     ///
     /// Slice 4 P5c: 历史上还会调 `network_control.stop_network()`,libp2p 走
-    /// 完后 iroh router 由 `SpaceSetupAssembly::shutdown` 直接收口,本入口
+    /// 完后 iroh router 由 `SyncEngineAssembly::shutdown` 直接收口,本入口
     /// 现在只剩 abort 入站 pairing orchestrator——让它的 `subscribe` receiver
     /// 立刻 drop,底层 adapter 才能释放事件 channel。
     #[instrument(skip_all)]

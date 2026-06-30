@@ -29,20 +29,23 @@ use uc_observability::analytics::{
 };
 use uc_observability::{stages, FlowId};
 
-use uc_core::blob::ports::BlobWriterPort;
+use uc_core::blob::ports::BlobContentIngestPort;
 use uc_core::clipboard::{ClipboardPayloadSource, PersistedClipboardRepresentation};
+
+use crate::facade::clipboard_outbound::extract_file_paths_from_snapshot;
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{
-    FindEntryIdBySnapshotHashPort, RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort,
-    SpoolRequest, TouchClipboardEntryPort,
+    FindEntryIdBySnapshotHashPort, ReplaceEntryContentPort, RepresentationCachePort,
+    SaveClipboardEntryPort, SpoolQueuePort, SpoolRequest, TouchClipboardEntryPort,
 };
 use uc_core::ports::{
     ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort, DeviceIdentityPort,
     SelectRepresentationPolicyPort,
 };
 use uc_core::{
-    ClipboardChangeOrigin, ClipboardEntry, ClipboardEvent, ClipboardSelectionDecision,
-    ObservedClipboardRepresentation, PayloadAvailability, SystemClipboardSnapshot,
+    ClipboardChangeOrigin, ClipboardEntry, ClipboardEntryContentCategory, ClipboardEvent,
+    ClipboardSelectionDecision, ObservedClipboardRepresentation, PayloadAvailability, SnapshotHash,
+    SystemClipboardSnapshot,
 };
 
 /// Result of a capture attempt.
@@ -55,6 +58,27 @@ use uc_core::{
 pub struct CaptureOutcome {
     pub entry_id: EntryId,
     pub deduplicated: bool,
+    /// The `snapshot_hash` persisted on this entry — its cross-device identity.
+    ///
+    /// Consumers that advertise this capture to peers (e.g. the
+    /// active-clipboard register) MUST reuse this value rather than recomputing
+    /// a hash from a separate, pre-digest copy of the snapshot. Recomputing on a
+    /// copy that never had `file_content_digests` populated yields the
+    /// device-local `text/uri-list` path hash, which diverges from the dispatch
+    /// path's content-based hash and makes the receiver dedup into two entries.
+    pub snapshot_hash: String,
+}
+
+/// How a captured snapshot is committed to storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitMode {
+    /// Persist as a brand-new entry under the resolved `entry_id`.
+    Create,
+    /// Replace the content of the existing entry identified by the resolved
+    /// `entry_id` in place — reusing its identity and sticky state. Used by the
+    /// inbound upgrade path when a completed delivery supersedes a partial entry
+    /// that already carries the same content hash.
+    Replace,
 }
 
 /// Capture clipboard content and create persistent entries.
@@ -72,11 +96,28 @@ pub struct CaptureClipboardUseCase {
     device_identity: Arc<dyn DeviceIdentityPort>,
     representation_cache: Arc<dyn RepresentationCachePort>,
     spool_queue: Arc<dyn SpoolQueuePort>,
-    /// 用于把 path-backed `ObservedClipboardRepresentation` 同步物化进 blob 仓库。
-    /// 触发时机:capture 入口检测到 `ClipboardPayloadSource::LocalFile` 的 rep,
-    /// 调 `write_path_if_absent` 得到 `BlobId`,直接产出 `BlobReady` 状态的
-    /// `PersistedClipboardRepresentation`,绕过 normalizer / cache / spool 通路。
-    blob_writer: Arc<dyn BlobWriterPort>,
+    /// Materialize path-backed files into the blob store and recover their
+    /// content hash in one streaming pass. Used for two file-rep shapes:
+    /// - `ClipboardPayloadSource::LocalFile` reps → produce a `BlobReady`
+    ///   `PersistedClipboardRepresentation` (bypassing normalizer/cache/spool).
+    /// - file paths parsed out of an Inline `text/uri-list` rep (e.g. Windows
+    ///   file copy) → fill `file_content_digests` so the entry's snapshot
+    ///   identity is derived from device-independent file content rather than
+    ///   the device-local `text/uri-list` path text.
+    blob_ingest: Arc<dyn BlobContentIngestPort>,
+    /// Transactional entry-replace used by [`CommitMode::Replace`]. Swaps the
+    /// content behind an existing entry_id in place (FK-safe cascade, sticky
+    /// state preserved) instead of inserting a new entry. Only the inbound
+    /// upgrade path drives the `Replace` mode; local capture always `Create`s.
+    replace_entry: Arc<dyn ReplaceEntryContentPort>,
+    /// Shared per-identity write coordinator. When wired, a *local* capture
+    /// serializes its "resurface-or-create by content hash" section on the lock
+    /// for that hash so it cannot race an inbound apply of the same content into
+    /// two entries (R5-F3). Inbound captures do NOT lock here — the inbound use
+    /// case already holds the same per-identity lock around the call, so locking
+    /// again would deadlock on the non-reentrant mutex. `None` skips locking
+    /// (prior behavior; harmless when no concurrent same-content writer exists).
+    coordinator: Option<Arc<crate::entry_identity::EntryIdentityCoordinator>>,
     /// schema doc §12.1 · outbound 同步链路源头流量信号。
     /// 仅在 `ClipboardChangeOrigin::{LocalCapture, LocalRestore}` 路径 emit；
     /// `RemotePush` 严禁 emit（红线：与入站同步双计会污染 DAU 信号）。
@@ -95,7 +136,8 @@ impl CaptureClipboardUseCase {
         device_identity: Arc<dyn DeviceIdentityPort>,
         representation_cache: Arc<dyn RepresentationCachePort>,
         spool_queue: Arc<dyn SpoolQueuePort>,
-        blob_writer: Arc<dyn BlobWriterPort>,
+        blob_ingest: Arc<dyn BlobContentIngestPort>,
+        replace_entry: Arc<dyn ReplaceEntryContentPort>,
         analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
         Self {
@@ -108,9 +150,23 @@ impl CaptureClipboardUseCase {
             device_identity,
             representation_cache,
             spool_queue,
-            blob_writer,
+            blob_ingest,
+            replace_entry,
+            coordinator: None,
             analytics,
         }
+    }
+
+    /// Share the per-identity write coordinator so a local capture serializes
+    /// its hash-keyed resurface-or-create against inbound apply of the same
+    /// content (R5-F3). Without it, local capture does not lock (prior
+    /// behavior).
+    pub fn with_entry_identity_coordinator(
+        mut self,
+        coordinator: Arc<crate::entry_identity::EntryIdentityCoordinator>,
+    ) -> Self {
+        self.coordinator = Some(coordinator);
+        self
     }
 
     /// Execute the clipboard capture workflow with a pre-captured snapshot.
@@ -118,10 +174,16 @@ impl CaptureClipboardUseCase {
     /// Called from the daemon's clipboard change callback — the snapshot is
     /// already read by the platform layer, avoiding a redundant OS read.
     pub async fn execute(&self, snapshot: SystemClipboardSnapshot) -> Result<EntryId> {
-        self.execute_with_origin(snapshot, ClipboardChangeOrigin::LocalCapture, None)
-            .await?
-            .map(|outcome| outcome.entry_id)
-            .ok_or_else(|| anyhow::anyhow!("local capture should always persist an entry"))
+        self.execute_with_origin(
+            snapshot,
+            ClipboardChangeOrigin::LocalCapture,
+            None,
+            None,
+            CommitMode::Create,
+        )
+        .await?
+        .map(|outcome| outcome.entry_id)
+        .ok_or_else(|| anyhow::anyhow!("local capture should always persist an entry"))
     }
 
     /// `preset_entry_id` 让上层在 capture 之前预先决定本次产物的 entry_id。
@@ -129,11 +191,22 @@ impl CaptureClipboardUseCase {
     /// 但 UI 进度卡片必须在 fetch 之前就能挂上;预设 entry_id 让占位卡片和最终
     /// entry 共享同一个 id,前端无需做 transfer_id → entry_id 的合并。
     /// 本地 capture 路径传 `None` 即可,内部按既有逻辑生成新 id。
+    /// `authoritative_hash` overrides the persisted cross-device identity.
+    /// Local captures pass `None` and let the snapshot hash itself; inbound
+    /// (`RemotePush`) passes `Some(wire_hash)` so the entry is stored under the
+    /// exact identity the sender advertised. The latter MUST NOT be recomputed
+    /// from the materialized snapshot — for a cancelled transfer the file rep is
+    /// a `uniclip-missing://` placeholder (no `file_content_digests`) and for a
+    /// completed one it carries receiver-rewritten local paths; both hash
+    /// differently from the wire identity and would fork the entry, breaking
+    /// dedup against every other channel that carries the same wire hash.
     pub async fn execute_with_origin(
         &self,
         mut snapshot: SystemClipboardSnapshot,
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
+        authoritative_hash: Option<SnapshotHash>,
+        commit_mode: CommitMode,
     ) -> Result<Option<CaptureOutcome>> {
         // Root span: all pipeline stages are children of clipboard.flow.
         // The origin field distinguishes local capture from remote push.
@@ -183,32 +256,47 @@ impl CaptureClipboardUseCase {
                 } => d,
                 _ => self.device_identity.current_device_id(),
             };
-            // Populate file_content_digests from LocalFile reps so that
-            // snapshot_hash() is based on file content (device-independent)
-            // rather than the text/uri-list path text (device-specific).
+            // Populate file_content_digests so snapshot_hash() is based on
+            // device-independent file *content* rather than the text/uri-list
+            // path text (device-specific). Skipped when already populated
+            // (RemotePush: the inbound materializer fills these from the wire
+            // before this capture runs).
             if snapshot.file_content_digests.is_empty() {
-                let digests: Vec<[u8; 32]> = snapshot
-                    .representations
-                    .iter()
-                    .filter(|r| {
-                        matches!(
-                            r.source(),
-                            uc_core::clipboard::ClipboardPayloadSource::LocalFile { .. }
-                        )
-                    })
-                    .map(|r| r.content_hash().bytes)
-                    .collect();
+                let digests =
+                    derive_file_content_digests(&snapshot, self.blob_ingest.as_ref()).await;
                 if !digests.is_empty() {
                     snapshot.file_content_digests = digests;
                 }
             }
-            let snapshot_hash = {
-                let _guard = info_span!(
-                    "clipboard.snapshot_hash",
-                    representation_count = snapshot.representations.len(),
-                )
-                .entered();
-                snapshot.snapshot_hash()
+            let snapshot_hash = match authoritative_hash {
+                // Inbound: persist the sender's wire identity verbatim (F-4).
+                Some(wire_hash) => wire_hash,
+                // Local capture: the snapshot is authoritative for its own hash.
+                None => {
+                    let _guard = info_span!(
+                        "clipboard.snapshot_hash",
+                        representation_count = snapshot.representations.len(),
+                    )
+                    .entered();
+                    snapshot.snapshot_hash()
+                }
+            };
+            // Keep the canonical hash string before `snapshot_hash` is moved
+            // into the event below, so the outcome can carry the exact identity
+            // this entry is persisted under (see `CaptureOutcome::snapshot_hash`).
+            let snapshot_hash_str = snapshot_hash.to_string();
+
+            // Serialize the resurface-or-create section against any other writer
+            // of this same content (R5-F3). Only a *local* capture locks here:
+            // an inbound (`RemotePush`) capture is already inside the inbound use
+            // case's per-identity lock for this hash, so locking the same
+            // (non-reentrant) mutex again would deadlock. The guard is held
+            // across persist and dropped when this async block returns.
+            let _identity_guard = match (&self.coordinator, origin) {
+                (Some(coordinator), ClipboardChangeOrigin::LocalCapture) => {
+                    Some(coordinator.lock(&snapshot_hash_str).await)
+                }
+                _ => None,
             };
 
             // Local-capture dedup: if this exact content already exists,
@@ -221,11 +309,10 @@ impl CaptureClipboardUseCase {
             // error we degrade to the prior no-dedup behavior (create a new
             // entry) rather than propagating.
             if origin == ClipboardChangeOrigin::LocalCapture {
-                let hash_str = snapshot_hash.to_string();
                 if let Some(existing) = resurface_existing_entry(
                     self.find_entry_by_snapshot_hash.as_ref(),
                     self.touch_entry.as_ref(),
-                    &hash_str,
+                    &snapshot_hash_str,
                     captured_at_ms,
                 )
                 .await
@@ -237,6 +324,7 @@ impl CaptureClipboardUseCase {
                     return Ok(Some(CaptureOutcome {
                         entry_id: existing,
                         deduplicated: true,
+                        snapshot_hash: snapshot_hash_str,
                     }));
                 }
             }
@@ -252,7 +340,7 @@ impl CaptureClipboardUseCase {
             // 3. Normalize representations.
             //
             // 分流:Inline source 走 normalizer 既有逻辑(inline / staged / staged_with_preview
-            // 决策);LocalFile source 调 BlobWriter.write_path_if_absent 同步物化到 blob 仓库,
+            // 决策);LocalFile source 调 BlobContentIngestPort.ingest_path 同步物化到 blob 仓库,
             // 直接产出 BlobReady 状态的 PersistedRep —— 绕过 representation_cache / spool_queue,
             // 因为它不需要"暂存字节等待异步物化"。
             //
@@ -264,19 +352,21 @@ impl CaptureClipboardUseCase {
                 for observed in &snapshot.representations {
                     match observed.source() {
                         ClipboardPayloadSource::LocalFile { path, size_bytes } => {
-                            let blob_id =
-                                self.blob_writer.write_path_if_absent(path).await.map_err(
-                                    |err| {
-                                        anyhow::anyhow!(
-                                            "LocalFile rep ingest into blob store failed (path={}): {err}",
-                                            path.display()
-                                        )
-                                    },
-                                )?;
+                            let blob_id = self
+                                .blob_ingest
+                                .ingest_path(path)
+                                .await
+                                .map(|ingested| ingested.blob_id)
+                                .map_err(|err| {
+                                    // No path in the message: a clipboard file
+                                    // path is user content.
+                                    anyhow::anyhow!(
+                                        "LocalFile rep ingest into blob store failed: {err}"
+                                    )
+                                })?;
                             info!(
                                 rep_id = %observed.id,
                                 blob_id = %blob_id,
-                                file_path = %path.display(),
                                 file_size = size_bytes,
                                 "Ingested LocalFile rep into blob store as BlobReady"
                             );
@@ -285,8 +375,8 @@ impl CaptureClipboardUseCase {
                                 observed.format_id.clone(),
                                 observed.mime.clone(),
                                 *size_bytes as i64,
-                                None,           // inline_data
-                                Some(blob_id),  // blob_id ⇒ payload_state=BlobReady
+                                None,          // inline_data
+                                Some(blob_id), // blob_id ⇒ payload_state=BlobReady
                             ));
                         }
                         ClipboardPayloadSource::Inline(_) => {
@@ -332,13 +422,18 @@ impl CaptureClipboardUseCase {
                 );
             }
 
-            async {
-                self.event_writer
-                    .insert_event(&new_event, &normalized_reps)
-                    .await
+            // Create commits the event as a standalone insert here; Replace
+            // defers the event insert into the transactional entry-replace below
+            // so the old event/reps and the new ones swap atomically.
+            if commit_mode == CommitMode::Create {
+                async {
+                    self.event_writer
+                        .insert_event(&new_event, &normalized_reps)
+                        .await
+                }
+                .instrument(info_span!(stages::PERSIST_EVENT))
+                .await?;
             }
-            .instrument(info_span!(stages::PERSIST_EVENT))
-            .await?;
 
             // Cache representations for immediate access by the background blob worker.
             // This must happen before persist_entry so the worker gets a cache hit
@@ -353,9 +448,7 @@ impl CaptureClipboardUseCase {
                             // 上游 BlobWriter ingest 阶段会被产出 BlobReady 状态,不会
                             // 走到 Staged 分支。
                             if let Some(bytes) = observed.inline_bytes() {
-                                self.representation_cache
-                                    .put(&rep.id, bytes.to_vec())
-                                    .await;
+                                self.representation_cache.put(&rep.id, bytes.to_vec()).await;
                             }
                         }
                     }
@@ -433,25 +526,47 @@ impl CaptureClipboardUseCase {
                 .await?;
             }
 
-            // 6. entry_repo.insert_entry — bytes are durable by this point.
+            // 6. Persist the entry — bytes are durable by this point. Create
+            //    inserts a fresh entry; Replace swaps the content behind the
+            //    existing entry_id in one transaction (event/reps/selection +
+            //    cascade), reusing its identity and sticky state.
             async {
-                let created_at_ms = SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(|e| anyhow::anyhow!("Failed to get system time: {}", e))?
-                    .as_millis() as i64;
+                let title = Self::generate_title(&snapshot);
                 let total_size = snapshot.total_size_bytes();
-
-                let new_entry = ClipboardEntry::new(
-                    entry_id.clone(),
-                    event_id.clone(),
-                    created_at_ms,
-                    Self::generate_title(&snapshot),
-                    total_size,
-                );
-                self.save_entry
-                    .save_entry_and_selection(&new_entry, &new_selection)
-                    .await
-                    .map_err(anyhow::Error::from)
+                let content_category = ClipboardEntryContentCategory::from_snapshot(&snapshot);
+                match commit_mode {
+                    CommitMode::Create => {
+                        let created_at_ms = SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .map_err(|e| anyhow::anyhow!("Failed to get system time: {}", e))?
+                            .as_millis() as i64;
+                        let new_entry = ClipboardEntry::new(
+                            entry_id.clone(),
+                            event_id.clone(),
+                            created_at_ms,
+                            title,
+                            total_size,
+                        )
+                        .with_content_category(content_category);
+                        self.save_entry
+                            .save_entry_and_selection(&new_entry, &new_selection)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    }
+                    CommitMode::Replace => self
+                        .replace_entry
+                        .replace_entry_content(
+                            &entry_id,
+                            &new_event,
+                            &normalized_reps,
+                            &new_selection,
+                            title,
+                            total_size,
+                            content_category,
+                        )
+                        .await
+                        .map_err(anyhow::Error::from),
+                }
             }
             .instrument(info_span!(stages::PERSIST_ENTRY))
             .await?;
@@ -476,6 +591,7 @@ impl CaptureClipboardUseCase {
             Ok(Some(CaptureOutcome {
                 entry_id,
                 deduplicated: false,
+                snapshot_hash: snapshot_hash_str,
             }))
         }
         .instrument(root)
@@ -625,6 +741,104 @@ async fn resurface_existing_entry(
     }
 }
 
+/// Derive `file_content_digests` for a freshly captured snapshot so that
+/// [`SystemClipboardSnapshot::snapshot_hash`] keys on device-independent file
+/// *content* rather than the device-local `text/uri-list` path text. Returns
+/// the digest list (empty when the snapshot carries no resolvable files).
+///
+/// Two file-rep shapes contribute, both resolved to file paths and hashed via
+/// the fallible [`BlobContentIngestPort::hash_path`] (never a rep's
+/// `content_hash()`, which `panic!`s on a stream-hash error):
+/// - `ClipboardPayloadSource::LocalFile` reps (e.g. macOS Finder copy): the path
+///   is carried directly on the rep.
+/// - Inline `text/uri-list` file reps (e.g. Windows file copy): the files live
+///   as path text, not `LocalFile` reps. Without hashing them, capture would
+///   store the uri-list path-text hash while dispatch sends the content hash,
+///   and the receiver would create two entries for one file.
+///
+/// `extract_file_paths_from_snapshot` is shared with the dispatch path so both
+/// resolve the same set of files (including macOS APFS file-reference
+/// resolution). On *any* per-file hash failure the whole digest list is
+/// discarded (not just the failed file) so identity never keys on a partial
+/// subset; it then falls back to the uri-list path text.
+///
+/// The two shapes are mutually exclusive in practice (a snapshot carries either
+/// `LocalFile` reps or an inline uri-list rep), so the inline branch only runs
+/// when no `LocalFile` digests were found.
+async fn derive_file_content_digests(
+    snapshot: &SystemClipboardSnapshot,
+    blob_ingest: &dyn BlobContentIngestPort,
+) -> Vec<[u8; 32]> {
+    // Identity contributors as file paths. `LocalFile` reps (e.g. macOS Finder
+    // copy) carry the path directly; an inline `text/uri-list` rep (e.g. Windows
+    // file copy) carries them as path text. The two shapes are mutually
+    // exclusive in practice, so the inline extraction only runs when no
+    // `LocalFile` rep is present.
+    let local_file_paths: Vec<_> = snapshot
+        .representations
+        .iter()
+        .filter_map(|r| match r.source() {
+            ClipboardPayloadSource::LocalFile { path, .. } => Some(path.clone()),
+            ClipboardPayloadSource::Inline(_) => None,
+        })
+        .collect();
+    let local_file_digests = local_file_paths.len();
+    let mut extracted_paths = 0usize;
+    let paths = if local_file_paths.is_empty() {
+        let extracted = extract_file_paths_from_snapshot(snapshot);
+        extracted_paths = extracted.len();
+        extracted
+    } else {
+        local_file_paths
+    };
+
+    // Identity only: hash each file's content (device-independent) without
+    // materializing/encrypting a blob into local storage. The actual file bytes
+    // for transfer are published lazily by the (spawned, non-blocking) dispatch
+    // path, so a synchronous ingest here would both stall the capture loop on
+    // large files and orphan a blob this entry never references. `hash_path` is
+    // fallible, so an unreadable or deleted copied file degrades to a fallback
+    // identity instead of panicking — a `LocalFile` rep's `content_hash()` would
+    // `panic!` on a stream-hash error.
+    let mut digests: Vec<[u8; 32]> = Vec::with_capacity(paths.len());
+    let mut had_hash_failure = false;
+    for path in &paths {
+        match blob_ingest.hash_path(path).await {
+            Ok(content_hash) => digests.push(content_hash.bytes),
+            Err(err) => {
+                had_hash_failure = true;
+                // No path in the field: a clipboard file path is user content.
+                warn!(error = %err, "capture: could not derive complete file-set identity");
+            }
+        }
+    }
+    // A partial file-set identity (some files hashed, some failed) would key the
+    // snapshot on a strict subset, colliding with a different copy that contains
+    // only those files. Discard everything on any failure so identity
+    // deterministically falls back to the `text/uri-list` path text.
+    if had_hash_failure {
+        digests.clear();
+    }
+
+    // Diagnostic for the dual-entry file-sync bug: when this returns empty for a
+    // file copy, the entry's `snapshot_hash` falls back to the device-local
+    // `text/uri-list` path text, which diverges from the dispatch path's
+    // content-based hash and makes the receiver create a second entry. The
+    // counts pin which stage produced no digest on the next repro: no `LocalFile`
+    // rep AND no extractable inline path (`extracted_uri_list_paths = 0`) means
+    // the file rep was not recognised / not a parseable `file:` URL; a non-zero
+    // path count with `derived_digests = 0` means at least one `hash_path` failed
+    // and the partial set was discarded (each failure logs its own warn above).
+    debug!(
+        local_file_digests,
+        extracted_uri_list_paths = extracted_paths,
+        derived_digests = digests.len(),
+        "capture: derived file content digests for snapshot identity"
+    );
+
+    digests
+}
+
 /// schema doc §12.1 红线 · 把 `ClipboardChangeOrigin` 映射到 telemetry 的
 /// `CaptureOrigin`，并在入站同步路径返回 `None` 以阻断双计。
 ///
@@ -703,6 +917,133 @@ mod tests {
             representations: reps,
             file_content_digests: Vec::new(),
         }
+    }
+
+    /// Fake ingest whose content hash is keyed on the file *name*, so two
+    /// devices addressing the same file by different absolute paths produce
+    /// the same content hash — modelling identical bytes behind device-local
+    /// paths without touching the filesystem.
+    struct FakeIngestByName;
+
+    impl FakeIngestByName {
+        fn name_hash(source_path: &std::path::Path) -> uc_core::ContentHash {
+            let name = source_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            let mut bytes = [0u8; 32];
+            let nb = name.as_bytes();
+            let n = nb.len().min(32);
+            bytes[..n].copy_from_slice(&nb[..n]);
+            uc_core::ContentHash::from(&bytes)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl BlobContentIngestPort for FakeIngestByName {
+        async fn ingest_path(
+            &self,
+            source_path: &std::path::Path,
+        ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+            Ok(uc_core::blob::ports::IngestedBlob {
+                blob_id: uc_core::ids::BlobId::new(),
+                content_hash: Self::name_hash(source_path),
+                size_bytes: 0,
+            })
+        }
+
+        async fn hash_path(
+            &self,
+            source_path: &std::path::Path,
+        ) -> anyhow::Result<uc_core::ContentHash> {
+            Ok(Self::name_hash(source_path))
+        }
+    }
+
+    /// Core of the double-channel dedup fix: capture must derive a file
+    /// entry's identity from device-independent file *content*, not the
+    /// device-local `text/uri-list` path text. Two devices copying the same
+    /// file (different absolute paths, same content) must produce the same
+    /// `snapshot_hash` — otherwise the receiver creates two entries.
+    #[tokio::test]
+    async fn inline_uri_list_identity_is_device_independent() {
+        let blob_ingest = FakeIngestByName;
+
+        // Same file ("report.msi"), addressed by two device-local paths.
+        let snap_a = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///Users/alice/report.msi",
+        )]);
+        let snap_b = snapshot_with(vec![rep(
+            "files",
+            Some("text/uri-list"),
+            b"file:///home/bob/report.msi",
+        )]);
+
+        // Sanity: without content digests the bare uri-list snapshots hash
+        // differently (the bug) — identity leaks the device-local path text.
+        assert_ne!(
+            snap_a.snapshot_hash(),
+            snap_b.snapshot_hash(),
+            "bare uri-list identity must differ by device-local path text (pre-fix state)"
+        );
+
+        let mut a = snap_a.clone();
+        let mut b = snap_b.clone();
+        a.file_content_digests = derive_file_content_digests(&a, &blob_ingest).await;
+        b.file_content_digests = derive_file_content_digests(&b, &blob_ingest).await;
+
+        assert!(
+            !a.file_content_digests.is_empty(),
+            "capture must fill content digests for inline uri-list files"
+        );
+        assert_eq!(
+            a.file_content_digests, b.file_content_digests,
+            "same file content → same digests regardless of device-local path"
+        );
+        assert_eq!(
+            a.snapshot_hash(),
+            b.snapshot_hash(),
+            "content-based identity must be device-independent (fixes the double-entry split)"
+        );
+        assert_ne!(
+            a.snapshot_hash(),
+            snap_a.snapshot_hash(),
+            "filling content digests must move identity off the path-text hash"
+        );
+    }
+
+    /// A per-file ingest failure must be skipped (not abort the capture); when
+    /// every referenced file fails, the digest list is empty and identity
+    /// falls back to the uri-list text.
+    #[tokio::test]
+    async fn inline_uri_list_ingest_failure_is_skipped() {
+        struct AlwaysFails;
+        #[async_trait::async_trait]
+        impl BlobContentIngestPort for AlwaysFails {
+            async fn ingest_path(
+                &self,
+                _: &std::path::Path,
+            ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+                Err(anyhow::anyhow!("unreadable"))
+            }
+
+            async fn hash_path(&self, _: &std::path::Path) -> anyhow::Result<uc_core::ContentHash> {
+                Err(anyhow::anyhow!("unreadable"))
+            }
+        }
+
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///Users/alice/report.msi",
+        )]);
+        let digests = derive_file_content_digests(&snap, &AlwaysFails).await;
+        assert!(
+            digests.is_empty(),
+            "all-files-failed must yield no digests (identity falls back to uri-list text)"
+        );
     }
 
     #[test]

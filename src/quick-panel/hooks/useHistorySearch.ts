@@ -1,205 +1,128 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Filter } from '@/api/clipboardItems'
-import { querySearch } from '@/api/daemon/search'
-import type { SearchResultDto, SearchParams } from '@/api/daemon/search'
-import { createLogger } from '@/lib/logger'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Filter, filterToContentTypes, filterToTags } from '@/api/clipboardItems'
+import { type LiveSearchQueryModel } from '@/hooks/liveSearchModel'
+import { useEncryptionSessionState } from '@/hooks/useEncryptionSessionState'
+import { useLiveSearch } from '@/hooks/useLiveSearch'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { DisplayItem, TimeRangePreset } from '../types'
 
-const log = createLogger('use-history-search')
-
-/** Map backend contentType to frontend display type. */
-function mapContentTypeToDisplayType(ft: SearchResultDto['contentType']): DisplayItem['type'] {
-  switch (ft) {
-    case 'text':
-      return 'text'
-    case 'html':
-      return 'code'
-    case 'link':
-      return 'link'
-    case 'file':
-      return 'file'
-    case 'image':
-      return 'image'
-    case 'other':
-      return 'unknown'
-  }
-}
-
-function searchResultToDisplayItem(r: SearchResultDto): DisplayItem {
-  return {
-    id: r.entryId,
-    type: mapContentTypeToDisplayType(r.contentType),
-    preview: r.textPreview ?? '',
-    activeTime: r.activeTimeMs,
-    // TODO: SearchResultDto 暂不返回 payload_state, 搜索结果里 Lost 的 entry
-    // 不会灰显。等后端搜索 API 透出 payload_state 后再接通。
-    isUnavailable: false,
-  }
-}
+/** Quick-panel list cap. The launcher has no infinite scroll, so this is the
+ * hard ceiling rather than a growing window (matches the old browse/search). */
+const PAGE_SIZE = 50
 
 /**
- * Extract search parameters from advanced mode tokens.
- * Tokens can be: `type:text`, `ext:md`, or plain keywords.
- * `type:` values are passed directly as backend contentTypes (no mapping needed).
+ * Derive the single-line preview the launcher rows show. The unified live list
+ * carries structured `content` (the search index drops image dimensions — those
+ * are LAZY, resolved by entry id — so an image row falls back to a localized
+ * "Image" label instead of a dimension string).
  */
-function parseTokens(tokens: string[]): {
-  keywords: string[]
-  contentTypes: string[]
-  extensions: string[]
-} {
-  const keywords: string[] = []
-  const contentTypes: string[] = []
-  const extensions: string[] = []
-
-  for (const token of tokens) {
-    const lower = token.toLowerCase()
-    if (lower.startsWith('type:')) {
-      const value = lower.slice(5)
-      // code includes html (html is a form of code)
-      if (value === 'code') {
-        contentTypes.push('code', 'html')
-      } else if (value) contentTypes.push(value)
-    } else if (lower.startsWith('ext:')) {
-      const value = lower.slice(4)
-      if (value) extensions.push(value)
-    } else if (token.trim()) {
-      keywords.push(token.trim())
-    }
+function panelPreview(item: DisplayClipboardItem, imageLabel: string): string {
+  const c = item.content
+  if (c) {
+    if ('urls' in c) return c.urls[0] ?? ''
+    if ('file_names' in c) return c.file_names[0] ?? ''
+    if ('code' in c) return c.code
+    if ('display_text' in c) return c.display_text
   }
+  if (item.type === 'image') return item.textPreview?.trim() || imageLabel
+  return item.textPreview ?? ''
+}
 
-  return { keywords, contentTypes, extensions }
+function toDisplayItem(item: DisplayClipboardItem, imageLabel: string): DisplayItem {
+  return {
+    id: item.id,
+    type: item.type,
+    preview: panelPreview(item, imageLabel),
+    activeTime: item.activeTime,
+    isUnavailable: item.isUnavailable ?? false,
+  }
 }
 
 interface UseHistorySearchProps {
-  items: DisplayItem[]
   searchQuery: string
-  tokens: string[]
   activeFilter: Filter
+  tagFilter: string | null
+  sourceFilter: string | null
+  extensionFilter: string | null
   timeRange: TimeRangePreset
-  isAdvancedMode: boolean
 }
 
 interface UseHistorySearchResult {
   filteredItems: DisplayItem[]
+  previewItems: DisplayClipboardItem[]
+  /** A narrowed view (query/token/time/filter) is loading. Drives the spinner. */
   isSearching: boolean
   searchTotal: number | null
+  /** Plain browse is loading (no narrowing yet). */
+  loading: boolean
+  isLocked: boolean
+  /** Optimistically drop an entry after the user deletes it. */
+  removeItem: (id: string) => void
+  /** Re-issue the current query (used to refresh on every panel re-open). */
+  refetch: () => void
 }
 
+/**
+ * Quick-panel data layer: browse and search are one engine path via
+ * {@link useLiveSearch} (an empty query browses, any filter narrows), replacing
+ * the old split of `useClipboardCollection` (list endpoint) plus a separate
+ * server-search executor. Returns the launcher's simplified {@link DisplayItem}
+ * view model.
+ */
 export function useHistorySearch({
-  items,
   searchQuery,
-  tokens,
   activeFilter,
+  tagFilter,
+  sourceFilter,
+  extensionFilter,
   timeRange,
-  isAdvancedMode,
 }: UseHistorySearchProps): UseHistorySearchResult {
-  const [searchResults, setSearchResults] = useState<DisplayItem[] | null>(null)
-  const [isSearching, setIsSearching] = useState(false)
-  const [searchTotal, setSearchTotal] = useState<number | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const { t } = useTranslation()
+  const { isLocked } = useEncryptionSessionState()
 
-  // Determine if we need to call the server
-  const hasQuery = searchQuery.trim().length > 0
-  const hasTokens = tokens.length > 0
-  const hasTimeFilter = timeRange !== 'all_time'
-  const needsServerSearch = hasQuery || hasTokens || hasTimeFilter
+  const trimmedQuery = searchQuery.trim()
+  const tags = [filterToTags(activeFilter), tagFilter].filter(Boolean).join(',') || undefined
 
-  // Apply local filter only (no search query, no advanced tokens, no time filter)
-  const localFilteredItems = (() => {
-    if (needsServerSearch) return items // won't be used
-    if (activeFilter === Filter.All) return items
-    const typeMap: Record<string, string> = {
-      [Filter.Text]: 'text',
-      [Filter.Image]: 'image',
-      [Filter.Link]: 'link',
-      [Filter.File]: 'file',
-      [Filter.Code]: 'code',
-    }
-    const target = typeMap[activeFilter]
-    return target ? items.filter(item => item.type === target) : items
-  })()
-
-  const doSearch = useCallback(
-    async (
-      query: string,
-      advTokens: string[],
-      filter: Filter,
-      time: TimeRangePreset,
-      advanced: boolean,
-      signal: AbortSignal
-    ) => {
-      const { keywords, contentTypes: tokenFileTypes, extensions } = parseTokens(advTokens)
-
-      // Build query string: combine free-text + keyword tokens
-      const queryParts = [...keywords]
-      const trimmed = query.trim()
-      if (trimmed) queryParts.push(trimmed)
-      const queryString = queryParts.join(' ')
-
-      // Build contentTypes: from tokens or from active filter (values match backend directly)
-      let contentTypes: string | undefined
-      if (tokenFileTypes.length > 0) {
-        contentTypes = tokenFileTypes.join(',')
-      } else if (!advanced && filter !== Filter.All && filter !== Filter.Favorited) {
-        // Filter enum values match backend contentTypes directly;
-        // Code includes html (html is a form of code)
-        contentTypes = filter === Filter.Code ? 'code,html' : filter
-      }
-
-      const params: SearchParams = {
-        query: queryString,
-        contentTypes,
-        extensions: extensions.length > 0 ? extensions.join(',') : undefined,
-        // TimeRangePreset values match backend timePreset directly (except 'all_time' → omit)
-        timePreset: time !== 'all_time' ? time : undefined,
-        limit: 50,
-      }
-
-      return querySearch(params, signal)
-    },
-    []
+  const model = useMemo<LiveSearchQueryModel>(
+    () => ({
+      query: trimmedQuery,
+      contentTypes: filterToContentTypes(activeFilter),
+      tags,
+      sourceDevices: sourceFilter ?? undefined,
+      extensions: extensionFilter ?? undefined,
+      // TimeRangePreset values match the backend timePreset directly.
+      timeRange,
+    }),
+    [trimmedQuery, activeFilter, tags, sourceFilter, extensionFilter, timeRange]
   )
 
-  useEffect(() => {
-    if (!needsServerSearch) {
-      setSearchResults(null)
-      setSearchTotal(null)
-      setIsSearching(false)
-      return
-    }
+  const live = useLiveSearch({ model, pageSize: PAGE_SIZE })
 
-    // Cancel previous request
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
+  const imageLabel = t('history.type.image')
+  const filteredItems = useMemo(
+    () => live.items.map(item => toDisplayItem(item, imageLabel)),
+    [live.items, imageLabel]
+  )
 
-    setIsSearching(true)
-
-    doSearch(searchQuery, tokens, activeFilter, timeRange, isAdvancedMode, controller.signal)
-      .then(response => {
-        if (controller.signal.aborted) return
-        // ADR-008 §0.1: items + total now live inside the enveloped `data` payload.
-        setSearchResults(response.data.items.map(searchResultToDisplayItem))
-        setSearchTotal(response.data.total)
-        setIsSearching(false)
-      })
-      .catch(err => {
-        if (controller.signal.aborted) return
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        log.error({ err }, 'Search query failed')
-        setSearchResults([])
-        setSearchTotal(0)
-        setIsSearching(false)
-      })
-
-    return () => {
-      controller.abort()
-    }
-  }, [searchQuery, tokens, activeFilter, timeRange, isAdvancedMode, needsServerSearch, doSearch])
+  // A narrowed view (keyword, advanced token, time filter, or content filter)
+  // shows the "searching" spinner; plain browse shows the "loading" spinner.
+  const narrowed =
+    trimmedQuery.length > 0 ||
+    timeRange !== 'all_time' ||
+    activeFilter !== Filter.All ||
+    tagFilter !== null ||
+    sourceFilter !== null ||
+    extensionFilter !== null
 
   return {
-    filteredItems: needsServerSearch ? (searchResults ?? items) : localFilteredItems,
-    isSearching,
-    searchTotal,
+    filteredItems,
+    previewItems: live.items,
+    isSearching: live.isLoading && narrowed,
+    searchTotal: live.total,
+    loading: live.isLoading && !narrowed,
+    isLocked,
+    removeItem: live.removeItem,
+    refetch: live.refetch,
   }
 }

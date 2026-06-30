@@ -7,7 +7,8 @@ use tracing::debug;
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::BlobId;
 
-use crate::blob::BlobStorePort;
+use crate::blob::hashing::{copy_and_hash, stream_hash_file};
+use crate::blob::{BlobStorePort, StoredPathBlob};
 
 /// Filesystem-based blob storage.
 pub struct FilesystemBlobStore {
@@ -55,11 +56,7 @@ impl BlobStorePort for FilesystemBlobStore {
         <Self as BlobReaderPort>::get(self, blob_id).await
     }
 
-    async fn put_from_path(
-        &self,
-        blob_id: &BlobId,
-        source_path: &Path,
-    ) -> Result<(PathBuf, Option<i64>)> {
+    async fn put_from_path(&self, blob_id: &BlobId, source_path: &Path) -> Result<StoredPathBlob> {
         self.ensure_dir().await?;
         let dest = self.blob_path(blob_id);
         let source = source_path.to_path_buf();
@@ -68,52 +65,73 @@ impl BlobStorePort for FilesystemBlobStore {
         // 跨卷(EXDEV)或某些文件系统(SMB/NFS 部分配置)不支持 hardlink,回退到 copy。
         let link_dest = dest.clone();
         let link_source = source.clone();
-        match tokio::task::spawn_blocking(move || std::fs::hard_link(&link_source, &link_dest))
-            .await
-            .context("hardlink join failed")?
-        {
-            Ok(()) => {
-                debug!(
-                    blob_id = %blob_id,
-                    source = %source.display(),
-                    dest = %dest.display(),
-                    "Hardlinked source file into blob store"
-                );
-                return Ok((dest, None));
-            }
-            Err(err) => {
-                debug!(
-                    blob_id = %blob_id,
-                    source = %source.display(),
-                    dest = %dest.display(),
-                    error = %err,
-                    "Hardlink failed; falling back to streaming copy (likely EXDEV or unsupported FS)"
-                );
-            }
-        }
+        let (content_hash, size_bytes) =
+            match tokio::task::spawn_blocking(move || std::fs::hard_link(&link_source, &link_dest))
+                .await
+                .context("hardlink join failed")?
+            {
+                Ok(()) => {
+                    debug!(
+                        blob_id = %blob_id,
+                        "Hardlinked source file into blob store; hashing stored blob"
+                    );
+                    // Hash the destination (== the linked inode), not the source:
+                    // the recorded identity is then of the exact bytes the blob
+                    // points at, closing the hash/store divergence window even if
+                    // the source path is replaced right after the link.
+                    let hash_dest = dest.clone();
+                    tokio::task::spawn_blocking(move || stream_hash_file(&hash_dest))
+                        .await
+                        .context("blob hash join failed")??
+                }
+                Err(err) => {
+                    debug!(
+                        blob_id = %blob_id,
+                        error = %err,
+                        "Hardlink failed; streaming copy+hash (likely EXDEV or unsupported FS)"
+                    );
+                    // Streaming copy that hashes in the same pass: the source is
+                    // read exactly once and the hash is of the bytes written to
+                    // dest, so no second read can observe a rewritten source.
+                    let copy_source = source.clone();
+                    let copy_dest = dest.clone();
+                    tokio::task::spawn_blocking(move || copy_and_hash(&copy_source, &copy_dest))
+                        .await
+                        .context("blob copy join failed")?
+                        // No source path in the context: it is user content. The
+                        // dest path is our own blob-store location (blob_id).
+                        .with_context(|| format!("failed to copy source into blob {blob_id}"))?
+                }
+            };
 
-        // 流式 copy 回退:tokio::fs::copy 内部按块读写,常驻内存极小。
-        let copied = tokio::fs::copy(&source, &dest).await.with_context(|| {
-            format!("failed to copy {} -> {}", source.display(), dest.display())
-        })?;
         debug!(
             blob_id = %blob_id,
-            source = %source.display(),
-            dest = %dest.display(),
-            bytes = copied,
-            "Copied source file into blob store"
+            size_bytes,
+            "Persisted source file into blob store"
         );
 
-        // 与 put() 行为对齐:确保字节真正落盘后再返回。
-        let dest_file = tokio::fs::File::open(&dest)
-            .await
-            .context("failed to reopen blob file for sync")?;
-        dest_file
-            .sync_all()
-            .await
-            .context("failed to sync blob file after copy")?;
+        Ok(StoredPathBlob {
+            storage_path: dest,
+            content_hash,
+            size_bytes,
+            // Raw filesystem store doesn't track compression.
+            compressed_size: None,
+        })
+    }
 
-        Ok((dest, None))
+    async fn delete(&self, blob_id: &BlobId) -> Result<()> {
+        let path = self.blob_path(blob_id);
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => {
+                debug!(blob_id = %blob_id, "Deleted blob from filesystem store");
+                Ok(())
+            }
+            // Idempotent: an already-absent blob is a no-op, not an error.
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => {
+                Err(err).with_context(|| format!("failed to delete blob {}", path.display()))
+            }
+        }
     }
 }
 
@@ -131,5 +149,58 @@ impl BlobReaderPort for FilesystemBlobStore {
             .context("Failed to read blob data")?;
 
         Ok(data)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uc_core::ContentHash;
+
+    fn hash_of(bytes: &[u8]) -> ContentHash {
+        ContentHash::from(blake3::hash(bytes).as_bytes())
+    }
+
+    #[tokio::test]
+    async fn put_from_path_records_hash_matching_stored_bytes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = FilesystemBlobStore::new(tmp.path().join("blobs"));
+
+        let src = tmp.path().join("source.bin");
+        let content = b"toctou-regression: recorded hash must match stored bytes".to_vec();
+        tokio::fs::write(&src, &content).await.unwrap();
+
+        let blob_id = BlobId::new();
+        let stored = store.put_from_path(&blob_id, &src).await.unwrap();
+
+        // The returned identity is derived from the bytes the store persisted.
+        assert_eq!(stored.size_bytes, content.len() as u64);
+        assert_eq!(stored.content_hash, hash_of(&content));
+        assert_eq!(stored.compressed_size, None);
+
+        // And those persisted bytes hash back to the very same identity.
+        let got = BlobReaderPort::get(&store, &blob_id).await.unwrap();
+        assert_eq!(got, content);
+        assert_eq!(hash_of(&got), stored.content_hash);
+    }
+
+    #[tokio::test]
+    async fn delete_removes_blob_and_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = FilesystemBlobStore::new(tmp.path().join("blobs"));
+
+        let blob_id = BlobId::new();
+        // Deleting an absent blob is a no-op, not an error.
+        store.delete(&blob_id).await.unwrap();
+
+        let src = tmp.path().join("source.bin");
+        tokio::fs::write(&src, b"bytes").await.unwrap();
+        store.put_from_path(&blob_id, &src).await.unwrap();
+        assert!(BlobReaderPort::get(&store, &blob_id).await.is_ok());
+
+        store.delete(&blob_id).await.unwrap();
+        assert!(BlobReaderPort::get(&store, &blob_id).await.is_err());
+        // A second delete still succeeds.
+        store.delete(&blob_id).await.unwrap();
     }
 }

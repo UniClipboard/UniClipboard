@@ -15,6 +15,14 @@ pub struct CapturedClipboardEntryView {
     /// was resurfaced instead of a new one being created. Callers should
     /// refresh the UI but skip re-indexing / re-dispatching this entry.
     pub deduplicated: bool,
+    /// The `snapshot_hash` persisted on this entry — its cross-device identity.
+    ///
+    /// Consumers that advertise this capture to peers (e.g. the
+    /// active-clipboard register) MUST reuse this value rather than recomputing
+    /// a hash from a separate copy of the snapshot, otherwise a file copy's
+    /// advertised identity diverges from its dispatch identity and the receiver
+    /// dedups into two entries.
+    pub snapshot_hash: String,
 }
 
 #[derive(Debug, Error)]
@@ -41,13 +49,23 @@ impl ClipboardCapturePort for CaptureClipboardUseCase {
         origin: ClipboardChangeOrigin,
         preset_entry_id: Option<EntryId>,
     ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
+        // Local-capture facade: the snapshot is authoritative for its own hash.
+        // Inbound (`RemotePush`) never reaches here — it persists through the
+        // `InboundCapture` port, which supplies the wire identity (F-4).
         let outcome = self
-            .execute_with_origin(snapshot, origin, preset_entry_id)
+            .execute_with_origin(
+                snapshot,
+                origin,
+                preset_entry_id,
+                None,
+                crate::clipboard_capture::CommitMode::Create,
+            )
             .await
             .map_err(|err| ClipboardCaptureFacadeError::Internal(err.to_string()))?;
         Ok(outcome.map(|outcome| CapturedClipboardEntryView {
             entry_id: outcome.entry_id.to_string(),
             deduplicated: outcome.deduplicated,
+            snapshot_hash: outcome.snapshot_hash,
         }))
     }
 }
@@ -92,6 +110,7 @@ mod tests {
             Ok(Some(CapturedClipboardEntryView {
                 entry_id: "entry-a".to_string(),
                 deduplicated: false,
+                snapshot_hash: "blake3v1:test".to_string(),
             }))
         }
     }
@@ -118,6 +137,7 @@ mod tests {
             Some(CapturedClipboardEntryView {
                 entry_id: "entry-a".to_string(),
                 deduplicated: false,
+                snapshot_hash: "blake3v1:test".to_string(),
             })
         );
     }

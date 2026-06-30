@@ -6,12 +6,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import type {
-  ClipboardCodeItem,
   ClipboardImageItem,
-  ClipboardLinkItem,
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
+import { linkItemFromTextContent } from '@/lib/clipboard-utils'
 import { reportError } from '@/observability/errors'
 import ClipboardPreviewInfo from './ClipboardPreviewInfo'
 import CodePreview from './preview-renderers/CodePreview'
@@ -47,8 +46,28 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
   setImageDimensions,
 }) => {
   const { t } = useTranslation()
+  const textItem = item.content as ClipboardTextItem | null
+  const hasCodeTag = item.contentTags?.includes('code') ?? false
+  const hasLinkTag = item.contentTags?.includes('link') ?? false
   switch (item.type) {
     case 'text': {
+      if (hasCodeTag && textItem) {
+        return (
+          <CodePreview
+            item={{ code: textItem.display_text, char_count: textItem.char_count }}
+            preview={preview}
+          />
+        )
+      }
+      if (hasLinkTag && textItem) {
+        const linkItem = linkItemFromTextContent(textItem)
+        if (linkItem) return <LinkPreview item={linkItem} />
+      }
+      return (
+        <TextPreview item={item.content as ClipboardTextItem} loading={loading} preview={preview} />
+      )
+    }
+    case 'richtext': {
       return (
         <TextPreview item={item.content as ClipboardTextItem} loading={loading} preview={preview} />
       )
@@ -63,18 +82,13 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
         />
       )
     }
-    case 'link': {
-      return <LinkPreview item={item.content as ClipboardLinkItem} />
-    }
-    case 'code': {
-      return <CodePreview item={item.content as ClipboardCodeItem} preview={preview} />
-    }
     case 'file': {
       return (
         <FilePreview
           effectiveStatus={effectiveStatus}
           entryStatus={entryStatus}
           item={item}
+          preview={preview}
           transfer={transfer}
         />
       )
@@ -118,7 +132,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
 
   if (!item) {
     return (
-      <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 bg-muted/5 text-muted-foreground">
+      <div className="flex h-full flex-1 min-h-0 flex-col items-center justify-center gap-3 bg-card text-muted-foreground">
         <Clipboard className="size-10 text-muted-foreground/20" />
         <span className="text-sm font-medium opacity-50">{t('clipboard.preview.selectItem')}</span>
       </div>
@@ -126,7 +140,11 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   }
 
   const isLargeText =
-    item.type === 'text' && isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
+    (item.type === 'text' || item.type === 'richtext') &&
+    isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
+  // Code renders as an editor-like pane that fills the available height and owns
+  // its own scrolling, so it skips the auto-height ScrollArea wrapper.
+  const fillsParent = isLargeText || item.contentTags?.includes('code') === true
 
   const content = (
     <PreviewContent
@@ -141,10 +159,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   )
 
   return (
-    <div
-      className="flex flex-1 min-h-0 flex-col bg-background/20 backdrop-blur-sm"
-      data-testid="clipboard-detail"
-    >
+    <div className="flex h-full flex-1 min-h-0 flex-col bg-card" data-testid="clipboard-detail">
       <ClipboardPreviewInfo
         item={item}
         preview={preview}
@@ -153,7 +168,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
       />
 
       <div className="relative flex-1 min-h-0">
-        {isLargeText ? (
+        {fillsParent ? (
           <div className="absolute inset-0">{content}</div>
         ) : (
           <ScrollArea className="h-full [&_[data-slot=scroll-area-viewport]>div]:!block">
@@ -163,7 +178,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
       </div>
 
       {(effectiveStatus === 'transferring' || actions) && (
-        <div className="flex min-h-[64px] shrink-0 items-center justify-between bg-background/40 px-6 py-4 backdrop-blur-xl">
+        <div className="flex min-h-[64px] shrink-0 items-center justify-between bg-card px-6 py-4">
           <div className="mr-8 min-w-0 flex-1">
             {effectiveStatus === 'transferring' && transfer && transfer.status === 'active' && (
               <div className="max-w-[280px]">

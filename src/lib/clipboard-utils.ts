@@ -1,5 +1,4 @@
 import type {
-  ClipboardCodeItem,
   ClipboardEntry,
   ClipboardEntryContent,
   ClipboardFileItem,
@@ -147,10 +146,51 @@ export function extractDomainFromUrl(url: string): string {
 }
 
 /**
+ * Link view-model embedded in a text item, or `null` when authoritative link
+ * metadata is absent. This keeps link rendering tied to daemon-provided URLs,
+ * not the possibly truncated display preview.
+ */
+export function linkItemFromTextContent(content: ClipboardTextItem): ClipboardLinkItem | null {
+  const urls = content.link_urls?.filter(url => url.trim().length > 0) ?? []
+  if (urls.length === 0) return null
+  const domains =
+    content.link_domains && content.link_domains.length === urls.length
+      ? content.link_domains
+      : urls.map(extractDomainFromUrl)
+  return { urls, domains }
+}
+
+/**
  * Check whether a MIME content type represents an image.
  */
 export function isImageContentType(contentType: string): boolean {
   return contentType === 'image' || contentType.startsWith('image/')
+}
+
+/** File-name extensions the daemon can decode and serve as an image preview. */
+const IMAGE_FILE_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'tiff',
+  'tif',
+  'heic',
+  'avif',
+  'svg',
+  'ico',
+])
+
+/**
+ * Whether a file name looks like an image by its extension. An image *file* is
+ * physically a `file` entry (not `image`), but its card/detail can still show a
+ * thumbnail; this is the client-side cue for when to attempt that.
+ */
+export function isImageFileName(name: string): boolean {
+  const ext = name.split('.').pop()?.toLowerCase()
+  return ext ? IMAGE_FILE_EXTENSIONS.has(ext) : false
 }
 
 /**
@@ -174,12 +214,9 @@ export function getItemPreview(entry: ClipboardEntry): string {
       }
       return parts.join(' | ')
     }
-    case 'link':
-      return (entry.content as ClipboardLinkItem).urls[0] ?? ''
     case 'file':
       return (entry.content as ClipboardFileItem).file_names[0] ?? ''
-    case 'code':
-      return (entry.content as ClipboardCodeItem).code
+    case 'richtext':
     case 'text':
       return (entry.content as ClipboardTextItem).display_text
     default:

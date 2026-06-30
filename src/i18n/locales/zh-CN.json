@@ -11,6 +11,7 @@
   },
   "nav": {
     "dashboard": "仪表板",
+    "history": "历史记录",
     "devices": "设备管理",
     "settings": "设置",
     "updateAvailable": "有新版本",
@@ -529,6 +530,7 @@
         "actions": {
           "goSettings": "前往设置",
           "toggleQuickPanel": "切换快捷面板",
+          "favoriteClipboardItem": "收藏当前剪贴板项目",
           "zoomIn": "放大界面",
           "zoomOut": "缩小界面"
         },
@@ -671,6 +673,68 @@
     "zh-CN": "简体中文",
     "en-US": "English"
   },
+  "history": {
+    "title": "历史记录",
+    "subtitle_other": "{{count}} 项",
+    "searchPlaceholder": "搜索剪贴板…",
+    "loadMore": "加载更多",
+    "unknownFile": "未知文件",
+    "filter": {
+      "all": "全部",
+      "favorited": "收藏",
+      "text": "文本",
+      "richtext": "富文本",
+      "code": "代码",
+      "link": "链接",
+      "image": "图片",
+      "file": "文件"
+    },
+    "timeRange": {
+      "label": "时间范围",
+      "all_time": "不限时间",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last_7d": "最近 7 天",
+      "last_30d": "最近 30 天",
+      "this_week": "本周",
+      "this_month": "本月"
+    },
+    "source": {
+      "label": "来源",
+      "all": "全部来源"
+    },
+    "type": {
+      "text": "文本",
+      "richtext": "富文本",
+      "code": "代码",
+      "link": "链接",
+      "favorited": "收藏",
+      "image": "图片",
+      "file": "文件",
+      "unknown": "未知"
+    },
+    "detail": {
+      "capturedAt": "捕获时间",
+      "size": "大小",
+      "fileCount": "文件数",
+      "urlCount": "链接数",
+      "fileMissing": "（已丢失）"
+    },
+    "composite": {
+      "title": "搜索与筛选",
+      "dimension": {
+        "type": "类型",
+        "tag": "标签",
+        "source": "来源",
+        "time": "时间",
+        "extension": "扩展名"
+      },
+      "noMatches": "无匹配项",
+      "removeFilter": "移除筛选：{{filter}}",
+      "moreFilters": "展开其余 {{count}} 个筛选",
+      "clearAll": "清除全部"
+    }
+  },
   "dashboard": {
     "logs": {
       "loadingClipboard": "开始加载剪贴板记录和统计数据...",
@@ -703,6 +767,7 @@
       "all": "全部",
       "favorited": "收藏",
       "text": "文本",
+      "richtext": "富文本",
       "image": "图片",
       "link": "链接",
       "file": "文件",
@@ -721,11 +786,13 @@
   "clipboard": {
     "search": {
       "noResults": "未找到 \"{{query}}\" 的结果",
+      "noResultsFiltered": "没有符合筛选条件的记录",
       "noResultsSub": "尝试搜索完整单词或其他关键词",
       "empty": "剪贴板历史为空",
       "emptySub": "复制一些内容来开始使用吧",
       "resultsCount": "条结果",
-      "searching": "搜索中…"
+      "searching": "搜索中…",
+      "degraded": "搜索索引正在重建,暂时显示最近的浏览结果。过滤与关键词搜索稍后恢复。"
     },
     "content": {
       "filterCondition": "筛选条件:",
@@ -741,8 +808,12 @@
         "convertingItem": "转换为显示项目:"
       }
     },
+    "source": {
+      "local": "本机"
+    },
     "errors": {
       "copyFailed": "复制到剪贴板失败",
+      "favoriteFailed": "更新收藏状态失败",
       "openLocationFailed": "打开文件位置失败",
       "fileLocationUnavailable": "该文件本地已不可用。",
       "loadDetailFailed": "加载详情失败",
@@ -761,6 +832,7 @@
       "loading": "加载中...",
       "actions": {
         "copy": "复制",
+        "copied": "已复制",
         "favorite": "收藏",
         "unfavorite": "取消收藏",
         "delete": "删除",
@@ -796,10 +868,17 @@
       "size": "大小",
       "dimensions": "分辨率",
       "filesCount": "{{count}} 个文件",
+      "imageFilesAriaLabel": "图片文件",
+      "imagesCount": "{{count}} 张图片",
       "sourceDevice": "来源设备"
     },
     "contextMenu": {
       "copy": "复制",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
+      "send": "发送到",
+      "sendAll": "所有设备",
+      "sendNoDevices": "暂无已配对设备",
       "fileDeleted": "文件已删除",
       "openFileLocation": "打开文件位置",
       "resend": "重发",
@@ -809,6 +888,8 @@
     "actionBar": {
       "title": "剪贴板历史",
       "copy": "复制",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
       "delete": "删除"
     },
     "notification": {
@@ -1524,6 +1605,7 @@
       "filters": {
         "all": "全部",
         "text": "文本",
+        "richtext": "富文本",
         "image": "图片",
         "link": "链接",
         "file": "文件",

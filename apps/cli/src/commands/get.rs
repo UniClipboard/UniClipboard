@@ -588,6 +588,7 @@ mod tests {
             active_time: 0,
             file_transfer_status: None,
             file_transfer_reason: None,
+            content_tags: Vec::new(),
             link_urls: None,
             link_domains: None,
             file_sizes: None,

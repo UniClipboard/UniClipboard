@@ -27,7 +27,6 @@ export { getEncryptionState, unlockEncryption, lockEncryption } from './encrypti
 export type { EncryptionStateResponse } from './encryption'
 export {
   getClipboardEntries,
-  getClipboardEntry,
   deleteClipboardEntry,
   restoreClipboardEntry,
   toggleFavorite,
@@ -83,13 +82,15 @@ export { refreshPresence } from './presence'
 export type { PresenceRefreshResult } from './presence'
 export { classifyPairingError } from './events'
 export type { PairingErrorKind } from './events'
-export { querySearch, getSearchStatus, triggerSearchRebuild } from './search'
+export { querySearch, getSearchStatus, getSearchTags, triggerSearchRebuild } from './search'
 export type {
   SearchResultDto,
   SearchQueryResponse,
   SearchParams,
   SearchStatusData,
   SearchStatusResponse,
+  SearchTagDto,
+  SearchTagsResponse,
 } from './search'
 export { getUpgradeStatus, acknowledgeUpgrade } from './upgrade'
 export type { UpgradeStatus } from './upgrade'

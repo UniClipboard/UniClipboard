@@ -1,5 +1,13 @@
-import { m } from 'framer-motion'
-import { ArrowUpCircle, Bug, Check, Home, MessageSquare, Monitor, Settings, X } from 'lucide-react'
+import {
+  ArrowUpCircle,
+  Bug,
+  Check,
+  Layers,
+  MessageSquare,
+  Monitor,
+  Settings,
+  X,
+} from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -40,7 +48,7 @@ const NavButton: React.FC<{
   icon: React.ComponentType<{ className?: string }>
   label: string
   isActive: boolean
-  layoutId: string
+  showActiveBackground?: boolean
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
   'data-settings-icon'?: boolean
 }> = ({
@@ -48,7 +56,7 @@ const NavButton: React.FC<{
   icon: Icon,
   label,
   isActive,
-  layoutId,
+  showActiveBackground = true,
   onClick,
   'data-settings-icon': dataSettingsIcon,
 }) => {
@@ -70,17 +78,8 @@ const NavButton: React.FC<{
                 : undefined
             }
           >
-            {isActive && (
-              <m.div
-                layoutId={layoutId}
-                className="absolute inset-0 bg-primary/10 dark:bg-primary/20 rounded-lg"
-                initial={false}
-                transition={{
-                  type: 'spring',
-                  stiffness: 500,
-                  damping: 30,
-                }}
-              />
+            {isActive && showActiveBackground && (
+              <div className="absolute inset-0 rounded-lg bg-primary/10 dark:bg-primary/20" />
             )}
             <div
               className={cn(
@@ -197,9 +196,10 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       : null
 
   const navItems = [
-    { to: '/', icon: Home, label: t('nav.dashboard') },
+    { to: '/history', icon: Layers, label: t('nav.history') },
     { to: '/devices', icon: Monitor, label: t('nav.devices') },
   ]
+  const activeTopNavIndex = navItems.findIndex(item => location.pathname === item.to)
 
   useEffect(() => {
     if (!setting?.general.autoCheckUpdate) {
@@ -319,6 +319,13 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       >
         {/* Main Navigation */}
         <div className="relative z-10 flex flex-col gap-3 w-full items-center">
+          {activeTopNavIndex >= 0 && (
+            <div
+              aria-hidden
+              className="absolute left-2 top-0 size-10 rounded-lg bg-primary/10 transition-transform duration-200 ease-out will-change-transform dark:bg-primary/20"
+              style={{ transform: `translateY(${activeTopNavIndex * 3.25}rem)` }}
+            />
+          )}
           {navItems.map(item => (
             <NavButton
               key={item.to}
@@ -326,7 +333,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               icon={item.icon}
               label={item.label}
               isActive={location.pathname === item.to}
-              layoutId="sidebar-nav-top"
+              showActiveBackground={false}
             />
           ))}
         </div>
@@ -458,7 +465,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
             icon={Settings}
             label={t('nav.settings')}
             isActive={location.pathname.startsWith('/settings')}
-            layoutId="sidebar-nav-bottom"
             onClick={() => {
               if (location.pathname.startsWith('/settings')) return
               navigate('/settings')

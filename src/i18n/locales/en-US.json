@@ -11,6 +11,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "history": "History",
     "devices": "Devices",
     "settings": "Settings",
     "updateAvailable": "Update available",
@@ -538,6 +539,7 @@
         "actions": {
           "goSettings": "Go to settings",
           "toggleQuickPanel": "Toggle quick panel",
+          "favoriteClipboardItem": "Favorite current clipboard item",
           "zoomIn": "Zoom in",
           "zoomOut": "Zoom out"
         },
@@ -680,6 +682,69 @@
     "zh-CN": "简体中文",
     "en-US": "English"
   },
+  "history": {
+    "title": "History",
+    "subtitle_one": "{{count}} item",
+    "subtitle_other": "{{count}} items",
+    "searchPlaceholder": "Search clipboard…",
+    "loadMore": "Load more",
+    "unknownFile": "Unknown file",
+    "filter": {
+      "all": "All",
+      "favorited": "Favorites",
+      "text": "Text",
+      "richtext": "Rich Text",
+      "code": "Code",
+      "link": "Links",
+      "image": "Images",
+      "file": "Files"
+    },
+    "timeRange": {
+      "label": "Time range",
+      "all_time": "All time",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last_7d": "Last 7 days",
+      "last_30d": "Last 30 days",
+      "this_week": "This week",
+      "this_month": "This month"
+    },
+    "source": {
+      "label": "Source",
+      "all": "All sources"
+    },
+    "type": {
+      "text": "Text",
+      "richtext": "Rich Text",
+      "code": "Code",
+      "link": "Link",
+      "favorited": "Favorites",
+      "image": "Image",
+      "file": "File",
+      "unknown": "Unknown"
+    },
+    "detail": {
+      "capturedAt": "Captured",
+      "size": "Size",
+      "fileCount": "Files",
+      "urlCount": "URLs",
+      "fileMissing": "(missing)"
+    },
+    "composite": {
+      "title": "Search and filter",
+      "dimension": {
+        "type": "Type",
+        "tag": "Tag",
+        "source": "Source",
+        "time": "Time",
+        "extension": "Extension"
+      },
+      "noMatches": "No matches",
+      "removeFilter": "Remove filter: {{filter}}",
+      "moreFilters": "Show {{count}} more filters",
+      "clearAll": "Clear all"
+    }
+  },
   "dashboard": {
     "logs": {
       "loadingClipboard": "Loading clipboard records and statistics...",
@@ -712,6 +777,7 @@
       "all": "All",
       "favorited": "Favorites",
       "text": "Text",
+      "richtext": "Rich Text",
       "image": "Image",
       "link": "Link",
       "file": "File",
@@ -730,11 +796,13 @@
   "clipboard": {
     "search": {
       "noResults": "No results for \"{{query}}\"",
+      "noResultsFiltered": "No items match the current filters",
       "noResultsSub": "Try a full word or a different keyword",
       "empty": "Your clipboard history is empty",
       "emptySub": "Copy something to get started",
       "resultsCount": "results",
-      "searching": "Searching…"
+      "searching": "Searching…",
+      "degraded": "Search index is rebuilding — showing a recent browse. Filters and keyword search resume shortly."
     },
     "content": {
       "filterCondition": "Filter condition:",
@@ -750,8 +818,12 @@
         "convertingItem": "Converting to display item:"
       }
     },
+    "source": {
+      "local": "This device"
+    },
     "errors": {
       "copyFailed": "Failed to copy to clipboard",
+      "favoriteFailed": "Failed to update favorite status",
       "openLocationFailed": "Failed to open file location",
       "fileLocationUnavailable": "This file is no longer available locally.",
       "loadDetailFailed": "Failed to load details",
@@ -770,6 +842,7 @@
       "loading": "Loading...",
       "actions": {
         "copy": "Copy",
+        "copied": "Copied",
         "favorite": "Favorite",
         "unfavorite": "Unfavorite",
         "delete": "Delete",
@@ -805,10 +878,17 @@
       "size": "Size",
       "dimensions": "Dimensions",
       "filesCount": "{{count}} files",
+      "imageFilesAriaLabel": "Image files",
+      "imagesCount": "{{count}} images",
       "sourceDevice": "Source device"
     },
     "contextMenu": {
       "copy": "Copy",
+      "favorite": "Favorite",
+      "unfavorite": "Unfavorite",
+      "send": "Send to",
+      "sendAll": "All devices",
+      "sendNoDevices": "No paired devices",
       "fileDeleted": "File deleted",
       "openFileLocation": "Open File Location",
       "resend": "Resend",
@@ -818,6 +898,8 @@
     "actionBar": {
       "title": "Clipboard History",
       "copy": "Copy",
+      "favorite": "Favorite",
+      "unfavorite": "Unfavorite",
       "delete": "Delete"
     },
     "notification": {
@@ -1533,6 +1615,7 @@
       "filters": {
         "all": "All",
         "text": "Text",
+        "richtext": "Rich Text",
         "image": "Image",
         "link": "Link",
         "file": "File",

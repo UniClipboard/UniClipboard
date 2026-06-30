@@ -12,7 +12,7 @@
  *
  * 跨 hook 实例的 in-flight 共享 (commit G):
  * 在每个调用 `useResendAction()` 的组件里维护各自独立的 React state 会
- * 让 FileContextMenu 与 EntryDeliveryBadge 对同一 entry 各自计在飞,
+ * 让右键菜单与 EntryDeliveryBadge 对同一 entry 各自计在飞,
  * 用户同时打开右键菜单 + popover 各点一次 Resend 会触发两条 IPC。后端
  * 足够幂等(差集每次重新派生 + dispatch 自身去重)不会脏数据,但 UI 上
  * 会看到两份 success toast,而且第二条命令也消耗资源。把 in-flight

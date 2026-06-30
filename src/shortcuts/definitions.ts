@@ -9,6 +9,7 @@ export type ShortcutAction =
   | 'global.zoomIn'
   | 'global.zoomOut'
   | 'global.toggleQuickPanel'
+  | 'clipboard.favorite'
   | 'navigation.settings'
   | string
 
@@ -55,7 +56,7 @@ export interface ShortcutDefinition {
  * Central shortcut definitions
  *
  * 仅收录"在前端/后端真正被实装"的快捷键。
- * 历史上这里还有 clipboard.{esc,selectAll,delete,favorite}、nav.{dashboard,devices}、
+ * 历史上这里还有 clipboard.{esc,selectAll,delete}、nav.{dashboard,devices}、
  * search.focus、modal.close —— 它们只在设置页面"看起来可定制",但没有 handler 读取
  * override,改了也不生效,因此从设置面板里下掉,避免对用户产生误导。
  */
@@ -90,5 +91,14 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     action: 'global.zoomOut',
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.zoomOut',
+  },
+
+  // ===== Clipboard page =====
+  {
+    id: 'clipboard.favorite',
+    key: 'f',
+    action: 'clipboard.favorite',
+    scope: 'clipboard',
+    description: 'settings.sections.shortcuts.actions.favoriteClipboardItem',
   },
 ]

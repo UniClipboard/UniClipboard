@@ -11,9 +11,7 @@
 use std::sync::Arc;
 
 use uc_application::facade::{BlobTransferFacade, ClipboardSyncFacade};
-use uc_bootstrap::assembly::WiredDependencies;
-use uc_bootstrap::builders::build_daemon_lifecycle;
-use uc_bootstrap::SpaceSetupAssembly;
+use uc_bootstrap::{build_daemon_lifecycle, SyncEngineAssembly, WiredDependencies};
 
 /// daemon-lifecycle 装配结果。
 ///
@@ -25,7 +23,7 @@ use uc_bootstrap::SpaceSetupAssembly;
 pub struct DaemonBootstrapAssembly {
     pub clipboard_sync_facade: Arc<ClipboardSyncFacade>,
     pub blob_transfer_facade: Arc<BlobTransferFacade>,
-    pub space_setup_assembly: SpaceSetupAssembly,
+    pub sync_engine_assembly: SyncEngineAssembly,
     /// Mobile sync LAN endpoint adapter(具体类型旁路) — daemon LAN
     /// listener 启停时调 inherent `set` / `clear` 写它,facade 通过
     /// `AppDeps.mobile_sync.endpoint_info` 只读,两端共享同一份 Arc。
@@ -47,12 +45,12 @@ pub struct DaemonBootstrapAssembly {
 pub async fn build_daemon_bootstrap_assembly(
     wired: &WiredDependencies,
 ) -> anyhow::Result<DaemonBootstrapAssembly> {
-    let lifecycle = build_daemon_lifecycle(wired).await?;
-    let blob_transfer_facade = lifecycle.space_setup_assembly.blob.clone();
+    let lifecycle = build_daemon_lifecycle(&wired.deps, &wired.sync_engine, &wired.shared).await?;
+    let blob_transfer_facade = lifecycle.sync_engine_assembly.blob.clone();
     Ok(DaemonBootstrapAssembly {
         clipboard_sync_facade: lifecycle.clipboard_sync_facade,
         blob_transfer_facade,
-        space_setup_assembly: lifecycle.space_setup_assembly,
-        mobile_sync_endpoint_info: Arc::clone(&wired.mobile_sync_endpoint_info),
+        sync_engine_assembly: lifecycle.sync_engine_assembly,
+        mobile_sync_endpoint_info: Arc::clone(&wired.daemon_runtime.mobile_sync_endpoint_info),
     })
 }

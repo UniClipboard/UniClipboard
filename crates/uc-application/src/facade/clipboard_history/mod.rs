@@ -51,6 +51,7 @@ pub struct EntryProjectionView {
     pub active_time: i64,
     pub file_transfer_status: Option<String>,
     pub file_transfer_reason: Option<String>,
+    pub content_tags: Vec<String>,
     pub link_urls: Option<Vec<String>>,
     pub link_domains: Option<Vec<String>>,
     pub file_sizes: Option<Vec<i64>>,
@@ -193,9 +194,12 @@ impl ClipboardHistoryFacade {
             list: entry_list,
             save: entry_save,
             touch: _entry_touch,
+            set_favorite: entry_set_favorite,
             delete: entry_delete,
             find_by_snapshot_hash: _entry_find,
             get_snapshot_hash: _entry_snapshot_hash,
+            availability: _entry_availability,
+            replace_content: _entry_replace,
         } = entry_ports;
         let ClipboardRepresentationPorts {
             get: rep_get,
@@ -235,10 +239,14 @@ impl ClipboardHistoryFacade {
             entry_get.clone(),
             selection_repo.clone(),
             rep_get.clone(),
+            rep_list_for_event.clone(),
             payload_resolver,
         );
 
-        let toggle_favorite_uc = ToggleFavoriteClipboardEntryUseCase::new(entry_get.clone());
+        let mut toggle_favorite_uc = ToggleFavoriteClipboardEntryUseCase::new(entry_set_favorite);
+        if let Some(idx) = search_index.clone() {
+            toggle_favorite_uc = toggle_favorite_uc.with_search_mirror(idx);
+        }
 
         let mut delete_uc = DeleteClipboardEntryUseCase::from_ports(
             entry_get.clone(),
@@ -560,6 +568,7 @@ fn projection_to_view(entry: EntryProjectionDto) -> EntryProjectionView {
         active_time: entry.active_time,
         file_transfer_status: entry.file_transfer_status,
         file_transfer_reason: entry.file_transfer_reason,
+        content_tags: entry.content_tags,
         link_urls: entry.link_urls,
         link_domains,
         file_sizes: entry.file_sizes,

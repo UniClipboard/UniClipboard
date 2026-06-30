@@ -1,13 +1,8 @@
 import type { ClipboardEntryType } from '@/lib/clipboard-entry'
 
-export type TimeRangePreset =
-  | 'all_time'
-  | 'today'
-  | 'yesterday'
-  | 'last_7d'
-  | 'last_30d'
-  | 'this_week'
-  | 'this_month'
+// TimeRangePreset lives with the search API (it mirrors the backend `timePreset`
+// param); re-exported here so existing quick-panel imports keep resolving.
+export type { TimeRangePreset } from '@/api/daemon/search'
 
 export interface DisplayItem {
   id: string

@@ -11,21 +11,18 @@ the history database — see
 
 ## Where to search
 
-| Surface              | Status / when to use it                                                                                                    |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Quick Panel          | **Primary entry.** Live filtering, advanced syntax, keyboard-first. See [Quick Panel](./quick-panel#advanced-search--mode) |
-| `uniclip search` CLI | Scripts, SSH, remote sessions. See [CLI — Search](../cli/reference#search)                                                 |
-| Dashboard search box | Placeholder — **not wired up in the current build**. The input doesn't reach the query pipeline yet                        |
-
-<Callout type="info">
-  The dashboard search box will be hooked into the same query service in a later release. Until
-  then, drive search from the Quick Panel — it uses exactly the same parameters as the CLI.
-</Callout>
+| Surface              | Status / when to use it                                                                                                                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| History page         | **Primary in-app surface.** The History view is the landing page; its search box mixes free text with content-type / source-device / time filters, all wired to the query service described below. |
+| Quick Panel          | Global hotkey, keyboard-first quick access. Live filtering with composite filter chips. See [Quick Panel](./quick-panel#filtering)                                                                 |
+| `uniclip search` CLI | Scripts, SSH, remote sessions. See [CLI — Search](../cli/reference#search)                                                                                                                         |
 
 ## Query syntax
 
-The Quick Panel's advanced search and the CLI go through the same
-parser, so the rules below apply to both.
+The Quick Panel's advanced search, the History search box, and the CLI
+share one parser, so the token rules below apply across all three —
+except the source-device filter, which only the History box exposes
+(called out below).
 
 ### Substring matching
 
@@ -44,15 +41,16 @@ output, combine substring search with the time filter below.
 
 ```text
 type:text invite
+type:richtext newsletter
 type:image screenshot
-type:code useEffect
-type:link mdn
 type:file invoice
 ```
 
 Equivalent to the type chips in the Quick Panel and the CLI's
-`--type`. Allowed values: `text` / `image` / `link` / `file` / `code`.
-Code and HTML are merged into one class at the index level.
+`--type`. Allowed values: `text` / `richtext` / `image` / `file`.
+`richtext` covers HTML / rich-text clips, which form their own physical
+content class. Web links and source-like snippets are **not** physical
+types — they are tags (`#link` / `#code`, see below).
 
 ### Extension filter `ext:`
 
@@ -75,6 +73,27 @@ uniclip search "report" \
     --from-ms 1710000000000 \
     --to-ms 1710100000000
 ```
+
+### Source-device filter
+
+Narrow results to clips that arrived from one device — a paired computer
+or a mobile-sync phone. In the History search box, pick a device from the
+filter bar or type `from:` and choose from the list. This filter lives in
+the History view only; the Quick Panel and `uniclip search` have no source
+equivalent.
+
+### Tag filter `#`
+
+Narrow results to clips carrying a content tag. Tags are derived
+automatically as items are indexed:
+
+- `#link` — the clip contains a web URL.
+- `#code` — the clip is plain text that looks like source code. Rich
+  text / HTML is a physical type (`type:richtext`), not this tag.
+
+The History search box and the Quick Panel both support `#` tags — type
+`#` and pick a tag from the list. The CLI exposes the same tags via
+`uniclip search --tag`.
 
 ### What's **not** supported
 
@@ -111,6 +130,11 @@ The index may be in a "rebuilding" state.
 
 Occasionally the index drifts out of sync with history (most often
 when the process was `SIGKILL`-ed mid-write).
+
+An interrupted rebuild now resumes automatically the next time the
+daemon starts (for example when you reopen the app), so a manual
+rebuild is usually only needed when you'd rather not wait for a
+restart.
 
 - **GUI**: that `Rebuild` button. After clicking, the state shifts to
   "Rebuilding" and the UI polls every 2 s until completion.

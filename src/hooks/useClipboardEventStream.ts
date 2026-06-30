@@ -45,11 +45,13 @@ export function useClipboardEventStream({
 
     let remoteInvalidateTimer: number | null = null
     let localFlushTimer: number | null = null
+    let cancelled = false
     const reducer = createClipboardEventReducer({ now: () => Date.now(), throttleMs })
 
     const flushLocalFetch = (ids: string[]) => {
       void getClipboardEntries(50, 0)
         .then(response => {
+          if (cancelled) return
           log.info(
             { status: response.status, requested: ids.length },
             'local list reload (coalesced)'
@@ -65,7 +67,9 @@ export function useClipboardEventStream({
             onLocalItemRef.current(projectClipboardEntry(entry))
           }
         })
-        .catch(err => log.error({ err }, 'Failed to fetch local clipboard entries'))
+        .catch(err => {
+          if (!cancelled) log.error({ err }, 'Failed to fetch local clipboard entries')
+        })
     }
 
     const applyEffects = (effects: ClipboardEventReducerEffect[]) => {
@@ -121,6 +125,7 @@ export function useClipboardEventStream({
     const unsubscribe = daemonWs.subscribe(['clipboard'], handler)
 
     return () => {
+      cancelled = true
       if (remoteInvalidateTimer !== null) {
         clearTimeout(remoteInvalidateTimer)
         remoteInvalidateTimer = null

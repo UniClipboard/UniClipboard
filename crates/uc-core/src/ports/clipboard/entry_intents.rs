@@ -7,7 +7,10 @@
 
 use async_trait::async_trait;
 
-use crate::clipboard::{ClipboardEntry, ClipboardRepositoryError, ClipboardSelectionDecision};
+use crate::clipboard::{
+    ClipboardEntry, ClipboardEvent, ClipboardRepositoryError, ClipboardSelectionDecision,
+    PersistedClipboardRepresentation,
+};
 use crate::ids::EntryId;
 
 /// Fetch a single clipboard entry by id.
@@ -56,6 +59,19 @@ pub trait TouchClipboardEntryPort: Send + Sync {
     ) -> Result<bool, ClipboardRepositoryError>;
 }
 
+/// Set the favorite flag of an existing entry.
+#[async_trait]
+pub trait SetClipboardEntryFavoritePort: Send + Sync {
+    /// Sets the entry's favorite flag to `is_favorited`. Returns `true` when a
+    /// row was updated, `false` when no entry with `entry_id` exists.
+    /// Idempotent with respect to the stored value.
+    async fn set_favorite(
+        &self,
+        entry_id: &EntryId,
+        is_favorited: bool,
+    ) -> Result<bool, ClipboardRepositoryError>;
+}
+
 /// Delete a clipboard entry.
 #[async_trait]
 pub trait DeleteClipboardEntryPort: Send + Sync {
@@ -74,6 +90,61 @@ pub trait FindEntryIdBySnapshotHashPort: Send + Sync {
         &self,
         snapshot_hash: &str,
     ) -> Result<Option<EntryId>, ClipboardRepositoryError>;
+}
+
+/// Report whether an entry's content is fully held and usable locally.
+#[async_trait]
+pub trait CheckEntryAvailabilityPort: Send + Sync {
+    /// Returns `true` only when every representation of `entry_id` is ready —
+    /// no placeholder for not-yet-materialized payload, none in a `Failed` or
+    /// `Lost` state — and, for a file-backed entry, the local files its
+    /// file-list points at actually exist, are readable, and are regular files.
+    ///
+    /// Returns `false` for a partially materialized entry (e.g. a cancelled
+    /// transfer left a missing-payload placeholder) or one whose local files
+    /// have since been removed or replaced. Returns `false` when no entry with
+    /// `entry_id` exists.
+    ///
+    /// Availability is derived live on each call rather than read from a stored
+    /// flag, because representation state is rewritten asynchronously by
+    /// materialization and reconciliation; a denormalized column would go
+    /// stale. Callers gate "do I already hold this content?" decisions on this:
+    /// a hash match alone is not enough — a matched-but-unavailable entry is not
+    /// held.
+    async fn is_entry_available(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<bool, ClipboardRepositoryError>;
+}
+
+/// Replace the content of an existing entry in place, reusing its identity.
+#[async_trait]
+pub trait ReplaceEntryContentPort: Send + Sync {
+    /// Atomically swap the content behind `entry_id`: remove the entry's
+    /// current event, representations, selection, thumbnails, delivery and
+    /// transfer associations, then rebuild them from the supplied event,
+    /// representations and selection. The entry keeps its `entry_id`, and its
+    /// sticky user state — `pinned`, `active_time_ms`, `created_at_ms` — is
+    /// preserved; its content pointer (`event_id`), `title`, `total_size`, and
+    /// persisted content category are updated to the new event.
+    ///
+    /// The whole operation is one transaction: on any failure nothing changes.
+    /// `new_event` carries the authoritative content identity (`snapshot_hash`)
+    /// the replaced entry will be known by. `new_selection` must reference
+    /// `entry_id`.
+    ///
+    /// Returns an error if no entry with `entry_id` exists — replace never
+    /// implicitly creates.
+    async fn replace_entry_content(
+        &self,
+        entry_id: &EntryId,
+        new_event: &ClipboardEvent,
+        new_representations: &[PersistedClipboardRepresentation],
+        new_selection: &ClipboardSelectionDecision,
+        new_title: Option<String>,
+        new_total_size: i64,
+        new_content_category: crate::clipboard::ClipboardEntryContentCategory,
+    ) -> Result<(), ClipboardRepositoryError>;
 }
 
 /// Resolve the persisted snapshot hash recorded for a given entry.

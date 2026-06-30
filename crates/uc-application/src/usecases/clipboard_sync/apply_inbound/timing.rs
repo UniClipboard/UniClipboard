@@ -19,14 +19,19 @@
 //! budgets in separate homes is deliberate — it stops the two narratives from
 //! being conflated back into one tangled "loopback" story.
 //!
-//! ## Three independent horizons (not derived from a shared base)
+//! ## Two independent horizons (not derived from a shared base)
 //!
-//! Unlike the self-write echo budget, these three are genuinely different
+//! Unlike the self-write echo budget, these two are genuinely different
 //! physical quantities and do NOT derive from one base, so each is named and
 //! pinned independently rather than scaled off a common root (deriving
 //! unrelated budgets from each other would be fake coupling). They are
 //! centralised here, not inlined at the use case, per the project rule against
 //! scattered timeout literals.
+//!
+//! A former third horizon — a sender-`entry_id` source-entry window — was
+//! retired once the per-identity coordinator made content-hash dedup atomic:
+//! the two channels now carry the same canonical hash, so a `find` by hash
+//! (under the identity lock) collapses them without a separate entry_id cache.
 
 use std::time::Duration;
 
@@ -47,16 +52,6 @@ pub(crate) const RAPID_DUPLICATE_WINDOW: Duration = Duration::from_millis(200);
 /// copy of similar content.
 pub(crate) const VISIBLE_DUPLICATE_WINDOW: Duration = Duration::from_secs(2);
 
-/// Source-entry window: dispatch (direct push) and active-state (pull) deliver
-/// the same source file copy under different snapshot hashes but a shared
-/// sender `blob_ref.entry_id`. Within this interval both resolve to one local
-/// entry.
-///
-/// Sized to cover large-file transfer latency across the two channels — the
-/// widest horizon of the three because a big blob can take many seconds to
-/// arrive on the slower path.
-pub(crate) const SOURCE_ENTRY_DEDUP_WINDOW: Duration = Duration::from_secs(30);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,6 +62,5 @@ mod tests {
     fn dedup_windows_are_pinned() {
         assert_eq!(RAPID_DUPLICATE_WINDOW, Duration::from_millis(200));
         assert_eq!(VISIBLE_DUPLICATE_WINDOW, Duration::from_secs(2));
-        assert_eq!(SOURCE_ENTRY_DEDUP_WINDOW, Duration::from_secs(30));
     }
 }

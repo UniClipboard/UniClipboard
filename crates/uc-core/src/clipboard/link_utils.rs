@@ -60,3 +60,109 @@ pub fn extract_domain(url_str: &str) -> Option<String> {
         .ok()
         .and_then(|u| u.host_str().map(|h| h.to_string()))
 }
+
+/// True when `candidate` is a single `http`/`https` URL with no surrounding or
+/// internal whitespace.
+fn is_web_url(candidate: &str) -> bool {
+    let trimmed = candidate.trim();
+    if trimmed.is_empty() || trimmed.contains(char::is_whitespace) {
+        return false;
+    }
+    matches!(Url::parse(trimmed), Ok(u) if matches!(u.scheme(), "http" | "https"))
+}
+
+/// Detect the web URLs in a clipboard entry — the single contract shared by the
+/// `link` tag rule and the `linkUrls` render metadata so the two never diverge.
+///
+/// Collects `http`/`https` URLs from two sources:
+/// - `uri_list`: every entry whose scheme is `http`/`https` is kept (non-web
+///   schemes such as `file://` or `mailto:` are dropped).
+/// - `plain_text`: contributes its URLs **only** when every non-empty line is
+///   itself a web URL (a single bare URL is the one-line case). Prose that
+///   merely contains a URL contributes nothing.
+///
+/// Returns the URLs in the order encountered (uri-list first, then plain text);
+/// empty when the entry holds no web URL.
+pub fn detect_link_urls(uri_list: &[String], plain_text: Option<&str>) -> Vec<String> {
+    let mut urls: Vec<String> = uri_list
+        .iter()
+        .map(|u| u.trim())
+        .filter(|u| is_web_url(u))
+        .map(|u| u.to_string())
+        .collect();
+
+    if let Some(text) = plain_text {
+        let lines: Vec<&str> = text
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+        if !lines.is_empty() && lines.iter().all(|l| is_web_url(l)) {
+            urls.extend(lines.into_iter().map(|l| l.to_string()));
+        }
+    }
+
+    urls
+}
+
+#[cfg(test)]
+mod link_detection_tests {
+    use super::detect_link_urls;
+
+    #[test]
+    fn uri_list_keeps_only_web_urls() {
+        let uris = vec![
+            "https://example.com".to_string(),
+            "http://a.test/path".to_string(),
+            "mailto:x@y.z".to_string(),
+            "ftp://files.test".to_string(),
+        ];
+        assert_eq!(
+            detect_link_urls(&uris, None),
+            vec![
+                "https://example.com".to_string(),
+                "http://a.test/path".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn plain_text_single_url_detected() {
+        assert_eq!(
+            detect_link_urls(&[], Some("  https://example.com  ")),
+            vec!["https://example.com".to_string()]
+        );
+    }
+
+    #[test]
+    fn plain_text_multi_line_all_urls_detected() {
+        let text = "https://a.test\nhttp://b.test\n";
+        assert_eq!(
+            detect_link_urls(&[], Some(text)),
+            vec!["https://a.test".to_string(), "http://b.test".to_string()]
+        );
+    }
+
+    #[test]
+    fn prose_containing_a_url_is_not_a_link() {
+        assert!(detect_link_urls(&[], Some("see https://example.com for details")).is_empty());
+    }
+
+    #[test]
+    fn plain_text_mixed_url_and_prose_lines_is_not_a_link() {
+        let text = "https://a.test\njust some notes";
+        assert!(detect_link_urls(&[], Some(text)).is_empty());
+    }
+
+    #[test]
+    fn non_web_scheme_plain_text_is_not_a_link() {
+        assert!(detect_link_urls(&[], Some("mailto:x@y.z")).is_empty());
+        assert!(detect_link_urls(&[], Some("file:///etc/hosts")).is_empty());
+    }
+
+    #[test]
+    fn empty_inputs_yield_no_urls() {
+        assert!(detect_link_urls(&[], None).is_empty());
+        assert!(detect_link_urls(&[], Some("   ")).is_empty());
+    }
+}

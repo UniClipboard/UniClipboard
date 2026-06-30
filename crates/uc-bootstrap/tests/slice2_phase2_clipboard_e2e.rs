@@ -46,7 +46,6 @@ use uc_application::facade::{
     MemberRosterDeps, MemberRosterFacade,
 };
 use uc_application::proof::HmacProofAdapter;
-use uc_bootstrap::IrohNodeConfig;
 use uc_core::ids::{DeviceId, FormatId, RepresentationId};
 use uc_core::membership::{MemberRepositoryPort, MembershipError, SpaceMember};
 use uc_core::ports::pairing::PairingSessionPort;
@@ -63,6 +62,7 @@ use uc_core::trusted_peer::{TrustedPeer, TrustedPeerError, TrustedPeerRepository
 use uc_core::{
     ClipboardChangeOrigin, MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot,
 };
+use uc_infra::network::iroh::IrohNodeConfig;
 
 use uc_infra::clipboard::TransferCipherAdapter;
 use uc_infra::fs::key_slot_store::JsonKeySlotStore;
@@ -501,7 +501,7 @@ async fn build_side(name: &'static str, rendezvous_base_url: String) -> Side {
 
     // Clone the presence + local_identity handles before SpaceSetupDeps moves
     // them so MemberRosterFacade + ClipboardSyncFacade can share the same
-    // instances. Mirrors production wiring in `build_space_setup_assembly`.
+    // instances. Mirrors production wiring in `build_sync_engine_assembly`.
     let presence_for_roster = Arc::clone(&presence);
     let presence_for_clipboard = Arc::clone(&presence);
     let local_identity_for_roster = Arc::clone(&local_identity);

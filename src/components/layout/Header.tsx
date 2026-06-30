@@ -22,6 +22,7 @@ const Header: React.FC<HeaderProps> = ({ onFilterChange, className }) => {
       ? [{ id: Filter.Favorited, label: 'header.filters.favorited', icon: Star }]
       : []),
     { id: Filter.Text, label: 'header.filters.text', icon: FileText },
+    { id: Filter.RichText, label: 'header.filters.richtext', icon: FileText },
     { id: Filter.Image, label: 'header.filters.image', icon: Image },
     { id: Filter.Link, label: 'header.filters.link', icon: LinkIcon },
     { id: Filter.File, label: 'header.filters.file', icon: Folder },

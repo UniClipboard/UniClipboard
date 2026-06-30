@@ -40,8 +40,8 @@ use uc_core::clipboard::{ActiveClipboardState, ClipboardContentCategorySet};
 use uc_core::ids::{DeviceId, EntryId, SpaceId};
 use uc_core::ports::clipboard::{
     ActiveClipboardDispatchPort, ActiveClipboardPullClientError, ActiveClipboardPullClientPort,
-    ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, FindEntryIdBySnapshotHashPort,
-    InboundActiveClipboardState, LoadActiveClipboardPort,
+    ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, CheckEntryAvailabilityPort,
+    FindEntryIdBySnapshotHashPort, InboundActiveClipboardState, LoadActiveClipboardPort,
 };
 use uc_core::ports::space::IsSpaceUnlockedPort;
 use uc_core::ports::{ClockPort, PeerAddressRepositoryPort, PresencePort};
@@ -151,6 +151,12 @@ pub(crate) struct ApplyInboundActiveClipboardStateUseCase {
     /// Decrypts + persists a pulled transfer envelope. Paired with
     /// `pull_client`; both are wired together or not at all.
     pulled_content_store: Option<Arc<dyn InboundPulledContentStore>>,
+    /// Live availability query. When wired, a hash match is only converged if
+    /// the matched entry is fully held; a partial match (e.g. a cancelled
+    /// transfer placeholder) is treated as "not held" and pulled, so a
+    /// `uniclip-missing://` placeholder is never written to the OS clipboard.
+    /// `None` keeps the prior "any hash match converges" behavior.
+    availability: Option<Arc<dyn CheckEntryAvailabilityPort>>,
     /// Domain event sender: fires after a successful register advance so
     /// external subscribers can react (e.g. resurface the entry in history).
     converged_tx: broadcast::Sender<ActiveClipboardConvergedEvent>,
@@ -189,8 +195,21 @@ impl ApplyInboundActiveClipboardStateUseCase {
             clock,
             pull_client: None,
             pulled_content_store: None,
+            availability: None,
             converged_tx,
         }
+    }
+
+    /// Wire the availability query so a partial local entry (matched by hash but
+    /// not fully held) is pulled and completed before converging, rather than
+    /// writing its `uniclip-missing://` placeholder to the OS clipboard. Without
+    /// it, any hash match converges (prior behavior).
+    pub(crate) fn with_check_entry_availability(
+        mut self,
+        availability: Arc<dyn CheckEntryAvailabilityPort>,
+    ) -> Self {
+        self.availability = Some(availability);
+        self
     }
 
     /// Subscribe to convergence events.
@@ -318,19 +337,23 @@ impl ApplyInboundActiveClipboardStateUseCase {
         }
 
         // 5. Resolve the content locally by `snapshot_hash` (never by the
-        //    sender's per-device entry_id).
+        //    sender's per-device entry_id). A hash match counts as "held" only
+        //    if the entry is *fully available* — a partial match (e.g. a
+        //    cancelled transfer's `uniclip-missing://` placeholder) is treated
+        //    like a miss so we pull and complete it instead of converging a
+        //    placeholder into the OS clipboard.
         let local_entry_id = match self
             .entry_lookup
             .find_entry_id_by_snapshot_hash(&incoming.snapshot_hash)
             .await
         {
-            Ok(Some(id)) => id,
-            Ok(None) => {
-                // 6. Content missing locally → pull it from the reporting peer
-                //    (D3/D4/D6). On success this stores the entry and falls
-                //    through to the same convergence tail. Any pull/store
-                //    failure leaves the register untouched (no advance, no
-                //    re-broadcast, no retry).
+            Ok(Some(id)) if self.is_entry_available(&id).await => id,
+            Ok(Some(_)) | Ok(None) => {
+                // 6. Content missing or only partially held → pull it from the
+                //    reporting peer (D3/D4/D6). On success this stores/upgrades
+                //    the entry and falls through to the same convergence tail.
+                //    Any pull/store failure leaves the register untouched (no
+                //    advance, no re-broadcast, no retry).
                 match self.pull_and_store(&peer, &incoming.snapshot_hash).await {
                     Some(id) => id,
                     None => return,
@@ -344,6 +367,29 @@ impl ApplyInboundActiveClipboardStateUseCase {
 
         self.converge_with_entry(&peer, &incoming, local_entry_id)
             .await;
+    }
+
+    /// Whether `entry_id` is fully held locally. With no availability port
+    /// wired, a hash match is treated as held (prior converge-on-match
+    /// behavior). An availability-query error degrades to "unavailable" so a
+    /// flaky query can never converge a partial `uniclip-missing://` placeholder
+    /// to the OS clipboard; the worst case is a redundant pull of content we
+    /// already hold, which is strictly safer than writing a placeholder.
+    async fn is_entry_available(&self, entry_id: &EntryId) -> bool {
+        match &self.availability {
+            Some(availability) => match availability.is_entry_available(entry_id).await {
+                Ok(is_available) => is_available,
+                Err(err) => {
+                    warn!(
+                        error = %err,
+                        entry_id = %entry_id,
+                        "active state inbound: availability check failed; treating entry as unavailable"
+                    );
+                    false
+                }
+            },
+            None => true,
+        }
     }
 
     /// Pull the content for `snapshot_hash` from `peer` and store it locally,

@@ -105,9 +105,12 @@ impl ClipboardRestoreFacade {
             list: _entry_list,
             save: _entry_save,
             touch: entry_touch,
+            set_favorite: _entry_set_favorite,
             delete: _entry_delete,
             find_by_snapshot_hash: _entry_find,
             get_snapshot_hash: entry_snapshot_hash_lookup,
+            availability: _entry_availability,
+            replace_content: _entry_replace,
         } = entry_ports;
         let ClipboardRepresentationPorts {
             get: rep_get,

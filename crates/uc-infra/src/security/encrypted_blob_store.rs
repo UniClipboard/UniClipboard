@@ -27,11 +27,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, info_span, Instrument};
 
-use uc_core::{blob::ports::BlobReaderPort, crypto::aad, BlobId};
+use uc_core::{blob::ports::BlobReaderPort, crypto::aad, BlobId, ContentHash};
 
 use super::session::InMemorySession;
 use super::v1_aead;
-use crate::blob::BlobStorePort;
+use crate::blob::{BlobStorePort, StoredPathBlob};
 
 /// Magic bytes identifying a UniClipboard blob file ("UCBL")
 const BLOB_MAGIC: [u8; 4] = [0x55, 0x43, 0x42, 0x4C];
@@ -145,19 +145,39 @@ impl BlobStorePort for EncryptedBlobStore {
         &self,
         blob_id: &BlobId,
         source_path: &std::path::Path,
-    ) -> Result<(PathBuf, Option<i64>)> {
+    ) -> Result<StoredPathBlob> {
         // AEAD wire format(v1_aead::encrypt_blob_xchacha)是 one-shot,目前不支持流式
         // 加密。这里先把源文件整文件读进内存再走 put() —— 与 capture-side 调用方约定:
         // 加密 store 启用时,path-backed ingest 的"任意大小"语义降级为"内存里能放得下",
         // 流式 AEAD 重构属于独立 phase。
-        let bytes = tokio::fs::read(source_path)
-            .await
-            .with_context(|| format!("failed to read {} for encryption", source_path.display()))?;
-        self.put(blob_id, &bytes).await
+        // No source path in the error context: a clipboard file path is user
+        // content (usernames / sensitive filenames) and would leak through the
+        // propagated error chain. Correlate by blob_id instead.
+        let bytes = tokio::fs::read(source_path).await.with_context(|| {
+            format!("failed to read source file for encryption (blob {blob_id})")
+        })?;
+        // Hash the exact plaintext buffer that gets compressed+encrypted below,
+        // in the same read pass — no second read of the source can observe a
+        // rewritten file, so the recorded identity matches the stored blob.
+        let content_hash = ContentHash::from(blake3::hash(&bytes).as_bytes());
+        let size_bytes = bytes.len() as u64;
+        let (storage_path, compressed_size) = self.put(blob_id, &bytes).await?;
+        Ok(StoredPathBlob {
+            storage_path,
+            content_hash,
+            size_bytes,
+            compressed_size,
+        })
     }
 
     async fn get(&self, blob_id: &BlobId) -> Result<Vec<u8>> {
         <Self as BlobReaderPort>::get(self, blob_id).await
+    }
+
+    async fn delete(&self, blob_id: &BlobId) -> Result<()> {
+        // Encryption is transparent to deletion: drop the stored bytes via the
+        // inner store.
+        self.inner.delete(blob_id).await
     }
 }
 
@@ -196,5 +216,63 @@ impl BlobReaderPort for EncryptedBlobStore {
         );
 
         Ok(plaintext)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blob::FilesystemBlobStore;
+    use crate::security::secrets::MasterKey;
+
+    fn hash_of(bytes: &[u8]) -> ContentHash {
+        ContentHash::from(blake3::hash(bytes).as_bytes())
+    }
+
+    fn store_with_key(dir: PathBuf) -> EncryptedBlobStore {
+        let inner: Arc<dyn BlobStorePort> = Arc::new(FilesystemBlobStore::new(dir));
+        let session = Arc::new(InMemorySession::new());
+        session.set_master_key(MasterKey::from_bytes(&[7u8; 32]).unwrap());
+        EncryptedBlobStore::new(inner, session)
+    }
+
+    #[tokio::test]
+    async fn put_from_path_hashes_plaintext_and_roundtrips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store_with_key(tmp.path().join("blobs"));
+
+        let src = tmp.path().join("plain.bin");
+        let content = b"encrypted store: recorded identity is the plaintext hash".to_vec();
+        tokio::fs::write(&src, &content).await.unwrap();
+
+        let blob_id = BlobId::new();
+        let stored = store.put_from_path(&blob_id, &src).await.unwrap();
+
+        assert_eq!(stored.size_bytes, content.len() as u64);
+        // Identity is the device-independent *plaintext* hash, never the ciphertext.
+        assert_eq!(stored.content_hash, hash_of(&content));
+        // Encrypted store tracks the on-disk (ciphertext) size.
+        assert!(stored.compressed_size.is_some());
+
+        // Decrypts back to the same plaintext, which hashes to the recorded id.
+        let got = BlobReaderPort::get(&store, &blob_id).await.unwrap();
+        assert_eq!(got, content);
+        assert_eq!(hash_of(&got), stored.content_hash);
+    }
+
+    #[tokio::test]
+    async fn delete_removes_encrypted_blob_and_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store_with_key(tmp.path().join("blobs"));
+
+        let src = tmp.path().join("plain.bin");
+        tokio::fs::write(&src, b"bytes").await.unwrap();
+        let blob_id = BlobId::new();
+        store.put_from_path(&blob_id, &src).await.unwrap();
+        assert!(BlobReaderPort::get(&store, &blob_id).await.is_ok());
+
+        store.delete(&blob_id).await.unwrap();
+        assert!(BlobReaderPort::get(&store, &blob_id).await.is_err());
+        store.delete(&blob_id).await.unwrap();
     }
 }

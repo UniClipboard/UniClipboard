@@ -8,10 +8,17 @@ use uc_observability::FlowId;
 
 use uc_core::clipboard::ActiveClipboardState;
 use uc_core::ids::EntryId;
-use uc_core::ports::clipboard::{AdvanceActiveClipboardPort, FindEntryIdBySnapshotHashPort};
-use uc_core::SystemClipboardSnapshot;
+use uc_core::ports::clipboard::{
+    AdvanceActiveClipboardPort, CheckEntryAvailabilityPort, FindEntryIdBySnapshotHashPort,
+};
+use uc_core::{SnapshotHash, SystemClipboardSnapshot};
+
+use crate::entry_identity::EntryIdentityCoordinator;
 
 use crate::facade::blob_transfer::SharedHostEventEmitter;
+use crate::facade::clipboard_live_index::{
+    ClipboardLiveIndexInput, ClipboardLiveIndexOutcome, ClipboardLiveIndexPort,
+};
 use crate::facade::host_event::{
     ClipboardHostEvent, ClipboardOriginKind, HostEvent, TransferHostEvent,
 };
@@ -19,7 +26,7 @@ use crate::usecases::clipboard_sync::payload_codec::decode_v3_bytes_to_snapshot_
 
 use super::materializer::InboundBlobMaterializer;
 use super::ports::{InboundCapture, InboundWrite};
-use super::timing::{RAPID_DUPLICATE_WINDOW, SOURCE_ENTRY_DEDUP_WINDOW, VISIBLE_DUPLICATE_WINDOW};
+use super::timing::{RAPID_DUPLICATE_WINDOW, VISIBLE_DUPLICATE_WINDOW};
 use super::{ApplyInboundError, ApplyInboundInput, ApplyOutcome};
 
 const RECENT_INBOUND_MAX_RECORDS: u64 = 128;
@@ -37,11 +44,21 @@ pub struct ApplyInboundClipboardUseCase {
     /// content, different `snapshot_hash`" (a peer re-sending with extended
     /// representations). TTL = `VISIBLE_DUPLICATE_WINDOW` (see [`super::timing`]).
     recent_visible_content: Cache<String, EntryId>,
-    /// Inbound idempotency, sender `blob_ref.entry_id` → local `entry_id`:
-    /// dispatch (direct push) and active-state (pull) deliver one source file
-    /// copy under different snapshot hashes but a shared sender `entry_id`. TTL
-    /// = `SOURCE_ENTRY_DEDUP_WINDOW` (see [`super::timing`]).
-    recent_source_entries: Cache<String, EntryId>,
+    /// Serializes "find entry by content hash → create / replace / skip" across
+    /// every writer of the same content (the two inbound channels here, and —
+    /// once shared via [`Self::with_entry_identity_coordinator`] — local
+    /// capture). Holding its per-identity lock across the find + materialize +
+    /// commit section is what makes the dedup atomic. Defaults to a private
+    /// instance (sufficient for inbound-vs-inbound); the composition root
+    /// overrides it with the shared one so capture-vs-inbound is covered too.
+    coordinator: Arc<EntryIdentityCoordinator>,
+    /// Optional availability query. When wired, a hash match is only treated as
+    /// "already held" if the matched entry is fully available; a matched but
+    /// partial entry (e.g. a cancelled transfer's `uniclip-missing://`
+    /// placeholder) is upgraded in place by a completing delivery instead of
+    /// suppressing it. `None` degrades to "a hash match is always held" (the
+    /// prior skip-on-match behavior).
+    availability: Option<Arc<dyn CheckEntryAvailabilityPort>>,
     /// Optional host-event emitter for surfacing the inbound entry to UI
     /// before the fetch+capture pipeline finishes. Wired only in daemon
     /// mode; tests / CLI leave it `None`.
@@ -51,6 +68,11 @@ pub struct ApplyInboundClipboardUseCase {
     /// write that trails it is best-effort and intentionally not gated on).
     /// `None` in tests / contexts that don't track active state.
     active_register: Option<Arc<dyn AdvanceActiveClipboardPort>>,
+    /// Optional search live-indexer. When wired, a freshly applied inbound
+    /// entry is indexed for full-text search (best-effort), so remote-origin
+    /// clipboard is searchable just like local captures. `None` in tests /
+    /// contexts without a search subsystem.
+    search_live_index: Option<Arc<dyn ClipboardLiveIndexPort>>,
 }
 
 impl ApplyInboundClipboardUseCase {
@@ -64,8 +86,11 @@ impl ApplyInboundClipboardUseCase {
             capture,
             write,
             blob_materializer: None,
+            coordinator: Arc::new(EntryIdentityCoordinator::new()),
+            availability: None,
             host_event_emitter: None,
             active_register: None,
+            search_live_index: None,
             recent_snapshot_hashes: Cache::builder()
                 .max_capacity(RECENT_INBOUND_MAX_RECORDS)
                 .time_to_live(RAPID_DUPLICATE_WINDOW)
@@ -74,11 +99,28 @@ impl ApplyInboundClipboardUseCase {
                 .max_capacity(RECENT_INBOUND_MAX_RECORDS)
                 .time_to_live(VISIBLE_DUPLICATE_WINDOW)
                 .build(),
-            recent_source_entries: Cache::builder()
-                .max_capacity(RECENT_INBOUND_MAX_RECORDS)
-                .time_to_live(SOURCE_ENTRY_DEDUP_WINDOW)
-                .build(),
         }
+    }
+
+    /// Wire the availability query so a hash match against a partial entry
+    /// triggers an in-place upgrade rather than a skip. Without it, any hash
+    /// match is treated as already-held (prior behavior).
+    pub fn with_check_entry_availability(
+        mut self,
+        availability: Arc<dyn CheckEntryAvailabilityPort>,
+    ) -> Self {
+        self.availability = Some(availability);
+        self
+    }
+
+    /// Override the per-identity coordinator with a shared instance so local
+    /// capture and inbound apply serialize on the same content lock (R5-F3).
+    pub fn with_entry_identity_coordinator(
+        mut self,
+        coordinator: Arc<EntryIdentityCoordinator>,
+    ) -> Self {
+        self.coordinator = coordinator;
+        self
     }
 
     pub fn with_blob_materializer(
@@ -104,6 +146,41 @@ impl ApplyInboundClipboardUseCase {
     pub fn with_active_register(mut self, register: Arc<dyn AdvanceActiveClipboardPort>) -> Self {
         self.active_register = Some(register);
         self
+    }
+
+    /// Wire the search live-indexer. When set, a successfully applied inbound
+    /// entry is indexed for full-text search on a best-effort basis, so
+    /// remote-origin clipboard shows up in search like local captures.
+    pub fn with_search_live_index(mut self, index: Arc<dyn ClipboardLiveIndexPort>) -> Self {
+        self.search_live_index = Some(index);
+        self
+    }
+
+    /// Index a freshly applied inbound entry for search. Best-effort: the entry
+    /// is already persisted, so an index failure is logged and swallowed rather
+    /// than failing the inbound apply. Mirrors the OS-clipboard watcher's
+    /// live-index pass, but for remote-origin (P2P + mobile) entries.
+    async fn index_for_search(&self, entry_id: &EntryId, snapshot: Arc<SystemClipboardSnapshot>) {
+        let Some(index) = self.search_live_index.as_ref() else {
+            return;
+        };
+        match index
+            .index_capture(ClipboardLiveIndexInput {
+                entry_id: entry_id.as_ref().to_string(),
+                snapshot,
+            })
+            .await
+        {
+            Ok(ClipboardLiveIndexOutcome::Indexed) => {
+                debug!(entry_id = %entry_id, "inbound: indexed for search")
+            }
+            Ok(ClipboardLiveIndexOutcome::Skipped { reason }) => {
+                debug!(entry_id = %entry_id, reason, "inbound: search live index skipped")
+            }
+            Err(e) => {
+                warn!(error = %e, entry_id = %entry_id, "inbound: search live index failed (best-effort, ignored)")
+            }
+        }
     }
 
     /// Advance the active-clipboard register for a freshly applied inbound
@@ -163,6 +240,21 @@ impl ApplyInboundClipboardUseCase {
         }
     }
 
+    /// Whether `entry_id` is fully held locally. With no availability port
+    /// wired, a hash match is treated as held (the prior skip-on-match
+    /// behavior). A transient availability-query error also degrades to "held"
+    /// so a flaky query never turns a genuine duplicate into a spurious
+    /// re-download / re-create.
+    async fn is_entry_available(&self, entry_id: &EntryId) -> bool {
+        match &self.availability {
+            Some(availability) => availability
+                .is_entry_available(entry_id)
+                .await
+                .unwrap_or(true),
+            None => true,
+        }
+    }
+
     // 跨设备可观测性(PR2):
     //   - `peer.device_id` 是 PR2 起的标准字段名,把发送方 device 摆到一级
     //     span field;`from_device` 暂时保留兼容现有日志查询,Sentry tag
@@ -188,26 +280,7 @@ impl ApplyInboundClipboardUseCase {
     ) -> Result<ApplyOutcome, ApplyInboundError> {
         let flow_id = input.flow_id.clone().unwrap_or_else(FlowId::generate);
         tracing::Span::current().record("flow.id", tracing::field::display(&flow_id));
-        // 1. Dedup short-circuit. The repo's default `Ok(None)` impl
-        // (used by in-memory test fakes) degrades dedup to off — safe,
-        // worst case we re-write the OS clipboard with identical bytes.
-        let existing = self
-            .entry_repo
-            .find_entry_id_by_snapshot_hash(&input.snapshot_hash)
-            .await
-            .map_err(|e| ApplyInboundError::DedupQuery(e.to_string()))?;
-        if let Some(existing_entry_id) = existing {
-            debug!(
-                existing_entry_id = %existing_entry_id,
-                "inbound dropped: duplicate of existing local entry"
-            );
-            return Ok(ApplyOutcome::DuplicateSkipped {
-                snapshot_hash: input.snapshot_hash,
-                existing_entry_id,
-            });
-        }
-
-        // 2. Decode V3 envelope. Decode failure is non-fatal — drop the
+        // 1. Decode V3 envelope. Decode failure is non-fatal — drop the
         // frame, keep the loop alive (peer may be on a newer wire).
         let (snapshot, blob_refs) =
             match decode_v3_bytes_to_snapshot_and_blob_refs(input.plaintext.as_ref()) {
@@ -226,24 +299,43 @@ impl ApplyInboundClipboardUseCase {
             "inbound: decoded V3 envelope"
         );
 
-        // Early dedup by sender-side entry_id from blob refs.  dispatch and
-        // active_state send different snapshot_hashes for the same file copy,
-        // but blob_ref.entry_id always points to the same source entry.  By
-        // checking BEFORE the expensive blob download we save bandwidth and
-        // avoid the duplicate clipboard entry entirely.
-        for br in &blob_refs {
-            let src_id = br.entry_id.as_ref().to_string();
-            if let Some(existing) = self.recent_source_entries.get(&src_id) {
+        // 2. Hold the per-identity lock across the whole "find by hash →
+        // materialize → create / replace / skip" section so it is atomic
+        // against every other writer of the same content (no double-create, no
+        // create-vs-replace interleave). Layer ③ in-flight suppression is
+        // deferred, so the download runs inside the lock: same-identity
+        // deliveries serialize (a late duplicate then finds the committed entry
+        // and skips its own download — a free bandwidth saving), while different
+        // identities proceed in parallel via the coordinator's lock striping.
+        let _identity_guard = self.coordinator.lock(&input.snapshot_hash).await;
+
+        // 3. Pre-download dedup. A hash match that is *fully held* is skipped
+        // before we show a progress card or download anything. A match that is
+        // *partial* (e.g. a cancelled transfer's `uniclip-missing://`
+        // placeholder) is NOT held — fall through to materialize and upgrade it
+        // in place. The repo's default `Ok(None)` impl (in-memory test fakes)
+        // degrades dedup to off; `is_entry_available` defaults to "held" when no
+        // availability port is wired (prior skip-on-match behavior).
+        let existing = self
+            .entry_repo
+            .find_entry_id_by_snapshot_hash(&input.snapshot_hash)
+            .await
+            .map_err(|e| ApplyInboundError::DedupQuery(e.to_string()))?;
+        if let Some(existing_id) = existing.as_ref() {
+            if self.is_entry_available(existing_id).await {
                 debug!(
-                    existing_entry_id = %existing,
-                    source_entry_id = %src_id,
-                    "inbound dropped: same source entry already applied recently"
+                    existing_entry_id = %existing_id,
+                    "inbound dropped: duplicate of existing, fully-held local entry"
                 );
                 return Ok(ApplyOutcome::DuplicateSkipped {
                     snapshot_hash: input.snapshot_hash,
-                    existing_entry_id: existing,
+                    existing_entry_id: existing_id.clone(),
                 });
             }
+            debug!(
+                existing_entry_id = %existing_id,
+                "inbound: hash matches a partial local entry; will materialize and upgrade in place"
+            );
         }
 
         // Pre-allocate the receiver-side entry_id so the UI placeholder, the
@@ -251,11 +343,12 @@ impl ApplyInboundClipboardUseCase {
         // all share the same id. Without this, the placeholder card couldn't
         // be linked to the final entry by id and we'd need a transfer_id →
         // entry_id remap on the frontend.
-        let receiver_entry_id = EntryId::new();
-        let source_entry_ids: Vec<String> = blob_refs
-            .iter()
-            .map(|r| r.entry_id.as_ref().to_string())
-            .collect();
+        //
+        // For the in-place upgrade path (hash matched a *partial* entry), reuse
+        // that entry's id: the completed content is persisted under `existing`
+        // below, so the IncomingPending card and the final entry must share it —
+        // a fresh id would strand the pending card on a different entry.
+        let receiver_entry_id = existing.clone().unwrap_or_else(EntryId::new);
         let advertised_total_bytes: u64 = blob_refs.iter().map(|r| r.size_bytes).sum();
         // free-standing files 走 V3BlobRef.filename;rep-bound blobs (image /
         // 大二进制) 通常 filename 为 None,自动被 filter_map 跳过。
@@ -321,36 +414,93 @@ impl ApplyInboundClipboardUseCase {
             }
         };
 
+        // 6. Rapid in-memory dedup of a recently-completed re-push. Only
+        // complete entries are remembered, so this never suppresses the
+        // completing delivery of a partial. Consulted only when the DB had no
+        // match — a partial DB match takes the upgrade path below.
         let visible_key = snapshot.meaningful_origin_key();
-        if let Some(existing_entry_id) =
-            self.find_recent_duplicate(&input.snapshot_hash, visible_key.as_deref())
-        {
-            debug!(
-                existing_entry_id = %existing_entry_id,
-                "inbound dropped: rapid duplicate of recently applied entry"
-            );
-            return Ok(ApplyOutcome::DuplicateSkipped {
-                snapshot_hash: input.snapshot_hash,
-                existing_entry_id,
-            });
+        if existing.is_none() {
+            if let Some(existing_entry_id) =
+                self.find_recent_duplicate(&input.snapshot_hash, visible_key.as_deref())
+            {
+                debug!(
+                    existing_entry_id = %existing_entry_id,
+                    "inbound dropped: rapid duplicate of recently applied entry"
+                );
+                return Ok(ApplyOutcome::DuplicateSkipped {
+                    snapshot_hash: input.snapshot_hash,
+                    existing_entry_id,
+                });
+            }
         }
 
-        // 3. Persist via the same capture pipeline local copies use
-        // (D5: same schema). Cloning the snapshot lets us keep one for
-        // the OS write below; capture takes ownership of the original.
-        let snapshot_for_write = snapshot.clone();
-        let entry_id = self
-            .capture
-            .capture(receiver_entry_id.clone(), input.from_device, snapshot)
-            .await
-            .map_err(|e| ApplyInboundError::Capture(e.to_string()))?
-            .ok_or_else(|| {
-                ApplyInboundError::Internal(
-                    "capture returned None for RemotePush origin (unexpected)".to_string(),
+        // 7. Persist via the same capture pipeline local copies use (D5: same
+        // schema): create a new entry, or upgrade the matched partial in place.
+        // Keep one snapshot clone behind an `Arc` for the downstream consumers
+        // (search live-index, the background OS write) before capture takes the
+        // original. Persist under the sender's wire identity, never a hash
+        // recomputed from the materialized snapshot (F-4): a cancelled
+        // transfer's `uniclip-missing://` placeholder would recompute to a
+        // divergent hash and fork the entry. `parse` is non-panicking — an
+        // unparseable wire hash degrades to `None` (recompute), never a DoS.
+        let snapshot_for_write = Arc::new(snapshot.clone());
+        let authoritative_hash = SnapshotHash::parse(&input.snapshot_hash);
+        let entry_id = match existing {
+            // Any surviving match is partial — fully-held matches returned at
+            // step 3.
+            Some(existing_id) => {
+                if is_partial {
+                    // Don't replace a partial with another partial: keep the
+                    // existing placeholder so the eventual completed delivery
+                    // upgrades it (avoids thrashing between two partials).
+                    debug!(
+                        existing_entry_id = %existing_id,
+                        "inbound: delivery also partial; keeping existing placeholder"
+                    );
+                    return Ok(ApplyOutcome::DuplicateSkipped {
+                        snapshot_hash: input.snapshot_hash,
+                        existing_entry_id: existing_id,
+                    });
+                }
+                self.capture
+                    .replace_with_identity(
+                        existing_id,
+                        input.from_device,
+                        snapshot,
+                        authoritative_hash,
+                    )
+                    .await
+                    .map_err(|e| ApplyInboundError::Capture(e.to_string()))?
+                    .ok_or_else(|| {
+                        ApplyInboundError::Internal(
+                            "replace returned None for RemotePush origin (unexpected)".to_string(),
+                        )
+                    })?
+            }
+            None => self
+                .capture
+                .capture_with_identity(
+                    receiver_entry_id.clone(),
+                    input.from_device,
+                    snapshot,
+                    authoritative_hash,
                 )
-            })?;
+                .await
+                .map_err(|e| ApplyInboundError::Capture(e.to_string()))?
+                .ok_or_else(|| {
+                    ApplyInboundError::Internal(
+                        "capture returned None for RemotePush origin (unexpected)".to_string(),
+                    )
+                })?,
+        };
 
-        // 4. Schedule OS clipboard write in the background.
+        // The find → commit section is complete; release the per-identity lock
+        // before the best-effort side work (register advance, search index, OS
+        // write) so a concurrent delivery of a *different* identity is never
+        // blocked behind it.
+        drop(_identity_guard);
+
+        // 8. Schedule OS clipboard write in the background.
         //
         // 异步化:OS clipboard write 在大 payload 场景下能阻塞 1-3 秒(macOS
         // NSPasteboard 跨进程 IPC、Windows CF_HTML 编码),如果让 apply_inbound
@@ -383,10 +533,6 @@ impl ApplyInboundClipboardUseCase {
                 visible_key,
                 entry_id.clone(),
             );
-            for src_id in &source_entry_ids {
-                self.recent_source_entries
-                    .insert(src_id.clone(), entry_id.clone());
-            }
             // Advance the active-clipboard register at capture-commit (D1
             // call-site: inbound apply). The OS write below is detached and
             // best-effort, so the register is intentionally decoupled from it
@@ -398,6 +544,13 @@ impl ApplyInboundClipboardUseCase {
                 snapshot_for_write.ts_ms,
             )
             .await;
+
+            // Best-effort: index the applied entry so remote-origin clipboard
+            // (P2P + mobile) is searchable like local captures. The entry is
+            // already persisted, so indexing never gates the inbound apply.
+            self.index_for_search(&entry_id, Arc::clone(&snapshot_for_write))
+                .await;
+
             debug!(entry_id = %entry_id, "inbound: entry persisted, scheduling background OS clipboard write");
             let write_port = Arc::clone(&self.write);
             let entry_id_for_write = entry_id.clone();
@@ -412,6 +565,12 @@ impl ApplyInboundClipboardUseCase {
             // hammering or many peers each pushing once).
             tokio::spawn(
                 async move {
+                    // The live-index pass above already awaited and dropped its
+                    // `Arc` clone, so this reclaims sole ownership without
+                    // copying. The fallback clone is unreachable in practice
+                    // (refcount is 1 here) and only guards a future second holder.
+                    let snapshot_for_write = Arc::try_unwrap(snapshot_for_write)
+                        .unwrap_or_else(|shared| (*shared).clone());
                     if let Err(e) = write_port.write(snapshot_for_write).await {
                         error!(
                             event = "inbound_os_write_failed",

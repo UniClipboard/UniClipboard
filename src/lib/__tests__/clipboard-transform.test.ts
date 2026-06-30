@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ClipboardEntryDto } from '@/api/daemon/clipboard'
-import { projectClipboardEntry } from '../clipboard-transform'
+import type { SearchResultDto } from '@/api/daemon/search'
+import { projectClipboardEntry, searchResultToDisplayItem } from '../clipboard-transform'
 import { getItemPreview } from '../clipboard-utils'
 
 function makeDto(overrides: Partial<ClipboardEntryDto> = {}): ClipboardEntryDto {
@@ -18,6 +19,7 @@ function makeDto(overrides: Partial<ClipboardEntryDto> = {}): ClipboardEntryDto 
     activeTime: 3,
     fileTransferStatus: null,
     fileTransferReason: null,
+    contentTags: null,
     linkUrls: null,
     linkDomains: null,
     fileSizes: null,
@@ -83,17 +85,44 @@ describe('projectClipboardEntry', () => {
   it('projects link DTOs, deriving domains when the daemon omits them', () => {
     const entry = projectClipboardEntry(
       makeDto({
-        preview: 'https://example.com/a',
+        preview: 'https://example.com/a?truncated',
         linkUrls: ['https://example.com/a'],
         linkDomains: null,
       })
     )
 
-    expect(entry.type).toBe('link')
+    expect(entry.type).toBe('text')
+    expect(entry.contentTags).toEqual(['link'])
     expect(entry.content).toEqual({
-      urls: ['https://example.com/a'],
-      domains: ['example.com'],
+      display_text: 'https://example.com/a?truncated',
+      has_detail: false,
+      size: 5,
+      link_urls: ['https://example.com/a'],
     })
+  })
+
+  it('honors browse contentTags from the daemon', () => {
+    const entry = projectClipboardEntry(
+      makeDto({
+        preview: 'function greet(name) {\n  return name\n}',
+        contentTags: ['code'],
+      })
+    )
+
+    expect(entry.type).toBe('text')
+    expect(entry.contentTags).toEqual(['code'])
+  })
+
+  it('projects rich text entries without the code tag', () => {
+    const entry = projectClipboardEntry(
+      makeDto({
+        preview: '<pre>let x = 1</pre>',
+        contentType: 'rich_text',
+      })
+    )
+
+    expect(entry.type).toBe('richtext')
+    expect(entry.contentTags).toBeUndefined()
   })
 
   it('maps payloadState=Lost to isUnavailable so the row can grey out', () => {
@@ -110,5 +139,73 @@ describe('projectClipboardEntry', () => {
 
   it('defaults isUnavailable to false when daemon omits payloadState', () => {
     expect(projectClipboardEntry(makeDto()).isUnavailable).toBe(false)
+  })
+})
+
+function makeSearchResult(overrides: Partial<SearchResultDto> = {}): SearchResultDto {
+  return {
+    entryId: 'result-1',
+    contentType: 'text',
+    activeTimeMs: 1,
+    tags: [],
+    textPreview: 'hello',
+    charCount: null,
+    mimeType: 'text/plain',
+    fileExtensions: [],
+    fileNames: [],
+    filePaths: [],
+    linkUrls: [],
+    sourceDevice: null,
+    payloadState: null,
+    ...overrides,
+  }
+}
+
+describe('searchResultToDisplayItem', () => {
+  it('keeps link search results tagged as links', () => {
+    const item = searchResultToDisplayItem(
+      makeSearchResult({
+        tags: ['link'],
+        textPreview: 'https://example.com/a?preview',
+        linkUrls: ['https://example.com/a'],
+      })
+    )
+
+    expect(item.type).toBe('text')
+    expect(item.contentTags).toEqual(['link'])
+    expect(item.content).toMatchObject({
+      display_text: 'https://example.com/a?preview',
+      link_urls: ['https://example.com/a'],
+    })
+  })
+
+  it('maps HTML search results to rich text without the code tag', () => {
+    const item = searchResultToDisplayItem(
+      makeSearchResult({
+        contentType: 'html',
+        textPreview: '<pre>let x = 1</pre>',
+        mimeType: 'text/html',
+      })
+    )
+
+    expect(item.type).toBe('richtext')
+    expect(item.contentTags).toBeUndefined()
+  })
+
+  it('maps file search results to file content carrying names and local paths', () => {
+    const item = searchResultToDisplayItem(
+      makeSearchResult({
+        contentType: 'file',
+        mimeType: 'text/uri-list',
+        fileNames: ['report.pdf'],
+        filePaths: ['/tmp/report.pdf'],
+      })
+    )
+
+    expect(item.type).toBe('file')
+    expect(item.content).toMatchObject({
+      file_names: ['report.pdf'],
+      file_paths: ['/tmp/report.pdf'],
+    })
   })
 })

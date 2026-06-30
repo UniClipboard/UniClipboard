@@ -5,14 +5,20 @@ export interface ClipboardPreviewData {
   contentType: 'text' | 'image' | 'file'
   sizeBytes: number
   textContent?: string
-  imageUrl?: string
+  /**
+   * Token-free image descriptor: a `data:` URL (inline content) or a daemon
+   * blob path. Consumers resolve it to a `blob:` object URL at `<img>` mount
+   * time via `useBlobImageObjectUrl`; storing a path (not a token-bearing URL)
+   * keeps this cacheable without the 300s-token 401 churn.
+   */
+  imageBlobPath?: string
   fileNames?: string[]
   /**
    * Image preview exceeds the auto-inline threshold (D6 / ADR-008 P3-d): the
-   * original must not be auto-pulled. `imageUrl` still carries the resolved
-   * (auth-bearing) URL, but consumers must gate the actual `<img>` mount behind
-   * an explicit user action so the daemon only materializes the large payload
-   * on demand. See `INLINE_PREVIEW_MAX_BYTES`.
+   * original must not be auto-pulled. `imageBlobPath` still carries the
+   * descriptor, but consumers must gate the actual `<img>` mount (and its blob
+   * fetch) behind an explicit user action so the daemon only materializes the
+   * large payload on demand. See `INLINE_PREVIEW_MAX_BYTES`.
    */
   requiresExplicitLoad?: boolean
 }

@@ -1,4 +1,4 @@
-import { Code, ExternalLink, File, FileText, Image as ImageIcon } from 'lucide-react'
+import { File, FileText, Image as ImageIcon } from 'lucide-react'
 import React from 'react'
 import { Filter } from '@/api/clipboardItems'
 import type { ClipboardEntryType } from '@/lib/clipboard-entry'
@@ -11,8 +11,7 @@ export const isMac = navigator.platform.toUpperCase().includes('MAC')
 export const typeIcons: Record<ClipboardEntryType, React.ElementType> = {
   text: FileText,
   image: ImageIcon,
-  link: ExternalLink,
-  code: Code,
+  richtext: FileText,
   file: File,
   unknown: FileText,
 }
@@ -29,8 +28,7 @@ export const quickCardClassName =
 export const QUICK_FILTER_ORDER: Filter[] = [
   Filter.All,
   Filter.Text,
+  Filter.RichText,
   Filter.Image,
-  Filter.Link,
   Filter.File,
-  Filter.Code,
 ]

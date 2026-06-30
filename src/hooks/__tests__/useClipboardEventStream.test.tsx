@@ -211,5 +211,70 @@ describe('useClipboardEventStream', () => {
     vi.useRealTimers()
   })
 
+  it('ignores an in-flight local reload after unmount', async () => {
+    const { getClipboardEntries } = await import('@/api/daemon/clipboard')
+    const mockGetClipboardEntries = vi.mocked(getClipboardEntries)
+    const onLocalItem = vi.fn()
+    let resolveFetch: ((value: Awaited<ReturnType<typeof getClipboardEntries>>) => void) | null =
+      null
+
+    mockGetClipboardEntries.mockReturnValue(
+      new Promise(resolve => {
+        resolveFetch = resolve
+      })
+    )
+
+    const { unmount } = renderHook(() =>
+      useClipboardEventStream({
+        onLocalItem,
+        onRemoteInvalidate: vi.fn(),
+        onDeleted: vi.fn(),
+      })
+    )
+
+    await waitFor(() => expect(capturedHandler).not.toBeNull())
+
+    act(() => {
+      capturedHandler?.({
+        topic: 'clipboard',
+        eventType: 'clipboard.new_content',
+        ts: 0,
+        sessionId: null,
+        payload: { entryId: 'entry-1', preview: 'hello', origin: 'local' },
+      })
+    })
+
+    unmount()
+
+    await act(async () => {
+      resolveFetch?.({
+        status: 'ready',
+        entries: [
+          {
+            id: 'entry-1',
+            preview: 'hello',
+            hasDetail: false,
+            sizeBytes: 5,
+            capturedAt: 0,
+            contentType: 'text/plain',
+            thumbnailUrl: null,
+            isEncrypted: false,
+            isFavorited: false,
+            updatedAt: 0,
+            activeTime: 0,
+            fileTransferStatus: null,
+            fileTransferReason: null,
+            linkUrls: null,
+            linkDomains: null,
+            fileSizes: null,
+          },
+        ],
+      })
+      await Promise.resolve()
+    })
+
+    expect(onLocalItem).not.toHaveBeenCalled()
+  })
+
   // Note: clipboard.deleted is never emitted by the daemon — test omitted.
 })

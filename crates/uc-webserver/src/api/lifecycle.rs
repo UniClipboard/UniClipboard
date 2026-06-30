@@ -91,7 +91,7 @@ async fn get_lifecycle_status_handler(
 /// POST /lifecycle/retry
 ///
 /// Slice4 P5c: libp2p `start_network` 已退役,iroh 路由由
-/// `SpaceSetupAssembly` 启动时即装好,no longer 需要 retry 出动 network。
+/// `SyncEngineAssembly` 启动时即装好,no longer 需要 retry 出动 network。
 /// 这个 endpoint 现在只做 lifecycle 状态推进 + 触发 deferred 服务启动,
 /// 等价于 GUI 端 `/lifecycle/ready` 的 idempotent 重试入口。
 #[utoipa::path(

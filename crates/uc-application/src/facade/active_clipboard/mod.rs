@@ -25,9 +25,9 @@ use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::clipboard::{
     ActiveClipboardDispatchPort, ActiveClipboardPullClientPort, ActiveClipboardPullServePort,
-    ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, ClipboardPayloadResolverPort,
-    ClipboardSelectionRepositoryPort, FindEntryIdBySnapshotHashPort, GetClipboardEntryPort,
-    GetRepresentationPort, LoadActiveClipboardPort, TouchClipboardEntryPort,
+    ActiveClipboardReceiverPort, AdvanceActiveClipboardPort, CheckEntryAvailabilityPort,
+    ClipboardPayloadResolverPort, ClipboardSelectionRepositoryPort, FindEntryIdBySnapshotHashPort,
+    GetClipboardEntryPort, GetRepresentationPort, LoadActiveClipboardPort, TouchClipboardEntryPort,
     UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::security::TransferCipherPort;
@@ -108,6 +108,11 @@ pub struct ActiveClipboardDeps {
     /// transition triggers a resend of the current register to that peer.
     pub presence: Arc<dyn PresencePort>,
     pub entry_lookup: Arc<dyn FindEntryIdBySnapshotHashPort>,
+    /// Live availability query. When set, a hash match against a partial entry
+    /// is pulled and completed before converging instead of writing its
+    /// `uniclip-missing://` placeholder to the OS clipboard. `None` keeps the
+    /// prior "any hash match converges" behavior.
+    pub availability: Option<Arc<dyn CheckEntryAvailabilityPort>>,
     pub coordinator: Arc<ClipboardWriteCoordinator>,
     pub clock: Arc<dyn ClockPort>,
     /// Identity of this device, used to stamp a locally-originated activation
@@ -243,6 +248,9 @@ impl ActiveClipboardFacade {
                 apply: pull_apply,
             });
             inbound_uc = inbound_uc.with_pull(pull_client, store);
+        }
+        if let Some(availability) = deps.availability {
+            inbound_uc = inbound_uc.with_check_entry_availability(availability);
         }
         let inbound_uc = Arc::new(inbound_uc);
 

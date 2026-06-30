@@ -38,11 +38,12 @@ use tracing::{debug, instrument, warn};
 
 use uc_core::ids::DeviceId;
 use uc_core::ports::{
-    ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, DispatchAck,
-    PeerAddressRepositoryPort, PresencePort, SyncPayload,
+    ClipboardDispatchError, ClipboardDispatchPort, ClipboardHeader, ConnectionChannel, DispatchAck,
+    DispatchReport, PeerAddressRepositoryPort, PresencePort, SyncPayload,
 };
 
 use super::clipboard_wire::{self, AckCode, WireEncodeError};
+use super::conn_path::{path_for, OnMissing};
 use super::connect::connect_with_staggered_retry;
 
 /// ALPN identifier for the Slice 2 clipboard sync protocol. Independent of
@@ -207,85 +208,36 @@ impl IrohClipboardDispatchAdapter {
             }
         }
     }
-}
 
-#[async_trait]
-impl ClipboardDispatchPort for IrohClipboardDispatchAdapter {
-    #[instrument(skip_all, fields(device = %target.as_str(), payload_len = payload.ciphertext.len()))]
-    async fn dispatch(
+    /// Open one bi-stream, write the framed header + ciphertext, read the
+    /// peer's one-byte ack, and interpret it. The caller owns the
+    /// connection lifecycle (close happens when the handle drops).
+    async fn send_and_ack(
         &self,
-        target: &DeviceId,
+        connection: &Connection,
         header: &ClipboardHeader,
-        payload: SyncPayload,
+        payload: &SyncPayload,
     ) -> Result<DispatchAck, ClipboardDispatchError> {
-        // 1. Early-reject oversized payloads at the adapter boundary so
-        //    the caller gets a clean error without us opening a stream
-        //    just to tear it back down. This is a *local* policy check —
-        //    no wire activity yet, peer never contacted. Surface as
-        //    `LocalPolicyExceeded` so callers don't misread it as a peer
-        //    decision (the caller's correct response is to re-dispatch
-        //    via blob ref / file transfer, not to retry this peer).
-        if payload.ciphertext.len() > clipboard_wire::MAX_PAYLOAD_SIZE as usize {
-            return Err(ClipboardDispatchError::LocalPolicyExceeded(format!(
-                "ciphertext {} bytes exceeds wire MAX_PAYLOAD_SIZE {}",
-                payload.ciphertext.len(),
-                clipboard_wire::MAX_PAYLOAD_SIZE
-            )));
-        }
-
-        // 2. Resolve address; missing / bad record = offline.
-        let addr = match self.resolve_addr(target).await {
-            Some(a) => a,
-            None => return Err(ClipboardDispatchError::Offline),
-        };
-
-        // 3. Dial via the per-peer single-flight slot so a concurrent
-        //    dispatch storm against the same offline peer collapses to one
-        //    staggered-retry batch + one `mark_offline`. Dial failure =
-        //    offline (no typed iroh error leaks up); the leader has
-        //    already fed the verdict to PresencePort so this branch only
-        //    has to surface the public error.
-        let connection = match self.dial_single_flight(target, addr).await {
-            Ok(connection) => connection,
-            Err(err) => {
-                debug!(
-                    error = %err,
-                    "clipboard dispatch: dial failed (single-flight), treating as Offline"
-                );
-                return Err(ClipboardDispatchError::Offline);
-            }
-        };
-
-        // 4. Open one bi-stream for this message.
         let (mut send, mut recv) = connection
             .open_bi()
             .await
             .map_err(|err| ClipboardDispatchError::Io(format!("open_bi: {err}")))?;
 
-        // 5. Write the frame + close the send half so the peer's read_exact
-        //    on the payload length / body reaches a terminal state.
+        // Write the frame + close the send half so the peer's read_exact on
+        // the payload length / body reaches a terminal state.
         clipboard_wire::write_frame(&mut send, header, &payload.ciphertext)
             .await
-            .map_err(|err| map_encode_err(err))?;
+            .map_err(map_encode_err)?;
         send.finish()
             .map_err(|err| ClipboardDispatchError::Io(format!("send.finish: {err}")))?;
 
-        // 6. Read the one-byte ack.
         let mut ack_buf = [0u8; 1];
         recv.read_exact(&mut ack_buf)
             .await
             .map_err(|err| ClipboardDispatchError::Io(format!("ack read: {err}")))?;
 
-        // 7. Close the connection. Adapter owns the connection lifecycle —
-        //    dropping here signals `Connection::closed` on the peer. The
-        //    Q4 per-dispatch-stream decision (see plan §3.1) means we do
-        //    not cache connections.
-        drop(recv);
-        drop(send);
-        drop(connection);
-
-        // 8. Interpret the ack byte. Any unknown code is adapter-level
-        //    rejection rather than an ignored success.
+        // Any unknown code is adapter-level rejection rather than an ignored
+        // success.
         match AckCode::try_from(ack_buf[0]) {
             Ok(AckCode::Accepted) => Ok(DispatchAck::Accepted),
             Ok(AckCode::DuplicateIgnored) => Ok(DispatchAck::DuplicateIgnored),
@@ -296,6 +248,91 @@ impl ClipboardDispatchPort for IrohClipboardDispatchAdapter {
                 "peer returned unknown ack byte: {err}"
             ))),
         }
+    }
+}
+
+#[async_trait]
+impl ClipboardDispatchPort for IrohClipboardDispatchAdapter {
+    #[instrument(skip_all, fields(device = %target.as_str(), payload_len = payload.ciphertext.len()))]
+    async fn dispatch(
+        &self,
+        target: &DeviceId,
+        header: &ClipboardHeader,
+        payload: SyncPayload,
+    ) -> DispatchReport {
+        // 1. Early-reject oversized payloads at the adapter boundary so
+        //    the caller gets a clean error without us opening a stream
+        //    just to tear it back down. This is a *local* policy check —
+        //    no wire activity yet, peer never contacted. Surface as
+        //    `LocalPolicyExceeded` so callers don't misread it as a peer
+        //    decision (the caller's correct response is to re-dispatch
+        //    via blob ref / file transfer, not to retry this peer).
+        if payload.ciphertext.len() > clipboard_wire::MAX_PAYLOAD_SIZE as usize {
+            return DispatchReport {
+                transport: ConnectionChannel::Unknown,
+                outcome: Err(ClipboardDispatchError::LocalPolicyExceeded(format!(
+                    "ciphertext {} bytes exceeds wire MAX_PAYLOAD_SIZE {}",
+                    payload.ciphertext.len(),
+                    clipboard_wire::MAX_PAYLOAD_SIZE
+                ))),
+            };
+        }
+
+        // 2. Resolve address; missing / bad record = offline. No dial, so
+        //    no path established → transport Unknown.
+        let addr = match self.resolve_addr(target).await {
+            Some(a) => a,
+            None => {
+                return DispatchReport {
+                    transport: ConnectionChannel::Unknown,
+                    outcome: Err(ClipboardDispatchError::Offline),
+                }
+            }
+        };
+        // Keep the peer id to probe the actual path once the dial settles;
+        // `addr` itself is moved into the single-flight dial below.
+        let addr_id = addr.id;
+
+        // 3. Dial via the per-peer single-flight slot so a concurrent
+        //    dispatch storm against the same offline peer collapses to one
+        //    staggered-retry batch + one `mark_offline`. Dial failure =
+        //    offline (no typed iroh error leaks up); the leader has
+        //    already fed the verdict to PresencePort so this branch only
+        //    has to surface the public error. No path established →
+        //    transport Unknown.
+        let connection = match self.dial_single_flight(target, addr).await {
+            Ok(connection) => connection,
+            Err(err) => {
+                debug!(
+                    error = %err,
+                    "clipboard dispatch: dial failed (single-flight), treating as Offline"
+                );
+                return DispatchReport {
+                    transport: ConnectionChannel::Unknown,
+                    outcome: Err(ClipboardDispatchError::Offline),
+                };
+            }
+        };
+
+        // 4. Write the frame + read the ack on a fresh bi-stream.
+        let outcome = self.send_and_ack(&connection, header, &payload).await;
+
+        // 5. Probe the path that actually served this attempt while the
+        //    connection is still alive. Sampling right after the send/ack
+        //    settles reflects the route the frame took (direct vs relay);
+        //    `None` means the snapshot momentarily lags the just-settled
+        //    dial, reported as Unknown.
+        let transport = path_for(&self.endpoint, addr_id, OnMissing::Unknown)
+            .await
+            .channel;
+
+        // 6. Close the connection. Adapter owns the lifecycle — dropping
+        //    here signals `Connection::closed` on the peer. The Q4
+        //    per-dispatch-stream decision (see plan §3.1) means we do not
+        //    cache connections.
+        drop(connection);
+
+        DispatchReport { transport, outcome }
     }
 }
 
@@ -518,6 +555,7 @@ mod tests {
         let ack = adapter
             .dispatch(&target, &sample_header(), payload)
             .await
+            .outcome
             .expect("dispatch succeeds");
         assert_eq!(ack, DispatchAck::Accepted);
 
@@ -547,6 +585,7 @@ mod tests {
         let ack = adapter
             .dispatch(&target, &sample_header(), payload)
             .await
+            .outcome
             .expect("dispatch succeeds");
         assert_eq!(ack, DispatchAck::DuplicateIgnored);
 
@@ -569,7 +608,8 @@ mod tests {
                     ciphertext: Bytes::from_static(b"irrelevant"),
                 },
             )
-            .await;
+            .await
+            .outcome;
         match result {
             Err(ClipboardDispatchError::Offline) => {}
             other => panic!("expected Offline, got {other:?}"),
@@ -661,8 +701,18 @@ mod tests {
         let header_b = header.clone();
 
         let (result_a, result_b) = tokio::join!(
-            async move { adapter_a.dispatch(&target_a, &header_a, payload_a).await },
-            async move { adapter_b.dispatch(&target_b, &header_b, payload_b).await },
+            async move {
+                adapter_a
+                    .dispatch(&target_a, &header_a, payload_a)
+                    .await
+                    .outcome
+            },
+            async move {
+                adapter_b
+                    .dispatch(&target_b, &header_b, payload_b)
+                    .await
+                    .outcome
+            },
         );
 
         match (result_a, result_b) {
@@ -707,7 +757,8 @@ mod tests {
                     ciphertext: Bytes::from(oversized),
                 },
             )
-            .await;
+            .await
+            .outcome;
         match result {
             Err(ClipboardDispatchError::LocalPolicyExceeded(msg)) => {
                 assert!(

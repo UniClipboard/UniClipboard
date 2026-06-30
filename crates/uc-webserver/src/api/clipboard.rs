@@ -66,6 +66,10 @@ fn require_facade(
     Ok(state.app_facade_or_error()?.clipboard_history.clone())
 }
 
+// `list_entries` is `#[deprecated]` (it marks the OpenAPI operation deprecated
+// via utoipa); allow the reference here since the route stays live for the CLI
+// compatibility window.
+#[allow(deprecated)]
 pub fn router() -> Router<DaemonApiState> {
     use uc_daemon_contract::constants::http_route;
     Router::new()
@@ -90,6 +94,11 @@ pub fn router() -> Router<DaemonApiState> {
 
 /// GET /clipboard/entries?limit=50&offset=0
 ///
+/// **Deprecated.** Browsing has moved to the unified search endpoint
+/// (`GET /search/query` with an empty query). This list endpoint is kept only
+/// for the CLI compatibility window and is removed in a later phase. New callers
+/// MUST use search.
+///
 /// Lists clipboard entries with pagination. Returns camelCase entry projections.
 /// Populates `linkDomains` from `linkUrls`. Limit is clamped to 1000.
 #[utoipa::path(
@@ -103,10 +112,24 @@ pub fn router() -> Router<DaemonApiState> {
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
+#[deprecated(note = "browse via GET /search/query (empty query); removed after the CLI cutover")]
 async fn list_entries(
     State(state): State<DaemonApiState>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<ApiEnvelope<Vec<EntryProjectionResponseDto>>>, ApiError> {
+    // Surface deprecated usage once per process. A per-call warn would flood the
+    // daemon log: the GUI live-prepend path (useClipboardEventStream) still hits
+    // this endpoint on every copy, so this fires on ordinary clipboard activity,
+    // not just rare external callers.
+    static DEPRECATION_WARNED: std::sync::Once = std::sync::Once::new();
+    DEPRECATION_WARNED.call_once(|| {
+        tracing::warn!(
+            target: "uniclipboard.deprecation",
+            endpoint = "GET /clipboard/entries",
+            replacement = "GET /search/query",
+            "deprecated clipboard list endpoint is in use; migrate callers to the unified search endpoint"
+        );
+    });
     let facade = require_facade(&state)?;
     let limit = clamp_limit(params.limit);
     let entries = facade

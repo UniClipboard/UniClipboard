@@ -44,12 +44,13 @@ describe('clipboard-utils', () => {
       getItemPreview(createEntry('image', { thumbnail: null, size: 0, width: 0, height: 0 }))
     ).toBe('Image')
     expect(
-      getItemPreview(createEntry('link', { urls: ['https://a.test'], domains: ['a.test'] }))
-    ).toBe('https://a.test')
+      getItemPreview(
+        createEntry('richtext', { display_text: '<p>hi</p>', has_detail: false, size: 5 })
+      )
+    ).toBe('<p>hi</p>')
     expect(getItemPreview(createEntry('file', { file_names: ['a.txt'], file_sizes: [1] }))).toBe(
       'a.txt'
     )
-    expect(getItemPreview(createEntry('code', { code: 'const x = 1' }))).toBe('const x = 1')
     expect(getItemPreview(createEntry('unknown', null))).toBe('')
   })
 

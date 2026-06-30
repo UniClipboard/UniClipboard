@@ -3,13 +3,17 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tracing::{debug, warn};
-use uc_core::clipboard::link_utils::{is_all_urls, is_single_url, parse_uri_list};
-use uc_core::clipboard::PayloadAvailability;
+use uc_core::clipboard::link_utils::{detect_link_urls as detect_web_urls, parse_uri_list};
+use uc_core::clipboard::{ClipboardEntryContentCategory, PayloadAvailability};
 use uc_core::network::protocol::MIME_IMAGE_PREFIX;
 use uc_core::ports::clipboard::{GetRepresentationPort, ListClipboardEntriesPort};
 use uc_core::ports::{
     ClipboardSelectionRepositoryPort, GetEntryTransferSummaryPort, ThumbnailRepositoryPort,
 };
+use uc_core::search::document::ContentType;
+use uc_core::search::tag::TaggableContent;
+
+use crate::content_tags::evaluate_builtin_content_tags;
 
 /// Application-layer DTO for clipboard entry projection.
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +32,7 @@ pub(crate) struct EntryProjectionDto {
     pub(crate) file_transfer_status: Option<String>,
     pub(crate) file_transfer_reason: Option<String>,
     pub(crate) file_transfer_ids: Vec<String>,
+    pub(crate) content_tags: Vec<String>,
     pub(crate) link_urls: Option<Vec<String>>,
     pub(crate) link_domains: Option<Vec<String>>,
     pub(crate) file_sizes: Option<Vec<i64>>,
@@ -58,36 +63,24 @@ pub(crate) struct ListClipboardEntryProjectionsUseCase {
     max_limit: usize,
 }
 
+/// Detect web (http/https) URLs carried by a representation, delegating to the
+/// uc-core single contract so the list projection and the search `link` tag
+/// agree on what counts as a link (§4.5). Returns `None` when no web URL is
+/// present or the data is not URL-bearing text.
 fn detect_link_urls(content_type: &str, inline_data: Option<&[u8]>) -> Option<Vec<String>> {
     let full_text = inline_data.and_then(|d| std::str::from_utf8(d).ok())?;
     let ct = content_type.to_ascii_lowercase();
-
-    if ct.starts_with("text/uri-list") {
-        let urls: Vec<String> = parse_uri_list(full_text)
-            .into_iter()
-            .filter(|u| !u.starts_with("file://"))
-            .collect();
-        if urls.is_empty() {
-            None
-        } else {
-            Some(urls)
-        }
+    let urls = if ct.starts_with("text/uri-list") {
+        detect_web_urls(&parse_uri_list(full_text), None)
     } else if ct.starts_with("text/plain") {
-        if is_all_urls(full_text) {
-            let urls: Vec<String> = full_text
-                .lines()
-                .map(|l| l.trim())
-                .filter(|l| !l.is_empty())
-                .map(|l| l.to_string())
-                .collect();
-            Some(urls)
-        } else if is_single_url(full_text) {
-            Some(vec![full_text.trim().to_string()])
-        } else {
-            None
-        }
+        detect_web_urls(&[], Some(full_text))
     } else {
+        Vec::new()
+    };
+    if urls.is_empty() {
         None
+    } else {
+        Some(urls)
     }
 }
 
@@ -109,6 +102,46 @@ fn compute_file_sizes(inline_data: &[u8]) -> Vec<i64> {
             _ => -1,
         })
         .collect()
+}
+
+fn content_type_from_entry_category(category: ClipboardEntryContentCategory) -> ContentType {
+    match category {
+        ClipboardEntryContentCategory::Text => ContentType::Text,
+        ClipboardEntryContentCategory::Image => ContentType::Image,
+        ClipboardEntryContentCategory::File => ContentType::File,
+        ClipboardEntryContentCategory::RichText => ContentType::Html,
+        ClipboardEntryContentCategory::Other => ContentType::Other,
+    }
+}
+
+fn content_tags_for_projection(
+    category: ClipboardEntryContentCategory,
+    content_type: &str,
+    inline_data: Option<&[u8]>,
+    has_image: bool,
+) -> Vec<String> {
+    let lower = content_type.to_ascii_lowercase();
+    let text = inline_data.and_then(|d| std::str::from_utf8(d).ok());
+    let uri_list = if lower.starts_with("text/uri-list") || lower.starts_with("file/uri-list") {
+        text.map(parse_uri_list).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let plain_text = if lower.starts_with("text/plain") {
+        text
+    } else {
+        None
+    };
+
+    evaluate_builtin_content_tags(&TaggableContent {
+        content_type: content_type_from_entry_category(category),
+        uri_list: &uri_list,
+        plain_text,
+        has_image,
+    })
+    .into_iter()
+    .map(|tag| tag.to_string())
+    .collect()
 }
 
 impl ListClipboardEntryProjectionsUseCase {
@@ -232,7 +265,7 @@ impl ListClipboardEntryProjectionsUseCase {
                     })
             };
 
-            let content_type = representation
+            let preview_mime = representation
                 .mime_type
                 .as_ref()
                 .map(|mt| mt.as_str().to_string())
@@ -263,10 +296,16 @@ impl ListClipboardEntryProjectionsUseCase {
                 (None, None, None)
             };
 
-            let is_uri_list = content_type
+            let is_uri_list = preview_mime
                 .to_ascii_lowercase()
                 .starts_with("text/uri-list");
-            let link_urls = detect_link_urls(&content_type, representation.inline_data.as_deref());
+            let link_urls = detect_link_urls(&preview_mime, representation.inline_data.as_deref());
+            let content_tags = content_tags_for_projection(
+                entry.content_category,
+                &preview_mime,
+                representation.inline_data.as_deref(),
+                is_image,
+            );
 
             let file_sizes = if is_uri_list {
                 representation
@@ -340,15 +379,16 @@ impl ListClipboardEntryProjectionsUseCase {
                 has_detail,
                 size_bytes: representation.size_bytes,
                 captured_at,
-                content_type,
+                content_type: entry.content_category.as_db_str().to_string(),
                 thumbnail_url,
                 is_encrypted: false,
-                is_favorited: false,
+                is_favorited: entry.is_favorited,
                 updated_at: captured_at,
                 active_time,
                 file_transfer_status,
                 file_transfer_reason,
                 file_transfer_ids,
+                content_tags,
                 link_urls,
                 link_domains: None,
                 file_sizes,
@@ -407,6 +447,17 @@ mod tests {
     }
 
     #[test]
+    fn detect_link_urls_keeps_only_web_urls_matching_search_contract() {
+        // After unifying on the uc-core contract, uri-list detection keeps only
+        // web (http/https) URLs — file:// and other schemes (ftp, mailto, …) are
+        // dropped — so the list projection's `linkUrls` and the search `link`
+        // tag agree on what counts as a link (§4.5 parity).
+        let body = "file:///home/u/a.txt\nftp://host/x\nhttps://example.com\n";
+        let urls = detect_link_urls("text/uri-list", Some(body.as_bytes()));
+        assert_eq!(urls, Some(vec!["https://example.com".to_string()]));
+    }
+
+    #[test]
     fn detect_link_urls_recognises_single_url_in_plain_text() {
         let urls = detect_link_urls("text/plain", Some(b"https://example.com/page"));
         assert_eq!(urls, Some(vec!["https://example.com/page".to_string()]));
@@ -435,6 +486,28 @@ mod tests {
         // `from_utf8` 失败 ⇒ 函数返回 None, 不 panic
         let urls = detect_link_urls("text/plain", Some(&[0xff, 0xfe, 0xfd]));
         assert_eq!(urls, None);
+    }
+
+    #[test]
+    fn content_tags_for_projection_tags_plain_text_code() {
+        let tags = content_tags_for_projection(
+            uc_core::clipboard::ClipboardEntryContentCategory::Text,
+            "text/plain",
+            Some(b"function greet(name) {\n  return `hello ${name}`;\n}"),
+            false,
+        );
+        assert!(tags.contains(&"code".to_string()));
+    }
+
+    #[test]
+    fn content_tags_for_projection_reuses_link_contract() {
+        let tags = content_tags_for_projection(
+            uc_core::clipboard::ClipboardEntryContentCategory::Text,
+            "text/plain",
+            Some(b"https://example.com"),
+            false,
+        );
+        assert_eq!(tags, vec!["link".to_string()]);
     }
 
     #[test]

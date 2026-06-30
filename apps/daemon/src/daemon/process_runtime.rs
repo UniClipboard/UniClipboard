@@ -12,7 +12,8 @@ use std::sync::Arc;
 
 use uc_application::deps::AppDeps;
 use uc_application::facade::{AppFacade, AppPaths, FileTransferFacade, InMemoryLifecycleStatus};
-use uc_bootstrap::{build_app_facade_from_deps, AppFacadeAssemblyOptions, TaskRegistry};
+use uc_bootstrap::{build_app_facade_from_deps, AppFacadeAssemblyOptions};
+use uc_core::TaskRegistry;
 
 use uc_application::clipboard_write::{ClipboardWriteCoordinator, RestoreBroadcastTrigger};
 use uc_bootstrap::ClipboardRestoreAssembly;

@@ -331,10 +331,11 @@ impl CleanupExpiredFilesUseCase {
     /// data. Eviction routes through the entry-aware delete path, which untags
     /// blobs so iroh-blobs GC reclaims the bytes on its next sweep.
     ///
-    /// Pinned/favorited entries are a future exemption: the schema does not yet
-    /// persist a favorite flag (see `ToggleFavoriteClipboardEntryUseCase`), so
-    /// there is nothing to exempt today. When `is_favorited` lands, filter such
-    /// entries out of the managed set before calling the eviction policy.
+    /// Pinned/favorited entries are a future exemption: entries now persist
+    /// `is_favorited` (toggled via `ToggleFavoriteClipboardEntryUseCase`), but
+    /// this quota pass does not yet filter them out. When the exemption lands,
+    /// filter favorited entries out of the managed set before calling the
+    /// eviction policy.
     async fn run_quota(
         &self,
         quota_bytes: u64,

@@ -27,8 +27,7 @@ use uc_application::facade::{
     ActiveClipboardReconcileDeps, ActiveClipboardReconcileFacade, AppFacade, AppPaths,
     ClipboardSnapshotDeps, FileTransferFacade,
 };
-use uc_bootstrap::assembly::WiredDependencies;
-use uc_bootstrap::file_transfer_lifecycle::FileTransferLifecycle;
+use uc_bootstrap::{FileTransferLifecycle, WiredDependencies};
 
 use super::app_assembly::{build_daemon_app_instance, DaemonAppAssemblyInput};
 use super::app_facade_assembly::{build_daemon_lifecycle_facades, DaemonLifecycleFacadesInput};
@@ -133,7 +132,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 
         let clipboard_write_coordinator = background.clipboard_write_coordinator.clone();
         let file_transfer_lifecycle = background.file_transfer_lifecycle.clone();
-        let file_transfer_facade = wired.file_transfer_facade.clone();
+        let file_transfer_facade = wired.shared.file_transfer_facade.clone();
 
         // Restore-broadcast channel (issue #1017 PR4): the restore use cases
         // (inside the AppFacade below) hold the sender; the active-clipboard
@@ -276,7 +275,7 @@ pub async fn start_in_process(
     let DaemonBootstrapAssembly {
         clipboard_sync_facade,
         blob_transfer_facade,
-        mut space_setup_assembly,
+        mut sync_engine_assembly,
         mobile_sync_endpoint_info,
     } = build_daemon_bootstrap_assembly(&handles.wired).await?;
 
@@ -292,10 +291,10 @@ pub async fn start_in_process(
     // active-clipboard facade exists. The worker debounces + gates restores
     // before announcing them to peers; its lifetime is tracked by the
     // assembly so shutdown aborts it (issue #1017 PR4).
-    space_setup_assembly.attach_restore_broadcast(restore_broadcast_rx);
+    sync_engine_assembly.attach_restore_broadcast(restore_broadcast_rx);
 
     let deps = wired.deps;
-    let host_event_bus = wired.host_event_bus;
+    let host_event_bus = wired.shared.host_event_bus;
     let settings_port = deps.settings.clone();
     let runtime_controls = build_daemon_runtime_controls(run_mode);
 
@@ -311,9 +310,9 @@ pub async fn start_in_process(
         file_transfer_lifecycle,
         clipboard_write_coordinator: clipboard_write_coordinator.clone(),
         host_event_bus: host_event_bus.clone(),
-        entry_delivery_repo: wired.entry_delivery_repo.clone(),
-        clipboard_event_reader_repo: wired.clipboard_event_reader_repo.clone(),
-        trusted_peer_repo: wired.trusted_peer_repo.clone(),
+        entry_delivery_repo: wired.shared.entry_delivery_repo.clone(),
+        clipboard_event_reader_repo: wired.shared.clipboard_event_reader_repo.clone(),
+        trusted_peer_repo: wired.shared.trusted_peer_repo.clone(),
     })?;
 
     let search_assembly = build_daemon_search_assembly(&deps, runtime_controls.event_tx.clone());
@@ -340,7 +339,7 @@ pub async fn start_in_process(
         build_daemon_lifecycle_facades(DaemonLifecycleFacadesInput {
             deps: &deps,
             storage_paths: &storage_paths_for_daemon,
-            space_setup_assembly: &space_setup_assembly,
+            sync_engine_assembly: &sync_engine_assembly,
             clipboard_sync: clipboard_sync_facade.clone(),
             blob_transfer: blob_transfer_facade.clone(),
             file_transfer: file_transfer_facade.clone(),
@@ -382,7 +381,7 @@ pub async fn start_in_process(
         daemon,
         app_facade: app_facade_for_daemon,
         settings: settings_port,
-        space_setup_assembly,
+        sync_engine_assembly,
         deferred_ready_notify: runtime_controls.deferred_ready_notify,
         clipboard_capture_gate: runtime_controls.clipboard_capture_gate,
     };

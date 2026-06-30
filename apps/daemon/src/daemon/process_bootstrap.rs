@@ -13,9 +13,10 @@
 //! Migrated from `uc-desktop/src/bootstrap.rs` (ADR-008 P2, Slice 2a).
 
 use uc_application::facade::AppPaths;
-use uc_bootstrap::assembly::{get_storage_paths, wire_dependencies, WiredDependencies};
-use uc_bootstrap::tracing::install_panic_logging_hook;
-use uc_bootstrap::{compose_event_context, init_tracing_subscriber, BackgroundRuntimeDeps};
+use uc_bootstrap::{
+    compose_event_context, get_storage_paths, init_tracing_subscriber, install_panic_logging_hook,
+    wire_dependencies, BackgroundRuntimeDeps, WiredDependencies,
+};
 use uc_core::config::AppConfig;
 
 use super::run_mode::DaemonRunMode;

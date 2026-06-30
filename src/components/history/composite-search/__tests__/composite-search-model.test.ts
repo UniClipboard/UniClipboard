@@ -49,7 +49,7 @@ describe('composite search model', () => {
       tagOptions: [],
     }).map(c => c.value)
 
-    expect(values).toEqual([Filter.Text, Filter.Image, Filter.File])
+    expect(values).toEqual([Filter.Text, Filter.RichText, Filter.Image, Filter.File])
   })
 
   it('converts searchable tags into tag candidates', () => {

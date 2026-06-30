@@ -19,6 +19,7 @@ function makeDto(overrides: Partial<ClipboardEntryDto> = {}): ClipboardEntryDto 
     activeTime: 3,
     fileTransferStatus: null,
     fileTransferReason: null,
+    contentTags: null,
     linkUrls: null,
     linkDomains: null,
     fileSizes: null,
@@ -84,30 +85,44 @@ describe('projectClipboardEntry', () => {
   it('projects link DTOs, deriving domains when the daemon omits them', () => {
     const entry = projectClipboardEntry(
       makeDto({
-        preview: 'https://example.com/a',
+        preview: 'https://example.com/a?truncated',
         linkUrls: ['https://example.com/a'],
         linkDomains: null,
       })
     )
 
-    expect(entry.type).toBe('link')
+    expect(entry.type).toBe('text')
     expect(entry.contentTags).toEqual(['link'])
     expect(entry.content).toEqual({
-      urls: ['https://example.com/a'],
-      domains: ['example.com'],
+      display_text: 'https://example.com/a?truncated',
+      has_detail: false,
+      size: 5,
+      link_urls: ['https://example.com/a'],
     })
   })
 
-  it('marks HTML text entries with the code tag', () => {
+  it('honors browse contentTags from the daemon', () => {
     const entry = projectClipboardEntry(
       makeDto({
-        preview: '<pre>let x = 1</pre>',
-        contentType: 'text/html',
+        preview: 'function greet(name) {\n  return name\n}',
+        contentTags: ['code'],
       })
     )
 
     expect(entry.type).toBe('text')
     expect(entry.contentTags).toEqual(['code'])
+  })
+
+  it('projects rich text entries without the code tag', () => {
+    const entry = projectClipboardEntry(
+      makeDto({
+        preview: '<pre>let x = 1</pre>',
+        contentType: 'rich_text',
+      })
+    )
+
+    expect(entry.type).toBe('richtext')
+    expect(entry.contentTags).toBeUndefined()
   })
 
   it('maps payloadState=Lost to isUnavailable so the row can grey out', () => {
@@ -151,16 +166,20 @@ describe('searchResultToDisplayItem', () => {
     const item = searchResultToDisplayItem(
       makeSearchResult({
         tags: ['link'],
-        textPreview: 'https://example.com/a',
+        textPreview: 'https://example.com/a?preview',
         linkUrls: ['https://example.com/a'],
       })
     )
 
-    expect(item.type).toBe('link')
+    expect(item.type).toBe('text')
     expect(item.contentTags).toEqual(['link'])
+    expect(item.content).toMatchObject({
+      display_text: 'https://example.com/a?preview',
+      link_urls: ['https://example.com/a'],
+    })
   })
 
-  it('marks HTML search results with the code tag', () => {
+  it('maps HTML search results to rich text without the code tag', () => {
     const item = searchResultToDisplayItem(
       makeSearchResult({
         contentType: 'html',
@@ -169,8 +188,8 @@ describe('searchResultToDisplayItem', () => {
       })
     )
 
-    expect(item.type).toBe('code')
-    expect(item.contentTags).toEqual(['code'])
+    expect(item.type).toBe('richtext')
+    expect(item.contentTags).toBeUndefined()
   })
 
   it('maps file search results to file content carrying names and local paths', () => {

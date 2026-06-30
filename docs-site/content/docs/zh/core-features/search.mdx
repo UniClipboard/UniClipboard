@@ -32,13 +32,12 @@ project meeting notes
 
 ```text
 type:text 邀请
+type:richtext 邮件正文
 type:image 截图
-type:code useEffect
-type:link mdn
 type:file invoice
 ```
 
-等价于快捷面板顶部的类型筹码、CLI 的 `--type`。可选值：`text` / `image` / `link` / `file` / `code`。HTML 现已是索引层独立的内容类别（原先合并的 `code` 类已不存在）。
+等价于快捷面板顶部的类型筹码、CLI 的 `--type`。可选值：`text` / `richtext` / `image` / `file`。`richtext` 对应 HTML / 富文本内容，是独立的物理内容类别。网页链接与像源码的片段**不是**物理类型，而是标签（`#link` / `#code`，见下文）。
 
 ### 扩展名过滤 `ext:`
 
@@ -68,9 +67,9 @@ uniclip search "报告" \
 把结果收窄到带某个内容标签的内容。标签在条目入索引时自动派生：
 
 - `#link` —— 内容里含网页 URL。
-- `#code` —— 内容是富文本/HTML，或看起来像源代码的纯文本。
+- `#code` —— 看起来像源代码的纯文本。（富文本 / HTML 是物理类型 `type:richtext`，不属于这个标签。）
 
-在历史页面的搜索框里，输入 `#` 再从列表里挑标签。和「来源设备」筛选一样，这个能力只在历史视图里有；快捷面板和 `uniclip search` 没有对应能力。注意 `#code`（内容标签）与上文的 `type:code`（内容类型）是两个不同维度。
+历史页面的搜索框和快捷面板都支持 `#` 标签 —— 输入 `#` 再从列表里挑。CLI 也能通过 `uniclip search --tag` 用同样的标签筛选。
 
 ### **不** 支持的语法
 

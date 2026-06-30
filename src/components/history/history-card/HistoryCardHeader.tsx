@@ -9,7 +9,7 @@ import {
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { EntrySourceView } from '@/api/tauri-command/clipboard_delivery'
-import type { ClipboardCodeItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { ClipboardTextItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 import type { TransferProgressInfo } from '@/store/slices/fileTransferSlice'
 import { formatFileSize } from '@/utils'
@@ -47,15 +47,15 @@ function HistoryCardHeader({
 }: HistoryCardHeaderProps) {
   const { t } = useTranslation()
   const { isFileType, isFavorited, isUnavailable, isTransferring, isPending } = state
-  const headerType = item.contentTags?.length ? 'text' : item.type
+  const headerType = item.type
   const color = TYPE_COLOR[headerType] ?? TYPE_COLOR.unknown
   const TypeIcon = TYPE_ICONS[headerType] ?? FileText
   const sizeLabel = useMemo(() => getContentSizeLabel(item, t), [item, t])
   const codeLanguage = useMemo(
     () =>
-      item.type === 'code'
+      item.contentTags?.includes('code')
         ? detectCodeLanguage(
-            (item.content as ClipboardCodeItem | null)?.code ?? item.textPreview ?? ''
+            (item.content as ClipboardTextItem | null)?.display_text ?? item.textPreview ?? ''
           )
         : null,
     [item]
@@ -73,9 +73,7 @@ function HistoryCardHeader({
         className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
         style={{ color }}
       >
-        {item.contentTags?.length
-          ? t('history.type.text', 'text')
-          : (codeLanguage ?? t(`history.type.${item.type}`, item.type))}
+        {codeLanguage ?? t(`history.type.${item.type}`, item.type)}
       </span>
 
       {item.contentTags?.map(tag => (

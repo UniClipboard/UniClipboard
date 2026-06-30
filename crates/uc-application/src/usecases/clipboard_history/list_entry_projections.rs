@@ -4,12 +4,16 @@ use anyhow::Result;
 use std::sync::Arc;
 use tracing::{debug, warn};
 use uc_core::clipboard::link_utils::{detect_link_urls as detect_web_urls, parse_uri_list};
-use uc_core::clipboard::PayloadAvailability;
+use uc_core::clipboard::{ClipboardEntryContentCategory, PayloadAvailability};
 use uc_core::network::protocol::MIME_IMAGE_PREFIX;
 use uc_core::ports::clipboard::{GetRepresentationPort, ListClipboardEntriesPort};
 use uc_core::ports::{
     ClipboardSelectionRepositoryPort, GetEntryTransferSummaryPort, ThumbnailRepositoryPort,
 };
+use uc_core::search::document::ContentType;
+use uc_core::search::tag::TaggableContent;
+
+use crate::content_tags::evaluate_builtin_content_tags;
 
 /// Application-layer DTO for clipboard entry projection.
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +32,7 @@ pub(crate) struct EntryProjectionDto {
     pub(crate) file_transfer_status: Option<String>,
     pub(crate) file_transfer_reason: Option<String>,
     pub(crate) file_transfer_ids: Vec<String>,
+    pub(crate) content_tags: Vec<String>,
     pub(crate) link_urls: Option<Vec<String>>,
     pub(crate) link_domains: Option<Vec<String>>,
     pub(crate) file_sizes: Option<Vec<i64>>,
@@ -97,6 +102,46 @@ fn compute_file_sizes(inline_data: &[u8]) -> Vec<i64> {
             _ => -1,
         })
         .collect()
+}
+
+fn content_type_from_entry_category(category: ClipboardEntryContentCategory) -> ContentType {
+    match category {
+        ClipboardEntryContentCategory::Text => ContentType::Text,
+        ClipboardEntryContentCategory::Image => ContentType::Image,
+        ClipboardEntryContentCategory::File => ContentType::File,
+        ClipboardEntryContentCategory::RichText => ContentType::Html,
+        ClipboardEntryContentCategory::Other => ContentType::Other,
+    }
+}
+
+fn content_tags_for_projection(
+    category: ClipboardEntryContentCategory,
+    content_type: &str,
+    inline_data: Option<&[u8]>,
+    has_image: bool,
+) -> Vec<String> {
+    let lower = content_type.to_ascii_lowercase();
+    let text = inline_data.and_then(|d| std::str::from_utf8(d).ok());
+    let uri_list = if lower.starts_with("text/uri-list") || lower.starts_with("file/uri-list") {
+        text.map(parse_uri_list).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let plain_text = if lower.starts_with("text/plain") {
+        text
+    } else {
+        None
+    };
+
+    evaluate_builtin_content_tags(&TaggableContent {
+        content_type: content_type_from_entry_category(category),
+        uri_list: &uri_list,
+        plain_text,
+        has_image,
+    })
+    .into_iter()
+    .map(|tag| tag.to_string())
+    .collect()
 }
 
 impl ListClipboardEntryProjectionsUseCase {
@@ -220,7 +265,7 @@ impl ListClipboardEntryProjectionsUseCase {
                     })
             };
 
-            let content_type = representation
+            let preview_mime = representation
                 .mime_type
                 .as_ref()
                 .map(|mt| mt.as_str().to_string())
@@ -251,10 +296,16 @@ impl ListClipboardEntryProjectionsUseCase {
                 (None, None, None)
             };
 
-            let is_uri_list = content_type
+            let is_uri_list = preview_mime
                 .to_ascii_lowercase()
                 .starts_with("text/uri-list");
-            let link_urls = detect_link_urls(&content_type, representation.inline_data.as_deref());
+            let link_urls = detect_link_urls(&preview_mime, representation.inline_data.as_deref());
+            let content_tags = content_tags_for_projection(
+                entry.content_category,
+                &preview_mime,
+                representation.inline_data.as_deref(),
+                is_image,
+            );
 
             let file_sizes = if is_uri_list {
                 representation
@@ -328,7 +379,7 @@ impl ListClipboardEntryProjectionsUseCase {
                 has_detail,
                 size_bytes: representation.size_bytes,
                 captured_at,
-                content_type,
+                content_type: entry.content_category.as_db_str().to_string(),
                 thumbnail_url,
                 is_encrypted: false,
                 is_favorited: entry.is_favorited,
@@ -337,6 +388,7 @@ impl ListClipboardEntryProjectionsUseCase {
                 file_transfer_status,
                 file_transfer_reason,
                 file_transfer_ids,
+                content_tags,
                 link_urls,
                 link_domains: None,
                 file_sizes,
@@ -434,6 +486,28 @@ mod tests {
         // `from_utf8` 失败 ⇒ 函数返回 None, 不 panic
         let urls = detect_link_urls("text/plain", Some(&[0xff, 0xfe, 0xfd]));
         assert_eq!(urls, None);
+    }
+
+    #[test]
+    fn content_tags_for_projection_tags_plain_text_code() {
+        let tags = content_tags_for_projection(
+            uc_core::clipboard::ClipboardEntryContentCategory::Text,
+            "text/plain",
+            Some(b"function greet(name) {\n  return `hello ${name}`;\n}"),
+            false,
+        );
+        assert!(tags.contains(&"code".to_string()));
+    }
+
+    #[test]
+    fn content_tags_for_projection_reuses_link_contract() {
+        let tags = content_tags_for_projection(
+            uc_core::clipboard::ClipboardEntryContentCategory::Text,
+            "text/plain",
+            Some(b"https://example.com"),
+            false,
+        );
+        assert_eq!(tags, vec!["link".to_string()]);
     }
 
     #[test]

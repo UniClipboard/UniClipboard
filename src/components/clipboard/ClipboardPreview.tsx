@@ -6,12 +6,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import type {
-  ClipboardCodeItem,
   ClipboardImageItem,
-  ClipboardLinkItem,
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
+import { linkItemFromTextContent } from '@/lib/clipboard-utils'
 import { reportError } from '@/observability/errors'
 import ClipboardPreviewInfo from './ClipboardPreviewInfo'
 import CodePreview from './preview-renderers/CodePreview'
@@ -47,8 +46,28 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
   setImageDimensions,
 }) => {
   const { t } = useTranslation()
+  const textItem = item.content as ClipboardTextItem | null
+  const hasCodeTag = item.contentTags?.includes('code') ?? false
+  const hasLinkTag = item.contentTags?.includes('link') ?? false
   switch (item.type) {
     case 'text': {
+      if (hasCodeTag && textItem) {
+        return (
+          <CodePreview
+            item={{ code: textItem.display_text, char_count: textItem.char_count }}
+            preview={preview}
+          />
+        )
+      }
+      if (hasLinkTag && textItem) {
+        const linkItem = linkItemFromTextContent(textItem)
+        if (linkItem) return <LinkPreview item={linkItem} />
+      }
+      return (
+        <TextPreview item={item.content as ClipboardTextItem} loading={loading} preview={preview} />
+      )
+    }
+    case 'richtext': {
       return (
         <TextPreview item={item.content as ClipboardTextItem} loading={loading} preview={preview} />
       )
@@ -62,12 +81,6 @@ const PreviewContent: React.FC<PreviewContentProps> = ({
           setImageDimensions={setImageDimensions}
         />
       )
-    }
-    case 'link': {
-      return <LinkPreview item={item.content as ClipboardLinkItem} />
-    }
-    case 'code': {
-      return <CodePreview item={item.content as ClipboardCodeItem} preview={preview} />
     }
     case 'file': {
       return (
@@ -127,10 +140,11 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
   }
 
   const isLargeText =
-    item.type === 'text' && isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
+    (item.type === 'text' || item.type === 'richtext') &&
+    isLargeTextPreview(item.content as ClipboardTextItem, preview, loading)
   // Code renders as an editor-like pane that fills the available height and owns
   // its own scrolling, so it skips the auto-height ScrollArea wrapper.
-  const fillsParent = isLargeText || item.type === 'code'
+  const fillsParent = isLargeText || item.contentTags?.includes('code') === true
 
   const content = (
     <PreviewContent

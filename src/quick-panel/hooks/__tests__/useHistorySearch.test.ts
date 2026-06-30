@@ -36,8 +36,8 @@ describe('useHistorySearch', () => {
     liveItems.value = [
       {
         id: 'code-1',
-        type: 'code',
-        content: { code: 'const answer = 42' },
+        type: 'text',
+        content: { display_text: 'const answer = 42', has_detail: false, size: 17 },
         contentTags: ['code'],
         activeTime: 1710000000000,
         isUnavailable: false,
@@ -61,8 +61,9 @@ describe('useHistorySearch', () => {
     })
     expect(result.current.previewItems[0]).toMatchObject({
       id: 'code-1',
-      type: 'code',
-      content: { code: 'const answer = 42' },
+      type: 'text',
+      content: { display_text: 'const answer = 42', has_detail: false, size: 17 },
+      contentTags: ['code'],
     })
   })
 })

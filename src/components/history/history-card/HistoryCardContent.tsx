@@ -1,11 +1,10 @@
 import type {
-  ClipboardCodeItem,
   ClipboardFileItem,
   ClipboardImageItem,
-  ClipboardLinkItem,
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
+import { linkItemFromTextContent } from '@/lib/clipboard-utils'
 import CodeEntryContent from './CodeEntryContent'
 import { isSingleImageFile } from './file-entry-utils'
 import FileEntryContent from './FileEntryContent'
@@ -25,6 +24,8 @@ function HistoryCardContent({ item }: HistoryCardContentProps) {
       <ImageEntryContent entryId={item.id} imageItem={item.content as ClipboardImageItem | null} />
     )
   }
+  const hasCodeTag = item.contentTags?.includes('code') ?? false
+  const hasLinkTag = item.contentTags?.includes('link') ?? false
   if (!item.content) {
     if (item.type === 'file' && item.textPreview) {
       const fileItem: ClipboardFileItem = {
@@ -37,7 +38,7 @@ function HistoryCardContent({ item }: HistoryCardContentProps) {
         <FileEntryContent item={fileItem} />
       )
     }
-    if (item.type === 'code' && item.textPreview) {
+    if (hasCodeTag && item.textPreview) {
       return <CodeEntryContent item={{ code: item.textPreview }} />
     }
     return item.textPreview ? (
@@ -48,11 +49,18 @@ function HistoryCardContent({ item }: HistoryCardContentProps) {
   }
   switch (item.type) {
     case 'text':
+      if (hasCodeTag) {
+        const text = item.content as ClipboardTextItem
+        return <CodeEntryContent item={{ code: text.display_text, char_count: text.char_count }} />
+      }
+      if (hasLinkTag) {
+        const text = item.content as ClipboardTextItem
+        const linkItem = linkItemFromTextContent(text)
+        if (linkItem) return <LinkEntryContent item={linkItem} />
+      }
       return <TextEntryContent item={item.content as ClipboardTextItem} />
-    case 'code':
-      return <CodeEntryContent item={item.content as ClipboardCodeItem} />
-    case 'link':
-      return <LinkEntryContent item={item.content as ClipboardLinkItem} />
+    case 'richtext':
+      return <TextEntryContent item={item.content as ClipboardTextItem} />
     case 'file': {
       const fileItem = item.content as ClipboardFileItem
       return isSingleImageFile(fileItem) ? (

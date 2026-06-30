@@ -693,6 +693,7 @@
       "all": "All",
       "favorited": "Favorites",
       "text": "Text",
+      "richtext": "Rich Text",
       "code": "Code",
       "link": "Links",
       "image": "Images",
@@ -714,6 +715,7 @@
     },
     "type": {
       "text": "Text",
+      "richtext": "Rich Text",
       "code": "Code",
       "link": "Link",
       "favorited": "Favorites",
@@ -775,6 +777,7 @@
       "all": "All",
       "favorited": "Favorites",
       "text": "Text",
+      "richtext": "Rich Text",
       "image": "Image",
       "link": "Link",
       "file": "File",
@@ -1612,6 +1615,7 @@
       "filters": {
         "all": "All",
         "text": "Text",
+        "richtext": "Rich Text",
         "image": "Image",
         "link": "Link",
         "file": "File",

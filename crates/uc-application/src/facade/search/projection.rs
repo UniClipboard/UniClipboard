@@ -5,173 +5,14 @@
 
 use uc_core::clipboard::link_utils::detect_link_urls;
 use uc_core::clipboard::{
-    ClipboardEntry, ClipboardSelection, ClipboardSelectionDecision, PayloadAvailability,
-    PersistedClipboardRepresentation, SystemClipboardSnapshot,
+    ClipboardEntry, ClipboardEntryContentCategory, ClipboardSelection, ClipboardSelectionDecision,
+    PayloadAvailability, PersistedClipboardRepresentation, SystemClipboardSnapshot,
 };
 use uc_core::search::document::ContentType;
-use uc_core::search::tag::{TagId, TagRule, TaggableContent};
+use uc_core::search::tag::{TagId, TaggableContent};
 use uc_infra::search::text_extractor::SearchPipelineInput;
 
-/// A [`TagRule`] that marks content carrying one or more web URLs with the
-/// builtin `link` tag. The membership decision and the `linkUrls` render
-/// metadata share [`detect_link_urls`], so they stay in lock-step.
-struct LinkRule {
-    tag_id: TagId,
-}
-
-impl LinkRule {
-    fn new() -> Self {
-        Self {
-            tag_id: TagId::link(),
-        }
-    }
-}
-
-impl TagRule for LinkRule {
-    fn tag_id(&self) -> &TagId {
-        &self.tag_id
-    }
-
-    fn evaluate(&self, content: &TaggableContent<'_>) -> bool {
-        !detect_link_urls(content.uri_list, content.plain_text).is_empty()
-    }
-}
-
-/// A [`TagRule`] that marks entries carrying image content with the builtin
-/// `image` tag.
-///
-/// Unlike `content_type` — which faithfully reflects the *paste* representation,
-/// so a copied image file (uri-list paste rep) is physically a `File` — this tag
-/// answers "does this entry contain an image?". It therefore surfaces both pure
-/// bitmaps and image files (a copied `.png`, or a multi-file selection that
-/// includes one) under the image filter, mirroring the way the `link` tag is
-/// orthogonal to the physical content type.
-struct ImageRule {
-    tag_id: TagId,
-}
-
-impl ImageRule {
-    fn new() -> Self {
-        Self {
-            tag_id: TagId::image(),
-        }
-    }
-}
-
-impl TagRule for ImageRule {
-    fn tag_id(&self) -> &TagId {
-        &self.tag_id
-    }
-
-    fn evaluate(&self, content: &TaggableContent<'_>) -> bool {
-        content.has_image
-    }
-}
-
-/// A [`TagRule`] that marks entries carrying rich text / HTML with the builtin
-/// `code` tag. Plain-text snippets that look like source code also carry this
-/// tag, matching the history card's best-effort code presentation.
-struct CodeRule {
-    tag_id: TagId,
-}
-
-impl CodeRule {
-    fn new() -> Self {
-        Self {
-            tag_id: TagId::code(),
-        }
-    }
-}
-
-impl TagRule for CodeRule {
-    fn tag_id(&self) -> &TagId {
-        &self.tag_id
-    }
-
-    fn evaluate(&self, content: &TaggableContent<'_>) -> bool {
-        content.content_type == ContentType::Html || looks_like_code(content.plain_text)
-    }
-}
-
-fn looks_like_code(text: Option<&str>) -> bool {
-    let Some(text) = text else {
-        return false;
-    };
-    let trimmed = text.trim();
-    if trimmed.len() < 12 {
-        return false;
-    }
-
-    let lines: Vec<&str> = trimmed.lines().take(12).collect();
-    // Keep this list free of words that appear in ordinary prose ("return",
-    // "from", …): a single common word must not be enough to tag a note as code.
-    let has_code_keyword = [
-        "function ",
-        "const ",
-        "interface ",
-        "import ",
-        "export ",
-        "def ",
-        "fn ",
-        "impl ",
-        "struct ",
-        "func ",
-        "package ",
-        "SELECT ",
-        "INSERT INTO ",
-        "UPDATE ",
-        "DELETE FROM ",
-        "CREATE TABLE ",
-    ]
-    .iter()
-    .any(|keyword| trimmed.contains(keyword));
-    let has_code_punctuation = trimmed.contains('{')
-        || trimmed.contains('}')
-        || trimmed.contains("=>")
-        || trimmed.contains("->")
-        || trimmed.contains("::")
-        || trimmed.contains("</")
-        || trimmed.contains("/>")
-        || trimmed.contains("#include");
-    let indented_lines = lines
-        .iter()
-        .filter(|line| line.starts_with("  ") || line.starts_with('\t'))
-        .count();
-    // `": "` is intentionally excluded — it is far more common in prose
-    // ("Notes: …") than the punctuation/operators below that signal real code.
-    let assignment_like = trimmed.contains(" = ")
-        || trimmed.contains(" := ")
-        || trimmed.contains("==")
-        || trimmed.contains("!=");
-    let comment_like = lines.iter().any(|line| {
-        let s = line.trim_start();
-        s.starts_with("//") || s.starts_with("/*") || s.starts_with("# ") || s.starts_with("-- ")
-    });
-
-    (has_code_keyword && (has_code_punctuation || assignment_like || indented_lines > 0))
-        || (has_code_punctuation && indented_lines > 0)
-        || (comment_like && (has_code_keyword || has_code_punctuation))
-}
-
-/// The builtin tag rules evaluated for every entry: [`LinkRule`] (web URLs),
-/// [`ImageRule`] (image content), and [`CodeRule`] (HTML/source-like text).
-/// User-defined rules are a later extension point.
-fn builtin_rules() -> Vec<Box<dyn TagRule>> {
-    vec![
-        Box::new(LinkRule::new()),
-        Box::new(ImageRule::new()),
-        Box::new(CodeRule::new()),
-    ]
-}
-
-/// Evaluate `rules` against `content`, collecting the ids of the tags that apply.
-fn evaluate_tags(content: &TaggableContent<'_>, rules: &[Box<dyn TagRule>]) -> Vec<TagId> {
-    rules
-        .iter()
-        .filter(|rule| rule.evaluate(content))
-        .map(|rule| rule.tag_id().clone())
-        .collect()
-}
+use crate::content_tags::evaluate_builtin_content_tags;
 
 /// Marker mirrored into the `payload_state` render column: `Some("Lost")` only
 /// when the paste representation is permanently lost, `None` for every healthy
@@ -237,11 +78,6 @@ struct SearchableContent {
     /// File` (faithful to its uri-list paste rep) and is surfaced under the
     /// image filter via the tag instead.
     has_image: bool,
-    /// True when a `text/html` representation is present. Tracked by MIME
-    /// presence (like `has_image`), not by captured bytes, so classification is
-    /// stable even when the html payload is later lost — matching the domain
-    /// category precedence in `uc_core::clipboard::category`.
-    has_html: bool,
     /// True when a `text/plain` representation is present (MIME presence).
     has_text: bool,
 }
@@ -270,9 +106,6 @@ impl SearchableContent {
                 }
             }
         } else if mime == "text/html" || mime.starts_with("text/html;") {
-            // Presence drives classification even if the payload is lost.
-            // Match parameterized variants too (e.g. `text/html; charset=utf-8`).
-            self.has_html = true;
             if let Ok(text) = std::str::from_utf8(inline_bytes.unwrap_or(&[])) {
                 if !text.is_empty() {
                     self.html_text = Some(text.to_string());
@@ -319,38 +152,6 @@ impl SearchableContent {
             && !self.has_image
     }
 
-    /// Classify the single-valued physical `content_type` over the *entire*
-    /// representation set, by precedence — never from one chosen representation.
-    ///
-    /// This mirrors the domain category precedence in
-    /// `uc_core::clipboard::category` (`file > image > rich_text > text`).
-    /// Deriving from a single "paste" representation is wrong because that rep is
-    /// picked for *paste fidelity* by the selection policy, not for
-    /// classification: a web-image copy carries both an `<img>` `text/html` rep
-    /// (which the policy ranks highest, to paste as rich text) and the actual
-    /// `image/*` bitmap — so paste-rep classification would call it `Html`, when
-    /// the user copied an image. Precedence over the set gets it right:
-    ///
-    /// - any `file://` path        => `File` (image files / multi-file selections;
-    ///   the image nature rides the derived `image` tag, not the type)
-    /// - else any image rep        => `Image` (pure bitmap, screenshot, web image)
-    /// - else `text/html`          => `Html` (rich text, no bitmap rep)
-    /// - else plain text / web URL => `Text` (URL nature rides the `link` tag)
-    /// - else                      => `Other`
-    fn content_type(&self) -> ContentType {
-        if !self.file_paths.is_empty() {
-            ContentType::File
-        } else if self.has_image {
-            ContentType::Image
-        } else if self.has_html {
-            ContentType::Html
-        } else if self.has_text || self.plain_text.is_some() || !self.uri_list.is_empty() {
-            ContentType::Text
-        } else {
-            ContentType::Other
-        }
-    }
-
     /// Assemble the final `SearchPipelineInput`, or `None` if nothing
     /// searchable was gathered. `mime_type` is resolved by the caller from its
     /// own source (live snapshot vs persisted reps). `source_device` and
@@ -368,22 +169,13 @@ impl SearchableContent {
             return None;
         }
         let file_extensions = collect_extensions(&self.file_paths, &self.file_names);
-        // content_type is classified over the whole representation set by
-        // precedence (see `content_type`), not from the paste rep's MIME. The
-        // "this entry contains an image" property is carried separately by the
-        // derived `image` tag (see `ImageRule`), so the image filter surfaces
-        // both pure bitmaps and image files without the latter being
-        // misclassified or lost from the file filter.
-        let content_type = self.content_type();
-        let mut tags = evaluate_tags(
-            &TaggableContent {
-                content_type: content_type.clone(),
-                uri_list: &self.uri_list,
-                plain_text: self.plain_text.as_deref(),
-                has_image: self.has_image,
-            },
-            &builtin_rules(),
-        );
+        let content_type = search_content_type_from_entry_category(entry.content_category);
+        let mut tags = evaluate_builtin_content_tags(&TaggableContent {
+            content_type: content_type.clone(),
+            uri_list: &self.uri_list,
+            plain_text: self.plain_text.as_deref(),
+            has_image: self.has_image,
+        });
         // `favorited` is user-state, not a content rule, so it cannot come from
         // `builtin_rules`. Mirror the entry's persisted favorite flag into the
         // tag set: a live capture of a fresh entry carries `false`, while rebuild
@@ -416,6 +208,16 @@ impl SearchableContent {
             source_device,
             payload_state,
         })
+    }
+}
+
+fn search_content_type_from_entry_category(category: ClipboardEntryContentCategory) -> ContentType {
+    match category {
+        ClipboardEntryContentCategory::Text => ContentType::Text,
+        ClipboardEntryContentCategory::Image => ContentType::Image,
+        ClipboardEntryContentCategory::File => ContentType::File,
+        ClipboardEntryContentCategory::RichText => ContentType::Html,
+        ClipboardEntryContentCategory::Other => ContentType::Other,
     }
 }
 
@@ -533,11 +335,22 @@ mod tests {
 
     fn entry() -> ClipboardEntry {
         ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0)
+            .with_content_category(ClipboardEntryContentCategory::Text)
+    }
+
+    fn entry_with_category(category: ClipboardEntryContentCategory) -> ClipboardEntry {
+        ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0)
+            .with_content_category(category)
     }
 
     /// Project a single-representation capture (all selection slots point at the
     /// one rep) into its `SearchPipelineInput`.
-    fn project_one(fmt: &str, mime: &str, bytes: &[u8]) -> SearchPipelineInput {
+    fn project_one(
+        fmt: &str,
+        mime: &str,
+        bytes: &[u8],
+        category: ClipboardEntryContentCategory,
+    ) -> SearchPipelineInput {
         let r = rep(fmt, mime, bytes);
         let id = r.id.clone();
         let snapshot = SystemClipboardSnapshot {
@@ -552,8 +365,13 @@ mod tests {
             paste_rep_id: id,
             policy_version: SelectionPolicyVersion::V1,
         };
-        SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
-            .expect("snapshot has searchable content")
+        SearchProjectionBuilder::build_from_capture(
+            &entry_with_category(category),
+            &snapshot,
+            &selection,
+            None,
+        )
+        .expect("snapshot has searchable content")
     }
 
     /// A rich-text copy carries `text/plain` + `text/html` and no bitmap rep, so
@@ -579,14 +397,18 @@ mod tests {
             policy_version: SelectionPolicyVersion::V1,
         };
 
-        let input =
-            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
-                .expect("snapshot has searchable content");
+        let input = SearchProjectionBuilder::build_from_capture(
+            &entry_with_category(ClipboardEntryContentCategory::RichText),
+            &snapshot,
+            &selection,
+            None,
+        )
+        .expect("snapshot has searchable content");
 
         assert_eq!(input.content_type, ContentType::Html);
         assert!(
-            input.tags.contains(&TagId::code()),
-            "rich text carries the code tag"
+            !input.tags.contains(&TagId::code()),
+            "rich text is not source code"
         );
         // Preview text still comes from the preview (plain) representation.
         assert_eq!(input.text_preview.as_deref(), Some("hello world"));
@@ -616,9 +438,13 @@ mod tests {
             policy_version: SelectionPolicyVersion::V1,
         };
 
-        let input =
-            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
-                .expect("snapshot has searchable content");
+        let input = SearchProjectionBuilder::build_from_capture(
+            &entry_with_category(ClipboardEntryContentCategory::Image),
+            &snapshot,
+            &selection,
+            None,
+        )
+        .expect("snapshot has searchable content");
 
         // Preview is truncated to 200 chars...
         assert_eq!(input.text_preview.as_deref().map(str::len), Some(200));
@@ -655,9 +481,13 @@ mod tests {
             policy_version: SelectionPolicyVersion::V1,
         };
 
-        let input =
-            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
-                .expect("snapshot has searchable content");
+        let input = SearchProjectionBuilder::build_from_capture(
+            &entry_with_category(ClipboardEntryContentCategory::Image),
+            &snapshot,
+            &selection,
+            None,
+        )
+        .expect("snapshot has searchable content");
 
         assert_eq!(
             input.content_type,
@@ -673,7 +503,12 @@ mod tests {
     /// index entirely.
     #[test]
     fn image_only_entry_projects_as_image_with_image_tag() {
-        let input = project_one("image", "image/png", b"\x89PNG\r\n\x1a\n");
+        let input = project_one(
+            "image",
+            "image/png",
+            b"\x89PNG\r\n\x1a\n",
+            ClipboardEntryContentCategory::Image,
+        );
         assert_eq!(input.content_type, ContentType::Image);
         assert!(
             input.tags.contains(&TagId::image()),
@@ -705,9 +540,13 @@ mod tests {
             policy_version: SelectionPolicyVersion::V1,
         };
 
-        let input =
-            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
-                .expect("snapshot has searchable content");
+        let input = SearchProjectionBuilder::build_from_capture(
+            &entry_with_category(ClipboardEntryContentCategory::File),
+            &snapshot,
+            &selection,
+            None,
+        )
+        .expect("snapshot has searchable content");
 
         assert_eq!(
             input.content_type,
@@ -749,9 +588,13 @@ mod tests {
             policy_version: SelectionPolicyVersion::V1,
         };
 
-        let input =
-            SearchProjectionBuilder::build_from_capture(&entry(), &snapshot, &selection, None)
-                .expect("snapshot has searchable content");
+        let input = SearchProjectionBuilder::build_from_capture(
+            &entry_with_category(ClipboardEntryContentCategory::File),
+            &snapshot,
+            &selection,
+            None,
+        )
+        .expect("snapshot has searchable content");
 
         assert_eq!(input.content_type, ContentType::File);
         assert!(input.tags.contains(&TagId::image()));
@@ -764,14 +607,24 @@ mod tests {
 
     #[test]
     fn web_url_uri_list_is_text_with_link_tag() {
-        let input = project_one("files", "text/uri-list", b"https://example.com\n");
+        let input = project_one(
+            "files",
+            "text/uri-list",
+            b"https://example.com\n",
+            ClipboardEntryContentCategory::Text,
+        );
         assert_eq!(input.content_type, ContentType::Text);
         assert_eq!(input.tags, vec![TagId::link()]);
     }
 
     #[test]
     fn plain_text_url_gets_link_tag() {
-        let input = project_one("text", "text/plain", b"https://example.com");
+        let input = project_one(
+            "text",
+            "text/plain",
+            b"https://example.com",
+            ClipboardEntryContentCategory::Text,
+        );
         assert_eq!(input.content_type, ContentType::Text);
         assert_eq!(input.tags, vec![TagId::link()]);
     }
@@ -782,6 +635,7 @@ mod tests {
             "text",
             "text/plain",
             b"function greet(name) {\n  return `hello ${name}`;\n}",
+            ClipboardEntryContentCategory::Text,
         );
         assert_eq!(input.content_type, ContentType::Text);
         assert!(
@@ -799,6 +653,7 @@ mod tests {
             "text",
             "text/plain",
             b"Notes from today: please return the signed form after the meeting.",
+            ClipboardEntryContentCategory::Text,
         );
         assert_eq!(input.content_type, ContentType::Text);
         assert!(
@@ -809,21 +664,36 @@ mod tests {
 
     #[test]
     fn prose_with_url_has_no_link_tag() {
-        let input = project_one("text", "text/plain", b"see https://example.com for more");
+        let input = project_one(
+            "text",
+            "text/plain",
+            b"see https://example.com for more",
+            ClipboardEntryContentCategory::Text,
+        );
         assert_eq!(input.content_type, ContentType::Text);
         assert!(input.tags.is_empty());
     }
 
     #[test]
     fn file_uri_list_is_file_without_link_tag() {
-        let input = project_one("files", "text/uri-list", b"file:///home/u/a.txt\n");
+        let input = project_one(
+            "files",
+            "text/uri-list",
+            b"file:///home/u/a.txt\n",
+            ClipboardEntryContentCategory::File,
+        );
         assert_eq!(input.content_type, ContentType::File);
         assert!(input.tags.is_empty());
     }
 
     #[test]
     fn plain_text_without_url_has_no_tags() {
-        let input = project_one("text", "text/plain", b"just some notes");
+        let input = project_one(
+            "text",
+            "text/plain",
+            b"just some notes",
+            ClipboardEntryContentCategory::Text,
+        );
         assert_eq!(input.content_type, ContentType::Text);
         assert!(input.tags.is_empty());
     }
@@ -855,7 +725,7 @@ mod tests {
         };
 
         let input = SearchProjectionBuilder::build_from_capture(
-            &entry(),
+            &entry_with_category(ClipboardEntryContentCategory::File),
             &snapshot,
             &selection,
             Some("dev-x".to_string()),
@@ -904,7 +774,7 @@ mod tests {
         .expect("lost state is valid without inline data");
         let preview_id = preview.id.clone();
         let paste_id = paste.id.clone();
-        let e = entry();
+        let e = entry_with_category(ClipboardEntryContentCategory::RichText);
         let decision = ClipboardSelectionDecision::new(
             e.entry_id.clone(),
             ClipboardSelection {

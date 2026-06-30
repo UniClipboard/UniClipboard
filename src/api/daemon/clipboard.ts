@@ -57,6 +57,8 @@ export interface ClipboardEntryDto {
   fileTransferStatus: string | null
   /** Failure reason when fileTransferStatus is "failed". */
   fileTransferReason: string | null
+  /** Derived content tag ids, e.g. "link" and "code". */
+  contentTags?: string[] | null
   /** Parsed link URLs for link-type entries. */
   linkUrls: string[] | null
   /** Extracted domains for link entries. */

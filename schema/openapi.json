@@ -956,6 +956,12 @@
             "format": "int64",
             "type": "integer"
           },
+          "contentTags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "contentType": {
             "type": "string"
           },

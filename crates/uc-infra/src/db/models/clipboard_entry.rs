@@ -14,6 +14,7 @@ pub struct ClipboardEntryRow {
     pub deleted_at_ms: Option<i64>,
     pub delivery_tracked: bool,
     pub is_favorited: bool,
+    pub content_category: String,
 }
 
 #[derive(Insertable)]
@@ -28,4 +29,5 @@ pub struct NewClipboardEntryRow {
     pub pinned: bool,
     pub delivery_tracked: bool,
     pub is_favorited: bool,
+    pub content_category: String,
 }

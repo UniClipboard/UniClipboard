@@ -41,15 +41,16 @@ output, combine substring search with the time filter below.
 
 ```text
 type:text invite
+type:richtext newsletter
 type:image screenshot
-type:code useEffect
-type:link mdn
 type:file invoice
 ```
 
 Equivalent to the type chips in the Quick Panel and the CLI's
-`--type`. Allowed values: `text` / `image` / `link` / `file` / `code`.
-HTML is its own content class at the index level (the former combined `code` class no longer exists).
+`--type`. Allowed values: `text` / `richtext` / `image` / `file`.
+`richtext` covers HTML / rich-text clips, which form their own physical
+content class. Web links and source-like snippets are **not** physical
+types — they are tags (`#link` / `#code`, see below).
 
 ### Extension filter `ext:`
 
@@ -87,13 +88,12 @@ Narrow results to clips carrying a content tag. Tags are derived
 automatically as items are indexed:
 
 - `#link` — the clip contains a web URL.
-- `#code` — the clip is rich text/HTML, or plain text that looks like
-  source code.
+- `#code` — the clip is plain text that looks like source code. Rich
+  text / HTML is a physical type (`type:richtext`), not this tag.
 
-In the History search box, type `#` and pick a tag from the list. Like
-the source-device filter, this lives in the History view only; the Quick
-Panel and `uniclip search` have no tag equivalent. Note that `#code` (a
-content tag) is distinct from `type:code` (a content class) above.
+The History search box and the Quick Panel both support `#` tags — type
+`#` and pick a tag from the list. The CLI exposes the same tags via
+`uniclip search --tag`.
 
 ### What's **not** supported
 

@@ -2,10 +2,8 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { EntryDeliveryView } from '@/api/tauri-command/clipboard_delivery'
 import type {
-  ClipboardCodeItem,
   ClipboardFileItem,
   ClipboardImageItem,
-  ClipboardLinkItem,
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
@@ -33,7 +31,7 @@ function buildInfoRows(
 ): InfoRow[] {
   const rows: InfoRow[] = [{ id: 'type', value: t('header.filters.' + item.type) }]
 
-  if (item.type === 'text' && item.content) {
+  if ((item.type === 'text' || item.type === 'richtext') && item.content) {
     const textItem = item.content as ClipboardTextItem
     // Prefer the loaded full text; otherwise the indexed `char_count` (the true
     // length) rather than the capped preview, which would under-report.
@@ -45,17 +43,6 @@ function buildInfoRows(
       value: t('clipboard.preview.charactersCount', { count: charCount }),
     })
     if (textItem.size > 0) rows.push({ id: 'text-size', value: formatFileSize(textItem.size) })
-  }
-
-  if (item.type === 'code' && item.content) {
-    const codeItem = item.content as ClipboardCodeItem
-    const fullCode = preview?.contentType === 'text' ? preview.textContent : null
-    const charCount =
-      fullCode != null ? fullCode.length : (codeItem.char_count ?? codeItem.code.length)
-    rows.push({
-      id: 'code-chars',
-      value: t('clipboard.preview.charactersCount', { count: charCount }),
-    })
   }
 
   if (item.type === 'image' && item.content) {
@@ -78,16 +65,6 @@ function buildInfoRows(
       const totalSize = knownSizes.reduce((sum, size) => sum + size, 0)
       rows.push({ id: 'file-size', value: formatFileSize(totalSize) })
     }
-  }
-
-  if (item.type === 'link' && item.content) {
-    const linkItem = item.content as ClipboardLinkItem
-    const uniqueDomains = [...new Set(linkItem.domains.filter(Boolean))]
-    if (uniqueDomains.length > 0) rows.push({ id: 'link-domain', value: uniqueDomains[0] })
-    rows.push({
-      id: 'link-chars',
-      value: t('clipboard.preview.charactersCount', { count: linkItem.urls[0]?.length ?? 0 }),
-    })
   }
 
   return rows

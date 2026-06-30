@@ -604,6 +604,7 @@ mod tests {
     use uc_core::search::key::SearchKey;
     use uc_core::search::query::SearchQuery;
     use uc_core::search::tag::TagId;
+    use uc_core::ClipboardEntryContentCategory;
     use uc_core::MimeType;
 
     /// Returns the supplied entries verbatim (already windowed by the test).
@@ -697,7 +698,8 @@ mod tests {
     }
 
     fn entry(favorited: bool) -> ClipboardEntry {
-        let e = ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0);
+        let e = ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0)
+            .with_content_category(ClipboardEntryContentCategory::Text);
         if favorited {
             e.with_favorited(true)
         } else {

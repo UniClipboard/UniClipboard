@@ -16,8 +16,7 @@
  * text on the item), a source-device filter (no source on the item), a
  * time-range preset (would have to duplicate the backend's preset→range
  * parsing), an extension filter (no extensions on the item), the `code` tag
- * (client derives it from HTML only, but the backend also tags source-like
- * plain text) and the `image` tag (a copied image *file* projects as a `file`
+ * (assigned by the backend source-code heuristic) and the `image` tag (a copied image *file* projects as a `file`
  * item, indistinguishable from a plain file) are not. When any non-judgeable
  * dimension is active,
  * `useLiveSearch` refetches the base query instead of patching (§4.8 fallback).
@@ -56,15 +55,13 @@ export interface LiveSearchQueryModel {
 /**
  * Collapse a display type back to the backend physical content category so a
  * content-type filter (which narrows physical categories) can be matched
- * against a projected item. `link` is a `text` entry that carries web URLs, so
- * it maps back to `text`.
+ * against a projected item.
  */
 export function displayTypeToContentType(type: ClipboardEntryType): string {
   switch (type) {
     case 'text':
-    case 'link':
       return 'text'
-    case 'code':
+    case 'richtext':
       return 'html'
     case 'file':
       return 'file'
@@ -144,8 +141,8 @@ function splitCsv(value: string | undefined): string[] {
 }
 
 function tagMatches(tag: string, item: DisplayClipboardItem): boolean {
-  if (tag === 'link') return item.contentTags?.includes('link') || item.type === 'link'
-  if (tag === 'code') return item.contentTags?.includes('code') || item.type === 'code'
+  if (tag === 'link') return item.contentTags?.includes('link') === true
+  if (tag === 'code') return item.contentTags?.includes('code') === true
   if (tag === 'favorited') return item.isFavorited === true
   // Custom tags aren't derivable from a DisplayItem; treat as non-matching so a
   // new entry is never optimistically shown under a tag it may not carry.

@@ -67,13 +67,15 @@
 //! open — mirrors the member-record-missing fail-open policy in the
 //! application-layer dispatch / ingest use cases.
 
+use crate::clipboard::link_utils::parse_uri_list;
 use crate::clipboard::system::{
     is_any_text_representation, is_file_representation, is_image_representation,
     is_link_content_representation, is_link_representation, is_plain_text_representation,
     is_rich_text_representation,
 };
-use crate::clipboard::SystemClipboardSnapshot;
+use crate::clipboard::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 use crate::settings::model::ContentTypes;
+use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardContentCategory {
@@ -82,6 +84,103 @@ pub enum ClipboardContentCategory {
     Text,
     RichText,
     Link,
+}
+
+/// Single-valued physical category persisted on a clipboard entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardEntryContentCategory {
+    Text,
+    Image,
+    File,
+    RichText,
+    Other,
+}
+
+impl ClipboardEntryContentCategory {
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            ClipboardEntryContentCategory::Text => ClipboardContentCategory::Text.as_label(),
+            ClipboardEntryContentCategory::Image => ClipboardContentCategory::Image.as_label(),
+            ClipboardEntryContentCategory::File => ClipboardContentCategory::File.as_label(),
+            ClipboardEntryContentCategory::RichText => {
+                ClipboardContentCategory::RichText.as_label()
+            }
+            ClipboardEntryContentCategory::Other => "other",
+        }
+    }
+
+    pub fn as_db_str(&self) -> &'static str {
+        self.as_label()
+    }
+
+    /// Parse the persisted DB string. Returns `None` for unrecognized values
+    /// so a caller can surface a storage-contract violation instead of
+    /// silently coercing an unknown category to `Other` — this value is the
+    /// authority for the entry's physical classification.
+    pub fn from_db_str(raw: &str) -> Option<Self> {
+        match raw {
+            "text" => Some(ClipboardEntryContentCategory::Text),
+            "image" => Some(ClipboardEntryContentCategory::Image),
+            "file" => Some(ClipboardEntryContentCategory::File),
+            "rich_text" => Some(ClipboardEntryContentCategory::RichText),
+            "other" => Some(ClipboardEntryContentCategory::Other),
+            _ => None,
+        }
+    }
+
+    /// Classify one entry over all observed representations.
+    ///
+    /// Precedence follows search-visible physical type semantics:
+    /// file (only real `file://` URI-list entries) > image > rich text > text > other.
+    pub fn from_snapshot(snapshot: &SystemClipboardSnapshot) -> Self {
+        let mut has_file = false;
+        let mut has_image = false;
+        let mut has_rich_text = false;
+        let mut has_text = false;
+
+        for rep in &snapshot.representations {
+            if rep.size_bytes() == 0 {
+                continue;
+            }
+            has_file |= is_file_uri_list_representation(rep);
+            has_image |= is_image_representation(rep);
+            has_rich_text |= is_rich_text_representation(rep);
+            has_text |= is_plain_text_representation(rep) || is_any_text_representation(rep);
+        }
+
+        if has_file {
+            ClipboardEntryContentCategory::File
+        } else if has_image {
+            ClipboardEntryContentCategory::Image
+        } else if has_rich_text {
+            ClipboardEntryContentCategory::RichText
+        } else if has_text {
+            ClipboardEntryContentCategory::Text
+        } else {
+            ClipboardEntryContentCategory::Other
+        }
+    }
+}
+
+fn is_file_uri_list_representation(rep: &ObservedClipboardRepresentation) -> bool {
+    let is_uri_list_mime = rep.mime.as_ref().is_some_and(is_uri_list_mime);
+    let is_files_format = rep.format_id.as_ref().eq_ignore_ascii_case("files");
+    if !is_uri_list_mime && !is_files_format {
+        return false;
+    }
+    let Some(bytes) = rep.inline_bytes() else {
+        return false;
+    };
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    parse_uri_list(text)
+        .iter()
+        .any(|uri| matches!(Url::parse(uri), Ok(parsed) if parsed.scheme() == "file"))
+}
+
+fn is_uri_list_mime(mime: &MimeType) -> bool {
+    matches!(mime.essence().as_str(), "text/uri-list" | "file/uri-list")
 }
 
 impl ClipboardContentCategory {
@@ -320,6 +419,78 @@ mod tests {
         assert_eq!(
             ClipboardContentCategorySet::from_snapshot(&s),
             set_of(&[ClipboardContentCategory::File])
+        );
+    }
+
+    #[test]
+    fn entry_category_rich_text_prefers_rich_text_over_plain_text() {
+        let s = snap(vec![
+            rep("text", Some("text/plain"), b"hello"),
+            rep("html", Some("text/html"), b"<p>hello</p>"),
+        ]);
+        assert_eq!(
+            ClipboardEntryContentCategory::from_snapshot(&s),
+            ClipboardEntryContentCategory::RichText
+        );
+    }
+
+    #[test]
+    fn entry_category_uri_list_with_file_is_file() {
+        let s = snap(vec![rep(
+            "files",
+            Some("text/uri-list"),
+            b"file:///tmp/a.bin",
+        )]);
+        assert_eq!(
+            ClipboardEntryContentCategory::from_snapshot(&s),
+            ClipboardEntryContentCategory::File
+        );
+    }
+
+    #[test]
+    fn entry_category_uri_list_with_only_web_url_is_text() {
+        let s = snap(vec![rep(
+            "files",
+            Some("text/uri-list"),
+            b"https://example.com\n",
+        )]);
+        assert_eq!(
+            ClipboardEntryContentCategory::from_snapshot(&s),
+            ClipboardEntryContentCategory::Text
+        );
+    }
+
+    #[test]
+    fn entry_category_files_format_without_mime_with_file_uri_is_file() {
+        let s = snap(vec![rep("files", None, b"file:///tmp/a.bin")]);
+        assert_eq!(
+            ClipboardEntryContentCategory::from_snapshot(&s),
+            ClipboardEntryContentCategory::File
+        );
+    }
+
+    #[test]
+    fn entry_category_files_format_without_mime_with_only_web_url_is_other() {
+        let s = snap(vec![rep("files", None, b"https://example.com\n")]);
+        assert_eq!(
+            ClipboardEntryContentCategory::from_snapshot(&s),
+            ClipboardEntryContentCategory::Other
+        );
+    }
+
+    #[test]
+    fn entry_category_image_beats_rich_text() {
+        let s = snap(vec![
+            rep("image", Some("image/png"), b"\x89PNG\x0D\x0A\x1A\x0A"),
+            rep(
+                "html",
+                Some("text/html"),
+                b"<img src=\"https://x.test/a.png\">",
+            ),
+        ]);
+        assert_eq!(
+            ClipboardEntryContentCategory::from_snapshot(&s),
+            ClipboardEntryContentCategory::Image
         );
     }
 

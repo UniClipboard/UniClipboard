@@ -609,6 +609,7 @@ export type EntryDetailEnvelope = {
 export type EntryProjectionResponseDto = {
     activeTime: number;
     capturedAt: number;
+    contentTags?: Array<string>;
     contentType: string;
     fileSizes?: Array<number> | null;
     fileTransferReason?: string | null;

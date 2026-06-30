@@ -11,8 +11,8 @@ use anyhow::{anyhow, Result};
 use diesel::prelude::*;
 use tracing::instrument;
 use uc_core::clipboard::{
-    ClipboardEvent, ClipboardRepositoryError, ClipboardSelectionDecision,
-    PersistedClipboardRepresentation,
+    ClipboardEntryContentCategory, ClipboardEvent, ClipboardRepositoryError,
+    ClipboardSelectionDecision, PersistedClipboardRepresentation,
 };
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::ReplaceEntryContentPort;
@@ -58,6 +58,7 @@ where
         new_selection: &ClipboardSelectionDecision,
         new_title: Option<String>,
         new_total_size: i64,
+        new_content_category: ClipboardEntryContentCategory,
     ) -> Result<(), ClipboardRepositoryError> {
         // Map domain → rows up front (pure, outside the transaction).
         let new_event_row = ClipboardEventRowMapper
@@ -116,6 +117,7 @@ where
                         clipboard_entry::event_id.eq(new_event_id.as_str()),
                         clipboard_entry::title.eq(new_title.as_deref()),
                         clipboard_entry::total_size.eq(new_total_size),
+                        clipboard_entry::content_category.eq(new_content_category.as_db_str()),
                     ))
                     .execute(conn)?;
 
@@ -244,6 +246,7 @@ mod tests {
                         // Seeded true so the replacement test proves favorite
                         // state survives like the other sticky columns.
                         is_favorited: true,
+                        content_category: "text".into(),
                     })
                     .execute(conn)?;
                 for rep_id in ["r1", "r2"] {
@@ -347,6 +350,7 @@ mod tests {
             &selection,
             Some("new title".to_string()),
             99,
+            ClipboardEntryContentCategory::Image,
         )
         .await
         .expect("replace ok");
@@ -354,31 +358,35 @@ mod tests {
         executor
             .run(|conn| {
                 // Entry kept its id + sticky fields; content pointer updated.
-                let (event_id, created, active, title, total, pinned, is_favorited): (
-                    String,
-                    i64,
-                    i64,
-                    Option<String>,
-                    i64,
-                    bool,
-                    bool,
-                ) = clipboard_entry::table
-                    .filter(clipboard_entry::entry_id.eq("e1"))
-                    .select((
-                        clipboard_entry::event_id,
-                        clipboard_entry::created_at_ms,
-                        clipboard_entry::active_time_ms,
-                        clipboard_entry::title,
-                        clipboard_entry::total_size,
-                        clipboard_entry::pinned,
-                        clipboard_entry::is_favorited,
-                    ))
-                    .first(conn)?;
+                let (
+                    event_id,
+                    created,
+                    active,
+                    title,
+                    total,
+                    pinned,
+                    is_favorited,
+                    content_category,
+                ): (String, i64, i64, Option<String>, i64, bool, bool, String) =
+                    clipboard_entry::table
+                        .filter(clipboard_entry::entry_id.eq("e1"))
+                        .select((
+                            clipboard_entry::event_id,
+                            clipboard_entry::created_at_ms,
+                            clipboard_entry::active_time_ms,
+                            clipboard_entry::title,
+                            clipboard_entry::total_size,
+                            clipboard_entry::pinned,
+                            clipboard_entry::is_favorited,
+                            clipboard_entry::content_category,
+                        ))
+                        .first(conn)?;
                 assert_eq!(event_id, "new-ev", "entry re-pointed at the new event");
                 assert_eq!(created, 2222, "created_at_ms preserved");
                 assert_eq!(active, 1111, "active_time_ms preserved");
                 assert!(pinned, "pinned preserved");
                 assert!(is_favorited, "is_favorited preserved");
+                assert_eq!(content_category, "image", "content_category updated");
                 assert_eq!(title.as_deref(), Some("new title"), "title updated");
                 assert_eq!(total, 99, "total_size updated");
 
@@ -448,6 +456,7 @@ mod tests {
                 &selection,
                 None,
                 0,
+                ClipboardEntryContentCategory::Text,
             )
             .await;
         assert!(

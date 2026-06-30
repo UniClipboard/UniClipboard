@@ -70,6 +70,7 @@ diesel::table! {
         deleted_at_ms -> Nullable<BigInt>,
         delivery_tracked -> Bool,
         is_favorited -> Bool,
+        content_category -> Text,
     }
 }
 

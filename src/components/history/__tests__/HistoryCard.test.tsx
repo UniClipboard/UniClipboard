@@ -71,8 +71,8 @@ describe('HistoryCard', () => {
   it('shows code as a text card with a code tag', () => {
     renderCard({
       id: 'code-entry',
-      type: 'code',
-      content: { code: 'plain snippet' },
+      type: 'text',
+      content: { display_text: 'plain snippet', has_detail: false, size: 13 },
       activeTime: 1,
       contentTags: ['code'],
     } as DisplayClipboardItem)
@@ -84,10 +84,11 @@ describe('HistoryCard', () => {
   it('shows links as text cards with a link tag', () => {
     renderCard({
       id: 'link-entry',
-      type: 'link',
+      type: 'text',
       content: {
-        urls: ['https://example.com/docs'],
-        domains: ['example.com'],
+        display_text: 'https://example.com/docs',
+        has_detail: false,
+        size: 24,
       },
       activeTime: 1,
       contentTags: ['link'],
@@ -95,6 +96,26 @@ describe('HistoryCard', () => {
 
     expect(screen.getByText('text')).toBeInTheDocument()
     expect(screen.getByText('link')).toBeInTheDocument()
+  })
+
+  it('renders links from structured URLs instead of preview text', () => {
+    renderCard({
+      id: 'link-entry',
+      type: 'text',
+      content: {
+        display_text: 'https://example.com/preview-only',
+        has_detail: false,
+        size: 24,
+        link_urls: ['https://example.com/docs'],
+        link_domains: ['example.com'],
+      },
+      activeTime: 1,
+      contentTags: ['link'],
+    } as DisplayClipboardItem)
+
+    expect(screen.getByText('example.com')).toBeInTheDocument()
+    expect(screen.getByText('example.com/docs')).toBeInTheDocument()
+    expect(screen.queryByText('example.com/preview-only')).not.toBeInTheDocument()
   })
 
   it('renders a file card with filename and formatted size', () => {
@@ -116,10 +137,13 @@ describe('HistoryCard', () => {
   it('renders code preview lines with line numbers', () => {
     renderCard({
       id: 'code-preview-entry',
-      type: 'code',
+      type: 'text',
       content: {
-        code: 'const value = 1\nreturn value',
+        display_text: 'const value = 1\nreturn value',
+        has_detail: false,
+        size: 28,
       },
+      contentTags: ['code'],
       activeTime: 1,
     } as DisplayClipboardItem)
 

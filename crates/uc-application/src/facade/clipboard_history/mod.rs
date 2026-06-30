@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use thiserror::Error;
+use tracing::debug;
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::link_utils::extract_domain;
 use uc_core::ids::{EntryId, EventId, FormatId, RepresentationId};
@@ -17,9 +18,9 @@ use uc_core::ports::{
 
 use crate::deps::{ClipboardEntryPorts, ClipboardRepresentationPorts};
 use uc_core::{
-    ClipboardEntry, ClipboardEvent, ClipboardSelection, ClipboardSelectionDecision, MimeType,
-    ObservedClipboardRepresentation, PayloadAvailability, PersistedClipboardRepresentation,
-    SelectionPolicyVersion, SystemClipboardSnapshot,
+    ClipboardEntry, ClipboardEntryContentCategory, ClipboardEvent, ClipboardSelection,
+    ClipboardSelectionDecision, MimeType, ObservedClipboardRepresentation, PayloadAvailability,
+    PersistedClipboardRepresentation, SelectionPolicyVersion, SystemClipboardSnapshot,
 };
 
 use crate::usecases::clipboard_history::{
@@ -29,6 +30,8 @@ use crate::usecases::clipboard_history::{
     ListClipboardEntryProjectionsUseCase, ListProjectionsError, ReconcileMissingFilesUseCase,
     ReconcileResult, ToggleFavoriteClipboardEntryUseCase,
 };
+
+use super::{ClipboardLiveIndexInput, ClipboardLiveIndexOutcome, ClipboardLiveIndexPort};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardListInput {
@@ -135,6 +138,7 @@ pub struct ClipboardHistoryFacadeDeps {
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub file_transfer_repo: Arc<dyn GetEntryTransferSummaryPort>,
     pub search_index: Option<Arc<dyn SearchIndexPort>>,
+    pub live_index: Option<Arc<dyn ClipboardLiveIndexPort>>,
     pub file_cache_dir: Option<PathBuf>,
     /// 删除剪贴板条目时释放对应的 iroh-blobs tag。`None` 表示该装配场景
     /// 不接入 blob 系统（例如某些纯文本 / mock 测试场景），此时 untag
@@ -166,6 +170,7 @@ pub struct ClipboardHistoryFacade {
     /// debug seed 路径需要的额外 ports，常态业务不直接消费。
     seed_event_writer: Arc<dyn ClipboardEventWriterPort>,
     seed_entry_repo: Arc<dyn SaveClipboardEntryPort>,
+    seed_live_index: Option<Arc<dyn ClipboardLiveIndexPort>>,
     seed_device_identity: Arc<dyn DeviceIdentityPort>,
     seed_clock: Arc<dyn ClockPort>,
 }
@@ -182,6 +187,7 @@ impl ClipboardHistoryFacade {
             thumbnail_repo,
             file_transfer_repo,
             search_index,
+            live_index,
             file_cache_dir,
             blob_transfer,
             settings,
@@ -341,6 +347,7 @@ impl ClipboardHistoryFacade {
             reconcile_uc,
             seed_event_writer,
             seed_entry_repo,
+            seed_live_index: live_index,
             seed_device_identity,
             seed_clock,
         }
@@ -403,7 +410,9 @@ impl ClipboardHistoryFacade {
         // ClipboardEntry 与 ClipboardSelection 是搭配的——entry_repo 的
         // save_entry_and_selection 会同时写两张表。selection 里只有一个
         // representation，全部字段都指向 rep_id。
-        let entry = ClipboardEntry::new(entry_id.clone(), event_id, now, None, total_size);
+        let content_category = ClipboardEntryContentCategory::from_snapshot(&snapshot);
+        let entry = ClipboardEntry::new(entry_id.clone(), event_id, now, None, total_size)
+            .with_content_category(content_category);
         let selection = ClipboardSelectionDecision::new(
             entry_id.clone(),
             ClipboardSelection {
@@ -421,6 +430,26 @@ impl ClipboardHistoryFacade {
             .map_err(|e| {
                 ClipboardHistoryError::Internal(format!("save_entry_and_selection: {e}"))
             })?;
+
+        if let Some(live_index) = self.seed_live_index.as_ref() {
+            match live_index
+                .index_capture(ClipboardLiveIndexInput {
+                    entry_id: entry_id.to_string(),
+                    snapshot: Arc::new(snapshot),
+                })
+                .await
+                .map_err(|e| ClipboardHistoryError::Internal(format!("index_seed_entry: {e}")))?
+            {
+                ClipboardLiveIndexOutcome::Indexed => {}
+                ClipboardLiveIndexOutcome::Skipped { reason } => {
+                    debug!(
+                        entry_id = %entry_id,
+                        reason = %reason,
+                        "seed clipboard entry was not indexed"
+                    );
+                }
+            }
+        }
 
         Ok(entry_id.to_string())
     }

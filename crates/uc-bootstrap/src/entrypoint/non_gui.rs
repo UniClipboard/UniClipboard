@@ -17,14 +17,15 @@ use uc_application::facade::settings::{RelayDiagnosticPort, RelayProbeError, Rel
 use uc_application::facade::space_setup::SpaceSetupFacade;
 use uc_application::facade::{
     ActiveClipboardFacade, AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade,
-    ClipboardHistoryFacade, ClipboardHistoryFacadeDeps, ClipboardOutboundDeps,
-    ClipboardOutboundFacade, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
-    ClipboardSyncFacade, DeviceFacade, DiagnosticsFacade, DiagnosticsFacadeDeps, EncryptionFacade,
-    EncryptionFacadeDeps, FileTransferFacade, InMemoryLifecycleStatus, IncomingMobileBuffer,
-    LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade,
-    MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade,
-    ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps,
-    SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    ClipboardHistoryFacade, ClipboardHistoryFacadeDeps, ClipboardLiveIndexDeps,
+    ClipboardLiveIndexPort, ClipboardLiveIndexer, ClipboardOutboundDeps, ClipboardOutboundFacade,
+    ClipboardRestoreFacade, ClipboardRestoreFacadeDeps, ClipboardSyncFacade, DeviceFacade,
+    DiagnosticsFacade, DiagnosticsFacadeDeps, EncryptionFacade, EncryptionFacadeDeps,
+    FileTransferFacade, InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade,
+    LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade,
+    MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps,
+    SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade,
+    StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -395,6 +396,14 @@ pub fn build_app_facade_from_deps(
             thumbnail_repo: deps.storage.thumbnail_repo.clone(),
             file_transfer_repo: deps.storage.file_transfer.entry_summary.clone(),
             search_index: Some(deps.search.search_index.clone()),
+            live_index: Some(Arc::new(ClipboardLiveIndexer::new(ClipboardLiveIndexDeps {
+                clipboard_entry_repo: deps.clipboard.entry_ports.get.clone(),
+                representation_policy: deps.clipboard.representation_policy.clone(),
+                search_key_derivation: deps.search.search_key_derivation.clone(),
+                search_pipeline: deps.search.search_pipeline.clone(),
+                search_index: deps.search.search_index.clone(),
+                event_repo: deps.clipboard.clipboard_event_reader_repo.clone(),
+            })) as Arc<dyn ClipboardLiveIndexPort>),
             file_cache_dir: Some(storage_paths.file_cache_dir.clone()),
             blob_transfer: options.blob_transfer_port.clone(),
             settings: deps.settings.clone(),

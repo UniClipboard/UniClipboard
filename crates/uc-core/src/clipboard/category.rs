@@ -113,13 +113,18 @@ impl ClipboardEntryContentCategory {
         self.as_label()
     }
 
-    pub fn from_db_str(raw: &str) -> Self {
+    /// Parse the persisted DB string. Returns `None` for unrecognized values
+    /// so a caller can surface a storage-contract violation instead of
+    /// silently coercing an unknown category to `Other` — this value is the
+    /// authority for the entry's physical classification.
+    pub fn from_db_str(raw: &str) -> Option<Self> {
         match raw {
-            "text" => ClipboardEntryContentCategory::Text,
-            "image" => ClipboardEntryContentCategory::Image,
-            "file" => ClipboardEntryContentCategory::File,
-            "rich_text" => ClipboardEntryContentCategory::RichText,
-            _ => ClipboardEntryContentCategory::Other,
+            "text" => Some(ClipboardEntryContentCategory::Text),
+            "image" => Some(ClipboardEntryContentCategory::Image),
+            "file" => Some(ClipboardEntryContentCategory::File),
+            "rich_text" => Some(ClipboardEntryContentCategory::RichText),
+            "other" => Some(ClipboardEntryContentCategory::Other),
+            _ => None,
         }
     }
 

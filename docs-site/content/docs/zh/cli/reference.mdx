@@ -91,7 +91,11 @@ uniclip search "报告" \
     --limit 20 --detailed
 uniclip search "报告" \
     --from-ms 1710000000000 --to-ms 1710100000000
+uniclip search "报告" \
+    --source-device "Laptop"             # 只看来自该设备的内容
 ```
+
+`--source-device` 按「内容来自哪台设备」过滤，接受设备名（大小写无关）或设备 id，可重复多次；运行 `uniclip members` 可查看可用的设备名。`--detailed`（以及 `--json`）的输出里会带上每条结果的 `source` 设备 id。
 
 `rebuild` 是同步命令，重建完成才返回；脚本里抓诊断快照很有用。
 

@@ -596,6 +596,21 @@ mod tests {
     }
 
     #[test]
+    fn search_accepts_repeatable_source_device_filter() {
+        let cli = Cli::try_parse_from([
+            "uniclip",
+            "search",
+            "report",
+            "--source-device",
+            "Laptop",
+            "--source-device",
+            "mobile_sync:abc",
+        ])
+        .expect("repeatable --source-device must parse");
+        assert!(matches!(cli.command, Some(Commands::Search { .. })));
+    }
+
+    #[test]
     fn search_status_still_parses_as_subcommand() {
         let cli =
             Cli::try_parse_from(["uniclip", "search", "status"]).expect("search status must parse");

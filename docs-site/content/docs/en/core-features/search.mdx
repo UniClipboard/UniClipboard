@@ -19,10 +19,11 @@ the history database — see
 
 ## Query syntax
 
-The Quick Panel's advanced search, the History search box, and the CLI
-share one parser, so the token rules below apply across all three —
-except the source-device filter, which only the History box exposes
-(called out below).
+The Quick Panel's advanced search and the History search box share one
+token syntax, and the CLI runs the same queries through equivalent flags —
+so the filters below work on all three surfaces: as `type:` / `ext:` / `#`
+tokens in the two GUI boxes, and as `--type` / `--ext` / `--tag` (etc.)
+flags in `uniclip search`.
 
 ### Substring matching
 
@@ -77,10 +78,11 @@ uniclip search "report" \
 ### Source-device filter
 
 Narrow results to clips that arrived from one device — a paired computer
-or a mobile-sync phone. In the History search box, pick a device from the
-filter bar or type `from:` and choose from the list. This filter lives in
-the History view only; the Quick Panel and `uniclip search` have no source
-equivalent.
+or a mobile-sync phone. In the History search box or the Quick Panel, pick
+a device from the filter bar or type `from:` and choose from the list. In
+the CLI, pass `--source-device` with a device name (case-insensitive) or a
+device id; repeat it to match several devices. Run `uniclip members` to see
+the available device names.
 
 ### Tag filter `#`
 

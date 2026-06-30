@@ -31,6 +31,10 @@ pub struct SearchQueryRequest {
     /// Tag ids (e.g. "link", "favorited"); custom tags require an unlocked session.
     pub tags: Vec<String>,
     pub extensions: Vec<String>,
+    /// Source device ids; restricts results to entries that arrived from any of
+    /// them. Ids are the daemon's canonical origins (a paired peer id, or a
+    /// `mobile_sync:<device_id>` for a mobile-sync phone).
+    pub source_devices: Vec<String>,
     pub limit: u32,
     pub offset: u32,
 }
@@ -102,6 +106,9 @@ impl DaemonSearchClient {
         }
         if !request.extensions.is_empty() {
             params.push(("extensions", request.extensions.join(",")));
+        }
+        if !request.source_devices.is_empty() {
+            params.push(("sourceDevices", request.source_devices.join(",")));
         }
 
         Ok(enveloped_request(

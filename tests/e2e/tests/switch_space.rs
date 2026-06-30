@@ -6,12 +6,10 @@
 //! --yes` against Alice's invitation and ends up a member of Alice's space.
 //!
 //! NOTE: data round-trip integrity — seeded clipboard history surviving the
-//! re-encryption — is intentionally NOT covered here. The headless E2E binary
-//! has no real OS clipboard, and it is built without `dev-tools` (CI runs
-//! `cargo build -p uc-daemon -p uc-cli`), so there is no `dev seed-clipboard`
-//! / `dev dump-clipboard` and no way to populate or read local history. That
-//! assertion lives in `scripts/test_switch_space_e2e.sh`, which runs with
-//! `dev-tools` against a real macOS clipboard.
+//! re-encryption — is intentionally NOT covered here. The headless E2E runner
+//! has no real OS clipboard, so this test only proves the switch routing and
+//! membership migration. Seeded-history integrity lives in the dedicated
+//! switch-space script.
 //!
 //! Run with: cargo test -p uc-e2e-tests -- --ignored
 

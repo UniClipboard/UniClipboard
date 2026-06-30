@@ -243,7 +243,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build daemon and CLI binaries
-        run: cargo build -p uc-daemon -p uc-cli
+        run: cargo build -p uc-daemon -p uc-cli --features uc-cli/dev-tools
 
       - name: Run E2E tests
         run: cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored

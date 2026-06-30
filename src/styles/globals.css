@@ -137,18 +137,23 @@
   --shadow-xl: 0px 4px 6px 0px hsl(240 30% 25% / 0.12), 0px 8px 10px -1px hsl(240 30% 25% / 0.12);
   --shadow-2xl: 0px 4px 6px 0px hsl(240 30% 25% / 0.3);
   --tracking-normal: 0em;
+  --scrollbar-size: 0.625rem;
+  --scrollbar-gutter: 0.1875rem;
+  --scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 38%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--muted-foreground) 58%, transparent);
+  --scrollbar-thumb-active: color-mix(in oklch, var(--muted-foreground) 72%, transparent);
 }
 
-/* 自定义滚动条样式 */
+/* Global scrollbar helpers. Most scroll containers inherit the base styling. */
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgb(203 213 225) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -156,20 +161,20 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgb(203 213 225);
-    border-radius: 4px;
+    min-width: 3rem;
+    min-height: 3rem;
+    border: var(--scrollbar-gutter) solid transparent;
+    border-radius: 9999px;
+    background-color: var(--scrollbar-thumb);
+    background-clip: padding-box;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(148 163 184);
+    background-color: var(--scrollbar-thumb-hover);
   }
 
-  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgb(71 85 105);
-  }
-
-  .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(100 116 139);
+  .scrollbar-thin::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-thumb-active);
   }
 
   .scrollbar-code {
@@ -492,6 +497,41 @@ html[data-uc-low-effects='true']::view-transition-new(root) {
     margin: 0;
     padding: 0;
     overflow: hidden;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    min-width: 3rem;
+    min-height: 3rem;
+    border: var(--scrollbar-gutter) solid transparent;
+    border-radius: 9999px;
+    background-color: var(--scrollbar-thumb);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-thumb-active);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   /* 原生桌面应用约定:UI 文本默认不可框选,避免 WebKit 拖蓝选区暴露 webview。

@@ -16,4 +16,9 @@ describe('theme migration', () => {
     expect(globals).toContain('transition')
     expect(globals).toContain('background-color 200ms')
   })
+
+  it('applies themed scrollbars from the global base layer', () => {
+    expect(globals).toContain('scrollbar-color: var(--scrollbar-thumb) transparent')
+    expect(globals).toContain('*::-webkit-scrollbar-thumb')
+  })
 })

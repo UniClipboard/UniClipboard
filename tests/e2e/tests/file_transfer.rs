@@ -32,11 +32,15 @@ async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
     (daemon, cli)
 }
 
-/// Without the `dev-tools` feature, `send --file <path>` should exit non-zero
-/// with an error mentioning "dev-tools".
-///
-/// The release (non-dev-tools) binary hits the `#[cfg(not(feature = "dev-tools"))]`
-/// branch in `send.rs` which prints the feature-gate error message.
+async fn setup_initialized_node_without_daemon(name: &str) -> (TestDaemon, TestCli) {
+    let (mut daemon, cli) = setup_initialized_node(name).await;
+    daemon.kill();
+    (daemon, cli)
+}
+
+/// `send --file <path>` uses two intentionally different runtime paths:
+/// release CLI builds reject it at the feature gate, while dev-tools builds
+/// enter the in-process file sender and reject a concurrently running daemon.
 #[tokio::test]
 #[ignore]
 async fn file_send_requires_dev_tools_feature() {
@@ -55,8 +59,8 @@ async fn file_send_requires_dev_tools_feature() {
 
     let combined = format!("{}{}", output.stdout, output.stderr);
     assert!(
-        combined.contains("dev-tools"),
-        "error should mention 'dev-tools', got: stdout={}, stderr={}",
+        combined.contains("dev-tools") || combined.contains("daemon is already running"),
+        "error should mention 'dev-tools' or running daemon, got: stdout={}, stderr={}",
         output.stdout,
         output.stderr
     );
@@ -67,7 +71,7 @@ async fn file_send_requires_dev_tools_feature() {
 #[tokio::test]
 #[ignore]
 async fn file_send_nonexistent_path() {
-    let (_daemon, cli) = setup_initialized_node("file-noexist").await;
+    let (_profile_guard, cli) = setup_initialized_node_without_daemon("file-noexist").await;
 
     let output = cli.run_capture(&["send", "--file", "/nonexistent/path.txt"]);
     assert!(
@@ -99,7 +103,7 @@ async fn file_send_nonexistent_path() {
 #[tokio::test]
 #[ignore]
 async fn file_send_directory_path_rejected() {
-    let (_daemon, cli) = setup_initialized_node("file-dir-reject").await;
+    let (_profile_guard, cli) = setup_initialized_node_without_daemon("file-dir-reject").await;
 
     let output = cli.run_capture(&["send", "--file", "/tmp"]);
     assert!(

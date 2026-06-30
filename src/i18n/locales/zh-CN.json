@@ -683,6 +683,7 @@
       "all": "全部",
       "favorited": "收藏",
       "text": "文本",
+      "richtext": "富文本",
       "code": "代码",
       "link": "链接",
       "image": "图片",
@@ -704,6 +705,7 @@
     },
     "type": {
       "text": "文本",
+      "richtext": "富文本",
       "code": "代码",
       "link": "链接",
       "favorited": "收藏",
@@ -765,6 +767,7 @@
       "all": "全部",
       "favorited": "收藏",
       "text": "文本",
+      "richtext": "富文本",
       "image": "图片",
       "link": "链接",
       "file": "文件",
@@ -1602,6 +1605,7 @@
       "filters": {
         "all": "全部",
         "text": "文本",
+        "richtext": "富文本",
         "image": "图片",
         "link": "链接",
         "file": "文件",

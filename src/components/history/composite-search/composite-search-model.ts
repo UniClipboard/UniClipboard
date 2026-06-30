@@ -60,7 +60,7 @@ const PREFIX_TO_DIMENSION: Record<string, Dimension> = {
 }
 
 /** Physical content-type filters offered as `type:` candidates. */
-const TYPE_FILTERS: readonly Filter[] = [Filter.Text, Filter.Image, Filter.File]
+const TYPE_FILTERS: readonly Filter[] = [Filter.Text, Filter.RichText, Filter.Image, Filter.File]
 
 /** Time presets offered as `time:` candidates (`all_time` == no filter, excluded). */
 const TIME_PRESETS: readonly TimeRangePreset[] = [
@@ -78,6 +78,7 @@ const EXTENSION_FILTERS = ['txt', 'md', 'jpg', 'png', 'pdf', 'ts', 'js', 'json',
 /** Per-content-type glyphs, mirroring the old filter-tab icons. */
 const TYPE_ICONS: Record<string, LucideIcon> = {
   [Filter.Text]: FileText,
+  [Filter.RichText]: FileText,
   [Filter.Code]: Code,
   [Filter.Link]: ExternalLink,
   [Filter.Image]: ImageIcon,

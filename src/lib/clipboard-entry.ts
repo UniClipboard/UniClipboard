@@ -20,6 +20,10 @@ export interface ClipboardTextItem {
    * to `display_text.length` otherwise. Absent when the count is unknown.
    */
   char_count?: number
+  /** Authoritative web URLs detected by the daemon, preserved separately from the preview text. */
+  link_urls?: string[]
+  /** Domains aligned with `link_urls`; omitted when the daemon did not provide them. */
+  link_domains?: string[]
 }
 
 export interface ClipboardImageItem {
@@ -66,7 +70,7 @@ export interface ClipboardCodeItem {
   char_count?: number
 }
 
-export type ClipboardEntryType = 'text' | 'image' | 'link' | 'code' | 'file' | 'unknown'
+export type ClipboardEntryType = 'text' | 'image' | 'file' | 'richtext' | 'unknown'
 
 export type ClipboardEntryTag = 'link' | 'code'
 

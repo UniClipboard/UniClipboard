@@ -58,6 +58,7 @@ export enum Filter {
   Favorited = 'favorited',
   Text = 'text',
   Image = 'image',
+  RichText = 'richtext',
   Link = 'link',
   Code = 'code',
   File = 'file',
@@ -87,6 +88,7 @@ export function filterToContentTypes(filter: Filter): string | undefined {
   ) {
     return undefined
   }
+  if (filter === Filter.RichText) return 'html'
   return filter
 }
 

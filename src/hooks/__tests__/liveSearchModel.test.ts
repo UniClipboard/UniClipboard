@@ -25,9 +25,7 @@ function model(partial: Partial<LiveSearchQueryModel> = {}): LiveSearchQueryMode
 describe('displayTypeToContentType', () => {
   it('collapses display types back to physical content categories', () => {
     expect(displayTypeToContentType('text')).toBe('text')
-    // A link is a text entry carrying web URLs, so it stays in the text category.
-    expect(displayTypeToContentType('link')).toBe('text')
-    expect(displayTypeToContentType('code')).toBe('html')
+    expect(displayTypeToContentType('richtext')).toBe('html')
     expect(displayTypeToContentType('file')).toBe('file')
     expect(displayTypeToContentType('image')).toBe('image')
     expect(displayTypeToContentType('unknown')).toBe('other')
@@ -74,11 +72,10 @@ describe('matchesFilter', () => {
   it('matches content-type against the physical category', () => {
     const m = model({ contentTypes: 'text' })
     expect(matchesFilter(makeItem({ id: 'a', type: 'text' }), m)).toBe(true)
-    // link is physically text → the text filter includes it.
-    expect(matchesFilter(makeItem({ id: 'b', type: 'link' }), m)).toBe(true)
+    expect(matchesFilter(makeItem({ id: 'b', type: 'text', contentTags: ['link'] }), m)).toBe(true)
     expect(matchesFilter(makeItem({ id: 'c', type: 'image' }), m)).toBe(false)
     expect(
-      matchesFilter(makeItem({ id: 'd', type: 'code' }), model({ contentTypes: 'html' }))
+      matchesFilter(makeItem({ id: 'd', type: 'richtext' }), model({ contentTypes: 'html' }))
     ).toBe(true)
   })
 
@@ -88,9 +85,9 @@ describe('matchesFilter', () => {
     expect(matchesFilter(makeItem({ id: 'b', type: 'file' }), m)).toBe(false)
   })
 
-  it('matches the link tag against the link display type', () => {
+  it('does not infer the link tag from display type', () => {
     const m = model({ tags: 'link' })
-    expect(matchesFilter(makeItem({ id: 'a', type: 'link' }), m)).toBe(true)
+    expect(matchesFilter(makeItem({ id: 'a', type: 'text' }), m)).toBe(false)
     expect(matchesFilter(makeItem({ id: 'b', type: 'text' }), m)).toBe(false)
   })
 

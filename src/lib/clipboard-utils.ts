@@ -1,5 +1,4 @@
 import type {
-  ClipboardCodeItem,
   ClipboardEntry,
   ClipboardEntryContent,
   ClipboardFileItem,
@@ -147,6 +146,21 @@ export function extractDomainFromUrl(url: string): string {
 }
 
 /**
+ * Link view-model embedded in a text item, or `null` when authoritative link
+ * metadata is absent. This keeps link rendering tied to daemon-provided URLs,
+ * not the possibly truncated display preview.
+ */
+export function linkItemFromTextContent(content: ClipboardTextItem): ClipboardLinkItem | null {
+  const urls = content.link_urls?.filter(url => url.trim().length > 0) ?? []
+  if (urls.length === 0) return null
+  const domains =
+    content.link_domains && content.link_domains.length === urls.length
+      ? content.link_domains
+      : urls.map(extractDomainFromUrl)
+  return { urls, domains }
+}
+
+/**
  * Check whether a MIME content type represents an image.
  */
 export function isImageContentType(contentType: string): boolean {
@@ -200,12 +214,9 @@ export function getItemPreview(entry: ClipboardEntry): string {
       }
       return parts.join(' | ')
     }
-    case 'link':
-      return (entry.content as ClipboardLinkItem).urls[0] ?? ''
     case 'file':
       return (entry.content as ClipboardFileItem).file_names[0] ?? ''
-    case 'code':
-      return (entry.content as ClipboardCodeItem).code
+    case 'richtext':
     case 'text':
       return (entry.content as ClipboardTextItem).display_text
     default:

@@ -11,11 +11,9 @@ import {
 import type React from 'react'
 import type { EntrySourceView } from '@/api/tauri-command/clipboard_delivery'
 import type {
-  ClipboardCodeItem,
   ClipboardEntryTag,
   ClipboardFileItem,
   ClipboardImageItem,
-  ClipboardLinkItem,
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
@@ -25,6 +23,7 @@ export const TYPE_COLOR: Record<string, string> = {
   text: 'rgb(140,150,160)',
   code: 'rgb(140,120,210)',
   link: 'rgb(70,145,210)',
+  richtext: 'rgb(120,125,190)',
   image: 'rgb(80,160,110)',
   file: 'rgb(175,140,100)',
   unknown: 'rgb(140,150,160)',
@@ -34,6 +33,7 @@ export const TYPE_ICONS: Record<string, React.ElementType> = {
   text: FileText,
   code: Code,
   link: ExternalLink,
+  richtext: FileText,
   image: ImageIcon,
   file: File,
   unknown: FileText,
@@ -87,14 +87,10 @@ export function getContentSizeLabel(item: DisplayClipboardItem, t: Translate): s
       const count = textItem.char_count ?? textItem.display_text.length
       return t('clipboard.preview.charactersCount', { count })
     }
-    case 'code': {
-      const codeItem = item.content as ClipboardCodeItem
-      const count = codeItem.char_count ?? codeItem.code.length
+    case 'richtext': {
+      const textItem = item.content as ClipboardTextItem
+      const count = textItem.char_count ?? textItem.display_text.length
       return t('clipboard.preview.charactersCount', { count })
-    }
-    case 'link': {
-      const link = item.content as ClipboardLinkItem
-      return link.domains[0] ?? null
     }
     case 'image':
       return null

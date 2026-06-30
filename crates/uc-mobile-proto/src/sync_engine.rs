@@ -95,6 +95,13 @@ pub struct SyncRuntimeState {
     /// Dedup guard #1 — prevents re-pulling content already synced. Uppercase.
     /// Mirror of the native-persisted `lastSyncedContentHash`.
     pub last_synced_hash: Option<String>,
+    /// Authoritative cross-device identity of the already-synced content, when
+    /// the server provided one. Opaque (`blake3v1:<hex>`), stored verbatim — NOT
+    /// uppercased — and ALWAYS written/cleared together with `last_synced_hash`
+    /// (see [`advance_synced`]). Stable across server-side re-encodes, so it
+    /// dedups content whose `hash` drifted. Mirror of the native-persisted
+    /// `lastSyncedContentId`.
+    pub last_synced_content_id: Option<String>,
     /// Dedup guard #2 — prevents pushing back content we just wrote to the
     /// pasteboard ourselves. Uppercase.
     pub last_applied_hash: Option<String>,
@@ -105,6 +112,10 @@ pub struct SyncRuntimeState {
     /// when auto-apply is off and the server hash is unchanged. Uppercase only
     /// where the source hash was; stored verbatim from `entry.hash`.
     pub staged_server_hash: Option<String>,
+    /// The staged entry's `contentId`, when present — staged-dedup's
+    /// authoritative key, the analogue of [`Self::staged_server_hash`]. Written
+    /// and cleared together with the staged slot.
+    pub staged_content_id: Option<String>,
     /// The full staged entry — only consulted for hashless dedup (a §4 spec
     /// violation where the server omits the SHA-256).
     pub staged_entry: Option<Clipboard>,
@@ -121,9 +132,11 @@ impl Default for SyncRuntimeState {
         SyncRuntimeState {
             state: SyncState::Idle,
             last_synced_hash: None,
+            last_synced_content_id: None,
             last_applied_hash: None,
             loop_events: Vec::new(),
             staged_server_hash: None,
+            staged_content_id: None,
             staged_entry: None,
             consecutive_failures: 0,
             next_attempt_ms: None,
@@ -154,6 +167,12 @@ pub struct PreambleSnapshot {
     /// `store.loadLastSyncedHash()` — cross-process resync source (the Share
     /// Extension writes this key directly).
     pub persisted_synced_hash: Option<String>,
+    /// `store.loadLastSyncedContentId()` — the cross-process companion of
+    /// [`Self::persisted_synced_hash`]. The Share Extension push path does NOT
+    /// know a server `contentId`, so it writes this key as ABSENT (`None`), not
+    /// stale-carried; the resync fold then clears `last_synced_content_id`,
+    /// consistent with "pushed, identity not yet learned".
+    pub persisted_synced_content_id: Option<String>,
     /// Wall clock, epoch-ms.
     pub now_ms: i64,
 }
@@ -219,12 +238,24 @@ pub fn plan_preamble(st: &mut SyncRuntimeState, snap: &PreambleSnapshot) -> Prea
         // `tick` 465 — network backoff gate; explicit refreshes punch through.
         PreambleProceed::Stop(StopReason::BackoffGate)
     } else {
-        // `tick` 474-477 — cross-process re-sync before the round-trip.
-        if !hashes_equal(
+        // `tick` 474-477 — cross-process re-sync before the round-trip. The
+        // gate compares BOTH watermark keys as a single snapshot: a drift in
+        // `content_id` alone (hash unchanged) must still trigger a fold, or a
+        // stale cross-process `content_id` would linger and misjudge. The two
+        // keys are then written together to keep them consistent (the same
+        // atomic same-write contract `advance_synced` upholds). `content_id` is
+        // opaque — compared verbatim, never through `hashes_equal`'s folding.
+        let hash_differs = !hashes_equal(
             snap.persisted_synced_hash.as_deref(),
             st.last_synced_hash.as_deref(),
-        ) {
+        );
+        let content_id_differs = nonempty_content_id(snap.persisted_synced_content_id.as_deref())
+            != nonempty_content_id(st.last_synced_content_id.as_deref());
+        if hash_differs || content_id_differs {
             st.last_synced_hash = snap.persisted_synced_hash.as_deref().map(str::to_uppercase);
+            st.last_synced_content_id =
+                nonempty_content_id(snap.persisted_synced_content_id.as_deref())
+                    .map(str::to_string);
         }
         PreambleProceed::ToNetwork
     };
@@ -315,9 +346,12 @@ pub fn plan_after_server_get(st: &SyncRuntimeState, snap: &ServerGetSnapshot) ->
             }
         }
     }
-    // Server has new content (`tick` 515-516).
+    // Server has new content (`tick` 515-516). Identity-aware: a server-side
+    // re-encode (JPEG→PNG) changes `hash` while `contentId` stays put, so the
+    // dedup keys on `contentId` when both sides have one (see
+    // [`is_already_synced`]) and only falls back to `hash` otherwise.
     if let Some(entry) = &snap.server_entry {
-        if !hashes_equal(entry.hash.as_deref(), st.last_synced_hash.as_deref()) {
+        if !is_already_synced(entry, st) {
             return ServerRoute::ServerNew(plan_server_new(st, snap.auto_apply, entry));
         }
     }
@@ -325,21 +359,85 @@ pub fn plan_after_server_get(st: &SyncRuntimeState, snap: &ServerGetSnapshot) ->
     ServerRoute::Push(plan_push(st, snap))
 }
 
+/// Whether the server `entry` is the content already recorded as synced.
+///
+/// `contentId` is the authoritative cross-device identity: when BOTH the entry
+/// and the watermark carry one, compare ONLY them (verbatim, opaque) and ignore
+/// `hash` entirely — that is what survives a server re-encode. When either side
+/// lacks a `contentId` (legacy server, or the identity not yet learned after a
+/// push), fall back to the existing case-folded `hash` comparison, preserving
+/// pre-`contentId` behavior exactly.
+///
+/// This relies on the server contract that a `contentId` is stable for the same
+/// original bytes and never reused for different content (`blake3v1:<hex>` is an
+/// immutable content hash); a `(Some, Some)` match treats the content as
+/// identical without consulting `hash`. The contract lives in the server repo
+/// (commit `c6ff804d1`); changing the server identity algorithm must revisit
+/// this comparison.
+fn is_already_synced(entry: &Clipboard, st: &SyncRuntimeState) -> bool {
+    match (
+        nonempty_content_id(entry.content_id.as_deref()),
+        nonempty_content_id(st.last_synced_content_id.as_deref()),
+    ) {
+        (Some(a), Some(b)) => a == b,
+        _ => hashes_equal(entry.hash.as_deref(), st.last_synced_hash.as_deref()),
+    }
+}
+
 /// Server-has-new sub-plan (`processServerNew` 614-633).
 fn plan_server_new(st: &SyncRuntimeState, auto_apply: bool, entry: &Clipboard) -> ServerNewPlan {
     let entry_has_hash = entry.hash.as_deref().is_some_and(|h| !h.is_empty());
-    let already_staged = if entry_has_hash {
-        st.staged_server_hash
+    let already_staged = match (
+        nonempty_content_id(entry.content_id.as_deref()),
+        nonempty_content_id(st.staged_content_id.as_deref()),
+    ) {
+        // Identity match: same staged content even if its `hash` drifted.
+        (Some(a), Some(b)) => a == b,
+        _ if entry_has_hash => st
+            .staged_server_hash
             .as_deref()
-            .is_some_and(|s| hashes_equal(Some(s), entry.hash.as_deref()))
-    } else {
-        // Hashless dedup by full-Clipboard equality (`processServerNew` 617).
-        st.staged_entry.as_ref() == Some(entry)
+            .is_some_and(|s| hashes_equal(Some(s), entry.hash.as_deref())),
+        // Hashless dedup by content equality (`processServerNew` 617). Compare
+        // every field EXCEPT `content_id` so this fallback's domain stays the
+        // pre-`contentId` one: a `(Some, None)` / `(None, Some)` content_id pair
+        // here means one observation lacked an identity, which should not by
+        // itself force a re-stage.
+        _ => st
+            .staged_entry
+            .as_ref()
+            .is_some_and(|s| clipboard_eq_ignoring_content_id(s, entry)),
     };
     ServerNewPlan {
         already_staged,
         will_apply: auto_apply && entry_has_hash,
     }
+}
+
+/// Full-`Clipboard` equality that ignores `content_id`. Keeps the hashless
+/// staged-dedup fallback's comparison domain identical to the pre-`contentId`
+/// `staged_entry == entry` check (a derived `PartialEq` would silently widen it
+/// to include the new field).
+fn clipboard_eq_ignoring_content_id(a: &Clipboard, b: &Clipboard) -> bool {
+    // Destructure (no `..`) so a future `Clipboard` field forces a compile-time
+    // revisit here instead of being silently dropped from this equality.
+    let Clipboard {
+        kind,
+        hash,
+        content_id: _,
+        text,
+        has_data,
+        data_name,
+        size,
+    } = a;
+    (kind, hash, text, has_data, data_name, size)
+        == (
+            &b.kind,
+            &b.hash,
+            &b.text,
+            &b.has_data,
+            &b.data_name,
+            &b.size,
+        )
 }
 
 /// Push sub-decision (`maybePush` 691-729).
@@ -375,10 +473,20 @@ pub struct CommitOutcome {
 
 /// Truth-gate commit (`tick` 508-514): repair the watermark, mark applied,
 /// clear staged, succeed. No loop-guard event — nothing actually flowed.
-pub fn commit_converged(st: &mut SyncRuntimeState, server_hash: &str) {
-    advance_synced(st, Some(server_hash));
+///
+/// This is the PRIMARY path that learns the server `contentId`: the shell still
+/// holds `ServerGetSnapshot.server_entry`, so it passes `entry.content_id`
+/// here. A subsequent GET whose `hash` was re-encoded then dedups on the
+/// learned identity.
+pub fn commit_converged(
+    st: &mut SyncRuntimeState,
+    server_hash: &str,
+    server_content_id: Option<&str>,
+) {
+    advance_synced(st, Some(server_hash), server_content_id);
     st.last_applied_hash = upper_nonempty(Some(server_hash));
     st.staged_server_hash = None;
+    st.staged_content_id = None;
     st.staged_entry = None;
     st.state = SyncState::Succeeded;
 }
@@ -389,12 +497,14 @@ pub fn commit_converged(st: &mut SyncRuntimeState, server_hash: &str) {
 pub fn commit_apply(
     st: &mut SyncRuntimeState,
     hash: Option<&str>,
+    content_id: Option<&str>,
     now_ms: i64,
     cfg: &SyncConfig,
 ) -> CommitOutcome {
-    advance_synced(st, hash);
+    advance_synced(st, hash, content_id);
     st.last_applied_hash = upper_nonempty(hash);
     st.staged_server_hash = None;
+    st.staged_content_id = None;
     st.staged_entry = None;
     st.state = SyncState::Succeeded;
     record_and_check(st, LoopDirection::Pulled, hash, now_ms, cfg)
@@ -405,6 +515,7 @@ pub fn commit_apply(
 /// stays whatever the tick error handler sets ([`commit_tick_failure`]).
 pub fn commit_apply_failed(st: &mut SyncRuntimeState, entry: &Clipboard) {
     st.staged_server_hash = entry.hash.clone();
+    st.staged_content_id = nonempty_content_id(entry.content_id.as_deref()).map(str::to_string);
     st.staged_entry = Some(entry.clone());
 }
 
@@ -412,6 +523,7 @@ pub fn commit_apply_failed(st: &mut SyncRuntimeState, entry: &Clipboard) {
 /// and not already staged — stash the entry, surface `HasNewUnwritten`.
 pub fn commit_stage(st: &mut SyncRuntimeState, entry: &Clipboard) {
     st.staged_server_hash = entry.hash.clone();
+    st.staged_content_id = nonempty_content_id(entry.content_id.as_deref()).map(str::to_string);
     st.staged_entry = Some(entry.clone());
     st.state = SyncState::HasNewUnwritten;
 }
@@ -438,7 +550,11 @@ pub fn commit_push(
         st.state = SyncState::Succeeded;
         return CommitOutcome { tripped: false };
     };
-    advance_synced(st, Some(h));
+    // Push changed the content but we do NOT yet know its server `contentId`
+    // (the server assigns it). Pass `None` so the identity watermark is cleared
+    // in lock-step with the hash; the next GET re-learns it on the converged
+    // path. A residual old `contentId` would otherwise misjudge new content.
+    advance_synced(st, Some(h), None);
     // maybePush deliberately does NOT set last_applied / clear staged (unlike
     // the apply path); a trip in `record_and_check` overrides this to
     // `LoopDetected`.
@@ -464,7 +580,9 @@ pub fn commit_consent_push(
     now_ms: i64,
     cfg: &SyncConfig,
 ) -> CommitOutcome {
-    advance_synced(st, pushed_hash);
+    // Like `commit_push`: a push does not know the server `contentId`, so clear
+    // the identity watermark in step with the hash.
+    advance_synced(st, pushed_hash, None);
     st.last_applied_hash = upper_nonempty(pushed_hash);
     let outcome = record_and_check(st, LoopDirection::Pushed, pushed_hash, now_ms, cfg);
     if !outcome.tripped {
@@ -581,9 +699,17 @@ pub fn mark_staged_applied(st: &mut SyncRuntimeState) -> bool {
     let Some(hash) = st.staged_server_hash.clone() else {
         return false;
     };
-    advance_synced(st, Some(&hash));
+    // Promote the staged identity alongside the staged hash (the
+    // `staged_content_id → last_synced_content_id` lift mirrors the existing
+    // `staged_server_hash → last_synced_hash` one). Without this, a manual apply
+    // under auto-apply OFF would clear `last_synced_content_id` and the
+    // re-encode dedup would silently fall back to `hash` — reintroducing the
+    // duplicate card this whole change removes.
+    let content_id = st.staged_content_id.clone();
+    advance_synced(st, Some(&hash), content_id.as_deref());
     st.last_applied_hash = upper_nonempty(Some(&hash));
     st.staged_server_hash = None;
+    st.staged_content_id = None;
     st.staged_entry = None;
     st.state = SyncState::Succeeded;
     true
@@ -602,6 +728,7 @@ pub fn acknowledge_loop_detection(st: &mut SyncRuntimeState) {
 /// history watermark and persists `lastHistorySyncAt = nil`.
 pub fn reset_runtime_state(st: &mut SyncRuntimeState) {
     st.staged_server_hash = None;
+    st.staged_content_id = None;
     st.staged_entry = None;
     st.last_applied_hash = None;
     st.loop_events.clear();
@@ -616,6 +743,9 @@ pub fn reset_runtime_state(st: &mut SyncRuntimeState) {
 pub fn handle_active_server_changed(st: &mut SyncRuntimeState) {
     reset_runtime_state(st);
     st.last_synced_hash = None;
+    // Clear the identity watermark with the hash — the new server has its own
+    // content timeline and `contentId` space (atomic same-clear contract).
+    st.last_synced_content_id = None;
 }
 
 /// Network route changed / endpoint flipped (`handleNetworkRouteChanged`
@@ -699,12 +829,23 @@ pub fn is_probe_conclusion_valid(report_epoch: u64, current_epoch: u64) -> bool 
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// `advanceSynced` (839-849): a nil/empty hash is unverifiable — leave the
+/// `advanceSynced` (839-849): a nil/empty hash is unverifiable — leave the hash
 /// watermark alone so the next tick re-evaluates. Otherwise store uppercased.
-fn advance_synced(st: &mut SyncRuntimeState, hash: Option<&str>) {
+///
+/// `content_id` is the companion identity and is written here as a SINGLE atomic
+/// move with the hash: both watermark keys advance together or neither does. A
+/// nil/empty hash is unverifiable, so both keys are left untouched (never just
+/// the `content_id`) — that is the same-write contract the keys rely on. Pass
+/// the server entry's `content_id` on the converged/apply paths (learns it), and
+/// `None` on the push paths (we changed the content but do not yet know its
+/// server identity — leaving a stale `content_id` would misjudge the next GET).
+/// Stored verbatim, never uppercased (opaque); an empty `content_id` is treated
+/// as absent.
+fn advance_synced(st: &mut SyncRuntimeState, hash: Option<&str>, content_id: Option<&str>) {
     if let Some(h) = hash {
         if !h.is_empty() {
             st.last_synced_hash = Some(h.to_uppercase());
+            st.last_synced_content_id = nonempty_content_id(content_id).map(str::to_string);
         }
     }
 }
@@ -712,6 +853,13 @@ fn advance_synced(st: &mut SyncRuntimeState, hash: Option<&str>) {
 /// `hash?.uppercased()` with empty treated as absent.
 fn upper_nonempty(hash: Option<&str>) -> Option<String> {
     hash.filter(|h| !h.is_empty()).map(str::to_uppercase)
+}
+
+/// An opaque `contentId` is meaningful only when non-empty. An empty string
+/// carries no cross-device identity, so it is treated as absent and dedup falls
+/// back to `hash` — mirroring how empty hashes are treated as absent.
+fn nonempty_content_id(id: Option<&str>) -> Option<&str> {
+    id.filter(|s| !s.is_empty())
 }
 
 /// Record an apply/push event and report whether the guard tripped, setting
@@ -749,6 +897,7 @@ mod tests {
         Clipboard {
             kind: ClipboardKind::Text,
             hash: Some(hash.to_string()),
+            content_id: None,
             text: String::new(),
             has_data: false,
             data_name: None,
@@ -756,10 +905,19 @@ mod tests {
         }
     }
 
+    /// Server entry carrying both a `hash` and a `contentId`.
+    fn entry_cid(hash: &str, content_id: &str) -> Clipboard {
+        Clipboard {
+            content_id: Some(content_id.to_string()),
+            ..entry(hash)
+        }
+    }
+
     fn hashless_entry(text: &str) -> Clipboard {
         Clipboard {
             kind: ClipboardKind::Text,
             hash: None,
+            content_id: None,
             text: text.to_string(),
             has_data: false,
             data_name: None,
@@ -821,6 +979,7 @@ mod tests {
             device_hash: None,
             history_head_hash: None,
             persisted_synced_hash: None,
+            persisted_synced_content_id: None,
             now_ms: NOW,
         }
     }
@@ -1155,7 +1314,7 @@ mod tests {
             staged_entry: Some(entry("X")),
             ..Default::default()
         };
-        commit_converged(&mut st, "aabb");
+        commit_converged(&mut st, "aabb", None);
         assert_eq!(st.last_synced_hash.as_deref(), Some("AABB"));
         assert_eq!(st.last_applied_hash.as_deref(), Some("AABB"));
         assert_eq!(st.staged_server_hash, None);
@@ -1173,7 +1332,7 @@ mod tests {
             staged_entry: Some(entry("aabb")),
             ..Default::default()
         };
-        let out = commit_apply(&mut st, Some("aabb"), NOW, &cfg);
+        let out = commit_apply(&mut st, Some("aabb"), None, NOW, &cfg);
         assert!(!out.tripped);
         assert_eq!(st.last_synced_hash.as_deref(), Some("AABB"));
         assert_eq!(st.last_applied_hash.as_deref(), Some("AABB"));
@@ -1243,9 +1402,9 @@ mod tests {
         let cfg = SyncConfig::default();
         let mut st = SyncRuntimeState::default();
         // Alternate apply/push of the same hash 4× → 3 flips → trip.
-        commit_apply(&mut st, Some("H"), NOW, &cfg);
+        commit_apply(&mut st, Some("H"), None, NOW, &cfg);
         commit_push(&mut st, Some("H"), NOW + 1, &cfg);
-        commit_apply(&mut st, Some("H"), NOW + 2, &cfg);
+        commit_apply(&mut st, Some("H"), None, NOW + 2, &cfg);
         let out = commit_push(&mut st, Some("H"), NOW + 3, &cfg);
         assert!(out.tripped);
         // The final commit was a PUSH — the trip now sticks as LoopDetected,
@@ -1259,9 +1418,9 @@ mod tests {
         let cfg = SyncConfig::default();
         let mut st = SyncRuntimeState::default();
         commit_push(&mut st, Some("H"), NOW, &cfg);
-        commit_apply(&mut st, Some("H"), NOW + 1, &cfg);
+        commit_apply(&mut st, Some("H"), None, NOW + 1, &cfg);
         commit_push(&mut st, Some("H"), NOW + 2, &cfg);
-        let out = commit_apply(&mut st, Some("H"), NOW + 3, &cfg);
+        let out = commit_apply(&mut st, Some("H"), None, NOW + 3, &cfg);
         assert!(out.tripped);
         // Final commit was an APPLY — the trip sticks.
         assert_eq!(st.state, SyncState::LoopDetected);
@@ -1411,7 +1570,7 @@ mod tests {
     fn acknowledge_loop_detection_clears_buffer_and_idles() {
         let cfg = SyncConfig::default();
         let mut st = SyncRuntimeState::default();
-        commit_apply(&mut st, Some("H"), NOW, &cfg);
+        commit_apply(&mut st, Some("H"), None, NOW, &cfg);
         st.state = SyncState::LoopDetected;
         acknowledge_loop_detection(&mut st);
         assert!(st.loop_events.is_empty());
@@ -1479,7 +1638,7 @@ mod tests {
         match plan_after_server_get(&st, &snap) {
             ServerRoute::ServerNew(p) => {
                 assert!(p.will_apply && !p.already_staged);
-                commit_apply(&mut st, Some("SRV"), NOW, &cfg);
+                commit_apply(&mut st, Some("SRV"), None, NOW, &cfg);
             }
             other => panic!("expected ServerNew, got {other:?}"),
         }
@@ -1492,6 +1651,285 @@ mod tests {
             ServerRoute::Converged {
                 server_hash: "SRV".into()
             }
+        );
+    }
+
+    // --- contentId dedup (re-encode loop) ---------------------------------
+
+    /// THE core case: device pushed a JPEG (hash A, learned contentId C); the
+    /// server re-encoded it to PNG (hash B) but kept contentId C. The next GET
+    /// must NOT treat B as new content — `is_already_synced` keys on contentId.
+    #[test]
+    fn reencode_same_content_id_is_not_server_new() {
+        let st = SyncRuntimeState {
+            last_synced_hash: Some("A".into()),
+            last_synced_content_id: Some("blake3v1:C".into()),
+            ..Default::default()
+        };
+        // device differs from server hash → rules out the truth-gate, isolating
+        // the server-new gate.
+        let snap = get_snap(Some(entry_cid("B", "blake3v1:C")), Some("DEV"));
+        match plan_after_server_get(&st, &snap) {
+            ServerRoute::ServerNew(_) => panic!("re-encode must not be server-new"),
+            ServerRoute::Push(_) | ServerRoute::Converged { .. } => {}
+        }
+    }
+
+    /// Different contentId IS genuinely new content even if some hashes collide.
+    #[test]
+    fn different_content_id_is_server_new() {
+        let st = SyncRuntimeState {
+            last_synced_hash: Some("A".into()),
+            last_synced_content_id: Some("blake3v1:C".into()),
+            ..Default::default()
+        };
+        let snap = get_snap(Some(entry_cid("B", "blake3v1:C2")), Some("DEV"));
+        assert!(matches!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(_)
+        ));
+    }
+
+    /// Legacy server (entry has no contentId) → fall back to hash, behavior
+    /// identical to before this change.
+    #[test]
+    fn legacy_server_without_content_id_falls_back_to_hash() {
+        let st = SyncRuntimeState {
+            last_synced_hash: Some("A".into()),
+            last_synced_content_id: Some("blake3v1:C".into()),
+            ..Default::default()
+        };
+        // entry.content_id = None → hash compare: B != A → server-new.
+        let snap = get_snap(Some(entry("B")), Some("DEV"));
+        assert!(matches!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(_)
+        ));
+    }
+
+    /// `(Some, None)` fallback: the identity is not yet learned (e.g. right
+    /// after a push cleared it). Entry has a contentId but the watermark does
+    /// not → hash decides. B != A → server-new (the §3 degradation path).
+    #[test]
+    fn entry_has_content_id_but_watermark_none_falls_back_to_hash() {
+        let st = SyncRuntimeState {
+            last_synced_hash: Some("A".into()),
+            last_synced_content_id: None,
+            ..Default::default()
+        };
+        let snap = get_snap(Some(entry_cid("B", "blake3v1:C")), Some("DEV"));
+        assert!(matches!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(_)
+        ));
+    }
+
+    /// An empty `contentId` carries no identity: a `(Some(""), Some(""))` pair
+    /// must NOT short-circuit to "already synced" — it falls back to `hash`, so
+    /// distinct content with differing hashes is still server-new.
+    #[test]
+    fn empty_content_id_does_not_match_falls_back_to_hash() {
+        let st = SyncRuntimeState {
+            last_synced_hash: Some("A".into()),
+            last_synced_content_id: Some("".into()),
+            ..Default::default()
+        };
+        // Empty content_id on both sides → hash decides → B != A → server-new.
+        let snap = get_snap(Some(entry_cid("B", "")), Some("DEV"));
+        assert!(matches!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(_)
+        ));
+    }
+
+    // --- contentId commit watermark ---------------------------------------
+
+    /// Converged learns the server contentId (the §3 primary learning path).
+    #[test]
+    fn commit_converged_learns_content_id() {
+        let mut st = SyncRuntimeState::default();
+        commit_converged(&mut st, "A", Some("blake3v1:C"));
+        assert_eq!(st.last_synced_hash.as_deref(), Some("A"));
+        // opaque: stored verbatim, not uppercased.
+        assert_eq!(st.last_synced_content_id.as_deref(), Some("blake3v1:C"));
+    }
+
+    /// Apply learns the server contentId too.
+    #[test]
+    fn commit_apply_learns_content_id() {
+        let cfg = SyncConfig::default();
+        let mut st = SyncRuntimeState::default();
+        commit_apply(&mut st, Some("A"), Some("blake3v1:C"), NOW, &cfg);
+        assert_eq!(st.last_synced_content_id.as_deref(), Some("blake3v1:C"));
+    }
+
+    /// Push clears the identity watermark (its server contentId is unknown).
+    #[test]
+    fn commit_push_clears_content_id() {
+        let cfg = SyncConfig::default();
+        let mut st = SyncRuntimeState {
+            last_synced_content_id: Some("blake3v1:OLD".into()),
+            ..Default::default()
+        };
+        commit_push(&mut st, Some("NEW"), NOW, &cfg);
+        assert_eq!(st.last_synced_hash.as_deref(), Some("NEW"));
+        assert_eq!(st.last_synced_content_id, None);
+    }
+
+    /// End-to-end: a push clears the stale contentId, so a later GET carrying
+    /// that OLD contentId (on different bytes) does not false-match.
+    #[test]
+    fn push_cleared_content_id_does_not_false_match_next_get() {
+        let cfg = SyncConfig::default();
+        let mut st = SyncRuntimeState {
+            last_synced_content_id: Some("blake3v1:OLD".into()),
+            ..Default::default()
+        };
+        commit_push(&mut st, Some("PUSHED"), NOW, &cfg);
+        // GET: a different content stamped with the OLD contentId. Watermark
+        // contentId is now None → hash decides → B != PUSHED → server-new.
+        let snap = get_snap(Some(entry_cid("B", "blake3v1:OLD")), Some("DEV"));
+        assert!(matches!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(_)
+        ));
+    }
+
+    /// The §10 falsification #2 invariant: a silent-skip push freezes BOTH watermark keys
+    /// (neither hash nor contentId moves).
+    #[test]
+    fn commit_push_silent_skip_freezes_both_watermarks() {
+        let cfg = SyncConfig::default();
+        let mut st = SyncRuntimeState {
+            last_synced_hash: Some("H".into()),
+            last_synced_content_id: Some("blake3v1:C".into()),
+            ..Default::default()
+        };
+        commit_push(&mut st, None, NOW, &cfg);
+        assert_eq!(st.last_synced_hash.as_deref(), Some("H"));
+        assert_eq!(st.last_synced_content_id.as_deref(), Some("blake3v1:C"));
+    }
+
+    // --- contentId staged dedup -------------------------------------------
+
+    /// Stage stores the entry's contentId; a re-encoded entry with the same
+    /// contentId is already staged.
+    #[test]
+    fn staged_dedup_keys_on_content_id() {
+        let mut st = SyncRuntimeState {
+            last_synced_hash: Some("OLD".into()),
+            ..Default::default()
+        };
+        commit_stage(&mut st, &entry_cid("A", "blake3v1:C"));
+        assert_eq!(st.staged_content_id.as_deref(), Some("blake3v1:C"));
+        // server re-encoded (hash B) keeps contentId C → already staged.
+        let snap = get_snap(Some(entry_cid("B", "blake3v1:C")), Some("DEV"));
+        assert_eq!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(ServerNewPlan {
+                already_staged: true,
+                will_apply: true,
+            })
+        );
+    }
+
+    /// A different contentId is NOT already staged.
+    #[test]
+    fn staged_dedup_different_content_id_not_staged() {
+        let mut st = SyncRuntimeState {
+            last_synced_hash: Some("OLD".into()),
+            ..Default::default()
+        };
+        commit_stage(&mut st, &entry_cid("A", "blake3v1:C"));
+        let snap = get_snap(Some(entry_cid("B", "blake3v1:C2")), Some("DEV"));
+        assert_eq!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(ServerNewPlan {
+                already_staged: false,
+                will_apply: true,
+            })
+        );
+    }
+
+    /// Legacy staged fallback: neither side has a contentId → hash decides
+    /// staged-dedup, unchanged from before.
+    #[test]
+    fn staged_dedup_legacy_hash_fallback() {
+        let st = SyncRuntimeState {
+            last_synced_hash: Some("OLD".into()),
+            staged_server_hash: Some("A".into()),
+            staged_entry: Some(entry("A")),
+            ..Default::default()
+        };
+        let snap = get_snap(Some(entry("A")), Some("DEV"));
+        assert_eq!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::ServerNew(ServerNewPlan {
+                already_staged: true,
+                will_apply: true,
+            })
+        );
+    }
+
+    /// Manual apply under auto-apply OFF promotes the staged contentId to the
+    /// synced watermark — the M1 fix. Without it the re-encode dedup would break
+    /// on the manual-apply path.
+    #[test]
+    fn mark_staged_applied_promotes_content_id() {
+        let mut st = SyncRuntimeState {
+            staged_server_hash: Some("A".into()),
+            staged_content_id: Some("blake3v1:C".into()),
+            staged_entry: Some(entry_cid("A", "blake3v1:C")),
+            state: SyncState::HasNewUnwritten,
+            ..Default::default()
+        };
+        assert!(mark_staged_applied(&mut st));
+        assert_eq!(st.last_synced_content_id.as_deref(), Some("blake3v1:C"));
+        assert_eq!(st.staged_content_id, None);
+    }
+
+    // --- contentId cross-process resync fold ------------------------------
+
+    /// Fold provides both keys → they land consistent.
+    #[test]
+    fn preamble_resync_folds_both_watermark_keys() {
+        let mut st = SyncRuntimeState {
+            last_synced_hash: Some("OLD".into()),
+            last_synced_content_id: Some("blake3v1:OLD".into()),
+            ..Default::default()
+        };
+        let snap = PreambleSnapshot {
+            persisted_synced_hash: Some("new".into()),
+            persisted_synced_content_id: Some("blake3v1:NEW".into()),
+            ..preamble_snap()
+        };
+        plan_preamble(&mut st, &snap);
+        assert_eq!(st.last_synced_hash.as_deref(), Some("NEW"));
+        assert_eq!(st.last_synced_content_id.as_deref(), Some("blake3v1:NEW"));
+    }
+
+    /// Share Extension scenario: it wrote a hash but NOT a contentId (push path
+    /// does not know one). The fold clears `last_synced_content_id` rather than
+    /// leaving a stale value, even though only the contentId key changed.
+    #[test]
+    fn preamble_resync_share_extension_clears_content_id() {
+        let mut st = SyncRuntimeState {
+            // hash already matches what the Share Extension persisted...
+            last_synced_hash: Some("SAME".into()),
+            // ...but a stale identity lingers in this process.
+            last_synced_content_id: Some("blake3v1:STALE".into()),
+            ..Default::default()
+        };
+        let snap = PreambleSnapshot {
+            persisted_synced_hash: Some("SAME".into()),
+            persisted_synced_content_id: None,
+            ..preamble_snap()
+        };
+        plan_preamble(&mut st, &snap);
+        assert_eq!(st.last_synced_hash.as_deref(), Some("SAME"));
+        assert_eq!(
+            st.last_synced_content_id, None,
+            "content_id-only drift must still fold (clears the stale identity)"
         );
     }
 }

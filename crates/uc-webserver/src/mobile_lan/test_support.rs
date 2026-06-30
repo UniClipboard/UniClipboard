@@ -227,12 +227,15 @@ pub(crate) async fn build_facade_with_seeded_device(
     .await
     .unwrap();
 
-    // P5a.6:facade 多了 3 个 deps —— `apply_inbound` / `incoming_buffer`
-    // / `snapshot_ports`。webserver 的路由测试只跑 401 / 404 / wire DTO
-    // 校验,从不需要"真捕获 + 真 OS 写"或"真读最近一条 entry",因此这里
-    // 用 NoOp 实现塞过编译。GET 路径下 NoOp entry repo 永远返回空列表,
-    // routes.rs 测试断言 404 即建立在这条事实上。
-    let entry_repo: Arc<dyn ListClipboardEntriesPort> = Arc::new(NoopEntryRepo);
+    // P5a.6: the facade gained 3 extra deps — `apply_inbound` /
+    // `incoming_buffer` / `snapshot_ports`. The webserver route tests only
+    // exercise 401 / 404 / wire-DTO validation and never need a "real capture +
+    // real OS write" or a "real read of the active content", so NoOp impls just
+    // satisfy compilation here. On the GET path the NoOp active register always
+    // returns `load() == None`, which is the fact the routes.rs tests' "no
+    // content" assertion rests on.
+    let entry_repo: Arc<dyn uc_core::ports::clipboard::GetClipboardEntryPort> =
+        Arc::new(NoopEntryRepo);
     let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
         Arc::new(NoopEntryRepo)
             as Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
@@ -259,6 +262,7 @@ pub(crate) async fn build_facade_with_seeded_device(
         incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
         file_staging: NoopFileStaging::new(),
         snapshot_ports: MobileSyncSnapshotPorts {
+            active_register_load: Arc::new(NoopEntryRepo),
             entry_repo,
             selection_repo: Arc::new(NoopSelectionRepo),
             representation_repo: Arc::new(NoopRepRepo),
@@ -295,6 +299,28 @@ impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for NoopEntryRepo 
         &self,
         _snapshot_hash: &str,
     ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
+        Ok(None)
+    }
+}
+
+#[async_trait]
+impl uc_core::ports::clipboard::GetClipboardEntryPort for NoopEntryRepo {
+    async fn get_entry(
+        &self,
+        _entry_id: &EntryId,
+    ) -> Result<Option<ClipboardEntry>, uc_core::clipboard::ClipboardRepositoryError> {
+        Ok(None)
+    }
+}
+
+#[async_trait]
+impl uc_core::ports::clipboard::LoadActiveClipboardPort for NoopEntryRepo {
+    async fn load(
+        &self,
+    ) -> Result<
+        Option<uc_core::clipboard::ActiveClipboardState>,
+        uc_core::ports::clipboard::ActiveClipboardRegisterError,
+    > {
         Ok(None)
     }
 }

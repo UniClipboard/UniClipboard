@@ -221,7 +221,8 @@ pub fn build_mobile_sync_facade(
         incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
         file_staging: FilesystemMobileFileStaging::new(storage_paths.file_cache_dir.clone()),
         snapshot_ports: MobileSyncSnapshotPorts {
-            entry_repo: deps.clipboard.entry_ports.list.clone(),
+            active_register_load: deps.clipboard.active_register_load.clone(),
+            entry_repo: deps.clipboard.entry_ports.get.clone(),
             selection_repo: deps.clipboard.selection_repo.clone(),
             representation_repo: deps.clipboard.representation_ports.get.clone(),
             payload_resolver: deps.clipboard.payload_resolver.clone(),

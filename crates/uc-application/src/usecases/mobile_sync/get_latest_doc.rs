@@ -143,6 +143,11 @@ impl GetLatestMobileSyncDocUseCase {
             has_data,
             size,
             hash: Some(hash),
+            // Stable cross-device identity taken straight from the active
+            // register's current value (read alongside `rep`); complements the
+            // byte-dependent `hash` above: a re-encode changes `hash` but not
+            // `content_id`.
+            content_id: Some(rep.snapshot_hash.clone()),
         })
     }
 }
@@ -212,6 +217,7 @@ mod tests {
     ) -> LatestPasteRepresentation {
         LatestPasteRepresentation {
             entry_id: EntryId::from(entry_id),
+            snapshot_hash: "blake3v1:test".to_string(),
             format_id: FormatId::from(format_id),
             mime: mime.map(|s| MimeType(s.to_string())),
             bytes,
@@ -244,6 +250,8 @@ mod tests {
             meta.hash.as_deref(),
             Some("2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824")
         );
+        // 稳定身份直接透传自 rep.snapshot_hash,序列化成 wire `contentId`。
+        assert_eq!(meta.content_id.as_deref(), Some("blake3v1:test"));
     }
 
     #[tokio::test]

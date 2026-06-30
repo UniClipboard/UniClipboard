@@ -283,9 +283,14 @@ impl From<LoopGuardEvent> for ProtoLoopGuardEvent {
 pub struct SyncRuntimeState {
     pub state: SyncState,
     pub last_synced_hash: Option<String>,
+    /// Opaque cross-device identity of the synced content (`blake3v1:<hex>`),
+    /// written/cleared in lock-step with `last_synced_hash`.
+    pub last_synced_content_id: Option<String>,
     pub last_applied_hash: Option<String>,
     pub loop_events: Vec<LoopGuardEvent>,
     pub staged_server_hash: Option<String>,
+    /// The staged entry's `contentId`, written/cleared with the staged slot.
+    pub staged_content_id: Option<String>,
     pub staged_entry: Option<ClipboardMeta>,
     pub consecutive_failures: i64,
     pub next_attempt_ms: Option<i64>,
@@ -297,9 +302,11 @@ impl From<se::SyncRuntimeState> for SyncRuntimeState {
         Self {
             state: s.state.into(),
             last_synced_hash: s.last_synced_hash,
+            last_synced_content_id: s.last_synced_content_id,
             last_applied_hash: s.last_applied_hash,
             loop_events: s.loop_events.into_iter().map(Into::into).collect(),
             staged_server_hash: s.staged_server_hash,
+            staged_content_id: s.staged_content_id,
             staged_entry: s.staged_entry.map(ClipboardMeta::from_proto),
             consecutive_failures: s.consecutive_failures,
             next_attempt_ms: s.next_attempt_ms,
@@ -313,9 +320,11 @@ impl From<SyncRuntimeState> for se::SyncRuntimeState {
         Self {
             state: s.state.into(),
             last_synced_hash: s.last_synced_hash,
+            last_synced_content_id: s.last_synced_content_id,
             last_applied_hash: s.last_applied_hash,
             loop_events: s.loop_events.into_iter().map(Into::into).collect(),
             staged_server_hash: s.staged_server_hash,
+            staged_content_id: s.staged_content_id,
             staged_entry: s.staged_entry.map(ClipboardMeta::into_proto),
             consecutive_failures: s.consecutive_failures,
             next_attempt_ms: s.next_attempt_ms,
@@ -334,6 +343,9 @@ pub struct PreambleSnapshot {
     pub device_hash: Option<String>,
     pub history_head_hash: Option<String>,
     pub persisted_synced_hash: Option<String>,
+    /// Cross-process companion of `persisted_synced_hash`; the Share Extension
+    /// push path writes this ABSENT (`None`), not stale-carried.
+    pub persisted_synced_content_id: Option<String>,
     pub now_ms: i64,
 }
 
@@ -346,6 +358,7 @@ impl From<PreambleSnapshot> for se::PreambleSnapshot {
             device_hash: s.device_hash,
             history_head_hash: s.history_head_hash,
             persisted_synced_hash: s.persisted_synced_hash,
+            persisted_synced_content_id: s.persisted_synced_content_id,
             now_ms: s.now_ms,
         }
     }
@@ -514,23 +527,38 @@ pub fn plan_after_server_get(state: SyncRuntimeState, snap: ServerGetSnapshot) -
 // ===========================================================================
 
 /// Truth-gate commit: repair watermark, mark applied, clear staged, succeed.
+/// `server_content_id` is the server entry's identity (the primary learning
+/// path); pass `None` for a legacy server. FFI-breaking signature change.
 #[uniffi::export]
-pub fn commit_converged(state: SyncRuntimeState, server_hash: String) -> SyncRuntimeState {
+pub fn commit_converged(
+    state: SyncRuntimeState,
+    server_hash: String,
+    server_content_id: Option<String>,
+) -> SyncRuntimeState {
     let mut st: se::SyncRuntimeState = state.into();
-    se::commit_converged(&mut st, &server_hash);
+    se::commit_converged(&mut st, &server_hash, server_content_id.as_deref());
     st.into()
 }
 
-/// Apply commit: a server entry was written to the pasteboard.
+/// Apply commit: a server entry was written to the pasteboard. `content_id` is
+/// the applied server entry's identity (`None` for a legacy server).
+/// FFI-breaking signature change.
 #[uniffi::export]
 pub fn commit_apply(
     state: SyncRuntimeState,
     hash: Option<String>,
+    content_id: Option<String>,
     now_ms: i64,
     cfg: SyncConfig,
 ) -> CommitStep {
     let mut st: se::SyncRuntimeState = state.into();
-    let outcome = se::commit_apply(&mut st, hash.as_deref(), now_ms, &cfg.into());
+    let outcome = se::commit_apply(
+        &mut st,
+        hash.as_deref(),
+        content_id.as_deref(),
+        now_ms,
+        &cfg.into(),
+    );
     CommitStep {
         state: st.into(),
         outcome: outcome.into(),
@@ -734,6 +762,7 @@ mod tests {
             has_data: false,
             size: 2,
             hash: Some(hash.into()),
+            content_id: None,
         }
     }
 
@@ -781,6 +810,7 @@ mod tests {
         let st = SyncRuntimeState {
             state: SyncState::HasNewUnwritten,
             last_synced_hash: Some("AA".into()),
+            last_synced_content_id: Some("blake3v1:C".into()),
             last_applied_hash: None,
             loop_events: vec![LoopGuardEvent {
                 hash: "BB".into(),
@@ -788,6 +818,7 @@ mod tests {
                 at_millis: 123,
             }],
             staged_server_hash: Some("CC".into()),
+            staged_content_id: Some("blake3v1:CC".into()),
             staged_entry: Some(meta("CC")),
             consecutive_failures: 2,
             next_attempt_ms: Some(9_000),
@@ -881,6 +912,7 @@ mod tests {
             device_hash: Some("NEW".into()),
             history_head_hash: None,
             persisted_synced_hash: None,
+            persisted_synced_content_id: None,
             now_ms: 1_000,
         };
         let step = plan_preamble(st, snap);
@@ -898,6 +930,7 @@ mod tests {
             device_hash: None,
             history_head_hash: None,
             persisted_synced_hash: None,
+            persisted_synced_content_id: None,
             now_ms: 0,
         };
         let step = plan_preamble(st, snap);
@@ -915,9 +948,11 @@ mod tests {
     #[test]
     fn commit_converged_advances_and_succeeds() {
         let st = default_sync_runtime_state();
-        let out = commit_converged(st, "bb".into());
+        let out = commit_converged(st, "bb".into(), Some("blake3v1:C".into()));
         assert_eq!(out.last_synced_hash.as_deref(), Some("BB"));
         assert_eq!(out.last_applied_hash.as_deref(), Some("BB"));
+        // Learned the server identity, stored verbatim across the FFI.
+        assert_eq!(out.last_synced_content_id.as_deref(), Some("blake3v1:C"));
         assert!(out.staged_server_hash.is_none());
         assert_eq!(out.state, SyncState::Succeeded);
     }
@@ -925,9 +960,19 @@ mod tests {
     #[test]
     fn commit_apply_single_event_does_not_trip() {
         let st = default_sync_runtime_state();
-        let step = commit_apply(st, Some("dd".into()), 1_000, default_sync_config());
+        let step = commit_apply(
+            st,
+            Some("dd".into()),
+            Some("blake3v1:C".into()),
+            1_000,
+            default_sync_config(),
+        );
         assert!(!step.outcome.tripped);
         assert_eq!(step.state.last_synced_hash.as_deref(), Some("DD"));
+        assert_eq!(
+            step.state.last_synced_content_id.as_deref(),
+            Some("blake3v1:C")
+        );
         assert_eq!(step.state.state, SyncState::Succeeded);
         assert_eq!(step.state.loop_events.len(), 1);
     }

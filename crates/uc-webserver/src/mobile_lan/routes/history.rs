@@ -310,6 +310,7 @@ mod tests {
             has_data: true,
             size: 1184433,
             hash: Some("SERVER_RECOMPUTED_HASH".to_string()),
+            content_id: None,
         };
 
         assert!(current_profile_meta_matches_request(
@@ -513,6 +514,10 @@ pub(super) async fn post_history_record(
                 has_data: true,
                 size,
                 hash: Some(hash),
+                // Inbound history is persisted via put_sync_doc; content_id is
+                // assigned by the daemon at store time and is NOT trusted from
+                // the client on inbound.
+                content_id: None,
             };
             facade
                 .put_sync_doc(meta, authed.device.device_id)
@@ -531,6 +536,9 @@ pub(super) async fn post_history_record(
                 has_data,
                 size: record.size,
                 hash: Some(hash),
+                // Same as above: content_id is the daemon's authority and is
+                // NOT trusted from the client on inbound.
+                content_id: None,
             };
             facade
                 .put_sync_doc(meta, authed.device.device_id)

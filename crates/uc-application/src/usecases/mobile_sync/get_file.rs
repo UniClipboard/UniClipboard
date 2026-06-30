@@ -318,6 +318,7 @@ mod tests {
     ) -> LatestPasteRepresentation {
         LatestPasteRepresentation {
             entry_id: EntryId::from(entry_id),
+            snapshot_hash: "blake3v1:test".to_string(),
             format_id: FormatId::from(format_id),
             mime: mime.map(|s| MimeType(s.to_string())),
             bytes,

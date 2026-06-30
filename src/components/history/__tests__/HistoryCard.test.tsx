@@ -81,6 +81,24 @@ describe('HistoryCard', () => {
     expect(screen.getByText('code')).toBeInTheDocument()
   })
 
+  it('keeps the rich text label when a content tag is present', () => {
+    renderCard({
+      id: 'richtext-entry',
+      type: 'richtext',
+      content: {
+        display_text: 'https://example.com/article',
+        has_detail: false,
+        size: 28,
+      },
+      activeTime: 1,
+      contentTags: ['link'],
+    } as DisplayClipboardItem)
+
+    expect(screen.getByText('richtext')).toBeInTheDocument()
+    expect(screen.getByText('link')).toBeInTheDocument()
+    expect(screen.queryByText('text')).not.toBeInTheDocument()
+  })
+
   it('shows links as text cards with a link tag', () => {
     renderCard({
       id: 'link-entry',

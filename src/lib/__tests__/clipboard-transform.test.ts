@@ -116,6 +116,18 @@ describe('projectClipboardEntry', () => {
     expect(entry.contentTags).toEqual(['code'])
   })
 
+  it('surfaces the other physical category as unknown, not text', () => {
+    const entry = projectClipboardEntry(
+      makeDto({
+        preview: 'opaque payload',
+        contentType: 'other',
+      })
+    )
+
+    expect(entry.type).toBe('unknown')
+    expect(entry.contentTags).toBeUndefined()
+  })
+
   it('projects rich text entries without the code tag', () => {
     const entry = projectClipboardEntry(
       makeDto({

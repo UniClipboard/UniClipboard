@@ -47,6 +47,12 @@ export interface ClipboardEntryDto {
   hasDetail: boolean
   sizeBytes: number
   capturedAt: number
+  /**
+   * Persisted physical content category label — one of `text` | `image` |
+   * `file` | `rich_text` | `other` (the daemon's `content_category`, not a
+   * representation MIME). The display projection keys off this label; see
+   * `isFileContentType` / `isImageContentType` / `isRichTextContentType`.
+   */
   contentType: string
   thumbnailUrl: string | null
   isEncrypted: boolean

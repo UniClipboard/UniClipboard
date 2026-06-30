@@ -194,10 +194,15 @@ export function isImageFileName(name: string): boolean {
 }
 
 /**
- * Check whether a MIME content type represents a file (URI list).
+ * Check whether a content type represents a file.
+ *
+ * Accepts the daemon's persisted category label (`file`) as well as the
+ * legacy representation MIME (`text/uri-list`) so both the list/event
+ * projection (which now carries `content_category`) and any residual
+ * MIME-shaped caller resolve correctly.
  */
 export function isFileContentType(contentType: string): boolean {
-  return contentType.includes('uri-list')
+  return contentType === 'file' || contentType.includes('uri-list')
 }
 
 export function getItemPreview(entry: ClipboardEntry): string {

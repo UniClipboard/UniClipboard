@@ -18,7 +18,7 @@ const CodePreview: React.FC<CodePreviewProps> = ({ item, preview }) => {
         <div className="pointer-events-none absolute inset-0 rounded-xl bg-primary/5 opacity-0 blur-xl transition-opacity group-hover:opacity-100" />
         {/* Single scroll container: vertical scroll grows the whole grid, horizontal
             scroll slides the code while the sticky gutter stays pinned at left. */}
-        <div className="relative h-full overflow-auto rounded-xl border border-white/5 bg-[#0d1117] font-mono text-[13px] leading-relaxed text-blue-100/90 shadow-2xl">
+        <div className="scrollbar-code relative h-full overflow-auto rounded-xl border border-white/5 bg-[#0d1117] font-mono text-[13px] leading-relaxed text-blue-100/90 shadow-2xl">
           <div className="flex w-max min-w-full">
             <div
               aria-hidden

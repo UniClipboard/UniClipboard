@@ -87,6 +87,30 @@ impl TestDaemon {
         Ok(daemon)
     }
 
+    /// Restart the same profile without deleting its data/cache directories.
+    ///
+    /// Most tests should use [`Self::start`], which begins from a clean profile.
+    /// This is for flows that intentionally stop the daemon, mutate the same
+    /// profile out-of-process, then need the daemon client path to observe that
+    /// existing state.
+    pub async fn restart(&mut self) -> Result<(), String> {
+        self.kill();
+
+        let binary = Self::binary_path();
+        let mut command = Command::new(&binary);
+        command
+            .env("UC_PROFILE", &self.profile.name)
+            .env("RUST_LOG", "warn")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        let child = command.spawn().map_err(|e| format!("spawn failed: {e}"))?;
+        self.child = Some(child);
+        self.wait_healthy(Duration::from_secs(30)).await?;
+        self.wait_for_token(Duration::from_secs(10)).await?;
+        Ok(())
+    }
+
     /// Poll the daemon's health endpoint until it responds 200, or timeout.
     pub async fn wait_healthy(&mut self, timeout: Duration) -> Result<(), String> {
         let url = format!("http://127.0.0.1:{}/health", self.port);

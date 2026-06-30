@@ -2,8 +2,8 @@
 //!
 //! `dev seed-clipboard` requires the daemon to be stopped because it opens an
 //! in-process application session over the same profile. Search runs through
-//! the daemon client path, so each test seeds first, then lets `search` spawn
-//! or reuse a daemon for querying.
+//! the daemon client path, so this test seeds first, then restarts the daemon
+//! over the same profile for querying.
 
 use serde_json::Value;
 use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
@@ -42,6 +42,41 @@ fn search_json(cli: &TestCli, args: &[&str]) -> Value {
     );
     serde_json::from_str(out.stdout.trim())
         .unwrap_or_else(|e| panic!("search output was not JSON: {e}\nstdout={}", out.stdout))
+}
+
+fn wait_for_search_ready(cli: &TestCli) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+
+    loop {
+        let out = cli.run_capture(&["--json", "search", "status"]);
+        assert!(
+            out.success(),
+            "search status failed (exit={}): stdout={}, stderr={}",
+            out.exit_code,
+            out.stdout,
+            out.stderr
+        );
+        let status: Value = serde_json::from_str(out.stdout.trim()).unwrap_or_else(|e| {
+            panic!(
+                "search status output was not JSON: {e}\nstdout={}",
+                out.stdout
+            )
+        });
+        if status
+            .get("state")
+            .and_then(Value::as_str)
+            .is_some_and(|state| state == "ready")
+        {
+            return;
+        }
+
+        assert!(
+            std::time::Instant::now() < deadline,
+            "search index did not become ready; last status: {}",
+            out.stdout
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
 }
 
 fn result_items(page: &Value) -> &[Value] {
@@ -92,51 +127,42 @@ async fn initialized_cli_for_seed(test_name: &str) -> (TestDaemon, TestCli) {
 
 #[tokio::test]
 #[ignore]
-async fn search_type_text_matches_seeded_text_and_type_image_does_not() {
-    let (_profile_guard, cli) = initialized_cli_for_seed("search-filter-type").await;
-    let entry_id = seed_entry(&cli, "plain text search filter seed");
-
-    let text_page = search_json(&cli, &["--type", "text"]);
-    assert!(
-        contains_entry(&text_page, &entry_id),
-        "text filter should return seeded entry {entry_id}: {text_page}"
-    );
-    assert_eq!(content_type_for(&text_page, &entry_id), Some("text"));
-
-    let image_page = search_json(&cli, &["--type", "image"]);
-    assert!(
-        !contains_entry(&image_page, &entry_id),
-        "image filter should not return text entry {entry_id}: {image_page}"
-    );
-}
-
-#[tokio::test]
-#[ignore]
-async fn search_tag_link_matches_seeded_url_text() {
-    let (_profile_guard, cli) = initialized_cli_for_seed("search-filter-link").await;
-    let entry_id = seed_entry(&cli, "link seed https://example.com/uniclip-e2e");
-
-    let page = search_json(&cli, &["--tag", "link"]);
-    assert!(
-        contains_entry(&page, &entry_id),
-        "link tag should return seeded URL entry {entry_id}: {page}"
-    );
-    assert_eq!(content_type_for(&page, &entry_id), Some("text"));
-}
-
-#[tokio::test]
-#[ignore]
-async fn search_tag_code_matches_seeded_code_like_text() {
-    let (_profile_guard, cli) = initialized_cli_for_seed("search-filter-code").await;
-    let entry_id = seed_entry(
+async fn seeded_entries_support_type_and_tag_search_filters() {
+    let (mut daemon, cli) = initialized_cli_for_seed("search-filters").await;
+    let text_entry_id = seed_entry(&cli, "plain text search filter seed");
+    let link_entry_id = seed_entry(&cli, "https://example.com/uniclip-e2e");
+    let code_entry_id = seed_entry(
         &cli,
         "function greet(name) {\n  return `hello ${name}`;\n}",
     );
 
-    let page = search_json(&cli, &["--tag", "code"]);
+    daemon.restart().await.expect("daemon restart after seed");
+    wait_for_search_ready(&cli);
+
+    let text_page = search_json(&cli, &["--type", "text"]);
     assert!(
-        contains_entry(&page, &entry_id),
-        "code tag should return seeded code entry {entry_id}: {page}"
+        contains_entry(&text_page, &text_entry_id),
+        "text filter should return seeded entry {text_entry_id}: {text_page}"
     );
-    assert_eq!(content_type_for(&page, &entry_id), Some("text"));
+    assert_eq!(content_type_for(&text_page, &text_entry_id), Some("text"));
+
+    let image_page = search_json(&cli, &["--type", "image"]);
+    assert!(
+        !contains_entry(&image_page, &text_entry_id),
+        "image filter should not return text entry {text_entry_id}: {image_page}"
+    );
+
+    let link_page = search_json(&cli, &["--tag", "link"]);
+    assert!(
+        contains_entry(&link_page, &link_entry_id),
+        "link tag should return seeded URL entry {link_entry_id}: {link_page}"
+    );
+    assert_eq!(content_type_for(&link_page, &link_entry_id), Some("text"));
+
+    let code_page = search_json(&cli, &["--tag", "code"]);
+    assert!(
+        contains_entry(&code_page, &code_entry_id),
+        "code tag should return seeded code entry {code_entry_id}: {code_page}"
+    );
+    assert_eq!(content_type_for(&code_page, &code_entry_id), Some("text"));
 }

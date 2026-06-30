@@ -574,6 +574,7 @@
         "version": "版本 {{version}}",
         "checkUpdate": "检查更新",
         "checkingUpdate": "正在检查...",
+        "updatesTitle": "更新",
         "autoCheckUpdate": {
           "label": "自动检查更新",
           "description": "应用启动时自动检查是否有新版本"
@@ -597,6 +598,13 @@
             "cancel": "取消",
             "confirm": "继续切换"
           }
+        },
+        "sponsors": {
+          "title": "赞助者",
+          "thanks": "感谢以下朋友的赞助支持，让 UniClipboard 持续向前。",
+          "goldBadge": "金牌",
+          "becomeSponsor": "成为赞助者 →",
+          "githubStar": "去 GitHub 点 Star →"
         },
         "copyright": "© 2025 UniClipboard Team. All rights reserved.",
         "links": {

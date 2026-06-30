@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { fetchSponsors } from '@/api/sponsors'
 import AboutSection from '@/components/setting/AboutSection'
 import { SettingContext } from '@/contexts/setting-context'
 import { UpdateContext } from '@/contexts/update-context'
@@ -19,6 +20,12 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/hooks/useShortcutLayer', () => ({
   useShortcutLayer: vi.fn(),
 }))
+
+vi.mock('@/api/sponsors', () => ({
+  fetchSponsors: vi.fn(() => new Promise(() => undefined)),
+}))
+
+const mockFetchSponsors = vi.mocked(fetchSponsors)
 
 beforeAll(() => {
   if (!HTMLElement.prototype.hasPointerCapture) {
@@ -247,7 +254,34 @@ describe('AboutSection', () => {
 
     expect(checkButton).toBeDisabled()
     expect(checkButton).toHaveAttribute('aria-busy', 'true')
+    expect(checkButton).toHaveClass('w-44')
+    expect(checkButton).toHaveClass('transition-colors')
+    expect(checkButton).not.toHaveClass('transition-all')
+    expect(checkButton).toHaveTextContent('settings.sections.about.checkingUpdate')
+    expect(checkButton).not.toHaveTextContent('settings.sections.about.checkUpdate')
     expect(container.querySelector('.animate-spin')).toBeTruthy()
+  })
+
+  it('shows sponsor and GitHub star actions in the sponsors group', async () => {
+    mockFetchSponsors.mockResolvedValueOnce([
+      {
+        id: 'sponsor-1',
+        name: 'Ada Lovelace',
+        tier: 'regular',
+      },
+    ])
+
+    renderAboutSection()
+
+    const sponsorLink = await screen.findByRole('link', {
+      name: 'settings.sections.about.sponsors.becomeSponsor',
+    })
+    const starLink = screen.getByRole('link', {
+      name: 'settings.sections.about.sponsors.githubStar',
+    })
+
+    expect(sponsorLink).toHaveAttribute('href', 'https://afdian.com/a/mkdir700')
+    expect(starLink).toHaveAttribute('href', 'https://github.com/UniClipboard/UniClipboard')
   })
 
   it('checks the newly selected channel immediately after saving it', async () => {

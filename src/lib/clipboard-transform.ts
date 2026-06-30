@@ -63,7 +63,10 @@ export function projectClipboardEntry(dto: ClipboardEntryDto): ClipboardEntry {
       dto.linkDomains
     )
   } else {
-    type = 'text'
+    // Backend physical category `other` has no display type of its own;
+    // surface it as `unknown` rather than masquerading as `text` (mirrors
+    // searchContentTypeToDisplayType's default for `other`).
+    type = dto.contentType.toLowerCase() === 'other' ? 'unknown' : 'text'
     content = withLinkMetadata(
       {
         display_text: dto.preview,

@@ -47,7 +47,7 @@ function HistoryCardHeader({
 }: HistoryCardHeaderProps) {
   const { t } = useTranslation()
   const { isFileType, isFavorited, isUnavailable, isTransferring, isPending } = state
-  const headerType = item.contentTags?.length ? 'text' : item.type
+  const headerType = item.type
   const color = TYPE_COLOR[headerType] ?? TYPE_COLOR.unknown
   const TypeIcon = TYPE_ICONS[headerType] ?? FileText
   const sizeLabel = useMemo(() => getContentSizeLabel(item, t), [item, t])
@@ -73,10 +73,7 @@ function HistoryCardHeader({
         className={cn('text-[10.5px] font-medium', isPending && 'opacity-50')}
         style={{ color }}
       >
-        {codeLanguage ??
-          (item.contentTags?.length
-            ? t('history.type.text', 'text')
-            : t(`history.type.${item.type}`, item.type))}
+        {codeLanguage ?? t(`history.type.${item.type}`, item.type)}
       </span>
 
       {item.contentTags?.map(tag => (

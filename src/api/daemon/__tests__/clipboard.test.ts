@@ -71,7 +71,9 @@ describe('ClipboardEntryDto type', () => {
       hasDetail: true,
       sizeBytes: 19,
       capturedAt: 1710000000000,
-      contentType: 'text/uri-list',
+      // Links are the `text` category plus a derived `link` tag, not a
+      // physical category of their own.
+      contentType: 'text',
       thumbnailUrl: null,
       isEncrypted: false,
       isFavorited: true,
@@ -95,7 +97,7 @@ describe('ClipboardEntryDto type', () => {
       hasDetail: true,
       sizeBytes: 102400,
       capturedAt: 1710000000000,
-      contentType: 'text/uri-list',
+      contentType: 'file',
       thumbnailUrl: null,
       isEncrypted: false,
       isFavorited: false,

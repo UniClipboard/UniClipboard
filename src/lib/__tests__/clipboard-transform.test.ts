@@ -65,10 +65,13 @@ describe('projectClipboardEntry', () => {
   })
 
   it('parses file URI lists, keeping per-file missing flags', () => {
+    // The daemon list projection carries the persisted content category
+    // (`file`), not a representation MIME, so the file branch must key off
+    // that label rather than the legacy `text/uri-list` string.
     const entry = projectClipboardEntry(
       makeDto({
         preview: 'file:///tmp/report.pdf\nuniclip-missing:///lost.bin?size=42',
-        contentType: 'text/uri-list',
+        contentType: 'file',
         fileSizes: [100, 42],
       })
     )

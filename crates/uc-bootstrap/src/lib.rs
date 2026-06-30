@@ -23,9 +23,9 @@ pub use subsystem::analytics::compose_event_context;
 
 pub use entrypoint::daemon::{build_daemon_lifecycle, DaemonLifecycle};
 pub use entrypoint::non_gui::{
-    build_app_facade_from_deps, build_cli_app_runtime, build_mobile_sync_facade,
-    resolve_clipboard_integration_mode, AppFacadeAssemblyOptions, CliAppRuntime,
-    ClipboardRestoreAssembly,
+    build_app_facade_from_deps, build_cli_app_runtime, build_cli_local_app_runtime,
+    build_mobile_sync_facade, resolve_clipboard_integration_mode, AppFacadeAssemblyOptions,
+    CliAppRuntime, ClipboardRestoreAssembly,
 };
 pub use layer::paths::get_storage_paths;
 pub use layer::platform::SystemClipboardWiring;

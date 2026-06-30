@@ -89,6 +89,26 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
     }
 }
 
+#[cfg(feature = "dev-tools")]
+pub async fn build_local_app_session(verbose: bool) -> Result<CliAppSession, i32> {
+    // Must be set before bootstrap wiring so CLI processes do not touch the
+    // system clipboard adapter.
+    std::env::set_var("UC_DISABLE_SYSTEM_CLIPBOARD", "1");
+
+    let log_profile = if verbose {
+        Some(uc_observability::LogProfile::Dev)
+    } else {
+        Some(uc_observability::LogProfile::Cli)
+    };
+    match uc_bootstrap::build_cli_local_app_runtime(log_profile).await {
+        Ok(runtime) => Ok(CliAppSession { runtime }),
+        Err(err) => {
+            ui::error(&format!("Failed to wire dependencies: {err}"));
+            Err(exit_codes::EXIT_ERROR)
+        }
+    }
+}
+
 // ── Daemon-client session (always available) ──────────────────────────
 
 /// ADR-008 P5-1a: connect to a running compatible daemon, or spawn a transient

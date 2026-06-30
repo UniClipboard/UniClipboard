@@ -1,16 +1,19 @@
-//! `uniclip dev seed-clipboard` —— 调试 / E2E 测试用：往本地 SQLite 落一条
-//! 文本剪贴板条目（用当前 session master_key 加密）。
+//! `uniclip dev seed-clipboard` inserts one text clipboard entry into the
+//! local SQLite store for diagnostics and E2E tests. The payload is encrypted
+//! with the current session master key.
 //!
-//! 与生产路径 `CaptureClipboardUseCase` 不同——不走 normalization /
-//! representation policy / spool 这些链路；只需要"一条已加密的剪贴板
-//! 历史"作为 switch-space 数据完整性测试的种子。
+//! Unlike the production `CaptureClipboardUseCase` path, this command does not
+//! run normalization, representation policy, or spool processing. It only needs
+//! one encrypted clipboard-history row as deterministic test data.
 //!
-//! 必须先 init 或 join 过（session 要被 keyring 静默解锁），否则
-//! `try_resume_session` 会返回 false。
+//! The profile must already be initialized or joined, and secure storage must
+//! be able to silently unlock the session.
 
-use uc_application::facade::space_setup::TryResumeSessionError;
+use uc_application::facade::EncryptionFacadeError;
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
+use crate::commands::app_session::{
+    build_local_app_session, refuse_if_daemon_running, CliAppSession,
+};
 use crate::exit_codes;
 use crate::ui;
 
@@ -25,31 +28,31 @@ pub async fn run(args: SeedClipboardArgs, verbose: bool) -> i32 {
         return code;
     }
 
-    let bundle = match build_app_session(verbose).await {
+    let bundle = match build_local_app_session(verbose).await {
         Ok(b) => b,
         Err(code) => return code,
     };
 
-    // seed 走 EncryptingClipboardEventWriter，要求 session 已解锁。
-    match bundle.app_facade().try_resume_session().await {
+    // Seeding uses EncryptingClipboardEventWriter, so the local session must be unlocked.
+    match bundle.app_facade().encryption.unlock().await {
         Ok(true) => {}
         Ok(false) => {
             ui::error("This device is not set up yet. Use `uniclip init` or `uniclip join` first.");
             shutdown_seed_session(bundle).await;
             return exit_codes::EXIT_ERROR;
         }
-        Err(TryResumeSessionError::CorruptedKeyMaterial) => {
-            ui::error("Key material is corrupted — consider resetting this profile.");
-            shutdown_seed_session(bundle).await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::KeyringMiss) => {
-            ui::error("Keychain cannot silently unlock this space.");
-            shutdown_seed_session(bundle).await;
-            return exit_codes::EXIT_ERROR;
-        }
-        Err(TryResumeSessionError::Internal(msg)) => {
+        Err(EncryptionFacadeError::SetupStatus(msg)) => {
             ui::error(&format!("Resume failed: {msg}"));
+            shutdown_seed_session(bundle).await;
+            return exit_codes::EXIT_ERROR;
+        }
+        Err(EncryptionFacadeError::SpaceAccess(msg)) => {
+            ui::error(&format!("Resume failed: {msg}"));
+            shutdown_seed_session(bundle).await;
+            return exit_codes::EXIT_ERROR;
+        }
+        Err(EncryptionFacadeError::AlreadyInitialized) => {
+            ui::error("Resume failed: encryption is already initialized.");
             shutdown_seed_session(bundle).await;
             return exit_codes::EXIT_ERROR;
         }

@@ -493,6 +493,49 @@ impl CliAppRuntime {
     }
 }
 
+/// Build a CLI runtime without starting the iroh network stack.
+///
+/// This is for dev-tools commands that only need local SQLite, encryption, and
+/// search ports. It reuses the shared [`build_app_facade_from_deps`] assembly
+/// but deliberately skips [`SyncEngineAssembly`], so short-lived local data
+/// commands do not start the P2P router.
+pub async fn build_cli_local_app_runtime(
+    log_profile: Option<uc_observability::LogProfile>,
+) -> anyhow::Result<CliAppRuntime> {
+    let (config, wired) = crate::entrypoint::cli::build_cli_wiring_context(log_profile).await?;
+    let storage_paths = get_storage_paths(&config)?;
+    let deps = &wired.deps;
+
+    let lifecycle_status: Arc<dyn LifecycleStatusGateway> =
+        Arc::new(InMemoryLifecycleStatus::new());
+    let search_coordinator = Arc::new(SearchCoordinator::new(SearchCoordinatorDeps::new(
+        deps.search.search_index.clone(),
+        deps.search.search_key_derivation.clone(),
+        deps.search.search_pipeline.clone(),
+        deps.clipboard.entry_ports.list.clone(),
+        deps.clipboard.representation_ports.list_for_event.clone(),
+        deps.clipboard.selection_repo.clone(),
+        deps.clipboard.clipboard_event_reader_repo.clone(),
+    )));
+    let mobile_sync_apply_inbound = build_fallback_apply_inbound(deps);
+
+    let app_facade = build_app_facade_from_deps(
+        deps,
+        &storage_paths,
+        lifecycle_status,
+        AppFacadeAssemblyOptions {
+            search_coordinator: Some(search_coordinator),
+            mobile_sync_apply_inbound: Some(mobile_sync_apply_inbound),
+            ..Default::default()
+        },
+    );
+
+    Ok(CliAppRuntime {
+        app_facade,
+        sync_engine_assembly: None,
+    })
+}
+
 /// 构造完整 CLI runtime。适用于 pairing / roster / send / watch / blob 等
 /// 需要 iroh 网络栈的独立 CLI 命令。
 pub async fn build_cli_app_runtime(

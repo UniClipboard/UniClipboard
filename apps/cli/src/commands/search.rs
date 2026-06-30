@@ -8,7 +8,7 @@ use crate::exit_codes;
 use crate::output;
 use crate::ui;
 
-use uc_daemon_client::{DaemonRequestError, SearchQueryRequest};
+use uc_daemon_client::{DaemonClientContext, DaemonRequestError, SearchQueryRequest};
 use uc_daemon_contract::api::dto::search::{
     SearchQueryResultDto, SearchResultDto, SearchStatusData,
 };
@@ -39,6 +39,11 @@ pub struct SearchQueryArgs {
     /// Filter by file extension, for example md or txt; repeatable
     #[arg(long = "ext")]
     extensions: Vec<String>,
+    /// Filter by source device — the device a clip arrived from. Accepts a
+    /// device name (case-insensitive) or a device id; repeatable. Run
+    /// `uniclip members` to see paired device names.
+    #[arg(long = "source-device")]
+    source_devices: Vec<String>,
     /// Maximum results to return
     #[arg(long, default_value_t = 50)]
     limit: u32,
@@ -72,6 +77,14 @@ pub async fn run(
 
     match subcommand {
         None => {
+            // Resolve `--source-device` names/ids to canonical device ids before
+            // anything else, so an unknown device fails fast (and a filter-only
+            // browse by source still counts as a filter below).
+            let source_devices = match resolve_source_devices(&ctx, &query.source_devices).await {
+                Ok(ids) => ids,
+                Err(code) => return code,
+            };
+
             // An empty query browses; a filter alone (e.g. `--tag favorited`) is
             // enough to narrow it. Only a bare `search` with no query and no
             // filter is rejected, so the user is still guided to a query or the
@@ -79,6 +92,7 @@ pub async fn run(
             let has_filter = !query.tags.is_empty()
                 || !query.content_types.is_empty()
                 || !query.extensions.is_empty()
+                || !source_devices.is_empty()
                 || query.from_ms.is_some()
                 || query.to_ms.is_some();
             let query_string = match query.query {
@@ -106,6 +120,7 @@ pub async fn run(
                 content_types: query.content_types,
                 tags: query.tags,
                 extensions: query.extensions,
+                source_devices,
                 limit: query.limit,
                 offset: query.offset,
             };
@@ -205,6 +220,155 @@ fn render_rebuild_locked_message() -> &'static str {
     "Search is unavailable while the encryption session is locked. Unlock first, or run `uniclip status` to inspect application state."
 }
 
+/// A device that clips can arrive from: its display name and the canonical id
+/// the search index stores. Built from the daemon's roster + mobile devices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SourceDeviceEntry {
+    id: String,
+    name: String,
+}
+
+/// Resolution failure for a single `--source-device` value.
+#[derive(Debug, PartialEq, Eq)]
+enum SourceResolveError {
+    /// No device name or id matched the input.
+    Unknown(String),
+    /// The input name matched more than one device; the user must use an id.
+    Ambiguous { input: String, ids: Vec<String> },
+}
+
+/// Resolve `--source-device` inputs (a device name or id) to canonical device
+/// ids against a known directory. Name matching is case-insensitive; an exact
+/// id is also accepted. Pure so it can be unit-tested without a daemon.
+fn resolve_source_inputs(
+    inputs: &[String],
+    directory: &[SourceDeviceEntry],
+) -> Result<Vec<String>, SourceResolveError> {
+    let mut resolved: Vec<String> = Vec::new();
+    for input in inputs {
+        let needle = input.to_lowercase();
+        let mut name_ids: Vec<String> = directory
+            .iter()
+            .filter(|e| e.name.to_lowercase() == needle)
+            .map(|e| e.id.clone())
+            .collect();
+        name_ids.sort();
+        name_ids.dedup();
+
+        let id = match name_ids.as_slice() {
+            [single] => single.clone(),
+            [] => {
+                if directory.iter().any(|e| e.id == *input) {
+                    input.clone()
+                } else {
+                    return Err(SourceResolveError::Unknown(input.clone()));
+                }
+            }
+            _ => {
+                return Err(SourceResolveError::Ambiguous {
+                    input: input.clone(),
+                    ids: name_ids,
+                });
+            }
+        };
+
+        if !resolved.contains(&id) {
+            resolved.push(id);
+        }
+    }
+    Ok(resolved)
+}
+
+/// Build the source-device directory from the daemon: the local device, paired
+/// peers, and mobile-sync devices. Each sub-source is best-effort — a disabled
+/// or empty subsystem contributes nothing rather than failing the whole lookup.
+async fn fetch_source_directory(ctx: &DaemonClientContext) -> Vec<SourceDeviceEntry> {
+    let mut directory: Vec<SourceDeviceEntry> = Vec::new();
+    let query = ctx.query_client();
+
+    if let Ok(local) = query.get_local_device_info().await {
+        directory.push(SourceDeviceEntry {
+            id: local.peer_id,
+            name: local.device_name,
+        });
+    }
+
+    match query.get_paired_devices().await {
+        Ok(members) => {
+            for member in members {
+                directory.push(SourceDeviceEntry {
+                    id: member.peer_id,
+                    name: member.device_name,
+                });
+            }
+        }
+        Err(err) => {
+            tracing::debug!(error = %err, "could not list paired devices for source resolution");
+        }
+    }
+
+    match ctx.mobile_sync_client().list_devices().await {
+        Ok(devices) => {
+            for device in devices {
+                directory.push(SourceDeviceEntry {
+                    id: format!("mobile_sync:{}", device.device_id),
+                    name: device.label,
+                });
+            }
+        }
+        Err(err) => {
+            tracing::debug!(error = %err, "could not list mobile devices for source resolution");
+        }
+    }
+
+    directory
+}
+
+/// Fetch the source-device directory and resolve `inputs` to device ids,
+/// rendering a helpful error (and returning a non-zero exit code) on failure.
+/// An empty `inputs` short-circuits without contacting the daemon.
+async fn resolve_source_devices(
+    ctx: &DaemonClientContext,
+    inputs: &[String],
+) -> Result<Vec<String>, i32> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let directory = fetch_source_directory(ctx).await;
+
+    match resolve_source_inputs(inputs, &directory) {
+        Ok(ids) => Ok(ids),
+        Err(SourceResolveError::Unknown(input)) => {
+            ui::error(&format!("Unknown source device: '{input}'"));
+            render_available_sources(&directory);
+            Err(exit_codes::EXIT_ERROR)
+        }
+        Err(SourceResolveError::Ambiguous { input, ids }) => {
+            ui::error(&format!(
+                "Source device name '{input}' is ambiguous; pass an id instead."
+            ));
+            for id in &ids {
+                ui::info("id", id);
+            }
+            Err(exit_codes::EXIT_ERROR)
+        }
+    }
+}
+
+/// List the known source devices (name → id) to help the user correct an
+/// unknown `--source-device` value.
+fn render_available_sources(directory: &[SourceDeviceEntry]) {
+    if directory.is_empty() {
+        ui::info("devices", "no known source devices; run `uniclip members`");
+        return;
+    }
+    ui::info("devices", "available source devices (name → id):");
+    for entry in directory {
+        ui::info(&entry.name, &entry.id);
+    }
+}
+
 fn format_search_timestamp(ts_ms: i64) -> String {
     use chrono::{TimeZone, Utc};
     match Utc.timestamp_millis_opt(ts_ms) {
@@ -246,6 +410,9 @@ fn render_query_output(response: &SearchQueryResultDto, detailed: bool) -> Strin
                 item.file_extensions.join(",")
             };
             lines.push(format!("    extensions: {extensions}"));
+            if let Some(source) = &item.source_device {
+                lines.push(format!("    source: {source}"));
+            }
         }
     }
 
@@ -302,6 +469,8 @@ struct SearchResultItemJsonDto {
     text_preview: Option<String>,
     mime_type: String,
     file_extensions: Vec<String>,
+    /// Originating device id, or `null` when the source is unknown / local.
+    source_device: Option<String>,
 }
 
 impl From<&SearchResultDto> for SearchResultItemJsonDto {
@@ -313,6 +482,7 @@ impl From<&SearchResultDto> for SearchResultItemJsonDto {
             text_preview: value.text_preview.clone(),
             mime_type: value.mime_type.clone(),
             file_extensions: value.file_extensions.clone(),
+            source_device: value.source_device.clone(),
         }
     }
 }
@@ -346,4 +516,73 @@ struct SearchRebuildJsonDto {
 struct ErrorDto {
     code: String,
     message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn directory() -> Vec<SourceDeviceEntry> {
+        vec![
+            SourceDeviceEntry {
+                id: "peer-laptop".into(),
+                name: "Laptop".into(),
+            },
+            SourceDeviceEntry {
+                id: "mobile_sync:abc".into(),
+                name: "Pixel".into(),
+            },
+            SourceDeviceEntry {
+                id: "peer-a".into(),
+                name: "Shared".into(),
+            },
+            SourceDeviceEntry {
+                id: "peer-b".into(),
+                name: "Shared".into(),
+            },
+        ]
+    }
+
+    #[test]
+    fn resolves_name_case_insensitively() {
+        let got = resolve_source_inputs(&["laptop".into()], &directory()).unwrap();
+        assert_eq!(got, vec!["peer-laptop".to_string()]);
+    }
+
+    #[test]
+    fn accepts_exact_id() {
+        let got = resolve_source_inputs(&["mobile_sync:abc".into()], &directory()).unwrap();
+        assert_eq!(got, vec!["mobile_sync:abc".to_string()]);
+    }
+
+    #[test]
+    fn rejects_unknown_device() {
+        let err = resolve_source_inputs(&["nope".into()], &directory()).unwrap_err();
+        assert_eq!(err, SourceResolveError::Unknown("nope".into()));
+    }
+
+    #[test]
+    fn rejects_ambiguous_name() {
+        let err = resolve_source_inputs(&["shared".into()], &directory()).unwrap_err();
+        assert_eq!(
+            err,
+            SourceResolveError::Ambiguous {
+                input: "shared".into(),
+                ids: vec!["peer-a".into(), "peer-b".into()],
+            }
+        );
+    }
+
+    #[test]
+    fn dedups_resolved_ids() {
+        let got =
+            resolve_source_inputs(&["Laptop".into(), "peer-laptop".into()], &directory()).unwrap();
+        assert_eq!(got, vec!["peer-laptop".to_string()]);
+    }
+
+    #[test]
+    fn empty_inputs_resolve_to_empty() {
+        let got = resolve_source_inputs(&[], &directory()).unwrap();
+        assert!(got.is_empty());
+    }
 }

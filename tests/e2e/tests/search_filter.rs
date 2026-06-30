@@ -6,15 +6,61 @@
 //! over the same profile for querying.
 
 use serde_json::Value;
-use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+use uc_e2e_tests::{CapturedOutput, TestCli, TestDaemon, TestProfile};
 
 const PASSPHRASE: &str = "search-filter-passphrase";
+const CLI_COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
 
-fn seed_entry(cli: &TestCli, text: &str) -> String {
-    let out = cli.run_capture(&["dev", "seed-clipboard", "--text", text]);
+fn run_cli_stage(cli: &TestCli, stage: &str, args: &[&str]) -> CapturedOutput {
+    let mut child = Command::new(cli.binary_path())
+        .env("UC_PROFILE", &cli.profile_name)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("{stage}: failed to execute uniclip: {e}"));
+
+    let deadline = Instant::now() + CLI_COMMAND_TIMEOUT;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(e) => panic!("{stage}: failed to poll uniclip: {e}"),
+        }
+
+        if Instant::now() >= deadline {
+            let pid = child.id();
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!(
+                "{stage}: uniclip {:?} did not exit within {}s (pid={pid})",
+                args,
+                CLI_COMMAND_TIMEOUT.as_secs()
+            );
+        }
+
+        std::thread::sleep(Duration::from_millis(100));
+    };
+
+    let output = child
+        .wait_with_output()
+        .unwrap_or_else(|e| panic!("{stage}: failed to collect uniclip output: {e}"));
+
+    let _ = status;
+    CapturedOutput {
+        exit_code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    }
+}
+
+fn seed_entry(cli: &TestCli, stage: &str, text: &str) -> String {
+    let out = run_cli_stage(cli, stage, &["dev", "seed-clipboard", "--text", text]);
     assert!(
         out.success(),
-        "seed failed (exit={}): stdout={}, stderr={}",
+        "{stage}: seed failed (exit={}): stdout={}, stderr={}",
         out.exit_code,
         out.stdout,
         out.stderr
@@ -31,7 +77,8 @@ fn search_json(cli: &TestCli, args: &[&str]) -> Value {
     let mut full_args = vec!["--json", "search"];
     full_args.extend_from_slice(args);
 
-    let out = cli.run_capture(&full_args);
+    let stage = format!("search {args:?}");
+    let out = run_cli_stage(cli, &stage, &full_args);
     assert!(
         out.success(),
         "search {:?} failed (exit={}): stdout={}, stderr={}",
@@ -48,7 +95,7 @@ fn wait_for_search_ready(cli: &TestCli) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
 
     loop {
-        let out = cli.run_capture(&["--json", "search", "status"]);
+        let out = run_cli_stage(cli, "search status", &["--json", "search", "status"]);
         assert!(
             out.success(),
             "search status failed (exit={}): stdout={}, stderr={}",
@@ -106,7 +153,7 @@ async fn initialized_cli_for_seed(test_name: &str) -> (TestDaemon, TestCli) {
     let mut daemon = TestDaemon::start(profile).await.expect("daemon start");
     let cli = TestCli::new(&daemon.profile);
 
-    let init = cli.run_capture(&[
+    let init = run_cli_stage(&cli, "init", &[
         "init",
         "--passphrase",
         PASSPHRASE,
@@ -129,10 +176,11 @@ async fn initialized_cli_for_seed(test_name: &str) -> (TestDaemon, TestCli) {
 #[ignore]
 async fn seeded_entries_support_type_and_tag_search_filters() {
     let (mut daemon, cli) = initialized_cli_for_seed("search-filters").await;
-    let text_entry_id = seed_entry(&cli, "plain text search filter seed");
-    let link_entry_id = seed_entry(&cli, "https://example.com/uniclip-e2e");
+    let text_entry_id = seed_entry(&cli, "seed plain text", "plain text search filter seed");
+    let link_entry_id = seed_entry(&cli, "seed URL text", "https://example.com/uniclip-e2e");
     let code_entry_id = seed_entry(
         &cli,
+        "seed code-like text",
         "function greet(name) {\n  return `hello ${name}`;\n}",
     );
 

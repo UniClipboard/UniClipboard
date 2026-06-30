@@ -10,7 +10,7 @@
 
 use uc_application::facade::space_setup::TryResumeSessionError;
 
-use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
+use crate::commands::app_session::{build_app_session, refuse_if_daemon_running, CliAppSession};
 use crate::exit_codes;
 use crate::ui;
 
@@ -35,22 +35,22 @@ pub async fn run(args: SeedClipboardArgs, verbose: bool) -> i32 {
         Ok(true) => {}
         Ok(false) => {
             ui::error("This device is not set up yet. Use `uniclip init` or `uniclip join` first.");
-            bundle.shutdown().await;
+            shutdown_seed_session(bundle).await;
             return exit_codes::EXIT_ERROR;
         }
         Err(TryResumeSessionError::CorruptedKeyMaterial) => {
             ui::error("Key material is corrupted — consider resetting this profile.");
-            bundle.shutdown().await;
+            shutdown_seed_session(bundle).await;
             return exit_codes::EXIT_ERROR;
         }
         Err(TryResumeSessionError::KeyringMiss) => {
             ui::error("Keychain cannot silently unlock this space.");
-            bundle.shutdown().await;
+            shutdown_seed_session(bundle).await;
             return exit_codes::EXIT_ERROR;
         }
         Err(TryResumeSessionError::Internal(msg)) => {
             ui::error(&format!("Resume failed: {msg}"));
-            bundle.shutdown().await;
+            shutdown_seed_session(bundle).await;
             return exit_codes::EXIT_ERROR;
         }
     }
@@ -75,6 +75,15 @@ pub async fn run(args: SeedClipboardArgs, verbose: bool) -> i32 {
         }
     };
 
-    bundle.shutdown().await;
+    shutdown_seed_session(bundle).await;
     exit
+}
+
+async fn shutdown_seed_session(bundle: CliAppSession) {
+    if tokio::time::timeout(std::time::Duration::from_secs(5), bundle.shutdown())
+        .await
+        .is_err()
+    {
+        tracing::warn!("seed clipboard session shutdown timed out");
+    }
 }

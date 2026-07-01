@@ -412,12 +412,12 @@ const AboutSection: React.FC = () => {
             {t('settings.sections.about.links.termsOfService')}
           </a>
           <a
-            href="https://github.com/UniClipboard/UniClipboard"
+            href="https://github.com/UniClipboard/UniClipboard/blob/main/ABOUT.md"
             className="text-muted-foreground transition-colors hover:text-foreground"
             target="_blank"
             rel="noreferrer"
           >
-            {t('settings.sections.about.links.helpCenter')}
+            {t('settings.sections.about.links.aboutMaintainers')}
           </a>
         </div>
         <p className="text-xs text-muted-foreground/80">{t('settings.sections.about.copyright')}</p>

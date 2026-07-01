@@ -606,11 +606,11 @@
           "becomeSponsor": "成为赞助者 →",
           "githubStar": "去 GitHub 点 Star →"
         },
-        "copyright": "© 2025 UniClipboard Team. All rights reserved.",
+        "copyright": "© 2025 UniClipboard. All rights reserved.",
         "links": {
           "privacyPolicy": "隐私政策",
           "termsOfService": "使用条款",
-          "helpCenter": "帮助中心"
+          "aboutMaintainers": "关于与维护者"
         }
       }
     }

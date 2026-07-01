@@ -50,6 +50,7 @@
 </div>
 
 <p align="center"><a href="./README.md">English</a> | 简体中文</p>
+<p align="center"><a href="./ABOUT_ZH.md">谁在维护这个项目？（关于本项目 & 信任说明）</a></p>
 
 ## 项目介绍
 

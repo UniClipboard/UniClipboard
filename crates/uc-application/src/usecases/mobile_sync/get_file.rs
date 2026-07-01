@@ -12,7 +12,7 @@
 //!
 //! ## File 类型出站(P5a.3.5 后)
 //!
-//! 当前 paste rep 对 File 类型的 wire 形态是 `text/uri-list`(`format_id=files`,
+//! 当前 preview rep 对 File 类型的 wire 形态是 `text/uri-list`(`format_id=files`,
 //! `mime=text/uri-list`,bytes 是 `\n` 分隔的 `file:///...` URI 列表)。本 use
 //! case 在 File 命中分支:
 //!
@@ -105,7 +105,7 @@ impl GetMobileSyncFileUseCase {
     ) -> Result<GetMobileSyncFileOutput, GetMobileSyncFileError> {
         let rep = self
             .snapshot_port
-            .latest_paste_representation()
+            .latest_preview_representation()
             .await?
             .ok_or(GetMobileSyncFileError::NotFound)?;
 
@@ -215,7 +215,7 @@ impl GetMobileSyncFileUseCase {
             item_type = ?item_type,
             mime = %mime,
             bytes_len = rep.bytes.len(),
-            "mobile_sync get_file: serving paste rep bytes"
+            "mobile_sync get_file: serving preview rep bytes"
         );
 
         Ok(GetMobileSyncFileOutput {
@@ -272,7 +272,7 @@ mod tests {
             async fn latest_paste_representation(
                 &self,
             ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
-            async fn latest_plain_text_preferred_representation(
+            async fn latest_preview_representation(
                 &self,
             ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
         }
@@ -304,7 +304,7 @@ mod tests {
         staging: Arc<MockStaging>,
     ) -> GetMobileSyncFileUseCase {
         let mut port = MockSnapPort::new();
-        port.expect_latest_paste_representation()
+        port.expect_latest_preview_representation()
             .times(1)
             .return_once(move || rep);
         GetMobileSyncFileUseCase::new(Arc::new(port), staging)

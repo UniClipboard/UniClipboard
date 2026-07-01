@@ -8,9 +8,11 @@
 //! because of it, covering every entry (not just disk-backed ones).
 //!
 //! Only `RetentionRule::ByAge` and `RetentionRule::ByCount` are implemented —
-//! the only variants the settings UI and defaults ever produce today. Other
-//! variants are logged and ignored rather than silently accepted, so a future
-//! UI addition can't quietly become a second dead config.
+//! the only variants the settings UI and defaults ever produce today. A
+//! policy containing any other variant fails closed: enforcement is skipped
+//! entirely for that pass (logged, not silently accepted), rather than
+//! dropping the unsupported rule from the set and risking a weaker-than-
+//! configured `AllMatch` combination over-deleting history.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -65,16 +67,32 @@ impl EnforceRetentionPolicyUseCase {
             return Ok(RetentionEnforcementResult::default());
         }
 
-        for rule in &policy.rules {
-            if !matches!(
-                rule,
-                RetentionRule::ByAge { .. } | RetentionRule::ByCount { .. }
-            ) {
-                warn!(
-                    rule = ?rule,
-                    "Retention rule variant not yet supported by enforcement; ignoring"
-                );
-            }
+        // Fail closed rather than silently drop unsupported variants from
+        // the rule set: under `RuleEvaluation::AllMatch`, dropping a rule
+        // from the intersection makes the *combined* policy weaker than
+        // configured (e.g. `{ByAge, ByTotalSize}` would devolve into "delete
+        // everything matching ByAge"), which can over-delete history the
+        // user did not intend to lose. Not reachable via the UI today (only
+        // ByAge/ByCount are ever produced), but a hand-edited or future
+        // migrated config could set this, and getting it wrong here is
+        // irreversible data loss.
+        let unsupported_rules: Vec<&RetentionRule> = policy
+            .rules
+            .iter()
+            .filter(|rule| {
+                !matches!(
+                    rule,
+                    RetentionRule::ByAge { .. } | RetentionRule::ByCount { .. }
+                )
+            })
+            .collect();
+        if !unsupported_rules.is_empty() {
+            warn!(
+                rules = ?unsupported_rules,
+                evaluation = ?policy.evaluation,
+                "Retention policy contains unsupported rule variants; skipping enforcement entirely"
+            );
+            return Ok(RetentionEnforcementResult::default());
         }
 
         let candidates = self.collect_candidates().await?;

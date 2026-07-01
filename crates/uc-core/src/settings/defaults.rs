@@ -374,7 +374,10 @@ mod tests {
             s.network.allow_relay_fallback,
             "missing network section MUST default to true"
         );
-        assert_eq!(s.schema_version, CURRENT_SCHEMA_VERSION);
+        // A versionless JSON blob must NOT read back as CURRENT_SCHEMA_VERSION
+        // (that would make it look already-migrated and skip the migration
+        // chain); it defaults to the oldest known baseline instead.
+        assert_eq!(s.schema_version, 1);
     }
 
     /// 显式 false 的 JSON 必须保留 false 语义（确认未误取反）。

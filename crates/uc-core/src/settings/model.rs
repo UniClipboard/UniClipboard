@@ -446,7 +446,7 @@ pub struct MobileSyncSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
-    #[serde(default = "current_schema_version")]
+    #[serde(default = "oldest_known_schema_version")]
     pub schema_version: u32,
 
     #[serde(default)]
@@ -480,20 +480,27 @@ pub struct Settings {
     pub quick_panel: QuickPanelSettings,
 }
 
-/// The current schema version used for settings persistence.
+/// Schema version assumed for a settings.json missing the `schema_version`
+/// field entirely.
 ///
-/// # Returns
-///
-/// The schema version as a `u32`.
+/// No version of this app has ever written `Settings` without this field —
+/// it has existed since the settings system's introduction, alongside
+/// `retention_policy` — so this only matters for hand-edited or externally
+/// generated files. It deliberately does NOT default to
+/// `CURRENT_SCHEMA_VERSION`: that would make a versionless file look
+/// already-migrated and silently skip the entire migration chain, hiding
+/// exactly the kind of stale-default rewrite `MigrationV1ToV2` exists to
+/// perform. Defaulting to the oldest version instead runs it through every
+/// migration, which is the safe direction to be wrong in.
 ///
 /// # Examples
 ///
 /// ```
-/// use uc_core::settings::model::{current_schema_version, CURRENT_SCHEMA_VERSION};
+/// use uc_core::settings::model::Settings;
 ///
-/// let v = current_schema_version();
-/// assert_eq!(v, CURRENT_SCHEMA_VERSION);
+/// let s: Settings = serde_json::from_str("{}").unwrap();
+/// assert_eq!(s.schema_version, 1);
 /// ```
-pub fn current_schema_version() -> u32 {
-    CURRENT_SCHEMA_VERSION
+fn oldest_known_schema_version() -> u32 {
+    1
 }

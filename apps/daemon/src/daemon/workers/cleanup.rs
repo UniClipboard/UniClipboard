@@ -12,7 +12,9 @@
 //!    cache-managed file no longer exists on disk. Must run first — an
 //!    entry pointing at a vanished file is exactly the precondition for the
 //!    iroh-blobs "poisoned storage" panic once any later step observes the
-//!    hash.
+//!    hash. If reconcile itself fails, the rest of the tick is skipped
+//!    entirely rather than risk running the later steps against unreconciled
+//!    state.
 //! 2. **File-cache cleanup** (`cleanup_expired_files`): the existing
 //!    `file_sync.*`-driven TTL sweep + disk quota enforcement.
 //! 3. **Retention policy** (`enforce_retention_policy`): the user-configured
@@ -45,12 +47,21 @@ impl CleanupWorker {
     }
 
     async fn run_jobs(&self) {
-        self.reconcile().await;
+        // reconcile must actually succeed before the delete-capable passes
+        // run — a failed reconcile means a dangling `file://` entry may still
+        // be sitting in the DB, which is exactly the precondition for the
+        // iroh-blobs "poisoned storage" panic once cleanup/retention observes
+        // its hash. Skip the rest of this tick rather than risk it.
+        if !self.reconcile().await {
+            return;
+        }
         self.cleanup_file_cache().await;
         self.enforce_retention().await;
     }
 
-    async fn reconcile(&self) {
+    /// Returns `true` on success (including a no-op success), `false` if the
+    /// reconcile pass itself failed and the caller must not proceed.
+    async fn reconcile(&self) -> bool {
         match self.history_facade.reconcile_missing_files().await {
             Ok(result) => {
                 if result.entries_deleted > 0 || result.errors > 0 {
@@ -61,9 +72,11 @@ impl CleanupWorker {
                         "Reconcile dropped stale entries with missing cache files"
                     );
                 }
+                true
             }
             Err(e) => {
-                warn!(error = %e, "Reconcile failed (non-fatal)");
+                warn!(error = %e, "Reconcile failed; skipping the rest of this cleanup tick");
+                false
             }
         }
     }

@@ -197,6 +197,36 @@ mod tests {
     }
 
     #[test]
+    fn versionless_settings_with_stock_retention_policy_still_migrates() {
+        // A settings.json missing `schema_version` entirely (never produced
+        // by this app itself, but a defensive case for hand-edited or
+        // externally generated files) must not be mistaken for
+        // "already current" and silently skip this migration.
+        let json = r#"{
+            "retention_policy": {
+                "enabled": true,
+                "skip_pinned": true,
+                "evaluation": "any_match",
+                "rules": [
+                    { "by_age": { "max_age": 2592000 } },
+                    { "by_count": { "max_items": 500 } }
+                ]
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).expect("parse versionless settings");
+        assert_eq!(settings.schema_version, 1);
+
+        let migrated = SettingsMigrator::new().migrate_to_latest(settings).unwrap();
+
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(migrated.retention_policy.rules.len(), 1);
+        assert!(matches!(
+            migrated.retention_policy.rules.first(),
+            Some(RetentionRule::ByAge { max_age }) if *max_age == Duration::from_secs(60 * 60 * 24 * 180)
+        ));
+    }
+
+    #[test]
     fn customized_retention_policy_survives_migration_untouched() {
         let mut customized = v1_stock_retention_policy();
         customized.skip_pinned = false; // user explicitly turned this off

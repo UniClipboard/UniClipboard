@@ -4,7 +4,10 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSeconds};
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+/// v1 -> v2: one-time rewrite of a stock v1-default `retention_policy`
+/// (`ByAge(30d) + ByCount(500)`) to the new default (`ByAge(180d)`, no count
+/// cap). See `uc_infra::settings::migration::MigrationV1ToV2`.
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 // 所有 settings struct 统一使用 `#[serde(default)]`：缺字段时回退到
 // `Default::default()`（在 `defaults.rs` 中实现），保证向后兼容。
@@ -156,7 +159,7 @@ pub enum SyncFrequency {
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RetentionRule {
     /// 按时间清理
@@ -192,7 +195,7 @@ pub enum RuleEvaluation {
     AllMatch, // AND（极少用）
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "snake_case")]
 pub struct RetentionPolicy {
     pub enabled: bool,
@@ -443,7 +446,7 @@ pub struct MobileSyncSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
-    #[serde(default = "current_schema_version")]
+    #[serde(default = "oldest_known_schema_version")]
     pub schema_version: u32,
 
     #[serde(default)]
@@ -477,20 +480,27 @@ pub struct Settings {
     pub quick_panel: QuickPanelSettings,
 }
 
-/// The current schema version used for settings persistence.
+/// Schema version assumed for a settings.json missing the `schema_version`
+/// field entirely.
 ///
-/// # Returns
-///
-/// The schema version as a `u32`.
+/// No version of this app has ever written `Settings` without this field —
+/// it has existed since the settings system's introduction, alongside
+/// `retention_policy` — so this only matters for hand-edited or externally
+/// generated files. It deliberately does NOT default to
+/// `CURRENT_SCHEMA_VERSION`: that would make a versionless file look
+/// already-migrated and silently skip the entire migration chain, hiding
+/// exactly the kind of stale-default rewrite `MigrationV1ToV2` exists to
+/// perform. Defaulting to the oldest version instead runs it through every
+/// migration, which is the safe direction to be wrong in.
 ///
 /// # Examples
 ///
 /// ```
-/// use uc_core::settings::model::{current_schema_version, CURRENT_SCHEMA_VERSION};
+/// use uc_core::settings::model::Settings;
 ///
-/// let v = current_schema_version();
-/// assert_eq!(v, CURRENT_SCHEMA_VERSION);
+/// let s: Settings = serde_json::from_str("{}").unwrap();
+/// assert_eq!(s.schema_version, 1);
 /// ```
-pub fn current_schema_version() -> u32 {
-    CURRENT_SCHEMA_VERSION
+fn oldest_known_schema_version() -> u32 {
+    1
 }

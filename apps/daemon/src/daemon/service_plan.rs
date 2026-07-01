@@ -73,6 +73,13 @@ impl DaemonServicePlan {
         self.services.push(worker);
     }
 
+    pub fn add_cleanup(&mut self, worker: Arc<dyn DaemonService>) {
+        // Cleanup 不依赖加密解锁:它触碰的条目元数据、文件缓存路径与
+        // sqlite 行都是明文的,不需要 master key——保持与原先
+        // `run_file_cache_hygiene`(锁定期也照常跑)一致的既有行为。
+        self.services.push(worker);
+    }
+
     pub fn deferred_ready_notify(
         &self,
         notify: Arc<tokio::sync::Notify>,
@@ -112,6 +119,10 @@ fn initial_statuses(
     });
     statuses.push(DaemonServiceSnapshot {
         name: "peer-monitor".to_string(),
+        health: ServiceHealth::Healthy,
+    });
+    statuses.push(DaemonServiceSnapshot {
+        name: "cleanup".to_string(),
         health: ServiceHealth::Healthy,
     });
     statuses.push(DaemonServiceSnapshot {
@@ -211,6 +222,19 @@ mod tests {
             health_of(&state, "peer-keepalive"),
             Some(ServiceHealth::Healthy)
         );
+    }
+
+    #[tokio::test]
+    async fn add_cleanup_pushes_into_services_regardless_of_lock_state() {
+        // Cleanup, like peer-keepalive, is not gated on encryption unlock.
+        let mut plan = DaemonServicePlan::build(input(DaemonRunMode::Standalone, false));
+        assert_eq!(plan.services.len(), 1);
+
+        plan.add_cleanup(service("cleanup"));
+        assert_eq!(plan.services.len(), 2);
+
+        let state = plan.state.read().await;
+        assert_eq!(health_of(&state, "cleanup"), Some(ServiceHealth::Healthy));
     }
 
     #[tokio::test]

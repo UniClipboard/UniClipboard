@@ -24,10 +24,11 @@ use uc_core::{
 
 use crate::usecases::clipboard_history::{
     compute_clipboard_stats, CleanupExpiredFilesUseCase, CleanupResult,
-    ClearClipboardHistoryUseCase, DeleteClipboardEntryUseCase, EntryDetailResult,
-    EntryProjectionDto, EntryResourceResult, GetEntryDetailUseCase, GetEntryResourceUseCase,
-    ListClipboardEntryProjectionsUseCase, ListProjectionsError, ReconcileMissingFilesUseCase,
-    ReconcileResult, ToggleFavoriteClipboardEntryUseCase,
+    ClearClipboardHistoryUseCase, DeleteClipboardEntryUseCase, EnforceRetentionPolicyUseCase,
+    EntryDetailResult, EntryProjectionDto, EntryResourceResult, GetEntryDetailUseCase,
+    GetEntryResourceUseCase, ListClipboardEntryProjectionsUseCase, ListProjectionsError,
+    ReconcileMissingFilesUseCase, ReconcileResult, RetentionEnforcementResult,
+    ToggleFavoriteClipboardEntryUseCase,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +111,12 @@ pub struct ReconcileResultView {
     pub errors: u32,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RetentionEnforcementResultView {
+    pub entries_deleted: u32,
+    pub errors: u32,
+}
+
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum ClipboardHistoryError {
     #[error("entry not found")]
@@ -142,7 +149,8 @@ pub struct ClipboardHistoryFacadeDeps {
     /// 依赖此 port 的存在，仅依赖 cache 文件与 GUI/sqlite 状态一致）。
     pub blob_transfer: Option<Arc<dyn BlobTransferPort>>,
     /// `cleanup_expired_files` 读取 `file_sync.file_auto_cleanup` 与
-    /// `file_sync.file_retention_hours`。
+    /// `file_sync.file_retention_hours`；`enforce_retention_policy` 读取
+    /// `retention_policy.*`。
     pub settings: Arc<dyn SettingsPort>,
     /// `seed_text_entry` 用：构造 `ClipboardEvent.source_device`。
     pub device_identity: Arc<dyn DeviceIdentityPort>,
@@ -159,10 +167,11 @@ pub struct ClipboardHistoryFacade {
     detail_uc: GetEntryDetailUseCase,
     resource_uc: GetEntryResourceUseCase,
     toggle_favorite_uc: ToggleFavoriteClipboardEntryUseCase,
-    delete_uc: DeleteClipboardEntryUseCase,
+    delete_uc: Arc<DeleteClipboardEntryUseCase>,
     clear_uc: ClearClipboardHistoryUseCase,
     cleanup_uc: Option<CleanupExpiredFilesUseCase>,
     reconcile_uc: Option<ReconcileMissingFilesUseCase>,
+    retention_uc: EnforceRetentionPolicyUseCase,
     /// debug seed 路径需要的额外 ports，常态业务不直接消费。
     seed_event_writer: Arc<dyn ClipboardEventWriterPort>,
     seed_entry_repo: Arc<dyn SaveClipboardEntryPort>,
@@ -264,6 +273,7 @@ impl ClipboardHistoryFacade {
         if let Some(bt) = blob_transfer.clone() {
             delete_uc = delete_uc.with_blob_transfer(bt);
         }
+        let delete_uc = Arc::new(delete_uc);
 
         let mut clear_uc = ClearClipboardHistoryUseCase::from_ports(
             entry_list.clone(),
@@ -283,10 +293,13 @@ impl ClipboardHistoryFacade {
             clear_uc = clear_uc.with_blob_transfer(bt);
         }
 
-        // cleanup 与 reconcile 都只在装配方传入了 file_cache_dir 时才有
-        // 意义：没有 cache 目录就没有可扫描的文件 / 可消解的漂移条目。两者
-        // 共享同一组底层 ports，所以这里把 Arc clone 一份给 cleanup，原始
-        // ownership 留给 reconcile（后写入字段）。
+        // cleanup 只在装配方传入了 file_cache_dir 时才有意义：没有 cache
+        // 目录就没有可扫描的文件。retention no longer depends on
+        // `file_cache_dir` directly — it delegates per-entry deletion
+        // (including cache-file cleanup) to the shared `delete_uc` built
+        // above, so `settings` just needs to be cloned before `cleanup_uc`'s
+        // closure below takes ownership of the original.
+        let settings_for_retention = Arc::clone(&settings);
         let cleanup_uc = file_cache_dir.clone().map(|dir| {
             // Clone cache_fs here since reconcile (built below) takes ownership
             // of the original. All of cleanup's on-disk work routes through it.
@@ -309,6 +322,12 @@ impl ClipboardHistoryFacade {
             }
             uc
         });
+
+        let retention_uc = EnforceRetentionPolicyUseCase::new(
+            settings_for_retention,
+            entry_list.clone(),
+            Arc::clone(&delete_uc),
+        );
 
         let reconcile_uc = file_cache_dir.map(|dir| {
             let mut uc = ReconcileMissingFilesUseCase::new(
@@ -339,6 +358,7 @@ impl ClipboardHistoryFacade {
             clear_uc,
             cleanup_uc,
             reconcile_uc,
+            retention_uc,
             seed_event_writer,
             seed_entry_repo,
             seed_device_identity,
@@ -536,6 +556,23 @@ impl ClipboardHistoryFacade {
         Ok(reconcile_to_view(result))
     }
 
+    /// Delete every entry that no longer satisfies the user's configured
+    /// `retention_policy` (age / count rules, favorited entries exempted when
+    /// `skip_pinned` is set). Unlike [`Self::cleanup_expired_files`], this
+    /// walks the full clipboard history, not just disk-backed entries.
+    ///
+    /// Returns `Ok(default())` when the policy is disabled.
+    pub async fn enforce_retention_policy(
+        &self,
+    ) -> Result<RetentionEnforcementResultView, ClipboardHistoryError> {
+        let result = self
+            .retention_uc
+            .execute()
+            .await
+            .map_err(|e| ClipboardHistoryError::Internal(e.to_string()))?;
+        Ok(retention_to_view(result))
+    }
+
     pub async fn clear_history(&self) -> Result<ClearHistoryResultView, ClipboardHistoryError> {
         let result = self
             .clear_uc
@@ -617,6 +654,13 @@ fn reconcile_to_view(result: ReconcileResult) -> ReconcileResultView {
     }
 }
 
+fn retention_to_view(result: RetentionEnforcementResult) -> RetentionEnforcementResultView {
+    RetentionEnforcementResultView {
+        entries_deleted: result.entries_deleted,
+        errors: result.errors,
+    }
+}
+
 fn map_history_error(err: anyhow::Error) -> ClipboardHistoryError {
     let message = err.to_string();
     let lower = message.to_lowercase();
@@ -631,38 +675,4 @@ fn map_history_error(err: anyhow::Error) -> ClipboardHistoryError {
 
 fn map_list_error(err: ListProjectionsError) -> ClipboardHistoryError {
     ClipboardHistoryError::Internal(err.to_string())
-}
-
-// --- FileCacheHygienePort implementation ---
-
-use uc_core::ports::file_cache_hygiene::{
-    CleanupResult as CoreCleanupResult, FileCacheHygieneError, FileCacheHygienePort,
-    ReconcileResult as CoreReconcileResult,
-};
-
-#[async_trait::async_trait]
-impl FileCacheHygienePort for ClipboardHistoryFacade {
-    async fn reconcile_missing_files(&self) -> Result<CoreReconcileResult, FileCacheHygieneError> {
-        self.reconcile_missing_files()
-            .await
-            .map(|v| CoreReconcileResult {
-                entries_scanned: v.entries_scanned,
-                entries_deleted: v.entries_deleted,
-                errors: v.errors,
-            })
-            .map_err(|e| FileCacheHygieneError(e.to_string()))
-    }
-
-    async fn cleanup_expired_files(&self) -> Result<CoreCleanupResult, FileCacheHygieneError> {
-        self.cleanup_expired_files()
-            .await
-            .map(|v| CoreCleanupResult {
-                files_removed: v.files_removed,
-                bytes_reclaimed: v.bytes_reclaimed,
-                entries_deleted: v.entries_deleted,
-                orphans_removed: v.orphans_removed,
-                errors: v.errors,
-            })
-            .map_err(|e| FileCacheHygieneError(e.to_string()))
-    }
 }

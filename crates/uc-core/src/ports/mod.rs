@@ -28,7 +28,6 @@ pub mod config_migration;
 pub mod connection_channel;
 pub mod device_identity;
 pub mod errors;
-pub mod file_cache_hygiene;
 pub mod file_transfer;
 pub mod first_sync_state;
 mod hash;
@@ -51,10 +50,6 @@ pub use app_version::{AppVersionStateError, AppVersionStatePort};
 pub use cache_fs::{CacheFsPort, DirEntry as CacheFsDirEntry};
 pub use clipboard_event::*;
 pub use clock::*;
-pub use file_cache_hygiene::{
-    CleanupResult as FileCacheCleanupResult, FileCacheHygieneError, FileCacheHygienePort,
-    ReconcileResult as FileCacheReconcileResult,
-};
 pub use first_sync_state::{FirstSyncStateError, FirstSyncStatePort};
 pub use hash::*;
 pub use timer::TimerPort;

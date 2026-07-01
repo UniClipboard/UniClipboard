@@ -135,7 +135,14 @@ impl Default for RetentionPolicy {
     /// Creates a `RetentionPolicy` populated with sensible defaults.
     ///
     /// The default policy is enabled, skips pinned items, evaluates rules using `AnyMatch`,
-    /// and includes two rules: keep items younger than 30 days and keep up to 500 most recent items.
+    /// and includes a single rule: keep items younger than 180 days. No count cap is applied
+    /// by default (an absent `ByCount` rule means "unlimited").
+    ///
+    /// The 180-day window (rather than a shorter one) and the absence of a default count cap
+    /// are deliberate: this policy previously existed but was never enforced, so installs may
+    /// already hold history well past a stricter default. A conservative default avoids a
+    /// surprise mass-delete the first time enforcement ships, mirroring the lesson from the
+    /// file-cache quota's grandfathering baseline (issue #957).
     ///
     /// # Examples
     ///
@@ -147,13 +154,10 @@ impl Default for RetentionPolicy {
     /// assert!(p.enabled);
     /// assert!(p.skip_pinned);
     /// assert_eq!(p.evaluation, RuleEvaluation::AnyMatch);
+    /// assert_eq!(p.rules.len(), 1);
     /// assert!(matches!(p.rules.get(0), Some(RetentionRule::ByAge { .. })));
-    /// assert!(matches!(p.rules.get(1), Some(RetentionRule::ByCount { .. })));
     /// if let Some(RetentionRule::ByAge { max_age }) = p.rules.get(0) {
-    ///     assert_eq!(*max_age, Duration::from_secs(60 * 60 * 24 * 30));
-    /// }
-    /// if let Some(RetentionRule::ByCount { max_items }) = p.rules.get(1) {
-    ///     assert_eq!(*max_items, 500);
+    ///     assert_eq!(*max_age, Duration::from_secs(60 * 60 * 24 * 180));
     /// }
     /// ```
     fn default() -> Self {
@@ -161,12 +165,9 @@ impl Default for RetentionPolicy {
             enabled: true,
             skip_pinned: true,
             evaluation: RuleEvaluation::AnyMatch,
-            rules: vec![
-                RetentionRule::ByAge {
-                    max_age: Duration::from_secs(60 * 60 * 24 * 30), // 30 days
-                },
-                RetentionRule::ByCount { max_items: 500 },
-            ],
+            rules: vec![RetentionRule::ByAge {
+                max_age: Duration::from_secs(60 * 60 * 24 * 180), // 180 days
+            }],
         }
     }
 }
@@ -351,10 +352,6 @@ mod tests {
         assert!(s.network.allow_relay_fallback);
         assert!(!s.general.debug_mode);
         assert_eq!(s.schema_version, CURRENT_SCHEMA_VERSION);
-        assert_eq!(
-            s.schema_version, 1,
-            "schema_version MUST stay 1 (no migration)"
-        );
     }
 
     #[test]
@@ -377,6 +374,9 @@ mod tests {
             s.network.allow_relay_fallback,
             "missing network section MUST default to true"
         );
+        // A versionless JSON blob must NOT read back as CURRENT_SCHEMA_VERSION
+        // (that would make it look already-migrated and skip the migration
+        // chain); it defaults to the oldest known baseline instead.
         assert_eq!(s.schema_version, 1);
     }
 

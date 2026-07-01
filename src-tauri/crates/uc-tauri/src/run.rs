@@ -681,10 +681,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // resume）误判「从没检查过」而在 scheduler 首次 check 之后立刻重复检查。
             app.manage(crate::update_scheduler::LastCheckAt::initialized_now());
 
-            // ADR-008 P3-3 B2': startup file-cache hygiene (reconcile + TTL
-            // cleanup) now runs in the daemon (`DaemonApp::run`), which owns the
-            // sqlite pool and iroh-blobs actor. The GUI no longer drives it —
-            // see `run_startup_file_cache_hygiene` in uc-daemon.
+            // ADR-008 P3-3 B2': file-cache hygiene (reconcile + TTL cleanup +
+            // retention policy) now runs in the daemon as `CleanupWorker`
+            // (`apps/daemon/src/daemon/workers/cleanup.rs`), which owns the
+            // sqlite pool and iroh-blobs actor. The GUI no longer drives it.
 
             // Clone handles for async blocks
             let app_handle_for_startup = app.handle().clone();

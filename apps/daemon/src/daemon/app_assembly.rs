@@ -12,6 +12,7 @@ use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 use crate::daemon::app::DaemonApp;
 use crate::daemon::service::DaemonService;
 use crate::daemon::service_plan::DaemonServicePlan;
+use crate::daemon::workers::cleanup::CleanupWorker;
 use crate::daemon::workers::peer_keepalive::PeerKeepAliveWorker;
 
 /// daemon 应用实例装配输入。
@@ -75,6 +76,12 @@ pub fn build_daemon_app_instance(input: DaemonAppAssemblyInput) -> DaemonApp {
     let peer_keepalive_worker: Arc<dyn DaemonService> =
         Arc::new(PeerKeepAliveWorker::new(Arc::clone(&app_facade)));
     service_plan.add_peer_keepalive(peer_keepalive_worker);
+
+    let cleanup_worker: Arc<dyn DaemonService> = Arc::new(CleanupWorker::new(Arc::clone(
+        &app_facade.clipboard_history,
+    )));
+    service_plan.add_cleanup(cleanup_worker);
+
     let deferred_notify = service_plan.deferred_ready_notify(deferred_ready_notify);
 
     DaemonApp::new_with_deferred(

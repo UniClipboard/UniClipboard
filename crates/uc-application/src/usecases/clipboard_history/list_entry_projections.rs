@@ -4,8 +4,9 @@ use anyhow::Result;
 use std::sync::Arc;
 use tracing::{debug, warn};
 use uc_core::clipboard::link_utils::{detect_link_urls as detect_web_urls, parse_uri_list};
-use uc_core::clipboard::{ClipboardEntryContentCategory, PayloadAvailability};
-use uc_core::network::protocol::MIME_IMAGE_PREFIX;
+use uc_core::clipboard::{
+    ClipboardEntryContentCategory, MimeType, PayloadAvailability, PersistedClipboardRepresentation,
+};
 use uc_core::ports::clipboard::{GetRepresentationPort, ListClipboardEntriesPort};
 use uc_core::ports::{
     ClipboardSelectionRepositoryPort, GetEntryTransferSummaryPort, ThumbnailRepositoryPort,
@@ -102,6 +103,99 @@ fn compute_file_sizes(inline_data: &[u8]) -> Vec<i64> {
             _ => -1,
         })
         .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UriListPreview {
+    text: String,
+    bytes: Vec<u8>,
+}
+
+/// Whether a representation's MIME marks it as a `uri-list` (the file-list paste
+/// format). Gates whether the representation's inline bytes may serve as a File
+/// entry's parseable preview.
+fn mime_is_uri_list(rep: &PersistedClipboardRepresentation) -> bool {
+    rep.mime_type.as_ref().is_some_and(MimeType::is_uri_list)
+}
+
+/// The parsed uri-list carried inline by `rep`, or `None` when `rep` is not a
+/// uri-list representation or has no non-empty URI entries.
+fn uri_list_preview(rep: &PersistedClipboardRepresentation) -> Option<UriListPreview> {
+    if !mime_is_uri_list(rep) {
+        return None;
+    }
+    let inline_data = rep.inline_data.as_ref()?;
+    let text = std::str::from_utf8(inline_data).ok()?;
+    let uris = parse_uri_list(text);
+    if uris.is_empty() {
+        None
+    } else {
+        let text = uris.join("\n");
+        Some(UriListPreview {
+            bytes: text.as_bytes().to_vec(),
+            text,
+        })
+    }
+}
+
+fn file_uri_list_preview(
+    content_category: ClipboardEntryContentCategory,
+    preview_rep: &PersistedClipboardRepresentation,
+    paste_rep: &PersistedClipboardRepresentation,
+) -> Option<UriListPreview> {
+    if content_category == ClipboardEntryContentCategory::File {
+        uri_list_preview(preview_rep).or_else(|| uri_list_preview(paste_rep))
+    } else {
+        None
+    }
+}
+
+/// Resolve the list-view preview text for an entry.
+///
+/// A File entry must expose its `uri-list` here, because the client parses real
+/// file names off `preview`. Most File entries already do — their `preview_rep`
+/// *is* the uri-list. The exception is a copied image *file*: it is categorised
+/// `File`, yet the UI-preview representation policy picks the image itself as the
+/// `preview_rep` (an image is a nicer thumbnail than a path). That rep carries no
+/// uri-list text, so without this fallback the preview would be the
+/// `"Image (N bytes)"` placeholder, the client would parse no file name, and a
+/// single image file would render as a plain file card — self-correcting only on
+/// reload, which reads the search projection's own file-name list. Falling back
+/// to the `paste_rep`'s uri-list keeps the list view and the search view in
+/// agreement.
+fn resolve_preview_text(
+    content_category: ClipboardEntryContentCategory,
+    title: Option<&str>,
+    preview_rep: &PersistedClipboardRepresentation,
+    is_image: bool,
+    paste_rep: &PersistedClipboardRepresentation,
+    image_dimensions: Option<(i32, i32)>,
+) -> String {
+    if let Some(uri_list) = file_uri_list_preview(content_category, preview_rep, paste_rep) {
+        return uri_list.text;
+    }
+    if let Some(data) = preview_rep.inline_data.as_ref() {
+        return String::from_utf8_lossy(data).trim().to_string();
+    }
+    if is_image {
+        return image_placeholder(image_dimensions, preview_rep.size_bytes);
+    }
+    title
+        .map(|title| title.trim().to_string())
+        .filter(|title| !title.is_empty())
+        .unwrap_or_else(|| "Text content (full payload in background processing)".to_string())
+}
+
+/// Placeholder preview for an image entry that carries no inline text. Prefers
+/// the original pixel dimensions (`W×H`); falls back to a byte count when the
+/// dimensions are unknown (e.g. thumbnail metadata missing).
+fn image_placeholder(dimensions: Option<(i32, i32)>, size_bytes: i64) -> String {
+    match dimensions {
+        Some((width, height)) if width > 0 && height > 0 => {
+            format!("Image ({}×{})", width, height)
+        }
+        _ => format!("Image ({} bytes)", size_bytes),
+    }
 }
 
 fn content_type_from_entry_category(category: ClipboardEntryContentCategory) -> ContentType {
@@ -243,34 +337,41 @@ impl ListClipboardEntryProjectionsUseCase {
             let is_image = representation
                 .mime_type
                 .as_ref()
-                .map(|mt| {
-                    mt.as_str()
-                        .to_ascii_lowercase()
-                        .starts_with(MIME_IMAGE_PREFIX)
-                })
-                .unwrap_or(false);
+                .is_some_and(MimeType::is_image);
 
-            let preview = if let Some(data) = representation.inline_data.as_ref() {
-                String::from_utf8_lossy(data).trim().to_string()
-            } else if is_image {
-                format!("Image ({} bytes)", representation.size_bytes)
+            // Fetch the paste_rep once when it differs from the preview_rep. It
+            // serves two consumers below: the uri-list preview text for File
+            // entries whose preview_rep carries no parseable names (image files),
+            // and the paste_rep Lost-state signal. When preview_rep == paste_rep
+            // we reuse the already-fetched `representation`.
+            let same_paste_rep =
+                selection.selection.paste_rep_id == selection.selection.preview_rep_id;
+            let fetched_paste_rep: Option<PersistedClipboardRepresentation> = if same_paste_rep {
+                None
             } else {
-                entry
-                    .title
-                    .as_ref()
-                    .map(|title| title.trim().to_string())
-                    .filter(|title| !title.is_empty())
-                    .unwrap_or_else(|| {
-                        "Text content (full payload in background processing)".to_string()
-                    })
+                match self
+                    .representation_repo
+                    .get_representation(&entry.event_id, &selection.selection.paste_rep_id)
+                    .await
+                {
+                    Ok(Some(rep)) => Some(rep),
+                    Ok(None) => None,
+                    Err(e) => {
+                        warn!(
+                            entry_id = %entry_id_str,
+                            paste_rep_id = %selection.selection.paste_rep_id,
+                            error = %e,
+                            "Failed to fetch paste_rep for projection; treating as healthy"
+                        );
+                        None
+                    }
+                }
             };
+            let paste_rep_ref = fetched_paste_rep.as_ref().unwrap_or(&representation);
 
-            let preview_mime = representation
-                .mime_type
-                .as_ref()
-                .map(|mt| mt.as_str().to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-
+            // Resolve the thumbnail + original image dimensions before the preview
+            // text, so an image entry's placeholder preview can show its pixel
+            // dimensions (W×H) rather than a raw byte count.
             let (thumbnail_url, image_width, image_height) = if is_image {
                 match self
                     .thumbnail_repo
@@ -296,9 +397,23 @@ impl ListClipboardEntryProjectionsUseCase {
                 (None, None, None)
             };
 
-            let is_uri_list = preview_mime
-                .to_ascii_lowercase()
-                .starts_with("text/uri-list");
+            let preview = resolve_preview_text(
+                entry.content_category,
+                entry.title.as_deref(),
+                &representation,
+                is_image,
+                paste_rep_ref,
+                image_width.zip(image_height),
+            );
+            let file_uri_list =
+                file_uri_list_preview(entry.content_category, &representation, paste_rep_ref);
+
+            let preview_mime = representation
+                .mime_type
+                .as_ref()
+                .map(|mt| mt.as_str().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
             let link_urls = detect_link_urls(&preview_mime, representation.inline_data.as_deref());
             let content_tags = content_tags_for_projection(
                 entry.content_category,
@@ -307,14 +422,9 @@ impl ListClipboardEntryProjectionsUseCase {
                 is_image,
             );
 
-            let file_sizes = if is_uri_list {
-                representation
-                    .inline_data
-                    .as_deref()
-                    .map(compute_file_sizes)
-            } else {
-                None
-            };
+            let file_sizes = file_uri_list
+                .as_ref()
+                .map(|uri_list| compute_file_sizes(&uri_list.bytes));
 
             let has_detail = representation.blob_id.is_some()
                 || matches!(
@@ -322,33 +432,18 @@ impl ListClipboardEntryProjectionsUseCase {
                     PayloadAvailability::Staged | PayloadAvailability::Processing
                 );
 
-            // paste_rep 是用户点"粘贴"时实际写入系统剪贴板的 representation。
-            // 当它降级为 Lost 时, restore 会回 410 + "内容已不可用"; 列表灰显
-            // 这条 entry 让用户在点之前就能知道。如果 paste_rep == preview_rep,
-            // 复用刚拿到的 representation; 否则单独查一次 (paste_rep 通常和
-            // preview_rep 不同—— 比如复制文本时同时有 plain + RTF)。
-            let paste_rep_state = if selection.selection.paste_rep_id
-                == selection.selection.preview_rep_id
-            {
+            // The paste_rep is the representation written to the system
+            // clipboard when users restore an entry. If it degrades to Lost,
+            // restore returns 410, so the list greys the row out before click.
+            // Reuse the paste_rep fetched above: preview_rep state when both
+            // ids match, paste_rep state when it was loaded, and a transparent
+            // healthy default when it is missing or unreadable.
+            let paste_rep_state = if same_paste_rep {
                 Some(representation.payload_state.clone())
             } else {
-                match self
-                    .representation_repo
-                    .get_representation(&entry.event_id, &selection.selection.paste_rep_id)
-                    .await
-                {
-                    Ok(Some(rep)) => Some(rep.payload_state),
-                    Ok(None) => None,
-                    Err(e) => {
-                        warn!(
-                            entry_id = %entry_id_str,
-                            paste_rep_id = %selection.selection.paste_rep_id,
-                            error = %e,
-                            "Failed to fetch paste_rep state for projection; treating as healthy"
-                        );
-                        None
-                    }
-                }
+                fetched_paste_rep
+                    .as_ref()
+                    .map(|rep| rep.payload_state.clone())
             };
             let payload_state = paste_rep_state_to_payload_state(paste_rep_state.as_ref());
 
@@ -425,6 +520,328 @@ fn paste_rep_state_to_payload_state(state: Option<&PayloadAvailability>) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use uc_core::clipboard::{
+        ClipboardEntry, ClipboardRepositoryError, ClipboardSelection, ClipboardSelectionDecision,
+        MimeType, SelectionPolicyVersion, ThumbnailMetadata,
+    };
+    use uc_core::ids::{BlobId, EntryId, EventId, FormatId, RepresentationId};
+    use uc_core::ports::file_transfer::{EntryTransferSummary, FileTransferProjectionError};
+
+    fn uri_list_rep(body: &str) -> PersistedClipboardRepresentation {
+        PersistedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            body.len() as i64,
+            Some(body.as_bytes().to_vec()),
+            None,
+        )
+    }
+
+    /// An image *file*'s preview_rep: image MIME, payload in blob (no inline text).
+    fn image_blob_rep(size: i64) -> PersistedClipboardRepresentation {
+        PersistedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("image"),
+            Some(MimeType("image/png".to_string())),
+            size,
+            None,
+            None,
+        )
+    }
+
+    fn plain_text_rep(body: &str) -> PersistedClipboardRepresentation {
+        PersistedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("text"),
+            Some(MimeType("text/plain".to_string())),
+            body.len() as i64,
+            Some(body.as_bytes().to_vec()),
+            None,
+        )
+    }
+
+    mockall::mock! {
+        EntryRepo {}
+
+        #[async_trait]
+        impl ListClipboardEntriesPort for EntryRepo {
+            async fn list_entries(
+                &self,
+                limit: usize,
+                offset: usize,
+            ) -> Result<Vec<ClipboardEntry>, ClipboardRepositoryError>;
+        }
+    }
+
+    mockall::mock! {
+        SelectionRepo {}
+
+        #[async_trait]
+        impl ClipboardSelectionRepositoryPort for SelectionRepo {
+            async fn get_selection(
+                &self,
+                entry_id: &EntryId,
+            ) -> anyhow::Result<Option<ClipboardSelectionDecision>>;
+
+            async fn delete_selection(&self, entry_id: &EntryId) -> anyhow::Result<()>;
+        }
+    }
+
+    mockall::mock! {
+        RepresentationRepo {}
+
+        #[async_trait]
+        impl GetRepresentationPort for RepresentationRepo {
+            async fn get_representation(
+                &self,
+                event_id: &EventId,
+                representation_id: &RepresentationId,
+            ) -> Result<Option<PersistedClipboardRepresentation>, ClipboardRepositoryError>;
+        }
+    }
+
+    mockall::mock! {
+        ThumbnailRepo {}
+
+        #[async_trait]
+        impl ThumbnailRepositoryPort for ThumbnailRepo {
+            async fn get_by_representation_id(
+                &self,
+                representation_id: &RepresentationId,
+            ) -> anyhow::Result<Option<ThumbnailMetadata>>;
+
+            async fn insert_thumbnail(&self, metadata: &ThumbnailMetadata) -> anyhow::Result<()>;
+        }
+    }
+
+    mockall::mock! {
+        TransferRepo {}
+
+        #[async_trait]
+        impl GetEntryTransferSummaryPort for TransferRepo {
+            async fn get_entry_transfer_summary(
+                &self,
+                entry_id: &str,
+            ) -> Result<Option<EntryTransferSummary>, FileTransferProjectionError>;
+        }
+    }
+
+    #[test]
+    fn resolve_preview_image_file_falls_back_to_paste_rep_uri_list() {
+        // Copied image file: preview_rep is the image (no uri-list), paste_rep is
+        // the uri-list. The preview must expose the uri-list so the client parses
+        // the real file name and renders a thumbnail, not a plain file card.
+        let preview_rep = image_blob_rep(12345);
+        let paste_rep = uri_list_rep("file:///home/u/photo.png");
+        let preview = resolve_preview_text(
+            ClipboardEntryContentCategory::File,
+            None,
+            &preview_rep,
+            true,
+            &paste_rep,
+            None,
+        );
+        assert_eq!(preview, "file:///home/u/photo.png");
+    }
+
+    #[test]
+    fn resolve_preview_plain_file_uses_preview_rep_uri_list() {
+        // Regular file copy: preview_rep == paste_rep == uri-list. Unchanged.
+        let rep = uri_list_rep("file:///home/u/report.pdf");
+        let preview = resolve_preview_text(
+            ClipboardEntryContentCategory::File,
+            None,
+            &rep,
+            false,
+            &rep,
+            None,
+        );
+        assert_eq!(preview, "file:///home/u/report.pdf");
+    }
+
+    #[test]
+    fn resolve_preview_image_file_without_uri_list_shows_dimensions() {
+        // paste_rep unreadable (falls back to the image preview_rep): no uri-list
+        // is available, so the placeholder shows the image's pixel dimensions.
+        let image_rep = image_blob_rep(2048);
+        let preview = resolve_preview_text(
+            ClipboardEntryContentCategory::File,
+            None,
+            &image_rep,
+            true,
+            &image_rep,
+            Some((1920, 1080)),
+        );
+        assert_eq!(preview, "Image (1920×1080)");
+    }
+
+    #[test]
+    fn resolve_preview_pure_image_entry_shows_dimensions() {
+        let image_rep = image_blob_rep(999);
+        let preview = resolve_preview_text(
+            ClipboardEntryContentCategory::Image,
+            None,
+            &image_rep,
+            true,
+            &image_rep,
+            Some((800, 600)),
+        );
+        assert_eq!(preview, "Image (800×600)");
+    }
+
+    #[test]
+    fn resolve_preview_text_entry_uses_inline_text() {
+        let rep = plain_text_rep("hello world");
+        let preview = resolve_preview_text(
+            ClipboardEntryContentCategory::Text,
+            None,
+            &rep,
+            false,
+            &rep,
+            None,
+        );
+        assert_eq!(preview, "hello world");
+    }
+
+    #[test]
+    fn uri_list_preview_only_for_uri_list_mime() {
+        assert_eq!(uri_list_preview(&image_blob_rep(10)), None);
+        assert_eq!(
+            uri_list_preview(&uri_list_rep("file:///a.txt")).map(|preview| preview.text),
+            Some("file:///a.txt".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_uses_same_paste_rep_uri_list_for_preview_and_file_sizes() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("photo.png");
+        std::fs::write(&path, b"abcde").expect("write");
+        let uri = url::Url::from_file_path(&path)
+            .expect("file path url")
+            .to_string();
+
+        let entry_id = EntryId::from("entry-1");
+        let event_id = EventId::from("event-1");
+        let preview_rep_id = RepresentationId::from("preview-image");
+        let paste_rep_id = RepresentationId::from("paste-files");
+        let preview_rep = PersistedClipboardRepresentation::new(
+            preview_rep_id.clone(),
+            FormatId::from("image"),
+            Some(MimeType("image/png".to_string())),
+            12345,
+            None,
+            Some(BlobId::from("blob-image")),
+        );
+        let paste_rep = PersistedClipboardRepresentation::new(
+            paste_rep_id.clone(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            uri.len() as i64,
+            Some(format!("# comment\n{uri}\n").into_bytes()),
+            None,
+        );
+        let entry = ClipboardEntry::new(
+            entry_id.clone(),
+            event_id.clone(),
+            100,
+            Some("photo.png".to_string()),
+            12345,
+        )
+        .with_content_category(ClipboardEntryContentCategory::File);
+        let selection = ClipboardSelectionDecision::new(
+            entry_id.clone(),
+            ClipboardSelection {
+                primary_rep_id: paste_rep_id.clone(),
+                secondary_rep_ids: vec![preview_rep_id.clone()],
+                preview_rep_id: preview_rep_id.clone(),
+                paste_rep_id: paste_rep_id.clone(),
+                policy_version: SelectionPolicyVersion::V1,
+            },
+        );
+
+        let mut entry_repo = MockEntryRepo::new();
+        entry_repo
+            .expect_list_entries()
+            .with(mockall::predicate::eq(10), mockall::predicate::eq(0))
+            .times(1)
+            .return_once(move |_, _| Ok(vec![entry]));
+
+        let mut selection_repo = MockSelectionRepo::new();
+        selection_repo
+            .expect_get_selection()
+            .with(mockall::predicate::eq(entry_id.clone()))
+            .times(1)
+            .return_once(move |_| Ok(Some(selection)));
+
+        let mut representation_repo = MockRepresentationRepo::new();
+        let expected_preview_event_id = event_id.clone();
+        let expected_preview_rep_id = preview_rep_id.clone();
+        representation_repo
+            .expect_get_representation()
+            .withf(move |event_id, rep_id| {
+                event_id == &expected_preview_event_id && rep_id == &expected_preview_rep_id
+            })
+            .times(1)
+            .return_once(move |_, _| Ok(Some(preview_rep)));
+        let expected_paste_event_id = event_id.clone();
+        let expected_paste_rep_id = paste_rep_id.clone();
+        representation_repo
+            .expect_get_representation()
+            .withf(move |event_id, rep_id| {
+                event_id == &expected_paste_event_id && rep_id == &expected_paste_rep_id
+            })
+            .times(1)
+            .return_once(move |_, _| Ok(Some(paste_rep)));
+
+        let mut thumbnail_repo = MockThumbnailRepo::new();
+        thumbnail_repo
+            .expect_get_by_representation_id()
+            .with(mockall::predicate::eq(preview_rep_id))
+            .times(1)
+            .return_once(|_| Ok(None));
+
+        let mut transfer_repo = MockTransferRepo::new();
+        transfer_repo
+            .expect_get_entry_transfer_summary()
+            .with(mockall::predicate::eq("entry-1"))
+            .times(1)
+            .return_once(|_| Ok(None));
+
+        let usecase = ListClipboardEntryProjectionsUseCase::new(
+            Arc::new(entry_repo),
+            Arc::new(selection_repo),
+            Arc::new(representation_repo),
+            Arc::new(thumbnail_repo),
+            Arc::new(transfer_repo),
+        );
+
+        let projections = usecase.execute(10, 0).await.expect("projection succeeds");
+
+        assert_eq!(projections.len(), 1);
+        assert_eq!(projections[0].preview, uri);
+        assert_eq!(projections[0].file_sizes, Some(vec![5]));
+    }
+
+    #[test]
+    fn image_placeholder_prefers_dimensions() {
+        assert_eq!(
+            image_placeholder(Some((1920, 1080)), 5000),
+            "Image (1920×1080)"
+        );
+    }
+
+    #[test]
+    fn image_placeholder_falls_back_to_bytes_without_dimensions() {
+        assert_eq!(image_placeholder(None, 5000), "Image (5000 bytes)");
+        // Zero / negative dimensions are treated as unknown.
+        assert_eq!(
+            image_placeholder(Some((0, 1080)), 5000),
+            "Image (5000 bytes)"
+        );
+    }
 
     #[test]
     fn detect_link_urls_filters_file_uris_from_uri_list() {

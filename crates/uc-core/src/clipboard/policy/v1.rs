@@ -417,4 +417,45 @@ mod tests {
             "Small image-from-file should still receive UiPreview 100 boost"
         );
     }
+
+    #[test]
+    fn ui_preview_prefers_image_over_html_when_no_plain_text() {
+        // Issue #1210: copying an image from a browser puts both text/html
+        // (a markup fragment describing the page, not the image itself) and
+        // image/png on the clipboard, with no text/plain. DefaultPaste ranks
+        // RichText above Image (preserves formatting when pasted into e.g.
+        // Word), but mobile sync's outbound path reuses UiPreview — it must
+        // not surface raw HTML markup when a real image representation is
+        // available.
+        let html = rep(
+            "html",
+            "text/html",
+            b"<img src=\"https://example.com/x.png\">".to_vec(),
+        );
+        let image = rep(
+            "image",
+            "image/png",
+            vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+        );
+        let image_id = image.id.clone();
+        let html_id = html.id.clone();
+
+        let snapshot = SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![html, image],
+            file_content_digests: Vec::new(),
+        };
+
+        let policy = SelectRepresentationPolicyV1::new();
+        let selection = policy.select(&snapshot).expect("selection succeeds");
+
+        assert_eq!(
+            selection.preview_rep_id, image_id,
+            "UiPreview should pick Image (80) over RichText/html (70) when no plain text is present"
+        );
+        assert_ne!(
+            selection.preview_rep_id, html_id,
+            "UiPreview must not surface the html markup rep as the entry's content"
+        );
+    }
 }

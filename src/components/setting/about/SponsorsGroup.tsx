@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchSponsors, type Sponsor } from '@/api/sponsors'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
@@ -69,16 +70,33 @@ function SponsorCard({ sponsor, goldLabel }: { sponsor: Sponsor; goldLabel: stri
   return card
 }
 
+/** Placeholder card matching `SponsorCard`'s layout, shown while the feed loads. */
+function SponsorCardSkeleton() {
+  return (
+    <div className="flex h-full flex-col items-center gap-2 rounded-lg border border-border/60 bg-background p-3">
+      <Skeleton className="size-10 rounded-full" />
+      <div className="w-full space-y-1.5">
+        <Skeleton className="mx-auto h-3.5 w-14" />
+        <Skeleton className="mx-auto h-3 w-10" />
+      </div>
+    </div>
+  )
+}
+
+const SKELETON_CARD_COUNT = 3
+
 /**
  * "Sponsors" group on the About settings page. Thanks current sponsors with a
  * small avatar-card grid pulled live from the public website feed; gold
- * sponsors are highlighted. Renders nothing until at least one sponsor has
- * loaded, so an empty list / offline / fetch error simply hides the section
- * instead of showing a broken placeholder.
+ * sponsors are highlighted. The section itself renders immediately with a
+ * skeleton placeholder while the feed loads; once the fetch settles, an empty
+ * list / offline / fetch error hides the section instead of showing a broken
+ * placeholder.
  */
 export function SponsorsGroup() {
   const { t } = useTranslation()
   const [sponsors, setSponsors] = useState<Sponsor[] | null>(null)
+  const isLoading = sponsors === null
 
   useEffect(() => {
     const controller = new AbortController()
@@ -92,8 +110,8 @@ export function SponsorsGroup() {
     return () => controller.abort()
   }, [])
 
-  // Loading, empty, or failed → hide the section entirely.
-  if (!sponsors || sponsors.length === 0) return null
+  // Loaded but empty, or failed → hide the section entirely.
+  if (sponsors?.length === 0) return null
 
   return (
     <div className="space-y-1.5">
@@ -107,35 +125,45 @@ export function SponsorsGroup() {
             {t('settings.sections.about.sponsors.thanks')}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {sponsors.map(sponsor => (
-            <SponsorCard
-              key={sponsor.id}
-              sponsor={sponsor}
-              goldLabel={t('settings.sections.about.sponsors.goldBadge')}
-            />
-          ))}
-        </div>
-        <div className="flex flex-wrap justify-center gap-2 pt-0.5">
-          <a
-            href={SPONSOR_CHANNEL_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-sm text-primary transition-colors hover:bg-muted/50"
-          >
-            <Heart className="size-3.5" />
-            {t('settings.sections.about.sponsors.becomeSponsor')}
-          </a>
-          <a
-            href={GITHUB_REPOSITORY_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-sm text-primary transition-colors hover:bg-muted/50"
-          >
-            <Star className="size-3.5" />
-            {t('settings.sections.about.sponsors.githubStar')}
-          </a>
-        </div>
+        {isLoading ? (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {Array.from({ length: SKELETON_CARD_COUNT }).map((_, i) => (
+              <SponsorCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              {sponsors.map(sponsor => (
+                <SponsorCard
+                  key={sponsor.id}
+                  sponsor={sponsor}
+                  goldLabel={t('settings.sections.about.sponsors.goldBadge')}
+                />
+              ))}
+            </div>
+            <div className="flex flex-wrap justify-center gap-2 pt-0.5">
+              <a
+                href={SPONSOR_CHANNEL_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-sm text-primary transition-colors hover:bg-muted/50"
+              >
+                <Heart className="size-3.5" />
+                {t('settings.sections.about.sponsors.becomeSponsor')}
+              </a>
+              <a
+                href={GITHUB_REPOSITORY_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-sm text-primary transition-colors hover:bg-muted/50"
+              >
+                <Star className="size-3.5" />
+                {t('settings.sections.about.sponsors.githubStar')}
+              </a>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

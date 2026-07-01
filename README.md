@@ -52,6 +52,7 @@
 </div>
 
 <p align="center">English | <a href="./README_ZH.md">简体中文</a></p>
+<p align="center"><a href="./ABOUT.md">Who maintains this project? (About &amp; Trust)</a></p>
 
 ## Project Overview
 

@@ -142,11 +142,21 @@ jobs:
           RELEASE_URL="https://github.com/UniClipboard/UniClipboard/releases/tag/v${VERSION}"
           if [ "$IS_NEW" -eq 1 ]; then
             INTRO="Adds the UniClipboard macOS GUI cask."
-            NEW_CASK_SECTION="$(printf '\n\nAdditionally, if adding a new cask:\n\n- [x] Named the cask according to the [token reference](https://docs.brew.sh/Cask-Cookbook#token-reference).\n- [ ] Checked the cask was not [already refused](https://github.com/search?q=repo%%3AHomebrew%%2Fhomebrew-cask+is%%3Aclosed+is%%3Aunmerged+&type=pullrequests) (add your cask'\''s name to the end of the search field).\n- [ ] `brew audit --cask --new <cask>` worked successfully.\n- [ ] `HOMEBREW_NO_INSTALL_FROM_API=1 brew install --cask <cask>` worked successfully.\n- [ ] `brew uninstall --cask <cask>` worked successfully.')"
+            NAMED_CASK_CHECK="[x]"
           else
             INTRO="Updates uniclipboard to ${VERSION}."
-            NEW_CASK_SECTION=""
+            NAMED_CASK_CHECK="[ ]"
           fi
+
+          # Keep the "Additionally, if adding a new cask" section in the body even for
+          # version-only updates: Homebrew/.github's check_template.rb counts every
+          # checkbox line in PULL_REQUEST_TEMPLATE.md, new-cask-only ones included, and
+          # auto-closes the PR once fewer than 75% survive verbatim. Dropping this
+          # section on update PRs left only 4 of 9 checkboxes (44%) and got PR #272721
+          # auto-closed as an "incomplete pull request template". Leave its boxes
+          # unchecked when not applicable instead of omitting the section.
+          NEW_CASK_SECTION="$(printf '\n\nAdditionally, if adding a new cask:\n\n- %s Named the cask according to the [token reference](https://docs.brew.sh/Cask-Cookbook#token-reference).\n- [ ] Checked the cask was not [already refused](https://github.com/search?q=repo%%3AHomebrew%%2Fhomebrew-cask+is%%3Aclosed+is%%3Aunmerged+&type=pullrequests) (add your cask'\''s name to the end of the search field).\n- [ ] `brew audit --cask --new <cask>` worked successfully.\n- [ ] `HOMEBREW_NO_INSTALL_FROM_API=1 brew install --cask <cask>` worked successfully.\n- [ ] `brew uninstall --cask <cask>` worked successfully.' \
+            "$NAMED_CASK_CHECK")"
 
           # The checkbox lines below MUST match Homebrew's PULL_REQUEST_TEMPLATE.md
           # verbatim, including the literal `<cask>` placeholder (do NOT substitute the

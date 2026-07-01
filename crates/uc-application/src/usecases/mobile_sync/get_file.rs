@@ -272,7 +272,7 @@ mod tests {
             async fn latest_paste_representation(
                 &self,
             ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
-            async fn latest_plain_text_preferred_representation(
+            async fn latest_preview_representation(
                 &self,
             ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
         }

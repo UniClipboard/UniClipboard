@@ -15,9 +15,9 @@
 //!   ↓
 //! GetLatestMobileSyncDocUseCase::execute          (本 use case)
 //!   ↓
-//! LatestClipboardSnapshotPort::latest_plain_text_preferred_representation
+//! LatestClipboardSnapshotPort::latest_preview_representation
 //!   ↓
-//! adapter (P5a.8): clipboard_entry → selection → 选 plaintext rep → blob
+//! adapter (P5a.8): clipboard_entry → selection → preview_rep_id → blob
 //! ```
 //!
 //! ## 类型映射(rep mime/format → SyncClipboard `type`)
@@ -28,15 +28,17 @@
 //! | `image/*` 或 `format_id == image` | `Image` | filename | `Some(filename)` | `true` |
 //! | 其他 | `Text` | utf-8 内容 | `None` | `false` |
 //!
-//! ## plaintext 偏好(port 端已收口)
+//! ## 内容优先级(复用 UiPreview 选型,port 端已收口)
 //!
-//! 移动端只能正确解释纯文本字节,所以这里调
-//! [`LatestClipboardSnapshotPort::latest_plain_text_preferred_representation`]
-//! 而不是 paste-priority 入口 —— 当 entry 同时承载 `text/plain` 与 `text/rtf`
-//! / `text/html` 时,port 已经把 plaintext rep 挑出来,iPhone 不再收到
-//! `{\rtf1\ansi…}` 或 HTML 片段。entry 里只有富文本时 port 会兜底回退到
-//! paste rep,此时这里仍会按 Text 分支 `from_utf8_lossy` 字节流不让整条
-//! GET 链路断,但这是"没有更好的选择"的副作用,而非默认行为。
+//! 移动端只能正确解释纯文本 / 图片 / 文件字节,不能渲染 markup,所以这里调
+//! [`LatestClipboardSnapshotPort::latest_preview_representation`] 而不是
+//! paste-priority 入口 —— 后者按"系统默认粘贴目标"选型(为本机粘贴保格式,
+//! `text/html` / `text/rtf` 可能排在 `image/*` 之前),前者复用桌面 UI 已经
+//! 在用的 `preview_rep_id`(files > plain text > image > rich text > uri >
+//! unknown,由 `uc-core` 选型策略统一算好),不会把一段网页 markup 当作主体
+//! 同步出去。entry 里确实只有富文本(没有更优先的候选)时,`preview_rep_id`
+//! 仍会退化成富文本 rep,这里按 Text 分支 `from_utf8_lossy` 兜底不让整条
+//! GET 链路断,但这是"没有更好选择"时的兜底,而非默认行为。
 //!
 //! ## 方案 X(不区分来源)
 //!
@@ -83,7 +85,7 @@ impl GetLatestMobileSyncDocUseCase {
     pub(crate) async fn execute(&self) -> Result<SyncClipboardMeta, GetLatestMobileSyncDocError> {
         let rep = self
             .snapshot_port
-            .latest_plain_text_preferred_representation()
+            .latest_preview_representation()
             .await?
             .ok_or(GetLatestMobileSyncDocError::NotFound)?;
 
@@ -191,7 +193,7 @@ mod tests {
             async fn latest_paste_representation(
                 &self,
             ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
-            async fn latest_plain_text_preferred_representation(
+            async fn latest_preview_representation(
                 &self,
             ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
         }
@@ -201,9 +203,9 @@ mod tests {
         rep: Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>,
     ) -> GetLatestMobileSyncDocUseCase {
         let mut port = MockSnapPort::new();
-        // use case 走 plaintext-preferred 入口; 这里 mock 该方法即可,
-        // adapter 内部的"选哪条 rep"逻辑由 adapter 自己的单测覆盖。
-        port.expect_latest_plain_text_preferred_representation()
+        // use case 走 preview 入口; 这里 mock 该方法即可, adapter 内部
+        // "选哪条 rep"的逻辑由 adapter 自己的单测覆盖。
+        port.expect_latest_preview_representation()
             .times(1)
             .return_once(move || rep);
         GetLatestMobileSyncDocUseCase::new(Arc::new(port))
@@ -365,10 +367,11 @@ mod tests {
 
     #[tokio::test]
     async fn rich_text_html_classified_as_text() {
-        // 现在的语义: port 在 entry 里找不到 text/plain rep 时, 兜底返回 paste
-        // rep (这里是 text/html), use case 仍按 Text 分支 from_utf8_lossy 兜底,
-        // 不让整条 GET 链路断。配合 adapter 的 plaintext-preferred 选择, html
-        // 字节落到 iPhone 的概率只剩"entry 里压根没有 plaintext"这一种情况。
+        // 现在的语义: port 返回的 preview rep 如果本身就是 text/html(entry
+        // 里没有更优先的候选 —— 没有 files/plain text/image), use case 仍按
+        // Text 分支 from_utf8_lossy 兜底,不让整条 GET 链路断。配合 adapter
+        // 复用的 UiPreview 选型, html 字节落到 iPhone 的概率只剩"entry 里
+        // 确实只有富文本"这一种情况。
         let body = b"<p>hi</p>".to_vec();
         let uc = build_uc_returning(Ok(Some(rep(
             "entry-html-1",
@@ -385,9 +388,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn use_case_consumes_plain_text_preferred_entry_point() {
-        // 回归测: 锁定 use case 调的是 latest_plain_text_preferred_representation
-        // 而非 latest_paste_representation。build_uc_returning 仅 expect 新方法
+    async fn use_case_consumes_preview_representation_entry_point() {
+        // 回归测: 锁定 use case 调的是 latest_preview_representation 而非
+        // latest_paste_representation。build_uc_returning 仅 expect 新方法
         // (调用次数 = 1), 若 use case 退回去调老方法这条测试会因为 mockall
         // strict mode 在 drop 时 panic。
         let uc = build_uc_returning(Ok(Some(rep(

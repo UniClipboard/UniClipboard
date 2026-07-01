@@ -260,21 +260,25 @@ pub trait LatestClipboardSnapshotPort: Send + Sync {
         &self,
     ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
 
-    /// 拿到当前 entry 中**plain-text 偏好**的 representation。
+    /// Return the entry's UiPreview-selected representation, materialized with
+    /// its bytes.
     ///
-    /// 选择规则:在该 entry 的 selection 涉及的全部 rep(primary +
-    /// secondary)中,优先返回 mime `text/plain` 或 format_id `text` 的 rep;
-    /// 若都没有,fallback 到 paste-priority rep,与
-    /// [`Self::latest_paste_representation`] 行为一致。
+    /// Selection rule: this is `preview_rep_id` from the entry's persisted
+    /// `ClipboardSelection` — a single representation chosen across the whole
+    /// representation set by relative legibility (files > plain text > image >
+    /// rich text / markup > uri > unknown), computed once by the selection
+    /// policy at capture time.
     ///
-    /// 领域定位:与 [`Self::latest_paste_representation`] 的差异在于优先级
-    /// 不再是"系统默认粘贴目标",而是"纯文本字节"。当 paste-priority rep
-    /// 是富文本(`text/rtf` / `text/html`)而 entry 同时承载了 `text/plain`
-    /// 备选时,本方法返回 plaintext 备选;反之,当 entry 不存在 plaintext
-    /// 备选时,行为退化为 paste 入口。
+    /// Domain positioning: differs from [`Self::latest_paste_representation`],
+    /// which is anchored on `paste_rep_id` (the system default-paste target,
+    /// tuned to preserve formatting when pasted into a desktop app) and can
+    /// resolve to a markup representation (`text/html` / `text/rtf`) even when
+    /// a plainer, more broadly consumable representation exists on the same
+    /// entry.
     ///
-    /// 无任何 entry 时返回 `Ok(None)`,与 paste 入口语义一致。
-    async fn latest_plain_text_preferred_representation(
+    /// Returns `Ok(None)` when there is no entry, or when the referenced
+    /// representation row cannot be found.
+    async fn latest_preview_representation(
         &self,
     ) -> Result<Option<LatestPasteRepresentation>, LatestClipboardSnapshotError>;
 }

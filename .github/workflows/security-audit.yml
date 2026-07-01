@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - 'Cargo.toml'
+      - 'crates/**/Cargo.toml'
+      - 'apps/**/Cargo.toml'
+      - 'src-tauri/**/Cargo.toml'
       - 'Cargo.lock'
       - '.cargo/audit.toml'
       - 'package.json'
@@ -20,6 +23,9 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'Cargo.toml'
+      - 'crates/**/Cargo.toml'
+      - 'apps/**/Cargo.toml'
+      - 'src-tauri/**/Cargo.toml'
       - 'Cargo.lock'
       - '.cargo/audit.toml'
       - 'package.json'
@@ -49,6 +55,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Audit Rust dependencies
         uses: rustsec/audit-check@v2.0.0
@@ -58,6 +66,8 @@ jobs:
   bun-audit:
     name: bun audit (${{ matrix.project.directory }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -89,6 +99,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2

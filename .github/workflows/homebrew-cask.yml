@@ -103,6 +103,16 @@ jobs:
           git config user.email "release@uniclipboard.app"
           git remote add upstream https://github.com/Homebrew/homebrew-cask.git || true
           DEFAULT_BRANCH=$(gh repo view Homebrew/homebrew-cask --json defaultBranchRef --jq '.defaultBranchRef.name')
+
+          # Keep the fork's default branch fast-forwarded to upstream before branching.
+          # Building the working branch straight off upstream/$DEFAULT_BRANCH (below) carries
+          # whatever .github/workflows/* content upstream currently has. If that differs from
+          # what's already stored on the fork, GitHub refuses the later `git push` because
+          # HOMEBREW_CASK_TOKEN has no `workflow` scope. The merge-upstream API performs the
+          # sync server-side and isn't subject to that scope check, so doing it first keeps
+          # the fork's stored workflow files identical to upstream's and avoids the rejection.
+          gh api -X POST "repos/${FORK_REPO}/merge-upstream" -f branch="$DEFAULT_BRANCH" >/dev/null
+
           git fetch upstream "$DEFAULT_BRANCH"
           git checkout -B "uniclipboard-${VERSION}" "upstream/$DEFAULT_BRANCH"
 

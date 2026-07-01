@@ -68,12 +68,13 @@ const RETENTION_DAYS_OPTIONS = [
 ] as const
 
 const MAX_ITEMS_OPTIONS = [
-  { value: '100', count: 100 },
-  { value: '200', count: 200 },
-  { value: '500', count: 500 },
-  { value: '1000', count: 1000 },
-  { value: '2000', count: 2000 },
-  { value: '5000', count: 5000 },
+  { value: '100', count: 100 as number | null },
+  { value: '200', count: 200 as number | null },
+  { value: '500', count: 500 as number | null },
+  { value: '1000', count: 1000 as number | null },
+  { value: '2000', count: 2000 as number | null },
+  { value: '5000', count: 5000 as number | null },
+  { value: 'unlimited', count: null as number | null },
 ] as const
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -109,6 +110,26 @@ function setByAgeRule(rules: RetentionRule[], days: number): RetentionRule[] {
 function setByCountRule(rules: RetentionRule[], maxItems: number): RetentionRule[] {
   const newRule: RetentionRule = { byCount: { maxItems: maxItems } }
   return [...rules.filter(r => !('byCount' in r)), newRule]
+}
+
+/** Drop the `byCount` rule entirely — absence means "no count cap". */
+function clearByCountRule(rules: RetentionRule[]): RetentionRule[] {
+  return rules.filter(r => !('byCount' in r))
+}
+
+/**
+ * Resolve the persisted `byCount` value for a `MAX_ITEMS_OPTIONS` select
+ * value; `null` means "no count cap" (the "unlimited" option).
+ *
+ * Falls back to 500 only if `value` doesn't match any known option (shouldn't
+ * happen — the Select only offers known values). Note this must NOT be
+ * written as `MAX_ITEMS_OPTIONS.find(...)?.count ?? 500`: when the option is
+ * found and its `count` is legitimately `null`, `??` treats `null` as
+ * nullish and incorrectly falls through to `500`.
+ */
+export function resolveMaxItemsCount(value: string): number | null {
+  const opt = MAX_ITEMS_OPTIONS.find(o => o.value === value)
+  return opt ? opt.count : 500
 }
 
 // ── StorageBar sub-component ─────────────────────────────────────────
@@ -266,7 +287,7 @@ const StorageSection: React.FC = () => {
   // Retention policy state
   const [enabled, setEnabled] = useState(true)
   const [retentionDays, setRetentionDays] = useState('30')
-  const [maxItems, setMaxItems] = useState('500')
+  const [maxItems, setMaxItems] = useState('unlimited')
   const [skipPinned, setSkipPinned] = useState(true)
 
   // Optimistic rules ref to avoid stale reads when rapidly changing both rules
@@ -366,7 +387,9 @@ const StorageSection: React.FC = () => {
     }
 
     const count = getByCountItems(rp.rules)
-    if (count !== null) {
+    if (count === null) {
+      setMaxItems('unlimited')
+    } else {
       const match = MAX_ITEMS_OPTIONS.find(o => o.count === count)
       setMaxItems(match ? match.value : '500')
     }
@@ -406,9 +429,9 @@ const StorageSection: React.FC = () => {
     const prev = maxItems
     setMaxItems(value)
     if (!setting?.retentionPolicy) return
-    const count = MAX_ITEMS_OPTIONS.find(o => o.value === value)?.count ?? 500
+    const count = resolveMaxItemsCount(value)
     const prevRules = optimisticRulesRef.current
-    const newRules = setByCountRule(prevRules, count)
+    const newRules = count === null ? clearByCountRule(prevRules) : setByCountRule(prevRules, count)
     optimisticRulesRef.current = newRules
     try {
       await updateRetentionPolicy({ rules: newRules })
@@ -606,7 +629,9 @@ const StorageSection: React.FC = () => {
             <SelectContent>
               {MAX_ITEMS_OPTIONS.map(opt => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {t('settings.sections.storage.maxHistoryItems.items', { count: opt.count })}
+                  {opt.count === null
+                    ? t('settings.sections.storage.maxHistoryItems.unlimited')
+                    : t('settings.sections.storage.maxHistoryItems.items', { count: opt.count })}
                 </SelectItem>
               ))}
             </SelectContent>

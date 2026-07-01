@@ -13,7 +13,6 @@
 pub const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use uc_daemon_contract::DAEMON_API_REVISION;
 
-pub mod background;
 pub mod daemon;
 pub mod daemon_probe;
 pub mod daemon_recovery;

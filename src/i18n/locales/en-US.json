@@ -583,6 +583,7 @@
         "version": "Version {{version}}",
         "checkUpdate": "Check for updates",
         "checkingUpdate": "Checking...",
+        "updatesTitle": "Updates",
         "autoCheckUpdate": {
           "label": "Auto-check for updates",
           "description": "Automatically check for new versions when the app starts"
@@ -606,6 +607,13 @@
             "cancel": "Cancel",
             "confirm": "Switch"
           }
+        },
+        "sponsors": {
+          "title": "Sponsors",
+          "thanks": "Thanks to these wonderful people whose sponsorship keeps UniClipboard moving forward.",
+          "goldBadge": "Gold",
+          "becomeSponsor": "Become a sponsor →",
+          "githubStar": "Star on GitHub →"
         },
         "copyright": "© 2025 UniClipboard Team. All rights reserved.",
         "links": {

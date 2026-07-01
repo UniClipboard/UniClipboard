@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import {
   Select,
@@ -40,6 +41,7 @@ import { useUpdate } from '@/hooks/useUpdate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import type { UpdateChannel } from '@/types/setting'
+import { SponsorsGroup } from './about/SponsorsGroup'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 
@@ -269,69 +271,71 @@ const AboutSection: React.FC = () => {
   }
 
   return (
-    <>
-      <SettingGroup title={t('settings.sections.about.appName')}>
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center">
-            <div className="size-12 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/20">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-7 text-primary-foreground"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <title>{t('settings.sections.about.appName')}</title>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
-            </div>
-            <div className="ml-4 space-y-0.5">
-              <div className="flex items-center gap-2">
-                <h4 className="text-lg font-medium">{t('settings.sections.about.appName')}</h4>
-                {channel && (
-                  <Badge variant={getChannelBadgeVariant(channel)}>
-                    {getChannelLabel(channel)}
-                  </Badge>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {appVersion
-                  ? t('settings.sections.about.version', { version: appVersion })
-                  : t('settings.sections.about.version', { version: '...' })}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {import.meta.env.DEV && (
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded-lg border border-dashed border-amber-500/60 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
-                onClick={handleOpenUpdaterWindowDev}
-                title="Dev only: open the Sparkle-style updater window with mock data"
-              >
-                Open updater window (dev)
-              </button>
+    <div className="space-y-5">
+      {/* App identity hero */}
+      <div className="flex flex-col items-center gap-4 rounded-xl border border-border/60 bg-card px-6 py-8 text-center">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/25">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="size-9 text-primary-foreground"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <title>{t('settings.sections.about.appName')}</title>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+            />
+          </svg>
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-center gap-2">
+            <h3 className="text-xl font-semibold tracking-tight">
+              {t('settings.sections.about.appName')}
+            </h3>
+            {channel && (
+              <Badge variant={getChannelBadgeVariant(channel)}>{getChannelLabel(channel)}</Badge>
             )}
-            <button
-              type="button"
-              className="inline-flex min-w-36 items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm transition duration-200 hover:bg-secondary/80"
-              onClick={handleCheckUpdate}
-              disabled={isBusy || isCheckingUpdate}
-              aria-busy={isCheckingUpdate}
-            >
-              {isCheckingUpdate && <Loader2 className="size-4 animate-spin" />}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {appVersion
+              ? t('settings.sections.about.version', { version: appVersion })
+              : t('settings.sections.about.version', { version: '...' })}
+          </p>
+        </div>
+        <Button
+          size="lg"
+          className="w-44 transition-colors"
+          onClick={handleCheckUpdate}
+          disabled={isBusy || isCheckingUpdate}
+          aria-busy={isCheckingUpdate}
+        >
+          <span className="inline-flex min-w-0 items-center justify-center gap-1.5">
+            {isCheckingUpdate && <Loader2 data-icon="inline-start" className="animate-spin" />}
+            <span>
               {isCheckingUpdate
                 ? t('settings.sections.about.checkingUpdate')
                 : t('settings.sections.about.checkUpdate')}
-            </button>
-          </div>
-        </div>
+            </span>
+          </span>
+        </Button>
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            className="text-xs text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
+            onClick={handleOpenUpdaterWindowDev}
+            title="Dev only: open the Sparkle-style updater window with mock data"
+          >
+            Open updater window (dev)
+          </button>
+        )}
+      </div>
 
+      {/* Update settings */}
+      <SettingGroup title={t('settings.sections.about.updatesTitle')}>
         <SettingRow
           label={t('settings.sections.about.autoCheckUpdate.label')}
           description={t('settings.sections.about.autoCheckUpdate.description')}
@@ -383,37 +387,41 @@ const AboutSection: React.FC = () => {
             </SelectContent>
           </Select>
         </SettingRow>
-
-        <div className="p-4 space-y-3">
-          <p className="text-sm text-muted-foreground">{t('settings.sections.about.copyright')}</p>
-          <div className="flex gap-x-6 text-sm">
-            <a
-              href="https://github.com/UniClipboard/UniClipboard"
-              className="text-primary hover:text-primary/80 transition-colors"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t('settings.sections.about.links.privacyPolicy')}
-            </a>
-            <a
-              href="https://github.com/UniClipboard/UniClipboard"
-              className="text-primary hover:text-primary/80 transition-colors"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t('settings.sections.about.links.termsOfService')}
-            </a>
-            <a
-              href="https://github.com/UniClipboard/UniClipboard"
-              className="text-primary hover:text-primary/80 transition-colors"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t('settings.sections.about.links.helpCenter')}
-            </a>
-          </div>
-        </div>
       </SettingGroup>
+
+      {/* Sponsors */}
+      <SponsorsGroup />
+
+      {/* Footer: links + copyright */}
+      <div className="space-y-2.5 pt-1 text-center">
+        <div className="flex justify-center gap-x-5 text-sm">
+          <a
+            href="https://github.com/UniClipboard/UniClipboard"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('settings.sections.about.links.privacyPolicy')}
+          </a>
+          <a
+            href="https://github.com/UniClipboard/UniClipboard"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('settings.sections.about.links.termsOfService')}
+          </a>
+          <a
+            href="https://github.com/UniClipboard/UniClipboard"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('settings.sections.about.links.helpCenter')}
+          </a>
+        </div>
+        <p className="text-xs text-muted-foreground/80">{t('settings.sections.about.copyright')}</p>
+      </div>
 
       <AlertDialog open={updateDialogOpen} onOpenChange={handleUpdateDialogOpenChange}>
         <AlertDialogContent>
@@ -528,7 +536,7 @@ const AboutSection: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   )
 }
 

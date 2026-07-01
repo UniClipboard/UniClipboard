@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use tracing::info;
 use uc_core::ports::SettingsMigrationPort;
 use uc_core::settings::model::{
     RetentionPolicy, RetentionRule, RuleEvaluation, Settings, CURRENT_SCHEMA_VERSION,
@@ -50,6 +51,7 @@ impl SettingsMigrationPort for MigrationV1ToV2 {
 
     fn migrate(&self, mut settings: Settings) -> Settings {
         if is_v1_stock_default_retention_policy(&settings.retention_policy) {
+            info!("Rewriting stale v1 stock retention_policy default (30d/500 items) to v2 default (180d/unlimited)");
             settings.retention_policy = RetentionPolicy::default();
         }
         settings.schema_version = self.to_version();

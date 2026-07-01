@@ -615,11 +615,11 @@
           "becomeSponsor": "Become a sponsor →",
           "githubStar": "Star on GitHub →"
         },
-        "copyright": "© 2025 UniClipboard Team. All rights reserved.",
+        "copyright": "© 2025 UniClipboard. All rights reserved.",
         "links": {
           "privacyPolicy": "Privacy Policy",
           "termsOfService": "Terms of Service",
-          "helpCenter": "Help Center"
+          "aboutMaintainers": "About & Maintainers"
         }
       }
     }

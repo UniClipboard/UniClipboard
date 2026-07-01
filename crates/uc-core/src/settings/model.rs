@@ -4,7 +4,10 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSeconds};
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+/// v1 -> v2: one-time rewrite of a stock v1-default `retention_policy`
+/// (`ByAge(30d) + ByCount(500)`) to the new default (`ByAge(180d)`, no count
+/// cap). See `uc_infra::settings::migration::MigrationV1ToV2`.
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 // 所有 settings struct 统一使用 `#[serde(default)]`：缺字段时回退到
 // `Default::default()`（在 `defaults.rs` 中实现），保证向后兼容。
@@ -156,7 +159,7 @@ pub enum SyncFrequency {
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RetentionRule {
     /// 按时间清理
@@ -192,7 +195,7 @@ pub enum RuleEvaluation {
     AllMatch, // AND（极少用）
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "snake_case")]
 pub struct RetentionPolicy {
     pub enabled: bool,

@@ -18,6 +18,7 @@
 - [Commit 规范](#commit-规范)
 - [代码风格与质量](#代码风格与质量)
 - [测试](#测试)
+- [依赖漏洞审计](#依赖漏洞审计)
 - [文档](#文档)
 - [Pull Request](#pull-request)
 - [发布流程](#发布流程)
@@ -300,6 +301,27 @@ bun run test:coverage   # 在 src-tauri/target/llvm-cov 下生成 HTML 报告
 部分变更需要手动跑 UI 或多设备同步场景。项目把 UAT 记录放在 `docs/uat/`。涉及 UI 的 PR，请在描述中说明你手动验证了哪些路径（黄金路径 + 至少一个边界场景）。
 
 如果某个修复难以用自动化测试覆盖，请在 `docs/fixes/` 下添加一份回归说明，描述失效形式以及现在如何防止它再次发生。
+
+## 依赖漏洞审计
+
+CI 会在每个改动到 lockfile 的 PR/push 上运行自动化依赖审计（`.github/workflows/security-audit.yml`），另外每天还会跑一次定时任务，这样即使没有 PR 改动依赖，新曝出的漏洞也能被及时发现：
+
+- **Rust** —— [`rustsec/audit-check`](https://github.com/rustsec/audit-check) 对 `Cargo.lock` 运行 `cargo audit`。只要出现真实的漏洞公告就会让检查失败（"unmaintained" 这类仅供参考的提示不会导致失败）。本地运行方式：
+
+  ```bash
+  cargo install cargo-audit --locked
+  cargo audit
+  ```
+
+- **JS/TS** —— `bun audit --production` 会分别对根项目、`docs-site/`、`workers/update-server/` 运行（三者各自有独立的 `package.json`/`bun.lock`）。审计范围限定在生产依赖——devDependencies（构建工具、测试运行器等）不会出现在构建产物里，如果对它们也做门禁，CI 会因为无关的工具链噪音而失败，而不是因为真正会随发布产物一起出货的依赖。本地运行方式：
+
+  ```bash
+  bun audit --production
+  (cd docs-site && bun audit --production)
+  (cd workers/update-server && bun audit --production)
+  ```
+
+如果某个漏洞公告上游没有修复版本，且你已确认本项目从未走到那条易受攻击的代码路径，可以在 `.cargo/audit.toml` 的 `[advisories].ignore` 里加一条忽略项，并写清楚理由（可参考已有的 `RUSTSEC-2023-0071` 条目的详细程度）。不要仅仅为了让 CI 变绿就随手加忽略项——这个审计门禁存在的意义，正是防止已知有漏洞的依赖悄悄地随发布版本一起出货。
 
 ## 文档
 

@@ -18,6 +18,7 @@ Thanks for your interest in contributing to UniClipboard! This document explains
 - [Commit Conventions](#commit-conventions)
 - [Code Style and Quality](#code-style-and-quality)
 - [Testing](#testing)
+- [Dependency Vulnerability Audit](#dependency-vulnerability-audit)
 - [Documentation](#documentation)
 - [Pull Requests](#pull-requests)
 - [Release Process](#release-process)
@@ -303,6 +304,27 @@ bun run test:coverage   # produces an HTML report under src-tauri/target/llvm-co
 Some changes require UI verification or multi-device sync testing. The project keeps UAT notes under `docs/uat/`. For UI work, please describe in the PR what you exercised manually (golden path + at least one edge case).
 
 When a fix is hard to cover with automated tests, add a regression note under `docs/fixes/` describing the failure mode and how it is now prevented.
+
+## Dependency Vulnerability Audit
+
+CI runs an automated dependency audit (`.github/workflows/security-audit.yml`) on every PR/push that touches a lockfile, plus a daily scheduled run so newly-published advisories are caught even when no dependency changed:
+
+- **Rust** — [`rustsec/audit-check`](https://github.com/rustsec/audit-check) runs `cargo audit` against `Cargo.lock`. It fails the check on any real vulnerability advisory (informational notices like "unmaintained" do not fail the build). Run it locally with:
+
+  ```bash
+  cargo install cargo-audit --locked
+  cargo audit
+  ```
+
+- **JS/TS** — `bun audit --production` runs against the root project, `docs-site/`, and `workers/update-server/` (each has its own `package.json`/`bun.lock`). It is scoped to production dependencies only — devDependencies (build tooling, test runners, etc.) never ship in a build artifact, so gating on them would fail CI on unrelated tooling churn instead of on what actually ships. Run it locally with:
+
+  ```bash
+  bun audit --production
+  (cd docs-site && bun audit --production)
+  (cd workers/update-server && bun audit --production)
+  ```
+
+If an advisory has no upstream fix and you've confirmed the vulnerable code path is unreachable in this project, add it to `.cargo/audit.toml` under `[advisories].ignore` with a comment explaining why (see the existing `RUSTSEC-2023-0071` entry for the expected level of detail). Do not add an ignore entry just to make CI pass — the audit gate exists specifically to prevent a known-vulnerable dependency from shipping silently in a release.
 
 ## Documentation
 

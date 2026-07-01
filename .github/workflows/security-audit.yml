@@ -1,0 +1,119 @@
+name: 'Security Audit'
+run-name: 'Dependency vulnerability audit'
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'crates/**/Cargo.toml'
+      - 'apps/**/Cargo.toml'
+      - 'src-tauri/**/Cargo.toml'
+      - 'Cargo.lock'
+      - '.cargo/audit.toml'
+      - 'package.json'
+      - 'bun.lock'
+      - 'docs-site/package.json'
+      - 'docs-site/bun.lock'
+      - 'workers/update-server/package.json'
+      - 'workers/update-server/bun.lock'
+      - '.github/workflows/security-audit.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'Cargo.toml'
+      - 'crates/**/Cargo.toml'
+      - 'apps/**/Cargo.toml'
+      - 'src-tauri/**/Cargo.toml'
+      - 'Cargo.lock'
+      - '.cargo/audit.toml'
+      - 'package.json'
+      - 'bun.lock'
+      - 'docs-site/package.json'
+      - 'docs-site/bun.lock'
+      - 'workers/update-server/package.json'
+      - 'workers/update-server/bun.lock'
+      - '.github/workflows/security-audit.yml'
+  schedule:
+    # Catches newly-published RustSec/npm advisories against an unchanged
+    # lockfile — the whole point of running this daily rather than only on
+    # PRs that happen to touch dependencies. rustsec/audit-check detects the
+    # `schedule` event and files a GitHub issue per new advisory instead of
+    # failing a check (there's no PR/commit to attach a check to).
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  cargo-audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Audit Rust dependencies
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  bun-audit:
+    name: bun audit (${{ matrix.project.directory }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - directory: '.'
+            name: root
+            ignore: ''
+          - directory: 'docs-site'
+            name: docs-site
+            # All 4 are transitive and pinned by upstream packages that
+            # haven't shipped a fixed version yet (mermaid's dompurify pin,
+            # next's internal postcss pin, fumadocs-mdx's esbuild pin,
+            # fumadocs-core/mdx/openapi's js-yaml pin). Tracked in #1226 —
+            # remove an --ignore entry once the corresponding upstream bump
+            # lands and `bun audit --production` no longer flags it.
+            ignore: >-
+              --ignore=GHSA-vxr8-fq34-vvx9
+              --ignore=GHSA-cmwh-pvxp-8882
+              --ignore=GHSA-qx2v-qp2m-jg93
+              --ignore=GHSA-g7r4-m6w7-qqqr
+              --ignore=GHSA-h67p-54hq-rp68
+          - directory: 'workers/update-server'
+            name: update-server
+            ignore: ''
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.project.directory }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # `--production` scopes the gate to what actually ships (runtime
+      # dependencies). Dev tooling (vite, vitest, eslint, wdio, ...) has its
+      # own, much noisier advisory surface that never reaches a build
+      # artifact — gating on it would fail CI on unrelated tooling churn
+      # instead of on dependencies that could ship a known vulnerability.
+      - name: Audit production dependencies
+        run: bun audit --production ${{ matrix.project.ignore }}

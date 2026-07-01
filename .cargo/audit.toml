@@ -1,0 +1,15 @@
+# Config for `cargo audit` (see .github/workflows/security-audit.yml and
+# CONTRIBUTING.md). Auto-discovered by the `cargo-audit` binary from the
+# working directory, so this is the single source of truth for both local
+# `cargo audit` runs and the CI gate (rustsec/audit-check shells out to the
+# same binary).
+[advisories]
+ignore = [
+  # rsa: Marvin Attack timing side-channel. Pulled in transitively via
+  # jsonwebtoken; no fixed version exists upstream as of this writing
+  # (https://rustsec.org/advisories/RUSTSEC-2023-0071). Not exploitable here:
+  # crates/uc-webserver/src/security/claims.rs only uses Algorithm::HS256
+  # (HMAC) — the vulnerable RSA code path is never reached. Re-evaluate if a
+  # fix ships or if RSA-based JWT algorithms are ever adopted.
+  "RUSTSEC-2023-0071",
+]

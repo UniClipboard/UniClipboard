@@ -189,7 +189,13 @@ impl CleanupExpiredFilesUseCase {
         // deleted image-heavy users' history on first upgrade and was reverted
         // (#957); this pass only ever touches data created after the quota
         // baseline was established. See `run_quota`.
-        self.run_quota(quota_bytes, &delete_uc, &mut result).await;
+        self.run_quota(
+            quota_bytes,
+            settings.retention_policy.skip_pinned,
+            &delete_uc,
+            &mut result,
+        )
+        .await;
 
         info!(
             files_removed = result.files_removed,
@@ -331,14 +337,16 @@ impl CleanupExpiredFilesUseCase {
     /// data. Eviction routes through the entry-aware delete path, which untags
     /// blobs so iroh-blobs GC reclaims the bytes on its next sweep.
     ///
-    /// Pinned/favorited entries are a future exemption: entries now persist
-    /// `is_favorited` (toggled via `ToggleFavoriteClipboardEntryUseCase`), but
-    /// this quota pass does not yet filter them out. When the exemption lands,
-    /// filter favorited entries out of the managed set before calling the
-    /// eviction policy.
+    /// Favorited entries are exempted whenever `skip_pinned` is set
+    /// (`retention_policy.skip_pinned` — shared with `EnforceRetentionPolicyUseCase`
+    /// so "is a favorite exempt from auto-cleanup" has one answer across both
+    /// cleanup mechanisms): they are removed from the managed set before the
+    /// eviction policy runs, so they are never evicted and never count toward
+    /// the budget.
     async fn run_quota(
         &self,
         quota_bytes: u64,
+        skip_pinned: bool,
         delete_uc: &DeleteClipboardEntryUseCase,
         result: &mut CleanupResult,
     ) {
@@ -412,7 +420,7 @@ impl CleanupExpiredFilesUseCase {
         }
 
         let managed_total: u64 = managed.iter().map(|e| e.disk_bytes).sum();
-        let victims = select_entries_to_evict_for_quota(managed, quota_bytes);
+        let victims = select_entries_to_evict_for_quota(managed, quota_bytes, skip_pinned);
 
         if victims.is_empty() {
             info!(
@@ -519,6 +527,7 @@ impl CleanupExpiredFilesUseCase {
                         entry_id: entry.entry_id.clone(),
                         created_at_ms: entry.created_at_ms,
                         disk_bytes,
+                        is_favorited: entry.is_favorited,
                     });
                 }
             }
@@ -620,6 +629,7 @@ struct DiskBackedEntry {
     entry_id: EntryId,
     created_at_ms: i64,
     disk_bytes: u64,
+    is_favorited: bool,
 }
 
 /// Decide which disk-backed entries to evict, oldest-first, to bring the total
@@ -627,15 +637,22 @@ struct DiskBackedEntry {
 /// unit-tested without any I/O.
 ///
 /// Quota-only: there is no age rule here — an entry is evicted solely to free
-/// budget. Entries are processed oldest-first by `created_at_ms`; eviction
-/// stops as soon as the projected remaining total is `<= quota_bytes`. The
-/// single newest entry is never evicted, so a freshly copied payload that on
-/// its own exceeds the quota is kept rather than instantly reclaimed.
-/// `quota_bytes == 0` disables the quota and evicts nothing.
+/// budget. `skip_pinned` removes favorited entries from consideration before
+/// anything else runs, so a favorited entry is never evicted and never counts
+/// toward the managed total. Entries are processed oldest-first by
+/// `created_at_ms`; eviction stops as soon as the projected remaining total is
+/// `<= quota_bytes`. The single newest entry is never evicted, so a freshly
+/// copied payload that on its own exceeds the quota is kept rather than
+/// instantly reclaimed. `quota_bytes == 0` disables the quota and evicts
+/// nothing.
 fn select_entries_to_evict_for_quota(
     mut entries: Vec<DiskBackedEntry>,
     quota_bytes: u64,
+    skip_pinned: bool,
 ) -> Vec<EntryId> {
+    if skip_pinned {
+        entries.retain(|e| !e.is_favorited);
+    }
     if quota_bytes == 0 || entries.is_empty() {
         return Vec::new();
     }
@@ -806,6 +823,14 @@ mod tests {
             entry_id: EntryId::from(id),
             created_at_ms,
             disk_bytes,
+            is_favorited: false,
+        }
+    }
+
+    fn favorited_entry(id: &str, created_at_ms: i64, disk_bytes: u64) -> DiskBackedEntry {
+        DiskBackedEntry {
+            is_favorited: true,
+            ..entry(id, created_at_ms, disk_bytes)
         }
     }
 
@@ -818,20 +843,20 @@ mod tests {
     #[test]
     fn quota_disabled_evicts_nothing() {
         let entries = vec![entry("a", 1, 5_000), entry("b", 2, 5_000)];
-        assert!(select_entries_to_evict_for_quota(entries, 0).is_empty());
+        assert!(select_entries_to_evict_for_quota(entries, 0, false).is_empty());
     }
 
     #[test]
     fn quota_keeps_everything_when_already_under_budget() {
         let entries = vec![entry("a", 1, 40), entry("b", 2, 40)];
-        assert!(select_entries_to_evict_for_quota(entries, 100).is_empty());
+        assert!(select_entries_to_evict_for_quota(entries, 100, false).is_empty());
     }
 
     #[test]
     fn quota_evicts_oldest_until_under_budget() {
         // total = 180; quota = 100. Oldest-first until <= 100.
         let entries = vec![entry("a", 1, 60), entry("b", 2, 60), entry("c", 3, 60)];
-        let victims = select_entries_to_evict_for_quota(entries, 100);
+        let victims = select_entries_to_evict_for_quota(entries, 100, false);
         // drop a (180→120) and b (120→60); c kept.
         assert_eq!(ids(&victims), vec!["a", "b"]);
     }
@@ -844,7 +869,7 @@ mod tests {
             entry("middle", 200, 60),
         ];
         // quota 100, total 180 → evict the two oldest by created_at.
-        let victims = select_entries_to_evict_for_quota(entries, 100);
+        let victims = select_entries_to_evict_for_quota(entries, 100, false);
         assert_eq!(ids(&victims), vec!["oldest", "middle"]);
     }
 
@@ -858,14 +883,44 @@ mod tests {
             entry("old2", 2, 50),
             entry("newest", 3, 200),
         ];
-        let victims = select_entries_to_evict_for_quota(entries, 100);
+        let victims = select_entries_to_evict_for_quota(entries, 100, false);
         assert_eq!(ids(&victims), vec!["old1", "old2"]);
     }
 
     #[test]
     fn quota_single_entry_is_never_evicted() {
         let entries = vec![entry("only", 1, 10_000)];
-        assert!(select_entries_to_evict_for_quota(entries, 100).is_empty());
+        assert!(select_entries_to_evict_for_quota(entries, 100, false).is_empty());
+    }
+
+    #[test]
+    fn quota_skip_pinned_exempts_favorited_entries_even_when_oldest() {
+        // total = 180, quota = 150. Without the favorited entry the remaining
+        // total (120) is already under budget, so skip_pinned must exempt
+        // "old_favorite" entirely — it should never appear in the eviction
+        // set, and its bytes should never count toward the quota pressure
+        // that would otherwise evict it as the oldest entry.
+        let entries = vec![
+            favorited_entry("old_favorite", 1, 60),
+            entry("b", 2, 60),
+            entry("newest", 3, 60),
+        ];
+        let victims = select_entries_to_evict_for_quota(entries, 150, true);
+        assert_eq!(ids(&victims), Vec::<String>::new());
+    }
+
+    #[test]
+    fn quota_skip_pinned_false_does_not_exempt_favorited_entries() {
+        // Same data and quota as above, but skip_pinned is off: the favorited
+        // entry counts toward the budget like any other and, being oldest,
+        // is the one evicted to bring the total (180) under quota (150).
+        let entries = vec![
+            favorited_entry("old_favorite", 1, 60),
+            entry("b", 2, 60),
+            entry("newest", 3, 60),
+        ];
+        let victims = select_entries_to_evict_for_quota(entries, 150, false);
+        assert_eq!(ids(&victims), vec!["old_favorite"]);
     }
 
     // --- quota baseline parsing (pure) ------------------------------------

@@ -75,6 +75,11 @@ pub struct ColdLaunchOutcome {
 /// optionally restore the most recent clipboard entry. Returns `None` when
 /// the daemon never became reachable or settings could not be read — the
 /// caller should skip any further startup action in that case.
+///
+/// Wrapped in its own span so the whole sequence's `info!`/`warn!` events
+/// (here and in `daemon_recovery`) correlate under one trace instead of
+/// reading as unrelated log lines.
+#[tracing::instrument(name = "startup.cold_launch_actions", level = "info", skip_all)]
 pub async fn run_cold_launch_actions(
     connection_state: DaemonConnectionState,
     daemon_ready_timeout: Duration,

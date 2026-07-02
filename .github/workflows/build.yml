@@ -123,9 +123,32 @@ jobs:
         with:
           bun-version: latest
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: resolve pinned Rust channel
+        id: rust-channel
+        # Single source of truth: rust-toolchain.toml (repo root). CI installs
+        # that SAME pinned channel below instead of a floating `@stable`, so
+        # Swatinem/rust-cache's rust-environment-hash key stays stable between
+        # the weekly cache-warmup run and this release/tag build. A floating
+        # stable drifts (e.g. 1.96.0 -> 1.96.1 between a Monday warmup and a
+        # midweek release) and silently invalidates every Rust cache key,
+        # forcing a full cold rebuild.
+        shell: bash
+        run: |
+          channel=$(grep -oE 'channel[[:space:]]*=[[:space:]]*"[^"]+"' rust-toolchain.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "pinned Rust channel: $channel"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - name: install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
+          # Cross-compile targets are installed straight onto the pinned
+          # toolchain that cargo actually uses (rust-toolchain.toml override),
+          # so no separate `rustup target add` step is needed. Missing targets
+          # here were the real cause of `Target ... is not installed`
+          # (25960898069 / 25961183688, dtolnay/rust-toolchain#75), which only
+          # happened because CI used to install `@stable` — a different
+          # toolchain than the pinned channel cargo runs.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target == 'aarch64-pc-windows-msvc' && 'aarch64-pc-windows-msvc' || '' }}
 
       - name: Prepend cargo bin to PATH
@@ -136,34 +159,6 @@ jobs:
         # 这里强制把 rustup 真 proxy 所在目录前置,覆盖 brew 那条。
         shell: bash
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
-
-      - name: ensure darwin targets installed on pinned toolchain
-        # rust-toolchain.toml (repo root) 把 cargo 锁到一个具体 channel
-        # (例如 1.95.0),而 dtolnay/rust-toolchain@stable 装的是 stable —
-        # 这是两个独立的 toolchain。跑 cargo 时,target 必须
-        # 已经装到 pinned channel,否则报 `Target ... is not installed`
-        # (25960898069 / 25961183688 的真因,见 dtolnay/rust-toolchain#75)。
-        # 这里先触发 rustup auto-install pinned toolchain,
-        # 再读出 channel 名,显式 `rustup target add --toolchain <channel>`。
-        if: matrix.platform == 'macos-latest'
-        shell: bash
-        run: |
-          TC=$(rustup show active-toolchain | awk '{print $1}')
-          echo "pinned toolchain: $TC"
-          rustup target add --toolchain "$TC" aarch64-apple-darwin x86_64-apple-darwin
-
-      - name: ensure windows arm64 target installed on pinned toolchain
-        # Same pinned-vs-stable split as the darwin step above: the arm64
-        # Windows portable / NSIS build cross-compiles from the x64
-        # windows-latest runner, so the pinned toolchain must have the
-        # aarch64-pc-windows-msvc target (MSVC ARM64 cross tools ship with the
-        # runner's Visual Studio install).
-        if: matrix.target == 'aarch64-pc-windows-msvc'
-        shell: bash
-        run: |
-          TC=$(rustup show active-toolchain | awk '{print $1}')
-          echo "pinned toolchain: $TC"
-          rustup target add --toolchain "$TC" aarch64-pc-windows-msvc
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

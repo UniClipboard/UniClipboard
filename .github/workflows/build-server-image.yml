@@ -93,8 +93,17 @@ jobs:
           context: .
           file: deploy/vps/Dockerfile
           platforms: ${{ matrix.platform }}
-          cache-from: type=gha,scope=server-${{ env.PLATFORM_PAIR }}
-          cache-to: type=gha,mode=max,scope=server-${{ env.PLATFORM_PAIR }}
+          # Registry cache (not type=gha): this workflow only runs on tag
+          # pushes, so a GHA cache would (1) write ~1.4GB of buildkit blobs
+          # scoped to each tag ref that no future tag build can ever restore
+          # (GHA cache is ref-isolated; tags can only read their own ref or
+          # main), and (2) accumulate one such garbage set per release,
+          # blowing past the repo's 10GB GHA cache quota and evicting the
+          # Rust/Bun build caches that release.yml needs. A registry cache
+          # lives in GHCR instead: it costs no GHA quota and is shared across
+          # every tag build, so the Docker layer cache actually gets reused.
+          cache-from: type=registry,ref=${{ steps.img.outputs.image }}:buildcache-${{ env.PLATFORM_PAIR }}
+          cache-to: type=registry,ref=${{ steps.img.outputs.image }}:buildcache-${{ env.PLATFORM_PAIR }},mode=max
           outputs: type=image,name=${{ steps.img.outputs.image }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest

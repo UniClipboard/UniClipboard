@@ -13,7 +13,7 @@ use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_process::contract::DaemonBootstrapError;
 
 use crate::commands::record_trace_fields;
-use crate::tray::show_main_window;
+use crate::main_window::show_main_window;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]

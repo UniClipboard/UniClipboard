@@ -53,6 +53,19 @@ use iroh::{Endpoint, Watcher as _};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
+/// Diagnostic DNS self-test target. Resolving it exercises the *same* resolver
+/// the relay/net-report path uses, so a failure here mirrors the relay
+/// "Resolve failed" wedge. `dns.iroh.link` is the N0 discovery domain the
+/// endpoint already depends on under the default relay mode, so probing it adds
+/// no new external dependency. Diagnostic only — nothing branches on the
+/// result; it exists so field logs can distinguish "this process's resolver was
+/// born wedged" from "reset fixed it".
+const DNS_SELFTEST_HOST: &str = "dns.iroh.link";
+
+/// Budget for one self-test lookup. Short so a wedged resolver's timeout does
+/// not stall the watchdog loop for long.
+const DNS_SELFTEST_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Pacing for the relay self-healing watchdog. All values live here so the
 /// recovery cadence is defined in one place rather than scattered as literals.
 #[derive(Debug, Clone, Copy)]
@@ -195,6 +208,12 @@ async fn run(endpoint: Endpoint, policy: RecoveryPolicy) {
         "relay self-healing watchdog started"
     );
 
+    // Baseline: can this process's resolver resolve at all, right now? On a
+    // healthy start this succeeds; on the wedge (e.g. installer auto-relaunch)
+    // it fails from the very first attempt — the evidence that the resolver was
+    // born with a stale/empty nameserver config, before any reset runs.
+    dns_selftest(&endpoint, "startup").await;
+
     loop {
         let healthy = relay_healthy(&watcher.get());
         let wait = match state.observe(healthy, Instant::now()) {
@@ -226,6 +245,11 @@ async fn run(endpoint: Endpoint, policy: RecoveryPolicy) {
                 // re-check when the network genuinely changed. Harmless no-op
                 // otherwise, and prompts the relay actor to redial sooner.
                 endpoint.network_change().await;
+                // Did the reset restore resolution? Compare against "startup":
+                // startup FAIL + post-reset OK ⇒ the wedge was a stale resolver
+                // and reset is the fix. Still failing ⇒ the root cause is
+                // elsewhere (socket/env) and reset alone is insufficient.
+                dns_selftest(&endpoint, "post-reset").await;
                 Some(next)
             }
         };
@@ -254,6 +278,47 @@ async fn sleep_opt(d: Option<Duration>) {
     match d {
         Some(d) => tokio::time::sleep(d).await,
         None => std::future::pending::<()>().await,
+    }
+}
+
+/// Resolve [`DNS_SELFTEST_HOST`] through the endpoint's own resolver and log
+/// the outcome. Purely diagnostic: it does not gate any decision — it exists so
+/// field logs can pin down *why* the relay is wedged (resolver born with a bad
+/// config vs. reset restoring it). `stage` labels which point in the lifecycle
+/// this probe ran at (`"startup"` / `"post-reset"`).
+async fn dns_selftest(endpoint: &Endpoint, stage: &'static str) {
+    let resolver = match endpoint.dns_resolver() {
+        Ok(resolver) => resolver,
+        Err(err) => {
+            warn!(target: "iroh.net_recovery", stage, error = %err, "DNS self-test skipped: resolver unavailable");
+            return;
+        }
+    };
+    match resolver
+        .lookup_ipv4(DNS_SELFTEST_HOST, DNS_SELFTEST_TIMEOUT)
+        .await
+    {
+        Ok(addrs) => {
+            let count = addrs.count();
+            info!(
+                target: "iroh.net_recovery",
+                stage,
+                host = DNS_SELFTEST_HOST,
+                resolved = true,
+                addr_count = count,
+                "DNS self-test resolved",
+            );
+        }
+        Err(err) => {
+            warn!(
+                target: "iroh.net_recovery",
+                stage,
+                host = DNS_SELFTEST_HOST,
+                resolved = false,
+                error = %err,
+                "DNS self-test FAILED — resolver cannot resolve (likely a stale/empty nameserver config captured at process start)",
+            );
+        }
     }
 }
 

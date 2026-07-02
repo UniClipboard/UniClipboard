@@ -32,6 +32,7 @@ pub mod file_transfer;
 pub mod first_sync_state;
 mod hash;
 pub mod host_event;
+pub mod inbound_file_target;
 pub mod local_identity;
 pub mod mobile_sync;
 pub mod observability;
@@ -74,6 +75,7 @@ pub use host_event::{
     ClipboardHostEvent, ClipboardOriginKind, DeliveryHostEvent, EmitError, HostEvent,
     HostEventEmitterPort, TransferHostEvent,
 };
+pub use inbound_file_target::ReserveInboundFileTargetPort;
 pub use local_identity::{LocalIdentityError, LocalIdentityPort};
 pub use mobile_sync::{
     DeleteMobileDevicePort, EndpointInfoError, FindMobileDeviceByIdPort,

@@ -127,6 +127,8 @@ export interface FileSyncSettings {
   fileCacheQuotaPerDevice: number
   fileRetentionHours: number
   fileAutoCleanup: boolean
+  /** Directory where inbound files are saved; null/absent = managed storage. */
+  autoSaveDir?: string | null
 }
 
 /**
@@ -393,6 +395,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       fileCacheQuotaPerDevice,
       fileRetentionHours,
       fileAutoCleanup,
+      autoSaveDir,
     } = settings.fileSync
     patch.fileSync = {
       fileSyncEnabled,
@@ -401,6 +404,8 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
       fileCacheQuotaPerDevice,
       fileRetentionHours,
       fileAutoCleanup,
+      // undefined ⇒ omitted (unchanged); "" ⇒ clear; a path ⇒ set.
+      autoSaveDir,
     }
   }
 

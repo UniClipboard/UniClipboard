@@ -19,6 +19,7 @@ use tracing::{debug, info, warn};
 use url::Url;
 
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
+use uc_core::ports::inbound_file_target::ReserveInboundFileTargetPort;
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
 
 use crate::facade::blob_transfer::{
@@ -143,11 +144,26 @@ impl InboundBlobFetcher for BlobTransferFacade {
 pub struct FileCacheBlobMaterializer {
     fetcher: Arc<dyn InboundBlobFetcher>,
     cache_dir: PathBuf,
+    target_reserver: Option<Arc<dyn ReserveInboundFileTargetPort>>,
 }
 
 impl FileCacheBlobMaterializer {
     pub fn new(fetcher: Arc<dyn InboundBlobFetcher>, cache_dir: PathBuf) -> Self {
-        Self { fetcher, cache_dir }
+        Self {
+            fetcher,
+            cache_dir,
+            target_reserver: None,
+        }
+    }
+
+    /// Inject the user-configured save-directory resolver. When set and a save
+    /// directory is configured, free-standing inbound files are written into
+    /// that directory (flat, collision-suffixed) instead of the managed cache
+    /// layout. Without it (or when no directory is configured) the managed
+    /// `cache_dir/iroh-blobs/<entry_id>/` layout is used.
+    pub fn with_target_reserver(mut self, reserver: Arc<dyn ReserveInboundFileTargetPort>) -> Self {
+        self.target_reserver = Some(reserver);
+        self
     }
 }
 
@@ -369,22 +385,52 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
             };
             batch_idx += 1;
 
-            // GH#487 Phase 2: pre-create cache dir and stream the blob
-            // directly to the target file. The previous code did
-            // `fetch_blob -> Bytes -> tokio::fs::write`, which on a 800 MB
-            // transfer wasted ~20s materialising the full plaintext in
-            // memory and writing to disk a second time (the iroh store
-            // already had a copy from BAO verification). `fetch_blob_to_path`
-            // collapses both into a single `Blobs::export` call (reflink
-            // on APFS / Btrfs / ReFS).
-            let entry_dir = self
-                .cache_dir
-                .join("iroh-blobs")
-                .join(sanitize_path_segment(blob_ref.entry_id.as_ref()));
-            tokio::fs::create_dir_all(&entry_dir).await?;
+            // Resolve the destination for this file. When a user save
+            // directory is configured and usable, write the file there (flat,
+            // collision-suffixed) so the user can operate on it directly;
+            // otherwise fall back to the managed cache layout. Files written
+            // outside the cache dir are user-owned and never removed by
+            // retention cleanup or entry deletion.
+            // Pass the declared name through as-is (empty when absent); the
+            // adapter owns the single fallback-name source of truth, so we do
+            // not duplicate a literal here.
+            let reserved = match self.target_reserver.as_ref() {
+                Some(reserver) => {
+                    reserver
+                        .reserve_target(blob_ref.filename.as_deref().unwrap_or_default())
+                        .await
+                }
+                None => None,
+            };
+            // A reserved path is an empty placeholder the adapter atomically
+            // created to win the name; if the fetch never completes we must
+            // delete it (see `remove_reserved_placeholder`). When true, `path`
+            // below IS that placeholder. Managed-cache paths need no cleanup.
+            let from_reserver = reserved.is_some();
 
-            let filename = unique_filename(blob_ref.filename.as_deref(), idx, &mut used_names);
-            let path = entry_dir.join(filename);
+            let path = match reserved {
+                Some(user_path) => user_path,
+                None => {
+                    // GH#487 Phase 2: pre-create cache dir and stream the blob
+                    // directly to the target file. The previous code did
+                    // `fetch_blob -> Bytes -> tokio::fs::write`, which on a
+                    // 800 MB transfer wasted ~20s materialising the full
+                    // plaintext in memory and writing to disk a second time
+                    // (the iroh store already had a copy from BAO
+                    // verification). `fetch_blob_to_path` collapses both into a
+                    // single `Blobs::export` call (reflink on APFS / Btrfs /
+                    // ReFS).
+                    let entry_dir = self
+                        .cache_dir
+                        .join("iroh-blobs")
+                        .join(sanitize_path_segment(blob_ref.entry_id.as_ref()));
+                    tokio::fs::create_dir_all(&entry_dir).await?;
+
+                    let filename =
+                        unique_filename(blob_ref.filename.as_deref(), idx, &mut used_names);
+                    entry_dir.join(filename)
+                }
+            };
 
             let fetched =
                 match self
@@ -399,9 +445,16 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                 {
                     Ok(v) => v,
                     Err(e) if is_cancel_error(&e) => {
-                        // Cancel:当前 file 的 partial cleanup 由 BlobTransferFacade
-                        // 自己在 cancel arm 里做(facade.rs:789-796)。把当前 +
-                        // file_refs[idx+1..] 全收进 missing,break 走 finalize。
+                        // A cancelled fetch never runs the store-export step, so
+                        // a reserved user-dir placeholder stays as a 0-byte file.
+                        // The transfer layer does not remove it (cancel only
+                        // tears down the connection), so we delete it here to
+                        // keep the user's save directory clean. The current +
+                        // file_refs[idx+1..] entries go to missing; break to
+                        // finalize.
+                        if from_reserver {
+                            remove_reserved_placeholder(&path).await;
+                        }
                         warn!(
                             idx,
                             total = blob_ref_total,
@@ -420,6 +473,14 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
                         break;
                     }
                     Err(e) => {
+                        // Non-cancel failure (network drop, export error, ...).
+                        // Same reasoning as the cancel arm: remove the reserved
+                        // placeholder / partial file so it does not linger in
+                        // the user's save directory (which retention and entry
+                        // deletion never touch) or block the name for a retry.
+                        if from_reserver {
+                            remove_reserved_placeholder(&path).await;
+                        }
                         warn!(
                             idx,
                             total = blob_ref_total,
@@ -784,6 +845,29 @@ fn position_in_batch(idx: usize, total: usize) -> BatchPosition {
         BatchPosition::Last
     } else {
         BatchPosition::Middle
+    }
+}
+
+/// Best-effort removal of a reserved user-directory placeholder after a failed
+/// fetch.
+///
+/// `reserve_target` atomically creates an empty placeholder to claim the name;
+/// when the fetch is cancelled or errors before the store-export step, that
+/// placeholder (or a cross-volume partial copy) is left behind. Files under the
+/// user's save directory are never reclaimed by retention cleanup or entry
+/// deletion, so an orphan would linger forever and force the next same-named
+/// file to a ` (n)` suffix. `NotFound` is expected (export may already have
+/// consumed the placeholder) and stays silent; other errors only warn — this
+/// runs on an already-failed path and a second failure should not disturb it.
+async fn remove_reserved_placeholder(path: &std::path::Path) {
+    if let Err(err) = tokio::fs::remove_file(path).await {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            warn!(
+                path = %path.display(),
+                error = %err,
+                "materialize: failed to remove reserved placeholder after fetch failure"
+            );
+        }
     }
 }
 

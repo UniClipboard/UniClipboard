@@ -1,9 +1,9 @@
 import React from 'react'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
-import { clampImageCardAspectRatio, isMac } from '../constants'
-import { useQuickPanelImage } from '../hooks/useQuickPanelImage'
-import type { DisplayItem } from '../types'
+import { clampImageCardAspectRatio, isMac } from '@/quick-panel/constants'
+import { useQuickPanelImage } from '@/quick-panel/hooks/useQuickPanelImage'
+import type { DisplayItem } from '@/quick-panel/types'
 import QuickPanelImage from './QuickPanelImage'
 
 interface ImageGridItemProps {

@@ -10,7 +10,9 @@ import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
  * back to a row (or briefly closing and reopening the panel — this file lives
  * alongside the panel module, so the cache survives HistoryPane remounts) does
  * NOT re-hit the daemon and does NOT re-flicker aspect ratios in the image
- * wall:
+ * wall. A third map, `inFlightDescriptorFetches`, dedupes the daemon lookup
+ * itself when multiple hook instances (e.g. an `ImageGridItem` tile and the
+ * `QuickPanelImage` it renders) resolve the same cold-cache entry id at once:
  *
  * - `descriptorCache` — the token-free image descriptor: a `data:` URL for
  *   inline content or the daemon blob path for blob-backed content. The actual
@@ -26,6 +28,10 @@ import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
  */
 const descriptorCache = new Map<string, string | null>()
 const aspectRatioCache = new Map<string, number>()
+/** entry id -> in-flight descriptor lookup, so concurrent hook instances (e.g.
+ * `ImageGridItem` and the `QuickPanelImage` it renders) share one daemon call
+ * instead of both racing to fetch the same entry's resource. */
+const inFlightDescriptorFetches = new Map<string, Promise<string | null>>()
 
 const aspectRatioListeners = new Set<() => void>()
 
@@ -40,36 +46,62 @@ export interface QuickPanelImage {
   aspectRatio: number | undefined
 }
 
-export function useQuickPanelImage(entryId: string): QuickPanelImage {
-  const [descriptor, setDescriptor] = useState<string | null>(
-    () => descriptorCache.get(entryId) ?? null
-  )
-  const [aspectRatio, setAspectRatio] = useState<number | undefined>(() =>
-    aspectRatioCache.get(entryId)
-  )
+function initialQuickPanelImageState(entryId: string): {
+  entryId: string
+  descriptor: string | null
+  aspectRatio: number | undefined
+} {
+  return {
+    entryId,
+    descriptor: descriptorCache.get(entryId) ?? null,
+    aspectRatio: aspectRatioCache.get(entryId),
+  }
+}
 
-  // Descriptor lookup: use cache, else hit the daemon once and memoize.
+export function useQuickPanelImage(entryId: string): QuickPanelImage {
+  const [state, setState] = useState(() => initialQuickPanelImageState(entryId))
+
+  // Row reuse (filter change) can hand this hook a new entry id without
+  // remounting the component. Reset synchronously during render — instead of
+  // waiting for the effects below, which only run after paint — so the first
+  // frame for the new id never shows the previous entry's cached
+  // descriptor/aspect ratio.
+  if (state.entryId !== entryId) {
+    setState(initialQuickPanelImageState(entryId))
+  }
+  const { descriptor, aspectRatio } = state
+
+  // Descriptor lookup: use cache, else hit the daemon once (deduped across
+  // concurrent callers) and memoize.
   useEffect(() => {
     const cached = descriptorCache.get(entryId)
     if (cached !== undefined) {
-      setDescriptor(cached)
+      setState(prev => (prev.entryId === entryId ? { ...prev, descriptor: cached } : prev))
       return
     }
-    // Row reuse (filter change) can hand this hook a new entry id; drop the
-    // previous descriptor immediately so a stale thumbnail never lingers while
-    // the new resource lookup is in flight.
-    setDescriptor(null)
     let cancelled = false
-    getClipboardEntryResource(entryId)
-      .then(resource => {
+
+    let fetchPromise = inFlightDescriptorFetches.get(entryId)
+    if (!fetchPromise) {
+      fetchPromise = getClipboardEntryResource(entryId)
+        .then(resource => (resource ? getResourceImageUrl(resource) : null))
+        .finally(() => {
+          inFlightDescriptorFetches.delete(entryId)
+        })
+      inFlightDescriptorFetches.set(entryId, fetchPromise)
+    }
+
+    fetchPromise
+      .then(next => {
         if (cancelled) return
-        const next = resource ? getResourceImageUrl(resource) : null
         descriptorCache.set(entryId, next)
-        setDescriptor(next)
+        setState(prev => (prev.entryId === entryId ? { ...prev, descriptor: next } : prev))
       })
       .catch(() => {
         // Don't cache failures, so a remount can retry.
-        if (!cancelled) setDescriptor(null)
+        if (!cancelled) {
+          setState(prev => (prev.entryId === entryId ? { ...prev, descriptor: null } : prev))
+        }
       })
     return () => {
       cancelled = true
@@ -80,8 +112,13 @@ export function useQuickPanelImage(entryId: string): QuickPanelImage {
   // instance measured it first) and re-render whenever any writer publishes a
   // new value for this entry.
   useEffect(() => {
-    setAspectRatio(aspectRatioCache.get(entryId))
-    const listener = () => setAspectRatio(aspectRatioCache.get(entryId))
+    setState(prev =>
+      prev.entryId === entryId ? { ...prev, aspectRatio: aspectRatioCache.get(entryId) } : prev
+    )
+    const listener = () =>
+      setState(prev =>
+        prev.entryId === entryId ? { ...prev, aspectRatio: aspectRatioCache.get(entryId) } : prev
+      )
     aspectRatioListeners.add(listener)
     return () => {
       aspectRatioListeners.delete(listener)

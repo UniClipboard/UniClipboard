@@ -5,7 +5,7 @@ import {
   invalidateQuickPanelImageUrl,
   reportQuickPanelImageAspectRatio,
   useQuickPanelImage,
-} from '../hooks/useQuickPanelImage'
+} from '@/quick-panel/hooks/useQuickPanelImage'
 
 interface QuickPanelImageProps {
   entryId: string

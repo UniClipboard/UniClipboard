@@ -146,6 +146,13 @@ pub struct TransferProgressHandlers {
 pub struct IrohNode {
     endpoint: Arc<Endpoint>,
     router: Router,
+    /// Relay self-healing watchdog (see `net_recovery`). `None` in LAN-only
+    /// mode where there is no home relay to watch. Held so [`shutdown`] can
+    /// abort it deterministically and surface a panic instead of letting a
+    /// dead watchdog vanish silently.
+    ///
+    /// [`shutdown`]: IrohNode::shutdown
+    net_recovery: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl IrohNode {
@@ -171,6 +178,22 @@ impl IrohNode {
     /// 需要也不应该用激进的硬截断。
     #[instrument(skip_all)]
     pub async fn shutdown(self) {
+        // Step 0: stop the relay self-healing watchdog before closing the
+        // endpoint. Abort then join so shutdown is deterministic and a panic
+        // in the watchdog surfaces as a WARN instead of vanishing with the
+        // task (observability requirement — see `workers/mod.rs` on why
+        // detached tasks are disallowed).
+        if let Some(handle) = self.net_recovery {
+            handle.abort();
+            match handle.await {
+                Ok(()) => {}
+                Err(err) if err.is_cancelled() => {} // expected: we aborted it
+                Err(err) => {
+                    tracing::warn!(error = %err, "net-recovery watchdog panicked before shutdown");
+                }
+            }
+        }
+
         // Step 1:跑完 iroh 自带的事件驱动关闭。无外层 timeout —— iroh 内部
         // 已经层层有界(详见上面 doc)。
         self.endpoint.close().await;
@@ -1042,9 +1065,19 @@ impl IrohNodeBuilder {
             .expect("router_builder missing — spawn called twice")
             .spawn();
         log_publish_addrs(&self.endpoint, "post-spawn");
+
+        // Relay self-healing watchdog (see `net_recovery`). Only meaningful
+        // when relays are enabled: in LAN-only mode there is no home relay by
+        // design, so an empty relay-status set is expected, not a wedge. The
+        // handle is retained (not detached) so `shutdown` can stop it
+        // deterministically and keep a panic visible.
+        let net_recovery = (!self.config.disable_relays)
+            .then(|| super::net_recovery::spawn_net_recovery((*self.endpoint).clone()));
+
         IrohNode {
             endpoint: self.endpoint,
             router,
+            net_recovery,
         }
     }
 }

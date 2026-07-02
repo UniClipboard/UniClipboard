@@ -14,6 +14,7 @@ mod conn_path;
 mod connect;
 pub mod connection_channel_adapter;
 pub mod identity_store;
+mod net_recovery;
 pub mod node;
 pub mod persistable_addr;
 pub mod presence_adapter;

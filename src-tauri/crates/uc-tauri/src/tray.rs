@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tracing::{debug, info, warn};
 
 use crate::main_window::show_main_window;
@@ -141,6 +141,15 @@ impl TrayState {
                     show_main_window(app);
                 }
                 "tray.settings" => {
+                    // Record the deep-link BEFORE showing: `show_main_window`
+                    // may have to recreate a destroyed window, and the emit
+                    // below would race the fresh webview's listener
+                    // registration. The frontend drains the pending route on
+                    // boot (`take_pending_navigation`) and discards it after
+                    // consuming a live `ui://navigate` event, so the two
+                    // channels never double-navigate.
+                    app.state::<crate::commands::startup::PendingNavigation>()
+                        .set("/settings");
                     show_main_window(app);
                     if let Err(e) = app.emit("ui://navigate", "/settings") {
                         warn!("Failed to emit ui://navigate event: {}", e);

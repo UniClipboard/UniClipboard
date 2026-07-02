@@ -319,6 +319,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(daemon_bootstrap_status.clone())
         .manage(TrayState::default())
         .manage(crate::lightweight::QuitIntent::default())
+        .manage(crate::commands::startup::PendingNavigation::default())
         .manage(task_registry.clone())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

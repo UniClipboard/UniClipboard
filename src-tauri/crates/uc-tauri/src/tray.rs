@@ -11,6 +11,8 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Emitter, Manager};
 use tracing::{debug, info, warn};
 
+use crate::main_window::show_main_window;
+
 /// Managed state that holds the tray icon and its menu item handles.
 ///
 /// Stored via `app.manage(TrayState::default())` and accessed from
@@ -139,6 +141,15 @@ impl TrayState {
                     show_main_window(app);
                 }
                 "tray.settings" => {
+                    // Record the deep-link BEFORE showing: `show_main_window`
+                    // may have to recreate a destroyed window, and the emit
+                    // below would race the fresh webview's listener
+                    // registration. The frontend drains the pending route on
+                    // boot (`take_pending_navigation`) and discards it after
+                    // consuming a live `ui://navigate` event, so the two
+                    // channels never double-navigate.
+                    app.state::<crate::commands::startup::PendingNavigation>()
+                        .set("/settings");
                     show_main_window(app);
                     if let Err(e) = app.emit("ui://navigate", "/settings") {
                         warn!("Failed to emit ui://navigate event: {}", e);
@@ -285,9 +296,11 @@ impl TrayState {
 
     /// Returns `true` once the tray icon has been successfully built.
     ///
-    /// Used by the main-window close handler to decide whether hiding to
-    /// tray is safe — without a tray there would be no way to bring the
-    /// window back, so we let the close proceed normally instead.
+    /// Used by the exit-decision paths: closing the main window destroys it
+    /// and the app stays resident only when the tray is alive (see
+    /// `lightweight::should_stay_resident`) — without a tray there would be
+    /// no way to bring the window back, so the close is allowed to quit the
+    /// app instead.
     pub fn is_initialized(&self) -> bool {
         self.inner
             .lock()
@@ -350,84 +363,6 @@ fn lan_only_tooltip(language: &str, lan_only_active: bool) -> String {
         ("zh-CN", false) => "UniClipboard".to_string(),
         (_, true) => "UniClipboard — LAN-only Mode is ON".to_string(),
         (_, false) => "UniClipboard".to_string(),
-    }
-}
-
-/// Show the main window: make Dock icon visible on macOS, then unminimize, show, and focus.
-pub fn show_main_window(app: &tauri::AppHandle) {
-    #[cfg(target_os = "macos")]
-    if let Err(error) = app.set_dock_visibility(true) {
-        warn!(error = %error, "Failed to show Dock icon before showing main window");
-    }
-
-    // macOS:`set_dock_visibility(true)` 把 activation policy 从 `Accessory`
-    // 翻回 `Regular`(典型路径:关闭主窗口 → Accessory → 从托盘重新打开)。
-    // 但 macOS 把 app 重新塞回 Dock 时不会重读 bundle 图标,会留下空白图标 +
-    // 运行小圆点。这里强制重绘 Dock 图标兜底。
-    #[cfg(target_os = "macos")]
-    refresh_dock_icon(app);
-
-    match app.get_webview_window("main") {
-        Some(window) => {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
-        None => {
-            warn!("Main window not found");
-        }
-    }
-}
-
-/// macOS: force the Dock to repaint this app's icon after flipping back to the
-/// `Regular` activation policy.
-///
-/// `set_dock_visibility(true)` toggles `NSApplicationActivationPolicy` from
-/// `Accessory` to `Regular`, but macOS (notably Sequoia/Tahoe) re-adds the app
-/// to the Dock without re-reading the bundle icon — leaving the running-indicator
-/// dot over a blank tile (and on some versions a template-mangled icon with a
-/// white ring around it). Reassigning `applicationIconImage` to the bundle's own
-/// `icon.icns` forces the Dock tile to redraw with the correct full-bleed art.
-///
-/// AppKit calls must run on the main thread. `show_main_window` is invoked from
-/// tray events / startup on the main thread, but we still dispatch through
-/// `run_on_main_thread` to stay consistent with `update_scheduler::window` and to
-/// defend future callers. The dispatch also lets the policy change settle before
-/// we re-push the icon.
-#[cfg(target_os = "macos")]
-fn refresh_dock_icon(app: &tauri::AppHandle) {
-    use objc2::{AnyThread, MainThreadMarker};
-    use objc2_app_kit::{NSApplication, NSImage};
-    use objc2_foundation::{ns_string, NSBundle};
-
-    if let Err(error) = app.run_on_main_thread(|| {
-        let Some(mtm) = MainThreadMarker::new() else {
-            warn!("refresh_dock_icon dispatched off the main thread; skipping");
-            return;
-        };
-        // Load the bundle's own `icon.icns` directly. We must NOT use
-        // `NSWorkspace::iconForFile`: for this full-bleed icon (no transparent
-        // padding) macOS applies its icon-template rules, shrinking it into a
-        // white rounded container — which shows up as a white ring around the
-        // Dock tile. Loading the raw icns yields the full-bleed artwork as-is.
-        let Some(icns_path) = NSBundle::mainBundle()
-            .pathForResource_ofType(Some(ns_string!("icon")), Some(ns_string!("icns")))
-        else {
-            warn!("refresh_dock_icon: icon.icns missing from bundle resources");
-            return;
-        };
-        let Some(icon) = NSImage::initWithContentsOfFile(NSImage::alloc(), &icns_path) else {
-            warn!("refresh_dock_icon: failed to decode icon.icns");
-            return;
-        };
-        // SAFETY: runs on the main thread (asserted by `mtm`); `icon` stays alive
-        // for the call. Setting the application icon image only repaints the Dock
-        // tile — no ownership transfer.
-        unsafe {
-            NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&icon));
-        }
-    }) {
-        warn!(error = %error, "Failed to dispatch Dock icon refresh to the main thread");
     }
 }
 

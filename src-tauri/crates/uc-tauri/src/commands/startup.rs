@@ -13,7 +13,7 @@ use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_process::contract::DaemonBootstrapError;
 
 use crate::commands::record_trace_fields;
-use crate::tray::show_main_window;
+use crate::main_window::show_main_window;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -209,6 +209,56 @@ pub async fn get_daemon_bootstrap_failure(
     async move { Ok(state.get()) }.instrument(span).await
 }
 
+/// Pending deep-link route recorded by native UI surfaces (tray menu) for the
+/// frontend to consume once its router is ready.
+///
+/// The tray "Settings" item may have to recreate a destroyed main window
+/// (destroy-on-close model, see `main_window`); an `app.emit("ui://navigate",
+/// ...)` fired at that moment races the fresh webview's listener registration
+/// and is lost. The route is recorded here instead: the frontend drains it via
+/// [`take_pending_navigation`] during boot, and discards it after consuming a
+/// live `ui://navigate` event (the duplicate-record case when the window was
+/// already open).
+#[derive(Default)]
+pub struct PendingNavigation(Mutex<Option<String>>);
+
+impl PendingNavigation {
+    /// Record a route for the frontend to pick up. Overwrites any previous one.
+    pub fn set(&self, route: &str) {
+        if let Ok(mut guard) = self.0.lock() {
+            *guard = Some(route.to_string());
+        }
+    }
+
+    /// Consume the recorded route, if any.
+    pub fn take(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|mut guard| guard.take())
+    }
+}
+
+/// Consume the pending deep-link route recorded by native UI surfaces.
+///
+/// Returns `Some(route)` at most once per recording; the frontend calls this
+/// on boot (to honor a deep-link that predates the webview) and after handling
+/// a live `ui://navigate` event (to discard the duplicate record).
+///
+/// Pure state handoff from managed state; no usecase orchestration is required.
+#[tauri::command]
+#[specta::specta]
+pub async fn take_pending_navigation(
+    state: tauri::State<'_, PendingNavigation>,
+    _trace: Option<TraceMetadata>,
+) -> Result<Option<String>, crate::commands::CommandError> {
+    let span = info_span!(
+        "command.startup.take_pending_navigation",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move { Ok(state.take()) }.instrument(span).await
+}
+
 /// Startup barrier used to coordinate backend readiness.
 ///
 /// 用于协调后端就绪的启动门闩。
@@ -283,6 +333,19 @@ mod tests {
         assert!(failure.observed_version.is_none());
         assert!(failure.expected_version.is_none());
         assert!(failure.detail.contains("8000"));
+    }
+
+    #[test]
+    fn pending_navigation_is_consumed_once() {
+        let pending = PendingNavigation::default();
+        assert!(pending.take().is_none(), "fresh state must be empty");
+
+        pending.set("/settings");
+        assert_eq!(pending.take().as_deref(), Some("/settings"));
+        assert!(
+            pending.take().is_none(),
+            "route must not survive a second take (would leak into the next boot)"
+        );
     }
 
     #[test]

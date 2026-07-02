@@ -94,21 +94,6 @@ async fn wait_for_daemon_connection(
     }
 }
 
-#[cfg(target_os = "windows")]
-fn configure_main_window_for_platform(app: &tauri::AppHandle) {
-    let Some(window) = app.get_webview_window("main") else {
-        warn!("Main window not found during Windows window configuration");
-        return;
-    };
-
-    if let Err(error) = window.set_decorations(false) {
-        warn!(error = %error, "Failed to disable Windows main window decorations");
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn configure_main_window_for_platform(_app: &tauri::AppHandle) {}
-
 /// Translate a daemon-WS [`RealtimeEvent`] into the application-layer
 /// [`HostEvent`] the activity HUD consumes (ADR-008 P3-3 B2'-3).
 ///
@@ -334,24 +319,34 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .manage(daemon_bootstrap_status.clone())
         .manage(TrayState::default())
         .manage(crate::lightweight::QuitIntent::default())
+        .manage(crate::commands::startup::PendingNavigation::default())
         .manage(task_registry.clone())
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
-                    // Only hide-to-tray if the tray actually came up. When tray
-                    // init fails (treated as non-fatal during setup), hiding
-                    // the window plus the Dock icon would leave the app
-                    // running with no UI surface to recover or quit it.
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label() == crate::main_window::MAIN_WINDOW_LABEL {
+                    // The close proceeds in BOTH branches: destroying the
+                    // window tears down its webview (JS heap, DOM, caches, WS
+                    // connections), releasing the renderer memory while the
+                    // window is closed. What differs is what happens to the
+                    // app afterwards:
+                    //
+                    // - Tray alive: the resulting last-window-destroyed
+                    //   `ExitRequested { code: None }` is intercepted in the
+                    //   run loop (`should_stay_resident`) — the app stays
+                    //   resident and `show_main_window` recreates the window
+                    //   on the next open.
+                    // - Tray init failed (non-fatal during setup): there is no
+                    //   surface left to reopen or quit the app, so the close
+                    //   is allowed to quit it (daemon stops via the
+                    //   default-stop path in `RunEvent::Exit`).
                     if window.state::<TrayState>().is_initialized() {
-                        api.prevent_close();
-                        let _ = window.hide();
                         #[cfg(target_os = "macos")]
                         if let Err(error) = window.app_handle().set_dock_visibility(false) {
-                            warn!(error = %error, "Failed to hide Dock icon after hiding main window");
+                            warn!(error = %error, "Failed to hide Dock icon while closing main window");
                         }
-                        info!("Main window hidden to tray");
+                        info!("Main window closing; webview destroyed, app stays in tray");
                     } else {
-                        info!("Tray unavailable; allowing main window close to proceed");
+                        info!("Tray unavailable; allowing main window close to quit the app");
                     }
                 }
             }
@@ -384,7 +379,13 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         info!("UC_DISABLE_SINGLE_INSTANCE=1 set; skipping single-instance plugin registration");
         builder
     } else {
-        builder.plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
+        // A second launch means the user wants the window — surface it
+        // (recreating it if it was destroyed-to-tray) instead of silently
+        // doing nothing.
+        builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            info!("Second instance launch detected; showing main window");
+            crate::main_window::show_main_window(app);
+        }))
     };
 
     let task_registry_for_run = task_registry.clone();
@@ -415,7 +416,6 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // In Tauri 2, use app.handle() to get the AppHandle
             runtime.set_app_handle(app.handle().clone());
             info!("AppHandle set on TauriAppRuntime for event emission");
-            configure_main_window_for_platform(app.handle());
 
             // 文件接收 HUD:渲染 macOS 原生 AppKit panel (AirDrop 风格)。
             // ADR-008 P3-3 (B2'-3): GUI 已无 in-process host_event_bus —— HUD
@@ -662,12 +662,16 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 quick_panel::pre_create(app.handle());
             }
 
-            // Show window based on silent_start setting
+            // Create + show the window based on the silent_start setting. The
+            // main window is declared with `create: false`, so a silent start
+            // never pays the webview cost — the window only comes into
+            // existence on the first explicit open (`show_main_window`
+            // creates it from config on demand).
             if !silent_start {
-                crate::tray::show_main_window(app.handle());
+                crate::main_window::show_main_window(app.handle());
                 info!("Main window show requested (silent_start=false)");
             } else {
-                info!("Silent start enabled, main window stays hidden");
+                info!("Silent start enabled, main window not created");
             }
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -860,7 +864,22 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         .map_err(|error| anyhow::anyhow!("error building tauri application: {error}"))?
         .run(move |app_handle, event| {
             match event {
-                tauri::RunEvent::ExitRequested { code, .. } => {
+                tauri::RunEvent::ExitRequested { code, api, .. } => {
+                    // Window-close destroys the main window (releasing its
+                    // webview memory); when it was the last window this
+                    // surfaces as `ExitRequested { code: None }`. With a live
+                    // tray that is the normal "closed to tray" state, not a
+                    // quit: prevent the exit and — crucially — keep the
+                    // tracked background tasks (update scheduler, HUD bridge,
+                    // signal watcher) running.
+                    if crate::lightweight::should_stay_resident(
+                        code,
+                        app_handle.state::<TrayState>().is_initialized(),
+                    ) {
+                        info!("Last window destroyed; staying resident in tray");
+                        api.prevent_exit();
+                        return;
+                    }
                     info!(?code, "App exit requested, cancelling all tracked tasks");
                     task_registry_for_run.token().cancel();
                     // ADR-008 D3 (P4-3, revised): the daemon-teardown decision is
@@ -873,8 +892,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     // full-quit request, so they flag the daemon to survive. Tray
                     // "彻底退出" / Ctrl-C / SIGTERM go through `request_full_quit`
                     // (full-quit flag set), and the last-window-destroyed `None`
-                    // case is a real quit — neither flags survival, so both stop the
-                    // daemon at `Exit`. See `lightweight::QuitIntent`.
+                    // case (tray unavailable, see above) is a real quit — neither
+                    // flags survival, so both stop the daemon at `Exit`. See
+                    // `lightweight::QuitIntent`.
                     app_handle
                         .state::<crate::lightweight::QuitIntent>()
                         .note_exit_requested(code);
@@ -913,7 +933,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     ..
                 } => {
                     info!("Dock reopen with no visible windows, showing main window");
-                    crate::tray::show_main_window(app_handle);
+                    crate::main_window::show_main_window(app_handle);
                 }
                 _ => {}
             }

@@ -89,6 +89,19 @@ export const commands = {
 	expectedVersion: string | null,
 } | null, CommandError>(__TAURI_INVOKE("get_daemon_bootstrap_failure", { trace })),
 	/**
+	 *  Consume the pending deep-link route recorded by native UI surfaces.
+	 * 
+	 *  Returns `Some(route)` at most once per recording; the frontend calls this
+	 *  on boot (to honor a deep-link that predates the webview) and after handling
+	 *  a live `ui://navigate` event (to discard the duplicate record).
+	 * 
+	 *  Pure state handoff from managed state; no usecase orchestration is required.
+	 */
+	takePendingNavigation: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<string | null, CommandError>(__TAURI_INVOKE("take_pending_navigation", { trace })),
+	/**
 	 *  Restarts the running Tauri application to apply settings changes.
 	 * 
 	 *  流程:

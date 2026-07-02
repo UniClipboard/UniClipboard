@@ -14,6 +14,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "UniClipboard",
         "width": 800,
         "height": 600,

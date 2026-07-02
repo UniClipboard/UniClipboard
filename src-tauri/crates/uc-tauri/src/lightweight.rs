@@ -3,8 +3,11 @@
 //! The external `uniclipd` is always a separate process. Four exit behaviors,
 //! distinguished here and in `run.rs`'s `RunEvent` handlers:
 //!
-//! - **关窗** (window close) → hide to tray; intercepted in `run.rs`, never
-//!   reaches the exit handlers, daemon untouched.
+//! - **关窗** (window close) → the window is destroyed (freeing its webview;
+//!   see `main_window`), and the resulting `ExitRequested { code: None }` is
+//!   intercepted with `prevent_exit` while the tray is alive
+//!   ([`should_stay_resident`]) — the GUI process stays resident, daemon
+//!   untouched.
 //! - **轻量模式** (tray "Lightweight") → GUI process exits, the daemon keeps
 //!   running. [`enter_lightweight_mode`] shows a reassurance notification (so the
 //!   user knows it is still alive) then `app.exit(0)`.
@@ -20,10 +23,11 @@
 //! 2.11 on macOS, Cmd-Q and the app "Quit" menu go through
 //! `applicationWillTerminate` → `AppState::exit()`, which emits ONLY
 //! `RunEvent::Exit` — no `ExitRequested`. (`ExitRequested { code: None }` is
-//! reserved for the *last window being destroyed*, which never happens here
-//! because window-close is intercepted to hide-to-tray.) So a teardown decided
-//! solely in `ExitRequested` silently skips Cmd-Q and orphans the daemon — the
-//! bug this module now fixes.
+//! reserved for the *last window being destroyed* — the normal closed-to-tray
+//! path now that window-close destroys the window; it only proceeds to a real
+//! exit when the tray is unavailable, see [`should_stay_resident`].) So a
+//! teardown decided solely in `ExitRequested` silently skips Cmd-Q and orphans
+//! the daemon — the bug this module now fixes.
 //!
 //! Instead, `RunEvent::Exit` — which fires for every clean termination — stops
 //! the daemon by DEFAULT. The only exits that keep it (lightweight / restart) are
@@ -69,7 +73,9 @@ impl QuitIntent {
     /// Record an `ExitRequested { code }` event. Programmatic keep-alive exits
     /// (lightweight / restart) arrive as `Some(_)` without a full-quit request;
     /// flag them so the later `Exit` handler keeps the daemon. Tray "彻底退出"
-    /// (full quit) and the last-window-destroyed `None` case leave the flag unset
+    /// (full quit) and the last-window-destroyed `None` case (only reachable
+    /// when the tray is unavailable — otherwise [`should_stay_resident`]
+    /// prevents the exit before this is recorded) leave the flag unset
     /// → daemon stopped. See [`exit_keeps_daemon`].
     pub fn note_exit_requested(&self, exit_code: Option<i32>) {
         if exit_keeps_daemon(self.full_quit_requested(), exit_code) {
@@ -100,6 +106,21 @@ impl QuitIntent {
 /// handler ([`QuitIntent::should_stop_daemon_on_exit`]).
 pub fn exit_keeps_daemon(full_quit_requested: bool, exit_code: Option<i32>) -> bool {
     exit_code.is_some() && !full_quit_requested
+}
+
+/// Whether an `ExitRequested` event should be intercepted (`api.prevent_exit()`)
+/// so the GUI process stays resident in the tray.
+///
+/// `code == None` means the last window was destroyed. Window-close destroys
+/// the main window instead of hiding it (releasing its webview memory — see
+/// `main_window`), so with a live tray this is the normal "closed to tray"
+/// path, NOT a quit: the run loop must prevent the exit and must NOT cancel
+/// the tracked background tasks (update scheduler, HUD bridge, signal
+/// watcher). Without a tray there is no surface left to reopen or quit the
+/// app, so the exit proceeds. Programmatic exits (lightweight / restart /
+/// full quit) always arrive as `Some(_)` and are never intercepted.
+pub fn should_stay_resident(exit_code: Option<i32>, tray_initialized: bool) -> bool {
+    exit_code.is_none() && tray_initialized
 }
 
 /// Mark the pending exit as a full quit (stop the connected daemon), then exit.
@@ -191,11 +212,37 @@ mod tests {
 
     #[test]
     fn last_window_destroyed_stops_daemon() {
-        // The last window being destroyed surfaces as ExitRequested { code: None }
-        // — a real quit, so the daemon is stopped.
+        // The last window being destroyed surfaces as ExitRequested { code: None }.
+        // With a live tray the run loop prevents the exit before this is ever
+        // recorded (`should_stay_resident`); when it IS recorded (tray
+        // unavailable) it is a real quit, so the daemon is stopped.
         let state = QuitIntent::default();
         state.note_exit_requested(None);
         assert!(state.should_stop_daemon_on_exit());
+    }
+
+    #[test]
+    fn window_destroyed_with_tray_stays_resident() {
+        // Closing the main window destroys it; the app must keep running in
+        // the tray instead of exiting.
+        assert!(should_stay_resident(None, true));
+    }
+
+    #[test]
+    fn window_destroyed_without_tray_exits() {
+        // No tray means no surface to reopen or quit the app — let the exit
+        // proceed (daemon teardown follows the default-stop path).
+        assert!(!should_stay_resident(None, false));
+    }
+
+    #[test]
+    fn programmatic_exits_are_never_intercepted() {
+        // Lightweight (`app.exit(0)`), restart (`Some(RESTART_EXIT_CODE)`) and
+        // tray full quit all arrive as `Some(_)` — they must never be blocked,
+        // tray or not.
+        assert!(!should_stay_resident(Some(0), true));
+        assert!(!should_stay_resident(Some(i32::MAX), true));
+        assert!(!should_stay_resident(Some(0), false));
     }
 
     #[test]

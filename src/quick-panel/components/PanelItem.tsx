@@ -1,8 +1,10 @@
 import { FileText } from 'lucide-react'
 import React from 'react'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
+import { cn } from '@/lib/utils'
 import { isMac, typeIcons } from '../constants'
 import type { DisplayItem } from '../types'
+import QuickPanelImage from './QuickPanelImage'
 
 interface PanelItemProps {
   item: DisplayItem
@@ -19,6 +21,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
   ({ item, index, isSelected, hoverDisabled, onSelect, onHover, itemRef, shortcutKey }) => {
     const Icon = typeIcons[item.type] ?? FileText
     const isUnavailable = item.isUnavailable
+    const isImage = item.type === 'image'
 
     return (
       <div
@@ -32,14 +35,14 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
         // Launcher 模型:焦点锁在搜索框,方向键驱动列表。列表项不参与 Tab
         // 顺序(恒定 -1),避免 Tab 把焦点移到这里导致键盘导航失效。
         tabIndex={-1}
-        className={[
+        className={cn(
           'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-4 py-2 text-[13px] leading-tight transition-colors',
           isSelected
             ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
             : hoverDisabled
               ? 'text-foreground'
-              : 'text-foreground hover:bg-muted/50',
-        ].join(' ')}
+              : 'text-foreground hover:bg-muted/50'
+        )}
         onClick={e => onSelect(index, e.altKey)}
         onMouseEnter={() => onHover(index)}
         onKeyDown={e => {
@@ -49,38 +52,50 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
           }
         }}
       >
-        <Icon
-          className={[
-            'h-3.5 w-3.5 shrink-0',
-            isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground/60',
-            isUnavailable && 'opacity-40',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        />
-        <span
-          className={['flex-1 truncate', isUnavailable && 'line-through opacity-60']
-            .filter(Boolean)
-            .join(' ')}
-        >
+        {isImage ? (
+          // Real thumbnail for image entries — the generic type-icon can't tell
+          // one clipping from another, and the launcher's whole job is fast
+          // visual recognition.
+          <QuickPanelImage
+            entryId={item.id}
+            className={cn(
+              'h-4 w-7 shrink-0 rounded-sm border bg-muted/30',
+              isSelected ? 'border-primary-foreground/25' : 'border-border/70',
+              isUnavailable && 'opacity-50'
+            )}
+            fallbackIconClassName={cn(
+              'size-3',
+              isSelected ? 'text-primary-foreground/65' : 'text-muted-foreground/45'
+            )}
+          />
+        ) : (
+          <Icon
+            className={cn(
+              'h-3.5 w-3.5 shrink-0',
+              isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground/60',
+              isUnavailable && 'opacity-40'
+            )}
+          />
+        )}
+        <span className={cn('flex-1 truncate', isUnavailable && 'line-through opacity-60')}>
           {item.preview || '(empty)'}
         </span>
         <span
-          className={[
+          className={cn(
             'shrink-0 tabular-nums text-[11px]',
-            isSelected ? 'text-primary-foreground/60' : 'text-muted-foreground/50',
-          ].join(' ')}
+            isSelected ? 'text-primary-foreground/60' : 'text-muted-foreground/50'
+          )}
         >
           {formatRelativeTime(item.activeTime)}
         </span>
         {shortcutKey && (
           <kbd
-            className={[
+            className={cn(
               'shrink-0 rounded border px-1 py-0.5 font-mono text-[10px] leading-none',
               isSelected
                 ? 'border-primary-foreground/30 text-primary-foreground/70'
-                : 'border-border text-muted-foreground/50',
-            ].join(' ')}
+                : 'border-border text-muted-foreground/50'
+            )}
           >
             {isMac ? '⌘' : '⌃'}
             {shortcutKey}

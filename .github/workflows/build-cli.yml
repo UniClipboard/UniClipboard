@@ -95,11 +95,25 @@ jobs:
         with:
           node-version: lts/*
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: resolve pinned Rust channel
+        id: rust-channel
+        # 见 build.yml 同名 step:CI 装 rust-toolchain.toml 钉死的 channel
+        # (而非浮动 @stable),让 Swatinem/rust-cache 的 rust-environment-hash
+        # key 在 warmup 与 tag build 之间保持稳定,避免 stable 补丁版漂移
+        # (如 1.96.0 -> 1.96.1)导致缓存 key 失配、全量冷编译。
+        shell: bash
+        run: |
+          channel=$(grep -oE 'channel[[:space:]]*=[[:space:]]*"[^"]+"' rust-toolchain.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "pinned Rust channel: $channel"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - name: install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
-          # Linux 走 musl,需要 rustup 装对应 musl target;
-          # macOS 装两个 darwin target;Windows host=msvc 装 noop。
+          toolchain: ${{ steps.rust-channel.outputs.channel }}
+          # Cross target 直接装到 cargo 实际使用的 pinned toolchain 上,
+          # 因此不再需要单独的 `rustup target add` step。Linux 走 musl,
+          # macOS 装两个 darwin target,Windows host=msvc 为 noop。
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
 
       - name: Prepend cargo bin to PATH
@@ -107,22 +121,6 @@ jobs:
         # Homebrew rustup 多链导致 `cargo` 落到 rustup-init 的问题。
         shell: bash
         run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
-
-      - name: ensure rust target installed on pinned toolchain
-        # rust-toolchain.toml (repo root) 把 cargo 锁到一个具体 channel,
-        # 跟 dtolnay 装的 stable 是两个独立 toolchain。CLI build 跑 cargo
-        # 时,必须把 target 装到 pinned channel,否则
-        # 与 build.yml 一样会报 `Target ... is not installed`。
-        # 见 dtolnay/rust-toolchain#75。Windows host=msvc 不用装。
-        shell: bash
-        run: |
-          TC=$(rustup show active-toolchain | awk '{print $1}')
-          echo "pinned toolchain: $TC"
-          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            rustup target add --toolchain "$TC" aarch64-apple-darwin x86_64-apple-darwin
-          elif [ -n "${{ matrix.target }}" ] && [ "${{ matrix.target }}" != "x86_64-pc-windows-msvc" ]; then
-            rustup target add --toolchain "$TC" "${{ matrix.target }}"
-          fi
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

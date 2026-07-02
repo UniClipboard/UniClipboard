@@ -105,6 +105,17 @@ it. Plain words outside a chip match as a substring; quoted phrases,
 boolean operators, and regex are **not** supported (see
 [Full-text search — Query syntax](./search#query-syntax)).
 
+### Image filter — thumbnail wall
+
+Image entries in the list normally show a small thumbnail in place of
+the generic type icon, so you can recognize a specific screenshot
+without opening the preview. Pin the **Image** type chip and the list
+switches to a **three-column masonry wall** of tile-sized thumbnails
+sized to each image's aspect ratio — better for skimming several
+recent captures at once. Arrow-key navigation still follows the
+underlying time order, so `↑` / `↓` and `Cmd`/`Ctrl` + `1`–`9` behave
+the same as in the list view.
+
 Filters are in-memory only and **don't persist** across panel
 sessions — every reopen starts unfiltered. The panel is a use-and-throw
 surface, not a workbench.

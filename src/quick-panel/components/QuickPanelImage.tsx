@@ -1,14 +1,28 @@
 import { Image as ImageIcon } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
+import { invalidateResourceImageDescriptor } from '@/hooks/useResourceImageDescriptor'
 import { cn } from '@/lib/utils'
 import {
-  invalidateQuickPanelImageUrl,
   reportQuickPanelImageAspectRatio,
   useQuickPanelImage,
 } from '@/quick-panel/hooks/useQuickPanelImage'
 
 interface QuickPanelImageProps {
   entryId: string
+  /**
+   * Pre-resolved `<img src>`. Pass this when a parent has already resolved
+   * the same entry via its own `useQuickPanelImage` call (e.g. `ImageGridItem`,
+   * which also needs `aspectRatio`) — this component then skips its own
+   * resolution entirely instead of doing redundant work for the same id.
+   */
+  url?: string | null
+  /**
+   * When false, defer this component's own resolution (daemon fetch + blob
+   * decode) until true. Ignored when `url` is provided. Used by `PanelItem`'s
+   * non-virtualized list to avoid eagerly fetching every image's thumbnail on
+   * mount — see {@link useInView}.
+   */
+  enabled?: boolean
   /**
    * Wrapper class — parent controls size and positioning. The `<img>` inside
    * absolutely fills this box, so the wrapper needs `relative`.
@@ -25,17 +39,22 @@ interface QuickPanelImageProps {
 
 /**
  * Shared image renderer for the quick panel: resolves the entry's blob-backed
- * or inline image via {@link useQuickPanelImage}, records the intrinsic aspect
- * ratio on load so the image wall can pack tiles without a flicker, and falls
- * back to a placeholder icon while pending or on load failure.
+ * or inline image via {@link useQuickPanelImage} (unless a parent already did
+ * so and passed `url` down), records the intrinsic aspect ratio on load so
+ * the image wall can pack tiles without a flicker, and falls back to a
+ * placeholder icon while pending or on load failure.
  */
 const QuickPanelImage: React.FC<QuickPanelImageProps> = ({
   entryId,
+  url: urlOverride,
+  enabled = true,
   className,
   fallbackIconClassName,
   imgClassName,
 }) => {
-  const { url } = useQuickPanelImage(entryId)
+  const hasOverride = urlOverride !== undefined
+  const { url: resolvedUrl } = useQuickPanelImage(entryId, { enabled: !hasOverride && enabled })
+  const url = hasOverride ? urlOverride : resolvedUrl
   const [failed, setFailed] = useState(false)
 
   // A new URL means either a different entry (row reuse) or a retry after
@@ -63,7 +82,7 @@ const QuickPanelImage: React.FC<QuickPanelImageProps> = ({
             // Drop the descriptor cache so a subsequent mount refetches. Not
             // retried in-place: repeated 404s would burn requests on a resource
             // that's genuinely gone.
-            invalidateQuickPanelImageUrl(entryId)
+            invalidateResourceImageDescriptor(entryId)
             setFailed(true)
           }}
         />

@@ -26,7 +26,7 @@ interface ImageGridItemProps {
  */
 const ImageGridItem: React.FC<ImageGridItemProps> = React.memo(
   ({ item, index, isSelected, hoverDisabled, onSelect, onHover, itemRef, shortcutKey }) => {
-    const { aspectRatio } = useQuickPanelImage(item.id)
+    const { url, aspectRatio } = useQuickPanelImage(item.id)
     const displayAspectRatio = clampImageCardAspectRatio(aspectRatio)
     const isUnavailable = item.isUnavailable
 
@@ -57,6 +57,7 @@ const ImageGridItem: React.FC<ImageGridItemProps> = React.memo(
       >
         <QuickPanelImage
           entryId={item.id}
+          url={url}
           className="absolute inset-0 size-full"
           fallbackIconClassName="size-7"
         />

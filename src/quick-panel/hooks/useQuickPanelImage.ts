@@ -1,37 +1,25 @@
 import { useEffect, useState } from 'react'
-import { getResourceImageUrl } from '@/api/clipboardItems'
-import { getClipboardEntryResource } from '@/api/daemon/clipboard'
 import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
+import { useResourceImageDescriptor } from '@/hooks/useResourceImageDescriptor'
 
 /**
- * Quick-panel image resolver.
+ * Quick-panel aspect-ratio cache, module-scoped so scrolling the launcher back
+ * to a row (or briefly closing and reopening the panel — this file lives
+ * alongside the panel module, so the cache survives HistoryPane remounts)
+ * does NOT re-flicker aspect ratios in the image wall. Keyed by entry id:
  *
- * Two caches keyed by entry id, both module-scoped so scrolling the launcher
- * back to a row (or briefly closing and reopening the panel — this file lives
- * alongside the panel module, so the cache survives HistoryPane remounts) does
- * NOT re-hit the daemon and does NOT re-flicker aspect ratios in the image
- * wall. A third map, `inFlightDescriptorFetches`, dedupes the daemon lookup
- * itself when multiple hook instances (e.g. an `ImageGridItem` tile and the
- * `QuickPanelImage` it renders) resolve the same cold-cache entry id at once:
- *
- * - `descriptorCache` — the token-free image descriptor: a `data:` URL for
- *   inline content or the daemon blob path for blob-backed content. The actual
- *   bytes are cached separately (LRU-bounded) by {@link useBlobImageObjectUrl},
- *   which also strips the short-lived session token from the rendered
- *   `<img src>`.
  * - `aspectRatioCache` — the intrinsic aspect ratio measured on `<img.onLoad>`
  *   the first time we saw this entry. The daemon does carry image dimensions
  *   on the entry (`imageWidth`/`imageHeight`) and on the search DTO, but the
  *   quick panel's `DisplayItem` projection currently drops them; caching the
  *   measured value here is enough to keep the masonry layout stable on
  *   subsequent renders without threading dimensions through the projection.
+ *
+ * Image descriptor resolution (the daemon fetch + blob decode) is shared with
+ * the rest of the app via {@link useResourceImageDescriptor} /
+ * {@link useBlobImageObjectUrl} — not duplicated here.
  */
-const descriptorCache = new Map<string, string | null>()
 const aspectRatioCache = new Map<string, number>()
-/** entry id -> in-flight descriptor lookup, so concurrent hook instances (e.g.
- * `ImageGridItem` and the `QuickPanelImage` it renders) share one daemon call
- * instead of both racing to fetch the same entry's resource. */
-const inFlightDescriptorFetches = new Map<string, Promise<string | null>>()
 
 const aspectRatioListeners = new Set<() => void>()
 
@@ -46,77 +34,50 @@ export interface QuickPanelImage {
   aspectRatio: number | undefined
 }
 
-function initialQuickPanelImageState(entryId: string): {
-  entryId: string
-  descriptor: string | null
-  aspectRatio: number | undefined
-} {
-  return {
-    entryId,
-    descriptor: descriptorCache.get(entryId) ?? null,
-    aspectRatio: aspectRatioCache.get(entryId),
-  }
+export interface UseQuickPanelImageOptions {
+  /**
+   * When false, skip this hook's own descriptor/blob resolution (no daemon
+   * call, `url` stays `null`). Used when a parent has already resolved the
+   * same entry and is passing the url down instead (see `ImageGridItem`), or
+   * when a tile isn't visible yet and shouldn't eagerly fetch (see
+   * `PanelItem`). Aspect-ratio tracking stays active regardless — it's a
+   * cache read/subscribe, not a fetch.
+   */
+  enabled?: boolean
 }
 
-export function useQuickPanelImage(entryId: string): QuickPanelImage {
-  const [state, setState] = useState(() => initialQuickPanelImageState(entryId))
+function initialAspectRatioState(entryId: string): {
+  entryId: string
+  aspectRatio: number | undefined
+} {
+  return { entryId, aspectRatio: aspectRatioCache.get(entryId) }
+}
+
+export function useQuickPanelImage(
+  entryId: string,
+  options: UseQuickPanelImageOptions = {}
+): QuickPanelImage {
+  const { enabled = true } = options
+  const descriptor = useResourceImageDescriptor(entryId, enabled)
+
+  const [aspectRatioState, setAspectRatioState] = useState(() => initialAspectRatioState(entryId))
 
   // Row reuse (filter change) can hand this hook a new entry id without
-  // remounting the component. Reset synchronously during render — instead of
-  // waiting for the effects below, which only run after paint — so the first
-  // frame for the new id never shows the previous entry's cached
-  // descriptor/aspect ratio.
-  if (state.entryId !== entryId) {
-    setState(initialQuickPanelImageState(entryId))
+  // remounting the component. Reset synchronously during render so the first
+  // frame for the new id never shows the previous entry's cached ratio.
+  if (aspectRatioState.entryId !== entryId) {
+    setAspectRatioState(initialAspectRatioState(entryId))
   }
-  const { descriptor, aspectRatio } = state
-
-  // Descriptor lookup: use cache, else hit the daemon once (deduped across
-  // concurrent callers) and memoize.
-  useEffect(() => {
-    const cached = descriptorCache.get(entryId)
-    if (cached !== undefined) {
-      setState(prev => (prev.entryId === entryId ? { ...prev, descriptor: cached } : prev))
-      return
-    }
-    let cancelled = false
-
-    let fetchPromise = inFlightDescriptorFetches.get(entryId)
-    if (!fetchPromise) {
-      fetchPromise = getClipboardEntryResource(entryId)
-        .then(resource => (resource ? getResourceImageUrl(resource) : null))
-        .finally(() => {
-          inFlightDescriptorFetches.delete(entryId)
-        })
-      inFlightDescriptorFetches.set(entryId, fetchPromise)
-    }
-
-    fetchPromise
-      .then(next => {
-        if (cancelled) return
-        descriptorCache.set(entryId, next)
-        setState(prev => (prev.entryId === entryId ? { ...prev, descriptor: next } : prev))
-      })
-      .catch(() => {
-        // Don't cache failures, so a remount can retry.
-        if (!cancelled) {
-          setState(prev => (prev.entryId === entryId ? { ...prev, descriptor: null } : prev))
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [entryId])
 
   // Aspect-ratio subscription: pull the cached value on mount (in case another
   // instance measured it first) and re-render whenever any writer publishes a
   // new value for this entry.
   useEffect(() => {
-    setState(prev =>
+    setAspectRatioState(prev =>
       prev.entryId === entryId ? { ...prev, aspectRatio: aspectRatioCache.get(entryId) } : prev
     )
     const listener = () =>
-      setState(prev =>
+      setAspectRatioState(prev =>
         prev.entryId === entryId ? { ...prev, aspectRatio: aspectRatioCache.get(entryId) } : prev
       )
     aspectRatioListeners.add(listener)
@@ -125,8 +86,8 @@ export function useQuickPanelImage(entryId: string): QuickPanelImage {
     }
   }, [entryId])
 
-  const url = useBlobImageObjectUrl(descriptor)
-  return { url, aspectRatio }
+  const url = useBlobImageObjectUrl(descriptor, enabled)
+  return { url, aspectRatio: aspectRatioState.aspectRatio }
 }
 
 /**
@@ -169,14 +130,4 @@ export function useQuickPanelImageAspectRatioEpoch(): number {
     }
   }, [])
   return epoch
-}
-
-/**
- * Drop the cached descriptor for an entry so the next render re-fetches it.
- * Called when the `<img>` errors out (e.g. the blob 404'd because the resource
- * was rewritten) — clears the stale path we handed out. The aspect ratio is
- * left in place: image dimensions don't change even if the bytes go missing.
- */
-export function invalidateQuickPanelImageUrl(entryId: string): void {
-  descriptorCache.delete(entryId)
 }

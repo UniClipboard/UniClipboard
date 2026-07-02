@@ -1,5 +1,7 @@
 import { FileText } from 'lucide-react'
+import { useComposedRefs } from 'radix-ui/internal'
 import React from 'react'
+import { useInView } from '@/hooks/useInView'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
 import { isMac, typeIcons } from '../constants'
@@ -22,10 +24,16 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
     const Icon = typeIcons[item.type] ?? FileText
     const isUnavailable = item.isUnavailable
     const isImage = item.type === 'image'
+    // The plain list isn't virtualized (unlike the dashboard's HistoryGrid),
+    // so eagerly fetching every image row's thumbnail on mount can burst up
+    // to PAGE_SIZE daemon calls at once, most for off-screen rows. Defer each
+    // row's own thumbnail fetch until it has actually scrolled into view.
+    const [inViewRef, inView] = useInView<HTMLDivElement>()
+    const ref = useComposedRefs(itemRef, inViewRef)
 
     return (
       <div
-        ref={itemRef}
+        ref={ref}
         // role="option"(而非原生 <option>):本行要放图标、截断文本、时间和
         // <kbd> 快捷键提示,原生 <option> 只能装纯文本。配 HistoryPane 的
         // role="listbox" 容器使用。react-doctor 的 prefer-tag-over-role
@@ -58,6 +66,7 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
           // visual recognition.
           <QuickPanelImage
             entryId={item.id}
+            enabled={inView}
             className={cn(
               'h-4 w-7 shrink-0 rounded-sm border bg-muted/30',
               isSelected ? 'border-primary-foreground/25' : 'border-border/70',

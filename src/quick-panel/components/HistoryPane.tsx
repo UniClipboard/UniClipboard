@@ -5,11 +5,12 @@ import { Filter } from '@/api/clipboardItems'
 import { CompositeSearchBar, type SourceOption } from '@/components/history/composite-search'
 import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
-import { clampImageCardAspectRatio, quickCardClassName } from '../constants'
+import { quickCardClassName } from '../constants'
 import {
   peekQuickPanelImageAspectRatio,
   useQuickPanelImageAspectRatioEpoch,
 } from '../hooks/useQuickPanelImage'
+import { packImageWallColumns } from '../imageWallPacker'
 import type { DisplayItem, TimeRangePreset } from '../types'
 import ImageGridItem from './ImageGridItem'
 import PanelItem from './PanelItem'
@@ -54,13 +55,22 @@ interface HistoryPaneProps {
  *  tiles remain recognizable in the quick panel's constrained width. */
 const IMAGE_WALL_COLUMN_COUNT = 3
 
-/**
- * Return the row-height weight for a tile, so the greedy packer can balance
- * columns. Height is normalized against a width of 1: taller tiles (portrait,
- * aspect ratio < 1) contribute more weight than wide ones.
- */
-function getImageCardHeightWeight(aspectRatio: number | undefined): number {
-  return 1 / clampImageCardAspectRatio(aspectRatio)
+/** Cmd/Ctrl + 1-9, 0 shortcut hint for a row's position in the list. */
+function getShortcutKey(index: number): string | undefined {
+  return index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined
+}
+
+/** Ref callback registering a row's DOM node under its list index, so
+ * arrow-key navigation can `scrollIntoView` the selected row (see
+ * `ClipboardHistoryPanel`'s `itemRefs`-keyed effect). */
+function makeItemRef(
+  itemRefs: React.MutableRefObject<Map<number, HTMLDivElement>>,
+  index: number
+): (el: HTMLDivElement | null) => void {
+  return el => {
+    if (el) itemRefs.current.set(index, el)
+    else itemRefs.current.delete(index)
+  }
 }
 
 const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
@@ -110,19 +120,9 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     // dep below wakes this memo up whenever any tile publishes a new ratio.
     const imageColumns = useMemo(() => {
       if (!showImageWall) return null
-      const columns: { item: DisplayItem; index: number }[][] = Array.from(
-        { length: IMAGE_WALL_COLUMN_COUNT },
-        () => []
+      return packImageWallColumns(filteredItems, IMAGE_WALL_COLUMN_COUNT, item =>
+        peekQuickPanelImageAspectRatio(item.id)
       )
-      const columnHeights = columns.map(() => 0)
-      filteredItems.forEach((item, index) => {
-        const targetColumnIndex = columnHeights.indexOf(Math.min(...columnHeights))
-        columns[targetColumnIndex].push({ item, index })
-        columnHeights[targetColumnIndex] += getImageCardHeightWeight(
-          peekQuickPanelImageAspectRatio(item.id)
-        )
-      })
-      return columns
     }, [filteredItems, showImageWall, aspectRatioEpoch])
 
     return (
@@ -237,28 +237,19 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                 <div className="flex w-full min-w-0 items-start gap-1">
                   {imageColumns.map((column, columnIndex) => (
                     <div key={columnIndex} className="flex min-w-0 flex-1 flex-col">
-                      {column.map(({ item, index }) => {
-                        const shortcutKey =
-                          index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined
-                        const itemRef = (el: HTMLDivElement | null) => {
-                          if (el) itemRefs.current.set(index, el)
-                          else itemRefs.current.delete(index)
-                        }
-
-                        return (
-                          <ImageGridItem
-                            key={item.id}
-                            item={item}
-                            index={index}
-                            isSelected={index === selectedIndex}
-                            hoverDisabled={isKeyboardNav}
-                            onSelect={onSelect}
-                            onHover={onHover}
-                            shortcutKey={shortcutKey}
-                            itemRef={itemRef}
-                          />
-                        )
-                      })}
+                      {column.map(({ item, index }) => (
+                        <ImageGridItem
+                          key={item.id}
+                          item={item}
+                          index={index}
+                          isSelected={index === selectedIndex}
+                          hoverDisabled={isKeyboardNav}
+                          onSelect={onSelect}
+                          onHover={onHover}
+                          shortcutKey={getShortcutKey(index)}
+                          itemRef={makeItemRef(itemRefs, index)}
+                        />
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -272,11 +263,8 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                     hoverDisabled={isKeyboardNav}
                     onSelect={onSelect}
                     onHover={onHover}
-                    shortcutKey={index < 10 ? (index === 9 ? '0' : String(index + 1)) : undefined}
-                    itemRef={el => {
-                      if (el) itemRefs.current.set(index, el)
-                      else itemRefs.current.delete(index)
-                    }}
+                    shortcutKey={getShortcutKey(index)}
+                    itemRef={makeItemRef(itemRefs, index)}
                   />
                 ))
               )}

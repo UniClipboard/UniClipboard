@@ -17,14 +17,15 @@ use uc_application::facade::settings::{RelayDiagnosticPort, RelayProbeError, Rel
 use uc_application::facade::space_setup::SpaceSetupFacade;
 use uc_application::facade::{
     ActiveClipboardFacade, AppFacade, AppFacadeParts, AppPaths, BlobTransferFacade,
-    ClipboardHistoryFacade, ClipboardHistoryFacadeDeps, ClipboardOutboundDeps,
-    ClipboardOutboundFacade, ClipboardRestoreFacade, ClipboardRestoreFacadeDeps,
-    ClipboardSyncFacade, DeviceFacade, DiagnosticsFacade, DiagnosticsFacadeDeps, EncryptionFacade,
-    EncryptionFacadeDeps, FileTransferFacade, InMemoryLifecycleStatus, IncomingMobileBuffer,
-    LifecycleFacade, LifecycleFacadeDeps, LifecycleStatusGateway, MemberRosterFacade,
-    MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSnapshotPorts, ResourceFacade,
-    ResourceFacadeDeps, SearchCoordinator, SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps,
-    SettingsFacade, StorageFacade, StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
+    ClipboardCaptureFacade, ClipboardHistoryFacade, ClipboardHistoryFacadeDeps,
+    ClipboardOutboundDeps, ClipboardOutboundFacade, ClipboardRestoreFacade,
+    ClipboardRestoreFacadeDeps, ClipboardSyncFacade, DeviceFacade, DiagnosticsFacade,
+    DiagnosticsFacadeDeps, EncryptionFacade, EncryptionFacadeDeps, FileTransferFacade,
+    InMemoryLifecycleStatus, IncomingMobileBuffer, LifecycleFacade, LifecycleFacadeDeps,
+    LifecycleStatusGateway, MemberRosterFacade, MobileSyncFacade, MobileSyncFacadeDeps,
+    MobileSyncSnapshotPorts, ResourceFacade, ResourceFacadeDeps, SearchCoordinator,
+    SearchCoordinatorDeps, SearchFacade, SearchFacadeDeps, SettingsFacade, StorageFacade,
+    StorageFacadeDeps, UpgradeFacade, UpgradeFacadeDeps,
 };
 use uc_application::{
     ApplyInboundClipboardUseCase, InboundCapture as ApplyInboundCapture,
@@ -152,6 +153,41 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
         .with_check_entry_availability(deps.clipboard.entry_ports.availability.clone())
         .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
     )
+}
+
+/// 构造 [`ClipboardCaptureFacade`] —— "立即捕获当前 OS 剪贴板内容"的入口
+/// (issue #1169:启动期恢复上次剪贴板记录前,先把当前可能已经变化的剪贴板
+/// 内容落一条历史,避免被恢复动作覆盖丢失)。
+///
+/// 与 `build_fallback_apply_inbound` 里的 `capture_uc` 是各自独立的
+/// `CaptureClipboardUseCase` 实例,但共享同一份 `entry_identity_coordinator`,
+/// 去重/去并发仍然通过该协调器收口,不会因为多一个实例而产生重复 entry。
+///
+/// 所有桌面入口(daemon / CLI / GUI shell)都用同一份 `AppDeps` 装得起来,
+/// 不需要额外的 caller 提供的装配选项,因此 `AppFacade.clipboard_capture`
+/// 是非 `Option` 字段。
+fn build_clipboard_capture_facade(deps: &AppDeps) -> Arc<ClipboardCaptureFacade> {
+    let capture_uc = Arc::new(
+        CaptureClipboardUseCase::new(
+            deps.clipboard.entry_ports.save.clone(),
+            deps.clipboard.entry_ports.touch.clone(),
+            deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
+            deps.clipboard.clipboard_event_repo.clone(),
+            deps.clipboard.representation_policy.clone(),
+            deps.clipboard.representation_normalizer.clone(),
+            deps.device.device_identity.clone(),
+            deps.clipboard.representation_cache.clone(),
+            deps.clipboard.spool_queue.clone(),
+            deps.storage.blob_content_ingest.clone(),
+            deps.clipboard.entry_ports.replace_content.clone(),
+            deps.analytics.clone(),
+        )
+        .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
+    );
+    Arc::new(ClipboardCaptureFacade::new(
+        capture_uc,
+        deps.clipboard.clipboard.clone(),
+    ))
 }
 
 /// `InboundWrite` 的 NoOp 实装。
@@ -403,6 +439,7 @@ pub fn build_app_facade_from_deps(
             clock: deps.system.clock.clone(),
             cache_fs: deps.system.cache_fs.clone(),
         })),
+        clipboard_capture: build_clipboard_capture_facade(deps),
         clipboard_sync: options.clipboard_sync,
         blob_transfer: options.blob_transfer,
         // GUI shell 启动期为空; daemon 起来后由

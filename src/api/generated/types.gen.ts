@@ -117,6 +117,39 @@ export type CancelTransferResponse = {
  * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
  * generic, and an un-aliased generic inlines an anonymous schema.
  */
+export type CaptureCurrentClipboardEnvelope = {
+    data: CaptureCurrentClipboardResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Response body for `POST /clipboard/capture-current`.
+ *
+ * `entry_id` is `None` when there was nothing on the OS clipboard to
+ * capture.
+ */
+export type CaptureCurrentClipboardResponse = {
+    entryId?: string | null;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
 export type CaptureUiEventEnvelope = {
     data: CaptureUiEventResponse;
     /**
@@ -768,6 +801,21 @@ export type GeneralSettingsDto = {
     debugMode?: boolean;
     deviceName?: string | null;
     language?: string | null;
+    /**
+     * Whether an OS auto-start launch (never a manual one) should
+     * transition straight into Lightweight Mode once the daemon connection
+     * is confirmed (GUI process exits, daemon keeps running). Added after
+     * initial launch; `#[serde(default)]` keeps old wire payloads
+     * compatible.
+     */
+    lightweightStart?: boolean;
+    /**
+     * Whether to push the most recent clipboard history entry back onto the
+     * OS clipboard once the daemon connection is confirmed at startup.
+     * Added after initial launch; `#[serde(default)]` keeps old wire
+     * payloads compatible.
+     */
+    restoreLastEntryOnStartup?: boolean;
     silentStart: boolean;
     /**
      * Whether anonymous diagnostic telemetry is enabled.
@@ -822,6 +870,8 @@ export type GeneralSettingsPatchDto = {
     debugMode?: boolean | null;
     deviceName?: string | null;
     language?: string | null;
+    lightweightStart?: boolean | null;
+    restoreLastEntryOnStartup?: boolean | null;
     silentStart?: boolean | null;
     telemetryEnabled?: boolean | null;
     theme?: ThemeDto | null;
@@ -3146,6 +3196,31 @@ export type CancelClipboardTransferResponses = {
 };
 
 export type CancelClipboardTransferResponse = CancelClipboardTransferResponses[keyof CancelClipboardTransferResponses];
+
+export type CaptureCurrentClipboardData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/clipboard/capture-current';
+};
+
+export type CaptureCurrentClipboardErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type CaptureCurrentClipboardError = CaptureCurrentClipboardErrors[keyof CaptureCurrentClipboardErrors];
+
+export type CaptureCurrentClipboardResponses = {
+    /**
+     * Current OS clipboard content captured (or nothing to capture)
+     */
+    200: CaptureCurrentClipboardEnvelope;
+};
+
+export type CaptureCurrentClipboardResponse2 = CaptureCurrentClipboardResponses[keyof CaptureCurrentClipboardResponses];
 
 export type DispatchClipboardTextData = {
     body: DispatchTextRequest;

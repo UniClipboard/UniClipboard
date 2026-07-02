@@ -197,8 +197,10 @@ pub fn build_daemon_runtime_workers(
     }
     let clipboard_watcher = if assemble_watcher {
         let local_clipboard = input.deps.clipboard.system_clipboard.clone();
-        let clipboard_capture_facade =
-            Arc::new(ClipboardCaptureFacade::new(apply_inbound_capture_uc));
+        let clipboard_capture_facade = Arc::new(ClipboardCaptureFacade::new(
+            apply_inbound_capture_uc,
+            input.deps.clipboard.clipboard.clone(),
+        ));
         let clipboard_live_index_facade = Arc::new(ClipboardLiveIndexFacade::new(Arc::clone(
             &search_live_indexer,
         )));

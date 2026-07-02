@@ -60,6 +60,18 @@ export type RuleEvaluation = 'anyMatch' | 'allMatch'
 export interface GeneralSettings {
   autoStart: boolean
   silentStart: boolean
+  /**
+   * Whether an OS auto-start launch should transition straight into
+   * Lightweight Mode once the daemon connection is confirmed: the app
+   * window and tray exit, only the background sync service keeps running.
+   * Only applies to an auto-start launch, never a manual one.
+   */
+  lightweightStart: boolean
+  /**
+   * Whether to push the most recent clipboard history entry back onto the
+   * OS clipboard once the daemon connection is confirmed at startup.
+   */
+  restoreLastEntryOnStartup: boolean
   autoCheckUpdate: boolean
   autoDownloadUpdate: boolean
   theme: Theme
@@ -306,6 +318,8 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
     // which persists the preference and applies the OS state atomically.
     const {
       silentStart,
+      lightweightStart,
+      restoreLastEntryOnStartup,
       autoCheckUpdate,
       autoDownloadUpdate,
       theme,
@@ -324,6 +338,8 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
 
     patch.general = {
       silentStart,
+      lightweightStart,
+      restoreLastEntryOnStartup,
       autoCheckUpdate,
       autoDownloadUpdate,
       theme,

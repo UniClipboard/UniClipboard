@@ -20,6 +20,7 @@ pub mod file_ports;
 pub mod gui_wiring;
 pub mod runtime;
 pub mod shortcuts;
+pub mod startup_actions;
 
 pub use daemon::DaemonOwnership;
 pub use runtime::DesktopRuntime;

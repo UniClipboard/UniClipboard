@@ -7,6 +7,7 @@ import * as storageApi from '@/api/storage'
 import StorageSection, { resolveMaxItemsCount } from '@/components/setting/StorageSection'
 import { useSetting } from '@/hooks/useSetting'
 import i18n from '@/i18n'
+import { makeBaseSettings } from '@/test/fixtures/settings'
 import type { Settings, SettingContextType } from '@/types/setting'
 
 // ============================================================================
@@ -93,76 +94,15 @@ beforeAll(() => {
 // Test fixtures
 // ============================================================================
 
-const baseSetting: Settings = {
-  schemaVersion: 1,
-  general: {
-    autoStart: false,
-    silentStart: false,
-    autoCheckUpdate: true,
-    autoDownloadUpdate: false,
-    theme: 'light',
-    themeColor: 'zinc',
-    themeColorLight: null,
-    themeColorDark: null,
-    themeOverridesLight: {},
-    themeOverridesDark: {},
-    language: 'en-US',
-    deviceName: 'Test Device',
-    telemetryEnabled: true,
-    usageAnalyticsEnabled: true,
-    debugMode: false,
-  },
-  sync: {
-    autoSync: true,
-    syncFrequency: 'realtime',
-    contentTypes: {
-      text: true,
-      image: true,
-      link: true,
-      file: true,
-      codeSnippet: true,
-      richText: true,
-    },
-    syncOnRestore: false,
-  },
+const baseSetting: Settings = makeBaseSettings({
+  general: { theme: 'light', themeColor: 'zinc' },
   retentionPolicy: {
     enabled: true,
     rules: [{ byAge: { maxAge: 30 * 86400 } }, { byCount: { maxItems: 500 } }],
     skipPinned: false,
     evaluation: 'anyMatch',
   },
-  security: {
-    encryptionEnabled: false,
-    passphraseConfigured: false,
-    autoUnlockEnabled: false,
-  },
-  pairing: {
-    stepTimeout: 15,
-    userVerificationTimeout: 120,
-    sessionTimeout: 300,
-    maxRetries: 3,
-    protocolVersion: '1.0.0',
-  },
-  keyboardShortcuts: {},
-  fileSync: {
-    fileSyncEnabled: true,
-    smallFileThreshold: 10 * 1024 * 1024,
-    maxFileSize: 5 * 1024 * 1024 * 1024,
-    fileCacheQuotaPerDevice: 500 * 1024 * 1024,
-    fileRetentionHours: 24,
-    fileAutoCleanup: true,
-  },
-  network: {
-    allowRelayFallback: true,
-    allowOverlayNetworkAddrs: false,
-    customRelayUrls: [],
-    congestionController: 'cubic',
-  },
-  quickPanel: {
-    enabled: true,
-    position: 'center',
-  },
-}
+})
 
 type UpdateRetentionPolicyFn = SettingContextType['updateRetentionPolicy']
 

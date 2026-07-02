@@ -125,6 +125,14 @@
           "label": "静默启动",
           "description": "启动时不显示主界面，在后台运行"
         },
+        "lightweightStart": {
+          "label": "以轻量模式启动",
+          "description": "开机自启动时，在后台就绪后自动退出应用窗口和托盘，仅保留后台同步服务；手动打开应用时始终正常显示窗口"
+        },
+        "restoreLastEntryOnStartup": {
+          "label": "启动后恢复最近一条剪贴板记录",
+          "description": "应用启动、后台就绪后自动将最近一条历史记录重新放入系统剪贴板"
+        },
         "language": {
           "title": "语言",
           "label": "界面语言",

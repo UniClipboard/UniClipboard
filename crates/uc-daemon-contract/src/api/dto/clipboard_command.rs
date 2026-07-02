@@ -101,6 +101,19 @@ pub struct RestoreEntryResponse {
     pub success: bool,
 }
 
+// ── POST /clipboard/capture-current ──────────────────────────────
+
+/// Response body for `POST /clipboard/capture-current`.
+///
+/// `entry_id` is `None` when there was nothing on the OS clipboard to
+/// capture.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureCurrentClipboardResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry_id: Option<String>,
+}
+
 // ── WS clipboard.inbound_notice payload ──────────────────────────
 
 /// Payload for the `clipboard.inbound_notice` WebSocket event.

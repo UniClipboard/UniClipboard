@@ -10,6 +10,8 @@ import { useSavingState } from './useSavingState'
 interface StartupForm {
   autoStart: boolean
   silentStart: boolean
+  lightweightStart: boolean
+  restoreLastEntryOnStartup: boolean
   deviceName: string
 }
 
@@ -17,6 +19,8 @@ function deriveStartupForm(general: GeneralSettings | undefined): StartupForm {
   return {
     autoStart: general?.autoStart ?? false,
     silentStart: general?.silentStart ?? false,
+    lightweightStart: general?.lightweightStart ?? false,
+    restoreLastEntryOnStartup: general?.restoreLastEntryOnStartup ?? false,
     deviceName: general?.deviceName ?? '',
   }
 }
@@ -40,13 +44,36 @@ export function StartupSettings() {
     // launch registration.
     runSave('Failed to change autostart setting', async () => {
       await updateAutostart(checked)
-      setForm(prev => ({ ...prev, autoStart: checked }))
+      // `lightweightStart` only takes effect on an auto-start launch; turning
+      // autostart off would otherwise leave it checked but unreachable to
+      // uncheck (its row disables when `!autoStart`). Clear it alongside so
+      // there's no stale, stuck-on preference.
+      if (!checked && form.lightweightStart) {
+        await updateGeneralSetting({ lightweightStart: false })
+      }
+      setForm(prev => ({
+        ...prev,
+        autoStart: checked,
+        lightweightStart: checked ? prev.lightweightStart : false,
+      }))
     })
 
   const handleSilentStartChange = (checked: boolean) =>
     runSave('Failed to change silent-start setting', async () => {
       await updateGeneralSetting({ silentStart: checked })
       setForm(prev => ({ ...prev, silentStart: checked }))
+    })
+
+  const handleLightweightStartChange = (checked: boolean) =>
+    runSave('Failed to change lightweight-start setting', async () => {
+      await updateGeneralSetting({ lightweightStart: checked })
+      setForm(prev => ({ ...prev, lightweightStart: checked }))
+    })
+
+  const handleRestoreLastEntryOnStartupChange = (checked: boolean) =>
+    runSave('Failed to change restore-last-entry-on-startup setting', async () => {
+      await updateGeneralSetting({ restoreLastEntryOnStartup: checked })
+      setForm(prev => ({ ...prev, restoreLastEntryOnStartup: checked }))
     })
 
   const handleDeviceNameChange = (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -92,6 +119,30 @@ export function StartupSettings() {
         <Switch
           checked={form.silentStart}
           onCheckedChange={handleSilentStartChange}
+          disabled={isBusy}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label={t('settings.sections.general.lightweightStart.label')}
+        description={t('settings.sections.general.lightweightStart.description')}
+      >
+        <Switch
+          checked={form.lightweightStart}
+          onCheckedChange={handleLightweightStartChange}
+          // Only takes effect on an OS auto-start launch — disabled until
+          // "Launch at login" is on, so it can't be turned on to no effect.
+          disabled={isBusy || !form.autoStart}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label={t('settings.sections.general.restoreLastEntryOnStartup.label')}
+        description={t('settings.sections.general.restoreLastEntryOnStartup.description')}
+      >
+        <Switch
+          checked={form.restoreLastEntryOnStartup}
+          onCheckedChange={handleRestoreLastEntryOnStartupChange}
           disabled={isBusy}
         />
       </SettingRow>

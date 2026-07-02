@@ -6,8 +6,8 @@ use uc_daemon_contract::api::dto::clipboard::{
     EntryDetailDto, EntryProjectionResponseDto, EntryResourceDto,
 };
 use uc_daemon_contract::api::dto::clipboard_command::{
-    CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
-    ResendRequest, ResendResponse,
+    CancelTransferRequest, CancelTransferResponse, CaptureCurrentClipboardResponse,
+    DispatchOutcomeResponse, DispatchTextRequest, ResendRequest, ResendResponse,
 };
 use uc_daemon_contract::constants::http_route;
 
@@ -59,6 +59,22 @@ impl DaemonClipboardClient {
         )
         .await?;
         Ok(())
+    }
+
+    /// Capture whatever is on the OS clipboard right now into history,
+    /// without waiting for a change event (issue #1169). Returns the
+    /// captured entry id, or `None` when there was nothing to capture.
+    pub async fn capture_current_clipboard(&self) -> Result<Option<String>> {
+        let response: CaptureCurrentClipboardResponse = enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            http_route::CLIPBOARD_CAPTURE_CURRENT,
+            |r| r,
+        )
+        .await?;
+        Ok(response.entry_id)
     }
 
     pub async fn dispatch_text(

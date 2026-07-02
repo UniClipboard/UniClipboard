@@ -53,8 +53,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// +3 operations → 62 / 69.
 /// Unified search (tag model) added `GET /search/tags`: +1 path,
 /// +1 operation → 63 / 70.
-const EXPECTED_PATHS: usize = 63;
-const EXPECTED_OPERATIONS: usize = 70;
+/// Issue #1169 added `POST /clipboard/capture-current`: +1 path,
+/// +1 operation → 64 / 71.
+const EXPECTED_PATHS: usize = 64;
+const EXPECTED_OPERATIONS: usize = 71;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

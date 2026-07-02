@@ -31,6 +31,19 @@ export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
 export interface GeneralSettings {
   autoStart: boolean
   silentStart: boolean
+  /**
+   * Whether an OS auto-start launch should transition straight into
+   * Lightweight Mode once the daemon connection is confirmed: the app
+   * window and tray exit, only the background sync service keeps running.
+   * Only applies to an auto-start launch — a manual launch always shows
+   * the window, so the setting stays reachable to turn back off.
+   */
+  lightweightStart: boolean
+  /**
+   * Whether to push the most recent clipboard history entry back onto the
+   * OS clipboard once the daemon connection is confirmed at startup.
+   */
+  restoreLastEntryOnStartup: boolean
   autoCheckUpdate: boolean
   /**
    * Whether to download the next available update in the background.

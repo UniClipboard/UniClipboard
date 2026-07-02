@@ -95,6 +95,34 @@
         ],
         "type": "object"
       },
+      "CaptureCurrentClipboardEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CaptureCurrentClipboardResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "CaptureCurrentClipboardResponse": {
+        "description": "Response body for `POST /clipboard/capture-current`.\n\n`entry_id` is `None` when there was nothing on the OS clipboard to\ncapture.",
+        "properties": {
+          "entryId": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CaptureUiEventEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -1304,6 +1332,14 @@
             "nullable": true,
             "type": "string"
           },
+          "lightweightStart": {
+            "description": "Whether an OS auto-start launch (never a manual one) should\ntransition straight into Lightweight Mode once the daemon connection\nis confirmed (GUI process exits, daemon keeps running). Added after\ninitial launch; `#[serde(default)]` keeps old wire payloads\ncompatible.",
+            "type": "boolean"
+          },
+          "restoreLastEntryOnStartup": {
+            "description": "Whether to push the most recent clipboard history entry back onto the\nOS clipboard once the daemon connection is confirmed at startup.\nAdded after initial launch; `#[serde(default)]` keeps old wire\npayloads compatible.",
+            "type": "boolean"
+          },
           "silentStart": {
             "type": "boolean"
           },
@@ -1391,6 +1427,14 @@
           "language": {
             "nullable": true,
             "type": "string"
+          },
+          "lightweightStart": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "restoreLastEntryOnStartup": {
+            "nullable": true,
+            "type": "boolean"
           },
           "silentStart": {
             "nullable": true,
@@ -4950,6 +4994,46 @@
           }
         ],
         "summary": "POST /clipboard/cancel-transfer/:transfer_id",
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/capture-current": {
+      "post": {
+        "description": "Capture whatever is on the OS clipboard right now into history,\nwithout waiting for a change event (issue #1169: lets a caller preserve\na concurrent write — e.g. something copied during the daemon's startup\nwindow — before overwriting the OS clipboard with a restored entry).\nWrapped in the canonical `{ data, ts }` envelope (ADR-008 §0.1/§0.2).\n`entryId: null` means there was nothing on the OS clipboard to capture;\nthis is not an error.",
+        "operationId": "captureCurrentClipboard",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureCurrentClipboardEnvelope"
+                }
+              }
+            },
+            "description": "Current OS clipboard content captured (or nothing to capture)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /clipboard/capture-current",
         "tags": [
           "clipboard"
         ]

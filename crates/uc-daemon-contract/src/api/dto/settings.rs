@@ -69,6 +69,19 @@ pub enum RelayProbeOutcomeDto {
 pub struct GeneralSettingsDto {
     pub auto_start: bool,
     pub silent_start: bool,
+    /// Whether an OS auto-start launch (never a manual one) should
+    /// transition straight into Lightweight Mode once the daemon connection
+    /// is confirmed (GUI process exits, daemon keeps running). Added after
+    /// initial launch; `#[serde(default)]` keeps old wire payloads
+    /// compatible.
+    #[serde(default)]
+    pub lightweight_start: bool,
+    /// Whether to push the most recent clipboard history entry back onto the
+    /// OS clipboard once the daemon connection is confirmed at startup.
+    /// Added after initial launch; `#[serde(default)]` keeps old wire
+    /// payloads compatible.
+    #[serde(default)]
+    pub restore_last_entry_on_startup: bool,
     pub auto_check_update: bool,
     /// Whether to download the next available update in the background.
     /// Persisted alongside `auto_check_update`; consumed by the frontend's
@@ -369,6 +382,10 @@ pub struct SettingsDto {
 pub struct GeneralSettingsPatchDto {
     pub auto_start: Option<bool>,
     pub silent_start: Option<bool>,
+    #[serde(default)]
+    pub lightweight_start: Option<bool>,
+    #[serde(default)]
+    pub restore_last_entry_on_startup: Option<bool>,
     pub auto_check_update: Option<bool>,
     pub auto_download_update: Option<bool>,
     pub theme: Option<ThemeDto>,
@@ -571,6 +588,8 @@ impl From<core::GeneralSettings> for GeneralSettingsDto {
         Self {
             auto_start: value.auto_start,
             silent_start: value.silent_start,
+            lightweight_start: value.lightweight_start,
+            restore_last_entry_on_startup: value.restore_last_entry_on_startup,
             auto_check_update: value.auto_check_update,
             auto_download_update: value.auto_download_update,
             theme: value.theme.into(),

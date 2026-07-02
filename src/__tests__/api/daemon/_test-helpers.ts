@@ -172,6 +172,8 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
     general: {
       autoStart: false,
       silentStart: false,
+      lightweightStart: false,
+      restoreLastEntryOnStartup: false,
       autoCheckUpdate: true,
       autoDownloadUpdate: false,
       theme: 'system',

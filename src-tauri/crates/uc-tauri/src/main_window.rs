@@ -21,7 +21,15 @@
 //! cost up front.
 
 use tauri::Manager;
-use tracing::{error, info, warn};
+use tracing::{error, info};
+// Every `warn!` call in this file lives inside a macOS or Windows `cfg`
+// block; on other platforms (e.g. the Linux coverage runner) the import is
+// genuinely unused.
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "windows")),
+    allow(unused_imports)
+)]
+use tracing::warn;
 
 /// Label of the main window as declared in `tauri.conf.json`.
 pub const MAIN_WINDOW_LABEL: &str = "main";

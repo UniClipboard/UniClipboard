@@ -21,15 +21,7 @@
 //! cost up front.
 
 use tauri::Manager;
-use tracing::{error, info};
-// Every `warn!` call in this file lives inside a macOS or Windows `cfg`
-// block; on other platforms (e.g. the Linux coverage runner) the import is
-// genuinely unused.
-#[cfg_attr(
-    not(any(target_os = "macos", target_os = "windows")),
-    allow(unused_imports)
-)]
-use tracing::warn;
+use tracing::{error, info, warn};
 
 /// Label of the main window as declared in `tauri.conf.json`.
 pub const MAIN_WINDOW_LABEL: &str = "main";
@@ -60,9 +52,15 @@ pub fn show_main_window(app: &tauri::AppHandle) {
         },
     };
 
-    let _ = window.unminimize();
-    let _ = window.show();
-    let _ = window.set_focus();
+    if let Err(error) = window.unminimize() {
+        warn!(error = %error, "Failed to unminimize main window");
+    }
+    if let Err(error) = window.show() {
+        warn!(error = %error, "Failed to show main window");
+    }
+    if let Err(error) = window.set_focus() {
+        warn!(error = %error, "Failed to focus main window");
+    }
 }
 
 /// Create the main window from its `tauri.conf.json` entry (`create: false`

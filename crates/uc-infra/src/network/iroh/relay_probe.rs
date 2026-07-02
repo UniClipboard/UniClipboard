@@ -53,7 +53,8 @@ pub enum RelayProbeError {
 /// 使用 iroh-relay 官方 client 做协议级握手的探测器。
 ///
 /// 持有可复用的 [`DnsResolver`] 与 TLS [`rustls::ClientConfig`],避免每次
-/// 探测都重新初始化 crypto provider。
+/// 探测都重新初始化 crypto provider。`probe` 每次调用前会 `reset()` 这个
+/// resolver,以当前系统 DNS 配置重建它 —— 见 `probe` 内注释。
 pub struct IrohRelayProbeAdapter {
     dns_resolver: DnsResolver,
     tls_config: rustls::ClientConfig,
@@ -101,6 +102,16 @@ impl IrohRelayProbeAdapter {
                 "relay URL must include a host".to_string(),
             ));
         }
+
+        // Rebuild the DNS resolver against the *current* system config before
+        // probing. Same wedge as the endpoint's resolver (see `net_recovery`):
+        // this adapter is constructed once at daemon startup, so a resolver
+        // built while the network was still coming up would hold a stale/empty
+        // nameserver config forever — every relay probe would then fail DNS
+        // resolution even after the network recovered, misreporting a reachable
+        // relay as unreachable. `reset()` is lazy (no IO until first lookup)
+        // and re-reads `/etc/resolv.conf` / the Windows registry.
+        self.dns_resolver.reset();
 
         // 一次性凭据 —— 与长期 iroh endpoint 身份解耦,避免把进程级 NodeId
         // 泄露给被测试的中继。

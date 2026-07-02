@@ -18,18 +18,28 @@
 //! ## What it does
 //!
 //! Watches [`Endpoint::home_relay_status`]. When the home relay stays
-//! continuously unhealthy past a grace period, it calls
-//! [`Endpoint::network_change`] — the public, documented, side-effect-free
-//! nudge that runs the same major-link-change path a restart would
-//! (`rebind` + `check_relay_connection` + `dns_resolver.reset()` + re-STUN).
-//! In other words it re-delivers the notification the OS dropped, in-process,
-//! so recovery no longer requires a user restart. Retries escalate with
-//! exponential backoff and stop the moment the relay reconnects.
+//! continuously unhealthy past a short grace period, it **resets the
+//! endpoint's DNS resolver directly** (`endpoint.dns_resolver().reset()`),
+//! which re-reads the current system DNS config, then calls
+//! [`Endpoint::network_change`] to prompt a relay redial. Retries escalate
+//! with exponential backoff and stop the moment the relay reconnects.
 //!
-//! This is a root-cause fix for the dropped-notification wedge, not a symptom
-//! mask: calling `network_change()` when the network is genuinely down is
-//! harmless (iroh's own docs say so), and the resolver reset is lazy (no IO
-//! until the next lookup).
+//! **Why the direct reset, not just `network_change()`:** the first draft
+//! only called `network_change()`, on the assumption it runs the same
+//! `dns_resolver.reset()` path a restart would. It does not, reliably:
+//! `network_change()` only reaches that reset when netwatch observes an
+//! actual interface delta — `netmon::actor::handle_potential_change`
+//! early-returns on `old_state == new_state`. The dominant repro is a process
+//! restart on an *unchanged* network (installer auto-relaunch), so the
+//! interface state is identical, the "major change" path never fires, and the
+//! reset never happens (confirmed in field logs: a nudge with no recovery).
+//! Resetting the resolver ourselves is unconditional and is the actual fix.
+//!
+//! This targets the root cause, not a symptom: a manual app restart recovers
+//! instantly (proving the *system* DNS is healthy — only this process's
+//! resolver is wedged), and `reset()` reproduces that recovery in-process
+//! without a restart. The reset is lazy (no IO until the next lookup) and
+//! harmless even when the network is genuinely down.
 //!
 //! ## Scope
 //!
@@ -48,11 +58,12 @@ use tracing::{info, warn};
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RecoveryPolicy {
     /// How long the home relay must be *continuously* unhealthy before the
-    /// first nudge. Sized comfortably above a normal cold-start relay
-    /// negotiation so ordinary startup churn never triggers a nudge, while
-    /// still recovering the wedged state within ~a minute instead of never.
+    /// first reset. Above a normal cold-start relay negotiation (which
+    /// connects within a few seconds) so ordinary startup churn doesn't
+    /// trigger it, but short so the wedge recovers quickly. The reset itself
+    /// is cheap and harmless, so we bias toward acting sooner.
     grace: Duration,
-    /// Delay after the first nudge before the next one, if still unhealthy.
+    /// Delay after the first reset before the next one, if still unhealthy.
     initial_backoff: Duration,
     /// Upper bound the backoff escalates to. Keeps a genuinely-offline node
     /// (relay really unreachable) probing at a low, steady rate.
@@ -62,9 +73,9 @@ pub(crate) struct RecoveryPolicy {
 impl Default for RecoveryPolicy {
     fn default() -> Self {
         Self {
-            grace: Duration::from_secs(45),
-            initial_backoff: Duration::from_secs(30),
-            max_backoff: Duration::from_secs(300),
+            grace: Duration::from_secs(20),
+            initial_backoff: Duration::from_secs(15),
+            max_backoff: Duration::from_secs(120),
         }
     }
 }
@@ -193,8 +204,27 @@ async fn run(endpoint: Endpoint, policy: RecoveryPolicy) {
                 warn!(
                     target: "iroh.net_recovery",
                     next_recheck_ms = next.as_millis() as u64,
-                    "home relay unhealthy past grace; nudging endpoint (network_change) to rebuild DNS resolver + relay connection",
+                    "home relay unhealthy past grace; resetting DNS resolver + nudging endpoint to rebuild relay connection",
                 );
+                // The load-bearing action: rebuild the endpoint's DNS resolver
+                // from the *current* system config. `endpoint.network_change()`
+                // is NOT enough on its own — it only reaches iroh's internal
+                // `dns_resolver.reset()` when netwatch observes an actual
+                // interface delta (`handle_potential_change` early-returns on
+                // `old_state == new_state`). Our wedge is a process restart on
+                // an unchanged network (e.g. installer auto-relaunch), so the
+                // interface state is identical and that path never fires. Reset
+                // the resolver directly — it re-reads /etc/resolv.conf / the
+                // Windows registry (lazily, no IO here).
+                match endpoint.dns_resolver() {
+                    Ok(resolver) => resolver.reset(),
+                    Err(err) => {
+                        warn!(target: "iroh.net_recovery", error = %err, "cannot reset DNS resolver");
+                    }
+                }
+                // Additionally nudge the endpoint: re-STUN + relay-connection
+                // re-check when the network genuinely changed. Harmless no-op
+                // otherwise, and prompts the relay actor to redial sooner.
                 endpoint.network_change().await;
                 Some(next)
             }

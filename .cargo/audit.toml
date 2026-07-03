@@ -12,4 +12,13 @@ ignore = [
   # (HMAC) — the vulnerable RSA code path is never reached. Re-evaluate if a
   # fix ships or if RSA-based JWT algorithms are ever adopted.
   "RUSTSEC-2023-0071",
+  # quick-xml: CPU-exhaustion (0194) and memory-exhaustion (0195) DoS when
+  # parsing attacker-controlled XML. Pulled in transitively (0.37.5 via
+  # tauri-winrt-notification, 0.39.4 via plist/wayland-scanner); no dependent
+  # has released a version on quick-xml >=0.41 yet. Not exploitable here:
+  # these paths only parse locally generated XML (Windows toast payloads,
+  # plists, Wayland protocol files), never untrusted input. Remove once
+  # upstream crates bump to quick-xml >=0.41.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
 ]

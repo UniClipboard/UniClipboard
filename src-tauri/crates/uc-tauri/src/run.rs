@@ -12,7 +12,6 @@
 //! `Builder` / `setup` / `RunEvent` 上。
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tauri::webview::PageLoadEvent;
 use tauri::Manager;
@@ -53,45 +52,17 @@ pub(crate) const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
 /// workspace 共享版本号所以与 `uniclipboard` bin 一致。
 const EXPECTED_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// GUI-local slack on top of the daemon's own startup budget: covers the
-/// probe round-trip, the incompatible-daemon replacement wait
-/// (`INCOMPATIBLE_DAEMON_EXIT_TIMEOUT`), and `connection_state` population
-/// after the daemon turns healthy.
-const AUTO_UNLOCK_LOCAL_MARGIN: Duration = Duration::from_secs(15);
+/// Marker arg the OS auto-start login item launches with (see the
+/// `tauri_plugin_autostart::init` call below). Distinguishes an auto-start
+/// launch from a manual one (Dock/Start-menu/Finder double-click) so
+/// `lightweight_start` (issue #1169) can apply only to the former — a
+/// manual launch must always present the normal interface, or "reopen the
+/// app" could never bring the window back once the setting is on.
+const AUTOSTART_LAUNCH_ARG: &str = "--autostart";
 
-/// auto-unlock 等待 daemon connection_state 被填充的总上限。
-///
-/// Derived from the cross-process timing contract instead of a local literal:
-/// the dominant term is the daemon's own startup budget
-/// (`timing::DAEMON_STARTUP_TIMEOUT`, which already covers a replacement
-/// waiting out a predecessor's instance lock and then bootstrapping), plus
-/// the GUI-local margin above. The wait runs in a detached background task,
-/// so a longer bound costs nothing; expiry only skips auto-unlock and the
-/// user unlocks manually.
-const AUTO_UNLOCK_DAEMON_READY_TIMEOUT: Duration = Duration::from_millis(
-    uc_daemon_process::timing::DAEMON_STARTUP_TIMEOUT.as_millis() as u64
-        + AUTO_UNLOCK_LOCAL_MARGIN.as_millis() as u64,
-);
-/// 轮询 connection_state 的间隔。
-const AUTO_UNLOCK_DAEMON_READY_POLL: Duration = Duration::from_millis(200);
-
-/// 等待 `DaemonConnectionState` 被 daemon bootstrap 填充。
-/// 返回 `true` 表示连接信息已就绪；`false` 表示在 `timeout` 内仍未填充。
-async fn wait_for_daemon_connection(
-    state: &DaemonConnectionState,
-    timeout: Duration,
-    poll_interval: Duration,
-) -> bool {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        if state.get().is_some() {
-            return true;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            return false;
-        }
-        tokio::time::sleep(poll_interval).await;
-    }
+/// Whether this process was launched by the OS auto-start login item.
+fn launched_via_autostart() -> bool {
+    std::env::args().any(|arg| arg == AUTOSTART_LAUNCH_ARG)
 }
 
 /// Translate a daemon-WS [`RealtimeEvent`] into the application-layer
@@ -400,7 +371,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         // 冷启动经下方 setup 的 `bootstrap_daemon_in_process` 拉起）。沿用
         // tauri-plugin-autostart，不自建 OS 原生 daemon 投影 / StartupIntegrationProvider。
         //
-        // launch args 为空 + autolaunch 用编译期固定 bundle id：产品对用户只暴露
+        // launch args 只带 `AUTOSTART_LAUNCH_ARG`（`launched_via_autostart` 用它
+        // 区分自启动 vs 手动启动，issue #1169 的 `lightweight_start` 只在自启动
+        // 时生效）+ autolaunch 用编译期固定 bundle id：产品对用户只暴露
         // **单一 profile**，主 profile 用固定标识注册 login item 正确工作。per-profile
         // 自启隔离（非主 profile 带 `UC_PROFILE` 的独立 login item + profile 启动参数）
         // 在单 profile 产品下无需求 —— P4-7 决策（2026-06-04）显式延后；多 profile /
@@ -409,7 +382,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         // profile 设置 per-profile `app_name` + `--profile` 启动参数。
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            Some(vec![]),
+            Some(vec![AUTOSTART_LAUNCH_ARG]),
         ))
         .setup(move |app| {
             // Set AppHandle on runtime so it can emit events to frontend
@@ -534,7 +507,16 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 let settings_port = runtime.settings_port();
                 match tauri::async_runtime::block_on(settings_port.load()) {
                     Ok(settings) => {
-                        let silent = settings.general.silent_start;
+                        // `lightweight_start` only applies to an OS auto-start
+                        // launch (issue #1169) — never a manual one, or
+                        // "reopen the app" could never bring the window back
+                        // once the setting is on. When it does apply it also
+                        // implies hiding the window: the GUI is about to exit
+                        // once the daemon connects (see the startup-actions
+                        // task below), so there is no point showing then
+                        // immediately re-hiding it.
+                        let silent = settings.general.silent_start
+                            || (settings.general.lightweight_start && launched_via_autostart());
                         let lang = settings.general.language.unwrap_or_default();
                         // Phase 96 INDIC-04:反向命名唯一翻译点之一,UI/Tray
                         // = "LAN-only ON" ⇔ 后端 `allow_relay_fallback = false`。
@@ -716,76 +698,45 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     info!("[Startup] Silent start: skipping startup barrier window show");
                 }
 
-                // 1. Auto-unlock (non-blocking) entirely over daemon loopback HTTP.
-                //
-                // ADR-008 P3-3 B2': the GUI is becoming a pure client, so it can
-                // no longer reach an in-process `AppFacade`. All three steps now
-                // run as RPCs against the daemon, which owns the encryption
-                // session and settings: read `auto_unlock_enabled` via
-                // `GET /settings`, then `POST /encryption/unlock` (silent keyring
-                // resume — no passphrase; the daemon endpoint preserves the
-                // original semantics), then `POST /lifecycle/retry` to advance
-                // the daemon-side deferred services. Because every step is an
-                // RPC, we wait for `connection_state` to be populated up front
-                // instead of unlocking before the daemon is reachable.
-                let daemon_conn_for_unlock = daemon_connection_state.clone();
+                // 1. Daemon-dependent startup actions (non-blocking), all as RPCs
+                // over daemon loopback HTTP: auto-unlock + lifecycle retry,
+                // restore-last-entry, background-only handoff. ADR-008 P3-3
+                // B2': the GUI is a pure client, so it can no longer reach an
+                // in-process `AppFacade` — the whole sequence is framework-
+                // agnostic RPC orchestration, so it lives in
+                // `uc_desktop::startup_actions` (shared by any future
+                // non-Tauri shell); only the actual Lightweight Mode
+                // transition below is Tauri-specific.
+                let daemon_conn_for_startup_actions = daemon_connection_state.clone();
+                let app_handle_for_lightweight_start = app_handle_for_startup.clone();
+                let launched_via_autostart_for_startup = launched_via_autostart();
                 tauri::async_runtime::spawn(async move {
-                    if !wait_for_daemon_connection(
-                        &daemon_conn_for_unlock,
-                        AUTO_UNLOCK_DAEMON_READY_TIMEOUT,
-                        AUTO_UNLOCK_DAEMON_READY_POLL,
+                    let outcome = uc_desktop::startup_actions::run_cold_launch_actions(
+                        daemon_conn_for_startup_actions,
+                        uc_desktop::startup_actions::DEFAULT_READY_TIMEOUT,
+                        uc_desktop::startup_actions::DEFAULT_READY_POLL,
                     )
-                    .await
+                    .await;
+
+                    // Lightweight Mode (issue #1169) only auto-triggers on an
+                    // OS auto-start launch, never a manual one — otherwise
+                    // "reopen the app" could never bring the window back
+                    // once the setting is on (a manual relaunch would just
+                    // hit this same background-only-mode transition again).
+                    // No reassurance notification here: it would repeat on
+                    // every auto-start boot instead of the occasional manual
+                    // tray trigger it was designed for (see
+                    // `lightweight::enter_lightweight_mode`).
+                    if launched_via_autostart_for_startup
+                        && outcome.is_some_and(|o| o.enter_background_only_mode)
                     {
-                        warn!(
-                            timeout_secs = AUTO_UNLOCK_DAEMON_READY_TIMEOUT.as_secs(),
-                            "[Startup] Daemon connection not ready in time; skipping auto-unlock + lifecycle retry"
+                        info!(
+                            "[Startup] lightweight_start enabled on an auto-start launch; entering Lightweight Mode now that the daemon is ready"
                         );
-                        return;
-                    }
-
-                    let settings_client = uc_daemon_client::DaemonSettingsClient::new(
-                        daemon_conn_for_unlock.clone(),
-                    );
-                    let auto_unlock_enabled = match settings_client.get_settings().await {
-                        Ok(settings) => settings.security.auto_unlock_enabled,
-                        Err(e) => {
-                            warn!(error = %e, "[Startup] Failed to load settings for auto unlock");
-                            false
-                        }
-                    };
-
-                    if !auto_unlock_enabled {
-                        info!("[Startup] Auto unlock disabled by settings");
-                        return;
-                    }
-
-                    let client = uc_daemon_client::DaemonQueryClient::new(daemon_conn_for_unlock);
-                    match client.unlock_encryption().await {
-                        Ok(true) => {
-                            info!("[Startup] Encryption auto-unlocked via daemon");
-                        }
-                        Ok(false) => {
-                            info!(
-                                "[Startup] Encryption not initialized or keyring miss; skip auto-unlock"
-                            );
-                            return;
-                        }
-                        Err(e) => {
-                            warn!(
-                                error = %e,
-                                "[Startup] Daemon auto-unlock failed; user will need to enter passphrase via Unlock modal"
-                            );
-                            return;
-                        }
-                    }
-
-                    // Lifecycle retry drives the daemon-side deferred services
-                    // (clipboard watcher / sync) into their running state.
-                    if let Err(e) = client.lifecycle_retry().await {
-                        warn!("[Startup] Daemon lifecycle retry failed: {}", e);
-                    } else {
-                        info!("[Startup] Daemon lifecycle boot completed");
+                        crate::lightweight::enter_lightweight_mode(
+                            &app_handle_for_lightweight_start,
+                            false,
+                        );
                     }
                 });
 

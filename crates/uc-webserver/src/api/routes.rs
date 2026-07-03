@@ -21,10 +21,12 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
 use uc_application::facade::ClipboardRestoreError;
-use uc_daemon_contract::api::dto::clipboard_command::RestoreEntryResponse;
+use uc_daemon_contract::api::dto::clipboard_command::{
+    CaptureCurrentClipboardResponse, RestoreEntryResponse,
+};
 use uc_daemon_contract::api::dto::envelope::{
-    ApiEnvelope, HealthEnvelope, PeerSnapshotListEnvelope, PresenceRefreshEnvelope,
-    RestoreEntryEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
+    ApiEnvelope, CaptureCurrentClipboardEnvelope, HealthEnvelope, PeerSnapshotListEnvelope,
+    PresenceRefreshEnvelope, RestoreEntryEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
 };
 use uc_daemon_contract::api::dto::error::ApiErrorResponse;
 use uc_daemon_contract::constants::http_route;
@@ -103,6 +105,10 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
         .route(
             &format!("{}/:entry_id", http_route::CLIPBOARD_RESTORE),
             post(restore_clipboard_entry_handler),
+        )
+        .route(
+            http_route::CLIPBOARD_CAPTURE_CURRENT,
+            post(capture_current_clipboard_handler),
         )
         .with_state(state.clone());
 
@@ -308,6 +314,69 @@ fn restore_error_to_response(
             )
         }
     }
+}
+
+/// POST /clipboard/capture-current
+///
+/// Capture whatever is on the OS clipboard right now into history,
+/// without waiting for a change event (issue #1169: lets a caller preserve
+/// a concurrent write — e.g. something copied during the daemon's startup
+/// window — before overwriting the OS clipboard with a restored entry).
+/// Wrapped in the canonical `{ data, ts }` envelope (ADR-008 §0.1/§0.2).
+/// `entryId: null` means there was nothing on the OS clipboard to capture;
+/// this is not an error.
+#[utoipa::path(
+    post,
+    path = "/clipboard/capture-current",
+    operation_id = "captureCurrentClipboard",
+    tag = "clipboard",
+    responses(
+        (status = 200, description = "Current OS clipboard content captured (or nothing to capture)", body = CaptureCurrentClipboardEnvelope),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+async fn capture_current_clipboard_handler(
+    State(state): State<DaemonApiState>,
+) -> impl IntoResponse {
+    let app = match state.app_facade_or_error() {
+        Ok(app) => app,
+        Err(error) => return error.into_response(),
+    };
+
+    match app.clipboard_capture.capture_current().await {
+        Ok(captured) => {
+            let entry_id = captured.map(|view| view.entry_id);
+            tracing::info!(entry_id = ?entry_id, "daemon capture-current request succeeded");
+            let (status, body) = capture_current_success_response(entry_id);
+            (status, body).into_response()
+        }
+        Err(error) => {
+            log_facade_failure(
+                "clipboard_capture",
+                "capture_current",
+                "internal",
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("capture-current failed: {error}"),
+            );
+            ApiError::internal("failed to capture current clipboard".to_string()).into_response()
+        }
+    }
+}
+
+/// Build the canonical 200 success body for a capture-current request.
+///
+/// Free function so the status-code contract is unit-testable without
+/// spinning up an axum app or `DaemonApiState`, mirroring
+/// [`restore_success_response`].
+fn capture_current_success_response(
+    entry_id: Option<String>,
+) -> (StatusCode, Json<CaptureCurrentClipboardEnvelope>) {
+    (
+        StatusCode::OK,
+        Json(ApiEnvelope::now(CaptureCurrentClipboardResponse {
+            entry_id,
+        })),
+    )
 }
 
 /// GET /status

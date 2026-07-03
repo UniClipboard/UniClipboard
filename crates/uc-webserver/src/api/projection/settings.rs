@@ -19,6 +19,8 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                 .map(|general| app_settings::GeneralSettingsPatch {
                     auto_start: general.auto_start,
                     silent_start: general.silent_start,
+                    lightweight_start: general.lightweight_start,
+                    restore_last_entry_on_startup: general.restore_last_entry_on_startup,
                     auto_check_update: general.auto_check_update,
                     auto_download_update: general.auto_download_update,
                     theme: general.theme.map(IntoDomain::into_domain),
@@ -112,6 +114,8 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
             general: GeneralSettingsDto {
                 auto_start: self.general.auto_start,
                 silent_start: self.general.silent_start,
+                lightweight_start: self.general.lightweight_start,
+                restore_last_entry_on_startup: self.general.restore_last_entry_on_startup,
                 auto_check_update: self.general.auto_check_update,
                 auto_download_update: self.general.auto_download_update,
                 theme: self.general.theme.into_api_dto(),

@@ -137,6 +137,10 @@ pub mod http_route {
     pub const CLIPBOARD_DISPATCH: &str = "/clipboard/dispatch";
     /// POST /clipboard/resend — resend a previously captured entry (ADR-008 P2.5 / D7)
     pub const CLIPBOARD_RESEND: &str = "/clipboard/resend";
+    /// POST /clipboard/capture-current — capture whatever is on the OS
+    /// clipboard right now into history, without waiting for a change event
+    /// (issue #1169: preserves a concurrent write before a startup restore).
+    pub const CLIPBOARD_CAPTURE_CURRENT: &str = "/clipboard/capture-current";
     /// POST /clipboard/cancel-transfer/:transfer_id — cancel an in-flight inbound transfer
     pub const CLIPBOARD_CANCEL_TRANSFER: &str = "/clipboard/cancel-transfer";
     /// POST /lifecycle/restart — request a controlled restart/promotion (ADR-008 P5-L L8d-1)

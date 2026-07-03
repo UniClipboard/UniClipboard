@@ -4,6 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use thiserror::Error;
 use uc_core::ids::EntryId;
+use uc_core::ports::clipboard::PlatformClipboardPort;
 use uc_core::{ClipboardChangeOrigin, SystemClipboardSnapshot};
 
 use crate::clipboard_capture::CaptureClipboardUseCase;
@@ -72,11 +73,18 @@ impl ClipboardCapturePort for CaptureClipboardUseCase {
 
 pub struct ClipboardCaptureFacade {
     capture: Arc<dyn ClipboardCapturePort>,
+    current_clipboard: Arc<dyn PlatformClipboardPort>,
 }
 
 impl ClipboardCaptureFacade {
-    pub fn new(capture: Arc<dyn ClipboardCapturePort>) -> Self {
-        Self { capture }
+    pub fn new(
+        capture: Arc<dyn ClipboardCapturePort>,
+        current_clipboard: Arc<dyn PlatformClipboardPort>,
+    ) -> Self {
+        Self {
+            capture,
+            current_clipboard,
+        }
     }
 
     pub async fn capture(
@@ -87,6 +95,20 @@ impl ClipboardCaptureFacade {
     ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
         self.capture
             .capture(snapshot, origin, preset_entry_id)
+            .await
+    }
+
+    /// Capture whatever is on the OS clipboard right now, without waiting for
+    /// a change event. `Ok(None)` when there's nothing to capture (matches
+    /// [`Self::capture`]'s "nothing changed" semantics).
+    pub async fn capture_current(
+        &self,
+    ) -> Result<Option<CapturedClipboardEntryView>, ClipboardCaptureFacadeError> {
+        let snapshot = self
+            .current_clipboard
+            .read_snapshot()
+            .map_err(|err| ClipboardCaptureFacadeError::Internal(err.to_string()))?;
+        self.capture(snapshot, ClipboardChangeOrigin::LocalCapture, None)
             .await
     }
 }
@@ -115,22 +137,59 @@ mod tests {
         }
     }
 
+    struct FakePlatformClipboard {
+        snapshot: SystemClipboardSnapshot,
+    }
+
+    impl PlatformClipboardPort for FakePlatformClipboard {
+        fn read_snapshot(&self) -> Result<SystemClipboardSnapshot> {
+            Ok(self.snapshot.clone())
+        }
+    }
+
+    fn empty_snapshot() -> SystemClipboardSnapshot {
+        SystemClipboardSnapshot {
+            representations: Vec::new(),
+            ts_ms: 0,
+            file_content_digests: Vec::new(),
+        }
+    }
+
+    fn facade_with_fakes() -> ClipboardCaptureFacade {
+        ClipboardCaptureFacade::new(
+            std::sync::Arc::new(FakeCapture),
+            std::sync::Arc::new(FakePlatformClipboard {
+                snapshot: empty_snapshot(),
+            }),
+        )
+    }
+
     #[tokio::test]
     async fn capture_returns_application_entry_id_string() {
-        let facade = ClipboardCaptureFacade::new(std::sync::Arc::new(FakeCapture));
+        let facade = facade_with_fakes();
         let outcome = facade
             .capture(
-                SystemClipboardSnapshot {
-                    representations: Vec::new(),
-                    ts_ms: 0,
-
-                    file_content_digests: Vec::new(),
-                },
+                empty_snapshot(),
                 ClipboardChangeOrigin::LocalCapture,
                 Some(EntryId::from("entry-preset")),
             )
             .await
             .unwrap();
+
+        assert_eq!(
+            outcome,
+            Some(CapturedClipboardEntryView {
+                entry_id: "entry-a".to_string(),
+                deduplicated: false,
+                snapshot_hash: "blake3v1:test".to_string(),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn capture_current_reads_live_snapshot_then_captures_it() {
+        let facade = facade_with_fakes();
+        let outcome = facade.capture_current().await.unwrap();
 
         assert_eq!(
             outcome,

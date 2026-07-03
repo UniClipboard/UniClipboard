@@ -6,6 +6,7 @@ import { exportLogs, updateDebugMode } from '@/api/daemon/diagnostics'
 import GeneralSection from '@/components/setting/GeneralSection'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
+import { makeBaseSettings } from '@/test/fixtures/settings'
 import type { SettingContextType, Settings } from '@/types/setting'
 
 vi.mock('react-i18next', () => ({
@@ -49,77 +50,7 @@ const mockExportLogs = vi.mocked(exportLogs)
 const mockRestartDaemon = vi.mocked(commands.restartDaemon)
 const mockRestartApp = vi.mocked(commands.restartApp)
 
-const baseSetting: Settings = {
-  schemaVersion: 1,
-  general: {
-    autoStart: false,
-    silentStart: false,
-    autoCheckUpdate: true,
-    autoDownloadUpdate: false,
-    theme: 'system',
-    themeColor: null,
-    themeColorLight: null,
-    themeColorDark: null,
-    themeOverridesLight: {},
-    themeOverridesDark: {},
-    language: 'en-US',
-    deviceName: 'Test Device',
-    updateChannel: null,
-    telemetryEnabled: true,
-    usageAnalyticsEnabled: true,
-    debugMode: false,
-  },
-  sync: {
-    autoSync: true,
-    syncFrequency: 'realtime',
-    contentTypes: {
-      text: true,
-      image: true,
-      link: true,
-      file: true,
-      codeSnippet: true,
-      richText: true,
-    },
-    syncOnRestore: false,
-  },
-  retentionPolicy: {
-    enabled: false,
-    rules: [],
-    skipPinned: false,
-    evaluation: 'anyMatch',
-  },
-  security: {
-    encryptionEnabled: false,
-    passphraseConfigured: false,
-    autoUnlockEnabled: false,
-  },
-  pairing: {
-    stepTimeout: 15,
-    userVerificationTimeout: 120,
-    sessionTimeout: 300,
-    maxRetries: 3,
-    protocolVersion: '1.0.0',
-  },
-  keyboardShortcuts: {},
-  fileSync: {
-    fileSyncEnabled: true,
-    smallFileThreshold: 10 * 1024 * 1024,
-    maxFileSize: 5 * 1024 * 1024 * 1024,
-    fileCacheQuotaPerDevice: 500 * 1024 * 1024,
-    fileRetentionHours: 24,
-    fileAutoCleanup: true,
-  },
-  network: {
-    allowRelayFallback: true,
-    allowOverlayNetworkAddrs: false,
-    customRelayUrls: [],
-    congestionController: 'cubic',
-  },
-  quickPanel: {
-    enabled: true,
-    position: 'center',
-  },
-}
+const baseSetting: Settings = makeBaseSettings()
 
 function setup(setting: Settings = baseSetting) {
   const reloadSetting = vi.fn<SettingContextType['reloadSetting']>().mockResolvedValue(undefined)

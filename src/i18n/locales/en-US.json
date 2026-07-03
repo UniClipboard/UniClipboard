@@ -125,6 +125,14 @@
           "label": "Silent start",
           "description": "Run in background without showing the main window"
         },
+        "lightweightStart": {
+          "label": "Start in Lightweight Mode",
+          "description": "When launched at login, exit the app window and tray once the background sync is ready, keeping only the background service running. Manually opening the app always shows the window as usual."
+        },
+        "restoreLastEntryOnStartup": {
+          "label": "Restore last entry on startup",
+          "description": "Once the background service is ready at launch, put the most recent history entry back on the system clipboard"
+        },
         "language": {
           "title": "Language",
           "label": "UI language",

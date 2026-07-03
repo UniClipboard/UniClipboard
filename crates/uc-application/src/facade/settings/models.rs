@@ -78,6 +78,8 @@ pub enum RetentionRuleView {
 pub struct GeneralSettingsView {
     pub auto_start: bool,
     pub silent_start: bool,
+    pub lightweight_start: bool,
+    pub restore_last_entry_on_startup: bool,
     pub auto_check_update: bool,
     pub auto_download_update: bool,
     pub theme: ThemeView,
@@ -194,6 +196,8 @@ pub struct SettingsView {
 pub struct GeneralSettingsPatch {
     pub auto_start: Option<bool>,
     pub silent_start: Option<bool>,
+    pub lightweight_start: Option<bool>,
+    pub restore_last_entry_on_startup: Option<bool>,
     pub auto_check_update: Option<bool>,
     pub auto_download_update: Option<bool>,
     pub theme: Option<ThemeView>,
@@ -492,6 +496,8 @@ impl From<core::Settings> for SettingsView {
             general: GeneralSettingsView {
                 auto_start: value.general.auto_start,
                 silent_start: value.general.silent_start,
+                lightweight_start: value.general.lightweight_start,
+                restore_last_entry_on_startup: value.general.restore_last_entry_on_startup,
                 auto_check_update: value.general.auto_check_update,
                 auto_download_update: value.general.auto_download_update,
                 theme: value.general.theme.into(),
@@ -573,6 +579,12 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = general.silent_start {
             existing.general.silent_start = v;
+        }
+        if let Some(v) = general.lightweight_start {
+            existing.general.lightweight_start = v;
+        }
+        if let Some(v) = general.restore_last_entry_on_startup {
+            existing.general.restore_last_entry_on_startup = v;
         }
         if let Some(v) = general.auto_check_update {
             existing.general.auto_check_update = v;

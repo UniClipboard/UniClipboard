@@ -25,6 +25,8 @@ impl Default for GeneralSettings {
     /// The defaults are:
     /// - `auto_start`: false
     /// - `silent_start`: false
+    /// - `lightweight_start`: false
+    /// - `restore_last_entry_on_startup`: false
     /// - `auto_check_update`: true
     /// - `auto_download_update`: true (pre-fetch the next update so the
     ///   click-to-install flow is instant; users can opt out in settings)
@@ -42,6 +44,8 @@ impl Default for GeneralSettings {
     /// let settings = GeneralSettings::default();
     /// assert_eq!(settings.auto_start, false);
     /// assert_eq!(settings.silent_start, false);
+    /// assert_eq!(settings.lightweight_start, false);
+    /// assert_eq!(settings.restore_last_entry_on_startup, false);
     /// assert_eq!(settings.auto_check_update, true);
     /// assert_eq!(settings.auto_download_update, true);
     /// assert_eq!(settings.theme, Theme::System);
@@ -54,6 +58,8 @@ impl Default for GeneralSettings {
         Self {
             auto_start: false,
             silent_start: false,
+            lightweight_start: false,
+            restore_last_entry_on_startup: false,
             auto_check_update: true,
             auto_download_update: true,
             theme: Theme::System,

@@ -63,8 +63,9 @@ use uc_daemon_contract::api::dto::analytics::{
 };
 use uc_daemon_contract::api::dto::auth::{ConnectRequest, SessionTokenResponse};
 use uc_daemon_contract::api::dto::clipboard_command::{
-    CancelTransferRequest, CancelTransferResponse, DispatchOutcomeResponse, DispatchTextRequest,
-    PerTargetOutcomeDto, ResendRequest, ResendResponse, RestoreEntryResponse,
+    CancelTransferRequest, CancelTransferResponse, CaptureCurrentClipboardResponse,
+    DispatchOutcomeResponse, DispatchTextRequest, PerTargetOutcomeDto, ResendRequest,
+    ResendResponse, RestoreEntryResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::{
     DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
@@ -75,22 +76,23 @@ use uc_daemon_contract::api::dto::config::{
     PreviewImportRequest, PreviewImportResponse,
 };
 use uc_daemon_contract::api::dto::envelope::{
-    AckUpgradeEnvelope, CancelTransferEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
-    ClearHistoryEnvelope, ClipboardStatsEnvelope, DebugStatusEnvelope, DispatchOutcomeEnvelope,
-    EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
-    EntryDetailEnvelope, EntryResourceEnvelope, ExportConfigEnvelope, ImportConfigEnvelope,
-    KeychainAccessEnvelope, LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
-    LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
-    MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
-    MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope, PresenceRefreshEnvelope,
-    PreviewImportEnvelope, RegisterMobileDeviceEnvelope, RelayProbeOutcomeEnvelope, ResendEnvelope,
-    RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
-    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
-    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupInitializeEnvelope,
-    SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope, SetupRedeemEnvelope,
-    SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, StatusEnvelope,
-    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
-    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeStatusEnvelope,
+    AckUpgradeEnvelope, CancelTransferEnvelope, CaptureCurrentClipboardEnvelope,
+    CaptureUiEventEnvelope, ClearCacheEnvelope, ClearHistoryEnvelope, ClipboardStatsEnvelope,
+    DebugStatusEnvelope, DispatchOutcomeEnvelope, EncryptionActionEnvelope,
+    EncryptionStateEnvelope, EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryResourceEnvelope,
+    ExportConfigEnvelope, ImportConfigEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
+    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
+    MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
+    MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, PeerSnapshotListEnvelope,
+    PresenceRefreshEnvelope, PreviewImportEnvelope, RegisterMobileDeviceEnvelope,
+    RelayProbeOutcomeEnvelope, ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope,
+    RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
+    SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
+    SetupInitializeEnvelope, SetupIssueInvitationEnvelope, SetupMigrationProgressEnvelope,
+    SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
+    StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope,
+    UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope,
+    UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, StorageStatsDto,
@@ -150,6 +152,7 @@ impl Modify for ContractMeta {
         crate::api::clipboard::resend_entry,
         crate::api::clipboard::cancel_transfer,
         crate::api::routes::restore_clipboard_entry_handler,
+        crate::api::routes::capture_current_clipboard_handler,
         // ── clipboard binary (octet-stream, doc-only) ──────────────
         crate::api::blob::get_blob,
         crate::api::blob::get_thumbnail,
@@ -240,6 +243,7 @@ impl Modify for ContractMeta {
             ResendEnvelope,
             CancelTransferEnvelope,
             RestoreEntryEnvelope,
+            CaptureCurrentClipboardEnvelope,
             EntryDeliveryViewEnvelope,
             // ── clipboard: payload + request DTOs ──────────────────
             EntryProjectionResponseDto,
@@ -263,6 +267,7 @@ impl Modify for ContractMeta {
             EntryDeliveryStatusDto,
             DeliveryFailureReasonDto,
             RestoreEntryResponse,
+            CaptureCurrentClipboardResponse,
             // ── search ─────────────────────────────────────────────
             SearchQueryEnvelope,
             SearchStatusEnvelope,
@@ -559,7 +564,9 @@ mod assembly_smoke_tests {
         // Config migration (issue #1110) added `POST /config/export`,
         // `POST /config/import/preview`, and `POST /config/import`: +3 paths,
         // +3 operations → 62 / 69. The unified-search work added
-        // `GET /search/tags`: +1 path, +1 operation → 63 / 70.)
+        // `GET /search/tags`: +1 path, +1 operation → 63 / 70. Issue #1169
+        // added `POST /clipboard/capture-current`: +1 path, +1 operation
+        // → 64 / 71.)
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -568,8 +575,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            63,
-            "expected exactly 63 path templates, found {}: {:?}",
+            64,
+            "expected exactly 64 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -583,8 +590,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 70,
-            "expected exactly 70 operations across all paths, found {operation_count}"
+            operation_count, 71,
+            "expected exactly 71 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

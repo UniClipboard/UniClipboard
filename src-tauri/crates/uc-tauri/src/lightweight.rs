@@ -133,22 +133,31 @@ pub fn request_full_quit(app: &AppHandle) {
     app.exit(0);
 }
 
-/// Tray "轻量模式": show the reassurance notification, then exit the GUI
-/// process. The daemon keeps running (default [`QuitIntent`]).
-pub fn enter_lightweight_mode(app: &AppHandle) {
-    notify_lightweight(app);
+/// Exit the GUI process into Lightweight Mode. The daemon keeps running
+/// (default [`QuitIntent`]).
+///
+/// `notify` controls the "still running in the background" reassurance
+/// notification (issue #1129: without it, the GUI process exiting looks
+/// like a crash). Tray "轻量模式" always wants it — the user just triggered
+/// an occasional, explicit action. The automatic startup handoff (settings
+/// `lightweight_start`, issue #1169) passes `false`: it can repeat on every
+/// OS auto-start boot, and a notification on every single boot would be
+/// spam rather than the "reassurance" it was designed to be.
+pub fn enter_lightweight_mode(app: &AppHandle, notify: bool) {
+    if notify {
+        notify_lightweight(app);
+    }
     info!("entering lightweight mode — GUI exiting, daemon stays running");
     app.exit(0);
 }
 
-/// Send the "still running in the background" notification EVERY time the user
-/// enters lightweight mode. Bilingual (中 + EN).
+/// Send the "still running in the background" notification. Bilingual
+/// (中 + EN).
 ///
-/// Showing it on every entry — not just once — is the fix for issue #1129: the
-/// GUI process exiting looked like a crash to users whose one-time toast had
-/// already been consumed on an earlier run, leaving zero on-screen trace of the
-/// still-running background daemon. The user explicitly invoked this menu item,
-/// so a notification per entry is expected feedback, not noise. A failed
+/// Callers that show it on every entry — not just once — do so per issue
+/// #1129: the GUI process exiting looked like a crash to users whose
+/// one-time toast had already been consumed on an earlier run, leaving zero
+/// on-screen trace of the still-running background daemon. A failed
 /// `.show()` degrades to a `warn!` and never blocks the exit.
 pub fn notify_lightweight(app: &AppHandle) {
     let result = app

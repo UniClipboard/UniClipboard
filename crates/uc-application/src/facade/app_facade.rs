@@ -44,9 +44,9 @@ use crate::facade::space_setup::{
 };
 use crate::facade::upgrade::UpgradeFacade;
 use crate::facade::{
-    BlobTransferError, BlobTransferFacade, ClipboardHistoryFacade, ClipboardOutboundFacade,
-    ClipboardRestoreFacade, ClipboardSyncError, ClipboardSyncFacade, DeviceFacade,
-    DiagnosticsFacade, DispatchEntryOutcome, EncryptionFacade, EncryptionFacadeError,
+    BlobTransferError, BlobTransferFacade, ClipboardCaptureFacade, ClipboardHistoryFacade,
+    ClipboardOutboundFacade, ClipboardRestoreFacade, ClipboardSyncError, ClipboardSyncFacade,
+    DeviceFacade, DiagnosticsFacade, DispatchEntryOutcome, EncryptionFacade, EncryptionFacadeError,
     EncryptionStateView, FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand,
     FetchBlobToPathResult, InboundNotice, LifecycleFacade, MemberRosterFacade, PublishBlobCommand,
     PublishBlobPathCommand, PublishBlobResult, ResendEntryCommand, ResendEntryError, ResendReport,
@@ -89,6 +89,12 @@ pub struct AppFacade {
     pub encryption: Arc<EncryptionFacade>,
     pub resource: Arc<ResourceFacade>,
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
+    /// On-demand "capture whatever is on the OS clipboard right now" entry
+    /// point, distinct from the watcher-driven capture that reacts to OS
+    /// clipboard-changed events. Every desktop entry point wires this from
+    /// `AppDeps` alone, so unlike the daemon-lifecycle fields it is not
+    /// `Option`/`OnceLock`.
+    pub clipboard_capture: Arc<ClipboardCaptureFacade>,
     pub clipboard_sync: OnceLock<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: OnceLock<Arc<BlobTransferFacade>>,
     /// 用户主动 resend 的入口(对应 commit B3 的 [`ResendEntryUseCase`])。
@@ -161,6 +167,7 @@ impl AppFacade {
             encryption: parts.encryption,
             resource: parts.resource,
             clipboard_history: parts.clipboard_history,
+            clipboard_capture: parts.clipboard_capture,
             clipboard_sync: once_lock_from(parts.clipboard_sync),
             blob_transfer: once_lock_from(parts.blob_transfer),
             clipboard_outbound: once_lock_from(parts.clipboard_outbound),
@@ -617,6 +624,8 @@ impl AppFacade {
                     device_name: Some(Some(device_name)),
                     auto_start: None,
                     silent_start: None,
+                    lightweight_start: None,
+                    restore_last_entry_on_startup: None,
                     auto_check_update: None,
                     auto_download_update: None,
                     theme: None,
@@ -735,6 +744,7 @@ pub struct AppFacadeParts {
     pub encryption: Arc<EncryptionFacade>,
     pub resource: Arc<ResourceFacade>,
     pub clipboard_history: Arc<ClipboardHistoryFacade>,
+    pub clipboard_capture: Arc<ClipboardCaptureFacade>,
     pub clipboard_sync: Option<Arc<ClipboardSyncFacade>>,
     pub blob_transfer: Option<Arc<BlobTransferFacade>>,
     pub clipboard_outbound: Option<Arc<ClipboardOutboundFacade>>,

@@ -19,7 +19,8 @@ use crate::api::dto::clipboard::{
     EntryResourceDto, ToggleFavoriteResultDto,
 };
 use crate::api::dto::clipboard_command::{
-    CancelTransferResponse, DispatchOutcomeResponse, ResendResponse, RestoreEntryResponse,
+    CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchOutcomeResponse,
+    ResendResponse, RestoreEntryResponse,
 };
 use crate::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use crate::api::dto::config::{ExportConfigResponse, ImportConfigResponse, PreviewImportResponse};
@@ -77,6 +78,7 @@ use crate::api::types::{
     ResendEnvelope = ApiEnvelope<ResendResponse>,
     CancelTransferEnvelope = ApiEnvelope<CancelTransferResponse>,
     RestoreEntryEnvelope = ApiEnvelope<RestoreEntryResponse>,
+    CaptureCurrentClipboardEnvelope = ApiEnvelope<CaptureCurrentClipboardResponse>,
     EntryDeliveryViewEnvelope = ApiEnvelope<EntryDeliveryViewDto>,
     // ── settings (GET + PUT both enveloped per §0.1) ───────────────
     SettingsEnvelope = ApiEnvelope<SettingsDto>,

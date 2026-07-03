@@ -17,6 +17,16 @@ pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 pub struct GeneralSettings {
     pub auto_start: bool,
     pub silent_start: bool,
+    /// Whether an auto-started launch should skip straight to running only
+    /// the background sync service, without presenting any interactive
+    /// surface. Only applies when the launch was triggered by auto-start —
+    /// a manually-initiated launch always presents the normal interface
+    /// regardless of this setting, so it stays reachable to turn the
+    /// preference back off.
+    pub lightweight_start: bool,
+    /// Whether to push the most recent clipboard history entry back onto
+    /// the OS clipboard once background sync is confirmed ready at startup.
+    pub restore_last_entry_on_startup: bool,
     pub auto_check_update: bool,
     /// Whether to download the next available update in the background.
     ///

@@ -7,6 +7,7 @@ import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { invokeWithTrace } from '@/lib/tauri-command'
+import { makeBaseSettings } from '@/test/fixtures/settings'
 
 vi.mock('@tauri-apps/api/event', () => ({
   emit: vi.fn(),
@@ -41,76 +42,9 @@ const mockUpdateSettings = vi.mocked(updateSettings)
 const mockConnectDaemonWs = vi.mocked(connectDaemonWs)
 const mockInvokeWithTrace = vi.mocked(invokeWithTrace)
 
-const baseSetting: Settings = {
-  schemaVersion: 1,
-  general: {
-    autoStart: false,
-    silentStart: false,
-    autoCheckUpdate: true,
-    autoDownloadUpdate: false,
-    theme: 'light',
-    themeColor: 'zinc',
-    themeColorLight: null,
-    themeColorDark: null,
-    themeOverridesLight: {},
-    themeOverridesDark: {},
-    language: 'en-US',
-    deviceName: 'Test Device',
-    telemetryEnabled: true,
-    usageAnalyticsEnabled: true,
-    debugMode: false,
-  },
-  sync: {
-    autoSync: true,
-    syncFrequency: 'realtime',
-    contentTypes: {
-      text: true,
-      image: true,
-      link: true,
-      file: true,
-      codeSnippet: true,
-      richText: true,
-    },
-    syncOnRestore: false,
-  },
-  retentionPolicy: {
-    enabled: false,
-    rules: [],
-    skipPinned: false,
-    evaluation: 'anyMatch',
-  },
-  security: {
-    encryptionEnabled: false,
-    passphraseConfigured: false,
-    autoUnlockEnabled: false,
-  },
-  pairing: {
-    stepTimeout: 15,
-    userVerificationTimeout: 120,
-    sessionTimeout: 300,
-    maxRetries: 3,
-    protocolVersion: '1.0.0',
-  },
-  keyboardShortcuts: {},
-  fileSync: {
-    fileSyncEnabled: true,
-    smallFileThreshold: 10 * 1024 * 1024,
-    maxFileSize: 5 * 1024 * 1024 * 1024,
-    fileCacheQuotaPerDevice: 500 * 1024 * 1024,
-    fileRetentionHours: 24,
-    fileAutoCleanup: true,
-  },
-  network: {
-    allowRelayFallback: true,
-    allowOverlayNetworkAddrs: false,
-    customRelayUrls: [],
-    congestionController: 'cubic',
-  },
-  quickPanel: {
-    enabled: true,
-    position: 'center',
-  },
-}
+const baseSetting: Settings = makeBaseSettings({
+  general: { theme: 'light', themeColor: 'zinc' },
+})
 
 describe('SettingProvider cross-window sync', () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (

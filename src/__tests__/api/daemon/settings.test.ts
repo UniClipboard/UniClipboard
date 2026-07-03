@@ -74,6 +74,8 @@ describe('Settings API', () => {
         general: {
           autoStart: true,
           silentStart: false,
+          lightweightStart: false,
+          restoreLastEntryOnStartup: false,
           autoCheckUpdate: false,
           autoDownloadUpdate: false,
           theme: 'dark',
@@ -172,6 +174,8 @@ describe('Settings API', () => {
         general: {
           autoStart: true,
           silentStart: false,
+          lightweightStart: false,
+          restoreLastEntryOnStartup: false,
           autoCheckUpdate: true,
           autoDownloadUpdate: false,
           theme: 'light',
@@ -211,6 +215,8 @@ describe('Settings API', () => {
         general: {
           autoStart: false,
           silentStart: false,
+          lightweightStart: false,
+          restoreLastEntryOnStartup: false,
           autoCheckUpdate: true,
           autoDownloadUpdate: false,
           theme: 'dark',
@@ -265,6 +271,8 @@ describe('Settings API', () => {
           general: {
             autoStart: false,
             silentStart: false,
+            lightweightStart: false,
+            restoreLastEntryOnStartup: false,
             autoCheckUpdate: true,
             autoDownloadUpdate: false,
             theme: 'invalid-theme' as Settings['general']['theme'],

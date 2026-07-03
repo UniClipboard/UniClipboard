@@ -117,6 +117,8 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
       general: {
         autoStart: true,
         silentStart: false,
+        lightweightStart: false,
+        restoreLastEntryOnStartup: false,
         autoCheckUpdate: true,
         autoDownloadUpdate: false,
         theme: 'system',

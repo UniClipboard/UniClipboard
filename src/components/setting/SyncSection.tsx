@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Switch, Input, Badge } from '@/components/ui'
+import { Switch, Input, Badge, Button } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
+import { commands } from '@/lib/ipc'
+import { createLogger } from '@/lib/logger'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
+
+const log = createLogger('sync-section')
 
 const MB = 1024 * 1024
 
@@ -39,6 +43,10 @@ const SyncSection: React.FC = () => {
   const [retentionHours, setRetentionHours] = useState(setting?.fileSync?.fileRetentionHours ?? 24)
   const [retentionHoursError, setRetentionHoursError] = useState<string | null>(null)
   const [fileAutoCleanup, setFileAutoCleanup] = useState(setting?.fileSync?.fileAutoCleanup ?? true)
+
+  // Auto-save directory for inbound files (null/undefined ⇒ managed storage).
+  const autoSaveDir = setting?.fileSync?.autoSaveDir ?? null
+  const [savingAutoSaveDir, setSavingAutoSaveDir] = useState(false)
 
   // Sync frequency options (for display in coming-soon label)
   const syncFrequencyOptions = [
@@ -208,6 +216,33 @@ const SyncSection: React.FC = () => {
     updateFileSyncSetting({ fileAutoCleanup: checked })
   }
 
+  const handlePickAutoSaveDir = async () => {
+    setSavingAutoSaveDir(true)
+    try {
+      const picked = await commands.pickDirectory()
+      // `null` ⇒ user cancelled the native picker; leave the setting unchanged.
+      if (picked !== null) {
+        await updateFileSyncSetting({ autoSaveDir: picked })
+      }
+    } catch (err) {
+      log.error({ err }, 'Failed to set auto-save directory')
+    } finally {
+      setSavingAutoSaveDir(false)
+    }
+  }
+
+  const handleClearAutoSaveDir = async () => {
+    setSavingAutoSaveDir(true)
+    try {
+      // Empty string clears the setting back to managed storage.
+      await updateFileSyncSetting({ autoSaveDir: '' })
+    } catch (err) {
+      log.error({ err }, 'Failed to clear auto-save directory')
+    } finally {
+      setSavingAutoSaveDir(false)
+    }
+  }
+
   // Show error message if any
   if (error) {
     return (
@@ -267,6 +302,47 @@ const SyncSection: React.FC = () => {
               onCheckedChange={handleFileSyncEnabledChange}
               disabled={!autoSync}
             />
+          </SettingRow>
+
+          {/* Auto-save directory for received files */}
+          <SettingRow
+            label={t('settings.sections.sync.fileSync.autoSaveDir.label')}
+            description={t('settings.sections.sync.fileSync.autoSaveDir.description')}
+          >
+            <div className="flex flex-col items-end gap-2">
+              {autoSaveDir ? (
+                <span
+                  className="text-foreground max-w-64 truncate text-xs font-medium"
+                  title={autoSaveDir}
+                >
+                  {autoSaveDir}
+                </span>
+              ) : (
+                <span className="text-muted-foreground text-xs">
+                  {t('settings.sections.sync.fileSync.autoSaveDir.managed')}
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePickAutoSaveDir}
+                  disabled={savingAutoSaveDir}
+                >
+                  {t('settings.sections.sync.fileSync.autoSaveDir.choose')}
+                </Button>
+                {autoSaveDir && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearAutoSaveDir}
+                    disabled={savingAutoSaveDir}
+                  >
+                    {t('settings.sections.sync.fileSync.autoSaveDir.clear')}
+                  </Button>
+                )}
+              </div>
+            </div>
           </SettingRow>
 
           {/* Small file threshold */}

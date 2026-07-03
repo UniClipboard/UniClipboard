@@ -75,6 +75,7 @@ use uc_infra::network::iroh::{
 };
 // Re-exported so external callers can parametrise the assembly without
 // having to `use uc_infra` themselves.
+use uc_infra::fs::FsInboundFileTarget;
 pub(crate) use uc_infra::network::iroh::IrohNodeConfig;
 use uc_infra::security::Sha256IdentityFingerprintFactory;
 use uc_platform::file_secure_storage::FileSecureStorage;
@@ -649,10 +650,13 @@ pub(crate) async fn build_sync_engine_assembly(
         )
         .with_entry_identity_coordinator(Arc::clone(&deps.clipboard.entry_identity_coordinator)),
     );
-    let pull_store_materializer = Arc::new(FileCacheBlobMaterializer::new(
-        blob.clone() as Arc<dyn uc_application::InboundBlobFetcher>,
-        shared.file_cache_dir.clone(),
-    ));
+    let pull_store_materializer = Arc::new(
+        FileCacheBlobMaterializer::new(
+            blob.clone() as Arc<dyn uc_application::InboundBlobFetcher>,
+            shared.file_cache_dir.clone(),
+        )
+        .with_target_reserver(FsInboundFileTarget::new(Arc::clone(&deps.settings))),
+    );
     // Index pull-store entries for search too (same rationale as the main
     // inbound path): content materialized via the 0xC2 pull should be findable.
     let pull_store_indexer: Arc<dyn ClipboardLiveIndexPort> =

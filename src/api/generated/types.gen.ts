@@ -768,6 +768,10 @@ export type ExportConfigResponse = {
 };
 
 export type FileSyncSettingsDto = {
+    /**
+     * Directory where inbound files are saved. `null` = managed storage.
+     */
+    autoSaveDir?: string | null;
     fileAutoCleanup: boolean;
     fileCacheQuotaPerDevice: number;
     fileRetentionHours: number;
@@ -777,6 +781,11 @@ export type FileSyncSettingsDto = {
 };
 
 export type FileSyncSettingsPatchDto = {
+    /**
+     * Absent = leave unchanged; `""` = clear (managed storage); a path = save
+     * inbound files there.
+     */
+    autoSaveDir?: string | null;
     fileAutoCleanup?: boolean | null;
     fileCacheQuotaPerDevice?: number | null;
     fileRetentionHours?: number | null;

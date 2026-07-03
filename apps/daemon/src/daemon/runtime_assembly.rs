@@ -21,6 +21,7 @@ use uc_application::{
 use uc_bootstrap::{FileTransferLifecycle, SystemClipboardWiring};
 use uc_core::ports::{ClipboardEventRepositoryPort, EntryDeliveryRepositoryPort};
 use uc_core::trusted_peer::TrustedPeerRepositoryPort;
+use uc_infra::fs::FsInboundFileTarget;
 use uc_webserver::api::types::DaemonWsEvent;
 
 use crate::daemon::run_mode::DaemonRunMode;
@@ -121,10 +122,10 @@ pub fn build_daemon_runtime_workers(
         // content from creating two entries (R5-F3).
         .with_entry_identity_coordinator(input.deps.clipboard.entry_identity_coordinator.clone()),
     );
-    let blob_materializer = Arc::new(FileCacheBlobMaterializer::new(
-        input.blob_transfer_facade.clone(),
-        input.file_cache_dir,
-    ));
+    let blob_materializer = Arc::new(
+        FileCacheBlobMaterializer::new(input.blob_transfer_facade.clone(), input.file_cache_dir)
+            .with_target_reserver(FsInboundFileTarget::new(input.deps.settings.clone())),
+    );
     // Shared search live-indexer: indexes both OS-clipboard captures (via the
     // watcher below) and remote-origin inbound entries (P2P + mobile, via
     // ApplyInbound), so remote clipboard becomes searchable like local copies.

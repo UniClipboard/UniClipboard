@@ -85,6 +85,7 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                     file_cache_quota_per_device: file_sync.file_cache_quota_per_device,
                     file_retention_hours: file_sync.file_retention_hours,
                     file_auto_cleanup: file_sync.file_auto_cleanup,
+                    auto_save_dir: file_sync.auto_save_dir,
                 }),
             network: self
                 .network
@@ -172,6 +173,7 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
                 file_cache_quota_per_device: self.file_sync.file_cache_quota_per_device,
                 file_retention_hours: self.file_sync.file_retention_hours,
                 file_auto_cleanup: self.file_sync.file_auto_cleanup,
+                auto_save_dir: self.file_sync.auto_save_dir.clone(),
             },
             network: NetworkSettingsDto {
                 allow_relay_fallback: self.network.allow_relay_fallback,

@@ -164,6 +164,8 @@ export interface FileSyncSettings {
   fileCacheQuotaPerDevice: number // bytes, default 500MB
   fileRetentionHours: number // default 24
   fileAutoCleanup: boolean // default true
+  // Directory where inbound files are saved; null/absent = managed storage.
+  autoSaveDir?: string | null
 }
 
 /**

@@ -142,6 +142,8 @@ pub struct FileSyncSettingsView {
     pub file_cache_quota_per_device: u64,
     pub file_retention_hours: u32,
     pub file_auto_cleanup: bool,
+    /// Directory where inbound files are saved, or `None` for managed storage.
+    pub auto_save_dir: Option<String>,
 }
 
 /// LAN-only Mode 业务字段镜像 —— 业务正向语义 `allow_relay_fallback`。
@@ -278,6 +280,9 @@ pub struct FileSyncSettingsPatch {
     pub file_cache_quota_per_device: Option<u64>,
     pub file_retention_hours: Option<u32>,
     pub file_auto_cleanup: Option<bool>,
+    /// `None` = leave unchanged. `Some("")` (blank) = clear (managed storage).
+    /// `Some(dir)` = save inbound files to `dir`.
+    pub auto_save_dir: Option<String>,
 }
 
 /// LAN-only Mode 字段 patch 镜像 —— `None` = 不修改。
@@ -554,6 +559,7 @@ impl From<core::Settings> for SettingsView {
                 file_cache_quota_per_device: value.file_sync.file_cache_quota_per_device,
                 file_retention_hours: value.file_sync.file_retention_hours,
                 file_auto_cleanup: value.file_sync.file_auto_cleanup,
+                auto_save_dir: value.file_sync.auto_save_dir,
             },
             network: NetworkSettingsView {
                 allow_relay_fallback: value.network.allow_relay_fallback,
@@ -715,6 +721,17 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(v) = file_sync.file_auto_cleanup {
             existing.file_sync.file_auto_cleanup = v;
+        }
+        if let Some(dir) = file_sync.auto_save_dir {
+            // Blank clears the setting (managed storage); a path sets it.
+            // Store the trimmed value so the persisted setting is canonical
+            // (no leading/trailing whitespace round-tripping to the UI).
+            let trimmed = dir.trim();
+            existing.file_sync.auto_save_dir = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
         }
     }
 
@@ -1016,5 +1033,53 @@ mod network_settings_apply_patch_tests {
             "http://127.0.0.1:3340".to_string(),
         ];
         validate_custom_relay_urls(&urls).expect("valid relay urls");
+    }
+}
+
+#[cfg(test)]
+mod file_sync_auto_save_dir_apply_patch_tests {
+    use super::*;
+    use uc_core::settings::model::Settings;
+
+    fn patch_auto_save_dir(value: Option<&str>) -> SettingsPatch {
+        SettingsPatch {
+            file_sync: Some(FileSyncSettingsPatch {
+                auto_save_dir: value.map(|s| s.to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// Absent field (patch = None) leaves an existing directory untouched.
+    #[test]
+    fn absent_auto_save_dir_keeps_existing() {
+        let mut existing = Settings::default();
+        existing.file_sync.auto_save_dir = Some("/keep".to_string());
+        let patch = patch_auto_save_dir(None);
+        let result = apply_settings_patch(existing, patch);
+        assert_eq!(result.file_sync.auto_save_dir.as_deref(), Some("/keep"));
+    }
+
+    /// A non-empty path sets the directory.
+    #[test]
+    fn sets_auto_save_dir() {
+        let existing = Settings::default();
+        let patch = patch_auto_save_dir(Some("/Users/me/Downloads"));
+        let result = apply_settings_patch(existing, patch);
+        assert_eq!(
+            result.file_sync.auto_save_dir.as_deref(),
+            Some("/Users/me/Downloads")
+        );
+    }
+
+    /// A blank string clears the directory (back to managed storage).
+    #[test]
+    fn blank_auto_save_dir_clears() {
+        let mut existing = Settings::default();
+        existing.file_sync.auto_save_dir = Some("/old".to_string());
+        let patch = patch_auto_save_dir(Some("   "));
+        let result = apply_settings_patch(existing, patch);
+        assert_eq!(result.file_sync.auto_save_dir, None);
     }
 }

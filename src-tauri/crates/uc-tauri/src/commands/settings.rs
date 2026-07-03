@@ -4,7 +4,8 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{error, info_span, Instrument};
 use uc_core::ports::observability::TraceMetadata;
@@ -37,6 +38,58 @@ pub enum ShortcutKeyDto {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateKeyboardShortcutsResult {
     pub keyboard_shortcuts: HashMap<String, ShortcutKeyDto>,
+}
+
+/// Show the native folder picker and return the chosen absolute directory path,
+/// or `None` when the user cancels.
+///
+/// Used to select the auto-save directory for inbound files. This command only
+/// opens the OS dialog; the chosen path is persisted through the normal daemon
+/// settings patch (`PUT /settings`), not by this command.
+#[tauri::command]
+#[specta::specta]
+pub async fn pick_directory(
+    app: AppHandle,
+    _trace: Option<TraceMetadata>,
+) -> Result<Option<String>, CommandError> {
+    let span = info_span!(
+        "command.settings.pick_directory",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        // Run the blocking dialog off the Tauri main thread.
+        let selection = tauri::async_runtime::spawn_blocking(move || {
+            app.dialog().file().blocking_pick_folder()
+        })
+        .await
+        .map_err(|e| CommandError::internal(format!("folder dialog task failed to join: {e}")))?;
+
+        match selection {
+            None => Ok(None),
+            Some(file_path) => {
+                let path = file_path.into_path().map_err(|e| {
+                    CommandError::internal(format!("selected path is not a local directory: {e}"))
+                })?;
+                // Fail loudly on non-UTF-8 paths instead of lossily replacing
+                // bytes with U+FFFD: a `to_string_lossy` result would be a path
+                // that does not exist on disk, get persisted to settings, and
+                // silently fall back to managed storage with no user-visible
+                // cause. An explicit error lets the user pick a usable dir.
+                let path_str = path.into_os_string().into_string().map_err(|os| {
+                    CommandError::internal(format!(
+                        "selected directory path is not valid UTF-8: {}",
+                        os.to_string_lossy()
+                    ))
+                })?;
+                Ok(Some(path_str))
+            }
+        }
+    }
+    .instrument(span)
+    .await
 }
 
 /// 保存键盘快捷键，并同步快捷面板全局快捷键的 OS 注册状态。

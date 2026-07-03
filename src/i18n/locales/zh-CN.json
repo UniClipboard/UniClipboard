@@ -303,6 +303,13 @@
           "autoCleanup": {
             "label": "自动清理",
             "description": "启动时自动删除过期的缓存文件"
+          },
+          "autoSaveDir": {
+            "label": "文件保存位置",
+            "description": "自定义文件的存储目录。未设置时保留在应用托管目录。",
+            "managed": "应用托管目录（默认）",
+            "choose": "选择文件夹",
+            "clear": "恢复默认"
           }
         }
       },

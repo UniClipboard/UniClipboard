@@ -409,6 +409,18 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<UpdateKeyboardShortcutsResult, CommandError>(__TAURI_INVOKE("update_keyboard_shortcuts", { shortcuts, trace })),
 	/**
+	 *  Show the native folder picker and return the chosen absolute directory path,
+	 *  or `None` when the user cancels.
+	 * 
+	 *  Used to select the auto-save directory for inbound files. This command only
+	 *  opens the OS dialog; the chosen path is persisted through the normal daemon
+	 *  settings patch (`PUT /settings`), not by this command.
+	 */
+	pickDirectory: (trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<string | null, CommandError>(__TAURI_INVOKE("pick_directory", { trace })),
+	/**
 	 *  对单个候选中继 URL 发起一次握手探测。
 	 * 
 	 *  不读取也不修改任何持久化设置;UI 可以重复调用以做"在保存前先试一下"。

@@ -11,6 +11,13 @@
 //!
 //! - `cache_root`:由 bootstrap 注入的 `AppPaths.file_cache_dir`,与 P2P
 //!   入站 blob 缓存(`<cache_root>/iroh-blobs/...`)同根。
+//!
+//! ## 用户自定义保存目录(重定向)
+//!
+//! 若注入了 [`ReserveInboundFileTargetPort`] 且用户配置了保存目录,入站文件
+//! 改为扁平写入该目录(`<user_dir>/<name>`,重名加 ` (n)` 后缀),不再走
+//! `mobile_inbound/<scope>/` 布局。这些文件归用户所有,不受缓存清理影响。
+//! 未配置或目录不可用时回落到上面的托管布局。
 //! - `scope_id`:use case 端用 uuid v4 截 12 位生成的 nonce,与 entry_id
 //!   解耦(后者在 ApplyInbound 内部才生成)。
 //! - `sanitized_name`:basename only(去掉所有 `/` `\` `:` 控制符 + 前后
@@ -57,6 +64,7 @@ use tracing::{debug, warn};
 use uuid::Uuid;
 
 use uc_core::mobile_sync::{StagedFile, StagedFileUri, StagingHandle};
+use uc_core::ports::inbound_file_target::ReserveInboundFileTargetPort;
 use uc_core::ports::{MobileFileStagingError, MobileFileStagingPort};
 
 /// 子目录名 —— `<cache_root>/mobile_inbound/<scope_id>/<file>`。
@@ -67,19 +75,30 @@ const FALLBACK_FILENAME: &str = "staged.bin";
 
 /// 单次 streaming staging 会话的内部状态(adapter 私有,不出 crate)。
 ///
-/// `path` / `sanitized_name` / `scope_segment` 都在 begin 阶段一次性算定,
-/// finalize 拼 URI / abort 尝试清空 scope 目录都直接用,避免 finalize/abort
-/// 阶段再重算 sanitize。
+/// `path` / `sanitized_name` / `cleanup_dir` 都在 begin 阶段一次性算定,
+/// finalize 拼 URI / abort 删文件都直接用,避免 finalize/abort 阶段再重算。
 struct OpenStagingSession {
     file: File,
     path: PathBuf,
     sanitized_name: String,
-    scope_segment: String,
+    /// abort 时若为空则尝试删除的目录(仅托管布局的 scope 目录)。
+    /// 重定向到用户保存目录时为 `None` —— 那个目录绝不能删。
+    cleanup_dir: Option<PathBuf>,
+}
+
+/// `resolve_write_path` 的结果:落盘路径 + 对外文件名 + abort 清理目录。
+struct ResolvedWritePath {
+    path: PathBuf,
+    name: String,
+    cleanup_dir: Option<PathBuf>,
 }
 
 pub struct FilesystemMobileFileStaging {
     /// `stage_file` 写盘用的 root(典型: `AppPaths.file_cache_dir`)。
     cache_root: PathBuf,
+    /// 用户自定义保存目录解析器。`Some` 且用户配置了目录时,入站文件重定向
+    /// 到该目录;`None` 或未配置时走 `cache_root` 托管布局。
+    target_reserver: Option<Arc<dyn ReserveInboundFileTargetPort>>,
     /// 进行中的 streaming staging 会话:token → 打开的 File + 元数据。
     /// 用 tokio Mutex(append_stage_chunk 在异步上下文写盘,持锁跨 await
     /// 必须用 async-aware mutex 否则会阻塞 runtime worker)。
@@ -96,6 +115,23 @@ impl FilesystemMobileFileStaging {
     /// 写盘前需要 staging 子目录的父目录存在,避免首启 / 全新机器上首笔
     /// stage 因父目录缺失而失败。
     pub fn new(cache_root: PathBuf) -> Arc<Self> {
+        Self::build(cache_root, None)
+    }
+
+    /// Same as [`Self::new`] but with a user save-directory resolver injected.
+    /// When the user has configured a save directory, staged files are written
+    /// there instead of the managed `cache_root` layout.
+    pub fn new_with_target_reserver(
+        cache_root: PathBuf,
+        target_reserver: Arc<dyn ReserveInboundFileTargetPort>,
+    ) -> Arc<Self> {
+        Self::build(cache_root, Some(target_reserver))
+    }
+
+    fn build(
+        cache_root: PathBuf,
+        target_reserver: Option<Arc<dyn ReserveInboundFileTargetPort>>,
+    ) -> Arc<Self> {
         if let Err(err) = std::fs::create_dir_all(&cache_root) {
             warn!(
                 cache_root = %cache_root.display(),
@@ -109,12 +145,54 @@ impl FilesystemMobileFileStaging {
         );
         Arc::new(Self {
             cache_root,
+            target_reserver,
             open_sessions: Mutex::new(HashMap::new()),
         })
     }
 
     fn staging_root(&self) -> PathBuf {
         self.cache_root.join(STAGING_SUBDIR)
+    }
+
+    /// Decide where an inbound file named `data_name` (scope `scope_id`) is
+    /// written: the user save directory when configured and usable (flat,
+    /// collision-suffixed, no abort-cleanup dir), else the managed
+    /// `mobile_inbound/<scope>/` layout.
+    async fn resolve_write_path(
+        &self,
+        scope_id: &str,
+        data_name: &str,
+    ) -> Result<ResolvedWritePath, MobileFileStagingError> {
+        if let Some(reserver) = self.target_reserver.as_ref() {
+            if let Some(path) = reserver.reserve_target(data_name).await {
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| sanitize_basename(data_name));
+                return Ok(ResolvedWritePath {
+                    path,
+                    name,
+                    cleanup_dir: None,
+                });
+            }
+        }
+
+        let sanitized = sanitize_basename(data_name);
+        let scope_segment = sanitize_scope(scope_id);
+        let entry_dir = self.staging_root().join(&scope_segment);
+        tokio::fs::create_dir_all(&entry_dir).await.map_err(|e| {
+            MobileFileStagingError::Io(format!(
+                "create staging dir {} failed: {e}",
+                entry_dir.display()
+            ))
+        })?;
+        let path = entry_dir.join(&sanitized);
+        Ok(ResolvedWritePath {
+            path,
+            name: sanitized,
+            cleanup_dir: Some(entry_dir),
+        })
     }
 }
 
@@ -165,34 +243,38 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
         mime: &str,
         bytes: Vec<u8>,
     ) -> Result<StagedFile, MobileFileStagingError> {
-        // sanitize_basename 永远返回非空字符串(失败兜底 FALLBACK_FILENAME)。
-        // adapter 不抛 InvalidDataName —— 该变体保留给未来更严格的 sanitize
-        // 策略(比如禁止 fallback 兜底)。
-        let sanitized = sanitize_basename(data_name);
+        // resolve_write_path picks the user save directory (flat) when
+        // configured, else the managed `mobile_inbound/<scope>/` layout.
+        // sanitize_basename inside always yields a non-empty name.
+        let resolved = self.resolve_write_path(scope_id, data_name).await?;
 
-        let scope_segment = sanitize_scope(scope_id);
-        let entry_dir = self.staging_root().join(&scope_segment);
-        tokio::fs::create_dir_all(&entry_dir).await.map_err(|e| {
-            MobileFileStagingError::Io(format!(
-                "create staging dir {} failed: {e}",
-                entry_dir.display()
-            ))
-        })?;
-
-        let file_path = entry_dir.join(&sanitized);
         let bytes_len = bytes.len();
-        tokio::fs::write(&file_path, &bytes).await.map_err(|e| {
-            MobileFileStagingError::Io(format!(
+        if let Err(e) = tokio::fs::write(&resolved.path, &bytes).await {
+            // A failed write leaves the reserved placeholder (redirected
+            // user-dir path) or a partial file behind. Remove it best-effort so
+            // it does not linger in the user's save directory (never reclaimed
+            // by cache cleanup) — mirrors `abort_stage`. `NotFound` is expected
+            // when the write never created the file; the save directory itself
+            // is never removed here.
+            if let Err(rm) = tokio::fs::remove_file(&resolved.path).await {
+                if rm.kind() != std::io::ErrorKind::NotFound {
+                    warn!(
+                        path = %resolved.path.display(),
+                        error = %rm,
+                        "mobile_sync staging: failed to remove partial file after write error"
+                    );
+                }
+            }
+            return Err(MobileFileStagingError::Io(format!(
                 "write staging file {} failed: {e}",
-                file_path.display()
-            ))
-        })?;
+                resolved.path.display()
+            )));
+        }
 
-        let uri = path_to_file_uri(&file_path)?;
+        let uri = path_to_file_uri(&resolved.path)?;
         debug!(
-            scope_id = %scope_segment,
             data_name = %data_name,
-            sanitized = %sanitized,
+            sanitized = %resolved.name,
             mime = %mime,
             bytes = bytes_len,
             uri = %uri,
@@ -201,7 +283,7 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
 
         Ok(StagedFile {
             uri: StagedFileUri::new(uri),
-            sanitized_name: sanitized,
+            sanitized_name: resolved.name,
         })
     }
 
@@ -211,24 +293,16 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
         data_name: &str,
         mime: &str,
     ) -> Result<StagingHandle, MobileFileStagingError> {
-        let sanitized = sanitize_basename(data_name);
-        let scope_segment = sanitize_scope(scope_id);
-        let entry_dir = self.staging_root().join(&scope_segment);
-        tokio::fs::create_dir_all(&entry_dir).await.map_err(|e| {
-            MobileFileStagingError::Io(format!(
-                "create staging dir {} failed: {e}",
-                entry_dir.display()
-            ))
-        })?;
+        let resolved = self.resolve_write_path(scope_id, data_name).await?;
 
-        let file_path = entry_dir.join(&sanitized);
-        // create(true) + truncate(true):同一 scope 内重名 → 后者覆盖。scope_id
-        // 由调用方按"每次入站事件取 uuid nonce"语义生成,正常路径下不会撞;
-        // 撞了也是上游 bug,本层不藏。
-        let file = tokio::fs::File::create(&file_path).await.map_err(|e| {
+        // File::create truncates. Managed layout: reused scope-nonce path.
+        // User save directory: overwrites the empty reservation placeholder
+        // created by reserve_target (which already claimed a collision-free
+        // name).
+        let file = tokio::fs::File::create(&resolved.path).await.map_err(|e| {
             MobileFileStagingError::Io(format!(
                 "create staging file {} failed: {e}",
-                file_path.display()
+                resolved.path.display()
             ))
         })?;
 
@@ -239,18 +313,17 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
             token,
             OpenStagingSession {
                 file,
-                path: file_path.clone(),
-                sanitized_name: sanitized.clone(),
-                scope_segment: scope_segment.clone(),
+                path: resolved.path.clone(),
+                sanitized_name: resolved.name.clone(),
+                cleanup_dir: resolved.cleanup_dir,
             },
         );
         debug!(
             handle = %token,
-            scope_id = %scope_segment,
             data_name = %data_name,
-            sanitized = %sanitized,
+            sanitized = %resolved.name,
             mime = %mime,
-            path = %file_path.display(),
+            path = %resolved.path.display(),
             "mobile_sync staging: streaming session opened"
         );
         Ok(handle)
@@ -315,7 +388,6 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
         let uri = path_to_file_uri(&session.path)?;
         debug!(
             handle = %token,
-            scope_id = %session.scope_segment,
             sanitized = %session.sanitized_name,
             path = %session.path.display(),
             uri = %uri,
@@ -355,14 +427,24 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
                 );
             }
         }
-        // 尝试删 scope 目录(只有空时才会成功;非空表明同 scope 还有别的文件,
-        // 留着不动)。failure 是预期的,不报警。
-        let scope_dir = self.staging_root().join(&session.scope_segment);
-        let _ = tokio::fs::remove_dir(&scope_dir).await;
+        // Managed layout: try to remove the (now hopefully empty) scope dir.
+        // `DirectoryNotEmpty` / `NotFound` are the expected outcomes (another
+        // file in the same scope, or an already-cleaned dir) and stay at debug;
+        // anything else is logged so unexpected cleanup failures are
+        // diagnosable. The user save directory (cleanup_dir = None) is never
+        // removed.
+        if let Some(scope_dir) = session.cleanup_dir.as_ref() {
+            if let Err(err) = tokio::fs::remove_dir(scope_dir).await {
+                debug!(
+                    dir = %scope_dir.display(),
+                    error = %err,
+                    "mobile_sync staging: scope dir not removed on abort (expected when non-empty)"
+                );
+            }
+        }
 
         debug!(
             handle = %token,
-            scope_id = %session.scope_segment,
             sanitized = %session.sanitized_name,
             "mobile_sync staging: streaming session aborted"
         );
@@ -826,6 +908,105 @@ mod tests {
         adapter.abort_stage(handle).await;
         // 二次 abort 同一 token：不 panic、不报错
         adapter.abort_stage(copy).await;
+    }
+
+    // ── redirect-to-user-directory tests ───────────────────────────────────
+    //
+    // With a `ReserveInboundFileTargetPort` injected that redirects into a
+    // separate directory, staged files must land there (flat) and abort must
+    // NOT remove that user directory.
+
+    /// Fake reserver: writes every inbound file flat into `user_dir`,
+    /// reserving a placeholder so the writer overwrites it (mirrors the real
+    /// adapter's `create_new` reservation).
+    struct RedirectReserver {
+        user_dir: PathBuf,
+    }
+
+    #[async_trait]
+    impl ReserveInboundFileTargetPort for RedirectReserver {
+        async fn reserve_target(&self, file_name: &str) -> Option<PathBuf> {
+            tokio::fs::create_dir_all(&self.user_dir).await.ok()?;
+            let path = self.user_dir.join(file_name);
+            // reserve placeholder like the real adapter does
+            let _ = tokio::fs::File::create(&path).await.ok()?;
+            Some(path)
+        }
+    }
+
+    fn make_redirect_adapter(
+        cache_root: &Path,
+        user_dir: &Path,
+    ) -> Arc<FilesystemMobileFileStaging> {
+        FilesystemMobileFileStaging::new_with_target_reserver(
+            cache_root.to_path_buf(),
+            Arc::new(RedirectReserver {
+                user_dir: user_dir.to_path_buf(),
+            }),
+        )
+    }
+
+    #[tokio::test]
+    async fn stage_file_redirects_into_user_dir() {
+        let cache = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        let adapter = make_redirect_adapter(cache.path(), user.path());
+
+        let staged = adapter
+            .stage_file("scope01", "doc.pdf", "application/pdf", vec![1, 2, 3])
+            .await
+            .expect("stage_file ok");
+
+        // written flat into the user dir, not the managed mobile_inbound layout
+        let expected = user.path().join("doc.pdf");
+        assert_eq!(
+            tokio::fs::read(&expected).await.unwrap(),
+            vec![1, 2, 3],
+            "file must land in the user dir"
+        );
+        assert!(
+            !cache.path().join("mobile_inbound").exists(),
+            "managed layout must not be used when redirecting"
+        );
+        assert!(staged.uri.as_str().ends_with("/doc.pdf"));
+    }
+
+    #[tokio::test]
+    async fn streaming_redirect_finalizes_and_abort_keeps_user_dir() {
+        let cache = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        let adapter = make_redirect_adapter(cache.path(), user.path());
+
+        // finalize path
+        let h = adapter
+            .begin_stage("scope-s", "video.mp4", "video/mp4")
+            .await
+            .unwrap();
+        adapter.append_stage_chunk(&h, &[0xAB; 8]).await.unwrap();
+        let staged = adapter.finalize_stage(h).await.unwrap();
+        assert_eq!(
+            tokio::fs::read(user.path().join("video.mp4"))
+                .await
+                .unwrap(),
+            vec![0xAB; 8]
+        );
+        assert!(staged.uri.as_str().ends_with("/video.mp4"));
+
+        // abort path must remove the partial file but keep the user dir
+        let h2 = adapter
+            .begin_stage("scope-a", "partial.bin", "application/octet-stream")
+            .await
+            .unwrap();
+        adapter.append_stage_chunk(&h2, &[0xCC; 4]).await.unwrap();
+        adapter.abort_stage(h2).await;
+        assert!(
+            !user.path().join("partial.bin").exists(),
+            "partial file must be removed on abort"
+        );
+        assert!(
+            user.path().exists(),
+            "user save directory must never be removed on abort"
+        );
     }
 
     // ── sanitize_basename direct path-traversal tests ───────────────────────

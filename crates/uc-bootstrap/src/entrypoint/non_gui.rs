@@ -33,6 +33,7 @@ use uc_application::{
 };
 use uc_core::clipboard::ClipboardIntegrationMode;
 use uc_core::SystemClipboardSnapshot;
+use uc_infra::fs::FsInboundFileTarget;
 use uc_infra::mobile_sync::{
     Argon2idPasswordHasher, FilesystemMobileFileStaging, NetworkInterfaceLanProbe,
     OsRngCredentialsMinter,
@@ -255,7 +256,10 @@ pub fn build_mobile_sync_facade(
         settings: deps.settings.clone(),
         apply_inbound,
         incoming_buffer: Arc::new(IncomingMobileBuffer::new()),
-        file_staging: FilesystemMobileFileStaging::new(storage_paths.file_cache_dir.clone()),
+        file_staging: FilesystemMobileFileStaging::new_with_target_reserver(
+            storage_paths.file_cache_dir.clone(),
+            FsInboundFileTarget::new(deps.settings.clone()),
+        ),
         snapshot_ports: MobileSyncSnapshotPorts {
             active_register_load: deps.clipboard.active_register_load.clone(),
             entry_repo: deps.clipboard.entry_ports.get.clone(),

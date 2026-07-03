@@ -81,6 +81,7 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::quick_panel::resolve_quick_panel_expand_side,
         // ── settings ────────────────────────────────────────────────────────
         crate::commands::settings::update_keyboard_shortcuts,
+        crate::commands::settings::pick_directory,
         crate::commands::settings::probe_relay_url,
         // ── config import/export (issue #1110) ──────────────────────────────
         crate::commands::config::export_config_package,

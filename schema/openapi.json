@@ -1234,6 +1234,11 @@
       },
       "FileSyncSettingsDto": {
         "properties": {
+          "autoSaveDir": {
+            "description": "Directory where inbound files are saved. `null` = managed storage.",
+            "nullable": true,
+            "type": "string"
+          },
           "fileAutoCleanup": {
             "type": "boolean"
           },
@@ -1273,6 +1278,11 @@
       },
       "FileSyncSettingsPatchDto": {
         "properties": {
+          "autoSaveDir": {
+            "description": "Absent = leave unchanged; `\"\"` = clear (managed storage); a path = save\ninbound files there.",
+            "nullable": true,
+            "type": "string"
+          },
           "fileAutoCleanup": {
             "nullable": true,
             "type": "boolean"

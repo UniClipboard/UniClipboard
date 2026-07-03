@@ -1034,6 +1034,170 @@ async fn file_cache_blob_materializer_writes_file_and_rewrites_file_uri_list() {
     assert_eq!(bytes, b"hello world");
 }
 
+/// Fake reserver: redirects every inbound file flat into `dir`.
+struct FakeUserDirReserver {
+    dir: std::path::PathBuf,
+}
+
+#[async_trait]
+impl uc_core::ports::inbound_file_target::ReserveInboundFileTargetPort for FakeUserDirReserver {
+    async fn reserve_target(&self, file_name: &str) -> Option<std::path::PathBuf> {
+        // Mirror the real adapter: atomically create an empty placeholder to
+        // claim the name, so a failed fetch leaves an orphan the materializer
+        // is expected to clean up.
+        let path = self.dir.join(file_name);
+        std::fs::File::create(&path).expect("create reservation placeholder");
+        Some(path)
+    }
+}
+
+/// With a reserver injected that returns a user directory, the file is written
+/// there (not into the managed cache layout) and the rewritten `file://` URI
+/// points at the user directory.
+#[tokio::test]
+async fn file_cache_blob_materializer_redirects_to_reserved_user_dir() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let user_dir = tempfile::tempdir().expect("user dir");
+    let entry_id = EntryId::from("entry-file");
+    let ticket = BlobTicket::from_bytes(vec![4, 5, 6]);
+    let blob_ref = V3BlobRef {
+        ticket: ticket.clone(),
+        entry_id: entry_id.clone(),
+        filename: Some("report.txt".to_string()),
+        mime: Some("text/plain".to_string()),
+        size_bytes: 11,
+        representation_index: None,
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/report.txt\n".to_vec(),
+        )],
+        file_content_digests: Vec::new(),
+    };
+
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        .returning(|command| {
+            let payload: &[u8] = b"hello world";
+            std::fs::write(&command.target_path, payload).expect("fake write target");
+            Ok(crate::facade::blob_transfer::FetchBlobToPathResult {
+                entry_id: command.entry_id,
+                plaintext_hash: PlaintextHash::from_bytes([0; 32]),
+                digest: BlobDigest::from_bytes([1; 32]),
+                bytes_written: payload.len() as u64,
+            })
+        });
+
+    let user_dir_path = user_dir.path().to_path_buf();
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf())
+            .with_target_reserver(Arc::new(FakeUserDirReserver {
+                dir: user_dir_path.clone(),
+            }));
+    let rewritten = materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            EntryId::from("entry-receiver"),
+            snapshot,
+            vec![blob_ref],
+        )
+        .await
+        .expect("materialize should succeed");
+
+    let uri_list = String::from_utf8(
+        rewritten.snapshot.representations[0]
+            .expect_inline_bytes()
+            .to_vec(),
+    )
+    .expect("uri-list should be UTF-8");
+    let local_path = url::Url::parse(uri_list.trim())
+        .expect("valid file URL")
+        .to_file_path()
+        .expect("file URL to path");
+
+    // File landed in the user directory, flat — not the managed cache layout.
+    assert_eq!(local_path, user_dir_path.join("report.txt"));
+    assert_eq!(tokio::fs::read(&local_path).await.unwrap(), b"hello world");
+    assert!(
+        !cache_dir.path().join("iroh-blobs").exists(),
+        "managed cache layout must not be used when redirecting"
+    );
+}
+
+/// A fetch that fails after the name was reserved must not leave the reserved
+/// placeholder behind in the user's save directory. Unlike the managed cache
+/// layout, that directory is never reclaimed by retention or entry deletion, so
+/// an orphan would linger forever and force the next same-named file to a
+/// ` (n)` suffix. Covers the non-cancel error branch (network drop / export
+/// failure).
+#[tokio::test]
+async fn file_cache_blob_materializer_removes_reserved_placeholder_on_fetch_error() {
+    let cache_dir = tempfile::tempdir().expect("cache dir");
+    let user_dir = tempfile::tempdir().expect("user dir");
+    let entry_id = EntryId::from("entry-file");
+    let ticket = BlobTicket::from_bytes(vec![9, 9, 9]);
+    let blob_ref = V3BlobRef {
+        ticket: ticket.clone(),
+        entry_id: entry_id.clone(),
+        filename: Some("report.txt".to_string()),
+        mime: Some("text/plain".to_string()),
+        size_bytes: 11,
+        representation_index: None,
+    };
+    let snapshot = SystemClipboardSnapshot {
+        ts_ms: 1,
+        representations: vec![ObservedClipboardRepresentation::new(
+            RepresentationId::new(),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            b"file:///sender/report.txt\n".to_vec(),
+        )],
+        file_content_digests: Vec::new(),
+    };
+
+    let mut fetcher = MockBlobFetcher::new();
+    fetcher
+        .expect_fetch_blob_to_path()
+        .times(1)
+        // Non-cancel failure before the store-export step: the reserved
+        // placeholder was created but never overwritten. `is_cancel_error`
+        // returns false for a plain anyhow error, so this hits the
+        // non-cancel `Err(e)` arm.
+        .returning(|_command| Err(anyhow::anyhow!("network dropped mid-transfer")));
+
+    let user_dir_path = user_dir.path().to_path_buf();
+    let materializer =
+        FileCacheBlobMaterializer::new(Arc::new(fetcher), cache_dir.path().to_path_buf())
+            .with_target_reserver(Arc::new(FakeUserDirReserver {
+                dir: user_dir_path.clone(),
+            }));
+    let result = materializer
+        .materialize(
+            DeviceId::new("peer-x"),
+            EntryId::from("entry-receiver"),
+            snapshot,
+            vec![blob_ref],
+        )
+        .await
+        .expect("partial materialize should succeed (fetch error is soft)");
+
+    assert!(result.is_partial(), "failed fetch must mark partial");
+    assert!(
+        !user_dir_path.join("report.txt").exists(),
+        "reserved placeholder must be removed after a failed fetch"
+    );
+    let leftovers = std::fs::read_dir(&user_dir_path)
+        .expect("read user dir")
+        .count();
+    assert_eq!(leftovers, 0, "user save directory must be left clean");
+}
+
 /// Verdict 9 —— representation_index 路径：blob ref 携带索引时,materializer
 /// 把 fetched bytes 灌回 envelope 主体里对应索引的 rep,而不是写到 cache_dir
 /// 当 file 处理。这条路径是 oversized image 跨设备同步的关键。

@@ -233,6 +233,7 @@ impl Default for FileSyncSettings {
     /// - `file_cache_quota_per_device`: 500 MB
     /// - `file_retention_hours`: 24
     /// - `file_auto_cleanup`: true
+    /// - `auto_save_dir`: None (inbound files stay in managed storage)
     fn default() -> Self {
         Self {
             file_sync_enabled: true,
@@ -241,6 +242,7 @@ impl Default for FileSyncSettings {
             file_cache_quota_per_device: 500 * 1024 * 1024, // 500 MB
             file_retention_hours: 24,
             file_auto_cleanup: true,
+            auto_save_dir: None,
         }
     }
 }
@@ -509,6 +511,35 @@ mod tests {
         let s: Settings = serde_json::from_str(json).expect("empty file_sync must parse");
         let expected = FileSyncSettings::default();
         assert_eq!(s.file_sync, expected);
+    }
+
+    /// Pre-existing settings without `auto_save_dir` deserialize to `None`
+    /// (feature off), keeping the managed-storage behavior for old users.
+    #[test]
+    fn file_sync_missing_auto_save_dir_falls_back_to_none() {
+        let json = r#"{
+            "file_sync": {
+                "file_sync_enabled": true,
+                "small_file_threshold": 10485760,
+                "max_file_size": 5368709120,
+                "file_cache_quota_per_device": 524288000,
+                "file_retention_hours": 24,
+                "file_auto_cleanup": true
+            }
+        }"#;
+        let s: Settings = serde_json::from_str(json).expect("must parse without auto_save_dir");
+        assert_eq!(s.file_sync.auto_save_dir, None);
+    }
+
+    /// A persisted `auto_save_dir` round-trips through serde.
+    #[test]
+    fn file_sync_auto_save_dir_round_trips() {
+        let json = r#"{ "file_sync": { "auto_save_dir": "/Users/me/Downloads" } }"#;
+        let s: Settings = serde_json::from_str(json).expect("must parse auto_save_dir");
+        assert_eq!(
+            s.file_sync.auto_save_dir.as_deref(),
+            Some("/Users/me/Downloads")
+        );
     }
 
     /// `general` 段缺 `telemetry_enabled` 字段,必须回退默认 true。

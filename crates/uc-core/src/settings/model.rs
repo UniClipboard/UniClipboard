@@ -256,6 +256,13 @@ pub struct FileSyncSettings {
     pub file_cache_quota_per_device: u64,
     pub file_retention_hours: u32,
     pub file_auto_cleanup: bool,
+    /// Optional directory where inbound files are written.
+    ///
+    /// When `None` or empty, inbound files stay in the application-managed
+    /// storage layout and remain subject to retention cleanup. When set to a
+    /// usable directory, inbound files are written there instead; such files
+    /// are owned by the user and are never removed by retention cleanup.
+    pub auto_save_dir: Option<String>,
 }
 
 /// Algorithm used for network flow control.

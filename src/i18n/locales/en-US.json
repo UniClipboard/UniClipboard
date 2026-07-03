@@ -312,6 +312,13 @@
           "autoCleanup": {
             "label": "Auto-cleanup",
             "description": "Automatically remove expired cached files on startup"
+          },
+          "autoSaveDir": {
+            "label": "File storage location",
+            "description": "Set a custom directory for storing files. When unset, they stay in managed storage.",
+            "managed": "Managed storage (default)",
+            "choose": "Choose folder",
+            "clear": "Reset to default"
           }
         }
       },

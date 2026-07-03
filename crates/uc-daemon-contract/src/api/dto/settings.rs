@@ -289,6 +289,9 @@ pub struct FileSyncSettingsDto {
     pub file_cache_quota_per_device: u64,
     pub file_retention_hours: u32,
     pub file_auto_cleanup: bool,
+    /// Directory where inbound files are saved. `null` = managed storage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_save_dir: Option<String>,
 }
 
 /// Algorithm for network flow control. Wire form: `"cubic"` | `"bbr3"`.
@@ -481,6 +484,9 @@ pub struct FileSyncSettingsPatchDto {
     pub file_cache_quota_per_device: Option<u64>,
     pub file_retention_hours: Option<u32>,
     pub file_auto_cleanup: Option<bool>,
+    /// Absent = leave unchanged; `""` = clear (managed storage); a path = save
+    /// inbound files there.
+    pub auto_save_dir: Option<String>,
 }
 
 /// LAN-only Mode 字段 patch DTO 镜像 — `null` = 不修改。
@@ -683,6 +689,7 @@ impl From<core::FileSyncSettings> for FileSyncSettingsDto {
     fn from(value: core::FileSyncSettings) -> Self {
         Self {
             file_sync_enabled: value.file_sync_enabled,
+            auto_save_dir: value.auto_save_dir,
             small_file_threshold: value.small_file_threshold,
             max_file_size: value.max_file_size,
             file_cache_quota_per_device: value.file_cache_quota_per_device,
@@ -1546,6 +1553,68 @@ mod general_patch_optional_field_wire_tests {
         assert_eq!(dto.language, Some(Some("zh-CN".to_string())));
         assert_eq!(dto.device_name, Some(Some("ws-1".to_string())));
         assert_eq!(dto.update_channel, Some(Some(UpdateChannelDto::Beta)));
+    }
+}
+
+/// `auto_save_dir` wire contract on the file-sync DTOs. camelCase key
+/// `autoSaveDir`; patch is two-state (absent/null = leave, `""` = clear,
+/// path = set), read DTO omits the key when unset.
+#[cfg(test)]
+mod file_sync_auto_save_dir_wire_tests {
+    use super::*;
+
+    #[test]
+    fn read_dto_uses_camel_case_key() {
+        let dto = FileSyncSettingsDto {
+            file_sync_enabled: true,
+            small_file_threshold: 1,
+            max_file_size: 2,
+            file_cache_quota_per_device: 3,
+            file_retention_hours: 4,
+            file_auto_cleanup: true,
+            auto_save_dir: Some("/Users/me/Downloads".to_string()),
+        };
+        let wire = serde_json::to_value(&dto).expect("serialize");
+        assert_eq!(wire["autoSaveDir"], "/Users/me/Downloads");
+        assert!(
+            wire.get("auto_save_dir").is_none(),
+            "must not emit snake_case key"
+        );
+    }
+
+    #[test]
+    fn read_dto_omits_key_when_unset() {
+        let dto = FileSyncSettingsDto {
+            file_sync_enabled: true,
+            small_file_threshold: 1,
+            max_file_size: 2,
+            file_cache_quota_per_device: 3,
+            file_retention_hours: 4,
+            file_auto_cleanup: true,
+            auto_save_dir: None,
+        };
+        let wire = serde_json::to_value(&dto).expect("serialize");
+        assert!(wire.get("autoSaveDir").is_none(), "None ⇒ key omitted");
+    }
+
+    #[test]
+    fn patch_absent_is_none() {
+        let dto: FileSyncSettingsPatchDto = serde_json::from_str("{}").expect("deserialize");
+        assert_eq!(dto.auto_save_dir, None);
+    }
+
+    #[test]
+    fn patch_blank_is_some_empty_meaning_clear() {
+        let dto: FileSyncSettingsPatchDto =
+            serde_json::from_str(r#"{"autoSaveDir":""}"#).expect("deserialize");
+        assert_eq!(dto.auto_save_dir, Some(String::new()));
+    }
+
+    #[test]
+    fn patch_path_is_some_value() {
+        let dto: FileSyncSettingsPatchDto =
+            serde_json::from_str(r#"{"autoSaveDir":"/tmp/inbox"}"#).expect("deserialize");
+        assert_eq!(dto.auto_save_dir, Some("/tmp/inbox".to_string()));
     }
 }
 

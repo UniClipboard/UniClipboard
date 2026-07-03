@@ -54,6 +54,10 @@ impl AppPaths {
         self.app_data_root_dir.join("skipped_version.json")
     }
 
+    pub fn update_prompt_throttle_path(&self) -> PathBuf {
+        self.app_data_root_dir.join("update_prompt_throttle.json")
+    }
+
     pub fn from_app_dirs(dirs: &AppDirs) -> Self {
         // Windows: `dirs::cache_dir()` returns `dirs::data_local_dir()`,
         // so `app_cache_root` and `app_data_root` collide. If we used

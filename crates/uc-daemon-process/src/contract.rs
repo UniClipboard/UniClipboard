@@ -32,10 +32,63 @@ pub enum DaemonBootstrapError {
     RefusedNewerDaemon { observed: String, expected: String },
     #[error("failed to spawn uniclipboard-daemon: {0}")]
     Spawn(anyhow::Error),
+    /// The daemon binary launched but its process exited BEFORE it could serve
+    /// `/health` — a hard launch failure, NOT a slow start. On Windows this is
+    /// how a missing dependency surfaces: `CreateProcess` (hence
+    /// `Command::spawn`) returns `Ok`, then the image loader fails and the
+    /// process dies within milliseconds with an NTSTATUS exit code (e.g.
+    /// `0xC0000135` STATUS_DLL_NOT_FOUND when `vcruntime140.dll` is absent). A
+    /// naive `/health` timeout cannot tell this apart from "the daemon is just
+    /// slow to start"; watching the child's exit lets us fail fast with an
+    /// actionable message. `code` is the process exit code if the OS reported
+    /// one (issue #1259).
+    #[error("daemon process exited immediately after spawn{}", describe_spawn_exit(.code))]
+    SpawnExitedEarly { code: Option<i32> },
     #[error("daemon startup timed out after {timeout_ms}ms")]
     StartupTimeout { timeout_ms: u64 },
     #[error("failed to load daemon connection info: {0}")]
     ConnectionInfo(anyhow::Error),
+}
+
+/// Render the actionable suffix for [`DaemonBootstrapError::SpawnExitedEarly`].
+///
+/// A handful of Windows loader NTSTATUS codes are recognizable enough to name
+/// the likely fix (a missing/incompatible runtime library). Everything else
+/// just reports the raw exit code. NTSTATUS error codes have the high bit set,
+/// so they read as negative `i32`s — those are rendered as unsigned hex
+/// (`0xC0000135`, the conventional form); ordinary small exit codes (a Rust
+/// panic is 101, a clean-ish crash may be 1) render as decimal.
+fn describe_spawn_exit(code: &Option<i32>) -> String {
+    let Some(code) = *code else {
+        return String::new();
+    };
+    if code >= 0 {
+        return format!(" (exit code {code})");
+    }
+    let ntstatus = code as u32;
+    let hint = match ntstatus {
+        // STATUS_DLL_NOT_FOUND: a required DLL could not be located. On a clean
+        // Windows install the usual culprit is the absent Visual C++ Runtime
+        // (`vcruntime140.dll`) — the proximate trigger in issue #1259.
+        0xC000_0135 => {
+            " - a required system library is missing (for example the Visual C++ Runtime). \
+             Install the Microsoft Visual C++ 2015-2022 Redistributable (x64) and try again."
+        }
+        // STATUS_ENTRYPOINT_NOT_FOUND: a DLL was found but lacks an expected
+        // entry point — typically a version mismatch of that same runtime.
+        0xC000_0139 => {
+            " - a required system library is present but incompatible. \
+             Reinstall the Microsoft Visual C++ 2015-2022 Redistributable (x64) and try again."
+        }
+        // STATUS_DLL_INIT_FAILED: a dependent DLL's initialization routine
+        // failed. Not always the VC++ runtime, so keep the advice generic.
+        0xC000_0142 => {
+            " - a required system library failed to initialize. \
+             Reinstall the app's runtime dependencies and try again."
+        }
+        _ => "",
+    };
+    format!(" (exit code {ntstatus:#010X}){hint}")
 }
 
 /// `terminate_local_daemon_pid` 的返回错误，仅承载一个 detail string。
@@ -277,6 +330,59 @@ mod tests {
             msg.contains("0.15.0") && msg.contains("0.14.0") && msg.contains("refusing"),
             "refusal display must surface observed + expected versions; got: {err}"
         );
+    }
+
+    #[test]
+    fn spawn_exited_early_names_missing_dll_and_the_fix() {
+        // The signature case (issue #1259): a Windows missing-DLL crash exits
+        // with STATUS_DLL_NOT_FOUND (0xC0000135, negative as i32). The message
+        // must render the code as unsigned hex AND point at the likely fix so
+        // the frontend error screen is actionable, not just "it timed out".
+        let err = DaemonBootstrapError::SpawnExitedEarly {
+            code: Some(0xC000_0135u32 as i32),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("0xC0000135"),
+            "must render the NTSTATUS as unsigned hex; got: {msg}"
+        );
+        assert!(
+            msg.contains("Visual C++"),
+            "must name the actionable fix for a missing runtime; got: {msg}"
+        );
+        assert!(
+            msg.contains("exited immediately"),
+            "must distinguish an immediate crash from a slow start; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn spawn_exited_early_renders_plain_codes_in_decimal() {
+        // A non-NTSTATUS exit (e.g. a Rust panic aborts with 101) has no
+        // loader-specific hint — report the raw code in decimal, not hex.
+        let err = DaemonBootstrapError::SpawnExitedEarly { code: Some(101) };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("101"),
+            "plain exit code must appear; got: {msg}"
+        );
+        assert!(
+            !msg.contains("0x"),
+            "a plain positive code must not be hex-rendered; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn spawn_exited_early_tolerates_unknown_exit_code() {
+        // No OS-reported code: still a distinct, non-panicking message.
+        let err = DaemonBootstrapError::SpawnExitedEarly { code: None };
+        assert!(err.to_string().contains("exited immediately"));
+
+        // An unrecognized NTSTATUS still renders as hex, just without a hint.
+        let err = DaemonBootstrapError::SpawnExitedEarly {
+            code: Some(0xC000_00FDu32 as i32), // STATUS_STACK_OVERFLOW
+        };
+        assert!(err.to_string().contains("0xC00000FD"));
     }
 
     #[test]

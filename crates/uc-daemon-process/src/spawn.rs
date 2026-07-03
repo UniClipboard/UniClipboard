@@ -80,6 +80,36 @@ pub fn spawn_detached_daemon(
     origin: DaemonSpawnOrigin,
     handover_dir_override: Option<std::path::PathBuf>,
 ) -> Result<(), SpawnDaemonError> {
+    // Drop the handle deliberately (see fn doc): fire-and-forget detach. This
+    // is the historical contract for callers that only care that the spawn
+    // syscall succeeded and then prove liveness by polling `/health`.
+    let child = spawn_detached_daemon_returning_child(origin, handover_dir_override)?;
+    drop(child);
+    Ok(())
+}
+
+/// Like [`spawn_detached_daemon`], but hands back the spawned [`Child`] so the
+/// caller can watch for an **early exit** while it waits for `/health`.
+///
+/// This exists because `Command::spawn` returning `Ok` does NOT prove the
+/// daemon is running: on Windows `CreateProcess` succeeds even when the image
+/// loader later fails to resolve a dependency (e.g. a missing `vcruntime140.dll`
+/// — issue #1259), so the process is created and then dies within
+/// milliseconds. A caller that only polls `/health` cannot distinguish that
+/// hard crash from a slow start until the (long) startup timeout elapses.
+/// Holding the `Child` lets it observe the exit and its code via
+/// [`poll_child_liveness`] / [`std::process::Child::try_wait`] and fail fast.
+///
+/// The parent may `try_wait`/`wait` the returned handle regardless of the
+/// detach flags: `DETACHED_PROCESS` / `setsid` only govern console and session
+/// membership, not the parent↔child handle. The caller MUST drop the handle
+/// once the daemon is confirmed healthy — dropping detaches cleanly (it neither
+/// kills the process nor, on Unix, reaps it; the child is reparented to PID 1
+/// when the spawner exits), preserving the daemon's independent lifetime.
+pub fn spawn_detached_daemon_returning_child(
+    origin: DaemonSpawnOrigin,
+    handover_dir_override: Option<std::path::PathBuf>,
+) -> Result<std::process::Child, SpawnDaemonError> {
     let daemon_exe = resolve_daemon_exe_path()?;
 
     let mut command = Command::new(&daemon_exe);
@@ -120,10 +150,28 @@ pub fn spawn_detached_daemon(
         )))
     })?;
 
-    // Drop the handle deliberately — see fn doc. The detached child runs on its
-    // own; the spawner's responsibility ends here.
-    drop(child);
-    Ok(())
+    // Hand the live handle back — the caller decides whether to watch it for an
+    // early exit or drop it for fire-and-forget detach (see fn doc).
+    Ok(child)
+}
+
+/// Non-blocking check of whether a freshly-spawned daemon [`Child`] has already
+/// exited, mapped into the transport-neutral [`ChildLiveness`] the health-wait
+/// loop consumes (so `health_wait` need not know about `std::process`).
+///
+/// A `try_wait` error (rare — e.g. the handle was already reaped) maps to
+/// [`ChildLiveness::Running`]: we cannot *prove* the child is dead, so we let
+/// the `/health` startup timeout bound the wait rather than misreport a crash
+/// that may not have happened.
+pub fn poll_child_liveness(child: &mut std::process::Child) -> crate::health_wait::ChildLiveness {
+    use crate::health_wait::ChildLiveness;
+    match child.try_wait() {
+        Ok(Some(status)) => ChildLiveness::Exited {
+            code: status.code(),
+        },
+        Ok(None) => ChildLiveness::Running,
+        Err(_) => ChildLiveness::Running,
+    }
 }
 
 /// Resolve the directory to read the pending handover record from.

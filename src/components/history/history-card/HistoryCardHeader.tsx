@@ -17,7 +17,6 @@ import {
   describeSource,
   detectCodeLanguage,
   getContentSizeLabel,
-  TAG_STYLE,
   TYPE_COLOR,
   TYPE_ICONS,
 } from './history-card-utils'
@@ -75,20 +74,6 @@ function HistoryCardHeader({
       >
         {codeLanguage ?? t(`history.type.${item.type}`, item.type)}
       </span>
-
-      {item.contentTags?.map(tag => (
-        <span
-          key={tag}
-          className="rounded border px-1 py-0 text-[9px] font-medium leading-[1.25]"
-          style={{
-            backgroundColor: TAG_STYLE[tag].background,
-            borderColor: TAG_STYLE[tag].border,
-            color: TAG_STYLE[tag].text,
-          }}
-        >
-          {t(`history.type.${tag}`, tag)}
-        </span>
-      ))}
 
       {sizeLabel && !isTransferring && (
         <>

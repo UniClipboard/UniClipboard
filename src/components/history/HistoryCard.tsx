@@ -13,6 +13,7 @@ import {
 import HistoryCardActions from './history-card/HistoryCardActions'
 import HistoryCardContent from './history-card/HistoryCardContent'
 import HistoryCardHeader from './history-card/HistoryCardHeader'
+import HistoryCardTags from './history-card/HistoryCardTags'
 import HistoryCardTransferProgress from './history-card/HistoryCardTransferProgress'
 
 interface HistoryCardProps {
@@ -123,6 +124,7 @@ const HistoryCard: React.FC<HistoryCardProps> = ({
       >
         <HistoryCardContent item={item} />
       </div>
+      <HistoryCardTags tags={item.contentTags} />
       <HistoryCardActions
         itemId={item.id}
         state={{ isHovered: showActions, isTransferring, isPending, isFavorited }}

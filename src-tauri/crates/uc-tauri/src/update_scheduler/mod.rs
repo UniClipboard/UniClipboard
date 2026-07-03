@@ -11,6 +11,7 @@
 pub mod last_check_at;
 pub mod last_notified;
 pub mod notify_context;
+pub mod prompt_throttle;
 pub mod scheduler;
 pub mod skipped_version;
 pub mod wake_source;
@@ -24,7 +25,8 @@ mod resume_listener_windows;
 
 pub use last_check_at::LastCheckAt;
 pub use last_notified::LastNotifiedUpdateStore;
-pub use notify_context::NotifyContext;
+pub use notify_context::{NotifyContext, NotifyTrigger};
+pub use prompt_throttle::PromptThrottleStore;
 pub use scheduler::{run, SchedulerDeps};
 pub use skipped_version::SkippedVersionStore;
 pub use wake_source::start as start_wake_source;

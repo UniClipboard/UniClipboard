@@ -56,7 +56,8 @@ impl NotifyContext {
     /// 成功创建后 `record` 持久化。
     ///
     /// 返回 `true` 表示这次确实打开（或聚焦了）窗口，`false` 表示被去重
-    /// store / skipped store short-circuit 或 builder 失败。Scheduler
+    /// store / skipped store / prompt cooldown（仅 `Scheduled` 触发，emit
+    /// `update_prompt_suppressed`）short-circuit 或 builder 失败。Scheduler
     /// 用这个布尔值判断是否需要在 auto-download Ready 阶段兜底再开一次窗口。
     ///
     /// `delivery_status` 字段语义：`Sent` 表示窗口已打开，`SendFailed`
@@ -109,6 +110,14 @@ impl NotifyContext {
                     version,
                     "prompt cooldown active; not showing updater window"
                 );
+                // Sole emit site for this event: the ready-fallback path can
+                // only be reached in the same iteration after this branch
+                // already returned false, so it stays silent to keep at most
+                // one suppression event per check.
+                self.analytics.capture(Event::UpdatePromptSuppressed {
+                    version: version.to_string(),
+                    install_kind,
+                });
                 return false;
             }
         }

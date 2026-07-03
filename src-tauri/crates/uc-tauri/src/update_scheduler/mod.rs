@@ -2,6 +2,8 @@
 //!
 //! 模块结构：
 //! - `last_notified`: 持久化已通知过的版本（按 channel 去重）
+//! - `prompt_throttle`: persisted prompt cooldown so a fast release cadence
+//!   doesn't open the updater window once per release
 //! - `scheduler`: 主循环 + setup-wait + backoff（Phase 3B）
 //! - `window`: Sparkle 风格更新窗口（替代了 Phase 4A 的系统通知路径）
 //! - `last_check_at`: 距离上次任意 source check 的时间戳（Phase 5B）

@@ -32,12 +32,13 @@ pub struct GeneralSettings {
     pub lightweight_start: bool,
     /// How the app presents itself at launch: `Normal` shows the window as
     /// usual; `Silent` skips straight to running in the background/tray;
-    /// `Lightweight`, when the launch was triggered by OS auto-start,
-    /// exits the interactive process entirely once background sync is
-    /// confirmed ready, leaving only the background sync service running —
-    /// a manually-initiated launch always presents the normal interface
-    /// regardless of this setting, so the app stays reachable to turn the
-    /// preference back off.
+    /// `Lightweight` exits the interactive process entirely once background
+    /// sync is confirmed ready, leaving only the background sync service
+    /// running — but only when this launch is the one that started that
+    /// service (a cold start). If the background service was already running
+    /// (e.g. reopening after an earlier Lightweight launch), the window is
+    /// shown instead, so the app stays reachable to turn the preference back
+    /// off.
     pub startup_mode: StartupMode,
     /// Whether to push the most recent clipboard history entry back onto
     /// the OS clipboard once background sync is confirmed ready at startup.

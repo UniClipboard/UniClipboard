@@ -70,11 +70,12 @@ pub struct GeneralSettingsDto {
     pub auto_start: bool,
     /// How the app presents itself at launch: `normal` shows the window as
     /// usual; `silent` skips straight to running in the background/tray;
-    /// `lightweight`, when the launch was triggered by OS auto-start, exits
-    /// the interactive process entirely once the daemon connection is
-    /// confirmed (a manual launch always shows the window). Added after
-    /// initial launch; `#[serde(default)]` keeps old wire payloads
-    /// compatible.
+    /// `lightweight` exits the interactive process entirely once the daemon
+    /// connection is confirmed, but only when this launch is the one that
+    /// spawned the daemon (a genuine cold start). If a compatible daemon was
+    /// already running (e.g. reopening after a previous Lightweight session
+    /// exited), the window is shown instead. Added after initial launch;
+    /// `#[serde(default)]` keeps old wire payloads compatible.
     #[serde(default)]
     pub startup_mode: StartupModeDto,
     /// Whether to push the most recent clipboard history entry back onto the

@@ -224,13 +224,19 @@ where
 
 /// 把底层错误翻译为领域错误。FK violation 反映"引用了不存在的 entry",
 /// 其它一律按 Storage 归类。
+///
+/// The executor threads the original `diesel::result::Error` through the
+/// `anyhow` chain, so classify on the typed error kind rather than the
+/// SQLite-specific message wording.
 fn translate_storage_error(err: anyhow::Error, entry_id: &str) -> EntryFileSetError {
-    let msg = err.to_string();
-    if msg.contains("FOREIGN KEY") || msg.to_ascii_lowercase().contains("foreign key") {
-        EntryFileSetError::EntryNotFound(entry_id.to_string())
-    } else {
-        EntryFileSetError::Storage(msg)
+    if let Some(diesel::result::Error::DatabaseError(
+        diesel::result::DatabaseErrorKind::ForeignKeyViolation,
+        _,
+    )) = err.downcast_ref::<diesel::result::Error>()
+    {
+        return EntryFileSetError::EntryNotFound(entry_id.to_string());
     }
+    EntryFileSetError::Storage(err.to_string())
 }
 
 #[cfg(test)]

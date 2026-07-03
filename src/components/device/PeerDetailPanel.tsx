@@ -23,12 +23,15 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
   fetchMemberSyncPreferences,
   updateMemberSyncPreferences,
 } from '@/store/slices/devicesSlice'
+
+const log = createLogger('peer-detail-panel')
 
 interface PeerDetailPanelProps {
   deviceId: string
@@ -73,6 +76,8 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
   const handleSendEnabledToggle = useCallback(
     (checked: boolean) => {
       dispatch(updateMemberSyncPreferences({ deviceId, patch: { sendEnabled: checked } }))
+        .unwrap()
+        .catch(err => log.error({ err }, 'failed to update send-enabled preference'))
     },
     [dispatch, deviceId]
   )
@@ -82,6 +87,8 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
       dispatch(
         updateMemberSyncPreferences({ deviceId, patch: { sendContentTypes: { [field]: checked } } })
       )
+        .unwrap()
+        .catch(err => log.error({ err, field }, 'failed to update send content-type preference'))
     },
     [dispatch, deviceId]
   )
@@ -89,13 +96,17 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
   const handleRestoreDefaults = useCallback(async () => {
     // UX only exposes the send column, so restore resets send fields only;
     // receive fields keep their current server values.
-    await dispatch(
-      updateMemberSyncPreferences({
-        deviceId,
-        patch: { sendEnabled: true, sendContentTypes: DEFAULT_SEND_CONTENT_TYPES },
-      })
-    )
-    dispatch(fetchMemberSyncPreferences(deviceId))
+    try {
+      await dispatch(
+        updateMemberSyncPreferences({
+          deviceId,
+          patch: { sendEnabled: true, sendContentTypes: DEFAULT_SEND_CONTENT_TYPES },
+        })
+      ).unwrap()
+      dispatch(fetchMemberSyncPreferences(deviceId))
+    } catch (err) {
+      log.error({ err }, 'failed to restore default sync preferences')
+    }
   }, [dispatch, deviceId])
 
   if (!deviceId) return null

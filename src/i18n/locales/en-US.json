@@ -1356,7 +1356,8 @@
         "memberCount_one": "{{count}} member",
         "memberCount_other": "{{count}} members",
         "copy": "Copy peer ID",
-        "copied": "Copied"
+        "copied": "Copied",
+        "copyFailed": "Failed to copy to clipboard"
       },
       "policies": {
         "title": "Global sync policies",

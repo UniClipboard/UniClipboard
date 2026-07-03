@@ -32,7 +32,7 @@ export function useCopyToClipboard(resetMs = 1500) {
         timerRef.current = setTimeout(() => setCopied(false), resetMs)
         return true
       } catch {
-        toast.error(t('devices.mobileSync.credential.copyFailed'))
+        toast.error(t('devices.panel.profile.copyFailed'))
         return false
       }
     },

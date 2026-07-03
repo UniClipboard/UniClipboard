@@ -4,6 +4,7 @@ mod clipboard_entry_repository;
 mod clipboard_event_repository;
 mod clipboard_selection_repository;
 mod delivery;
+mod entry_file_set;
 mod entry_intents;
 mod local_clipboard;
 mod payload_resolver;
@@ -32,6 +33,7 @@ pub use clipboard_entry_repository::ClipboardEntryStore;
 pub use clipboard_event_repository::ClipboardEventRepositoryPort;
 pub use clipboard_selection_repository::ClipboardSelectionRepositoryPort;
 pub use delivery::EntryDeliveryRepositoryPort;
+pub use entry_file_set::EntryFileSetRepositoryPort;
 pub use entry_intents::{
     CheckEntryAvailabilityPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
     GetClipboardEntryPort, GetEntrySnapshotHashPort, ListClipboardEntriesPort,

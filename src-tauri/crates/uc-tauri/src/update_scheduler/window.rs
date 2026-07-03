@@ -17,7 +17,10 @@ pub const UPDATER_WINDOW_LABEL: &str = "updater";
 
 const WINDOW_TITLE: &str = "Software Update";
 const WINDOW_WIDTH: f64 = 520.0;
-const WINDOW_HEIGHT: f64 = 240.0;
+// Tall enough to show the release-notes region (issue #1268) in addition to the
+// header, auto-update toggle, and action buttons. The window is opened only
+// when an update is available, so the changelog area is populated in practice.
+const WINDOW_HEIGHT: f64 = 420.0;
 
 /// 打开 updater 窗口；已存在则把它 unminimize + set_focus 提到前台。
 ///

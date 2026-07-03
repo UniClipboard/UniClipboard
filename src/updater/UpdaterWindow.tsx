@@ -19,6 +19,7 @@ import {
 } from '@/api/updater'
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
+import { ReleaseNotes } from '@/components/update/ReleaseNotes'
 import { useThemeSync } from '@/hooks/useThemeSync'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
@@ -51,7 +52,7 @@ const DEV_MOCK: UpdateState = {
     version: '0.99.0-dev',
     currentVersion: '0.12.0-alpha.1',
     date: new Date().toISOString(),
-    body: '',
+    body: "### What's new\n\n- Auto-update prompt now shows the changelog\n- Fixed a few sync edge cases\n- Performance improvements",
   },
   downloaded: 0,
   total: null,
@@ -427,6 +428,21 @@ const UpdaterWindow: React.FC = () => {
             value={percent ?? undefined}
             className={cn('h-2', percent === null && 'animate-pulse')}
           />
+        </div>
+      )}
+
+      {/* Release notes for the detected version. The auto-detect path opens
+          this window directly (no main window), so — like the in-app About
+          dialog — it must surface the changelog here; otherwise the user has
+          to visit GitHub to see what changed (issue #1268). */}
+      {!upToDate && info && (
+        <div className="mx-6 mt-4 flex min-h-0 flex-1 flex-col gap-1.5">
+          <div className="shrink-0 text-[13px] font-medium text-foreground">
+            {t('update.releaseNotes')}
+          </div>
+          <div className="scrollbar-thin min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            <ReleaseNotes content={info.body ?? ''} fallback={t('update.noNotes')} />
+          </div>
         </div>
       )}
 

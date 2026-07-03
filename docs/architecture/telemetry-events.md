@@ -639,6 +639,7 @@ P2 落地（2026-05-21，与 update scheduler / 系统通知同 PR）。覆盖"�
 |---|---|---|
 | `update_check_performed` | `update_scheduler::tick`（`startup` / `scheduled` / `window_show` 三 source）+ `commands/updater.rs::check_for_update`（`manual` source） | `source`: `startup` \| `scheduled` \| `manual` \| `window_show`, `outcome`: `UpdateCheckOutcome`, `failure_kind`: `Option<UpdateFailureKind>`, `install_kind`: `InstallKind` |
 | `update_notification_shown` | `update_scheduler::notification::send_update_notification` 返回后（去重通过、`tauri-plugin-notification` 调用完成） | `version`: `String`, `delivery_status`: `NotificationDeliveryStatus`, `install_kind`: `InstallKind` |
+| `update_prompt_suppressed` | `NotifyContext::notify_if_new_version` 的 prompt cooldown 分支（scheduled 触发、通过版本去重后被冷却期抑制） | `version`: `String`, `install_kind`: `InstallKind` |
 | `update_dialog_opened` | 前端 `setUpdateDialogOpen(true)` 或 `setPackageManagerDialogOpen(true)` 之后，经 `capture_update_ui_event` Tauri command 转送 | `source`: `DialogOpenSource`, `phase`: `available` \| `downloading` \| `ready`, `install_kind`: `InstallKind` |
 | `update_dismissed` | 前端 AlertDialog Cancel / Content close / PackageManagerDialog close 之后，经 `capture_update_ui_event` 转送 | `phase`: `available` \| `ready`, `source`: `DismissSource` |
 | `update_action_invoked` | `commands/updater.rs::download_update` / `install_update` Tauri command body（manual）+ `update_scheduler` 自动下载分支（auto） | `action`: `UpdateAction`, `outcome`: `started` \| `succeeded` \| `failed` \| `cancelled`, `error_kind`: `Option<String>` |
@@ -650,6 +651,7 @@ P2 落地（2026-05-21，与 update scheduler / 系统通知同 PR）。覆盖"�
 - **setup 期间静默**：`update_scheduler` 等 `SetupStatus.has_completed == true` 后才启动（polling 间隔 30s），避免首次安装 / welcome 流程被任何 update 事件污染分母。
 - **scheduler-only 的 source 值**：`startup` / `scheduled` / `window_show` 仅由 `update_scheduler` emit；命令行 / UI 触发的"检查更新"按钮 emit `manual`。两类 source **绝不** 混用同一调用路径——避免"用户主动检查"与"后台检查"分子错位。
 - **版本字符串相等比较**：去重与 dashboard slicing 都按字符串相等处理，不引入 semver。channel 切换（如 stable → alpha）导致的版本号变化按"新版本"语义处理，会重新通知一次。
+- **prompt cooldown 抑制显式化**：弹窗冷却期（stable 72h / 预发布 24h，`update_prompt_throttle.json` 持久化）会让 `update_check_performed { outcome: available }` 与 `update_notification_shown` 出现缺口，缺口由 `update_prompt_suppressed` 解释——同一版本在冷却期内每轮 scheduled 检查各 emit 一条（衡量抑制压力），auto-download ready-fallback 路径同一轮内不重复 emit。手动检查绕过冷却期，不产生该事件。
 
 落地备注（保留以便回溯）：
 

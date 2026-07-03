@@ -1,18 +1,23 @@
 /**
- * MobileSyncInstallHelper —— "还没装客户端?" 折叠区。
+ * MobileSyncInstallHelper — the collapsible "Haven't installed a client?" block.
  *
- * 展开后是 iOS / Android 二选一 tab, 每个 tab 主操作 = 大 QR 扫码下载对应
- * App (iOS → TestFlight 邀请链接 QR; Android → GitHub Releases APK 页 QR)。
- * 用户在桌面上不需要手动复制 URL, 拿手机对屏一扫即可在浏览器打开下载入口。
+ * Expanded, it's an iOS / Android tab pair; each tab's primary action is a
+ * large QR to download the matching app (iOS → TestFlight invite link QR;
+ * Android → GitHub Releases APK page QR). The user never copies a URL on the
+ * desktop — they point their phone at the screen and the download entry opens
+ * in the mobile browser.
  *
- * iOS tab 多一个二级"或安装快捷指令"link, 作为对不愿/不能装 App 的兜底
- * (装一次后任何"扫码接入" QR 都能用)。Android 没有这条兜底 — uc-android
- * 是 SyncClipboard 协议兼容的 fork, 不需要 shortcut。
+ * The iOS tab has a secondary "or install the Shortcut" link as a fallback for
+ * users who won't/can't install the app (install it once and every "scan to
+ * add" QR works). Android has no such fallback — uc-android is a
+ * SyncClipboard-protocol-compatible fork and needs no shortcut.
  *
- * 历史: 原为 MobileSyncCredentialModal 的私有子组件。#--- 退休注册结果
- * modal 后, 该引导下沉到 MobileDevicePanel 的 fresh 态 (刚添加设备), 故
- * 抽成独立可复用组件。安装 QR 仅注册结果携带, 重置密码路径没有它, 因此
- * 本组件只在拿得到 `installQrCodePngBase64` 时渲染。
+ * History: originally a private child of MobileSyncCredentialModal. After the
+ * post-registration modal was retired (#1291), this helper moved down into
+ * MobileDevicePanel's fresh state (just-added device), so it was extracted into
+ * a standalone reusable component. The install QR only ships with a
+ * registration result; the password-reset path never carries it, so this
+ * component only renders when `installQrCodePngBase64` is available.
  */
 
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -28,15 +33,16 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('mobile-sync-install-helper')
 
-// 产品级常量 — 不本地化, 直接面向用户。
-// iOS App 当前在 TestFlight public beta, 用户必须先装 TestFlight 才能装本
-// App。短期内是 iOS 推荐路径。
+// Product-level constants — not localized, user-facing as-is.
+// The iOS app is currently a TestFlight public beta; users must install
+// TestFlight first. This is the recommended iOS path for now.
 const TESTFLIGHT_URL = 'https://testflight.apple.com/join/nyNQ8dQe'
-// Android 客户端是 SyncClipboard 协议兼容的 fork, APK 走 GitHub releases。
+// The Android client is a SyncClipboard-protocol-compatible fork; the APK
+// ships via GitHub releases.
 const ANDROID_RELEASES_URL = 'https://github.com/UniClipboard/uc-android/releases/latest'
 
 interface MobileSyncInstallHelperProps {
-  /** SyncClipboard 快捷指令的安装 QR (后端渲染 base64 PNG)。 */
+  /** Install QR for the SyncClipboard Shortcut (backend-rendered base64 PNG). */
   installQrCodePngBase64: string
 }
 
@@ -86,8 +92,10 @@ export const MobileSyncInstallHelper: React.FC<MobileSyncInstallHelperProps> = (
               browserLink={t('devices.mobileSync.credential.noClient.ios.openInBrowser')}
               browserHref={TESTFLIGHT_URL}
             />
-            {/* 兜底:不想装 App 的用户走快捷指令路径(只装一次后续都通用)。
-                视觉上是次要 link + 小 QR icon 弹 popover, 不抢 App QR 主体。 */}
+            {/* Fallback: users who don't want the app take the Shortcut path
+                (install once, works for every later scan). Visually a secondary
+                link + small QR-icon popover, so it doesn't steal focus from the
+                primary app QR. */}
             <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2 text-xs">
               <span className="text-muted-foreground">
                 {t('devices.mobileSync.credential.noClient.ios.shortcutFallback')}
@@ -124,11 +132,14 @@ interface ScanToDownloadPanelProps {
 }
 
 /**
- * 通用"扫码下载 App"面板 —— iOS / Android tab 共用:
- * - 大 QR (160px) 居中, 桌面屏对手机摄像头扫码可达
- * - 下面一行 caption 说明"扫码安装什么"
- * - 一行 outline 的"在浏览器打开"次要按钮, 给鼠标用户兜底(他们也能直接在
- *   桌面浏览器登录 GitHub / Apple ID 完成下载流程)
+ * Shared "scan to download the app" panel — used by both the iOS and Android
+ * tabs:
+ * - a large centered QR (160px), reachable by a phone camera pointed at the
+ *   desktop screen
+ * - a caption line explaining what the scan installs
+ * - an outline "open in browser" secondary button as a fallback for mouse users
+ *   (who can also finish the download by logging into GitHub / Apple ID in the
+ *   desktop browser)
  */
 const ScanToDownloadPanel: React.FC<ScanToDownloadPanelProps> = ({
   qrValue,
@@ -161,24 +172,17 @@ const ScanToDownloadPanel: React.FC<ScanToDownloadPanelProps> = ({
 
 interface QrPopoverButtonProps {
   ariaLabel: string
-  /** 优先级 1: 直接给 PNG base64 (后端预渲) */
-  imageSrc?: string
-  /** 优先级 2: 给 SVG value, 前端 qrcode.react 现渲 */
-  svgValue?: string
+  /** Backend-prerendered PNG base64 to display. */
+  imageSrc: string
   imageAlt: string
 }
 
 /**
- * 一个 📷 icon 按钮, 点击弹 popover 显示 QR。popover 内 QR 用 192px,
- * 桌面屏对着扫足够; 不需要再大 — 一旦超过 ~240px, popover 自身高度会
- * 顶到容器边界, 看着拥挤。
+ * A 📷 icon button that opens a popover showing the QR. The popover QR is 192px
+ * — enough to scan off the desktop screen, and no larger: past ~240px the
+ * popover's own height bumps into the container edge and looks cramped.
  */
-const QrPopoverButton: React.FC<QrPopoverButtonProps> = ({
-  ariaLabel,
-  imageSrc,
-  svgValue,
-  imageAlt,
-}) => (
+const QrPopoverButton: React.FC<QrPopoverButtonProps> = ({ ariaLabel, imageSrc, imageAlt }) => (
   <Popover>
     <PopoverTrigger asChild>
       <Button type="button" size="icon-sm" variant="ghost" aria-label={ariaLabel} title={ariaLabel}>
@@ -187,11 +191,7 @@ const QrPopoverButton: React.FC<QrPopoverButtonProps> = ({
     </PopoverTrigger>
     <PopoverContent className="w-auto p-3" align="end">
       <div className="rounded bg-white p-2">
-        {imageSrc !== undefined ? (
-          <img src={imageSrc} alt={imageAlt} className="h-48 w-48" />
-        ) : (
-          <QRCodeSVG value={svgValue ?? ''} size={192} aria-label={imageAlt} />
-        )}
+        <img src={imageSrc} alt={imageAlt} className="h-48 w-48" />
       </div>
     </PopoverContent>
   </Popover>

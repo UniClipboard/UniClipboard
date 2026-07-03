@@ -35,6 +35,8 @@ import { QRCodeSVG } from 'qrcode.react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  DEFAULT_MOBILE_LAN_BIND_IP,
+  DEFAULT_MOBILE_LAN_PORT,
   isMobileSyncError,
   listMobileLanInterfaces,
   updateMobileDevice,
@@ -52,7 +54,7 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { toast } from '@/components/ui/toast'
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { formatRelativeTime, useNow } from '@/hooks/useRelativeTime'
 import { createLogger } from '@/lib/logger'
 import { buildConnectUri } from '@/lib/mobileSyncConnectUri'
@@ -116,7 +118,7 @@ const MobileDevicePanel: React.FC<Props> = ({
   const [lanInterfaces, setLanInterfaces] = useState<LanInterfaceView[]>([])
   const [selectedHost, setSelectedHost] = useState<string | null>(null)
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [backupCopied, setBackupCopied] = useState(false)
+  const { copied: backupCopied, copy: copyBackup } = useCopyToClipboard()
 
   useEffect(() => {
     let cancelled = false
@@ -135,7 +137,7 @@ const MobileDevicePanel: React.FC<Props> = ({
 
   const port = useMemo(() => {
     if (settings?.lanPort != null) return String(settings.lanPort)
-    return '42720'
+    return String(DEFAULT_MOBILE_LAN_PORT)
   }, [settings?.lanPort])
 
   const preferredHost = settings?.lanAdvertiseIp ?? null
@@ -166,7 +168,7 @@ const MobileDevicePanel: React.FC<Props> = ({
   }, [dropdownInterfaces, preferredHost, selectedHost])
 
   const effectiveBaseUrl = useMemo(() => {
-    const host = selectedHost ?? preferredHost ?? '0.0.0.0'
+    const host = selectedHost ?? preferredHost ?? DEFAULT_MOBILE_LAN_BIND_IP
     return `http://${host}:${port}`
   }, [selectedHost, preferredHost, port])
 
@@ -247,7 +249,6 @@ const MobileDevicePanel: React.FC<Props> = ({
       setPasswordInput('')
       setAutoGeneratePassword(false)
       setPasswordVisible(false)
-      setBackupCopied(false)
       setView('info')
       onRotated()
     } catch (err) {
@@ -277,15 +278,9 @@ const MobileDevicePanel: React.FC<Props> = ({
       e.stopPropagation()
       if (!credentialResult?.password) return
       const text = `Server: ${effectiveBaseUrl}\nUsername: ${credentialResult.username}\nPassword: ${credentialResult.password}`
-      try {
-        await navigator.clipboard.writeText(text)
-        setBackupCopied(true)
-        window.setTimeout(() => setBackupCopied(false), 1500)
-      } catch {
-        toast.error(t('devices.mobileSync.credential.copyFailed'))
-      }
+      await copyBackup(text)
     },
-    [credentialResult, effectiveBaseUrl, t]
+    [copyBackup, credentialResult, effectiveBaseUrl]
   )
 
   // The one-time password only exists right after a create / reset; that's the
@@ -937,16 +932,7 @@ const CredentialRow: React.FC<{
 
 const InlineCopyButton: React.FC<{ value: string }> = ({ value }) => {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      toast.error(t('devices.mobileSync.credential.copyFailed'))
-    }
-  }, [t, value])
+  const { copied, copy } = useCopyToClipboard()
   const label = copied
     ? t('devices.mobileSync.credential.copied')
     : t('devices.mobileSync.credential.copy')
@@ -957,7 +943,7 @@ const InlineCopyButton: React.FC<{ value: string }> = ({ value }) => {
       variant="ghost"
       aria-label={label}
       title={label}
-      onClick={handleCopy}
+      onClick={() => void copy(value)}
     >
       {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
     </Button>

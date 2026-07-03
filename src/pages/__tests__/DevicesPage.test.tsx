@@ -52,6 +52,7 @@ vi.mock('@/api/daemon/members', () => ({
 }))
 
 vi.mock('@/api/tauri-command/mobile_sync', () => ({
+  DEFAULT_MOBILE_LAN_PORT: 42720,
   isMobileSyncError: () => false,
   listMobileDevices: vi.fn(() => Promise.resolve([])),
   revokeMobileDevice: vi.fn(),

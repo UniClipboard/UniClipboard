@@ -45,6 +45,7 @@ import { Check, Copy, Smartphone, X } from 'lucide-react'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  DEFAULT_MOBILE_LAN_PORT,
   deriveListenUrl,
   getMobileSyncSettings,
   listMobileLanInterfaces,
@@ -507,7 +508,7 @@ const ListenUrlInfoRow: React.FC<{
       <AutoListenUrlBlock
         label={label}
         interfaces={lanInterfaces}
-        port={settings.lanPort ?? 42720}
+        port={settings.lanPort ?? DEFAULT_MOBILE_LAN_PORT}
       />
     )
   }

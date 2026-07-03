@@ -1,7 +1,7 @@
 import { Check, Copy } from 'lucide-react'
-import React, { useCallback, useState } from 'react'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from '@/components/ui/toast'
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 
 /**
  * Small inline copy-to-clipboard button with a transient "copied" check.
@@ -9,16 +9,7 @@ import { toast } from '@/components/ui/toast'
  */
 const CopyIconButton: React.FC<{ value: string; label?: string }> = ({ value, label }) => {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      toast.error(t('devices.mobileSync.credential.copyFailed'))
-    }
-  }, [t, value])
+  const { copied, copy } = useCopyToClipboard()
   const title = copied
     ? t('devices.panel.profile.copied')
     : (label ?? t('devices.panel.profile.copy'))
@@ -27,7 +18,7 @@ const CopyIconButton: React.FC<{ value: string; label?: string }> = ({ value, la
       type="button"
       aria-label={title}
       title={title}
-      onClick={handleCopy}
+      onClick={() => void copy(value)}
       className="rounded-md p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
     >
       {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}

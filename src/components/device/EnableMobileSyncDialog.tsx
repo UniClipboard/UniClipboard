@@ -30,6 +30,7 @@ import { Loader2 } from 'lucide-react'
 import React, { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  DEFAULT_MOBILE_LAN_PORT,
   isMobileSyncError,
   updateMobileSyncSettings,
   type MobileSyncError,
@@ -48,9 +49,6 @@ import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('enable-mobile-sync-dialog')
-
-/** 默认 LAN port,与 daemon 装配期一次性读 settings 时的兜底完全一致。 */
-const DEFAULT_LAN_PORT = 42720
 
 interface Props {
   open: boolean
@@ -108,7 +106,7 @@ const EnableMobileSyncDialog: React.FC<Props> = ({ open, onOpenChange, onSuccess
         <AlertDialogHeader>
           <AlertDialogTitle>{t('devices.mobileSync.enableConfirm.title')}</AlertDialogTitle>
           <AlertDialogDescription>
-            {t('devices.mobileSync.enableConfirm.body', { port: DEFAULT_LAN_PORT })}
+            {t('devices.mobileSync.enableConfirm.body', { port: DEFAULT_MOBILE_LAN_PORT })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -69,6 +69,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
 import type { PeerSnapshotPayloadItem, PeersChangedPayload } from '@/hooks/useDaemonEvents'
+import { useNow } from '@/hooks/useRelativeTime'
 import { useSetting } from '@/hooks/useSetting'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
@@ -92,6 +93,7 @@ const MOBILE_ACTIVE_WINDOW_MS = 10 * 60 * 1000
 const DevicesPage: React.FC = () => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
+  const now = useNow()
 
   const {
     localDevice,
@@ -323,18 +325,22 @@ const DevicesPage: React.FC = () => {
                 </button>
               }
             />
-            {mobileDevices.map(mobile => (
-              <DeviceListItem
-                key={mobile.deviceId}
-                name={mobile.label}
-                tone={mobileDotTone(mobile)}
-                dimmed={mobileDotTone(mobile) === 'off'}
-                selected={
-                  effectiveSelection.kind === 'mobile' && effectiveSelection.id === mobile.deviceId
-                }
-                onSelect={() => setSelection({ kind: 'mobile', id: mobile.deviceId })}
-              />
-            ))}
+            {mobileDevices.map(mobile => {
+              const tone = mobileDotTone(mobile, now)
+              return (
+                <DeviceListItem
+                  key={mobile.deviceId}
+                  name={mobile.label}
+                  tone={tone}
+                  dimmed={tone === 'off'}
+                  selected={
+                    effectiveSelection.kind === 'mobile' &&
+                    effectiveSelection.id === mobile.deviceId
+                  }
+                  onSelect={() => setSelection({ kind: 'mobile', id: mobile.deviceId })}
+                />
+              )
+            })}
             {mobileDevices.length === 0 && !mobileDevicesError && (
               <p className="px-2.5 py-1.5 text-[11px] text-muted-foreground/70">
                 {t('devices.mobileSync.list.empty.title')}
@@ -568,9 +574,9 @@ function peerDotTone(peer: SpaceMember, lanOnlyActive: boolean): StatusDotTone {
   return kind === 'relay' ? 'warning' : 'success'
 }
 
-function mobileDotTone(mobile: MobileDeviceView): StatusDotTone {
+function mobileDotTone(mobile: MobileDeviceView, now: number): StatusDotTone {
   if (mobile.lastSeenAtMs == null) return 'off'
-  return Date.now() - mobile.lastSeenAtMs <= MOBILE_ACTIVE_WINDOW_MS ? 'info' : 'off'
+  return now - mobile.lastSeenAtMs <= MOBILE_ACTIVE_WINDOW_MS ? 'info' : 'off'
 }
 
 // ────────────────────────────────────────────────────────────────

@@ -712,10 +712,13 @@ pub(crate) fn apply_settings_patch(
         }
         if let Some(dir) = file_sync.auto_save_dir {
             // Blank clears the setting (managed storage); a path sets it.
-            existing.file_sync.auto_save_dir = if dir.trim().is_empty() {
+            // Store the trimmed value so the persisted setting is canonical
+            // (no leading/trailing whitespace round-tripping to the UI).
+            let trimmed = dir.trim();
+            existing.file_sync.auto_save_dir = if trimmed.is_empty() {
                 None
             } else {
-                Some(dir)
+                Some(trimmed.to_string())
             };
         }
     }

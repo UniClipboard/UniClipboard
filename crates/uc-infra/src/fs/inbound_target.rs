@@ -44,10 +44,22 @@ impl FsInboundFileTarget {
         let raw = settings.file_sync.auto_save_dir?;
         let trimmed = raw.trim();
         if trimmed.is_empty() {
-            None
-        } else {
-            Some(PathBuf::from(trimmed))
+            return None;
         }
+        let path = PathBuf::from(trimmed);
+        // The port contract promises an absolute destination. A relative value
+        // (only reachable via a hand-edited setting / API patch — the folder
+        // picker always yields an absolute path) would resolve against the
+        // daemon's working directory, an unpredictable location. Reject it and
+        // fall back to managed storage instead.
+        if !path.is_absolute() {
+            warn!(
+                dir = %path.display(),
+                "reserve_target: configured auto-save dir is not absolute; falling back to managed storage"
+            );
+            return None;
+        }
+        Some(path)
     }
 }
 
@@ -198,6 +210,15 @@ mod tests {
     #[tokio::test]
     async fn returns_none_when_blank() {
         let a = adapter(Some("   ".to_string()));
+        assert!(a.reserve_target("report.pdf").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn returns_none_when_relative() {
+        // The port contract promises an absolute destination; a relative
+        // configured value must fall back to managed storage rather than
+        // resolve against the daemon's working directory.
+        let a = adapter(Some("relative/sub".to_string()));
         assert!(a.reserve_target("report.pdf").await.is_none());
     }
 

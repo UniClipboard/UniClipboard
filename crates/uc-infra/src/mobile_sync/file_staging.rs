@@ -249,14 +249,27 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
         let resolved = self.resolve_write_path(scope_id, data_name).await?;
 
         let bytes_len = bytes.len();
-        tokio::fs::write(&resolved.path, &bytes)
-            .await
-            .map_err(|e| {
-                MobileFileStagingError::Io(format!(
-                    "write staging file {} failed: {e}",
-                    resolved.path.display()
-                ))
-            })?;
+        if let Err(e) = tokio::fs::write(&resolved.path, &bytes).await {
+            // A failed write leaves the reserved placeholder (redirected
+            // user-dir path) or a partial file behind. Remove it best-effort so
+            // it does not linger in the user's save directory (never reclaimed
+            // by cache cleanup) — mirrors `abort_stage`. `NotFound` is expected
+            // when the write never created the file; the save directory itself
+            // is never removed here.
+            if let Err(rm) = tokio::fs::remove_file(&resolved.path).await {
+                if rm.kind() != std::io::ErrorKind::NotFound {
+                    warn!(
+                        path = %resolved.path.display(),
+                        error = %rm,
+                        "mobile_sync staging: failed to remove partial file after write error"
+                    );
+                }
+            }
+            return Err(MobileFileStagingError::Io(format!(
+                "write staging file {} failed: {e}",
+                resolved.path.display()
+            )));
+        }
 
         let uri = path_to_file_uri(&resolved.path)?;
         debug!(
@@ -414,11 +427,20 @@ impl MobileFileStagingPort for FilesystemMobileFileStaging {
                 );
             }
         }
-        // 托管布局:尝试删 scope 目录(只有空时才会成功;非空表明同 scope 还有
-        // 别的文件,留着不动)。failure 是预期的,不报警。用户保存目录
-        // (cleanup_dir = None)绝不删除。
+        // Managed layout: try to remove the (now hopefully empty) scope dir.
+        // `DirectoryNotEmpty` / `NotFound` are the expected outcomes (another
+        // file in the same scope, or an already-cleaned dir) and stay at debug;
+        // anything else is logged so unexpected cleanup failures are
+        // diagnosable. The user save directory (cleanup_dir = None) is never
+        // removed.
         if let Some(scope_dir) = session.cleanup_dir.as_ref() {
-            let _ = tokio::fs::remove_dir(scope_dir).await;
+            if let Err(err) = tokio::fs::remove_dir(scope_dir).await {
+                debug!(
+                    dir = %scope_dir.display(),
+                    error = %err,
+                    "mobile_sync staging: scope dir not removed on abort (expected when non-empty)"
+                );
+            }
         }
 
         debug!(

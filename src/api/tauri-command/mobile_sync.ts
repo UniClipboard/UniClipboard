@@ -310,7 +310,7 @@ export async function listMobileLanInterfaces(): Promise<LanInterfaceView[]> {
  * (or `0.0.0.0` when unset). No runtime probe — pure projection from settings.
  */
 export function deriveListenUrl(view: MobileSyncSettingsView): string {
-  const host = view.lanAdvertiseIp ?? '0.0.0.0'
-  const port = view.lanPort ?? 42720
+  const host = view.lanAdvertiseIp ?? DEFAULT_MOBILE_LAN_BIND_IP
+  const port = view.lanPort ?? DEFAULT_MOBILE_LAN_PORT
   return `http://${host}:${port}`
 }

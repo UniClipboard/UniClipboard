@@ -1,7 +1,7 @@
 /**
  * MobileSyncSettingsDialog —— 移动设备同步全局配置 modal。
  *
- * 视觉语言严格遵循 V2 原型的 modal 设计（与 [[DeviceSettingsDialog]] 同源）：
+ * 视觉语言严格遵循 V2 原型的 modal 设计：
  *
  *   ┌────────────────────────────────────────────────────────────┐
  *   │ 📱 移动设备同步配置                                          │
@@ -26,8 +26,7 @@
  *   └────────────────────────────────────────────────────────────┘
  *
  * 区块辅助组件（DialogSection / ListenUrlInfoRow / SettingControlRow / SettingToggleRow）
- * 与 DeviceSettingsDialog 同形：圆角 border bg-card/50，title `[11px]
- * uppercase tracking-wider`，控件靠右。
+ * 同形：圆角 border bg-card/50，title `[11px] uppercase tracking-wider`，控件靠右。
  *
  * # 关键不变量
  *

@@ -2,13 +2,13 @@
  * AddMobileSyncDeviceDialog —— 添加移动设备表单。
  *
  * 形态:label 必填 + 可选高级选项(自定义 username/password)。提交成功后
- * 关闭本 dialog,把 RegisterMobileDeviceResult 透传给上层(典型走向是
- * MobileSyncDevicesPanel 接住后立即弹 MobileSyncCredentialModal 展示一次
- * 性凭据,凭据 modal 内按平台 tab 展示具体接入步骤)。
+ * 关闭本 dialog,把 RegisterMobileDeviceResult 透传给上层(DevicesPage 接住
+ * 后选中新设备,由 MobileDevicePanel 的 fresh 态内联展示一次性凭据 + 配对
+ * 二维码 + 安装引导,不再弹独立 modal)。
  *
  * 凭据本身是 SyncClipboard 协议级别的(base URL + Basic Auth),与客户端平台
- * 无关 —— 注册时不要求用户选 iOS / Android,统一在 credential modal 里展示
- * 各自的接入方式。
+ * 无关 —— 注册时不要求用户选 iOS / Android,统一在 panel fresh 态的安装引导
+ * 里按平台 tab 展示各自的接入方式。
  *
  * 错误展示:字段级错误(label / username / password 校验)就地展示在对应
  * input 下方,系统级错误(FACADE_UNAVAILABLE / LAN_* / PERSISTENCE 等)

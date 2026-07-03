@@ -2,8 +2,8 @@
  * MobileSyncBaseUrlChip —— mobile sync 流程里复用的"服务地址 chip"。
  *
  * 单 IP 退化为只读 chip + 复制按钮, 多 IP 走 dropdown + 复制按钮。
- * 既被注册成功后的 `MobileSyncCredentialModal` 用, 也被设备卡片的
- * `MobileSyncDeviceDialog` 用 —— 两边共享同一控件以保持视觉与行为一致。
+ * Used by the `MobileDevicePanel` detail pane (both its steady server-address
+ * row and the fresh-state pairing card) so the address renders identically.
  *
  * 注意: 切换 host 不写回 daemon settings 也不重启 listener — daemon 永远
  * bind `0.0.0.0:<lan_port>`, 这里的 host 只影响"对外展示 / 写入 QR / 复制"。

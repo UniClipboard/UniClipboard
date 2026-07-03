@@ -133,7 +133,16 @@ _Avoid_: clipboard state、current clip、selection、LWW key
 **ClipboardEvent** 的 `snapshot_hash`（同一个 hash、同一个名字：寄存器 / 线格 / 持久
 层共用，不是新立的量）。注意两条独立版本线：wire 串前缀 `blake3v1:` 标的是 hash
 **算法** 版本，聚合时另有域分隔前缀 `snapshot-hash-v1|` 标的是 **快照聚合方案** 版本，
-二者各自演进。
+二者各自演进。对含目录结构的 **EntryFileSet**（任一 root 是目录），**结构入
+身份**：文件内容组件不再是裸摘要集合，而是逐成员 leaf 的聚合——
+`leaf = BLAKE3("file-set-member-v1|" ‖ root_name ‖ 0x00 ‖ relative_path ‖ 0x00 ‖
+kind_tag ‖ 0x00 ‖ file_digest)`（relative_path 经 NFC 归一化、`/` 分隔；kind_tag
+`f` 普通文件 / `x` 可执行文件 / `d` 空目录——exec bit 影响粘贴产物故入身份，
+Windows 源端恒为 `f`；空目录以 `d` leaf 参与；大小写不折叠），组件 =
+`BLAKE3("file-set-v1|" ‖ sort(leaves))`。**版本化落在文件内容组件上**
+（`file-content|` → `file-set-v1|`），外层 `snapshot-hash-v1|` 聚合方案不动；纯裸
+文件集合仍走原算法，存量 entry 身份逐字节不变、零迁移。root 目录名入身份，其
+父目录绝对路径不入（设备本地）。
 _Avoid_: entry_id、digest、checksum、transfer_id、blob 的 content_hash、单条
 representation 的 hash
 
@@ -172,7 +181,56 @@ _Avoid_: download、resend、fetch、sync
   于是源端「按 `snapshot_hash` 反查本机 entry」必然落空，pull 取不到内容
 - active-clipboard 的投递同样遵循 **Transient sync semantics**（失败不重试）
 
-## Language — 文件传输（接收侧）
+## Language — 文件集与目录
+
+**EntryFileSet**：
+一条 entry 名下「本次复制涉及的全部文件系统对象」的逐行 manifest。每行由
+`(root_index, relative_path)` 定位：`root_index` 对应 uri-list 中第几条顶层 URI，
+`relative_path` 是该成员在其 root 内的相对路径（裸文件为空串，`kind = dir` 行表达
+空目录）。「复制 3 个文件」「复制 1 个文件夹」「文件与文件夹混选」统一为同一个
+概念——文件集；**目录不是独立聚合，只是带相对路径的文件集成员**。
+_Avoid_: directory manifest、folder entry、file list（指 uri-list rep 文本）
+
+**Sync-ineligible entry**：
+已正常落入本地历史、但被判定不参与同步的 entry（带原因：超文件集限额、单成员
+超限、摄取期间目录被修改、含不可传输成员等）。本地粘贴不受影响——它是「同步
+资格」维度，不是 entry 的生命周期状态。它从未摄取 blob、无就绪的
+`snapshot_hash`，故 **手动重发对它不可用**（没有"事后补摄取"的口子——那会让身份
+脱离任何被复制过的内容）；想同步须解决原因后重新复制。
+_Avoid_: failed entry、local entry、skipped
+
+**文件集成员边界**（EntryFileSet 收什么）：
+普通文件与空目录入集；隐藏文件（dotfiles）照常包含；硬链接当独立普通文件
+（不保留链接关系，传输侧靠内容去重只传一份字节）；executable bit 保留（manifest
+行级标志，Unix 落盘置位、Windows 忽略）；**符号链接与特殊文件（FIFO / socket /
+设备节点）→ 整个目录判 Sync-ineligible**——不静默跳过（违背全有或全无）、不解
+引用（循环 / 树外逃逸 / 语义漂移），拒绝并报明确原因。权限位（除 exec bit）、
+xattr、时间戳不保留，落盘按接收端默认 umask。
+_Avoid_: 部分同步、跳过 symlink、dereference
+
+**Deferred snapshot identity**：
+文件集 entry 的 `snapshot_hash` 依赖读完全部成员字节，故相对捕获时刻 **延迟就绪**：
+捕获热路径只做毫秒级元数据预检（总大小、成员数限额），内容哈希与 blob 摄取
+异步进行；就绪前该 entry 不参与 dispatch 与 active-clipboard 广播。就绪前剪贴板
+被新内容顶替 → 放弃摄取，降级为 **Sync-ineligible entry**。摄取结束对已见成员做
+`(mtime, size)` 漂移复核，发现目录在复制后被修改 → 同样放弃（不传混合态快照）。
+_Avoid_: lazy hash、pending entry、async capture
+
+### 关系（文件集与目录）
+
+- 接收侧对文件集 entry 是 **全有或全无**：全部成员 `Completed` 后才重建目录树并
+  改写本机 uri-list（此前不可粘贴）；任一成员失败 → 按 **Entry transfer summary**
+  聚合为 `Failed`，用户手动重发时已到 blob 按内容去重、只补缺
+- 落盘位置沿用单文件规则（保存目录或托管缓存）；root 目录名冲突**仅对 root 加
+  后缀**（`photos (2)/`），树内部原封不动；重发的重建视为新投递、新建后缀目录，
+  不合并、不覆盖
+- 相对路径落盘做穿越防护（拒 `..`、绝对路径、越界）
+- 手机端（pull-only）不消费文件集 entry：register 指向它时，`GET
+  /SyncClipboard.json` 保持上一个手机可消费的值不变
+- 目录支持以 dedup 计划的 `entry_file_set` 表先落地为前置（目录成员 = 带
+  `(root_index, relative_path)` 的行），不另建平行 schema
+
+
 
 **Tracked inbound file transfer**：
 接收设备本地为「一个正在/已经收下的文件」维护的一条投影记录（id、来源设备、

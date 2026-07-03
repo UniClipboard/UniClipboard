@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   cancelDownload,
+  checkForUpdate,
   getAutoDownloadUpdate,
   getDownloadProgress,
   getInstallKind,
@@ -68,6 +69,10 @@ const isDevPreview = (): boolean => {
 function useUpdaterState(devPreview: boolean) {
   const [state, setState] = useState<UpdateState>(() => (devPreview ? DEV_MOCK : initialState))
   const [cancelling, setCancelling] = useState(false)
+  // Re-checking the latest version before committing to install (see
+  // `handleInstall`). Kept separate from `phase` so the button can show a
+  // transient loading state without entering the download state machine.
+  const [preparing, setPreparing] = useState(false)
   // Windows portable ("green") zip cannot self-install: the NSIS payload would
   // install into Program Files instead of refreshing the portable folder. The
   // scheduler already skips auto-download for it, but this window previously
@@ -229,6 +234,43 @@ function useUpdaterState(devPreview: boolean) {
       openUrl(RELEASE_PAGE_URL).catch(err => log.error({ err }, '打开发布页失败'))
       return
     }
+
+    // Re-check the latest version before committing to install. The pending
+    // update is a snapshot from when the scheduler first detected it; if a
+    // newer release shipped since (e.g. 0.14.0 popup while 0.14.1 is out),
+    // installing the cached version lands the user on an already-outdated
+    // build that immediately prompts again. A fresh check lets the backend
+    // supersede the pending state and re-emit `update-available`, which
+    // refreshes this window to the newer version + changelog so the user can
+    // review and confirm with a second click.
+    const pendingVersion = state.info?.version
+    if (pendingVersion) {
+      setPreparing(true)
+      try {
+        const latest = await checkForUpdate()
+        if (!latest) {
+          // No longer offered (e.g. release pulled). The backend has cleared
+          // the pending state; reflect up-to-date instead of installing a
+          // version that no longer exists.
+          setPreparing(false)
+          setState(prev => ({ ...prev, phase: 'idle', info: null }))
+          return
+        }
+        if (latest.version !== pendingVersion) {
+          // A different (newer) version is available. The window has already
+          // been refreshed via the `update-available` broadcast; stop so the
+          // user confirms the new version explicitly.
+          setPreparing(false)
+          return
+        }
+      } catch (err) {
+        // Offline / timeout: fall through and install the cached version
+        // rather than blocking the update on a failed re-check.
+        log.warn({ err }, '安装前重新检查失败；安装已缓存版本')
+      }
+      setPreparing(false)
+    }
+
     try {
       await installUpdate(progress => {
         setState(prev => ({
@@ -242,7 +284,7 @@ function useUpdaterState(devPreview: boolean) {
       log.error({ err: error }, '安装更新失败')
       setState(prev => ({ ...prev, phase: prev.info ? 'available' : 'idle' }))
     }
-  }, [devPreview, isPortable])
+  }, [devPreview, isPortable, state.info])
 
   const handleCancel = useCallback(async () => {
     if (devPreview || cancelling) return
@@ -259,6 +301,7 @@ function useUpdaterState(devPreview: boolean) {
   return {
     state,
     cancelling,
+    preparing,
     isPortable,
     closeWindow,
     handleSkip,
@@ -272,13 +315,25 @@ const ActionButtons: React.FC<{
   phase: DownloadPhase
   hasInfo: boolean
   cancelling: boolean
+  /** Re-checking the latest version before install; disables the actions. */
+  preparing: boolean
   /** Portable build: primary action opens the release page instead of installing. */
   isPortable: boolean
   onCancel: () => void
   onSkip: () => void
   onClose: () => void
   onInstall: () => void
-}> = ({ phase, hasInfo, cancelling, isPortable, onCancel, onSkip, onClose, onInstall }) => {
+}> = ({
+  phase,
+  hasInfo,
+  cancelling,
+  preparing,
+  isPortable,
+  onCancel,
+  onSkip,
+  onClose,
+  onInstall,
+}) => {
   const { t } = useTranslation()
   const isDownloading = phase === 'downloading'
   const isInstalling = phase === 'installing'
@@ -344,30 +399,39 @@ const ActionButtons: React.FC<{
     <>
       <button
         type="button"
-        className="rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+        className="rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
         onClick={onSkip}
+        disabled={preparing}
       >
         {t('updater.window.skipThisVersion')}
       </button>
       <div className="flex-1" />
       <button
         type="button"
-        className="mr-2 rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+        className="mr-2 rounded-md border border-border bg-secondary px-4 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
         onClick={onClose}
+        disabled={preparing}
       >
         {t('updater.window.remindMeLater')}
       </button>
       <button
         type="button"
-        className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         onClick={onInstall}
-        disabled={!hasInfo}
+        disabled={!hasInfo || preparing}
       >
-        {isPortable
-          ? t('update.packageManager.openReleasePage')
-          : isReady
-            ? t('update.installNow')
-            : t('updater.window.installUpdate')}
+        {preparing ? (
+          <>
+            <Loader2 className="size-4 animate-spin" />
+            {t('updater.window.checking')}
+          </>
+        ) : isPortable ? (
+          t('update.packageManager.openReleasePage')
+        ) : isReady ? (
+          t('update.installNow')
+        ) : (
+          t('updater.window.installUpdate')
+        )}
       </button>
     </>
   )
@@ -381,6 +445,7 @@ const UpdaterWindow: React.FC = () => {
   const {
     state,
     cancelling,
+    preparing,
     isPortable,
     closeWindow,
     handleSkip,
@@ -469,6 +534,7 @@ const UpdaterWindow: React.FC = () => {
           phase={phase}
           hasInfo={!!info}
           cancelling={cancelling}
+          preparing={preparing}
           isPortable={isPortable}
           onCancel={() => void handleCancel()}
           onSkip={handleSkip}

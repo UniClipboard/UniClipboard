@@ -448,9 +448,37 @@ pub async fn check_for_update(
     record_trace_fields(&span, &_trace);
 
     let analytics = runtime.analytics();
-    let resolved_channel = channel.as_deref().map(parse_channel);
 
     async move {
+        // Resolve the effective channel the same way the scheduler and the
+        // tray manual check do: an explicit channel from the caller wins,
+        // otherwise the user's configured channel from settings, falling back
+        // to version-detected only when settings can't be read. Without this
+        // the in-app "Check for updates" button would resolve via
+        // `detect_channel(binary_version)` and could disagree with the
+        // settings-driven scheduler, surfacing a different (often older)
+        // version than the auto-detect popup.
+        let resolved_channel = match channel.as_deref() {
+            Some(c) => Some(parse_channel(c)),
+            None => {
+                let app_version = app.package_info().version.to_string();
+                let ch = match runtime.settings_port().load().await {
+                    Ok(settings) => crate::update_scheduler::scheduler::resolve_channel(
+                        settings.general.update_channel.clone(),
+                        &app_version,
+                    ),
+                    Err(err) => {
+                        warn!(
+                            target: "updater",
+                            error = %err,
+                            "failed to load settings; falling back to version-detected channel"
+                        );
+                        detect_channel(&app_version)
+                    }
+                };
+                Some(ch)
+            }
+        };
         let result = do_check_for_update(&app, resolved_channel, pending.inner()).await;
 
         // Phase 5B: 任何 source 的 check 完成（成功或失败）都更新 LastCheckAt，

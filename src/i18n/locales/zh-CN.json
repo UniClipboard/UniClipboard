@@ -71,6 +71,7 @@
       "skipThisVersion": "跳过此版本",
       "remindMeLater": "稍后提醒",
       "installUpdate": "安装更新",
+      "checking": "正在检查最新版本…",
       "autoUpdate": "今后自动下载更新",
       "upToDateTitle": "已是最新版本！",
       "upToDateBody": "你已经在使用最新的 UniClipboard。",

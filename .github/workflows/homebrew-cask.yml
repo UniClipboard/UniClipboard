@@ -1,12 +1,12 @@
 name: 'Homebrew Official Cask'
-run-name: >-
-  ${{ github.event_name == 'release'
-    && format('homebrew-cask-{0}', github.event.release.tag_name)
-    || format('homebrew-cask-manual-{0}', inputs.version) }}
+run-name: homebrew-cask-manual-${{ inputs.version }}
 
+# Manual-only. Version bumps for the existing cask are handled automatically by
+# Homebrew's BrewTestBot (the cask carries a `livecheck` stanza), so a
+# per-release auto-PR here only duplicated that work and risked auto-closed PRs.
+# Run this workflow by hand for the initial cask submission or metadata changes
+# (desc/zap/depends_on/livecheck) that BrewTestBot won't make on its own.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -25,7 +25,6 @@ permissions:
 jobs:
   submit:
     name: Submit official cask PR
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
     runs-on: macos-latest
     env:
       CASK_TOKEN: ${{ secrets.HOMEBREW_CASK_TOKEN }}
@@ -38,16 +37,10 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          EVENT_NAME: ${{ github.event_name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            VERSION="${INPUT_VERSION#v}"
-          else
-            VERSION="${RELEASE_TAG#v}"
-          fi
+          VERSION="${INPUT_VERSION#v}"
 
           if [ -z "$VERSION" ]; then
             echo "Could not derive version" >&2

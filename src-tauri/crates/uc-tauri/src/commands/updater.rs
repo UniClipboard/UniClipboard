@@ -571,8 +571,15 @@ pub(crate) async fn perform_manual_check_from_tray(app: &AppHandle) {
     if let Ok(Some(metadata)) = &result {
         match app.try_state::<Arc<crate::update_scheduler::NotifyContext>>() {
             Some(ctx) => {
-                ctx.notify_if_new_version(&resolved_channel, &metadata.version, install_kind)
-                    .await;
+                // Manual trigger: the user explicitly asked, so the prompt
+                // cooldown does not apply (per-version dedup still does).
+                ctx.notify_if_new_version(
+                    &resolved_channel,
+                    &metadata.version,
+                    install_kind,
+                    crate::update_scheduler::NotifyTrigger::Manual,
+                )
+                .await;
             }
             None => warn!(
                 target: "updater",

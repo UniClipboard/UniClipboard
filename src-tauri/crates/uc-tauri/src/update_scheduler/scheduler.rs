@@ -34,8 +34,7 @@ use uc_observability::analytics::{
 };
 
 use super::last_check_at::LastCheckAt;
-use super::notify_context::NotifyContext;
-use super::window::open_or_focus_updater_window;
+use super::notify_context::{NotifyContext, NotifyTrigger};
 use crate::commands::updater::{
     classify_check_failure, detect_install_kind, do_check_for_update, do_download_update,
     install_kind_for_telemetry, DownloadError, InstallKind, PendingUpdate,
@@ -286,21 +285,23 @@ async fn run_one_iteration(
     if let Ok(Some(metadata)) = &result {
         let window_opened = deps
             .notify
-            .notify_if_new_version(&resolved_channel, &metadata.version, install_kind)
+            .notify_if_new_version(
+                &resolved_channel,
+                &metadata.version,
+                install_kind,
+                NotifyTrigger::Scheduled,
+            )
             .await;
         if settings.general.auto_download_update && should_auto_download(install_kind_raw) {
             let downloaded_to_ready = auto_download(deps, &app, pending.inner()).await;
             // 兜底：去重让窗口没弹（之前的进程通知过这版本），但本进程
             // 又新下到了 Ready。用户从未在本次会话里见过更新提示——
             // 此时再开一次窗口，UI 会显示 "已下载，立即安装"。
+            // （fallback 同样受 prompt cooldown 约束，见 NotifyContext。）
             if downloaded_to_ready && !window_opened {
-                if let Err(err) = open_or_focus_updater_window(&deps.notify.app_handle, false) {
-                    warn!(
-                        target: "update_scheduler",
-                        error = %err,
-                        "failed to open updater window after auto-download (ready fallback)"
-                    );
-                }
+                deps.notify
+                    .open_ready_fallback_window(&resolved_channel)
+                    .await;
             }
         }
     }

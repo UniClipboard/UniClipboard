@@ -207,6 +207,22 @@ pub enum Event {
         install_kind: InstallKind,
     },
 
+    /// A scheduled check found a new version that passed per-version dedup,
+    /// but the prompt cooldown suppressed the updater window. Schema doc §7.8.
+    ///
+    /// Explains the gap between `update_check_performed { outcome: available }`
+    /// and `update_notification_shown` on dashboards. Emitted once per
+    /// suppressed scheduled check (the same version can appear repeatedly
+    /// while the cooldown is active); the auto-download ready-fallback path
+    /// does not emit a second event within the same check iteration.
+    ///
+    /// `version` follows the same raw-string, low-cardinality rationale as
+    /// `update_notification_shown.version`.
+    UpdatePromptSuppressed {
+        version: String,
+        install_kind: InstallKind,
+    },
+
     /// 用户打开了更新对话框（`UpdateDialog` 或 `PackageManagerUpdateDialog`）。
     /// schema doc §7.8。
     ///
@@ -276,6 +292,7 @@ impl Event {
             Event::MobileAuthFailed { .. } => "mobile_auth_failed",
             Event::UpdateCheckPerformed { .. } => "update_check_performed",
             Event::UpdateNotificationShown { .. } => "update_notification_shown",
+            Event::UpdatePromptSuppressed { .. } => "update_prompt_suppressed",
             Event::UpdateDialogOpened { .. } => "update_dialog_opened",
             Event::UpdateDismissed { .. } => "update_dismissed",
             Event::UpdateActionInvoked { .. } => "update_action_invoked",
@@ -419,6 +436,13 @@ impl Event {
             } => to_map(json!({
                 "version": version,
                 "delivery_status": delivery_status,
+                "install_kind": install_kind,
+            })),
+            Event::UpdatePromptSuppressed {
+                version,
+                install_kind,
+            } => to_map(json!({
+                "version": version,
                 "install_kind": install_kind,
             })),
             Event::UpdateDialogOpened {
@@ -1111,6 +1135,13 @@ mod tests {
                     install_kind: InstallKind::Macos,
                 },
                 "update_notification_shown",
+            ),
+            (
+                Event::UpdatePromptSuppressed {
+                    version: "0.12.0".into(),
+                    install_kind: InstallKind::Macos,
+                },
+                "update_prompt_suppressed",
             ),
             (
                 Event::UpdateDialogOpened {
@@ -1816,6 +1847,18 @@ mod tests {
             Some(&json!("permission_denied"))
         );
         assert_eq!(props.get("install_kind"), Some(&json!("macos")));
+    }
+
+    #[test]
+    fn update_prompt_suppressed_properties() {
+        let event = Event::UpdatePromptSuppressed {
+            version: "0.13.0-alpha.1".into(),
+            install_kind: InstallKind::Windows,
+        };
+        let props = event.properties();
+        assert_eq!(props.get("version"), Some(&json!("0.13.0-alpha.1")));
+        assert_eq!(props.get("install_kind"), Some(&json!("windows")));
+        assert_eq!(props.len(), 2);
     }
 
     #[test]

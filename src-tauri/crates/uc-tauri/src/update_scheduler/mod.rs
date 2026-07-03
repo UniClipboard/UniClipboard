@@ -2,6 +2,8 @@
 //!
 //! 模块结构：
 //! - `last_notified`: 持久化已通知过的版本（按 channel 去重）
+//! - `prompt_throttle`: persisted prompt cooldown so a fast release cadence
+//!   doesn't open the updater window once per release
 //! - `scheduler`: 主循环 + setup-wait + backoff（Phase 3B）
 //! - `window`: Sparkle 风格更新窗口（替代了 Phase 4A 的系统通知路径）
 //! - `last_check_at`: 距离上次任意 source check 的时间戳（Phase 5B）
@@ -11,6 +13,7 @@
 pub mod last_check_at;
 pub mod last_notified;
 pub mod notify_context;
+pub mod prompt_throttle;
 pub mod scheduler;
 pub mod skipped_version;
 pub mod wake_source;
@@ -24,7 +27,8 @@ mod resume_listener_windows;
 
 pub use last_check_at::LastCheckAt;
 pub use last_notified::LastNotifiedUpdateStore;
-pub use notify_context::NotifyContext;
+pub use notify_context::{NotifyContext, NotifyTrigger};
+pub use prompt_throttle::PromptThrottleStore;
 pub use scheduler::{run, SchedulerDeps};
 pub use skipped_version::SkippedVersionStore;
 pub use wake_source::start as start_wake_source;

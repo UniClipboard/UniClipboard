@@ -789,6 +789,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     &skipped_version_path,
                 )
                 .await;
+                let prompt_throttle_path =
+                    runtime.storage_paths().update_prompt_throttle_path();
+                let throttle_store = crate::update_scheduler::PromptThrottleStore::load(
+                    &prompt_throttle_path,
+                )
+                .await;
                 // 同一个 Arc<NotifyContext> 同时给 scheduler 和托盘手动检查
                 // 用：app.manage 一份，SchedulerDeps 收一份。
                 // 共享意味着去重 mutex / 落盘路径 / analytics 出口完全一致。
@@ -799,6 +805,8 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     last_notified_path,
                     skipped_version: Arc::new(tokio::sync::Mutex::new(skipped_store)),
                     skipped_version_path,
+                    prompt_throttle: Arc::new(tokio::sync::Mutex::new(throttle_store)),
+                    prompt_throttle_path,
                 });
                 app_handle_for_startup.manage(notify_ctx.clone());
                 let scheduler_deps = crate::update_scheduler::SchedulerDeps {

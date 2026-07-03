@@ -2,7 +2,7 @@
 //! classify one line at a time (as opposed to collapsing a whole rep into a
 //! deduped path list — see [`super::extract_file_paths_from_snapshot`]).
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Classification of one `text/uri-list` line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub(crate) enum UriListLineKind {
 }
 
 #[cfg(target_os = "macos")]
-fn resolve_apfs_file_reference(_path: &Path) -> Option<PathBuf> {
+fn resolve_apfs_file_reference(_path: &std::path::Path) -> Option<PathBuf> {
     None
 }
 

@@ -1,16 +1,25 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Switch, Input } from '@/components/ui'
+import {
+  Switch,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
-import type { GeneralSettings } from '@/types/setting'
+import type { GeneralSettings, StartupMode } from '@/types/setting'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 import { useSavingState } from './useSavingState'
 
+const STARTUP_MODES: StartupMode[] = ['normal', 'silent', 'lightweight']
+
 interface StartupForm {
   autoStart: boolean
-  silentStart: boolean
-  lightweightStart: boolean
+  startupMode: StartupMode
   restoreLastEntryOnStartup: boolean
   deviceName: string
 }
@@ -18,8 +27,7 @@ interface StartupForm {
 function deriveStartupForm(general: GeneralSettings | undefined): StartupForm {
   return {
     autoStart: general?.autoStart ?? false,
-    silentStart: general?.silentStart ?? false,
-    lightweightStart: general?.lightweightStart ?? false,
+    startupMode: general?.startupMode ?? 'normal',
     restoreLastEntryOnStartup: general?.restoreLastEntryOnStartup ?? false,
     deviceName: general?.deviceName ?? '',
   }
@@ -41,33 +49,18 @@ export function StartupSettings() {
 
   const handleAutoStartChange = (checked: boolean) =>
     // Autostart still uses the dedicated host command because it applies OS
-    // launch registration.
+    // launch registration. `startupMode` is an independent preference —
+    // Lightweight mode only takes effect on an auto-start launch, but it
+    // stays configurable either way; turning autostart off no longer resets it.
     runSave('Failed to change autostart setting', async () => {
       await updateAutostart(checked)
-      // `lightweightStart` only takes effect on an auto-start launch; turning
-      // autostart off would otherwise leave it checked but unreachable to
-      // uncheck (its row disables when `!autoStart`). Clear it alongside so
-      // there's no stale, stuck-on preference.
-      if (!checked && form.lightweightStart) {
-        await updateGeneralSetting({ lightweightStart: false })
-      }
-      setForm(prev => ({
-        ...prev,
-        autoStart: checked,
-        lightweightStart: checked ? prev.lightweightStart : false,
-      }))
+      setForm(prev => ({ ...prev, autoStart: checked }))
     })
 
-  const handleSilentStartChange = (checked: boolean) =>
-    runSave('Failed to change silent-start setting', async () => {
-      await updateGeneralSetting({ silentStart: checked })
-      setForm(prev => ({ ...prev, silentStart: checked }))
-    })
-
-  const handleLightweightStartChange = (checked: boolean) =>
-    runSave('Failed to change lightweight-start setting', async () => {
-      await updateGeneralSetting({ lightweightStart: checked })
-      setForm(prev => ({ ...prev, lightweightStart: checked }))
+  const handleStartupModeChange = (next: StartupMode) =>
+    runSave('Failed to change startup-mode setting', async () => {
+      await updateGeneralSetting({ startupMode: next })
+      setForm(prev => ({ ...prev, startupMode: next }))
     })
 
   const handleRestoreLastEntryOnStartupChange = (checked: boolean) =>
@@ -113,27 +106,27 @@ export function StartupSettings() {
       </SettingRow>
 
       <SettingRow
-        label={t('settings.sections.general.silentStart.label')}
-        description={t('settings.sections.general.silentStart.description')}
+        label={t('settings.sections.general.startupMode.label')}
+        description={t('settings.sections.general.startupMode.description')}
       >
-        <Switch
-          checked={form.silentStart}
-          onCheckedChange={handleSilentStartChange}
-          disabled={isBusy}
-        />
-      </SettingRow>
-
-      <SettingRow
-        label={t('settings.sections.general.lightweightStart.label')}
-        description={t('settings.sections.general.lightweightStart.description')}
-      >
-        <Switch
-          checked={form.lightweightStart}
-          onCheckedChange={handleLightweightStartChange}
-          // Only takes effect on an OS auto-start launch — disabled until
-          // "Launch at login" is on, so it can't be turned on to no effect.
-          disabled={isBusy || !form.autoStart}
-        />
+        <div className="w-40">
+          <Select
+            value={form.startupMode}
+            onValueChange={handleStartupModeChange}
+            disabled={isBusy}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STARTUP_MODES.map(mode => (
+                <SelectItem key={mode} value={mode}>
+                  {t(`settings.sections.general.startupMode.options.${mode}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </SettingRow>
 
       <SettingRow

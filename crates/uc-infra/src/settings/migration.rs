@@ -3,7 +3,7 @@ use std::time::Duration;
 use tracing::info;
 use uc_core::ports::SettingsMigrationPort;
 use uc_core::settings::model::{
-    RetentionPolicy, RetentionRule, RuleEvaluation, Settings, CURRENT_SCHEMA_VERSION,
+    RetentionPolicy, RetentionRule, RuleEvaluation, Settings, StartupMode, CURRENT_SCHEMA_VERSION,
 };
 
 /// Error type for settings migration failures.
@@ -82,6 +82,39 @@ fn is_v1_stock_default_retention_policy(policy: &RetentionPolicy) -> bool {
         )
 }
 
+/// v2 -> v3: one-time rewrite of the legacy `silent_start` /
+/// `lightweight_start` booleans into the mutually-exclusive `startup_mode`
+/// enum (issue #1169 follow-up: the two booleans were never truly
+/// independent, and the UI hard-coupled `lightweight_start` to requiring
+/// `auto_start` to be on).
+///
+/// If both legacy booleans are set (never produced by this app's own UI,
+/// but a defensive case for hand-edited settings.json), `Lightweight` wins
+/// as the "stronger" background mode.
+struct MigrationV2ToV3;
+
+impl SettingsMigrationPort for MigrationV2ToV3 {
+    fn from_version(&self) -> u32 {
+        2
+    }
+
+    fn to_version(&self) -> u32 {
+        3
+    }
+
+    fn migrate(&self, mut settings: Settings) -> Settings {
+        settings.general.startup_mode = if settings.general.lightweight_start {
+            StartupMode::Lightweight
+        } else if settings.general.silent_start {
+            StartupMode::Silent
+        } else {
+            StartupMode::Normal
+        };
+        settings.schema_version = self.to_version();
+        settings
+    }
+}
+
 pub struct SettingsMigrator {
     migrations: Vec<Box<dyn SettingsMigrationPort>>,
 }
@@ -97,7 +130,7 @@ impl SettingsMigrator {
     /// ```
     pub fn new() -> Self {
         Self {
-            migrations: vec![Box::new(MigrationV1ToV2)],
+            migrations: vec![Box::new(MigrationV1ToV2), Box::new(MigrationV2ToV3)],
         }
     }
 
@@ -273,5 +306,77 @@ mod tests {
             migrated.retention_policy.rules,
             settings.retention_policy.rules
         );
+    }
+
+    #[test]
+    fn v2_lightweight_start_migrates_to_startup_mode_lightweight() {
+        let mut settings = Settings {
+            schema_version: 2,
+            ..Settings::default()
+        };
+        settings.general.lightweight_start = true;
+
+        let migrated = SettingsMigrator::new().migrate_to_latest(settings).unwrap();
+
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(migrated.general.startup_mode, StartupMode::Lightweight);
+    }
+
+    #[test]
+    fn v2_silent_start_alone_migrates_to_startup_mode_silent() {
+        let mut settings = Settings {
+            schema_version: 2,
+            ..Settings::default()
+        };
+        settings.general.silent_start = true;
+
+        let migrated = SettingsMigrator::new().migrate_to_latest(settings).unwrap();
+
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(migrated.general.startup_mode, StartupMode::Silent);
+    }
+
+    #[test]
+    fn v2_neither_legacy_flag_migrates_to_startup_mode_normal() {
+        let settings = Settings {
+            schema_version: 2,
+            ..Settings::default()
+        };
+
+        let migrated = SettingsMigrator::new().migrate_to_latest(settings).unwrap();
+
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(migrated.general.startup_mode, StartupMode::Normal);
+    }
+
+    #[test]
+    fn v2_both_legacy_flags_set_lightweight_wins() {
+        let mut settings = Settings {
+            schema_version: 2,
+            ..Settings::default()
+        };
+        settings.general.silent_start = true;
+        settings.general.lightweight_start = true;
+
+        let migrated = SettingsMigrator::new().migrate_to_latest(settings).unwrap();
+
+        assert_eq!(migrated.general.startup_mode, StartupMode::Lightweight);
+    }
+
+    #[test]
+    fn versionless_settings_with_lightweight_start_migrates_through_v1_and_v2() {
+        // A settings.json missing `schema_version` entirely reads as v1
+        // (see `versionless_settings_with_stock_retention_policy_still_migrates`
+        // above); this exercises the full v1 -> v2 -> v3 chain in one call.
+        let json = r#"{
+            "general": { "lightweight_start": true }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).expect("parse versionless settings");
+        assert_eq!(settings.schema_version, 1);
+
+        let migrated = SettingsMigrator::new().migrate_to_latest(settings).unwrap();
+
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(migrated.general.startup_mode, StartupMode::Lightweight);
     }
 }

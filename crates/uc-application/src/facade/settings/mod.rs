@@ -9,7 +9,7 @@ pub use models::{
     NetworkSettingsView, PairingSettingsPatch, PairingSettingsView, QuickPanelPositionView,
     QuickPanelSettingsPatch, QuickPanelSettingsView, RetentionPolicyPatch, RetentionPolicyView,
     RetentionRulePatchValue, RetentionRuleView, RuleEvaluationView, SecuritySettingsPatch,
-    SecuritySettingsView, SettingsPatch, SettingsView, ShortcutKeyView, SyncFrequencyView,
-    SyncSettingsPatch, SyncSettingsView, ThemeView, UpdateChannelView,
+    SecuritySettingsView, SettingsPatch, SettingsView, ShortcutKeyView, StartupModeView,
+    SyncFrequencyView, SyncSettingsPatch, SyncSettingsView, ThemeView, UpdateChannelView,
 };
 pub use relay_diagnostic::{RelayDiagnosticPort, RelayProbeError, RelayProbeReport};

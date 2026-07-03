@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use reqwest::Method;
 use uc_daemon_contract::api::dto::device::LocalDeviceInfoDto;
+use uc_daemon_contract::api::dto::encryption::EncryptionStateResponse;
 use uc_daemon_contract::api::types::{
     PeerSnapshotDto, PresenceRefreshResponse, SpaceMemberDto, StatusResponse,
 };
@@ -68,6 +69,17 @@ impl DaemonQueryClient {
             .get("success")
             .and_then(|v| v.as_bool())
             .unwrap_or(true))
+    }
+
+    /// Fetch the daemon's current encryption state (`initialized` +
+    /// `session_ready`).
+    ///
+    /// Cold-launch startup restore (issue #1169) polls this to wait until the
+    /// encryption session is unlocked before reading/writing encrypted history:
+    /// both the pre-restore capture-current (encrypt) and the restore itself
+    /// (decrypt) fail while the session is still locked.
+    pub async fn get_encryption_state(&self) -> Result<EncryptionStateResponse> {
+        self.enveloped(Method::GET, "/encryption/state").await
     }
 
     /// Retry the lifecycle boot on the daemon (starts network, opens clipboard capture gate).

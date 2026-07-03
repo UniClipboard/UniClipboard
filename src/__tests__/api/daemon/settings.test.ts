@@ -73,8 +73,7 @@ describe('Settings API', () => {
       const settings = makeSettingsDto({
         general: {
           autoStart: true,
-          silentStart: false,
-          lightweightStart: false,
+          startupMode: 'normal',
           restoreLastEntryOnStartup: false,
           autoCheckUpdate: false,
           autoDownloadUpdate: false,
@@ -173,8 +172,7 @@ describe('Settings API', () => {
         schemaVersion: 1,
         general: {
           autoStart: true,
-          silentStart: false,
-          lightweightStart: false,
+          startupMode: 'normal',
           restoreLastEntryOnStartup: false,
           autoCheckUpdate: true,
           autoDownloadUpdate: false,
@@ -214,8 +212,7 @@ describe('Settings API', () => {
       await updateSettings({
         general: {
           autoStart: false,
-          silentStart: false,
-          lightweightStart: false,
+          startupMode: 'normal',
           restoreLastEntryOnStartup: false,
           autoCheckUpdate: true,
           autoDownloadUpdate: false,
@@ -270,8 +267,7 @@ describe('Settings API', () => {
         updateSettings({
           general: {
             autoStart: false,
-            silentStart: false,
-            lightweightStart: false,
+            startupMode: 'normal',
             restoreLastEntryOnStartup: false,
             autoCheckUpdate: true,
             autoDownloadUpdate: false,

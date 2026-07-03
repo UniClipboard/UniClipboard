@@ -13,10 +13,12 @@
 use std::time::Duration;
 
 use uc_daemon_client::{
-    DaemonClipboardClient, DaemonConnectionState, DaemonSearchClient, DaemonSettingsClient,
-    SearchQueryRequest,
+    DaemonClipboardClient, DaemonConnectionState, DaemonQueryClient, DaemonSearchClient,
+    DaemonSettingsClient, SearchQueryRequest,
 };
+use uc_daemon_contract::api::dto::settings::StartupModeDto;
 
+use crate::daemon::DaemonLaunchOrigin;
 use crate::daemon_recovery::recover_after_cold_launch;
 
 /// GUI-local slack on top of the daemon's own startup budget: covers the
@@ -41,6 +43,16 @@ pub const DEFAULT_READY_TIMEOUT: Duration = Duration::from_millis(
 /// [`run_cold_launch_actions`].
 pub const DEFAULT_READY_POLL: Duration = Duration::from_millis(200);
 
+/// Upper bound for [`wait_for_encryption_session_ready`] before startup
+/// restore gives up. A cold launch frequently has not unlocked the encryption
+/// session yet: auto-unlock may be disabled, and even when it is enabled the
+/// session is only resumed asynchronously by the frontend's silent keyring
+/// unlock a beat after the webview loads (observed ~1.6s after the daemon
+/// turns healthy). This budget also tolerates the user taking a moment to
+/// unlock manually. Expiry only *skips* the restore (logged), so a generous
+/// bound is cheap — the GUI is already fully running while this waits.
+const ENCRYPTION_READY_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Poll `connection_state` until it is populated or `timeout` elapses.
 /// Returns `true` when the connection info is ready.
 pub async fn wait_for_daemon_connection(
@@ -60,21 +72,111 @@ pub async fn wait_for_daemon_connection(
     }
 }
 
+/// Poll the daemon's encryption state until the session is unlocked
+/// (`session_ready`) or `timeout` elapses. Returns `true` once the session is
+/// ready to encrypt/decrypt.
+///
+/// Startup restore reads encrypted history (decrypt) and, before that,
+/// captures the current OS clipboard into history (encrypt); both fail with a
+/// 500 while the session is still locked. A cold launch is often locked at
+/// this point — auto-unlock may be off, and even then the frontend resumes the
+/// session from the keyring only a beat later — so restore must wait for the
+/// session rather than firing once and failing.
+///
+/// Returns `false` (skip restore) on two terminal conditions: `timeout`
+/// elapses, or the store is not `initialized` (no encrypted history exists /
+/// can ever exist this session, so the session will never become ready). A
+/// transient state-query error is not terminal — it is logged and retried
+/// until the deadline.
+pub async fn wait_for_encryption_session_ready(
+    connection_state: DaemonConnectionState,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> bool {
+    let client = DaemonQueryClient::new(connection_state);
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        match client.get_encryption_state().await {
+            Ok(state) if state.session_ready => return true,
+            Ok(state) if !state.initialized => {
+                tracing::info!("encryption store not initialized; skipping startup restore wait");
+                return false;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "failed to query encryption state while waiting to restore; will retry"
+                );
+            }
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(poll_interval).await;
+    }
+}
+
+/// What the shell should do to its main window once
+/// [`run_cold_launch_actions`] returns. The shell decides *how* (window/tray
+/// mechanics are framework-specific); this only carries the decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartupWindowAction {
+    /// Nothing to do — the boot-time window state already matches. Covers
+    /// Normal mode (window already shown) and Silent mode (stays hidden).
+    None,
+    /// Tear down to background-only running (Lightweight Mode, issue #1169):
+    /// a genuine cold start where this launch spawned the daemon. The shell
+    /// notifies the user and exits the GUI process, leaving the daemon up.
+    EnterBackgroundOnly,
+    /// Show the main window: a Lightweight-Mode *reopen*, where a previous
+    /// background-only session left the daemon running and the user relaunched
+    /// the app to get the window back. Boot hid the window (Lightweight always
+    /// hides at boot until the origin is known), so it must be shown now.
+    ShowWindow,
+}
+
+/// Resolve the boot-time window action from whether this launch spawned the
+/// daemon and whether Lightweight Mode is selected.
+///
+/// Only Lightweight Mode has a distinct reopen behavior, because it is the
+/// only mode that exits the GUI process (Normal/Silent keep it alive with a
+/// tray, so a "reopen" reuses the live process via the tray/Dock rather than a
+/// fresh launch). For Normal/Silent the boot-time visibility already matches,
+/// so there is nothing to do here.
+fn resolve_window_action(spawned_this_launch: bool, is_lightweight: bool) -> StartupWindowAction {
+    match (is_lightweight, spawned_this_launch) {
+        (true, true) => StartupWindowAction::EnterBackgroundOnly,
+        (true, false) => StartupWindowAction::ShowWindow,
+        (false, _) => StartupWindowAction::None,
+    }
+}
+
 /// What the shell should do once [`run_cold_launch_actions`] returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColdLaunchOutcome {
-    /// Whether the shell should transition to its background-only running
-    /// state now that the daemon is confirmed ready and settings have been
-    /// read. The shell decides how ("background-only mode" mechanics are
-    /// framework-specific); this flag only carries the user's preference.
-    pub enter_background_only_mode: bool,
+    /// How the shell should reconcile its main window now that the daemon is
+    /// confirmed ready, settings have been read, and the launch origin (cold
+    /// start vs reopen) is known.
+    pub window_action: StartupWindowAction,
 }
 
 /// Run the daemon-dependent cold-launch sequence: wait for the daemon
-/// connection, fetch settings once, auto-unlock + lifecycle retry, and
-/// optionally restore the most recent clipboard entry. Returns `None` when
-/// the daemon never became reachable or settings could not be read — the
-/// caller should skip any further startup action in that case.
+/// connection, fetch settings once, and — only on a genuine cold start
+/// (`launch_origin` reports this launch spawned the daemon) — auto-unlock +
+/// lifecycle retry and optionally restore the most recent clipboard entry.
+/// Returns `None` when the daemon never became reachable or settings could
+/// not be read — the caller should skip any further startup action then.
+///
+/// The `launch_origin` split matters two ways (issue #1169):
+/// - A **reopen** (a compatible daemon was already running — typically a
+///   previous Lightweight-Mode session that left it up) must NOT re-run the
+///   restore: it already ran when the daemon first started, and re-running it
+///   would clobber the OS clipboard every time the user reopens the window.
+/// - Under Lightweight Mode, a cold start hands off to background-only running
+///   ([`StartupWindowAction::EnterBackgroundOnly`]) while a reopen shows the
+///   window ([`StartupWindowAction::ShowWindow`]) — the whole point of the
+///   reopen.
 ///
 /// Wrapped in its own span so the whole sequence's `info!`/`warn!` events
 /// (here and in `daemon_recovery`) correlate under one trace instead of
@@ -82,6 +184,7 @@ pub struct ColdLaunchOutcome {
 #[tracing::instrument(name = "startup.cold_launch_actions", level = "info", skip_all)]
 pub async fn run_cold_launch_actions(
     connection_state: DaemonConnectionState,
+    launch_origin: DaemonLaunchOrigin,
     daemon_ready_timeout: Duration,
     daemon_ready_poll: Duration,
 ) -> Option<ColdLaunchOutcome> {
@@ -106,6 +209,22 @@ pub async fn run_cold_launch_actions(
         }
     };
 
+    let is_lightweight = matches!(settings.general.startup_mode, StartupModeDto::Lightweight);
+    // The connection is ready, so the probe has settled the origin.
+    let spawned_this_launch = launch_origin.spawned_this_launch();
+
+    if !spawned_this_launch {
+        // Reopen: a compatible daemon was already running (e.g. a previous
+        // Lightweight-Mode session), so this launch only connected. Skip the
+        // cold-start recovery and restore entirely — they belong to the
+        // daemon's original start, and re-running the restore would overwrite
+        // the OS clipboard on every window reopen (issue #1169).
+        tracing::info!("daemon already running (reopen); skipping cold-start recovery and restore");
+        return Some(ColdLaunchOutcome {
+            window_action: resolve_window_action(false, is_lightweight),
+        });
+    }
+
     recover_after_cold_launch(
         connection_state.clone(),
         settings.security.auto_unlock_enabled,
@@ -113,11 +232,32 @@ pub async fn run_cold_launch_actions(
     .await;
 
     if settings.general.restore_last_entry_on_startup {
-        restore_last_entry(connection_state).await;
+        // Both the pre-restore capture-current (encrypt) and the restore
+        // itself (decrypt) touch encrypted history, so they need the
+        // encryption session unlocked. `recover_after_cold_launch` above does
+        // NOT guarantee that: it skips unlocking entirely when auto-unlock is
+        // off, and even with it on the session may be resumed by the frontend
+        // a beat later. Wait for the session to become ready before restoring;
+        // on timeout skip (not fail) so we never fire the doomed 500-ing
+        // capture+restore into a locked session (issue #1169).
+        if wait_for_encryption_session_ready(
+            connection_state.clone(),
+            ENCRYPTION_READY_TIMEOUT,
+            daemon_ready_poll,
+        )
+        .await
+        {
+            restore_last_entry(connection_state).await;
+        } else {
+            tracing::warn!(
+                timeout_secs = ENCRYPTION_READY_TIMEOUT.as_secs(),
+                "encryption session not ready in time; skipping startup restore of the most recent clipboard entry"
+            );
+        }
     }
 
     Some(ColdLaunchOutcome {
-        enter_background_only_mode: settings.general.lightweight_start,
+        window_action: resolve_window_action(true, is_lightweight),
     })
 }
 
@@ -181,5 +321,46 @@ async fn restore_last_entry(connection_state: DaemonConnectionState) {
         tracing::warn!(error = %error, "failed to restore most recent clipboard entry");
     } else {
         tracing::info!("restored most recent clipboard entry to the OS clipboard");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lightweight_cold_start_enters_background() {
+        // Scenario 2 (auto-start) and scenario 1's first manual launch collapse
+        // to the same path: this launch spawned the daemon under Lightweight
+        // Mode, so hand off to background-only running.
+        assert_eq!(
+            resolve_window_action(true, true),
+            StartupWindowAction::EnterBackgroundOnly
+        );
+    }
+
+    #[test]
+    fn lightweight_reopen_shows_window() {
+        // A later click on the app icon: the daemon a previous Lightweight
+        // session left running is found already up, so show the window.
+        assert_eq!(
+            resolve_window_action(false, true),
+            StartupWindowAction::ShowWindow
+        );
+    }
+
+    #[test]
+    fn non_lightweight_never_acts_regardless_of_origin() {
+        // Normal/Silent keep the GUI process alive with a tray, so their
+        // boot-time visibility already matches — nothing to reconcile here,
+        // whether this launch spawned the daemon or found one running.
+        assert_eq!(
+            resolve_window_action(true, false),
+            StartupWindowAction::None
+        );
+        assert_eq!(
+            resolve_window_action(false, false),
+            StartupWindowAction::None
+        );
     }
 }

@@ -10,6 +10,8 @@
 //! 整棵 daemon runtime 依赖树（uc-webserver / uc-application 等）。把类型下沉到
 //! 这里、删掉死 re-export 后，依赖边断开，GUI 构建不再编 daemon runtime。
 
+mod launch_origin;
 mod ownership;
 
+pub use launch_origin::DaemonLaunchOrigin;
 pub use ownership::DaemonOwnership;

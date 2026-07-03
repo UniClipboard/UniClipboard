@@ -26,7 +26,7 @@ use uc_desktop::daemon_probe::{
 };
 use uc_desktop::gui_wiring::{build_gui_client_context, ensure_default_device_name};
 use uc_desktop::shortcuts::GlobalShortcutRegistry;
-use uc_desktop::DaemonOwnership;
+use uc_desktop::{DaemonLaunchOrigin, DaemonOwnership};
 
 use crate::bootstrap::TauriAppRuntime;
 use crate::commands::updater::PendingUpdate;
@@ -52,18 +52,14 @@ pub(crate) const SHUTDOWN_FRONTEND_GRACE_MS: u64 = 100;
 /// workspace 共享版本号所以与 `uniclipboard` bin 一致。
 const EXPECTED_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Marker arg the OS auto-start login item launches with (see the
-/// `tauri_plugin_autostart::init` call below). Distinguishes an auto-start
-/// launch from a manual one (Dock/Start-menu/Finder double-click) so
-/// `lightweight_start` (issue #1169) can apply only to the former — a
-/// manual launch must always present the normal interface, or "reopen the
-/// app" could never bring the window back once the setting is on.
+/// Marker arg the OS auto-start login item launches with (registered on the
+/// `tauri_plugin_autostart::init` call below). It tags auto-start launches so
+/// future work (per-profile login items, launch diagnostics) can recognize
+/// them. Lightweight Mode no longer branches on it: whether to hand off to
+/// background-only running is decided by whether this launch spawned the daemon
+/// (a cold start) versus attached to one already running (a reopen), which
+/// covers both auto-start and manual first launches uniformly (issue #1169).
 const AUTOSTART_LAUNCH_ARG: &str = "--autostart";
-
-/// Whether this process was launched by the OS auto-start login item.
-fn launched_via_autostart() -> bool {
-    std::env::args().any(|arg| arg == AUTOSTART_LAUNCH_ARG)
-}
 
 /// Translate a daemon-WS [`RealtimeEvent`] into the application-layer
 /// [`HostEvent`] the activity HUD consumes (ADR-008 P3-3 B2'-3).
@@ -253,6 +249,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
     let daemon_connection_state = DaemonConnectionState::default();
     let daemon_ownership = DaemonOwnership::default();
+    // Records whether this launch spawned the daemon (a genuine cold start) or
+    // attached to one already running (a reopen after Lightweight Mode exited
+    // the previous GUI process). Drives the Lightweight-Mode window decision
+    // below — see the cold-launch task (issue #1169).
+    let daemon_launch_origin = DaemonLaunchOrigin::default();
     // Records a terminal daemon-bootstrap failure so the frontend poll can fail
     // fast with an actionable reason instead of spinning until its timeout (the
     // connection state is only ever set on success). See
@@ -371,10 +372,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
         // 冷启动经下方 setup 的 `bootstrap_daemon_in_process` 拉起）。沿用
         // tauri-plugin-autostart，不自建 OS 原生 daemon 投影 / StartupIntegrationProvider。
         //
-        // launch args 只带 `AUTOSTART_LAUNCH_ARG`（`launched_via_autostart` 用它
-        // 区分自启动 vs 手动启动，issue #1169 的 `lightweight_start` 只在自启动
-        // 时生效）+ autolaunch 用编译期固定 bundle id：产品对用户只暴露
-        // **单一 profile**，主 profile 用固定标识注册 login item 正确工作。per-profile
+        // launch args 只带 `AUTOSTART_LAUNCH_ARG`（标记自启动来源，供未来 per-profile
+        // 登录项 / 启动诊断识别；issue #1169 的 Lightweight Mode 不再据此分支，改由
+        // 「本次是否拉起了 daemon」区分冷启动 vs 重新唤起）+ autolaunch 用编译期固定
+        // bundle id：产品对用户只暴露 **单一 profile**，主 profile 用固定标识注册
+        // login item 正确工作。per-profile
         // 自启隔离（非主 profile 带 `UC_PROFILE` 的独立 login item + profile 启动参数）
         // 在单 profile 产品下无需求 —— P4-7 决策（2026-06-04）显式延后；多 profile /
         // 多 daemon 仅作开发期测试手段，不经 OS 登录项保活。若未来产品开放多 profile，
@@ -435,10 +437,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
             let daemon_connection_state_for_setup = daemon_connection_state.clone();
             let daemon_ownership_for_setup = daemon_ownership.clone();
+            let daemon_launch_origin_for_setup = daemon_launch_origin.clone();
             let daemon_bootstrap_status_for_setup = daemon_bootstrap_status.clone();
             tauri::async_runtime::spawn(async move {
                 match bootstrap_daemon_in_process(
                     &daemon_ownership_for_setup,
+                    &daemon_launch_origin_for_setup,
                     EXPECTED_PACKAGE_VERSION,
                     INCOMPATIBLE_DAEMON_EXIT_TIMEOUT,
                     HEALTH_CHECK_TIMEOUT,
@@ -498,6 +502,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // 这里只负责"以最近持久化的偏好启动"。
             let (
                 silent_start,
+                is_silent_mode,
                 initial_language,
                 lan_only_active,
                 quick_panel_enabled,
@@ -507,16 +512,25 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 let settings_port = runtime.settings_port();
                 match tauri::async_runtime::block_on(settings_port.load()) {
                     Ok(settings) => {
-                        // `lightweight_start` only applies to an OS auto-start
-                        // launch (issue #1169) — never a manual one, or
-                        // "reopen the app" could never bring the window back
-                        // once the setting is on. When it does apply it also
-                        // implies hiding the window: the GUI is about to exit
-                        // once the daemon connects (see the startup-actions
-                        // task below), so there is no point showing then
-                        // immediately re-hiding it.
-                        let silent = settings.general.silent_start
-                            || (settings.general.lightweight_start && launched_via_autostart());
+                        // Lightweight mode always hides the window at boot,
+                        // then decides once the daemon connects (issue #1169):
+                        // if THIS launch spawned the daemon it is a cold start
+                        // → exit to background-only; if the daemon was already
+                        // running it is a reopen → show the window. We cannot
+                        // tell which synchronously here (the origin is only
+                        // known after the async probe), so we hide first and
+                        // let the cold-launch task reconcile — hiding avoids a
+                        // window flash on the cold-start path, and the reopen
+                        // path shows the window a beat later.
+                        let silent_mode = matches!(
+                            settings.general.startup_mode,
+                            uc_core::settings::model::StartupMode::Silent
+                        );
+                        let lightweight_mode = matches!(
+                            settings.general.startup_mode,
+                            uc_core::settings::model::StartupMode::Lightweight
+                        );
+                        let silent = silent_mode || lightweight_mode;
                         let lang = settings.general.language.unwrap_or_default();
                         // Phase 96 INDIC-04:反向命名唯一翻译点之一,UI/Tray
                         // = "LAN-only ON" ⇔ 后端 `allow_relay_fallback = false`。
@@ -528,11 +542,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         // shortcut-triggered show() picks the right position
                         // without an async settings read on the main thread.
                         quick_panel::set_position(settings.quick_panel.position);
-                        (silent, lang, lan_only, quick_panel, auto, true)
+                        (silent, silent_mode, lang, lan_only, quick_panel, auto, true)
                     }
                     Err(e) => {
                         warn!("Failed to load settings for startup: {}, using defaults", e);
-                        (false, "en-US".to_string(), false, false, false, false)
+                        (false, false, "en-US".to_string(), false, false, false, false)
                     }
                 }
             };
@@ -644,16 +658,28 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 quick_panel::pre_create(app.handle());
             }
 
-            // Create + show the window based on the silent_start setting. The
-            // main window is declared with `create: false`, so a silent start
-            // never pays the webview cost — the window only comes into
-            // existence on the first explicit open (`show_main_window`
-            // creates it from config on demand).
+            // Create + show the window based on the resolved startup mode. The
+            // main window is declared with `create: false`, so a Silent or
+            // Lightweight start never pays the webview cost — the window only
+            // comes into existence on the first explicit open, when
+            // `show_main_window` creates it from config on demand. That is
+            // exactly what a Lightweight *reopen* needs (issue #1169): the
+            // cold-launch task calls `show_main_window` to bring it up.
             if !silent_start {
                 crate::main_window::show_main_window(app.handle());
                 info!("Main window show requested (silent_start=false)");
             } else {
-                info!("Silent start enabled, main window not created");
+                info!("Silent/Lightweight start: main window not created at boot");
+                // Only Silent mode notifies here. Lightweight Mode stays quiet
+                // now and lets the cold-launch task decide: on a cold start it
+                // notifies later, when the GUI actually exits to background-only
+                // (see `enter_lightweight_mode`); on a reopen it creates+shows
+                // the window instead and never notifies. Notifying here too
+                // would double-notify the cold start and wrongly notify the
+                // reopen.
+                if is_silent_mode {
+                    crate::lightweight::notify_running_in_background(app.handle());
+                }
             }
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -700,43 +726,44 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
                 // 1. Daemon-dependent startup actions (non-blocking), all as RPCs
                 // over daemon loopback HTTP: auto-unlock + lifecycle retry,
-                // restore-last-entry, background-only handoff. ADR-008 P3-3
-                // B2': the GUI is a pure client, so it can no longer reach an
-                // in-process `AppFacade` — the whole sequence is framework-
-                // agnostic RPC orchestration, so it lives in
-                // `uc_desktop::startup_actions` (shared by any future
-                // non-Tauri shell); only the actual Lightweight Mode
-                // transition below is Tauri-specific.
+                // restore-last-entry, and the Lightweight-Mode window decision.
+                // ADR-008 P3-3 B2': the GUI is a pure client, so it can no
+                // longer reach an in-process `AppFacade` — the whole sequence
+                // is framework-agnostic RPC orchestration, so it lives in
+                // `uc_desktop::startup_actions` (shared by any future non-Tauri
+                // shell); only the window/tray mechanics below are Tauri-specific.
                 let daemon_conn_for_startup_actions = daemon_connection_state.clone();
                 let app_handle_for_lightweight_start = app_handle_for_startup.clone();
-                let launched_via_autostart_for_startup = launched_via_autostart();
+                let launch_origin_for_startup = daemon_launch_origin.clone();
                 tauri::async_runtime::spawn(async move {
                     let outcome = uc_desktop::startup_actions::run_cold_launch_actions(
                         daemon_conn_for_startup_actions,
+                        launch_origin_for_startup,
                         uc_desktop::startup_actions::DEFAULT_READY_TIMEOUT,
                         uc_desktop::startup_actions::DEFAULT_READY_POLL,
                     )
                     .await;
 
-                    // Lightweight Mode (issue #1169) only auto-triggers on an
-                    // OS auto-start launch, never a manual one — otherwise
-                    // "reopen the app" could never bring the window back
-                    // once the setting is on (a manual relaunch would just
-                    // hit this same background-only-mode transition again).
-                    // No reassurance notification here: it would repeat on
-                    // every auto-start boot instead of the occasional manual
-                    // tray trigger it was designed for (see
-                    // `lightweight::enter_lightweight_mode`).
-                    if launched_via_autostart_for_startup
-                        && outcome.is_some_and(|o| o.enter_background_only_mode)
-                    {
-                        info!(
-                            "[Startup] lightweight_start enabled on an auto-start launch; entering Lightweight Mode now that the daemon is ready"
-                        );
-                        crate::lightweight::enter_lightweight_mode(
-                            &app_handle_for_lightweight_start,
-                            false,
-                        );
+                    // Reconcile the Lightweight-Mode window state now that the
+                    // daemon is ready and the launch origin is known (issue
+                    // #1169). Both a manual first launch and an auto-start
+                    // launch spawn the daemon, so both hand off to background-
+                    // only running; a later click that finds the daemon already
+                    // running reopens the window instead.
+                    match outcome.map(|o| o.window_action) {
+                        Some(uc_desktop::startup_actions::StartupWindowAction::EnterBackgroundOnly) => {
+                            info!(
+                                "[Startup] Lightweight cold start: daemon ready, entering Lightweight Mode (GUI exits, daemon stays running)"
+                            );
+                            crate::lightweight::enter_lightweight_mode(&app_handle_for_lightweight_start);
+                        }
+                        Some(uc_desktop::startup_actions::StartupWindowAction::ShowWindow) => {
+                            info!(
+                                "[Startup] Lightweight reopen: daemon already running, showing the main window"
+                            );
+                            crate::main_window::show_main_window(&app_handle_for_lightweight_start);
+                        }
+                        Some(uc_desktop::startup_actions::StartupWindowAction::None) | None => {}
                     }
                 });
 

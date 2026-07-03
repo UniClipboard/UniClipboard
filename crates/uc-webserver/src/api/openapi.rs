@@ -53,8 +53,8 @@ use crate::api::dto::settings::{
     QuickPanelSettingsPatchDto, RelayProbeOutcomeDto, RelayProbeRequestDto, RetentionPolicyDto,
     RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto,
     SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
-    ShortcutKeyDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto, ThemeDto,
-    UpdateChannelDto,
+    ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto,
+    ThemeDto, UpdateChannelDto,
 };
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
@@ -364,6 +364,7 @@ impl Modify for ContractMeta {
             ShortcutKeyDto,
             ThemeDto,
             UpdateChannelDto,
+            StartupModeDto,
             // ── settings: PUT /settings patch DTOs (nested children of
             //    SettingsPatchDto, each $ref'd from the request body) ───────
             GeneralSettingsPatchDto,

@@ -18,6 +18,13 @@ pub enum UpdateChannelView {
     Rc,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartupModeView {
+    Normal,
+    Silent,
+    Lightweight,
+}
+
 /// Type alias — `ShortcutKeyView` is now `uc_core::settings::model::ShortcutKey`.
 /// Kept as a alias for backward-compatible re-export.
 pub type ShortcutKeyView = core::ShortcutKey;
@@ -77,8 +84,7 @@ pub enum RetentionRuleView {
 #[derive(Debug, Clone)]
 pub struct GeneralSettingsView {
     pub auto_start: bool,
-    pub silent_start: bool,
-    pub lightweight_start: bool,
+    pub startup_mode: StartupModeView,
     pub restore_last_entry_on_startup: bool,
     pub auto_check_update: bool,
     pub auto_download_update: bool,
@@ -197,8 +203,7 @@ pub struct SettingsView {
 #[derive(Debug, Clone, Default)]
 pub struct GeneralSettingsPatch {
     pub auto_start: Option<bool>,
-    pub silent_start: Option<bool>,
-    pub lightweight_start: Option<bool>,
+    pub startup_mode: Option<StartupModeView>,
     pub restore_last_entry_on_startup: Option<bool>,
     pub auto_check_update: Option<bool>,
     pub auto_download_update: Option<bool>,
@@ -330,6 +335,26 @@ impl From<ThemeView> for core::Theme {
             ThemeView::Light => Self::Light,
             ThemeView::Dark => Self::Dark,
             ThemeView::System => Self::System,
+        }
+    }
+}
+
+impl From<core::StartupMode> for StartupModeView {
+    fn from(value: core::StartupMode) -> Self {
+        match value {
+            core::StartupMode::Normal => Self::Normal,
+            core::StartupMode::Silent => Self::Silent,
+            core::StartupMode::Lightweight => Self::Lightweight,
+        }
+    }
+}
+
+impl From<StartupModeView> for core::StartupMode {
+    fn from(value: StartupModeView) -> Self {
+        match value {
+            StartupModeView::Normal => Self::Normal,
+            StartupModeView::Silent => Self::Silent,
+            StartupModeView::Lightweight => Self::Lightweight,
         }
     }
 }
@@ -500,8 +525,7 @@ impl From<core::Settings> for SettingsView {
             schema_version: value.schema_version,
             general: GeneralSettingsView {
                 auto_start: value.general.auto_start,
-                silent_start: value.general.silent_start,
-                lightweight_start: value.general.lightweight_start,
+                startup_mode: value.general.startup_mode.into(),
                 restore_last_entry_on_startup: value.general.restore_last_entry_on_startup,
                 auto_check_update: value.general.auto_check_update,
                 auto_download_update: value.general.auto_download_update,
@@ -583,11 +607,8 @@ pub(crate) fn apply_settings_patch(
         if let Some(v) = general.auto_start {
             existing.general.auto_start = v;
         }
-        if let Some(v) = general.silent_start {
-            existing.general.silent_start = v;
-        }
-        if let Some(v) = general.lightweight_start {
-            existing.general.lightweight_start = v;
+        if let Some(v) = general.startup_mode {
+            existing.general.startup_mode = v.into();
         }
         if let Some(v) = general.restore_last_entry_on_startup {
             existing.general.restore_last_entry_on_startup = v;

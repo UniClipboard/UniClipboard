@@ -136,30 +136,28 @@ pub fn request_full_quit(app: &AppHandle) {
 /// Exit the GUI process into Lightweight Mode. The daemon keeps running
 /// (default [`QuitIntent`]).
 ///
-/// `notify` controls the "still running in the background" reassurance
+/// Always shows the "still running in the background" reassurance
 /// notification (issue #1129: without it, the GUI process exiting looks
-/// like a crash). Tray "轻量模式" always wants it — the user just triggered
-/// an occasional, explicit action. The automatic startup handoff (settings
-/// `lightweight_start`, issue #1169) passes `false`: it can repeat on every
-/// OS auto-start boot, and a notification on every single boot would be
-/// spam rather than the "reassurance" it was designed to be.
-pub fn enter_lightweight_mode(app: &AppHandle, notify: bool) {
-    if notify {
-        notify_lightweight(app);
-    }
+/// like a crash) — both the tray "轻量模式" manual trigger and the
+/// automatic startup handoff (settings `startup_mode = Lightweight`, issue
+/// #1169) want it every time this fires.
+pub fn enter_lightweight_mode(app: &AppHandle) {
+    notify_running_in_background(app);
     info!("entering lightweight mode — GUI exiting, daemon stays running");
     app.exit(0);
 }
 
 /// Send the "still running in the background" notification. Bilingual
-/// (中 + EN).
+/// (中 + EN). Shared by Lightweight mode's process-exit handoff and Silent
+/// mode's hide-the-window-at-boot path — both leave no window/tray-less
+/// interactive surface for the user to see, so both need the reassurance.
 ///
-/// Callers that show it on every entry — not just once — do so per issue
-/// #1129: the GUI process exiting looked like a crash to users whose
-/// one-time toast had already been consumed on an earlier run, leaving zero
-/// on-screen trace of the still-running background daemon. A failed
-/// `.show()` degrades to a `warn!` and never blocks the exit.
-pub fn notify_lightweight(app: &AppHandle) {
+/// Callers show it on every entry — not just once — per issue #1129: the
+/// GUI process exiting (or never showing a window) looked like a crash to
+/// users whose one-time toast had already been consumed on an earlier run,
+/// leaving zero on-screen trace of the still-running background daemon. A
+/// failed `.show()` degrades to a `warn!` and never blocks the exit.
+pub fn notify_running_in_background(app: &AppHandle) {
     let result = app
         .notification()
         .builder()

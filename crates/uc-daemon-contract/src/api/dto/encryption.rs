@@ -2,7 +2,12 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Response payload for GET /encryption/state.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+///
+/// `Deserialize` is required by the Rust daemon-client (`DaemonQueryClient`),
+/// which polls this endpoint during cold-launch startup restore to wait until
+/// the encryption session is unlocked before reading/writing encrypted
+/// history (issue #1169).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptionStateResponse {
     pub initialized: bool,

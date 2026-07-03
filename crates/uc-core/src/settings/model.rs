@@ -7,7 +7,11 @@ use serde_with::{serde_as, DurationSeconds};
 /// v1 -> v2: one-time rewrite of a stock v1-default `retention_policy`
 /// (`ByAge(30d) + ByCount(500)`) to the new default (`ByAge(180d)`, no count
 /// cap). See `uc_infra::settings::migration::MigrationV1ToV2`.
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+///
+/// v2 -> v3: one-time rewrite of the legacy `silent_start` /
+/// `lightweight_start` booleans into the mutually-exclusive `startup_mode`
+/// enum. See `uc_infra::settings::migration::MigrationV2ToV3`.
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 // 所有 settings struct 统一使用 `#[serde(default)]`：缺字段时回退到
 // `Default::default()`（在 `defaults.rs` 中实现），保证向后兼容。
@@ -16,14 +20,26 @@ pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 #[serde(default)]
 pub struct GeneralSettings {
     pub auto_start: bool,
+    /// Legacy pre-v3 field, superseded by `startup_mode`. Retained only so
+    /// `MigrationV2ToV3` can read a pre-v3 settings.json's boolean state
+    /// once; no code reads or writes this field anymore — read
+    /// `startup_mode` instead.
     pub silent_start: bool,
-    /// Whether an auto-started launch should skip straight to running only
-    /// the background sync service, without presenting any interactive
-    /// surface. Only applies when the launch was triggered by auto-start —
-    /// a manually-initiated launch always presents the normal interface
-    /// regardless of this setting, so it stays reachable to turn the
-    /// preference back off.
+    /// Legacy pre-v3 field, superseded by `startup_mode`. Retained only so
+    /// `MigrationV2ToV3` can read a pre-v3 settings.json's boolean state
+    /// once; no code reads or writes this field anymore — read
+    /// `startup_mode` instead.
     pub lightweight_start: bool,
+    /// How the app presents itself at launch: `Normal` shows the window as
+    /// usual; `Silent` skips straight to running in the background/tray;
+    /// `Lightweight` exits the interactive process entirely once background
+    /// sync is confirmed ready, leaving only the background sync service
+    /// running — but only when this launch is the one that started that
+    /// service (a cold start). If the background service was already running
+    /// (e.g. reopening after an earlier Lightweight launch), the window is
+    /// shown instead, so the app stays reachable to turn the preference back
+    /// off.
+    pub startup_mode: StartupMode,
     /// Whether to push the most recent clipboard history entry back onto
     /// the OS clipboard once background sync is confirmed ready at startup.
     pub restore_last_entry_on_startup: bool,
@@ -120,6 +136,14 @@ pub enum UpdateChannel {
     Alpha,
     Beta,
     Rc,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupMode {
+    Normal,
+    Silent,
+    Lightweight,
 }
 
 /// A keyboard shortcut value that can be either a single key combo or multiple alternatives.

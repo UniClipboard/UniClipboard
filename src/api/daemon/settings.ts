@@ -41,6 +41,19 @@ export type QuickPanelPosition = 'center' | 'follow_cursor'
 /** Update channel override. / 更新通道覆盖。 */
 export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
 
+/**
+ * Startup mode. / 启动方式。互斥三选一，与 `autoStart` 相互独立。
+ *
+ * - `normal`: show the window as usual.
+ * - `silent`: skip straight to running in the background/tray (GUI process
+ *   still runs, window just hidden).
+ * - `lightweight`: only takes effect on an OS auto-start launch — once
+ *   background sync is confirmed ready, exit the GUI process entirely,
+ *   leaving only the background service running. A manual launch always
+ *   shows the window.
+ */
+export type StartupMode = 'normal' | 'silent' | 'lightweight'
+
 /** Sync frequency mode. / 同步频率模式。 */
 export type SyncFrequency = 'realtime' | 'interval'
 
@@ -59,14 +72,7 @@ export type RuleEvaluation = 'anyMatch' | 'allMatch'
  */
 export interface GeneralSettings {
   autoStart: boolean
-  silentStart: boolean
-  /**
-   * Whether an OS auto-start launch should transition straight into
-   * Lightweight Mode once the daemon connection is confirmed: the app
-   * window and tray exit, only the background sync service keeps running.
-   * Only applies to an auto-start launch, never a manual one.
-   */
-  lightweightStart: boolean
+  startupMode: StartupMode
   /**
    * Whether to push the most recent clipboard history entry back onto the
    * OS clipboard once the daemon connection is confirmed at startup.
@@ -319,8 +325,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
     // dedicated `update_autostart` command (see `@/api/tauri-command/settings`),
     // which persists the preference and applies the OS state atomically.
     const {
-      silentStart,
-      lightweightStart,
+      startupMode,
       restoreLastEntryOnStartup,
       autoCheckUpdate,
       autoDownloadUpdate,
@@ -339,8 +344,7 @@ function toSettingsPatchRequest(settings: Partial<Settings>): SettingsPatchReque
     } = settings.general
 
     patch.general = {
-      silentStart,
-      lightweightStart,
+      startupMode,
       restoreLastEntryOnStartup,
       autoCheckUpdate,
       autoDownloadUpdate,

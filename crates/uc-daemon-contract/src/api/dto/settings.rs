@@ -68,14 +68,16 @@ pub enum RelayProbeOutcomeDto {
 #[serde(rename_all = "camelCase")]
 pub struct GeneralSettingsDto {
     pub auto_start: bool,
-    pub silent_start: bool,
-    /// Whether an OS auto-start launch (never a manual one) should
-    /// transition straight into Lightweight Mode once the daemon connection
-    /// is confirmed (GUI process exits, daemon keeps running). Added after
-    /// initial launch; `#[serde(default)]` keeps old wire payloads
-    /// compatible.
+    /// How the app presents itself at launch: `normal` shows the window as
+    /// usual; `silent` skips straight to running in the background/tray;
+    /// `lightweight` exits the interactive process entirely once the daemon
+    /// connection is confirmed, but only when this launch is the one that
+    /// spawned the daemon (a genuine cold start). If a compatible daemon was
+    /// already running (e.g. reopening after a previous Lightweight session
+    /// exited), the window is shown instead. Added after initial launch;
+    /// `#[serde(default)]` keeps old wire payloads compatible.
     #[serde(default)]
-    pub lightweight_start: bool,
+    pub startup_mode: StartupModeDto,
     /// Whether to push the most recent clipboard history entry back onto the
     /// OS clipboard once the daemon connection is confirmed at startup.
     /// Added after initial launch; `#[serde(default)]` keeps old wire
@@ -147,6 +149,15 @@ pub enum UpdateChannelDto {
     Alpha,
     Beta,
     Rc,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupModeDto {
+    #[default]
+    Normal,
+    Silent,
+    Lightweight,
 }
 
 /// A keyboard shortcut value that can be either a single key combo or multiple alternatives.
@@ -384,9 +395,8 @@ pub struct SettingsDto {
 #[serde(rename_all = "camelCase")]
 pub struct GeneralSettingsPatchDto {
     pub auto_start: Option<bool>,
-    pub silent_start: Option<bool>,
     #[serde(default)]
-    pub lightweight_start: Option<bool>,
+    pub startup_mode: Option<StartupModeDto>,
     #[serde(default)]
     pub restore_last_entry_on_startup: Option<bool>,
     pub auto_check_update: Option<bool>,
@@ -558,6 +568,16 @@ impl From<core::UpdateChannel> for UpdateChannelDto {
     }
 }
 
+impl From<core::StartupMode> for StartupModeDto {
+    fn from(value: core::StartupMode) -> Self {
+        match value {
+            core::StartupMode::Normal => Self::Normal,
+            core::StartupMode::Silent => Self::Silent,
+            core::StartupMode::Lightweight => Self::Lightweight,
+        }
+    }
+}
+
 impl From<core::ShortcutKey> for ShortcutKeyDto {
     fn from(value: core::ShortcutKey) -> Self {
         match value {
@@ -593,8 +613,7 @@ impl From<core::GeneralSettings> for GeneralSettingsDto {
     fn from(value: core::GeneralSettings) -> Self {
         Self {
             auto_start: value.auto_start,
-            silent_start: value.silent_start,
-            lightweight_start: value.lightweight_start,
+            startup_mode: value.startup_mode.into(),
             restore_last_entry_on_startup: value.restore_last_entry_on_startup,
             auto_check_update: value.auto_check_update,
             auto_download_update: value.auto_download_update,
@@ -767,6 +786,16 @@ impl From<UpdateChannelDto> for core::UpdateChannel {
             UpdateChannelDto::Alpha => Self::Alpha,
             UpdateChannelDto::Beta => Self::Beta,
             UpdateChannelDto::Rc => Self::Rc,
+        }
+    }
+}
+
+impl From<StartupModeDto> for core::StartupMode {
+    fn from(value: StartupModeDto) -> Self {
+        match value {
+            StartupModeDto::Normal => Self::Normal,
+            StartupModeDto::Silent => Self::Silent,
+            StartupModeDto::Lightweight => Self::Lightweight,
         }
     }
 }
@@ -1019,7 +1048,7 @@ mod network_dto_tests {
     fn general_dto_new_wire_round_trips_split_fields() {
         let json = r#"{
             "autoStart": false,
-            "silentStart": false,
+            "startupMode": "normal",
             "autoCheckUpdate": true,
             "theme": "system",
             "themeColor": null,
@@ -1088,7 +1117,7 @@ mod network_dto_tests {
     fn general_dto_overrides_round_trip_camel_case() {
         let json = r#"{
             "autoStart": false,
-            "silentStart": false,
+            "startupMode": "normal",
             "autoCheckUpdate": true,
             "theme": "system",
             "themeColor": null,
@@ -1155,7 +1184,7 @@ mod network_dto_tests {
     fn general_dto_auto_download_round_trips_camel_case() {
         let json = r#"{
             "autoStart": false,
-            "silentStart": false,
+            "startupMode": "normal",
             "autoCheckUpdate": true,
             "autoDownloadUpdate": true,
             "theme": "system",

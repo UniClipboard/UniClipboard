@@ -121,13 +121,14 @@
           "label": "开机自启动",
           "description": "系统启动时自动启动 Uniclipboard"
         },
-        "silentStart": {
-          "label": "静默启动",
-          "description": "启动时不显示主界面，在后台运行"
-        },
-        "lightweightStart": {
-          "label": "以轻量模式启动",
-          "description": "开机自启动时，在后台就绪后自动退出应用窗口和托盘，仅保留后台同步服务；手动打开应用时始终正常显示窗口"
+        "startupMode": {
+          "label": "启动方式",
+          "description": "「静默」启动后不弹窗，直接进入后台；「轻量」在后台就绪后进一步退出窗口和托盘、仅保留后台服务并发送通知，之后点击应用图标即可重新打开窗口。",
+          "options": {
+            "normal": "正常",
+            "silent": "静默",
+            "lightweight": "轻量"
+          }
         },
         "restoreLastEntryOnStartup": {
           "label": "启动后恢复最近一条剪贴板记录",

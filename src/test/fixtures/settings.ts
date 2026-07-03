@@ -23,8 +23,7 @@ export function makeBaseSettings(overrides: BaseSettingsOverrides = {}): Setting
     schemaVersion: 1,
     general: {
       autoStart: false,
-      silentStart: false,
-      lightweightStart: false,
+      startupMode: 'normal',
       restoreLastEntryOnStartup: false,
       autoCheckUpdate: true,
       autoDownloadUpdate: false,

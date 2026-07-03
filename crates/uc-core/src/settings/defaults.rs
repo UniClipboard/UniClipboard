@@ -24,8 +24,7 @@ impl Default for GeneralSettings {
     ///
     /// The defaults are:
     /// - `auto_start`: false
-    /// - `silent_start`: false
-    /// - `lightweight_start`: false
+    /// - `startup_mode`: `StartupMode::Normal`
     /// - `restore_last_entry_on_startup`: false
     /// - `auto_check_update`: true
     /// - `auto_download_update`: true (pre-fetch the next update so the
@@ -39,12 +38,11 @@ impl Default for GeneralSettings {
     /// # Examples
     ///
     /// ```
-    /// use uc_core::settings::model::{GeneralSettings, Theme};
+    /// use uc_core::settings::model::{GeneralSettings, StartupMode, Theme};
     ///
     /// let settings = GeneralSettings::default();
     /// assert_eq!(settings.auto_start, false);
-    /// assert_eq!(settings.silent_start, false);
-    /// assert_eq!(settings.lightweight_start, false);
+    /// assert_eq!(settings.startup_mode, StartupMode::Normal);
     /// assert_eq!(settings.restore_last_entry_on_startup, false);
     /// assert_eq!(settings.auto_check_update, true);
     /// assert_eq!(settings.auto_download_update, true);
@@ -59,6 +57,7 @@ impl Default for GeneralSettings {
             auto_start: false,
             silent_start: false,
             lightweight_start: false,
+            startup_mode: StartupMode::Normal,
             restore_last_entry_on_startup: false,
             auto_check_update: true,
             auto_download_update: true,
@@ -337,8 +336,8 @@ impl Default for Settings {
 #[cfg(test)]
 mod tests {
     use crate::settings::model::{
-        ContentTypes, FileSyncSettings, GeneralSettings, NetworkSettings, Settings, SyncFrequency,
-        Theme, CURRENT_SCHEMA_VERSION,
+        ContentTypes, FileSyncSettings, GeneralSettings, NetworkSettings, Settings, StartupMode,
+        SyncFrequency, Theme, CURRENT_SCHEMA_VERSION,
     };
 
     /// Pitfall 2 防御：默认值必须为 true（允许 fallback），保护老用户
@@ -568,6 +567,7 @@ mod tests {
         assert!(s.general.auto_start);
         // 其余字段全部走默认
         assert!(!s.general.silent_start);
+        assert_eq!(s.general.startup_mode, StartupMode::Normal);
         assert!(s.general.auto_check_update);
         assert_eq!(s.general.theme, Theme::System);
         assert!(s.general.telemetry_enabled);

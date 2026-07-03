@@ -29,7 +29,7 @@ use uc_daemon_process::process_metadata::{
 use uc_daemon_process::socket::try_resolve_daemon_http_addr;
 use uc_daemon_process::spawn::spawn_detached_daemon;
 
-use crate::daemon::DaemonOwnership;
+use crate::daemon::{DaemonLaunchOrigin, DaemonOwnership};
 
 pub const HEALTH_PATH: &str = "/health";
 
@@ -143,8 +143,15 @@ pub fn load_daemon_connection_info() -> Result<DaemonConnectionInfo, DaemonBoots
 /// 所有拉起路径都把 `ownership` 标记为 `External`（拆分后 GUI 与 daemon 永远
 /// 两进程）。"彻底退出是否停 daemon" **不**由这个进程内标记决定——见 ADR-008
 /// D3（2026-06-03 修订）与 [`stop_local_daemon_on_full_quit`]。
+///
+/// `launch_origin` 记录本次启动是**自己拉起**了 daemon（Absent / Incompatible）
+/// 还是**连上了已在跑**的 daemon（Compatible）。Lightweight Mode（issue #1169）
+/// 靠这个区分决定「冷启动后进后台」还是「重新唤起时开窗」，并避免在重新唤起时
+/// 再跑一次「恢复最近一条记录」而覆盖当前剪贴板。origin 一定在填充连接信息
+/// **之前**写入，等待连接的任务因此总能读到已确定的 origin。
 pub async fn bootstrap_daemon_in_process(
     ownership: &DaemonOwnership,
+    launch_origin: &DaemonLaunchOrigin,
     expected_package_version: &str,
     incompatible_exit_timeout: Duration,
     health_check_timeout: Duration,
@@ -162,10 +169,14 @@ pub async fn bootstrap_daemon_in_process(
     match probe_daemon_health(&client, expected_package_version).await? {
         ProbeOutcome::Compatible(_) => {
             ownership.set_external();
+            // A compatible daemon was already up — this launch is a reopen, not
+            // a cold start (issue #1169).
+            launch_origin.mark_already_running();
         }
         ProbeOutcome::Absent => {
             spawn_external_and_wait_health(
                 ownership,
+                launch_origin,
                 &client,
                 expected_package_version,
                 health_check_timeout,
@@ -210,6 +221,7 @@ pub async fn bootstrap_daemon_in_process(
             .await?;
             spawn_external_and_wait_health(
                 ownership,
+                launch_origin,
                 &client,
                 expected_package_version,
                 health_check_timeout,
@@ -228,6 +240,7 @@ pub async fn bootstrap_daemon_in_process(
 /// "full quit" stops it (ADR-008 D3 three-state, landed in P4-3).
 async fn spawn_external_and_wait_health(
     ownership: &DaemonOwnership,
+    launch_origin: &DaemonLaunchOrigin,
     client: &reqwest::Client,
     expected_package_version: &str,
     health_check_timeout: Duration,
@@ -241,6 +254,8 @@ async fn spawn_external_and_wait_health(
         )
     })?;
     ownership.set_external();
+    // This launch spawned the daemon — a genuine cold start (issue #1169).
+    launch_origin.mark_spawned();
 
     let mut probe_fn = || async { probe_daemon_health(client, expected_package_version).await };
     wait_for_daemon_health(&mut probe_fn, health_check_timeout, health_poll_interval).await

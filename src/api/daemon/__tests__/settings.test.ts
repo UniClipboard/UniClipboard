@@ -116,8 +116,7 @@ describe('settings api — toSettingsPatchRequest network mirror', () => {
     await updateSettings({
       general: {
         autoStart: true,
-        silentStart: false,
-        lightweightStart: false,
+        startupMode: 'normal',
         restoreLastEntryOnStartup: false,
         autoCheckUpdate: true,
         autoDownloadUpdate: false,

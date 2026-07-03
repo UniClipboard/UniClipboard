@@ -750,7 +750,7 @@
         "type": "object"
       },
       "EncryptionStateResponse": {
-        "description": "Response payload for GET /encryption/state.",
+        "description": "Response payload for GET /encryption/state.\n\n`Deserialize` is required by the Rust daemon-client (`DaemonQueryClient`),\nwhich polls this endpoint during cold-launch startup restore to wait until\nthe encryption session is unlocked before reading/writing encrypted\nhistory (issue #1169).",
         "properties": {
           "initialized": {
             "type": "boolean"
@@ -1342,16 +1342,12 @@
             "nullable": true,
             "type": "string"
           },
-          "lightweightStart": {
-            "description": "Whether an OS auto-start launch (never a manual one) should\ntransition straight into Lightweight Mode once the daemon connection\nis confirmed (GUI process exits, daemon keeps running). Added after\ninitial launch; `#[serde(default)]` keeps old wire payloads\ncompatible.",
-            "type": "boolean"
-          },
           "restoreLastEntryOnStartup": {
             "description": "Whether to push the most recent clipboard history entry back onto the\nOS clipboard once the daemon connection is confirmed at startup.\nAdded after initial launch; `#[serde(default)]` keeps old wire\npayloads compatible.",
             "type": "boolean"
           },
-          "silentStart": {
-            "type": "boolean"
+          "startupMode": {
+            "$ref": "#/components/schemas/StartupModeDto"
           },
           "telemetryEnabled": {
             "description": "Whether anonymous diagnostic telemetry is enabled.",
@@ -1404,7 +1400,6 @@
         },
         "required": [
           "autoStart",
-          "silentStart",
           "autoCheckUpdate",
           "theme",
           "telemetryEnabled"
@@ -1438,17 +1433,17 @@
             "nullable": true,
             "type": "string"
           },
-          "lightweightStart": {
-            "nullable": true,
-            "type": "boolean"
-          },
           "restoreLastEntryOnStartup": {
             "nullable": true,
             "type": "boolean"
           },
-          "silentStart": {
-            "nullable": true,
-            "type": "boolean"
+          "startupMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StartupModeDto"
+              }
+            ],
+            "nullable": true
           },
           "telemetryEnabled": {
             "nullable": true,
@@ -3965,6 +3960,14 @@
           "ts"
         ],
         "type": "object"
+      },
+      "StartupModeDto": {
+        "enum": [
+          "normal",
+          "silent",
+          "lightweight"
+        ],
+        "type": "string"
       },
       "StatusEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",

@@ -121,13 +121,14 @@
           "label": "Launch at startup",
           "description": "Start Uniclipboard when the system boots"
         },
-        "silentStart": {
-          "label": "Silent start",
-          "description": "Run in background without showing the main window"
-        },
-        "lightweightStart": {
-          "label": "Start in Lightweight Mode",
-          "description": "When launched at login, exit the app window and tray once the background sync is ready, keeping only the background service running. Manually opening the app always shows the window as usual."
+        "startupMode": {
+          "label": "Startup mode",
+          "description": "Silent skips the window and runs straight in the background. Lightweight goes further — once sync is ready it exits the window and tray too, keeping just the background service and sending a notification; click the app icon again to reopen the window.",
+          "options": {
+            "normal": "Normal",
+            "silent": "Silent",
+            "lightweight": "Lightweight"
+          }
         },
         "restoreLastEntryOnStartup": {
           "label": "Restore last entry on startup",

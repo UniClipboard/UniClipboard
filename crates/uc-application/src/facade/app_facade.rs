@@ -623,8 +623,7 @@ impl AppFacade {
                 general: Some(GeneralSettingsPatch {
                     device_name: Some(Some(device_name)),
                     auto_start: None,
-                    silent_start: None,
-                    lightweight_start: None,
+                    startup_mode: None,
                     restore_last_entry_on_startup: None,
                     auto_check_update: None,
                     auto_download_update: None,

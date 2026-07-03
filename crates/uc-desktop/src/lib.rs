@@ -22,5 +22,5 @@ pub mod runtime;
 pub mod shortcuts;
 pub mod startup_actions;
 
-pub use daemon::DaemonOwnership;
+pub use daemon::{DaemonLaunchOrigin, DaemonOwnership};
 pub use runtime::DesktopRuntime;

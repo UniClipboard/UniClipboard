@@ -190,7 +190,7 @@ impl TrayState {
                 "tray.lightweight" => {
                     // ADR-008 D3: GUI process exits, the external daemon keeps
                     // running. Discoverability notification fires first.
-                    crate::lightweight::enter_lightweight_mode(app, true);
+                    crate::lightweight::enter_lightweight_mode(app);
                 }
                 "tray.quit" => {
                     // ADR-008 D3 彻底退出: stop the connected daemon too

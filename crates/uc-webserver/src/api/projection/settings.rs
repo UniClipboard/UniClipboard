@@ -8,7 +8,7 @@ use crate::api::dto::settings::{
     GeneralSettingsDto, KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto,
     QuickPanelPositionDto, QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto,
     RuleEvaluationDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto, ShortcutKeyDto,
-    SyncFrequencyDto, SyncSettingsDto, ThemeDto, UpdateChannelDto,
+    StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto, UpdateChannelDto,
 };
 
 impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
@@ -18,8 +18,7 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                 .general
                 .map(|general| app_settings::GeneralSettingsPatch {
                     auto_start: general.auto_start,
-                    silent_start: general.silent_start,
-                    lightweight_start: general.lightweight_start,
+                    startup_mode: general.startup_mode.map(IntoDomain::into_domain),
                     restore_last_entry_on_startup: general.restore_last_entry_on_startup,
                     auto_check_update: general.auto_check_update,
                     auto_download_update: general.auto_download_update,
@@ -114,8 +113,7 @@ impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
             schema_version: self.schema_version,
             general: GeneralSettingsDto {
                 auto_start: self.general.auto_start,
-                silent_start: self.general.silent_start,
-                lightweight_start: self.general.lightweight_start,
+                startup_mode: self.general.startup_mode.into_api_dto(),
                 restore_last_entry_on_startup: self.general.restore_last_entry_on_startup,
                 auto_check_update: self.general.auto_check_update,
                 auto_download_update: self.general.auto_download_update,
@@ -294,6 +292,26 @@ impl IntoApiDto<ThemeDto> for app_settings::ThemeView {
             app_settings::ThemeView::Light => ThemeDto::Light,
             app_settings::ThemeView::Dark => ThemeDto::Dark,
             app_settings::ThemeView::System => ThemeDto::System,
+        }
+    }
+}
+
+impl IntoDomain<app_settings::StartupModeView> for StartupModeDto {
+    fn into_domain(self) -> app_settings::StartupModeView {
+        match self {
+            StartupModeDto::Normal => app_settings::StartupModeView::Normal,
+            StartupModeDto::Silent => app_settings::StartupModeView::Silent,
+            StartupModeDto::Lightweight => app_settings::StartupModeView::Lightweight,
+        }
+    }
+}
+
+impl IntoApiDto<StartupModeDto> for app_settings::StartupModeView {
+    fn into_api_dto(self) -> StartupModeDto {
+        match self {
+            app_settings::StartupModeView::Normal => StartupModeDto::Normal,
+            app_settings::StartupModeView::Silent => StartupModeDto::Silent,
+            app_settings::StartupModeView::Lightweight => StartupModeDto::Lightweight,
         }
     }
 }

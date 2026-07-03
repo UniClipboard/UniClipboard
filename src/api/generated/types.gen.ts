@@ -524,6 +524,11 @@ export type EncryptionStateEnvelope = {
 
 /**
  * Response payload for GET /encryption/state.
+ *
+ * `Deserialize` is required by the Rust daemon-client (`DaemonQueryClient`),
+ * which polls this endpoint during cold-launch startup restore to wait until
+ * the encryption session is unlocked before reading/writing encrypted
+ * history (issue #1169).
  */
 export type EncryptionStateResponse = {
     initialized: boolean;
@@ -811,21 +816,13 @@ export type GeneralSettingsDto = {
     deviceName?: string | null;
     language?: string | null;
     /**
-     * Whether an OS auto-start launch (never a manual one) should
-     * transition straight into Lightweight Mode once the daemon connection
-     * is confirmed (GUI process exits, daemon keeps running). Added after
-     * initial launch; `#[serde(default)]` keeps old wire payloads
-     * compatible.
-     */
-    lightweightStart?: boolean;
-    /**
      * Whether to push the most recent clipboard history entry back onto the
      * OS clipboard once the daemon connection is confirmed at startup.
      * Added after initial launch; `#[serde(default)]` keeps old wire
      * payloads compatible.
      */
     restoreLastEntryOnStartup?: boolean;
-    silentStart: boolean;
+    startupMode?: StartupModeDto;
     /**
      * Whether anonymous diagnostic telemetry is enabled.
      */
@@ -879,9 +876,8 @@ export type GeneralSettingsPatchDto = {
     debugMode?: boolean | null;
     deviceName?: string | null;
     language?: string | null;
-    lightweightStart?: boolean | null;
     restoreLastEntryOnStartup?: boolean | null;
-    silentStart?: boolean | null;
+    startupMode?: StartupModeDto | null;
     telemetryEnabled?: boolean | null;
     theme?: ThemeDto | null;
     /**
@@ -2599,6 +2595,8 @@ export type SpaceMemberListEnvelope = {
      */
     ts: number;
 };
+
+export type StartupModeDto = 'normal' | 'silent' | 'lightweight';
 
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.

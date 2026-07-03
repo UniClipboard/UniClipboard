@@ -29,7 +29,14 @@ brew install --cask uniclipboard
 
 ## 发布后维护
 
-`release.published` 事件只会对非 prerelease 触发官方 Cask 提交流程。若 Homebrew 侧已有自动 bump 或维护者要求手动更新，可临时禁用 `.github/workflows/homebrew-cask.yml` 的 release 触发，只保留 `workflow_dispatch`。
+Cask 一旦进入官方仓库并带有 `livecheck` stanza，Homebrew 的 **BrewTestBot** 会自动检测新 stable release 并自动提交纯版本 bump（只改 `version` + `sha256`）的 PR。因此 **版本升级不再需要我们主动提 PR**，`.github/workflows/homebrew-cask.yml` 已移除 `release.published` 自动触发，只保留 `workflow_dispatch`。
+
+手动运行该 workflow 的场景仅限 BrewTestBot 不会代劳的情况：
+
+- **首次新增 cask**（BrewTestBot 不会从零创建）。
+- **元数据变更**（`desc` / `zap` / `depends_on` / `livecheck` 等）。这类改动应与版本 bump 分开提，单独一个 PR。
+
+> **注意：模板必须与上游保持一致。** workflow 采用整文件替换（`cp ... > Casks/u/uniclipboard.rb`），所以模板里任何与上游 cask 不一致的字段都会搭着这次提交一起进 PR。历史上模板 `desc` 漂移成 `"Privacy-first cross-device clipboard sync"`，把元数据修改夹进版本 bump PR，导致 [homebrew-cask#272803](https://github.com/Homebrew/homebrew-cask/pull/272803) 被维护者以"改动范围超出 bump"为由关闭。修改元数据前先确认上游当前值，避免夹带。
 
 ## 本地校验
 

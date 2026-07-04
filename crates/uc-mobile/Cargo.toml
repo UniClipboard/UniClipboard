@@ -48,11 +48,15 @@ serde_json = "1"
 # process-wide via uc_mobile_init(); pinning `ring` here keeps aws-lc-rs (and
 # its cmake/clang native build) out of the mobile dependency tree — the
 # build-ios-xcframework.sh script asserts `cargo tree -i aws-lc-rs` is empty.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-webpki-roots", "stream"] }
+# `bytes_stream()` (SSE client) returns a `futures_core::Stream`; `.next()`
+# comes from `StreamExt`. `default-features = false` keeps the executor-y
+# bits (which pull in a thread pool) out of the mobile dependency tree.
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 # current_thread runtime hosted on a dedicated thread (iOS extension jetsam
 # budget rules out the multi-thread runtime; spike plan §4).
-tokio = { version = "1", features = ["rt", "time", "sync"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
 url = "2"
 # Already in the build graph via uc-mobile-proto; used here only to convert the
 # FFI surface's epoch-millis timestamps to/from the proto chrono types

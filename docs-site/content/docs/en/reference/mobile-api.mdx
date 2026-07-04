@@ -10,6 +10,11 @@ SyncClipboard client — can read and push clipboard items.
 All endpoints are mounted at the **root path**. The main SyncClipboard paths are
 `/SyncClipboard.json` and `/file/{dataName}`; Android-compatible clients may also
 call `/api/history/*`, `/api/time`, `/api/version`, `/version`, `/`, and `/file`.
+There is also a UniClipboard **private extension**, `GET /api/sse/clipboard`
+(Server-Sent Events): it pushes a signal to subscribed clients whenever the
+desktop clipboard changes, and the client then pulls `GET /SyncClipboard.json`,
+replacing periodic polling. It is not part of the SyncClipboard protocol and
+third-party clients can ignore it.
 
 Every endpoint requires **HTTP Basic Authentication**. Credentials are minted on
 the desktop side during pairing and are bound to a single registered device.
@@ -41,6 +46,7 @@ SyncClipboard history server.
 | `POST /api/history/query`, `GET /api/history/statistics`                        | Compatibility responses based on the current latest item, or an empty result when there is no item.                                                                                         |
 | `PATCH /api/history/{type}/{hash}`, `DELETE /api/history/clear`, `DELETE /file` | Compatibility-only. These requests are accepted so clients can continue their flow, but UniClipboard does not persist starred, pinned, deleted, clear, or folder-delete state through them. |
 | `GET /api/time`, `GET /api/version`, `GET /version`, `/`                        | Probe endpoints used by clients to confirm that the server is reachable.                                                                                                                    |
+| `GET /api/sse/clipboard`                                                        | UniClipboard-private push extension (SSE). Carries change signals only, never content; not part of the SyncClipboard protocol.                                                              |
 
 ## Upload behavior
 
@@ -69,6 +75,7 @@ misreported as text or generic files.
     { path: '/version', method: 'get' },
     { path: '/SyncClipboard.json', method: 'get' },
     { path: '/SyncClipboard.json', method: 'put' },
+    { path: '/api/sse/clipboard', method: 'get' },
     { path: '/api/history', method: 'post' },
     { path: '/api/history/query', method: 'post' },
     { path: '/api/history/statistics', method: 'get' },

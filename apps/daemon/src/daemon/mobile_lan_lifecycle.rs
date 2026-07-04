@@ -39,12 +39,13 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use uc_application::facade::{AppFacade, FileTransferFacade, MobileSyncSettingsView};
+use uc_core::clipboard::ActiveClipboardState;
 use uc_core::mobile_sync::LanEndpointInfo;
 use uc_core::ports::{MobileLanLifecyclePort, MobileLanTarget};
 use uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter;
@@ -72,16 +73,27 @@ pub trait LanListenerSpawner: Send + Sync {
 
 /// 生产实现:从 [`AppFacade`] 的 mobile_sync OnceLock lazy 读取当前 facade,
 /// 配合 file_transfer facade 调 [`start_mobile_lan_server`]。
+///
+/// `sse_source` 是进程级单例(wire 时构造一次, `BroadcastingAdvance` 是唯一
+/// publisher),这里存成 spawner 的构造期字段而不是 per-spawn 参数 —— spawner
+/// 本身是长驻对象,每次 listener 重启(端口变更 / toggle)都复用同一份 Sender,
+/// 不需要经 [`LanListenerSpawner`] trait 签名往返。
 pub struct AppFacadeListenerSpawner {
     app_facade: Arc<AppFacade>,
     file_transfer: Option<Arc<FileTransferFacade>>,
+    sse_source: broadcast::Sender<ActiveClipboardState>,
 }
 
 impl AppFacadeListenerSpawner {
-    pub fn new(app_facade: Arc<AppFacade>, file_transfer: Option<Arc<FileTransferFacade>>) -> Self {
+    pub fn new(
+        app_facade: Arc<AppFacade>,
+        file_transfer: Option<Arc<FileTransferFacade>>,
+        sse_source: broadcast::Sender<ActiveClipboardState>,
+    ) -> Self {
         Self {
             app_facade,
             file_transfer,
+            sse_source,
         }
     }
 }
@@ -96,7 +108,14 @@ impl LanListenerSpawner for AppFacadeListenerSpawner {
         let facade = self.app_facade.mobile_sync.get().cloned().ok_or_else(|| {
             anyhow::anyhow!("mobile_sync facade not installed; daemon lifecycle has not run yet")
         })?;
-        start_mobile_lan_server(bind, cancel, facade, self.file_transfer.clone()).await
+        start_mobile_lan_server(
+            bind,
+            cancel,
+            facade,
+            self.file_transfer.clone(),
+            self.sse_source.clone(),
+        )
+        .await
     }
 }
 

@@ -14,7 +14,9 @@ use tower::ServiceExt;
 
 use uc_application::facade::MobileSyncFacade;
 
-use crate::mobile_lan::test_support::{auth_header, build_facade_with_seeded_device};
+use crate::mobile_lan::test_support::{
+    auth_header, build_facade_with_seeded_device, fake_cancel_token, fake_sse_source,
+};
 
 use super::file::{infer_image_mime, mime_is_unspecific};
 
@@ -22,7 +24,10 @@ fn build_app(facade: Arc<MobileSyncFacade>) -> Router {
     // 测试不装配 `file_transfer` facade,路由会降级为静默 lifecycle:
     // buffer 仍然写入,但没有 Started / Progress 事件。具体 lifecycle
     // 行为由 facade / use case 单测覆盖。
-    build_router(facade, None)
+    //
+    // 本文件只测非 SSE 路由,sse_source / cancel 没有实际消费者,给一份
+    // 独立的假装配就够了。
+    build_router(facade, None, fake_sse_source(), fake_cancel_token())
 }
 
 #[tokio::test]

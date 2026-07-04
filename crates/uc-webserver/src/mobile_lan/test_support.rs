@@ -128,8 +128,11 @@ pub(crate) async fn build_facade_with_seeded_device(
     }
     #[async_trait]
     impl DeleteMobileDevicePort for InMemoryDeviceRepo {
-        async fn delete(&self, _: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
-            Ok(false)
+        async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
+            let mut devices = self.devices.lock().unwrap();
+            let before = devices.len();
+            devices.retain(|d| &d.device_id != device_id);
+            Ok(devices.len() != before)
         }
     }
     #[async_trait]
@@ -488,4 +491,20 @@ impl uc_core::ports::MobileFileStagingPort for NoopFileStaging {
 pub(crate) fn auth_header(username: &str, password: &str) -> String {
     let payload = BASE64_STD.encode(format!("{username}:{password}"));
     format!("basic {payload}")
+}
+
+/// 一份独立的假 `active_clipboard_sse_source`,供 SSE handler 测试驱动
+/// `advance` 广播:调用方 `send` 模拟 `BroadcastingAdvance` 发布事件,
+/// `subscribe()` 模拟 handler 建连时拿到的 receiver。容量与生产 wire
+/// 装配一致(64),让 `Lagged` 场景的测试有意义的复现条件。
+pub(crate) fn fake_sse_source(
+) -> tokio::sync::broadcast::Sender<uc_core::clipboard::ActiveClipboardState> {
+    let (tx, _rx) = tokio::sync::broadcast::channel(64);
+    tx
+}
+
+/// 一份可手动触发的 [`tokio_util::sync::CancellationToken`],供测试模拟
+/// listener 停止 / toggle 关闭时 SSE handler 必须响应的取消信号。
+pub(crate) fn fake_cancel_token() -> tokio_util::sync::CancellationToken {
+    tokio_util::sync::CancellationToken::new()
 }

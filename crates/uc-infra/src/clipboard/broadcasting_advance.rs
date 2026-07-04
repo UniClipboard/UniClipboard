@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::sync::broadcast;
-use tracing::debug_span;
+use tracing::debug;
 use uc_core::clipboard::ActiveClipboardState;
 use uc_core::ports::clipboard::{ActiveClipboardRegisterError, AdvanceActiveClipboardPort};
 
@@ -32,14 +32,13 @@ impl AdvanceActiveClipboardPort for BroadcastingAdvance {
     ) -> Result<bool, ActiveClipboardRegisterError> {
         let advanced = self.inner.advance(state).await?;
         if advanced {
-            let span = debug_span!(
-                "infra.clipboard.broadcasting_advance.publish",
-                snapshot_hash = %state.snapshot_hash,
-            );
-            let _guard = span.enter();
             // Fire-and-forget: no subscribers is a normal, expected state
             // (no SSE clients connected), not a failure of `advance` itself.
             let _ = self.tx.send(state.clone());
+            debug!(
+                snapshot_hash = %state.snapshot_hash,
+                "published active-clipboard register advance to SSE subscribers"
+            );
         }
         Ok(advanced)
     }

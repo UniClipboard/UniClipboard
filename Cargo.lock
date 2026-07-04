@@ -10541,6 +10541,7 @@ dependencies = [
  "uc-core",
  "uc-daemon-contract",
  "uc-daemon-local",
+ "uc-mobile-proto",
  "uc-observability",
  "url",
  "utoipa",

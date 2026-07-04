@@ -493,18 +493,21 @@ pub(crate) fn auth_header(username: &str, password: &str) -> String {
     format!("basic {payload}")
 }
 
-/// 一份独立的假 `active_clipboard_sse_source`,供 SSE handler 测试驱动
-/// `advance` 广播:调用方 `send` 模拟 `BroadcastingAdvance` 发布事件,
-/// `subscribe()` 模拟 handler 建连时拿到的 receiver。容量与生产 wire
-/// 装配一致(64),让 `Lagged` 场景的测试有意义的复现条件。
+/// A standalone fake `active_clipboard_sse_source` for driving the SSE
+/// handler in tests: the caller's `send` plays the role of
+/// `BroadcastingAdvance` publishing an advance, and `subscribe()` is what
+/// the handler does at connect time. The capacity only needs to hold a
+/// test's unread sends; a test exercising `Lagged` builds its own
+/// deliberately tiny channel instead.
 pub(crate) fn fake_sse_source(
 ) -> tokio::sync::broadcast::Sender<uc_core::clipboard::ActiveClipboardState> {
-    let (tx, _rx) = tokio::sync::broadcast::channel(64);
+    let (tx, _rx) = tokio::sync::broadcast::channel(16);
     tx
 }
 
-/// 一份可手动触发的 [`tokio_util::sync::CancellationToken`],供测试模拟
-/// listener 停止 / toggle 关闭时 SSE handler 必须响应的取消信号。
+/// A manually triggerable [`tokio_util::sync::CancellationToken`], playing
+/// the listener-wide cancel signal the SSE handler must react to when the
+/// listener stops or the feature toggle turns off.
 pub(crate) fn fake_cancel_token() -> tokio_util::sync::CancellationToken {
     tokio_util::sync::CancellationToken::new()
 }

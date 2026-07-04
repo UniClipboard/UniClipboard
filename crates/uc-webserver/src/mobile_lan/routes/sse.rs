@@ -20,13 +20,16 @@
 //!    happen in practice);
 //! 4. never on `Lagged` — a lagged receiver sends a `resync` frame instead
 //!    of tearing down the connection.
+//!
+//! Event names and payload shapes come from [`uc_mobile_proto::sse_event`],
+//! the single source of truth shared with the `uc-mobile` client.
 
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Extension, State};
-use axum::http::{header, HeaderMap, HeaderName, HeaderValue};
+use axum::http::{header, HeaderName, HeaderValue};
 use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use futures_util::stream::{self, Stream, StreamExt};
@@ -35,40 +38,31 @@ use tokio::sync::broadcast;
 use tokio::time::{Instant, Interval, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
-use uc_application::facade::{AuthenticateBasicAuthInput, AuthenticatedDevice, MobileSyncFacade};
+use uc_application::facade::{AuthenticatedDevice, MobileSyncFacade};
 use uc_core::clipboard::ActiveClipboardState;
 use uc_core::mobile_sync::MobileDeviceId;
+use uc_mobile_proto::sse_event::{
+    SseHello, SseResync, SseUpdate, SSE_EVENT_HELLO, SSE_EVENT_RESYNC, SSE_EVENT_UPDATE,
+    SSE_HEARTBEAT_INTERVAL_SECS,
+};
 
 use crate::mobile_lan::sse_registry::SseConnectionRegistry;
 
 use super::MobileLanState;
 
-/// Heartbeat comment cadence — also the unit the periodic credential
-/// re-check interval is expressed as a multiple of (see [`REVALIDATE_INTERVAL`]).
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
+/// Heartbeat comment cadence. Derived from the wire-protocol constant so the
+/// `uc-mobile` client's dead-connection timeout (2× this) cannot drift from
+/// what this server actually sends.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(SSE_HEARTBEAT_INTERVAL_SECS);
 
-/// Periodic credential re-check cadence. Covers "device deleted" (username
-/// no longer resolves) and "password/username rotated" (hash mismatch) in
-/// one call to the same use case the initial handshake used — it does not
-/// check the mobile-sync feature toggles, since those are the listener's
-/// cancel-token's job, not this connection-scoped check's.
+/// Periodic credential re-check cadence. Each tick verifies the device still
+/// exists and its stored password hash matches the one captured at connect
+/// time ([`MobileSyncFacade::is_device_credential_current`]) — a repo read
+/// plus a string compare, NOT an Argon2 verify, so this stays cheap per
+/// connection. It does not check the mobile-sync feature toggles, since
+/// those are the listener's cancel-token's job, not this connection-scoped
+/// check's.
 const REVALIDATE_INTERVAL: Duration = Duration::from_secs(30);
-
-#[derive(Serialize)]
-struct SseHelloWire {
-    server_time_ms: i64,
-}
-
-#[derive(Serialize)]
-struct SseUpdateWire {
-    content_id: String,
-    server_time_ms: i64,
-}
-
-#[derive(Serialize)]
-struct SseResyncWire {
-    server_time_ms: i64,
-}
 
 fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
@@ -100,10 +94,9 @@ fn periodic(period: Duration) -> Interval {
 /// Unregisters the connection's registry entry when dropped — covers both
 /// the normal end-of-stream path and an early client disconnect (axum drops
 /// the response body stream without giving handler code an explicit
-/// callback for that case). `unregister` is async, so the actual work is
-/// spawned; it is also idempotent against having already been evicted by
-/// [`SseConnectionRegistry::register`], so a spawn racing a concurrent
-/// eviction is harmless.
+/// callback for that case). `unregister` is idempotent against having
+/// already been evicted by [`SseConnectionRegistry::register`], so a drop
+/// racing a concurrent eviction is harmless.
 struct RegistrationGuard {
     registry: Arc<SseConnectionRegistry>,
     device_id: MobileDeviceId,
@@ -112,12 +105,7 @@ struct RegistrationGuard {
 
 impl Drop for RegistrationGuard {
     fn drop(&mut self) {
-        let registry = self.registry.clone();
-        let device_id = self.device_id.clone();
-        let conn_id = self.conn_id;
-        tokio::spawn(async move {
-            registry.unregister(&device_id, conn_id).await;
-        });
+        self.registry.unregister(&self.device_id, self.conn_id);
     }
 }
 
@@ -127,7 +115,10 @@ struct SseStreamState {
     heartbeat: Interval,
     revalidate: Interval,
     facade: Arc<MobileSyncFacade>,
-    cached_auth_header: String,
+    device_id: MobileDeviceId,
+    /// The device's Argon2 PHC string as it was at connect time; the periodic
+    /// re-check compares the stored hash against this to detect rotation.
+    connect_password_hash: String,
     device_username: String,
     // Never read — held purely so `Drop` fires exactly when this state
     // (and thus the connection) goes away.
@@ -147,7 +138,7 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
             recv = st.rx.recv() => {
                 match recv {
                     Ok(state) => {
-                        let ev = event_json("update", &SseUpdateWire {
+                        let ev = event_json(SSE_EVENT_UPDATE, &SseUpdate {
                             content_id: state.snapshot_hash,
                             server_time_ms: state.activated_at_ms,
                         });
@@ -155,7 +146,7 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         tracing::warn!(device = %st.device_username, lagged = n, "mobile_lan sse: receiver lagged, sending resync");
-                        let ev = event_json("resync", &SseResyncWire { server_time_ms: now_ms() });
+                        let ev = event_json(SSE_EVENT_RESYNC, &SseResync { server_time_ms: now_ms() });
                         return Some((Ok(ev), st));
                     }
                     Err(broadcast::error::RecvError::Closed) => {
@@ -170,11 +161,14 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
             }
 
             _ = st.revalidate.tick() => {
-                let input = AuthenticateBasicAuthInput {
-                    authorization_header: st.cached_auth_header.clone(),
-                };
-                match st.facade.authenticate_basic(input).await {
-                    Ok(_) => continue,
+                match st.facade.is_device_credential_current(&st.device_id, &st.connect_password_hash).await {
+                    Ok(true) => continue,
+                    Ok(false) => {
+                        tracing::info!(device = %st.device_username, "mobile_lan sse: device revoked or credentials rotated, ending stream");
+                        return None;
+                    }
+                    // Fail closed on a repo error, same as the pre-check
+                    // behavior: the client reconnects and re-authenticates.
                     Err(err) => {
                         tracing::warn!(device = %st.device_username, error = %err, "mobile_lan sse: periodic credential re-check failed, ending stream");
                         return None;
@@ -188,14 +182,7 @@ async fn next_event(mut st: SseStreamState) -> Option<(Result<Event, Infallible>
 pub(super) async fn get_sse_clipboard(
     State(state): State<MobileLanState>,
     Extension(authed): Extension<AuthenticatedDevice>,
-    headers: HeaderMap,
 ) -> Response {
-    let cached_auth_header = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .to_string();
-
     // F-4: subscribe strictly before sending `hello` — see module docs.
     let rx = state.sse_source.subscribe();
     // Per-connection cancel; listener-wide shutdown cascades to it, and the
@@ -204,22 +191,22 @@ pub(super) async fn get_sse_clipboard(
     let cancel = state.cancel.child_token();
     let device_id = authed.device.device_id.clone();
     let device_username = authed.device.username.clone();
+    let connect_password_hash = authed.device.password_hash.clone();
 
     let conn_id = state
         .sse_registry
-        .register(device_id.clone(), cancel.clone())
-        .await;
+        .register(device_id.clone(), cancel.clone());
     let registration = RegistrationGuard {
         registry: state.sse_registry.clone(),
-        device_id,
+        device_id: device_id.clone(),
         conn_id,
     };
 
     tracing::info!(device = %device_username, "mobile_lan sse: connection established");
 
     let hello = event_json(
-        "hello",
-        &SseHelloWire {
+        SSE_EVENT_HELLO,
+        &SseHello {
             server_time_ms: now_ms(),
         },
     );
@@ -232,7 +219,8 @@ pub(super) async fn get_sse_clipboard(
         revalidate: periodic(REVALIDATE_INTERVAL),
         facade: state.mobile_sync.clone(),
         _registration: registration,
-        cached_auth_header,
+        device_id,
+        connect_password_hash,
         device_username,
     };
     let body_stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =

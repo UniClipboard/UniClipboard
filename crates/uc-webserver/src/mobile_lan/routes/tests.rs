@@ -25,8 +25,8 @@ fn build_app(facade: Arc<MobileSyncFacade>) -> Router {
     // buffer 仍然写入,但没有 Started / Progress 事件。具体 lifecycle
     // 行为由 facade / use case 单测覆盖。
     //
-    // 本文件只测非 SSE 路由,sse_source / cancel 没有实际消费者,给一份
-    // 独立的假装配就够了。
+    // This file only tests the non-SSE routes; `sse_source` / `cancel` have
+    // no actual consumer here, so a standalone fake assembly suffices.
     build_router(facade, None, fake_sse_source(), fake_cancel_token())
 }
 

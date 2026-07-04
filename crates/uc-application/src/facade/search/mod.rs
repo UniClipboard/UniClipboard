@@ -180,7 +180,17 @@ impl SearchFacade {
         let offset = query.offset as usize;
 
         match self.query_uc.execute(query).await {
-            Ok(page) => Ok(search_page_to_view(page, SEARCH_STATE_READY)),
+            Ok(page) => {
+                // Rows whose render payload failed to decode come back blanked;
+                // hand their ids to the coordinator for a coalesced re-projection
+                // repair. Non-blocking and best-effort.
+                if !page.corrupted_entry_ids.is_empty() {
+                    if let Some(coordinator) = self.coordinator.get() {
+                        coordinator.schedule_repair(page.corrupted_entry_ids.clone());
+                    }
+                }
+                Ok(search_page_to_view(page, SEARCH_STATE_READY))
+            }
             // §4.7: a filter-less browse degrades to a direct main-store read so
             // the user keeps browsing during a rebuild; a keyword or filtered
             // query instead surfaces a stable rebuilding error.
@@ -232,6 +242,17 @@ impl SearchFacade {
             last_rebuild_started_at_ms: meta.last_rebuild_started_at_ms,
             last_rebuild_completed_at_ms: meta.last_rebuild_completed_at_ms,
         })
+    }
+
+    /// Notify the search subsystem that the encryption session just became ready.
+    ///
+    /// Drives any rebuild/purge that a locked cold start could not run. No-op when
+    /// the coordinator is not installed (e.g. the GUI shell before the daemon
+    /// assembles its search stack).
+    pub async fn on_session_ready(&self) {
+        if let Some(coordinator) = self.coordinator.get() {
+            coordinator.on_session_ready().await;
+        }
     }
 
     pub async fn request_rebuild(&self) -> Result<SearchRebuildAcceptedView, SearchFacadeError> {

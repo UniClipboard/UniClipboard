@@ -9,6 +9,7 @@
 
 pub mod constants;
 pub mod pipeline;
+pub mod render_payload;
 pub mod rows;
 pub mod search_key_derivation;
 pub mod sqlite_index;
@@ -17,6 +18,7 @@ pub mod tokenizer;
 
 pub use constants::*;
 pub use pipeline::*;
+pub use render_payload::*;
 pub use rows::*;
 pub use search_key_derivation::*;
 pub use sqlite_index::*;

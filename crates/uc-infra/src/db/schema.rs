@@ -64,7 +64,6 @@ diesel::table! {
         event_id -> Text,
         created_at_ms -> BigInt,
         active_time_ms -> BigInt,
-        title -> Nullable<Text>,
         total_size -> BigInt,
         pinned -> Bool,
         deleted_at_ms -> Nullable<BigInt>,
@@ -202,13 +201,9 @@ diesel::table! {
         mime_type -> Text,
         indexed_at_ms -> BigInt,
         index_version -> Text,
-        text_preview -> Nullable<Text>,
-        file_names -> Text,
-        link_urls -> Text,
         source_device -> Nullable<Text>,
         payload_state -> Nullable<Text>,
-        char_count -> Nullable<BigInt>,
-        file_paths -> Text,
+        render_payload -> Nullable<Binary>,
     }
 }
 
@@ -237,6 +232,7 @@ diesel::table! {
         search_blocked -> Bool,
         last_rebuild_started_at_ms -> Nullable<BigInt>,
         last_rebuild_completed_at_ms -> Nullable<BigInt>,
+        plaintext_purge_done_ms -> Nullable<BigInt>,
     }
 }
 

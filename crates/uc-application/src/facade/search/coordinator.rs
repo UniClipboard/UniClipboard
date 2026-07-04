@@ -2,14 +2,18 @@
 
 use std::sync::Arc;
 
-use tokio::sync::{broadcast, mpsc, Mutex};
+use std::collections::HashSet;
+use tokio::sync::{broadcast, mpsc, Mutex, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, info_span, instrument, warn, Instrument};
+
 use uc_core::clipboard::ClipboardEntry;
+use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
-    ClipboardEventRepositoryPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
+    ClipboardEventRepositoryPort, GetClipboardEntryPort, ListClipboardEntriesPort,
+    ListRepresentationsForEventPort,
 };
-use uc_core::ports::search::SearchPipelinePort;
+use uc_core::ports::search::{SearchIndexMaintenancePort, SearchPipelinePort};
 use uc_core::ports::{ClipboardSelectionRepositoryPort, SearchIndexPort, SearchKeyDerivationPort};
 use uc_core::search::{
     RebuildProgress, RebuildStage, SearchError, SearchResult, SearchResultsPage,
@@ -67,9 +71,15 @@ pub enum SearchCoordinatorEvent {
 
 pub struct SearchCoordinatorDeps {
     pub search_index: Arc<dyn SearchIndexPort>,
+    /// One-shot storage maintenance (plaintext-residue purge after the encrypting
+    /// rebuild). Separate from `search_index` because it is a background-only,
+    /// storage-level concern.
+    pub search_maintenance: Arc<dyn SearchIndexMaintenancePort>,
     pub search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
     pub search_pipeline: Arc<dyn SearchPipelinePort>,
     pub clipboard_entry_repo: Arc<dyn ListClipboardEntriesPort>,
+    /// Loads a single entry by id for the corrupted-row re-projection repair.
+    pub get_entry: Arc<dyn GetClipboardEntryPort>,
     pub representation_repo: Arc<dyn ListRepresentationsForEventPort>,
     pub selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
     /// Resolves the originating device of each entry's event for the
@@ -79,20 +89,25 @@ pub struct SearchCoordinatorDeps {
 }
 
 impl SearchCoordinatorDeps {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         search_index: Arc<dyn SearchIndexPort>,
+        search_maintenance: Arc<dyn SearchIndexMaintenancePort>,
         search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
         search_pipeline: Arc<dyn SearchPipelinePort>,
         clipboard_entry_repo: Arc<dyn ListClipboardEntriesPort>,
+        get_entry: Arc<dyn GetClipboardEntryPort>,
         representation_repo: Arc<dyn ListRepresentationsForEventPort>,
         selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
         event_repo: Arc<dyn ClipboardEventRepositoryPort>,
     ) -> Self {
         Self {
             search_index,
+            search_maintenance,
             search_key_derivation,
             search_pipeline,
             clipboard_entry_repo,
+            get_entry,
             representation_repo,
             selection_repo,
             event_repo,
@@ -120,7 +135,19 @@ pub struct SearchCoordinator {
     event_tx: broadcast::Sender<SearchCoordinatorEvent>,
     rebuild_lock: Arc<Mutex<()>>,
     state: Arc<Mutex<CoordinatorState>>,
+    /// Entry ids with an in-flight re-projection repair, so repeated corruption
+    /// reports for the same entry across multiple queries coalesce into one repair.
+    repair_in_flight: Arc<Mutex<HashSet<String>>>,
+    /// Bounds how many re-projection repairs run at once, so a whole page (or
+    /// table) failing to decode cannot fan out into hundreds of concurrent
+    /// repair tasks hammering the shared database.
+    repair_semaphore: Arc<Semaphore>,
 }
+
+/// Maximum re-projection repairs running concurrently. Corruption is an
+/// exceptional path; a small cap keeps the shared DB from being swamped while
+/// still draining a backlog over successive queries.
+const MAX_CONCURRENT_REPAIRS: usize = 4;
 
 impl SearchCoordinator {
     pub fn new(deps: SearchCoordinatorDeps) -> Self {
@@ -130,6 +157,8 @@ impl SearchCoordinator {
             event_tx,
             rebuild_lock: Arc::new(Mutex::new(())),
             state: Arc::new(Mutex::new(CoordinatorState::default())),
+            repair_in_flight: Arc::new(Mutex::new(HashSet::new())),
+            repair_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_REPAIRS)),
         }
     }
 
@@ -281,8 +310,97 @@ impl SearchCoordinator {
             return;
         }
 
+        // Index is on the current version and not blocked. If the one-shot
+        // plaintext-residue purge (owed after the encrypting rebuild) has not yet
+        // run, schedule it now — it survives a locked/killed startup by staying
+        // owed (`plaintext_purge_done_ms IS NULL`) until it completes.
+        if meta.plaintext_purge_done_ms.is_none() {
+            self.spawn_purge_if_needed();
+        }
+
         info!("search coordinator: index is ready");
         self.set_state(STATUS_READY, None).await;
+    }
+
+    /// Spawn the one-shot plaintext-residue purge in the background. Idempotent:
+    /// the task re-reads meta and no-ops if the index is not yet on the current
+    /// version or the purge already completed.
+    fn spawn_purge_if_needed(&self) {
+        let deps = Arc::clone(&self.deps);
+        tokio::spawn(
+            async move {
+                purge_plaintext_residue_if_needed(&deps).await;
+            }
+            .instrument(info_span!("search.purge_plaintext_residue")),
+        );
+    }
+
+    /// Re-run the startup decision once the encryption session becomes ready.
+    ///
+    /// A locked cold start cannot derive keys, so the v10 rebuild and the residue
+    /// purge cannot run and would otherwise stay owed until the next process
+    /// restart. This drives them the moment the session unlocks. Guarded so a
+    /// rebuild already in progress is not duplicated.
+    pub async fn on_session_ready(&self) {
+        // If a rebuild is already running it holds the rebuild lock; it will run
+        // the purge itself on completion, so there is nothing to do here.
+        match self.rebuild_lock.try_lock() {
+            Ok(_guard) => {
+                // Guard dropped at end of scope; startup_evaluation re-acquires as
+                // needed. Re-reading meta inside it is the idempotency re-check.
+                info!("search coordinator: session ready, re-evaluating index state");
+            }
+            Err(_) => {
+                debug!("search coordinator: session ready while rebuild in progress, skipping");
+                return;
+            }
+        }
+        self.startup_evaluation().await;
+    }
+
+    /// Schedule a re-projection repair for entries whose stored render payload
+    /// could not be decoded. Repeated reports for the same entry across queries
+    /// coalesce into a single repair via the in-flight set. Best-effort and
+    /// rate-limited by construction (one task per fresh id); a repair that fails
+    /// is logged and not retried in a storm.
+    pub fn schedule_repair(&self, entry_ids: Vec<EntryId>) {
+        for entry_id in entry_ids {
+            // Bound the fan-out: if all repair permits are taken, skip this report
+            // rather than queueing an unbounded backlog — a later query re-reports
+            // the still-corrupted row. This caps concurrency AND memory when a
+            // whole page fails to decode at once.
+            let permit = match Arc::clone(&self.repair_semaphore).try_acquire_owned() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let key = entry_id.to_string();
+            {
+                let mut in_flight = match self.repair_in_flight.try_lock() {
+                    Ok(g) => g,
+                    Err(_) => {
+                        // Contended; skip this report — a later query re-reports it.
+                        // (`permit` drops here, releasing the slot.)
+                        continue;
+                    }
+                };
+                if !in_flight.insert(key.clone()) {
+                    // Already being repaired. (`permit` drops here.)
+                    continue;
+                }
+            }
+            let deps = Arc::clone(&self.deps);
+            let in_flight = Arc::clone(&self.repair_in_flight);
+            tokio::spawn(
+                async move {
+                    // Hold the permit for the whole repair so concurrency stays
+                    // capped at `MAX_CONCURRENT_REPAIRS`.
+                    let _permit = permit;
+                    repair_entry(&deps, &entry_id).await;
+                    in_flight.lock().await.remove(&entry_id.to_string());
+                }
+                .instrument(info_span!("search.repair_entry")),
+            );
+        }
     }
 
     async fn trigger_rebuild_locked(&self, reason: &'static str) {
@@ -392,10 +510,16 @@ impl SearchCoordinator {
         match deps.search_index.rebuild(all_entries, progress_tx).await {
             Ok(()) => {
                 info!(reason, "search coordinator: rebuild completed successfully");
-                let mut s = state.lock().await;
-                s.status = STATUS_READY.to_string();
-                s.reason = None;
+                {
+                    let mut s = state.lock().await;
+                    s.status = STATUS_READY.to_string();
+                    s.reason = None;
+                }
                 emit_status_snapshot(&event_tx, STATUS_READY, None);
+                // The rebuild rewrote every row through the encrypting projection,
+                // so the dropped plaintext columns' on-disk residue can now be
+                // reclaimed. Owed-once, tracked in meta.
+                purge_plaintext_residue_if_needed(&deps).await;
             }
             Err(e) => {
                 warn!(error = %e, reason, "search coordinator: rebuild failed");
@@ -567,7 +691,97 @@ async fn project_browse_page(
         items,
         total,
         has_more,
+        // Degraded browse reads the decrypted main store directly — there is no
+        // encrypted render payload to fail decoding, so nothing is ever corrupted.
+        corrupted_entry_ids: Vec::new(),
     })
+}
+
+/// Run the one-shot plaintext-residue purge if it is owed. Idempotent: no-ops
+/// unless the index is on the current version and the purge has not yet run.
+async fn purge_plaintext_residue_if_needed(deps: &SearchCoordinatorDeps) {
+    let meta = match deps.search_index.get_index_meta().await {
+        Ok(m) => m,
+        Err(e) => {
+            warn!(error = %e, "search coordinator: purge check failed to read index meta");
+            return;
+        }
+    };
+    if meta.index_version != deps.current_index_version {
+        // Not on the target version yet — a rebuild will run the purge on success.
+        return;
+    }
+    if meta.plaintext_purge_done_ms.is_some() {
+        return;
+    }
+    info!("search coordinator: running one-shot plaintext-residue purge");
+    if let Err(e) = deps.search_maintenance.purge_plaintext_residue().await {
+        warn!(error = %e, "search coordinator: plaintext-residue purge failed; will retry on next startup");
+        return;
+    }
+    let ts = chrono::Utc::now().timestamp_millis();
+    if let Err(e) = deps.search_maintenance.mark_plaintext_purge_done(ts).await {
+        warn!(error = %e, "search coordinator: purge ran but recording completion failed; will re-run next startup");
+    } else {
+        info!("search coordinator: plaintext-residue purge complete");
+    }
+}
+
+/// Re-project a single entry whose stored render payload could not be decoded and
+/// overwrite its index row (encrypting anew). Best-effort; a failure is logged
+/// and not retried in a storm.
+async fn repair_entry(deps: &SearchCoordinatorDeps, entry_id: &EntryId) {
+    let entry = match deps.get_entry.get_entry(entry_id).await {
+        Ok(Some(e)) => e,
+        Ok(None) => {
+            debug!(entry_id = %entry_id, "search repair: entry no longer exists, skipping");
+            return;
+        }
+        Err(e) => {
+            warn!(entry_id = %entry_id, error = %e, "search repair: failed to load entry");
+            return;
+        }
+    };
+
+    let input = match project_persisted_entry(
+        deps.representation_repo.as_ref(),
+        deps.selection_repo.as_ref(),
+        deps.event_repo.as_ref(),
+        &entry,
+    )
+    .await
+    {
+        Some(i) => i,
+        None => {
+            debug!(entry_id = %entry_id, "search repair: entry not projectable, skipping");
+            return;
+        }
+    };
+
+    let search_key = match deps.search_key_derivation.derive_search_key().await {
+        Ok(k) => k,
+        Err(e) => {
+            warn!(entry_id = %entry_id, error = %e, "search repair: key derivation failed");
+            return;
+        }
+    };
+
+    let (doc, postings) = match deps.search_pipeline.build(&input, &search_key) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(entry_id = %entry_id, error = %e, "search repair: pipeline build failed");
+            return;
+        }
+    };
+
+    match deps.search_index.index_entry(doc, postings).await {
+        Ok(()) => {
+            info!(entry_id = %entry_id, "search repair: re-projected corrupted render payload")
+        }
+        Err(e) => {
+            warn!(entry_id = %entry_id, error = %e, "search repair: index_entry failed; not retrying")
+        }
+    }
 }
 
 /// Map a freshly re-derived `SearchPipelineInput` to a `SearchResult` so a
@@ -593,7 +807,7 @@ fn pipeline_input_to_search_result(input: SearchPipelineInput) -> SearchResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
     use uc_core::clipboard::{
         ClipboardSelection, ClipboardSelectionDecision, ObservedClipboardRepresentation,
@@ -698,7 +912,7 @@ mod tests {
     }
 
     fn entry(favorited: bool) -> ClipboardEntry {
-        let e = ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0)
+        let e = ClipboardEntry::new(EntryId::new(), EventId::new(), 0, 0)
             .with_content_category(ClipboardEntryContentCategory::Text);
         if favorited {
             e.with_favorited(true)
@@ -818,6 +1032,35 @@ mod tests {
         async fn derive_search_key(&self) -> Result<SearchKey, SearchError> {
             Ok(SearchKey([0u8; 32]))
         }
+        async fn derive_render_key(&self) -> Result<uc_core::search::RenderKey, SearchError> {
+            Ok(uc_core::search::RenderKey([0u8; 32]))
+        }
+    }
+
+    /// No-op maintenance port for coordinator tests (purge is not exercised here).
+    struct FakeMaintenance;
+
+    #[async_trait::async_trait]
+    impl SearchIndexMaintenancePort for FakeMaintenance {
+        async fn purge_plaintext_residue(&self) -> Result<(), SearchError> {
+            Ok(())
+        }
+        async fn mark_plaintext_purge_done(&self, _ts_ms: i64) -> Result<(), SearchError> {
+            Ok(())
+        }
+    }
+
+    /// Returns no entry — the repair path is not exercised in these tests.
+    struct FakeGetEntry;
+
+    #[async_trait::async_trait]
+    impl GetClipboardEntryPort for FakeGetEntry {
+        async fn get_entry(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, uc_core::clipboard::ClipboardRepositoryError> {
+            Ok(None)
+        }
     }
 
     /// Unused in the zero-entry resume test (no entries are projected), but
@@ -861,6 +1104,8 @@ mod tests {
                 // A prior rebuild completed, so the initial-backfill branch is
                 // skipped and the blocked branch is the one under test.
                 last_rebuild_completed_at_ms: Some(1_000),
+                // Already purged, so the purge branch stays quiet.
+                plaintext_purge_done_ms: Some(1_500),
             },
             rebuild_called: Arc::clone(&rebuild_called),
         };
@@ -868,11 +1113,13 @@ mod tests {
         let rep_id = RepresentationId::new();
         let deps = SearchCoordinatorDeps::new(
             Arc::new(index),
+            Arc::new(FakeMaintenance),
             Arc::new(FakeKeyDerivation),
             Arc::new(FakePipeline),
             // No entries: the resumed rebuild finalizes immediately to an empty,
             // ready index, so the pipeline build path is never reached.
             Arc::new(FakeEntryRepo { entries: vec![] }),
+            Arc::new(FakeGetEntry),
             Arc::new(FakeRepRepo {
                 rep_id: rep_id.clone(),
             }),
@@ -904,5 +1151,79 @@ mod tests {
         let snapshot = coordinator.status_snapshot().await;
         assert_eq!(snapshot.state, STATUS_READY);
         assert_eq!(snapshot.reason, None);
+    }
+
+    /// Counts `get_entry` calls and holds each in-flight for `delay`, so a repair
+    /// stays pending long enough for a second report of the same id to be
+    /// coalesced. Returns `None` (entry gone), which ends `repair_entry` right
+    /// after the load — so the call count equals the number of repairs run.
+    struct CountingGetEntry {
+        calls: Arc<AtomicUsize>,
+        delay: Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl GetClipboardEntryPort for CountingGetEntry {
+        async fn get_entry(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<ClipboardEntry>, uc_core::clipboard::ClipboardRepositoryError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(self.delay).await;
+            Ok(None)
+        }
+    }
+
+    /// A corrupted entry reported across several queries (and duplicated within a
+    /// batch) must coalesce into exactly one re-projection repair via the
+    /// in-flight set — never one repair per report.
+    #[tokio::test]
+    async fn schedule_repair_coalesces_repeated_reports_for_same_entry() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let index = FakeSearchIndex {
+            meta: SearchIndexMeta {
+                index_version: CURRENT_INDEX_VERSION.to_string(),
+                search_blocked: false,
+                last_rebuild_started_at_ms: Some(2_000),
+                last_rebuild_completed_at_ms: Some(1_000),
+                plaintext_purge_done_ms: Some(1_500),
+            },
+            rebuild_called: Arc::new(AtomicBool::new(false)),
+        };
+        let rep_id = RepresentationId::new();
+        let deps = SearchCoordinatorDeps::new(
+            Arc::new(index),
+            Arc::new(FakeMaintenance),
+            Arc::new(FakeKeyDerivation),
+            Arc::new(FakePipeline),
+            Arc::new(FakeEntryRepo { entries: vec![] }),
+            Arc::new(CountingGetEntry {
+                calls: Arc::clone(&calls),
+                // Long enough that the second report lands while the first repair
+                // is still in flight, so dedup is exercised deterministically.
+                delay: Duration::from_millis(100),
+            }),
+            Arc::new(FakeRepRepo {
+                rep_id: rep_id.clone(),
+            }),
+            Arc::new(FakeSelectionRepo { rep_id }),
+            Arc::new(FakeEventRepo),
+        );
+        let coordinator = SearchCoordinator::new(deps);
+
+        let id = EntryId::from("corrupt-1");
+        // First "query" reports the id twice in one batch; a second "query"
+        // reports it again a moment later — three reports, one entry.
+        coordinator.schedule_repair(vec![id.clone(), id.clone()]);
+        coordinator.schedule_repair(vec![id.clone()]);
+
+        // Wait past the in-flight window for the single repair to finish.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "repeated corruption reports for one entry must coalesce into a single repair"
+        );
     }
 }

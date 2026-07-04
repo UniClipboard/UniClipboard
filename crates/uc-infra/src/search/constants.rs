@@ -40,7 +40,13 @@
 ///   paths of an entry's referenced files (aligned with `file_names`), so a
 ///   row can resolve a file's on-disk location without a lazy fetch. The
 ///   rebuild backfills it (see the `add_search_document_file_paths` migration).
-pub const CURRENT_INDEX_VERSION: &str = "search-v9";
+/// - `search-v10`: encrypts the content-derived render columns. The five
+///   plaintext columns (`text_preview`, `file_names`, `link_urls`, `file_paths`,
+///   `char_count`) are dropped and replaced by a single AEAD-sealed
+///   `render_payload` BLOB. The rebuild backfills the encrypted payload from the
+///   decrypted representations (see the `encrypt_search_render_columns`
+///   migration). `source_device` and `payload_state` stay plaintext by design.
+pub const CURRENT_INDEX_VERSION: &str = "search-v10";
 
 /// Field-mask bit: term was extracted from the plain-text body.
 pub const SEARCH_FIELD_BODY: u8 = 0b0000_0001;

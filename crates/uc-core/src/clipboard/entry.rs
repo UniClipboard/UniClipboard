@@ -7,7 +7,6 @@ pub struct ClipboardEntry {
     pub event_id: EventId,
     pub created_at_ms: i64,
     pub active_time_ms: i64,
-    pub title: Option<String>,
     pub total_size: i64,
     pub content_category: ClipboardEntryContentCategory,
     /// 该 entry 是否纳入了"投递状态"追踪体系。
@@ -33,19 +32,12 @@ impl ClipboardEntry {
     /// 是给老 entry 也合成 Pending —— UI 端可见但不严重);反之若默认
     /// `false`,真实新建处一旦漏写覆盖,entry 会被永久标记为 Historical,
     /// UI 显示"无投递记录"是 silent UI bug。
-    pub fn new(
-        entry_id: EntryId,
-        event_id: EventId,
-        created_at_ms: i64,
-        title: Option<String>,
-        total_size: i64,
-    ) -> Self {
+    pub fn new(entry_id: EntryId, event_id: EventId, created_at_ms: i64, total_size: i64) -> Self {
         Self {
             entry_id,
             event_id,
             created_at_ms,
             active_time_ms: created_at_ms,
-            title,
             total_size,
             content_category: ClipboardEntryContentCategory::Other,
             delivery_tracked: true,
@@ -58,7 +50,6 @@ impl ClipboardEntry {
         event_id: EventId,
         created_at_ms: i64,
         active_time_ms: i64,
-        title: Option<String>,
         total_size: i64,
     ) -> Self {
         Self {
@@ -66,7 +57,6 @@ impl ClipboardEntry {
             event_id,
             created_at_ms,
             active_time_ms,
-            title,
             total_size,
             content_category: ClipboardEntryContentCategory::Other,
             delivery_tracked: true,

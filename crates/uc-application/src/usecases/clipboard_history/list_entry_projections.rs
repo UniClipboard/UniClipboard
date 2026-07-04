@@ -165,7 +165,6 @@ fn file_uri_list_preview(
 /// agreement.
 fn resolve_preview_text(
     content_category: ClipboardEntryContentCategory,
-    title: Option<&str>,
     preview_rep: &PersistedClipboardRepresentation,
     is_image: bool,
     paste_rep: &PersistedClipboardRepresentation,
@@ -180,10 +179,7 @@ fn resolve_preview_text(
     if is_image {
         return image_placeholder(image_dimensions, preview_rep.size_bytes);
     }
-    title
-        .map(|title| title.trim().to_string())
-        .filter(|title| !title.is_empty())
-        .unwrap_or_else(|| "Text content (full payload in background processing)".to_string())
+    "Text content (full payload in background processing)".to_string()
 }
 
 /// Placeholder preview for an image entry that carries no inline text. Prefers
@@ -399,7 +395,6 @@ impl ListClipboardEntryProjectionsUseCase {
 
             let preview = resolve_preview_text(
                 entry.content_category,
-                entry.title.as_deref(),
                 &representation,
                 is_image,
                 paste_rep_ref,
@@ -637,7 +632,6 @@ mod tests {
         let paste_rep = uri_list_rep("file:///home/u/photo.png");
         let preview = resolve_preview_text(
             ClipboardEntryContentCategory::File,
-            None,
             &preview_rep,
             true,
             &paste_rep,
@@ -650,14 +644,8 @@ mod tests {
     fn resolve_preview_plain_file_uses_preview_rep_uri_list() {
         // Regular file copy: preview_rep == paste_rep == uri-list. Unchanged.
         let rep = uri_list_rep("file:///home/u/report.pdf");
-        let preview = resolve_preview_text(
-            ClipboardEntryContentCategory::File,
-            None,
-            &rep,
-            false,
-            &rep,
-            None,
-        );
+        let preview =
+            resolve_preview_text(ClipboardEntryContentCategory::File, &rep, false, &rep, None);
         assert_eq!(preview, "file:///home/u/report.pdf");
     }
 
@@ -668,7 +656,6 @@ mod tests {
         let image_rep = image_blob_rep(2048);
         let preview = resolve_preview_text(
             ClipboardEntryContentCategory::File,
-            None,
             &image_rep,
             true,
             &image_rep,
@@ -682,7 +669,6 @@ mod tests {
         let image_rep = image_blob_rep(999);
         let preview = resolve_preview_text(
             ClipboardEntryContentCategory::Image,
-            None,
             &image_rep,
             true,
             &image_rep,
@@ -694,14 +680,8 @@ mod tests {
     #[test]
     fn resolve_preview_text_entry_uses_inline_text() {
         let rep = plain_text_rep("hello world");
-        let preview = resolve_preview_text(
-            ClipboardEntryContentCategory::Text,
-            None,
-            &rep,
-            false,
-            &rep,
-            None,
-        );
+        let preview =
+            resolve_preview_text(ClipboardEntryContentCategory::Text, &rep, false, &rep, None);
         assert_eq!(preview, "hello world");
     }
 
@@ -743,14 +723,8 @@ mod tests {
             Some(format!("# comment\n{uri}\n").into_bytes()),
             None,
         );
-        let entry = ClipboardEntry::new(
-            entry_id.clone(),
-            event_id.clone(),
-            100,
-            Some("photo.png".to_string()),
-            12345,
-        )
-        .with_content_category(ClipboardEntryContentCategory::File);
+        let entry = ClipboardEntry::new(entry_id.clone(), event_id.clone(), 100, 12345)
+            .with_content_category(ClipboardEntryContentCategory::File);
         let selection = ClipboardSelectionDecision::new(
             entry_id.clone(),
             ClipboardSelection {

@@ -586,9 +586,11 @@ pub async fn build_cli_app_runtime(
         Arc::new(InMemoryLifecycleStatus::new());
     let search_coordinator = Arc::new(SearchCoordinator::new(SearchCoordinatorDeps::new(
         deps.search.search_index.clone(),
+        deps.search.search_maintenance.clone(),
         deps.search.search_key_derivation.clone(),
         deps.search.search_pipeline.clone(),
         deps.clipboard.entry_ports.list.clone(),
+        deps.clipboard.entry_ports.get.clone(),
         deps.clipboard.representation_ports.list_for_event.clone(),
         deps.clipboard.selection_repo.clone(),
         deps.clipboard.clipboard_event_reader_repo.clone(),

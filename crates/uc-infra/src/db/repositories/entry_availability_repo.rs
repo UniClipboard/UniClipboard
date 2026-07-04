@@ -263,7 +263,6 @@ mod tests {
                         event_id: "ev".into(),
                         created_at_ms: 0,
                         active_time_ms: 0,
-                        title: None,
                         total_size: 0,
                         pinned: false,
                         delivery_tracked: true,

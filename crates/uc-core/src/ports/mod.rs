@@ -96,6 +96,7 @@ pub use pairing_invitation::{
 };
 pub use peer_address::{PeerAddressError, PeerAddressRecord, PeerAddressRepositoryPort};
 pub use presence::{PresenceError, PresenceEvent, PresencePort, ReachabilityState};
+pub use search::maintenance::SearchIndexMaintenancePort;
 pub use search::search_index::SearchIndexPort;
 pub use search::search_key::SearchKeyDerivationPort;
 pub use security::secure_storage::{SecureStorageError, SecureStoragePort};

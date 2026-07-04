@@ -296,11 +296,6 @@ impl SearchProjectionBuilder {
             content.ingest(mime, rep.inline_data.as_deref(), rep.id == *preview_rep_id);
         }
 
-        // Use entry.title as text_preview fallback if we have no inline text.
-        if content.text_preview.is_none() {
-            content.text_preview = entry.title.clone();
-        }
-
         // Locate the paste representation once: it drives both the mime type
         // (content's primary data form — see `build_from_capture` for why preview
         // is wrong) and the authoritative payload_state.
@@ -334,13 +329,12 @@ mod tests {
     }
 
     fn entry() -> ClipboardEntry {
-        ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0)
+        ClipboardEntry::new(EntryId::new(), EventId::new(), 0, 0)
             .with_content_category(ClipboardEntryContentCategory::Text)
     }
 
     fn entry_with_category(category: ClipboardEntryContentCategory) -> ClipboardEntry {
-        ClipboardEntry::new(EntryId::new(), EventId::new(), 0, None, 0)
-            .with_content_category(category)
+        ClipboardEntry::new(EntryId::new(), EventId::new(), 0, 0).with_content_category(category)
     }
 
     /// Project a single-representation capture (all selection slots point at the

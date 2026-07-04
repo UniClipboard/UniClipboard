@@ -7759,7 +7759,7 @@
                 }
               }
             },
-            "description": "Encryption session is locked (keyword search only; filter-only browse is served while locked)"
+            "description": "Encryption session is locked (all query forms require an unlocked session)"
           },
           "500": {
             "content": {
@@ -7940,6 +7940,16 @@
               }
             },
             "description": "Tag list with entry counts"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
           },
           "500": {
             "content": {

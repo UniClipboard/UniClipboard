@@ -55,6 +55,13 @@ pub struct SearchResultsPage {
     pub total: u32,
     /// Whether more pages follow the current page window.
     pub has_more: bool,
+    /// Entries whose stored render payload could not be decoded (corrupted,
+    /// tampered, or an unsupported envelope) while assembling this page. Their
+    /// rows are still returned in `items` with render fields blanked; this list
+    /// lets the application layer schedule a re-projection repair. Empty on the
+    /// healthy path. Internal engine signal — not part of the API contract.
+    #[serde(default)]
+    pub corrupted_entry_ids: Vec<EntryId>,
 }
 
 /// Stage of a full index rebuild.

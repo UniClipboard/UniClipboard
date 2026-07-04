@@ -61,6 +61,10 @@ export function mapStatusToErrorCode(status: number): DaemonErrorCode {
       return DaemonErrorCode.NOT_FOUND
     case 410:
       return DaemonErrorCode.PAYLOAD_UNAVAILABLE
+    case 423:
+      // Locked encryption session (`session_locked`). Surfaced as
+      // "encryption not ready" so callers gate on a single not-ready condition.
+      return DaemonErrorCode.ENCRYPTION_NOT_READY
     case 429:
       return DaemonErrorCode.RATE_LIMITED
     case 503:

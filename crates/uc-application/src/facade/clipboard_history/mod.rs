@@ -423,7 +423,7 @@ impl ClipboardHistoryFacade {
         // ClipboardEntry 与 ClipboardSelection 是搭配的——entry_repo 的
         // save_entry_and_selection 会同时写两张表。selection 里只有一个
         // representation，全部字段都指向 rep_id。
-        let entry = ClipboardEntry::new(entry_id.clone(), event_id, now, None, total_size);
+        let entry = ClipboardEntry::new(entry_id.clone(), event_id, now, total_size);
         let selection = ClipboardSelectionDecision::new(
             entry_id.clone(),
             ClipboardSelection {

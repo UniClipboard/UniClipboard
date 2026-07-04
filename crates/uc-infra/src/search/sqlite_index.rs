@@ -17,9 +17,10 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use uc_core::ids::{EntryId, ProfileId};
+use uc_core::ports::search::maintenance::SearchIndexMaintenancePort;
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
 use uc_core::ports::security::current_profile::CurrentProfilePort;
@@ -32,6 +33,7 @@ use uc_core::search::tag::{SearchTagCount, TagId};
 use crate::db::pool::DbPool;
 use crate::db::schema::{search_document, search_entry_tag, search_index_meta, search_posting};
 use crate::search::constants::CURRENT_INDEX_VERSION;
+use crate::search::render_payload::RenderPayloadCodec;
 use crate::search::rows::{
     NewSearchDocumentRow, NewSearchEntryTagRow, NewSearchIndexMetaRow, NewSearchPostingRow,
     SearchDocumentRow, SearchIndexMetaRow,
@@ -221,6 +223,7 @@ impl SqliteSearchIndex {
     fn upsert_active_entry(
         conn: &mut SqliteConnection,
         profile_id: &str,
+        codec: &RenderPayloadCodec,
         document: &SearchDocument,
         postings: &[SearchPosting],
     ) -> Result<(), SearchError> {
@@ -236,7 +239,7 @@ impl SqliteSearchIndex {
             .execute(tx)?;
 
             // 2. Upsert (insert or replace) the document row.
-            let doc_row = NewSearchDocumentRow::from_domain(profile_id, document)
+            let doc_row = NewSearchDocumentRow::from_domain(codec, profile_id, document)
                 .map_err(|_e| diesel::result::Error::RollbackTransaction)?;
 
             diesel::replace_into(search_document::table)
@@ -775,45 +778,49 @@ impl SqliteSearchIndex {
     fn hydrate_results(
         conn: &mut SqliteConnection,
         profile_id: &str,
+        codec: &RenderPayloadCodec,
         page_rows: Vec<SearchDocumentRow>,
-    ) -> Result<Vec<SearchResult>, SearchError> {
+    ) -> Result<(Vec<SearchResult>, Vec<EntryId>), SearchError> {
         let page_entry_ids: Vec<String> =
             page_rows.iter().map(|doc| doc.entry_id.clone()).collect();
         let tags_by_entry = Self::load_tags_for_entries(conn, profile_id, &page_entry_ids)?;
 
-        let items = page_rows
-            .into_iter()
-            .map(|doc| {
-                let tags = tags_by_entry
-                    .get(&doc.entry_id)
-                    .cloned()
-                    .unwrap_or_default();
-                // Propagate decode failures: silently dropping a row would make
-                // `items` shorter than the already-counted `total`/`has_more`.
-                let domain = doc.to_domain().map_err(|e| {
-                    SearchError::Internal(format!(
-                        "failed to decode search row {}: {e}",
-                        doc.entry_id
-                    ))
-                })?;
-                Ok(SearchResult {
-                    entry_id: domain.entry_id,
-                    content_type: domain.content_type,
-                    active_time_ms: domain.active_time_ms,
-                    tags,
-                    text_preview: domain.text_preview,
-                    char_count: domain.char_count,
-                    mime_type: domain.mime_type,
-                    file_extensions: domain.file_extensions,
-                    file_names: domain.file_names,
-                    file_paths: domain.file_paths,
-                    link_urls: domain.link_urls,
-                    source_device: domain.source_device,
-                    payload_state: domain.payload_state,
-                })
-            })
-            .collect::<Result<Vec<SearchResult>, SearchError>>()?;
-        Ok(items)
+        let mut items = Vec::with_capacity(page_rows.len());
+        let mut corrupted: Vec<EntryId> = Vec::new();
+
+        for doc in page_rows {
+            let tags = tags_by_entry
+                .get(&doc.entry_id)
+                .cloned()
+                .unwrap_or_default();
+            // Structural parse (file_type/file_extensions) can hard-error; a
+            // render-payload decode failure does NOT drop the row — it comes back
+            // with blanked render fields and the entry id is collected for repair,
+            // so `items` stays in lockstep with the already-counted total.
+            let decoded = doc.to_domain(codec).map_err(|e| {
+                SearchError::Internal(format!("failed to decode search row {}: {e}", doc.entry_id))
+            })?;
+            if decoded.render_corrupted {
+                corrupted.push(decoded.document.entry_id.clone());
+            }
+            let domain = decoded.document;
+            items.push(SearchResult {
+                entry_id: domain.entry_id,
+                content_type: domain.content_type,
+                active_time_ms: domain.active_time_ms,
+                tags,
+                text_preview: domain.text_preview,
+                char_count: domain.char_count,
+                mime_type: domain.mime_type,
+                file_extensions: domain.file_extensions,
+                file_names: domain.file_names,
+                file_paths: domain.file_paths,
+                link_urls: domain.link_urls,
+                source_device: domain.source_device,
+                payload_state: domain.payload_state,
+            });
+        }
+        Ok((items, corrupted))
     }
 
     /// Load tag memberships for `entry_ids`, grouped by entry id.
@@ -867,15 +874,25 @@ impl SqliteSearchIndex {
 
     // ─── Rebuild helpers ──────────────────────────────────────────────────────
 
-    /// Create the two temp tables (`tmp_search_document_rebuild_*` and
-    /// `tmp_search_posting_rebuild_*`) with the same columns as the active tables.
+    /// Create the three temp tables (`tmp_search_document_rebuild_*`,
+    /// `tmp_search_posting_rebuild_*`, `tmp_search_entry_tag_rebuild_*`) with the
+    /// same columns as the active tables.
+    ///
+    /// The temp tables are persistent (not `TEMP`) and named deterministically per
+    /// profile, so an interrupted earlier rebuild can leave a stale, differently
+    /// structured table behind. Drop any residue first, then create fresh — never
+    /// `CREATE IF NOT EXISTS` onto a stale schema.
     fn create_rebuild_tables(
         conn: &mut SqliteConnection,
         state: &ActiveRebuild,
     ) -> Result<(), SearchError> {
+        // Drop any leftover temp tables from a previous interrupted rebuild so we
+        // never reuse a stale (e.g. pre-encryption) schema.
+        Self::drop_rebuild_tables(conn, state);
+
         // Temp document table: same columns as search_document.
         let create_doc = format!(
-            "CREATE TABLE IF NOT EXISTS {doc_table} (
+            "CREATE TABLE {doc_table} (
                 profile_id TEXT NOT NULL,
                 entry_id TEXT NOT NULL,
                 event_id TEXT NOT NULL,
@@ -886,13 +903,9 @@ impl SqliteSearchIndex {
                 mime_type TEXT NOT NULL DEFAULT '',
                 indexed_at_ms INTEGER NOT NULL,
                 index_version TEXT NOT NULL,
-                text_preview TEXT,
-                file_names TEXT NOT NULL DEFAULT '[]',
-                link_urls TEXT NOT NULL DEFAULT '[]',
                 source_device TEXT,
                 payload_state TEXT,
-                char_count INTEGER,
-                file_paths TEXT NOT NULL DEFAULT '[]',
+                render_payload BLOB,
                 PRIMARY KEY (profile_id, entry_id)
             )",
             doc_table = state.temp_document_table
@@ -969,6 +982,7 @@ impl SqliteSearchIndex {
     fn insert_temp_entry(
         conn: &mut SqliteConnection,
         state: &ActiveRebuild,
+        codec: &RenderPayloadCodec,
         document: &SearchDocument,
         postings: &[SearchPosting],
     ) -> Result<(), SearchError> {
@@ -986,16 +1000,16 @@ impl SqliteSearchIndex {
             .execute(conn)
             .map_err(|e| SearchError::Internal(format!("delete temp postings failed: {e}")))?;
 
-        // Build document values for INSERT OR REPLACE.
-        let doc_row = NewSearchDocumentRow::from_domain(profile_id, document)
+        // Build document values for INSERT OR REPLACE (render fields sealed by codec).
+        let doc_row = NewSearchDocumentRow::from_domain(codec, profile_id, document)
             .map_err(|e| SearchError::Internal(format!("from_domain failed: {e}")))?;
 
         let insert_doc = format!(
             "INSERT OR REPLACE INTO {doc_table}
              (profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
-              file_type, file_extensions, mime_type, indexed_at_ms, index_version, text_preview,
-              file_names, link_urls, source_device, payload_state, char_count, file_paths)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              file_type, file_extensions, mime_type, indexed_at_ms, index_version,
+              source_device, payload_state, render_payload)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             doc_table = state.temp_document_table
         );
         diesel::sql_query(&insert_doc)
@@ -1009,13 +1023,11 @@ impl SqliteSearchIndex {
             .bind::<diesel::sql_types::Text, _>(&doc_row.mime_type)
             .bind::<diesel::sql_types::BigInt, _>(doc_row.indexed_at_ms)
             .bind::<diesel::sql_types::Text, _>(&doc_row.index_version)
-            .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.text_preview)
-            .bind::<diesel::sql_types::Text, _>(&doc_row.file_names)
-            .bind::<diesel::sql_types::Text, _>(&doc_row.link_urls)
             .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.source_device)
             .bind::<diesel::sql_types::Nullable<diesel::sql_types::Text>, _>(&doc_row.payload_state)
-            .bind::<diesel::sql_types::Nullable<diesel::sql_types::BigInt>, _>(doc_row.char_count)
-            .bind::<diesel::sql_types::Text, _>(&doc_row.file_paths)
+            .bind::<diesel::sql_types::Nullable<diesel::sql_types::Binary>, _>(
+                &doc_row.render_payload,
+            )
             .execute(conn)
             .map_err(|e| SearchError::Internal(format!("insert temp doc failed: {e}")))?;
 
@@ -1158,14 +1170,17 @@ impl SqliteSearchIndex {
             );
             diesel::sql_query(&copy_postings).execute(tx)?;
 
-            // 5. Copy temp documents into active table.
+            // 5. Copy temp documents into active table. Explicit column list on
+            //    both sides so the copy is not positionally fragile if the
+            //    physical column order of the two tables ever diverges.
             let copy_docs = format!(
                 "INSERT INTO search_document
+                 (profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
+                  file_type, file_extensions, mime_type, indexed_at_ms,
+                  index_version, source_device, payload_state, render_payload)
                  SELECT profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
                         file_type, file_extensions, mime_type, indexed_at_ms,
-                        index_version, text_preview,
-                        file_names, link_urls, source_device, payload_state, char_count,
-                        file_paths
+                        index_version, source_device, payload_state, render_payload
                  FROM {doc_table}",
                 doc_table = state.temp_document_table
             );
@@ -1216,6 +1231,12 @@ impl SearchIndexPort for SqliteSearchIndex {
         let profile_id = self.current_profile_id().await?.into_inner();
         let pool = self.pool.clone();
 
+        // Derive the render key once for this write. A locked session fails here
+        // with `SessionLocked` — the live-index caller already skips locked-state
+        // writes, so this is a redundant guard, not a new failure mode.
+        let render_key = self.search_key_derivation.derive_render_key().await?;
+        let codec = RenderPayloadCodec::new(render_key);
+
         // Check for active rebuild before entering spawn_blocking. A clone is cheap;
         // TOCTOU is acceptable here — if rebuild finishes between check and temp write,
         // the temp table will be gone, and the sql_query will return an error that we
@@ -1231,14 +1252,14 @@ impl SearchIndexPort for SqliteSearchIndex {
             Self::ensure_meta_row(&mut conn, &profile_id)?;
 
             // 1. Always write to the active tables first.
-            Self::upsert_active_entry(&mut conn, &profile_id, &document, &postings)?;
+            Self::upsert_active_entry(&mut conn, &profile_id, &codec, &document, &postings)?;
 
             // 2. If a rebuild is active for this profile, mirror into temp tables.
             if let Some(rebuild_state) = maybe_rebuild {
                 // Best-effort: if temp table was already dropped (rebuild completed
                 // between our check and this write), log and continue.
                 if let Err(e) =
-                    Self::insert_temp_entry(&mut conn, &rebuild_state, &document, &postings)
+                    Self::insert_temp_entry(&mut conn, &rebuild_state, &codec, &document, &postings)
                 {
                     warn!(error = %e, "failed to mirror index_entry into rebuild temp tables (best-effort)");
                 }
@@ -1306,6 +1327,13 @@ impl SearchIndexPort for SqliteSearchIndex {
         } else {
             vec![]
         };
+
+        // Derive the render key unconditionally — every returned row's render
+        // fields live in an encrypted payload, so even filter-only browse must
+        // decrypt to render previews. A locked session fails here with
+        // `SessionLocked` (defense-in-depth behind the handler's 423 pre-check).
+        let render_key = self.search_key_derivation.derive_render_key().await?;
+        let codec = RenderPayloadCodec::new(render_key);
 
         let operator = query.operator.clone();
         // Pre-encode `content_type` to its stored snake_case string form once, so
@@ -1377,8 +1405,19 @@ impl SearchIndexPort for SqliteSearchIndex {
             };
 
             // 5. Hydrate the page's tags from `search_entry_tag` and map to
-            //    domain results (shared by both paths).
-            let items = Self::hydrate_results(&mut conn, &profile_id, page_rows)?;
+            //    domain results (shared by both paths). Decrypt render payloads;
+            //    rows whose payload fails to decode come back blanked and their
+            //    ids are collected for a re-projection repair upstream.
+            let (items, corrupted_entry_ids) =
+                Self::hydrate_results(&mut conn, &profile_id, &codec, page_rows)?;
+
+            if !corrupted_entry_ids.is_empty() {
+                warn!(
+                    profile_id = %profile_id,
+                    corrupted = corrupted_entry_ids.len(),
+                    "search page contained rows with undecodable render payloads"
+                );
+            }
 
             debug!(total, returned = items.len(), has_more, "search completed");
 
@@ -1386,6 +1425,7 @@ impl SearchIndexPort for SqliteSearchIndex {
                 items,
                 total,
                 has_more,
+                corrupted_entry_ids,
             })
         })
         .await
@@ -1419,6 +1459,11 @@ impl SearchIndexPort for SqliteSearchIndex {
         let pool = self.pool.clone();
         let rebuild_state_arc = self.rebuild_state.clone();
         let total = entries.len() as u32;
+
+        // Derive the render key once for the whole rebuild run; a locked session
+        // fails the entire rebuild here (it is a no-op to rebuild while locked).
+        let render_key = self.search_key_derivation.derive_render_key().await?;
+        let codec = RenderPayloadCodec::new(render_key);
 
         // ─── Step 1: set blocked and record start time ────────────────────────
         {
@@ -1497,11 +1542,12 @@ impl SearchIndexPort for SqliteSearchIndex {
             let p = pool.clone();
             let doc = document.clone();
             let post = postings.clone();
+            let codec = codec.clone();
             if let Err(e) = tokio::task::spawn_blocking(move || {
                 let mut conn = p
                     .get()
                     .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
-                Self::insert_temp_entry(&mut conn, &rid, &doc, &post)
+                Self::insert_temp_entry(&mut conn, &rid, &codec, &doc, &post)
             })
             .await
             .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))
@@ -1739,9 +1785,153 @@ impl SearchIndexPort for SqliteSearchIndex {
     }
 }
 
+#[async_trait]
+impl SearchIndexMaintenancePort for SqliteSearchIndex {
+    #[instrument(
+        name = "search_index.purge_plaintext_residue",
+        level = "info",
+        skip(self)
+    )]
+    async fn purge_plaintext_residue(&self) -> Result<(), SearchError> {
+        let pool = self.pool.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
+
+            // Sweep any leftover rebuild scratch tables from interrupted rebuilds
+            // (persistent, profile-named `tmp_search_*_rebuild_*` tables) before
+            // compacting, so their pages are actually reclaimed.
+            Self::drop_stray_rebuild_tables(&mut conn);
+
+            // Fold the WAL back into the main database and truncate it, then
+            // VACUUM to rewrite the file without the dropped plaintext columns'
+            // residue.
+            //
+            // COST NOTE: the search index shares one SQLite file (and pool) with
+            // the main clipboard store, so `VACUUM` takes an exclusive lock on the
+            // WHOLE database and blocks every writer — clipboard capture, sync,
+            // everything — for the duration of the rewrite, not just search. This
+            // is a one-shot, best-effort task that runs once after the encrypting
+            // rebuild finalizes (typically an idle moment); `busy_timeout=5000`
+            // plus the bounded application-level retry let it wait out live writes.
+            // We log the elapsed time so a pathological stall is visible.
+            let started = std::time::Instant::now();
+            Self::run_with_busy_retry(&mut conn, "PRAGMA wal_checkpoint(TRUNCATE)")?;
+            Self::run_with_busy_retry(&mut conn, "VACUUM")?;
+            info!(
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "search maintenance: whole-database VACUUM complete (blocked writers while running)"
+            );
+            Ok(())
+        })
+        .await
+        .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
+    }
+
+    #[instrument(
+        name = "search_index.mark_plaintext_purge_done",
+        level = "debug",
+        skip(self),
+        fields(ts_ms)
+    )]
+    async fn mark_plaintext_purge_done(&self, ts_ms: i64) -> Result<(), SearchError> {
+        let profile_id = self.current_profile_id().await?.into_inner();
+        let pool = self.pool.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .map_err(|e| SearchError::Internal(format!("pool error: {e}")))?;
+            Self::ensure_meta_row(&mut conn, &profile_id)?;
+            use crate::db::schema::search_index_meta::dsl;
+            diesel::update(dsl::search_index_meta.filter(dsl::profile_id.eq(&profile_id)))
+                .set(dsl::plaintext_purge_done_ms.eq(ts_ms))
+                .execute(&mut conn)
+                .map_err(|e| SearchError::Internal(format!("mark purge done failed: {e}")))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| SearchError::Internal(format!("spawn_blocking error: {e}")))?
+    }
+}
+
+impl SqliteSearchIndex {
+    /// Execute a raw statement, retrying a bounded number of times when SQLite
+    /// reports the database is busy/locked. Used for maintenance statements
+    /// (`wal_checkpoint`, `VACUUM`) that can transiently contend with live writes.
+    fn run_with_busy_retry(conn: &mut SqliteConnection, sql: &str) -> Result<(), SearchError> {
+        const MAX_ATTEMPTS: usize = 5;
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match diesel::sql_query(sql).execute(conn) {
+                Ok(_) => return Ok(()),
+                // diesel maps SQLITE_BUSY / SQLITE_LOCKED to a `DatabaseError`, but
+                // NOT to a stable `DatabaseErrorKind` variant — both land in
+                // `Unknown`. We therefore match on any kind and detect contention
+                // via the message text ("database is locked" / "... table is
+                // locked" / "database is busy"). This substring check is the only
+                // signal diesel exposes here; if a future diesel/libsqlite version
+                // changes the wording, contention would surface as a hard error
+                // instead of a retry — acceptable for a best-effort background task,
+                // but revisit if diesel ever exposes the extended result code.
+                Err(diesel::result::Error::DatabaseError(_, ref info))
+                    if attempt < MAX_ATTEMPTS && is_busy_or_locked(info.message()) =>
+                {
+                    warn!(sql, attempt, "search maintenance statement busy, retrying");
+                    // Exponential-ish backoff without an async sleep (we are on a
+                    // blocking thread): a short spin-wait via std sleep.
+                    std::thread::sleep(std::time::Duration::from_millis(50 * attempt as u64));
+                }
+                Err(e) => {
+                    return Err(SearchError::Internal(format!(
+                        "maintenance statement `{sql}` failed: {e}"
+                    )))
+                }
+            }
+        }
+    }
+
+    /// Drop any leftover rebuild scratch tables (`tmp_search_%_rebuild_%`) from a
+    /// prior interrupted rebuild. Best-effort; failures are logged, not returned.
+    fn drop_stray_rebuild_tables(conn: &mut SqliteConnection) {
+        #[derive(QueryableByName)]
+        struct TableName {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            name: String,
+        }
+        let listed = diesel::sql_query(
+            "SELECT name FROM sqlite_master \
+             WHERE type = 'table' AND name LIKE 'tmp_search_%_rebuild_%'",
+        )
+        .load::<TableName>(conn);
+        match listed {
+            Ok(tables) => {
+                for t in tables {
+                    let drop_sql = format!("DROP TABLE IF EXISTS {}", t.name);
+                    if let Err(e) = diesel::sql_query(&drop_sql).execute(conn) {
+                        warn!(table = %t.name, error = %e, "failed to drop stray rebuild table");
+                    }
+                }
+            }
+            Err(e) => warn!(error = %e, "failed to list stray rebuild tables"),
+        }
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Private helpers
 // ──────────────────────────────────────────────────────────────────────────────
+
+/// Whether a SQLite error message denotes transient lock contention
+/// (`SQLITE_BUSY` / `SQLITE_LOCKED`), which is safe to retry. Message-based
+/// because diesel folds both codes into `DatabaseErrorKind::Unknown`.
+fn is_busy_or_locked(message: &str) -> bool {
+    let m = message.to_lowercase();
+    m.contains("locked") || m.contains("busy")
+}
 
 /// Convert a `TimeRangeFilter` variant to an inclusive `(from_ms, to_ms)` pair.
 ///
@@ -1809,13 +1999,24 @@ fn resolve_time_range(filter: &TimeRangeFilter, now_ms: i64) -> (u64, u64) {
 mod tests {
     use super::*;
     use crate::db::pool::init_db_pool;
+    use crate::search::render_payload::RenderFields;
     use tempfile::{tempdir, TempDir};
     use uc_core::ports::security::current_profile::CurrentProfileError;
     use uc_core::search::document::ContentType;
-    use uc_core::search::key::SearchKey;
+    use uc_core::search::key::{RenderKey, SearchKey};
     use uc_core::search::tag::TagId;
 
     const TEST_PROFILE: &str = "default";
+
+    /// Fixed render key used by the test codec so tests can decrypt what the
+    /// index encrypted through `FixedKey`.
+    const TEST_RENDER_KEY: [u8; 32] = [9u8; 32];
+
+    /// A codec matching `FixedKey`'s render key, for decrypting `render_payload`
+    /// in assertions.
+    fn test_codec() -> RenderPayloadCodec {
+        RenderPayloadCodec::new(RenderKey(TEST_RENDER_KEY))
+    }
 
     struct FixedProfile;
     #[async_trait]
@@ -1831,14 +2032,20 @@ mod tests {
         async fn derive_search_key(&self) -> Result<SearchKey, SearchError> {
             Ok(SearchKey([7u8; 32]))
         }
+        async fn derive_render_key(&self) -> Result<RenderKey, SearchError> {
+            Ok(RenderKey(TEST_RENDER_KEY))
+        }
     }
 
     /// Search-key derivation that always reports a locked encryption session,
-    /// modelling the runtime lock state for lock-contract assertions (§4.6).
+    /// modelling the runtime lock state for lock-contract assertions (§3.3).
     struct LockedKey;
     #[async_trait]
     impl SearchKeyDerivationPort for LockedKey {
         async fn derive_search_key(&self) -> Result<SearchKey, SearchError> {
+            Err(SearchError::SessionLocked)
+        }
+        async fn derive_render_key(&self) -> Result<RenderKey, SearchError> {
             Err(SearchError::SessionLocked)
         }
     }
@@ -2118,63 +2325,47 @@ mod tests {
         assert!(tag_rows(&pool).is_empty());
     }
 
-    /// Lock contract (§4.6): a filter-only / empty browse never derives the
-    /// search key, so it returns results even while the encryption session is
-    /// locked. This is what lets the daemon serve browse without unlocking.
+    /// Lock contract (§3.3): a filter-only / empty browse must decrypt each
+    /// row's render payload, so it now derives the render key and surfaces
+    /// `SessionLocked` while the session is locked — closing the old
+    /// locked-browse-returns-plaintext leak.
     #[tokio::test]
-    async fn filter_only_browse_succeeds_when_session_locked() {
+    async fn filter_only_browse_rejected_when_session_locked() {
         let (index, _pool, _dir) = make_index_with_key(Arc::new(LockedKey));
-        index
-            .index_entry(make_doc("e1", vec![]), vec![])
-            .await
-            .unwrap();
 
-        let page = index.search(filter_only_query()).await.unwrap();
+        let err = index.search(filter_only_query()).await.unwrap_err();
 
-        assert_eq!(page.total, 1);
-        assert_eq!(page.items.len(), 1);
-        assert_eq!(page.items[0].entry_id.to_string(), "e1");
+        assert!(matches!(err, SearchError::SessionLocked));
     }
 
-    /// Lock contract (§4.6): a keyword search must derive the search key, which
-    /// is unavailable while locked, so it surfaces `SessionLocked` rather than
-    /// silently degrading to unkeyed or empty results.
+    /// Lock contract (§3.3): a keyword search likewise surfaces `SessionLocked`
+    /// while locked (it needs both the search key and the render key).
     #[tokio::test]
     async fn keyword_search_rejected_when_session_locked() {
         let (index, _pool, _dir) = make_index_with_key(Arc::new(LockedKey));
-        index
-            .index_entry(make_doc("e1", vec![]), vec![])
-            .await
-            .unwrap();
 
         let err = index.search(keyword_query("hello")).await.unwrap_err();
 
         assert!(matches!(err, SearchError::SessionLocked));
     }
 
-    /// Read the render columns of one document row as `(file_names, link_urls,
-    /// source_device, payload_state)`. `file_names`/`link_urls` come back as the
-    /// stored JSON-array strings.
-    fn render_cols(
-        pool: &DbPool,
-        entry_id: &str,
-    ) -> (String, String, Option<String>, Option<String>) {
+    /// Decode the stored `render_payload` of one row back to a domain document,
+    /// so assertions can inspect the render fields that now live encrypted.
+    fn decoded_doc(pool: &DbPool, entry_id: &str) -> SearchDocument {
         let mut conn = pool.get().unwrap();
-        search_document::table
+        let row = search_document::table
             .filter(search_document::profile_id.eq(TEST_PROFILE))
             .filter(search_document::entry_id.eq(entry_id))
-            .select((
-                search_document::file_names,
-                search_document::link_urls,
-                search_document::source_device,
-                search_document::payload_state,
-            ))
-            .first::<(String, String, Option<String>, Option<String>)>(&mut conn)
-            .unwrap()
+            .select(SearchDocumentRow::as_select())
+            .first::<SearchDocumentRow>(&mut conn)
+            .unwrap();
+        row.to_domain(&test_codec()).unwrap().document
     }
 
     fn doc_with_render(entry_id: &str) -> SearchDocument {
         let mut doc = make_doc(entry_id, vec![TagId::link()]);
+        doc.text_preview = Some("hello".to_string());
+        doc.char_count = Some(5);
         doc.file_names = vec!["a.txt".to_string()];
         doc.file_paths = vec!["/tmp/a.txt".to_string()];
         doc.link_urls = vec!["https://example.com".to_string()];
@@ -2183,38 +2374,43 @@ mod tests {
         doc
     }
 
-    /// The live index path (`upsert_active_entry`, diesel `replace_into`) writes
-    /// every render column.
+    /// The live index path (`upsert_active_entry`, diesel `replace_into`) seals
+    /// the render fields into `render_payload` and leaves `source_device` /
+    /// `payload_state` as plaintext columns.
     #[tokio::test]
-    async fn index_entry_persists_render_columns() {
+    async fn index_entry_persists_render_payload() {
         let (index, pool, _dir) = make_index();
         index
             .index_entry(doc_with_render("e1"), vec![])
             .await
             .unwrap();
 
-        let (file_names, link_urls, source_device, payload_state) = render_cols(&pool, "e1");
-        assert_eq!(file_names, r#"["a.txt"]"#);
-        assert_eq!(link_urls, r#"["https://example.com"]"#);
-        assert_eq!(source_device.as_deref(), Some("dev-1"));
-        assert_eq!(payload_state.as_deref(), Some("Lost"));
-
-        // file_paths rides the same live-index column write (manual-SQL bind order).
+        // The stored column is a non-null UCSR envelope, not plaintext.
         let mut conn = pool.get().unwrap();
-        let file_paths: String = search_document::table
+        let raw: Option<Vec<u8>> = search_document::table
             .filter(search_document::profile_id.eq(TEST_PROFILE))
             .filter(search_document::entry_id.eq("e1"))
-            .select(search_document::file_paths)
-            .first::<String>(&mut conn)
+            .select(search_document::render_payload)
+            .first::<Option<Vec<u8>>>(&mut conn)
             .unwrap();
-        assert_eq!(file_paths, r#"["/tmp/a.txt"]"#);
+        let raw = raw.expect("render_payload must be written");
+        assert_eq!(&raw[0..4], b"UCSR", "envelope magic");
+
+        let doc = decoded_doc(&pool, "e1");
+        assert_eq!(doc.text_preview.as_deref(), Some("hello"));
+        assert_eq!(doc.char_count, Some(5));
+        assert_eq!(doc.file_names, vec!["a.txt".to_string()]);
+        assert_eq!(doc.file_paths, vec!["/tmp/a.txt".to_string()]);
+        assert_eq!(doc.link_urls, vec!["https://example.com".to_string()]);
+        assert_eq!(doc.source_device.as_deref(), Some("dev-1"));
+        assert_eq!(doc.payload_state.as_deref(), Some("Lost"));
     }
 
-    /// The rebuild path (temp table DDL + `insert_temp_entry` binds + the
-    /// `INSERT … SELECT` cutover) must carry the render columns through unchanged
-    /// — the v5 "fields survive rebuild" gate.
+    /// The rebuild path (temp-table DDL + `insert_temp_entry` binds + the
+    /// `INSERT … SELECT` cutover) must carry the encrypted payload through
+    /// unchanged.
     #[tokio::test]
-    async fn rebuild_preserves_render_columns() {
+    async fn rebuild_preserves_render_payload() {
         let (index, pool, _dir) = make_index();
 
         let (tx, _rx) = tokio::sync::mpsc::channel(64);
@@ -2223,93 +2419,113 @@ mod tests {
             .await
             .unwrap();
 
-        let (file_names, link_urls, source_device, payload_state) = render_cols(&pool, "e1");
-        assert_eq!(file_names, r#"["a.txt"]"#);
-        assert_eq!(link_urls, r#"["https://example.com"]"#);
-        assert_eq!(source_device.as_deref(), Some("dev-1"));
-        assert_eq!(payload_state.as_deref(), Some("Lost"));
-
-        // file_paths must survive the temp-table DDL + INSERT…SELECT cutover.
-        let mut conn = pool.get().unwrap();
-        let file_paths: String = search_document::table
-            .filter(search_document::profile_id.eq(TEST_PROFILE))
-            .filter(search_document::entry_id.eq("e1"))
-            .select(search_document::file_paths)
-            .first::<String>(&mut conn)
-            .unwrap();
-        assert_eq!(file_paths, r#"["/tmp/a.txt"]"#);
+        let doc = decoded_doc(&pool, "e1");
+        assert_eq!(doc.text_preview.as_deref(), Some("hello"));
+        assert_eq!(doc.file_names, vec!["a.txt".to_string()]);
+        assert_eq!(doc.file_paths, vec!["/tmp/a.txt".to_string()]);
+        assert_eq!(doc.link_urls, vec!["https://example.com".to_string()]);
+        assert_eq!(doc.source_device.as_deref(), Some("dev-1"));
+        assert_eq!(doc.payload_state.as_deref(), Some("Lost"));
     }
 
-    /// End-to-end upgrade from a pre-v5 on-disk database (not a fresh one): an
-    /// old row written before the render columns existed must survive the
-    /// `ALTER TABLE ADD COLUMN` migration and then get its render columns
-    /// backfilled by the version-mismatch rebuild. Reverting and re-applying the
-    /// real migration also exercises its down/up reversibility.
+    /// Security invariant (§3.1): the content-derived render fields must never
+    /// hit disk in plaintext. Seed a row carrying distinctive probe strings, run
+    /// the residue purge (WAL checkpoint + VACUUM), then byte-scan the main DB
+    /// file and its WAL/SHM sidecars — none of the probes may appear.
     #[tokio::test]
-    async fn upgrade_from_pre_render_schema_backfills_render_columns() {
+    async fn render_fields_never_plaintext_on_disk() {
+        let (index, _pool, dir) = make_index();
+
+        const PROBE_TEXT: &str = "PROBE-TEXT-9f3a2b1c";
+        const PROBE_FILE: &str = "PROBE-FILE-7e5d4c3b.txt";
+        const PROBE_URL: &str = "https://PROBE-URL-2a1b0c9d.example";
+
+        let mut doc = make_doc("e1", vec![]);
+        doc.text_preview = Some(PROBE_TEXT.to_string());
+        doc.file_names = vec![PROBE_FILE.to_string()];
+        doc.link_urls = vec![PROBE_URL.to_string()];
+        index.index_entry(doc, vec![]).await.unwrap();
+
+        // Fold the WAL into the main file and compact, mirroring the production
+        // purge so the scan sees the settled on-disk state.
+        index.purge_plaintext_residue().await.unwrap();
+
+        let mut hits: Vec<String> = Vec::new();
+        for suffix in ["", "-wal", "-shm"] {
+            let path = dir.path().join(format!("search.sqlite{suffix}"));
+            let bytes = match std::fs::read(&path) {
+                Ok(b) => b,
+                // A checkpoint(TRUNCATE) can remove the -wal; missing sidecar is fine.
+                Err(_) => continue,
+            };
+            for probe in [PROBE_TEXT, PROBE_FILE, PROBE_URL] {
+                let needle = probe.as_bytes();
+                if bytes.windows(needle.len()).any(|w| w == needle) {
+                    hits.push(format!("{probe} in {}", path.display()));
+                }
+            }
+        }
+        assert!(
+            hits.is_empty(),
+            "plaintext render probes found on disk: {hits:?}"
+        );
+    }
+
+    /// The render-column encryption migration is intentionally irreversible: its
+    /// `down.sql` fails rather than recreate empty plaintext columns (which would
+    /// silently lose the encrypted render data).
+    #[tokio::test]
+    async fn encrypt_render_migration_down_is_irreversible() {
         use crate::db::pool::MIGRATIONS;
         use diesel_migrations::MigrationHarness;
 
-        let (index, pool, _dir) = make_index();
-
-        // 1. Roll back the render-columns migration so `search_document` looks
-        //    like the v4-era schema (original 11 columns, no render columns).
-        {
-            let mut conn = pool.get().unwrap();
-            conn.revert_last_migration(MIGRATIONS)
-                .expect("down.sql drops the render columns");
-        }
-
-        // 2. Seed a row the pre-v5 code path would have written: only the
-        //    original columns are set, and the index is at the old version.
-        {
-            let mut conn = pool.get().unwrap();
-            diesel::sql_query(
-                "INSERT INTO search_document
-                 (profile_id, entry_id, event_id, active_time_ms, captured_at_ms,
-                  file_type, file_extensions, mime_type, indexed_at_ms, index_version, text_preview)
-                 VALUES (?, 'old1', 'ev-old1', 1, 1, 'text', '[]', 'text/plain', 1, 'search-v4', 'old')",
-            )
-            .bind::<diesel::sql_types::Text, _>(TEST_PROFILE)
-            .execute(&mut conn)
-            .unwrap();
-            diesel::sql_query(
-                "UPDATE search_index_meta SET index_version = 'search-v4' WHERE profile_id = ?",
-            )
-            .bind::<diesel::sql_types::Text, _>(TEST_PROFILE)
-            .execute(&mut conn)
-            .unwrap();
-        }
-
-        // 3. Upgrade: re-apply the migration. ADD COLUMN runs against a populated
-        //    table — the old row must survive and pick up column defaults.
-        {
-            let mut conn = pool.get().unwrap();
-            conn.run_pending_migrations(MIGRATIONS)
-                .expect("up.sql re-adds the render columns");
-        }
-        assert_eq!(
-            render_cols(&pool, "old1"),
-            ("[]".to_string(), "[]".to_string(), None, None),
-            "old row survives ADD COLUMN with defaults"
+        let (_index, pool, _dir) = make_index();
+        let mut conn = pool.get().unwrap();
+        // The later `drop_clipboard_entry_title` migration sits on top of the
+        // render-column encryption one and is intentionally reversible (it re-adds
+        // an empty `title` column so an older binary still finds it). Revert it
+        // first to expose the encryption migration underneath.
+        conn.revert_last_migration(MIGRATIONS)
+            .expect("drop-title migration is reversible");
+        let result = conn.revert_last_migration(MIGRATIONS);
+        assert!(
+            result.is_err(),
+            "down.sql must fail loudly; encryption migration is irreversible"
         );
+    }
 
-        // 4. The version-mismatch rebuild reprojects from the main store with the
-        //    v5 code, backfilling render columns onto what were old rows.
-        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+    /// A `NULL` render payload on the current index version is treated as a
+    /// corrupted row: the row is still returned with blanked render fields and
+    /// its id is reported for repair — never silently dropped.
+    #[tokio::test]
+    async fn null_render_payload_degrades_and_reports_corruption() {
+        let (index, pool, _dir) = make_index();
         index
-            .rebuild(vec![(doc_with_render("old1"), vec![])], tx)
+            .index_entry(doc_with_render("e1"), vec![])
             .await
             .unwrap();
 
-        let (file_names, link_urls, source_device, payload_state) = render_cols(&pool, "old1");
-        assert_eq!(file_names, r#"["a.txt"]"#);
-        assert_eq!(link_urls, r#"["https://example.com"]"#);
-        assert_eq!(source_device.as_deref(), Some("dev-1"));
-        assert_eq!(payload_state.as_deref(), Some("Lost"));
+        // Force the stored payload to NULL to simulate corruption/erasure.
+        {
+            let mut conn = pool.get().unwrap();
+            diesel::update(
+                search_document::table
+                    .filter(search_document::profile_id.eq(TEST_PROFILE))
+                    .filter(search_document::entry_id.eq("e1")),
+            )
+            .set(search_document::render_payload.eq::<Option<Vec<u8>>>(None))
+            .execute(&mut conn)
+            .unwrap();
+        }
 
-        let meta = index.get_index_meta().await.unwrap();
-        assert_eq!(meta.index_version, CURRENT_INDEX_VERSION);
+        let page = index.search(filter_only_query()).await.unwrap();
+        assert_eq!(page.items.len(), 1, "row is returned, not dropped");
+        assert_eq!(page.items[0].text_preview, None, "render fields blanked");
+        assert_eq!(
+            page.corrupted_entry_ids,
+            vec![EntryId::from("e1")],
+            "the corrupted row is reported for repair"
+        );
     }
 
     // ── Phase 2: filter-only SQL push-down acceptance ──────────────────────
@@ -2319,25 +2535,29 @@ mod tests {
     /// cheaply. `active_time_ms` ascends with `i`, so higher `i` sorts first.
     fn bulk_insert_text_docs(pool: &DbPool, n: usize) {
         let mut conn = pool.get().unwrap();
+        let codec = test_codec();
+        let empty = RenderFields::new(None, vec![], vec![], vec![], None);
         let rows: Vec<NewSearchDocumentRow> = (0..n)
-            .map(|i| NewSearchDocumentRow {
-                profile_id: TEST_PROFILE.to_string(),
-                entry_id: format!("e{i:06}"),
-                event_id: format!("ev{i:06}"),
-                active_time_ms: i as i64,
-                captured_at_ms: i as i64,
-                file_type: "text".to_string(),
-                file_extensions: "[]".to_string(),
-                mime_type: "text/plain".to_string(),
-                indexed_at_ms: 0,
-                index_version: CURRENT_INDEX_VERSION.to_string(),
-                text_preview: None,
-                file_names: "[]".to_string(),
-                link_urls: "[]".to_string(),
-                source_device: None,
-                payload_state: None,
-                char_count: None,
-                file_paths: "[]".to_string(),
+            .map(|i| {
+                let entry_id = format!("e{i:06}");
+                let render_payload = codec
+                    .encrypt(&EntryId::from(entry_id.as_str()), &empty)
+                    .unwrap();
+                NewSearchDocumentRow {
+                    profile_id: TEST_PROFILE.to_string(),
+                    entry_id,
+                    event_id: format!("ev{i:06}"),
+                    active_time_ms: i as i64,
+                    captured_at_ms: i as i64,
+                    file_type: "text".to_string(),
+                    file_extensions: "[]".to_string(),
+                    mime_type: "text/plain".to_string(),
+                    indexed_at_ms: 0,
+                    index_version: CURRENT_INDEX_VERSION.to_string(),
+                    source_device: None,
+                    payload_state: None,
+                    render_payload: Some(render_payload),
+                }
             })
             .collect();
         // Chunk to stay well within SQLite's bound-variable limit.

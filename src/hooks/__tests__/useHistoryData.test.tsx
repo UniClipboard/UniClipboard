@@ -115,12 +115,15 @@ describe('useHistoryData', () => {
 
     const { result } = renderHook(() => useHistoryData(), { wrapper: createWrapper() })
 
+    // The local snapshot paints immediately (no daemon call needed).
     expect(result.current.baseItems.map(item => item.id)).toEqual(['cached-entry'])
-    expect(querySearch).toHaveBeenCalled()
 
+    // The background refresh fires once the encryption session resolves ready
+    // (browse is now unlock-gated), replacing the snapshot with fresh results.
     await waitFor(() => {
       expect(result.current.baseItems.map(item => item.id)).toEqual(['fresh-entry'])
     })
+    expect(querySearch).toHaveBeenCalled()
   })
 
   it('writes a reusable snapshot after the first successful history load', async () => {

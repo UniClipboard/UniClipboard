@@ -4671,7 +4671,7 @@ export type SearchQueryErrors = {
      */
     400: ApiErrorResponse;
     /**
-     * Encryption session is locked (keyword search only; filter-only browse is served while locked)
+     * Encryption session is locked (all query forms require an unlocked session)
      */
     423: ApiErrorResponse;
     /**
@@ -4773,6 +4773,10 @@ export type GetSearchTagsData = {
 };
 
 export type GetSearchTagsErrors = {
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
     /**
      * Internal server error
      */

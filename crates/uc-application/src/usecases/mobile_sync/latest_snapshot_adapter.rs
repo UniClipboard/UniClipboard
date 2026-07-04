@@ -484,7 +484,7 @@ mod tests {
 
     // ── helpers ──────────────────────────────────────────────────────────
     fn entry(id: &str, event: &str) -> ClipboardEntry {
-        ClipboardEntry::new(EntryId::from(id), EventId::from(event), 1, None, 0)
+        ClipboardEntry::new(EntryId::from(id), EventId::from(event), 1, 0)
             .with_delivery_tracked(false)
     }
 

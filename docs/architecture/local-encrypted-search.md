@@ -8,7 +8,7 @@
 
 为 UniClipboard 提供一套实用的、本地专用的加密历史搜索能力，同时不改变现有加密内容的存储格式。
 
-V1 明确是**本地加密索引**，不是远程可搜索加密协议。
+V1 明确是 **本地加密索引**，不是远程可搜索加密协议。
 
 ## 范围
 
@@ -34,7 +34,7 @@ V1 的搜索对象仅限可提取文本的内容：
 
 ## 重要运行时约束
 
-daemon 在锁定状态下**不会**监听剪贴板变化。
+daemon 在锁定状态下 **不会** 监听剪贴板变化。
 
 这意味着：
 
@@ -676,3 +676,73 @@ V1 在 rebuild 窗口内采用双写，避免原子切换后丢失新数据。
 3. SQLite schema 草案
 4. daemon API 合同
 5. 重建与增量更新工作流计划
+
+---
+
+## 附录 A：render 列加密补账（search-v10，2026-07-03）
+
+> 状态：已实现。设计稿见 `.planning/research/2026-07-03-search-render-columns-encryption-design.md`。
+
+### 背景：功能演进绕过了安全模型审查
+
+v1 定稿的「磁盘上不存储明文搜索词」只审查了元数据 + HMAC 化倒排。后续「浏览统一到
+search」把五个从内容派生的字段以 **明文** 落进 `search_document`，绕过了安全模型：
+
+- `text_preview`（内容预览）、`file_names`、`link_urls`、`file_paths`、`char_count`（泄露文本长度）。
+
+同时存在一个 **锁定态明文外泄通道**：主历史列表走 filter-only 浏览，该路径当时不派生密钥、
+无 session 锁守卫，因此锁定态下 daemon 会对 filter-only 浏览返回 HTTP 200 + 全部明文列。
+
+### 修复（search-v10）
+
+- **列级加密**：五个内容派生字段打包成单个 JSON，经 XChaCha20-Poly1305 封成固定二进制
+  信封 `[magic "UCSR"][version][nonce 24B][ciphertext]`，写入新列 `render_payload BLOB`；
+  五个明文列 `DROP COLUMN`。稳态下每条被索引的行都写入加密 payload，`NULL` 一律按损坏行降级。
+- **独立 render_key**：`HKDF-SHA256(ikm=master_key, salt=profile_id, info="uniclipboard-search-render/v1")`，
+  与 search_key（HMAC-PRF）用途分离；AAD `uc:search_render:v1|{entry_id}` 绑定密文到行。
+- **锁定态一律 423**：`GET /search/query`（含 filter-only 浏览）与 `GET /search/tags` 在 handler
+  入口前置 `session_ready` 校验，未就绪返回 423；引擎层派生 render_key 失败返回 `SessionLocked`
+  作为纵深防御。冷启动锁定态解锁后由统一的 session-ready 通知点触发 rebuild/清理补跑。
+- **单行降级**：`render_payload` 解码失败（损坏/magic 非法/版本不支持/AEAD 失败/NULL）时该行
+  仍返回、render 字段置空，其 entry_id 经引擎内部通道上报 application 层做合并去重的重投影修复
+  （不进 API DTO）。
+- **回填**：`CURRENT_INDEX_VERSION` bump 到 `search-v10`，启动版本不符触发全量 rebuild，从解密后的
+  representations 重新投影并加密写入。迁移不可逆（down migration 故意报错）。
+- **明文残留清理**：rebuild finalize 后由 `SearchIndexMaintenancePort::purge_plaintext_residue`
+  跑一次 `wal_checkpoint(TRUNCATE)` + `VACUUM` + 清扫游离临时表，完成时间戳记在
+  `search_index_meta.plaintext_purge_done_ms`（NULL=待跑，进程被杀下次启动自愈补跑）。
+  - **代价（如实标注）**：搜索索引与主剪贴板存储共用同一个 SQLite 文件与连接池，因此
+    `VACUUM` 会对 **整个数据库** 加排他锁，重写文件期间会短暂阻塞 **所有** 写入方（剪贴板采集、
+    同步等），而不仅是搜索。这是 rebuild 完成后的一次性 best-effort 任务（通常挑在空闲时刻跑），
+    靠 `busy_timeout=5000` + 有限次退避重试等过实时写入尖峰；实现会记录 `VACUUM` 耗时日志以便
+    发现异常停顿。若未来该阻塞面成为问题，根治方向是把搜索索引拆到独立 DB 文件后再 VACUUM。
+
+### 显式接受的权衡（明文保留）
+
+- `source_device`：被 SQL 下推 `eq_any` 过滤，加密即破坏过滤；内容为稳定 `DeviceId`（非用户
+  自定义名），泄露面 =「哪台设备产生了该条目」，属 v1「元数据明文可接受」范畴。
+- `payload_state`：可用性标志位（`Present`/`Lost`），非内容。
+- `file_extensions` / `mime_type`：仍为明文列（本次修复范围只覆盖上述五个内容派生字段）。
+
+### 姊妹泄漏：`clipboard_entry.title` 明文列（已删除，非加密）
+
+render 列加密堵住了 `search_document`，但同一份内容还从另一处以明文落盘：主存储表
+`clipboard_entry.title` 存了每个条目首个文本 representation 的前 200 字符（URL、文件名、
+标题原文）。它是 `generate_title` 在 **捕获瞬间** 从 live snapshot 派生的——与 search 的
+`render_payload.text_preview`（`build_from_capture` 同一时刻、同一首个文本 rep）**同源冗余**。
+
+因此选择 **删除而非加密**：给一份已被 AEAD 封好的数据的明文副本再加一层密没有意义。全仓 title
+仅两个读取点，都是「无内联文本时的预览兜底」——`build_from_persisted` 的 `text_preview` 兜底与
+`resolve_preview_text` 的列表预览兜底；title 不进 API DTO / openapi / 前端 / 网络同步 / SQL 下推。
+迁移 `2026-07-03-000002_drop_clipboard_entry_title` 直接 `DROP COLUMN title`；down 可逆
+（re-add 空 TEXT 列，让旧二进制仍能找到该列）。dropped 明文由上面的 `VACUUM` purge 一并回收。
+
+- **显式接受的代价**：内联字节已卸载到 blob 的大文本条目（`inline_data` 为空）在一次 search
+  索引 rebuild 后拿不到预览兜底，列表退化成占位符「Text content (full payload in background
+  processing)」。普通内联文本条目不受影响（预览走 `inline_data`）。新捕获仍在捕获瞬间生成
+  `render_payload.text_preview`，只是不再有跨 rebuild 的持久兜底副本。
+
+### 诚实边界
+
+文件系统层历史残留（已删除页曾写过盘、TRIM 前的扇区、旧备份）在无全库/全盘加密前提下无法
+保证清除，记入威胁模型边界。

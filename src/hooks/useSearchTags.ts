@@ -14,9 +14,11 @@ export function useSearchTags(): SearchTagOption[] {
   const { isLocked } = useEncryptionSessionState()
   const [tags, setTags] = useState<SearchTagOption[]>(() => defaultSearchTagOptions())
 
-  // Re-fetch when the lock state flips: `GET /search/tags` only includes custom
-  // tags in an unlocked session, so a History view that mounted while locked
-  // would otherwise stay pinned to builtin tags for the rest of the session.
+  // Re-fetch when the lock state flips: `GET /search/tags` is fully gated behind
+  // an unlocked session (tag counts are content-derived), so it returns 423 while
+  // locked. This `.catch` swallows that and keeps the builtin defaults; the
+  // refetch on unlock then merges in the custom tags a History view that mounted
+  // while locked would otherwise never see.
   useEffect(() => {
     let cancelled = false
     getSearchTags()

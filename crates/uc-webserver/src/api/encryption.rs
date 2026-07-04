@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use tokio::sync::broadcast::error::SendError;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use uc_application::facade::space_setup::UnlockSpaceError;
 use uc_application::facade::{FactoryResetError, UnlockSpaceInput};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
@@ -201,22 +201,7 @@ async fn unlock_handler(
     match app.try_resume_session().await {
         Ok(true) => {
             info!("encryption session auto-unlocked via keyring");
-
-            let ts = chrono::Utc::now().timestamp_millis();
-            let event_payload = EncryptionSessionReadyPayload { ts };
-            let event = DaemonWsEvent {
-                topic: ws_topic::ENCRYPTION.to_string(),
-                event_type: ws_event::ENCRYPTION_SESSION_READY.to_string(),
-                session_id: None,
-                ts,
-                payload: serde_json::to_value(&event_payload).unwrap_or(serde_json::Value::Null),
-            };
-            if let Err(SendError(_)) = state.event_tx.send(event) {
-                debug!(
-                    "failed to broadcast encryption.session_ready event — no active subscribers"
-                );
-            }
-
+            on_session_ready(&state).await;
             Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
                 success: true,
             })))
@@ -279,7 +264,21 @@ async fn unlock_with_passphrase_handler(
         .map_err(map_unlock_err)?;
 
     info!("space unlocked via passphrase");
+    on_session_ready(&state).await;
 
+    Ok(Json(ApiEnvelope::now(UnlockSpaceResponse {
+        space_id: result.space_id.to_string(),
+    })))
+}
+
+/// Single convergence point for "the encryption session just became ready".
+///
+/// Both unlock paths (keyring silent resume and passphrase unlock) funnel here so
+/// the `encryption.session_ready` broadcast and the downstream side effects stay
+/// identical. Broadcasts the WS event and notifies the search subsystem, which
+/// drives any index rebuild / plaintext-residue purge that a locked cold start
+/// could not run.
+async fn on_session_ready(state: &DaemonApiState) {
     let ts = chrono::Utc::now().timestamp_millis();
     let event_payload = EncryptionSessionReadyPayload { ts };
     let event = DaemonWsEvent {
@@ -290,12 +289,14 @@ async fn unlock_with_passphrase_handler(
         payload: serde_json::to_value(&event_payload).unwrap_or(serde_json::Value::Null),
     };
     if let Err(SendError(_)) = state.event_tx.send(event) {
-        warn!("failed to broadcast encryption.session_ready event — no active subscribers");
+        debug!("failed to broadcast encryption.session_ready event — no active subscribers");
     }
 
-    Ok(Json(ApiEnvelope::now(UnlockSpaceResponse {
-        space_id: result.space_id.to_string(),
-    })))
+    // Drive any search rebuild/purge deferred by a locked start. Best-effort:
+    // absent app facade (not yet assembled) is a no-op.
+    if let Ok(app) = state.app_facade_or_error() {
+        app.search.on_session_ready().await;
+    }
 }
 
 /// POST /encryption/lock

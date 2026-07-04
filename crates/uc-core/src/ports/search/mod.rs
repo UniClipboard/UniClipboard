@@ -1,10 +1,12 @@
 //! Search ports — async traits implemented by uc-infra and injected into
 //! use cases via Arc<dyn Port + Send + Sync>.
 
+pub mod maintenance;
 pub mod search_index;
 pub mod search_key;
 pub mod search_pipeline;
 
+pub use maintenance::SearchIndexMaintenancePort;
 pub use search_index::SearchIndexPort;
 pub use search_key::SearchKeyDerivationPort;
 pub use search_pipeline::SearchPipelinePort;

@@ -370,7 +370,6 @@ mod tests {
                 entry_id.clone(),
                 EventId::from("evt-1"),
                 0,
-                None,
                 0,
             )))
         }

@@ -1,0 +1,22 @@
+-- Drop the plaintext `clipboard_entry.title` column.
+--
+-- `title` stored the first ~200 chars of an entry's text content (URLs, file
+-- names, titles) as plaintext on disk — a leak that bypassed the v1
+-- local-encrypted model, sibling to the search render columns encrypted in the
+-- previous migration.
+--
+-- The column was pure denormalized redundancy: it duplicated the search index's
+-- `render_payload.text_preview`, derived from the same first text representation
+-- at the same capture moment (now sealed by AEAD). Rather than encrypt a second
+-- copy of already-encrypted data, drop it. The two former read sites (list and
+-- search projection preview fallback) source their preview from inline
+-- representation data / the search render payload instead.
+--
+-- Dropped plaintext residue is reclaimed by the one-shot checkpoint + VACUUM the
+-- search-v10 rebuild already owes (see the render-column migration).
+--
+-- Requires SQLite >= 3.35 for ALTER TABLE ... DROP COLUMN. The dropped column
+-- carries no index/view/trigger dependency (only `idx_entry_time` on
+-- `created_at_ms` exists).
+
+ALTER TABLE clipboard_entry DROP COLUMN title;

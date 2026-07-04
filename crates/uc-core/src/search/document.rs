@@ -110,4 +110,9 @@ pub struct SearchIndexMeta {
     pub last_rebuild_started_at_ms: Option<i64>,
     /// Millisecond timestamp of the last completed rebuild, or None if never completed.
     pub last_rebuild_completed_at_ms: Option<i64>,
+    /// Millisecond timestamp at which the one-shot plaintext-residue purge (run
+    /// once after the render-column encryption migration's rebuild) completed, or
+    /// `None` if it has not yet run. A `None` value on the current index version
+    /// signals the maintenance purge is still owed and should be (re)scheduled.
+    pub plaintext_purge_done_ms: Option<i64>,
 }

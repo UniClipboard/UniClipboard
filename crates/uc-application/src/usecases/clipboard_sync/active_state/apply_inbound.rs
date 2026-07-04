@@ -1093,7 +1093,6 @@ mod tests {
                 self.entry_id.clone(),
                 self.event_id.clone(),
                 0,
-                None,
                 0,
             )))
         }

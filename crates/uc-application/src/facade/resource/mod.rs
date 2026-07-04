@@ -462,7 +462,7 @@ mod tests {
 
     fn seed_entry_with_file_rep(deps: &TestDeps, entry_id: &str, file_path: &std::path::Path) {
         let event_id = EventId::from("event-1");
-        let entry = ClipboardEntry::new(EntryId::from(entry_id), event_id.clone(), 0, None, 0);
+        let entry = ClipboardEntry::new(EntryId::from(entry_id), event_id.clone(), 0, 0);
         deps.entry_repo
             .by_entry_id
             .lock()
@@ -521,7 +521,7 @@ mod tests {
     async fn entry_file_not_found_when_no_file_representation() {
         let deps = test_deps();
         let event_id = EventId::from("event-text");
-        let entry = ClipboardEntry::new(EntryId::from("entry-text"), event_id.clone(), 0, None, 0);
+        let entry = ClipboardEntry::new(EntryId::from("entry-text"), event_id.clone(), 0, 0);
         deps.entry_repo
             .by_entry_id
             .lock()

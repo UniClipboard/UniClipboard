@@ -3,12 +3,12 @@
 //! All routes are protected by the auth_extractor + rate_limit middleware chain
 //! applied at the router level (see routes::router_l2_plus).
 //!
-//! Lock guard: the `status` and `rebuild` handlers require an unlocked
-//! encryption session and return HTTP 423 `session_locked` otherwise. The
-//! `query` handler instead delegates the lock decision to the search engine
-//! (§4.6): a filter-only browse (no keyword) needs no search key and is served
-//! while locked, whereas a keyword search derives the search key and surfaces
-//! `session_locked` (HTTP 423) when the session is locked.
+//! Lock guard: every search handler (`query`, `tags`, `status`, `rebuild`)
+//! requires an unlocked encryption session and returns HTTP 423 `session_locked`
+//! otherwise. The render fields of every result row now live in an encrypted
+//! payload, so even a filter-only browse must decrypt to render — there is no
+//! "served while locked" path. The engine still surfaces `session_locked` as
+//! defense-in-depth behind the handlers' front pre-check.
 
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -17,7 +17,6 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use tracing::{debug, info, instrument};
 use uc_application::facade::{SearchFacadeError, SearchQueryInput};
-use uc_core::search::tag::TagId;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::constants::http_route;
 use utoipa::IntoParams;
@@ -132,37 +131,6 @@ async fn require_encryption_ready(state: &DaemonApiState) -> Result<(), ApiError
     Ok(())
 }
 
-/// Returns whether the encryption session is unlocked. Unlike
-/// `require_encryption_ready`, a locked session is reported as `false` rather
-/// than an error — used to decide custom-tag visibility (§4.6).
-async fn encryption_session_ready(state: &DaemonApiState) -> Result<bool, ApiError> {
-    let app_facade = state.app_facade_or_error()?;
-    let encryption_state = app_facade.encryption.state().await.map_err(|e| {
-        let api = ApiError::internal(format!("encryption state unavailable: {e}"));
-        log_facade_failure(
-            "encryption",
-            "encryption_state_probe",
-            "call_failed",
-            api.status,
-            &api.message,
-        );
-        api
-    })?;
-    Ok(encryption_state.session_ready)
-}
-
-/// True when the comma-separated `tags` query param carries any non-builtin
-/// (custom) tag id.
-fn query_has_custom_tag(raw: Option<&str>) -> bool {
-    raw.map(|s| {
-        s.split(',')
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .any(|t| !TagId::new(t).is_builtin())
-    })
-    .unwrap_or(false)
-}
-
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -205,7 +173,7 @@ pub fn router() -> Router<DaemonApiState> {
     responses(
         (status = 200, description = "Search results page (state ready or degraded)", body = SearchQueryEnvelope),
         (status = 400, description = "Invalid or malformed query", body = ApiErrorResponse),
-        (status = 423, description = "Encryption session is locked (keyword search only; filter-only browse is served while locked)", body = ApiErrorResponse),
+        (status = 423, description = "Encryption session is locked (all query forms require an unlocked session)", body = ApiErrorResponse),
         (status = 503, description = "Search index not ready, rebuilding, or unavailable", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
@@ -220,14 +188,10 @@ async fn search_query_handler(
     State(state): State<DaemonApiState>,
     Query(params): Query<SearchQueryParams>,
 ) -> Result<Json<ApiEnvelope<SearchQueryResultDto>>, ApiError> {
-    // No blanket lock guard here (§4.6): the engine derives the search key only
-    // for keyword queries, so filter-only browse is served while locked and a
-    // locked keyword search surfaces `session_locked` through `map_search_error`.
-    // Custom tag ids are private, though — filtering by them requires an
-    // unlocked session (builtin link/favorited stay filterable while locked).
-    if query_has_custom_tag(params.tags.as_deref()) {
-        require_encryption_ready(&state).await?;
-    }
+    // Blanket lock guard (§3.3): every query form — including filter-only browse
+    // — must decrypt each row's render payload, so all require an unlocked
+    // session. Returns 423 `session_locked` when locked.
+    require_encryption_ready(&state).await?;
     let app = state.app_facade_or_error()?;
     let input = search_input_from_params(params);
     debug!(query = %input.query, "dispatching search query through app facade");
@@ -275,6 +239,7 @@ async fn search_query_handler(
     operation_id = "getSearchTags",
     responses(
         (status = 200, description = "Tag list with entry counts", body = SearchTagsEnvelope),
+        (status = 423, description = "Encryption session is locked", body = ApiErrorResponse),
         (status = 503, description = "Search index unavailable", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
@@ -283,21 +248,20 @@ async fn search_query_handler(
 async fn search_tags_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<Vec<SearchTagDto>>>, ApiError> {
-    let unlocked = encryption_session_ready(&state).await?;
+    // §3.3: tag counts are content-derived (they leak entry count/type
+    // distribution), so the whole endpoint is gated behind an unlocked session
+    // — same 423 contract as `query`. No "builtin tags while locked" path.
+    require_encryption_ready(&state).await?;
     let app = state.app_facade_or_error()?;
-    let mut views = app
+    let views = app
         .search
         .tags()
         .await
         .map_err(|e| map_search_error("search_tags", e))?;
 
-    // §4.6: custom tags are invisible while the session is locked.
-    if !unlocked {
-        views.retain(|v| v.is_builtin);
-    }
     let items: Vec<SearchTagDto> = views.into_iter().map(IntoApiDto::into_api_dto).collect();
 
-    debug!(tag_count = items.len(), unlocked, "search tags listed");
+    debug!(tag_count = items.len(), "search tags listed");
     Ok(Json(ApiEnvelope::now(items)))
 }
 
@@ -481,21 +445,5 @@ mod tests {
         let api = map_search_error("search_query", SearchFacadeError::IndexRebuilding);
         assert_eq!(api.status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(api.code, "index_rebuilding");
-    }
-
-    #[test]
-    fn query_has_custom_tag_detects_non_builtin_ids() {
-        // None / empty → no custom tag.
-        assert!(!query_has_custom_tag(None));
-        assert!(!query_has_custom_tag(Some("")));
-        assert!(!query_has_custom_tag(Some("  ,  ")));
-        // Builtin-only → false (filterable while locked).
-        assert!(!query_has_custom_tag(Some("link")));
-        assert!(!query_has_custom_tag(Some("link,code,favorited")));
-        assert!(!query_has_custom_tag(Some("image")));
-        assert!(!query_has_custom_tag(Some("link,code,favorited,image")));
-        // Any custom id → true (requires an unlocked session).
-        assert!(query_has_custom_tag(Some("project-x")));
-        assert!(query_has_custom_tag(Some("link,project-x")));
     }
 }

@@ -109,19 +109,22 @@ pub(crate) fn unwrap_master_key_xchacha(
     MasterKey::from_bytes(&plaintext).map_err(|_| AeadError::DecryptFailed)
 }
 
-/// XChaCha20-Poly1305 加密业务 blob,返回完整的 `EncryptedBlob`。
+/// XChaCha20-Poly1305 底层加密原语,以裸 32 字节 key 为参。
 ///
-/// 调用方决定 AAD（业务上下文绑定,例如条目 id / blob id）。
-pub(crate) fn encrypt_blob_xchacha(
-    master_key: &MasterKey,
+/// 返回 `(nonce, ciphertext)`——nonce 为 24 字节随机值,ciphertext 含
+/// Poly1305 tag。不做任何格式封装(无 `EncryptedBlob`、无 aad fingerprint),
+/// 供不同存储格式(UCBL blob 头、UCSR search render 头)各自封装复用。
+///
+/// key 长度非法时返回 `AeadError::InvalidKey`(底层 `new_from_slice` 校验)。
+pub(crate) fn encrypt_xchacha_raw(
+    key: &[u8],
     plaintext: &[u8],
     aad: &[u8],
-) -> Result<EncryptedBlob, AeadError> {
+) -> Result<(Vec<u8>, Vec<u8>), AeadError> {
     let mut nonce = vec![0u8; 24];
     rand::rng().fill_bytes(&mut nonce);
 
-    let cipher = XChaCha20Poly1305::new_from_slice(master_key.as_bytes())
-        .map_err(|_| AeadError::InvalidKey)?;
+    let cipher = XChaCha20Poly1305::new_from_slice(key).map_err(|_| AeadError::InvalidKey)?;
     let ciphertext = cipher
         .encrypt(
             XNonce::from_slice(&nonce),
@@ -132,6 +135,42 @@ pub(crate) fn encrypt_blob_xchacha(
         )
         .map_err(|_| AeadError::EncryptFailed)?;
 
+    Ok((nonce, ciphertext))
+}
+
+/// XChaCha20-Poly1305 底层解密原语,以裸 32 字节 key 为参。
+///
+/// nonce 长度必须为 24,否则返回 `AeadError::DecryptFailed`。
+pub(crate) fn decrypt_xchacha_raw(
+    key: &[u8],
+    nonce: &[u8],
+    ciphertext: &[u8],
+    aad: &[u8],
+) -> Result<Vec<u8>, AeadError> {
+    if nonce.len() != 24 {
+        return Err(AeadError::DecryptFailed);
+    }
+    let cipher = XChaCha20Poly1305::new_from_slice(key).map_err(|_| AeadError::InvalidKey)?;
+    cipher
+        .decrypt(
+            XNonce::from_slice(nonce),
+            chacha20poly1305::aead::Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .map_err(|_| AeadError::DecryptFailed)
+}
+
+/// XChaCha20-Poly1305 加密业务 blob,返回完整的 `EncryptedBlob`。
+///
+/// 调用方决定 AAD（业务上下文绑定,例如条目 id / blob id）。
+pub(crate) fn encrypt_blob_xchacha(
+    master_key: &MasterKey,
+    plaintext: &[u8],
+    aad: &[u8],
+) -> Result<EncryptedBlob, AeadError> {
+    let (nonce, ciphertext) = encrypt_xchacha_raw(master_key.as_bytes(), plaintext, aad)?;
     let aad_fp = Some(blake3::hash(aad).as_bytes()[..16].to_vec());
 
     Ok(EncryptedBlob {
@@ -153,20 +192,7 @@ pub(crate) fn decrypt_blob_xchacha(
     ciphertext: &[u8],
     aad: &[u8],
 ) -> Result<Vec<u8>, AeadError> {
-    if nonce.len() != 24 {
-        return Err(AeadError::DecryptFailed);
-    }
-    let cipher = XChaCha20Poly1305::new_from_slice(master_key.as_bytes())
-        .map_err(|_| AeadError::InvalidKey)?;
-    cipher
-        .decrypt(
-            XNonce::from_slice(nonce),
-            chacha20poly1305::aead::Payload {
-                msg: ciphertext,
-                aad,
-            },
-        )
-        .map_err(|_| AeadError::DecryptFailed)
+    decrypt_xchacha_raw(master_key.as_bytes(), nonce, ciphertext, aad)
 }
 
 #[cfg(test)]

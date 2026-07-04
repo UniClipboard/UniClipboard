@@ -24,6 +24,7 @@ use uc_core::ports::clipboard::{
     SetClipboardEntryFavoritePort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
     ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
 };
+use uc_core::ports::search::maintenance::SearchIndexMaintenancePort;
 use uc_core::ports::search::search_index::SearchIndexPort;
 use uc_core::ports::search::search_key::SearchKeyDerivationPort;
 use uc_core::ports::search::search_pipeline::SearchPipelinePort;
@@ -258,6 +259,9 @@ pub struct StoragePorts {
 pub struct SearchPorts {
     /// Encrypted search index: query, index_entry, remove_entry, rebuild.
     pub search_index: Arc<dyn SearchIndexPort>,
+    /// One-shot storage maintenance (plaintext-residue purge). Same concrete
+    /// adapter as `search_index`, exposed under its maintenance port.
+    pub search_maintenance: Arc<dyn SearchIndexMaintenancePort>,
     /// HMAC search key derivation (profile-scoped, HKDF-SHA256).
     pub search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
     /// Tokenization + text extraction pipeline used for building search documents.

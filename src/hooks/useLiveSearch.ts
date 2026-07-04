@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
 import { querySearch } from '@/api/daemon/search'
 import type { HistoryLiveSnapshot } from '@/hooks/historySessionSnapshot'
 import { useClipboardEventStream } from '@/hooks/useClipboardEventStream'
@@ -85,6 +86,13 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
   const { enabled = true, model, initialSnapshot = null, pageSize = DEFAULT_PAGE_SIZE } = options
   const { query, contentTypes, tags, sourceDevices, extensions, timeRange } = model
   const { encryptionReady } = useEncryptionSessionState()
+  // Anti-flash seed from the in-session snapshot. The snapshot is LOCAL,
+  // already-decrypted content in sessionStorage — not a daemon call — so showing
+  // it briefly does not leak plaintext the way a locked `/search/query` would.
+  // For an empty-query browse we seed it immediately (the common remount case)
+  // rather than waiting for `encryptionReady`, which starts `false` and resolves
+  // asynchronously; gating on it would flash a placeholder on every remount even
+  // for an unlocked user. A keyword snapshot still waits for `encryptionReady`.
   const canUseInitialSnapshot =
     enabled &&
     initialSnapshot !== null &&
@@ -117,15 +125,15 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
   }, [query, contentTypes, tags, sourceDevices, extensions, timeRange, pageSize])
 
   // Base query: (re)seed the list from the engine on model/window/refetch change.
-  // Re-runs on `encryptionReady` too, so unlocking refetches (a keyword search is
-  // rejected while locked and is skipped until then).
+  // Re-runs on `encryptionReady` too, so unlocking refetches.
   useEffect(() => {
     abortRef.current?.abort()
-    // A keyword search is rejected (423) while the session is locked; skip it and
-    // show nothing until unlock. Filter-less/filter-only browse stays allowed
-    // while locked (it may come back degraded), so it still runs.
-    const keywordWhileLocked = query.trim().length > 0 && !encryptionReady
-    if (!enabled || keywordWhileLocked) {
+    // Every query form — including a filter-only browse — decrypts each row's
+    // render payload, so all are rejected with 423 while the session is locked.
+    // Skip them entirely and show nothing until unlock (the page renders a
+    // "waiting for unlock" placeholder gated on the same `encryptionReady`).
+    const lockedSession = !encryptionReady
+    if (!enabled || lockedSession) {
       if (!canUseInitialSnapshot) setItems([])
       setTotal(null)
       setHasMore(false)
@@ -161,7 +169,21 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
       .catch(err => {
         if (controller.signal.aborted) return
         if (err instanceof DOMException && err.name === 'AbortError') return
-        log.error({ err }, 'Live search query failed')
+        // A 423 during the brief unlock race (session flips locked between the
+        // `encryptionReady` read and the request) is expected — treat it as the
+        // locked/empty state, not an error, so it does not spam the log.
+        const lockedRace =
+          err instanceof DaemonApiError && err.code === DaemonErrorCode.ENCRYPTION_NOT_READY
+        // A 503 means a real search-index outage (rebuilding / unavailable). It is
+        // transient but NOT the unlock race, so surface it (at warn) instead of
+        // silently swallowing it as "not ready".
+        const indexUnavailable =
+          err instanceof DaemonApiError && err.code === DaemonErrorCode.SERVICE_UNAVAILABLE
+        if (indexUnavailable) {
+          log.warn({ err }, 'Live search unavailable: search index rebuilding or not ready')
+        } else if (!lockedRace) {
+          log.error({ err }, 'Live search query failed')
+        }
         setItems([])
         setTotal(0)
         setHasMore(false)

@@ -25,6 +25,17 @@ export enum DaemonErrorCode {
   PAYLOAD_UNAVAILABLE = 'PAYLOAD_UNAVAILABLE',
   RATE_LIMITED = 'RATE_LIMITED',
   ENCRYPTION_NOT_READY = 'ENCRYPTION_NOT_READY',
+  /**
+   * A subsystem is temporarily unavailable (HTTP 503) — e.g. the search index is
+   * rebuilding or not yet ready. Distinct from `ENCRYPTION_NOT_READY` (the locked
+   * session race) so callers can keep the unlock race quiet while still surfacing
+   * real subsystem outages.
+   *
+   * 某个子系统暂时不可用（HTTP 503），例如搜索索引正在重建或尚未就绪。与
+   * `ENCRYPTION_NOT_READY`（会话锁定竞态）区分开，便于调用方在保持解锁竞态
+   * 静默的同时，仍能暴露真实的子系统不可用。
+   */
+  SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
   CONFIRMATION_REQUIRED = 'CONFIRMATION_REQUIRED',
   INTERNAL_ERROR = 'INTERNAL_ERROR',
 }
@@ -61,10 +72,17 @@ export function mapStatusToErrorCode(status: number): DaemonErrorCode {
       return DaemonErrorCode.NOT_FOUND
     case 410:
       return DaemonErrorCode.PAYLOAD_UNAVAILABLE
+    case 423:
+      // Locked encryption session (`session_locked`). Surfaced as
+      // "encryption not ready" so callers gate on a single not-ready condition.
+      return DaemonErrorCode.ENCRYPTION_NOT_READY
     case 429:
       return DaemonErrorCode.RATE_LIMITED
     case 503:
-      return DaemonErrorCode.ENCRYPTION_NOT_READY
+      // Subsystem temporarily unavailable (e.g. search index rebuilding). Kept
+      // distinct from 423 so a locked-session race stays quiet while a real
+      // index outage still surfaces to callers.
+      return DaemonErrorCode.SERVICE_UNAVAILABLE
     default:
       return DaemonErrorCode.INTERNAL_ERROR
   }

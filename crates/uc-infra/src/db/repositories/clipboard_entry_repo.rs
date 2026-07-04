@@ -534,7 +534,6 @@ mod tests {
             event_id: event_id.clone(),
             created_at_ms: 1_700_000_000_000,
             active_time_ms: 1_700_000_000_000,
-            title: Some("test".into()),
             total_size: 0,
             pinned: false,
             delivery_tracked: false,

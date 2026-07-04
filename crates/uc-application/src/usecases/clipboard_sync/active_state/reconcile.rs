@@ -304,7 +304,7 @@ mod tests {
         ) -> Result<Option<ClipboardEntry>, ClipboardRepositoryError> {
             Ok(self
                 .text
-                .map(|_| ClipboardEntry::new(entry_id.clone(), EventId::from("evt"), 0, None, 0)))
+                .map(|_| ClipboardEntry::new(entry_id.clone(), EventId::from("evt"), 0, 0)))
         }
     }
 

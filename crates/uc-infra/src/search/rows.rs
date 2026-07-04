@@ -12,8 +12,11 @@
 
 use crate::db::schema::{search_document, search_entry_tag, search_index_meta, search_posting};
 use crate::search::constants::CURRENT_INDEX_VERSION;
+use crate::search::render_payload::{RenderFields, RenderPayloadCodec};
 use anyhow::Result;
 use diesel::prelude::*;
+use tracing::warn;
+use uc_core::ids::EntryId;
 use uc_core::search::document::{ContentType, SearchDocument, SearchIndexMeta, SearchPosting};
 
 // ──────────────────────────────────────────────
@@ -21,6 +24,12 @@ use uc_core::search::document::{ContentType, SearchDocument, SearchIndexMeta, Se
 // ──────────────────────────────────────────────
 
 /// Full queryable row for `search_document`.
+///
+/// The five content-derived render fields (`text_preview`, `file_names`,
+/// `link_urls`, `file_paths`, `char_count`) are no longer stored as plaintext
+/// columns; they are sealed together into `render_payload` (a UCSR AEAD
+/// envelope). `file_type`, `file_extensions`, `mime_type`, `source_device` and
+/// `payload_state` remain plaintext (SQL-filtered metadata / availability flag).
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Identifiable)]
 #[diesel(table_name = search_document)]
 #[diesel(primary_key(profile_id, entry_id))]
@@ -37,21 +46,14 @@ pub struct SearchDocumentRow {
     pub mime_type: String,
     pub indexed_at_ms: i64,
     pub index_version: String,
-    pub text_preview: Option<String>,
-    /// JSON array of file display names (e.g. `["a.txt"]`); `'[]'` when none.
-    pub file_names: String,
-    /// JSON array of http/https URLs; `'[]'` when none.
-    pub link_urls: String,
     /// Originating device id, or `NULL` when the source is unknown.
     pub source_device: Option<String>,
     /// `"Lost"` when the paste payload is unrecoverable, else `NULL`.
     pub payload_state: Option<String>,
-    /// Full character count of the entry's primary text content, or `NULL` when
-    /// the entry carries no inline text.
-    pub char_count: Option<i64>,
-    /// JSON array of local filesystem paths (e.g. `["/tmp/a.txt"]`); `'[]'` when
-    /// none. Aligned with `file_names` by index.
-    pub file_paths: String,
+    /// AEAD-sealed UCSR envelope carrying the content-derived render fields.
+    /// `NULL` only appears transiently during migration; a `NULL` on the current
+    /// index version is treated as a corrupted row (see [`SearchDocumentRow::to_domain`]).
+    pub render_payload: Option<Vec<u8>>,
 }
 
 /// Insertable row for `search_document`.
@@ -68,28 +70,47 @@ pub struct NewSearchDocumentRow {
     pub mime_type: String,
     pub indexed_at_ms: i64,
     pub index_version: String,
-    pub text_preview: Option<String>,
-    pub file_names: String,
-    pub link_urls: String,
     pub source_device: Option<String>,
     pub payload_state: Option<String>,
-    pub char_count: Option<i64>,
-    pub file_paths: String,
+    pub render_payload: Option<Vec<u8>>,
+}
+
+/// A stored row decoded back into the domain, tracking whether its render payload
+/// failed to decode (in which case the render fields are blanked).
+pub struct DecodedDocument {
+    pub document: SearchDocument,
+    /// True when `render_payload` could not be decoded and the render fields were
+    /// blanked; the caller schedules a re-projection repair for this entry.
+    pub render_corrupted: bool,
 }
 
 impl NewSearchDocumentRow {
-    /// Convert a domain `SearchDocument` into an insertable row, binding it to `profile_id`.
+    /// Convert a domain `SearchDocument` into an insertable row, binding it to
+    /// `profile_id` and sealing the render fields with `codec`.
     ///
     /// `file_type` is serialized via serde to produce the stable snake_case string.
-    /// `file_extensions` is serialized as a JSON array.
-    pub fn from_domain(profile_id: &str, document: &SearchDocument) -> Result<Self> {
+    /// `file_extensions` is serialized as a JSON array. The render fields are
+    /// packed and encrypted into `render_payload`.
+    pub fn from_domain(
+        codec: &RenderPayloadCodec,
+        profile_id: &str,
+        document: &SearchDocument,
+    ) -> Result<Self> {
         // serde_json::to_string produces `"text"` with surrounding quotes; trim them.
         let content_type_json = serde_json::to_string(&document.content_type)?;
         let file_type = content_type_json.trim_matches('"').to_string();
         let file_extensions = serde_json::to_string(&document.file_extensions)?;
-        let file_names = serde_json::to_string(&document.file_names)?;
-        let file_paths = serde_json::to_string(&document.file_paths)?;
-        let link_urls = serde_json::to_string(&document.link_urls)?;
+
+        let fields = RenderFields::new(
+            document.text_preview.clone(),
+            document.file_names.clone(),
+            document.link_urls.clone(),
+            document.file_paths.clone(),
+            document.char_count,
+        );
+        let render_payload = codec
+            .encrypt(&document.entry_id, &fields)
+            .map_err(|e| anyhow::anyhow!("encrypt render payload: {e}"))?;
 
         Ok(Self {
             profile_id: profile_id.to_string(),
@@ -102,33 +123,51 @@ impl NewSearchDocumentRow {
             mime_type: document.mime_type.clone(),
             indexed_at_ms: document.indexed_at_ms,
             index_version: document.index_version.clone(),
-            text_preview: document.text_preview.clone(),
-            file_names,
-            link_urls,
             source_device: document.source_device.clone(),
             payload_state: document.payload_state.clone(),
-            char_count: document.char_count,
-            file_paths,
+            render_payload: Some(render_payload),
         })
     }
 }
 
 impl SearchDocumentRow {
-    /// Convert a stored row back into a domain `SearchDocument`.
+    /// Convert a stored row back into a domain `SearchDocument`, decrypting the
+    /// render payload with `codec`.
     ///
-    /// `file_type` is deserialized from the snake_case string.
-    /// `file_extensions` is deserialized from the JSON array.
-    pub fn to_domain(&self) -> Result<SearchDocument> {
+    /// Structural columns (`file_type`, `file_extensions`) parse eagerly and a
+    /// failure there is a hard error. A `render_payload` that is `NULL` or fails
+    /// to decode does NOT fail the whole row: the render fields are blanked and
+    /// `render_corrupted` is set so the caller can schedule a repair.
+    pub fn to_domain(&self, codec: &RenderPayloadCodec) -> Result<DecodedDocument> {
         // Re-add surrounding quotes so serde_json can deserialize the string enum.
         let content_type_json = format!("\"{}\"", self.file_type);
         let content_type: ContentType = serde_json::from_str(&content_type_json)?;
         let file_extensions: Vec<String> = serde_json::from_str(&self.file_extensions)?;
-        let file_names: Vec<String> = serde_json::from_str(&self.file_names)?;
-        let file_paths: Vec<String> = serde_json::from_str(&self.file_paths)?;
-        let link_urls: Vec<String> = serde_json::from_str(&self.link_urls)?;
 
-        Ok(SearchDocument {
-            entry_id: self.entry_id.clone().into(),
+        let entry_id: EntryId = self.entry_id.clone().into();
+        let (fields, render_corrupted) = match &self.render_payload {
+            Some(bytes) => match codec.decrypt(&entry_id, bytes) {
+                Ok(fields) => (fields, false),
+                Err(err) => {
+                    warn!(
+                        entry_id = %self.entry_id,
+                        error = %err,
+                        "search: render payload decode failed, blanking render fields"
+                    );
+                    (RenderFields::default(), true)
+                }
+            },
+            None => {
+                warn!(
+                    entry_id = %self.entry_id,
+                    "search: render payload is NULL on current index version, blanking render fields"
+                );
+                (RenderFields::default(), true)
+            }
+        };
+
+        let document = SearchDocument {
+            entry_id,
             event_id: self.event_id.clone().into(),
             active_time_ms: self.active_time_ms,
             captured_at_ms: self.captured_at_ms,
@@ -141,13 +180,18 @@ impl SearchDocumentRow {
             mime_type: self.mime_type.clone(),
             indexed_at_ms: self.indexed_at_ms,
             index_version: self.index_version.clone(),
-            text_preview: self.text_preview.clone(),
-            file_names,
-            file_paths,
-            link_urls,
+            text_preview: fields.text_preview,
+            file_names: fields.file_names,
+            file_paths: fields.file_paths,
+            link_urls: fields.link_urls,
             source_device: self.source_device.clone(),
             payload_state: self.payload_state.clone(),
-            char_count: self.char_count,
+            char_count: fields.char_count,
+        };
+
+        Ok(DecodedDocument {
+            document,
+            render_corrupted,
         })
     }
 }
@@ -210,6 +254,7 @@ pub struct SearchIndexMetaRow {
     pub search_blocked: bool,
     pub last_rebuild_started_at_ms: Option<i64>,
     pub last_rebuild_completed_at_ms: Option<i64>,
+    pub plaintext_purge_done_ms: Option<i64>,
 }
 
 /// Insertable row for `search_index_meta`.
@@ -221,6 +266,7 @@ pub struct NewSearchIndexMetaRow {
     pub search_blocked: bool,
     pub last_rebuild_started_at_ms: Option<i64>,
     pub last_rebuild_completed_at_ms: Option<i64>,
+    pub plaintext_purge_done_ms: Option<i64>,
 }
 
 impl SearchIndexMetaRow {
@@ -233,6 +279,7 @@ impl SearchIndexMetaRow {
             search_blocked: self.search_blocked,
             last_rebuild_started_at_ms: self.last_rebuild_started_at_ms,
             last_rebuild_completed_at_ms: self.last_rebuild_completed_at_ms,
+            plaintext_purge_done_ms: self.plaintext_purge_done_ms,
         }
     }
 }
@@ -248,6 +295,7 @@ impl NewSearchIndexMetaRow {
             search_blocked: false,
             last_rebuild_started_at_ms: None,
             last_rebuild_completed_at_ms: None,
+            plaintext_purge_done_ms: None,
         }
     }
 }

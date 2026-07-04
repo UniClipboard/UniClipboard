@@ -266,6 +266,7 @@ fn build_space_access_ports(
 /// coerces to `Arc<dyn SearchPipelinePort>` at the `SearchPorts` literal.
 struct SearchAssembly {
     search_index: Arc<dyn SearchIndexPort>,
+    search_maintenance: Arc<dyn SearchIndexMaintenancePort>,
     search_key_derivation: Arc<dyn SearchKeyDerivationPort>,
     search_pipeline: Arc<SearchPipeline>,
 }
@@ -282,14 +283,19 @@ fn build_search_assembly(
             space_access_ports.derive_subkey.clone(),
             current_profile.clone(),
         ));
-    let search_index: Arc<dyn SearchIndexPort> = Arc::new(SqliteSearchIndex::new(
+    // One concrete adapter, coerced into both the index port and the maintenance
+    // port (ports.md §8.3: one Arc behind several narrow ports).
+    let sqlite_search_index = Arc::new(SqliteSearchIndex::new(
         db_pool_for_search,
         current_profile.clone(),
         search_key_derivation.clone(),
     ));
+    let search_index: Arc<dyn SearchIndexPort> = sqlite_search_index.clone();
+    let search_maintenance: Arc<dyn SearchIndexMaintenancePort> = sqlite_search_index;
     let search_pipeline = Arc::new(SearchPipeline::new());
     SearchAssembly {
         search_index,
+        search_maintenance,
         search_key_derivation,
         search_pipeline,
     }
@@ -795,6 +801,7 @@ pub fn wire_dependencies(
     // Wire the search bundle (Phase 92). Search only derives a subkey.
     let SearchAssembly {
         search_index,
+        search_maintenance,
         search_key_derivation,
         search_pipeline,
     } = build_search_assembly(
@@ -938,6 +945,7 @@ pub fn wire_dependencies(
         },
         search: SearchPorts {
             search_index,
+            search_maintenance,
             search_key_derivation,
             search_pipeline,
         },

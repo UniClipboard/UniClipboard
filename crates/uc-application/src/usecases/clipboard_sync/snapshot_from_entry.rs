@@ -632,7 +632,7 @@ mod tests {
     }
 
     fn entry_with_event(entry_id: &EntryId, event_id: &EventId) -> ClipboardEntry {
-        ClipboardEntry::new(entry_id.clone(), event_id.clone(), 0, None, 0)
+        ClipboardEntry::new(entry_id.clone(), event_id.clone(), 0, 0)
     }
 
     fn selection_for(entry_id: &EntryId, paste_rep_id: &str) -> ClipboardSelectionDecision {

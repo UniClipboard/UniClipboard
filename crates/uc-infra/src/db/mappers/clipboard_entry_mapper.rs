@@ -12,7 +12,6 @@ impl InsertMapper<ClipboardEntry, NewClipboardEntryRow> for ClipboardEntryRowMap
             event_id: domain.event_id.clone().into(),
             created_at_ms: domain.created_at_ms,
             active_time_ms: domain.active_time_ms,
-            title: domain.title.clone(),
             total_size: domain.total_size,
             pinned: false, // TODO: implement
             delivery_tracked: domain.delivery_tracked,
@@ -37,7 +36,6 @@ impl RowMapper<ClipboardEntryRow, ClipboardEntry> for ClipboardEntryRowMapper {
             row.event_id.clone().into(),
             row.created_at_ms,
             row.active_time_ms,
-            row.title.clone(),
             row.total_size,
         )
         .with_delivery_tracked(row.delivery_tracked)

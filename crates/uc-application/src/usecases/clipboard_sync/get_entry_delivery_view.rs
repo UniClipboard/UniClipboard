@@ -548,8 +548,7 @@ mod tests {
     }
 
     fn make_entry(id: &str, event: &str, tracked: bool) -> ClipboardEntry {
-        ClipboardEntry::new(entry_id(id), event_id(event), 0, None, 0)
-            .with_delivery_tracked(tracked)
+        ClipboardEntry::new(entry_id(id), event_id(event), 0, 0).with_delivery_tracked(tracked)
     }
 
     fn delivered(entry: &str, target: DeviceId, at: i64) -> EntryDeliveryRecord {

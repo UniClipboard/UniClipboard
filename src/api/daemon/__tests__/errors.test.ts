@@ -8,6 +8,7 @@ describe('DaemonErrorCode', () => {
     expect(DaemonErrorCode.NOT_FOUND).toBe('NOT_FOUND')
     expect(DaemonErrorCode.RATE_LIMITED).toBe('RATE_LIMITED')
     expect(DaemonErrorCode.ENCRYPTION_NOT_READY).toBe('ENCRYPTION_NOT_READY')
+    expect(DaemonErrorCode.SERVICE_UNAVAILABLE).toBe('SERVICE_UNAVAILABLE')
     expect(DaemonErrorCode.CONFIRMATION_REQUIRED).toBe('CONFIRMATION_REQUIRED')
     expect(DaemonErrorCode.INTERNAL_ERROR).toBe('INTERNAL_ERROR')
   })
@@ -50,8 +51,9 @@ describe('mapStatusToErrorCode', () => {
     [401, DaemonErrorCode.UNAUTHORIZED],
     [403, DaemonErrorCode.FORBIDDEN],
     [404, DaemonErrorCode.NOT_FOUND],
+    [423, DaemonErrorCode.ENCRYPTION_NOT_READY],
     [429, DaemonErrorCode.RATE_LIMITED],
-    [503, DaemonErrorCode.ENCRYPTION_NOT_READY],
+    [503, DaemonErrorCode.SERVICE_UNAVAILABLE],
   ]
 
   it.each(cases)('maps HTTP %i → %s', (status, expectedCode) => {

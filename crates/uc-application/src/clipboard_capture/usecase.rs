@@ -531,7 +531,6 @@ impl CaptureClipboardUseCase {
             //    existing entry_id in one transaction (event/reps/selection +
             //    cascade), reusing its identity and sticky state.
             async {
-                let title = Self::generate_title(&snapshot);
                 let total_size = snapshot.total_size_bytes();
                 let content_category = ClipboardEntryContentCategory::from_snapshot(&snapshot);
                 match commit_mode {
@@ -544,7 +543,6 @@ impl CaptureClipboardUseCase {
                             entry_id.clone(),
                             event_id.clone(),
                             created_at_ms,
-                            title,
                             total_size,
                         )
                         .with_content_category(content_category);
@@ -560,7 +558,6 @@ impl CaptureClipboardUseCase {
                             &new_event,
                             &normalized_reps,
                             &new_selection,
-                            title,
                             total_size,
                             content_category,
                         )
@@ -596,45 +593,6 @@ impl CaptureClipboardUseCase {
         }
         .instrument(root)
         .await
-    }
-
-    /// Generate a title from the clipboard snapshot for display.
-    ///
-    /// Tries to extract text content from text/plain representations,
-    /// falling back to None if no text is found.
-    fn generate_title(snapshot: &SystemClipboardSnapshot) -> Option<String> {
-        const MAX_TITLE_LENGTH: usize = 200;
-
-        for rep in &snapshot.representations {
-            if let Some(mime) = &rep.mime {
-                let mime_str = mime.as_str();
-                if mime_str.starts_with("text/") {
-                    let Some(rep_bytes) = rep.inline_bytes() else {
-                        continue;
-                    };
-                    if let Ok(text) = std::str::from_utf8(rep_bytes) {
-                        let trimmed = text.trim();
-                        if !trimmed.is_empty() {
-                            // Use char_indices() to find a safe character boundary
-                            let char_count = trimmed.chars().count();
-                            if char_count > MAX_TITLE_LENGTH {
-                                let truncate_at = trimmed
-                                    .char_indices()
-                                    .nth(MAX_TITLE_LENGTH)
-                                    .map(|(idx, _)| idx)
-                                    .unwrap_or(trimmed.len());
-                                let truncated = &trimmed[..truncate_at];
-                                return Some(format!("{}...", truncated));
-                            }
-                            return Some(trimmed.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        debug!("No text representation found in snapshot, title will be None");
-        None
     }
 
     fn has_supported_representation(snapshot: &SystemClipboardSnapshot) -> bool {
@@ -1117,74 +1075,6 @@ mod tests {
                 format
             );
         }
-    }
-
-    #[test]
-    fn generate_title_extracts_first_text_line() {
-        let snap = snapshot_with(vec![rep(
-            "public.utf8-plain-text",
-            Some("text/plain"),
-            b"hello world",
-        )]);
-        assert_eq!(
-            CaptureClipboardUseCase::generate_title(&snap),
-            Some("hello world".to_string())
-        );
-    }
-
-    #[test]
-    fn generate_title_truncates_at_max_length_with_ellipsis() {
-        let long = "a".repeat(250);
-        let snap = snapshot_with(vec![rep(
-            "public.utf8-plain-text",
-            Some("text/plain"),
-            long.as_bytes(),
-        )]);
-        let title = CaptureClipboardUseCase::generate_title(&snap).expect("title");
-        assert!(title.ends_with("..."));
-        // 200 chars + "..."
-        assert_eq!(title.chars().count(), 203);
-    }
-
-    #[test]
-    fn generate_title_handles_multibyte_truncation_safely() {
-        // 250 个 CJK 字符 (每个 3 bytes UTF-8); 截断必须落在字符边界
-        let long: String = std::iter::repeat('中').take(250).collect();
-        let snap = snapshot_with(vec![rep(
-            "public.utf8-plain-text",
-            Some("text/plain"),
-            long.as_bytes(),
-        )]);
-        let title = CaptureClipboardUseCase::generate_title(&snap).expect("title");
-        assert!(title.ends_with("..."));
-        // 不 panic 即说明 char_indices 边界查找正确
-        assert_eq!(title.chars().count(), 203);
-    }
-
-    #[test]
-    fn generate_title_returns_none_when_no_text_representation() {
-        let snap = snapshot_with(vec![rep("image", Some("image/png"), b"\x89PNG")]);
-        assert_eq!(CaptureClipboardUseCase::generate_title(&snap), None);
-    }
-
-    #[test]
-    fn generate_title_skips_whitespace_only_text() {
-        let snap = snapshot_with(vec![rep(
-            "public.utf8-plain-text",
-            Some("text/plain"),
-            b"   \t\n  ",
-        )]);
-        assert_eq!(CaptureClipboardUseCase::generate_title(&snap), None);
-    }
-
-    #[test]
-    fn generate_title_handles_invalid_utf8_by_skipping() {
-        let snap = snapshot_with(vec![rep(
-            "public.utf8-plain-text",
-            Some("text/plain"),
-            &[0xff, 0xfe, 0xfd],
-        )]);
-        assert_eq!(CaptureClipboardUseCase::generate_title(&snap), None);
     }
 
     // --- resurface_existing_entry: local-capture dedup decision ---------

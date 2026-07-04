@@ -15,7 +15,7 @@ pub mod tag;
 
 pub use document::{ContentType, SearchDocument, SearchIndexMeta, SearchPosting};
 pub use error::SearchError;
-pub use key::SearchKey;
+pub use key::{RenderKey, SearchKey};
 pub use pipeline_input::SearchPipelineInput;
 pub use query::{QueryOperator, SearchQuery, TimeRangeFilter};
 pub use result::{RebuildProgress, RebuildStage, SearchResult, SearchResultsPage};

@@ -28,7 +28,7 @@
 //! let aad = aad::for_blob(&blob_id);
 //! ```
 
-use crate::ids::{BlobId, EventId, RepresentationId};
+use crate::ids::{BlobId, EntryId, EventId, RepresentationId};
 
 /// Current AAD format version.
 const AAD_VERSION: &str = "v1";
@@ -123,6 +123,33 @@ pub fn for_blob_v2(blob_id: &BlobId) -> Vec<u8> {
     format!(
         "{AAD_NAMESPACE}:blob:{AAD_BLOB_V2_VERSION}|{}",
         blob_id.as_ref()
+    )
+    .into_bytes()
+}
+
+/// Generates AAD for the per-entry search render payload encryption/decryption.
+///
+/// # Format
+///
+/// `uc:search_render:v1|{entry_id}`
+///
+/// Binds the encrypted render payload to its search-index row so a ciphertext
+/// cannot be transplanted onto a different entry.
+///
+/// # Examples
+///
+/// ```rust
+/// use uc_core::crypto::aad::for_search_render;
+/// use uc_core::ids::EntryId;
+///
+/// let entry_id = EntryId::from("test-entry");
+/// let aad = for_search_render(&entry_id);
+/// assert_eq!(aad, b"uc:search_render:v1|test-entry".to_vec());
+/// ```
+pub fn for_search_render(entry_id: &EntryId) -> Vec<u8> {
+    format!(
+        "{AAD_NAMESPACE}:search_render:{AAD_VERSION}|{}",
+        entry_id.as_ref()
     )
     .into_bytes()
 }

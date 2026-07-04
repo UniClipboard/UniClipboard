@@ -18,9 +18,14 @@ use uc_core::ports::search::search_key::SearchKeyDerivationPort;
 use uc_core::ports::security::current_profile::CurrentProfilePort;
 use uc_core::ports::space::{DeriveSpaceSubkeyPort, SpaceAccessError};
 use uc_core::search::error::SearchError;
-use uc_core::search::key::SearchKey;
+use uc_core::search::key::{RenderKey, SearchKey};
 
 const SEARCH_KEY_INFO: &[u8] = b"uniclipboard-search-index/v1";
+
+/// HKDF `info` label for the render-payload AEAD key. Deliberately distinct from
+/// [`SEARCH_KEY_INFO`] so the render key is a separate subkey and never doubles
+/// as the HMAC term-tag key.
+const RENDER_KEY_INFO: &[u8] = b"uniclipboard-search-render/v1";
 
 /// Type alias for HMAC-SHA256 — used for term-tag computation.
 type HmacSha256 = Hmac<Sha256>;
@@ -65,6 +70,24 @@ impl SearchKeyDerivationPort for HkdfSearchKeyDerivation {
             })?;
 
         SearchKey::from_bytes(&okm)
+    }
+
+    async fn derive_render_key(&self) -> Result<RenderKey, SearchError> {
+        let profile =
+            self.current_profile.current_profile().await.map_err(|e| {
+                SearchError::Internal(format!("failed to get current profile: {e}"))
+            })?;
+
+        let okm = self
+            .space_access
+            .derive_subkey(profile.as_ref().as_bytes(), RENDER_KEY_INFO)
+            .await
+            .map_err(|e| match e {
+                SpaceAccessError::NotUnlocked => SearchError::SessionLocked,
+                other => SearchError::Internal(format!("derive_subkey: {other}")),
+            })?;
+
+        RenderKey::from_bytes(&okm)
     }
 }
 

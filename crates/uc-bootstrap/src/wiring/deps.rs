@@ -9,9 +9,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 
 use uc_application::deps::AppDeps;
+use uc_core::clipboard::ActiveClipboardState;
 use uc_core::ids::RepresentationId;
 use uc_core::ports::blob::BlobReferenceRepositoryPort;
 use uc_infra::clipboard::{RepresentationCache, SpoolManager};
@@ -156,6 +157,12 @@ pub struct SharedRuntimeDeps {
     /// checks, dispatch target filtering, CLI resend source lookup. Read by
     /// space-setup, daemon runtime, and the CLI AppFacade path, hence shared.
     pub trusted_peer_repo: Arc<dyn uc_core::TrustedPeerRepositoryPort>,
+    /// Fan-out source for active-clipboard register advances. `BroadcastingAdvance`
+    /// (wired into `active_clipboard_register`) is the sole publisher; the
+    /// mobile-sync LAN SSE endpoint is the sole subscriber, cloning a `Receiver`
+    /// per connection. Shared because both the wire-time decorator and the
+    /// daemon's mobile-sync listener assembly need a handle to the same sender.
+    pub active_clipboard_sse_source: broadcast::Sender<ActiveClipboardState>,
 }
 
 /// 进程级一次性装配产出的"持久"部分:进程内常驻的 `deps` 与按消费者归类的

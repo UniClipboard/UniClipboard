@@ -119,7 +119,7 @@
   --font-chinese:
     'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC Variable', system-ui,
     sans-serif;
-  --radius: 0.35rem;
+  --radius: 0.625rem;
   --shadow-color: hsl(240 30% 25%);
   --shadow-opacity: 0.12;
   --shadow-blur: 6px;
@@ -258,7 +258,7 @@
     'JetBrains Mono', 'Consolas', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
     'Noto Sans SC Variable', monospace;
   --font-serif: Georgia, serif;
-  --radius: 0.35rem;
+  --radius: 0.625rem;
   --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
   --tracking-tight: calc(var(--tracking-normal) - 0.025em);
   --tracking-wide: calc(var(--tracking-normal) + 0.025em);

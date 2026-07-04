@@ -1167,12 +1167,8 @@
         "cancel": "取消"
       },
       "credential": {
-        "title": "扫码连接 {{label}}",
-        "subtitle": "用手机扫码完成移动同步设置",
         "pair": {
-          "qrAlt": "扫描后自动填入同步凭据的二维码",
-          "connectHint": "用手机扫一扫即可配对",
-          "wifiHint": "选择和手机同 Wi-Fi/网段的地址"
+          "qrAlt": "扫描后自动填入同步凭据的二维码"
         },
         "baseUrl": {
           "selectAria": "选择服务地址"
@@ -1213,9 +1209,7 @@
         },
         "copy": "复制",
         "copied": "已复制",
-        "copyFailed": "复制失败",
-        "close": "完成",
-        "closeAria": "关闭"
+        "copyFailed": "复制失败"
       },
       "revoke": {
         "confirmTitle": "撤销 {{label}}",
@@ -1226,6 +1220,7 @@
       "edit": {
         "button": "编辑设备",
         "title": "编辑设备",
+        "subtitle": "修改名称、用户名或重置密码",
         "cancel": "取消",
         "save": "保存",
         "saving": "保存中...",
@@ -1281,9 +1276,27 @@
       "deviceDialog": {
         "sections": {
           "serverAddress": "连接信息",
+          "pairing": "扫码配对",
           "info": "设备信息"
         },
-        "qrPlaceholder": "服务端只保存密码哈希，无法重新生成扫码二维码。点「修改密码」生成新密码后即可在此扫码。",
+        "status": {
+          "online": "在线",
+          "offline": "离线",
+          "neverSeen": "从未连接"
+        },
+        "connectTitle": "连接 {{label}}",
+        "connectSubtitle": "用手机扫一扫，几秒完成配对",
+        "scanInstruction": "打开手机上的 UniClipboard，扫描二维码即可连接",
+        "wifiSameNetwork": "确保手机和这台电脑连在同一个 Wi-Fi",
+        "manualEntry": {
+          "title": "扫码不成功？手动输入用户名和密码",
+          "oneTimeHint": "密码仅此一次"
+        },
+        "repair": {
+          "title": "需要重新配对手机？",
+          "description": "出于安全，服务端只保存密码哈希，二维码无法再次生成。重置密码即可得到新的扫码二维码。",
+          "action": "重置密码"
+        },
         "fields": {
           "createdAt": "添加时间",
           "lastSeen": "最近活动",
@@ -1318,8 +1331,50 @@
         "loadFailed": "加载失败：{{message}}"
       }
     },
+    "panel": {
+      "listTitle": "设备",
+      "counts": "{{online}}/{{total}} 在线 · {{mobile}} 移动设备",
+      "localBadge": "本机",
+      "fields": {
+        "peerId": "Peer ID"
+      },
+      "profile": {
+        "title": "身份档案",
+        "platform": "平台",
+        "version": "应用版本",
+        "space": "所在空间",
+        "memberCount_one": "{{count}} 名成员",
+        "memberCount_other": "{{count}} 名成员",
+        "copy": "复制 Peer ID",
+        "copied": "已复制",
+        "copyFailed": "复制到剪贴板失败"
+      },
+      "policies": {
+        "title": "全局同步策略",
+        "autoSync": {
+          "title": "自动同步剪贴板",
+          "description": "复制内容后自动推送给所有已配对设备"
+        },
+        "fileSync": {
+          "title": "文件同步",
+          "description": "允许在设备间传输文件"
+        }
+      },
+      "addMenu": {
+        "trigger": "添加设备",
+        "p2p": "配对电脑设备",
+        "mobile": "添加移动设备"
+      }
+    },
     "settings": {
       "readOnly": "不可更改",
+      "sections": {
+        "connection": "连接信息"
+      },
+      "fields": {
+        "channel": "通道",
+        "address": "地址"
+      },
       "badges": {
         "mvp": "MVP",
         "comingSoon": "即将推出",
@@ -1331,6 +1386,7 @@
       "sync": {
         "title": "同步设置",
         "restoreDefaults": "恢复默认",
+        "contentTypes": "内容类型",
         "rules": {
           "sendEnabled": {
             "title": "发送到此设备",

@@ -1,10 +1,14 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { type ReactElement } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MobileDeviceView, MobileSyncSettingsView } from '@/api/tauri-command/mobile_sync'
-import MobileSyncDeviceDialog from '@/components/device/MobileSyncDeviceDialog'
+import type {
+  MobileDeviceView,
+  MobileSyncSettingsView,
+  RegisterMobileDeviceResult,
+} from '@/api/tauri-command/mobile_sync'
+import MobileDevicePanel from '@/components/device/MobileDevicePanel'
 import i18n from '@/i18n'
 import { parseConnectUri } from '@/lib/mobileSyncConnectUri'
 
@@ -54,7 +58,7 @@ const settings: MobileSyncSettingsView = {
 const renderWithI18n = (ui: ReactElement) =>
   render(<I18nextProvider i18n={i18n}>{ui}</I18nextProvider>)
 
-describe('MobileSyncDeviceDialog', () => {
+describe('MobileDevicePanel', () => {
   let initialLanguage = 'en-US'
 
   beforeAll(async () => {
@@ -81,9 +85,7 @@ describe('MobileSyncDeviceDialog', () => {
     const onUpdated = vi.fn()
 
     renderWithI18n(
-      <MobileSyncDeviceDialog
-        open
-        onOpenChange={vi.fn()}
+      <MobileDevicePanel
         device={device}
         settings={settings}
         onRevoke={vi.fn()}
@@ -114,9 +116,7 @@ describe('MobileSyncDeviceDialog', () => {
     const user = userEvent.setup()
 
     renderWithI18n(
-      <MobileSyncDeviceDialog
-        open
-        onOpenChange={vi.fn()}
+      <MobileDevicePanel
         device={device}
         settings={settings}
         onRevoke={vi.fn()}
@@ -142,9 +142,7 @@ describe('MobileSyncDeviceDialog', () => {
     const user = userEvent.setup()
 
     renderWithI18n(
-      <MobileSyncDeviceDialog
-        open
-        onOpenChange={vi.fn()}
+      <MobileDevicePanel
         device={device}
         settings={settings}
         onRevoke={vi.fn()}
@@ -175,9 +173,7 @@ describe('MobileSyncDeviceDialog', () => {
     })
 
     renderWithI18n(
-      <MobileSyncDeviceDialog
-        open
-        onOpenChange={vi.fn()}
+      <MobileDevicePanel
         device={device}
         settings={settings}
         onRevoke={vi.fn()}
@@ -214,9 +210,7 @@ describe('MobileSyncDeviceDialog', () => {
     })
 
     renderWithI18n(
-      <MobileSyncDeviceDialog
-        open
-        onOpenChange={vi.fn()}
+      <MobileDevicePanel
         device={device}
         settings={settings}
         onRevoke={vi.fn()}
@@ -227,39 +221,33 @@ describe('MobileSyncDeviceDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Edit device' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
-    // The one-time credential warning surfaces after the daemon echoes a password.
+    // The QR is the pairing hero and rebuilt from the new credentials; decode it
+    // back to confirm the payload carries the new username + password (mirrors
+    // the Rust connect-uri codec). It renders without expanding anything.
+    const qr = await screen.findByLabelText('QR code that auto-fills the sync credentials')
+    const payload = parseConnectUri(qr.getAttribute('data-qr-value') ?? '')
+    expect(payload.user).toBe('mobile_new')
+    expect(payload.pwd).toBe('gen-PW-123456')
+
+    // Credentials + one-time warning live in the collapsed manual-entry fallback
+    // (the scan path never needs them). Expand it, then assert the plaintext.
+    await user.click(screen.getByRole('button', { name: /Enter the username and password/ }))
     expect(
       await screen.findByText(
         'These credentials are shown only once. Save them before closing this dialog.'
       )
     ).toBeInTheDocument()
-
-    // Credential rows render the freshly minted username + password (password is
-    // masked until toggled, so reveal it before asserting the plaintext row).
-    // Scope to the "Credentials" section so the username row is not confused with
-    // the dialog's username subtitle.
-    const credentialsSection = screen.getByText('Credentials').closest('section')
-    expect(credentialsSection).not.toBeNull()
-    const credentials = within(credentialsSection as HTMLElement)
-    expect(credentials.getByText('mobile_new')).toBeInTheDocument()
+    expect(screen.getByText('mobile_new')).toBeInTheDocument()
+    // Password is masked until toggled.
     await user.click(screen.getByRole('button', { name: 'Show password' }))
-    expect(credentials.getByText('gen-PW-123456')).toBeInTheDocument()
-
-    // The QR is rebuilt from the new credentials; decode it back to confirm the
-    // payload carries the new username + password (mirrors the Rust connect-uri codec).
-    const qr = await screen.findByLabelText('QR code that auto-fills the sync credentials')
-    const payload = parseConnectUri(qr.getAttribute('data-qr-value') ?? '')
-    expect(payload.user).toBe('mobile_new')
-    expect(payload.pwd).toBe('gen-PW-123456')
+    expect(screen.getByText('gen-PW-123456')).toBeInTheDocument()
   })
 
   it('keeps the password omitted when a typed password is cleared before saving', async () => {
     const user = userEvent.setup()
 
     renderWithI18n(
-      <MobileSyncDeviceDialog
-        open
-        onOpenChange={vi.fn()}
+      <MobileDevicePanel
         device={device}
         settings={settings}
         onRevoke={vi.fn()}
@@ -285,13 +273,54 @@ describe('MobileSyncDeviceDialog', () => {
     expect('password' in call).toBe(false)
   })
 
+  it('mounts straight into the guided pairing view when handed add credentials', async () => {
+    const user = userEvent.setup()
+    const added: RegisterMobileDeviceResult = {
+      deviceId: 'did_new',
+      label: 'New iPhone',
+      clientType: 'ios_shortcut',
+      createdAtMs: 1_700_000_000_000,
+      baseUrl: 'http://192.168.1.10:42720',
+      username: 'user_new',
+      password: 'PW-abc-123',
+      installUrl: 'https://www.icloud.com/shortcuts/example',
+      installQrCodePngBase64: 'aW5zdGFsbFFy',
+      connectUri:
+        'uniclipboard://connect?v=1&svc=mobile-sync&p=eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjEwOjQyNzIwIn0',
+      qrCodeAscii: '',
+      qrCodePngBase64: '',
+    }
+
+    renderWithI18n(
+      <MobileDevicePanel
+        device={device}
+        settings={settings}
+        initialCredential={added}
+        onRevoke={vi.fn()}
+        onRotated={vi.fn()}
+      />
+    )
+
+    // Task-framed header + pairing QR appear immediately — no interaction needed.
+    expect(screen.getByRole('heading', { name: 'Connect New iPhone' })).toBeInTheDocument()
+    expect(
+      await screen.findByLabelText('QR code that auto-fills the sync credentials')
+    ).toBeInTheDocument()
+
+    // The install helper is an add-only affordance (carries the install QR).
+    expect(screen.getByRole('button', { name: /Haven't installed a client/ })).toBeInTheDocument()
+
+    // Credentials stay collapsed in the manual-entry fallback until expanded.
+    expect(screen.queryByText('user_new')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Enter the username and password/ }))
+    expect(screen.getByText('user_new')).toBeInTheDocument()
+  })
+
   it('does not call the daemon and keeps Save disabled for a whitespace-only label', async () => {
     const user = userEvent.setup()
 
     renderWithI18n(
-      <MobileSyncDeviceDialog
-        open
-        onOpenChange={vi.fn()}
+      <MobileDevicePanel
         device={device}
         settings={settings}
         onRevoke={vi.fn()}

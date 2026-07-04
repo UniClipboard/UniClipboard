@@ -1,4 +1,3 @@
-export { default as DeviceSettingsDialog } from './DeviceSettingsDialog'
 export { default as DeviceStatus } from './DeviceStatus'
 export { default as Permissions } from './Permissions'
 export { default as Rules } from './Rules'

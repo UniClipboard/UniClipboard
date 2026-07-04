@@ -33,6 +33,21 @@ import type {
 } from '@/api/generated/types.gen'
 
 // ============================================================================
+// Daemon defaults ─ mirror the daemon's assembly-time LAN fallbacks
+// ============================================================================
+
+/**
+ * Default LAN listen port. Mirrors the daemon's one-time settings fallback
+ * (`0.0.0.0:42720`) so the GUI can render an address / pairing QR before the
+ * daemon has reported concrete settings. The daemon stays the source of truth;
+ * this is only the pre-settings display fallback.
+ */
+export const DEFAULT_MOBILE_LAN_PORT = 42720
+
+/** Default LAN bind IP the daemon listens on when no advertise host is set. */
+export const DEFAULT_MOBILE_LAN_BIND_IP = '0.0.0.0'
+
+// ============================================================================
 // Error taxonomy ─ hand-authored union (wire-identical to the old specta one)
 // ============================================================================
 
@@ -295,7 +310,7 @@ export async function listMobileLanInterfaces(): Promise<LanInterfaceView[]> {
  * (or `0.0.0.0` when unset). No runtime probe — pure projection from settings.
  */
 export function deriveListenUrl(view: MobileSyncSettingsView): string {
-  const host = view.lanAdvertiseIp ?? '0.0.0.0'
-  const port = view.lanPort ?? 42720
+  const host = view.lanAdvertiseIp ?? DEFAULT_MOBILE_LAN_BIND_IP
+  const port = view.lanPort ?? DEFAULT_MOBILE_LAN_PORT
   return `http://${host}:${port}`
 }

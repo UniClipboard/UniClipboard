@@ -13,7 +13,7 @@ when you are writing:
 
 - A new SyncClipboard-compatible client (Android, desktop, web, etc.).
 - An iOS shortcut, automation, or App that consumes the QR scanned from the
-  UniClipboard desktop credentials modal.
+  UniClipboard desktop credential panel.
 - Any other tool that needs to parse the QR produced by the desktop **Add
   device → Scan to add** flow.
 
@@ -206,9 +206,9 @@ The QR **contains the plaintext password** (single-use display). This is
 acceptable because:
 
 - Display happens on a trusted LAN device the user already controls.
-- The credential modal warns the user ("save now — won't be shown again") and
-  the password is never persisted on the desktop side beyond the modal
-  lifecycle.
+- The credential panel warns the user ("save now — won't be shown again") and
+  the password is never persisted on the desktop side beyond the panel's
+  display lifecycle.
 - The server stores only the Argon2id hash; once the user rotates or revokes,
   **the old QR is immediately invalid** at the HTTP layer (Basic Auth rejects
   on hash mismatch).
@@ -219,7 +219,7 @@ acceptable because:
   redacted views (e.g. `uniclipboard://connect?v=1&svc=mobile-sync&p=<…48 chars…>`).
 - MUST NOT include the URI in analytics events, crash reports, or error
   attachments.
-- MUST NOT persist the URI to disk after the credential modal closes — store
+- MUST NOT persist the URI to disk after the credential panel is dismissed — store
   only the parsed `url` / `user` / `pwd` triple inside the client's normal
   credential storage.
 

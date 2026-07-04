@@ -1177,12 +1177,8 @@
         "cancel": "Cancel"
       },
       "credential": {
-        "title": "Scan to connect {{label}}",
-        "subtitle": "Scan the QR code with your phone to finish mobile sync setup",
         "pair": {
-          "qrAlt": "QR code that auto-fills the sync credentials",
-          "connectHint": "Scan with your phone to pair",
-          "wifiHint": "Pick the address on the same Wi-Fi as your phone"
+          "qrAlt": "QR code that auto-fills the sync credentials"
         },
         "baseUrl": {
           "selectAria": "Select server URL"
@@ -1223,9 +1219,7 @@
         },
         "copy": "Copy",
         "copied": "Copied",
-        "copyFailed": "Copy failed",
-        "close": "Done",
-        "closeAria": "Close"
+        "copyFailed": "Copy failed"
       },
       "revoke": {
         "confirmTitle": "Revoke {{label}}",
@@ -1236,6 +1230,7 @@
       "edit": {
         "button": "Edit device",
         "title": "Edit device",
+        "subtitle": "Change the name, username, or reset the password",
         "cancel": "Cancel",
         "save": "Save",
         "saving": "Saving...",
@@ -1291,9 +1286,27 @@
       "deviceDialog": {
         "sections": {
           "serverAddress": "Connection",
+          "pairing": "Scan to pair",
           "info": "Device info"
         },
-        "qrPlaceholder": "The server only stores a password hash, so the QR code can't be re-generated. Click \"Change password\" to mint a new one and scan it here.",
+        "status": {
+          "online": "Online",
+          "offline": "Offline",
+          "neverSeen": "Never connected"
+        },
+        "connectTitle": "Connect {{label}}",
+        "connectSubtitle": "Scan with your phone — paired in seconds",
+        "scanInstruction": "Open UniClipboard on your phone and scan this code to connect",
+        "wifiSameNetwork": "Make sure your phone is on the same Wi-Fi as this computer",
+        "manualEntry": {
+          "title": "Can't scan? Enter the username and password manually",
+          "oneTimeHint": "Password shown once"
+        },
+        "repair": {
+          "title": "Need to re-pair this phone?",
+          "description": "For security the server only keeps a password hash, so the QR code can't be regenerated. Reset the password to get a fresh pairing QR code.",
+          "action": "Reset password"
+        },
         "fields": {
           "createdAt": "Added at",
           "lastSeen": "Last active",
@@ -1328,8 +1341,50 @@
         "loadFailed": "Load failed: {{message}}"
       }
     },
+    "panel": {
+      "listTitle": "Devices",
+      "counts": "{{online}}/{{total}} online · {{mobile}} mobile",
+      "localBadge": "This device",
+      "fields": {
+        "peerId": "Peer ID"
+      },
+      "profile": {
+        "title": "Profile",
+        "platform": "Platform",
+        "version": "App version",
+        "space": "Space",
+        "memberCount_one": "{{count}} member",
+        "memberCount_other": "{{count}} members",
+        "copy": "Copy peer ID",
+        "copied": "Copied",
+        "copyFailed": "Failed to copy to clipboard"
+      },
+      "policies": {
+        "title": "Global sync policies",
+        "autoSync": {
+          "title": "Auto-sync clipboard",
+          "description": "Push new clipboard content to all paired devices automatically"
+        },
+        "fileSync": {
+          "title": "File sync",
+          "description": "Allow transferring files between devices"
+        }
+      },
+      "addMenu": {
+        "trigger": "Add device",
+        "p2p": "Pair a computer",
+        "mobile": "Add a mobile device"
+      }
+    },
     "settings": {
       "readOnly": "Locked",
+      "sections": {
+        "connection": "Connection"
+      },
+      "fields": {
+        "channel": "Channel",
+        "address": "Address"
+      },
       "badges": {
         "mvp": "MVP",
         "comingSoon": "Coming Soon",
@@ -1341,6 +1396,7 @@
       "sync": {
         "title": "Sync Settings",
         "restoreDefaults": "Restore defaults",
+        "contentTypes": "Content types",
         "rules": {
           "sendEnabled": {
             "title": "Send to this device",

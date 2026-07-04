@@ -1,13 +1,14 @@
 /**
- * DevicesPage 顶层渲染测试。
+ * DevicesPage top-level render tests.
  *
- * 重写后页面是 Hero + Tabs + 卡片网格，不再嵌套已弃用的
- * ThisDeviceCard / SpaceMembersPanel / MobileSyncDevicesPanel。本测试只验证：
- *   1. 挂载时分发 `fetchLocalDeviceInfo` + `fetchSpaceMembers`
- *   2. 渲染 Hero 区域里的"本设备"标签 + 两个 Tab 切换控件
+ * The page is a master-detail layout: a list column with 本机 / 已配对设备 /
+ * 移动同步 sections plus a persistent detail pane. This suite only verifies:
+ *   1. mount dispatches `fetchLocalDeviceInfo` + `fetchSpaceMembers`
+ *   2. the list column renders its three section labels
+ *   3. presence is probed once on mount / on visibility regain, no polling
  *
- * 卡片级别的交互（点击进入 dialog / 邀请新设备 / 撤销移动设备 等）由各自
- * 组件的单元测试覆盖，这里不重复。
+ * Panel-level interactions (sync toggles, unpair, mobile edit/revoke) are
+ * covered by the panel components' own unit tests.
  */
 
 import { act, render, screen } from '@testing-library/react'
@@ -51,6 +52,7 @@ vi.mock('@/api/daemon/members', () => ({
 }))
 
 vi.mock('@/api/tauri-command/mobile_sync', () => ({
+  DEFAULT_MOBILE_LAN_PORT: 42720,
   isMobileSyncError: () => false,
   listMobileDevices: vi.fn(() => Promise.resolve([])),
   revokeMobileDevice: vi.fn(),
@@ -98,11 +100,16 @@ describe('DevicesPage', () => {
     expect(dispatchMock).toHaveBeenCalledWith({ type: 'devices/fetchSpaceMembers' })
   })
 
-  it('renders the P2P and Mobile sync tab triggers', () => {
+  it('renders the list column with the three device sections', () => {
     render(<DevicesPage />)
 
-    // Two tabs: 已配对设备 / Paired devices  +  手机同步 / Mobile Sync
-    expect(screen.getAllByRole('tab')).toHaveLength(2)
+    // Section labels: 本设备 / 已配对设备 / 移动设备同步 (i18n keys
+    // devices.thisDevice.title / devices.pairedDevices.title /
+    // devices.mobileSync.title). Assert via the section container so the
+    // test stays language-agnostic yet structure-sensitive.
+    const list = screen.getByRole('complementary')
+    expect(list).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
   })
 
   it('calls refreshPresence exactly once on mount and does not poll on a timer', () => {

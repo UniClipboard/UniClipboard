@@ -974,15 +974,20 @@ impl MobileSyncClient {
 
 // ─── SSE subscription (mobile-sync SSE design §5.1) ─────────────────────
 
-/// Heartbeat comment cadence the SERVER uses (`GET /api/sse/clipboard`
-/// design §4.3: `: ping` every 25s). The client does not send anything; this
-/// constant only sizes [`HEARTBEAT_TIMEOUT`].
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
+/// No bytes (data frame OR heartbeat comment) for 2× the server's heartbeat
+/// cadence → the connection is considered dead and
+/// [`SseListener::on_disconnected`] fires (design §5.1: ">2× heartbeat
+/// interval no bytes"). The cadence comes from the shared wire-protocol
+/// constant, so this timeout cannot drift from what the server sends.
+const HEARTBEAT_TIMEOUT: Duration =
+    Duration::from_secs(uc_mobile_proto::SSE_HEARTBEAT_INTERVAL_SECS * 2);
 
-/// No bytes (data frame OR heartbeat comment) for this long → the connection
-/// is considered dead and [`SseListener::on_disconnected`] fires (design
-/// §5.1: ">2× heartbeat interval no bytes").
-const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(HEARTBEAT_INTERVAL.as_secs() * 2);
+/// Upper bound on the unparsed SSE receive buffer. Frames on this channel
+/// are tiny (well under 200 bytes), so a buffer this large means the peer is
+/// not speaking the framing we expect; disconnect instead of letting a
+/// misbehaving server grow memory unboundedly inside a jetsam-constrained
+/// extension process.
+const MAX_SSE_BUFFER_BYTES: usize = 64 * 1024;
 
 /// Connect timeout for the SSE client only — NOT a read/idle timeout (design
 /// F-2): once connected, the stream must survive indefinitely between
@@ -1070,61 +1075,20 @@ fn build_sse_http_client(trust_insecure_cert: bool) -> reqwest::Result<reqwest::
     builder.build()
 }
 
-#[derive(serde::Deserialize)]
-struct SseHelloWire {
-    server_time_ms: i64,
-}
-
-#[derive(serde::Deserialize)]
-struct SseUpdateWire {
-    content_id: String,
-}
-
-/// Byte offset just past the first `\n\n` frame terminator (design: axum
-/// `Sse` writes fields as `name: value\n`, blank `\n` line ends the frame —
-/// see server-side `sse.rs` module docs), or `None` if `buf` does not yet
-/// contain a complete frame.
-fn find_frame_end(buf: &[u8]) -> Option<usize> {
-    buf.windows(2).position(|w| w == b"\n\n").map(|i| i + 2)
-}
-
-/// Parse one complete SSE frame (already stripped of its trailing `\n\n`) and
-/// dispatch it to `listener`. A pure heartbeat comment frame (`: ping`) has no
-/// `event:` field and is silently ignored here — the point of a heartbeat is
-/// only to have kept the connection's last-byte clock fresh, which the caller
-/// already accounted for by having read these bytes at all.
+/// Parse one complete SSE frame via the shared wire-protocol parser
+/// (`uc_mobile_proto::sse_event`, single source of truth with the daemon's
+/// serializer) and dispatch it to `listener`. A pure heartbeat comment frame
+/// (`: ping`), an unknown event, or a malformed payload parses to `None` and
+/// is silently ignored — the point of a heartbeat is only to have kept the
+/// connection's last-byte clock fresh, which the caller already accounted
+/// for by having read these bytes at all.
 fn dispatch_sse_frame(frame: &str, listener: &dyn SseListener) {
-    let mut event_name: Option<&str> = None;
-    let mut data: Option<&str> = None;
-    for line in frame.split('\n') {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        if line.is_empty() || line.starts_with(':') {
-            continue; // comment line (heartbeat) — nothing to dispatch
-        }
-        let Some(colon) = line.find(':') else {
-            continue;
-        };
-        let (name, rest) = line.split_at(colon);
-        let value = rest[1..].strip_prefix(' ').unwrap_or(&rest[1..]);
-        match name {
-            "event" => event_name = Some(value),
-            "data" => data = Some(value),
-            _ => {}
-        }
-    }
-    match (event_name, data) {
-        (Some("hello"), Some(data)) => {
-            if let Ok(payload) = serde_json::from_str::<SseHelloWire>(data) {
-                listener.on_hello(payload.server_time_ms);
-            }
-        }
-        (Some("update"), Some(data)) => {
-            if let Ok(payload) = serde_json::from_str::<SseUpdateWire>(data) {
-                listener.on_update(payload.content_id);
-            }
-        }
-        (Some("resync"), _) => listener.on_resync(),
-        _ => {}
+    use uc_mobile_proto::SseEvent;
+    match uc_mobile_proto::parse_sse_frame(frame) {
+        Some(SseEvent::Hello(hello)) => listener.on_hello(hello.server_time_ms),
+        Some(SseEvent::Update(update)) => listener.on_update(update.content_id),
+        Some(SseEvent::Resync) => listener.on_resync(),
+        None => {}
     }
 }
 
@@ -1197,10 +1161,16 @@ async fn run_sse_subscription(
                     }
                     Ok(Some(Ok(bytes))) => {
                         buf.extend_from_slice(&bytes);
-                        while let Some(end) = find_frame_end(&buf) {
+                        while let Some(end) = uc_mobile_proto::find_frame_end(&buf) {
                             let frame_bytes: Vec<u8> = buf.drain(..end).collect();
                             let frame = String::from_utf8_lossy(&frame_bytes);
                             dispatch_sse_frame(&frame, listener.as_ref());
+                        }
+                        if buf.len() > MAX_SSE_BUFFER_BYTES {
+                            listener.on_disconnected(
+                                "sse buffer overflow: no frame terminator".into(),
+                            );
+                            return;
                         }
                     }
                 }
@@ -2964,6 +2934,32 @@ mod tests {
         // Keep the mock connection open but silent — `tx` stays alive.
         let reason = wait_for(|| listener.disconnects.lock().unwrap().first().cloned()).await;
         assert!(reason.contains("heartbeat timeout"), "got {reason:?}");
+        drop(tx);
+    }
+
+    /// A peer that streams bytes without ever producing a frame terminator
+    /// must be disconnected once the receive buffer hits its cap, instead of
+    /// growing memory unboundedly (jetsam budget).
+    #[tokio::test]
+    async fn sse_client_disconnects_on_buffer_overflow() {
+        let (addr, tx) = spawn_sse_mock().await;
+        let listener = Arc::new(CapturingSseListener::default());
+        let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(run_sse_subscription(
+            server_cfg(addr, "p"),
+            listener.clone(),
+            false,
+            Duration::from_secs(5),
+            cancel_rx,
+        ));
+
+        // No `\n\n` anywhere: a single overlong pseudo-frame just past the cap.
+        let garbage = vec![b'a'; MAX_SSE_BUFFER_BYTES + 1];
+        tx.send(garbage).await.unwrap();
+
+        let reason = wait_for(|| listener.disconnects.lock().unwrap().first().cloned()).await;
+        assert!(reason.contains("buffer overflow"), "got {reason:?}");
+        assert!(listener.updates.lock().unwrap().is_empty());
         drop(tx);
     }
 

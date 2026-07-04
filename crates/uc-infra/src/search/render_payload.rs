@@ -90,8 +90,11 @@ pub enum RenderDecodeError {
     UnsupportedVersion(u8),
     #[error("render payload AEAD verification failed")]
     DecryptFailed,
-    #[error("render payload JSON malformed: {0}")]
-    MalformedJson(String),
+    // Deliberately content-free: this parse runs on decrypted plaintext, so the
+    // underlying serde error string could carry render content. Carrying only the
+    // category keeps it safe to log (see `SearchDocumentRow::to_domain`).
+    #[error("render payload JSON malformed")]
+    MalformedJson,
     #[error("unsupported render payload schema version: {0}")]
     UnsupportedPayloadVersion(u8),
 }
@@ -164,8 +167,8 @@ impl RenderPayloadCodec {
         let ad = aad::for_search_render(entry_id);
         let plaintext = decrypt_xchacha_raw(self.render_key.as_bytes(), nonce, ciphertext, &ad)
             .map_err(|_| RenderDecodeError::DecryptFailed)?;
-        let fields: RenderFields = serde_json::from_slice(&plaintext)
-            .map_err(|e| RenderDecodeError::MalformedJson(e.to_string()))?;
+        let fields: RenderFields =
+            serde_json::from_slice(&plaintext).map_err(|_| RenderDecodeError::MalformedJson)?;
         // The inner schema version is independent of the envelope `format_version`
         // (which gates nonce/header layout). An unknown schema version means the
         // field set may not be what this binary expects, so fail into the degrade

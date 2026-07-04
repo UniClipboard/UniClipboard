@@ -5,6 +5,8 @@
 
 use std::fmt;
 
+use zeroize::Zeroize;
+
 /// Opaque 32-byte search key derived from the master key.
 ///
 /// - Do NOT implement Serialize/Deserialize — keys must never appear in JSON.
@@ -41,6 +43,12 @@ impl SearchKey {
 impl fmt::Debug for SearchKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SearchKey([REDACTED])")
+    }
+}
+
+impl Drop for SearchKey {
+    fn drop(&mut self) {
+        self.0.zeroize();
     }
 }
 
@@ -84,5 +92,11 @@ impl RenderKey {
 impl fmt::Debug for RenderKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RenderKey([REDACTED])")
+    }
+}
+
+impl Drop for RenderKey {
+    fn drop(&mut self) {
+        self.0.zeroize();
     }
 }

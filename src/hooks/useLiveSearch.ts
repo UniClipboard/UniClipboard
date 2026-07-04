@@ -172,9 +172,18 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
         // A 423 during the brief unlock race (session flips locked between the
         // `encryptionReady` read and the request) is expected — treat it as the
         // locked/empty state, not an error, so it does not spam the log.
-        const notReady =
+        const lockedRace =
           err instanceof DaemonApiError && err.code === DaemonErrorCode.ENCRYPTION_NOT_READY
-        if (!notReady) log.error({ err }, 'Live search query failed')
+        // A 503 means a real search-index outage (rebuilding / unavailable). It is
+        // transient but NOT the unlock race, so surface it (at warn) instead of
+        // silently swallowing it as "not ready".
+        const indexUnavailable =
+          err instanceof DaemonApiError && err.code === DaemonErrorCode.SERVICE_UNAVAILABLE
+        if (indexUnavailable) {
+          log.warn({ err }, 'Live search unavailable: search index rebuilding or not ready')
+        } else if (!lockedRace) {
+          log.error({ err }, 'Live search query failed')
+        }
         setItems([])
         setTotal(0)
         setHasMore(false)

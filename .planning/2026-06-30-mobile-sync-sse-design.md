@@ -241,6 +241,13 @@ impl MobileSyncClient {
 ## 8. 分阶段实现计划
 
 > **实现状态 (2026-07-03，分支 `sse`)**:P0 + P1 均已完成并有测试覆盖，详见下方各条内联标注。两处与本节原设想的偏差:①装配链实际只有 `apps/daemon/src/daemon/mobile_lan_lifecycle.rs` + `host.rs` 两处 (`app_assembly.rs` / `app_facade_assembly.rs` 是过时引用，实际不存在);② P1 曾以为 `client.rs:497` 已有可读的 `trust_insecure_cert` 存值字段，核实后那其实是函数参数名——已补加 `AtomicBool` 字段修正。P1 的自签证书 TLS 集成测试与真机 callback 线程模型验证未完成，留待交接 (见下方标注)。
+>
+> **code review 后修订 (2026-07-03)**，以下四点实现与正文原始设计不同，以实现为准：
+>
+> 1. **事件线格式收编进 `uc-mobile-proto::sse_event`**:事件名、`SseHello`/`SseUpdate`/`SseResync` payload、帧解析（`find_frame_end`/`parse_sse_frame`，兼容 LF 与 CRLF）、心跳周期常量 `SSE_HEARTBEAT_INTERVAL_SECS` 均为 daemon 序列化端与 uc-mobile 解析端的单一真相源。§4.3 的「`SseUpdateWire`（webserver 内部）」已不存在。
+> 2. **连接级重校验不再重跑 `AuthenticateBasicAuthUseCase`**（§4.4 F-8 原案）:改为 `MobileSyncFacade::is_device_credential_current`——建连时缓存设备的 Argon2 PHC 串，每 30s 只做「设备仍存在 && 存储 PHC 与建连时逐字节一致」的 repo 读 + 字符串比对，零 Argon2 开销。覆盖面不变（注销 + 凭据轮换），§9 风险 6 的「argon2 较重但 30s 一次可接受」成本论据随之作废（连接数上限仍保留，理由退为一般资源约束）。
+> 3. **客户端帧缓冲加 64KB 硬上限**（`MAX_SSE_BUFFER_BYTES`）:无帧终止符时字节持续到达不会触发心跳超时，无上限即无界内存增长（jetsam 红线）。超限 → `on_disconnected("sse buffer overflow…")`。
+> 4. **连接注册表用 `std::sync::Mutex`**（临界区不跨 `await`），`unregister` 为同步方法，RAII guard 的 `Drop` 直接调用，不再 `tokio::spawn` 清理任务。
 
 - **P0 服务端端点（本仓库可独立验证）** ✅ 已完成
   - uc-infra：`BroadcastingAdvance` + `broadcast::Sender<ActiveClipboardState>`。

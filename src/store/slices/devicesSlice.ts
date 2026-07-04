@@ -43,6 +43,44 @@ function sameMember(a: SpaceMember, b: SpaceMember): boolean {
   )
 }
 
+/** Merge a PATCH onto current preferences for an optimistic UI update, so a
+ * toggle reflects immediately instead of waiting for the daemon round-trip.
+ * Omitted fields keep their current value (mirrors the server-side merge). */
+function applyMemberSyncPreferencesPatch(
+  current: MemberSyncPreferences,
+  patch: MemberSyncPreferencesPatch
+): MemberSyncPreferences {
+  return {
+    sendEnabled: patch.sendEnabled ?? current.sendEnabled,
+    receiveEnabled: patch.receiveEnabled ?? current.receiveEnabled,
+    sendContentTypes: patch.sendContentTypes
+      ? { ...current.sendContentTypes, ...patch.sendContentTypes }
+      : current.sendContentTypes,
+    receiveContentTypes: patch.receiveContentTypes
+      ? { ...current.receiveContentTypes, ...patch.receiveContentTypes }
+      : current.receiveContentTypes,
+  }
+}
+
+/** Field-wise equality so the authoritative server value can reuse the
+ * optimistic object's identity when they match — that keeps the panel from
+ * re-rendering a second time after each toggle. */
+function sameMemberSyncPreferences(a: MemberSyncPreferences, b: MemberSyncPreferences): boolean {
+  const sameContentTypes = (x: MemberSyncPreferences['sendContentTypes'], y: typeof x): boolean =>
+    x.text === y.text &&
+    x.image === y.image &&
+    x.link === y.link &&
+    x.file === y.file &&
+    x.codeSnippet === y.codeSnippet &&
+    x.richText === y.richText
+  return (
+    a.sendEnabled === b.sendEnabled &&
+    a.receiveEnabled === b.receiveEnabled &&
+    sameContentTypes(a.sendContentTypes, b.sendContentTypes) &&
+    sameContentTypes(a.receiveContentTypes, b.receiveContentTypes)
+  )
+}
+
 const initialState: DevicesState = {
   localDevice: null,
   localDeviceLoading: false,
@@ -183,15 +221,30 @@ const devicesSlice = createSlice({
 
     builder
       .addCase(updateMemberSyncPreferences.pending, (state, action) => {
-        state.memberSyncPreferencesLoading[action.meta.arg.deviceId] = true
+        // Optimistic update: apply the patch immediately so the toggle
+        // responds without waiting for the loopback round-trip. Deliberately
+        // does NOT flip `memberSyncPreferencesLoading` — that flag drives the
+        // panel's disabled/opacity state, and toggling it on every mutation
+        // made the whole section flicker + disabled mid-toggle. On failure the
+        // caller re-fetches the authoritative value to reconcile.
+        const { deviceId, patch } = action.meta.arg
+        const current = state.memberSyncPreferences[deviceId]
+        if (current) {
+          state.memberSyncPreferences[deviceId] = applyMemberSyncPreferencesPatch(current, patch)
+        }
       })
       .addCase(updateMemberSyncPreferences.fulfilled, (state, action) => {
         const { deviceId, preferences } = action.payload
-        state.memberSyncPreferences[deviceId] = preferences
-        state.memberSyncPreferencesLoading[deviceId] = false
+        const current = state.memberSyncPreferences[deviceId]
+        // Reuse the optimistic object's identity when the server agrees, so the
+        // selector returns a stable reference and the panel does not re-render
+        // a second time.
+        if (!current || !sameMemberSyncPreferences(current, preferences)) {
+          state.memberSyncPreferences[deviceId] = preferences
+        }
       })
-      .addCase(updateMemberSyncPreferences.rejected, (state, action) => {
-        state.memberSyncPreferencesLoading[action.meta.arg.deviceId] = false
+      .addCase(updateMemberSyncPreferences.rejected, () => {
+        // Keep the optimistic value; the caller re-fetches to reconcile.
       })
   },
 })

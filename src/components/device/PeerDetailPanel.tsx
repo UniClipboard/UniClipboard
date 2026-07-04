@@ -73,13 +73,22 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
     }
   }, [dispatch, deviceId])
 
+  // Preferences are updated optimistically in the slice; on failure re-fetch
+  // the authoritative value to roll the optimistic change back.
+  const reconcileAfterFailure = useCallback(() => {
+    dispatch(fetchMemberSyncPreferences(deviceId))
+  }, [dispatch, deviceId])
+
   const handleSendEnabledToggle = useCallback(
     (checked: boolean) => {
       dispatch(updateMemberSyncPreferences({ deviceId, patch: { sendEnabled: checked } }))
         .unwrap()
-        .catch(err => log.error({ err }, 'failed to update send-enabled preference'))
+        .catch(err => {
+          log.error({ err }, 'failed to update send-enabled preference')
+          reconcileAfterFailure()
+        })
     },
-    [dispatch, deviceId]
+    [dispatch, deviceId, reconcileAfterFailure]
   )
 
   const handleSendContentTypeToggle = useCallback(
@@ -88,9 +97,12 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
         updateMemberSyncPreferences({ deviceId, patch: { sendContentTypes: { [field]: checked } } })
       )
         .unwrap()
-        .catch(err => log.error({ err, field }, 'failed to update send content-type preference'))
+        .catch(err => {
+          log.error({ err, field }, 'failed to update send content-type preference')
+          reconcileAfterFailure()
+        })
     },
-    [dispatch, deviceId]
+    [dispatch, deviceId, reconcileAfterFailure]
   )
 
   const handleRestoreDefaults = useCallback(async () => {
@@ -106,8 +118,9 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
       dispatch(fetchMemberSyncPreferences(deviceId))
     } catch (err) {
       log.error({ err }, 'failed to restore default sync preferences')
+      reconcileAfterFailure()
     }
-  }, [dispatch, deviceId])
+  }, [dispatch, deviceId, reconcileAfterFailure])
 
   if (!deviceId) return null
 

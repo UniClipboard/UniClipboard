@@ -74,10 +74,12 @@ pub trait LanListenerSpawner: Send + Sync {
 /// 生产实现:从 [`AppFacade`] 的 mobile_sync OnceLock lazy 读取当前 facade,
 /// 配合 file_transfer facade 调 [`start_mobile_lan_server`]。
 ///
-/// `sse_source` 是进程级单例(wire 时构造一次, `BroadcastingAdvance` 是唯一
-/// publisher),这里存成 spawner 的构造期字段而不是 per-spawn 参数 —— spawner
-/// 本身是长驻对象,每次 listener 重启(端口变更 / toggle)都复用同一份 Sender,
-/// 不需要经 [`LanListenerSpawner`] trait 签名往返。
+/// `sse_source` is a process-level singleton (constructed once at wire time;
+/// `BroadcastingAdvance` is the sole publisher). It is stored as a
+/// construction-time field of the spawner rather than a per-spawn parameter:
+/// the spawner is long-lived and every listener restart (port change /
+/// toggle) reuses the same `Sender`, so there is no need to thread it
+/// through the [`LanListenerSpawner`] trait signature.
 pub struct AppFacadeListenerSpawner {
     app_facade: Arc<AppFacade>,
     file_transfer: Option<Arc<FileTransferFacade>>,

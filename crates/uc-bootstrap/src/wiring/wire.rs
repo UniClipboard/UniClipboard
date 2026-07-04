@@ -647,8 +647,15 @@ fn create_infra_layer(
     // `BroadcastingAdvance` decorator (publisher) below and carried out on
     // `WiredDependencies.shared` for the daemon's mobile-sync listener
     // assembly to hand a `Receiver` to each connection (subscriber).
-    let (active_clipboard_sse_source, _) =
-        tokio::sync::broadcast::channel::<uc_core::clipboard::ActiveClipboardState>(64);
+    //
+    // Capacity sizes each subscriber's unread backlog; overflowing it only
+    // degrades that connection to a `resync` frame (never an error), so it
+    // just needs to comfortably exceed any realistic burst of register
+    // advances between two polls of a connection task.
+    const ACTIVE_CLIPBOARD_SSE_CAPACITY: usize = 64;
+    let (active_clipboard_sse_source, _) = tokio::sync::broadcast::channel::<
+        uc_core::clipboard::ActiveClipboardState,
+    >(ACTIVE_CLIPBOARD_SSE_CAPACITY);
     let active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort> =
         Arc::new(uc_infra::clipboard::BroadcastingAdvance::new(
             active_clipboard_register_impl.clone() as _,

@@ -112,6 +112,26 @@ pub use crate::usecases::mobile_sync::update_settings::{
     UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
 };
 
+// ─── Facade-level errors ──────────────────────────────────────────────────
+
+/// Failure surface of [`MobileSyncFacade::is_device_credential_current`].
+///
+/// Unlike the other public facade methods that delegate to a `*UseCase`, this
+/// re-check is a thin facade-local convenience with no backing use case, so its
+/// error type is declared here. It still translates the core-layer
+/// [`MobileDeviceError`](uc_core::mobile_sync::MobileDeviceError) into an
+/// application-level type instead of leaking it across the crate boundary
+/// (per `uc-application/AGENTS.md` §13.1/§13.2, and mirroring
+/// [`AuthenticateBasicAuthError`] et al.).
+#[derive(Debug, thiserror::Error)]
+pub enum IsDeviceCredentialCurrentError {
+    /// Device lookup failed at the repository layer — transient and retriable.
+    /// The SSE handler treats it as "fail closed": end the stream and let the
+    /// client reconnect and re-authenticate.
+    #[error("device lookup failed: {0}")]
+    Repository(uc_core::mobile_sync::MobileDeviceError),
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 /// 默认 LAN 监听端口。与 daemon 装配期一次性读 settings 时的兜底完全一致,
@@ -473,8 +493,12 @@ impl MobileSyncFacade {
         &self,
         device_id: &MobileDeviceId,
         connect_time_password_hash: &str,
-    ) -> Result<bool, uc_core::mobile_sync::MobileDeviceError> {
-        let device = self.device_find_by_id.find_by_device_id(device_id).await?;
+    ) -> Result<bool, IsDeviceCredentialCurrentError> {
+        let device = self
+            .device_find_by_id
+            .find_by_device_id(device_id)
+            .await
+            .map_err(IsDeviceCredentialCurrentError::Repository)?;
         Ok(device.is_some_and(|d| d.password_hash == connect_time_password_hash))
     }
 

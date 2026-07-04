@@ -17,6 +17,7 @@
 mod middleware;
 mod routes;
 mod server;
+mod sse_registry;
 
 #[cfg(test)]
 mod test_support;

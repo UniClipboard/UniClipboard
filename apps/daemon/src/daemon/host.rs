@@ -332,6 +332,7 @@ pub async fn start_in_process(
             Arc::new(AppFacadeListenerSpawner::new(
                 Arc::clone(&app_facade),
                 Some(file_transfer_facade.clone()),
+                wired.shared.active_clipboard_sse_source.clone(),
             )),
         ));
 

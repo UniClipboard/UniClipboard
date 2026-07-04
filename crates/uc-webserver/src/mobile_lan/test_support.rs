@@ -128,8 +128,11 @@ pub(crate) async fn build_facade_with_seeded_device(
     }
     #[async_trait]
     impl DeleteMobileDevicePort for InMemoryDeviceRepo {
-        async fn delete(&self, _: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
-            Ok(false)
+        async fn delete(&self, device_id: &MobileDeviceId) -> Result<bool, MobileDeviceError> {
+            let mut devices = self.devices.lock().unwrap();
+            let before = devices.len();
+            devices.retain(|d| &d.device_id != device_id);
+            Ok(devices.len() != before)
         }
     }
     #[async_trait]
@@ -488,4 +491,23 @@ impl uc_core::ports::MobileFileStagingPort for NoopFileStaging {
 pub(crate) fn auth_header(username: &str, password: &str) -> String {
     let payload = BASE64_STD.encode(format!("{username}:{password}"));
     format!("basic {payload}")
+}
+
+/// A standalone fake `active_clipboard_sse_source` for driving the SSE
+/// handler in tests: the caller's `send` plays the role of
+/// `BroadcastingAdvance` publishing an advance, and `subscribe()` is what
+/// the handler does at connect time. The capacity only needs to hold a
+/// test's unread sends; a test exercising `Lagged` builds its own
+/// deliberately tiny channel instead.
+pub(crate) fn fake_sse_source(
+) -> tokio::sync::broadcast::Sender<uc_core::clipboard::ActiveClipboardState> {
+    let (tx, _rx) = tokio::sync::broadcast::channel(16);
+    tx
+}
+
+/// A manually triggerable [`tokio_util::sync::CancellationToken`], playing
+/// the listener-wide cancel signal the SSE handler must react to when the
+/// listener stops or the feature toggle turns off.
+pub(crate) fn fake_cancel_token() -> tokio_util::sync::CancellationToken {
+    tokio_util::sync::CancellationToken::new()
 }

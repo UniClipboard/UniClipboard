@@ -112,6 +112,26 @@ pub use crate::usecases::mobile_sync::update_settings::{
     UpdateMobileSyncSettingsError, UpdateMobileSyncSettingsInput, UpdateMobileSyncSettingsOutput,
 };
 
+// ─── Facade-level errors ──────────────────────────────────────────────────
+
+/// Failure surface of [`MobileSyncFacade::is_device_credential_current`].
+///
+/// Unlike the other public facade methods that delegate to a `*UseCase`, this
+/// re-check is a thin facade-local convenience with no backing use case, so its
+/// error type is declared here. It still translates the core-layer
+/// [`MobileDeviceError`](uc_core::mobile_sync::MobileDeviceError) into an
+/// application-level type instead of leaking it across the crate boundary
+/// (per `uc-application/AGENTS.md` §13.1/§13.2, and mirroring
+/// [`AuthenticateBasicAuthError`] et al.).
+#[derive(Debug, thiserror::Error)]
+pub enum IsDeviceCredentialCurrentError {
+    /// Device lookup failed at the repository layer — transient and retriable.
+    /// The SSE handler treats it as "fail closed": end the stream and let the
+    /// client reconnect and re-authenticate.
+    #[error("device lookup failed: {0}")]
+    Repository(uc_core::mobile_sync::MobileDeviceError),
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 /// 默认 LAN 监听端口。与 daemon 装配期一次性读 settings 时的兜底完全一致,
@@ -258,6 +278,11 @@ pub struct MobileSyncFacade {
     /// `lan_listener_bind_error`。与 `get_settings` use case 共用同一份 Arc,
     /// 无额外资源开销。
     endpoint_info: Arc<dyn MobileSyncEndpointInfoPort>,
+    /// Device lookup for [`Self::is_device_credential_current`] — the SSE
+    /// endpoint's cheap periodic re-check on long-lived connections. Held
+    /// directly (like `file_staging`) rather than behind a use case: the
+    /// check is a single repo read plus a string compare.
+    device_find_by_id: Arc<dyn uc_core::ports::FindMobileDeviceByIdPort>,
 }
 
 impl MobileSyncFacade {
@@ -354,6 +379,7 @@ impl MobileSyncFacade {
             file_staging,
             lan_lifecycle,
             endpoint_info,
+            device_find_by_id: devices.find_by_id,
         }
     }
 
@@ -454,6 +480,26 @@ impl MobileSyncFacade {
         input: AuthenticateBasicAuthInput,
     ) -> Result<AuthenticatedDevice, AuthenticateBasicAuthError> {
         self.authenticate_basic.execute(input).await
+    }
+
+    /// Cheap credential re-check for long-lived connections (the SSE push
+    /// endpoint's periodic revalidation): the device still exists AND its
+    /// stored password hash is byte-identical to the one captured at connect
+    /// time. Covers both revocation and credential rotation without
+    /// re-running the deliberately expensive Argon2 verify — the connection
+    /// already authenticated once, so the timing-side-channel defense of
+    /// [`Self::authenticate_basic`] buys nothing here.
+    pub async fn is_device_credential_current(
+        &self,
+        device_id: &MobileDeviceId,
+        connect_time_password_hash: &str,
+    ) -> Result<bool, IsDeviceCredentialCurrentError> {
+        let device = self
+            .device_find_by_id
+            .find_by_device_id(device_id)
+            .await
+            .map_err(IsDeviceCredentialCurrentError::Repository)?;
+        Ok(device.is_some_and(|d| d.password_hash == connect_time_password_hash))
     }
 
     // ─── SyncClipboard 协议 4 路由(P5a.6 真实接入) ─────────────────────

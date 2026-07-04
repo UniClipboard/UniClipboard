@@ -10,6 +10,10 @@ description: 桌面守护进程对外暴露的、SyncClipboard 兼容的 HTTP �
 所有接口都挂在 **根路径**。主要 SyncClipboard 路径是
 `/SyncClipboard.json` 和 `/file/{dataName}`；兼容 Android 客户端时还会用到
 `/api/history/*`、`/api/time`、`/api/version`、`/version`、`/` 和 `/file`。
+此外还有一个 UniClipboard **私有扩展** `GET /api/sse/clipboard`（Server-Sent
+Events）：桌面剪贴板更新时向订阅的客户端推送信号，客户端收到后再走
+`GET /SyncClipboard.json` 拉取，替代周期轮询；该接口不属于 SyncClipboard
+协议，第三方客户端可以忽略。
 
 每个接口都会通过 **HTTP Basic 认证** 校验。用户名 / 密码由桌面端在配对流程中
 签发，且与一台已登记的移动设备一一绑定。
@@ -38,6 +42,7 @@ SyncClipboard 服务端子集，不是完整的 SyncClipboard 历史服务端。
 | `POST /api/history/query`、`GET /api/history/statistics`                        | 基于当前最新一条返回兼容结果；没有当前内容时返回空结果。                                                 |
 | `PATCH /api/history/{type}/{hash}`、`DELETE /api/history/clear`、`DELETE /file` | 仅用于兼容客户端流程。服务端会接收请求，但不会通过这些接口持久化标星、置顶、删除、清空或文件夹删除状态。 |
 | `GET /api/time`、`GET /api/version`、`GET /version`、`/`                        | 客户端用于确认服务在线的探测接口。                                                                       |
+| `GET /api/sse/clipboard`                                                        | UniClipboard 私有推送扩展（SSE），只送变更信号不送内容；不属于 SyncClipboard 协议。                      |
 
 ## 上传行为
 
@@ -63,6 +68,7 @@ BMP、TIFF、HEIC 和 HEIF 上传继续保持为图片，而不是被误报成�
     { path: '/version', method: 'get' },
     { path: '/SyncClipboard.json', method: 'get' },
     { path: '/SyncClipboard.json', method: 'put' },
+    { path: '/api/sse/clipboard', method: 'get' },
     { path: '/api/history', method: 'post' },
     { path: '/api/history/query', method: 'post' },
     { path: '/api/history/statistics', method: 'get' },

@@ -40,6 +40,8 @@ tags:
     description: Lightweight compatibility probes used by SyncClipboard clients.
   - name: Clipboard
     description: Clipboard metadata read/write (SyncClipboard JSON document).
+  - name: Push
+    description: UniClipboard-private push channel signaling clipboard changes (not part of the SyncClipboard protocol).
   - name: History
     description: Android-compatible history API bridge for the current clipboard item.
   - name: File
@@ -202,6 +204,52 @@ paths:
           description: Body exceeds 16 MiB.
         '500':
           description: Inbound apply pipeline failure on the desktop.
+  /api/sse/clipboard:
+    get:
+      tags: [Push]
+      operationId: getSseClipboard
+      summary: Subscribe to clipboard change signals (SSE)
+      description: |
+        UniClipboard-private extension (not part of the SyncClipboard
+        protocol): a Server-Sent Events stream that signals when the desktop's
+        active clipboard changes, so a client can call
+        `GET /SyncClipboard.json` immediately instead of polling.
+
+        The stream carries **signals only** — never clipboard content. Events:
+
+        - `hello` — sent once at connect time; payload
+          `{"server_time_ms": <int64>}`. The client should pull once
+          unconditionally on receiving it.
+        - `update` — the clipboard advanced; payload
+          `{"content_id": "blake3v1:<hex>", "server_time_ms": <int64>}`.
+          `content_id` is an opaque content identity for deduplication, not
+          content itself.
+        - `resync` — the server dropped signal(s) for this connection; payload
+          `{"server_time_ms": <int64>}`. The client should pull once.
+
+        A comment heartbeat (`: ping`) is written every 25 seconds; clients
+        should treat more than twice that with no bytes as a dead connection
+        and reconnect. There is no event replay on reconnect — a reconnecting
+        client pulls once unconditionally.
+
+        At most 2 concurrent streams per registered device; opening a third
+        closes the oldest. The server also ends the stream when the device is
+        revoked or its credentials are rotated.
+      responses:
+        '200':
+          description: Event stream; stays open until either side disconnects.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: hello
+                data: {"server_time_ms":1750000000000}
+
+                event: update
+                data: {"content_id":"blake3v1:9f8a...","server_time_ms":1750000012345}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/history:
     post:
       tags: [History]

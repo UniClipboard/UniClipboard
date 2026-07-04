@@ -59,6 +59,7 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use chrono::DateTime;
+use futures_util::StreamExt;
 use tokio::task::AbortHandle;
 
 use uc_mobile_proto::{
@@ -538,6 +539,13 @@ pub struct MobileSyncClient {
     /// Monotonic source of deterministic, per-request multipart boundaries
     /// (the pure proto crate never generates randomness).
     boundary_seq: AtomicU64,
+    /// Readable mirror of `http`'s TLS-validation policy, kept in lock-step by
+    /// [`Self::set_trust_insecure_cert`]. `http` only stores the already-built
+    /// `reqwest::Client` — the SSE subscription needs a SEPARATE client (no
+    /// read-idle timeout, design F-2) built fresh per `start_sse_subscription`
+    /// call, and there is no way to read a trust setting back out of a built
+    /// `reqwest::Client`. This flag is that readable value.
+    trust_insecure_cert: std::sync::atomic::AtomicBool,
 }
 
 #[uniffi::export]
@@ -576,6 +584,8 @@ impl MobileSyncClient {
             Ok(mut guard) => *guard = client,
             Err(poisoned) => *poisoned.into_inner() = client,
         }
+        self.trust_insecure_cert
+            .store(trust_insecure_cert, Ordering::Relaxed);
         Ok(())
     }
 
@@ -855,6 +865,43 @@ impl MobileSyncClient {
             }
         }
     }
+
+    /// Subscribe to `GET /api/sse/clipboard`'s notify-then-pull push channel
+    /// (mobile-sync SSE design §5.1). `server` is taken per call, matching the
+    /// "no held current server" style of [`Self::get_latest`] /
+    /// [`Self::put_clipboard`] — this client never holds a notion of "the
+    /// current server".
+    ///
+    /// Runs as a detached long-lived task on the runtime thread; frames are
+    /// parsed and dispatched to `listener` as they arrive. The connection is
+    /// NOT retried automatically on disconnect — that policy belongs to the
+    /// TS sync engine (design §5.2), which observes [`SseListener::on_disconnected`]
+    /// and decides whether/when to call this again.
+    ///
+    /// Uses a SEPARATE reqwest client from the production one (design F-2):
+    /// no read-idle timeout, so the connection survives indefinitely between
+    /// heartbeats. Built fresh per call from the current
+    /// [`Self::set_trust_insecure_cert`] value, so a toggle made after this
+    /// client was constructed still takes effect on the next subscription.
+    pub fn start_sse_subscription(
+        &self,
+        server: ServerConfig,
+        listener: Arc<dyn SseListener>,
+    ) -> Arc<SseHandle> {
+        let trust_insecure_cert = self.trust_insecure_cert.load(Ordering::Relaxed);
+        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        let join = self.rt.handle.spawn(run_sse_subscription(
+            server,
+            listener,
+            trust_insecure_cert,
+            HEARTBEAT_TIMEOUT,
+            cancel_rx,
+        ));
+        Arc::new(SseHandle {
+            cancel_tx: Mutex::new(Some(cancel_tx)),
+            join: Mutex::new(Some(join)),
+        })
+    }
 }
 
 impl MobileSyncClient {
@@ -881,6 +928,7 @@ impl MobileSyncClient {
             http: RwLock::new(http),
             in_flight: Mutex::new(Vec::new()),
             boundary_seq: AtomicU64::new(0),
+            trust_insecure_cert: std::sync::atomic::AtomicBool::new(trust_insecure_cert),
         }))
     }
 
@@ -920,6 +968,213 @@ impl MobileSyncClient {
             Err(e) => Err(SyncError::Internal {
                 reason: format!("request task failed: {e}"),
             }),
+        }
+    }
+}
+
+// ─── SSE subscription (mobile-sync SSE design §5.1) ─────────────────────
+
+/// No bytes (data frame OR heartbeat comment) for 2× the server's heartbeat
+/// cadence → the connection is considered dead and
+/// [`SseListener::on_disconnected`] fires (design §5.1: ">2× heartbeat
+/// interval no bytes"). The cadence comes from the shared wire-protocol
+/// constant, so this timeout cannot drift from what the server sends.
+const HEARTBEAT_TIMEOUT: Duration =
+    Duration::from_secs(uc_mobile_proto::SSE_HEARTBEAT_INTERVAL_SECS * 2);
+
+/// Upper bound on the unparsed SSE receive buffer. Frames on this channel
+/// are tiny (well under 200 bytes), so a buffer this large means the peer is
+/// not speaking the framing we expect; disconnect instead of letting a
+/// misbehaving server grow memory unboundedly inside a jetsam-constrained
+/// extension process.
+const MAX_SSE_BUFFER_BYTES: usize = 64 * 1024;
+
+/// Connect timeout for the SSE client only — NOT a read/idle timeout (design
+/// F-2): once connected, the stream must survive indefinitely between
+/// heartbeats, so no `read_timeout` is set on this client at all.
+const SSE_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Foreign callback interface for [`MobileSyncClient::start_sse_subscription`].
+/// One instance per subscription; a reconnect (a fresh
+/// `start_sse_subscription` call after `on_disconnected`) is a new instance
+/// with no memory of the old one — reconnect policy lives entirely on the TS
+/// side (design §5.2).
+#[uniffi::export(with_foreign)]
+pub trait SseListener: Send + Sync {
+    /// The connection is live; `server_time_ms` is the server's clock at
+    /// connect time. The caller should unconditionally pull the latest
+    /// clipboard once on receiving this (design §4.3: this endpoint makes no
+    /// replay promise, so a connect-time race is only safe to ignore because
+    /// of this unconditional pull).
+    fn on_hello(&self, server_time_ms: i64);
+    /// The active-clipboard register advanced. `content_id` is the new
+    /// `snapshot_hash` — NOT a signal to apply directly (§2 red line: this
+    /// channel never carries content). The caller must pull
+    /// (`GET /SyncClipboard.json`) to act on it.
+    fn on_update(&self, content_id: String);
+    /// The server's broadcast receiver fell behind (design F-3) — the caller
+    /// may have missed update(s) and should unconditionally pull once,
+    /// exactly like `on_hello`.
+    fn on_resync(&self);
+    /// The stream ended for any reason (heartbeat timeout, server closed the
+    /// connection, transport error, non-2xx response). `reason` is a
+    /// human-readable diagnostic, not a stable machine-parseable code. Not
+    /// fired when the caller itself calls [`SseHandle::cancel`].
+    fn on_disconnected(&self, reason: String);
+}
+
+/// Handle to a live SSE subscription. [`Self::cancel`] is the only way to
+/// stop it short of the server itself disconnecting — call it on
+/// foreground→background, server switch, or logout (design §5.1).
+///
+/// Dropping without calling `cancel` first also stops the subscription (the
+/// task is aborted): the join handle is not detached, so this object owns
+/// the subscription's lifetime.
+#[derive(uniffi::Object)]
+pub struct SseHandle {
+    cancel_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    join: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+#[uniffi::export]
+impl SseHandle {
+    /// Idempotent: calling this more than once (or after the subscription
+    /// already ended on its own) is a no-op.
+    pub fn cancel(&self) {
+        if let Ok(mut guard) = self.cancel_tx.lock() {
+            if let Some(tx) = guard.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+}
+
+impl Drop for SseHandle {
+    fn drop(&mut self) {
+        self.cancel();
+        if let Ok(mut guard) = self.join.lock() {
+            if let Some(join) = guard.take() {
+                join.abort();
+            }
+        }
+    }
+}
+
+/// Build the SSE-dedicated reqwest client (design F-2): a connect timeout but
+/// deliberately NO read timeout, so the connection is never idle-timed-out
+/// between 25s heartbeats. Independent of [`MobileSyncClient::http`] — that
+/// client's `read_timeout` is exactly the [`REQUEST_IDLE_TIMEOUT`] this one
+/// must not have.
+fn build_sse_http_client(trust_insecure_cert: bool) -> reqwest::Result<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        .pool_max_idle_per_host(0)
+        .connect_timeout(SSE_CONNECT_TIMEOUT);
+    if trust_insecure_cert {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+    builder.build()
+}
+
+/// Parse one complete SSE frame via the shared wire-protocol parser
+/// (`uc_mobile_proto::sse_event`, single source of truth with the daemon's
+/// serializer) and dispatch it to `listener`. A pure heartbeat comment frame
+/// (`: ping`), an unknown event, or a malformed payload parses to `None` and
+/// is silently ignored — the point of a heartbeat is only to have kept the
+/// connection's last-byte clock fresh, which the caller already accounted
+/// for by having read these bytes at all.
+fn dispatch_sse_frame(frame: &str, listener: &dyn SseListener) {
+    use uc_mobile_proto::SseEvent;
+    match uc_mobile_proto::parse_sse_frame(frame) {
+        Some(SseEvent::Hello(hello)) => listener.on_hello(hello.server_time_ms),
+        Some(SseEvent::Update(update)) => listener.on_update(update.content_id),
+        Some(SseEvent::Resync) => listener.on_resync(),
+        None => {}
+    }
+}
+
+/// The SSE subscription's long-lived task body. Never returns an error —
+/// every failure path reports through `listener.on_disconnected` instead,
+/// since nothing awaits this task's result (it is spawned detached from
+/// [`MobileSyncClient::start_sse_subscription`]).
+async fn run_sse_subscription(
+    server: ServerConfig,
+    listener: Arc<dyn SseListener>,
+    trust_insecure_cert: bool,
+    heartbeat_timeout: Duration,
+    mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
+) {
+    let http = match build_sse_http_client(trust_insecure_cert) {
+        Ok(c) => c,
+        Err(e) => {
+            listener.on_disconnected(format!("failed to build SSE http client: {e}"));
+            return;
+        }
+    };
+    let url = match endpoint(&server.base_url, &["api", "sse", "clipboard"]) {
+        Ok(u) => u,
+        Err(e) => {
+            listener.on_disconnected(format!("invalid server url: {e}"));
+            return;
+        }
+    };
+    let req = http
+        .get(url)
+        .basic_auth(&server.username, Some(&server.password));
+    let resp = tokio::select! {
+        biased;
+        _ = &mut cancel_rx => return,
+        result = req.send() => match result {
+            Ok(r) => r,
+            Err(e) => {
+                listener.on_disconnected(format!("connect failed: {e}"));
+                return;
+            }
+        },
+    };
+    if !resp.status().is_success() {
+        listener.on_disconnected(format!("unexpected status: {}", resp.status()));
+        return;
+    }
+
+    // Boxed + pinned so the stream is `Unpin` regardless of the concrete
+    // (opaque) type `bytes_stream()` returns, letting `StreamExt::next()`
+    // (which requires `Unpin`) be called directly inside `select!`.
+    let mut stream = Box::pin(resp.bytes_stream());
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        tokio::select! {
+            biased;
+            _ = &mut cancel_rx => return,
+            chunk = tokio::time::timeout(heartbeat_timeout, stream.next()) => {
+                match chunk {
+                    Err(_elapsed) => {
+                        listener.on_disconnected("heartbeat timeout".into());
+                        return;
+                    }
+                    Ok(None) => {
+                        listener.on_disconnected("stream ended".into());
+                        return;
+                    }
+                    Ok(Some(Err(e))) => {
+                        listener.on_disconnected(format!("stream error: {e}"));
+                        return;
+                    }
+                    Ok(Some(Ok(bytes))) => {
+                        buf.extend_from_slice(&bytes);
+                        while let Some(end) = uc_mobile_proto::find_frame_end(&buf) {
+                            let frame_bytes: Vec<u8> = buf.drain(..end).collect();
+                            let frame = String::from_utf8_lossy(&frame_bytes);
+                            dispatch_sse_frame(&frame, listener.as_ref());
+                        }
+                        if buf.len() > MAX_SSE_BUFFER_BYTES {
+                            listener.on_disconnected(
+                                "sse buffer overflow: no frame terminator".into(),
+                            );
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -2529,5 +2784,270 @@ mod tests {
             .set_trust_insecure_cert(false)
             .expect("swap back to validating succeeds");
         assert!(client.get_latest(server_cfg(addr, "p")).await.is_ok());
+    }
+
+    // ─── SSE subscription (mobile-sync SSE design §5.1) ──────────────────
+
+    /// Raw-socket SSE mock: writes a `200 text/event-stream` header, then
+    /// forwards whatever byte chunks the test sends over `tx` verbatim onto
+    /// the wire (no framing help — tests hand over already-formed `event:
+    /// .../data: .../\n\n` frames). Dropping `tx` closes the socket, which the
+    /// client observes as end-of-stream.
+    async fn spawn_sse_mock() -> (SocketAddr, tokio::sync::mpsc::Sender<Vec<u8>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
+        let addr = listener.local_addr().expect("mock addr");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
+        tokio::spawn(async move {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0u8; 4096];
+            let _ = sock.read(&mut buf).await; // drain the request line/headers
+            let header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                           Cache-Control: no-cache\r\nConnection: close\r\n\r\n";
+            if sock.write_all(header.as_bytes()).await.is_err() {
+                return;
+            }
+            while let Some(chunk) = rx.recv().await {
+                if sock.write_all(&chunk).await.is_err() {
+                    break;
+                }
+            }
+            let _ = sock.shutdown().await;
+        });
+        (addr, tx)
+    }
+
+    fn sse_frame(event: &str, data: &str) -> Vec<u8> {
+        format!("event: {event}\ndata: {data}\n\n").into_bytes()
+    }
+
+    #[derive(Default)]
+    struct CapturingSseListener {
+        hellos: Mutex<Vec<i64>>,
+        updates: Mutex<Vec<String>>,
+        resyncs: Mutex<Vec<()>>,
+        disconnects: Mutex<Vec<String>>,
+    }
+
+    impl SseListener for CapturingSseListener {
+        fn on_hello(&self, server_time_ms: i64) {
+            self.hellos.lock().unwrap().push(server_time_ms);
+        }
+        fn on_update(&self, content_id: String) {
+            self.updates.lock().unwrap().push(content_id);
+        }
+        fn on_resync(&self) {
+            self.resyncs.lock().unwrap().push(());
+        }
+        fn on_disconnected(&self, reason: String) {
+            self.disconnects.lock().unwrap().push(reason);
+        }
+    }
+
+    /// Poll `f` until it returns `Some`, or panic after `TEST_POLL_TIMEOUT`.
+    /// The SSE task runs concurrently on this same test's runtime, so this is
+    /// a plain condition wait, not a virtual-time trick (heartbeat timeouts
+    /// are exercised with a short real `heartbeat_timeout` argument instead of
+    /// pausing time — [`run_sse_subscription`] runs on whatever runtime calls
+    /// it, including `MobileSyncClient`'s own dedicated thread in production,
+    /// so `tokio::time::pause` is not available here).
+    async fn wait_for<T>(mut f: impl FnMut() -> Option<T>) -> T {
+        const TEST_POLL_TIMEOUT: Duration = Duration::from_secs(2);
+        tokio::time::timeout(TEST_POLL_TIMEOUT, async {
+            loop {
+                if let Some(v) = f() {
+                    return v;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("condition met within timeout")
+    }
+
+    #[tokio::test]
+    async fn sse_client_dispatches_hello_update_resync_in_order() {
+        let (addr, tx) = spawn_sse_mock().await;
+        let listener = Arc::new(CapturingSseListener::default());
+        let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(run_sse_subscription(
+            server_cfg(addr, "p"),
+            listener.clone(),
+            false,
+            Duration::from_secs(5),
+            cancel_rx,
+        ));
+
+        tx.send(sse_frame("hello", r#"{"server_time_ms":1000}"#))
+            .await
+            .unwrap();
+        assert_eq!(
+            wait_for(|| listener.hellos.lock().unwrap().first().copied()).await,
+            1000
+        );
+
+        tx.send(sse_frame(
+            "update",
+            r#"{"content_id":"blake3v1:aa","server_time_ms":2000}"#,
+        ))
+        .await
+        .unwrap();
+        assert_eq!(
+            wait_for(|| listener.updates.lock().unwrap().first().cloned()).await,
+            "blake3v1:aa"
+        );
+
+        tx.send(sse_frame("resync", r#"{"server_time_ms":3000}"#))
+            .await
+            .unwrap();
+        wait_for(|| listener.resyncs.lock().unwrap().first().copied()).await;
+
+        // Heartbeat comments (no `event:` field) must not surface as any callback.
+        tx.send(b": ping\n\n".to_vec()).await.unwrap();
+        drop(tx); // closes the mock socket -> client observes end-of-stream
+
+        let reason = wait_for(|| listener.disconnects.lock().unwrap().first().cloned()).await;
+        assert!(reason.contains("stream ended"), "got {reason:?}");
+        assert_eq!(
+            listener.resyncs.lock().unwrap().len(),
+            1,
+            "the trailing ping comment must not be dispatched as anything"
+        );
+    }
+
+    #[tokio::test]
+    async fn sse_client_heartbeat_timeout_disconnects() {
+        let (addr, tx) = spawn_sse_mock().await;
+        let listener = Arc::new(CapturingSseListener::default());
+        let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        // Deliberately short so the test does not wait anywhere near the
+        // production 50s heartbeat timeout.
+        tokio::spawn(run_sse_subscription(
+            server_cfg(addr, "p"),
+            listener.clone(),
+            false,
+            Duration::from_millis(150),
+            cancel_rx,
+        ));
+
+        // Keep the mock connection open but silent — `tx` stays alive.
+        let reason = wait_for(|| listener.disconnects.lock().unwrap().first().cloned()).await;
+        assert!(reason.contains("heartbeat timeout"), "got {reason:?}");
+        drop(tx);
+    }
+
+    /// A peer that streams bytes without ever producing a frame terminator
+    /// must be disconnected once the receive buffer hits its cap, instead of
+    /// growing memory unboundedly (jetsam budget).
+    #[tokio::test]
+    async fn sse_client_disconnects_on_buffer_overflow() {
+        let (addr, tx) = spawn_sse_mock().await;
+        let listener = Arc::new(CapturingSseListener::default());
+        let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(run_sse_subscription(
+            server_cfg(addr, "p"),
+            listener.clone(),
+            false,
+            Duration::from_secs(5),
+            cancel_rx,
+        ));
+
+        // No `\n\n` anywhere: a single overlong pseudo-frame just past the cap.
+        let garbage = vec![b'a'; MAX_SSE_BUFFER_BYTES + 1];
+        tx.send(garbage).await.unwrap();
+
+        let reason = wait_for(|| listener.disconnects.lock().unwrap().first().cloned()).await;
+        assert!(reason.contains("buffer overflow"), "got {reason:?}");
+        assert!(listener.updates.lock().unwrap().is_empty());
+        drop(tx);
+    }
+
+    #[tokio::test]
+    async fn sse_client_cancel_stops_without_disconnect_callback() {
+        let (addr, _tx) = spawn_sse_mock().await;
+        let listener = Arc::new(CapturingSseListener::default());
+        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        let join = tokio::spawn(run_sse_subscription(
+            server_cfg(addr, "p"),
+            listener.clone(),
+            false,
+            Duration::from_secs(5),
+            cancel_rx,
+        ));
+
+        cancel_tx.send(()).unwrap();
+        join.await.expect("task ends after cancel");
+
+        assert!(
+            listener.disconnects.lock().unwrap().is_empty(),
+            "an explicit cancel must not fire on_disconnected"
+        );
+    }
+
+    #[tokio::test]
+    async fn sse_handle_cancel_is_idempotent() {
+        let (addr, _tx) = spawn_sse_mock().await;
+        let client = new_client();
+        let listener = Arc::new(CapturingSseListener::default());
+        let handle = client.start_sse_subscription(server_cfg(addr, "p"), listener);
+
+        // Calling cancel twice (a plausible double-tap from the native side
+        // on rapid foreground/background flaps) must not panic.
+        handle.cancel();
+        handle.cancel();
+    }
+
+    #[tokio::test]
+    async fn sse_handle_drop_stops_the_subscription() {
+        let (addr, tx) = spawn_sse_mock().await;
+        let client = new_client();
+        let listener = Arc::new(CapturingSseListener::default());
+        let handle = client.start_sse_subscription(server_cfg(addr, "p"), listener.clone());
+
+        tx.send(sse_frame("hello", r#"{"server_time_ms":1000}"#))
+            .await
+            .unwrap();
+        wait_for(|| listener.hellos.lock().unwrap().first().copied()).await;
+        drop(handle);
+
+        // The subscription task is aborted, not merely asked to stop, so
+        // there is no further callback to observe — the meaningful
+        // assertion is that the mock's writer side notices the abandoned
+        // connection (send eventually fails) rather than the client hanging
+        // onto it forever.
+        let mut sent_after_drop_failed = false;
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            if tx
+                .send(sse_frame("resync", r#"{"server_time_ms":1}"#))
+                .await
+                .is_err()
+            {
+                sent_after_drop_failed = true;
+                break;
+            }
+        }
+        assert!(
+            sent_after_drop_failed,
+            "dropping the handle must eventually close the connection"
+        );
+    }
+
+    // Regression pin (design F-2): the readable trust flag stays in lock-step
+    // with `set_trust_insecure_cert`, independent of `http`'s own built
+    // client — this is the value `start_sse_subscription` reads to decide
+    // whether the SSE-dedicated client trusts self-signed certs. A full TLS
+    // handshake test (design P1 item 7.3, "mock HTTPS + self-signed cert")
+    // needs a TLS-terminating mock server and is tracked as a follow-up, not
+    // covered here.
+    #[tokio::test]
+    async fn trust_insecure_cert_flag_tracks_the_toggle() {
+        let client = new_client();
+        assert!(!client.trust_insecure_cert.load(Ordering::Relaxed));
+        client.set_trust_insecure_cert(true).unwrap();
+        assert!(client.trust_insecure_cert.load(Ordering::Relaxed));
+        client.set_trust_insecure_cert(false).unwrap();
+        assert!(!client.trust_insecure_cert.load(Ordering::Relaxed));
     }
 }

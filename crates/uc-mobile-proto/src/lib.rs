@@ -12,6 +12,7 @@
 //! - [`history_record`]：history 线模型、composite/split id、`isDelete` 封装、ISO-8601。
 //! - [`multipart`]：RFC 7578 multipart 构造 + history query 编码。
 //! - [`net_class`]：URL 形态分类、SSID 归一、候选地址排序。
+//! - [`sse_event`]：SSE push 通道的事件线格式 + 帧解析（daemon 与移动端共用）。
 //!
 //! 持久化字节形态 + 纯状态决策（M4，E/F 区）：
 //! - [`app_settings`]：`app_settings` blob 编解码 + 前向兼容默认值。
@@ -48,6 +49,7 @@ pub mod net_class;
 pub mod payload_cache;
 pub mod persist_keys;
 pub mod server_config;
+pub mod sse_event;
 pub mod sync_engine;
 
 pub use app_settings::{
@@ -86,6 +88,10 @@ pub use payload_cache::{is_valid_cache_key, plan_eviction, CacheEntry};
 pub use server_config::{
     decode_server_list, encode_server_list, load_servers, LegacyServerConfig, ServerConfig,
     ServerConfigList, ServerLoad,
+};
+pub use sse_event::{
+    find_frame_end, parse_sse_frame, SseEvent, SseHello, SseResync, SseUpdate, SSE_EVENT_HELLO,
+    SSE_EVENT_RESYNC, SSE_EVENT_UPDATE, SSE_HEARTBEAT_INTERVAL_SECS,
 };
 pub use sync_engine::{
     acknowledge_loop_detection, advance_watermark, backoff_secs, cadence_secs, commit_apply,

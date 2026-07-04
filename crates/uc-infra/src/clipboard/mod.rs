@@ -1,4 +1,5 @@
 mod background_blob_worker;
+mod broadcasting_advance;
 mod change_origin;
 pub mod chunked_transfer;
 mod durable_spool_queue;
@@ -15,6 +16,7 @@ mod testing;
 mod thumbnail_generator;
 
 pub use background_blob_worker::BackgroundBlobWorker;
+pub use broadcasting_advance::BroadcastingAdvance;
 
 /// Builds a new `InMemorySelfWriteLedger` and wraps it in an
 /// `Arc<dyn SelfWriteLedgerPort>`. Used by bootstrap to produce the shared

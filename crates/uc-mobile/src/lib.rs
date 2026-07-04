@@ -24,7 +24,7 @@ pub mod reducer;
 
 pub use client::{
     first_reachable, uc_mobile_init, ClipboardKind, ClipboardMeta, MobileSyncClient,
-    PlatformBridge, ProbeReport, ProbeResult, ServerConfig, SyncError,
+    PlatformBridge, ProbeReport, ProbeResult, ServerConfig, SseHandle, SseListener, SyncError,
 };
 
 uniffi::setup_scaffolding!();

@@ -25,15 +25,20 @@ use axum::{
     routing::{any, delete, get, post},
     Router,
 };
+use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 
 use uc_application::facade::{FileTransferFacade, MobileSyncFacade};
+use uc_core::clipboard::ActiveClipboardState;
 
 use crate::mobile_lan::middleware::basic_auth;
+use crate::mobile_lan::sse_registry::SseConnectionRegistry;
 
 mod common;
 mod compat;
 mod file;
 mod history;
+mod sse;
 mod sync_doc;
 
 #[cfg(test)]
@@ -48,6 +53,18 @@ mod tests;
 pub(crate) struct MobileLanState {
     pub mobile_sync: Arc<MobileSyncFacade>,
     pub file_transfer: Option<Arc<FileTransferFacade>>,
+    /// Fan-out source for active-clipboard register advances; the SSE
+    /// handler subscribes once per connection to receive `update` events.
+    pub sse_source: broadcast::Sender<ActiveClipboardState>,
+    /// Listener-wide cancellation signal. The SSE handler must select on
+    /// this directly (not just rely on axum's connection drain) — an SSE
+    /// stream never ends on its own, so without an active cancel branch
+    /// `with_graceful_shutdown` would hang waiting for it.
+    pub cancel: CancellationToken,
+    /// Per-device SSE connection cap + eviction; lives for the listener's
+    /// lifetime like `sse_source` / `cancel` (fresh instance per
+    /// `build_router` call — a listener restart naturally resets it).
+    pub sse_registry: Arc<SseConnectionRegistry>,
 }
 
 impl FromRef<MobileLanState> for Arc<MobileSyncFacade> {
@@ -75,10 +92,15 @@ impl FromRef<MobileLanState> for Option<Arc<FileTransferFacade>> {
 pub(crate) fn build_router(
     facade: Arc<MobileSyncFacade>,
     file_transfer: Option<Arc<FileTransferFacade>>,
+    sse_source: broadcast::Sender<ActiveClipboardState>,
+    cancel: CancellationToken,
 ) -> Router {
     let state = MobileLanState {
         mobile_sync: facade.clone(),
         file_transfer,
+        sse_source,
+        cancel,
+        sse_registry: Arc::new(SseConnectionRegistry::new()),
     };
     Router::new()
         .route("/", any(compat::root_compat))
@@ -114,6 +136,7 @@ pub(crate) fn build_router(
             "/file/:data_name",
             get(file::get_clipboard_file).put(file::put_clipboard_file),
         )
+        .route("/api/sse/clipboard", get(sse::get_sse_clipboard))
         .layer(axum::middleware::from_fn_with_state(facade, basic_auth))
         .with_state(state)
 }

@@ -14,6 +14,9 @@ uc-application = { path = "../uc-application" }
 uc-core = { path = "../uc-core" }
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
+# SSE push-channel wire shapes (event names / payload structs / heartbeat
+# cadence) shared with the uc-mobile client.
+uc-mobile-proto = { path = "../uc-mobile-proto" }
 uc-observability = { path = "../uc-observability" }
 anyhow = "1.0"
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2", "multipart"] }

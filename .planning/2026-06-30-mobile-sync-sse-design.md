@@ -1,6 +1,6 @@
 # mobile-sync SSE 推送设计（前台事件驱动取代轮询）
 
-状态：**grilling 逐分支拍板 + codex 10 轮对抗评审全部内嵌（2026-06-30）**——10 轮共 29 条评审意见独立核查后全部采纳、0 驳回（F-6 配置归属升级用户拍板），见各节「评审修正」标注 · 末轮仅剩 2 条 MINOR 一致性项（已修），评审已收敛至微观一致性 · 作者待与移动端团队交接
+状态：**grilling 逐分支拍板 + codex 10 轮对抗评审全部内嵌（2026-06-30）**——10 轮共 29 条评审意见独立核查后全部采纳、0 驳回（F-6 配置归属升级用户拍板），见各节「评审修正」标注 · 末轮仅剩 2 条 MINOR 一致性项 (已修),评审已收敛至微观一致性 · **P0(服务端)+ P1(uc-mobile 客户端) 已实现 (2026-07-03，分支 `sse`,3 个 atomic commit)**,详情见 §8 分阶段实现计划的行内标注;P2/P3(Android/TS) 交接给 `uniclipboard-android` 仓库
 关联：
 - 服务端 mobile-sync HTTP 在 `crates/uc-webserver/src/mobile_lan/`（axum 0.7，固定端口 42720，Basic Auth）。
 - 事件源出口已核实：`AdvanceActiveClipboardPort::advance(state) -> Ok(bool)`（issue #1017 ActiveClipboardState LWW 寄存器），adapter 唯一实现在 `crates/uc-infra/src/db/repositories/active_clipboard_register_repo.rs:44`。
@@ -240,7 +240,16 @@ impl MobileSyncClient {
 
 ## 8. 分阶段实现计划
 
-- **P0 服务端端点（本仓库可独立验证）**
+> **实现状态 (2026-07-03，分支 `sse`)**:P0 + P1 均已完成并有测试覆盖，详见下方各条内联标注。两处与本节原设想的偏差:①装配链实际只有 `apps/daemon/src/daemon/mobile_lan_lifecycle.rs` + `host.rs` 两处 (`app_assembly.rs` / `app_facade_assembly.rs` 是过时引用，实际不存在);② P1 曾以为 `client.rs:497` 已有可读的 `trust_insecure_cert` 存值字段，核实后那其实是函数参数名——已补加 `AtomicBool` 字段修正。P1 的自签证书 TLS 集成测试与真机 callback 线程模型验证未完成，留待交接 (见下方标注)。
+>
+> **code review 后修订 (2026-07-03)**，以下四点实现与正文原始设计不同，以实现为准：
+>
+> 1. **事件线格式收编进 `uc-mobile-proto::sse_event`**:事件名、`SseHello`/`SseUpdate`/`SseResync` payload、帧解析（`find_frame_end`/`parse_sse_frame`，兼容 LF 与 CRLF）、心跳周期常量 `SSE_HEARTBEAT_INTERVAL_SECS` 均为 daemon 序列化端与 uc-mobile 解析端的单一真相源。§4.3 的「`SseUpdateWire`（webserver 内部）」已不存在。
+> 2. **连接级重校验不再重跑 `AuthenticateBasicAuthUseCase`**（§4.4 F-8 原案）:改为 `MobileSyncFacade::is_device_credential_current`——建连时缓存设备的 Argon2 PHC 串，每 30s 只做「设备仍存在 && 存储 PHC 与建连时逐字节一致」的 repo 读 + 字符串比对，零 Argon2 开销。覆盖面不变（注销 + 凭据轮换），§9 风险 6 的「argon2 较重但 30s 一次可接受」成本论据随之作废（连接数上限仍保留，理由退为一般资源约束）。
+> 3. **客户端帧缓冲加 64KB 硬上限**（`MAX_SSE_BUFFER_BYTES`）:无帧终止符时字节持续到达不会触发心跳超时，无上限即无界内存增长（jetsam 红线）。超限 → `on_disconnected("sse buffer overflow…")`。
+> 4. **连接注册表用 `std::sync::Mutex`**（临界区不跨 `await`），`unregister` 为同步方法，RAII guard 的 `Drop` 直接调用，不再 `tokio::spawn` 清理任务。
+
+- **P0 服务端端点（本仓库可独立验证）** ✅ 已完成
   - uc-infra：`BroadcastingAdvance` + `broadcast::Sender<ActiveClipboardState>`。
   - **装配链（评审修正 F-5 + round 6 F-1/F-2，按真实代码路径列全）**：真实 listener 不是从 `wire.rs` 直连 `start_mobile_lan_server`，而是经 daemon lifecycle：
     1. `uc-bootstrap`（`wiring/wire.rs`）构造 `broadcast::Sender`，注入 `BroadcastingAdvance`。
@@ -263,11 +272,11 @@ impl MobileSyncClient {
     - **同设备多流 + 改名驱逐**（评审修正 round 5 F-1 + round 8 F-1）：注册表按稳定 `device_id` 索引；同一 device 开第 3 条流时最旧被关、活跃数不超上限；改 username/password 后用新凭据重连，同 device 旧流 **立即** 被驱逐（不必等重校验周期）。
     - 重连（断开后重新 GET）→ 收到 `hello` → 客户端语义上应立即拉到当前内容。
     - （注：自签证书 trust 测试属客户端侧、移至 P1——P0 桌面 LAN 是 HTTP-only，见评审修正 round 7。）
-- **P1 客户端 Rust FFI（uc-mobile）**
+- **P1 客户端 Rust FFI（uc-mobile）** ✅ 已完成 (`crates/uc-mobile/src/client.rs`),遗留 2 项交接
   - `start_sse_subscription` + `SseListener`(`on_hello`/`on_update`/`on_resync`/`on_disconnected`) + `SseHandle`；SSE 帧解析；心跳超时 → `on_disconnected`。
-  - **独立 reqwest 客户端无 read idle timeout（评审修正 F-2）**——写进验收：连接能稳定撑过多个心跳周期不被 idle 超时打断。
-  - **自签证书 SSE 测试（评审修正 round 7，从 P0 移入；round 8 F-2 强化）**：mock HTTPS SSE server，验证 SSE reqwest 实例从 **可读 trust config 值** 重建、继承 trust-insecure-cert 设置、能连上不静默失败。须在 **toggle `set_trust_insecure_cert` 之后** 测，确认重建用更新后的值（不只构造时）。P0 桌面 LAN 是 HTTP-only，该测试属客户端侧。
-  - 真机验证 callback 线程模型（尤其 iOS）。
+  - **独立 reqwest 客户端无 read idle timeout（评审修正 F-2）**——写进验收：连接能稳定撑过多个心跳周期不被 idle 超时打断。 ✅ `build_sse_http_client` 只设 connect timeout，不设 read timeout;`heartbeat_timeout` 做成显式参数 (测试传短值验证超时路径，不必真等 50s)。
+  - **自签证书 SSE 测试（评审修正 round 7，从 P0 移入；round 8 F-2 强化）**：mock HTTPS SSE server，验证 SSE reqwest 实例从 **可读 trust config 值** 重建、继承 trust-insecure-cert 设置、能连上不静默失败。须在 **toggle `set_trust_insecure_cert` 之后** 测，确认重建用更新后的值（不只构造时）。P0 桌面 LAN 是 HTTP-only，该测试属客户端侧。 ⚠️ **未完成**——已修 `trust_insecure_cert` 可读性 (新增 `AtomicBool` 字段随 `set_trust_insecure_cert` 同步) 并有单测 (`trust_insecure_cert_flag_tracks_the_toggle`) 钉死该值本身的同步，但没有起真正的自签证书 TLS mock server 做端到端握手验证——需要 `rcgen` 之类依赖搭 TLS listener，评估后判断超出本轮剩余精力，交接给下一轮。
+  - 真机验证 callback 线程模型（尤其 iOS）。 ⚠️ **未完成**——本仓库无法自动化，交接给移动端团队 (§9 风险 4)。
 - **P2 客户端 TS 接入（uniclipboard-android）**
   - epoch 绑定的并发协调状态机（F-7）；`on_update` content_id 短路（F-1）；`on_resync`/`on_hello` 无条件拉；退避重连 + feature-detect 回退；30s 兜底 tick；生命周期 active/background 建/拆。上行原样不动。RN 本地 SSE 开关（F-6）。
 - **P3 清理**：移除 `@microsoft/signalr`。

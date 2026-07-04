@@ -168,6 +168,12 @@ struct InfraLayer {
     // 持有具体类型是为了让 daemon 拿到写入面;同一份 Arc 通过 unsizing
     // coercion 也能 share 给 AppDeps.mobile_sync.endpoint_info。
     mobile_sync_endpoint_info: Arc<uc_infra::mobile_sync::InMemoryMobileSyncEndpointInfoAdapter>,
+
+    // Fan-out source for the mobile-sync LAN SSE endpoint; see
+    // `SharedRuntimeDeps::active_clipboard_sse_source` docs for the
+    // publisher/subscriber split.
+    active_clipboard_sse_source:
+        tokio::sync::broadcast::Sender<uc_core::clipboard::ActiveClipboardState>,
 }
 
 /// Create SQLite database connection pool
@@ -643,8 +649,24 @@ fn create_infra_layer(
             &db_executor,
         )),
     );
+    // Fan-out source for the mobile-sync LAN SSE endpoint: cloned into the
+    // `BroadcastingAdvance` decorator (publisher) below and carried out on
+    // `WiredDependencies.shared` for the daemon's mobile-sync listener
+    // assembly to hand a `Receiver` to each connection (subscriber).
+    //
+    // Capacity sizes each subscriber's unread backlog; overflowing it only
+    // degrades that connection to a `resync` frame (never an error), so it
+    // just needs to comfortably exceed any realistic burst of register
+    // advances between two polls of a connection task.
+    const ACTIVE_CLIPBOARD_SSE_CAPACITY: usize = 64;
+    let (active_clipboard_sse_source, _) = tokio::sync::broadcast::channel::<
+        uc_core::clipboard::ActiveClipboardState,
+    >(ACTIVE_CLIPBOARD_SSE_CAPACITY);
     let active_clipboard_register: Arc<dyn uc_core::ports::clipboard::AdvanceActiveClipboardPort> =
-        Arc::clone(&active_clipboard_register_impl) as _;
+        Arc::new(uc_infra::clipboard::BroadcastingAdvance::new(
+            active_clipboard_register_impl.clone() as _,
+            active_clipboard_sse_source.clone(),
+        ));
     let active_clipboard_register_load: Arc<
         dyn uc_core::ports::clipboard::LoadActiveClipboardPort,
     > = Arc::clone(&active_clipboard_register_impl) as _;
@@ -721,6 +743,7 @@ fn create_infra_layer(
         file_transfer_store,
         mobile_device_ports,
         mobile_sync_endpoint_info,
+        active_clipboard_sse_source,
     };
 
     Ok(infra)
@@ -1014,6 +1037,7 @@ pub fn wire_dependencies(
             clipboard_write_coordinator: Arc::clone(&clipboard_write_coordinator),
             file_cache_dir: paths.file_cache_dir.clone(),
             trusted_peer_repo: Arc::clone(&infra.trusted_peer_repo),
+            active_clipboard_sse_source: infra.active_clipboard_sse_source.clone(),
         },
     };
     let background = BackgroundRuntimeDeps {

@@ -13,17 +13,21 @@
 //! ## 生命周期
 //!
 //! - 传入的 `cancel` 触发后, axum 走 `with_graceful_shutdown`, 退出已建立
-//!   的连接(≤ 5s, 符合 SPEC §3.3 "graceful drain"约束)。
+//!   的连接(≤ 5s, 符合 SPEC §3.3 "graceful drain"约束)。同一个 `cancel`
+//!   也交给路由层的 SSE 长连接 handler 作为 `select!` 的取消分支 —— 否则
+//!   "永不结束"的 SSE 流会让 `with_graceful_shutdown` 无限等待。
 //! - listener 任务返回 `JoinHandle<anyhow::Result<()>>`;调用方 `await` 它
 //!   并据此 `clear()` endpoint_info。
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use uc_application::facade::{FileTransferFacade, MobileSyncFacade};
+use uc_core::clipboard::ActiveClipboardState;
 
 use crate::mobile_lan::routes::build_router;
 
@@ -49,6 +53,7 @@ pub async fn start_mobile_lan_server(
     cancel: CancellationToken,
     facade: Arc<MobileSyncFacade>,
     file_transfer: Option<Arc<FileTransferFacade>>,
+    sse_source: broadcast::Sender<ActiveClipboardState>,
 ) -> anyhow::Result<MobileLanServerHandle> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
     let bound_addr = listener.local_addr()?;
@@ -64,7 +69,7 @@ pub async fn start_mobile_lan_server(
              for PUT /file uploads. Check daemon assembly if this is unexpected."
         );
     }
-    let router = build_router(facade, file_transfer);
+    let router = build_router(facade, file_transfer, sse_source, cancel.clone());
     let join_handle = tokio::spawn(async move {
         axum::serve(listener, router)
             .with_graceful_shutdown(cancel.cancelled_owned())

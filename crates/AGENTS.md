@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Last refreshed:** 2026-07-04 (auto; 21 workspace crates)
+**Last refreshed:** 2026-07-05 (auto; 22 workspace crates)
 
 ## OVERVIEW
 
@@ -13,7 +13,7 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |- apps/                 # Runnable binaries
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
-|- crates/               # Library crates (17)
+|- crates/               # Library crates (18)
 |  # -- Hex core (ADR-005) --
 |  |- uc-core/          # Domain models + Port traits only (no external deps)
 |  |- uc-application/   # Use cases / orchestrators (depends on uc-core ports only)
@@ -33,6 +33,7 @@ Rust monorepo workspace (root `Cargo.toml`) with strict hexagonal boundaries: li
 |  |- uc-cli-macros/    # Proc-macros for uc-cli (internal)
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
 |  # -- Other --
+|  |- uc-content-hash/  # Shared content-identity hashing (blake3v1): the single algorithm every UniClipboard implementation (desktop core, mobile FFI) must use to compute a stable cross-device content hash. Depends on blake3 + std only.
 |  |- uc-mobile-proto/  # Pure mobile-sync wire-protocol codec leaf crate (connect-uri)
 |  |- uc-mobile/        # UniFFI boundary crate exposing shared Rust to iOS/Android (mobile spike)
 |- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)

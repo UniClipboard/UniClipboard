@@ -117,9 +117,9 @@ pub use mobile_sync::mobile_sync_streaming_scope_nonce;
 pub use mobile_sync::{
     ApplyIncomingMobileClipError, ApplyIncomingMobileClipInput, ApplyIncomingMobileClipOutcome,
     AuthenticateBasicAuthError, AuthenticateBasicAuthInput, AuthenticatedDevice,
-    GetLatestMobileSyncDocError, GetMobileSyncFileError, GetMobileSyncFileOutput,
-    GetMobileSyncSettingsError, IncomingMobileBuffer, IncomingMobileClipEvent,
-    LanInterfaceOption as MobileSyncLanInterfaceOption,
+    CheckContentAvailableError, GetLatestMobileSyncDocError, GetMobileSyncFileError,
+    GetMobileSyncFileOutput, GetMobileSyncSettingsError, IncomingMobileBuffer,
+    IncomingMobileClipEvent, LanInterfaceOption as MobileSyncLanInterfaceOption,
     ListLanInterfacesError as MobileSyncListLanInterfacesError, ListMobileDevicesError,
     MobileDeviceSummary, MobileSyncFacade, MobileSyncFacadeDeps, MobileSyncSettingsView,
     MobileSyncSnapshotPorts, RegisterMobileShortcutDeviceError, RegisterMobileShortcutDeviceInput,

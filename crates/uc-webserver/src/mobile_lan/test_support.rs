@@ -64,6 +64,35 @@ pub(crate) async fn build_facade_with_seeded_device(
     username: &str,
     password: &str,
 ) -> Arc<MobileSyncFacade> {
+    Arc::new(MobileSyncFacade::new(
+        build_facade_deps_with_seeded_device(username, password).await,
+    ))
+}
+
+/// Like [`build_facade_with_seeded_device`], but overrides
+/// `find_entry_by_snapshot_hash` / `check_entry_availability` with the given
+/// fakes instead of the always-`None`/noop defaults — for the
+/// content-availability endpoint's tests, which need to control whether a
+/// given `snapshot_hash` resolves to an entry and whether that entry reports
+/// available.
+pub(crate) async fn build_facade_with_seeded_device_and_content_index(
+    username: &str,
+    password: &str,
+    find_entry_by_snapshot_hash: Arc<dyn uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort>,
+    check_entry_availability: Arc<dyn uc_core::ports::clipboard::CheckEntryAvailabilityPort>,
+) -> Arc<MobileSyncFacade> {
+    let deps = build_facade_deps_with_seeded_device(username, password).await;
+    Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
+        find_entry_by_snapshot_hash,
+        check_entry_availability,
+        ..deps
+    }))
+}
+
+async fn build_facade_deps_with_seeded_device(
+    username: &str,
+    password: &str,
+) -> MobileSyncFacadeDeps {
     use std::net::Ipv4Addr;
 
     struct FixedClock;
@@ -246,7 +275,7 @@ pub(crate) async fn build_facade_with_seeded_device(
         Arc::new(NoopInboundWrite),
     ));
 
-    Arc::new(MobileSyncFacade::new(MobileSyncFacadeDeps {
+    MobileSyncFacadeDeps {
         clock: Arc::new(FixedClock),
         credentials_minter: Arc::new(StaticMinter),
         password_hasher: Arc::new(FakeHasher),
@@ -279,7 +308,9 @@ pub(crate) async fn build_facade_with_seeded_device(
         analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
         write_coordinator: None,
         active_clipboard: None,
-    }))
+        find_entry_by_snapshot_hash: Arc::new(NoopEntryRepo),
+        check_entry_availability: Arc::new(NoopEntryRepo),
+    }
 }
 
 // ── P5a.6 NoOp adapters(本模块测试装配 facade 用) ──────────────────────
@@ -303,6 +334,16 @@ impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for NoopEntryRepo 
         _snapshot_hash: &str,
     ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
         Ok(None)
+    }
+}
+
+#[async_trait]
+impl uc_core::ports::clipboard::CheckEntryAvailabilityPort for NoopEntryRepo {
+    async fn is_entry_available(
+        &self,
+        _entry_id: &EntryId,
+    ) -> Result<bool, uc_core::clipboard::ClipboardRepositoryError> {
+        Ok(false)
     }
 }
 

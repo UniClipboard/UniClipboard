@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -232,16 +231,16 @@ impl ObservedClipboardRepresentation {
         }
     }
 
-    /// blake3 content hash, computed lazily and cached.
+    /// Content hash (`uc_content_hash::content_hash`), computed lazily and cached.
     ///
     /// `Inline` source 直接对内存字节哈希;`LocalFile` source 流式读取文件计算哈希。
     /// 若 `LocalFile` 路径不可读则 panic(此时 capture pipeline 上游应该已经处理过 stat 失败)。
     pub fn content_hash(&self) -> RepresentationHash {
         self.cached_hash
             .get_or_init(|| {
-                let hash = match &self.source {
-                    ClipboardPayloadSource::Inline(b) => blake3::hash(b),
-                    ClipboardPayloadSource::LocalFile { path, .. } => stream_blake3(path)
+                let bytes = match &self.source {
+                    ClipboardPayloadSource::Inline(b) => uc_content_hash::content_hash(b),
+                    ClipboardPayloadSource::LocalFile { path, .. } => stream_content_hash(path)
                         .unwrap_or_else(|err| {
                             panic!(
                                 "ObservedClipboardRepresentation::content_hash: failed to stream-hash {} : {err}",
@@ -249,25 +248,16 @@ impl ObservedClipboardRepresentation {
                             )
                         }),
                 };
-                RepresentationHash(ContentHash::from(hash.as_bytes()))
+                RepresentationHash(ContentHash::from(&bytes))
             })
             .clone()
     }
 }
 
-/// 流式 blake3:对路径文件做分块哈希,常驻内存仅 64 KiB 缓冲。
-fn stream_blake3(path: &Path) -> std::io::Result<blake3::Hash> {
-    let mut file = std::fs::File::open(path)?;
-    let mut hasher = blake3::Hasher::new();
-    let mut buf = [0u8; 64 * 1024];
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(hasher.finalize())
+/// 流式内容哈希:对路径文件做分块哈希,常驻内存仅 64 KiB 缓冲(实现见 `uc_content_hash::content_hash_reader`)。
+fn stream_content_hash(path: &Path) -> std::io::Result<[u8; 32]> {
+    let file = std::fs::File::open(path)?;
+    uc_content_hash::content_hash_reader(file)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -558,27 +548,13 @@ impl SystemClipboardSnapshot {
             .collect();
 
         if has_file_digests {
-            let mut file_hasher = blake3::Hasher::new();
-            file_hasher.update(b"file-content|");
-            let mut sorted_digests = self.file_content_digests.clone();
-            sorted_digests.sort_unstable();
-            for d in &sorted_digests {
-                file_hasher.update(d);
-            }
-            rep_hashes.push(*file_hasher.finalize().as_bytes());
+            rep_hashes.push(uc_content_hash::file_content_wrapper(
+                &self.file_content_digests,
+            ));
         }
 
-        rep_hashes.sort_unstable();
-
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(b"snapshot-hash-v1|");
-
-        for h in &rep_hashes {
-            hasher.update(h);
-        }
-
-        let hash = hasher.finalize();
-        SnapshotHash(ContentHash::from(hash.as_bytes()))
+        let hash = uc_content_hash::snapshot_hash(rep_hashes);
+        SnapshotHash(ContentHash::from(&hash))
     }
 
     pub fn meaningful_origin_key(&self) -> Option<String> {

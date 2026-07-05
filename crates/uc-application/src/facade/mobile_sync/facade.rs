@@ -43,6 +43,7 @@ use std::sync::Arc;
 
 use uc_core::mobile_sync::LanListenerStatus;
 use uc_core::mobile_sync::MobileDeviceId;
+use uc_core::ports::clipboard::{CheckEntryAvailabilityPort, FindEntryIdBySnapshotHashPort};
 use uc_core::ports::mobile_sync::LatestClipboardSnapshotPort;
 use uc_core::ports::{
     ClockPort, LanInterfaceProbePort, MobileCredentialsMinterPort, MobileFileStagingPort,
@@ -130,6 +131,19 @@ pub enum IsDeviceCredentialCurrentError {
     /// client reconnect and re-authenticate.
     #[error("device lookup failed: {0}")]
     Repository(uc_core::mobile_sync::MobileDeviceError),
+}
+
+/// Failure surface of [`MobileSyncFacade::check_content_available`].
+///
+/// Like [`IsDeviceCredentialCurrentError`], this is a thin facade-local
+/// convenience with no backing use case: it composes
+/// [`FindEntryIdBySnapshotHashPort`] and [`CheckEntryAvailabilityPort`]
+/// directly rather than through a `*UseCase`.
+#[derive(Debug, thiserror::Error)]
+pub enum CheckContentAvailableError {
+    /// Either port's underlying lookup failed at the repository layer.
+    #[error("entry lookup failed: {0}")]
+    Repository(uc_core::clipboard::ClipboardRepositoryError),
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -244,6 +258,14 @@ pub struct MobileSyncFacadeDeps {
     /// 必须**同时** `Some` 才装 announce adapter —— 缺一个就降级成 `None`。
     pub write_coordinator: Option<Arc<ClipboardWriteCoordinator>>,
     pub active_clipboard: Option<Arc<ActiveClipboardFacade>>,
+    /// Backs [`MobileSyncFacade::check_content_available`] — the mobile-only
+    /// content-availability probe. Resolves a client-computed `snapshot_hash`
+    /// to an entry, then confirms that entry's content is actually held and
+    /// usable locally (not just "an entry with this hash exists at some
+    /// point"). Shared with `apply_inbound`'s own dedup wiring, no dedicated
+    /// adapter needed.
+    pub find_entry_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
+    pub check_entry_availability: Arc<dyn CheckEntryAvailabilityPort>,
 }
 
 // ─── Facade ─────────────────────────────────────────────────────────────
@@ -283,6 +305,12 @@ pub struct MobileSyncFacade {
     /// directly (like `file_staging`) rather than behind a use case: the
     /// check is a single repo read plus a string compare.
     device_find_by_id: Arc<dyn uc_core::ports::FindMobileDeviceByIdPort>,
+    /// See [`MobileSyncFacadeDeps::find_entry_by_snapshot_hash`] /
+    /// [`MobileSyncFacadeDeps::check_entry_availability`]. Held directly
+    /// (like `device_find_by_id`) — [`Self::check_content_available`] is a
+    /// two-port composition with no state or orchestration of its own.
+    find_entry_by_snapshot_hash: Arc<dyn FindEntryIdBySnapshotHashPort>,
+    check_entry_availability: Arc<dyn CheckEntryAvailabilityPort>,
 }
 
 impl MobileSyncFacade {
@@ -307,6 +335,8 @@ impl MobileSyncFacade {
             analytics,
             write_coordinator,
             active_clipboard,
+            find_entry_by_snapshot_hash,
+            check_entry_availability,
         } = deps;
 
         let snapshot_port: Arc<dyn LatestClipboardSnapshotPort> =
@@ -380,6 +410,8 @@ impl MobileSyncFacade {
             lan_lifecycle,
             endpoint_info,
             device_find_by_id: devices.find_by_id,
+            find_entry_by_snapshot_hash,
+            check_entry_availability,
         }
     }
 
@@ -500,6 +532,39 @@ impl MobileSyncFacade {
             .await
             .map_err(IsDeviceCredentialCurrentError::Repository)?;
         Ok(device.is_some_and(|d| d.password_hash == connect_time_password_hash))
+    }
+
+    /// Reliable content-existence probe for mobile clients deciding whether a
+    /// payload upload can be skipped: resolves `snapshot_hash` to an entry via
+    /// [`FindEntryIdBySnapshotHashPort`], then confirms that entry's content is
+    /// actually held and usable locally via [`CheckEntryAvailabilityPort`] —
+    /// a hash match alone does not mean the content is still available (a
+    /// cancelled transfer or a removed local file can leave a matched entry
+    /// unavailable). Returns `false` when no entry matches `snapshot_hash` at
+    /// all.
+    ///
+    /// This exists specifically so mobile clients no longer need to infer
+    /// existence from the SyncClipboard-compat History channel's `hash`
+    /// field, which intentionally tolerates drift for re-encoded Image/File
+    /// content and therefore cannot answer "does this exact content exist"
+    /// reliably.
+    pub async fn check_content_available(
+        &self,
+        snapshot_hash: &str,
+    ) -> Result<bool, CheckContentAvailableError> {
+        let entry_id = self
+            .find_entry_by_snapshot_hash
+            .find_entry_id_by_snapshot_hash(snapshot_hash)
+            .await
+            .map_err(CheckContentAvailableError::Repository)?;
+        match entry_id {
+            Some(entry_id) => self
+                .check_entry_availability
+                .is_entry_available(&entry_id)
+                .await
+                .map_err(CheckContentAvailableError::Repository),
+            None => Ok(false),
+        }
     }
 
     // ─── SyncClipboard 协议 4 路由(P5a.6 真实接入) ─────────────────────
@@ -913,6 +978,16 @@ mod tests {
     }
 
     #[async_trait]
+    impl uc_core::ports::clipboard::CheckEntryAvailabilityPort for UnusedEntryRepo {
+        async fn is_entry_available(
+            &self,
+            _: &EntryId,
+        ) -> Result<bool, uc_core::clipboard::ClipboardRepositoryError> {
+            unimplemented!("not used by facade-level happy-path tests")
+        }
+    }
+
+    #[async_trait]
     impl uc_core::ports::clipboard::GetClipboardEntryPort for UnusedEntryRepo {
         async fn get_entry(
             &self,
@@ -1052,7 +1127,11 @@ mod tests {
         Arc::new(MockStaging::new())
     }
 
-    fn build_facade() -> MobileSyncFacade {
+    /// Shared fixture builder — [`build_facade`] is `MobileSyncFacade::new(build_facade_deps())`
+    /// for the common case; [`check_content_available`-focused tests][mod@self] override just
+    /// `find_entry_by_snapshot_hash` / `check_entry_availability` via struct-update syntax
+    /// instead of duplicating every other field.
+    fn build_facade_deps() -> MobileSyncFacadeDeps {
         let entry_repo: Arc<dyn uc_core::ports::clipboard::GetClipboardEntryPort> =
             Arc::new(UnusedEntryRepo);
         let apply_inbound = Arc::new(ApplyInboundClipboardUseCase::new(
@@ -1061,7 +1140,7 @@ mod tests {
             Arc::new(UnusedCapture),
             Arc::new(UnusedWrite),
         ));
-        MobileSyncFacade::new(MobileSyncFacadeDeps {
+        MobileSyncFacadeDeps {
             clock: Arc::new(FixedClock(1_000)),
             credentials_minter: Arc::new(StaticMinter),
             password_hasher: Arc::new(FakeHasher),
@@ -1086,7 +1165,13 @@ mod tests {
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
             write_coordinator: None,
             active_clipboard: None,
-        })
+            find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
+            check_entry_availability: Arc::new(UnusedEntryRepo),
+        }
+    }
+
+    fn build_facade() -> MobileSyncFacade {
+        MobileSyncFacade::new(build_facade_deps())
     }
 
     #[tokio::test]
@@ -1247,6 +1332,8 @@ mod tests {
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
             write_coordinator: None,
             active_clipboard: None,
+            find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
+            check_entry_availability: Arc::new(UnusedEntryRepo),
         });
 
         // happy path
@@ -1334,6 +1421,8 @@ mod tests {
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
             write_coordinator: None,
             active_clipboard: None,
+            find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
+            check_entry_availability: Arc::new(UnusedEntryRepo),
         });
 
         // 1. old password works
@@ -1452,6 +1541,8 @@ mod tests {
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
             write_coordinator: None,
             active_clipboard: None,
+            find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
+            check_entry_availability: Arc::new(UnusedEntryRepo),
         })
     }
 
@@ -1603,6 +1694,8 @@ mod tests {
             analytics: Arc::new(uc_observability::analytics::NoopAnalyticsSink::default()),
             write_coordinator: None,
             active_clipboard: None,
+            find_entry_by_snapshot_hash: Arc::new(UnusedEntryRepo),
+            check_entry_availability: Arc::new(UnusedEntryRepo),
         });
 
         // enable 两开关 → lifecycle.apply(Enabled) → endpoint = BindFailed
@@ -1688,6 +1781,115 @@ mod tests {
         assert!(
             upd.restart_required,
             "no-lifecycle 装配下保留旧的 restart_required 语义"
+        );
+    }
+
+    /// In-memory `snapshot_hash -> EntryId` index for
+    /// [`check_content_available`][mod@self] tests — a real (non-`unimplemented!`)
+    /// fake, since these tests exercise both branches of
+    /// [`MobileSyncFacade::check_content_available`].
+    #[derive(Default)]
+    struct FakeSnapshotHashIndex {
+        entries: Mutex<std::collections::HashMap<String, EntryId>>,
+    }
+    #[async_trait]
+    impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for FakeSnapshotHashIndex {
+        async fn find_entry_id_by_snapshot_hash(
+            &self,
+            snapshot_hash: &str,
+        ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
+            Ok(self.entries.lock().unwrap().get(snapshot_hash).cloned())
+        }
+    }
+
+    /// Companion fake: which entries are currently "available" (content held
+    /// and usable). Entries absent from `unavailable` default to available —
+    /// tests opt an entry INTO unavailability explicitly, mirroring the real
+    /// port's "false only for a partially-materialized/removed entry" contract.
+    #[derive(Default)]
+    struct FakeAvailability {
+        unavailable: Mutex<std::collections::HashSet<EntryId>>,
+    }
+    #[async_trait]
+    impl uc_core::ports::clipboard::CheckEntryAvailabilityPort for FakeAvailability {
+        async fn is_entry_available(
+            &self,
+            entry_id: &EntryId,
+        ) -> Result<bool, uc_core::clipboard::ClipboardRepositoryError> {
+            Ok(!self.unavailable.lock().unwrap().contains(entry_id))
+        }
+    }
+
+    #[tokio::test]
+    async fn check_content_available_false_when_hash_unknown() {
+        let facade = MobileSyncFacade::new(MobileSyncFacadeDeps {
+            find_entry_by_snapshot_hash: Arc::new(FakeSnapshotHashIndex::default()),
+            check_entry_availability: Arc::new(FakeAvailability::default()),
+            ..build_facade_deps()
+        });
+
+        let available = facade
+            .check_content_available("blake3v1:never-uploaded")
+            .await
+            .unwrap();
+        assert!(
+            !available,
+            "unknown snapshot_hash must report unavailable, not error"
+        );
+    }
+
+    #[tokio::test]
+    async fn check_content_available_true_when_hash_known_and_entry_available() {
+        let index = Arc::new(FakeSnapshotHashIndex::default());
+        let entry_id = EntryId::from_str("entry-1");
+        index
+            .entries
+            .lock()
+            .unwrap()
+            .insert("blake3v1:photo-one".into(), entry_id.clone());
+
+        let facade = MobileSyncFacade::new(MobileSyncFacadeDeps {
+            find_entry_by_snapshot_hash: index,
+            check_entry_availability: Arc::new(FakeAvailability::default()),
+            ..build_facade_deps()
+        });
+
+        let available = facade
+            .check_content_available("blake3v1:photo-one")
+            .await
+            .unwrap();
+        assert!(available);
+    }
+
+    #[tokio::test]
+    async fn check_content_available_false_when_entry_matched_but_unavailable() {
+        // This is the case the port doc-comment calls out explicitly: a hash
+        // match alone is not enough — a cancelled transfer or removed local
+        // file can leave a matched entry unavailable.
+        let index = Arc::new(FakeSnapshotHashIndex::default());
+        let entry_id = EntryId::from_str("entry-2");
+        index
+            .entries
+            .lock()
+            .unwrap()
+            .insert("blake3v1:partial-upload".into(), entry_id.clone());
+
+        let availability = Arc::new(FakeAvailability::default());
+        availability.unavailable.lock().unwrap().insert(entry_id);
+
+        let facade = MobileSyncFacade::new(MobileSyncFacadeDeps {
+            find_entry_by_snapshot_hash: index,
+            check_entry_availability: availability,
+            ..build_facade_deps()
+        });
+
+        let available = facade
+            .check_content_available("blake3v1:partial-upload")
+            .await
+            .unwrap();
+        assert!(
+            !available,
+            "matched-but-unavailable entry must report unavailable"
         );
     }
 }

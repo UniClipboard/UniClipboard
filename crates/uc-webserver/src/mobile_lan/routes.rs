@@ -14,9 +14,12 @@
 //! | `GET /api/history/{profileId}`, `GET /api/history/{profileId}/data`, `POST /api/history` | 桥接到当前最新剪贴板与移动同步入站流程 |
 //! | `POST /api/history/query`, `GET /api/history/statistics` | 兼容壳,只暴露当前最新一条或空结果,不是完整历史分页 / 统计 |
 //! | `PATCH /api/history/{type}/{hash}`, `DELETE /api/history/clear`, `DELETE /file` | 兼容壳,接住客户端请求,暂不持久化标星 / 置顶 / 删除状态,也不执行真实清空 |
+//! | `GET /api/mobile-sync/content-availability` | **不属于 SyncClipboard 协议**,只给本项目自己的移动客户端用:按 `snapshotHash`(`blake3v1:<hex>`)做可靠的存在性 + 可用性探测,不受 `/api/history/*` 的 hash 漂移容忍影响 |
 //!
 //! 这份表是协议承诺边界:修复 Android 客户端上传前的 404 不等于已经实现
-//! SyncClipboard 官方服务端的完整历史系统。
+//! SyncClipboard 官方服务端的完整历史系统。`content-availability` 路由是本
+//! 项目自有能力的扩展点,不是这份协议边界的一部分,未来演进不受"不能破坏
+//! SyncClipboard 兼容性"的约束。
 
 use std::sync::Arc;
 
@@ -36,6 +39,7 @@ use crate::mobile_lan::sse_registry::SseConnectionRegistry;
 
 mod common;
 mod compat;
+mod content_availability;
 mod file;
 mod history;
 mod sse;
@@ -137,6 +141,10 @@ pub(crate) fn build_router(
             get(file::get_clipboard_file).put(file::put_clipboard_file),
         )
         .route("/api/sse/clipboard", get(sse::get_sse_clipboard))
+        .route(
+            "/api/mobile-sync/content-availability",
+            get(content_availability::get_content_availability),
+        )
         .layer(axum::middleware::from_fn_with_state(facade, basic_auth))
         .with_state(state)
 }

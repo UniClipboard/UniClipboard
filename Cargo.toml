@@ -10,6 +10,7 @@
 [workspace]
 members = [
   "crates/uc-core",
+  "crates/uc-content-hash",
   "crates/uc-application",
   "crates/uc-platform",
   "crates/uc-app-paths",

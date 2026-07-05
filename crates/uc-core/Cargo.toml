@@ -36,9 +36,12 @@ tokio-util = { version = "0.7", optional = true }
 thiserror = "2.0.17"
 serde_with = { version = "3.16.1", features = ["base64"] }
 rand = "0.9.2"
-blake3 = "1.8.2"
 hex = "0.4.3"
 url = "2"
+
+# Single source of truth for the blake3v1 content-identity algorithm, shared
+# with the mobile FFI crate so every implementation reaches the same hash.
+uc-content-hash = { path = "../uc-content-hash" }
 
 uuid = { version = "1", features = ["v4", "fast-rng", "serde"] }
 

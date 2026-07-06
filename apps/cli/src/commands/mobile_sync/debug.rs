@@ -142,10 +142,13 @@ struct PutOutcomeDto {
 impl From<&ApplyIncomingMobileClipOutcome> for PutOutcomeDto {
     fn from(o: &ApplyIncomingMobileClipOutcome) -> Self {
         match o {
-            ApplyIncomingMobileClipOutcome::Applied { entry_id } => Self {
+            ApplyIncomingMobileClipOutcome::Applied {
+                entry_id,
+                content_id,
+            } => Self {
                 outcome: "applied",
                 entry_id: Some(entry_id.to_string()),
-                snapshot_hash: None,
+                snapshot_hash: Some(content_id.clone()),
                 existing_entry_id: None,
                 decode_reason: None,
             },
@@ -179,9 +182,13 @@ impl From<&ApplyIncomingMobileClipOutcome> for PutOutcomeDto {
 
 fn print_outcome(label: &str, outcome: &ApplyIncomingMobileClipOutcome) {
     match outcome {
-        ApplyIncomingMobileClipOutcome::Applied { entry_id } => {
+        ApplyIncomingMobileClipOutcome::Applied {
+            entry_id,
+            content_id,
+        } => {
             ui::success(&format!("{label}: applied"));
             ui::info("entryId", &entry_id.to_string());
+            ui::info("contentId", content_id);
         }
         ApplyIncomingMobileClipOutcome::DuplicateSkipped {
             snapshot_hash,

@@ -582,15 +582,25 @@ pub fn commit_stage(state: SyncRuntimeState, entry: ClipboardMeta) -> SyncRuntim
 }
 
 /// Push commit. `pushed_hash` is `None` for a documented silent skip.
+/// `content_id` is the server's identity for this exact write when the PUT
+/// response echoed one back; `None` for a legacy daemon / third-party
+/// SyncClipboard server whose response never carries it.
 #[uniffi::export]
 pub fn commit_push(
     state: SyncRuntimeState,
     pushed_hash: Option<String>,
+    content_id: Option<String>,
     now_ms: i64,
     cfg: SyncConfig,
 ) -> CommitStep {
     let mut st: se::SyncRuntimeState = state.into();
-    let outcome = se::commit_push(&mut st, pushed_hash.as_deref(), now_ms, &cfg.into());
+    let outcome = se::commit_push(
+        &mut st,
+        pushed_hash.as_deref(),
+        content_id.as_deref(),
+        now_ms,
+        &cfg.into(),
+    );
     CommitStep {
         state: st.into(),
         outcome: outcome.into(),

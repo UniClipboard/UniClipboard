@@ -15,8 +15,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use uc_application::facade::{
-    AuthenticatedDevice, GetLatestMobileSyncDocError, MobileSyncFacade, SyncClipboardItemType,
-    SyncClipboardMeta,
+    ApplyIncomingMobileClipOutcome, AuthenticatedDevice, GetLatestMobileSyncDocError,
+    MobileSyncFacade, SyncClipboardItemType, SyncClipboardMeta,
 };
 
 use super::common::{map_apply_error, outcome_kind, MAX_FILE_BYTES};
@@ -126,6 +126,31 @@ impl SyncClipboardDoc {
     }
 }
 
+/// `PUT /SyncClipboard.json` success body. The classic SyncClipboard protocol
+/// never defined a PUT response body (an empty 200 is the historical
+/// contract); this is a purely additive extension a legacy/third-party client
+/// (the "Clipboard EX" Shortcut template) silently ignores. It exists so
+/// `uc-mobile`'s sync engine can learn the just-written content's stable
+/// `content_id` from the response to ITS OWN request — no follow-up GET, no
+/// race window with a concurrent write from another device (see
+/// `SyncClipboardDoc.content_id`'s doc comment for what this identity is).
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct SyncClipboardPutAck {
+    #[serde(rename = "contentId", skip_serializing_if = "Option::is_none")]
+    content_id: Option<String>,
+}
+
+fn put_ack_content_id(outcome: &ApplyIncomingMobileClipOutcome) -> Option<String> {
+    match outcome {
+        ApplyIncomingMobileClipOutcome::Applied { content_id, .. } => Some(content_id.clone()),
+        ApplyIncomingMobileClipOutcome::DuplicateSkipped { snapshot_hash, .. } => {
+            Some(snapshot_hash.clone())
+        }
+        ApplyIncomingMobileClipOutcome::DecodeFailed { .. }
+        | ApplyIncomingMobileClipOutcome::Buffered => None,
+    }
+}
+
 pub(super) async fn get_sync_clipboard_json(
     State(facade): State<Arc<MobileSyncFacade>>,
 ) -> Result<Json<SyncClipboardDoc>, Response> {
@@ -156,7 +181,7 @@ pub(super) async fn put_sync_clipboard_json(
     State(facade): State<Arc<MobileSyncFacade>>,
     Extension(authed): Extension<AuthenticatedDevice>,
     request: Request,
-) -> Result<StatusCode, Response> {
+) -> Result<Json<SyncClipboardPutAck>, Response> {
     // P5a.10 真机诊断:不走 axum `Json<T>` extractor —— 它在 Content-Type
     // 不匹配 / schema 偏差时直接 reject,handler 体没机会执行,日志里只看
     // 到 dispatch 之后立刻沉默,无法定位 iOS Shortcut 实际发的 body 形态。
@@ -215,7 +240,9 @@ pub(super) async fn put_sync_clipboard_json(
                 outcome = ?outcome_kind(&outcome),
                 "PUT /SyncClipboard.json: 200"
             );
-            Ok(StatusCode::OK)
+            Ok(Json(SyncClipboardPutAck {
+                content_id: put_ack_content_id(&outcome),
+            }))
         }
         Err(err) => Err(map_apply_error(err, "PUT /SyncClipboard.json")),
     }

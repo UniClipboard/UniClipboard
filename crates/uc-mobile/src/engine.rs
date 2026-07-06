@@ -537,8 +537,14 @@ impl MobileSyncEngine {
             .put_clipboard(server, meta, job.payload.clone())
             .await
         {
-            Ok(()) => {
-                let outcome = se::commit_push(&mut guard.runtime, hash.as_deref(), now, &guard.cfg);
+            Ok(content_id) => {
+                let outcome = se::commit_push(
+                    &mut guard.runtime,
+                    hash.as_deref(),
+                    content_id.as_deref(),
+                    now,
+                    &guard.cfg,
+                );
                 self.persist_watermark(guard);
                 se::commit_tick_success(&mut guard.runtime);
                 if outcome.tripped {
@@ -890,6 +896,15 @@ mod tests {
         }
     }
 
+    fn file_content(name: &str, bytes: &[u8]) -> LocalContent {
+        LocalContent {
+            kind: ClipboardKind::File,
+            text: String::new(),
+            data_name: Some(name.to_string()),
+            payload: Some(bytes.to_vec()),
+        }
+    }
+
     // ── design §9 scenario: two different images pushed back-to-back ───────
     // (reproduces the original bug this whole design fixes: the second upload
     // must actually happen, never silently skipped).
@@ -931,6 +946,204 @@ mod tests {
             uploads,
             2,
             "both images must actually upload bytes: {:?}",
+            state.events()
+        );
+    }
+
+    // ── Gap 1: `File`-kind content, previously untested (build_push_entry's
+    //    File branch + fetch_content's has_data download path) ──────────────
+
+    #[tokio::test]
+    async fn push_second_different_file_truly_uploads() {
+        let seed = uc_mobile_proto::Clipboard::new(
+            uc_mobile_proto::ClipboardKind::Text,
+            Some("AA".into()),
+            "seed".into(),
+            false,
+            None,
+            Some(0),
+        );
+        let (addr, state) = spawn_mock(MockConfig {
+            clip: Some(seed),
+            ..Default::default()
+        })
+        .await;
+        let store = FakeStore::new();
+        store.set(
+            persist_keys::files::LAST_SYNCED_HASH.to_string(),
+            b"AA".to_vec(),
+        );
+        let engine = engine_with(addr, store, true).await;
+
+        let out1 = engine.push(file_content("a.pdf", b"document one")).await;
+        assert!(matches!(out1, SyncOutcome::Uploaded { .. }), "{out1:?}");
+
+        let out2 = engine.push(file_content("b.pdf", b"document two")).await;
+        assert!(matches!(out2, SyncOutcome::Uploaded { .. }), "{out2:?}");
+
+        let uploads = state
+            .events()
+            .iter()
+            .filter(|e| e.starts_with("put-file"))
+            .count();
+        assert_eq!(
+            uploads,
+            2,
+            "both files must actually upload bytes: {:?}",
+            state.events()
+        );
+    }
+
+    #[tokio::test]
+    async fn pull_applies_server_new_file_entry_by_downloading_via_get_file() {
+        let bytes = b"a brand new pdf".to_vec();
+        let (entry, _) = uc_mobile_proto::publish_file("report.pdf", &bytes);
+        let (addr, state) = spawn_mock(MockConfig {
+            clip: Some(entry),
+            file_bytes: bytes.clone(),
+            ..Default::default()
+        })
+        .await;
+        let store = FakeStore::new();
+        let engine = engine_with(addr, store, true).await;
+
+        let out = engine.pull(PullTrigger::Explicit, None).await;
+        let SyncOutcome::Applied { content, meta } = out else {
+            panic!("expected Applied, got {out:?}");
+        };
+        assert_eq!(content.kind, ClipboardKind::File);
+        assert_eq!(content.data_name.as_deref(), Some("report.pdf"));
+        assert_eq!(content.payload.as_deref(), Some(bytes.as_slice()));
+        assert_eq!(meta.kind, ClipboardKind::File);
+        assert!(
+            state.events().iter().any(|e| e == "get-file:report.pdf"),
+            "must download via get_file: {:?}",
+            state.events()
+        );
+    }
+
+    // ── Gap 2: hash-drift via `content_id` right after a push. A server that
+    //    tolerates hash drift on Image/File content (re-encodes what was
+    //    uploaded — same `content_id`, different `hash`; the HEIC/JPEG case
+    //    this project already hits on the capture side) can make the very
+    //    next pull look like brand-new content, UNLESS the client learned the
+    //    `content_id` from the PUT response itself
+    //    (`MobileSyncClient::put_clipboard`'s return value, echoed by a real
+    //    daemon's `SyncClipboardPutAck` — see `uc-webserver`'s
+    //    `put_sync_clipboard_json`). Two scenarios, both real:
+    //
+    //    - A daemon/server whose PUT response carries no `content_id` (a
+    //      legacy build, or a third-party SyncClipboard server) leaves the
+    //      client with nothing to dedup on — this is an inherent limit of the
+    //      classic protocol, not a bug this crate can fix alone.
+    //    - A daemon whose PUT response DOES carry it (current `uc-webserver`)
+    //      lets the client recognize the re-encoded GET as already-synced.
+
+    #[tokio::test]
+    async fn pull_after_push_reapplies_reencoded_content_when_daemon_gives_no_content_id() {
+        let seed = uc_mobile_proto::Clipboard::new(
+            uc_mobile_proto::ClipboardKind::Text,
+            Some("AA".into()),
+            "seed".into(),
+            false,
+            None,
+            Some(0),
+        );
+        let reencoded_bytes = b"photo one, but re-encoded by the server".to_vec();
+        let (addr, state) = spawn_mock(MockConfig {
+            clip: Some(seed),
+            file_bytes: reencoded_bytes.clone(),
+            // No `put_ack_content_id` — simulates a legacy daemon / third-party
+            // SyncClipboard server whose PUT response is a bare 200.
+            ..Default::default()
+        })
+        .await;
+        let store = FakeStore::new();
+        store.set(
+            persist_keys::files::LAST_SYNCED_HASH.to_string(),
+            b"AA".to_vec(),
+        );
+        let engine = engine_with(addr, store, true).await;
+
+        let out1 = engine.push(image_content("a.png", b"photo one")).await;
+        let SyncOutcome::Uploaded { meta } = out1 else {
+            panic!("expected Uploaded, got {out1:?}");
+        };
+        let device_hash = meta.hash.expect("push always reports a hash");
+
+        // Server-side: re-encodes what was just uploaded — same identity,
+        // different bytes/hash.
+        let (mut drifted, _) = uc_mobile_proto::publish_image(&reencoded_bytes, "png");
+        drifted.content_id = Some("blake3v1:reencoded".into());
+        state.set_current_clip(Some(drifted));
+
+        // Device pasteboard is untouched locally — still reports the
+        // pre-encode hash.
+        let out2 = engine.pull(PullTrigger::Explicit, Some(device_hash)).await;
+        assert!(
+            matches!(out2, SyncOutcome::Applied { .. }),
+            "with no content_id learned from the push, the engine has \
+             nothing to fall back on but the now-mismatched hash, so it \
+             re-downloads and reapplies content semantically identical to \
+             what was just pushed: {out2:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn pull_after_push_recognizes_reencoded_content_via_content_id_learned_from_put_response()
+    {
+        let seed = uc_mobile_proto::Clipboard::new(
+            uc_mobile_proto::ClipboardKind::Text,
+            Some("AA".into()),
+            "seed".into(),
+            false,
+            None,
+            Some(0),
+        );
+        let reencoded_bytes = b"photo one, but re-encoded by the server".to_vec();
+        let (addr, state) = spawn_mock(MockConfig {
+            clip: Some(seed),
+            file_bytes: reencoded_bytes.clone(),
+            // The (fixed) daemon echoes back the content_id it assigned to
+            // this exact upload.
+            put_ack_content_id: Some("blake3v1:reencoded".into()),
+            ..Default::default()
+        })
+        .await;
+        let store = FakeStore::new();
+        store.set(
+            persist_keys::files::LAST_SYNCED_HASH.to_string(),
+            b"AA".to_vec(),
+        );
+        let engine = engine_with(addr, store, true).await;
+
+        let out1 = engine.push(image_content("a.png", b"photo one")).await;
+        let SyncOutcome::Uploaded { meta } = out1 else {
+            panic!("expected Uploaded, got {out1:?}");
+        };
+        let device_hash = meta.hash.expect("push always reports a hash");
+
+        // Server-side: re-encodes what was just uploaded, stamped with the
+        // SAME content_id the PUT response just gave us.
+        let (mut drifted, _) = uc_mobile_proto::publish_image(&reencoded_bytes, "png");
+        drifted.content_id = Some("blake3v1:reencoded".into());
+        state.set_current_clip(Some(drifted));
+
+        let out2 = engine.pull(PullTrigger::Explicit, Some(device_hash)).await;
+        assert!(
+            matches!(
+                out2,
+                SyncOutcome::UpToDate {
+                    reason: UpToDateReason::AlreadySynced
+                }
+            ),
+            "content_id learned straight from the push's own response must \
+             recognize the re-encoded GET as the same content — no re-download, \
+             no pasteboard rewrite: {out2:?}"
+        );
+        assert!(
+            !state.events().iter().any(|e| e.starts_with("get-file")),
+            "must not re-download bytes it just uploaded: {:?}",
             state.events()
         );
     }

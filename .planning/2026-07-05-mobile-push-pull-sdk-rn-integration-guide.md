@@ -4,6 +4,14 @@
 对应设计：`.planning/2026-07-05-mobile-push-pull-sdk-design.md`（PR-A 已在本仓实现，
 `crates/uc-mobile/src/engine.rs`）。
 
+> **2026-07-06 补丁（Gap 2 修复，追加 FFI 变更，务必重新生成 binding）**：为关闭"push
+> 后服务端重编码内容、下一次 pull 误判成新内容重新下载"的窗口（原设计 §6.4 遗留的一处
+> 未测场景），`PUT /SyncClipboard.json` 的成功响应从裸 200 空 body 改为可选携带
+> `{"contentId": "..."}`；`client.putClipboard()` 与旧版逐函数 `reducer.commitPush()`
+> 的签名都因此变化（BREAKING）。详见 §3.1 与 §5 的更新。**这轮改动只动了本仓
+> （`uc-mobile`/`uc-mobile-proto`/`uc-webserver`），突破了设计文档 §10 "PR-B 预期零
+> 改动"的假设**——设计文档状态头已同步更新，见其文件顶部说明。
+
 **取代上一轮**：`.planning/2026-07-05-content-availability-rn-integration-guide.md`
 （`isContentAvailable`/`computeSnapshotHash`）**已被本轮工作取代并从 FFI 删除**——
 push 路径根本不再有"存在性检查"这一步，误判跳过上传那类 bug 结构性消失。如果你们还没来得及
@@ -63,6 +71,26 @@ TS 类型定义（binding 重生成后）。
 
 重生成后确认 TS 类型里能看到 `MobileSyncEngine`、`LocalContent`、`SyncOutcome` 等，且
 `computeSnapshotHash`/`isContentAvailable` 已经消失。
+
+---
+
+### 3.1 2026-07-06 追加的 FFI 变更（BREAKING —— 同样必须重新生成 binding）
+
+- **`client.putClipboard(server, meta, payload)`**：返回类型从 `void`/`Unit` 改为
+  `String?`（服务端在 PUT 响应里回显的 `contentId`；旧 daemon / 第三方 SyncClipboard
+  服务器没有这个字段时是 `null`，不是错误）。**只有当你们的代码直接调用
+  `client.putClipboard()`（绕开 `MobileSyncEngine.push()`）时才需要改调用点**——走
+  `engine.push()` 的正常路径不受影响，引擎内部已经把这个返回值接进了 watermark 逻辑
+  （§5）。
+- **`reducer.commitPush(state, pushedHash, nowMs, cfg)`**（旧版逐函数 reducer 镜像，
+  本设计要淘汰的模式，见文件头"取代上一轮"说明）：新增一个位置参数
+  `contentId: String?`，签名变成
+  `reducer.commitPush(state, pushedHash, contentId, nowMs, cfg)`。**如果 Share
+  Extension（或任何还没切到 `MobileSyncEngine` 的旧代码路径）还在直接调这个函数，必须
+  同步改调用点**；没有独立 push 路径的话可以忽略这条。
+- **`PUT /SyncClipboard.json` 的 wire 响应体**：从裸 200 空 body 改成可选携带
+  `{"contentId": "..."}`（新增字段，向后兼容，忽略即可）。只有自己手写 HTTP 请求、
+  没有走 `MobileSyncClient` 的代码才需要关心这一层。
 
 ---
 
@@ -171,10 +199,19 @@ Rust 方法桥接成 Swift `async` / Kotlin `suspend` 函数——对 RN/TS 侧�
 | `last_synced_content_id` | **全新**——本轮新增的常量（`persist_keys.rs` 里之前根本没有这个键；旧的 `last_synced_content_hash` 是完全不同的东西，是历史遗留的 hash 键，**不要** 把 contentId 存到那个键上） |
 
 `last_synced_content_id` **没有任何既有的原生写入方——你们的 `KeyValueStore` 实现是这个键的
-第一个生产者/消费者**。如果 Share Extension 也需要在推送时写这个键（比如它自己也走了 push
-路径），需要它也遵守同一套契约：**推送时把这个键清空 / 设为缺失**（推送换了内容但还不知道
-服务端会给它分配什么 `contentId`，与 `last_synced_hash` 的更新必须同步进行，不能只改一个）。
-纯读值的场景（`pull`/`applyStaged` 学到 `contentId` 后写回）直接原样存字符串即可。
+第一个生产者/消费者**。
+
+> **2026-07-06 更新**：push 路径对这个键的处理不再是无条件清空。`MobileSyncEngine.push()`
+> 内部会把 `client.putClipboard()` 返回的 `contentId`（PUT 响应里服务端回显的，见 §3.1）
+> 直接学进这个键——**服务端给了就写，没给（`null`）就清空**，与 `last_synced_hash` 的更新
+> 同步进行。这是为了让"服务端对刚上传的内容做了无损再编码（Image/File 的 hash drift）"
+> 这种情况下，下一次 `pull` 能靠 `contentId` 认出"这就是我刚传的东西"，不会误判成新内容
+> 重新下载、把用户刚拷贝的内容覆盖掉。如果 Share Extension 也需要在推送时写这个键（比如它
+> 自己也走了独立于 `MobileSyncEngine` 的 push 路径），需要遵守同一套"服务端给了就写、没给
+> 就清空"的契约，而不是旧版"无条件清空"。
+>
+> 纯读值的场景（`pull`/`applyStaged` 学到 `contentId` 后写回）不受影响，直接原样存字符串
+> 即可。
 
 其余状态（`last_applied_hash`、staged 槽位、loop 事件、同步操作退避）**只在会话内存里**，
 **不落盘**——重启后自然从下一次 `pull`/`push` 重新收敛，不需要你们做任何事。
@@ -197,6 +234,11 @@ Rust 方法桥接成 Swift `async` / Kotlin `suspend` 函数——对 RN/TS 侧�
   `pull` 应该识别为"已同步"，不重新下载。
 - 连续断网多次 `pull(Routine)` 后应该收到 `BackingOff`；此时 `pull(Explicit)`（下拉刷新）应该
   仍然真正发起网络请求（不会被退避挡住）。
+- **（2026-07-06 新增）** push 一张图片后，模拟服务端对它做了无损再编码（同 `contentId`、
+  不同 `hash`——真实场景对应服务端的 HEIC/JPEG 兼容处理）：紧接着的 `pull` 应该是
+  `UpToDate`（认出是同一份内容，靠 PUT 响应里学到的 `contentId`），**不会** 重新下载、
+  不会把用户刚拷贝的内容覆盖成服务端的再编码版本。对应 Rust 侧单测
+  `engine::tests::pull_after_push_recognizes_reencoded_content_via_content_id_learned_from_put_response`。
 
 ---
 
@@ -208,3 +250,8 @@ Rust 方法桥接成 Swift `async` / Kotlin `suspend` 函数——对 RN/TS 侧�
 > 需要你们主动做的持久化接线**：实现 `KeyValueStore` 时新增 `last_synced_content_id` 这个键
 > （App Group 文件存储，与既有 `last_synced_hash` 同一套读写路径），这是本轮真正的新增契约，
 > 其余状态引擎自己管，不需要 RN 侧关心。
+>
+> **2026-07-06 追加**：`client.putClipboard()` 现在会返回服务端回显的 `contentId`（用于修
+> 复"push 后服务端重编码内容、下一次 pull 误判成新内容"的 Gap 2），走 `engine.push()` 的
+> 正常路径无感；只有直接调 `client.putClipboard()` 或旧版 `reducer.commitPush()` 的代码
+> 才需要改调用点（BREAKING，见 §3.1）——都要重新生成 binding。

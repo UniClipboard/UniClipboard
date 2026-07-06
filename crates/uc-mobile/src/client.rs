@@ -604,6 +604,15 @@ impl MobileSyncClient {
     /// `PUT /SyncClipboard.json`, optionally preceded by
     /// `PUT /file/{dataName}` for the binary payload (spec §2.2/§2.3/§3.5).
     ///
+    /// Returns the server-assigned `content_id` for this exact write, when the
+    /// response echoes one back (a real daemon's `SyncClipboardPutAck`) — the
+    /// sync engine learns its own upload's identity straight from the
+    /// response to its own request, no follow-up GET needed. A legacy daemon
+    /// or third-party SyncClipboard server has no such response body (the
+    /// classic protocol's PUT contract is a bare 200), so this is best-effort:
+    /// any parse failure (including an empty body) silently yields `None`,
+    /// never an error.
+    ///
     /// The file→metadata sequence runs as one detached task on the runtime
     /// thread: dropping this future mid-flight does NOT interrupt the window
     /// (seam 3) — see the module docs.
@@ -612,7 +621,7 @@ impl MobileSyncClient {
         server: ServerConfig,
         meta: ClipboardMeta,
         payload: Option<Vec<u8>>,
-    ) -> Result<(), SyncError> {
+    ) -> Result<Option<String>, SyncError> {
         // Validate the payload's file name before spawning any work, matching
         // Swift's "reject bad names before any network call".
         if payload.is_some() {
@@ -634,8 +643,8 @@ impl MobileSyncClient {
                 .put(url)
                 .basic_auth(&server.username, Some(&server.password))
                 .json(&meta.into_proto());
-            check(send_with_retry(req).await?).await?;
-            Ok(())
+            let resp = check(send_with_retry(req).await?).await?;
+            Ok(parse_put_ack_content_id(resp).await)
         })
         .await
     }
@@ -1277,6 +1286,20 @@ async fn check(resp: reqwest::Response) -> Result<reqwest::Response, SyncError> 
     }
 }
 
+/// Best-effort parse of `PUT /SyncClipboard.json`'s (optional, additive)
+/// success body. A legacy daemon or third-party SyncClipboard server returns
+/// an empty body — that's not an error, just "no content_id available yet";
+/// any decode failure here silently yields `None` rather than propagating a
+/// `SyncError`.
+async fn parse_put_ack_content_id(resp: reqwest::Response) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Ack {
+        #[serde(rename = "contentId", default)]
+        content_id: Option<String>,
+    }
+    resp.json::<Ack>().await.ok().and_then(|a| a.content_id)
+}
+
 /// Whether a reqwest send error is the retriable class Swift retries once
 /// after 300ms: `.timedOut` (any reqwest timeout) or `.networkConnectionLost`
 /// (a connection reset/abort/EOF mid-flight, surfaced as a transport-level
@@ -1483,6 +1506,11 @@ pub(crate) mod tests {
         pub(crate) history: Vec<ProtoHistoryRecord>,
         /// Body for `GET /file/{name}` and `GET /api/history/{id}/data`.
         pub(crate) file_bytes: Vec<u8>,
+        /// When set, `PUT /SyncClipboard.json` echoes this back as the
+        /// response body's `contentId` (simulates a real daemon's
+        /// `SyncClipboardPutAck`). `None` (the default) reproduces the
+        /// classic protocol's bare-200-empty-body contract.
+        pub(crate) put_ack_content_id: Option<String>,
     }
 
     /// Mock daemon state: Basic-Auth-checked SyncClipboard endpoints recording
@@ -1585,7 +1613,12 @@ pub(crate) mod tests {
         let doc: ProtoClipboard = serde_json::from_slice(&body).expect("valid clipboard json");
         state.record(format!("put-doc:{}", doc.kind.as_wire_str()));
         *state.current_clip.lock().expect("mock lock") = Some(doc);
-        StatusCode::OK.into_response()
+        match &state.cfg.put_ack_content_id {
+            Some(content_id) => {
+                Json(serde_json::json!({ "contentId": content_id })).into_response()
+            }
+            None => StatusCode::OK.into_response(),
+        }
     }
 
     async fn mock_put_file(

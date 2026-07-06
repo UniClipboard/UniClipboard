@@ -192,7 +192,19 @@ pub enum IncomingMobileClipEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyIncomingMobileClipOutcome {
     /// New content — persisted via capture + OS clipboard written.
-    Applied { entry_id: EntryId },
+    ///
+    /// `content_id` is the same stable cross-device identity
+    /// (`GetLatestMobileSyncDocUseCase`'s `rep.snapshot_hash`, wire field
+    /// `contentId`) that `GET /SyncClipboard.json` reports — already computed
+    /// here as `snapshot_hash` before the dispatch, so exposing it costs
+    /// nothing extra. The mobile-sync route layer echoes it back in the PUT
+    /// response so the client can learn its own upload's identity without a
+    /// follow-up GET (closes the immediate-re-apply gap on server-side
+    /// hash drift for Image/File content).
+    Applied {
+        entry_id: EntryId,
+        content_id: String,
+    },
     /// `snapshot_hash` already exists locally — no persist, no OS write.
     /// Mirrors `ApplyOutcome::DuplicateSkipped`.
     DuplicateSkipped {
@@ -564,7 +576,7 @@ impl ApplyIncomingMobileClipUseCase {
         let Some(fan_out) = self.fan_out.as_ref() else {
             return;
         };
-        let Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id }) = dispatch_outcome else {
+        let Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id, .. }) = dispatch_outcome else {
             return;
         };
         let Some(snapshot) = snapshot_for_fanout else {
@@ -604,7 +616,7 @@ impl ApplyIncomingMobileClipUseCase {
             return;
         };
         let entry_id = match outcome {
-            Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id }) => entry_id.clone(),
+            Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id, .. }) => entry_id.clone(),
             Ok(ApplyIncomingMobileClipOutcome::DuplicateSkipped {
                 existing_entry_id, ..
             }) => existing_entry_id.clone(),
@@ -658,7 +670,7 @@ impl ApplyIncomingMobileClipUseCase {
         };
         let peer_id = format!("mobile:{}", source_device_id);
         match dispatch {
-            Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id }) => {
+            Ok(ApplyIncomingMobileClipOutcome::Applied { entry_id, .. }) => {
                 self.link_then_complete(facade, &transfer_id, entry_id.as_ref(), &peer_id)
                     .await;
             }
@@ -888,7 +900,10 @@ impl ApplyIncomingMobileClipUseCase {
         Ok(match outcome {
             ApplyOutcome::Applied { entry_id } => {
                 info!(entry_id = %entry_id, "mobile_sync apply_incoming: applied");
-                ApplyIncomingMobileClipOutcome::Applied { entry_id }
+                ApplyIncomingMobileClipOutcome::Applied {
+                    entry_id,
+                    content_id: snapshot_hash,
+                }
             }
             ApplyOutcome::DuplicateSkipped {
                 snapshot_hash: hash,
@@ -1227,12 +1242,15 @@ mod tests {
             .execute(input_sync_doc(SyncClipboardItemType::Text, "hello", None))
             .await
             .expect("text happy path returns Ok");
-        assert_eq!(
-            outcome,
-            ApplyIncomingMobileClipOutcome::Applied {
-                entry_id: EntryId::from("entry-text-1")
-            }
-        );
+        let ApplyIncomingMobileClipOutcome::Applied {
+            entry_id,
+            content_id,
+        } = outcome
+        else {
+            panic!("expected Applied, got {outcome:?}");
+        };
+        assert_eq!(entry_id, EntryId::from("entry-text-1"));
+        assert!(!content_id.is_empty(), "content_id should be populated");
     }
 
     /// Text with empty body → `DecodeFailed`, no inbound calls.
@@ -1321,12 +1339,15 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            outcome,
-            ApplyIncomingMobileClipOutcome::Applied {
-                entry_id: EntryId::from("entry-image-1")
-            }
-        );
+        let ApplyIncomingMobileClipOutcome::Applied {
+            entry_id,
+            content_id,
+        } = outcome
+        else {
+            panic!("expected Applied, got {outcome:?}");
+        };
+        assert_eq!(entry_id, EntryId::from("entry-image-1"));
+        assert!(!content_id.is_empty(), "content_id should be populated");
         // buffer should be drained after take()
         assert_eq!(
             buffer.len(),
@@ -1410,12 +1431,15 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            outcome,
-            ApplyIncomingMobileClipOutcome::Applied {
-                entry_id: EntryId::from("entry-file-1")
-            }
-        );
+        let ApplyIncomingMobileClipOutcome::Applied {
+            entry_id,
+            content_id,
+        } = outcome
+        else {
+            panic!("expected Applied, got {outcome:?}");
+        };
+        assert_eq!(entry_id, EntryId::from("entry-file-1"));
+        assert!(!content_id.is_empty(), "content_id should be populated");
         assert_eq!(buffer.len(), 0, "file branch should drain buffer");
     }
 

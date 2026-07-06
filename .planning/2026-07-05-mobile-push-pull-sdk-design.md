@@ -1,11 +1,29 @@
 # 移动端 push/pull 同步 SDK 设计（逻辑闭环 · 防回环）
 
-状态：**v0.3（PR-A 已实现，2026-07-05；用户拍板跳过 codex 对抗评审直接批准实现）**。
+状态：**v0.4（PR-A 已实现，2026-07-05；PR-B 2026-07-06 追加实现，见下）**。用户拍板跳过
+codex 对抗评审直接批准 PR-A 实现。
 `MobileSyncEngine` 落地在 `crates/uc-mobile/src/engine.rs`（单测在同文件的 `tests` 模块）。
 RN 交接指南（PR-C）：`.planning/2026-07-05-mobile-push-pull-sdk-rn-integration-guide.md`。
 实现期发现并修正的两处与本文档描述不符之处：persist_keys 的 contentId 键（§7 表格误指向
 `LAST_SYNCED_CONTENT_HASH`，实为需要新增 `LAST_SYNCED_CONTENT_ID`）、4 个生命周期方法从
 草图的同步签名改为 `async`（`blocking_lock()` 在 tokio 上下文里会 panic）。
+
+> **2026-07-06 补丁：§10 的"PR-B 预期零改动"假设被推翻，且改动范围超出了 PR-B 的界定
+> （不只 `uc-mobile-proto`，还动了 `uc-webserver`）。** 起因：测试覆盖 PR-A 遗留的两个
+> 空白点（`File` 类型 push/pull 零覆盖；push 后服务端对 Image/File 做无损再编码——同
+> `contentId`、不同 `hash`——的 drift 场景零覆盖）时，写出的特征测试证实了一个真实、可
+> 复现的问题：`commit_push` 无条件清空 `last_synced_content_id`（§7 原设计），叠加
+> `PUT /SyncClipboard.json` 的响应本来就是裸 200 空 body，导致 push 后的下一次 pull
+> 完全没有 `contentId` 可以 dedup，会把服务端的再编码结果误判成"服务端有新内容"重新
+> 下载、覆盖用户刚拷贝的内容。修复方案（唯一安全的方案——纯客户端追加一次 verify-GET
+> 会引入与其他设备并发写入的竞态误判窗口，比现状更危险，故排除）：
+> `PUT /SyncClipboard.json` 成功响应从裸 200 改为可选携带
+> `{"contentId": "..."}`（`uc-webserver`，新增字段、向后兼容）；`commit_push` 新增
+> `content_id: Option<&str>` 形参，有值就学、`None` 保持旧的清空行为
+> （`uc-mobile-proto`）；`client.putClipboard` 返回值从 `()` 改为 `Option<String>`
+> 把这个值带出来（`uc-mobile`）。三处都已实现 + 全绿（含 2 条 reducer 级 + 2 条 engine 级
+> 新测试直接验证 drift 场景），FFI 面变更详见 RN 交接指南 §3.1。
+
 范围：**只做移动端**（用户 2026-07-05 拍板）。桌面侧（`uc-application` 入站机器）不动。
 落点：**本仓 `crates/uc-mobile`**。RN 侧 `uniclipboard-android` 的接线属他仓，本设计只产出接口契约 + 交接指南。
 
@@ -275,7 +293,11 @@ M5（用户 2026-06-14）把「决策核（Rust）」与「执行外壳（native
 
 **本仓（`uniclipboard`）——本设计的实现范围：**
 - **PR-A**（uc-mobile）：`KeyValueStore` port + `MobileSyncEngine`（push/pull/apply_staged/set_server/handle_network_route_changed/set_settings/acknowledge_loop_detected）+ `SyncOutcome`/`PullTrigger`/`LocalContent`/`SyncedMeta` 类型；内部复用 reducer + client。含 Rust 单测（§9）。**同 PR 删** `is_content_available`/`compute_snapshot_hash` 两个 FFI（§12）。
-- **PR-B**（可选，uc-mobile-proto）：若引擎驱动暴露 reducer 需要的微调，单独一 slice。默认预期为零改动，reducer 原样够用——待实现期确认（内部 sync-tick 复用现有 `plan_*`/`commit_*`）。
+- **PR-B**（uc-mobile-proto + uc-webserver）：**原预期零改动的假设未成立**（2026-07-06
+  追加实现，见文件头补丁说明）——`commit_push` 新增 `content_id: Option<&str>` 形参，
+  `uc-webserver` 的 `PUT /SyncClipboard.json` 成功响应新增可选 `contentId` 字段，
+  `client.putClipboard` 返回值随之变化。修复 push 后服务端再编码内容被误判成新内容的
+  drift 窗口（原 §6.4 遗留场景，测试驱动发现）。
 - **PR-C**（文档）：RN 交接指南，给出 `push`/`pull(trigger)`/`apply_staged` 调用序列、`KeyValueStore` 实现契约、从「逐函数驱动 reducer」迁移到「调 push/pull」的对照，并标注上一轮 content-availability 指南被取代。
 
 **他仓（`uniclipboard-android`）——本设计不实现，仅交接：**
@@ -286,7 +308,8 @@ M5（用户 2026-06-14）把「决策核（Rust）」与「执行外壳（native
 ## 11. 开放问题（grilling 已全部拍板，见 §0.2）
 
 Q1–Q10 全部解决并折入 §0.2 / §4 / §6 / §7。**无遗留结构性开放问题。** 实现期待确认的微观项：
-- PR-B 是否需要（reducer 微调）——预期零改动，实现内部 sync-tick 时确认。
+- ~~PR-B 是否需要（reducer 微调）——预期零改动~~：**2026-07-06 已确认需要**，见文件头
+  补丁说明与 §10。
 - consent-push（iOS paste control 特例）是否本期就加独立变体——默认延后（Q2）。
 - 服务端 content-availability 端点最终去留——独立 follow-up（Q7）。
 

@@ -60,7 +60,6 @@ use std::time::Duration;
 
 use chrono::DateTime;
 use futures_util::StreamExt;
-use serde::Deserialize;
 use tokio::task::AbortHandle;
 
 use uc_mobile_proto::{
@@ -97,19 +96,6 @@ pub fn uc_mobile_init() {
         // that satisfies the invariant, so it is not an error here.
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
-}
-
-/// Compute the stable cross-device content identity (`"blake3v1:<hex>"`) for
-/// a single payload, using the exact same algorithm the daemon uses to assign
-/// it at ingest time (`uc-content-hash`, shared with the desktop `uc-core`
-/// crate — no platform reimplements its own copy of this hash).
-///
-/// Pass the result to [`MobileSyncClient::is_content_available`] to check
-/// whether the daemon already holds this exact content before uploading it.
-/// Pure and process-independent — does not require [`uc_mobile_init`].
-#[uniffi::export]
-pub fn compute_snapshot_hash(bytes: Vec<u8>) -> String {
-    uc_content_hash::snapshot_hash_single_payload(&bytes)
 }
 
 fn ensure_initialized() -> Result<(), SyncError> {
@@ -308,14 +294,6 @@ impl From<ProtoHistoryRecord> for HistoryRecord {
             is_deleted: r.is_deleted,
         }
     }
-}
-
-/// Wire shape of `GET /api/mobile-sync/content-availability`'s response body.
-/// Internal-only (never crosses the FFI boundary) — [`MobileSyncClient::is_content_available`]
-/// unwraps it to a plain `bool`.
-#[derive(Debug, Deserialize)]
-struct ContentAvailabilityDoc {
-    available: bool,
 }
 
 /// Failure surface of the async client. Mirrors the relevant `SyncError.Kind`
@@ -738,52 +716,6 @@ impl MobileSyncClient {
                 .basic_auth(&server.username, Some(&server.password));
             let resp = check(send_with_retry(req).await?).await?;
             Ok(resp.bytes().await.map_err(network)?.to_vec())
-        })
-        .await
-    }
-
-    /// `GET /api/mobile-sync/content-availability` — reliable content-existence
-    /// probe. A mobile-only extension, deliberately **not** part of the
-    /// SyncClipboard-compat surface [`Self::get_history_payload`] /
-    /// [`Self::query_history`] sit on: `/api/history/{profileId}`'s `hash`
-    /// segment intentionally tolerates drift for re-encoded Image/File content,
-    /// so it cannot answer "does this exact content exist" reliably. This can.
-    ///
-    /// Pass the result of [`compute_snapshot_hash`] for the payload under
-    /// consideration. `true` means the daemon already holds this exact content
-    /// AND it is currently usable — not a partially-materialized upload or a
-    /// removed local file (see the availability semantics documented on the
-    /// daemon's `CheckEntryAvailabilityPort`).
-    ///
-    /// This answers "does this content already exist", not "is it safe to
-    /// skip uploading and still register as the current clipboard": the
-    /// daemon's active-clipboard register only advances via a full
-    /// [`Self::put_clipboard`] call, so unconditionally skipping upload on
-    /// `true` can leave the register stale if this match is not already the
-    /// active content. Use this to avoid provably redundant work (e.g.
-    /// re-checking content you just uploaded successfully in this same
-    /// session), not as a blanket substitute for [`Self::put_clipboard`].
-    pub async fn is_content_available(
-        &self,
-        server: ServerConfig,
-        snapshot_hash: String,
-    ) -> Result<bool, SyncError> {
-        let http = self.http();
-        self.run(async move {
-            let url = endpoint(
-                &server.base_url,
-                &["api", "mobile-sync", "content-availability"],
-            )?;
-            let req = http
-                .get(url)
-                .query(&[("snapshotHash", &snapshot_hash)])
-                .basic_auth(&server.username, Some(&server.password));
-            let resp = check(send_with_retry(req).await?).await?;
-            let doc: ContentAvailabilityDoc = resp
-                .json()
-                .await
-                .map_err(decoding("content-availability"))?;
-            Ok(doc.available)
         })
         .await
     }
@@ -1506,7 +1438,7 @@ pub fn first_reachable(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::net::SocketAddr;
     use std::sync::atomic::AtomicU32;
@@ -1532,31 +1464,31 @@ mod tests {
 
     /// Knobs for [`spawn_mock`]. Defaults give a healthy daemon: a Text
     /// `SyncClipboard.json`, empty history, empty file bytes.
+    ///
+    /// `pub(crate)` (and `pub(crate)` fields) so [`crate::engine`]'s own test
+    /// module can reuse this mock server instead of standing up a second one.
     #[derive(Default)]
-    struct MockConfig {
+    pub(crate) struct MockConfig {
         /// When set, EVERY (authed) route returns this status with an empty
         /// body — drives the status-mapping tests.
-        forced_status: Option<u16>,
+        pub(crate) forced_status: Option<u16>,
         /// Delay applied ONLY to the first `GET /SyncClipboard.json` attempt
         /// (the rest are immediate) — drives the timeout-retry test.
-        first_get_delay: Duration,
+        pub(crate) first_get_delay: Duration,
         /// Delay on `PUT /file/{name}` — drives the drop/cancel-window tests.
-        file_delay: Duration,
+        pub(crate) file_delay: Duration,
         /// Body for `GET /SyncClipboard.json`.
-        clip: Option<ProtoClipboard>,
+        pub(crate) clip: Option<ProtoClipboard>,
         /// Body for `POST /api/history/query`.
-        history: Vec<ProtoHistoryRecord>,
+        pub(crate) history: Vec<ProtoHistoryRecord>,
         /// Body for `GET /file/{name}` and `GET /api/history/{id}/data`.
-        file_bytes: Vec<u8>,
-        /// `snapshotHash` values `GET /api/mobile-sync/content-availability`
-        /// should report `available: true` for; any other value gets `false`.
-        available_snapshot_hashes: HashSet<String>,
+        pub(crate) file_bytes: Vec<u8>,
     }
 
     /// Mock daemon state: Basic-Auth-checked SyncClipboard endpoints recording
     /// the request sequence, captured auth header, and the query body so tests
     /// can assert request wiring without re-checking proto's byte-exactness.
-    struct MockState {
+    pub(crate) struct MockState {
         events: Mutex<Vec<String>>,
         expected_auth: String,
         cfg: MockConfig,
@@ -1564,10 +1496,17 @@ mod tests {
         last_auth: Mutex<Option<String>>,
         last_query_body: Mutex<Option<Vec<u8>>>,
         last_query_content_type: Mutex<Option<String>>,
+        /// The "current" `GET /SyncClipboard.json` body, seeded from
+        /// `cfg.clip` and overwritten by every `PUT /SyncClipboard.json` — a
+        /// minimal real-server simulation (a `MobileSyncClient`-level test
+        /// only ever does one request, but `MobileSyncEngine`'s tests drive
+        /// multi-round push/pull sequences that need the mock to actually
+        /// remember what was last uploaded).
+        current_clip: Mutex<Option<ProtoClipboard>>,
     }
 
     impl MockState {
-        fn events(&self) -> Vec<String> {
+        pub(crate) fn events(&self) -> Vec<String> {
             self.events.lock().expect("mock lock").clone()
         }
         fn record(&self, e: impl Into<String>) {
@@ -1575,6 +1514,12 @@ mod tests {
         }
         fn get_attempts(&self) -> u32 {
             self.get_attempts.load(Ordering::Relaxed)
+        }
+        /// Test-only hook: simulate the server's content changing independently
+        /// of the client under test (e.g. "another device pushed something
+        /// else") between two calls in a multi-round `MobileSyncEngine` test.
+        pub(crate) fn set_current_clip(&self, clip: Option<ProtoClipboard>) {
+            *self.current_clip.lock().expect("mock lock") = clip;
         }
     }
 
@@ -1620,7 +1565,13 @@ mod tests {
         if attempt == 0 && !state.cfg.first_get_delay.is_zero() {
             tokio::time::sleep(state.cfg.first_get_delay).await;
         }
-        Json(state.cfg.clip.clone().unwrap_or_else(default_clip)).into_response()
+        let clip = state
+            .current_clip
+            .lock()
+            .expect("mock lock")
+            .clone()
+            .unwrap_or_else(default_clip);
+        Json(clip).into_response()
     }
 
     async fn mock_put_doc(
@@ -1633,6 +1584,7 @@ mod tests {
         }
         let doc: ProtoClipboard = serde_json::from_slice(&body).expect("valid clipboard json");
         state.record(format!("put-doc:{}", doc.kind.as_wire_str()));
+        *state.current_clip.lock().expect("mock lock") = Some(doc);
         StatusCode::OK.into_response()
     }
 
@@ -1692,30 +1644,9 @@ mod tests {
         state.cfg.file_bytes.clone().into_response()
     }
 
-    #[derive(serde::Deserialize)]
-    struct ContentAvailabilityQuery {
-        #[serde(rename = "snapshotHash")]
-        snapshot_hash: String,
-    }
-
-    async fn mock_content_availability(
-        State(state): State<Arc<MockState>>,
-        headers: HeaderMap,
-        axum::extract::Query(query): axum::extract::Query<ContentAvailabilityQuery>,
-    ) -> Response {
-        if let Some(resp) = gate(&state, &headers) {
-            return resp;
-        }
-        state.record(format!("content-availability:{}", query.snapshot_hash));
-        let available = state
-            .cfg
-            .available_snapshot_hashes
-            .contains(&query.snapshot_hash);
-        Json(serde_json::json!({ "available": available })).into_response()
-    }
-
-    async fn spawn_mock(cfg: MockConfig) -> (SocketAddr, Arc<MockState>) {
+    pub(crate) async fn spawn_mock(cfg: MockConfig) -> (SocketAddr, Arc<MockState>) {
         use base64::Engine as _;
+        let initial_clip = cfg.clip.clone();
         let state = Arc::new(MockState {
             events: Mutex::new(Vec::new()),
             expected_auth: format!(
@@ -1727,6 +1658,7 @@ mod tests {
             last_auth: Mutex::new(None),
             last_query_body: Mutex::new(None),
             last_query_content_type: Mutex::new(None),
+            current_clip: Mutex::new(initial_clip),
         });
         // axum 0.7: route params use `:name`, not `{name}`.
         let app = Router::new()
@@ -1734,10 +1666,6 @@ mod tests {
             .route("/file/:name", put(mock_put_file).get(mock_get_file))
             .route("/api/history/query", post(mock_query))
             .route("/api/history/:profile_id/data", get(mock_history_data))
-            .route(
-                "/api/mobile-sync/content-availability",
-                get(mock_content_availability),
-            )
             .with_state(state.clone());
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
         let addr = listener.local_addr().expect("mock addr");
@@ -1803,7 +1731,7 @@ mod tests {
         (addr, conns)
     }
 
-    fn server_cfg(addr: SocketAddr, password: &str) -> ServerConfig {
+    pub(crate) fn server_cfg(addr: SocketAddr, password: &str) -> ServerConfig {
         ServerConfig {
             base_url: format!("http://{addr}"),
             username: "u".into(),
@@ -1811,7 +1739,7 @@ mod tests {
         }
     }
 
-    fn new_client() -> Arc<MobileSyncClient> {
+    pub(crate) fn new_client() -> Arc<MobileSyncClient> {
         uc_mobile_init();
         MobileSyncClient::new(Arc::new(NoopBridge), false).expect("client constructs after init")
     }
@@ -2255,67 +2183,6 @@ mod tests {
             state.events().is_empty(),
             "no network for invalid profileId"
         );
-    }
-
-    // ── content-availability (mobile-only extension) ──────────────────────
-
-    #[test]
-    fn compute_snapshot_hash_matches_uc_content_hash_directly() {
-        let bytes = b"a photo's bytes";
-        assert_eq!(
-            compute_snapshot_hash(bytes.to_vec()),
-            uc_content_hash::snapshot_hash_single_payload(bytes)
-        );
-    }
-
-    #[test]
-    fn compute_snapshot_hash_differs_for_different_payloads() {
-        assert_ne!(
-            compute_snapshot_hash(b"photo one".to_vec()),
-            compute_snapshot_hash(b"photo two".to_vec())
-        );
-    }
-
-    #[tokio::test]
-    async fn is_content_available_false_when_hash_unknown() {
-        let (addr, state) = spawn_mock(MockConfig::default()).await;
-        let client = new_client();
-        let available = client
-            .is_content_available(server_cfg(addr, "p"), "blake3v1:never-uploaded".into())
-            .await
-            .expect("probe ok");
-        assert!(!available);
-        assert_eq!(
-            state.events(),
-            vec!["content-availability:blake3v1:never-uploaded"]
-        );
-    }
-
-    #[tokio::test]
-    async fn is_content_available_true_when_hash_matches() {
-        let hash = compute_snapshot_hash(b"already-uploaded photo".to_vec());
-        let (addr, _state) = spawn_mock(MockConfig {
-            available_snapshot_hashes: [hash.clone()].into_iter().collect(),
-            ..Default::default()
-        })
-        .await;
-        let client = new_client();
-        let available = client
-            .is_content_available(server_cfg(addr, "p"), hash)
-            .await
-            .expect("probe ok");
-        assert!(available);
-    }
-
-    #[tokio::test]
-    async fn is_content_available_maps_unauthorized() {
-        let (addr, _state) = spawn_mock(MockConfig::default()).await;
-        let client = new_client();
-        let err = client
-            .is_content_available(server_cfg(addr, "wrong"), "blake3v1:x".into())
-            .await
-            .expect_err("must 401");
-        assert_eq!(err, SyncError::Unauthorized);
     }
 
     // ── retry (§ perform) ─────────────────────────────────────────────────

@@ -20,11 +20,16 @@
 use std::collections::HashMap;
 
 pub mod client;
+pub mod engine;
 pub mod reducer;
 
 pub use client::{
     first_reachable, uc_mobile_init, ClipboardKind, ClipboardMeta, MobileSyncClient,
     PlatformBridge, ProbeReport, ProbeResult, ServerConfig, SseHandle, SseListener, SyncError,
+};
+pub use engine::{
+    KeyValueStore, LocalContent, MobileSyncEngine, PullTrigger, StagedPreview, SyncOutcome,
+    SyncSettings, SyncedMeta, UpToDateReason,
 };
 
 uniffi::setup_scaffolding!();

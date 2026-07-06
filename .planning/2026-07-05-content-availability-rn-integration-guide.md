@@ -1,3 +1,9 @@
+> **⚠️ 本指南已被取代（2026-07-05）**：`computeSnapshotHash` / `MobileSyncClient.isContentAvailable`
+> 已在 push/pull 同步 SDK 这轮工作中从 FFI 删除（push 路径根本不再需要存在性检查，见新设计
+> `.planning/2026-07-05-mobile-push-pull-sdk-design.md` §6.3/§12）。如果还没接入本指南，
+> 请直接跳到 `.planning/2026-07-05-mobile-push-pull-sdk-rn-integration-guide.md`，不要再接这两个 API。
+> 本文件仅作历史存档保留。
+
 # content-availability 可靠探测 · 移动端 (RN) 对接指南
 
 面向 `uniclipboard-android`(RN/Expo,iOS + Android 共用 TS) 团队。

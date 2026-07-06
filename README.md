@@ -64,7 +64,7 @@ UniClipboard is a **privacy-first**, cross-device clipboard synchronization tool
 It enables seamless and secure syncing of text, images, and files across multiple devices, whether on the same Wi-Fi or across different networks. Data is encrypted both in transit and at rest, and decrypted only on the user’s devices—neither servers nor the network layer can ever access plaintext data.
 
 <p align="center">
-  <img width="990" height="660" alt="UniClipboard desktop screenshot" src="https://github.com/user-attachments/assets/2dac767a-33fb-4ec3-b4e5-7e27005a9a96" />
+  <img width="990" height="660" alt="UniClipboard desktop screenshot" src="https://github.com/user-attachments/assets/5e1d75b0-3fed-40ee-ba47-99f5a87f2ec4" />
 </p>
 
 <p align="center">

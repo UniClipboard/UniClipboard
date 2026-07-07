@@ -195,7 +195,23 @@ paths:
                   text: foo.pdf
       responses:
         '200':
-          description: Applied. Body is intentionally empty because SyncClipboard clients only check status.
+          description: |
+            Applied. The classic SyncClipboard protocol never defined a PUT
+            response body (an empty `200` is the historical contract), so this
+            is a purely additive extension: legacy and third-party
+            SyncClipboard clients that only check the status code ignore it
+            safely. UniClipboard's own mobile sync engine reads `contentId`
+            back to learn the server identity of the write it just made,
+            without a follow-up `GET`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncClipboardPutAck'
+              examples:
+                applied:
+                  summary: Applied with a learned content identity
+                  value:
+                    contentId: blake3v1:9b2cf964fa8c0b5a...
         '400':
           description: Body could not be parsed as a SyncClipboard document or `type` value is unknown.
         '401':
@@ -641,6 +657,22 @@ components:
           type: string
           nullable: true
           example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+    SyncClipboardPutAck:
+      type: object
+      description: |
+        Response body for `PUT /SyncClipboard.json`. Purely additive relative
+        to the classic SyncClipboard protocol (historically an empty `200`);
+        legacy clients that don't parse the body are unaffected.
+      properties:
+        contentId:
+          description: |
+            Server-assigned stable identity for the content that was just
+            written. Present when the write was applied or recognized as a
+            duplicate of existing content; omitted if the daemon could not
+            determine one for this response.
+          type: string
+          nullable: true
+          example: blake3v1:9b2cf964fa8c0b5a...
     HistoryUploadFields:
       type: object
       description: Fields accepted by `POST /api/history` for metadata-only or multipart uploads.

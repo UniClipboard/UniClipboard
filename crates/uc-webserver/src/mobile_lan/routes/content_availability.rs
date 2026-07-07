@@ -41,7 +41,14 @@ pub(super) async fn get_content_availability(
         return Err((StatusCode::BAD_REQUEST, "snapshotHash is required").into_response());
     }
     match facade.check_content_available(&query.snapshot_hash).await {
-        Ok(available) => Ok(Json(ContentAvailabilityDoc { available })),
+        Ok(available) => {
+            tracing::info!(
+                snapshot_hash = %query.snapshot_hash,
+                available,
+                "GET /api/mobile-sync/content-availability: 200"
+            );
+            Ok(Json(ContentAvailabilityDoc { available }))
+        }
         Err(CheckContentAvailableError::Repository(err)) => {
             tracing::warn!(
                 error = %err,

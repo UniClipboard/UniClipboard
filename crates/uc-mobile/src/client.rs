@@ -604,6 +604,15 @@ impl MobileSyncClient {
     /// `PUT /SyncClipboard.json`, optionally preceded by
     /// `PUT /file/{dataName}` for the binary payload (spec §2.2/§2.3/§3.5).
     ///
+    /// Returns the server-assigned `content_id` for this exact write, when the
+    /// response echoes one back (a real daemon's `SyncClipboardPutAck`) — the
+    /// sync engine learns its own upload's identity straight from the
+    /// response to its own request, no follow-up GET needed. A legacy daemon
+    /// or third-party SyncClipboard server has no such response body (the
+    /// classic protocol's PUT contract is a bare 200), so this is best-effort:
+    /// any parse failure (including an empty body) silently yields `None`,
+    /// never an error.
+    ///
     /// The file→metadata sequence runs as one detached task on the runtime
     /// thread: dropping this future mid-flight does NOT interrupt the window
     /// (seam 3) — see the module docs.
@@ -612,7 +621,7 @@ impl MobileSyncClient {
         server: ServerConfig,
         meta: ClipboardMeta,
         payload: Option<Vec<u8>>,
-    ) -> Result<(), SyncError> {
+    ) -> Result<Option<String>, SyncError> {
         // Validate the payload's file name before spawning any work, matching
         // Swift's "reject bad names before any network call".
         if payload.is_some() {
@@ -634,8 +643,8 @@ impl MobileSyncClient {
                 .put(url)
                 .basic_auth(&server.username, Some(&server.password))
                 .json(&meta.into_proto());
-            check(send_with_retry(req).await?).await?;
-            Ok(())
+            let resp = check(send_with_retry(req).await?).await?;
+            Ok(parse_put_ack_content_id(resp).await)
         })
         .await
     }
@@ -1277,6 +1286,20 @@ async fn check(resp: reqwest::Response) -> Result<reqwest::Response, SyncError> 
     }
 }
 
+/// Best-effort parse of `PUT /SyncClipboard.json`'s (optional, additive)
+/// success body. A legacy daemon or third-party SyncClipboard server returns
+/// an empty body — that's not an error, just "no content_id available yet";
+/// any decode failure here silently yields `None` rather than propagating a
+/// `SyncError`.
+async fn parse_put_ack_content_id(resp: reqwest::Response) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Ack {
+        #[serde(rename = "contentId", default)]
+        content_id: Option<String>,
+    }
+    resp.json::<Ack>().await.ok().and_then(|a| a.content_id)
+}
+
 /// Whether a reqwest send error is the retriable class Swift retries once
 /// after 300ms: `.timedOut` (any reqwest timeout) or `.networkConnectionLost`
 /// (a connection reset/abort/EOF mid-flight, surfaced as a transport-level
@@ -1438,7 +1461,7 @@ pub fn first_reachable(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::net::SocketAddr;
     use std::sync::atomic::AtomicU32;
@@ -1464,28 +1487,36 @@ mod tests {
 
     /// Knobs for [`spawn_mock`]. Defaults give a healthy daemon: a Text
     /// `SyncClipboard.json`, empty history, empty file bytes.
+    ///
+    /// `pub(crate)` (and `pub(crate)` fields) so [`crate::engine`]'s own test
+    /// module can reuse this mock server instead of standing up a second one.
     #[derive(Default)]
-    struct MockConfig {
+    pub(crate) struct MockConfig {
         /// When set, EVERY (authed) route returns this status with an empty
         /// body — drives the status-mapping tests.
-        forced_status: Option<u16>,
+        pub(crate) forced_status: Option<u16>,
         /// Delay applied ONLY to the first `GET /SyncClipboard.json` attempt
         /// (the rest are immediate) — drives the timeout-retry test.
-        first_get_delay: Duration,
+        pub(crate) first_get_delay: Duration,
         /// Delay on `PUT /file/{name}` — drives the drop/cancel-window tests.
-        file_delay: Duration,
+        pub(crate) file_delay: Duration,
         /// Body for `GET /SyncClipboard.json`.
-        clip: Option<ProtoClipboard>,
+        pub(crate) clip: Option<ProtoClipboard>,
         /// Body for `POST /api/history/query`.
-        history: Vec<ProtoHistoryRecord>,
+        pub(crate) history: Vec<ProtoHistoryRecord>,
         /// Body for `GET /file/{name}` and `GET /api/history/{id}/data`.
-        file_bytes: Vec<u8>,
+        pub(crate) file_bytes: Vec<u8>,
+        /// When set, `PUT /SyncClipboard.json` echoes this back as the
+        /// response body's `contentId` (simulates a real daemon's
+        /// `SyncClipboardPutAck`). `None` (the default) reproduces the
+        /// classic protocol's bare-200-empty-body contract.
+        pub(crate) put_ack_content_id: Option<String>,
     }
 
     /// Mock daemon state: Basic-Auth-checked SyncClipboard endpoints recording
     /// the request sequence, captured auth header, and the query body so tests
     /// can assert request wiring without re-checking proto's byte-exactness.
-    struct MockState {
+    pub(crate) struct MockState {
         events: Mutex<Vec<String>>,
         expected_auth: String,
         cfg: MockConfig,
@@ -1493,10 +1524,17 @@ mod tests {
         last_auth: Mutex<Option<String>>,
         last_query_body: Mutex<Option<Vec<u8>>>,
         last_query_content_type: Mutex<Option<String>>,
+        /// The "current" `GET /SyncClipboard.json` body, seeded from
+        /// `cfg.clip` and overwritten by every `PUT /SyncClipboard.json` — a
+        /// minimal real-server simulation (a `MobileSyncClient`-level test
+        /// only ever does one request, but `MobileSyncEngine`'s tests drive
+        /// multi-round push/pull sequences that need the mock to actually
+        /// remember what was last uploaded).
+        current_clip: Mutex<Option<ProtoClipboard>>,
     }
 
     impl MockState {
-        fn events(&self) -> Vec<String> {
+        pub(crate) fn events(&self) -> Vec<String> {
             self.events.lock().expect("mock lock").clone()
         }
         fn record(&self, e: impl Into<String>) {
@@ -1504,6 +1542,12 @@ mod tests {
         }
         fn get_attempts(&self) -> u32 {
             self.get_attempts.load(Ordering::Relaxed)
+        }
+        /// Test-only hook: simulate the server's content changing independently
+        /// of the client under test (e.g. "another device pushed something
+        /// else") between two calls in a multi-round `MobileSyncEngine` test.
+        pub(crate) fn set_current_clip(&self, clip: Option<ProtoClipboard>) {
+            *self.current_clip.lock().expect("mock lock") = clip;
         }
     }
 
@@ -1549,7 +1593,13 @@ mod tests {
         if attempt == 0 && !state.cfg.first_get_delay.is_zero() {
             tokio::time::sleep(state.cfg.first_get_delay).await;
         }
-        Json(state.cfg.clip.clone().unwrap_or_else(default_clip)).into_response()
+        let clip = state
+            .current_clip
+            .lock()
+            .expect("mock lock")
+            .clone()
+            .unwrap_or_else(default_clip);
+        Json(clip).into_response()
     }
 
     async fn mock_put_doc(
@@ -1562,7 +1612,13 @@ mod tests {
         }
         let doc: ProtoClipboard = serde_json::from_slice(&body).expect("valid clipboard json");
         state.record(format!("put-doc:{}", doc.kind.as_wire_str()));
-        StatusCode::OK.into_response()
+        *state.current_clip.lock().expect("mock lock") = Some(doc);
+        match &state.cfg.put_ack_content_id {
+            Some(content_id) => {
+                Json(serde_json::json!({ "contentId": content_id })).into_response()
+            }
+            None => StatusCode::OK.into_response(),
+        }
     }
 
     async fn mock_put_file(
@@ -1621,8 +1677,9 @@ mod tests {
         state.cfg.file_bytes.clone().into_response()
     }
 
-    async fn spawn_mock(cfg: MockConfig) -> (SocketAddr, Arc<MockState>) {
+    pub(crate) async fn spawn_mock(cfg: MockConfig) -> (SocketAddr, Arc<MockState>) {
         use base64::Engine as _;
+        let initial_clip = cfg.clip.clone();
         let state = Arc::new(MockState {
             events: Mutex::new(Vec::new()),
             expected_auth: format!(
@@ -1634,6 +1691,7 @@ mod tests {
             last_auth: Mutex::new(None),
             last_query_body: Mutex::new(None),
             last_query_content_type: Mutex::new(None),
+            current_clip: Mutex::new(initial_clip),
         });
         // axum 0.7: route params use `:name`, not `{name}`.
         let app = Router::new()
@@ -1706,7 +1764,7 @@ mod tests {
         (addr, conns)
     }
 
-    fn server_cfg(addr: SocketAddr, password: &str) -> ServerConfig {
+    pub(crate) fn server_cfg(addr: SocketAddr, password: &str) -> ServerConfig {
         ServerConfig {
             base_url: format!("http://{addr}"),
             username: "u".into(),
@@ -1714,7 +1772,7 @@ mod tests {
         }
     }
 
-    fn new_client() -> Arc<MobileSyncClient> {
+    pub(crate) fn new_client() -> Arc<MobileSyncClient> {
         uc_mobile_init();
         MobileSyncClient::new(Arc::new(NoopBridge), false).expect("client constructs after init")
     }

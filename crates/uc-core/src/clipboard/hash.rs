@@ -16,11 +16,11 @@ pub struct ContentHash {
 
 impl fmt::Display for ContentHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let alg = match self.alg {
-            HashAlgorithm::Blake3V1 => "blake3v1",
-        };
-
-        write!(f, "{}:{}", alg, hex::encode(self.bytes))
+        match self.alg {
+            HashAlgorithm::Blake3V1 => {
+                write!(f, "{}", uc_content_hash::format_blake3v1(&self.bytes))
+            }
+        }
     }
 }
 

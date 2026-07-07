@@ -34,6 +34,12 @@ pub mod keys {
 pub mod files {
     /// The synced-content hash (plain text, uppercase hex SHA-256).
     pub const LAST_SYNCED_HASH: &str = "last_synced_hash";
+    /// The synced-content `contentId` watermark, paired with `LAST_SYNCED_HASH`
+    /// (both advanced together by `sync_engine::advance_synced`). New key —
+    /// unlike `LAST_SYNCED_HASH`, there is no pre-existing native writer; the
+    /// `MobileSyncEngine`'s `KeyValueStore` implementation is this key's first
+    /// producer/consumer.
+    pub const LAST_SYNCED_CONTENT_ID: &str = "last_synced_content_id";
     /// The last observed normalized Wi-Fi SSID (plain text).
     pub const LAST_KNOWN_SSID: &str = "last_known_ssid";
     /// The §5.3 probe-confirmed URL per profile (JSON `{configId: url}`).
@@ -57,6 +63,7 @@ mod tests {
         assert_eq!(keys::LAST_HISTORY_SYNC_AT, "last_history_sync_at");
         assert_eq!(keys::LAST_SYNCED_CHANGE_COUNT, "last_synced_change_count");
         assert_eq!(files::LAST_SYNCED_HASH, "last_synced_hash");
+        assert_eq!(files::LAST_SYNCED_CONTENT_ID, "last_synced_content_id");
         assert_eq!(files::LAST_KNOWN_SSID, "last_known_ssid");
         assert_eq!(files::LIVE_URLS, "live_urls");
     }

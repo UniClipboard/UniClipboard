@@ -15,7 +15,8 @@ use tower::ServiceExt;
 use uc_application::facade::MobileSyncFacade;
 
 use crate::mobile_lan::test_support::{
-    auth_header, build_facade_with_seeded_device, fake_cancel_token, fake_sse_source,
+    auth_header, build_facade_with_seeded_device,
+    build_facade_with_seeded_device_and_content_index, fake_cancel_token, fake_sse_source,
 };
 
 use super::file::{infer_image_mime, mime_is_unspecific};
@@ -590,4 +591,177 @@ async fn put_sync_doc_accepts_pascal_case_type_field() {
         StatusCode::BAD_REQUEST,
         "PascalCase Type field must be accepted by serde alias"
     );
+}
+
+// ─── GET /api/mobile-sync/content-availability ─────────────────────────
+//
+// Mobile-only probe (not part of the SyncClipboard-compat surface tested
+// above): reliable existence + availability check keyed by `snapshotHash`,
+// replacing the `/api/history/{profileId}` hash-drift heuristic for clients
+// that need an accurate "should I skip uploading this payload" answer.
+
+#[tokio::test]
+async fn content_availability_unauthenticated_returns_401() {
+    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let app = build_app(facade);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/mobile-sync/content-availability?snapshotHash=blake3v1:anything")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn content_availability_returns_false_when_hash_unknown() {
+    // build_facade_with_seeded_device's NoOp find_by_snapshot_hash always
+    // returns None, so any hash reports unavailable — the safe default.
+    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let app = build_app(facade);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/mobile-sync/content-availability?snapshotHash=blake3v1:never-uploaded")
+                .header("Authorization", auth_header("mobile_alice", "wonderland"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["available"], false);
+}
+
+#[tokio::test]
+async fn content_availability_returns_true_when_hash_matches_an_available_entry() {
+    use uc_core::ids::EntryId;
+
+    struct FakeIndex(EntryId);
+    #[async_trait::async_trait]
+    impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for FakeIndex {
+        async fn find_entry_id_by_snapshot_hash(
+            &self,
+            snapshot_hash: &str,
+        ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
+            Ok((snapshot_hash == "blake3v1:known-photo").then(|| self.0.clone()))
+        }
+    }
+    struct AlwaysAvailable;
+    #[async_trait::async_trait]
+    impl uc_core::ports::clipboard::CheckEntryAvailabilityPort for AlwaysAvailable {
+        async fn is_entry_available(
+            &self,
+            _: &EntryId,
+        ) -> Result<bool, uc_core::clipboard::ClipboardRepositoryError> {
+            Ok(true)
+        }
+    }
+
+    let facade = build_facade_with_seeded_device_and_content_index(
+        "mobile_alice",
+        "wonderland",
+        std::sync::Arc::new(FakeIndex(EntryId::from_str("entry-known"))),
+        std::sync::Arc::new(AlwaysAvailable),
+    )
+    .await;
+    let app = build_app(facade);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/mobile-sync/content-availability?snapshotHash=blake3v1:known-photo")
+                .header("Authorization", auth_header("mobile_alice", "wonderland"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["available"], true);
+}
+
+#[tokio::test]
+async fn content_availability_returns_false_when_entry_matched_but_unavailable() {
+    use uc_core::ids::EntryId;
+
+    struct FakeIndex(EntryId);
+    #[async_trait::async_trait]
+    impl uc_core::ports::clipboard::FindEntryIdBySnapshotHashPort for FakeIndex {
+        async fn find_entry_id_by_snapshot_hash(
+            &self,
+            snapshot_hash: &str,
+        ) -> Result<Option<EntryId>, uc_core::clipboard::ClipboardRepositoryError> {
+            Ok((snapshot_hash == "blake3v1:partial-upload").then(|| self.0.clone()))
+        }
+    }
+    struct NeverAvailable;
+    #[async_trait::async_trait]
+    impl uc_core::ports::clipboard::CheckEntryAvailabilityPort for NeverAvailable {
+        async fn is_entry_available(
+            &self,
+            _: &EntryId,
+        ) -> Result<bool, uc_core::clipboard::ClipboardRepositoryError> {
+            Ok(false)
+        }
+    }
+
+    let facade = build_facade_with_seeded_device_and_content_index(
+        "mobile_alice",
+        "wonderland",
+        std::sync::Arc::new(FakeIndex(EntryId::from_str("entry-partial"))),
+        std::sync::Arc::new(NeverAvailable),
+    )
+    .await;
+    let app = build_app(facade);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/mobile-sync/content-availability?snapshotHash=blake3v1:partial-upload")
+                .header("Authorization", auth_header("mobile_alice", "wonderland"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json["available"], false,
+        "matched-but-unavailable entry must report unavailable"
+    );
+}
+
+#[tokio::test]
+async fn content_availability_missing_query_param_returns_400() {
+    let facade = build_facade_with_seeded_device("mobile_alice", "wonderland").await;
+    let app = build_app(facade);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/mobile-sync/content-availability")
+                .header("Authorization", auth_header("mobile_alice", "wonderland"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }

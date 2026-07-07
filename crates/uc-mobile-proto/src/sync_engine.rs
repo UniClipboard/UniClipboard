@@ -530,7 +530,21 @@ pub fn commit_stage(st: &mut SyncRuntimeState, entry: &Clipboard) {
 
 /// Push commit (`maybePush` 741-758). `pushed_hash` is the hash of the entry
 /// that was actually PUT, or `None` for a documented silent skip (no snapshot /
-/// unpushable type / in-flight push).
+/// unpushable type / in-flight push). `content_id` is the server's identity for
+/// that exact write, if the PUT response echoed one back (`uc-webserver`'s
+/// `SyncClipboardPutAck`; a legacy daemon or third-party SyncClipboard server
+/// has no such field, so callers pass `None`).
+///
+/// Learning `content_id` here (rather than always clearing it, as this reducer
+/// did before the PUT response carried one) closes a real gap: a server that
+/// tolerates hash drift on Image/File content (re-encodes what was uploaded)
+/// would otherwise make the very next `GET` look like brand-new content — the
+/// hash no longer matches, and with no `content_id` on either side yet,
+/// [`is_already_synced`] falls back to that mismatched hash and re-downloads +
+/// reapplies content that is, semantically, exactly what was just pushed. This
+/// is safe specifically because the identity comes from the daemon's direct
+/// response to OUR OWN write, not a separate follow-up `GET` — no race window
+/// against a concurrent write from another device.
 ///
 /// A push that trips the loop guard sticks as [`SyncState::LoopDetected`], the
 /// same as the apply / consent-push paths. This corrects an iOS inconsistency:
@@ -542,6 +556,7 @@ pub fn commit_stage(st: &mut SyncRuntimeState, entry: &Clipboard) {
 pub fn commit_push(
     st: &mut SyncRuntimeState,
     pushed_hash: Option<&str>,
+    content_id: Option<&str>,
     now_ms: i64,
     cfg: &SyncConfig,
 ) -> CommitOutcome {
@@ -550,11 +565,7 @@ pub fn commit_push(
         st.state = SyncState::Succeeded;
         return CommitOutcome { tripped: false };
     };
-    // Push changed the content but we do NOT yet know its server `contentId`
-    // (the server assigns it). Pass `None` so the identity watermark is cleared
-    // in lock-step with the hash; the next GET re-learns it on the converged
-    // path. A residual old `contentId` would otherwise misjudge new content.
-    advance_synced(st, Some(h), None);
+    advance_synced(st, Some(h), content_id);
     // maybePush deliberately does NOT set last_applied / clear staged (unlike
     // the apply path); a trip in `record_and_check` overrides this to
     // `LoopDetected`.
@@ -1372,7 +1383,7 @@ mod tests {
     fn commit_push_advances_and_records_pushed() {
         let cfg = SyncConfig::default();
         let mut st = SyncRuntimeState::default();
-        let out = commit_push(&mut st, Some("aabb"), NOW, &cfg);
+        let out = commit_push(&mut st, Some("aabb"), None, NOW, &cfg);
         assert!(!out.tripped);
         assert_eq!(st.last_synced_hash.as_deref(), Some("AABB"));
         // maybePush deliberately does NOT set last_applied.
@@ -1388,7 +1399,7 @@ mod tests {
             last_synced_hash: Some("OLD".into()),
             ..Default::default()
         };
-        let out = commit_push(&mut st, None, NOW, &cfg);
+        let out = commit_push(&mut st, None, None, NOW, &cfg);
         assert!(!out.tripped);
         assert_eq!(st.last_synced_hash.as_deref(), Some("OLD")); // unchanged
         assert!(st.loop_events.is_empty());
@@ -1403,9 +1414,9 @@ mod tests {
         let mut st = SyncRuntimeState::default();
         // Alternate apply/push of the same hash 4× → 3 flips → trip.
         commit_apply(&mut st, Some("H"), None, NOW, &cfg);
-        commit_push(&mut st, Some("H"), NOW + 1, &cfg);
+        commit_push(&mut st, Some("H"), None, NOW + 1, &cfg);
         commit_apply(&mut st, Some("H"), None, NOW + 2, &cfg);
-        let out = commit_push(&mut st, Some("H"), NOW + 3, &cfg);
+        let out = commit_push(&mut st, Some("H"), None, NOW + 3, &cfg);
         assert!(out.tripped);
         // The final commit was a PUSH — the trip now sticks as LoopDetected,
         // matching the apply path (previously an iOS quirk overwrote it back to
@@ -1417,9 +1428,9 @@ mod tests {
     fn apply_final_trip_shows_loop_detected() {
         let cfg = SyncConfig::default();
         let mut st = SyncRuntimeState::default();
-        commit_push(&mut st, Some("H"), NOW, &cfg);
+        commit_push(&mut st, Some("H"), None, NOW, &cfg);
         commit_apply(&mut st, Some("H"), None, NOW + 1, &cfg);
-        commit_push(&mut st, Some("H"), NOW + 2, &cfg);
+        commit_push(&mut st, Some("H"), None, NOW + 2, &cfg);
         let out = commit_apply(&mut st, Some("H"), None, NOW + 3, &cfg);
         assert!(out.tripped);
         // Final commit was an APPLY — the trip sticks.
@@ -1763,21 +1774,24 @@ mod tests {
         assert_eq!(st.last_synced_content_id.as_deref(), Some("blake3v1:C"));
     }
 
-    /// Push clears the identity watermark (its server contentId is unknown).
+    /// Push clears the identity watermark when the caller has no fresher
+    /// identity to offer (`content_id: None` — a legacy daemon / third-party
+    /// SyncClipboard server whose PUT response never carries one).
     #[test]
-    fn commit_push_clears_content_id() {
+    fn commit_push_clears_content_id_when_none_provided() {
         let cfg = SyncConfig::default();
         let mut st = SyncRuntimeState {
             last_synced_content_id: Some("blake3v1:OLD".into()),
             ..Default::default()
         };
-        commit_push(&mut st, Some("NEW"), NOW, &cfg);
+        commit_push(&mut st, Some("NEW"), None, NOW, &cfg);
         assert_eq!(st.last_synced_hash.as_deref(), Some("NEW"));
         assert_eq!(st.last_synced_content_id, None);
     }
 
-    /// End-to-end: a push clears the stale contentId, so a later GET carrying
-    /// that OLD contentId (on different bytes) does not false-match.
+    /// End-to-end: with no `content_id` from the PUT response, a stale OLD
+    /// contentId is correctly cleared, so a later GET carrying that OLD
+    /// contentId (on different bytes) does not false-match.
     #[test]
     fn push_cleared_content_id_does_not_false_match_next_get() {
         let cfg = SyncConfig::default();
@@ -1785,7 +1799,7 @@ mod tests {
             last_synced_content_id: Some("blake3v1:OLD".into()),
             ..Default::default()
         };
-        commit_push(&mut st, Some("PUSHED"), NOW, &cfg);
+        commit_push(&mut st, Some("PUSHED"), None, NOW, &cfg);
         // GET: a different content stamped with the OLD contentId. Watermark
         // contentId is now None → hash decides → B != PUSHED → server-new.
         let snap = get_snap(Some(entry_cid("B", "blake3v1:OLD")), Some("DEV"));
@@ -1793,6 +1807,40 @@ mod tests {
             plan_after_server_get(&st, &snap),
             ServerRoute::ServerNew(_)
         ));
+    }
+
+    /// Push learns the identity immediately when the PUT response echoes one
+    /// back (`uc-webserver`'s `SyncClipboardPutAck`).
+    #[test]
+    fn commit_push_learns_content_id_when_response_provides_one() {
+        let cfg = SyncConfig::default();
+        let mut st = SyncRuntimeState::default();
+        commit_push(&mut st, Some("NEW"), Some("blake3v1:NEW"), NOW, &cfg);
+        assert_eq!(st.last_synced_hash.as_deref(), Some("NEW"));
+        assert_eq!(st.last_synced_content_id.as_deref(), Some("blake3v1:NEW"));
+    }
+
+    /// The gap this parameter closes: the server re-encodes what was just
+    /// pushed (same contentId, different hash) before the next GET. With the
+    /// identity learned straight from the PUT response, that GET correctly
+    /// dedups on `content_id` instead of falling back to the now-mismatched
+    /// hash and routing to `ServerNew` (re-downloading/reapplying content
+    /// that is, semantically, exactly what was just uploaded).
+    #[test]
+    fn push_learned_content_id_survives_server_side_hash_drift() {
+        let cfg = SyncConfig::default();
+        let mut st = SyncRuntimeState::default();
+        commit_push(&mut st, Some("PUSHED"), Some("blake3v1:SAME"), NOW, &cfg);
+        // GET: the server re-encoded the upload — hash drifted, contentId
+        // didn't. Device pasteboard is untouched, still reporting "PUSHED".
+        let snap = get_snap(
+            Some(entry_cid("REENCODED", "blake3v1:SAME")),
+            Some("PUSHED"),
+        );
+        assert_eq!(
+            plan_after_server_get(&st, &snap),
+            ServerRoute::Push(PushDecision::SkipAlreadySynced)
+        );
     }
 
     /// The §10 falsification #2 invariant: a silent-skip push freezes BOTH watermark keys
@@ -1805,7 +1853,7 @@ mod tests {
             last_synced_content_id: Some("blake3v1:C".into()),
             ..Default::default()
         };
-        commit_push(&mut st, None, NOW, &cfg);
+        commit_push(&mut st, None, None, NOW, &cfg);
         assert_eq!(st.last_synced_hash.as_deref(), Some("H"));
         assert_eq!(st.last_synced_content_id.as_deref(), Some("blake3v1:C"));
     }

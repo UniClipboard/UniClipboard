@@ -39,6 +39,12 @@ bindgen-cli = ["uniffi/cli"]
 
 [dependencies]
 uc-mobile-proto = { path = "../uc-mobile-proto" }
+# Shared blake3v1 content-identity algorithm (single source of truth with
+# uc-core): lets this client independently reproduce the daemon's
+# snapshot_hash for a payload it is about to upload, to query the
+# content-availability endpoint. Zero-dependency leaf crate — safe for the
+# mobile dependency graph (no cmake/native crypto lib).
+uc-content-hash = { path = "../uc-content-hash" }
 uniffi = "=0.31.1"
 thiserror = "2.0.17"
 serde = { version = "1", features = ["derive"] }

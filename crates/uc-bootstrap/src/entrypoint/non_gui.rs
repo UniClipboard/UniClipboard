@@ -277,6 +277,8 @@ pub fn build_mobile_sync_facade(
         analytics: deps.analytics.clone(),
         write_coordinator,
         active_clipboard,
+        find_entry_by_snapshot_hash: deps.clipboard.entry_ports.find_by_snapshot_hash.clone(),
+        check_entry_availability: deps.clipboard.entry_ports.availability.clone(),
     }))
 }
 

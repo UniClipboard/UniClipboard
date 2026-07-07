@@ -10154,6 +10154,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "uc-content-hash"
+version = "0.18.0"
+dependencies = [
+ "blake3",
+ "hex",
+]
+
+[[package]]
 name = "uc-core"
 version = "0.18.0"
 dependencies = [
@@ -10161,7 +10169,6 @@ dependencies = [
  "arrayvec",
  "async-trait",
  "base64 0.22.1",
- "blake3",
  "bytes",
  "chrono",
  "hex",
@@ -10178,6 +10185,7 @@ dependencies = [
  "tokio-util",
  "toml 0.8.2",
  "tracing",
+ "uc-content-hash",
  "url",
  "uuid",
  "zeroize",
@@ -10383,6 +10391,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "uc-content-hash",
  "uc-mobile-proto",
  "uniffi",
  "url",

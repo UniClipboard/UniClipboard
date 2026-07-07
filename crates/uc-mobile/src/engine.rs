@@ -532,11 +532,7 @@ impl MobileSyncEngine {
         let server = guard.server.clone();
         let meta = ClipboardMeta::from_proto(job.entry.clone());
         let hash = job.entry.hash.clone();
-        match self
-            .client
-            .put_clipboard(server, meta, job.payload.clone())
-            .await
-        {
+        match self.client.put_clipboard(server, meta, job.payload).await {
             Ok(content_id) => {
                 let outcome = se::commit_push(
                     &mut guard.runtime,

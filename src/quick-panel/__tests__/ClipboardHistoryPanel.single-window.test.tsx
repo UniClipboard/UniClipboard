@@ -1,8 +1,29 @@
+import { configureStore } from '@reduxjs/toolkit'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { Provider } from 'react-redux'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
+import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
+import i18n from '@/i18n'
+import devicesReducer from '@/store/slices/devicesSlice'
 import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
 
 const invokeMock = vi.fn()
+
+// The panel now primes the paired-device list (for the row context menu's
+// "send to device" submenu) and the reused `HistoryCardContextMenu` reads
+// `state.devices.spaceMembers`, so the panel needs a Redux Provider. Keep it
+// isolated: a minimal devices-only store plus a members API that returns none.
+vi.mock('@/api/daemon/members', () => ({
+  getPairedPeersWithStatus: vi.fn().mockResolvedValue([]),
+  getLocalDeviceInfo: vi.fn().mockResolvedValue(null),
+}))
+
+function renderPanel(ui: ReactElement = <ClipboardHistoryPanel />) {
+  const store = configureStore({ reducer: { devices: devicesReducer } })
+  return render(<Provider store={store}>{ui}</Provider>)
+}
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
@@ -88,6 +109,9 @@ vi.mock('@/api/daemon/clipboard', () => ({
     activeTimeMs: 1710000000000,
     mimeType: 'text/plain',
   }),
+  // Backs favoriteClipboardItem/unfavoriteClipboardItem so the favorite toggle
+  // resolves and the optimistic star sticks.
+  toggleFavorite: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/api/daemon/client', () => ({
@@ -121,7 +145,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   })
 
   it('renders preview content inside the same panel and requests expanded mode', async () => {
-    render(<ClipboardHistoryPanel />)
+    renderPanel()
 
     await act(async () => {
       await new Promise(resolve => setTimeout(resolve, 550))
@@ -141,7 +165,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   })
 
   it('keeps history and preview panes flexible when the inline preview opens', async () => {
-    const { container } = render(<ClipboardHistoryPanel />)
+    const { container } = renderPanel()
 
     await act(async () => {
       await new Promise(resolve => setTimeout(resolve, 550))
@@ -171,7 +195,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
       return Promise.resolve(undefined)
     })
 
-    const { container } = render(<ClipboardHistoryPanel />)
+    const { container } = renderPanel()
     const rootLayout = container.firstElementChild as HTMLDivElement | null
     const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
     historyWrapper!.getBoundingClientRect = vi.fn(() => ({
@@ -210,7 +234,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   })
 
   it('dismisses the quick window immediately when escape is pressed with preview open', async () => {
-    render(<ClipboardHistoryPanel />)
+    renderPanel()
 
     await act(async () => {
       await new Promise(resolve => setTimeout(resolve, 550))
@@ -232,7 +256,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   })
 
   it('keeps the hovered preview when moving from history into the preview pane', async () => {
-    const { container } = render(<ClipboardHistoryPanel />)
+    const { container } = renderPanel()
 
     await act(async () => {
       await new Promise(resolve => setTimeout(resolve, 550))
@@ -255,7 +279,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   })
 
   it('does not treat a stationary pointer as a hover when the panel first appears', async () => {
-    render(<ClipboardHistoryPanel />)
+    renderPanel()
 
     const secondItem = await screen.findByText('Second preview title')
 
@@ -267,5 +291,111 @@ describe('ClipboardHistoryPanel single-window preview', () => {
 
     expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
     expect(screen.queryByText('Preview for entry-2')).not.toBeInTheDocument()
+  })
+})
+
+describe('ClipboardHistoryPanel row context menu', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+    invokeMock.mockResolvedValue(undefined)
+    Element.prototype.scrollIntoView = vi.fn()
+    // Shared module-level in-flight store — reset so the "Send" trigger renders
+    // enabled and state doesn't leak between cases.
+    __resetResendActionStoreForTests()
+  })
+
+  // radix-ui ContextMenu listens for the native contextmenu event; fire it
+  // directly (userEvent right-click is flaky under jsdom).
+  function openRowMenu(rowText: string) {
+    fireEvent.contextMenu(screen.getByText(rowText))
+  }
+
+  it('selects the right-clicked row so the highlight tracks the menu target', async () => {
+    renderPanel()
+
+    const firstRow = screen.getByText('Preview title').closest('[role="option"]')
+    const secondRow = screen.getByText('Second preview title').closest('[role="option"]')
+    // Panel opens with the first row selected.
+    expect(firstRow).toHaveAttribute('aria-selected', 'true')
+    expect(secondRow).toHaveAttribute('aria-selected', 'false')
+
+    // Right-clicking the second row moves the selection onto it.
+    openRowMenu('Second preview title')
+
+    await waitFor(() => {
+      expect(secondRow).toHaveAttribute('aria-selected', 'true')
+    })
+    expect(firstRow).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('opens the reused history menu on right-click', async () => {
+    renderPanel()
+    openRowMenu('Preview title')
+
+    expect(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.copy')),
+      })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: new RegExp(i18n.t('clipboard.contextMenu.delete')) })
+    ).toBeInTheDocument()
+  })
+
+  it('copies the entry then dismisses the panel when Copy is clicked', async () => {
+    renderPanel()
+    openRowMenu('Preview title')
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.copy')),
+      })
+    )
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+    // Copy is a terminal launcher action: the panel dismisses only on success.
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
+    })
+  })
+
+  it('shows a favorite star on the row after Favorite is clicked', async () => {
+    renderPanel()
+
+    const row = screen.getByText('Preview title').closest('[role="option"]') as HTMLElement
+    // No star before favoriting.
+    expect(row.querySelector('.lucide-star')).toBeNull()
+
+    openRowMenu('Preview title')
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.favorite')),
+      })
+    )
+
+    // Optimistic star appears immediately, giving the toggle visible feedback.
+    await waitFor(() => {
+      expect(row.querySelector('.lucide-star')).not.toBeNull()
+    })
+  })
+
+  it('deletes the entry immediately (no confirm) when Delete is clicked', async () => {
+    renderPanel()
+    openRowMenu('Preview title')
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.delete')),
+      })
+    )
+
+    await waitFor(() => {
+      expect(deleteClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+    // Immediate delete does not route through a confirmation dialog.
+    expect(invokeMock).not.toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
   })
 })

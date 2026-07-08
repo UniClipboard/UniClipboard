@@ -1,4 +1,4 @@
-import { FileText } from 'lucide-react'
+import { FileText, Star } from 'lucide-react'
 import { useComposedRefs } from 'radix-ui/internal'
 import React from 'react'
 import { useInView } from '@/hooks/useInView'
@@ -15,12 +15,27 @@ interface PanelItemProps {
   hoverDisabled: boolean
   onSelect: (index: number, plainOnly?: boolean) => void
   onHover: (index: number) => void
+  /** Right-click selects the row so the context menu's target is the highlighted one. */
+  onContextMenu: (index: number) => void
+  /** Renders a favorite star so toggling favorite from the menu has visible state. */
+  isFavorited: boolean
   itemRef?: React.Ref<HTMLDivElement>
   shortcutKey?: string
 }
 
 const PanelItem: React.FC<PanelItemProps> = React.memo(
-  ({ item, index, isSelected, hoverDisabled, onSelect, onHover, itemRef, shortcutKey }) => {
+  ({
+    item,
+    index,
+    isSelected,
+    hoverDisabled,
+    onSelect,
+    onHover,
+    onContextMenu,
+    isFavorited,
+    itemRef,
+    shortcutKey,
+  }) => {
     const Icon = typeIcons[item.type] ?? FileText
     const isUnavailable = item.isUnavailable
     const isImage = item.type === 'image'
@@ -53,6 +68,10 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
         )}
         onClick={e => onSelect(index, e.altKey)}
         onMouseEnter={() => onHover(index)}
+        // Radix opens the menu on the same event; we only move the selection so
+        // the highlighted row is the one the menu acts on. No preventDefault —
+        // that's Radix's job (it suppresses the native browser menu).
+        onContextMenu={() => onContextMenu(index)}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
@@ -89,6 +108,9 @@ const PanelItem: React.FC<PanelItemProps> = React.memo(
         <span className={cn('flex-1 truncate', isUnavailable && 'line-through opacity-60')}>
           {item.preview || '(empty)'}
         </span>
+        {/* Favorite indicator (decorative, mirrors the history card star) so
+            toggling favorite from the context menu has a persistent visual. */}
+        {isFavorited && <Star className="size-3 shrink-0 fill-amber-400 text-amber-400" />}
         <span
           className={cn(
             'shrink-0 tabular-nums text-[11px]',

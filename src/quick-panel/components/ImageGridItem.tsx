@@ -1,3 +1,4 @@
+import { Star } from 'lucide-react'
 import React from 'react'
 import { formatRelativeTime } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
@@ -13,6 +14,10 @@ interface ImageGridItemProps {
   hoverDisabled: boolean
   onSelect: (index: number, plainOnly?: boolean) => void
   onHover: (index: number) => void
+  /** Right-click selects the tile so the context menu's target is the highlighted one. */
+  onContextMenu: (index: number) => void
+  /** Renders a favorite star so toggling favorite from the menu has visible state. */
+  isFavorited: boolean
   itemRef?: React.Ref<HTMLDivElement>
   shortcutKey?: string
 }
@@ -25,7 +30,18 @@ interface ImageGridItemProps {
  * entry is already the correct shape.
  */
 const ImageGridItem: React.FC<ImageGridItemProps> = React.memo(
-  ({ item, index, isSelected, hoverDisabled, onSelect, onHover, itemRef, shortcutKey }) => {
+  ({
+    item,
+    index,
+    isSelected,
+    hoverDisabled,
+    onSelect,
+    onHover,
+    onContextMenu,
+    isFavorited,
+    itemRef,
+    shortcutKey,
+  }) => {
     const { url, aspectRatio } = useQuickPanelImage(item.id)
     const displayAspectRatio = clampImageCardAspectRatio(aspectRatio)
     const isUnavailable = item.isUnavailable
@@ -48,6 +64,9 @@ const ImageGridItem: React.FC<ImageGridItemProps> = React.memo(
         )}
         onClick={e => onSelect(index, e.altKey)}
         onMouseEnter={() => onHover(index)}
+        // Radix opens the menu on the same event; selecting here just keeps the
+        // highlighted tile aligned with the menu's target.
+        onContextMenu={() => onContextMenu(index)}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
@@ -67,6 +86,11 @@ const ImageGridItem: React.FC<ImageGridItemProps> = React.memo(
             out the whole image. */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-9 bg-gradient-to-b from-black/45 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-gradient-to-t from-black/45 to-transparent" />
+
+        {/* Favorite indicator (decorative, mirrors the history card star). */}
+        {isFavorited && (
+          <Star className="absolute left-1.5 top-1.5 size-3.5 fill-amber-400 text-amber-400 drop-shadow" />
+        )}
 
         <span className="absolute right-1.5 top-1.5 text-[10px] tabular-nums text-white/80 drop-shadow">
           {formatRelativeTime(item.activeTime)}

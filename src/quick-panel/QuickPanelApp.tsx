@@ -3,6 +3,7 @@ import { LazyMotion, MotionConfig, domMax } from 'framer-motion'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
+import { Toaster } from '@/components/ui/sonner'
 import { usePlatform } from '@/hooks/usePlatform'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'
@@ -114,9 +115,15 @@ const QuickPanelApp: React.FC = () => {
   // The quick panel is a separate webview from the main window, so it needs its
   // own framer-motion provider — without it, `m.*` elements stay stuck at their
   // `initial` state (e.g. opacity 0) and never render. Mirrors src/App.tsx.
+  //
+  // The Toaster is likewise per-webview: the reused history context menu surfaces
+  // send/reveal feedback through `toast`, which no-ops without a Toaster mounted
+  // in this window's tree. Themed via the app's CSS vars (see sonner.tsx), so it
+  // follows the panel's light/dark class without a next-themes provider.
   return (
     <LazyMotion features={domMax} strict>
       <MotionConfig reducedMotion={reduceVisualEffects ? 'always' : 'user'}>{content}</MotionConfig>
+      <Toaster />
     </LazyMotion>
   )
 }

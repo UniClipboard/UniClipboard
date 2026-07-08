@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import { Filter } from '@/api/clipboardItems'
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Filter, favoriteClipboardItem, unfavoriteClipboardItem } from '@/api/clipboardItems'
 import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
 import { unlockEncryptionSession } from '@/api/security'
+import { toast } from '@/components/ui/toast'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
 import { useSearchTags } from '@/hooks/useSearchTags'
@@ -10,11 +12,18 @@ import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { readStoredUiScale, subscribeUiScaleChanges } from '@/lib/ui-scale'
 import { cn } from '@/lib/utils'
+import { useAppDispatch } from '@/store/hooks'
+import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
 import ClipboardPreviewPane from './ClipboardPreviewPane'
 import HistoryPane from './components/HistoryPane'
 import { PREVIEW_OPEN_DELAY_MS, PREVIEW_SWITCH_DELAY_MS, QUICK_FILTER_ORDER } from './constants'
 import { useHistorySearch } from './hooks/useHistorySearch'
-import type { PreviewAction, PreviewState, TimeRangePreset } from './types'
+import type {
+  PreviewAction,
+  PreviewState,
+  QuickPanelContextMenuActions,
+  TimeRangePreset,
+} from './types'
 
 const log = createLogger('clipboard-history-panel')
 
@@ -93,6 +102,24 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
 }) => {
   useThemeSync()
 
+  const { t } = useTranslation()
+  const dispatch = useAppDispatch()
+
+  // Refresh the paired-device list so the row context menu's "send to device"
+  // submenu shows current names and connection state. The quick panel is a
+  // separate webview with its own store and — unlike the main window's
+  // DevicesPage — does not subscribe to `peers.changed`, so this snapshot is the
+  // only source. Re-run on every re-open (`showRequestId`), mirroring the
+  // clipboard `refetch()` below, so a long-lived hidden window doesn't serve a
+  // stale device list.
+  useEffect(() => {
+    dispatch(fetchSpaceMembers())
+      .unwrap()
+      .catch(err => {
+        log.warn({ err }, 'failed to prime paired-device list')
+      })
+  }, [dispatch, showRequestId])
+
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const [activeFilter, setActiveFilter] = useState<Filter>(Filter.All)
@@ -112,6 +139,11 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
   const [previewState, dispatchPreview] = useReducer(previewReducer, initialPreviewState)
   const [hasPointerMovedSinceShow, setHasPointerMovedSinceShow] = useState(false)
   const [previewTargetId, setPreviewTargetId] = useState<string | null>(null)
+  // Optimistic favorite overrides keyed by entry id, mirroring the history
+  // controller: the live list does not re-fetch on toggle, so a flip is
+  // reflected here immediately (and reverted if the backend call fails) — this
+  // keeps the context menu's Favorite/Unfavorite label correct on re-open.
+  const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({})
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const historyPaneRef = useRef<HTMLDivElement>(null)
@@ -186,6 +218,9 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
     setIsKeyboardNav(true)
     setHasPointerMovedSinceShow(false)
     setPreviewTargetId(null)
+    // Drop stale optimistic favorite flips; the refetch below re-reads the
+    // authoritative `isFavorited` from the daemon.
+    setFavoriteOverrides({})
     // Refresh on every re-open so the panel shows the latest clipboard even if
     // the filters were already at their defaults (no model change to trigger it).
     refetch()
@@ -210,6 +245,11 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
   useEffect(() => {
     const handleWindowKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      // A right-click menu is open: let Radix consume Escape (close the
+      // menu/submenu) rather than dismissing the whole panel. Both listen on the
+      // same bubbling keydown and Radix does not stop propagation, so without
+      // this guard one Escape would close the menu AND the panel.
+      if (document.querySelector('[data-slot="context-menu-content"][data-state="open"]')) return
       e.preventDefault()
       setHoveredIndex(null)
       void dismissPanel()
@@ -396,6 +436,83 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
     [clearPreviewTimer, filteredItems, removeItem]
   )
 
+  // ── Right-click context menu (reuses the history menu) ──────────────
+  // The shared `HistoryCardContextMenu` is id-based, so these adapt the panel's
+  // own data layer to it. Copy dismisses the panel (launcher terminal action),
+  // favorite flips optimistically, and delete reuses `handleDelete` by resolving
+  // the id back to its list index (immediate, no confirm — matches Alt+Backspace).
+  const handleContextCopy = useCallback(
+    async (id: string) => {
+      try {
+        await restoreClipboardEntry(id)
+      } catch (err) {
+        log.error({ err }, 'Failed to copy clipboard entry')
+        toast.error(t('clipboard.errors.copyFailed'))
+        return
+      }
+      // Terminal launcher action: dismiss only after the copy actually landed.
+      // The copy already succeeded, so a dismiss failure must not surface as a
+      // copy error; swallow it with a warning rather than leaving the rejection
+      // unhandled (the caller discards this promise via `void`).
+      await dismissPanel().catch(err => {
+        log.warn({ err }, 'failed to dismiss quick panel after copy')
+      })
+    },
+    [t]
+  )
+
+  const handleContextToggleFavorite = useCallback(
+    async (id: string, current: boolean) => {
+      const next = !current
+      setFavoriteOverrides(prev => ({ ...prev, [id]: next }))
+      try {
+        await (next ? favoriteClipboardItem(id) : unfavoriteClipboardItem(id))
+      } catch (err) {
+        setFavoriteOverrides(prev => ({ ...prev, [id]: current }))
+        log.error({ err }, 'Failed to toggle favorite')
+        toast.error(t('clipboard.errors.favoriteFailed'))
+      }
+    },
+    [t]
+  )
+
+  const handleContextDelete = useCallback(
+    (id: string) => {
+      const index = filteredItems.findIndex(item => item.id === id)
+      if (index >= 0) void handleDelete(index)
+    },
+    [filteredItems, handleDelete]
+  )
+
+  // Right-clicking a row moves the selection onto it, so the highlighted row is
+  // always the one the menu acts on (otherwise the keyboard-selected row stays
+  // highlighted while the menu targets a different, right-clicked row). Preview
+  // follows the selection; Radix opens the menu on the same event.
+  const handleContextMenuSelect = useCallback((index: number) => {
+    dispatchPreview({ type: 'suppress', value: false })
+    dispatchPreview({ type: 'set-focus-source', source: 'selection' })
+    setHoveredIndex(null)
+    setSelectedIndex(index)
+  }, [])
+
+  // Rich items backing the menu, index-aligned with `filteredItems` (both derive
+  // from the same live list), with optimistic favorite flips applied on top.
+  const contextItems = useMemo(() => {
+    if (Object.keys(favoriteOverrides).length === 0) return previewItems
+    return previewItems.map(item =>
+      item.id in favoriteOverrides ? { ...item, isFavorited: favoriteOverrides[item.id] } : item
+    )
+  }, [previewItems, favoriteOverrides])
+
+  const contextActions = useMemo<QuickPanelContextMenuActions>(
+    () => ({
+      onCopy: id => void handleContextCopy(id),
+      onToggleFavorite: (id, current) => void handleContextToggleFavorite(id, current),
+      onDelete: handleContextDelete,
+    }),
+    [handleContextCopy, handleContextDelete, handleContextToggleFavorite]
+  )
+
   const handleSearchChange = useCallback((value: string) => {
     dispatchPreview({ type: 'suppress', value: false })
     dispatchPreview({ type: 'set-focus-source', source: 'selection' })
@@ -525,6 +642,7 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
           onHistoryMouseMove={handleHistoryMouseMove}
           onSearchChange={handleSearchChange}
           onSelect={handleSelect}
+          onContextMenuSelect={handleContextMenuSelect}
           onUnlock={handleUnlock}
           searchInputRef={searchInputRef}
           searchQuery={searchQuery}
@@ -546,6 +664,8 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
           searchableTags={searchableTags}
           sourceOptions={sourceOptions}
           onKeyDown={handleKeyDown}
+          contextItems={contextItems}
+          contextActions={contextActions}
         />
       </div>
 

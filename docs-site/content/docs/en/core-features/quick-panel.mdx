@@ -55,6 +55,24 @@ shortcut while the modifier is held. UniClipboard writes only the
 has no plain-text representation, it silently falls back to the normal
 multi-format paste.
 
+## Right-click actions
+
+Right-click any entry — a list row or an image-wall tile — to open a
+context menu. Right-clicking also selects the entry, so the highlighted
+item is always the one the menu acts on.
+
+| Action                | What it does                                                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Copy                  | Puts the item back on the system clipboard without pasting, then closes the panel. Unavailable items (payload lost) are greyed out. |
+| Favorite / Unfavorite | Toggles the favorite flag. Favorited entries show a ★ in the list.                                                                  |
+| Send to device        | Dispatches the item to a paired device — or all of them — **without** touching your local clipboard. Offline peers are disabled.    |
+| Open file location    | File entries only: reveals the received file in your system file manager.                                                           |
+| Delete                | Removes the item from history immediately — same as `Alt + Backspace`, no confirmation.                                             |
+
+These mirror the per-item actions available on the main window's history
+cards, so you don't have to open the Dashboard for a one-off copy,
+favorite, or resend.
+
 ## Inline preview
 
 When an item is selected, the right pane renders it in the format

@@ -399,3 +399,87 @@ describe('ClipboardHistoryPanel row context menu', () => {
     expect(invokeMock).not.toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
   })
 })
+
+describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+    invokeMock.mockResolvedValue(undefined)
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  function searchBox() {
+    return screen.getByRole('combobox') as HTMLInputElement
+  }
+
+  it('acts on the hovered row rather than the keyboard-selected row when both differ', async () => {
+    renderPanel()
+    // Panel opens with entry-1 selected by keyboard.
+    fireEvent.mouseMove(screen.getByText('Second preview title'))
+    fireEvent.mouseEnter(screen.getByText('Second preview title'))
+    await screen.findByText('Preview for entry-2')
+
+    fireEvent.keyDown(searchBox(), { key: 'c', metaKey: true })
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-2')
+    })
+  })
+
+  it('copies the active row to the clipboard and dismisses the panel on Ctrl/Cmd+C', async () => {
+    renderPanel()
+
+    fireEvent.keyDown(searchBox(), { key: 'c', metaKey: true })
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
+    })
+  })
+
+  it('does not hijack Ctrl/Cmd+C when the search input has a text selection', async () => {
+    renderPanel()
+    const input = searchBox()
+    fireEvent.change(input, { target: { value: 'abc' } })
+    input.setSelectionRange(0, 3)
+
+    fireEvent.keyDown(input, { key: 'c', metaKey: true })
+
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+  })
+
+  it('pastes the active row to the foreground app on Ctrl/Cmd+V, same as Enter', async () => {
+    renderPanel()
+
+    fireEvent.keyDown(searchBox(), { key: 'v', metaKey: true })
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1', undefined)
+    })
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
+    })
+  })
+
+  it('does not hijack Ctrl/Cmd+V once the search query is non-empty', async () => {
+    renderPanel()
+    const input = searchBox()
+    fireEvent.change(input, { target: { value: 'abc' } })
+
+    fireEvent.keyDown(input, { key: 'v', metaKey: true })
+
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+  })
+
+  it('deletes the active row on Alt+Backspace', async () => {
+    renderPanel()
+
+    fireEvent.keyDown(searchBox(), { key: 'Backspace', altKey: true })
+
+    await waitFor(() => {
+      expect(deleteClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+  })
+})

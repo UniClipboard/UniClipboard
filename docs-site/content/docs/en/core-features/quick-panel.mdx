@@ -32,17 +32,24 @@ hold focus indefinitely.
 
 The panel is meant to be driven entirely by keyboard. The full set:
 
-| Key                                     | Action                                        |
-| --------------------------------------- | --------------------------------------------- |
-| `↑` / `↓`                               | Move selection                                |
-| `Enter`                                 | Paste the selected item into the previous app |
-| Hold `Option` / `Alt`                   | Request plain-text paste                      |
-| `Esc`                                   | Close without pasting                         |
-| `Alt + Backspace`                       | Remove the selected item from history         |
-| `Cmd` / `Ctrl` + `1`–`9`                | Jump to items 1–9                             |
-| `Cmd` / `Ctrl` + `0`                    | Jump to item 10                               |
-| Just type                               | Live substring filter (case-insensitive)      |
-| Type `type:` `#` `from:` `ext:` `time:` | Add a filter chip inline (see Filtering)      |
+| Key                                     | Action                                                          |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `↑` / `↓`                               | Move selection                                                  |
+| `Enter`                                 | Paste the selected item into the previous app                   |
+| Hold `Option` / `Alt`                   | Request plain-text paste                                        |
+| `Esc`                                   | Close without pasting                                           |
+| `Alt + Backspace`                       | Remove the selected item from history                           |
+| `Cmd` / `Ctrl` + `C`                    | Copy the selected item to the clipboard and close the panel     |
+| `Cmd` / `Ctrl` + `V`                    | Paste the selected item into the previous app (same as `Enter`) |
+| `Cmd` / `Ctrl` + `1`–`9`                | Jump to items 1–9                                               |
+| `Cmd` / `Ctrl` + `0`                    | Jump to item 10                                                 |
+| Just type                               | Live substring filter (case-insensitive)                        |
+| Type `type:` `#` `from:` `ext:` `time:` | Add a filter chip inline (see Filtering)                        |
+
+`Cmd` / `Ctrl` + `C` and `Cmd` / `Ctrl` + `V` act on whichever item is
+hovered or keyboard-selected, but defer to the search box's native text
+selection/paste when you're actively editing the query (a text selection
+present, or a non-empty query for paste).
 
 `Enter` simulates a system paste, so the receiving app sees what looks
 like a regular Cmd/Ctrl+V — rich text and files land at the highest

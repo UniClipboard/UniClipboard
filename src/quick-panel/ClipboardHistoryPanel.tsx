@@ -182,6 +182,18 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
     timeRange,
   })
 
+  // Latest `filteredItems` for `handleKeyDown` to read by index without
+  // depending on the array's identity — `filteredItems` gets a new reference
+  // on every live-search update, and that identity is not something the
+  // keydown handler otherwise needs to react to (it already depends on
+  // `filteredItems.length` for its own boundary checks). Mutated directly
+  // during render (matches `lastFilteredCountRef` below) rather than via a
+  // useEffect, which would just add a redundant post-render pass.
+  /* eslint-disable react-hooks/refs */
+  const filteredItemsRef = useRef(filteredItems)
+  filteredItemsRef.current = filteredItems
+  /* eslint-enable react-hooks/refs */
+
   const clearPreviewTimer = useCallback(() => {
     if (previewTimerRef.current) {
       clearTimeout(previewTimerRef.current)
@@ -530,9 +542,15 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
         return
       }
 
+      // Hover takes priority over the keyboard-selected row: the two are
+      // mutually exclusive in practice (arrow/Ctrl+n/p navigation clears
+      // hover), so this always resolves to the row the user is currently
+      // pointing at or has highlighted.
+      const activeIndex = hoveredIndex ?? selectedIndex
+
       if (e.altKey && e.key === 'Backspace') {
         e.preventDefault()
-        void handleDelete(selectedIndex)
+        void handleDelete(activeIndex)
         return
       }
 
@@ -540,6 +558,32 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
         e.preventDefault()
         const index = e.key === '0' ? 9 : parseInt(e.key) - 1
         if (index < filteredItems.length) void handleSelect(index, e.altKey)
+        return
+      }
+
+      // Ctrl/Cmd+C copies the hovered/selected row to the system clipboard and
+      // dismisses the panel, matching the row context menu's Copy action
+      // (`handleContextCopy`) so the two entry points behave identically. Only
+      // takes over when the search input has no text selection — with a
+      // selection the user is copying part of their query, which is the
+      // input's native behavior and must not be hijacked.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+        const input = e.currentTarget
+        if (input.selectionStart !== input.selectionEnd) return
+        e.preventDefault()
+        const item = filteredItemsRef.current[activeIndex]
+        if (item) void handleContextCopy(item.id)
+        return
+      }
+
+      // Ctrl/Cmd+V is an alias for Enter: paste the hovered/selected row to the
+      // foreground app via the same `handleSelect` path. Only takes over when
+      // the search input is empty — once the user has typed a query, Cmd/Ctrl+V
+      // is expected to paste text into the search box, not act on a row.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
+        if (e.currentTarget.value !== '') return
+        e.preventDefault()
+        void handleSelect(activeIndex, e.altKey)
         return
       }
 
@@ -589,15 +633,17 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
           break
         case 'Enter':
           e.preventDefault()
-          void handleSelect(selectedIndex, e.altKey)
+          void handleSelect(activeIndex, e.altKey)
           break
       }
     },
     [
       filteredItems.length,
+      handleContextCopy,
       handleDelete,
       handleSelect,
       handleUnlock,
+      hoveredIndex,
       isLocked,
       selectedIndex,
       unlocking,

@@ -16,6 +16,21 @@ export interface DisplayItem {
   isUnavailable: boolean
 }
 
+/**
+ * Id-based handlers the quick panel injects into the reused history right-click
+ * menu ({@link HistoryCardContextMenu}). Copy / favorite / delete are wired to
+ * the panel's own data layer; send-to-device and reveal-in-folder are
+ * self-contained inside the menu component.
+ */
+export interface QuickPanelContextMenuActions {
+  /** Copy the entry to the system clipboard (the panel then dismisses). */
+  onCopy: (id: string) => void
+  /** Toggle the entry's favorite flag; `current` is its present state. */
+  onToggleFavorite: (id: string, current: boolean) => void
+  /** Delete the entry immediately (no confirm dialog, matching Alt+Backspace). */
+  onDelete: (id: string) => void
+}
+
 export type PreviewMode = 'closed' | 'reserving' | 'expanded'
 export type PreviewFocusSource = 'selection' | 'hover'
 

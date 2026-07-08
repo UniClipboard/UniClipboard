@@ -31,6 +31,21 @@ interface HistoryCardContextMenuProps {
   onToggleFavorite: (id: string, current: boolean) => void
   /** Open the delete-confirmation flow for the entry. */
   onDelete: (id: string) => void
+  /**
+   * Classes for the wrapping right-click trigger. Defaults to `block h-full
+   * w-full` so the trigger fills a grid cell (the history page). Callers whose
+   * rows live in a flex list with a definite height (e.g. the quick panel)
+   * must drop `h-full`, or `height: 100%` balloons every row to the list's
+   * full height and only the first row stays visible.
+   */
+  triggerClassName?: string
+  /**
+   * ARIA role for the wrapping trigger. Left unset for the grid (its wrapper is
+   * an ordinary generic element). Callers that wrap a `role="option"` row inside
+   * a `role="listbox"` (the quick panel) should pass `"presentation"` so the
+   * trigger doesn't sit as a generic element between the listbox and its option.
+   */
+  triggerRole?: React.AriaRole
 }
 
 /**
@@ -52,6 +67,8 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
   onCopy,
   onToggleFavorite,
   onDelete,
+  triggerClassName = 'block h-full w-full',
+  triggerRole,
 }) => {
   const { t } = useTranslation()
   const resendAction = useResendAction()
@@ -77,7 +94,9 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger className="block h-full w-full">{children}</ContextMenuTrigger>
+      <ContextMenuTrigger className={triggerClassName} role={triggerRole}>
+        {children}
+      </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
         {/* Copy — unavailable entries (payload lost) can't be restored. */}
         <ContextMenuItem disabled={isUnavailable} onClick={() => !isUnavailable && onCopy(item.id)}>

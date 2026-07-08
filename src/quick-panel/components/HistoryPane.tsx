@@ -3,6 +3,7 @@ import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import { CompositeSearchBar, type SourceOption } from '@/components/history/composite-search'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { quickCardClassName } from '../constants'
@@ -11,9 +12,10 @@ import {
   useQuickPanelImageAspectRatioEpoch,
 } from '../hooks/useQuickPanelImage'
 import { packImageWallColumns } from '../imageWallPacker'
-import type { DisplayItem, TimeRangePreset } from '../types'
+import type { DisplayItem, QuickPanelContextMenuActions, TimeRangePreset } from '../types'
 import ImageGridItem from './ImageGridItem'
 import PanelItem from './PanelItem'
+import PanelItemContextMenu from './PanelItemContextMenu'
 
 interface HistoryPaneProps {
   filteredItems: DisplayItem[]
@@ -28,6 +30,8 @@ interface HistoryPaneProps {
   onHistoryMouseMove: () => void
   onSearchChange: (value: string) => void
   onSelect: (index: number, plainOnly?: boolean) => void
+  /** Right-click selects the row/tile so the context menu targets the highlighted one. */
+  onContextMenuSelect: (index: number) => void
   onUnlock: () => void
   searchInputRef: React.RefObject<HTMLInputElement | null>
   searchQuery: string
@@ -49,6 +53,13 @@ interface HistoryPaneProps {
   searchableTags: SearchTagOption[]
   sourceOptions: SourceOption[]
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  /**
+   * Rich items backing the per-row right-click menu, index-aligned with
+   * `filteredItems` (the menu needs `content`/`isFavorited`, which the slimmed
+   * `DisplayItem` drops).
+   */
+  contextItems: DisplayClipboardItem[]
+  contextActions: QuickPanelContextMenuActions
 }
 
 /** How many columns the image-wall masonry uses. Small enough that individual
@@ -87,6 +98,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     onHistoryMouseMove,
     onSearchChange,
     onSelect,
+    onContextMenuSelect,
     onUnlock,
     searchInputRef,
     searchQuery,
@@ -108,6 +120,8 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     searchableTags,
     sourceOptions,
     onKeyDown,
+    contextItems,
+    contextActions,
   }) => {
     const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel.history' })
     const aspectRatioEpoch = useQuickPanelImageAspectRatioEpoch()
@@ -238,34 +252,48 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
                   {imageColumns.map((column, columnIndex) => (
                     <div key={columnIndex} className="flex min-w-0 flex-1 flex-col">
                       {column.map(({ item, index }) => (
-                        <ImageGridItem
+                        <PanelItemContextMenu
                           key={item.id}
-                          item={item}
-                          index={index}
-                          isSelected={index === selectedIndex}
-                          hoverDisabled={isKeyboardNav}
-                          onSelect={onSelect}
-                          onHover={onHover}
-                          shortcutKey={getShortcutKey(index)}
-                          itemRef={makeItemRef(itemRefs, index)}
-                        />
+                          item={contextItems[index]}
+                          actions={contextActions}
+                        >
+                          <ImageGridItem
+                            item={item}
+                            index={index}
+                            isSelected={index === selectedIndex}
+                            hoverDisabled={isKeyboardNav}
+                            onSelect={onSelect}
+                            onHover={onHover}
+                            onContextMenu={onContextMenuSelect}
+                            isFavorited={contextItems[index]?.isFavorited ?? false}
+                            shortcutKey={getShortcutKey(index)}
+                            itemRef={makeItemRef(itemRefs, index)}
+                          />
+                        </PanelItemContextMenu>
                       ))}
                     </div>
                   ))}
                 </div>
               ) : (
                 filteredItems.map((item, index) => (
-                  <PanelItem
+                  <PanelItemContextMenu
                     key={item.id}
-                    item={item}
-                    index={index}
-                    isSelected={index === selectedIndex}
-                    hoverDisabled={isKeyboardNav}
-                    onSelect={onSelect}
-                    onHover={onHover}
-                    shortcutKey={getShortcutKey(index)}
-                    itemRef={makeItemRef(itemRefs, index)}
-                  />
+                    item={contextItems[index]}
+                    actions={contextActions}
+                  >
+                    <PanelItem
+                      item={item}
+                      index={index}
+                      isSelected={index === selectedIndex}
+                      hoverDisabled={isKeyboardNav}
+                      onSelect={onSelect}
+                      onHover={onHover}
+                      onContextMenu={onContextMenuSelect}
+                      isFavorited={contextItems[index]?.isFavorited ?? false}
+                      shortcutKey={getShortcutKey(index)}
+                      itemRef={makeItemRef(itemRefs, index)}
+                    />
+                  </PanelItemContextMenu>
                 ))
               )}
             </div>

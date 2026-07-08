@@ -220,6 +220,64 @@ fn disable_webkit_dmabuf_on_wayland() {
     );
 }
 
+/// Force GTK's X11 backend under WSL to avoid a GTK/WebKitGTK startup hang.
+///
+/// WSLg's Wayland compositor hangs GTK's native Wayland backend indefinitely
+/// during startup on some builds: `gtk_init` completes and its worker threads
+/// spawn, but the process then blocks forever in `poll()` before any window
+/// is created or WebKit helper process is forked — no crash, no log line,
+/// nothing to catch with a timeout. Forcing `GDK_BACKEND=x11` (WSLg exposes
+/// both an X11 and a Wayland socket) sidesteps the hang entirely; this was
+/// confirmed by launching the binary directly with the override under WSL2.
+/// Native Linux Wayland desktops are unaffected and keep the default backend.
+///
+/// Scope is intentionally limited to WSL (detected via `WSL_DISTRO_NAME` /
+/// `WSL_INTEROP`, or `microsoft`/`wsl` in `/proc/sys/kernel/osrelease` as a
+/// fallback for setups that don't export either variable) — this is a dev/VM
+/// quirk, not a real end-user Wayland desktop issue. An explicit user value
+/// for `GDK_BACKEND` is always respected.
+///
+/// Must be called early in `run()`, before the Tauri builder creates the
+/// event loop: GTK reads this variable in `gtk_init`.
+///
+/// Compiled on every platform (it touches only cross-platform `std::env`/`std::fs`
+/// APIs) so it type-checks on the dev host, but only called on Linux.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn force_x11_backend_on_wsl() {
+    const VAR: &str = "GDK_BACKEND";
+
+    // Respect an explicit user choice.
+    if std::env::var_os(VAR).is_some() {
+        info!(var = VAR, "GDK_BACKEND already set; leaving it untouched");
+        return;
+    }
+
+    if !is_wsl() {
+        return;
+    }
+
+    // SAFETY: see the identical reasoning in `disable_webkit_dmabuf_on_wayland`
+    // just above — this also runs on the main thread before GTK/WebKit
+    // initialize, with no concurrent environment access.
+    unsafe { std::env::set_var(VAR, "x11") };
+    info!(
+        var = VAR,
+        "WSL detected; forced GDK_BACKEND=x11 to avoid a GTK/WebKitGTK startup hang under \
+         WSLg's Wayland compositor (export the variable yourself to override)"
+    );
+}
+
+/// Best-effort WSL detection. `WSL_DISTRO_NAME`/`WSL_INTEROP` are set by
+/// WSL's default interop shims; the `osrelease` check is a fallback for
+/// environments that strip those (e.g. a nested shell that scrubbed the env).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn is_wsl() -> bool {
+    std::env::var_os("WSL_DISTRO_NAME").is_some()
+        || std::env::var_os("WSL_INTEROP").is_some()
+        || std::fs::read_to_string("/proc/sys/kernel/osrelease")
+            .is_ok_and(|release| release.to_lowercase().contains("microsoft"))
+}
+
 pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // Tracing must be initialized before anything else so all subsequent
     // log calls (including build_gui_client_context) are captured.
@@ -230,6 +288,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // run-loop closure below and dropped at `RunEvent::Exit` so buffered log
     // lines reach disk before tao's destructor-skipping `process::exit`.
     let mut json_log_guard = init_gui_tracing();
+
+    // Under WSL, GTK's native Wayland backend hangs on startup before any
+    // window exists (see `force_x11_backend_on_wsl`). Must run before GTK's
+    // event loop is created, same as the DMABUF override below.
+    #[cfg(target_os = "linux")]
+    force_x11_backend_on_wsl();
 
     // WebKitGTK's DMABUF renderer is unreliable on Wayland (notably wlroots
     // compositors like hyprland / sway): the WebView crashes or renders blank.

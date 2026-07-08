@@ -186,11 +186,13 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
   // depending on the array's identity — `filteredItems` gets a new reference
   // on every live-search update, and that identity is not something the
   // keydown handler otherwise needs to react to (it already depends on
-  // `filteredItems.length` for its own boundary checks).
+  // `filteredItems.length` for its own boundary checks). Mutated directly
+  // during render (matches `lastFilteredCountRef` below) rather than via a
+  // useEffect, which would just add a redundant post-render pass.
+  /* eslint-disable react-hooks/refs */
   const filteredItemsRef = useRef(filteredItems)
-  useEffect(() => {
-    filteredItemsRef.current = filteredItems
-  }, [filteredItems])
+  filteredItemsRef.current = filteredItems
+  /* eslint-enable react-hooks/refs */
 
   const clearPreviewTimer = useCallback(() => {
     if (previewTimerRef.current) {

@@ -59,7 +59,10 @@ export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleB
   const [isMaximized, setIsMaximized] = useState(false)
 
   // 使用 usePlatform hook 获取平台信息
-  const { isWindows, isMac, isTauri } = usePlatform()
+  const { isWindows, isMac, isLinux, isTauri } = usePlatform()
+  // Windows 和 Linux 都关闭了系统原生装饰（见 main_window.rs），
+  // 由这里自绘的按钮 + 拖拽层接管窗口控制。
+  const hasCustomControls = isWindows || isLinux
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
 
   // Setup 页面隐藏 TitleBar 保持沉浸感
@@ -178,11 +181,11 @@ export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleB
             aria-label="Toggle window maximize"
             className="absolute inset-0 z-0 cursor-default bg-transparent"
             onDoubleClick={() => {
-              if (!isWindows) return
+              if (!hasCustomControls) return
               handleToggleMaximize()
             }}
             onKeyDown={event => {
-              if (!isWindows) return
+              if (!hasCustomControls) return
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
                 handleToggleMaximize()
@@ -196,7 +199,7 @@ export const TitleBar = ({ className, isSetupActive = false, rightSlot }: TitleB
             {rightSlot}
           </div>
         )}
-        {isWindows && (
+        {hasCustomControls && (
           <div className="flex items-center h-full bg-transparent" data-tauri-drag-region="false">
             <TitleBarButton aria-label="最小化" onClick={handleMinimize}>
               <Minus className="size-4" />

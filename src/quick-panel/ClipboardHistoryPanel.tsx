@@ -451,7 +451,12 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
         return
       }
       // Terminal launcher action: dismiss only after the copy actually landed.
-      await dismissPanel()
+      // The copy already succeeded, so a dismiss failure must not surface as a
+      // copy error; swallow it with a warning rather than leaving the rejection
+      // unhandled (the caller discards this promise via `void`).
+      await dismissPanel().catch(err => {
+        log.warn({ err }, 'failed to dismiss quick panel after copy')
+      })
     },
     [t]
   )

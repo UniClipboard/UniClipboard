@@ -1,7 +1,7 @@
 import React from 'react'
 import HistoryCardContextMenu from '@/components/history/HistoryCardContextMenu'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
-import type { QuickPanelContextMenuActions } from '../types'
+import type { QuickPanelContextMenuActions } from '@/quick-panel/types'
 
 interface PanelItemContextMenuProps {
   /**

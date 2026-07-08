@@ -110,7 +110,7 @@ scan-first credentials modal:
   Scan it from the **UniClipboard iOS App** (TestFlight public
   beta — recommended; see [Pair an iPhone](#pair-an-iphone) below),
   the
-  [UniClipboard Android client](https://github.com/UniClipboard/uc-android),
+  [UniClipboard Android client](https://github.com/UniClipboard/UniClip),
   or any other SyncClipboard-protocol client. All fields auto-fill;
   no typing. A baseUrl dropdown sits next to the QR so you can
   switch which address is the preferred (first) candidate — the
@@ -121,7 +121,7 @@ scan-first credentials modal:
   **iOS** shows a QR for the TestFlight invite (with a Shortcut
   install QR as a sub-fallback for users who can't or won't use
   TestFlight), and **Android** shows a QR for the
-  [GitHub Releases APK download page](https://github.com/UniClipboard/uc-android/releases/latest).
+  [GitHub Releases APK download page](https://github.com/UniClipboard/UniClip/releases/latest).
 - **"Credentials" disclosure (amber, collapsed by default)** —
   expand it to reveal the raw `username` / `password` for clients
   that need manual entry. A **Backup** button copies a
@@ -280,16 +280,15 @@ sub-QR.
 ### Android / other clients
 
 The **UniClipboard Android client** lives at
-[github.com/UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)
-— a fork of [Jeric-X/SyncClipboard](https://github.com/Jeric-X/SyncClipboard)
-that we publish APKs for in
-[releases](https://github.com/UniClipboard/uc-android/releases/latest)
-(side-load only, no Google Play). Because it speaks the SyncClipboard
-protocol unmodified, any other SyncClipboard-compatible client also
+[github.com/UniClipboard/UniClip](https://github.com/UniClipboard/UniClip)
+— one client for both iOS and Android, with Android APKs published in
+[releases](https://github.com/UniClipboard/UniClip/releases/latest)
+(side-load only, no Google Play). Because the desktop listener speaks the
+SyncClipboard protocol, any other SyncClipboard-compatible client also
 works. Recommended picks today:
 
-- **[UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)**
-  — our own fork. Closest analogue to the iOS app: install the APK,
+- **[UniClipboard/UniClip](https://github.com/UniClipboard/UniClip)**
+  — our official app (the same client as on iOS): install the APK,
   enter the base URL, username, and password, and clipboard sync goes
   both ways. **Recommended for most Android users.**
 - **[Upstream SyncClipboard](https://github.com/Jeric-X/SyncClipboard)**
@@ -329,10 +328,10 @@ public internet. The `--ip <IP>` form instead produces the LAN
 </Callout>
 
 <Callout type="info">
-  `uc-android` is a fork of upstream `Jeric-X/SyncClipboard`. We carry our own patches and tag our
-  own APKs, but the protocol surface is shared with upstream — bugs in the app itself are usually
-  best filed at [UniClipboard/uc-android](https://github.com/UniClipboard/uc-android/issues),
-  protocol-side bugs on the desktop listener belong here in the main repo.
+  The UniClipboard mobile app speaks the same SyncClipboard-compatible protocol as the desktop
+  listener. Bugs in the app itself are usually best filed at
+  [UniClipboard/UniClip](https://github.com/UniClipboard/UniClip/issues),
+  while protocol-side bugs on the desktop listener belong here in the main repo.
 </Callout>
 
 <Callout type="info">

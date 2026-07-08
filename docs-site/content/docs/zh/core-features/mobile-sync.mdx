@@ -96,7 +96,7 @@ modal 顶部会出现红色 Alert，列出具体原因；监听不起来时 tab 
   支持候选列表的客户端会逐个探活选路。用 **UniClipboard iOS App**
   （TestFlight beta 公测中，推荐路径，详见下文
   [配对一台 iPhone](#配对一台-iphone)）、
-  [UniClipboard Android 客户端](https://github.com/UniClipboard/uc-android)
+  [UniClipboard Android 客户端](https://github.com/UniClipboard/UniClip)
   或任何兼容 SyncClipboard 协议的客户端扫一下即可，所有字段自动
   填好、无需手输。二维码旁边带一个 baseUrl 下拉，可以切换哪个地址
   作为首选（第一）候选——其余候选仍保留在码里——不必回到「配置」
@@ -105,7 +105,7 @@ modal 顶部会出现红色 Alert，列出具体原因；监听不起来时 tab 
   再展开。里面分两个 tab：**iOS** tab 展示 TestFlight 邀请链接的
   二维码（附带一个快捷指令安装二维码作为子级 fallback，给不便走
   TestFlight 的用户）；**Android** tab 展示
-  [GitHub Releases APK 下载页](https://github.com/UniClipboard/uc-android/releases/latest)
+  [GitHub Releases APK 下载页](https://github.com/UniClipboard/UniClip/releases/latest)
   的二维码。
 - **「凭据」折叠区（amber 警告色，默认收起）** —— 展开后才显示明文
   `username` / `password`，主要给那些需要手输的客户端使用。
@@ -251,14 +251,14 @@ TestFlight 走直连；安装完应用后再把代理打开即可。App 本身�
 ### Android / 其他客户端
 
 **UniClipboard Android 客户端** 的仓库地址是
-[github.com/UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)
-—— fork 自 [Jeric-X/SyncClipboard](https://github.com/Jeric-X/SyncClipboard)，
-APK 直接在 [releases 页](https://github.com/UniClipboard/uc-android/releases/latest)
-下载（侧载安装，目前不发布到 Google Play）。因为协议未改，其他任意
-SyncClipboard 协议兼容客户端也能接入。推荐顺序：
+[github.com/UniClipboard/UniClip](https://github.com/UniClipboard/UniClip)
+—— 一个客户端同时覆盖 iOS 与 Android，Android APK 直接在
+[releases 页](https://github.com/UniClipboard/UniClip/releases/latest)
+下载（侧载安装，目前不发布到 Google Play）。因为桌面监听器讲的是
+SyncClipboard 协议，其他任意 SyncClipboard 协议兼容客户端也能接入。推荐顺序：
 
-- **[UniClipboard/uc-android](https://github.com/UniClipboard/uc-android)**
-  —— 我们自己维护的 fork，体验上最接近 iOS App：装好 APK 后填 base URL
+- **[UniClipboard/UniClip](https://github.com/UniClipboard/UniClip)**
+  —— 我们官方的 App（与 iOS 上是同一个客户端）：装好 APK 后填 base URL
   - 用户名 + 密码即可双向同步剪贴。**首选**。
 - **[SyncClipboard 官方客户端](https://github.com/Jeric-X/SyncClipboard)**
   —— 协议上游实现，跨平台桌面端为主、安卓端在 release 中也有提供，需要
@@ -291,9 +291,9 @@ uniclip mobile network set \
 </Callout>
 
 <Callout type="info">
-  `uc-android` 是上游 `Jeric-X/SyncClipboard` 的 fork。我们带自己的补丁、打自己的 APK，但协议层
-  与上游一致 —— App 本身的 bug 一般请在
-  [UniClipboard/uc-android](https://github.com/UniClipboard/uc-android/issues) 提，桌面端监听器
+  UniClipboard 移动端 App 讲的是与桌面监听器一致的 SyncClipboard 兼容协议。App 本身的 bug
+  一般请在
+  [UniClipboard/UniClip](https://github.com/UniClipboard/UniClip/issues) 提，桌面端监听器
   的协议侧 bug 留在本仓库即可。
 </Callout>
 

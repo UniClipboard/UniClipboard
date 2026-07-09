@@ -157,6 +157,13 @@ impl MdnsPairingResolver {
 
                 // Take the sender exactly once. Subsequent matches
                 // become no-ops.
+                //
+                // Left detached deliberately (see `uc-infra/AGENTS.md
+                // §13.3.1`): this is a trivial best-effort one-shot — take the
+                // slot and forward a single channel message, nothing that can
+                // realistically panic. Wrapping it in `spawn_supervised` would
+                // add a `uc-observability` dependency to this crate for no
+                // meaningful observability gain.
                 let tx_for_cb = Arc::clone(&tx_for_cb);
                 tokio::spawn(async move {
                     let mut slot = tx_for_cb.lock().await;

@@ -506,65 +506,68 @@ impl ApplyInboundActiveClipboardStateUseCase {
         let send_gate = self.send_gate.clone();
         let converged_tx = self.converged_tx.clone();
 
-        tokio::spawn(async move {
-            // The active-clipboard write is a remote-originated push: use the
-            // RemotePush intent so the OS-write origin guard matches the bulk
-            // inbound path (avoids the watcher re-capturing our own write).
-            if let Err(err) = coordinator
-                .write(snapshot, ClipboardWriteIntent::RemotePush)
-                .await
-            {
-                warn!(
-                    error = %err,
-                    snapshot_hash = %state.snapshot_hash,
-                    "active state inbound: OS write failed; not advancing register or re-broadcasting"
-                );
-                return;
-            }
-
-            // OS write succeeded → advance the register. The SQL CAS is the
-            // authoritative LWW arbiter; `advanced == false` means a
-            // concurrent local/inbound write already moved the register past
-            // this state, in which case we must NOT re-broadcast (loop-safe).
-            match advance_register.advance(&state).await {
-                Ok(true) => {}
-                Ok(false) => {
-                    debug!(
-                        snapshot_hash = %state.snapshot_hash,
-                        "active state inbound: register did not advance (lost LWW race); skipping re-broadcast"
-                    );
-                    return;
-                }
-                Err(err) => {
+        uc_observability::spawn_supervised(
+            "clipboard_sync.active_write_then_converge",
+            async move {
+                // The active-clipboard write is a remote-originated push: use the
+                // RemotePush intent so the OS-write origin guard matches the bulk
+                // inbound path (avoids the watcher re-capturing our own write).
+                if let Err(err) = coordinator
+                    .write(snapshot, ClipboardWriteIntent::RemotePush)
+                    .await
+                {
                     warn!(
                         error = %err,
                         snapshot_hash = %state.snapshot_hash,
-                        "active state inbound: register advance failed; skipping re-broadcast"
+                        "active state inbound: OS write failed; not advancing register or re-broadcasting"
                     );
                     return;
                 }
-            }
 
-            // Notify subscribers that this entry converged (e.g. resurface
-            // worker bumps active_time_ms + notifies the frontend).
-            let _ = converged_tx.send(ActiveClipboardConvergedEvent {
-                entry_id: state.entry_id.clone(),
-            });
+                // OS write succeeded → advance the register. The SQL CAS is the
+                // authoritative LWW arbiter; `advanced == false` means a
+                // concurrent local/inbound write already moved the register past
+                // this state, in which case we must NOT re-broadcast (loop-safe).
+                match advance_register.advance(&state).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        debug!(
+                            snapshot_hash = %state.snapshot_hash,
+                            "active state inbound: register did not advance (lost LWW race); skipping re-broadcast"
+                        );
+                        return;
+                    }
+                    Err(err) => {
+                        warn!(
+                            error = %err,
+                            snapshot_hash = %state.snapshot_hash,
+                            "active state inbound: register advance failed; skipping re-broadcast"
+                        );
+                        return;
+                    }
+                }
 
-            // Re-broadcast the converged state to every allowed peer through
-            // the shared fan-out (full outbound gate: send_enabled ∧
-            // send_content_types, the latter via the activation's category
-            // set). Same implementation as the restore broadcast path.
-            fan_out_active_state(
-                &dispatch,
-                &peer_addr_repo,
-                &presence,
-                &send_gate,
-                &state,
-                &categories,
-            )
-            .await;
-        })
+                // Notify subscribers that this entry converged (e.g. resurface
+                // worker bumps active_time_ms + notifies the frontend).
+                let _ = converged_tx.send(ActiveClipboardConvergedEvent {
+                    entry_id: state.entry_id.clone(),
+                });
+
+                // Re-broadcast the converged state to every allowed peer through
+                // the shared fan-out (full outbound gate: send_enabled ∧
+                // send_content_types, the latter via the activation's category
+                // set). Same implementation as the restore broadcast path.
+                fan_out_active_state(
+                    &dispatch,
+                    &peer_addr_repo,
+                    &presence,
+                    &send_gate,
+                    &state,
+                    &categories,
+                )
+                .await;
+            },
+        )
     }
 }
 

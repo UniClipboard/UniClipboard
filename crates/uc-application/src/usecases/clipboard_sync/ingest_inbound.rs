@@ -114,6 +114,15 @@ impl IngestInboundClipboardUseCase {
         self.notices_tx.subscribe()
     }
 
+    /// Number of live notice subscribers. Test-only: lets the facade suite
+    /// assert that dropping an `InboundNoticeSubscription` releases the bridge
+    /// task's internal receiver (i.e. the bridge was actually aborted, not
+    /// leaked).
+    #[cfg(test)]
+    pub(crate) fn notice_receiver_count(&self) -> usize {
+        self.notices_tx.receiver_count()
+    }
+
     /// Spawn the ingest loop. Takes `Arc<Self>` so the spawned task can
     /// hold the use case's dependencies without moving them out of the
     /// owning facade.

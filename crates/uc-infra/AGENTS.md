@@ -33,7 +33,7 @@
 
 ### 2.2 非职责
 
-以下内容**不属于** `uc-infra`：
+以下内容 **不属于** `uc-infra`：
 
 | 类别        | 示例                               |
 | --------- | -------------------------------- |
@@ -432,9 +432,9 @@ pub enum BlobStoreError {
 
 例如：
 
-* “SQLITE_BUSY” 不是业务语义
-* “Peer closed stream” 不是业务语义
-* “InvalidNonceLength” 不是业务语义
+* “SQLITE_BUSY”不是业务语义
+* “Peer closed stream”不是业务语义
+* “InvalidNonceLength”不是业务语义
 
 应转成上层能理解的语义：
 
@@ -624,6 +624,27 @@ infra 内部格式不是产品公共语义。
 * 失败可见
 * 不允许悄悄死掉
 
+### 13.3.1 禁止 detached 永久循环，两种合规写法
+
+**严禁** 新增「`tokio::spawn` 后立即丢弃 `JoinHandle` 的永久循环」——句柄一丢，任务
+panic 就随任务一起消失（runtime 把 panic 转成 `JoinError` 挂在句柄上，句柄被 drop 即
+静默），既看不到「悄悄死掉」，shutdown 也无法确定性地停它。新增长生命周期后台任务，
+必须走下面两种写法之一：
+
+1. **保留句柄 + abort/join（长生命周期循环首选）**：由该任务的自然生命周期持有者
+   （facade / adapter / slot / bridge）持有 `JoinHandle`，在关闭路径 `abort()` 后
+   `await`，把非取消的 `JoinError` 记成 `WARN`。参照
+   `network/iroh/net_recovery.rs` + `network/iroh/node.rs::shutdown` 的既有实现。
+   本层内的 `pairing/session.rs`（recv-pump 句柄存进 `SessionSlot`，`close` 时
+   abort+join）即此模式。
+
+2. **`uc_observability::spawn_supervised(name, fut)`（一次性 best-effort 任务）**：
+   没有天然句柄持有者的一次性任务，用它包一层——任务 panic 会以稳定的
+   `event = "task.panicked"` + `task = <name>` 记 `ERROR`，而不是凭空消失。仅用于
+   fire-and-forget，**不要** 套在真正需要确定性取消的任务上（`spawn_supervised`
+   返回的句柄只能中止监督者，中止不了底层任务）；也不要为一个不可能 panic 的 trivial
+   `sender.send(..)` 强行套壳。
+
 ---
 
 ## 14. 平台相关实现规范
@@ -794,7 +815,7 @@ Windows / macOS / Linux 的差异必须留在 `uc-infra` 或 `uc-platform`，不
 
 ---
 
-### 19.5 “先能跑”式的错误吞并
+### 19.5“先能跑”式的错误吞并
 
 infra 是最接近失败源头的一层，这里如果吞错，上层就会完全失明。
 

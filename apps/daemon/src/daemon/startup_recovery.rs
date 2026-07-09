@@ -41,7 +41,10 @@ pub struct StartupRecoveryInput {
 /// 恢复动作可能触发系统钥匙串，启动阶段不能同步等待它完成；daemon 先把
 /// HTTP 监听拉起来，再让这个后台任务慢慢恢复。
 pub fn spawn_startup_recovery(input: StartupRecoveryInput) {
-    tokio::spawn(async move {
+    // One-shot best-effort recovery with no natural lifecycle owner to hold a
+    // handle. Use `spawn_supervised` so a panic mid-recovery surfaces as a log
+    // line instead of vanishing silently (see `uc-infra/AGENTS.md §13.3`).
+    uc_observability::spawn_supervised("daemon.startup_recovery", async move {
         // ADR-008 D9 (P4-2): only an *attended* daemon respects the user's
         // `auto_unlock_enabled` setting. Attended = this daemon was spawned by
         // a GUI (which will connect and drive unlock + `POST /lifecycle/ready`),

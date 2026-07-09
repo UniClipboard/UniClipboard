@@ -568,7 +568,8 @@ impl Subscriber {
     }
 
     fn spawn_forwarder(self: Arc<Self>) {
-        tokio::spawn(async move {
+        let consumer = self.consumer;
+        let work = tokio::spawn(async move {
             loop {
                 let next_event = loop {
                     if self.closed.load(Ordering::SeqCst) {
@@ -597,6 +598,29 @@ impl Subscriber {
                         "daemon websocket subscriber forwarder stopped"
                     );
                     return;
+                }
+            }
+        });
+        // Supervise the forwarder so a panic surfaces as a log line instead of
+        // vanishing with the task. The forwarder otherwise only signals its
+        // exit via the `closed` flag + an `info` log, both of which a panic
+        // skips — leaving a silently dead subscriber (see `uc-infra/AGENTS.md
+        // §13.3.1`). Uses the shared `event = "task.panicked"` shape so one log
+        // query catches every background-task panic. Cancellation is not
+        // expected here (nothing aborts the handle), so any non-cancel
+        // `JoinError` is a real panic.
+        tokio::spawn(async move {
+            match work.await {
+                Ok(()) => {}
+                Err(err) if err.is_cancelled() => {}
+                Err(err) => {
+                    warn!(
+                        event = "task.panicked",
+                        task = "bridge.forwarder",
+                        consumer,
+                        error = %err,
+                        "daemon websocket subscriber forwarder panicked"
+                    );
                 }
             }
         });

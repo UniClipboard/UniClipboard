@@ -563,7 +563,8 @@ impl ApplyInboundClipboardUseCase {
             // the missing peer_id field is exactly what made the recent UNICLIPBOARD-RUST-F
             // triage take an extra hour (couldn't tell whether 50 failures were one peer
             // hammering or many peers each pushing once).
-            tokio::spawn(
+            uc_observability::spawn_supervised(
+                "clipboard_sync.inbound_os_write",
                 async move {
                     // The live-index pass above already awaited and dropped its
                     // `Arc` clone, so this reclaims sole ownership without

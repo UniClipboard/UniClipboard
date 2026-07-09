@@ -279,7 +279,8 @@ impl ClipboardChangeHandler for DaemonClipboardChangeHandler {
 
                 let clipboard_outbound = Arc::clone(&self.clipboard_outbound);
                 let entry_id_for_outbound = entry_id.to_string();
-                tokio::spawn(
+                uc_observability::spawn_supervised(
+                    "clipboard_watcher.outbound_dispatch",
                     async move {
                         match clipboard_outbound
                             .dispatch_capture(ClipboardOutboundInput {

@@ -275,7 +275,6 @@ mod tests {
             event_id,
             created_at_ms: 1_700_000_000_000,
             active_time_ms: 1_700_000_000_000,
-            title: None,
             total_size: 0,
             pinned: false,
             delivery_tracked: true,

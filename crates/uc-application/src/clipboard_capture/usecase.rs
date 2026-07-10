@@ -281,7 +281,14 @@ impl CaptureClipboardUseCase {
             // capture runs; it does not yet build a manifest — out of this
             // phase's scope).
             let mut file_set: Option<EntryFileSet> = None;
-            if snapshot.file_content_digests.is_empty() {
+            // Only file-class captures build a manifest, so keep the text/image
+            // hot path off the settings port (see the `settings` field doc).
+            // Mirrors the file-class detection inside `build_entry_file_set`.
+            let is_file_class = snapshot.representations.iter().any(|rep| {
+                matches!(rep.source(), ClipboardPayloadSource::LocalFile { .. })
+                    || is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id)
+            });
+            if snapshot.file_content_digests.is_empty() && is_file_class {
                 // Read the file-set caps for this capture. A load failure must
                 // not drop the capture — fall back to no cap (behaviour before
                 // the gate existed) so a transient settings error can't silently

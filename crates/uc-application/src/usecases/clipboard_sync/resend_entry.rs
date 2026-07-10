@@ -62,8 +62,8 @@ use uc_core::clipboard::ClipboardContentCategorySet;
 use uc_core::clipboard::EntryDeliveryStatus;
 use uc_core::ids::{DeviceId, EntryId};
 use uc_core::ports::clipboard::{
-    ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
-    UpdateRepresentationProcessingResultPort,
+    ClipboardPayloadResolverPort, EntryFileSetRepositoryPort, GetClipboardEntryPort,
+    GetRepresentationPort, UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::{
     ClipboardEventRepositoryPort, ClipboardSelectionRepositoryPort, DeviceIdentityPort,
@@ -73,8 +73,8 @@ use uc_core::trusted_peer::TrustedPeerRepositoryPort;
 use uc_core::ClipboardChangeOrigin;
 
 use crate::facade::clipboard_outbound::{
-    extract_file_paths_from_snapshot, publish_file_blob_refs, publish_oversized_inline_blob_refs,
-    ClipboardOutboundError, OutboundBlobPublishGateway,
+    publish_file_blob_refs, publish_oversized_inline_blob_refs, resolve_outbound_file_set,
+    ClipboardOutboundError, OutboundBlobPublishGateway, OutboundFileSetResolution,
 };
 use crate::sync_planner::{FileCandidate, OutboundSyncPlanner};
 use crate::usecases::clipboard_sync::dispatch_entry::{
@@ -203,6 +203,7 @@ pub(crate) struct ResendEntryUseCase {
     trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     device_identity: Arc<dyn DeviceIdentityPort>,
     settings: Arc<dyn SettingsPort>,
+    entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     blob_publisher: Arc<dyn OutboundBlobPublishGateway>,
     dispatch_runner: Arc<dyn DispatchEntryRunner>,
 }
@@ -226,6 +227,7 @@ pub(crate) struct ResendEntryDeps {
     pub trusted_peer_repo: Arc<dyn TrustedPeerRepositoryPort>,
     pub device_identity: Arc<dyn DeviceIdentityPort>,
     pub settings: Arc<dyn SettingsPort>,
+    pub entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     pub blob_publisher: Arc<dyn OutboundBlobPublishGateway>,
     pub dispatch_runner: Arc<dyn DispatchEntryRunner>,
 }
@@ -244,6 +246,7 @@ impl ResendEntryUseCase {
             trusted_peer_repo: deps.trusted_peer_repo,
             device_identity: deps.device_identity,
             settings: deps.settings,
+            entry_file_set_repo: deps.entry_file_set_repo,
             blob_publisher: deps.blob_publisher,
             dispatch_runner: deps.dispatch_runner,
         }
@@ -372,13 +375,41 @@ impl ResendEntryUseCase {
 
         // 5. Plan + publish blobs.
         //
-        // resend 走 `extract_file_paths_from_snapshot` 与 LocalCapture 共享:
-        // reconstruct 出来的文件分支 snapshot 是一份 `text/uri-list` rep,
-        // helper 解析其中 `file://...` 行为本地 PathBuf。`tokio::fs::metadata`
-        // 失败仅 warn(单文件丢失不阻塞整次 resend);如果所有文件都丢失,
-        // planner 会通过 `all_files_excluded` 返回 `clipboard: None`,这里
-        // 映射成 `PayloadLost`。
-        let resolved_paths = extract_file_paths_from_snapshot(&snapshot);
+        // The member path list comes from the persisted file-set manifest
+        // (single source of truth, shared with the LocalCapture dispatch
+        // path); pre-manifest entries fall back to re-parsing the
+        // reconstructed snapshot's `text/uri-list` rep.
+        //
+        // Manifest-backed sets are all-or-nothing: an excluded manifest line
+        // (a member that never got a content identity at capture) or a member
+        // unreadable now both mean this machine cannot reproduce the set the
+        // entry's identity covers → `PayloadLost`. Fallback (legacy) sets keep
+        // the older lenient semantics: a lost member is warned and skipped;
+        // if all members are lost, the planner returns `clipboard: None`
+        // below, which also maps to `PayloadLost`.
+        let resolution =
+            resolve_outbound_file_set(self.entry_file_set_repo.as_ref(), &cmd.entry_id, &snapshot)
+                .await;
+        let (resolved_paths, from_manifest) = match resolution {
+            OutboundFileSetResolution::NotFileClass => (Vec::new(), false),
+            OutboundFileSetResolution::Manifest { paths, .. } => (paths, true),
+            OutboundFileSetResolution::Fallback { paths } => (paths, false),
+            OutboundFileSetResolution::Excluded {
+                ingest_failed,
+                size_cap_exceeded,
+            } => {
+                warn!(
+                    entry_id = %cmd.entry_id,
+                    ingest_failed,
+                    size_cap_exceeded,
+                    "resend: file-set manifest has excluded lines; entry not resendable (all-or-nothing)"
+                );
+                return Err(ResendEntryError::EntryNotResendable {
+                    entry_id: cmd.entry_id.clone(),
+                    reason: NotResendableReason::PayloadLost,
+                });
+            }
+        };
         let extracted_paths_count = resolved_paths.len();
         let mut file_candidates = Vec::with_capacity(resolved_paths.len());
         for path in resolved_paths {
@@ -387,6 +418,17 @@ impl ResendEntryUseCase {
                     path,
                     size: meta.len(),
                 }),
+                Err(err) if from_manifest => {
+                    warn!(
+                        error = %err,
+                        entry_id = %cmd.entry_id,
+                        "resend: file-set member unreadable; entry not resendable (all-or-nothing)"
+                    );
+                    return Err(ResendEntryError::EntryNotResendable {
+                        entry_id: cmd.entry_id.clone(),
+                        reason: NotResendableReason::PayloadLost,
+                    });
+                }
                 Err(err) => warn!(
                     error = %err,
                     "resend: 排除无法读取元数据的剪贴板文件(本机可能已不持有)"
@@ -676,6 +718,30 @@ mod tests {
         }
     }
 
+    /// File-set manifest stub. `None` (the default for text-only verdicts)
+    /// means "no manifest persisted" → the outbound resolver falls back to
+    /// rep parsing; a `Some` manifest exercises the manifest-backed path.
+    struct StubFileSetRepo {
+        file_set: Option<uc_core::clipboard::EntryFileSet>,
+    }
+    #[async_trait]
+    impl EntryFileSetRepositoryPort for StubFileSetRepo {
+        async fn save(
+            &self,
+            _entry_id: &EntryId,
+            _file_set: &uc_core::clipboard::EntryFileSet,
+        ) -> Result<(), uc_core::clipboard::EntryFileSetError> {
+            unreachable!("StubFileSetRepo: save() must not be called in resend tests")
+        }
+        async fn load(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<uc_core::clipboard::EntryFileSet>, uc_core::clipboard::EntryFileSetError>
+        {
+            Ok(self.file_set.clone())
+        }
+    }
+
     struct StubDeliveryRepo {
         records: Vec<EntryDeliveryRecord>,
     }
@@ -924,6 +990,7 @@ mod tests {
             }),
             device_identity: Arc::new(StubDeviceIdentity(local)),
             settings: Arc::new(StubSettings),
+            entry_file_set_repo: Arc::new(StubFileSetRepo { file_set: None }),
             blob_publisher: Arc::new(UnusedPublishGateway),
             dispatch_runner,
         });
@@ -980,6 +1047,7 @@ mod tests {
             trusted_peer_repo: Arc::new(StubTrustedPeerRepo { peers: Vec::new() }),
             device_identity: Arc::new(StubDeviceIdentity(local)),
             settings: Arc::new(StubSettings),
+            entry_file_set_repo: Arc::new(StubFileSetRepo { file_set: None }),
             blob_publisher: Arc::new(UnusedPublishGateway),
             dispatch_runner: Arc::new(UnusedDispatchRunner),
         });
@@ -1033,6 +1101,7 @@ mod tests {
             trusted_peer_repo: Arc::new(StubTrustedPeerRepo { peers: Vec::new() }),
             device_identity: Arc::new(StubDeviceIdentity(local)),
             settings: Arc::new(StubSettings),
+            entry_file_set_repo: Arc::new(StubFileSetRepo { file_set: None }),
             blob_publisher: Arc::new(UnusedPublishGateway),
             dispatch_runner: Arc::new(UnusedDispatchRunner),
         });
@@ -1260,5 +1329,134 @@ mod tests {
 
         // Bytes 转 anyhow 防 unused
         let _ = Bytes::new();
+    }
+
+    // ── file-set manifest verdicts ───────────────────────────────────────
+
+    fn uri_list_rep(id: &str, text: &str) -> PersistedClipboardRepresentation {
+        PersistedClipboardRepresentation::new(
+            RepresentationId::from(id),
+            FormatId::from("files"),
+            Some(MimeType("text/uri-list".to_string())),
+            text.len() as i64,
+            Some(text.as_bytes().to_vec()),
+            None,
+        )
+    }
+
+    /// Wire a file-class use case: entry "entry-file" from this device, paste
+    /// rep is a `text/uri-list` rep, and the manifest repo returns the given
+    /// file set. Downstream publish/dispatch stubs panic if reached.
+    fn build_file_uc(
+        uri_list_text: &str,
+        file_set: uc_core::clipboard::EntryFileSet,
+    ) -> (ResendEntryUseCase, EntryId) {
+        let entry_id = EntryId::from("entry-file");
+        let event_id = EventId::from("evt-file");
+        let local = DeviceId::new("self");
+
+        let uc = ResendEntryUseCase::new(ResendEntryDeps {
+            entry_repo: Arc::new(FakeEntryRepo {
+                entry: Some(entry_with_event(&entry_id, &event_id)),
+            }),
+            event_repo: Arc::new(FakeEventRepo {
+                source: Some(local.clone()),
+            }),
+            selection_repo: Arc::new(FakeSelectionRepo {
+                selection: Some(selection_for(&entry_id, "rep-files")),
+            }),
+            representation_repo: Arc::new(StaticRepRepo {
+                reps: vec![uri_list_rep("rep-files", uri_list_text)],
+            }),
+            rep_processing_repo: Arc::new(StubProcessingRepo),
+            payload_resolver: Arc::new(StubResolver(ResolveBehavior::Inline(
+                uri_list_text.as_bytes().to_vec(),
+            ))),
+            blob_store: Arc::new(UnusedBlobStore),
+            entry_delivery_repo: Arc::new(StubDeliveryRepo {
+                records: Vec::new(),
+            }),
+            trusted_peer_repo: Arc::new(StubTrustedPeerRepo {
+                peers: vec![trusted(&local, "peer-a", 1)],
+            }),
+            device_identity: Arc::new(StubDeviceIdentity(local)),
+            settings: Arc::new(StubSettings),
+            entry_file_set_repo: Arc::new(StubFileSetRepo {
+                file_set: Some(file_set),
+            }),
+            blob_publisher: Arc::new(UnusedPublishGateway),
+            dispatch_runner: Arc::new(UnusedDispatchRunner),
+        });
+        (uc, entry_id)
+    }
+
+    /// V8 — the persisted manifest has an excluded line (a member never got a
+    /// content identity at capture). All-or-nothing: the entry must not be
+    /// resendable, and neither publish nor dispatch may be reached.
+    #[tokio::test]
+    async fn resend_with_excluded_manifest_line_returns_payload_lost() {
+        let file_set = uc_core::clipboard::EntryFileSet {
+            lines: vec![uc_core::clipboard::EntryFileSetLine {
+                line_index: 0,
+                original_text: "file:///tmp/gone.txt".to_string(),
+                kind: uc_core::clipboard::EntryFileSetLineKind::Excluded {
+                    reason: uc_core::clipboard::EntryFileSetExcludeReason::IngestFailed,
+                },
+            }],
+        };
+        let (uc, entry_id) = build_file_uc("file:///tmp/gone.txt\r\n", file_set);
+
+        let err = uc
+            .execute(ResendEntryCommand {
+                entry_id,
+                target_filter: Some(vec![DeviceId::new("peer-a")]),
+            })
+            .await
+            .expect_err("expected PayloadLost");
+
+        match err {
+            ResendEntryError::EntryNotResendable { reason, .. } => {
+                assert_eq!(reason, NotResendableReason::PayloadLost);
+            }
+            other => panic!("expected EntryNotResendable, got {other:?}"),
+        }
+    }
+
+    /// V9 — the manifest is clean but a member no longer exists on disk at
+    /// resend time. Manifest-backed sets are all-or-nothing: one missing
+    /// member makes the whole entry not resendable (never sync a subset).
+    #[tokio::test]
+    async fn resend_with_missing_manifest_member_returns_payload_lost() {
+        let missing = "/nonexistent/uc-resend-test/definitely-gone.txt";
+        let file_set = uc_core::clipboard::EntryFileSet {
+            lines: vec![uc_core::clipboard::EntryFileSetLine {
+                line_index: 0,
+                original_text: missing.to_string(),
+                kind: uc_core::clipboard::EntryFileSetLineKind::File {
+                    content_hash: uc_core::clipboard::ContentHash {
+                        alg: uc_core::clipboard::HashAlgorithm::Blake3V1,
+                        bytes: [7u8; 32],
+                    },
+                    blob_id: None,
+                    size_bytes: None,
+                },
+            }],
+        };
+        let (uc, entry_id) = build_file_uc("file:///tmp/whatever.txt\r\n", file_set);
+
+        let err = uc
+            .execute(ResendEntryCommand {
+                entry_id,
+                target_filter: Some(vec![DeviceId::new("peer-a")]),
+            })
+            .await
+            .expect_err("expected PayloadLost");
+
+        match err {
+            ResendEntryError::EntryNotResendable { reason, .. } => {
+                assert_eq!(reason, NotResendableReason::PayloadLost);
+            }
+            other => panic!("expected EntryNotResendable, got {other:?}"),
+        }
     }
 }

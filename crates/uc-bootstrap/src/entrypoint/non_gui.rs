@@ -629,6 +629,7 @@ pub async fn build_cli_app_runtime(
         entry_delivery_repo: wired.shared.entry_delivery_repo.clone(),
         trusted_peer_repo: wired.shared.trusted_peer_repo.clone(),
         device_identity: deps.device.device_identity.clone(),
+        entry_file_set_repo: deps.storage.entry_file_set_repo.clone(),
     }));
 
     let app_facade = build_app_facade_from_deps(

@@ -30,13 +30,17 @@ use uc_observability::analytics::{
 use uc_observability::{stages, FlowId};
 
 use uc_core::blob::ports::BlobContentIngestPort;
-use uc_core::clipboard::{ClipboardPayloadSource, PersistedClipboardRepresentation};
+use uc_core::clipboard::{
+    is_file_mime_or_format, ClipboardPayloadSource, EntryFileSet, EntryFileSetExcludeReason,
+    EntryFileSetLine, EntryFileSetLineKind, PersistedClipboardRepresentation,
+};
 
-use crate::facade::clipboard_outbound::extract_file_paths_from_snapshot;
+use crate::facade::clipboard_outbound::{parse_uri_list_line, UriListLineKind};
 use uc_core::ids::{EntryId, EventId};
 use uc_core::ports::clipboard::{
-    FindEntryIdBySnapshotHashPort, ReplaceEntryContentPort, RepresentationCachePort,
-    SaveClipboardEntryPort, SpoolQueuePort, SpoolRequest, TouchClipboardEntryPort,
+    EntryFileSetRepositoryPort, FindEntryIdBySnapshotHashPort, ReplaceEntryContentPort,
+    RepresentationCachePort, SaveClipboardEntryPort, SpoolQueuePort, SpoolRequest,
+    TouchClipboardEntryPort,
 };
 use uc_core::ports::{
     ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort, DeviceIdentityPort,
@@ -105,6 +109,10 @@ pub struct CaptureClipboardUseCase {
     ///   identity is derived from device-independent file content rather than
     ///   the device-local `text/uri-list` path text.
     blob_ingest: Arc<dyn BlobContentIngestPort>,
+    /// Persists the file-class entry's line-level manifest built from this
+    /// same capture (see [`build_entry_file_set`]) so later readers (out of
+    /// this phase's scope) don't have to re-parse/re-hash the source data.
+    entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     /// Transactional entry-replace used by [`CommitMode::Replace`]. Swaps the
     /// content behind an existing entry_id in place (FK-safe cascade, sticky
     /// state preserved) instead of inserting a new entry. Only the inbound
@@ -137,6 +145,7 @@ impl CaptureClipboardUseCase {
         representation_cache: Arc<dyn RepresentationCachePort>,
         spool_queue: Arc<dyn SpoolQueuePort>,
         blob_ingest: Arc<dyn BlobContentIngestPort>,
+        entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
         replace_entry: Arc<dyn ReplaceEntryContentPort>,
         analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
@@ -151,6 +160,7 @@ impl CaptureClipboardUseCase {
             representation_cache,
             spool_queue,
             blob_ingest,
+            entry_file_set_repo,
             replace_entry,
             coordinator: None,
             analytics,
@@ -256,16 +266,24 @@ impl CaptureClipboardUseCase {
                 } => d,
                 _ => self.device_identity.current_device_id(),
             };
-            // Populate file_content_digests so snapshot_hash() is based on
-            // device-independent file *content* rather than the text/uri-list
-            // path text (device-specific). Skipped when already populated
-            // (RemotePush: the inbound materializer fills these from the wire
-            // before this capture runs).
+            // Build this capture's file-set manifest (line-level: kept for
+            // persistence below) and use it to populate `file_content_digests`
+            // so `snapshot_hash()` is based on device-independent file
+            // *content* rather than the text/uri-list path text (device-
+            // specific). Skipped when already populated (RemotePush: the
+            // inbound materializer fills these from the wire before this
+            // capture runs; it does not yet build a manifest — out of this
+            // phase's scope).
+            let mut file_set: Option<EntryFileSet> = None;
             if snapshot.file_content_digests.is_empty() {
-                let digests =
-                    derive_file_content_digests(&snapshot, self.blob_ingest.as_ref()).await;
-                if !digests.is_empty() {
-                    snapshot.file_content_digests = digests;
+                if let Some(built) =
+                    build_entry_file_set(&snapshot, self.blob_ingest.as_ref()).await
+                {
+                    let digests = built.content_digest_contribution();
+                    if !digests.is_empty() {
+                        snapshot.file_content_digests = digests;
+                    }
+                    file_set = Some(built);
                 }
             }
             let snapshot_hash = match authoritative_hash {
@@ -568,6 +586,27 @@ impl CaptureClipboardUseCase {
             .instrument(info_span!(stages::PERSIST_ENTRY))
             .await?;
 
+            // Persist the file-set manifest built above, now that `entry_id`
+            // is durable. Best-effort: a failure here does not roll back the
+            // capture (nothing reads this manifest yet — see module doc);
+            // it's logged so a persistently-failing save is visible.
+            //
+            // FIXME(followup): once a reader exists (dispatch/resend/display),
+            // this best-effort save becomes a real inconsistency source — the
+            // entry would exist while `load()` returns `Ok(None)`, which is
+            // indistinguishable from "not a file-class entry". At that point
+            // either make this save part of the entry's persistence
+            // transaction, or give the reader a way to tell the two apart.
+            if let Some(file_set) = &file_set {
+                if let Err(err) = self.entry_file_set_repo.save(&entry_id, file_set).await {
+                    warn!(
+                        entry_id = %entry_id,
+                        error = %err,
+                        "capture: failed to persist entry file-set manifest"
+                    );
+                }
+            }
+
             info!(event_id = %event_id, entry_id = %entry_id, "Clipboard capture completed");
 
             // schema doc §12.1 · outbound 同步链路源头信号。
@@ -699,39 +738,42 @@ async fn resurface_existing_entry(
     }
 }
 
-/// Derive `file_content_digests` for a freshly captured snapshot so that
-/// [`SystemClipboardSnapshot::snapshot_hash`] keys on device-independent file
-/// *content* rather than the device-local `text/uri-list` path text. Returns
-/// the digest list (empty when the snapshot carries no resolvable files).
+/// Build the line-level [`EntryFileSet`] manifest for a freshly captured
+/// file-class snapshot. Returns `None` when the snapshot carries no
+/// resolvable file lines (not a file-class snapshot at all).
 ///
-/// Two file-rep shapes contribute, both resolved to file paths and hashed via
-/// the fallible [`BlobContentIngestPort::hash_path`] (never a rep's
-/// `content_hash()`, which `panic!`s on a stream-hash error):
-/// - `ClipboardPayloadSource::LocalFile` reps (e.g. macOS Finder copy): the path
-///   is carried directly on the rep.
-/// - Inline `text/uri-list` file reps (e.g. Windows file copy): the files live
-///   as path text, not `LocalFile` reps. Without hashing them, capture would
-///   store the uri-list path-text hash while dispatch sends the content hash,
-///   and the receiver would create two entries for one file.
+/// Two file-rep shapes contribute lines:
+/// - `ClipboardPayloadSource::LocalFile` reps (e.g. macOS Finder copy): one
+///   line per rep, keyed by its path (there is no backing uri-list text to
+///   preserve, so the path's display form stands in for `original_text`).
+/// - An inline `text/uri-list` file rep (e.g. Windows file copy): one line
+///   per line of that rep's text, in original order — including blank/
+///   comment/non-file lines, so the manifest can later distinguish "one more
+///   line" or "different line order" as a different identity.
 ///
-/// `extract_file_paths_from_snapshot` is shared with the dispatch path so both
-/// resolve the same set of files (including macOS APFS file-reference
-/// resolution). On *any* per-file hash failure the whole digest list is
-/// discarded (not just the failed file) so identity never keys on a partial
-/// subset; it then falls back to the uri-list path text.
+/// The two shapes are mutually exclusive in practice (a snapshot carries
+/// either `LocalFile` reps or an inline uri-list rep), so the inline branch
+/// only runs when no `LocalFile` rep is present.
 ///
-/// The two shapes are mutually exclusive in practice (a snapshot carries either
-/// `LocalFile` reps or an inline uri-list rep), so the inline branch only runs
-/// when no `LocalFile` digests were found.
-async fn derive_file_content_digests(
+/// Each file line's content hash comes from the fallible
+/// [`BlobContentIngestPort::hash_path`] (never a rep's `content_hash()`,
+/// which `panic!`s on a stream-hash error) — identity only, without
+/// materializing a blob. Blob materialization is a separate, later step (the
+/// dispatch path publishes lazily); doing it here would both stall the
+/// capture loop on large files and orphan a blob this entry never
+/// references. A hash failure marks just that one line `Excluded` so the
+/// manifest still records "this line was a file we couldn't read" for
+/// display/debugging, rather than silently dropping it. Crucially this does
+/// NOT weaken the entry's identity: any `Excluded` line makes
+/// [`EntryFileSet::content_digest_contribution`] return empty (all-or-
+/// nothing), so identity falls back to path-text — matching the dispatch
+/// side (`publish_file_blob_refs`), which is itself all-or-nothing. This
+/// avoids keying identity on a device-/timing-dependent subset of readable
+/// files (the dual-channel file dedup divergence bug).
+async fn build_entry_file_set(
     snapshot: &SystemClipboardSnapshot,
     blob_ingest: &dyn BlobContentIngestPort,
-) -> Vec<[u8; 32]> {
-    // Identity contributors as file paths. `LocalFile` reps (e.g. macOS Finder
-    // copy) carry the path directly; an inline `text/uri-list` rep (e.g. Windows
-    // file copy) carries them as path text. The two shapes are mutually
-    // exclusive in practice, so the inline extraction only runs when no
-    // `LocalFile` rep is present.
+) -> Option<EntryFileSet> {
     let local_file_paths: Vec<_> = snapshot
         .representations
         .iter()
@@ -740,61 +782,77 @@ async fn derive_file_content_digests(
             ClipboardPayloadSource::Inline(_) => None,
         })
         .collect();
-    let local_file_digests = local_file_paths.len();
-    let mut extracted_paths = 0usize;
-    let paths = if local_file_paths.is_empty() {
-        let extracted = extract_file_paths_from_snapshot(snapshot);
-        extracted_paths = extracted.len();
-        extracted
-    } else {
-        local_file_paths
-    };
 
-    // Identity only: hash each file's content (device-independent) without
-    // materializing/encrypting a blob into local storage. The actual file bytes
-    // for transfer are published lazily by the (spawned, non-blocking) dispatch
-    // path, so a synchronous ingest here would both stall the capture loop on
-    // large files and orphan a blob this entry never references. `hash_path` is
-    // fallible, so an unreadable or deleted copied file degrades to a fallback
-    // identity instead of panicking — a `LocalFile` rep's `content_hash()` would
-    // `panic!` on a stream-hash error.
-    let mut digests: Vec<[u8; 32]> = Vec::with_capacity(paths.len());
-    let mut had_hash_failure = false;
-    for path in &paths {
-        match blob_ingest.hash_path(path).await {
-            Ok(content_hash) => digests.push(content_hash.bytes),
-            Err(err) => {
-                had_hash_failure = true;
-                // No path in the field: a clipboard file path is user content.
-                warn!(error = %err, "capture: could not derive complete file-set identity");
+    if !local_file_paths.is_empty() {
+        let mut lines = Vec::with_capacity(local_file_paths.len());
+        for (idx, path) in local_file_paths.iter().enumerate() {
+            let kind = classify_file_path(path, blob_ingest).await;
+            lines.push(EntryFileSetLine {
+                line_index: idx as i64,
+                original_text: path.display().to_string(),
+                kind,
+            });
+        }
+        debug!(
+            line_count = lines.len(),
+            "capture: built file-set manifest from LocalFile reps"
+        );
+        return Some(EntryFileSet { lines });
+    }
+
+    let uri_list_text = snapshot.representations.iter().find_map(|rep| {
+        if !is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id) {
+            return None;
+        }
+        rep.inline_bytes()
+            .and_then(|bytes| std::str::from_utf8(bytes).ok())
+            .map(str::to_string)
+    })?;
+
+    let mut lines = Vec::with_capacity(uri_list_text.lines().count());
+    for (idx, raw_line) in uri_list_text.lines().enumerate() {
+        let kind = match parse_uri_list_line(raw_line) {
+            UriListLineKind::NonFile => EntryFileSetLineKind::NonFile,
+            UriListLineKind::File(path) => classify_file_path(&path, blob_ingest).await,
+        };
+        lines.push(EntryFileSetLine {
+            line_index: idx as i64,
+            original_text: raw_line.to_string(),
+            kind,
+        });
+    }
+    debug!(
+        line_count = lines.len(),
+        "capture: built file-set manifest from inline uri-list text"
+    );
+    Some(EntryFileSet { lines })
+}
+
+/// Classify one resolved file path into a manifest line's kind. Hash
+/// failures (unreadable/deleted file) degrade to `Excluded` rather than
+/// propagating — a `LocalFile` rep's `content_hash()` would `panic!` on the
+/// same failure, which is exactly what routing through the fallible
+/// `hash_path` avoids.
+async fn classify_file_path(
+    path: &std::path::Path,
+    blob_ingest: &dyn BlobContentIngestPort,
+) -> EntryFileSetLineKind {
+    match blob_ingest.hash_path(path).await {
+        Ok(content_hash) => EntryFileSetLineKind::File {
+            content_hash,
+            // Not yet materialized into a blob at capture time (see this
+            // function's doc); a later, out-of-scope step fills these in.
+            blob_id: None,
+            size_bytes: None,
+        },
+        Err(err) => {
+            // No path in the field: a clipboard file path is user content.
+            warn!(error = %err, "capture: could not derive file-set line content hash");
+            EntryFileSetLineKind::Excluded {
+                reason: EntryFileSetExcludeReason::IngestFailed,
             }
         }
     }
-    // A partial file-set identity (some files hashed, some failed) would key the
-    // snapshot on a strict subset, colliding with a different copy that contains
-    // only those files. Discard everything on any failure so identity
-    // deterministically falls back to the `text/uri-list` path text.
-    if had_hash_failure {
-        digests.clear();
-    }
-
-    // Diagnostic for the dual-entry file-sync bug: when this returns empty for a
-    // file copy, the entry's `snapshot_hash` falls back to the device-local
-    // `text/uri-list` path text, which diverges from the dispatch path's
-    // content-based hash and makes the receiver create a second entry. The
-    // counts pin which stage produced no digest on the next repro: no `LocalFile`
-    // rep AND no extractable inline path (`extracted_uri_list_paths = 0`) means
-    // the file rep was not recognised / not a parseable `file:` URL; a non-zero
-    // path count with `derived_digests = 0` means at least one `hash_path` failed
-    // and the partial set was discarded (each failure logs its own warn above).
-    debug!(
-        local_file_digests,
-        extracted_uri_list_paths = extracted_paths,
-        derived_digests = digests.len(),
-        "capture: derived file content digests for snapshot identity"
-    );
-
-    digests
 }
 
 /// schema doc §12.1 红线 · 把 `ClipboardChangeOrigin` 映射到 telemetry 的
@@ -949,8 +1007,14 @@ mod tests {
 
         let mut a = snap_a.clone();
         let mut b = snap_b.clone();
-        a.file_content_digests = derive_file_content_digests(&a, &blob_ingest).await;
-        b.file_content_digests = derive_file_content_digests(&b, &blob_ingest).await;
+        a.file_content_digests = build_entry_file_set(&a, &blob_ingest)
+            .await
+            .expect("uri-list snapshot should yield a file-set")
+            .content_digest_contribution();
+        b.file_content_digests = build_entry_file_set(&b, &blob_ingest)
+            .await
+            .expect("uri-list snapshot should yield a file-set")
+            .content_digest_contribution();
 
         assert!(
             !a.file_content_digests.is_empty(),
@@ -997,10 +1061,62 @@ mod tests {
             Some("text/uri-list"),
             b"file:///Users/alice/report.msi",
         )]);
-        let digests = derive_file_content_digests(&snap, &AlwaysFails).await;
+        let file_set = build_entry_file_set(&snap, &AlwaysFails)
+            .await
+            .expect("uri-list snapshot should still yield a file-set (all lines excluded)");
         assert!(
-            digests.is_empty(),
+            file_set.content_digest_contribution().is_empty(),
             "all-files-failed must yield no digests (identity falls back to uri-list text)"
+        );
+    }
+
+    /// Multi-file uri-list where only *some* files hash successfully. Identity
+    /// must stay all-or-nothing: a partial subset of digests would key the
+    /// entry on whichever files happened to be readable at capture time, which
+    /// can differ across devices/retries and re-introduces the double-entry
+    /// dedup split. So a partial failure must yield an EMPTY contribution (fall
+    /// back to path-text), NOT the digests of the readable subset.
+    #[tokio::test]
+    async fn inline_uri_list_partial_ingest_failure_falls_back_to_empty_identity() {
+        // Fails only for "locked.msi"; hashes any other path by name.
+        struct FailsOne;
+        #[async_trait::async_trait]
+        impl BlobContentIngestPort for FailsOne {
+            async fn ingest_path(
+                &self,
+                _: &std::path::Path,
+            ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+                Err(anyhow::anyhow!("unused"))
+            }
+
+            async fn hash_path(
+                &self,
+                source_path: &std::path::Path,
+            ) -> anyhow::Result<uc_core::ContentHash> {
+                if source_path.file_name().and_then(|n| n.to_str()) == Some("locked.msi") {
+                    Err(anyhow::anyhow!("locked"))
+                } else {
+                    Ok(FakeIngestByName::name_hash(source_path))
+                }
+            }
+        }
+
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///Users/alice/ok-a.txt\nfile:///Users/alice/locked.msi\nfile:///Users/alice/ok-b.txt",
+        )]);
+        let file_set = build_entry_file_set(&snap, &FailsOne)
+            .await
+            .expect("uri-list snapshot should yield a file-set");
+
+        // The manifest still records all three lines (two File, one Excluded).
+        assert_eq!(file_set.lines.len(), 3);
+        assert_eq!(file_set.file_lines().count(), 2);
+
+        assert!(
+            file_set.content_digest_contribution().is_empty(),
+            "partial ingest failure must yield NO digests (all-or-nothing), not the readable subset"
         );
     }
 

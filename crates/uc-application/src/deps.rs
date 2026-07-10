@@ -16,11 +16,11 @@ use uc_core::blob::ports::{BlobContentIngestPort, BlobReaderPort, BlobWriterPort
 use uc_core::ids::RepresentationId;
 use uc_core::ports::clipboard::{
     AdvanceActiveClipboardPort, CheckEntryAvailabilityPort, ClipboardPayloadResolverPort,
-    ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, FindEntryIdBySnapshotHashPort,
-    GetClipboardEntryPort, GetEntrySnapshotHashPort, GetRepresentationByBlobIdPort,
-    GetRepresentationPort, ListClipboardEntriesPort, ListRepresentationsForEventPort,
-    LoadActiveClipboardPort, ReplaceEntryContentPort, RepresentationCachePort,
-    ResetActiveClipboardPort, SaveClipboardEntryPort, SelfWriteLedgerPort,
+    ClipboardRepresentationNormalizerPort, DeleteClipboardEntryPort, EntryFileSetRepositoryPort,
+    FindEntryIdBySnapshotHashPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
+    GetRepresentationByBlobIdPort, GetRepresentationPort, ListClipboardEntriesPort,
+    ListRepresentationsForEventPort, LoadActiveClipboardPort, ReplaceEntryContentPort,
+    RepresentationCachePort, ResetActiveClipboardPort, SaveClipboardEntryPort, SelfWriteLedgerPort,
     SetClipboardEntryFavoritePort, SpoolQueuePort, SystemClipboardPort, ThumbnailGeneratorPort,
     ThumbnailRepositoryPort, TouchClipboardEntryPort, UpdateRepresentationProcessingResultPort,
 };
@@ -244,6 +244,8 @@ pub struct StoragePorts {
     /// content hash; used by capture to derive a file entry's snapshot
     /// identity from device-independent file content.
     pub blob_content_ingest: Arc<dyn BlobContentIngestPort>,
+    /// File-class entry line-level manifest, built and persisted by capture.
+    pub entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
     pub thumbnail_repo: Arc<dyn ThumbnailRepositoryPort>,
     pub thumbnail_generator: Arc<dyn ThumbnailGeneratorPort>,
     pub file_transfer: FileTransferPorts,

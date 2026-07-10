@@ -645,6 +645,7 @@ pub(crate) async fn build_sync_engine_assembly(
             Arc::clone(&deps.clipboard.representation_cache),
             Arc::clone(&deps.clipboard.spool_queue),
             Arc::clone(&deps.storage.blob_content_ingest),
+            Arc::clone(&deps.storage.entry_file_set_repo),
             Arc::clone(&deps.clipboard.entry_ports.replace_content),
             Arc::clone(&deps.analytics),
         )

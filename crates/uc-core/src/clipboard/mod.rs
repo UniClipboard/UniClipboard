@@ -6,6 +6,7 @@ mod decision;
 mod delivery;
 mod entry;
 mod event;
+mod file_set;
 mod hash;
 pub mod integration_mode;
 pub mod link_utils;
@@ -30,6 +31,10 @@ pub use delivery::{
 };
 pub use entry::*;
 pub use event::*;
+pub use file_set::{
+    EntryFileSet, EntryFileSetError, EntryFileSetExcludeReason, EntryFileSetLine,
+    EntryFileSetLineKind,
+};
 pub use policy::ClipboardSelection;
 pub use policy::*;
 pub use repository_error::ClipboardRepositoryError;

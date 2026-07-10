@@ -93,6 +93,8 @@ struct InfraLayer {
     /// 投递结果仓储,由 `DispatchClipboardEntryUseCase` 写、由
     /// `GetEntryDeliveryViewUseCase` 读。
     entry_delivery_repo: Arc<dyn uc_core::ports::EntryDeliveryRepositoryPort>,
+    /// File-class entry line-level manifest, built and persisted by capture.
+    entry_file_set_repo: Arc<dyn uc_core::ports::clipboard::EntryFileSetRepositoryPort>,
     representation_repo: Arc<dyn ClipboardRepresentationStore>,
     selection_repo: Arc<dyn ClipboardSelectionRepositoryPort>,
 
@@ -566,6 +568,11 @@ fn create_infra_layer(
         uc_infra::db::repositories::DieselEntryDeliveryRepository::new(Arc::clone(&db_executor)),
     );
 
+    let entry_file_set_repo: Arc<dyn uc_core::ports::clipboard::EntryFileSetRepositoryPort> =
+        Arc::new(
+            uc_infra::db::repositories::DieselEntryFileSetRepository::new(Arc::clone(&db_executor)),
+        );
+
     let member_repo_impl =
         DieselSpaceMemberRepository::new(Arc::clone(&db_executor), SpaceMemberRowMapper);
     let member_repo: Arc<dyn uc_core::MemberRepositoryPort> = Arc::new(member_repo_impl);
@@ -718,6 +725,7 @@ fn create_infra_layer(
         clipboard_event_repo,
         clipboard_event_reader_repo,
         entry_delivery_repo,
+        entry_file_set_repo,
         representation_repo,
         selection_repo,
         active_clipboard_register,
@@ -956,6 +964,7 @@ pub fn wire_dependencies(
             blob_store: platform.blob_store,
             blob_writer: platform.blob_writer,
             blob_content_ingest: platform.blob_content_ingest,
+            entry_file_set_repo: infra.entry_file_set_repo,
             thumbnail_repo: infra.thumbnail_repo,
             thumbnail_generator: infra.thumbnail_generator,
             file_transfer: infra.file_transfer,

@@ -113,6 +113,7 @@ pub fn build_daemon_runtime_workers(
             input.deps.clipboard.representation_cache.clone(),
             input.deps.clipboard.spool_queue.clone(),
             input.deps.storage.blob_content_ingest.clone(),
+            input.deps.storage.entry_file_set_repo.clone(),
             input.deps.clipboard.entry_ports.replace_content.clone(),
             input.deps.analytics.clone(),
         )

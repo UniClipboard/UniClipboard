@@ -93,6 +93,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    entry_file_set (entry_id, line_index) {
+        entry_id -> Text,
+        line_index -> BigInt,
+        original_text -> Text,
+        kind -> Text,
+        content_hash -> Nullable<Text>,
+        blob_id -> Nullable<Text>,
+        size_bytes -> Nullable<BigInt>,
+        exclude_reason -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     clipboard_migration_backup (event_id, representation_id) {
         event_id -> Text,
         representation_id -> Text,
@@ -241,6 +254,7 @@ diesel::joinable!(clipboard_entry_delivery -> clipboard_entry (entry_id));
 diesel::joinable!(clipboard_selection -> clipboard_entry (entry_id));
 diesel::joinable!(clipboard_snapshot_representation -> blob (blob_id));
 diesel::joinable!(clipboard_snapshot_representation -> clipboard_event (event_id));
+diesel::joinable!(entry_file_set -> clipboard_entry (entry_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     blob,
@@ -252,6 +266,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     clipboard_selection,
     clipboard_representation_thumbnail,
     clipboard_snapshot_representation,
+    entry_file_set,
     file_transfer,
     file_transfer_events,
     mobile_device,

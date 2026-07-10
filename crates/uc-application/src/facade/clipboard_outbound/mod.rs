@@ -1,5 +1,3 @@
-#[cfg(target_os = "macos")]
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -35,6 +33,9 @@ use crate::usecases::clipboard_sync::V3BlobRef;
 pub use crate::usecases::clipboard_sync::resend_entry::{
     NotResendableReason, ResendEntryCommand, ResendEntryError, ResendReport,
 };
+
+mod file_uri_line;
+pub(crate) use file_uri_line::{parse_uri_list_line, UriListLineKind};
 
 /// Crate-internal adapter trait over [`BlobTransferFacade`]'s publish surface.
 ///
@@ -422,11 +423,6 @@ impl ClipboardOutboundFacade {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn resolve_apfs_file_reference(_path: &Path) -> Option<PathBuf> {
-    None
-}
-
 pub(crate) fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapshot) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for rep in &snapshot.representations {
@@ -457,21 +453,8 @@ pub(crate) fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapsho
         };
 
         for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-
-            if let Ok(url) = url::Url::parse(line) {
-                if url.scheme() == "file" {
-                    if let Ok(path) = url.to_file_path() {
-                        #[cfg(target_os = "macos")]
-                        let resolved = resolve_apfs_file_reference(&path).unwrap_or(path);
-                        #[cfg(not(target_os = "macos"))]
-                        let resolved = path;
-                        paths.push(resolved);
-                    }
-                }
+            if let UriListLineKind::File(path) = parse_uri_list_line(line) {
+                paths.push(path);
             }
         }
     }

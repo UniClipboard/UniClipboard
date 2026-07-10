@@ -96,12 +96,20 @@ interface ClipboardHistoryPanelProps {
   onShowPrepared?: (requestId: number) => void
 }
 
-const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
+/**
+ * Outer shell: remount the session on every `showRequestId` so search buffer,
+ * filters, and the live-search item list cannot flash the previous show's
+ * results. The webview stays alive between hides; only this tree is recreated.
+ */
+const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = props => {
+  useThemeSync()
+  return <ClipboardHistoryPanelSession key={props.showRequestId ?? 0} {...props} />
+}
+
+const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   showRequestId = 0,
   onShowPrepared,
 }) => {
-  useThemeSync()
-
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
 
@@ -109,19 +117,22 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
   // submenu shows current names and connection state. The quick panel is a
   // separate webview with its own store and — unlike the main window's
   // DevicesPage — does not subscribe to `peers.changed`, so this snapshot is the
-  // only source. Re-run on every re-open (`showRequestId`), mirroring the
-  // clipboard `refetch()` below, so a long-lived hidden window doesn't serve a
-  // stale device list.
+  // only source. Fresh on every session mount (each re-open).
   useEffect(() => {
     dispatch(fetchSpaceMembers())
       .unwrap()
       .catch(err => {
         log.warn({ err }, 'failed to prime paired-device list')
       })
-  }, [dispatch, showRequestId])
+  }, [dispatch])
 
   const [searchQuery, setSearchQuery] = useState('')
+  // Debounce typing only; clearing must hit the data layer immediately so the
+  // list does not keep showing matches for ~300ms after the box is empty. The
+  // `.trim()` here only gates empty-vs-not (whitespace-only reads as cleared);
+  // `useHistorySearch` owns the actual query normalization for the daemon call.
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
+  const activeSearchQuery = searchQuery.trim() === '' ? '' : debouncedSearchQuery
   const [activeFilter, setActiveFilter] = useState<Filter>(Filter.All)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
@@ -164,23 +175,15 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
   const historyLockedWidth = previewState.historyLockedWidth
   const previewFocusSource = previewState.focusSource
 
-  const {
-    filteredItems,
-    previewItems,
-    isSearching,
-    searchTotal,
-    loading,
-    isLocked,
-    removeItem,
-    refetch,
-  } = useHistorySearch({
-    searchQuery: debouncedSearchQuery,
-    activeFilter,
-    tagFilter,
-    sourceFilter,
-    extensionFilter,
-    timeRange,
-  })
+  const { filteredItems, previewItems, isSearching, searchTotal, loading, isLocked, removeItem } =
+    useHistorySearch({
+      searchQuery: activeSearchQuery,
+      activeFilter,
+      tagFilter,
+      sourceFilter,
+      extensionFilter,
+      timeRange,
+    })
 
   // Latest `filteredItems` for `handleKeyDown` to read by index without
   // depending on the array's identity — `filteredItems` gets a new reference
@@ -212,30 +215,11 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
     [clearPreviewTimer]
   )
 
+  // Session remount already resets search/filters/list. This only focuses the
+  // search box and tells the host the UI is ready to finalize the show.
   useEffect(() => {
     if (showRequestId === 0) return
     setSkipTransition(true)
-    clearPreviewTimer()
-    previewLayoutTokenRef.current += 1
-    dispatchPreview({ type: 'reset' })
-    setPreviewSide('right')
-    setSearchQuery('')
-    setActiveFilter(Filter.All)
-    setTagFilter(null)
-    setSourceFilter(null)
-    setExtensionFilter(null)
-    setTimeRange('all_time')
-    setSelectedIndex(0)
-    setHoveredIndex(null)
-    setIsKeyboardNav(true)
-    setHasPointerMovedSinceShow(false)
-    setPreviewTargetId(null)
-    // Drop stale optimistic favorite flips; the refetch below re-reads the
-    // authoritative `isFavorited` from the daemon.
-    setFavoriteOverrides({})
-    // Refresh on every re-open so the panel shows the latest clipboard even if
-    // the filters were already at their defaults (no model change to trigger it).
-    refetch()
 
     const focusTimer = setTimeout(() => {
       setSkipTransition(false)
@@ -246,7 +230,7 @@ const ClipboardHistoryPanel: React.FC<ClipboardHistoryPanelProps> = ({
     return () => {
       clearTimeout(focusTimer)
     }
-  }, [clearPreviewTimer, onShowPrepared, refetch, showRequestId])
+  }, [onShowPrepared, showRequestId])
 
   useEffect(() => {
     void setQuickPanelLayout(uiScale, previewExpanded).catch(() => {})

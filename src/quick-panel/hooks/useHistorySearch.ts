@@ -59,8 +59,6 @@ interface UseHistorySearchResult {
   isLocked: boolean
   /** Optimistically drop an entry after the user deletes it. */
   removeItem: (id: string) => void
-  /** Re-issue the current query (used to refresh on every panel re-open). */
-  refetch: () => void
 }
 
 /**
@@ -123,6 +121,5 @@ export function useHistorySearch({
     loading: live.isLoading && !narrowed,
     isLocked,
     removeItem: live.removeItem,
-    refetch: live.refetch,
   }
 }

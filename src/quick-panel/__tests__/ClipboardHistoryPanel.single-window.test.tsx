@@ -8,6 +8,7 @@ import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
 import i18n from '@/i18n'
 import devicesReducer from '@/store/slices/devicesSlice'
 import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
+import { useHistorySearch } from '../hooks/useHistorySearch'
 
 const invokeMock = vi.fn()
 
@@ -79,7 +80,6 @@ vi.mock('../hooks/useHistorySearch', () => ({
     loading: false,
     isLocked: false,
     removeItem: vi.fn(),
-    refetch: vi.fn(),
   })),
 }))
 
@@ -412,6 +412,13 @@ describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
     return screen.getByRole('combobox') as HTMLInputElement
   }
 
+  // The `searchQuery` the data layer was last asked for. Proxies "what the list
+  // is actually showing" without unmocking the data layer.
+  function lastHistoryQuery() {
+    const calls = vi.mocked(useHistorySearch).mock.calls
+    return calls.at(-1)?.[0]?.searchQuery
+  }
+
   it('acts on the hovered row rather than the keyboard-selected row when both differ', async () => {
     renderPanel()
     // Panel opens with entry-1 selected by keyboard.
@@ -481,5 +488,48 @@ describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
     await waitFor(() => {
       expect(deleteClipboardEntry).toHaveBeenCalledWith('entry-1')
     })
+  })
+
+  it('remounts a fresh session on re-open so a settled prior query does not carry over', async () => {
+    // The outer shell keys the session on showRequestId: buffer, filters, and
+    // the live-search query all start empty instead of flashing the last show.
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+    const { rerender } = render(
+      <Provider store={store}>
+        <ClipboardHistoryPanel showRequestId={1} />
+      </Provider>
+    )
+    // Let the first show settle into an active 'invoice' query (past the
+    // debounce), so the remount has a real prior query to discard.
+    fireEvent.change(searchBox(), { target: { value: 'invoice' } })
+    await waitFor(() => expect(lastHistoryQuery()).toBe('invoice'))
+    expect(searchBox()).toHaveValue('invoice')
+
+    rerender(
+      <Provider store={store}>
+        <ClipboardHistoryPanel showRequestId={2} />
+      </Provider>
+    )
+
+    // Both the box and the query the data layer sees reset to empty; the list
+    // never re-queries with the previous show's 'invoice'.
+    await waitFor(() => expect(searchBox()).toHaveValue(''))
+    expect(lastHistoryQuery()).toBe('')
+  })
+
+  it('debounces typing but sends the cleared query to the data layer immediately', async () => {
+    renderPanel()
+    const input = searchBox()
+
+    // Typing does not reach the data layer synchronously — it waits for the
+    // debounce, so the browse query stays empty until the timer fires.
+    fireEvent.change(input, { target: { value: 'abc' } })
+    expect(lastHistoryQuery()).toBe('')
+    await waitFor(() => expect(lastHistoryQuery()).toBe('abc'))
+
+    // Clearing bypasses the debounce: the empty browse query is applied on the
+    // next render, not ~300ms later, so the list stops matching 'abc' at once.
+    fireEvent.change(input, { target: { value: '' } })
+    expect(lastHistoryQuery()).toBe('')
   })
 })

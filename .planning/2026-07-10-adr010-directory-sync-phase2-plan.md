@@ -60,10 +60,19 @@ PR #1290 只做了「manifest 基础设施 + 捕获侧写入」：
      出站（与 all-or-nothing 语义一致），不再等 publish 阶段撞 I/O 错误。
 2. **重发路径同源**：manual resend 与 dispatch 走同一条 manifest 读取路径，
    禁止并行保留两套文件列表推导逻辑。
-3. **blob_id / size_bytes 回填**：`publish_file_blob_refs` 物化成功后，
-   load → 补齐对应行 → save（整体 replace 语义，port 不加新方法）。
-   兑现 phase 1 在模型注释里许下的「由物化方补齐」契约。
-4. 测试：manifest 命中 / 缺失回退 / Excluded fail-fast / 回填后再读一致性。
+3. ~~**blob_id / size_bytes 回填**~~ **实现时裁掉**：出站 publish 走的是
+   iroh-blobs 传输通道（产出 `BlobDigest` + ticket，落 `blob_reference` 表），
+   不是 manifest `blob_id: Option<BlobId>` 所指的本地 `EncryptedBlobStore`
+   句柄——把 iroh digest 写进 `blob_id` 会污染语义。该字段仍留给未来真正把
+   成员物化进本地 blob 仓库的路径（接收侧重建 / 本地缓存）补齐。
+4. 测试：manifest 命中（优先于 rep 重解析、两种 original_text 形态、排序去重）
+   / 缺失与读错回退 / Excluded fail-fast（dispatch Skipped + resend PayloadLost）
+   / manifest 成员在发送时刻不可读 → all-or-nothing 拦截。
+5. 实现中追加的语义决定（超出原计划）：
+   - **manifest 命中时成员丢失也全有或全无**：capture 后、send 前成员被删 →
+     整条 entry 不出站/不可重发，不再静默发子集（旧回退路径保留宽松语义）。
+   - **漂移可观测**：publish 后对比 wire digests 与 manifest 捕获时刻贡献值，
+     不一致记 WARN（阶段 3 的 (mtime,size) 漂移复核先有观测基线）。
 
 ### PR-B：捕获限额护栏（SizeCapExceeded 落地）
 

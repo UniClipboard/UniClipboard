@@ -806,10 +806,12 @@ impl FileSetCaps {
 /// directory capture lands, unbounded). The set is still admitted to local
 /// history; only sync is suppressed (the outbound path skips any manifest with
 /// excluded lines). The check is all-or-nothing to match
-/// [`EntryFileSet::content_digest_contribution`]. It only fires when every
-/// member is a stat-able regular file — if any member can't be measured, the
-/// per-line hashing below marks it `IngestFailed`, which already forces the
-/// same path-text fallback, so the size verdict is moot.
+/// [`EntryFileSet::content_digest_contribution`]. `LocalFile` reps carry their
+/// size, so their byte cap needs no filesystem access; inline uri-list members
+/// are `stat`ed. If an unmeasurable member is reached while still under budget
+/// the verdict stays `false` and the per-line hashing below marks it
+/// `IngestFailed`, which already forces the same path-text fallback, so the
+/// size verdict is moot.
 ///
 /// Each file line's content hash comes from the fallible
 /// [`BlobContentIngestPort::hash_path`] (never a rep's `content_hash()`,
@@ -831,23 +833,28 @@ async fn build_entry_file_set(
     blob_ingest: &dyn BlobContentIngestPort,
     caps: FileSetCaps,
 ) -> Option<EntryFileSet> {
-    let local_file_paths: Vec<_> = snapshot
+    // LocalFile reps already carry the member size (captured with the rep), so
+    // the byte-cap pre-check can sum sizes without any `metadata()` round-trip.
+    let local_file_members: Vec<CapMember> = snapshot
         .representations
         .iter()
         .filter_map(|r| match r.source() {
-            ClipboardPayloadSource::LocalFile { path, .. } => Some(path.clone()),
+            ClipboardPayloadSource::LocalFile { path, size_bytes } => Some(CapMember {
+                path: path.clone(),
+                known_size: Some(*size_bytes),
+            }),
             ClipboardPayloadSource::Inline(_) => None,
         })
         .collect();
 
-    if !local_file_paths.is_empty() {
-        let over_cap = file_set_exceeds_caps(&local_file_paths, caps).await;
-        let mut lines = Vec::with_capacity(local_file_paths.len());
-        for (idx, path) in local_file_paths.iter().enumerate() {
-            let kind = classify_file_path(path, blob_ingest, over_cap).await;
+    if !local_file_members.is_empty() {
+        let over_cap = file_set_exceeds_caps(&local_file_members, caps).await;
+        let mut lines = Vec::with_capacity(local_file_members.len());
+        for (idx, member) in local_file_members.iter().enumerate() {
+            let kind = classify_file_path(&member.path, blob_ingest, over_cap).await;
             lines.push(EntryFileSetLine {
                 line_index: idx as i64,
-                original_text: path.display().to_string(),
+                original_text: member.path.display().to_string(),
                 kind,
             });
         }
@@ -868,14 +875,19 @@ async fn build_entry_file_set(
     })?;
 
     let parsed: Vec<UriListLineKind> = uri_list_text.lines().map(parse_uri_list_line).collect();
-    let file_paths: Vec<_> = parsed
+    // Inline uri-list only yields path strings, so sizes are unknown here and
+    // the byte-cap pre-check must `stat` each member.
+    let file_members: Vec<CapMember> = parsed
         .iter()
         .filter_map(|kind| match kind {
-            UriListLineKind::File(path) => Some(path.clone()),
+            UriListLineKind::File(path) => Some(CapMember {
+                path: path.clone(),
+                known_size: None,
+            }),
             UriListLineKind::NonFile => None,
         })
         .collect();
-    let over_cap = file_set_exceeds_caps(&file_paths, caps).await;
+    let over_cap = file_set_exceeds_caps(&file_members, caps).await;
 
     let mut lines = Vec::with_capacity(parsed.len());
     for (idx, (raw_line, parsed_kind)) in uri_list_text.lines().zip(parsed).enumerate() {
@@ -896,29 +908,52 @@ async fn build_entry_file_set(
     Some(EntryFileSet { lines })
 }
 
+/// A file-set member for the whole-set cap pre-check.
+struct CapMember {
+    path: std::path::PathBuf,
+    /// Size already known from the capture rep (`LocalFile` carries it), so the
+    /// byte cap can be evaluated without a `metadata()` round-trip. `None` means
+    /// "measure it" — inline uri-list only gives a path string.
+    known_size: Option<u64>,
+}
+
 /// Millisecond-scale pre-check: does this file set exceed either whole-set
-/// cap? Uses `metadata()` only (no content read). Returns `false` (not over
-/// cap) unless *every* path is a stat-able regular file whose summed size or
-/// count trips a cap — an unmeasurable member (missing / directory / stat
-/// error) leaves the verdict `false` so the caller's per-line hashing can
-/// mark it `IngestFailed`, which forces the same path-text fallback anyway.
-async fn file_set_exceeds_caps(paths: &[std::path::PathBuf], caps: FileSetCaps) -> bool {
-    if caps.max_member_count > 0 && paths.len() as u64 > caps.max_member_count {
+/// cap? Reads `metadata()` only for members whose size isn't already known
+/// (never content); the member-count cap short-circuits before any filesystem
+/// access.
+///
+/// The byte verdict flips to `true` as soon as the running total exceeds the
+/// cap, so a member that can't be measured *after* the cap is already blown
+/// doesn't change the outcome. It only aborts to `false` when an unmeasurable
+/// member (missing / directory / stat error) is reached while still under
+/// budget — then the caller's per-line hashing marks that member
+/// `IngestFailed`, which forces the same path-text fallback, so the size
+/// verdict is moot anyway.
+async fn file_set_exceeds_caps(members: &[CapMember], caps: FileSetCaps) -> bool {
+    if caps.max_member_count > 0 && members.len() as u64 > caps.max_member_count {
         return true;
     }
     if caps.max_total_bytes == 0 {
         return false;
     }
     let mut total: u64 = 0;
-    for path in paths {
-        match tokio::fs::metadata(path).await {
-            Ok(meta) if meta.is_file() => total = total.saturating_add(meta.len()),
-            // Non-regular or unreadable member: can't confirm over-budget.
-            // Per-line hashing will mark it IngestFailed → path-text identity.
-            _ => return false,
+    for member in members {
+        let size = match member.known_size {
+            Some(size) => size,
+            None => match tokio::fs::metadata(&member.path).await {
+                Ok(meta) if meta.is_file() => meta.len(),
+                // Non-regular or unreadable member, still under budget: can't
+                // confirm over-budget. Per-line hashing will mark it
+                // IngestFailed → path-text identity.
+                _ => return false,
+            },
+        };
+        total = total.saturating_add(size);
+        if total > caps.max_total_bytes {
+            return true;
         }
     }
-    total > caps.max_total_bytes
+    false
 }
 
 /// Classify one resolved file path into a manifest line's kind.

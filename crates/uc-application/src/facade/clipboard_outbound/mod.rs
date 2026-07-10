@@ -5,7 +5,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use bytes::Bytes;
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uc_core::blob::ports::BlobReaderPort;
 use uc_core::clipboard::{
     is_file_mime_or_format, ClipboardPayloadSource, EntryFileSetExcludeReason, EntryFileSetLineKind,
@@ -594,7 +594,10 @@ pub(crate) async fn resolve_outbound_file_set(
     let file_set = match entry_file_set_repo.load(entry_id).await {
         Ok(Some(file_set)) => file_set,
         Ok(None) => {
-            info!(
+            // Expected for every pre-manifest (legacy) file entry, so keep it
+            // at debug: during the migration window this fires on each dispatch
+            // /resend of an old file entry and would otherwise flood info.
+            debug!(
                 entry_id = %entry_id.as_str(),
                 "outbound: no file-set manifest for file-class entry; falling back to rep parsing"
             );

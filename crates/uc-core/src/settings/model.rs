@@ -277,6 +277,22 @@ pub struct FileSyncSettings {
     pub file_sync_enabled: bool,
     pub small_file_threshold: u64,
     pub max_file_size: u64,
+    /// Total-byte ceiling for a single file-set capture (all members summed).
+    ///
+    /// Orthogonal to [`Self::max_file_size`], which bounds one member: this
+    /// bounds the *set*. A capture whose members' sizes sum above this is
+    /// admitted to local history but excluded from sync (its file-set identity
+    /// falls back to path text and the outbound path skips it). Guards the
+    /// capture hot path — and, once directory capture lands, the member-count
+    /// explosion a deep tree would cause — against unbounded hashing/transfer.
+    pub max_file_set_total_bytes: u64,
+    /// Member-count ceiling for a single file-set capture.
+    ///
+    /// Same admit-locally / exclude-from-sync semantics as
+    /// [`Self::max_file_set_total_bytes`]. A flat multi-file copy rarely
+    /// approaches this; a copied directory tree can, which is why the cap
+    /// exists before directory traversal is introduced.
+    pub max_file_set_member_count: u64,
     pub file_cache_quota_per_device: u64,
     pub file_retention_hours: u32,
     pub file_auto_cleanup: bool,

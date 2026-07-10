@@ -138,6 +138,7 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
             deps.clipboard.spool_queue.clone(),
             deps.storage.blob_content_ingest.clone(),
             deps.storage.entry_file_set_repo.clone(),
+            deps.settings.clone(),
             deps.clipboard.entry_ports.replace_content.clone(),
             deps.analytics.clone(),
         )
@@ -182,6 +183,7 @@ fn build_clipboard_capture_facade(deps: &AppDeps) -> Arc<ClipboardCaptureFacade>
             deps.clipboard.spool_queue.clone(),
             deps.storage.blob_content_ingest.clone(),
             deps.storage.entry_file_set_repo.clone(),
+            deps.settings.clone(),
             deps.clipboard.entry_ports.replace_content.clone(),
             deps.analytics.clone(),
         )
@@ -629,6 +631,7 @@ pub async fn build_cli_app_runtime(
         entry_delivery_repo: wired.shared.entry_delivery_repo.clone(),
         trusted_peer_repo: wired.shared.trusted_peer_repo.clone(),
         device_identity: deps.device.device_identity.clone(),
+        entry_file_set_repo: deps.storage.entry_file_set_repo.clone(),
     }));
 
     let app_facade = build_app_facade_from_deps(

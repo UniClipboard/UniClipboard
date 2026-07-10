@@ -229,6 +229,8 @@ impl Default for FileSyncSettings {
     /// - `file_sync_enabled`: true
     /// - `small_file_threshold`: 10 MB (inline transfer threshold)
     /// - `max_file_size`: 5 GB
+    /// - `max_file_set_total_bytes`: 1 GiB (whole-set cap; ADR-010)
+    /// - `max_file_set_member_count`: 2000 (whole-set cap; ADR-010)
     /// - `file_cache_quota_per_device`: 500 MB
     /// - `file_retention_hours`: 24
     /// - `file_auto_cleanup`: true
@@ -238,6 +240,8 @@ impl Default for FileSyncSettings {
             file_sync_enabled: true,
             small_file_threshold: 10 * 1024 * 1024, // 10 MB
             max_file_size: 5 * 1024 * 1024 * 1024,  // 5 GB
+            max_file_set_total_bytes: 1024 * 1024 * 1024, // 1 GiB
+            max_file_set_member_count: 2000,
             file_cache_quota_per_device: 500 * 1024 * 1024, // 500 MB
             file_retention_hours: 24,
             file_auto_cleanup: true,
@@ -510,6 +514,35 @@ mod tests {
         let s: Settings = serde_json::from_str(json).expect("empty file_sync must parse");
         let expected = FileSyncSettings::default();
         assert_eq!(s.file_sync, expected);
+    }
+
+    /// ADR-010 whole-set caps: a settings file predating the caps (no
+    /// `max_file_set_*` keys) must deserialize and fall back to the 1 GiB /
+    /// 2000 defaults, so upgraded users get the guard without editing config.
+    #[test]
+    fn file_sync_missing_file_set_caps_fall_back_to_defaults() {
+        let json = r#"{
+            "file_sync": {
+                "file_sync_enabled": true,
+                "small_file_threshold": 10485760,
+                "max_file_size": 5368709120,
+                "file_cache_quota_per_device": 524288000,
+                "file_retention_hours": 24,
+                "file_auto_cleanup": true
+            }
+        }"#;
+        let s: Settings = serde_json::from_str(json).expect("must parse without file-set caps");
+        assert_eq!(s.file_sync.max_file_set_total_bytes, 1024 * 1024 * 1024);
+        assert_eq!(s.file_sync.max_file_set_member_count, 2000);
+    }
+
+    /// Persisted caps round-trip through serde.
+    #[test]
+    fn file_sync_file_set_caps_round_trip() {
+        let json = r#"{ "file_sync": { "max_file_set_total_bytes": 42, "max_file_set_member_count": 7 } }"#;
+        let s: Settings = serde_json::from_str(json).expect("must parse file-set caps");
+        assert_eq!(s.file_sync.max_file_set_total_bytes, 42);
+        assert_eq!(s.file_sync.max_file_set_member_count, 7);
     }
 
     /// Pre-existing settings without `auto_save_dir` deserialize to `None`

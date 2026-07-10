@@ -5,13 +5,15 @@ use std::time::Instant;
 use async_trait::async_trait;
 use bytes::Bytes;
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uc_core::blob::ports::BlobReaderPort;
-use uc_core::clipboard::ClipboardPayloadSource;
+use uc_core::clipboard::{
+    is_file_mime_or_format, ClipboardPayloadSource, EntryFileSetExcludeReason, EntryFileSetLineKind,
+};
 use uc_core::ids::EntryId;
 use uc_core::ports::clipboard::{
-    ClipboardPayloadResolverPort, GetClipboardEntryPort, GetRepresentationPort,
-    UpdateRepresentationProcessingResultPort,
+    ClipboardPayloadResolverPort, EntryFileSetRepositoryPort, GetClipboardEntryPort,
+    GetRepresentationPort, UpdateRepresentationProcessingResultPort,
 };
 use uc_core::ports::{
     ClipboardEventRepositoryPort, ClipboardSelectionRepositoryPort, DeviceIdentityPort,
@@ -128,6 +130,11 @@ pub struct ClipboardOutboundDeps {
     pub settings: Arc<dyn SettingsPort>,
     pub clipboard_sync: Arc<ClipboardSyncFacade>,
     pub blob_transfer: Arc<BlobTransferFacade>,
+    /// Single source of truth for a file-class entry's member list on the
+    /// outbound path (dispatch + resend): the manifest persisted at capture
+    /// time, instead of re-parsing raw reps per send. See
+    /// [`resolve_outbound_file_set`].
+    pub entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
 
     // ── resend path ────────────────────────────────────────────────────
     pub entry_repo: Arc<dyn GetClipboardEntryPort>,
@@ -146,6 +153,7 @@ pub struct ClipboardOutboundDispatcher {
     settings: Arc<dyn SettingsPort>,
     clipboard_sync: Arc<ClipboardSyncFacade>,
     blob_transfer: Arc<BlobTransferFacade>,
+    entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
 }
 
 impl ClipboardOutboundDispatcher {
@@ -154,6 +162,7 @@ impl ClipboardOutboundDispatcher {
             settings: deps.settings.clone(),
             clipboard_sync: deps.clipboard_sync.clone(),
             blob_transfer: deps.blob_transfer.clone(),
+            entry_file_set_repo: deps.entry_file_set_repo.clone(),
         }
     }
 }
@@ -209,10 +218,44 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
         let snapshot_rep_count = input.snapshot.representations.len();
         let dispatch_start = Instant::now();
 
-        let resolved_paths = if input.origin == ClipboardChangeOrigin::LocalCapture {
-            extract_file_paths_from_snapshot(&input.snapshot)
+        let entry_id = EntryId::from(input.entry_id.as_str());
+
+        let resolution = if input.origin == ClipboardChangeOrigin::LocalCapture {
+            resolve_outbound_file_set(
+                self.entry_file_set_repo.as_ref(),
+                &entry_id,
+                &input.snapshot,
+            )
+            .await
         } else {
-            Vec::new()
+            OutboundFileSetResolution::NotFileClass
+        };
+        let (resolved_paths, from_manifest, expected_digests) = match resolution {
+            OutboundFileSetResolution::NotFileClass => (Vec::new(), false, Vec::new()),
+            OutboundFileSetResolution::Manifest {
+                paths,
+                expected_digests,
+            } => (paths, true, expected_digests),
+            OutboundFileSetResolution::Fallback { paths } => (paths, false, Vec::new()),
+            OutboundFileSetResolution::Excluded {
+                ingest_failed,
+                size_cap_exceeded,
+            } => {
+                // All-or-nothing: the manifest says at least one member never
+                // got a content identity, so this entry is keyed on path text.
+                // Publishing the readable subset would key the receiver's copy
+                // on content digests — a diverged identity and a duplicate
+                // entry on the next copy of the same set.
+                warn!(
+                    entry_id = %entry_id_str,
+                    ingest_failed,
+                    size_cap_exceeded,
+                    "outbound: file-set manifest has excluded lines; skipping dispatch (all-or-nothing)"
+                );
+                return Ok(ClipboardOutboundOutcome::Skipped {
+                    reason: "file_set_excluded".to_string(),
+                });
+            }
         };
         let extracted_paths_count = resolved_paths.len();
 
@@ -227,6 +270,20 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
                     file_candidates.push(FileCandidate {
                         path,
                         size: meta.len(),
+                    });
+                }
+                Err(err) if from_manifest => {
+                    // A manifest member vanished between capture and dispatch.
+                    // Same all-or-nothing rule as above: never sync a subset of
+                    // a set whose identity covers all members.
+                    warn!(
+                        error = %err,
+                        file = %path.display(),
+                        entry_id = %entry_id_str,
+                        "outbound: file-set member unreadable at dispatch; skipping dispatch (all-or-nothing)"
+                    );
+                    return Ok(ClipboardOutboundOutcome::Skipped {
+                        reason: "file_set_member_unavailable".to_string(),
                     });
                 }
                 Err(err) => warn!(
@@ -266,6 +323,7 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
             entry_id = %entry_id_str,
             snapshot_rep_count,
             extracted_paths_count,
+            file_paths_source = if from_manifest { "manifest" } else { "reps" },
             file_candidate_count = plan.files.len(),
             total_file_bytes = total_file_metadata_bytes,
             metadata_ms,
@@ -273,12 +331,29 @@ impl ClipboardOutboundPort for ClipboardOutboundDispatcher {
             "outbound: dispatch_capture entering publish phase"
         );
 
-        let entry_id = EntryId::from(input.entry_id.as_str());
-
         let publish_files_start = Instant::now();
         let (mut blob_refs, file_content_digests) =
             publish_file_blob_refs(self.blob_transfer.as_ref(), &plan.files, &entry_id).await?;
         let publish_files_ms = publish_files_start.elapsed().as_millis() as u64;
+
+        // Capture→dispatch drift observability: the manifest digests are the
+        // identity this entry was persisted under; the publish digests are
+        // what actually went on the wire. Only comparable when the planner
+        // kept every member (a per-file `max_file_size` exclusion legitimately
+        // shrinks the publish set).
+        if from_manifest && plan.files.len() == extracted_paths_count {
+            let mut wire_digests = file_content_digests.clone();
+            wire_digests.sort_unstable();
+            wire_digests.dedup();
+            let mut capture_digests = expected_digests;
+            capture_digests.dedup();
+            if wire_digests != capture_digests {
+                warn!(
+                    entry_id = %entry_id_str,
+                    "outbound: file content drifted between capture and dispatch; wire identity keyed on current bytes"
+                );
+            }
+        }
 
         if !file_content_digests.is_empty() {
             clipboard_intent.snapshot.file_content_digests = file_content_digests;
@@ -379,6 +454,7 @@ impl ClipboardOutboundFacade {
             trusted_peer_repo: deps.trusted_peer_repo,
             device_identity: deps.device_identity,
             settings: deps.settings,
+            entry_file_set_repo: deps.entry_file_set_repo,
             blob_publisher,
             dispatch_runner,
         });
@@ -461,6 +537,143 @@ pub(crate) fn extract_file_paths_from_snapshot(snapshot: &SystemClipboardSnapsho
     paths.sort();
     paths.dedup();
     paths
+}
+
+/// Where an outbound file-class send got its member path list from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OutboundFileSetResolution {
+    /// The snapshot carries no file-class rep — nothing file-related to
+    /// publish for this entry.
+    NotFileClass,
+    /// Paths recovered from the persisted [`uc_core::clipboard::EntryFileSet`]
+    /// manifest — the single source of truth written at capture time.
+    Manifest {
+        /// Member paths, sorted and deduplicated (publish each distinct file
+        /// once even when the manifest lists it on multiple lines).
+        paths: Vec<PathBuf>,
+        /// The manifest's sorted content-digest contribution — the identity
+        /// this entry was persisted under. Lets the dispatch path detect
+        /// capture→dispatch content drift after publishing.
+        expected_digests: Vec<[u8; 32]>,
+    },
+    /// No manifest persisted for this entry (pre-manifest entry, a failed
+    /// best-effort save at capture, or an unreadable manifest row) — fall
+    /// back to re-parsing the snapshot's reps.
+    Fallback { paths: Vec<PathBuf> },
+    /// The manifest exists but contains excluded lines: at least one member
+    /// never got a content identity, so the entry's identity fell back to
+    /// path text at capture. All-or-nothing — callers must not publish the
+    /// readable subset (it would key the receiver's copy on content digests,
+    /// diverging from the sender's identity).
+    Excluded {
+        ingest_failed: usize,
+        size_cap_exceeded: usize,
+    },
+}
+
+/// Resolve the member path list for an outbound file-class send, preferring
+/// the persisted file-set manifest over re-parsing raw reps.
+///
+/// Availability over strictness on the read path: a missing manifest or a
+/// storage read failure degrades to the legacy rep-parsing fallback rather
+/// than blocking sync. Only an *existing* manifest with excluded lines blocks
+/// the send (see [`OutboundFileSetResolution::Excluded`]).
+pub(crate) async fn resolve_outbound_file_set(
+    entry_file_set_repo: &dyn EntryFileSetRepositoryPort,
+    entry_id: &EntryId,
+    snapshot: &SystemClipboardSnapshot,
+) -> OutboundFileSetResolution {
+    let is_file_class = snapshot
+        .representations
+        .iter()
+        .any(|rep| is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id));
+    if !is_file_class {
+        return OutboundFileSetResolution::NotFileClass;
+    }
+
+    let file_set = match entry_file_set_repo.load(entry_id).await {
+        Ok(Some(file_set)) => file_set,
+        Ok(None) => {
+            // Expected for every pre-manifest (legacy) file entry, so keep it
+            // at debug: during the migration window this fires on each dispatch
+            // /resend of an old file entry and would otherwise flood info.
+            debug!(
+                entry_id = %entry_id.as_str(),
+                "outbound: no file-set manifest for file-class entry; falling back to rep parsing"
+            );
+            return OutboundFileSetResolution::Fallback {
+                paths: extract_file_paths_from_snapshot(snapshot),
+            };
+        }
+        Err(err) => {
+            warn!(
+                entry_id = %entry_id.as_str(),
+                error = %err,
+                "outbound: file-set manifest load failed; falling back to rep parsing"
+            );
+            return OutboundFileSetResolution::Fallback {
+                paths: extract_file_paths_from_snapshot(snapshot),
+            };
+        }
+    };
+
+    let mut ingest_failed = 0usize;
+    let mut size_cap_exceeded = 0usize;
+    for line in &file_set.lines {
+        if let EntryFileSetLineKind::Excluded { reason } = &line.kind {
+            match reason {
+                EntryFileSetExcludeReason::IngestFailed => ingest_failed += 1,
+                EntryFileSetExcludeReason::SizeCapExceeded => size_cap_exceeded += 1,
+            }
+        }
+    }
+    if ingest_failed + size_cap_exceeded > 0 {
+        return OutboundFileSetResolution::Excluded {
+            ingest_failed,
+            size_cap_exceeded,
+        };
+    }
+
+    let mut paths = Vec::new();
+    for line in file_set.file_lines() {
+        match manifest_line_path(&line.original_text) {
+            Some(path) => paths.push(path),
+            None => {
+                // A File line whose path can't be recovered would silently
+                // shrink the published set — never publish a subset. Degrade
+                // to the legacy fallback instead (no worse than pre-manifest
+                // behavior).
+                warn!(
+                    entry_id = %entry_id.as_str(),
+                    line_index = line.line_index,
+                    "outbound: could not recover path from file-set manifest line; falling back to rep parsing"
+                );
+                return OutboundFileSetResolution::Fallback {
+                    paths: extract_file_paths_from_snapshot(snapshot),
+                };
+            }
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    OutboundFileSetResolution::Manifest {
+        expected_digests: file_set.content_digest_contribution(),
+        paths,
+    }
+}
+
+/// Recover the local path of a manifest `File` line. Capture writes
+/// `original_text` in one of two shapes (see the capture side's
+/// `build_entry_file_set`): a raw `text/uri-list` line (`file://...`), or a
+/// bare filesystem path when the line came from a `LocalFile` rep.
+fn manifest_line_path(original_text: &str) -> Option<PathBuf> {
+    match parse_uri_list_line(original_text) {
+        UriListLineKind::File(path) => Some(path),
+        UriListLineKind::NonFile => {
+            let bare = original_text.trim();
+            (!bare.is_empty() && !bare.starts_with('#')).then(|| PathBuf::from(bare))
+        }
+    }
 }
 
 /// 出向 dispatch 时单条 inline rep 在 envelope 主体里的最大 bytes 数。超过
@@ -617,7 +830,11 @@ pub(crate) async fn publish_file_blob_refs(
 mod tests {
     use super::*;
     use std::sync::Mutex;
-    use uc_core::ids::EntryId;
+    use uc_core::clipboard::{
+        ContentHash, EntryFileSet, EntryFileSetError, EntryFileSetLine, HashAlgorithm, MimeType,
+        ObservedClipboardRepresentation,
+    };
+    use uc_core::ids::{EntryId, FormatId, RepresentationId};
 
     struct FakeOutbound;
 
@@ -672,6 +889,209 @@ mod tests {
             *self.last_cmd.lock().unwrap() = Some(cmd);
             Ok(self.canned.clone())
         }
+    }
+
+    // ── resolve_outbound_file_set ───────────────────────────────────────
+
+    /// Fake manifest repo: canned `load` result; `save` must never be called
+    /// on the outbound path.
+    enum FakeFileSetRepo {
+        Found(EntryFileSet),
+        Missing,
+        Broken,
+        /// The resolver must short-circuit before touching the repo.
+        MustNotLoad,
+    }
+    #[async_trait]
+    impl EntryFileSetRepositoryPort for FakeFileSetRepo {
+        async fn save(
+            &self,
+            _entry_id: &EntryId,
+            _file_set: &EntryFileSet,
+        ) -> Result<(), EntryFileSetError> {
+            unreachable!("outbound must never save a file-set manifest")
+        }
+        async fn load(
+            &self,
+            _entry_id: &EntryId,
+        ) -> Result<Option<EntryFileSet>, EntryFileSetError> {
+            match self {
+                Self::Found(fs) => Ok(Some(fs.clone())),
+                Self::Missing => Ok(None),
+                Self::Broken => Err(EntryFileSetError::Storage("synthetic".into())),
+                Self::MustNotLoad => {
+                    unreachable!("resolver must not load a manifest for a non-file snapshot")
+                }
+            }
+        }
+    }
+
+    fn uri_list_snapshot(text: &str) -> SystemClipboardSnapshot {
+        SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::from("rep-files"),
+                FormatId::from("files"),
+                Some(MimeType("text/uri-list".to_string())),
+                text.as_bytes().to_vec(),
+            )],
+            file_content_digests: Vec::new(),
+        }
+    }
+
+    fn text_snapshot() -> SystemClipboardSnapshot {
+        SystemClipboardSnapshot {
+            ts_ms: 0,
+            representations: vec![ObservedClipboardRepresentation::new(
+                RepresentationId::from("rep-text"),
+                FormatId::from("public.utf8-plain-text"),
+                Some(MimeType("text/plain".to_string())),
+                b"hello".to_vec(),
+            )],
+            file_content_digests: Vec::new(),
+        }
+    }
+
+    fn file_line(index: i64, original_text: &str, hash_byte: u8) -> EntryFileSetLine {
+        EntryFileSetLine {
+            line_index: index,
+            original_text: original_text.to_string(),
+            kind: EntryFileSetLineKind::File {
+                content_hash: ContentHash {
+                    alg: HashAlgorithm::Blake3V1,
+                    bytes: [hash_byte; 32],
+                },
+                blob_id: None,
+                size_bytes: None,
+            },
+        }
+    }
+
+    fn excluded_line(index: i64, reason: EntryFileSetExcludeReason) -> EntryFileSetLine {
+        EntryFileSetLine {
+            line_index: index,
+            original_text: "file:///excluded".to_string(),
+            kind: EntryFileSetLineKind::Excluded { reason },
+        }
+    }
+
+    #[tokio::test]
+    async fn resolver_short_circuits_for_non_file_snapshot() {
+        let resolution = resolve_outbound_file_set(
+            &FakeFileSetRepo::MustNotLoad,
+            &EntryId::from("e1"),
+            &text_snapshot(),
+        )
+        .await;
+        assert_eq!(resolution, OutboundFileSetResolution::NotFileClass);
+    }
+
+    /// Manifest is the single source of truth: paths come from its lines
+    /// (both `original_text` shapes), sorted + deduplicated — not from the
+    /// snapshot rep, which here deliberately lists a different file.
+    #[tokio::test]
+    async fn resolver_prefers_manifest_over_snapshot_reps() {
+        let manifest = EntryFileSet {
+            lines: vec![
+                // uri-list shape, listed twice (dedup expected).
+                file_line(0, "file:///tmp/b.txt", 2),
+                file_line(1, "file:///tmp/b.txt", 2),
+                // bare-path shape (LocalFile rep origin).
+                file_line(2, "/tmp/a.txt", 1),
+                EntryFileSetLine {
+                    line_index: 3,
+                    original_text: "# comment".to_string(),
+                    kind: EntryFileSetLineKind::NonFile,
+                },
+            ],
+        };
+        let resolution = resolve_outbound_file_set(
+            &FakeFileSetRepo::Found(manifest),
+            &EntryId::from("e1"),
+            &uri_list_snapshot("file:///tmp/other.txt\n"),
+        )
+        .await;
+        match resolution {
+            OutboundFileSetResolution::Manifest {
+                paths,
+                expected_digests,
+            } => {
+                assert_eq!(
+                    paths,
+                    vec![PathBuf::from("/tmp/a.txt"), PathBuf::from("/tmp/b.txt")]
+                );
+                // Identity contribution keeps duplicate lines (sorted).
+                assert_eq!(expected_digests, vec![[1u8; 32], [2u8; 32], [2u8; 32]]);
+            }
+            other => panic!("expected Manifest resolution, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn resolver_falls_back_when_manifest_missing_or_broken() {
+        for repo in [FakeFileSetRepo::Missing, FakeFileSetRepo::Broken] {
+            let resolution = resolve_outbound_file_set(
+                &repo,
+                &EntryId::from("e1"),
+                &uri_list_snapshot("file:///tmp/legacy.txt\n"),
+            )
+            .await;
+            assert_eq!(
+                resolution,
+                OutboundFileSetResolution::Fallback {
+                    paths: vec![PathBuf::from("/tmp/legacy.txt")]
+                }
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn resolver_blocks_on_any_excluded_line() {
+        let manifest = EntryFileSet {
+            lines: vec![
+                file_line(0, "file:///tmp/ok.txt", 1),
+                excluded_line(1, EntryFileSetExcludeReason::IngestFailed),
+                excluded_line(2, EntryFileSetExcludeReason::SizeCapExceeded),
+            ],
+        };
+        let resolution = resolve_outbound_file_set(
+            &FakeFileSetRepo::Found(manifest),
+            &EntryId::from("e1"),
+            &uri_list_snapshot("file:///tmp/ok.txt\n"),
+        )
+        .await;
+        assert_eq!(
+            resolution,
+            OutboundFileSetResolution::Excluded {
+                ingest_failed: 1,
+                size_cap_exceeded: 1,
+            }
+        );
+    }
+
+    /// A `File` line whose path can't be recovered must degrade the WHOLE
+    /// set to the rep-parsing fallback — never publish a silently shrunken
+    /// subset of a manifest.
+    #[tokio::test]
+    async fn resolver_falls_back_when_a_file_line_path_is_unrecoverable() {
+        let manifest = EntryFileSet {
+            lines: vec![
+                file_line(0, "file:///tmp/ok.txt", 1),
+                file_line(1, "   ", 2),
+            ],
+        };
+        let resolution = resolve_outbound_file_set(
+            &FakeFileSetRepo::Found(manifest),
+            &EntryId::from("e1"),
+            &uri_list_snapshot("file:///tmp/from-rep.txt\n"),
+        )
+        .await;
+        assert_eq!(
+            resolution,
+            OutboundFileSetResolution::Fallback {
+                paths: vec![PathBuf::from("/tmp/from-rep.txt")]
+            }
+        );
     }
 
     #[tokio::test]

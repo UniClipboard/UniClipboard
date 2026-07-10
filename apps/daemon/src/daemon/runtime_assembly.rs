@@ -114,6 +114,7 @@ pub fn build_daemon_runtime_workers(
             input.deps.clipboard.spool_queue.clone(),
             input.deps.storage.blob_content_ingest.clone(),
             input.deps.storage.entry_file_set_repo.clone(),
+            input.deps.settings.clone(),
             input.deps.clipboard.entry_ports.replace_content.clone(),
             input.deps.analytics.clone(),
         )
@@ -179,6 +180,7 @@ pub fn build_daemon_runtime_workers(
         entry_delivery_repo: input.entry_delivery_repo,
         trusted_peer_repo: input.trusted_peer_repo,
         device_identity: input.deps.device.device_identity.clone(),
+        entry_file_set_repo: input.deps.storage.entry_file_set_repo.clone(),
     }));
 
     // System clipboard outbound watcher: assembled only when the run mode

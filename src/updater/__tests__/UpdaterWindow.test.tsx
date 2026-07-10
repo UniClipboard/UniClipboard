@@ -1,3 +1,4 @@
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
@@ -132,6 +133,20 @@ describe('UpdaterWindow', () => {
 
     await waitFor(() => expect(checkForUpdate).toHaveBeenCalled())
     expect(downloadUpdate).not.toHaveBeenCalled()
+  })
+
+  it('portable build: primary button opens the release page instead of downloading', async () => {
+    vi.mocked(getInstallKind).mockResolvedValue('windowsportable')
+    mockSnapshot({ phase: 'available' })
+    const user = userEvent.setup()
+    render(<UpdaterWindow />)
+
+    const btn = await screen.findByText('update.packageManager.openReleasePage')
+    await user.click(btn)
+
+    await waitFor(() => expect(openUrl).toHaveBeenCalledTimes(1))
+    expect(downloadUpdate).not.toHaveBeenCalled()
+    expect(installUpdate).not.toHaveBeenCalled()
   })
 
   it('download rejection (already ready): re-syncs to the ready view instead of a stale spinner', async () => {

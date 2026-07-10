@@ -44,7 +44,7 @@ use uc_core::ports::clipboard::{
 };
 use uc_core::ports::{
     ClipboardEventWriterPort, ClipboardRepresentationNormalizerPort, DeviceIdentityPort,
-    SelectRepresentationPolicyPort,
+    SelectRepresentationPolicyPort, SettingsPort,
 };
 use uc_core::{
     ClipboardChangeOrigin, ClipboardEntry, ClipboardEntryContentCategory, ClipboardEvent,
@@ -113,6 +113,10 @@ pub struct CaptureClipboardUseCase {
     /// same capture (see [`build_entry_file_set`]) so later readers (out of
     /// this phase's scope) don't have to re-parse/re-hash the source data.
     entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
+    /// Source of the file-set capture caps (`max_file_set_total_bytes` /
+    /// `max_file_set_member_count`). Read only when building a file-class
+    /// manifest, so text/image captures never pay the settings load.
+    settings: Arc<dyn SettingsPort>,
     /// Transactional entry-replace used by [`CommitMode::Replace`]. Swaps the
     /// content behind an existing entry_id in place (FK-safe cascade, sticky
     /// state preserved) instead of inserting a new entry. Only the inbound
@@ -146,6 +150,7 @@ impl CaptureClipboardUseCase {
         spool_queue: Arc<dyn SpoolQueuePort>,
         blob_ingest: Arc<dyn BlobContentIngestPort>,
         entry_file_set_repo: Arc<dyn EntryFileSetRepositoryPort>,
+        settings: Arc<dyn SettingsPort>,
         replace_entry: Arc<dyn ReplaceEntryContentPort>,
         analytics: Arc<dyn AnalyticsPort>,
     ) -> Self {
@@ -161,6 +166,7 @@ impl CaptureClipboardUseCase {
             spool_queue,
             blob_ingest,
             entry_file_set_repo,
+            settings,
             replace_entry,
             coordinator: None,
             analytics,
@@ -276,8 +282,22 @@ impl CaptureClipboardUseCase {
             // phase's scope).
             let mut file_set: Option<EntryFileSet> = None;
             if snapshot.file_content_digests.is_empty() {
+                // Read the file-set caps for this capture. A load failure must
+                // not drop the capture — fall back to no cap (behaviour before
+                // the gate existed) so a transient settings error can't silently
+                // stop file sync.
+                let caps = match self.settings.load().await {
+                    Ok(s) => FileSetCaps {
+                        max_total_bytes: s.file_sync.max_file_set_total_bytes,
+                        max_member_count: s.file_sync.max_file_set_member_count,
+                    },
+                    Err(err) => {
+                        warn!(error = %err, "capture: settings load failed; file-set caps disabled for this capture");
+                        FileSetCaps::unbounded()
+                    }
+                };
                 if let Some(built) =
-                    build_entry_file_set(&snapshot, self.blob_ingest.as_ref()).await
+                    build_entry_file_set(&snapshot, self.blob_ingest.as_ref(), caps).await
                 {
                     let digests = built.content_digest_contribution();
                     if !digests.is_empty() {
@@ -738,6 +758,26 @@ async fn resurface_existing_entry(
     }
 }
 
+/// Whole-set capture caps (ADR-010). Zero means "no cap" for that dimension.
+#[derive(Debug, Clone, Copy)]
+struct FileSetCaps {
+    /// Total bytes across all file members. `0` disables the byte cap.
+    max_total_bytes: u64,
+    /// Number of file members. `0` disables the count cap.
+    max_member_count: u64,
+}
+
+impl FileSetCaps {
+    /// No cap on either dimension — used when the settings load fails so a
+    /// transient error never silently stops file sync.
+    fn unbounded() -> Self {
+        Self {
+            max_total_bytes: 0,
+            max_member_count: 0,
+        }
+    }
+}
+
 /// Build the line-level [`EntryFileSet`] manifest for a freshly captured
 /// file-class snapshot. Returns `None` when the snapshot carries no
 /// resolvable file lines (not a file-class snapshot at all).
@@ -754,6 +794,22 @@ async fn resurface_existing_entry(
 /// The two shapes are mutually exclusive in practice (a snapshot carries
 /// either `LocalFile` reps or an inline uri-list rep), so the inline branch
 /// only runs when no `LocalFile` rep is present.
+///
+/// # Whole-set caps (ADR-010)
+///
+/// Before hashing, a millisecond-scale metadata pre-check sums member sizes
+/// and counts members (`metadata()` only — no content read). If either
+/// `caps` dimension is exceeded, every file line is marked
+/// `Excluded { SizeCapExceeded }` and hashing is skipped entirely: an
+/// over-budget set's identity falls back to path text anyway, so streaming
+/// gigabytes just to discard the digests would be pure waste (and, once
+/// directory capture lands, unbounded). The set is still admitted to local
+/// history; only sync is suppressed (the outbound path skips any manifest with
+/// excluded lines). The check is all-or-nothing to match
+/// [`EntryFileSet::content_digest_contribution`]. It only fires when every
+/// member is a stat-able regular file — if any member can't be measured, the
+/// per-line hashing below marks it `IngestFailed`, which already forces the
+/// same path-text fallback, so the size verdict is moot.
 ///
 /// Each file line's content hash comes from the fallible
 /// [`BlobContentIngestPort::hash_path`] (never a rep's `content_hash()`,
@@ -773,6 +829,7 @@ async fn resurface_existing_entry(
 async fn build_entry_file_set(
     snapshot: &SystemClipboardSnapshot,
     blob_ingest: &dyn BlobContentIngestPort,
+    caps: FileSetCaps,
 ) -> Option<EntryFileSet> {
     let local_file_paths: Vec<_> = snapshot
         .representations
@@ -784,9 +841,10 @@ async fn build_entry_file_set(
         .collect();
 
     if !local_file_paths.is_empty() {
+        let over_cap = file_set_exceeds_caps(&local_file_paths, caps).await;
         let mut lines = Vec::with_capacity(local_file_paths.len());
         for (idx, path) in local_file_paths.iter().enumerate() {
-            let kind = classify_file_path(path, blob_ingest).await;
+            let kind = classify_file_path(path, blob_ingest, over_cap).await;
             lines.push(EntryFileSetLine {
                 line_index: idx as i64,
                 original_text: path.display().to_string(),
@@ -795,7 +853,7 @@ async fn build_entry_file_set(
         }
         debug!(
             line_count = lines.len(),
-            "capture: built file-set manifest from LocalFile reps"
+            over_cap, "capture: built file-set manifest from LocalFile reps"
         );
         return Some(EntryFileSet { lines });
     }
@@ -809,11 +867,21 @@ async fn build_entry_file_set(
             .map(str::to_string)
     })?;
 
-    let mut lines = Vec::with_capacity(uri_list_text.lines().count());
-    for (idx, raw_line) in uri_list_text.lines().enumerate() {
-        let kind = match parse_uri_list_line(raw_line) {
+    let parsed: Vec<UriListLineKind> = uri_list_text.lines().map(parse_uri_list_line).collect();
+    let file_paths: Vec<_> = parsed
+        .iter()
+        .filter_map(|kind| match kind {
+            UriListLineKind::File(path) => Some(path.clone()),
+            UriListLineKind::NonFile => None,
+        })
+        .collect();
+    let over_cap = file_set_exceeds_caps(&file_paths, caps).await;
+
+    let mut lines = Vec::with_capacity(parsed.len());
+    for (idx, (raw_line, parsed_kind)) in uri_list_text.lines().zip(parsed).enumerate() {
+        let kind = match parsed_kind {
             UriListLineKind::NonFile => EntryFileSetLineKind::NonFile,
-            UriListLineKind::File(path) => classify_file_path(&path, blob_ingest).await,
+            UriListLineKind::File(path) => classify_file_path(&path, blob_ingest, over_cap).await,
         };
         lines.push(EntryFileSetLine {
             line_index: idx as i64,
@@ -823,20 +891,56 @@ async fn build_entry_file_set(
     }
     debug!(
         line_count = lines.len(),
-        "capture: built file-set manifest from inline uri-list text"
+        over_cap, "capture: built file-set manifest from inline uri-list text"
     );
     Some(EntryFileSet { lines })
 }
 
-/// Classify one resolved file path into a manifest line's kind. Hash
-/// failures (unreadable/deleted file) degrade to `Excluded` rather than
-/// propagating — a `LocalFile` rep's `content_hash()` would `panic!` on the
-/// same failure, which is exactly what routing through the fallible
-/// `hash_path` avoids.
+/// Millisecond-scale pre-check: does this file set exceed either whole-set
+/// cap? Uses `metadata()` only (no content read). Returns `false` (not over
+/// cap) unless *every* path is a stat-able regular file whose summed size or
+/// count trips a cap — an unmeasurable member (missing / directory / stat
+/// error) leaves the verdict `false` so the caller's per-line hashing can
+/// mark it `IngestFailed`, which forces the same path-text fallback anyway.
+async fn file_set_exceeds_caps(paths: &[std::path::PathBuf], caps: FileSetCaps) -> bool {
+    if caps.max_member_count > 0 && paths.len() as u64 > caps.max_member_count {
+        return true;
+    }
+    if caps.max_total_bytes == 0 {
+        return false;
+    }
+    let mut total: u64 = 0;
+    for path in paths {
+        match tokio::fs::metadata(path).await {
+            Ok(meta) if meta.is_file() => total = total.saturating_add(meta.len()),
+            // Non-regular or unreadable member: can't confirm over-budget.
+            // Per-line hashing will mark it IngestFailed → path-text identity.
+            _ => return false,
+        }
+    }
+    total > caps.max_total_bytes
+}
+
+/// Classify one resolved file path into a manifest line's kind.
+///
+/// `over_cap` short-circuits to `Excluded { SizeCapExceeded }` without
+/// hashing — the set is over budget, so its content digests would be
+/// discarded anyway (see [`build_entry_file_set`]). Otherwise the content
+/// hash comes from the fallible [`BlobContentIngestPort::hash_path`]; a hash
+/// failure (unreadable/deleted file) degrades to `Excluded { IngestFailed }`
+/// rather than propagating — a `LocalFile` rep's `content_hash()` would
+/// `panic!` on the same failure, which is exactly what routing through the
+/// fallible `hash_path` avoids.
 async fn classify_file_path(
     path: &std::path::Path,
     blob_ingest: &dyn BlobContentIngestPort,
+    over_cap: bool,
 ) -> EntryFileSetLineKind {
+    if over_cap {
+        return EntryFileSetLineKind::Excluded {
+            reason: EntryFileSetExcludeReason::SizeCapExceeded,
+        };
+    }
     match blob_ingest.hash_path(path).await {
         Ok(content_hash) => EntryFileSetLineKind::File {
             content_hash,
@@ -1007,11 +1111,11 @@ mod tests {
 
         let mut a = snap_a.clone();
         let mut b = snap_b.clone();
-        a.file_content_digests = build_entry_file_set(&a, &blob_ingest)
+        a.file_content_digests = build_entry_file_set(&a, &blob_ingest, FileSetCaps::unbounded())
             .await
             .expect("uri-list snapshot should yield a file-set")
             .content_digest_contribution();
-        b.file_content_digests = build_entry_file_set(&b, &blob_ingest)
+        b.file_content_digests = build_entry_file_set(&b, &blob_ingest, FileSetCaps::unbounded())
             .await
             .expect("uri-list snapshot should yield a file-set")
             .content_digest_contribution();
@@ -1061,7 +1165,7 @@ mod tests {
             Some("text/uri-list"),
             b"file:///Users/alice/report.msi",
         )]);
-        let file_set = build_entry_file_set(&snap, &AlwaysFails)
+        let file_set = build_entry_file_set(&snap, &AlwaysFails, FileSetCaps::unbounded())
             .await
             .expect("uri-list snapshot should still yield a file-set (all lines excluded)");
         assert!(
@@ -1106,7 +1210,7 @@ mod tests {
             Some("text/uri-list"),
             b"file:///Users/alice/ok-a.txt\nfile:///Users/alice/locked.msi\nfile:///Users/alice/ok-b.txt",
         )]);
-        let file_set = build_entry_file_set(&snap, &FailsOne)
+        let file_set = build_entry_file_set(&snap, &FailsOne, FileSetCaps::unbounded())
             .await
             .expect("uri-list snapshot should yield a file-set");
 
@@ -1118,6 +1222,208 @@ mod tests {
             file_set.content_digest_contribution().is_empty(),
             "partial ingest failure must yield NO digests (all-or-nothing), not the readable subset"
         );
+    }
+
+    // ── whole-set caps (ADR-010) ────────────────────────────────────────
+
+    /// Hasher that fails the test if ever asked to hash — proves the
+    /// size-cap branch skips content hashing entirely.
+    struct PanicOnHash;
+    #[async_trait::async_trait]
+    impl BlobContentIngestPort for PanicOnHash {
+        async fn ingest_path(
+            &self,
+            _: &std::path::Path,
+        ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+            panic!("ingest_path must not be called once the file-set cap is tripped")
+        }
+        async fn hash_path(&self, _: &std::path::Path) -> anyhow::Result<uc_core::ContentHash> {
+            panic!("hash_path must not be called once the file-set cap is tripped")
+        }
+    }
+
+    fn caps(total_bytes: u64, member_count: u64) -> FileSetCaps {
+        FileSetCaps {
+            max_total_bytes: total_bytes,
+            max_member_count: member_count,
+        }
+    }
+
+    /// Member-count cap trips before any filesystem access (the count check
+    /// short-circuits), so the paths need not exist and hashing is skipped:
+    /// every file line becomes `Excluded { SizeCapExceeded }`, identity falls
+    /// back to path text.
+    #[tokio::test]
+    async fn member_count_cap_excludes_all_file_lines_without_hashing() {
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///Users/alice/a.txt\nfile:///Users/alice/b.txt\nfile:///Users/alice/c.txt",
+        )]);
+        // 3 members, cap = 2.
+        let file_set = build_entry_file_set(&snap, &PanicOnHash, caps(0, 2))
+            .await
+            .expect("file-class snapshot yields a manifest");
+
+        assert_eq!(file_set.lines.len(), 3);
+        assert_eq!(
+            file_set.file_lines().count(),
+            0,
+            "over-cap set has no File lines"
+        );
+        assert!(file_set.lines.iter().all(|l| matches!(
+            l.kind,
+            EntryFileSetLineKind::Excluded {
+                reason: EntryFileSetExcludeReason::SizeCapExceeded
+            }
+        )));
+        assert!(
+            file_set.content_digest_contribution().is_empty(),
+            "over-cap identity must fall back to path text"
+        );
+    }
+
+    /// Just at the member-count cap → normal hashing (not over-cap). A cap of
+    /// `N` admits exactly `N` members; only `> N` trips it.
+    #[tokio::test]
+    async fn member_count_exactly_at_cap_hashes_normally() {
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///Users/alice/a.txt\nfile:///Users/alice/b.txt",
+        )]);
+        let file_set = build_entry_file_set(&snap, &FakeIngestByName, caps(0, 2))
+            .await
+            .expect("file-class snapshot yields a manifest");
+        assert_eq!(file_set.file_lines().count(), 2);
+        assert!(!file_set.content_digest_contribution().is_empty());
+    }
+
+    /// Total-bytes cap measured from real file metadata. Two files summing
+    /// above the cap → every file line `Excluded { SizeCapExceeded }`, no
+    /// hashing.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn total_bytes_cap_excludes_all_file_lines_without_hashing() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let mut uri_list = String::new();
+        for (name, size) in [("a.bin", 400usize), ("b.bin", 400usize)] {
+            let path = dir.path().join(name);
+            let mut f = std::fs::File::create(&path).unwrap();
+            f.write_all(&vec![0u8; size]).unwrap();
+            uri_list.push_str(&format!("file://{}\n", path.display()));
+        }
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            uri_list.as_bytes(),
+        )]);
+        // 800 bytes total, cap = 500.
+        let file_set = build_entry_file_set(&snap, &PanicOnHash, caps(500, 0))
+            .await
+            .expect("file-class snapshot yields a manifest");
+        assert!(file_set.lines.iter().all(|l| matches!(
+            l.kind,
+            EntryFileSetLineKind::Excluded {
+                reason: EntryFileSetExcludeReason::SizeCapExceeded
+            }
+        )));
+        assert!(file_set.content_digest_contribution().is_empty());
+    }
+
+    /// Total under the byte cap → normal hashing, real File lines.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn total_bytes_within_cap_hashes_normally() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("small.bin");
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(&[0u8; 100])
+            .unwrap();
+        let uri_list = format!("file://{}\n", path.display());
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            uri_list.as_bytes(),
+        )]);
+        let file_set = build_entry_file_set(&snap, &FakeIngestByName, caps(500, 0))
+            .await
+            .expect("file-class snapshot yields a manifest");
+        assert_eq!(file_set.file_lines().count(), 1);
+        assert!(!file_set.content_digest_contribution().is_empty());
+    }
+
+    /// An unreadable member leaves the byte-cap verdict `false` (can't confirm
+    /// over-budget), so hashing still runs and that member becomes
+    /// `IngestFailed` — not `SizeCapExceeded`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn total_bytes_cap_ignores_unmeasurable_member() {
+        let snap = snapshot_with(vec![rep(
+            "public.file-url",
+            Some("text/uri-list"),
+            b"file:///nonexistent/uc-cap-test/gone.bin",
+        )]);
+        // hash_path fails for the missing file → IngestFailed, and the cap
+        // pre-check must NOT have short-circuited to SizeCapExceeded.
+        struct AlwaysFails;
+        #[async_trait::async_trait]
+        impl BlobContentIngestPort for AlwaysFails {
+            async fn ingest_path(
+                &self,
+                _: &std::path::Path,
+            ) -> anyhow::Result<uc_core::blob::ports::IngestedBlob> {
+                Err(anyhow::anyhow!("unreadable"))
+            }
+            async fn hash_path(&self, _: &std::path::Path) -> anyhow::Result<uc_core::ContentHash> {
+                Err(anyhow::anyhow!("unreadable"))
+            }
+        }
+        let file_set = build_entry_file_set(&snap, &AlwaysFails, caps(1, 0))
+            .await
+            .expect("file-class snapshot yields a manifest");
+        assert!(
+            file_set.lines.iter().all(|l| matches!(
+                l.kind,
+                EntryFileSetLineKind::Excluded {
+                    reason: EntryFileSetExcludeReason::IngestFailed
+                }
+            )),
+            "unmeasurable member must be IngestFailed, not SizeCapExceeded"
+        );
+    }
+
+    /// LocalFile-rep shape (macOS Finder) also honours the member-count cap.
+    #[tokio::test]
+    async fn local_file_reps_honour_member_count_cap() {
+        let reps = vec![
+            ObservedClipboardRepresentation::new_local_file(
+                RepresentationId::new(),
+                FormatId::from("public.file-url"),
+                None,
+                std::path::PathBuf::from("/Users/alice/x.txt"),
+                10,
+            ),
+            ObservedClipboardRepresentation::new_local_file(
+                RepresentationId::new(),
+                FormatId::from("public.file-url"),
+                None,
+                std::path::PathBuf::from("/Users/alice/y.txt"),
+                10,
+            ),
+        ];
+        let file_set = build_entry_file_set(&snapshot_with(reps), &PanicOnHash, caps(0, 1))
+            .await
+            .expect("file-class snapshot yields a manifest");
+        assert!(file_set.lines.iter().all(|l| matches!(
+            l.kind,
+            EntryFileSetLineKind::Excluded {
+                reason: EntryFileSetExcludeReason::SizeCapExceeded
+            }
+        )));
     }
 
     #[test]

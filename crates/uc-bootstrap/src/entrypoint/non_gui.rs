@@ -138,6 +138,7 @@ fn build_fallback_apply_inbound(deps: &AppDeps) -> Arc<ApplyInboundClipboardUseC
             deps.clipboard.spool_queue.clone(),
             deps.storage.blob_content_ingest.clone(),
             deps.storage.entry_file_set_repo.clone(),
+            deps.settings.clone(),
             deps.clipboard.entry_ports.replace_content.clone(),
             deps.analytics.clone(),
         )
@@ -182,6 +183,7 @@ fn build_clipboard_capture_facade(deps: &AppDeps) -> Arc<ClipboardCaptureFacade>
             deps.clipboard.spool_queue.clone(),
             deps.storage.blob_content_ingest.clone(),
             deps.storage.entry_file_set_repo.clone(),
+            deps.settings.clone(),
             deps.clipboard.entry_ports.replace_content.clone(),
             deps.analytics.clone(),
         )

@@ -631,19 +631,21 @@ panic 就随任务一起消失（runtime 把 panic 转成 `JoinError` 挂在句�
 静默），既看不到「悄悄死掉」，shutdown 也无法确定性地停它。新增长生命周期后台任务，
 必须走下面两种写法之一：
 
-1. **保留句柄 + abort/join（长生命周期循环首选）**：由该任务的自然生命周期持有者
-   （facade / adapter / slot / bridge）持有 `JoinHandle`，在关闭路径 `abort()` 后
-   `await`，把非取消的 `JoinError` 记成 `WARN`。参照
+1. **保留句柄 + abort/join（需要确定性关闭的长生命周期循环首选）**：由该任务的自然
+   生命周期持有者（facade / adapter / bridge）持有 `JoinHandle`，在关闭路径
+   `abort()` 后 `await`，把非取消的 `JoinError` 记成 `WARN`。参照
    `network/iroh/net_recovery.rs` + `network/iroh/node.rs::shutdown` 的既有实现。
-   本层内的 `pairing/session.rs`（recv-pump 句柄存进 `SessionSlot`，`close` 时
-   abort+join）即此模式。
+   **前提是 abort 掉这个任务是安全的**——若任务持有必须存活到对端 FIN 的资源
+   （如 `pairing/session.rs` recv-pump 持有 `Connection`，提前 abort 会撕断握手），
+   就不能用这种写法，改走第 2 种。
 
-2. **`uc_observability::spawn_supervised(name, fut)`（一次性 best-effort 任务）**：
-   没有天然句柄持有者的一次性任务，用它包一层——任务 panic 会以稳定的
-   `event = "task.panicked"` + `task = <name>` 记 `ERROR`，而不是凭空消失。仅用于
-   fire-and-forget，**不要** 套在真正需要确定性取消的任务上（`spawn_supervised`
-   返回的句柄只能中止监督者，中止不了底层任务）；也不要为一个不可能 panic 的 trivial
-   `sender.send(..)` 强行套壳。
+2. **`uc_observability::spawn_supervised(name, fut)`（无法/不应被 abort 的任务）**：
+   没有天然句柄持有者、或必须自然跑到结束（如上面的 recv-pump 要靠自己持有的
+   `Arc<SessionSlot>` 撑到对端 FIN）的任务，用它包一层——底层任务照常 detached 运行、
+   自行退出，任务 panic 会以稳定的 `event = "task.panicked"` + `task = <name>` 记
+   `WARN`，而不是凭空消失。本层内 `pairing/session.rs` recv-pump、
+   `pairing/mdns_resolver.rs` 的 ticket 转发即此模式。**不要** 用它返回的句柄去做
+   确定性取消（那个句柄只能中止监督者，中止不了底层任务）。
 
 ---
 

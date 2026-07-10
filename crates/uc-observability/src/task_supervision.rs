@@ -18,7 +18,7 @@
 
 use std::future::Future;
 
-use tracing::warn;
+use tracing::{warn, Instrument, Span};
 
 /// Spawn a fire-and-forget task whose panic is logged rather than silently
 /// dropped.
@@ -30,27 +30,37 @@ use tracing::warn;
 /// and its panic is still logged). Aborting the returned handle does **not**
 /// abort the underlying work — if you need deterministic cancellation, retain
 /// the work's own handle instead of using this helper.
+///
+/// The panic log inherits the caller's tracing span (captured at call time),
+/// so the `warn!` carries the same context (`trace_id`, span fields) the work
+/// was spawned under rather than logging as a context-less orphan.
 pub fn spawn_supervised<F>(name: &'static str, fut: F) -> tokio::task::JoinHandle<()>
 where
     F: Future<Output = ()> + Send + 'static,
 {
     let work = tokio::spawn(fut);
-    tokio::spawn(async move {
-        match work.await {
-            Ok(()) => {}
-            // Cancellation is a normal shutdown signal, not a failure. It only
-            // occurs if a caller aborts the returned supervisor handle.
-            Err(err) if err.is_cancelled() => {}
-            Err(err) => {
-                warn!(
-                    event = "task.panicked",
-                    task = name,
-                    error = %err,
-                    "background task panicked"
-                );
+    // Capture the caller's span so a panic logs with its context, not as an
+    // orphan on the detached supervisor task.
+    let caller_span = Span::current();
+    tokio::spawn(
+        async move {
+            match work.await {
+                Ok(()) => {}
+                // Cancellation is a normal shutdown signal, not a failure. It
+                // only occurs if a caller aborts the returned supervisor handle.
+                Err(err) if err.is_cancelled() => {}
+                Err(err) => {
+                    warn!(
+                        event = "task.panicked",
+                        task = name,
+                        error = %err,
+                        "background task panicked"
+                    );
+                }
             }
         }
-    })
+        .instrument(caller_span),
+    )
 }
 
 #[cfg(test)]

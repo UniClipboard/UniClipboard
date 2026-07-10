@@ -10368,6 +10368,7 @@ dependencies = [
  "tracing",
  "uc-app-paths",
  "uc-core",
+ "uc-observability",
  "unicode-normalization",
  "unicode-segmentation",
  "url",

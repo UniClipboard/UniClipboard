@@ -102,16 +102,6 @@ struct SessionSlot {
     recv: Mutex<RecvStream>,
     // Hold the connection so it stays alive for the session's lifetime.
     _connection: Connection,
-    // Handle to the recv-pump task draining `recv`. Retained so `close`
-    // can abort + join it deterministically and surface a panic as a WARN
-    // instead of letting it vanish with the task (see `uc-infra/AGENTS.md
-    // §13.3.1` and `network/iroh/net_recovery.rs` for the same pattern).
-    //
-    // A `std::sync::Mutex` (not the async one): it is only ever locked for a
-    // synchronous take/store with no `.await` held, which lets the pump
-    // spawner store the handle with no await gap for a concurrent `close` to
-    // interleave into (the handle is in place before this task can yield).
-    pump: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl IrohPairingSessionAdapter {
@@ -282,7 +272,6 @@ impl IrohPairingSessionAdapter {
             send: Mutex::new(send),
             recv: Mutex::new(recv),
             _connection: connection,
-            pump: std::sync::Mutex::new(None),
         });
         self.sessions.lock().await.insert(id.clone(), slot);
         id
@@ -487,8 +476,14 @@ impl IrohPairingSessionAdapter {
                 return;
             }
         };
-        let handle_slot = Arc::clone(&slot);
-        let handle = tokio::spawn(async move {
+        // Detached by design: the pump must keep its `Arc<SessionSlot>` (which
+        // owns the `Connection`) alive until the peer FINs, so a graceful
+        // `close()` half-close is still delivered before the connection drops
+        // — retaining + aborting the handle would tear the connection down
+        // early and break the handshake. `spawn_supervised` keeps that exact
+        // lifetime while making a pump panic surface as a WARN instead of
+        // vanishing silently (see `uc-infra/AGENTS.md §13.3.1`).
+        uc_observability::spawn_supervised("pairing.recv_pump", async move {
             loop {
                 let frame = {
                     let mut recv = slot.recv.lock().await;
@@ -539,16 +534,6 @@ impl IrohPairingSessionAdapter {
                 }
             }
         });
-        // Retain the handle so `close` can abort + join it and surface a
-        // panic. The pump also exits on its own on peer FIN; in that case
-        // the completed handle is simply reaped by the next `close`. Stored
-        // synchronously (no await between spawn and store) so a concurrent
-        // `close` cannot slip in and miss the handle. Poison-tolerant: the
-        // only lock holders do a trivial take/store and never panic.
-        *handle_slot
-            .pump
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(handle);
     }
 }
 
@@ -733,42 +718,19 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
 
     #[instrument(skip_all, fields(session = %session))]
     async fn close(&self, session: &PairingSessionId, reason: Option<String>) {
-        // Remove from the map first, then drop the map lock so aborting +
-        // joining the recv pump does not hold it across an await.
-        let slot = self.sessions.lock().await.remove(session);
-        let Some(slot) = slot else {
-            return;
-        };
-        // Try to half-close the send side so the peer sees EOF.
-        if let Ok(mut send) = slot.send.try_lock() {
-            let _ = send.finish();
-        }
-        // Stop the recv pump deterministically and surface a panic. The pump
-        // may already have exited on its own (peer FIN); in that case the
-        // join returns immediately with `Ok`. Take the handle out under the
-        // sync lock (released immediately — the abort/join await happens
-        // outside it).
-        let pump = slot
-            .pump
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .take();
-        if let Some(handle) = pump {
-            handle.abort();
-            match handle.await {
-                Ok(()) => {}
-                Err(err) if err.is_cancelled() => {} // expected: we aborted it
-                Err(err) => {
-                    warn!(
-                        event = "task.panicked",
-                        task = "pairing.recv_pump",
-                        error = %err,
-                        "pairing recv-pump panicked before close"
-                    );
-                }
+        let mut map = self.sessions.lock().await;
+        if let Some(slot) = map.remove(session) {
+            // Try to half-close the send side so the peer sees EOF. The
+            // recv pump is intentionally not aborted here: it holds its own
+            // `Arc<SessionSlot>` and must keep the connection alive until the
+            // peer FINs so this half-close is delivered, then it exits on its
+            // own (see `spawn_recv_pump`). A pump panic is surfaced by its
+            // `spawn_supervised` wrapper, not here.
+            if let Ok(mut send) = slot.send.try_lock() {
+                let _ = send.finish();
             }
+            debug!(?reason, "pairing session closed");
         }
-        debug!(?reason, "pairing session closed");
     }
 
     /// Slice 2 Phase 1 · T5：返回本端 [`EndpointAddr`] 的 postcard 不透明

@@ -220,7 +220,8 @@ pub(crate) fn spawn_deferred_drain(
     snapshot_hash: String,
 ) {
     let deferred_count = set.len();
-    tokio::spawn(
+    uc_observability::spawn_supervised(
+        "clipboard_sync.deferred_drain",
         async move {
             let started = Instant::now();
             let mut accepted = 0usize;

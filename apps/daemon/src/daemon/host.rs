@@ -153,7 +153,7 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 
         let blob_ports = uc_bootstrap::BlobProcessingPorts::from_app_deps(&wired.deps);
         let task_registry_for_blob = Arc::clone(runtime.task_registry());
-        tokio::spawn(async move {
+        uc_observability::spawn_supervised("blob.processing_tasks", async move {
             uc_bootstrap::spawn_blob_processing_tasks(
                 background,
                 blob_ports,

@@ -184,6 +184,63 @@ impl IngestHandle {
     }
 }
 
+/// A live subscription to the inbound-notice broadcast, returned by
+/// [`ClipboardSyncFacade::subscribe_inbound_notices`].
+///
+/// Wraps the public [`broadcast::Receiver`] and owns the background bridge
+/// task that relays internal notices onto it. The wrapper ties the bridge
+/// task's lifetime to the subscriber: dropping the subscription aborts the
+/// bridge, so a subscriber that goes away does not leave a task looping until
+/// the whole facade is torn down. `Deref`/`DerefMut` expose the underlying
+/// receiver, so callers use `.recv()` exactly as before.
+pub struct InboundNoticeSubscription {
+    rx: broadcast::Receiver<InboundNotice>,
+    bridge: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl std::ops::Deref for InboundNoticeSubscription {
+    type Target = broadcast::Receiver<InboundNotice>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.rx
+    }
+}
+
+impl std::ops::DerefMut for InboundNoticeSubscription {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.rx
+    }
+}
+
+impl Drop for InboundNoticeSubscription {
+    fn drop(&mut self) {
+        let Some(handle) = self.bridge.take() else {
+            return;
+        };
+        handle.abort();
+        // Surface a bridge panic instead of letting it vanish with the aborted
+        // handle (observability requirement — a silently dead task is a bug we
+        // must be able to see). Awaiting must happen off-thread since `drop`
+        // is sync; guard on a live runtime so dropping outside async context
+        // (e.g. in a sync test teardown) degrades to a plain abort rather than
+        // panicking. Cancellation is expected here — only a real panic warns.
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::spawn(async move {
+                if let Err(err) = handle.await {
+                    if !err.is_cancelled() {
+                        tracing::warn!(
+                            event = "task.panicked",
+                            task = "clipboard.inbound_bridge",
+                            error = %err,
+                            "inbound-notice bridge task panicked"
+                        );
+                    }
+                }
+            });
+        }
+    }
+}
+
 /// Clipboard sync facade — the single public entry point for Slice 2
 /// Phase 2.
 pub struct ClipboardSyncFacade {
@@ -361,21 +418,30 @@ impl ClipboardSyncFacade {
 
     /// Subscribe to the inbound-notice broadcast. CLI `watch` / future
     /// daemon subscribers attach here.
-    pub fn subscribe_inbound_notices(&self) -> broadcast::Receiver<InboundNotice> {
+    pub fn subscribe_inbound_notices(&self) -> InboundNoticeSubscription {
         // Bridge from the internal broadcast to the public-type broadcast
         // via a relay task. This keeps public types independent of
         // `usecases::*` renames while still letting lagging subscribers
-        // recover per broadcast semantics.
+        // recover per broadcast semantics. The returned
+        // `InboundNoticeSubscription` owns this task's handle and aborts it
+        // on drop, so the bridge stops when its subscriber goes away rather
+        // than looping until the whole facade is dropped.
         let (public_tx, public_rx) = broadcast::channel(64);
         let mut internal_rx = self.ingest_uc.subscribe_notices();
-        tokio::spawn(async move {
+        let bridge = tokio::spawn(async move {
             loop {
                 match internal_rx.recv().await {
                     Ok(internal) => {
                         let lifted = lift_notice(internal);
                         if public_tx.send(lifted).is_err() {
-                            // No public subscribers — keep consuming so
-                            // the internal broadcast doesn't lag us.
+                            // No public receiver right now. While the
+                            // subscription is alive this cannot happen (the
+                            // guard holds one receiver); it is only reachable
+                            // in the brief window after the subscriber drops
+                            // the guard but before the abort lands. Keep
+                            // consuming so the internal broadcast doesn't lag —
+                            // the next `internal_rx.recv().await` is where the
+                            // pending abort takes effect.
                             continue;
                         }
                     }
@@ -383,8 +449,16 @@ impl ClipboardSyncFacade {
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
+            tracing::debug!(
+                event = "clipboard.inbound_bridge_stopped",
+                reason = "internal_broadcast_closed",
+                "inbound-notice bridge task exiting"
+            );
         });
-        public_rx
+        InboundNoticeSubscription {
+            rx: public_rx,
+            bridge: Some(bridge),
+        }
     }
 
     /// Spawn the ingest background loop. Caller owns the returned handle;
@@ -963,6 +1037,51 @@ mod tests {
         assert_eq!(notice.from_device.as_str(), "peer-x");
         assert_eq!(notice.plaintext, Bytes::from_static(b"hello"));
         assert_eq!(notice.action, InboundAction::NewEntry);
+    }
+
+    /// Dropping an `InboundNoticeSubscription` must abort its bridge task so
+    /// the internal notice receiver is released — otherwise every subscribe
+    /// leaks a task looping until the whole facade is torn down (the bug this
+    /// wrapper fixes). Observed via the internal broadcast's receiver count.
+    #[tokio::test]
+    async fn dropping_subscription_aborts_bridge_and_releases_internal_receiver() {
+        let (facade, _receiver) = build_facade(
+            MockPeerAddrRepo::new(),
+            make_presence_unknown(),
+            MockCipher::new(),
+            MockDispatch::new(),
+            make_device_identity("self"),
+            make_local_identity(),
+            make_settings(),
+        );
+
+        let before = facade.ingest_uc.notice_receiver_count();
+
+        // `subscribe_inbound_notices` subscribes to the internal broadcast
+        // synchronously (before spawning the bridge), so the count rises
+        // immediately and deterministically.
+        let subscription = facade.subscribe_inbound_notices();
+        assert_eq!(
+            facade.ingest_uc.notice_receiver_count(),
+            before + 1,
+            "bridge task should hold one internal notice receiver while subscribed"
+        );
+
+        drop(subscription);
+
+        // `abort()` is asynchronous: the aborted task releases its captured
+        // internal receiver only once the runtime polls it. Poll the count
+        // until it settles rather than assuming a fixed delay.
+        let mut waited_ms = 0;
+        while facade.ingest_uc.notice_receiver_count() > before && waited_ms < 1000 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            waited_ms += 5;
+        }
+        assert_eq!(
+            facade.ingest_uc.notice_receiver_count(),
+            before,
+            "dropping the subscription must abort the bridge and release its internal receiver"
+        );
     }
 
     /// Verdict 3 — `dispatch_snapshot` encodes the snapshot into the V3

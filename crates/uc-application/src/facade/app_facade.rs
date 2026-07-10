@@ -48,11 +48,11 @@ use crate::facade::{
     ClipboardOutboundFacade, ClipboardRestoreFacade, ClipboardSyncError, ClipboardSyncFacade,
     DeviceFacade, DiagnosticsFacade, DispatchEntryOutcome, EncryptionFacade, EncryptionFacadeError,
     EncryptionStateView, FetchBlobCommand, FetchBlobResult, FetchBlobToPathCommand,
-    FetchBlobToPathResult, InboundNotice, LifecycleFacade, MemberRosterFacade, PublishBlobCommand,
-    PublishBlobPathCommand, PublishBlobResult, ResendEntryCommand, ResendEntryError, ResendReport,
-    ResourceFacade, SearchFacade, SearchFacadeError, SearchPageView, SearchQueryInput,
-    SearchRebuildAcceptedView, SearchStatusView, SettingsFacade, SettingsFacadeError,
-    SpaceSetupFacade, StorageFacade,
+    FetchBlobToPathResult, InboundNoticeSubscription, LifecycleFacade, MemberRosterFacade,
+    PublishBlobCommand, PublishBlobPathCommand, PublishBlobResult, ResendEntryCommand,
+    ResendEntryError, ResendReport, ResourceFacade, SearchFacade, SearchFacadeError,
+    SearchPageView, SearchQueryInput, SearchRebuildAcceptedView, SearchStatusView, SettingsFacade,
+    SettingsFacadeError, SpaceSetupFacade, StorageFacade,
 };
 use crate::usecases::clipboard_sync::V3BlobRef;
 use uc_core::ids::DeviceId;
@@ -446,7 +446,7 @@ impl AppFacade {
     /// 订阅入站剪贴板通知。
     pub fn subscribe_inbound_clipboard_notices(
         &self,
-    ) -> Result<broadcast::Receiver<InboundNotice>, ClipboardSyncError> {
+    ) -> Result<InboundNoticeSubscription, ClipboardSyncError> {
         self.clipboard_sync
             .get()
             .cloned()

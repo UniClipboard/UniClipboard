@@ -510,13 +510,16 @@ impl DaemonService for PeerKeepAliveWorker {
                             // result is intentionally dropped — failures
                             // are observed on the next tick's dial.
                             let app_facade = Arc::clone(&self.app_facade);
-                            tokio::spawn(async move {
-                                debug!(
-                                    device = %device.as_str(),
-                                    "inbound presence Online; spawning outbound dial",
-                                );
-                                let _ = app_facade.ensure_reachable_one(&device).await;
-                            });
+                            uc_observability::spawn_supervised(
+                                "peer_keepalive.outbound_dial",
+                                async move {
+                                    debug!(
+                                        device = %device.as_str(),
+                                        "inbound presence Online; spawning outbound dial",
+                                    );
+                                    let _ = app_facade.ensure_reachable_one(&device).await;
+                                },
+                            );
                         }
                     }
                 }

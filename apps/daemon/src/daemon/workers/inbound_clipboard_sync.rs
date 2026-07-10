@@ -195,9 +195,9 @@ impl DaemonService for InboundClipboardSyncWorker {
         // `subscribe_inbound_notices` spawns a relay task per call that
         // bridges the internal `InboundClipboardNotice` broadcast to a
         // fresh public `InboundNotice` broadcast. We subscribe once at
-        // worker start — the relay task lives until the facade itself
-        // is dropped, which happens when the `SyncEngineAssembly` is
-        // torn down (shutdown path in `entrypoint.rs`).
+        // worker start; the returned `InboundNoticeSubscription` owns the
+        // relay task's handle and aborts it when `rx` is dropped — i.e. when
+        // this `start` future returns on cancellation.
         let mut rx = self.clipboard_sync.subscribe_inbound_notices();
 
         loop {

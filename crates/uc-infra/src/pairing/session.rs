@@ -476,7 +476,14 @@ impl IrohPairingSessionAdapter {
                 return;
             }
         };
-        tokio::spawn(async move {
+        // Detached by design: the pump must keep its `Arc<SessionSlot>` (which
+        // owns the `Connection`) alive until the peer FINs, so a graceful
+        // `close()` half-close is still delivered before the connection drops
+        // — retaining + aborting the handle would tear the connection down
+        // early and break the handshake. `spawn_supervised` keeps that exact
+        // lifetime while making a pump panic surface as a WARN instead of
+        // vanishing silently (see `uc-infra/AGENTS.md §13.3.1`).
+        uc_observability::spawn_supervised("pairing.recv_pump", async move {
             loop {
                 let frame = {
                     let mut recv = slot.recv.lock().await;
@@ -713,7 +720,12 @@ impl PairingSessionPort for IrohPairingSessionAdapter {
     async fn close(&self, session: &PairingSessionId, reason: Option<String>) {
         let mut map = self.sessions.lock().await;
         if let Some(slot) = map.remove(session) {
-            // Try to half-close the send side so the peer sees EOF.
+            // Try to half-close the send side so the peer sees EOF. The
+            // recv pump is intentionally not aborted here: it holds its own
+            // `Arc<SessionSlot>` and must keep the connection alive until the
+            // peer FINs so this half-close is delivered, then it exits on its
+            // own (see `spawn_recv_pump`). A pump panic is surfaced by its
+            // `spawn_supervised` wrapper, not here.
             if let Ok(mut send) = slot.send.try_lock() {
                 let _ = send.finish();
             }

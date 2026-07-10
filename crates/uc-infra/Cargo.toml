@@ -18,6 +18,9 @@ test-util = []
 [dependencies]
 # ===== Workspace crates =====
 uc-core = { path = "../uc-core" }
+# Panic-visible background-task spawning (`spawn_supervised`) for detached
+# infra tasks that have no natural handle owner (e.g. the pairing recv-pump).
+uc-observability = { path = "../uc-observability" }
 # Directory-layout authority: config-migration reads `is_portable()` to record
 # the bundle's source storage mode.
 uc-app-paths = { path = "../uc-app-paths" }

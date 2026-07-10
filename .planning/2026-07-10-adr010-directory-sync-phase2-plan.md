@@ -74,20 +74,33 @@ PR #1290 只做了「manifest 基础设施 + 捕获侧写入」：
    - **漂移可观测**：publish 后对比 wire digests 与 manifest 捕获时刻贡献值，
      不一致记 WARN（阶段 3 的 (mtime,size) 漂移复核先有观测基线）。
 
-### PR-B：捕获限额护栏（SizeCapExceeded 落地）
+### PR-B：捕获限额护栏（SizeCapExceeded 落地）✅ 已实现
 
 1. **设置**：`FileSyncSettings` 新增
    `max_file_set_total_bytes`（默认 1 GiB）、`max_file_set_member_count`（默认 2000），
-   serde 缺省回退（沿用 issue #581 的兼容模式）。与既有 `max_file_size`
-   （单文件 5 GiB）语义正交：前者限文件集总量/成员数，后者限单成员。
+   `#[serde(default)]` 缺省回退（沿用 issue #581 的兼容模式）。与既有 `max_file_size`
+   （单文件 5 GiB）语义正交：前者限文件集总量/成员数，后者限单成员。**暂不经
+   daemon settings DTO 暴露**（`FileSyncSettingsDto` 不加字段）——设置面板留到阶段 5，
+   现阶段只作为 core 内部、可通过 settings 文件手改的护栏。
 2. **捕获预检**：`build_entry_file_set` 前置毫秒级元数据预检
-   （`metadata()` 取 size，不读内容）；超限 → 全部候选行标
-   `EntryFileSetExcludeReason::SizeCapExceeded`，**跳过逐文件哈希**
-   （身份反正回退路径文本，读 1 GiB 内容纯浪费，也是 ADR「热路径只做元数据预检」
-   的要求）。
-3. 行为语义：超限集合仍正常进本地历史（身份=路径文本，与 phase 1 的
-   IngestFailed 路径一致）；出站被 PR-A 的 Excluded fail-fast 拦截，原因可观测。
-4. 测试：预检超量（总大小/成员数各一）、恰好在界内、设置缺省回退。
+   （`file_set_exceeds_caps`：先查成员数，再 `metadata()` 累加 size，不读内容）；
+   超限 → 全部文件行标 `EntryFileSetExcludeReason::SizeCapExceeded`，**跳过逐文件哈希**。
+   成员数上限 `N` 语义为「> N 才超」（恰好 N 放行）。
+3. **只对「全部为可 stat 的普通文件」生效**：任一成员不可测（缺失/目录/stat 失败）
+   → size 判定保持 `false`，落到逐行哈希由其自然标 `IngestFailed`（同样触发路径文本
+   回退），避免 SizeCapExceeded 与 IngestFailed 语义打架。
+4. **caps 读取**：capture 仅在文件类分支 `settings.load()` 读一次；load 失败 →
+   `FileSetCaps::unbounded()`（不因瞬时 settings 错误静默停掉文件同步）。文本/图片
+   捕获热路径不付这次读取。`SettingsPort` 穿线进 `CaptureClipboardUseCase`，4 个装配点已接。
+5. 行为语义：超限集合仍正常进本地历史（身份=路径文本，与 phase 1 的
+   IngestFailed 路径一致）；出站被 PR-A 的 Excluded 拦截（dispatch `Skipped`），原因可观测。
+   **已知边界**：若 phase-1 的 best-effort manifest 持久化失败，dispatch 走 PR-A 的
+   rep 重解析回退，此时 caps 不生效（可用性优先，与 manifest-missing 回退一致）。
+6. **行为变更（生效）**：>2000 成员或 >1 GiB 的平铺复制此前会尝试出站，现被判超限
+   不出站（仍进本地历史）。按开放问题 #1 的倾向直接生效，`file_sync` 设置文件可调。
+7. 测试：成员数超限（跳哈希，用 panic-on-hash 证明）/ 恰好在界 / 总字节超限（真实
+   tempfile）/ 界内 / 不可测成员落 IngestFailed 而非 SizeCapExceeded / LocalFile 形态
+   同样受成员数上限约束 / settings 缺省与往返。
 
 ### 明确不在第二阶段
 

@@ -70,7 +70,7 @@
       "readySubtitle": "{{app}} {{version}} 已下载完成，随时可以安装。",
       "skipThisVersion": "跳过此版本",
       "remindMeLater": "稍后提醒",
-      "installUpdate": "安装更新",
+      "downloadUpdate": "下载更新",
       "checking": "正在检查最新版本…",
       "autoUpdate": "今后自动下载更新",
       "upToDateTitle": "已是最新版本！",

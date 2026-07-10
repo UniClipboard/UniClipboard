@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import {
   cancelDownload,
   checkForUpdate,
+  downloadUpdate,
   getAutoDownloadUpdate,
   getDownloadProgress,
   getInstallKind,
@@ -16,6 +17,7 @@ import {
   subscribeUpdateProgress,
   type DownloadEvent,
   type DownloadPhase,
+  type DownloadProgressSnapshot,
   type UpdateMetadata,
 } from '@/api/updater'
 import { Progress } from '@/components/ui/progress'
@@ -60,6 +62,20 @@ const DEV_MOCK: UpdateState = {
   autoUpdate: true,
 }
 
+// Map a backend progress snapshot onto the local state, including `info`.
+// Shared by the mount-time sync and the post-failure re-sync so both leave
+// the window in the same shape — e.g. a snapshot with no version (pending
+// update cleared) must also clear `info`, or the up-to-date view never shows.
+const applySnapshot = (prev: UpdateState, s: DownloadProgressSnapshot): UpdateState => ({
+  ...prev,
+  phase: s.phase,
+  info: s.version
+    ? { version: s.version, currentVersion: s.currentVersion, body: s.body, date: s.date }
+    : null,
+  downloaded: s.downloaded,
+  total: s.total,
+})
+
 const isDevPreview = (): boolean => {
   if (typeof window === 'undefined') return false
   const params = new URLSearchParams(window.location.search)
@@ -101,18 +117,12 @@ function useUpdaterState(devPreview: boolean) {
       ([progressResult, autoUpdateResult]) => {
         if (cancelled) return
         setState(prev => {
-          const next = { ...prev }
+          let next = prev
           if (progressResult.status === 'fulfilled') {
-            const s = progressResult.value
-            next.phase = s.phase
-            next.info = s.version
-              ? { version: s.version, currentVersion: s.currentVersion, body: s.body, date: s.date }
-              : null
-            next.downloaded = s.downloaded
-            next.total = s.total
+            next = applySnapshot(next, progressResult.value)
           }
           if (autoUpdateResult.status === 'fulfilled') {
-            next.autoUpdate = autoUpdateResult.value
+            next = { ...next, autoUpdate: autoUpdateResult.value }
           }
           return next
         })
@@ -213,7 +223,14 @@ function useUpdaterState(devPreview: boolean) {
     [devPreview]
   )
 
-  const handleInstall = useCallback(async () => {
+  // Start (or resume) the download through the recoverable background path.
+  // Unlike the legacy inline `download_and_install`, this writes progress into
+  // the backend's shared `PendingUpdate` state, so closing the window mid-
+  // download leaves the download running and re-openable — the whole point of
+  // the "download in background" affordance. Progress and the `downloading ->
+  // ready` transition arrive via the `subscribeUpdateProgress` broadcast that
+  // this window already listens to, so no per-call progress callback is needed.
+  const handleDownload = useCallback(async () => {
     if (devPreview) {
       setState(prev => ({ ...prev, phase: 'downloading', downloaded: 0, total: 100 }))
       let bytes = 0
@@ -235,10 +252,10 @@ function useUpdaterState(devPreview: boolean) {
       return
     }
 
-    // Re-check the latest version before committing to install. The pending
+    // Re-check the latest version before committing to download. The pending
     // update is a snapshot from when the scheduler first detected it; if a
     // newer release shipped since (e.g. 0.14.0 popup while 0.14.1 is out),
-    // installing the cached version lands the user on an already-outdated
+    // downloading the cached version lands the user on an already-outdated
     // build that immediately prompts again. A fresh check lets the backend
     // supersede the pending state and re-emit `update-available`, which
     // refreshes this window to the newer version + changelog so the user can
@@ -250,7 +267,7 @@ function useUpdaterState(devPreview: boolean) {
         const latest = await checkForUpdate()
         if (!latest) {
           // No longer offered (e.g. release pulled). The backend has cleared
-          // the pending state; reflect up-to-date instead of installing a
+          // the pending state; reflect up-to-date instead of downloading a
           // version that no longer exists.
           setPreparing(false)
           setState(prev => ({ ...prev, phase: 'idle', info: null }))
@@ -264,13 +281,48 @@ function useUpdaterState(devPreview: boolean) {
           return
         }
       } catch (err) {
-        // Offline / timeout: fall through and install the cached version
+        // Offline / timeout: fall through and download the cached version
         // rather than blocking the update on a failed re-check.
-        log.warn({ err }, '安装前重新检查失败；安装已缓存版本')
+        log.warn({ err }, '下载前重新检查失败；下载已缓存版本')
       }
       setPreparing(false)
     }
 
+    // Optimistically enter the downloading state so the button flips to the
+    // cancel/background pair immediately; the `Started` broadcast will confirm
+    // and supply the content length.
+    setState(prev => ({ ...prev, phase: 'downloading', downloaded: 0, total: null }))
+    try {
+      await downloadUpdate()
+    } catch (error) {
+      // A `Failed` broadcast already reset the phase for a real download
+      // failure/cancellation. Precondition rejections (e.g. a concurrent
+      // scheduler download already in flight) emit no broadcast, so re-sync
+      // the phase from the backend rather than leaving a stale spinner.
+      log.error({ err: error }, '后台下载更新失败')
+      getDownloadProgress()
+        .then(s => {
+          setState(prev => applySnapshot(prev, s))
+        })
+        .catch(err => {
+          log.error({ err }, '下载失败后同步进度失败')
+          setState(prev => ({ ...prev, phase: prev.info ? 'available' : 'idle' }))
+        })
+    }
+  }, [devPreview, isPortable, state.info])
+
+  // Install the already-downloaded bytes and restart. Reached only from the
+  // `ready` phase, so the backend takes the cached-bytes install path — no
+  // second download happens here.
+  const handleInstall = useCallback(async () => {
+    if (devPreview) {
+      setState(prev => ({ ...prev, phase: 'installing' }))
+      return
+    }
+    if (isPortable) {
+      openUrl(RELEASE_PAGE_URL).catch(err => log.error({ err }, '打开发布页失败'))
+      return
+    }
     try {
       await installUpdate(progress => {
         setState(prev => ({
@@ -284,7 +336,7 @@ function useUpdaterState(devPreview: boolean) {
       log.error({ err: error }, '安装更新失败')
       setState(prev => ({ ...prev, phase: prev.info ? 'available' : 'idle' }))
     }
-  }, [devPreview, isPortable, state.info])
+  }, [devPreview, isPortable])
 
   const handleCancel = useCallback(async () => {
     if (devPreview || cancelling) return
@@ -306,6 +358,7 @@ function useUpdaterState(devPreview: boolean) {
     closeWindow,
     handleSkip,
     handleAutoUpdateToggle,
+    handleDownload,
     handleInstall,
     handleCancel,
   }
@@ -315,13 +368,14 @@ const ActionButtons: React.FC<{
   phase: DownloadPhase
   hasInfo: boolean
   cancelling: boolean
-  /** Re-checking the latest version before install; disables the actions. */
+  /** Re-checking the latest version before download; disables the actions. */
   preparing: boolean
   /** Portable build: primary action opens the release page instead of installing. */
   isPortable: boolean
   onCancel: () => void
   onSkip: () => void
   onClose: () => void
+  onDownload: () => void
   onInstall: () => void
 }> = ({
   phase,
@@ -332,6 +386,7 @@ const ActionButtons: React.FC<{
   onCancel,
   onSkip,
   onClose,
+  onDownload,
   onInstall,
 }) => {
   const { t } = useTranslation()
@@ -352,13 +407,15 @@ const ActionButtons: React.FC<{
         >
           {cancelling ? t('update.cancelling') : t('update.cancelDownload')}
         </button>
+        {/* "Download in background" just dismisses the window — the download
+            already runs in the backend, and re-opening restores progress via
+            the mount-time `getDownloadProgress` sync. */}
         <button
           type="button"
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground opacity-60"
-          disabled
+          className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          onClick={onClose}
         >
-          <Loader2 className="size-4 animate-spin" />
-          {t('update.downloading')}
+          {t('update.downloadInBackground')}
         </button>
       </>
     )
@@ -417,7 +474,7 @@ const ActionButtons: React.FC<{
       <button
         type="button"
         className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        onClick={onInstall}
+        onClick={isReady ? onInstall : onDownload}
         disabled={!hasInfo || preparing}
       >
         {preparing ? (
@@ -430,7 +487,7 @@ const ActionButtons: React.FC<{
         ) : isReady ? (
           t('update.installNow')
         ) : (
-          t('updater.window.installUpdate')
+          t('updater.window.downloadUpdate')
         )}
       </button>
     </>
@@ -450,6 +507,7 @@ const UpdaterWindow: React.FC = () => {
     closeWindow,
     handleSkip,
     handleAutoUpdateToggle,
+    handleDownload,
     handleInstall,
     handleCancel,
   } = useUpdaterState(devPreview)
@@ -539,6 +597,7 @@ const UpdaterWindow: React.FC = () => {
           onCancel={() => void handleCancel()}
           onSkip={handleSkip}
           onClose={closeWindow}
+          onDownload={() => void handleDownload()}
           onInstall={() => void handleInstall()}
         />
       </div>

@@ -381,6 +381,7 @@ async fn dispatch_text(
             req.text.into_bytes(),
         )],
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     };
 
     let outcome = app

@@ -110,5 +110,6 @@ pub(super) fn build_from_offer<O: OfferLike>(
         ts_ms: chrono::Utc::now().timestamp_millis(),
         representations: reps,
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     })
 }

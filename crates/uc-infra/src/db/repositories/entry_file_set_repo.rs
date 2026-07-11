@@ -32,8 +32,8 @@ use crate::db::models::entry_file_set::{EntryFileSetRow, NewEntryFileSetRow};
 use crate::db::ports::DbExecutor;
 use crate::db::schema::entry_file_set;
 
-/// Rows per multi-row INSERT statement. `NewEntryFileSetRow` binds 11 columns,
-/// so 80 rows = 880 bound params — safely under SQLite's historical
+/// Rows per multi-row INSERT statement. `NewEntryFileSetRow` binds 12 columns,
+/// so 80 rows = 960 bound params — safely under SQLite's historical
 /// 999-parameter-per-statement limit (older bundled builds), while still
 /// collapsing a ~2000-member insert into ~25 statements instead of 2000.
 const ENTRY_FILE_SET_INSERT_CHUNK: usize = 80;
@@ -137,20 +137,24 @@ fn encode_line(
     };
 
     let original_text_ct = cipher
-        .seal(entry_id, line.line_index, &line.original_text)
+        .seal_original_text(entry_id, line.line_index, &line.original_text)
         .map_err(|e| EntryFileSetError::Storage(format!("seal original_text: {e}")))?;
-    let (root_index, relative_path_ct, kind_tag) = match &line.member_location {
+    let (root_index, relative_path_ct, kind_tag, root_name_ct) = match &line.member_location {
         Some(location) => {
             let relative_path_ct = cipher
-                .seal(entry_id, line.line_index, &location.relative_path)
+                .seal_relative_path(entry_id, line.line_index, &location.relative_path)
                 .map_err(|e| EntryFileSetError::Storage(format!("seal relative_path: {e}")))?;
+            let root_name_ct = cipher
+                .seal_root_name(entry_id, line.line_index, &location.root_name)
+                .map_err(|e| EntryFileSetError::Storage(format!("seal root_name: {e}")))?;
             (
                 Some(location.root_index),
                 Some(relative_path_ct),
                 Some(location.kind.as_tag().to_string()),
+                Some(root_name_ct),
             )
         }
-        None => (None, None, None),
+        None => (None, None, None, None),
     };
 
     Ok(NewEntryFileSetRow {
@@ -165,6 +169,7 @@ fn encode_line(
         root_index,
         relative_path_ct,
         kind_tag,
+        root_name_ct,
     })
 }
 
@@ -177,19 +182,28 @@ fn decode_row(
         EntryFileSetError::Storage("file-set row missing sealed original_text".into())
     })?;
     let original_text = cipher
-        .open(entry_id, row.line_index, &original_text_ct)
+        .open_original_text(entry_id, row.line_index, &original_text_ct)
         .map_err(|e| EntryFileSetError::Storage(format!("open original_text: {e}")))?;
-    let member_location = match (row.root_index, row.relative_path_ct, row.kind_tag) {
-        (None, None, None) => None,
-        (Some(root_index), Some(relative_path_ct), Some(kind_tag)) => {
+    let member_location = match (
+        row.root_index,
+        row.relative_path_ct,
+        row.kind_tag,
+        row.root_name_ct,
+    ) {
+        (None, None, None, None) => None,
+        (Some(root_index), Some(relative_path_ct), Some(kind_tag), Some(root_name_ct)) => {
             let relative_path = cipher
-                .open(entry_id, row.line_index, &relative_path_ct)
+                .open_relative_path(entry_id, row.line_index, &relative_path_ct)
                 .map_err(|e| EntryFileSetError::Storage(format!("open relative_path: {e}")))?;
             let kind = FileSetMemberKind::from_tag(&kind_tag).ok_or_else(|| {
                 EntryFileSetError::Storage(format!("unknown member kind tag: {kind_tag}"))
             })?;
+            let root_name = cipher
+                .open_root_name(entry_id, row.line_index, &root_name_ct)
+                .map_err(|e| EntryFileSetError::Storage(format!("open root_name: {e}")))?;
             Some(FileSetMemberLocation {
                 root_index,
+                root_name,
                 relative_path,
                 kind,
             })
@@ -470,6 +484,7 @@ mod tests {
                     original_text: "file:///a.txt".into(),
                     member_location: Some(FileSetMemberLocation {
                         root_index: 0,
+                        root_name: "a.txt".into(),
                         relative_path: "a.txt".into(),
                         kind: FileSetMemberKind::File,
                     }),
@@ -501,6 +516,7 @@ mod tests {
                     original_text: "file:///root/run.sh".into(),
                     member_location: Some(FileSetMemberLocation {
                         root_index: 1,
+                        root_name: "root".into(),
                         relative_path: "run.sh".into(),
                         kind: FileSetMemberKind::Executable,
                     }),
@@ -518,6 +534,7 @@ mod tests {
                     original_text: "file:///root".into(),
                     member_location: Some(FileSetMemberLocation {
                         root_index: 1,
+                        root_name: "root".into(),
                         relative_path: "empty".into(),
                         kind: FileSetMemberKind::EmptyDirectory,
                     }),
@@ -528,6 +545,7 @@ mod tests {
                     original_text: "file:///root/link".into(),
                     member_location: Some(FileSetMemberLocation {
                         root_index: 1,
+                        root_name: "root".into(),
                         relative_path: "link".into(),
                         kind: FileSetMemberKind::File,
                     }),
@@ -673,6 +691,24 @@ mod tests {
             assert!(
                 !ct.windows(needle.len()).any(|window| window == needle),
                 "sealed relative_path must not carry plaintext path bytes"
+            );
+        }
+
+        let root_name_cts: Vec<Option<Vec<u8>>> = seed_exec
+            .run(move |conn| {
+                Ok(entry_file_set::table
+                    .filter(entry_file_set::entry_id.eq("entry-1"))
+                    .order(entry_file_set::line_index.asc())
+                    .select(entry_file_set::root_name_ct)
+                    .load::<Option<Vec<u8>>>(conn)?)
+            })
+            .unwrap();
+        let root_name = b"root";
+        for ct in root_name_cts.iter().flatten() {
+            assert!(
+                !ct.windows(root_name.len())
+                    .any(|window| window == root_name),
+                "sealed root_name must not carry plaintext path bytes"
             );
         }
     }

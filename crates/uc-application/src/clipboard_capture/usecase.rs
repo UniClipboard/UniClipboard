@@ -276,12 +276,16 @@ impl CaptureClipboardUseCase {
             };
             // Build this capture's file-set manifest (line-level: kept for
             // persistence below) and use it to populate `file_content_digests`
-            // so `snapshot_hash()` is based on device-independent file
-            // *content* rather than the text/uri-list path text (device-
-            // specific). Skipped when already populated (RemotePush: the
-            // inbound materializer fills these from the wire before this
-            // capture runs; it does not yet build a manifest — out of this
-            // phase's scope).
+            // / `file_set_v1_component` so `snapshot_hash()` is based on
+            // device-independent file *content* rather than the text/uri-list
+            // path text (device-specific). Skipped when either is already
+            // populated (RemotePush: the inbound materializer fills these
+            // from the wire before this capture runs; it does not yet build
+            // a manifest — out of this phase's scope). No current snapshot
+            // constructor pre-populates `file_set_v1_component`, so that half
+            // of the guard is a no-op today; it exists for parity with
+            // `file_content_digests` and to cover a future wire path that
+            // carries the component directly.
             let mut file_set: Option<EntryFileSet> = None;
             // Only file-class captures build a manifest, so keep the text/image
             // hot path off the settings port (see the `settings` field doc).
@@ -290,7 +294,10 @@ impl CaptureClipboardUseCase {
                 matches!(rep.source(), ClipboardPayloadSource::LocalFile { .. })
                     || is_file_mime_or_format(rep.mime.as_ref(), &rep.format_id)
             });
-            if snapshot.file_content_digests.is_empty() && is_file_class {
+            if snapshot.file_content_digests.is_empty()
+                && snapshot.file_set_v1_component.is_none()
+                && is_file_class
+            {
                 // Read the file-set caps for this capture. A load failure must
                 // not drop the capture — fall back to no cap (behaviour before
                 // the gate existed) so a transient settings error can't silently
@@ -308,9 +315,13 @@ impl CaptureClipboardUseCase {
                 if let Some(built) =
                     build_entry_file_set(&snapshot, self.blob_ingest.as_ref(), caps).await
                 {
-                    let digests = built.content_digest_contribution();
-                    if !digests.is_empty() {
-                        snapshot.file_content_digests = digests;
+                    if let Some(component) = built.file_set_v1_component() {
+                        snapshot.file_set_v1_component = Some(component);
+                    } else {
+                        let digests = built.content_digest_contribution();
+                        if !digests.is_empty() {
+                            snapshot.file_content_digests = digests;
+                        }
                     }
                     file_set = Some(built);
                 }
@@ -851,6 +862,7 @@ async fn build_entry_file_set(
             line_index: idx as i64,
             root_index: idx as i64,
             original_text: path.display().to_string(),
+            root_name: normalized_basename(&path),
             path,
             known_size: Some(size_bytes),
         })
@@ -896,6 +908,7 @@ async fn build_entry_file_set(
                     current
                 },
                 original_text: raw_line.to_string(),
+                root_name: normalized_basename(&path),
                 path,
                 known_size: None,
             }),
@@ -926,6 +939,7 @@ struct TopLevelFileMember {
     line_index: i64,
     root_index: i64,
     original_text: String,
+    root_name: String,
     path: std::path::PathBuf,
     known_size: Option<u64>,
 }
@@ -1043,6 +1057,7 @@ async fn build_file_member_lines(
             original_text: root.original_text,
             member_location: FileSetMemberLocation {
                 root_index: root.root_index,
+                root_name: root.root_name,
                 relative_path: normalized_basename(&root.path),
                 kind: FileSetMemberKind::File,
             },
@@ -1083,6 +1098,7 @@ fn pending_flat_file(root: TopLevelFileMember, metadata: std::fs::Metadata) -> P
         original_text: root.original_text,
         member_location: FileSetMemberLocation {
             root_index: root.root_index,
+            root_name: root.root_name,
             relative_path,
             kind: member_kind(&metadata),
         },
@@ -1097,6 +1113,7 @@ fn pending_missing_file(root: TopLevelFileMember) -> PendingFileSetLine {
         original_text: root.original_text,
         member_location: FileSetMemberLocation {
             root_index: root.root_index,
+            root_name: root.root_name,
             relative_path,
             kind: FileSetMemberKind::File,
         },
@@ -1110,6 +1127,7 @@ fn pending_root_marker(root: TopLevelFileMember, line_index: i64) -> PendingFile
         original_text: root.original_text,
         member_location: FileSetMemberLocation {
             root_index: root.root_index,
+            root_name: root.root_name,
             relative_path: ".".to_string(),
             kind: FileSetMemberKind::File,
         },
@@ -1126,6 +1144,7 @@ fn excluded_root_line(
         original_text: root.original_text,
         member_location: Some(FileSetMemberLocation {
             root_index: root.root_index,
+            root_name: root.root_name,
             relative_path: normalized_basename(&root.path),
             kind: FileSetMemberKind::File,
         }),
@@ -1172,6 +1191,7 @@ async fn expand_directory(
                 original_text: root.original_text.clone(),
                 member_location: FileSetMemberLocation {
                     root_index: root.root_index,
+                    root_name: root.root_name.clone(),
                     relative_path,
                     kind: FileSetMemberKind::EmptyDirectory,
                 },
@@ -1227,6 +1247,7 @@ async fn expand_directory(
                 original_text: root.original_text.clone(),
                 member_location: FileSetMemberLocation {
                     root_index: root.root_index,
+                    root_name: root.root_name.clone(),
                     relative_path,
                     kind: member_kind(&metadata),
                 },
@@ -1251,6 +1272,7 @@ fn directory_marker(
         original_text: root.original_text.clone(),
         member_location: FileSetMemberLocation {
             root_index: root.root_index,
+            root_name: root.root_name.clone(),
             relative_path: if relative_path.is_empty() {
                 ".".to_string()
             } else {
@@ -1400,6 +1422,7 @@ mod tests {
             ts_ms: 1_700_000_000_000,
             representations: reps,
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -1409,7 +1432,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let parent = tempfile::tempdir().unwrap();
-        let root = parent.path().join("root");
+        let root = parent.path().join("roote\u{301}");
         std::fs::create_dir(&root).unwrap();
         std::fs::write(root.join("visible.txt"), b"visible").unwrap();
         std::fs::write(root.join(".hidden"), b"hidden").unwrap();
@@ -1438,16 +1461,21 @@ mod tests {
                     .member_location
                     .as_ref()
                     .expect("directory member location");
-                (location.relative_path.as_str(), location.kind)
+                (
+                    location.root_name.as_str(),
+                    location.relative_path.as_str(),
+                    location.kind,
+                )
             })
             .collect();
-        assert!(members.contains(&(".hidden", FileSetMemberKind::File)));
-        assert!(members.contains(&("visible.txt", FileSetMemberKind::File)));
-        assert!(members.contains(&("nested/run.sh", FileSetMemberKind::Executable)));
-        assert!(members.contains(&("empty", FileSetMemberKind::EmptyDirectory)));
-        assert!(members.contains(&("\u{e9}.txt", FileSetMemberKind::File)));
+        assert!(members.contains(&("root\u{e9}", ".hidden", FileSetMemberKind::File)));
+        assert!(members.contains(&("root\u{e9}", "visible.txt", FileSetMemberKind::File)));
+        assert!(members.contains(&("root\u{e9}", "nested/run.sh", FileSetMemberKind::Executable)));
+        assert!(members.contains(&("root\u{e9}", "empty", FileSetMemberKind::EmptyDirectory)));
+        assert!(members.contains(&("root\u{e9}", "\u{e9}.txt", FileSetMemberKind::File)));
         assert!(set.has_directory_structure());
         assert!(set.content_digest_contribution().is_empty());
+        assert!(set.file_set_v1_component().is_some());
     }
 
     #[cfg(unix)]
@@ -1574,8 +1602,12 @@ mod tests {
             .as_ref()
             .unwrap();
         assert_eq!(
-            (flat.root_index, flat.relative_path.as_str()),
-            (0, "loose.txt")
+            (
+                flat.root_index,
+                flat.root_name.as_str(),
+                flat.relative_path.as_str()
+            ),
+            (0, "loose.txt", "loose.txt")
         );
         let child = set
             .lines
@@ -1586,7 +1618,13 @@ mod tests {
                     .is_some_and(|location| location.relative_path == "child.txt")
             })
             .unwrap();
-        assert_eq!(child.member_location.as_ref().unwrap().root_index, 1);
+        assert_eq!(
+            (
+                child.member_location.as_ref().unwrap().root_index,
+                child.member_location.as_ref().unwrap().root_name.as_str()
+            ),
+            (1, "root")
+        );
         assert!(child.line_index >= 2);
     }
 
@@ -1689,6 +1727,54 @@ mod tests {
             snap_a.snapshot_hash(),
             "filling content digests must move identity off the path-text hash"
         );
+    }
+
+    #[tokio::test]
+    async fn directory_identity_is_stable_across_devices_and_distinct_from_flat_files() {
+        let fixture = tempfile::tempdir().unwrap();
+        let device_a = fixture.path().join("device-a/root");
+        let device_b = fixture.path().join("device-b/root");
+        for root in [&device_a, &device_b] {
+            std::fs::create_dir_all(root).unwrap();
+            std::fs::write(root.join("1.txt"), b"one").unwrap();
+            std::fs::write(root.join("2.txt"), b"two").unwrap();
+        }
+
+        let make_directory_snapshot = |root: &std::path::Path| {
+            snapshot_with(vec![rep(
+                "files",
+                Some("text/uri-list"),
+                format!("file://{}", root.display()).as_bytes(),
+            )])
+        };
+        let mut directory_a = make_directory_snapshot(&device_a);
+        let mut directory_b = make_directory_snapshot(&device_b);
+        for snapshot in [&mut directory_a, &mut directory_b] {
+            let set = build_entry_file_set(snapshot, &FakeIngestByName, FileSetCaps::unbounded())
+                .await
+                .expect("directory manifest");
+            snapshot.file_set_v1_component = set.file_set_v1_component();
+        }
+        assert_eq!(directory_a.snapshot_hash(), directory_b.snapshot_hash());
+
+        let flat_a = fixture.path().join("flat-a/1.txt");
+        let flat_b = fixture.path().join("flat-b/2.txt");
+        std::fs::create_dir_all(flat_a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(flat_b.parent().unwrap()).unwrap();
+        std::fs::write(&flat_a, b"one").unwrap();
+        std::fs::write(&flat_b, b"two").unwrap();
+        let mut flat = snapshot_with(vec![rep(
+            "files",
+            Some("text/uri-list"),
+            format!("file://{}\nfile://{}", flat_a.display(), flat_b.display()).as_bytes(),
+        )]);
+        flat.file_content_digests =
+            build_entry_file_set(&flat, &FakeIngestByName, FileSetCaps::unbounded())
+                .await
+                .expect("flat manifest")
+                .content_digest_contribution();
+
+        assert_ne!(directory_a.snapshot_hash(), flat.snapshot_hash());
     }
 
     /// A per-file ingest failure must be skipped (not abort the capture); when

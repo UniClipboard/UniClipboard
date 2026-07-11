@@ -401,6 +401,7 @@ async fn run_send_file(path: PathBuf, json: bool, verbose: bool) -> i32 {
             uri_bytes,
         )],
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     };
     let blob_refs = vec![V3BlobRef {
         ticket: publish_result.ticket,

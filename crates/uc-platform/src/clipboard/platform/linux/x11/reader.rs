@@ -189,6 +189,7 @@ pub(super) fn read_snapshot(
         ts_ms: chrono::Utc::now().timestamp_millis(),
         representations: reps,
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     })
 }
 
@@ -197,6 +198,7 @@ fn empty_snapshot() -> SystemClipboardSnapshot {
         ts_ms: chrono::Utc::now().timestamp_millis(),
         representations: Vec::new(),
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     }
 }
 

@@ -30,6 +30,12 @@ const STREAM_CHUNK_SIZE: usize = 64 * 1024;
 /// Domain-separation prefix for [`file_content_wrapper`].
 const FILE_CONTENT_PREFIX: &[u8] = b"file-content|";
 
+/// Domain-separation prefix for a structured file-set member leaf.
+const FILE_SET_MEMBER_V1_PREFIX: &[u8] = b"file-set-member-v1|";
+
+/// Domain-separation prefix for a structured file-set component.
+const FILE_SET_V1_PREFIX: &[u8] = b"file-set-v1|";
+
 /// Domain-separation prefix for [`snapshot_hash`].
 const SNAPSHOT_HASH_PREFIX: &[u8] = b"snapshot-hash-v1|";
 
@@ -66,6 +72,39 @@ pub fn file_content_wrapper(digests: &[[u8; 32]]) -> [u8; 32] {
     hasher.update(FILE_CONTENT_PREFIX);
     for d in &sorted {
         hasher.update(d);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+/// Hash one structured file-set member using the ADR-010 v1 formula.
+pub fn file_set_member_v1(
+    root_name: &str,
+    relative_path: &str,
+    kind_tag: &str,
+    file_digest: Option<&[u8; 32]>,
+) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(FILE_SET_MEMBER_V1_PREFIX);
+    hasher.update(root_name.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(relative_path.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(kind_tag.as_bytes());
+    hasher.update(&[0]);
+    if let Some(file_digest) = file_digest {
+        hasher.update(file_digest);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+/// Aggregate structured member leaves into an ADR-010 v1 file-set component.
+pub fn file_set_v1_wrapper(leaves: &[[u8; 32]]) -> [u8; 32] {
+    let mut sorted = leaves.to_vec();
+    sorted.sort_unstable();
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(FILE_SET_V1_PREFIX);
+    for leaf in &sorted {
+        hasher.update(leaf);
     }
     *hasher.finalize().as_bytes()
 }
@@ -164,6 +203,62 @@ mod tests {
         assert_eq!(
             file_content_wrapper(&[d1, d2]),
             file_content_wrapper(&[d2, d1])
+        );
+    }
+
+    #[test]
+    fn file_set_member_v1_matches_manual_formula() {
+        let digest = content_hash(b"member bytes");
+        let mut expected_hasher = blake3::Hasher::new();
+        expected_hasher.update(b"file-set-member-v1|");
+        expected_hasher.update("资料".as_bytes());
+        expected_hasher.update(&[0]);
+        expected_hasher.update(b"nested/file.txt");
+        expected_hasher.update(&[0]);
+        expected_hasher.update(b"x");
+        expected_hasher.update(&[0]);
+        expected_hasher.update(&digest);
+
+        assert_eq!(
+            file_set_member_v1("资料", "nested/file.txt", "x", Some(&digest)),
+            *expected_hasher.finalize().as_bytes()
+        );
+    }
+
+    #[test]
+    fn empty_directory_member_has_no_file_digest_bytes() {
+        let mut expected_hasher = blake3::Hasher::new();
+        expected_hasher.update(b"file-set-member-v1|");
+        expected_hasher.update(b"folder");
+        expected_hasher.update(&[0]);
+        expected_hasher.update(b"empty");
+        expected_hasher.update(&[0]);
+        expected_hasher.update(b"d");
+        expected_hasher.update(&[0]);
+
+        assert_eq!(
+            file_set_member_v1("folder", "empty", "d", None),
+            *expected_hasher.finalize().as_bytes()
+        );
+    }
+
+    #[test]
+    fn file_set_v1_wrapper_sorts_leaves() {
+        let first = content_hash(b"first leaf");
+        let second = content_hash(b"second leaf");
+        let mut sorted = [first, second];
+        sorted.sort_unstable();
+        let mut expected_hasher = blake3::Hasher::new();
+        expected_hasher.update(b"file-set-v1|");
+        for leaf in &sorted {
+            expected_hasher.update(leaf);
+        }
+
+        let expected = *expected_hasher.finalize().as_bytes();
+        assert_eq!(file_set_v1_wrapper(&[first, second]), expected);
+        assert_eq!(
+            file_set_v1_wrapper(&[first, second]),
+            file_set_v1_wrapper(&[second, first])
         );
     }
 

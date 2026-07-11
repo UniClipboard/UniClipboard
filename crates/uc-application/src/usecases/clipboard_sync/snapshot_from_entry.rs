@@ -272,6 +272,7 @@ pub(crate) async fn reconstruct_snapshot_from_entry(
         ts_ms: entry.created_at_ms,
         representations,
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     })
 }
 

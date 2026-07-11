@@ -166,6 +166,7 @@ pub fn decode_v3_bytes_to_snapshot_and_blob_refs(
             ts_ms: payload.ts_ms,
             representations,
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         },
         blob_refs,
     ))
@@ -407,6 +408,7 @@ mod tests {
                 text.as_bytes().to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -453,6 +455,7 @@ mod tests {
                 ),
             ],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let (bytes, _) = encode_snapshot_to_v3_bytes(&original).expect("encode should succeed");
         let decoded = decode_v3_bytes_to_snapshot(&bytes).expect("decode should succeed");

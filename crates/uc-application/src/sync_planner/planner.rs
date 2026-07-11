@@ -221,6 +221,7 @@ mod tests {
                 b"hi".to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 

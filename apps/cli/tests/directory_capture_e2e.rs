@@ -127,6 +127,11 @@ fn cli_captures_directory_members_and_deduplicates_repeat_capture() {
     assert_eq!(first["directoryStructure"], true);
     assert_eq!(first["contentDigestCount"], 0);
     assert_eq!(first["deduplicated"], false);
+    assert!(first["lines"]
+        .as_array()
+        .expect("lines array")
+        .iter()
+        .all(|line| line["rootName"] == "root"));
     let members = member_pairs(&first);
     assert!(members.contains(&(".hidden", "f")));
     assert!(members.contains(&("visible.txt", "f")));

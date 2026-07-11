@@ -772,6 +772,7 @@ impl ApplyIncomingMobileClipUseCase {
                 ts_ms: self.clock.now_ms(),
                 representations: vec![rep],
                 file_content_digests: Vec::new(),
+                file_set_v1_component: None,
             },
             transfer_id: None,
         })
@@ -819,6 +820,7 @@ impl ApplyIncomingMobileClipUseCase {
                 ts_ms: self.clock.now_ms(),
                 representations: vec![rep],
                 file_content_digests: Vec::new(),
+                file_set_v1_component: None,
             },
             transfer_id: Some(transfer_id),
         })
@@ -863,6 +865,7 @@ impl ApplyIncomingMobileClipUseCase {
                 ts_ms: self.clock.now_ms(),
                 representations: vec![rep],
                 file_content_digests: Vec::new(),
+                file_set_v1_component: None,
             },
             transfer_id: Some(transfer_id),
         })

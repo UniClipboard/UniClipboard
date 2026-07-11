@@ -26,6 +26,8 @@ pub struct EntryFileSetRow {
     /// Member kind tag (`f`/`x`/`d`); classification enum, kept plaintext. NULL
     /// for legacy rows.
     pub kind_tag: Option<String>,
+    /// AEAD-sealed selected root basename. NULL only for legacy rows.
+    pub root_name_ct: Option<Vec<u8>>,
 }
 
 #[derive(Insertable)]
@@ -42,4 +44,5 @@ pub struct NewEntryFileSetRow {
     pub root_index: Option<i64>,
     pub relative_path_ct: Option<Vec<u8>>,
     pub kind_tag: Option<String>,
+    pub root_name_ct: Option<Vec<u8>>,
 }

@@ -1145,6 +1145,7 @@ mod tests {
                 b"hello phase3".to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let outcome = facade
             .dispatch_snapshot(

@@ -34,6 +34,7 @@ pub struct CapturedClipboardEntryView {
 pub struct CapturedFileSetLineView {
     pub line_index: i64,
     pub root_index: Option<i64>,
+    pub root_name: Option<String>,
     pub relative_path: Option<String>,
     pub member_kind: Option<String>,
     pub line_kind: String,
@@ -183,6 +184,7 @@ impl ClipboardCaptureFacade {
                 uris.join("\n").into_bytes(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         };
         let entry = self
             .capture(snapshot, ClipboardChangeOrigin::LocalCapture, None)
@@ -213,17 +215,18 @@ impl ClipboardCaptureFacade {
             .lines
             .iter()
             .map(|line| {
-                let (root_index, relative_path, member_kind) = line
+                let (root_index, root_name, relative_path, member_kind) = line
                     .member_location
                     .as_ref()
                     .map(|location| {
                         (
                             Some(location.root_index),
+                            Some(location.root_name.clone()),
                             Some(location.relative_path.clone()),
                             Some(location.kind.as_tag().to_string()),
                         )
                     })
-                    .unwrap_or((None, None, None));
+                    .unwrap_or((None, None, None, None));
                 let (line_kind, exclude_reason) = match line.kind {
                     EntryFileSetLineKind::File { .. } => ("file", None),
                     EntryFileSetLineKind::NonFile => ("non_file", None),
@@ -234,6 +237,7 @@ impl ClipboardCaptureFacade {
                 CapturedFileSetLineView {
                     line_index: line.line_index,
                     root_index,
+                    root_name,
                     relative_path,
                     member_kind,
                     line_kind: line_kind.to_string(),
@@ -303,6 +307,7 @@ mod tests {
             representations: Vec::new(),
             ts_ms: 0,
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -375,6 +380,7 @@ mod tests {
                     original_text: "file:///private/root".to_string(),
                     member_location: Some(FileSetMemberLocation {
                         root_index: 0,
+                        root_name: "root".to_string(),
                         relative_path: "child.txt".to_string(),
                         kind: FileSetMemberKind::File,
                     }),
@@ -409,6 +415,7 @@ mod tests {
             vec![CapturedFileSetLineView {
                 line_index: 1,
                 root_index: Some(0),
+                root_name: Some("root".to_string()),
                 relative_path: Some("child.txt".to_string()),
                 member_kind: Some("f".to_string()),
                 line_kind: "file".to_string(),

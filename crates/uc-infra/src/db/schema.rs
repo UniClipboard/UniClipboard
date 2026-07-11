@@ -105,6 +105,7 @@ diesel::table! {
         root_index -> Nullable<BigInt>,
         relative_path_ct -> Nullable<Binary>,
         kind_tag -> Nullable<Text>,
+        root_name_ct -> Nullable<Binary>,
     }
 }
 

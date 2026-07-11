@@ -37,6 +37,8 @@ pub struct EntryFileSetLine {
 pub struct FileSetMemberLocation {
     /// Zero-based position of the selected top-level root.
     pub root_index: i64,
+    /// NFC-normalized basename of the selected top-level root.
+    pub root_name: String,
     /// NFC-normalized path relative to the selected root, using `/` separators.
     pub relative_path: String,
     /// Member classification needed to reconstruct the selected tree.
@@ -169,6 +171,43 @@ impl EntryFileSet {
         digests
     }
 
+    /// Return the structured identity component for a complete directory set.
+    pub fn file_set_v1_component(&self) -> Option<[u8; 32]> {
+        if !self.has_directory_structure()
+            || self
+                .lines
+                .iter()
+                .any(|line| matches!(line.kind, EntryFileSetLineKind::Excluded { .. }))
+        {
+            return None;
+        }
+
+        let mut leaves = Vec::new();
+        for line in &self.lines {
+            let location = match (&line.member_location, &line.kind) {
+                (Some(location), _) => location,
+                (None, EntryFileSetLineKind::NonFile) => continue,
+                (None, _) => return None,
+            };
+            let digest = match (&line.kind, location.kind) {
+                (
+                    EntryFileSetLineKind::File { content_hash, .. },
+                    FileSetMemberKind::File | FileSetMemberKind::Executable,
+                ) => Some(&content_hash.bytes),
+                (EntryFileSetLineKind::NonFile, FileSetMemberKind::EmptyDirectory) => None,
+                _ => return None,
+            };
+            leaves.push(uc_content_hash::file_set_member_v1(
+                &location.root_name,
+                &location.relative_path,
+                location.kind.as_tag(),
+                digest,
+            ));
+        }
+
+        (!leaves.is_empty()).then(|| uc_content_hash::file_set_v1_wrapper(&leaves))
+    }
+
     /// 迭代所有 `File` 行。
     pub fn file_lines(&self) -> impl Iterator<Item = &EntryFileSetLine> {
         self.lines
@@ -207,6 +246,7 @@ mod tests {
         let mut line = file_line(1, 7);
         line.member_location = Some(FileSetMemberLocation {
             root_index: 0,
+            root_name: "root".to_string(),
             relative_path: "child.txt".to_string(),
             kind: FileSetMemberKind::File,
         });
@@ -217,10 +257,87 @@ mod tests {
     }
 
     #[test]
+    fn directory_structure_produces_versioned_component() {
+        let mut file = file_line(2, 7);
+        file.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            root_name: "folder".to_string(),
+            relative_path: "nested/file.txt".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let empty = EntryFileSetLine {
+            line_index: 3,
+            original_text: "file:///folder/empty".to_string(),
+            member_location: Some(FileSetMemberLocation {
+                root_index: 0,
+                root_name: "folder".to_string(),
+                relative_path: "empty".to_string(),
+                kind: FileSetMemberKind::EmptyDirectory,
+            }),
+            kind: EntryFileSetLineKind::NonFile,
+        };
+        let set = EntryFileSet {
+            lines: vec![file, empty],
+        };
+
+        let file_leaf =
+            uc_content_hash::file_set_member_v1("folder", "nested/file.txt", "f", Some(&[7; 32]));
+        let empty_leaf = uc_content_hash::file_set_member_v1("folder", "empty", "d", None);
+        assert_eq!(
+            set.file_set_v1_component(),
+            Some(uc_content_hash::file_set_v1_wrapper(&[
+                file_leaf, empty_leaf
+            ]))
+        );
+    }
+
+    #[test]
+    fn executable_kind_changes_directory_component() {
+        let mut regular = file_line(1, 7);
+        regular.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            root_name: "folder".to_string(),
+            relative_path: "run".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let mut executable = regular.clone();
+        executable.member_location.as_mut().unwrap().kind = FileSetMemberKind::Executable;
+
+        assert_ne!(
+            EntryFileSet {
+                lines: vec![regular]
+            }
+            .file_set_v1_component(),
+            EntryFileSet {
+                lines: vec![executable]
+            }
+            .file_set_v1_component()
+        );
+    }
+
+    #[test]
+    fn directory_component_rejects_file_without_member_location() {
+        let mut directory_file = file_line(2, 7);
+        directory_file.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            root_name: "folder".to_string(),
+            relative_path: "nested/file.txt".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let missing_location = file_line(0, 8);
+        let set = EntryFileSet {
+            lines: vec![missing_location, directory_file],
+        };
+
+        assert_eq!(set.file_set_v1_component(), None);
+    }
+
+    #[test]
     fn flat_member_location_keeps_content_digest_contribution() {
         let mut line = file_line(0, 7);
         line.member_location = Some(FileSetMemberLocation {
             root_index: 0,
+            root_name: "f0".to_string(),
             relative_path: "f0".to_string(),
             kind: FileSetMemberKind::File,
         });
@@ -235,6 +352,7 @@ mod tests {
         let mut line = file_line(1, 7);
         line.member_location = Some(FileSetMemberLocation {
             root_index: 0,
+            root_name: "f1".to_string(),
             relative_path: "f1".to_string(),
             kind: FileSetMemberKind::File,
         });

@@ -230,5 +230,6 @@ fn decode_v3_envelope(bytes: &[u8]) -> anyhow::Result<SystemClipboardSnapshot> {
         ts_ms: payload.ts_ms,
         representations,
         file_content_digests: Vec::new(),
+        file_set_v1_component: None,
     })
 }

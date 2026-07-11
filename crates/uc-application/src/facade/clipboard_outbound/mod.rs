@@ -958,6 +958,7 @@ mod tests {
                 text.as_bytes().to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -971,6 +972,7 @@ mod tests {
                 b"hello".to_vec(),
             )],
             file_content_digests: Vec::new(),
+            file_set_v1_component: None,
         }
     }
 
@@ -1004,6 +1006,7 @@ mod tests {
         let mut line = file_line(1, "file:///tmp/root", 1);
         line.member_location = Some(FileSetMemberLocation {
             root_index: 0,
+            root_name: "root".to_string(),
             relative_path: "child.txt".to_string(),
             kind: FileSetMemberKind::File,
         });
@@ -1155,6 +1158,8 @@ mod tests {
                     ts_ms: 0,
 
                     file_content_digests: Vec::new(),
+
+                    file_set_v1_component: None,
                 },
                 origin: ClipboardChangeOrigin::LocalCapture,
             })

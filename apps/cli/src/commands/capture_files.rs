@@ -32,6 +32,7 @@ struct CaptureFilesOutput {
 struct CaptureFilesLineOutput {
     line_index: i64,
     root_index: Option<i64>,
+    root_name: Option<String>,
     relative_path: Option<String>,
     member_kind: Option<String>,
     line_kind: String,
@@ -55,6 +56,7 @@ impl From<CapturedFileSetLineView> for CaptureFilesLineOutput {
         Self {
             line_index: value.line_index,
             root_index: value.root_index,
+            root_name: value.root_name,
             relative_path: value.relative_path,
             member_kind: value.member_kind,
             line_kind: value.line_kind,

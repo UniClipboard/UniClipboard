@@ -19,13 +19,12 @@ pub struct EntryFileSetRow {
     /// an older schema (none survive the phase-3 encrypt migration, which clears
     /// the table); a NULL here is treated as a decode failure.
     pub original_text_ct: Option<Vec<u8>>,
-    /// Directory-member location (ADR-010 phase 3). NULL for flat file-set lines;
-    /// populated by directory capture in a later PR.
+    /// Directory-member root position. NULL for rows written before phase 3.
     pub root_index: Option<i64>,
-    /// AEAD-sealed `relative_path` (UCFS envelope). NULL for flat file-set lines.
+    /// AEAD-sealed `relative_path` (UCFS envelope). NULL for legacy rows.
     pub relative_path_ct: Option<Vec<u8>>,
     /// Member kind tag (`f`/`x`/`d`); classification enum, kept plaintext. NULL
-    /// for flat file-set lines.
+    /// for legacy rows.
     pub kind_tag: Option<String>,
 }
 

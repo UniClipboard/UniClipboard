@@ -27,7 +27,47 @@ pub struct EntryFileSetLine {
     pub line_index: i64,
     /// 原始行文本,未经解析/归一化。
     pub original_text: String,
+    /// Structured member location for file-set rows written by phase 3.
+    pub member_location: Option<FileSetMemberLocation>,
     pub kind: EntryFileSetLineKind,
+}
+
+/// Stable location of a selected file or a member expanded from a directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileSetMemberLocation {
+    /// Zero-based position of the selected top-level root.
+    pub root_index: i64,
+    /// NFC-normalized path relative to the selected root, using `/` separators.
+    pub relative_path: String,
+    /// Member classification needed to reconstruct the selected tree.
+    pub kind: FileSetMemberKind,
+}
+
+/// Persisted classification tag for a file-set member.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileSetMemberKind {
+    File,
+    Executable,
+    EmptyDirectory,
+}
+
+impl FileSetMemberKind {
+    pub fn as_tag(self) -> &'static str {
+        match self {
+            Self::File => "f",
+            Self::Executable => "x",
+            Self::EmptyDirectory => "d",
+        }
+    }
+
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        match tag {
+            "f" => Some(Self::File),
+            "x" => Some(Self::Executable),
+            "d" => Some(Self::EmptyDirectory),
+            _ => None,
+        }
+    }
 }
 
 /// 一行清单条目的分类结果。
@@ -43,7 +83,8 @@ pub enum EntryFileSetLineKind {
         blob_id: Option<BlobId>,
         size_bytes: Option<i64>,
     },
-    /// 该行不表示文件(空行、注释、无法识别的条目)。
+    /// A line without file content, including uri-list comments and empty
+    /// directory markers distinguished by `member_location.kind`.
     NonFile,
     /// 该行本可以是文件,但因故未纳入这条 entry 的身份/传输范围。
     Excluded { reason: EntryFileSetExcludeReason },
@@ -52,18 +93,12 @@ pub enum EntryFileSetLineKind {
 /// 一行被排除在外的原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryFileSetExcludeReason {
-    /// 超出体积/数量上限策略。
-    ///
-    /// Reserved for the capture-time size-cap gate (ADR-010: per-set total-
-    /// size and member-count caps). The capture path does not yet produce
-    /// this variant; the persistence codec and identity rules already handle
-    /// it so the gate can be added without a schema/format change. Both
-    /// exclude reasons are treated identically by
-    /// [`EntryFileSet::content_digest_contribution`] (any exclusion → path-
-    /// text identity fallback).
+    /// The whole set exceeded its member-count or total-byte cap.
     SizeCapExceeded,
     /// 尝试确定其内容身份时失败(如文件不可读)。
     IngestFailed,
+    /// The file set contains a symlink or non-regular special file.
+    UnsupportedMember,
 }
 
 /// 仓储端口可能返回的领域错误。具体实现侧的底层错误必须被翻译为本枚举,
@@ -79,6 +114,24 @@ pub enum EntryFileSetError {
 }
 
 impl EntryFileSet {
+    /// Whether this manifest contains members expanded from a directory root.
+    ///
+    /// Directory members are assigned line indexes after the top-level input
+    /// range. At least the final expanded member therefore sits outside the
+    /// persisted row count, which distinguishes even a one-member directory
+    /// without confusing flat files preceded by uri-list comments. The path
+    /// and empty-directory checks defend the same invariant for decoded data.
+    pub fn has_directory_structure(&self) -> bool {
+        let row_count = self.lines.len() as i64;
+        self.lines.iter().any(|line| {
+            line.member_location.as_ref().is_some_and(|location| {
+                location.kind == FileSetMemberKind::EmptyDirectory
+                    || location.relative_path.contains('/')
+                    || line.line_index >= row_count
+            })
+        })
+    }
+
     /// 该清单中 `File` 行的内容 hash,已排序。
     ///
     /// 排序是有意为之:身份计算只关心"这条 entry 含有哪些文件内容",不
@@ -100,7 +153,7 @@ impl EntryFileSet {
             .lines
             .iter()
             .any(|line| matches!(line.kind, EntryFileSetLineKind::Excluded { .. }));
-        if has_excluded {
+        if has_excluded || self.has_directory_structure() {
             return Vec::new();
         }
 
@@ -140,12 +193,65 @@ mod tests {
         EntryFileSetLine {
             line_index: index,
             original_text: format!("file:///f{index}"),
+            member_location: None,
             kind: EntryFileSetLineKind::File {
                 content_hash: hash(byte),
                 blob_id: Some(BlobId::from(format!("blob-{index}"))),
                 size_bytes: Some(10),
             },
         }
+    }
+
+    #[test]
+    fn directory_structure_suppresses_content_digest_contribution() {
+        let mut line = file_line(1, 7);
+        line.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            relative_path: "child.txt".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let set = EntryFileSet { lines: vec![line] };
+
+        assert!(set.has_directory_structure());
+        assert!(set.content_digest_contribution().is_empty());
+    }
+
+    #[test]
+    fn flat_member_location_keeps_content_digest_contribution() {
+        let mut line = file_line(0, 7);
+        line.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            relative_path: "f0".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let set = EntryFileSet { lines: vec![line] };
+
+        assert!(!set.has_directory_structure());
+        assert_eq!(set.content_digest_contribution(), vec![[7; 32]]);
+    }
+
+    #[test]
+    fn comment_before_flat_file_does_not_look_like_directory_structure() {
+        let mut line = file_line(1, 7);
+        line.member_location = Some(FileSetMemberLocation {
+            root_index: 0,
+            relative_path: "f1".to_string(),
+            kind: FileSetMemberKind::File,
+        });
+        let set = EntryFileSet {
+            lines: vec![
+                EntryFileSetLine {
+                    line_index: 0,
+                    original_text: "# comment".to_string(),
+                    member_location: None,
+                    kind: EntryFileSetLineKind::NonFile,
+                },
+                line,
+            ],
+        };
+
+        assert!(!set.has_directory_structure());
+        assert_eq!(set.content_digest_contribution(), vec![[7; 32]]);
     }
 
     #[test]
@@ -156,6 +262,7 @@ mod tests {
                 EntryFileSetLine {
                     line_index: 1,
                     original_text: "# a comment".into(),
+                    member_location: None,
                     kind: EntryFileSetLineKind::NonFile,
                 },
                 file_line(2, 1),
@@ -183,6 +290,7 @@ mod tests {
                     EntryFileSetLine {
                         line_index: 2,
                         original_text: "file:///excluded".into(),
+                        member_location: None,
                         kind: EntryFileSetLineKind::Excluded { reason },
                     },
                 ],
@@ -203,6 +311,7 @@ mod tests {
                 EntryFileSetLine {
                     line_index: 1,
                     original_text: String::new(),
+                    member_location: None,
                     kind: EntryFileSetLineKind::NonFile,
                 },
             ],

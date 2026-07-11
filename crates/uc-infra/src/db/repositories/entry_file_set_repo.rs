@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use diesel::query_dsl::methods::{FilterDsl, OrderDsl};
 #[cfg(test)]
 use diesel::query_dsl::methods::SelectDsl;
+use diesel::query_dsl::methods::{FilterDsl, OrderDsl};
 use diesel::Connection;
 use diesel::ExpressionMethods;
 use diesel::RunQueryDsl;
@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use tracing::instrument;
 use uc_core::clipboard::{
     ContentHash, EntryFileSet, EntryFileSetError, EntryFileSetExcludeReason, EntryFileSetLine,
-    EntryFileSetLineKind,
+    EntryFileSetLineKind, FileSetMemberKind, FileSetMemberLocation,
 };
 use uc_core::ids::{BlobId, EntryId};
 use uc_core::ports::clipboard::EntryFileSetRepositoryPort;
@@ -72,11 +72,10 @@ impl<E> DieselEntryFileSetRepository<E> {
     /// unlocked, and the dispatch reader treats a load error as "no manifest"
     /// and falls back to snapshot re-parse.
     async fn cipher(&self) -> Result<EntryFileSetPathCipher, EntryFileSetError> {
-        let profile = self
-            .current_profile
-            .current_profile()
-            .await
-            .map_err(|e| EntryFileSetError::Storage(format!("current profile unavailable: {e}")))?;
+        let profile =
+            self.current_profile.current_profile().await.map_err(|e| {
+                EntryFileSetError::Storage(format!("current profile unavailable: {e}"))
+            })?;
         let key = self
             .derive_subkey
             .derive_subkey(profile.as_ref().as_bytes(), FILE_SET_KEY_INFO)
@@ -102,6 +101,7 @@ mod kind_codec {
 mod exclude_reason_codec {
     pub const SIZE_CAP_EXCEEDED: &str = "size_cap_exceeded";
     pub const INGEST_FAILED: &str = "ingest_failed";
+    pub const UNSUPPORTED_MEMBER: &str = "unsupported_member";
 }
 
 fn encode_line(
@@ -128,6 +128,9 @@ fn encode_line(
                     exclude_reason_codec::SIZE_CAP_EXCEEDED
                 }
                 EntryFileSetExcludeReason::IngestFailed => exclude_reason_codec::INGEST_FAILED,
+                EntryFileSetExcludeReason::UnsupportedMember => {
+                    exclude_reason_codec::UNSUPPORTED_MEMBER
+                }
             };
             (kind_codec::EXCLUDED, None, None, None, Some(reason_str))
         }
@@ -136,6 +139,19 @@ fn encode_line(
     let original_text_ct = cipher
         .seal(entry_id, line.line_index, &line.original_text)
         .map_err(|e| EntryFileSetError::Storage(format!("seal original_text: {e}")))?;
+    let (root_index, relative_path_ct, kind_tag) = match &line.member_location {
+        Some(location) => {
+            let relative_path_ct = cipher
+                .seal(entry_id, line.line_index, &location.relative_path)
+                .map_err(|e| EntryFileSetError::Storage(format!("seal relative_path: {e}")))?;
+            (
+                Some(location.root_index),
+                Some(relative_path_ct),
+                Some(location.kind.as_tag().to_string()),
+            )
+        }
+        None => (None, None, None),
+    };
 
     Ok(NewEntryFileSetRow {
         entry_id: entry_id.to_string(),
@@ -146,11 +162,9 @@ fn encode_line(
         blob_id,
         size_bytes,
         exclude_reason: exclude_reason.map(str::to_string),
-        // Directory-member location columns are unwritten in this PR (ADR-010
-        // phase 3 PR-A opens the schema; directory capture populates them later).
-        root_index: None,
-        relative_path_ct: None,
-        kind_tag: None,
+        root_index,
+        relative_path_ct,
+        kind_tag,
     })
 }
 
@@ -165,6 +179,27 @@ fn decode_row(
     let original_text = cipher
         .open(entry_id, row.line_index, &original_text_ct)
         .map_err(|e| EntryFileSetError::Storage(format!("open original_text: {e}")))?;
+    let member_location = match (row.root_index, row.relative_path_ct, row.kind_tag) {
+        (None, None, None) => None,
+        (Some(root_index), Some(relative_path_ct), Some(kind_tag)) => {
+            let relative_path = cipher
+                .open(entry_id, row.line_index, &relative_path_ct)
+                .map_err(|e| EntryFileSetError::Storage(format!("open relative_path: {e}")))?;
+            let kind = FileSetMemberKind::from_tag(&kind_tag).ok_or_else(|| {
+                EntryFileSetError::Storage(format!("unknown member kind tag: {kind_tag}"))
+            })?;
+            Some(FileSetMemberLocation {
+                root_index,
+                relative_path,
+                kind,
+            })
+        }
+        _ => {
+            return Err(EntryFileSetError::Storage(
+                "file-set row has incomplete member location".into(),
+            ))
+        }
+    };
 
     let kind = match row.kind.as_str() {
         kind_codec::FILE => {
@@ -187,6 +222,9 @@ fn decode_row(
                     EntryFileSetExcludeReason::SizeCapExceeded
                 }
                 exclude_reason_codec::INGEST_FAILED => EntryFileSetExcludeReason::IngestFailed,
+                exclude_reason_codec::UNSUPPORTED_MEMBER => {
+                    EntryFileSetExcludeReason::UnsupportedMember
+                }
                 other => {
                     return Err(EntryFileSetError::Storage(format!(
                         "unknown exclude_reason code: {other}"
@@ -205,6 +243,7 @@ fn decode_row(
     Ok(EntryFileSetLine {
         line_index: row.line_index,
         original_text,
+        member_location,
         kind,
     })
 }
@@ -429,6 +468,11 @@ mod tests {
                 EntryFileSetLine {
                     line_index: 0,
                     original_text: "file:///a.txt".into(),
+                    member_location: Some(FileSetMemberLocation {
+                        root_index: 0,
+                        relative_path: "a.txt".into(),
+                        kind: FileSetMemberKind::File,
+                    }),
                     kind: EntryFileSetLineKind::File {
                         content_hash: ContentHash {
                             alg: HashAlgorithm::Blake3V1,
@@ -441,13 +485,54 @@ mod tests {
                 EntryFileSetLine {
                     line_index: 1,
                     original_text: "# comment".into(),
+                    member_location: None,
                     kind: EntryFileSetLineKind::NonFile,
                 },
                 EntryFileSetLine {
                     line_index: 2,
                     original_text: "file:///too-big.bin".into(),
+                    member_location: None,
                     kind: EntryFileSetLineKind::Excluded {
                         reason: EntryFileSetExcludeReason::SizeCapExceeded,
+                    },
+                },
+                EntryFileSetLine {
+                    line_index: 3,
+                    original_text: "file:///root/run.sh".into(),
+                    member_location: Some(FileSetMemberLocation {
+                        root_index: 1,
+                        relative_path: "run.sh".into(),
+                        kind: FileSetMemberKind::Executable,
+                    }),
+                    kind: EntryFileSetLineKind::File {
+                        content_hash: ContentHash {
+                            alg: HashAlgorithm::Blake3V1,
+                            bytes: [2u8; 32],
+                        },
+                        blob_id: None,
+                        size_bytes: Some(20),
+                    },
+                },
+                EntryFileSetLine {
+                    line_index: 4,
+                    original_text: "file:///root".into(),
+                    member_location: Some(FileSetMemberLocation {
+                        root_index: 1,
+                        relative_path: "empty".into(),
+                        kind: FileSetMemberKind::EmptyDirectory,
+                    }),
+                    kind: EntryFileSetLineKind::NonFile,
+                },
+                EntryFileSetLine {
+                    line_index: 5,
+                    original_text: "file:///root/link".into(),
+                    member_location: Some(FileSetMemberLocation {
+                        root_index: 1,
+                        relative_path: "link".into(),
+                        kind: FileSetMemberKind::File,
+                    }),
+                    kind: EntryFileSetLineKind::Excluded {
+                        reason: EntryFileSetExcludeReason::UnsupportedMember,
                     },
                 },
             ],
@@ -485,6 +570,7 @@ mod tests {
             lines: vec![EntryFileSetLine {
                 line_index: 0,
                 original_text: "file:///only.txt".into(),
+                member_location: None,
                 kind: EntryFileSetLineKind::File {
                     content_hash: ContentHash {
                         alg: HashAlgorithm::Blake3V1,
@@ -528,6 +614,7 @@ mod tests {
                 .map(|idx| EntryFileSetLine {
                     line_index: idx,
                     original_text: format!("file:///f{idx}.txt"),
+                    member_location: None,
                     kind: EntryFileSetLineKind::File {
                         content_hash: ContentHash {
                             alg: HashAlgorithm::Blake3V1,
@@ -572,6 +659,22 @@ mod tests {
                 "sealed original_text must not carry plaintext path bytes"
             );
         }
+
+        let relative_cts: Vec<Option<Vec<u8>>> = seed_exec
+            .run(move |conn| {
+                Ok(entry_file_set::table
+                    .filter(entry_file_set::entry_id.eq("entry-1"))
+                    .order(entry_file_set::line_index.asc())
+                    .select(entry_file_set::relative_path_ct)
+                    .load::<Option<Vec<u8>>>(conn)?)
+            })
+            .unwrap();
+        for ct in relative_cts.iter().flatten() {
+            assert!(
+                !ct.windows(needle.len()).any(|window| window == needle),
+                "sealed relative_path must not carry plaintext path bytes"
+            );
+        }
     }
 
     #[tokio::test]
@@ -591,7 +694,9 @@ mod tests {
     async fn save_fails_when_session_locked() {
         let (repo, seed_exec, _tempdir) = make_repo_with_subkey(Arc::new(LockedSubkey));
         seed_entry(&seed_exec, "entry-1");
-        let result = repo.save(&EntryId::from("entry-1"), &sample_file_set()).await;
+        let result = repo
+            .save(&EntryId::from("entry-1"), &sample_file_set())
+            .await;
         assert!(
             matches!(result, Err(EntryFileSetError::Storage(_))),
             "locked session must surface a Storage error, got {result:?}"

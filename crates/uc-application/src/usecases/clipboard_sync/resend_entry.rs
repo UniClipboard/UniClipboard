@@ -394,14 +394,23 @@ impl ResendEntryUseCase {
             OutboundFileSetResolution::NotFileClass => (Vec::new(), false),
             OutboundFileSetResolution::Manifest { paths, .. } => (paths, true),
             OutboundFileSetResolution::Fallback { paths } => (paths, false),
+            OutboundFileSetResolution::DirectoryNotYetSyncable => {
+                // TODO(ADR-010 phase 4): remove this gate once the wire format
+                // carries directory member locations and receivers rebuild trees.
+                return Err(ResendEntryError::Dispatch(
+                    "directory_not_yet_syncable".to_string(),
+                ));
+            }
             OutboundFileSetResolution::Excluded {
                 ingest_failed,
                 size_cap_exceeded,
+                unsupported_member,
             } => {
                 warn!(
                     entry_id = %cmd.entry_id,
                     ingest_failed,
                     size_cap_exceeded,
+                    unsupported_member,
                     "resend: file-set manifest has excluded lines; entry not resendable (all-or-nothing)"
                 );
                 return Err(ResendEntryError::EntryNotResendable {
@@ -1399,6 +1408,7 @@ mod tests {
             lines: vec![uc_core::clipboard::EntryFileSetLine {
                 line_index: 0,
                 original_text: "file:///tmp/gone.txt".to_string(),
+                member_location: None,
                 kind: uc_core::clipboard::EntryFileSetLineKind::Excluded {
                     reason: uc_core::clipboard::EntryFileSetExcludeReason::IngestFailed,
                 },
@@ -1432,6 +1442,7 @@ mod tests {
             lines: vec![uc_core::clipboard::EntryFileSetLine {
                 line_index: 0,
                 original_text: missing.to_string(),
+                member_location: None,
                 kind: uc_core::clipboard::EntryFileSetLineKind::File {
                     content_hash: uc_core::clipboard::ContentHash {
                         alg: uc_core::clipboard::HashAlgorithm::Blake3V1,

@@ -6,6 +6,7 @@ mod clipboard_event_repo;
 mod clipboard_selection_repo;
 mod entry_availability_repo;
 mod entry_delivery_repo;
+mod entry_file_set_cipher;
 mod entry_file_set_repo;
 mod entry_replace_repo;
 mod file_transfer_repo;

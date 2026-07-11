@@ -154,6 +154,34 @@ pub fn for_search_render(entry_id: &EntryId) -> Vec<u8> {
     .into_bytes()
 }
 
+/// Generates AAD for a per-line entry-file-set path column encryption.
+///
+/// # Format
+///
+/// `uc:file_set_line:v1|{entry_id}|{line_index}`
+///
+/// Binds a sealed path column (`original_text` / `relative_path`) to its exact
+/// manifest row so a ciphertext cannot be transplanted onto a different entry
+/// or a different line within the same entry.
+///
+/// # Examples
+///
+/// ```rust
+/// use uc_core::crypto::aad::for_file_set_line;
+/// use uc_core::ids::EntryId;
+///
+/// let entry_id = EntryId::from("test-entry");
+/// let aad = for_file_set_line(&entry_id, 3);
+/// assert_eq!(aad, b"uc:file_set_line:v1|test-entry|3".to_vec());
+/// ```
+pub fn for_file_set_line(entry_id: &EntryId, line_index: i64) -> Vec<u8> {
+    format!(
+        "{AAD_NAMESPACE}:file_set_line:{AAD_VERSION}|{}|{line_index}",
+        entry_id.as_ref()
+    )
+    .into_bytes()
+}
+
 pub fn for_network_clipboard(message_id: &str) -> Vec<u8> {
     format!("{AAD_NAMESPACE}:net_clipboard:{AAD_VERSION}|{message_id}").into_bytes()
 }

@@ -189,10 +189,10 @@ fn build_clipboard_capture_facade(deps: &AppDeps) -> Arc<ClipboardCaptureFacade>
         )
         .with_entry_identity_coordinator(deps.clipboard.entry_identity_coordinator.clone()),
     );
-    Arc::new(ClipboardCaptureFacade::new(
-        capture_uc,
-        deps.clipboard.clipboard.clone(),
-    ))
+    Arc::new(
+        ClipboardCaptureFacade::new(capture_uc, deps.clipboard.clipboard.clone())
+            .with_entry_file_set_repository(deps.storage.entry_file_set_repo.clone()),
+    )
 }
 
 /// `InboundWrite` 的 NoOp 实装。

@@ -63,8 +63,8 @@ pub use crate::usecases::clipboard_sync::{
     decode_v3_bytes_to_snapshot, decode_v3_bytes_to_snapshot_and_blob_refs, V3BlobRef,
 };
 pub use clipboard_capture::{
-    CapturedClipboardEntryView, ClipboardCaptureFacade, ClipboardCaptureFacadeError,
-    ClipboardCapturePort,
+    CapturedClipboardEntryView, CapturedFileSetLineView, CapturedFileSetView,
+    ClipboardCaptureFacade, ClipboardCaptureFacadeError, ClipboardCapturePort,
 };
 pub use clipboard_history::{
     CleanupResultView as ClipboardCleanupResultView,

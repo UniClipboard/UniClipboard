@@ -136,7 +136,11 @@ uniclip dev seed-clipboard --text <TEXT>  # 写入一条加密文本记录（测
 uniclip dev dump-clipboard --limit <N>    # 打印最近的解密记录预览
 uniclip dev pairing addrs                 # 列出配对邀请候选地址
 uniclip dev pairing issue --addr <IP>     # 指定本机 IP 发起配对邀请
+uniclip --dev --json dev capture-files --path <PATH>  # 捕获文件或目录并输出持久化清单
 ```
+
+`capture-files` 可重复传入 `--path`，也可用 `--max-members` 和
+`--max-bytes` 临时覆盖本次捕获的目录上限。临时上限不会写回 profile 设置。
 
 ## 行为边界
 
@@ -154,6 +158,13 @@ uniclip dev pairing issue --addr <IP>     # 指定本机 IP 发起配对邀请
 ```bash
 cargo test -p uc-cli
 cargo run -p uc-cli -- --help
+```
+
+目录捕获端到端测试需要先构建同目录下的 daemon，再显式运行忽略的真实进程测试：
+
+```bash
+cargo build -p uc-daemon
+cargo test -p uc-cli --features dev-tools --test directory_capture_e2e -- --ignored --nocapture
 ```
 
 如果改动涉及搜索或 blob 命令，也要查看对应帮助：

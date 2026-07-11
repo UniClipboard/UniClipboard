@@ -2,13 +2,14 @@
 
 use std::fmt;
 use std::net::IpAddr;
+use std::path::PathBuf;
 
 use clap::Subcommand;
 use serde::Serialize;
 use uc_application::facade::{IssuePairingInvitationError, PairingInvitationAddressCandidate};
 
 use crate::commands::app_session::{build_app_session, refuse_if_daemon_running};
-use crate::commands::{dump_clipboard, invite, seed_clipboard};
+use crate::commands::{capture_files, dump_clipboard, invite, seed_clipboard};
 use crate::exit_codes;
 use crate::output;
 use crate::ui;
@@ -35,6 +36,18 @@ pub enum DevCommands {
         /// Maximum number of entries to print (default 10).
         #[arg(long, default_value_t = 10)]
         limit: usize,
+    },
+    /// Capture files or directories through the real local capture pipeline.
+    CaptureFiles {
+        /// Top-level file or directory path. Repeat for mixed selections.
+        #[arg(long = "path", required = true)]
+        paths: Vec<PathBuf>,
+        /// Temporarily override the whole-set member cap for this capture.
+        #[arg(long)]
+        max_members: Option<u64>,
+        /// Temporarily override the whole-set byte cap for this capture.
+        #[arg(long)]
+        max_bytes: Option<u64>,
     },
 }
 
@@ -94,6 +107,22 @@ pub async fn run(command: DevCommands, json: bool, verbose: bool) -> i32 {
         }
         DevCommands::DumpClipboard { limit } => {
             dump_clipboard::run(dump_clipboard::DumpClipboardArgs { limit }, json, verbose).await
+        }
+        DevCommands::CaptureFiles {
+            paths,
+            max_members,
+            max_bytes,
+        } => {
+            capture_files::run(
+                capture_files::CaptureFilesArgs {
+                    paths,
+                    max_members,
+                    max_bytes,
+                },
+                json,
+                verbose,
+            )
+            .await
         }
     }
 }

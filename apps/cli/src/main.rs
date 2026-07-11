@@ -662,6 +662,40 @@ mod tests {
         assert!(probe);
     }
 
+    #[cfg(feature = "dev-tools")]
+    #[test]
+    fn dev_capture_files_parses_repeated_paths_and_cap_overrides() {
+        let parsed = Cli::try_parse_from([
+            "uniclip",
+            "dev",
+            "capture-files",
+            "--path",
+            "/tmp/a",
+            "--path",
+            "/tmp/b",
+            "--max-members",
+            "2",
+            "--max-bytes",
+            "1024",
+        ])
+        .expect("capture-files args parse");
+
+        let Some(Commands::Dev {
+            subcommand:
+                commands::dev::DevCommands::CaptureFiles {
+                    paths,
+                    max_members,
+                    max_bytes,
+                },
+        }) = parsed.command
+        else {
+            panic!("expected dev capture-files")
+        };
+        assert_eq!(paths.len(), 2);
+        assert_eq!(max_members, Some(2));
+        assert_eq!(max_bytes, Some(1024));
+    }
+
     #[test]
     fn devices_is_an_alias_for_members() {
         // The former `devices` command is now a hidden alias of `members`.

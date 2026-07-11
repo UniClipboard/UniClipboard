@@ -85,6 +85,10 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                     file_retention_hours: file_sync.file_retention_hours,
                     file_auto_cleanup: file_sync.file_auto_cleanup,
                     auto_save_dir: file_sync.auto_save_dir,
+                    // File-set cap overrides are diagnostic-only for now and
+                    // are not part of the public daemon settings contract.
+                    max_file_set_total_bytes: None,
+                    max_file_set_member_count: None,
                 }),
             network: self
                 .network

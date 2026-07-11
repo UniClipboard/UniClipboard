@@ -2471,26 +2471,36 @@ mod tests {
         );
     }
 
-    /// The render-column encryption migration is intentionally irreversible: its
-    /// `down.sql` fails rather than recreate empty plaintext columns (which would
-    /// silently lose the encrypted render data).
+    /// Encryption/sealing migrations (render-column encryption, entry-file-set
+    /// path encryption, …) are intentionally irreversible: their `down.sql`
+    /// fails loudly rather than recreate empty plaintext columns and silently
+    /// drop the sealed data. Unwinding migrations from the top must therefore
+    /// hit at least one such refusal before reaching the base. Reverting one at
+    /// a time (instead of hard-coding a fixed migration on top) keeps this
+    /// robust as new migrations — reversible or not — land above them.
     #[tokio::test]
-    async fn encrypt_render_migration_down_is_irreversible() {
+    async fn encryption_migration_downs_are_irreversible() {
         use crate::db::pool::MIGRATIONS;
         use diesel_migrations::MigrationHarness;
 
         let (_index, pool, _dir) = make_index();
         let mut conn = pool.get().unwrap();
-        // The later `drop_clipboard_entry_title` migration sits on top of the
-        // render-column encryption one and is intentionally reversible (it re-adds
-        // an empty `title` column so an older binary still finds it). Revert it
-        // first to expose the encryption migration underneath.
-        conn.revert_last_migration(MIGRATIONS)
-            .expect("drop-title migration is reversible");
-        let result = conn.revert_last_migration(MIGRATIONS);
+        // Bound the unwind by the number of applied migrations so a failing
+        // revert can only mean "this migration's down.sql refused" — never "no
+        // migrations left" (which also errors). Reversible migrations on top
+        // unwind cleanly; the first irreversible encryption migration's down.sql
+        // fails, which is the behavior under test.
+        let applied = conn.applied_migrations().expect("list applied migrations");
+        let mut hit_irreversible = false;
+        for _ in 0..applied.len() {
+            if conn.revert_last_migration(MIGRATIONS).is_err() {
+                hit_irreversible = true;
+                break;
+            }
+        }
         assert!(
-            result.is_err(),
-            "down.sql must fail loudly; encryption migration is irreversible"
+            hit_irreversible,
+            "an encryption migration down must fail loudly (irreversible)"
         );
     }
 

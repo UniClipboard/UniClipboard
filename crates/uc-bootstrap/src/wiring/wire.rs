@@ -836,11 +836,13 @@ pub fn wire_dependencies(
     // (after space access + profile exist) rather than in `create_infra_layer`,
     // reusing the shared executor.
     let entry_file_set_repo: Arc<dyn uc_core::ports::clipboard::EntryFileSetRepositoryPort> =
-        Arc::new(uc_infra::db::repositories::DieselEntryFileSetRepository::new(
-            infra.db_executor.clone(),
-            space_access_ports.derive_subkey.clone(),
-            platform.current_profile.clone(),
-        ));
+        Arc::new(
+            uc_infra::db::repositories::DieselEntryFileSetRepository::new(
+                infra.db_executor.clone(),
+                space_access_ports.derive_subkey.clone(),
+                platform.current_profile.clone(),
+            ),
+        );
 
     // Wire the search bundle (Phase 92). Search only derives a subkey.
     let SearchAssembly {

@@ -29,6 +29,8 @@ const PanelItemContextMenu: React.FC<PanelItemContextMenuProps> = ({ item, actio
     <HistoryCardContextMenu
       item={item}
       onCopy={actions.onCopy}
+      onFilePathsAction={actions.onPasteFilePaths}
+      filePathsAction="paste"
       onToggleFavorite={actions.onToggleFavorite}
       onDelete={actions.onDelete}
       // Quick-panel rows live in a flex list with a definite height; keeping the

@@ -156,10 +156,15 @@ async fn health(State(state): State<DaemonApiState>) -> Json<HealthEnvelope> {
 /// RTF 等富文本被剔除）。条目若没有 plain 表示，facade 静默降级为多格式恢复。
 ///
 /// `plain=false` 或缺省时与历史行为完全一致：多格式恢复。
+///
+/// `file_paths=true` converts a file entry's URI list to newline-separated
+/// native paths and writes those paths as plain text.
 #[derive(Debug, Default, serde::Deserialize)]
 struct RestoreQuery {
     #[serde(default)]
     plain: bool,
+    #[serde(default)]
+    file_paths: bool,
 }
 
 /// POST /clipboard/restore/{entry_id}
@@ -176,10 +181,12 @@ struct RestoreQuery {
     tag = "clipboard",
     params(
         ("entry_id" = String, Path, description = "Clipboard entry id to restore"),
-        ("plain" = Option<bool>, Query, description = "Restore as plain text only (strip rich representations)")
+        ("plain" = Option<bool>, Query, description = "Restore as plain text only (strip rich representations)"),
+        ("file_paths" = Option<bool>, Query, description = "Restore file entries as newline-separated native paths")
     ),
     responses(
         (status = 200, description = "Entry restored to the system clipboard", body = RestoreEntryEnvelope),
+        (status = 400, description = "Requested transform not applicable to this entry (e.g. file-path restore with no file paths)", body = ApiErrorResponse),
         (status = 404, description = "Entry not found", body = ApiErrorResponse),
         (status = 410, description = "Entry payload is no longer available (orphaned/lost)", body = ApiErrorResponse),
         (status = 500, description = "Internal server error", body = ApiErrorResponse)
@@ -198,6 +205,7 @@ async fn restore_clipboard_entry_handler(
     tracing::info!(
         entry_id = %entry_id,
         plain = query.plain,
+        file_paths = query.file_paths,
         "daemon restore request received"
     );
 
@@ -211,12 +219,16 @@ async fn restore_clipboard_entry_handler(
         }
     };
 
-    let op: &'static str = if query.plain {
+    let op: &'static str = if query.file_paths {
+        "restore_entry_as_file_paths"
+    } else if query.plain {
         "restore_entry_as_plain_text"
     } else {
         "restore_entry"
     };
-    let result = if query.plain {
+    let result = if query.file_paths {
+        restore_facade.restore_entry_as_file_paths(&entry_id).await
+    } else if query.plain {
         restore_facade.restore_entry_as_plain_text(&entry_id).await
     } else {
         restore_facade.restore_entry(&entry_id).await
@@ -298,6 +310,21 @@ fn restore_error_to_response(
                         "state": state,
                     }),
                 )),
+            )
+        }
+        E::NotApplicable(message) => {
+            // Client asked for a transform this entry can't satisfy (e.g. a
+            // file-path restore of an entry with no file paths). A request
+            // problem, not a server fault — 400, and info-level so it does not
+            // escalate to Sentry.
+            tracing::info!(
+                entry_id = %entry_id,
+                reason = %message,
+                "daemon restore: transform not applicable to entry"
+            );
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ApiErrorResponse::new("not_applicable", &message)),
             )
         }
         E::Internal(message) => {
@@ -546,6 +573,19 @@ mod tests {
         assert_eq!(status, StatusCode::GONE);
         let details = body.0.details.expect("410 must carry structured details");
         assert_eq!(details["state"], "Staged");
+    }
+
+    #[test]
+    fn restore_not_applicable_returns_400_with_reason() {
+        let (status, body) = restore_error_to_response(
+            "restore_entry_as_file_paths",
+            ClipboardRestoreError::NotApplicable("entry has no restorable file paths".to_string()),
+            "entry-4",
+        );
+        // Client request problem (transform doesn't apply) — 400, never 500.
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body.0.code, "not_applicable");
+        assert_eq!(body.0.message, "entry has no restorable file paths");
     }
 
     #[test]

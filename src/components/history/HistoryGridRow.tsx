@@ -16,6 +16,7 @@ interface HistoryGridRowProps {
   isDeleting: boolean
   showDivider: boolean
   onCopy: (id: string) => void
+  onFilePathsAction: (id: string) => void
   onDelete: (id: string) => void
   onToggleFavorite: (id: string, current: boolean) => void
   onClick: (id: string) => void
@@ -41,6 +42,7 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
     isDeleting,
     showDivider,
     onCopy,
+    onFilePathsAction,
     onDelete,
     onToggleFavorite,
     onClick,
@@ -67,6 +69,7 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
         <HistoryCardContextMenu
           item={item}
           onCopy={onCopy}
+          onFilePathsAction={onFilePathsAction}
           onToggleFavorite={onToggleFavorite}
           onDelete={onDelete}
         >

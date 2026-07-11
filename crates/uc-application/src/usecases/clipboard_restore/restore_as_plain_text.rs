@@ -31,9 +31,10 @@ use uc_core::{
     blob::ports::BlobReaderPort,
     clipboard::{
         is_plain_text_mime_or_format, ClipboardContentCategorySet, ClipboardIntegrationMode,
-        ObservedClipboardRepresentation, PersistedClipboardRepresentation, SystemClipboardSnapshot,
+        ClipboardSelection, ObservedClipboardRepresentation, PersistedClipboardRepresentation,
+        SystemClipboardSnapshot,
     },
-    ids::EntryId,
+    ids::{EntryId, FormatId, RepresentationId},
     ports::{
         clipboard::{
             ClipboardPayloadResolverPort, GetClipboardEntryPort, GetEntrySnapshotHashPort,
@@ -58,6 +59,15 @@ pub(crate) enum PlainRestoreOutcome {
     Done,
     NoPlainTextAvailable,
 }
+
+/// The entry carries no representation from which a native file-path list can
+/// be produced (no `text/uri-list` representation, or one that yields no
+/// `file://` paths). Surfaced as its own type so the facade can classify it as
+/// a client-side "operation not applicable to this entry" outcome rather than
+/// an internal fault.
+#[derive(Debug, thiserror::Error)]
+#[error("entry has no restorable file paths")]
+pub(crate) struct NoFilePathsAvailable;
 
 pub(crate) struct RestoreClipboardEntryAsPlainTextUseCase {
     clipboard_repo: Arc<dyn GetClipboardEntryPort>,
@@ -143,51 +153,185 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
             }
         };
 
-        // Category set of what we narrowed to plain text and put on the OS
-        // clipboard — captured before the snapshot moves into the write
-        // boundary so the register advances only after the OS write succeeds.
+        self.write_transformed_snapshot(entry_id, snapshot, "restore_plain")
+            .await?;
+
+        Ok(PlainRestoreOutcome::Done)
+    }
+
+    pub(crate) async fn execute_file_paths(&self, entry_id: &EntryId) -> Result<()> {
+        if !self.mode.allow_os_write() {
+            return Err(anyhow::anyhow!(
+                "System clipboard writes disabled (UC_CLIPBOARD_MODE=passive)"
+            ));
+        }
+
+        let snapshot = self.build_file_paths_snapshot(entry_id).await?;
+        self.write_transformed_snapshot(entry_id, snapshot, "restore_file_paths")
+            .await?;
+        Ok(())
+    }
+
+    /// Write a narrowed/transformed snapshot to the OS clipboard and, on
+    /// success, advance the cross-device register. `op` names the calling
+    /// restore path so the shared active-register log lines stay attributable.
+    async fn write_transformed_snapshot(
+        &self,
+        entry_id: &EntryId,
+        snapshot: SystemClipboardSnapshot,
+        op: &'static str,
+    ) -> Result<()> {
+        // Category set captured before the snapshot moves into the write
+        // boundary, so the register advances only after the OS write succeeds.
         let categories = ClipboardContentCategorySet::from_snapshot(&snapshot);
         self.coordinator
             .write(snapshot, ClipboardWriteIntent::LocalRestore)
             .await?;
-        if let (Some(advancer), Some(hash_lookup)) =
-            (&self.active_register, &self.entry_snapshot_hash_lookup)
-        {
-            // Advance the register with the entry's PERSISTED
-            // `clipboard_event.snapshot_hash` (the full-entry identity peers
-            // resolve by), not a hash recomputed from this plain-only snapshot.
-            // The OS holds plain text while the register points at the whole
-            // entry; a peer that pulls it materializes the full entry — the
-            // alternative (a plain-only hash) matches no persisted entry, so
-            // every pull would miss. A lookup miss / error leaves the register
-            // untouched — best-effort, the OS write already succeeded.
-            match hash_lookup.get_entry_snapshot_hash(entry_id).await {
-                Ok(Some(snapshot_hash)) => {
-                    let state = advancer
-                        .advance_local(snapshot_hash, entry_id.clone())
-                        .await;
-                    // Offer the activation to the broadcaster (gate lives there).
-                    if let Some(trigger) = &self.restore_broadcast {
-                        trigger.offer(state, categories);
-                    }
-                }
-                Ok(None) => {
-                    info!(
-                        entry_id = %entry_id,
-                        "restore_plain: no persisted snapshot_hash for entry; skipping active-register advance"
-                    );
-                }
+        self.advance_active_register(entry_id, categories, op).await;
+        Ok(())
+    }
+
+    async fn build_file_paths_snapshot(
+        &self,
+        entry_id: &EntryId,
+    ) -> Result<SystemClipboardSnapshot> {
+        let entry = self
+            .clipboard_repo
+            .get_entry(entry_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Entry not found"))?;
+        let selection = self
+            .selection_repo
+            .get_selection(entry_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Selection not found"))?;
+
+        for rep_id in Self::candidate_rep_ids(&selection.selection) {
+            let Some(rep) = self
+                .representation_repo
+                .get_representation(&entry.event_id, &rep_id)
+                .await?
+            else {
+                continue;
+            };
+            if !rep
+                .mime_type
+                .as_ref()
+                .is_some_and(|mime| mime.is_uri_list())
+            {
+                continue;
+            }
+            // Skip on resolve failure and try the next candidate, mirroring
+            // `build_plain_snapshot`'s resilience (e.g. Staged bytes missing
+            // from both cache and spool). Only a genuine absence of file paths
+            // across all candidates fails the operation.
+            let bytes = match self.resolve_bytes(&rep).await {
+                Ok(bytes) => bytes,
                 Err(err) => {
                     warn!(
                         entry_id = %entry_id,
+                        rep_id = %rep.id,
                         error = %err,
-                        "restore_plain: snapshot_hash lookup failed; skipping active-register advance"
+                        "restore_file_paths: skipping uri-list rep due to resolve failure"
                     );
+                    continue;
                 }
+            };
+            let uri_list = std::str::from_utf8(&bytes)?;
+            let paths = uri_list
+                .lines()
+                .filter_map(|line| {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        return None;
+                    }
+                    url::Url::parse(line).ok()?.to_file_path().ok()
+                })
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+            if paths.is_empty() {
+                continue;
             }
+            let text = paths.join("\n").into_bytes();
+            let observed = ObservedClipboardRepresentation::new(
+                RepresentationId::from(format!("{}-file-paths", rep.id)),
+                FormatId::from("text"),
+                Some(uc_core::clipboard::MimeType("text/plain".to_string())),
+                text,
+            );
+            return Ok(SystemClipboardSnapshot {
+                ts_ms: chrono::Utc::now().timestamp_millis(),
+                representations: vec![observed],
+                file_content_digests: Vec::new(),
+            });
         }
 
-        Ok(PlainRestoreOutcome::Done)
+        Err(NoFilePathsAvailable.into())
+    }
+
+    /// Candidate rep ids in the selection's restore priority order
+    /// (paste → primary → preview → secondary), deduplicated while preserving
+    /// first-seen order. Shared by the plain-text and file-paths snapshot
+    /// builders so both inspect the same candidates in the same order — in the
+    /// common case where the target rep is already `paste_rep_id`, the first
+    /// candidate hits and no extra resolver calls are made.
+    fn candidate_rep_ids(selection: &ClipboardSelection) -> Vec<RepresentationId> {
+        let mut ids = vec![
+            selection.paste_rep_id.clone(),
+            selection.primary_rep_id.clone(),
+            selection.preview_rep_id.clone(),
+        ];
+        ids.extend(selection.secondary_rep_ids.iter().cloned());
+        let mut seen = std::collections::HashSet::new();
+        ids.retain(|rep_id| seen.insert(rep_id.clone()));
+        ids
+    }
+
+    /// Advance the cross-device active-clipboard register with the entry's
+    /// PERSISTED `clipboard_event.snapshot_hash` (the full-entry identity peers
+    /// resolve by), NOT a hash recomputed from the transformed snapshot we just
+    /// wrote to the OS. The OS holds the narrowed content (plain text / file
+    /// paths) while the register points at the whole entry; a peer that pulls
+    /// it materializes the full entry — a hash derived from the narrowed
+    /// snapshot would match no persisted entry, so every pull would miss. A
+    /// lookup miss / error leaves the register untouched — best-effort, the OS
+    /// write already succeeded.
+    ///
+    /// `op` names the calling restore path so these shared log lines stay
+    /// attributable to the plain-text vs file-paths flow.
+    async fn advance_active_register(
+        &self,
+        entry_id: &EntryId,
+        categories: ClipboardContentCategorySet,
+        op: &'static str,
+    ) {
+        let (Some(advancer), Some(hash_lookup)) =
+            (&self.active_register, &self.entry_snapshot_hash_lookup)
+        else {
+            return;
+        };
+        match hash_lookup.get_entry_snapshot_hash(entry_id).await {
+            Ok(Some(snapshot_hash)) => {
+                let state = advancer
+                    .advance_local(snapshot_hash, entry_id.clone())
+                    .await;
+                // Offer the activation to the broadcaster (gate lives there).
+                if let Some(trigger) = &self.restore_broadcast {
+                    trigger.offer(state, categories);
+                }
+            }
+            Ok(None) => info!(
+                entry_id = %entry_id,
+                op,
+                "restore: no persisted snapshot_hash for entry; skipping active-register advance"
+            ),
+            Err(err) => warn!(
+                entry_id = %entry_id,
+                op,
+                error = %err,
+                "restore: snapshot_hash lookup failed; skipping active-register advance"
+            ),
+        }
     }
 
     /// 收集 selection 中所有候选 rep，挑出第一份「能解析出字节」的 plain text rep
@@ -216,14 +360,7 @@ impl RestoreClipboardEntryAsPlainTextUseCase {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Selection not found"))?;
 
-        let mut candidate_ids = Vec::new();
-        candidate_ids.push(selection.selection.paste_rep_id.clone());
-        candidate_ids.push(selection.selection.primary_rep_id.clone());
-        candidate_ids.push(selection.selection.preview_rep_id.clone());
-        candidate_ids.extend(selection.selection.secondary_rep_ids.clone());
-
-        let mut seen = std::collections::HashSet::new();
-        candidate_ids.retain(|rep_id| seen.insert(rep_id.clone()));
+        let candidate_ids = Self::candidate_rep_ids(&selection.selection);
 
         for rep_id in &candidate_ids {
             let rep = match self
@@ -507,6 +644,29 @@ mod tests {
         clipboard: Arc<MockSystemClipboard>,
         origin: MockChangeOrigin,
     ) -> RestoreClipboardEntryAsPlainTextUseCase {
+        build_use_case_with_mode(
+            entry_repo,
+            selection_repo,
+            rep_repo,
+            resolver,
+            blob_reader,
+            clipboard,
+            origin,
+            ClipboardIntegrationMode::Full,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_use_case_with_mode(
+        entry_repo: MockEntryRepo,
+        selection_repo: MockSelectionRepo,
+        rep_repo: FakeRepRepo,
+        resolver: MockResolver,
+        blob_reader: MockBlobReader,
+        clipboard: Arc<MockSystemClipboard>,
+        origin: MockChangeOrigin,
+        mode: ClipboardIntegrationMode,
+    ) -> RestoreClipboardEntryAsPlainTextUseCase {
         let coordinator = Arc::new(ClipboardWriteCoordinator::new(clipboard, Arc::new(origin)));
         RestoreClipboardEntryAsPlainTextUseCase::new(
             Arc::new(entry_repo),
@@ -515,7 +675,7 @@ mod tests {
             Arc::new(rep_repo),
             Arc::new(resolver),
             Arc::new(blob_reader),
-            ClipboardIntegrationMode::Full,
+            mode,
         )
     }
 
@@ -804,5 +964,139 @@ mod tests {
         assert_eq!(writes.len(), 1);
         assert_eq!(writes[0].representations.len(), 1);
         assert_eq!(writes[0].representations[0].id, plain.id);
+    }
+
+    #[tokio::test]
+    async fn file_uri_list_is_written_as_native_paths() {
+        let entry = make_entry("entry-files", "event-files");
+        let files = make_rep(
+            "rep-files",
+            "text/uri-list",
+            "files",
+            b"file:///tmp/first%20report.pdf\r\nfile:///tmp/second.txt\r\n",
+        );
+        let decision = make_selection("entry-files", "rep-files", vec![]);
+
+        let mut entry_repo = MockEntryRepo::new();
+        entry_repo
+            .expect_get_entry()
+            .returning(move |_| Ok(Some(entry.clone())));
+        let mut selection_repo = MockSelectionRepo::new();
+        selection_repo
+            .expect_get_selection()
+            .returning(move |_| Ok(Some(decision.clone())));
+        let rep_repo = FakeRepRepo { reps: vec![files] };
+        let mut resolver = MockResolver::new();
+        expect_inline_resolves(&mut resolver);
+        let blob_reader = MockBlobReader::new();
+        let (clipboard, writes) = recording_system_clipboard();
+        let mut origin = MockChangeOrigin::new();
+        expect_permissive_origin(&mut origin);
+        let uc = build_use_case(
+            entry_repo,
+            selection_repo,
+            rep_repo,
+            resolver,
+            blob_reader,
+            clipboard,
+            origin,
+        );
+
+        uc.execute_file_paths(&EntryId::from("entry-files"))
+            .await
+            .expect("file path restore should succeed");
+
+        let writes = writes.lock().unwrap();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].representations.len(), 1);
+        let expected = format!(
+            "{}\n{}",
+            std::path::PathBuf::from("/tmp/first report.pdf").display(),
+            std::path::PathBuf::from("/tmp/second.txt").display()
+        );
+        assert_eq!(
+            writes[0].representations[0].expect_inline_bytes(),
+            expected.as_bytes()
+        );
+        assert_eq!(
+            writes[0].representations[0]
+                .mime
+                .as_ref()
+                .map(|mime| mime.as_str()),
+            Some("text/plain")
+        );
+    }
+
+    /// A file-path restore of an entry that carries no `text/uri-list` rep must
+    /// fail as `NoFilePathsAvailable` (the facade classifies this as a 400, not
+    /// a 500) and must not write anything to the OS clipboard.
+    #[tokio::test]
+    async fn file_paths_restore_without_uri_list_rep_is_not_applicable() {
+        let entry = make_entry("entry-plain", "event-plain");
+        let plain = make_rep("rep-plain", "text/plain", "text", b"just text, no files");
+        let decision = make_selection("entry-plain", "rep-plain", vec![]);
+
+        let mut entry_repo = MockEntryRepo::new();
+        entry_repo
+            .expect_get_entry()
+            .returning(move |_| Ok(Some(entry.clone())));
+        let mut selection_repo = MockSelectionRepo::new();
+        selection_repo
+            .expect_get_selection()
+            .returning(move |_| Ok(Some(decision.clone())));
+        let rep_repo = FakeRepRepo { reps: vec![plain] };
+        // Resolver must never run: the uri-list mime check rejects the rep
+        // before any byte resolution.
+        let resolver = MockResolver::new();
+        let blob_reader = MockBlobReader::new();
+        let clipboard = Arc::new(MockSystemClipboard::new());
+        let origin = MockChangeOrigin::new();
+        let uc = build_use_case(
+            entry_repo,
+            selection_repo,
+            rep_repo,
+            resolver,
+            blob_reader,
+            clipboard,
+            origin,
+        );
+
+        let err = uc
+            .execute_file_paths(&EntryId::from("entry-plain"))
+            .await
+            .expect_err("file path restore should fail without a uri-list rep");
+        assert!(
+            err.downcast_ref::<NoFilePathsAvailable>().is_some(),
+            "expected NoFilePathsAvailable, got: {err:?}"
+        );
+    }
+
+    /// Passive mode disables OS writes; a file-path restore must be refused up
+    /// front without touching repositories or the clipboard.
+    #[tokio::test]
+    async fn file_paths_restore_is_refused_in_passive_mode() {
+        // No `expect_*`: strict mocks panic if the mode gate lets execution
+        // reach any repository or the clipboard.
+        let entry_repo = MockEntryRepo::new();
+        let selection_repo = MockSelectionRepo::new();
+        let rep_repo = FakeRepRepo { reps: vec![] };
+        let resolver = MockResolver::new();
+        let blob_reader = MockBlobReader::new();
+        let clipboard = Arc::new(MockSystemClipboard::new());
+        let origin = MockChangeOrigin::new();
+        let uc = build_use_case_with_mode(
+            entry_repo,
+            selection_repo,
+            rep_repo,
+            resolver,
+            blob_reader,
+            clipboard,
+            origin,
+            ClipboardIntegrationMode::Passive,
+        );
+
+        uc.execute_file_paths(&EntryId::from("entry-x"))
+            .await
+            .expect_err("passive mode should refuse file path restore");
     }
 }

@@ -3587,11 +3587,19 @@ export type RestoreClipboardEntryData = {
          * Restore as plain text only (strip rich representations)
          */
         plain?: boolean | null;
+        /**
+         * Restore file entries as newline-separated native paths
+         */
+        file_paths?: boolean | null;
     };
     url: '/clipboard/restore/{entry_id}';
 };
 
 export type RestoreClipboardEntryErrors = {
+    /**
+     * Requested transform not applicable to this entry (e.g. file-path restore with no file paths)
+     */
+    400: ApiErrorResponse;
     /**
      * Entry not found
      */

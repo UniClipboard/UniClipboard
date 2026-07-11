@@ -899,6 +899,8 @@
     },
     "contextMenu": {
       "copy": "复制",
+      "copyFilePaths": "复制文件路径",
+      "pasteFilePaths": "粘贴文件路径",
       "favorite": "收藏",
       "unfavorite": "取消收藏",
       "send": "发送到",

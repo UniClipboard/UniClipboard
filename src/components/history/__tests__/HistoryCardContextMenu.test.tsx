@@ -67,6 +67,7 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof HistoryCardCo
   const props: React.ComponentProps<typeof HistoryCardContextMenu> = {
     item: textItem(),
     onCopy: vi.fn(),
+    onFilePathsAction: vi.fn(),
     onToggleFavorite: vi.fn(),
     onDelete: vi.fn(),
     children: <div data-testid="row">row content</div>,
@@ -122,6 +123,18 @@ describe('HistoryCardContextMenu', () => {
       })
     )
     expect(props.onCopy).toHaveBeenCalledWith('entry-1')
+  })
+
+  it('offers copying paths for file entries', async () => {
+    const props = renderMenu({ item: fileItem() })
+    openMenu()
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.copyFilePaths')),
+      })
+    )
+    expect(props.onFilePathsAction).toHaveBeenCalledWith('entry-file')
   })
 
   it('shows the unfavorite label and toggles current state', async () => {

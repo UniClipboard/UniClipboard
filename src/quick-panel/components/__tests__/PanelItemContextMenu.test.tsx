@@ -10,7 +10,12 @@ vi.mock('@/components/history/HistoryCardContextMenu', () => ({
   default: ({ children }: { children: ReactNode }) => <div data-testid="menu">{children}</div>,
 }))
 
-const actions = { onCopy: vi.fn(), onToggleFavorite: vi.fn(), onDelete: vi.fn() }
+const actions = {
+  onCopy: vi.fn(),
+  onPasteFilePaths: vi.fn(),
+  onToggleFavorite: vi.fn(),
+  onDelete: vi.fn(),
+}
 
 function richItem(): DisplayClipboardItem {
   return { id: 'e1', type: 'text', content: null, activeTime: 0 }

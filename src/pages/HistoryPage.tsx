@@ -129,6 +129,7 @@ const HistoryPage: React.FC = () => {
                 hasMore={c.hasMore}
                 onLoadMore={c.handleLoadMore}
                 onCopy={c.handleCopy}
+                onFilePathsAction={c.handleCopyFilePaths}
                 onDelete={c.requestDelete}
                 onToggleFavorite={c.handleToggleFavorite}
                 onCardClick={c.handleCardClick}

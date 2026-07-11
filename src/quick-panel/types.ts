@@ -25,6 +25,7 @@ export interface DisplayItem {
 export interface QuickPanelContextMenuActions {
   /** Copy the entry to the system clipboard (the panel then dismisses). */
   onCopy: (id: string) => void
+  onPasteFilePaths: (id: string) => void
   /** Toggle the entry's favorite flag; `current` is its present state. */
   onToggleFavorite: (id: string, current: boolean) => void
   /** Delete the entry immediately (no confirm dialog, matching Alt+Backspace). */

@@ -1,4 +1,4 @@
-import { Copy, FolderOpen, Loader2, Send, Star, Trash2 } from 'lucide-react'
+import { Copy, FileText, FolderOpen, Loader2, Send, Star, Trash2 } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -27,6 +27,14 @@ interface HistoryCardContextMenuProps {
   item: DisplayClipboardItem
   /** Copy the entry to the local clipboard. */
   onCopy: (id: string) => void
+  /**
+   * Restore a file entry's paths as plain text. Only rendered for `file`
+   * items. The `filePathsAction` discriminant selects the menu label and the
+   * caller's intent: `'copy'` writes the paths to the clipboard (history view),
+   * `'paste'` writes them and pastes into the previous app (quick panel).
+   */
+  onFilePathsAction: (id: string) => void
+  filePathsAction?: 'copy' | 'paste'
   /** Toggle the entry's favorite flag; `current` is its present state. */
   onToggleFavorite: (id: string, current: boolean) => void
   /** Open the delete-confirmation flow for the entry. */
@@ -65,6 +73,8 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
   children,
   item,
   onCopy,
+  onFilePathsAction,
+  filePathsAction = 'copy',
   onToggleFavorite,
   onDelete,
   triggerClassName = 'block h-full w-full',
@@ -104,6 +114,20 @@ const HistoryCardContextMenu: React.FC<HistoryCardContextMenuProps> = ({
           {t('clipboard.contextMenu.copy')}
           <ContextMenuShortcut>C</ContextMenuShortcut>
         </ContextMenuItem>
+
+        {item.type === 'file' && (
+          <ContextMenuItem
+            disabled={isUnavailable}
+            onClick={() => !isUnavailable && onFilePathsAction(item.id)}
+          >
+            <FileText className="mr-2 size-4" />
+            {t(
+              filePathsAction === 'paste'
+                ? 'clipboard.contextMenu.pasteFilePaths'
+                : 'clipboard.contextMenu.copyFilePaths'
+            )}
+          </ContextMenuItem>
+        )}
 
         {/* Favorite toggle */}
         <ContextMenuItem onClick={() => onToggleFavorite(item.id, isFavorited)}>

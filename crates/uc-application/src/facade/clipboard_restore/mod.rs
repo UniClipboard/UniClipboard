@@ -15,8 +15,8 @@ use crate::clipboard_write::{
     ClipboardWriteCoordinator, LocalActiveRegisterAdvancer, RestoreBroadcastTrigger,
 };
 use crate::usecases::clipboard_restore::{
-    PlainRestoreOutcome, RestoreClipboardEntryAsPlainTextUseCase, RestoreClipboardSelectionUseCase,
-    TouchClipboardEntryUseCase,
+    NoFilePathsAvailable, PlainRestoreOutcome, RestoreClipboardEntryAsPlainTextUseCase,
+    RestoreClipboardSelectionUseCase, TouchClipboardEntryUseCase,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -36,6 +36,13 @@ pub enum ClipboardRestoreError {
         rep_id: String,
         state: String,
     },
+
+    /// The requested transform does not apply to this entry — e.g. a file-path
+    /// restore was asked for an entry that carries no restorable file paths.
+    /// A client-side request problem, not a server fault: the API layer should
+    /// map this to 400 Bad Request, **not** 500.
+    #[error("clipboard restore not applicable: {0}")]
+    NotApplicable(String),
 
     #[error("clipboard restore failed: {0}")]
     Internal(String),
@@ -213,6 +220,20 @@ impl ClipboardRestoreFacade {
         }
     }
 
+    #[instrument(skip_all, fields(entry_id = %entry_id))]
+    pub async fn restore_entry_as_file_paths(
+        &self,
+        entry_id: &str,
+    ) -> Result<(), ClipboardRestoreError> {
+        let parsed_id = EntryId::from(entry_id);
+        self.plain_uc
+            .execute_file_paths(&parsed_id)
+            .await
+            .map_err(|err| map_restore_error(err, entry_id))?;
+        self.touch_after_restore(&parsed_id, entry_id).await;
+        Ok(())
+    }
+
     async fn touch_after_restore(&self, parsed_id: &EntryId, entry_id: &str) {
         if let Err(err) = self.touch_uc.execute(parsed_id).await {
             tracing::warn!(
@@ -249,6 +270,10 @@ fn map_restore_error(err: anyhow::Error, entry_id: &str) -> ClipboardRestoreErro
                 // fall through — internal bug, return as Internal(500)
             }
         }
+    }
+
+    if let Some(no_paths) = err.downcast_ref::<NoFilePathsAvailable>() {
+        return ClipboardRestoreError::NotApplicable(no_paths.to_string());
     }
 
     let message = err.to_string();

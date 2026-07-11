@@ -5726,6 +5726,16 @@
               "nullable": true,
               "type": "boolean"
             }
+          },
+          {
+            "description": "Restore file entries as newline-separated native paths",
+            "in": "query",
+            "name": "file_paths",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -5738,6 +5748,16 @@
               }
             },
             "description": "Entry restored to the system clipboard"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Requested transform not applicable to this entry (e.g. file-path restore with no file paths)"
           },
           "404": {
             "content": {

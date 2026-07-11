@@ -6,7 +6,9 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
+import { restoreClipboardEntry as restoreClipboardEntrySdk } from '../../generated/sdk.gen'
 import type { ClipboardEntryDto, ClipboardEntriesResponse, ClipboardStats } from '../clipboard'
+import { restoreClipboardEntry } from '../clipboard'
 
 // ADR-008 P7: clipboard wrappers route through the generated SDK + `callSdk`.
 // - `../client` exposes a `callSdk` mock that replicates the happy path:
@@ -363,5 +365,19 @@ describe('deleteClipboardEntry HTTP contract', () => {
     expect(deleteClipboardEntrySdk).toHaveBeenCalledWith(
       expect.objectContaining({ path: { id: 'entry-123' }, throwOnError: true })
     )
+  })
+})
+
+describe('restoreClipboardEntry HTTP contract', () => {
+  it('requests newline-separated file paths when filePathsOnly is set', async () => {
+    vi.mocked(restoreClipboardEntrySdk).mockResolvedValue({ data: undefined } as never)
+
+    await restoreClipboardEntry('entry-file', { filePathsOnly: true })
+
+    expect(restoreClipboardEntrySdk).toHaveBeenCalledWith({
+      path: { entry_id: 'entry-file' },
+      query: { file_paths: true },
+      throwOnError: true,
+    })
   })
 })

@@ -58,6 +58,13 @@ vi.mock('../hooks/useHistorySearch', () => ({
         activeTime: Date.now() - 1000,
         isUnavailable: false,
       },
+      {
+        id: 'entry-file',
+        type: 'file',
+        preview: 'File preview title',
+        activeTime: Date.now() - 2000,
+        isUnavailable: false,
+      },
     ],
     previewItems: [
       {
@@ -72,6 +79,18 @@ vi.mock('../hooks/useHistorySearch', () => ({
         type: 'text',
         content: { display_text: 'Second preview title', has_detail: false, size: 20 },
         activeTime: Date.now() - 1000,
+        isUnavailable: false,
+      },
+      {
+        id: 'entry-file',
+        type: 'file',
+        content: {
+          file_names: ['report.pdf'],
+          file_sizes: [10],
+          file_paths: ['/tmp/report.pdf'],
+          file_missing: [false],
+        },
+        activeTime: Date.now() - 2000,
         isUnavailable: false,
       },
     ],
@@ -359,6 +378,22 @@ describe('ClipboardHistoryPanel row context menu', () => {
     // Copy is a terminal launcher action: the panel dismisses only on success.
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
+    })
+  })
+
+  it('pastes file paths from the file entry context menu', async () => {
+    renderPanel()
+    openRowMenu('File preview title')
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.pasteFilePaths')),
+      })
+    )
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-file', { filePathsOnly: true })
+      expect(invokeMock).toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
     })
   })
 

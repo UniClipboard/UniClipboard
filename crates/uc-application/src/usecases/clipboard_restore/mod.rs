@@ -8,7 +8,7 @@ pub(crate) mod restore_selection;
 pub(crate) mod touch_entry;
 
 pub(crate) use restore_as_plain_text::{
-    PlainRestoreOutcome, RestoreClipboardEntryAsPlainTextUseCase,
+    NoFilePathsAvailable, PlainRestoreOutcome, RestoreClipboardEntryAsPlainTextUseCase,
 };
 pub(crate) use restore_selection::RestoreClipboardSelectionUseCase;
 pub(crate) use touch_entry::TouchClipboardEntryUseCase;

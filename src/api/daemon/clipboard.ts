@@ -190,6 +190,8 @@ export async function deleteClipboardEntry(id: string): Promise<void> {
  *   传 `plainOnly: true` 时只把 `text/plain` 表示写入系统剪贴板，让目标
  *   应用粘出纯文本（Markdown 源码 / HTML 标签 / RTF 等富文本被剔除）。
  *   条目没有 plain 表示时由 daemon 静默降级为多格式恢复。
+ * @param opts.filePathsOnly When true, convert a file entry's local file URIs
+ *   into newline-separated native paths and write them as plain text.
  * @throws {DaemonApiError} On HTTP errors, session failures, or entry not found.
  *   A 410 Gone (payload demoted to `Lost`) surfaces as
  *   `DaemonErrorCode.PAYLOAD_UNAVAILABLE`; its `entry_id`/`rep_id`/`state`
@@ -198,7 +200,7 @@ export async function deleteClipboardEntry(id: string): Promise<void> {
  */
 export async function restoreClipboardEntry(
   id: string,
-  opts?: { plainOnly?: boolean }
+  opts?: { plainOnly?: boolean; filePathsOnly?: boolean }
 ): Promise<RestoreResult> {
   // The success body is the enveloped `{ data: { success }, ts }` shape and is
   // intentionally discarded — restore is fire-and-forget; only the HTTP error
@@ -207,7 +209,11 @@ export async function restoreClipboardEntry(
   await daemonClient.callSdk(() =>
     restoreClipboardEntrySdk({
       path: { entry_id: id },
-      query: opts?.plainOnly ? { plain: true } : undefined,
+      query: opts?.filePathsOnly
+        ? { file_paths: true }
+        : opts?.plainOnly
+          ? { plain: true }
+          : undefined,
       throwOnError: true,
     })
   )

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { StateSnapshot, VirtuosoHandle } from 'react-virtuoso'
 import { favoriteClipboardItem, Filter, unfavoriteClipboardItem } from '@/api/clipboardItems'
+import { restoreClipboardEntry } from '@/api/daemon'
 import { toast } from '@/components/ui/toast'
 import { useCopyFeedback } from '@/hooks/useCopyFeedback'
 import { useDeleteFlow } from '@/hooks/useDeleteFlow'
@@ -103,6 +104,20 @@ export function useHistoryController() {
       }
     },
     [dispatch, t, markCopied]
+  )
+
+  const handleCopyFilePaths = useCallback(
+    async (id: string): Promise<boolean> => {
+      try {
+        await restoreClipboardEntry(id, { filePathsOnly: true })
+        markCopied(id)
+        return true
+      } catch {
+        toast.error(t('clipboard.errors.copyFailed'))
+        return false
+      }
+    },
+    [markCopied, t]
   )
 
   // ── Delete flow ───────────────────────────────────────────────
@@ -310,6 +325,7 @@ export function useHistoryController() {
 
     // Cross-region handlers.
     handleCopy,
+    handleCopyFilePaths,
     requestDelete,
     handleToggleFavorite,
     handleCardClick,

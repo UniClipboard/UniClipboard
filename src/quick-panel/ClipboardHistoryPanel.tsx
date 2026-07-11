@@ -457,6 +457,19 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
     [t]
   )
 
+  const handlePasteFilePaths = useCallback(
+    async (id: string) => {
+      try {
+        await restoreClipboardEntry(id, { filePathsOnly: true })
+        await pasteToApp()
+      } catch (err) {
+        log.error({ err }, 'Failed to paste file paths')
+        toast.error(t('clipboard.errors.copyFailed'))
+      }
+    },
+    [t]
+  )
+
   const handleContextToggleFavorite = useCallback(
     async (id: string, current: boolean) => {
       const next = !current
@@ -503,10 +516,11 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   const contextActions = useMemo<QuickPanelContextMenuActions>(
     () => ({
       onCopy: id => void handleContextCopy(id),
+      onPasteFilePaths: id => void handlePasteFilePaths(id),
       onToggleFavorite: (id, current) => void handleContextToggleFavorite(id, current),
       onDelete: handleContextDelete,
     }),
-    [handleContextCopy, handleContextDelete, handleContextToggleFavorite]
+    [handleContextCopy, handleContextDelete, handleContextToggleFavorite, handlePasteFilePaths]
   )
 
   const handleSearchChange = useCallback((value: string) => {

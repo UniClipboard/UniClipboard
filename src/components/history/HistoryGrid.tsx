@@ -22,6 +22,7 @@ interface HistoryGridProps {
   hasMore: boolean
   onLoadMore: () => void
   onCopy: (id: string) => void
+  onFilePathsAction: (id: string) => void
   onDelete: (id: string) => void
   onToggleFavorite: (id: string, current: boolean) => void
   onCardClick: (id: string) => void
@@ -49,6 +50,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   hasMore,
   onLoadMore,
   onCopy,
+  onFilePathsAction,
   onDelete,
   onToggleFavorite,
   onCardClick,
@@ -116,6 +118,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
               isDeleting={deletingId === item.id}
               showDivider={index < items.length - 1}
               onCopy={onCopy}
+              onFilePathsAction={onFilePathsAction}
               onDelete={onDelete}
               onToggleFavorite={onToggleFavorite}
               onClick={onCardClick}

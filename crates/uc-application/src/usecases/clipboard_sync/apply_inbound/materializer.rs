@@ -9,7 +9,7 @@
 //! `InboundBlobFetcher` 是 facade 适配层,生产环境就是 `BlobTransferFacade`,
 //! 测试用 mockall 替身。
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use tracing::{debug, info, warn};
 use url::Url;
 
+use uc_core::clipboard::FileSetMemberKind;
 use uc_core::ids::{DeviceId, EntryId, FormatId, RepresentationId};
 use uc_core::ports::inbound_file_target::ReserveInboundFileTargetPort;
 use uc_core::{MimeType, ObservedClipboardRepresentation, SystemClipboardSnapshot};
@@ -47,6 +48,20 @@ pub fn is_cancel_error(err: &anyhow::Error) -> bool {
 pub struct MissingFileRef {
     pub filename: String,
     pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboundFileSetManifest {
+    pub members: Vec<InboundFileSetMember>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboundFileSetMember {
+    pub root_index: u32,
+    pub root_name: String,
+    pub relative_path: String,
+    pub kind: FileSetMemberKind,
+    pub blob_ref_index: Option<u32>,
 }
 
 /// `InboundBlobMaterializer::materialize` 的返回值。
@@ -102,6 +117,7 @@ pub trait InboundBlobMaterializer: Send + Sync {
         receiver_entry_id: EntryId,
         snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
+        file_set_manifest: Option<InboundFileSetManifest>,
     ) -> Result<MaterializeResult>;
 }
 
@@ -175,6 +191,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         receiver_entry_id: EntryId,
         mut snapshot: SystemClipboardSnapshot,
         blob_refs: Vec<V3BlobRef>,
+        file_set_manifest: Option<InboundFileSetManifest>,
     ) -> Result<MaterializeResult> {
         if blob_refs.is_empty() {
             return Ok(MaterializeResult::complete(snapshot));
@@ -188,6 +205,7 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         //   - `representation_index = None`: free-standing file (legacy
         //     file-URI path). Fetched bytes go to cache_dir, file-list rep is
         //     rewritten with local `file://` URIs.
+        let manifest_blob_refs = file_set_manifest.as_ref().map(|_| blob_refs.clone());
         let (rep_refs, file_refs): (Vec<V3BlobRef>, Vec<V3BlobRef>) = blob_refs
             .into_iter()
             .partition(|r| r.representation_index.is_some());
@@ -317,6 +335,9 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         // Rep-refs stage partial (cancel or error): skip all file_refs fetches,
         // mark them missing, finalize via the partial path.
         if partial {
+            if file_set_manifest.is_some() {
+                return Err(anyhow!("directory representation blob fetch failed"));
+            }
             for blob_ref in file_refs.iter() {
                 missing_files.push(MissingFileRef {
                     filename: blob_ref
@@ -336,7 +357,23 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
         }
 
         if file_refs.is_empty() {
-            return Ok(MaterializeResult::complete(snapshot));
+            if file_set_manifest.is_none() {
+                return Ok(MaterializeResult::complete(snapshot));
+            }
+        }
+
+        if let Some(manifest) = file_set_manifest {
+            return self
+                .materialize_directory(
+                    from_device,
+                    receiver_entry_id,
+                    snapshot,
+                    manifest_blob_refs.unwrap_or_default(),
+                    manifest,
+                    batch_idx,
+                    batch_total,
+                )
+                .await;
         }
 
         // 2. Free-standing files: existing cache_dir + file-list rewrite path.
@@ -611,6 +648,240 @@ impl InboundBlobMaterializer for FileCacheBlobMaterializer {
 
         Ok(MaterializeResult::complete(snapshot))
     }
+}
+
+impl FileCacheBlobMaterializer {
+    async fn materialize_directory(
+        &self,
+        from_device: DeviceId,
+        receiver_entry_id: EntryId,
+        mut snapshot: SystemClipboardSnapshot,
+        blob_refs: Vec<V3BlobRef>,
+        manifest: InboundFileSetManifest,
+        mut batch_idx: usize,
+        batch_total: usize,
+    ) -> Result<MaterializeResult> {
+        if manifest.members.is_empty() {
+            return Err(anyhow!("directory manifest has no members"));
+        }
+
+        let staging_base = self
+            .cache_dir
+            .join("iroh-blobs")
+            .join("staging")
+            .join(sanitize_path_segment(receiver_entry_id.as_ref()));
+        if tokio::fs::try_exists(&staging_base).await.unwrap_or(false) {
+            tokio::fs::remove_dir_all(&staging_base).await?;
+        }
+        tokio::fs::create_dir_all(&staging_base).await?;
+
+        let result = self
+            .build_and_promote_directory(
+                &from_device,
+                &receiver_entry_id,
+                &blob_refs,
+                &manifest,
+                &staging_base,
+                &mut batch_idx,
+                batch_total,
+            )
+            .await;
+
+        match result {
+            Ok((root_paths, file_content_digests)) => {
+                remove_directory_and_empty_parents(&staging_base, &self.cache_dir).await;
+                snapshot.file_content_digests = file_content_digests;
+                let uri_list = local_file_uri_list(&root_paths)?;
+                rewrite_file_list(&mut snapshot, uri_list, root_paths.len())?;
+                Ok(MaterializeResult::complete(snapshot))
+            }
+            Err(err) => {
+                remove_directory_and_empty_parents(&staging_base, &self.cache_dir).await;
+                Err(err)
+            }
+        }
+    }
+
+    async fn build_and_promote_directory(
+        &self,
+        from_device: &DeviceId,
+        receiver_entry_id: &EntryId,
+        blob_refs: &[V3BlobRef],
+        manifest: &InboundFileSetManifest,
+        staging_base: &std::path::Path,
+        batch_idx: &mut usize,
+        batch_total: usize,
+    ) -> Result<(Vec<PathBuf>, Vec<[u8; 32]>)> {
+        let mut roots = BTreeMap::<u32, String>::new();
+        for member in &manifest.members {
+            validate_manifest_member(member)?;
+            match roots.get(&member.root_index) {
+                Some(existing) if existing != &member.root_name => {
+                    return Err(anyhow!(
+                        "directory root {} has conflicting names",
+                        member.root_index
+                    ));
+                }
+                _ => {
+                    roots.insert(member.root_index, member.root_name.clone());
+                }
+            }
+        }
+
+        for (root_index, root_name) in &roots {
+            tokio::fs::create_dir_all(staging_root(staging_base, *root_index, root_name)).await?;
+        }
+
+        let mut file_content_digests = Vec::new();
+        for member in &manifest.members {
+            let root = staging_root(staging_base, member.root_index, &member.root_name);
+            let target = join_relative_path(&root, &member.relative_path)?;
+            match member.kind {
+                FileSetMemberKind::EmptyDirectory => {
+                    if member.blob_ref_index.is_some() {
+                        return Err(anyhow!("empty directory member references a blob"));
+                    }
+                    tokio::fs::create_dir_all(&target).await?;
+                }
+                FileSetMemberKind::File | FileSetMemberKind::Executable => {
+                    let index = member
+                        .blob_ref_index
+                        .ok_or_else(|| anyhow!("file member is missing its blob reference"))?
+                        as usize;
+                    let blob_ref = blob_refs.get(index).ok_or_else(|| {
+                        anyhow!("directory blob reference index {index} is out of bounds")
+                    })?;
+                    if blob_ref.representation_index.is_some() {
+                        return Err(anyhow!("directory member references a representation blob"));
+                    }
+                    if let Some(parent) = target.parent() {
+                        tokio::fs::create_dir_all(parent).await?;
+                    }
+                    let context = FetchTransferContext {
+                        transfer_id: receiver_entry_id.as_ref().to_string(),
+                        peer_id: from_device.as_str().to_string(),
+                        total_bytes: Some(blob_ref.size_bytes),
+                        filename: blob_ref.filename.clone().unwrap_or_default(),
+                        outbound_transfer_id: Some(blob_ref.entry_id.as_ref().to_string()),
+                        outbound_target: Some(from_device.clone()),
+                        batch_position: position_in_batch(*batch_idx, batch_total),
+                    };
+                    *batch_idx += 1;
+                    let fetched = self
+                        .fetcher
+                        .fetch_blob_to_path(FetchBlobToPathCommand {
+                            ticket: blob_ref.ticket.clone(),
+                            entry_id: blob_ref.entry_id.clone(),
+                            target_path: target,
+                            transfer_context: Some(context),
+                        })
+                        .await?;
+                    file_content_digests.push(*fetched.plaintext_hash.as_bytes());
+                }
+            }
+        }
+
+        let managed_parent = self
+            .cache_dir
+            .join("iroh-blobs")
+            .join(sanitize_path_segment(receiver_entry_id.as_ref()));
+        tokio::fs::create_dir_all(&managed_parent).await?;
+        let mut destinations = Vec::new();
+        for (root_index, root_name) in &roots {
+            let reserved = match &self.target_reserver {
+                Some(reserver) => reserver.reserve_target(root_name).await,
+                None => None,
+            };
+            let destination = reserved.unwrap_or_else(|| managed_parent.join(root_name));
+            if destination.is_file() {
+                tokio::fs::remove_file(&destination).await?;
+            }
+            if tokio::fs::try_exists(&destination).await? {
+                return Err(anyhow!(
+                    "directory destination already exists: {}",
+                    destination.display()
+                ));
+            }
+            let source = staging_root(staging_base, *root_index, root_name);
+            tokio::fs::rename(&source, &destination).await?;
+            destinations.push(destination);
+        }
+        Ok((destinations, file_content_digests))
+    }
+}
+
+fn validate_manifest_member(member: &InboundFileSetMember) -> Result<()> {
+    if member.root_name.is_empty()
+        || member.root_name == "."
+        || member.root_name == ".."
+        || member.root_name.contains(['/', '\\'])
+    {
+        return Err(anyhow!("invalid directory root name"));
+    }
+    if member.relative_path.is_empty() {
+        return Err(anyhow!("directory member has an empty relative path"));
+    }
+    Ok(())
+}
+
+fn staging_root(base: &std::path::Path, root_index: u32, root_name: &str) -> PathBuf {
+    base.join(format!("{root_index}-{}", sanitize_path_segment(root_name)))
+}
+
+fn join_relative_path(root: &std::path::Path, relative_path: &str) -> Result<PathBuf> {
+    let mut result = root.to_path_buf();
+    for component in relative_path.split('/') {
+        if component.is_empty() || component == "." || component == ".." || component.contains('\\')
+        {
+            return Err(anyhow!("invalid directory member relative path"));
+        }
+        result.push(component);
+    }
+    Ok(result)
+}
+
+async fn remove_directory_and_empty_parents(path: &std::path::Path, stop: &std::path::Path) {
+    let _ = tokio::fs::remove_dir_all(path).await;
+    let mut current = path.parent();
+    while let Some(parent) = current {
+        if parent == stop {
+            break;
+        }
+        if tokio::fs::remove_dir(parent).await.is_err() {
+            break;
+        }
+        current = parent.parent();
+    }
+}
+
+fn rewrite_file_list(
+    snapshot: &mut SystemClipboardSnapshot,
+    uri_list: String,
+    local_path_count: usize,
+) -> Result<()> {
+    let mut rewritten = 0usize;
+    for rep in &mut snapshot.representations {
+        if is_file_list_representation(rep) {
+            rep.set_inline_bytes(uri_list.as_bytes().to_vec())
+                .map_err(|err| anyhow!("materialize: failed to rewrite files rep: {err}"))?;
+            rewritten += 1;
+        }
+    }
+    if rewritten == 0 {
+        snapshot
+            .representations
+            .push(ObservedClipboardRepresentation::new(
+                RepresentationId::new(),
+                FormatId::from("files"),
+                Some(MimeType("text/uri-list".to_string())),
+                uri_list.into_bytes(),
+            ));
+    }
+    debug!(
+        rewritten,
+        local_path_count, "materialize: rewrote directory roots"
+    );
+    Ok(())
 }
 
 /// 把 partial cancel 的中间状态收口为 [`MaterializeResult`]:

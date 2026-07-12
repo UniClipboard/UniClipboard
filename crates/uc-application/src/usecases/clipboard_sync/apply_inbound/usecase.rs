@@ -373,6 +373,7 @@ impl ApplyInboundClipboardUseCase {
                         receiver_entry_id.clone(),
                         snapshot,
                         blob_refs,
+                        None,
                     )
                     .await
                     .map_err(|e| {

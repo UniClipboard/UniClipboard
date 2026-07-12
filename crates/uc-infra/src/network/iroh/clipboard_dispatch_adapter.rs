@@ -358,6 +358,9 @@ fn map_encode_err(err: WireEncodeError) -> ClipboardDispatchError {
         WireEncodeError::Postcard(err) => {
             ClipboardDispatchError::Internal(format!("header encode: {err}"))
         }
+        WireEncodeError::UnsupportedVersion(version) => {
+            ClipboardDispatchError::Internal(format!("unsupported outbound wire version {version}"))
+        }
     }
 }
 
